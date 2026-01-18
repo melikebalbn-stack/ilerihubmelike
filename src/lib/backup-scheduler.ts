@@ -1,0 +1,209 @@
+// Backup Scheduler - Otomatik Yedekleme Zamanlayıcı
+import { prisma } from '@/lib/prisma'
+import {
+  backupILERIHub,
+  backupAkademi,
+  backupDatabase,
+  generateBackupName,
+  getFileSize,
+  cleanOldBackups
+} from '@/lib/backup-service'
+
+let isSchedulerRunning = false
+
+// Scheduler'ı başlat
+export function initBackupScheduler() {
+  if (isSchedulerRunning) {
+    console.log('⏰ Backup scheduler already running')
+    return
+  }
+
+  isSchedulerRunning = true
+  console.log('✅ Backup scheduler initialized - checking every minute')
+
+  // Her dakika kontrol et
+  setInterval(checkScheduledBackups, 60 * 1000)
+
+  // İlk kontrol
+  checkScheduledBackups()
+}
+
+// Zamanlanmış yedekleri kontrol et
+async function checkScheduledBackups() {
+  try {
+    const now = new Date()
+
+    // Aktif ve çalışma zamanı gelmiş zamanlamaları bul
+    const dueSchedules = await prisma.backupSchedule.findMany({
+      where: {
+        isActive: true,
+        nextRunAt: {
+          lte: now
+        }
+      }
+    })
+
+    for (const schedule of dueSchedules) {
+      console.log(`📦 Running scheduled backup: ${schedule.name}`)
+      await runScheduledBackup(schedule)
+    }
+  } catch (error) {
+    console.error('Scheduled backup check error:', error)
+  }
+}
+
+// Zamanlanmış yedeği çalıştır
+async function runScheduledBackup(schedule: {
+  id: string
+  name: string
+  projectName: string
+  frequency: string
+  time: string
+  dayOfWeek: number | null
+  dayOfMonth: number | null
+  retentionDays: number
+  includeDatabase: boolean
+}) {
+  const startTime = Date.now()
+  const backupName = generateBackupName(schedule.projectName, schedule.includeDatabase)
+
+  // Yedekleme kaydı oluştur
+  const backupLog = await prisma.backupLog.create({
+    data: {
+      backupName,
+      backupType: 'SCHEDULED',
+      projectName: schedule.projectName,
+      filePath: '',
+      fileSize: BigInt(0),
+      status: 'IN_PROGRESS',
+      includeDatabase: schedule.includeDatabase,
+      startedAt: new Date(),
+      createdBy: 'system',
+      createdByName: 'Otomatik Zamanlama',
+      notes: `Zamanlama: ${schedule.name}`
+    }
+  })
+
+  try {
+    let result: { success: boolean; filePath: string; error?: string }
+
+    // Projeye göre yedekleme
+    switch (schedule.projectName) {
+      case 'ILERIHub':
+        result = await backupILERIHub(backupName)
+        break
+      case 'Akademi':
+        result = await backupAkademi(backupName)
+        break
+      case 'Database':
+        result = await backupDatabase(backupName)
+        break
+      default:
+        result = { success: false, filePath: '', error: 'Geçersiz proje' }
+    }
+
+    // Veritabanı yedeği (opsiyonel)
+    if (schedule.includeDatabase && schedule.projectName !== 'Database') {
+      const dbBackupName = generateBackupName('database')
+      await backupDatabase(dbBackupName)
+    }
+
+    const endTime = Date.now()
+    const duration = Math.round((endTime - startTime) / 1000)
+    const fileSize = result.success ? getFileSize(result.filePath) : 0
+
+    // Yedek kaydını güncelle
+    await prisma.backupLog.update({
+      where: { id: backupLog.id },
+      data: {
+        status: result.success ? 'COMPLETED' : 'FAILED',
+        filePath: result.filePath,
+        fileSize: BigInt(fileSize),
+        completedAt: new Date(),
+        duration,
+        errorMessage: result.error
+      }
+    })
+
+    // Zamanlamayı güncelle
+    const nextRunAt = calculateNextRunAt(
+      schedule.frequency,
+      schedule.time,
+      schedule.dayOfWeek,
+      schedule.dayOfMonth
+    )
+
+    await prisma.backupSchedule.update({
+      where: { id: schedule.id },
+      data: {
+        lastRunAt: new Date(),
+        nextRunAt
+      }
+    })
+
+    // Eski yedekleri temizle
+    if (schedule.retentionDays > 0) {
+      const deletedCount = await cleanOldBackups(schedule.retentionDays)
+      if (deletedCount > 0) {
+        console.log(`🗑️ Cleaned ${deletedCount} old backups (retention: ${schedule.retentionDays} days)`)
+      }
+    }
+
+    console.log(`✅ Scheduled backup completed: ${backupName}`)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Bilinmeyen hata'
+
+    await prisma.backupLog.update({
+      where: { id: backupLog.id },
+      data: {
+        status: 'FAILED',
+        errorMessage,
+        completedAt: new Date()
+      }
+    })
+
+    console.error(`❌ Scheduled backup failed: ${schedule.name}`, error)
+  }
+}
+
+// Sonraki çalışma zamanını hesapla
+function calculateNextRunAt(
+  frequency: string,
+  time: string,
+  dayOfWeek: number | null,
+  dayOfMonth: number | null
+): Date {
+  const [hours, minutes] = time.split(':').map(Number)
+  const now = new Date()
+  const nextRun = new Date()
+
+  nextRun.setHours(hours, minutes, 0, 0)
+
+  switch (frequency) {
+    case 'DAILY':
+      if (nextRun <= now) {
+        nextRun.setDate(nextRun.getDate() + 1)
+      }
+      break
+
+    case 'WEEKLY':
+      const targetDay = dayOfWeek || 0
+      const currentDay = nextRun.getDay()
+      let daysUntilTarget = targetDay - currentDay
+      if (daysUntilTarget < 0 || (daysUntilTarget === 0 && nextRun <= now)) {
+        daysUntilTarget += 7
+      }
+      nextRun.setDate(nextRun.getDate() + daysUntilTarget)
+      break
+
+    case 'MONTHLY':
+      const targetDate = dayOfMonth || 1
+      nextRun.setDate(targetDate)
+      if (nextRun <= now) {
+        nextRun.setMonth(nextRun.getMonth() + 1)
+      }
+      break
+  }
+
+  return nextRun
+}

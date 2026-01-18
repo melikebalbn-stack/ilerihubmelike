@@ -1,0 +1,332 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { writeFile, mkdir } from 'fs/promises'
+import path from 'path'
+import { existsSync } from 'fs'
+import { sendEmail } from '@/lib/email'
+
+// POST - İş başvurusu kaydet
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+
+    // Zorunlu alan kontrolü
+    const fullName = formData.get('fullName') as string
+    if (!fullName || !fullName.trim()) {
+      return NextResponse.json({ error: 'Ad Soyad zorunludur' }, { status: 400 })
+    }
+
+    // IP ve User Agent
+    const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0] ||
+                      request.headers.get('x-real-ip') ||
+                      'unknown'
+    const userAgent = request.headers.get('user-agent') || 'unknown'
+
+    // Fotoğraf yükleme
+    let photoUrl: string | null = null
+    const photo = formData.get('photo') as File | null
+
+    if (photo && photo.size > 0) {
+      // Dosya boyutu kontrolü (max 5MB)
+      if (photo.size > 5 * 1024 * 1024) {
+        return NextResponse.json({ error: 'Fotoğraf boyutu 5MB\'dan küçük olmalıdır' }, { status: 400 })
+      }
+
+      // Sadece resim dosyaları
+      if (!photo.type.startsWith('image/')) {
+        return NextResponse.json({ error: 'Sadece resim dosyaları kabul edilmektedir' }, { status: 400 })
+      }
+
+      // Upload klasörünü oluştur
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'job-applications')
+      if (!existsSync(uploadDir)) {
+        await mkdir(uploadDir, { recursive: true })
+      }
+
+      // Yıl/ay bazlı alt klasör
+      const now = new Date()
+      const yearMonth = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}`
+      const targetDir = path.join(uploadDir, yearMonth)
+      if (!existsSync(targetDir)) {
+        await mkdir(targetDir, { recursive: true })
+      }
+
+      // Güvenli dosya adı oluştur
+      const timestamp = Date.now()
+      const randomSuffix = Math.random().toString(36).substring(2, 8)
+      const ext = path.extname(photo.name) || '.jpg'
+      const fileName = `photo_${timestamp}_${randomSuffix}${ext}`
+
+      // Dosyayı kaydet
+      const bytes = await photo.arrayBuffer()
+      const buffer = Buffer.from(bytes)
+      const filePath = path.join(targetDir, fileName)
+      await writeFile(filePath, buffer)
+
+      photoUrl = `/api/files/uploads/job-applications/${yearMonth}/${fileName}`
+    }
+
+    // Form verilerini hazırla
+    const applicationData = {
+      fullName: fullName.trim(),
+      birthPlace: (formData.get('birthPlace') as string)?.trim() || null,
+      birthDate: formData.get('birthDate') ? new Date(formData.get('birthDate') as string) : null,
+      nationality: (formData.get('nationality') as string)?.trim() || null,
+      tcKimlikNo: (formData.get('tcKimlikNo') as string)?.trim() || null,
+      gender: formData.get('gender') as string || null,
+      bloodType: formData.get('bloodType') as string || null,
+      militaryStatus: formData.get('militaryStatus') as string || null,
+      militaryPostponeDate: formData.get('militaryPostponeDate') ? new Date(formData.get('militaryPostponeDate') as string) : null,
+      maritalStatus: formData.get('maritalStatus') as string || null,
+      numberOfChildren: formData.get('numberOfChildren') ? parseInt(formData.get('numberOfChildren') as string) : null,
+      spouseWorking: formData.get('spouseWorking') === 'true' ? true : formData.get('spouseWorking') === 'false' ? false : null,
+      spouseOccupation: (formData.get('spouseOccupation') as string)?.trim() || null,
+      homeAddress: (formData.get('homeAddress') as string)?.trim() || null,
+      dependents: (formData.get('dependents') as string)?.trim() || null,
+      mobilePhone: (formData.get('mobilePhone') as string)?.trim() || null,
+      workPhone: (formData.get('workPhone') as string)?.trim() || null,
+      homePhone: (formData.get('homePhone') as string)?.trim() || null,
+      email: (formData.get('email') as string)?.trim() || null,
+      referralSource: formData.get('referralSource') as string || null,
+      referralSourceOther: (formData.get('referralSourceOther') as string)?.trim() || null,
+      memberships: (formData.get('memberships') as string)?.trim() || null,
+      hasDriverLicense: formData.get('hasDriverLicense') === 'true' ? true : formData.get('hasDriverLicense') === 'false' ? false : null,
+      driverLicenseClass: (formData.get('driverLicenseClass') as string)?.trim() || null,
+      driverLicenseDate: formData.get('driverLicenseDate') ? new Date(formData.get('driverLicenseDate') as string) : null,
+      // Adli Sicil ve Hukuki Durum
+      hasCriminalRecord: formData.get('hasCriminalRecord') === 'true' ? true : formData.get('hasCriminalRecord') === 'false' ? false : null,
+      hasConviction: formData.get('hasConviction') === 'true' ? true : formData.get('hasConviction') === 'false' ? false : null,
+      convictionDetails: (formData.get('convictionDetails') as string)?.trim() || null,
+      hasOngoingCase: formData.get('hasOngoingCase') === 'true' ? true : formData.get('hasOngoingCase') === 'false' ? false : null,
+      // Fiziksel Özellikler
+      height: formData.get('height') ? parseInt(formData.get('height') as string) : null,
+      weight: formData.get('weight') ? parseInt(formData.get('weight') as string) : null,
+      shoeSize: (formData.get('shoeSize') as string)?.trim() || null,
+      clothingSizeUpper: (formData.get('clothingSizeUpper') as string)?.trim() || null,
+      clothingSizeLower: (formData.get('clothingSizeLower') as string)?.trim() || null,
+      // Çalışma Koşulları
+      hasTravelRestriction: formData.get('hasTravelRestriction') === 'true' ? true : formData.get('hasTravelRestriction') === 'false' ? false : null,
+      canWorkShifts: formData.get('canWorkShifts') === 'true' ? true : formData.get('canWorkShifts') === 'false' ? false : null,
+      // Hobiler
+      hobbies: (formData.get('hobbies') as string)?.trim() || null,
+      // İş Tercihleri
+      availableStartDate: formData.get('availableStartDate') ? new Date(formData.get('availableStartDate') as string) : null,
+      expectedSalary: formData.get('expectedSalary') ? parseInt(formData.get('expectedSalary') as string) : null,
+      requestedPosition: (formData.get('requestedPosition') as string)?.trim() || null,
+      previouslyWorkedHere: formData.get('previouslyWorkedHere') === 'true' ? true : formData.get('previouslyWorkedHere') === 'false' ? false : null,
+      // Öğrenim Durumu
+      educationLevel: formData.get('educationLevel') as string || null,
+      // Eğitim Geçmişi
+      educationHistory: formData.get('educationHistory') ? JSON.parse(formData.get('educationHistory') as string) : null,
+      // Staj, Kurs ve Seminerler
+      coursesAndSeminars: formData.get('coursesAndSeminars') ? JSON.parse(formData.get('coursesAndSeminars') as string) : null,
+      // Yabancı Dil Bilgisi
+      foreignLanguages: formData.get('foreignLanguages') ? JSON.parse(formData.get('foreignLanguages') as string) : null,
+      // Bilgisayar Bilgisi
+      computerSkills: formData.get('computerSkills') ? JSON.parse(formData.get('computerSkills') as string) : null,
+      // İş Tecrübeleri
+      workExperience: formData.get('workExperience') ? JSON.parse(formData.get('workExperience') as string) : null,
+      // Firma bünyesinde akraba/tanıdık
+      hasRelativesInCompany: formData.get('hasRelativesInCompany') === 'true' ? true : formData.get('hasRelativesInCompany') === 'false' ? false : null,
+      relativeName: (formData.get('relativeName') as string)?.trim() || null,
+      // İletişim Tercihi
+      preferredContactGsm: formData.get('preferredContactGsm') === 'true' ? true : null,
+      preferredContactEmail: formData.get('preferredContactEmail') === 'true' ? true : null,
+      preferredContactOther: (formData.get('preferredContactOther') as string)?.trim() || null,
+      // Son işveren ile temasa geçilebilir mi?
+      canContactLastEmployer: formData.get('canContactLastEmployer') === 'true' ? true : formData.get('canContactLastEmployer') === 'false' ? false : null,
+      // Referanslar
+      references: formData.get('references') ? JSON.parse(formData.get('references') as string) : null,
+      // Beyan
+      declarationAccepted: formData.get('declarationAccepted') === 'true' ? true : null,
+      declarationDate: formData.get('declarationAccepted') === 'true' ? new Date() : null,
+      // Dijital İmza
+      digitalSignature: (formData.get('digitalSignature') as string)?.trim() || null,
+      signatureDate: (formData.get('signatureDate') as string)?.trim() || null,
+      photoUrl,
+      ipAddress,
+      userAgent,
+    }
+
+    // Veritabanına kaydet
+    const application = await prisma.publicJobApplication.create({
+      data: applicationData as Parameters<typeof prisma.publicJobApplication.create>[0]['data'],
+    })
+
+    // E-posta bildirimi gönder
+    try {
+      await sendJobApplicationEmail(application)
+    } catch (emailError) {
+      console.error('E-posta gönderim hatası:', emailError)
+      // E-posta hatası başvuruyu engellemez
+    }
+
+    // İK departmanındaki kullanıcılara bildirim gönder
+    try {
+      await sendHRNotifications(application)
+    } catch (notificationError) {
+      console.error('Bildirim gönderim hatası:', notificationError)
+      // Bildirim hatası başvuruyu engellemez
+    }
+
+    return NextResponse.json({
+      success: true,
+      applicationNumber: application.applicationNumber,
+      message: 'Başvurunuz başarıyla kaydedildi'
+    })
+  } catch (error) {
+    console.error('İş başvurusu kaydedilirken hata:', error)
+    return NextResponse.json({ error: 'Sunucu hatası oluştu' }, { status: 500 })
+  }
+}
+
+// E-posta gönderme fonksiyonu - Basit bildirim
+async function sendJobApplicationEmail(application: {
+  id: string
+  applicationNumber: string
+  fullName: string
+  email?: string | null
+  mobilePhone?: string | null
+  requestedPosition?: string | null
+  createdAt: Date
+}) {
+  const emailContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <div style="max-width: 500px; margin: 40px auto; padding: 0 20px;">
+
+    <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <div style="background: #1e40af; padding: 32px 24px; text-align: center;">
+        <h1 style="margin: 0; color: white; font-size: 20px; font-weight: 600;">Yeni İş Başvurusu</h1>
+      </div>
+
+      <!-- Content -->
+      <div style="padding: 32px 24px;">
+
+        <p style="margin: 0 0 24px 0; color: #374151; font-size: 15px; line-height: 1.6;">
+          <strong>${application.fullName}</strong> adlı aday${application.requestedPosition ? ` <strong>${application.requestedPosition}</strong> pozisyonu için` : ''} iş başvurusunda bulundu.
+        </p>
+
+        <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Başvuru No</td>
+              <td style="padding: 8px 0; color: #111827; font-size: 13px; text-align: right; font-weight: 500;">${application.applicationNumber}</td>
+            </tr>
+            ${application.email ? `
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">E-posta</td>
+              <td style="padding: 8px 0; color: #111827; font-size: 13px; text-align: right;">${application.email}</td>
+            </tr>
+            ` : ''}
+            ${application.mobilePhone ? `
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Telefon</td>
+              <td style="padding: 8px 0; color: #111827; font-size: 13px; text-align: right;">${application.mobilePhone}</td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Tarih</td>
+              <td style="padding: 8px 0; color: #111827; font-size: 13px; text-align: right;">${new Date(application.createdAt).toLocaleString('tr-TR')}</td>
+            </tr>
+          </table>
+        </div>
+
+        <a href="https://ilerihub.ilerigroup.com/strategic-hr/recruitment?tab=job-applications&id=${application.id}"
+           style="display: block; background: #1e40af; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; text-align: center; font-size: 14px; font-weight: 500;">
+          Başvuruyu İncele
+        </a>
+
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 16px 24px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
+          İLERİ Group - İnsan Varlıkları
+        </p>
+      </div>
+
+    </div>
+
+  </div>
+</body>
+</html>
+  `
+
+  // Sadece test kullanıcısına e-posta gönder
+  await sendEmail(
+    [
+      { email: 'melih.dilben@ilerigroup.com', name: 'Melih Dilben' }
+    ],
+    `Yeni İş Başvurusu - ${application.fullName}`,
+    emailContent
+  )
+}
+
+// İK departmanına bildirim gönderme fonksiyonu
+async function sendHRNotifications(application: {
+  id: string
+  applicationNumber: string
+  fullName: string
+}) {
+  // İK departmanındaki tüm kullanıcıları bul
+  const hrDepartments = ['insan varliklari', 'insan varlıkları', 'human resources', 'hr', 'ik']
+
+  const hrUsers = await prisma.user.findMany({
+    where: {
+      OR: [
+        // Departman bazlı
+        {
+          department: {
+            in: hrDepartments,
+            mode: 'insensitive'
+          }
+        },
+        // HR_MANAGER rolü olanlar
+        {
+          role: 'HR_MANAGER'
+        },
+        // Test kullanıcısı
+        {
+          email: {
+            in: ['melih.dilben@ilerigroup.com'],
+            mode: 'insensitive'
+          }
+        }
+      ],
+      isActive: true
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true
+    }
+  })
+
+  if (hrUsers.length === 0) {
+    console.log('İK kullanıcısı bulunamadı, bildirim gönderilmedi')
+    return
+  }
+
+  // Her İK kullanıcısına bildirim oluştur
+  const notifications = hrUsers.map(user => ({
+    userId: user.id,
+    title: 'Yeni İş Başvurusu',
+    message: `${application.fullName} adlı aday iş başvurusu yaptı. (${application.applicationNumber})`,
+    type: 'INFO' as const,
+    link: `/strategic-hr/recruitment?tab=job-applications&id=${application.id}`
+  }))
+
+  await prisma.notification.createMany({
+    data: notifications
+  })
+
+  console.log(`${hrUsers.length} İK kullanıcısına bildirim gönderildi`)
+}

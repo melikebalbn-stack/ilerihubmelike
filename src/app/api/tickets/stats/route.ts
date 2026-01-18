@@ -1,0 +1,194 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+// GET - Ticket istatistikleri
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const viewMode = searchParams.get('viewMode') || 'all'
+    const userEmail = session.user.email
+    const userOu = (session.user.ou || '').toLowerCase()
+    const userDept = (session.user.department || '').toLowerCase()
+    const isAdmin = session.user.role === 'ADMIN' || session.user.role === 'SUPER_ADMIN'
+
+    // IT Ekibi kontrolü
+    const isITStaff = session.user.role === 'IT_MANAGER' ||
+      session.user.role === 'ADMIN' ||
+      session.user.role === 'SUPER_ADMIN' ||
+      userOu.includes('sistem') ||
+      userOu.includes('bilgi teknoloji') ||
+      userOu.includes('information') ||
+      userOu.includes('it') ||
+      (!userOu && (userDept.includes('sistem') || userDept.includes('bilgi teknoloji') || userDept.includes('information')))
+
+    // Temel filtre
+    const baseWhere: Record<string, unknown> = { isActive: true }
+
+    if (viewMode === 'my') {
+      baseWhere.requesterEmail = userEmail
+    } else if (viewMode === 'assigned') {
+      baseWhere.assignedTo = userEmail
+    }
+
+    // İstatistikleri paralel olarak çek
+    const [
+      totalOpen,
+      totalNew,
+      totalAssigned,
+      totalInProgress,
+      totalPending,
+      totalResolved,
+      totalClosed,
+      myTickets,
+      assignedToMe,
+      slaBreached,
+      byPriority,
+      byCategory,
+      recentTickets,
+    ] = await Promise.all([
+      // Açık ticket sayısı
+      prisma.ticket.count({
+        where: {
+          ...baseWhere,
+          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+        }
+      }),
+      // Yeni ticket sayısı
+      prisma.ticket.count({
+        where: { ...baseWhere, status: 'NEW' }
+      }),
+      // Atanmış ticket sayısı
+      prisma.ticket.count({
+        where: { ...baseWhere, status: 'ASSIGNED' }
+      }),
+      // İşlemde ticket sayısı
+      prisma.ticket.count({
+        where: { ...baseWhere, status: 'IN_PROGRESS' }
+      }),
+      // Beklemede ticket sayısı
+      prisma.ticket.count({
+        where: { ...baseWhere, status: 'PENDING' }
+      }),
+      // Çözüldü ticket sayısı
+      prisma.ticket.count({
+        where: { ...baseWhere, status: 'RESOLVED' }
+      }),
+      // Kapatıldı ticket sayısı (bu ay)
+      prisma.ticket.count({
+        where: {
+          ...baseWhere,
+          status: 'CLOSED',
+          closedAt: {
+            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+          }
+        }
+      }),
+      // Benim ticket'larım
+      prisma.ticket.count({
+        where: {
+          isActive: true,
+          requesterEmail: userEmail,
+          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+        }
+      }),
+      // Bana atanan ticket'lar
+      prisma.ticket.count({
+        where: {
+          isActive: true,
+          assignedTo: userEmail,
+          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+        }
+      }),
+      // SLA ihlali
+      prisma.ticket.count({
+        where: {
+          isActive: true,
+          OR: [
+            { slaResponseBreached: true },
+            { slaResolutionBreached: true }
+          ],
+          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+        }
+      }),
+      // Önceliğe göre dağılım
+      prisma.ticket.groupBy({
+        by: ['priority'],
+        where: {
+          isActive: true,
+          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+        },
+        _count: true,
+      }),
+      // Kategoriye göre dağılım
+      prisma.ticket.groupBy({
+        by: ['categoryId'],
+        where: {
+          isActive: true,
+          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+        },
+        _count: true,
+      }),
+      // Son ticket'lar - IT ekibi tümünü, normal kullanıcılar sadece kendi taleplerini görür
+      prisma.ticket.findMany({
+        where: isITStaff
+          ? { isActive: true }
+          : { isActive: true, requesterEmail: userEmail },
+        select: {
+          id: true,
+          ticketNumber: true,
+          subject: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+          requesterName: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+    ])
+
+    // Kategorileri çek (grup sonuçları için)
+    const categories = await prisma.ticketCategory.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, color: true }
+    })
+
+    const categoryMap = new Map(categories.map(c => [c.id, c]))
+
+    return NextResponse.json({
+      summary: {
+        totalOpen,
+        totalNew,
+        totalAssigned,
+        totalInProgress,
+        totalPending,
+        totalResolved,
+        totalClosedThisMonth: totalClosed,
+        myOpenTickets: myTickets,
+        assignedToMe,
+        slaBreached,
+      },
+      byPriority: byPriority.map(p => ({
+        priority: p.priority,
+        count: p._count,
+      })),
+      byCategory: byCategory.map(c => ({
+        categoryId: c.categoryId,
+        categoryName: c.categoryId ? categoryMap.get(c.categoryId)?.name : 'Kategorisiz',
+        categoryColor: c.categoryId ? categoryMap.get(c.categoryId)?.color : null,
+        count: c._count,
+      })),
+      recentTickets,
+    })
+  } catch (error) {
+    console.error('İstatistik hatası:', error)
+    return NextResponse.json({ error: 'İşlem başarısız' }, { status: 500 })
+  }
+}

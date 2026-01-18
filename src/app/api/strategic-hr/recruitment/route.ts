@@ -1,0 +1,221 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { JobOpeningStatus, JobPriority, EmploymentType } from "@/generated/prisma";
+
+// Yetki kontrolü helper
+async function checkAccess(session: any) {
+  const userRole = session?.user?.role;
+  const userDepartment = session?.user?.department || "";
+
+  const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
+  const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
+  const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept));
+
+  return {
+    hasFullAccess: fullAccessRoles.includes(userRole) || isHrDepartment,
+    isDeptHead: userRole === "DEPT_HEAD",
+    userDepartment,
+    userEmail: session?.user?.email || ""
+  };
+}
+
+// GET - Açık pozisyonlar listesi
+export async function GET(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
+    }
+
+    const { hasFullAccess, isDeptHead, userDepartment, userEmail } = await checkAccess(session);
+
+    if (!hasFullAccess && !isDeptHead) {
+      return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get("status") as JobOpeningStatus | null;
+    const priority = searchParams.get("priority") as JobPriority | null;
+    const department = searchParams.get("department");
+    const employmentType = searchParams.get("employmentType") as EmploymentType | null;
+
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (priority) {
+      where.priority = priority;
+    }
+
+    if (department) {
+      where.department = { contains: department, mode: "insensitive" };
+    }
+
+    if (employmentType) {
+      where.employmentType = employmentType;
+    }
+
+    // Departman müdürü sadece kendi departmanının ilanlarını görsün
+    if (!hasFullAccess && isDeptHead) {
+      where.OR = [
+        { department: { contains: userDepartment, mode: "insensitive" } },
+        { hiringManagerEmail: userEmail }
+      ];
+    }
+
+    const openings = await prisma.jobOpening.findMany({
+      where,
+      orderBy: [
+        { priority: "desc" },
+        { createdAt: "desc" }
+      ],
+      include: {
+        applications: {
+          select: {
+            id: true,
+            status: true
+          }
+        },
+        interviewStages: {
+          orderBy: { order: "asc" }
+        },
+        _count: {
+          select: {
+            applications: true
+          }
+        }
+      }
+    });
+
+    return NextResponse.json(openings);
+  } catch (error) {
+    console.error("Açık pozisyonlar listesi hatası:", error);
+    return NextResponse.json(
+      { error: "Açık pozisyonlar alınırken hata oluştu" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST - Yeni iş ilanı oluştur
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
+    }
+
+    const { hasFullAccess, isDeptHead } = await checkAccess(session);
+
+    if (!hasFullAccess && !isDeptHead) {
+      return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const {
+      title,
+      department,
+      location,
+      employmentType,
+      positionId,
+      description,
+      responsibilities,
+      requirements,
+      qualifications,
+      benefits,
+      salaryMin,
+      salaryMax,
+      salaryCurrency,
+      showSalary,
+      hiringManagerId,
+      hiringManagerEmail,
+      hiringManagerName,
+      recruiterId,
+      recruiterEmail,
+      recruiterName,
+      headcount,
+      postingDate,
+      closingDate,
+      targetHireDate,
+      priority,
+      interviewStages
+    } = body;
+
+    if (!title || !department || !employmentType || !description) {
+      return NextResponse.json(
+        { error: "Başlık, departman, çalışma tipi ve açıklama zorunludur" },
+        { status: 400 }
+      );
+    }
+
+    // Otomatik kod oluştur
+    const year = new Date().getFullYear();
+    const count = await prisma.jobOpening.count({
+      where: {
+        code: { startsWith: `JOB-${year}-` }
+      }
+    });
+    const code = `JOB-${year}-${String(count + 1).padStart(3, "0")}`;
+
+    const opening = await prisma.jobOpening.create({
+      data: {
+        code,
+        title,
+        department,
+        location,
+        employmentType: employmentType as EmploymentType,
+        positionId,
+        description,
+        responsibilities,
+        requirements,
+        qualifications,
+        benefits,
+        salaryMin,
+        salaryMax,
+        salaryCurrency: salaryCurrency || "TRY",
+        showSalary: showSalary || false,
+        hiringManagerId,
+        hiringManagerEmail,
+        hiringManagerName,
+        recruiterId,
+        recruiterEmail,
+        recruiterName,
+        headcount: headcount || 1,
+        postingDate: postingDate ? new Date(postingDate) : null,
+        closingDate: closingDate ? new Date(closingDate) : null,
+        targetHireDate: targetHireDate ? new Date(targetHireDate) : null,
+        status: "DRAFT",
+        priority: priority || "MEDIUM",
+        createdBy: session.user.id || session.user.email || "",
+        createdByName: session.user.name || "",
+        interviewStages: interviewStages ? {
+          create: interviewStages.map((stage: any, index: number) => ({
+            name: stage.name,
+            description: stage.description,
+            order: index + 1,
+            interviewType: stage.interviewType,
+            durationMinutes: stage.durationMinutes || 60,
+            evaluatorEmails: stage.evaluatorEmails || [],
+            evaluationCriteria: stage.evaluationCriteria || [],
+            isRequired: stage.isRequired !== false
+          }))
+        } : undefined
+      },
+      include: {
+        interviewStages: true
+      }
+    });
+
+    return NextResponse.json(opening, { status: 201 });
+  } catch (error) {
+    console.error("İş ilanı oluşturma hatası:", error);
+    return NextResponse.json(
+      { error: "İş ilanı oluşturulurken hata oluştu" },
+      { status: 500 }
+    );
+  }
+}

@@ -24,6 +24,9 @@ export async function GET(
                     userRole === 'HR_MANAGER' ||
                     userRole === 'IT_MANAGER'
 
+    // DEPT_HEAD için özel kontrol - IK anketleri hariç sonuçları görebilir
+    const isDeptHead = userRole === 'DEPT_HEAD'
+
     // Anketi ve ilişkili verileri getir
     const survey = await prisma.survey.findUnique({
       where: { id },
@@ -71,8 +74,29 @@ export async function GET(
       return NextResponse.json({ error: 'Anket bulunamadi' }, { status: 404 })
     }
 
-    // Yetki kontrolü
-    if (!isAdmin) {
+    // DEPT_HEAD için IK anketleri kontrolü
+    // IK'nın açtığı anketlerin sonuçlarına DEPT_HEAD erişemez
+    if (isDeptHead && !isAdmin) {
+      // Anketi oluşturan kişinin rolünü kontrol et
+      const surveyCreator = await prisma.user.findFirst({
+        where: { email: { equals: survey.createdByEmail, mode: 'insensitive' } },
+        select: { role: true, department: true }
+      })
+
+      // Eğer anketi HR_MANAGER oluşturduysa veya departmanı IK ise erişim engelle
+      const isHRSurvey = surveyCreator?.role === 'HR_MANAGER' ||
+                         surveyCreator?.department?.toLowerCase().includes('insan kaynakları') ||
+                         surveyCreator?.department?.toLowerCase().includes('i̇nsan kaynakları') ||
+                         surveyCreator?.department?.toLowerCase() === 'ik' ||
+                         surveyCreator?.department?.toLowerCase() === 'hr'
+
+      if (isHRSurvey) {
+        return NextResponse.json({ error: 'IK anketlerinin sonuçlarına erişim yetkiniz yok' }, { status: 403 })
+      }
+    }
+
+    // Yetki kontrolü - DEPT_HEAD isAdmin olmasa da IK dışı anket sonuçlarını görebilir
+    if (!isAdmin && !isDeptHead) {
       if (survey.showResults === 'NEVER') {
         return NextResponse.json({ error: 'Bu anketin sonuclari gosterilmiyor' }, { status: 403 })
       }

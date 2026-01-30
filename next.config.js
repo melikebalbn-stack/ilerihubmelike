@@ -72,11 +72,17 @@ const withPWA = require('@ducanh2912/next-pwa').default({
       },
     },
     {
+      // Dosya yükleme API'leri - cache'leme yok
+      urlPattern: /\/api\/iso27001\/controls\/.*\/evidences/i,
+      handler: 'NetworkOnly',
+    },
+    {
+      // Diğer API'ler
       urlPattern: /\/api\/.*$/i,
       handler: 'NetworkFirst',
       options: {
         cacheName: 'apis',
-        networkTimeoutSeconds: 10,
+        networkTimeoutSeconds: 60, // 10'dan 60 saniyeye çıkarıldı
         expiration: {
           maxEntries: 16,
           maxAgeSeconds: 24 * 60 * 60, // 24 hours
@@ -89,10 +95,60 @@ const withPWA = require('@ducanh2912/next-pwa').default({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // X-Powered-By header'ını kaldır (bilgi sızdırma önleme)
+  poweredByHeader: false,
   experimental: {
     serverActions: {
       allowedOrigins: ['172.16.16.33:3000', 'localhost:3000'],
+      bodySizeLimit: '50mb',
     },
+  },
+  // Güvenlik header'ları
+  async headers() {
+    return [
+      {
+        // Tüm sayfalar için güvenlik header'ları
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN', // Clickjacking koruması
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff', // MIME type sniffing koruması
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=(self), interest-cohort=()',
+          },
+          {
+            // Content Security Policy
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Next.js için gerekli
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "font-src 'self' https://fonts.gstatic.com",
+              "img-src 'self' data: blob: https:",
+              "connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com",
+              "frame-ancestors 'self'",
+              "form-action 'self'",
+              "base-uri 'self'",
+              "object-src 'none'",
+            ].join('; '),
+          },
+        ],
+      },
+    ];
   },
 }
 

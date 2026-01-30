@@ -1449,24 +1449,27 @@ function SuggestionsPageContent() {
   // ==========================================
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl shadow-lg">
-              <Lightbulb className="h-7 w-7 text-white" />
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-lg sm:rounded-xl shadow-lg">
+              <Lightbulb className="h-5 w-5 sm:h-7 sm:w-7 text-white" />
             </div>
-            <span><span className="text-blue-600">ILERI</span> Sürekli İyileştirme Merkezi</span>
+            <span className="hidden sm:inline"><span className="text-blue-600">ILERI</span> Sürekli İyileştirme Merkezi</span>
+            <span className="sm:hidden"><span className="text-blue-600">ILERI</span> İyileştirme</span>
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Öneri, Kaizen, Ramak Kala ve 5S sistemleri ile şirketimizi birlikte geliştirelim
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+            <span className="hidden sm:inline">Öneri, Kaizen, Ramak Kala ve 5S sistemleri ile şirketimizi birlikte geliştirelim</span>
+            <span className="sm:hidden">Öneri, Kaizen, Ramak Kala ve 5S</span>
           </p>
         </div>
         {activeModule && (
-          <Button variant="outline" onClick={() => setActiveModule(null)}>
-            <ChevronRight className="h-4 w-4 mr-2 rotate-180" />
-            Geri Dön
+          <Button variant="outline" size="sm" onClick={() => setActiveModule(null)} className="self-start sm:self-auto">
+            <ChevronRight className="h-4 w-4 mr-1 sm:mr-2 rotate-180" />
+            <span className="hidden sm:inline">Geri Dön</span>
+            <span className="sm:hidden">Geri</span>
           </Button>
         )}
       </div>
@@ -1541,57 +1544,57 @@ function SuggestionsPageContent() {
 
       {/* Summary Stats */}
       {!activeModule && stats && (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
           <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-green-100 rounded-lg">
+                  <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-green-700">{stats.overview.implemented}</p>
-                  <p className="text-xs text-green-600">Uygulanan Öneri</p>
+                  <p className="text-xl sm:text-2xl font-bold text-green-700">{stats.overview.implemented}</p>
+                  <p className="text-[10px] sm:text-xs text-green-600">Uygulanan</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Target className="h-5 w-5 text-blue-600" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg">
+                  <Target className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-blue-700">{kaizenProjects.filter(p => p.status === 'IN_PROGRESS').length}</p>
-                  <p className="text-xs text-blue-600">Aktif Kaizen</p>
+                  <p className="text-xl sm:text-2xl font-bold text-blue-700">{kaizenProjects.filter(p => p.status === 'IN_PROGRESS').length}</p>
+                  <p className="text-[10px] sm:text-xs text-blue-600">Aktif Kaizen</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-orange-50 to-red-50 border-orange-200">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Shield className="h-5 w-5 text-orange-600" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-orange-100 rounded-lg">
+                  <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-orange-700">{nearMisses.filter(n => n.status !== 'CLOSED').length}</p>
-                  <p className="text-xs text-orange-600">Açık Ramak Kala</p>
+                  <p className="text-xl sm:text-2xl font-bold text-orange-700">{nearMisses.filter(n => n.status !== 'CLOSED').length}</p>
+                  <p className="text-[10px] sm:text-xs text-orange-600">Açık R.Kala</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-100 rounded-lg">
-                  <Trophy className="h-5 w-5 text-emerald-600" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-emerald-100 rounded-lg">
+                  <Trophy className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-emerald-700">
+                  <p className="text-xl sm:text-2xl font-bold text-emerald-700">
                     {stats.overview.totalSavings > 0 ? `${(stats.overview.totalSavings / 1000).toFixed(0)}K` : '0'} ₺
                   </p>
-                  <p className="text-xs text-emerald-600">Toplam Tasarruf</p>
+                  <p className="text-[10px] sm:text-xs text-emerald-600">Tasarruf</p>
                 </div>
               </div>
             </CardContent>
@@ -1601,7 +1604,7 @@ function SuggestionsPageContent() {
 
       {/* Module Cards */}
       {!activeModule && (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
           {moduleCards.map((module) => {
             const Icon = module.icon
             const count = getModuleStats(module.stats.key)
@@ -1617,31 +1620,32 @@ function SuggestionsPageContent() {
                 )}
                 onClick={() => setActiveModule(module.id)}
               >
-                <CardContent className="p-6">
+                <CardContent className="p-3 sm:p-6">
                   {/* Background decoration */}
                   <div className="absolute -right-4 -top-4 opacity-10">
-                    <Icon className="h-32 w-32" />
+                    <Icon className="h-20 sm:h-32 w-20 sm:w-32" />
                   </div>
 
                   <div className="relative z-10">
-                    <div className={cn("inline-flex p-3 rounded-xl mb-4", module.iconBg)}>
-                      <Icon className={cn("h-6 w-6 bg-gradient-to-r bg-clip-text", module.color)} style={{ color: module.color.includes('yellow') ? '#d97706' : module.color.includes('blue') ? '#3b82f6' : module.color.includes('orange') ? '#ea580c' : '#059669' }} />
+                    <div className={cn("inline-flex p-2 sm:p-3 rounded-lg sm:rounded-xl mb-2 sm:mb-4", module.iconBg)}>
+                      <Icon className={cn("h-5 w-5 sm:h-6 sm:w-6 bg-gradient-to-r bg-clip-text", module.color)} style={{ color: module.color.includes('yellow') ? '#d97706' : module.color.includes('blue') ? '#3b82f6' : module.color.includes('orange') ? '#ea580c' : '#059669' }} />
                     </div>
 
-                    <h3 className="text-lg font-bold mb-1">{module.title}</h3>
-                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                    <h3 className="text-sm sm:text-lg font-bold mb-0.5 sm:mb-1">{module.title}</h3>
+                    <p className="text-xs text-muted-foreground mb-2 sm:mb-4 line-clamp-2 hidden sm:block">
                       {module.description}
                     </p>
 
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-3xl font-bold">{count}</p>
-                        <p className="text-xs text-muted-foreground">{module.stats.label}</p>
+                        <p className="text-xl sm:text-3xl font-bold">{count}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">{module.stats.label}</p>
                       </div>
-                      <Button size="sm" variant="secondary" className="gap-1">
+                      <Button size="sm" variant="secondary" className="gap-1 hidden sm:flex">
                         Gör
                         <ChevronRight className="h-4 w-4" />
                       </Button>
+                      <ChevronRight className="h-4 w-4 sm:hidden text-muted-foreground" />
                     </div>
                   </div>
                 </CardContent>
@@ -1655,14 +1659,15 @@ function SuggestionsPageContent() {
           SUGGESTIONS MODULE
       ========================================== */}
       {activeModule === 'suggestions' && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {/* Actions */}
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex gap-1 sm:gap-2 overflow-x-auto scrollbar-hide pb-1 sm:pb-0">
               <Button
                 variant={suggestionViewMode === 'all' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSuggestionViewMode('all')}
+                className="text-xs sm:text-sm whitespace-nowrap"
               >
                 Tümü
               </Button>
@@ -1670,47 +1675,53 @@ function SuggestionsPageContent() {
                 variant={suggestionViewMode === 'my' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSuggestionViewMode('my')}
+                className="text-xs sm:text-sm whitespace-nowrap"
               >
-                Önerilerim
+                <span className="hidden sm:inline">Önerilerim</span>
+                <span className="sm:hidden">Benim</span>
               </Button>
               <Button
                 variant={suggestionViewMode === 'pending' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSuggestionViewMode('pending')}
+                className="text-xs sm:text-sm whitespace-nowrap"
               >
-                Bekleyenler
+                <span className="hidden sm:inline">Bekleyenler</span>
+                <span className="sm:hidden">Bekliyor</span>
               </Button>
               <Button
                 variant={suggestionViewMode === 'awaiting_my_approval' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSuggestionViewMode('awaiting_my_approval')}
-                className="border-orange-200 text-orange-600 hover:bg-orange-50"
+                className="border-orange-200 text-orange-600 hover:bg-orange-50 text-xs sm:text-sm whitespace-nowrap"
               >
-                <Clock className="h-4 w-4 mr-1" />
-                Onayım Beklenen
+                <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                <span className="hidden sm:inline">Onayım Beklenen</span>
+                <span className="sm:hidden">Onay</span>
               </Button>
             </div>
-            <Button className="gap-2" onClick={() => setIsCreateSuggestionOpen(true)}>
+            <Button className="gap-2 self-end sm:self-auto" size="sm" onClick={() => setIsCreateSuggestionOpen(true)}>
               <Plus className="h-4 w-4" />
-              Yeni Öneri
+              <span className="hidden sm:inline">Yeni Öneri</span>
+              <span className="sm:hidden">Ekle</span>
             </Button>
           </div>
 
           {/* Filters */}
           <Card>
-            <CardContent className="pt-4">
-              <div className="flex gap-4">
-                <div className="relative flex-1 max-w-sm">
+            <CardContent className="p-3 sm:pt-4">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Öneri ara..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 text-sm"
                   />
                 </div>
                 <Select value={selectedCategory || "all"} onValueChange={(v) => setSelectedCategory(v === "all" ? "" : v)}>
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[180px]">
                     <Filter className="h-4 w-4 mr-2" />
                     <SelectValue placeholder="Kategori" />
                   </SelectTrigger>
@@ -1750,16 +1761,16 @@ function SuggestionsPageContent() {
 
                 return (
                   <Card key={suggestion.id} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
+                    <CardContent className="p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-4">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs text-muted-foreground font-mono">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                            <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">
                               {suggestion.suggestionNumber}
                             </span>
                             {suggestion.category && (
                               <span
-                                className="text-xs px-2 py-0.5 rounded-full"
+                                className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full"
                                 style={{
                                   backgroundColor: suggestion.category.color + '20',
                                   color: suggestion.category.color
@@ -1768,17 +1779,21 @@ function SuggestionsPageContent() {
                                 {suggestion.category.name}
                               </span>
                             )}
-                            <Badge className={priority.color} variant="secondary">
+                            <Badge className={cn(priority.color, "text-[10px] sm:text-xs")} variant="secondary">
                               {priority.label}
                             </Badge>
+                            <Badge className={cn(status.color, "text-[10px] sm:text-xs sm:hidden")}>
+                              <StatusIcon className="h-2.5 w-2.5 mr-0.5" />
+                              {status.label}
+                            </Badge>
                           </div>
-                          <h3 className="font-semibold text-lg mb-1">{suggestion.title}</h3>
-                          <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                          <h3 className="font-semibold text-sm sm:text-lg mb-1">{suggestion.title}</h3>
+                          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mb-2">
                             {suggestion.description}
                           </p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span>{suggestion.submittedByName}</span>
-                            {suggestion.submittedByDept && <span>• {suggestion.submittedByDept}</span>}
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-[10px] sm:text-xs text-muted-foreground">
+                            <span className="truncate max-w-[100px] sm:max-w-none">{suggestion.submittedByName}</span>
+                            {suggestion.submittedByDept && <span className="hidden sm:inline">• {suggestion.submittedByDept}</span>}
                             <span>• {formatDate(suggestion.submittedAt)}</span>
                             {(suggestion._count?.comments ?? 0) > 0 && (
                               <span className="flex items-center gap-1">
@@ -1793,7 +1808,7 @@ function SuggestionsPageContent() {
                             )}
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
+                        <div className="hidden sm:flex flex-col items-end gap-2">
                           <Badge className={status.color}>
                             <StatusIcon className="h-3 w-3 mr-1" />
                             {status.label}
@@ -1809,6 +1824,15 @@ function SuggestionsPageContent() {
                             <ChevronRight className="h-4 w-4 ml-1" />
                           </Button>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground sm:hidden self-end"
+                          onClick={() => router.push(`/suggestions/${suggestion.id}`)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Detay
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -1823,13 +1847,14 @@ function SuggestionsPageContent() {
           KAIZEN MODULE
       ========================================== */}
       {activeModule === 'kaizen' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex gap-2">
               <Button
                 variant={kaizenViewMode === 'all' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setKaizenViewMode('all')}
+                className="text-xs sm:text-sm"
               >
                 Tümü
               </Button>
@@ -1837,22 +1862,26 @@ function SuggestionsPageContent() {
                 variant={kaizenViewMode === 'my' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setKaizenViewMode('my')}
+                className="text-xs sm:text-sm"
               >
                 Projelerim
               </Button>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 self-end sm:self-auto">
               <Button
                 variant="outline"
-                className="gap-2 text-teal-600 border-teal-300 hover:bg-teal-50"
+                size="sm"
+                className="gap-1 sm:gap-2 text-teal-600 border-teal-300 hover:bg-teal-50 text-xs sm:text-sm"
                 onClick={() => setIsKaizenGuideOpen(true)}
               >
-                <HelpCircle className="h-4 w-4" />
-                Kaizen Kılavuzu
+                <HelpCircle className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Kaizen Kılavuzu</span>
+                <span className="sm:hidden">Kılavuz</span>
               </Button>
-              <Button className="gap-2" onClick={() => setIsCreateKaizenOpen(true)}>
+              <Button className="gap-1 sm:gap-2 text-xs sm:text-sm" size="sm" onClick={() => setIsCreateKaizenOpen(true)}>
                 <Plus className="h-4 w-4" />
-                Yeni Kaizen
+                <span className="hidden sm:inline">Yeni Kaizen</span>
+                <span className="sm:hidden">Ekle</span>
               </Button>
             </div>
           </div>
@@ -1882,25 +1911,26 @@ function SuggestionsPageContent() {
 
                 return (
                   <Card key={project.id} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
+                    <CardContent className="p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-4">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs text-muted-foreground font-mono">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                            <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">
                               {project.projectNumber}
                             </span>
-                            <Badge className={pdca.color}>{pdca.label}</Badge>
-                            <Badge className={priority.color} variant="secondary">
+                            <Badge className={cn(pdca.color, "text-[10px] sm:text-xs")}>{pdca.label}</Badge>
+                            <Badge className={cn(priority.color, "text-[10px] sm:text-xs")} variant="secondary">
                               {priority.label}
                             </Badge>
+                            <Badge className={cn(status.color, "text-[10px] sm:text-xs sm:hidden")}>{status.label}</Badge>
                           </div>
-                          <h3 className="font-semibold text-lg mb-1">{project.title}</h3>
-                          <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                          <h3 className="font-semibold text-sm sm:text-lg mb-1">{project.title}</h3>
+                          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mb-2">
                             {project.description}
                           </p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            {project.teamLeaderName && <span>Lider: {project.teamLeaderName}</span>}
-                            {project.department && <span>• {project.department}</span>}
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-[10px] sm:text-xs text-muted-foreground">
+                            {project.teamLeaderName && <span className="truncate max-w-[100px] sm:max-w-none">Lider: {project.teamLeaderName}</span>}
+                            {project.department && <span className="hidden sm:inline">• {project.department}</span>}
                             <span>• {formatDate(project.createdAt)}</span>
                             {(project._count?.attachments ?? 0) > 0 && (
                               <span className="flex items-center gap-1">
@@ -1910,7 +1940,7 @@ function SuggestionsPageContent() {
                             )}
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
+                        <div className="hidden sm:flex flex-col items-end gap-2">
                           <Badge className={status.color}>{status.label}</Badge>
                           <Button variant="ghost" size="sm" className="text-muted-foreground">
                             <Eye className="h-4 w-4 mr-1" />
@@ -1918,6 +1948,10 @@ function SuggestionsPageContent() {
                             <ChevronRight className="h-4 w-4 ml-1" />
                           </Button>
                         </div>
+                        <Button variant="ghost" size="sm" className="text-muted-foreground sm:hidden self-end">
+                          <Eye className="h-4 w-4 mr-1" />
+                          Detay
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -1932,13 +1966,14 @@ function SuggestionsPageContent() {
           NEAR MISS MODULE
       ========================================== */}
       {activeModule === 'nearmiss' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex gap-1 sm:gap-2 overflow-x-auto scrollbar-hide pb-1 sm:pb-0">
               <Button
                 variant={nearMissViewMode === 'all' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setNearMissViewMode('all')}
+                className="text-xs sm:text-sm whitespace-nowrap"
               >
                 Tümü
               </Button>
@@ -1946,20 +1981,25 @@ function SuggestionsPageContent() {
                 variant={nearMissViewMode === 'my' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setNearMissViewMode('my')}
+                className="text-xs sm:text-sm whitespace-nowrap"
               >
-                Bildirimlerim
+                <span className="hidden sm:inline">Bildirimlerim</span>
+                <span className="sm:hidden">Benim</span>
               </Button>
               <Button
                 variant={nearMissViewMode === 'open' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setNearMissViewMode('open')}
+                className="text-xs sm:text-sm whitespace-nowrap"
               >
-                Açık Olanlar
+                <span className="hidden sm:inline">Açık Olanlar</span>
+                <span className="sm:hidden">Açık</span>
               </Button>
             </div>
-            <Button className="gap-2 bg-orange-600 hover:bg-orange-700" onClick={() => setIsCreateNearMissOpen(true)}>
-              <AlertTriangle className="h-4 w-4" />
-              Ramak Kala Bildir
+            <Button className="gap-1 sm:gap-2 bg-orange-600 hover:bg-orange-700 text-xs sm:text-sm self-end sm:self-auto" size="sm" onClick={() => setIsCreateNearMissOpen(true)}>
+              <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Ramak Kala Bildir</span>
+              <span className="sm:hidden">Bildir</span>
             </Button>
           </div>
 
@@ -1988,23 +2028,24 @@ function SuggestionsPageContent() {
 
                 return (
                   <Card key={report.id} className="hover:shadow-md transition-shadow border-l-4 border-l-orange-500">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
+                    <CardContent className="p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-4">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs text-muted-foreground font-mono">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                            <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">
                               {report.reportNumber}
                             </span>
-                            <Badge variant="outline">{eventType}</Badge>
-                            <Badge className={severity.color}>{severity.label}</Badge>
+                            <Badge variant="outline" className="text-[10px] sm:text-xs">{eventType}</Badge>
+                            <Badge className={cn(severity.color, "text-[10px] sm:text-xs")}>{severity.label}</Badge>
+                            <Badge className={cn(status.color, "text-[10px] sm:text-xs sm:hidden")}>{status.label}</Badge>
                           </div>
-                          <h3 className="font-semibold text-lg mb-1">{report.title}</h3>
-                          <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                          <h3 className="font-semibold text-sm sm:text-lg mb-1">{report.title}</h3>
+                          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mb-2">
                             {report.description}
                           </p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span>{report.reportedByName}</span>
-                            <span>• {report.eventLocation}</span>
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-[10px] sm:text-xs text-muted-foreground">
+                            <span className="truncate max-w-[80px] sm:max-w-none">{report.reportedByName}</span>
+                            <span className="hidden sm:inline">• {report.eventLocation}</span>
                             <span>• {formatDate(report.eventDate)}</span>
                             {(report._count?.actions ?? 0) > 0 && (
                               <span className="text-orange-600 font-medium">
@@ -2013,7 +2054,7 @@ function SuggestionsPageContent() {
                             )}
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
+                        <div className="hidden sm:flex flex-col items-end gap-2">
                           <Badge className={status.color}>{status.label}</Badge>
                           <Button variant="ghost" size="sm" className="text-muted-foreground">
                             <Eye className="h-4 w-4 mr-1" />
@@ -2021,6 +2062,10 @@ function SuggestionsPageContent() {
                             <ChevronRight className="h-4 w-4 ml-1" />
                           </Button>
                         </div>
+                        <Button variant="ghost" size="sm" className="text-muted-foreground sm:hidden self-end">
+                          <Eye className="h-4 w-4 mr-1" />
+                          Detay
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -2035,13 +2080,14 @@ function SuggestionsPageContent() {
           5S MODULE
       ========================================== */}
       {activeModule === 'fives' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex gap-2">
               <Button
                 variant={fiveSViewMode === 'all' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setFiveSViewMode('all')}
+                className="text-xs sm:text-sm"
               >
                 Tümü
               </Button>
@@ -2049,25 +2095,31 @@ function SuggestionsPageContent() {
                 variant={fiveSViewMode === 'my' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setFiveSViewMode('my')}
+                className="text-xs sm:text-sm"
               >
-                Denetimlerim
+                <span className="hidden sm:inline">Denetimlerim</span>
+                <span className="sm:hidden">Benim</span>
               </Button>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1 sm:gap-2 self-end sm:self-auto overflow-x-auto scrollbar-hide">
               <Button
                 variant="outline"
-                className="gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+                size="sm"
+                className="gap-1 sm:gap-2 text-blue-600 border-blue-300 hover:bg-blue-50 text-xs sm:text-sm whitespace-nowrap"
                 onClick={() => setIsFiveSGuideOpen(true)}
               >
-                <HelpCircle className="h-4 w-4" />
-                5S Kılavuzu
+                <HelpCircle className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">5S Kılavuzu</span>
+                <span className="sm:hidden">Kılavuz</span>
               </Button>
-              <Button variant="outline" className="gap-2" onClick={() => setIsCreateFiveSAreaOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Alan Tanımla
+              <Button variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm whitespace-nowrap" onClick={() => setIsCreateFiveSAreaOpen(true)}>
+                <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Alan Tanımla</span>
+                <span className="sm:hidden">Alan</span>
               </Button>
               <Button
-                className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                size="sm"
+                className="gap-1 sm:gap-2 bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm whitespace-nowrap"
                 onClick={() => {
                   if (fiveSAreas.length === 0) {
                     toast.error('Önce bir denetim alanı tanımlamalısınız')
@@ -2077,19 +2129,21 @@ function SuggestionsPageContent() {
                   }
                 }}
               >
-                <ClipboardCheck className="h-4 w-4" />
-                Denetim Başlat
+                <ClipboardCheck className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Denetim Başlat</span>
+                <span className="sm:hidden">Denetim</span>
               </Button>
             </div>
           </div>
 
           {/* 5S Info Cards */}
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid grid-cols-5 gap-1 sm:gap-4">
             {['Seiri (Ayıkla)', 'Seiton (Düzenle)', 'Seiso (Temizle)', 'Seiketsu (Standartlaştır)', 'Shitsuke (Sürdür)'].map((s, i) => (
               <Card key={i} className="text-center">
-                <CardContent className="p-4">
-                  <div className="text-3xl font-bold mb-1">{i + 1}S</div>
-                  <p className="text-xs text-muted-foreground">{s}</p>
+                <CardContent className="p-2 sm:p-4">
+                  <div className="text-lg sm:text-3xl font-bold mb-0.5 sm:mb-1">{i + 1}S</div>
+                  <p className="text-[8px] sm:text-xs text-muted-foreground truncate">{s.split(' ')[0]}</p>
+                  <p className="text-[7px] sm:text-[10px] text-muted-foreground hidden sm:block">{s.match(/\(([^)]+)\)/)?.[1]}</p>
                 </CardContent>
               </Card>
             ))}
@@ -2098,33 +2152,33 @@ function SuggestionsPageContent() {
           {/* 5S Alanları */}
           {fiveSAreas.length > 0 && (
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Denetim Alanları</CardTitle>
+              <CardHeader className="pb-2 sm:pb-4">
+                <CardTitle className="text-base sm:text-lg">Denetim Alanları</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <CardContent className="pt-0">
+                <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {fiveSAreas.map(area => (
                     <div
                       key={area.id}
-                      className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors hover:border-emerald-300"
+                      className="p-2.5 sm:p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors hover:border-emerald-300"
                       onClick={() => openAreaDetail(area)}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium">{area.name}</span>
-                        <Badge variant="outline">{area.code}</Badge>
+                        <span className="font-medium text-sm sm:text-base truncate mr-2">{area.name}</span>
+                        <Badge variant="outline" className="text-[10px] sm:text-xs flex-shrink-0">{area.code}</Badge>
                       </div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-[10px] sm:text-xs text-muted-foreground truncate">
                         {area.department && <span>{area.department}</span>}
                         {area.location && <span> • {area.location}</span>}
                       </div>
-                      <div className="flex items-center justify-between mt-2 text-xs">
+                      <div className="flex items-center justify-between mt-1.5 sm:mt-2 text-[10px] sm:text-xs">
                         <span className="text-muted-foreground">{area._count?.audits || 0} denetim</span>
                         {area.audits && area.audits[0] && (
                           <span className={cn(
                             "font-medium",
                             area.audits[0].totalScore >= 80 ? "text-green-600" : area.audits[0].totalScore >= 60 ? "text-yellow-600" : "text-red-600"
                           )}>
-                            Son: {area.audits[0].totalScore} puan
+                            Son: {area.audits[0].totalScore}
                           </span>
                         )}
                       </div>
@@ -2168,23 +2222,29 @@ function SuggestionsPageContent() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
-              <h3 className="font-semibold">Son Denetimler</h3>
+            <div className="space-y-3 sm:space-y-4">
+              <h3 className="font-semibold text-sm sm:text-base">Son Denetimler</h3>
               {fiveSAudits.map(audit => (
                 <Card key={audit.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs text-muted-foreground font-mono">{audit.auditNumber}</span>
-                          <Badge variant="outline">{audit.area?.name}</Badge>
+                  <CardContent className="p-3 sm:p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                          <span className="text-[10px] sm:text-xs text-muted-foreground font-mono">{audit.auditNumber}</span>
+                          <Badge variant="outline" className="text-[10px] sm:text-xs">{audit.area?.name}</Badge>
+                          <span className={cn(
+                            "text-sm sm:text-lg font-bold sm:hidden",
+                            audit.totalScore >= 80 ? "text-green-600" : audit.totalScore >= 60 ? "text-yellow-600" : "text-red-600"
+                          )}>
+                            {audit.totalScore} puan
+                          </span>
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          Denetçi: {audit.auditorName} • {formatDate(audit.auditDate)}
+                        <p className="text-[10px] sm:text-sm text-muted-foreground">
+                          <span className="hidden sm:inline">Denetçi: </span>{audit.auditorName} • {formatDate(audit.auditDate)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-center">
+                      <div className="flex items-center gap-2 sm:gap-4">
+                        <div className="text-center hidden sm:block">
                           <div className={cn(
                             "text-2xl font-bold",
                             audit.totalScore >= 80 ? "text-green-600" : audit.totalScore >= 60 ? "text-yellow-600" : "text-red-600"
@@ -2198,19 +2258,21 @@ function SuggestionsPageContent() {
                           size="sm"
                           onClick={() => openActionPlan(audit)}
                           disabled={actionPlanLoading}
+                          className="text-xs sm:text-sm"
                         >
-                          <Eye className="h-4 w-4 mr-1" />
+                          <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                           Detay
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                          className="text-orange-600 border-orange-300 hover:bg-orange-50 text-xs sm:text-sm"
                           onClick={() => openActionPlan(audit)}
                           disabled={actionPlanLoading}
                         >
-                          <ClipboardList className="h-4 w-4 mr-1" />
-                          Aksiyon Planı
+                          <ClipboardList className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          <span className="hidden sm:inline">Aksiyon Planı</span>
+                          <span className="sm:hidden">Aksiyon</span>
                         </Button>
                       </div>
                     </div>
@@ -2226,18 +2288,18 @@ function SuggestionsPageContent() {
           CREATE SUGGESTION DIALOG
       ========================================== */}
       <Dialog open={isCreateSuggestionOpen} onOpenChange={setIsCreateSuggestionOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Lightbulb className="h-5 w-5 text-yellow-500" />
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Lightbulb className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-500" />
               Yeni Öneri Oluştur
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
               Şirketi geliştirmek için önerinizi paylaşın
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSuggestionSubmit} className="space-y-4 mt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <form onSubmit={handleSuggestionSubmit} className="space-y-3 sm:space-y-4 mt-3 sm:mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="sm:col-span-2">
                 <Label>Öneri Başlığı *</Label>
                 <Input

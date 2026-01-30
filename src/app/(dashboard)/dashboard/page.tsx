@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight } from "lucide-react"
+import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight, FolderSync, GraduationCap } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useEffect, useState } from "react"
 import Link from "next/link"
@@ -348,12 +348,36 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Section */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Hoş geldiniz, {session?.user?.name || 'Kullanıcı'}
-        </p>
+      {/* Welcome Section with Quick Links */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Hoş geldiniz, {session?.user?.name || 'Kullanıcı'}
+          </p>
+        </div>
+
+        {/* Hızlı Erişim Butonları */}
+        <div className="flex gap-2">
+          <a
+            href="http://transfer.ilerigroup.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-blue-700 dark:text-blue-300"
+          >
+            <FolderSync className="h-4 w-4" />
+            <span className="text-sm font-medium">Dosya Transferi</span>
+          </a>
+          <a
+            href="/api/sso/akademi"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors text-indigo-700 dark:text-indigo-300"
+          >
+            <GraduationCap className="h-4 w-4" />
+            <span className="text-sm font-medium">ILERI Akademi</span>
+          </a>
+        </div>
       </div>
 
       {/* Sistem Notu / Duyuru */}
@@ -472,9 +496,9 @@ export default function DashboardPage() {
       )}
 
       {/* Main Content Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {/* Bana Atanan Görevler - Büyük Kart */}
-        <Card className="lg:col-span-2">
+        <Card className="md:col-span-2 lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
@@ -656,7 +680,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Mini Takvim - Haftanın Günleri */}
-            <div className="grid grid-cols-7 gap-1 mb-3">
+            <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-3">
               {weeklyMenu.map((day) => {
                 const isToday = day.date === new Date().toISOString().split('T')[0]
                 const isSelected = day.date === selectedMenuDate
@@ -668,7 +692,7 @@ export default function DashboardPage() {
                     key={day.date}
                     onClick={() => setSelectedMenuDate(day.date)}
                     className={`
-                      flex flex-col items-center p-1.5 rounded-lg transition-all text-center
+                      flex flex-col items-center p-1 sm:p-1.5 rounded-lg transition-all text-center min-h-[44px] sm:min-h-0
                       ${isSelected
                         ? 'bg-orange-500 text-white shadow-md'
                         : isToday
@@ -679,8 +703,8 @@ export default function DashboardPage() {
                       }
                     `}
                   >
-                    <span className="text-[10px] font-medium">{day.dayName.slice(0, 2)}</span>
-                    <span className={`text-sm font-bold ${isSelected ? '' : isToday ? 'text-orange-600 dark:text-orange-400' : ''}`}>
+                    <span className="text-[9px] sm:text-[10px] font-medium">{day.dayName.slice(0, 2)}</span>
+                    <span className={`text-xs sm:text-sm font-bold ${isSelected ? '' : isToday ? 'text-orange-600 dark:text-orange-400' : ''}`}>
                       {dayNum}
                     </span>
                   </button>

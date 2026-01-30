@@ -493,18 +493,18 @@ export default function MessagesPage() {
   return (
     <div className="h-[calc(100vh-120px)]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <MessageSquare className="h-8 w-8 text-blue-500" />
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2 sm:gap-3">
+            <MessageSquare className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500" />
             Mesajlar
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Calisma arkadaslarinizla iletisim kurun
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-shrink-0">
           {/* Yeni Mesaj Dialog */}
           <Dialog open={showNewConversation} onOpenChange={setShowNewConversation}>
             <DialogTrigger asChild>

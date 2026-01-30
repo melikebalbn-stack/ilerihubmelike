@@ -950,6 +950,11 @@ export default function RecruitmentPage() {
             <HelpCircle className="h-4 w-4 mr-2" />
             Kilavuz
           </Button>
+          <Button variant="outline" asChild>
+            <a href="/job-application" target="_blank" rel="noopener noreferrer">
+              İş Başvuru Formu
+            </a>
+          </Button>
           <Button onClick={() => setIsRequestDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Eleman Talebi

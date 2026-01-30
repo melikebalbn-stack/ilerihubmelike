@@ -15,7 +15,6 @@ import {
   Clock,
   Headphones,
   Settings,
-  FolderSync,
   GraduationCap,
   CalendarCheck,
   Lightbulb,
@@ -46,6 +45,9 @@ import {
   ClipboardList,
   LogIn,
   X,
+  Package,
+  Server,
+  Calendar,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -57,7 +59,15 @@ const mainMenuItems = [
   { name: "Duyurular", icon: Megaphone, href: "/announcements", roles: ["*"] },
   { name: "Öneri Sistemi", icon: Lightbulb, href: "/suggestions", roles: ["*"] },
   { name: "Planlı Görevler", icon: CalendarCheck, href: "/tasks", roles: ["*"] },
-  { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+  // { name: "Eğitimlerim", icon: GraduationCap, href: "/my-trainings", roles: ["*"] }, // BGYS ile ilgili - şimdilik gizli
+  { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+]
+
+// Formlar alt menüsü
+const formsMenuItems = [
+  { name: "Ziyaret Raporları", icon: FileText, href: "/forms/visit-reports", roles: ["*"] },
+  { name: "Toplantı Raporu", icon: Calendar, href: "/meetings", roles: ["*"] },
+  { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] },
 ]
 
 // ILERI Teknik alt menüsü
@@ -78,6 +88,7 @@ const strategicHrMenuItems = [
   { name: "Performans Yönetimi", icon: Target, href: "/strategic-hr/performance", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
+  { name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
 ]
 
 // Kalite Yönetim Sistemi (KYS) alt menüsü
@@ -93,10 +104,28 @@ const qdmsMenuItems = [
   { name: "Müşteri Şikayetleri", icon: MessageCircle, href: "/qdms/complaints", roles: ["*"] },
 ]
 
+// Denetimler alt menüsü (ISO 27001 dahil)
+const auditsMenuItems = [
+  { name: "ISO 27001", icon: Shield, href: "/iso27001", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], isSubmenu: true },
+]
+
+// ISO 27001 Bilgi Güvenliği Yönetim Sistemi alt menüsü
+const iso27001MenuItems = [
+  { name: "Dashboard", icon: Home, href: "/iso27001", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "SoA (Uygulanabilirlik)", icon: FileCheck, href: "/iso27001/soa", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Dokümanlar", icon: FileText, href: "/iso27001/documents", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Kontroller", icon: ClipboardCheck, href: "/iso27001/controls", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Risk Analizi", icon: Scale, href: "/iso27001/risks", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Olay Yönetimi", icon: AlertTriangle, href: "/iso27001/incidents", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Varlık Envanteri", icon: Server, href: "/iso27001/assets", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Eğitimler", icon: GraduationCap, href: "/iso27001/trainings", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "İç Denetim", icon: ClipboardList, href: "/iso27001/audits", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Yönetim Gözden Geçirme", icon: Target, href: "/iso27001/management-review", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Denetçi Paketi", icon: Package, href: "/iso27001/audit-package", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+]
+
 // Alt menü öğeleri
 const bottomMenuItems = [
-  { name: "ILERI Dosya Transferi", icon: FolderSync, href: "http://transfer.ilerigroup.com", roles: ["*"], external: true },
-  { name: "ILERI Akademi", icon: GraduationCap, href: "/api/sso/akademi", roles: ["*"], external: true, highlight: "Akademi" },
   { name: "IT Destek", icon: Headphones, href: "/it-support", roles: ["*"] },
   { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN"] },
 ]
@@ -112,7 +141,33 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [teknikOpen, setTeknikOpen] = useState(false)
   const [qdmsOpen, setQdmsOpen] = useState(false)
   const [strategicHrOpen, setStrategicHrOpen] = useState(false)
+  const [auditsOpen, setAuditsOpen] = useState(false)
+  const [iso27001Open, setIso27001Open] = useState(false)
+  const [formsOpen, setFormsOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
+
+  // Pathname değiştiğinde ilgili menüyü otomatik aç
+  useEffect(() => {
+    if (pathname.startsWith('/iso27001')) {
+      setQdmsOpen(true)
+      setAuditsOpen(true)
+      setIso27001Open(true)
+    }
+    if (pathname.startsWith('/qdms')) {
+      setQdmsOpen(true)
+    }
+    if (pathname.startsWith('/strategic-hr') || pathname.startsWith('/talent-management')) {
+      setStrategicHrOpen(true)
+    }
+    if (pathname.startsWith('/calibration') || pathname.startsWith('/fire-safety') ||
+        pathname.startsWith('/maintenance') || pathname.startsWith('/it-reports') ||
+        pathname.startsWith('/login-logs') || pathname.startsWith('/backups')) {
+      setTeknikOpen(true)
+    }
+    if (pathname.startsWith('/forms') || pathname.startsWith('/meetings')) {
+      setFormsOpen(true)
+    }
+  }, [pathname])
 
   // Okunmamis mesaj sayisini al
   useEffect(() => {
@@ -174,7 +229,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredMainItems = filterItems(mainMenuItems)
   const filteredTeknikItems = filterItems(teknikMenuItems)
   const filteredQdmsItems = filterItems(qdmsMenuItems)
+  const filteredAuditsItems = filterItems(auditsMenuItems)
+  const filteredIso27001Items = filterItems(iso27001MenuItems)
   const filteredStrategicHrItems = filterStrategicHrItems(strategicHrMenuItems)
+  const filteredFormsItems = filterItems(formsMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 
   // Teknik menüsünde aktif sayfa var mı kontrol et (IT Raporları, Login Aktiviteleri ve Yedekleme dahil)
@@ -184,20 +242,45 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     || pathname === '/login-logs' || pathname.startsWith('/login-logs/')
     || pathname === '/backups' || pathname.startsWith('/backups/')
 
-  // QDMS menüsünde aktif sayfa var mı kontrol et
+  // QDMS menüsünde aktif sayfa var mı kontrol et (ISO 27001 dahil)
   const isQdmsActive = qdmsMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
-  ) || pathname.startsWith('/qdms/')
+  ) || pathname.startsWith('/qdms/') || pathname.startsWith('/iso27001/')
+
+  // Denetimler menüsünde aktif sayfa var mı kontrol et
+  const isAuditsActive = pathname.startsWith('/iso27001/')
 
   // Stratejik IK menüsünde aktif sayfa var mı kontrol et
   const isStrategicHrActive = strategicHrMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname.startsWith('/talent-management/')
 
+  // ISO 27001 menüsünde aktif sayfa var mı kontrol et
+  const isIso27001Active = iso27001MenuItems.some(item =>
+    pathname === item.href || pathname.startsWith(item.href + "/")
+  ) || pathname.startsWith('/iso27001/')
+
+  // Formlar menüsünde aktif sayfa var mı kontrol et
+  const isFormsActive = formsMenuItems.some(item =>
+    pathname === item.href || pathname.startsWith(item.href + "/")
+  ) || pathname.startsWith('/forms/') || pathname.startsWith('/meetings/')
+
   // Menü öğesi render fonksiyonu
   const renderMenuItem = (item: typeof mainMenuItems[0], indent = false) => {
     const Icon = item.icon
-    const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+    // Dashboard için özel kontrol: sadece tam eşleşme, diğer /dashboard ile başlayan yolları hariç tut
+    // Örn: /iso27001 altındaki Dashboard değil, sadece ana /dashboard aktif olmalı
+    let isActive = false
+    if (item.href === "/dashboard") {
+      // Ana dashboard sadece tam eşleşmede aktif
+      isActive = pathname === "/dashboard"
+    } else if (item.href === "/iso27001") {
+      // ISO 27001 Dashboard sadece tam eşleşmede aktif (alt sayfalar için değil)
+      isActive = pathname === "/iso27001"
+    } else {
+      // Diğer menüler normal davranış
+      isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+    }
     const isExternal = 'external' in item && (item as { external?: boolean }).external
     const highlight = 'highlight' in item ? (item as { highlight?: string }).highlight : null
 
@@ -304,6 +387,34 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Ana Menü Öğeleri */}
         {filteredMainItems.map(item => renderMenuItem(item))}
 
+        {/* Formlar */}
+        {filteredFormsItems.length > 0 && (
+          <>
+            <button
+              onClick={() => setFormsOpen(!formsOpen)}
+              className={cn(
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                isFormsActive
+                  ? "text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <FileText className="h-5 w-5" />
+              <span className="flex-1 text-left">Formlar</span>
+              {formsOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+            {formsOpen && (
+              <div className="space-y-1 ml-4">
+                {filteredFormsItems.map(item => renderMenuItem(item))}
+              </div>
+            )}
+          </>
+        )}
+
         {/* Kalite Yönetim Sistemi */}
         {filteredQdmsItems.length > 0 && (
           <>
@@ -327,6 +438,60 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {qdmsOpen && (
               <div className="space-y-1 ml-4">
                 {filteredQdmsItems.map(item => renderMenuItem(item))}
+
+                {/* Denetimler Alt Menüsü */}
+                {filteredAuditsItems.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => setAuditsOpen(!auditsOpen)}
+                      className={cn(
+                        "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        isAuditsActive
+                          ? "text-primary"
+                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      )}
+                    >
+                      <ClipboardList className="h-5 w-5" />
+                      <span className="flex-1 text-left">Denetimler</span>
+                      {auditsOpen ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                    </button>
+                    {auditsOpen && (
+                      <div className="space-y-1 ml-4">
+                        {/* ISO 27001 Alt Menüsü */}
+                        {filteredIso27001Items.length > 0 && (
+                          <>
+                            <button
+                              onClick={() => setIso27001Open(!iso27001Open)}
+                              className={cn(
+                                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                                isIso27001Active
+                                  ? "text-primary"
+                                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                              )}
+                            >
+                              <Shield className="h-5 w-5" />
+                              <span className="flex-1 text-left">ISO 27001</span>
+                              {iso27001Open ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
+                            {iso27001Open && (
+                              <div className="space-y-1 ml-4">
+                                {filteredIso27001Items.map(item => renderMenuItem(item))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </>

@@ -183,82 +183,45 @@ export async function POST(request: NextRequest) {
 // E-posta gönderme fonksiyonu - Basit bildirim
 async function sendJobApplicationEmail(application: {
   id: string
-  applicationNumber: string
   fullName: string
-  email?: string | null
-  mobilePhone?: string | null
   requestedPosition?: string | null
-  createdAt: Date
 }) {
-  const emailContent = `
-<!DOCTYPE html>
+  const viewUrl = `https://hub.ilerigroup.com/strategic-hr/recruitment?tab=job-applications&id=${application.id}`
+
+  const emailContent = `<!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <div style="max-width: 500px; margin: 40px auto; padding: 0 20px;">
-
-    <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-
-      <!-- Header -->
-      <div style="background: #1e40af; padding: 32px 24px; text-align: center;">
-        <h1 style="margin: 0; color: white; font-size: 20px; font-weight: 600;">Yeni İş Başvurusu</h1>
-      </div>
-
-      <!-- Content -->
-      <div style="padding: 32px 24px;">
-
-        <p style="margin: 0 0 24px 0; color: #374151; font-size: 15px; line-height: 1.6;">
-          <strong>${application.fullName}</strong> adlı aday${application.requestedPosition ? ` <strong>${application.requestedPosition}</strong> pozisyonu için` : ''} iş başvurusunda bulundu.
-        </p>
-
-        <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Başvuru No</td>
-              <td style="padding: 8px 0; color: #111827; font-size: 13px; text-align: right; font-weight: 500;">${application.applicationNumber}</td>
-            </tr>
-            ${application.email ? `
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">E-posta</td>
-              <td style="padding: 8px 0; color: #111827; font-size: 13px; text-align: right;">${application.email}</td>
-            </tr>
-            ` : ''}
-            ${application.mobilePhone ? `
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Telefon</td>
-              <td style="padding: 8px 0; color: #111827; font-size: 13px; text-align: right;">${application.mobilePhone}</td>
-            </tr>
-            ` : ''}
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Tarih</td>
-              <td style="padding: 8px 0; color: #111827; font-size: 13px; text-align: right;">${new Date(application.createdAt).toLocaleString('tr-TR')}</td>
-            </tr>
-          </table>
-        </div>
-
-        <a href="https://ilerihub.ilerigroup.com/strategic-hr/recruitment?tab=job-applications&id=${application.id}"
-           style="display: block; background: #1e40af; color: white; text-decoration: none; padding: 14px 24px; border-radius: 8px; text-align: center; font-size: 14px; font-weight: 500;">
-          Başvuruyu İncele
-        </a>
-
-      </div>
-
-      <!-- Footer -->
-      <div style="padding: 16px 24px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
-        <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
-          İLERİ Group - İnsan Varlıkları
-        </p>
-      </div>
-
-    </div>
-
-  </div>
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;">
+<table cellpadding="0" cellspacing="0" border="0" width="400" align="center" style="border:2px solid #1e40af;">
+<tr>
+<td style="padding:12px 15px;border-bottom:1px solid #e5e7eb;font-family:Arial,sans-serif;">
+<span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">İLERİ GROUP</span><br>
+<span style="font-size:16px;font-weight:bold;color:#1e40af;">Yeni İş Başvurusu</span>
+</td>
+</tr>
+<tr>
+<td style="padding:15px;font-family:Arial,sans-serif;font-size:13px;color:#374151;line-height:20px;">
+<b style="color:#111827;">${application.fullName}</b>${application.requestedPosition ? '<br><span style="color:#6b7280;font-size:12px;">' + application.requestedPosition + ' pozisyonu için</span>' : ''}<br><br>
+iş başvurusunda bulundu.
+</td>
+</tr>
+<tr>
+<td style="padding:10px 15px;border-top:1px solid #e5e7eb;">
+<table cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td style="border:2px solid #1e40af;padding:8px 16px;">
+<a href="${viewUrl}" style="color:#1e40af;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;text-decoration:none;">Başvuruyu İncele &rarr;</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+<td style="padding:10px 15px;border-top:1px solid #e5e7eb;font-family:Arial,sans-serif;font-size:10px;color:#9ca3af;">İnsan Varlıkları Departmanı</td>
+</tr>
+</table>
 </body>
-</html>
-  `
+</html>`
 
   // Sadece test kullanıcısına e-posta gönder
   await sendEmail(

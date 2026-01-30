@@ -47,5 +47,6 @@ export const config = {
     '/leaves/:path*',
     '/attendance/:path*',
     '/helpdesk/:path*',
+    '/meetings/:path*',
   ],
 };

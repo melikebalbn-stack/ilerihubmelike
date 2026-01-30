@@ -56,6 +56,148 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Mobil için touch-action ve scroll davranışları */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  /* iOS zoom'u önlemek için form elemanlarında 16px font */
+  @media (max-width: 767px) {
+    input, select, textarea {
+      font-size: 16px;
+    }
+  }
+}
+
+/* Mobil Responsive Utilities */
+@layer utilities {
+  /* Safe area padding for notched devices */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Mobile-only classes */
+  @media (max-width: 767px) {
+    .mobile-full-width {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+
+    .mobile-stack {
+      flex-direction: column !important;
+    }
+
+    .mobile-hidden {
+      display: none !important;
+    }
+  }
+
+  /* Desktop-only classes */
+  @media (min-width: 768px) {
+    .desktop-hidden {
+      display: none !important;
+    }
+  }
+
+  /* Responsive table improvements */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Mobile table scroll hint */
+  @media (max-width: 767px) {
+    .table-responsive {
+      position: relative;
+    }
+
+    .table-responsive::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 20px;
+      background: linear-gradient(to right, transparent, hsl(var(--background)));
+      pointer-events: none;
+      opacity: 0.8;
+    }
+
+    .table-responsive::-webkit-scrollbar {
+      height: 4px;
+    }
+
+    .table-responsive::-webkit-scrollbar-track {
+      background: hsl(var(--muted));
+      border-radius: 2px;
+    }
+
+    .table-responsive::-webkit-scrollbar-thumb {
+      background: hsl(var(--muted-foreground) / 0.3);
+      border-radius: 2px;
+    }
+  }
+
+  /* Responsive form grid */
+  .form-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 640px) {
+    .form-grid-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .form-grid-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .form-grid-4 {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  /* Form actions (buttons) - stack on mobile */
+  .form-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 639px) {
+    .form-actions {
+      flex-direction: column;
+    }
+
+    .form-actions > button,
+    .form-actions > a {
+      width: 100%;
+    }
+  }
 }
 
 /* NProgress Loading Bar */

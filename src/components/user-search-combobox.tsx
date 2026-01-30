@@ -183,8 +183,13 @@ export function UserSearchCombobox({
                 <CommandItem
                   key={user.id}
                   value={user.email}
-                  onSelect={() => handleSelect(user)}
-                  className="flex items-center gap-2"
+                  onSelect={() => {
+                    handleSelect(user)
+                  }}
+                  onClick={() => {
+                    handleSelect(user)
+                  }}
+                  className="flex items-center gap-2 cursor-pointer"
                 >
                   <Check
                     className={cn(

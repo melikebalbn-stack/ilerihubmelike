@@ -215,6 +215,7 @@ export default function SurveyResultsPage() {
   const { data: session } = useSession()
   const [survey, setSurvey] = useState<SurveyDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedDepartment, setSelectedDepartment] = useState<string>("all")
   const [activeTab, setActiveTab] = useState("overview")
   const [selectedResponse, setSelectedResponse] = useState<SurveyResponse | null>(null)
@@ -230,13 +231,19 @@ export default function SurveyResultsPage() {
 
   const fetchSurveyResults = async () => {
     try {
+      setError(null)
       const res = await fetch(`/api/surveys/${surveyId}/results`)
+      const data = await res.json()
+
       if (res.ok) {
-        const data = await res.json()
         setSurvey(data)
+      } else {
+        // API'den gelen hata mesajını göster
+        setError(data.error || "Anket sonuçları yüklenemedi")
       }
-    } catch (error) {
-      console.error("Anket sonuçları yüklenemedi:", error)
+    } catch (err) {
+      console.error("Anket sonuçları yüklenemedi:", err)
+      setError("Anket sonuçları yüklenirken bir hata oluştu")
     } finally {
       setLoading(false)
     }
@@ -741,14 +748,29 @@ export default function SurveyResultsPage() {
     )
   }
 
-  if (!survey) {
+  if (error || !survey) {
     return (
       <div className="p-6">
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <AlertCircle className="h-5 w-5" />
-              <span>Anket bulunamadı.</span>
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <div>
+                <p className="font-medium text-destructive">
+                  {error || "Anket bulunamadı"}
+                </p>
+                {error && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Lütfen yetkinizi kontrol edin veya sistem yöneticisi ile iletişime geçin.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="mt-4">
+              <Button variant="outline" onClick={() => router.push("/surveys")}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Anketlere Dön
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { authenticateUser, determineUserRole, getEmailFromDN } from '@/lib/ldap';
 import { prisma } from '@/lib/prisma';
 import { Role, LoginStatus } from '@/generated/prisma';
+import { checkRateLimit, resetRateLimit, getRateLimitKey } from '@/lib/rate-limit';
 
 // Login log fonksiyonu
 async function logLogin(data: {
@@ -106,6 +107,126 @@ declare module 'next-auth/jwt' {
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // Blue-collar login (Sicil No + TC Son 4 Hane)
+    CredentialsProvider({
+      id: 'bluecollar',
+      name: 'Mavi Yaka Girişi',
+      credentials: {
+        employeeId: { label: 'Sicil No', type: 'text', placeholder: '12345' },
+        tcLastFour: { label: 'TC Son 4 Hane', type: 'text', placeholder: '1234' },
+      },
+      async authorize(credentials, req) {
+        if (!credentials?.employeeId || !credentials?.tcLastFour) {
+          throw new Error('Sicil numarası ve TC son 4 hane gerekli');
+        }
+
+        // TC son 4 hane doğrulama - sadece 4 rakam
+        if (!/^\d{4}$/.test(credentials.tcLastFour)) {
+          throw new Error('TC son 4 hane 4 rakamdan oluşmalıdır');
+        }
+
+        // Rate limiting kontrolü
+        const forwardedFor = req?.headers?.['x-forwarded-for'];
+        const ip = typeof forwardedFor === 'string'
+          ? forwardedFor.split(',')[0].trim()
+          : 'unknown';
+
+        const rateLimitKey = getRateLimitKey(ip, `bc_${credentials.employeeId}`);
+        const rateLimitResult = checkRateLimit(rateLimitKey, {
+          windowMs: 15 * 60 * 1000,  // 15 dakika
+          maxAttempts: 5,  // 5 başarısız deneme
+        });
+
+        if (!rateLimitResult.success) {
+          await logLogin({
+            email: `bluecollar_${credentials.employeeId}@ilerigroup.com`,
+            username: credentials.employeeId,
+            status: LoginStatus.FAILED,
+            errorMessage: `Rate limit aşıldı. ${rateLimitResult.resetIn} saniye bekleyin.`,
+          });
+          throw new Error(`Çok fazla başarısız deneme. ${Math.ceil(rateLimitResult.resetIn / 60)} dakika sonra tekrar deneyin.`);
+        }
+
+        try {
+          // Veritabanında kullanıcıyı bul
+          const user = await prisma.user.findUnique({
+            where: { employeeId: credentials.employeeId },
+          });
+
+          if (!user) {
+            await logLogin({
+              email: `bluecollar_${credentials.employeeId}@ilerigroup.com`,
+              username: credentials.employeeId,
+              status: LoginStatus.FAILED,
+              errorMessage: 'Sicil numarası bulunamadı',
+            });
+            throw new Error('Sicil numarası bulunamadı');
+          }
+
+          // TC son 4 hane kontrolü
+          if (!user.tcLastFour || user.tcLastFour !== credentials.tcLastFour) {
+            await logLogin({
+              email: user.email,
+              username: credentials.employeeId,
+              status: LoginStatus.FAILED,
+              errorMessage: 'TC son 4 hane eşleşmiyor',
+            });
+            throw new Error('TC son 4 hane hatalı');
+          }
+
+          // Aktif kullanıcı kontrolü
+          if (!user.isActive) {
+            await logLogin({
+              email: user.email,
+              username: credentials.employeeId,
+              status: LoginStatus.FAILED,
+              errorMessage: 'Kullanıcı hesabı aktif değil',
+            });
+            throw new Error('Kullanıcı hesabı aktif değil');
+          }
+
+          // Başarılı login - rate limit sayacını sıfırla
+          resetRateLimit(rateLimitKey);
+
+          // Başarılı login'i logla
+          await logLogin({
+            email: user.email,
+            username: credentials.employeeId,
+            name: user.name ?? undefined,
+            department: user.department ?? undefined,
+            role: user.role,
+            status: LoginStatus.SUCCESS,
+          });
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            username: credentials.employeeId,
+            role: user.role,
+            department: user.department,
+            title: user.jobTitle,
+            distinguishedName: `employeeId=${credentials.employeeId}`,
+            ou: null,
+            managerDN: null,
+            managerEmail: null,
+          };
+        } catch (error) {
+          if (error instanceof Error && error.message !== 'Sicil numarası bulunamadı' &&
+              error.message !== 'TC son 4 hane hatalı' &&
+              error.message !== 'Kullanıcı hesabı aktif değil') {
+            await logLogin({
+              email: `bluecollar_${credentials.employeeId}@ilerigroup.com`,
+              username: credentials.employeeId,
+              status: LoginStatus.FAILED,
+              errorMessage: error.message,
+            });
+          }
+          throw error;
+        }
+      },
+    }),
+    // LDAP login (Active Directory)
     CredentialsProvider({
       id: 'ldap',
       name: 'ILERI Active Directory',
@@ -113,9 +234,33 @@ export const authOptions: NextAuthOptions = {
         username: { label: 'Kullanıcı Adı', type: 'text', placeholder: 'ornek.kullanici' },
         password: { label: 'Şifre', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.username || !credentials?.password) {
           throw new Error('Kullanıcı adı ve şifre gerekli');
+        }
+
+        // Rate limiting kontrolü - Brute force koruması
+        // IP adresi headers'dan alınıyor (nginx proxy arkasında)
+        const forwardedFor = req?.headers?.['x-forwarded-for'];
+        const ip = typeof forwardedFor === 'string'
+          ? forwardedFor.split(',')[0].trim()
+          : 'unknown';
+
+        const rateLimitKey = getRateLimitKey(ip, credentials.username);
+        const rateLimitResult = checkRateLimit(rateLimitKey, {
+          windowMs: 15 * 60 * 1000,  // 15 dakika
+          maxAttempts: 5,  // 5 başarısız deneme
+        });
+
+        if (!rateLimitResult.success) {
+          // Rate limit log
+          await logLogin({
+            email: `${credentials.username}@ilerigroup.com`,
+            username: credentials.username,
+            status: LoginStatus.FAILED,
+            errorMessage: `Rate limit aşıldı. ${rateLimitResult.resetIn} saniye bekleyin.`,
+          });
+          throw new Error(`Çok fazla başarısız deneme. ${Math.ceil(rateLimitResult.resetIn / 60)} dakika sonra tekrar deneyin.`);
         }
 
         try {
@@ -162,6 +307,7 @@ export const authOptions: NextAuthOptions = {
               update: {
                 name: ldapUser.displayName,
                 department: ldapUser.department,
+                jobTitle: ldapUser.title, // LDAP'tan gelen unvan
                 role: prismaRole,
                 isActive: true,
               },
@@ -170,6 +316,7 @@ export const authOptions: NextAuthOptions = {
                 email: userEmail,
                 name: ldapUser.displayName,
                 department: ldapUser.department,
+                jobTitle: ldapUser.title, // LDAP'tan gelen unvan
                 role: prismaRole,
                 isActive: true,
               },
@@ -181,6 +328,9 @@ export const authOptions: NextAuthOptions = {
 
           // Üst yönetim için session role'ünü de SUPER_ADMIN yap
           const sessionRole = SUPER_ADMIN_EMAILS.includes(userEmail.toLowerCase()) ? 'SUPER_ADMIN' : role;
+
+          // Başarılı login - rate limit sayacını sıfırla
+          resetRateLimit(rateLimitKey);
 
           // Başarılı login'i logla
           await logLogin({
@@ -222,6 +372,25 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    // Open Redirect koruması - sadece kendi domain'imize yönlendirmelere izin ver
+    async redirect({ url, baseUrl }) {
+      // Relative URL'ler güvenli
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`;
+      }
+      // Aynı origin'deki URL'ler güvenli
+      try {
+        const urlObj = new URL(url);
+        const baseUrlObj = new URL(baseUrl);
+        if (urlObj.origin === baseUrlObj.origin) {
+          return url;
+        }
+      } catch {
+        // Invalid URL, baseUrl'e dön
+      }
+      // Diğer tüm durumlar - ana sayfaya yönlendir
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.username = user.username;

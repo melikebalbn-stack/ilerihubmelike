@@ -640,140 +640,149 @@ export default function TasksPage() {
   }, [tasks])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Planlı Görevler</h1>
-          <p className="text-sm text-gray-500 mt-1">Kurumsal görev ve hatırlatma yönetimi</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <ListTodo className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500" />
+            Planlı Görevler
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">Kurumsal görev ve hatırlatma yönetimi</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowCategoryModal(true)}
-            className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
           >
             <Tag className="w-4 h-4" />
-            Kategori Ekle
+            <span className="hidden sm:inline">Kategori Ekle</span>
+            <span className="sm:hidden">Kategori</span>
           </button>
           <button
             onClick={() => {
               resetForm()
               setShowTaskModal(true)
             }}
-            className="flex items-center gap-2 px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Yeni Görev
+            <span className="hidden sm:inline">Yeni Görev</span>
+            <span className="sm:hidden">Ekle</span>
           </button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <CalendarDays className="w-5 h-5 text-gray-600" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+              <CalendarDays className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              <p className="text-xs text-gray-500">Toplam</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Toplam</p>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <Clock className="w-5 h-5 text-yellow-600" />
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 dark:text-yellow-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
-              <p className="text-xs text-gray-500">Bekliyor</p>
+              <p className="text-xl sm:text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Bekliyor</p>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <RefreshCw className="w-5 h-5 text-blue-600" />
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+              <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-blue-600">{stats.inProgress}</p>
-              <p className="text-xs text-gray-500">Devam Ediyor</p>
+              <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.inProgress}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Devam</p>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
-              <p className="text-xs text-gray-500">Tamamlandı</p>
+              <p className="text-xl sm:text-2xl font-bold text-green-600 dark:text-green-400">{stats.completed}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Bitti</p>
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 dark:border-gray-700 col-span-2 sm:col-span-1">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 dark:text-red-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-red-600">{stats.overdue}</p>
-              <p className="text-xs text-gray-500">Gecikmiş</p>
+              <p className="text-xl sm:text-2xl font-bold text-red-600 dark:text-red-400">{stats.overdue}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Gecikmiş</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* View Mode Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-1">
-        <div className="flex flex-wrap gap-1">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-1 overflow-x-auto scrollbar-hide">
+        <div className="flex gap-1 min-w-max">
           <button
             onClick={() => setViewMode('my')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
               viewMode === 'my'
                 ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
             }`}
           >
             <User className="w-4 h-4" />
-            Benim Görevlerim
+            <span className="hidden sm:inline">Benim Görevlerim</span>
+            <span className="sm:hidden">Benim</span>
           </button>
           <button
             onClick={() => setViewMode('department')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
               viewMode === 'department'
                 ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
             }`}
           >
             <Building2 className="w-4 h-4" />
-            Departman Görevleri
+            <span className="hidden sm:inline">Departman</span>
+            <span className="sm:hidden">Dept.</span>
           </button>
           <button
             onClick={() => setViewMode('subordinates')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
               viewMode === 'subordinates'
                 ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
             }`}
           >
             <Users className="w-4 h-4" />
-            Ekibimin Görevleri
+            <span className="hidden sm:inline">Ekibim</span>
+            <span className="sm:hidden">Ekip</span>
           </button>
           {isAdmin && (
             <button
               onClick={() => setViewMode('all')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 viewMode === 'all'
                   ? 'bg-blue-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
               <ListTodo className="w-4 h-4" />
-              Tüm Görevler
+              <span className="hidden sm:inline">Tümü</span>
+              <span className="sm:hidden">Tüm</span>
             </button>
           )}
         </div>
@@ -781,27 +790,25 @@ export default function TasksPage() {
 
 
       {/* Filters */}
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Görev ara..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="flex flex-col gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Görev ara..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
           </div>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
-              <option value="all">Tüm Durumlar</option>
+              <option value="all">Durum</option>
               {Object.entries(statusLabels).map(([key, label]) => (
                 <option key={key} value={key}>{label}</option>
               ))}
@@ -809,9 +816,9 @@ export default function TasksPage() {
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
-              <option value="all">Tüm Öncelikler</option>
+              <option value="all">Öncelik</option>
               {Object.entries(priorityLabels).map(([key, label]) => (
                 <option key={key} value={key}>{label}</option>
               ))}
@@ -819,9 +826,9 @@ export default function TasksPage() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
-              <option value="all">Tüm Kategoriler</option>
+              <option value="all">Kategori</option>
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
@@ -855,18 +862,18 @@ export default function TasksPage() {
               return (
                 <div
                   key={task.id}
-                  className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${
+                  className={`p-3 sm:p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${
                     task.status === 'COMPLETED' ? 'opacity-60' : ''
                   }`}
                 >
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-2 sm:gap-4">
                     {/* Status checkbox */}
                     <button
                       onClick={() => handleStatusChange(
                         task.id,
                         task.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED'
                       )}
-                      className={`mt-1 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                      className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
                         task.status === 'COMPLETED'
                           ? 'bg-green-500 border-green-500 text-white'
                           : 'border-gray-300 hover:border-green-500'
@@ -881,10 +888,10 @@ export default function TasksPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div
-                          className={task.isRecurring ? 'cursor-pointer' : ''}
+                          className={`flex-1 min-w-0 ${task.isRecurring ? 'cursor-pointer' : ''}`}
                           onClick={() => task.isRecurring && openTimelineModal(task)}
                         >
-                          <h3 className={`font-medium text-gray-900 dark:text-white ${
+                          <h3 className={`text-sm sm:text-base font-medium text-gray-900 dark:text-white ${
                             task.status === 'COMPLETED' ? 'line-through' : ''
                           } ${task.isRecurring ? 'hover:text-blue-600 dark:hover:text-blue-400' : ''}`}>
                             {task.title}
@@ -893,21 +900,21 @@ export default function TasksPage() {
                             )}
                           </h3>
                           {task.description && (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
                               {task.description}
                             </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             onClick={() => openEditModal(task)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                            className="p-1 sm:p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(task.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30"
+                            className="p-1 sm:p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -915,7 +922,7 @@ export default function TasksPage() {
                       </div>
 
                       {/* Meta info */}
-                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2 sm:mt-3">
                         {/* Category */}
                         {task.category && (
                           <span
@@ -954,39 +961,42 @@ export default function TasksPage() {
                           daysRemaining <= 7 ? 'text-orange-600 dark:text-orange-400' :
                           'text-gray-500 dark:text-gray-400'
                         }`}>
-                          <CalendarDays className="w-3 h-3" />
-                          {new Date(task.dueDate).toLocaleDateString('tr-TR')}
+                          <CalendarDays className="w-3 h-3 flex-shrink-0" />
+                          <span className="hidden sm:inline">{new Date(task.dueDate).toLocaleDateString('tr-TR')}</span>
+                          <span className="sm:hidden">{new Date(task.dueDate).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })}</span>
                           {task.status !== 'COMPLETED' && (
-                            <span className="ml-1">
-                              ({daysRemaining > 0 ? `${daysRemaining} gün kaldı` :
+                            <span className="hidden sm:inline ml-1">
+                              ({daysRemaining > 0 ? `${daysRemaining} gün` :
                                 daysRemaining === 0 ? 'Bugün' :
                                 `${Math.abs(daysRemaining)} gün geçti`})
                             </span>
                           )}
                         </span>
 
-                        {/* Responsible persons */}
+                        {/* Responsible persons - hidden on mobile */}
                         {(task.responsiblePersons || task.responsiblePerson) && (
-                          <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-                            <User className="w-3 h-3" />
-                            {task.responsiblePersons ? (
-                              (() => {
-                                try {
-                                  const persons = JSON.parse(task.responsiblePersons) as { name: string; email: string }[]
-                                  return persons.map(p => p.name).join(', ')
-                                } catch {
-                                  return task.responsiblePerson
-                                }
-                              })()
-                            ) : task.responsiblePerson}
+                          <span className="hidden sm:flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                            <User className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate max-w-[150px]">
+                              {task.responsiblePersons ? (
+                                (() => {
+                                  try {
+                                    const persons = JSON.parse(task.responsiblePersons) as { name: string; email: string }[]
+                                    return persons.map(p => p.name).join(', ')
+                                  } catch {
+                                    return task.responsiblePerson
+                                  }
+                                })()
+                              ) : task.responsiblePerson}
+                            </span>
                           </span>
                         )}
 
-                        {/* Responsible departments */}
+                        {/* Responsible departments - hidden on mobile */}
                         {(task.responsibleDepartments && task.responsibleDepartments.length > 0) && (
-                          <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-                            <Building2 className="w-3 h-3" />
-                            {task.responsibleDepartments.join(', ')}
+                          <span className="hidden sm:flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                            <Building2 className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate max-w-[150px]">{task.responsibleDepartments.join(', ')}</span>
                           </span>
                         )}
 
@@ -994,10 +1004,11 @@ export default function TasksPage() {
                         {task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && (
                           <button
                             onClick={() => handleStatusChange(task.id, 'COMPLETED')}
-                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/50"
+                            className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/50"
                           >
-                            <Check className="w-3.5 h-3.5" />
-                            Görevi Tamamla
+                            <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                            <span className="hidden sm:inline">Tamamla</span>
+                            <span className="sm:hidden">Bitti</span>
                           </button>
                         )}
                       </div>
@@ -1012,10 +1023,10 @@ export default function TasksPage() {
 
       {/* Task Modal */}
       {showTaskModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white dark:bg-gray-800 px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-none sm:rounded-xl w-full sm:max-w-2xl min-h-screen sm:min-h-0 sm:max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-gray-800 px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between z-10">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
                 {editingTask ? 'Görevi Düzenle' : 'Yeni Görev'}
               </h2>
               <button
@@ -1029,7 +1040,7 @@ export default function TasksPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
               {/* Title */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1490,20 +1501,20 @@ export default function TasksPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 pb-4 sm:pb-0 safe-bottom">
                 <button
                   type="button"
                   onClick={() => {
                     setShowTaskModal(false)
                     resetForm()
                   }}
-                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 >
                   İptal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   {editingTask ? 'Güncelle' : 'Kaydet'}
                 </button>
@@ -1515,19 +1526,19 @@ export default function TasksPage() {
 
       {/* Category Modal */}
       {showCategoryModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Yeni Kategori</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-t-xl sm:rounded-xl w-full sm:max-w-md">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Yeni Kategori</h2>
               <button
                 onClick={() => setShowCategoryModal(false)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCategorySubmit} className="p-6 space-y-4">
+            <form onSubmit={handleCategorySubmit} className="p-4 sm:p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Kategori Adı *
@@ -1576,17 +1587,17 @@ export default function TasksPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t border-gray-100 dark:border-gray-700 pb-4 sm:pb-0 safe-bottom">
                 <button
                   type="button"
                   onClick={() => setShowCategoryModal(false)}
-                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 >
                   İptal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   Kaydet
                 </button>
@@ -1598,10 +1609,10 @@ export default function TasksPage() {
 
       {/* Timeline Modal */}
       {showTimelineModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-none sm:rounded-xl w-full sm:max-w-2xl min-h-screen sm:min-h-0 sm:max-h-[90vh] overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                   {timelineData?.rootTask.title || 'Görev Zaman Çizelgesi'}
@@ -1644,7 +1655,7 @@ export default function TasksPage() {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {timelineLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
@@ -1817,13 +1828,13 @@ export default function TasksPage() {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 dark:border-gray-700 flex justify-end safe-bottom">
               <button
                 onClick={() => {
                   setShowTimelineModal(false)
                   setTimelineData(null)
                 }}
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
               >
                 Kapat
               </button>

@@ -156,41 +156,58 @@ export async function authenticateUser(username: string, password: string): Prom
 }
 
 // Kullanıcının rolünü belirle
-// ÖNCELİK: OU (güncel fiziksel konum) > department attribute (eski kalabilir)
+// ÖNCELİK: Unvan (Müdür/Manager) + Departman kombinasyonu
 export function determineUserRole(user: LDAPUser): UserRole {
+  const titleLower = user.title?.toLowerCase() || '';
   const ouLower = user.ou?.toLowerCase() || '';
+  const deptLower = user.department?.toLowerCase() || '';
 
-  // OU bazlı rol eşleme - OU en güncel bilgidir
-  if (ouLower && OU_ROLE_MAP[ouLower]) {
-    console.log(`🎯 Rol OU'dan belirlendi: ${user.ou} -> ${OU_ROLE_MAP[ouLower]}`);
-    return OU_ROLE_MAP[ouLower];
+  // Müdür/Manager unvanı kontrolü
+  const isManager = titleLower.includes('müdür') ||
+                    titleLower.includes('mudur') ||
+                    titleLower.includes('manager') ||
+                    titleLower.includes('direktör') ||
+                    titleLower.includes('direktor');
+
+  // Üst yönetim kontrolü (Genel Müdür, CEO vb.)
+  if (titleLower.includes('genel müdür') ||
+      titleLower.includes('genel mudur') ||
+      titleLower.includes('ceo') ||
+      ouLower === 'üst yönetim' ||
+      ouLower === 'yonetim') {
+    console.log(`🎯 Rol: ${user.title} -> SUPER_ADMIN`);
+    return 'SUPER_ADMIN';
   }
 
-  // OU, özel rol OU'larından biri değilse, varsayılan USER döndür
-  // NOT: department attribute eski kalabilir (AD taşıma sonrası güncellenmeyebilir)
-  // Bu yüzden department'a bakmıyoruz - OU doğruyu yansıtır
-
-  // Eğer OU bilgisi yoksa, fallback olarak department'a bak
-  if (!user.ou) {
-    const dept = user.department?.toLowerCase() || '';
-
-    if (dept.includes('sistem') || dept.includes('bilgi teknoloji') || dept.includes('it')) {
-      console.log(`🎯 Rol department'tan belirlendi (OU yok): ${user.department} -> ADMIN`);
+  // Sadece müdür/manager unvanına sahip olanlar yönetici rolü alır
+  if (isManager) {
+    // IT/Sistem departmanı müdürü
+    if (ouLower.includes('sistem') || ouLower.includes('bilgi teknoloji') || ouLower === 'it' ||
+        deptLower.includes('sistem') || deptLower.includes('bilgi teknoloji') || deptLower.includes('it')) {
+      console.log(`🎯 Rol: ${user.title} (${user.department}) -> ADMIN`);
       return 'ADMIN';
     }
-    if (dept.includes('kalite')) {
+
+    // Kalite departmanı müdürü
+    if (ouLower.includes('kalite') || deptLower.includes('kalite')) {
+      console.log(`🎯 Rol: ${user.title} (${user.department}) -> QUALITY_MANAGER`);
       return 'QUALITY_MANAGER';
     }
-    if (dept.includes('insan') || dept.includes('hr')) {
+
+    // İK departmanı müdürü
+    if (ouLower.includes('insan') || ouLower.includes('hr') ||
+        deptLower.includes('insan') || deptLower.includes('hr')) {
+      console.log(`🎯 Rol: ${user.title} (${user.department}) -> HR_MANAGER`);
       return 'HR_MANAGER';
     }
-    if (dept.includes('yönetim') || dept.includes('genel müdür')) {
-      return 'SUPER_ADMIN';
-    }
+
+    // Diğer departman müdürleri
+    console.log(`🎯 Rol: ${user.title} (${user.department}) -> DEPT_HEAD`);
+    return 'USER'; // DEPT_HEAD rolü yoksa USER olarak devam
   }
 
-  // Varsayılan rol - OU normal bir departman ise (Muhasebe, Satış vb.)
-  console.log(`🎯 Varsayılan rol: ${user.ou || 'bilinmiyor'} -> USER`);
+  // Müdür/Manager unvanı olmayan herkes USER
+  console.log(`🎯 Rol: ${user.title || 'unvan yok'} -> USER`);
   return 'USER';
 }
 

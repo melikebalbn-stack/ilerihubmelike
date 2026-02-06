@@ -138,6 +138,16 @@ export async function POST(
     const result = await sendVisitReportEmail(emailData, validRecipients, reportForPDF)
 
     if (result.success) {
+      // Gönderim logunu kaydet
+      await prisma.visitReportEmailLog.create({
+        data: {
+          reportId: id,
+          sentBy: session.user.email,
+          sentByName: user?.name || null,
+          recipients: JSON.stringify(validRecipients),
+        },
+      })
+
       console.log(`✅ Ziyaret raporu e-postası gönderildi: ${report.reportNumber} -> ${validRecipients.map(r => r.email).join(', ')}`)
       return NextResponse.json({ message: "Mail başarıyla gönderildi" })
     } else {

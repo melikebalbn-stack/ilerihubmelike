@@ -71,7 +71,7 @@ export async function PUT(
         email: true,
         name: true,
         employeeId: true,
-        tcLastFour: true,
+        // FIX #3: tcLastFour kaldırıldı - KVKK
         department: true,
         jobTitle: true,
         isActive: true,

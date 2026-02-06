@@ -281,10 +281,10 @@ export async function PUT(
       }
     })
 
-    // Timeline kayıtları oluştur
-    for (const entry of timelineEntries) {
-      await prisma.ticketTimeline.create({
-        data: {
+    // FIX #13: Timeline kayıtları - createMany ile tek sorguda oluştur
+    if (timelineEntries.length > 0) {
+      await prisma.ticketTimeline.createMany({
+        data: timelineEntries.map(entry => ({
           ticketId: id,
           action: entry.action,
           description: entry.description,
@@ -292,7 +292,7 @@ export async function PUT(
           newValue: entry.newValue,
           performedBy: session.user.email,
           performedByName: session.user.name,
-        }
+        }))
       })
     }
 

@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
           email: true,
           name: true,
           employeeId: true,
-          tcLastFour: true,
+          // FIX #3: tcLastFour kaldırıldı - KVKK
           department: true,
           jobTitle: true,
           isActive: true,
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
         email: true,
         name: true,
         employeeId: true,
-        tcLastFour: true,
+        // FIX #3: tcLastFour kaldırıldı - KVKK
         department: true,
         jobTitle: true,
         isActive: true,

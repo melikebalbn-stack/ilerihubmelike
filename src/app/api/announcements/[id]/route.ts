@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 
 // GET - Tek duyuru getir
 export async function GET(
@@ -19,9 +20,8 @@ export async function GET(
     const userRole = session.user.role || 'EMPLOYEE'
     const userDepartment = session.user.department
 
-    const isAdmin = userEmail === 'melih.dilben@ilerigroup.com' ||
-                    userRole === 'ADMIN' ||
-                    userRole === 'SUPER_ADMIN'
+    // FIX #4: Hardcoded email kaldırıldı, isAdmin utility kullanıldı
+    const isAdmin = checkIsAdmin(userEmail, userRole)
 
     const announcement = await prisma.announcement.findUnique({
       where: { id },
@@ -173,9 +173,8 @@ export async function PUT(
     const userEmail = String(session.user.email).toLowerCase()
     const userRole = session.user.role || 'EMPLOYEE'
 
-    const isAdmin = userEmail === 'melih.dilben@ilerigroup.com' ||
-                    userRole === 'ADMIN' ||
-                    userRole === 'SUPER_ADMIN'
+    // FIX #4: Hardcoded email kaldırıldı
+    const isAdmin = checkIsAdmin(userEmail, userRole)
 
     if (!isAdmin) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })
@@ -270,9 +269,8 @@ export async function DELETE(
     const userEmail = String(session.user.email).toLowerCase()
     const userRole = session.user.role || 'EMPLOYEE'
 
-    const isAdmin = userEmail === 'melih.dilben@ilerigroup.com' ||
-                    userRole === 'ADMIN' ||
-                    userRole === 'SUPER_ADMIN'
+    // FIX #4: Hardcoded email kaldırıldı
+    const isAdmin = checkIsAdmin(userEmail, userRole)
 
     if (!isAdmin) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })

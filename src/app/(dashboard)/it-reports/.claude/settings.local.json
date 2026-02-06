@@ -99,7 +99,10 @@
       "Bash(sudo -S certbot:*)",
       "Bash(sudo -S sed:*)",
       "Bash(sudo -S rm:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(du:*)"
     ],
     "additionalDirectories": [
       "/home/rokunet/projects/ilerihub/src/components/layout",

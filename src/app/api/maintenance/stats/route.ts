@@ -17,162 +17,179 @@ export async function GET(request: NextRequest) {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - period)
 
-    // Makine sayıları (duruma göre)
-    const machinesByStatus = await prisma.machine.groupBy({
-      by: ['status'],
-      where: { isActive: true },
-      _count: true,
-    })
+    // FIX #14: Tüm sorguları paralel çalıştır
+    const [
+      machinesByStatus,
+      totalMachines,
+      workOrderStats,
+      totalWorkOrders,
+      breakdownWorkOrders,
+      downtimeStats,
+      breakdownDowntimeStats,
+      completedBreakdowns,
+      workOrdersByPriority,
+      workOrdersByType,
+      plannedWorkOrders,
+      completedPlannedWorkOrders,
+      oeeStats,
+      urgentWorkOrders,
+    ] = await Promise.all([
+      // Makine sayıları (duruma göre)
+      prisma.machine.groupBy({
+        by: ['status'],
+        where: { isActive: true },
+        _count: true,
+      }),
 
-    const totalMachines = await prisma.machine.count({
-      where: { isActive: true },
-    })
+      // Toplam makine sayısı
+      prisma.machine.count({
+        where: { isActive: true },
+      }),
 
-    // İş emirleri istatistikleri
-    const workOrderStats = await prisma.maintenanceWorkOrder.groupBy({
-      by: ['status'],
-      where: {
-        isActive: true,
-        createdAt: { gte: startDate },
-      },
-      _count: true,
-    })
+      // İş emirleri istatistikleri (duruma göre)
+      prisma.maintenanceWorkOrder.groupBy({
+        by: ['status'],
+        where: {
+          isActive: true,
+          createdAt: { gte: startDate },
+        },
+        _count: true,
+      }),
 
-    const totalWorkOrders = await prisma.maintenanceWorkOrder.count({
-      where: {
-        isActive: true,
-        createdAt: { gte: startDate },
-      },
-    })
+      // Toplam iş emri sayısı
+      prisma.maintenanceWorkOrder.count({
+        where: {
+          isActive: true,
+          createdAt: { gte: startDate },
+        },
+      }),
 
-    // Arıza iş emirleri
-    const breakdownWorkOrders = await prisma.maintenanceWorkOrder.count({
-      where: {
-        isActive: true,
-        workOrderType: 'BREAKDOWN',
-        createdAt: { gte: startDate },
-      },
-    })
+      // Arıza iş emirleri
+      prisma.maintenanceWorkOrder.count({
+        where: {
+          isActive: true,
+          workOrderType: 'BREAKDOWN',
+          createdAt: { gte: startDate },
+        },
+      }),
 
-    // Toplam duruş süresi (dakika)
-    const downtimeRecords = await prisma.downtimeRecord.findMany({
-      where: {
-        startTime: { gte: startDate },
-        durationMinutes: { not: null },
-      },
-      select: {
-        durationMinutes: true,
-        downtimeType: true,
-      },
-    })
+      // FIX #14: Duruş süresi aggregate - tüm kayıtlar
+      prisma.downtimeRecord.aggregate({
+        where: {
+          startTime: { gte: startDate },
+          durationMinutes: { not: null },
+        },
+        _sum: { durationMinutes: true },
+      }),
 
-    const totalDowntimeMinutes = downtimeRecords.reduce(
-      (sum, record) => sum + (record.durationMinutes || 0),
-      0
-    )
+      // FIX #14: Arıza duruş süresi aggregate
+      prisma.downtimeRecord.aggregate({
+        where: {
+          startTime: { gte: startDate },
+          durationMinutes: { not: null },
+          downtimeType: 'BREAKDOWN',
+        },
+        _sum: { durationMinutes: true },
+      }),
 
-    const breakdownDowntimeMinutes = downtimeRecords
-      .filter(r => r.downtimeType === 'BREAKDOWN')
-      .reduce((sum, record) => sum + (record.durationMinutes || 0), 0)
+      // Tamamlanan arızalar (MTTR için)
+      prisma.maintenanceWorkOrder.count({
+        where: {
+          workOrderType: 'BREAKDOWN',
+          status: { in: ['COMPLETED', 'CLOSED'] },
+          createdAt: { gte: startDate },
+        },
+      }),
+
+      // Öncelik bazlı iş emirleri
+      prisma.maintenanceWorkOrder.groupBy({
+        by: ['priority'],
+        where: {
+          isActive: true,
+          createdAt: { gte: startDate },
+        },
+        _count: true,
+      }),
+
+      // Tip bazlı iş emirleri
+      prisma.maintenanceWorkOrder.groupBy({
+        by: ['workOrderType'],
+        where: {
+          isActive: true,
+          createdAt: { gte: startDate },
+        },
+        _count: true,
+      }),
+
+      // Planlı bakım sayısı
+      prisma.maintenanceWorkOrder.count({
+        where: {
+          workOrderType: 'PREVENTIVE',
+          createdAt: { gte: startDate },
+        },
+      }),
+
+      // Tamamlanan planlı bakım sayısı
+      prisma.maintenanceWorkOrder.count({
+        where: {
+          workOrderType: 'PREVENTIVE',
+          status: { in: ['COMPLETED', 'CLOSED'] },
+          createdAt: { gte: startDate },
+        },
+      }),
+
+      // FIX #14: OEE aggregate - tüm verileri çekip uygulama tarafında ortalama almak yerine DB'de hesapla
+      prisma.machineOEERecord.aggregate({
+        where: {
+          recordDate: { gte: startDate },
+        },
+        _avg: {
+          oee: true,
+          availability: true,
+          performance: true,
+          quality: true,
+        },
+        _count: {
+          id: true,
+        },
+      }),
+
+      // Acil iş emirleri (açık ve kritik/yüksek öncelikli)
+      prisma.maintenanceWorkOrder.count({
+        where: {
+          isActive: true,
+          status: { in: ['OPEN', 'ASSIGNED', 'IN_PROGRESS'] },
+          priority: { in: ['CRITICAL', 'HIGH'] },
+        },
+      }),
+    ])
+
+    // Hesaplamalar
+    const totalDowntimeMinutes = downtimeStats._sum.durationMinutes || 0
+    const breakdownDowntimeMinutes = breakdownDowntimeStats._sum.durationMinutes || 0
 
     // MTBF hesaplama (Mean Time Between Failures)
-    // Toplam çalışma süresi / Arıza sayısı
-    const totalOperatingHours = period * 24 * totalMachines // Yaklaşık
+    const totalOperatingHours = period * 24 * totalMachines
     const mtbfHours = breakdownWorkOrders > 0
       ? Math.round((totalOperatingHours - (totalDowntimeMinutes / 60)) / breakdownWorkOrders)
       : totalOperatingHours
 
     // MTTR hesaplama (Mean Time To Repair)
-    // Toplam onarım süresi / Onarım sayısı
-    const completedBreakdowns = await prisma.maintenanceWorkOrder.count({
-      where: {
-        workOrderType: 'BREAKDOWN',
-        status: { in: ['COMPLETED', 'CLOSED'] },
-        createdAt: { gte: startDate },
-      },
-    })
-
     const mttrMinutes = completedBreakdowns > 0
       ? Math.round(breakdownDowntimeMinutes / completedBreakdowns)
       : 0
 
-    // Öncelik bazlı iş emirleri
-    const workOrdersByPriority = await prisma.maintenanceWorkOrder.groupBy({
-      by: ['priority'],
-      where: {
-        isActive: true,
-        createdAt: { gte: startDate },
-      },
-      _count: true,
-    })
-
-    // Tip bazlı iş emirleri
-    const workOrdersByType = await prisma.maintenanceWorkOrder.groupBy({
-      by: ['workOrderType'],
-      where: {
-        isActive: true,
-        createdAt: { gte: startDate },
-      },
-      _count: true,
-    })
-
-    // Planlı bakım uyumu
-    const plannedWorkOrders = await prisma.maintenanceWorkOrder.count({
-      where: {
-        workOrderType: 'PREVENTIVE',
-        createdAt: { gte: startDate },
-      },
-    })
-
-    const completedPlannedWorkOrders = await prisma.maintenanceWorkOrder.count({
-      where: {
-        workOrderType: 'PREVENTIVE',
-        status: { in: ['COMPLETED', 'CLOSED'] },
-        createdAt: { gte: startDate },
-      },
-    })
-
+    // PM Compliance
     const pmCompliance = plannedWorkOrders > 0
       ? Math.round((completedPlannedWorkOrders / plannedWorkOrders) * 100)
       : 100
 
-    // Son OEE kayıtları (ortalama)
-    const oeeRecords = await prisma.machineOEERecord.findMany({
-      where: {
-        recordDate: { gte: startDate },
-      },
-      select: {
-        oee: true,
-        availability: true,
-        performance: true,
-        quality: true,
-      },
-    })
-
-    const avgOEE = oeeRecords.length > 0
-      ? Math.round(oeeRecords.reduce((sum, r) => sum + r.oee, 0) / oeeRecords.length)
-      : 0
-
-    const avgAvailability = oeeRecords.length > 0
-      ? Math.round(oeeRecords.reduce((sum, r) => sum + r.availability, 0) / oeeRecords.length)
-      : 0
-
-    const avgPerformance = oeeRecords.length > 0
-      ? Math.round(oeeRecords.reduce((sum, r) => sum + r.performance, 0) / oeeRecords.length)
-      : 0
-
-    const avgQuality = oeeRecords.length > 0
-      ? Math.round(oeeRecords.reduce((sum, r) => sum + r.quality, 0) / oeeRecords.length)
-      : 0
-
-    // Acil iş emirleri (açık ve kritik/yüksek öncelikli)
-    const urgentWorkOrders = await prisma.maintenanceWorkOrder.count({
-      where: {
-        isActive: true,
-        status: { in: ['OPEN', 'ASSIGNED', 'IN_PROGRESS'] },
-        priority: { in: ['CRITICAL', 'HIGH'] },
-      },
-    })
+    // OEE değerleri - aggregate'ten gelen değerler
+    const avgOEE = Math.round(oeeStats._avg.oee || 0)
+    const avgAvailability = Math.round(oeeStats._avg.availability || 0)
+    const avgPerformance = Math.round(oeeStats._avg.performance || 0)
+    const avgQuality = Math.round(oeeStats._avg.quality || 0)
+    const oeeRecordCount = oeeStats._count.id
 
     return NextResponse.json({
       period,
@@ -212,7 +229,7 @@ export async function GET(request: NextRequest) {
         availability: avgAvailability,
         performance: avgPerformance,
         quality: avgQuality,
-        recordCount: oeeRecords.length,
+        recordCount: oeeRecordCount,
       },
     })
   } catch (error) {

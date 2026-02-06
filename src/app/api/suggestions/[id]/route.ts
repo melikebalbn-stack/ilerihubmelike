@@ -168,8 +168,9 @@ export async function DELETE(
     const { id } = await params
     const userEmail = String(session.user.email).toLowerCase()
 
-    // Admin kontrolü - sadece melih.dilben tüm önerileri silebilir
-    const isAdmin = userEmail === 'melih.dilben@ilerigroup.com'
+    // FIX #4: Merkezi utility kullanıldı
+    // Admin kontrolü - sadece admin tüm önerileri silebilir
+    const userIsAdmin = isAdmin(userEmail, session.user.role)
 
     const existingSuggestion = await prisma.suggestion.findUnique({
       where: { id }
@@ -180,7 +181,7 @@ export async function DELETE(
     }
 
     // Admin her şeyi silebilir, diğerleri sadece kendi önerilerini
-    if (!isAdmin) {
+    if (!userIsAdmin) {
       // Sadece öneri sahibi silebilir
       if (existingSuggestion.submittedBy.toLowerCase() !== userEmail) {
         return NextResponse.json({ error: 'Bu öneriyi silme yetkiniz yok' }, { status: 403 })
@@ -196,7 +197,7 @@ export async function DELETE(
     }
 
     // Hard delete for admin, soft delete for others
-    if (isAdmin) {
+    if (userIsAdmin) {
       // İlişkili kayıtları sil
       await prisma.suggestionComment.deleteMany({ where: { suggestionId: id } })
       await prisma.suggestionTimeline.deleteMany({ where: { suggestionId: id } })

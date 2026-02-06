@@ -75,6 +75,14 @@ export async function GET(
       return NextResponse.json({ message: "Dosya bulunamadı" }, { status: 404 })
     }
 
+    // FIX #21: Path traversal koruması
+    // documentNumber içinde kötü niyetli karakterler olabilir
+    if (document.documentNumber.includes('..') ||
+        document.documentNumber.includes('/') ||
+        document.documentNumber.includes('\\')) {
+      return NextResponse.json({ message: "Geçersiz doküman numarası" }, { status: 400 })
+    }
+
     // Doküman numarası ile başlayan dosyayı bul
     const files = await readdir(uploadDir)
     const matchingFile = files.find(f => f.startsWith(document.documentNumber))
@@ -83,7 +91,18 @@ export async function GET(
       return NextResponse.json({ message: "Dosya bulunamadı" }, { status: 404 })
     }
 
-    const filePath = path.join(uploadDir, matchingFile)
+    // FIX #21: matchingFile üzerinde de path traversal kontrolü
+    if (matchingFile.includes('..') || matchingFile.includes('/') || matchingFile.includes('\\')) {
+      return NextResponse.json({ message: "Geçersiz dosya adı" }, { status: 400 })
+    }
+
+    const filePath = path.normalize(path.join(uploadDir, matchingFile))
+
+    // FIX #21: Nihai yolun uploadDir içinde olduğunu doğrula
+    const resolvedUploadDir = path.resolve(uploadDir)
+    if (!filePath.startsWith(resolvedUploadDir)) {
+      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 403 })
+    }
 
     if (!existsSync(filePath)) {
       return NextResponse.json({ message: "Dosya bulunamadı" }, { status: 404 })

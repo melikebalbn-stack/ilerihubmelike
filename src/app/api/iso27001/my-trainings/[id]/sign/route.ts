@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import crypto from "crypto"
-import bcrypt from "bcryptjs"
+import { verifyPin } from "@/lib/pin-utils"
 
 // Dijital imza ile egitimi onayla
 export async function POST(
@@ -34,14 +34,35 @@ export async function POST(
       )
     }
 
-    // Kullanici bilgilerini al
+    // Kullanici bilgilerini al (signaturePin dahil)
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, signaturePin: true },
     })
 
     if (!user) {
       return NextResponse.json({ error: "Kullanici bulunamadi" }, { status: 404 })
+    }
+
+    // FIX #2: PIN doğrulama güçlendirildi
+    // Kullanıcının imza PIN'i ayarlanmış olmalı
+    if (!user.signaturePin) {
+      return NextResponse.json(
+        {
+          error: "İmza PIN'iniz henüz ayarlanmamış. Lütfen önce Ayarlar > İmza PIN'i sayfasından PIN oluşturun.",
+          code: "PIN_NOT_SET"
+        },
+        { status: 400 }
+      )
+    }
+
+    // PIN doğrulaması (bcrypt hash karşılaştırması)
+    const isPinValid = await verifyPin(password, user.signaturePin)
+    if (!isPinValid) {
+      return NextResponse.json(
+        { error: "İmza PIN'i hatalı" },
+        { status: 401 }
+      )
     }
 
     // Egitim atamasini kontrol et
@@ -76,20 +97,6 @@ export async function POST(
       return NextResponse.json(
         { error: "Egitim henuz tamamlanmadi" },
         { status: 400 }
-      )
-    }
-
-    // Sifre dogrulama - Azure AD kullanicilari icin
-    // Kullanici zaten Azure AD ile giris yapmis durumda
-    // Imza icin basit bir PIN kontrolu yapiyoruz (4 haneli sayi veya "ONAY" kelimesi)
-    // Bu, kullanicinin bilinçli olarak imzaladığını doğrulamak içindir
-    const validPins = ["1234", "ONAY", "onay", "CONFIRM", "confirm"]
-    const isValidPin = validPins.includes(password) || /^\d{4}$/.test(password)
-
-    if (!isValidPin) {
-      return NextResponse.json(
-        { error: "Lutfen 4 haneli PIN veya 'ONAY' yazin." },
-        { status: 401 }
       )
     }
 

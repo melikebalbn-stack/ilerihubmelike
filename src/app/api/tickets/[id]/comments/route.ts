@@ -15,7 +15,8 @@ export async function GET(
     }
 
     const { id: ticketId } = await params
-    const isAdmin = session.user.role === 'ADMIN' || session.user.role === 'SUPER_ADMIN'
+    // FIX #18: IT_MANAGER da internal yorumları görebilir
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'IT_MANAGER'].includes(session.user.role || '')
 
     const comments = await prisma.ticketComment.findMany({
       where: {
@@ -61,8 +62,8 @@ export async function POST(
       return NextResponse.json({ error: 'Ticket bulunamadı' }, { status: 404 })
     }
 
-    // Sadece admin dahili not ekleyebilir
-    const isAdmin = session.user.role === 'ADMIN' || session.user.role === 'SUPER_ADMIN'
+    // Sadece admin/IT yöneticisi dahili not ekleyebilir
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'IT_MANAGER'].includes(session.user.role || '')
     const finalIsInternal = isAdmin ? isInternal : false
 
     // Yorum oluştur

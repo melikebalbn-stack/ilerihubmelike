@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 
 // POST - Yorum ekle
 export async function POST(
@@ -96,10 +97,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Yorum bulunamadi' }, { status: 404 })
     }
 
+    // FIX #4: Merkezi utility kullanıldı
     // Yetki kontrolü - Sadece yorum sahibi veya admin silebilir
-    const isAdmin = userEmail === 'melih.dilben@ilerigroup.com' ||
-                    userRole === 'ADMIN' ||
-                    userRole === 'SUPER_ADMIN'
+    const isAdmin = checkIsAdmin(userEmail, userRole)
 
     if (comment.authorEmail !== userEmail && !isAdmin) {
       return NextResponse.json({ error: 'Bu yorumu silme yetkiniz yok' }, { status: 403 })

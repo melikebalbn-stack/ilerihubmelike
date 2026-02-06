@@ -45,13 +45,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Admin kontrolü
-    const userEmail = String(session.user.email).toLowerCase()
-    const isAdmin = userEmail === 'melih.dilben@ilerigroup.com' ||
-                    session.user.role === 'ADMIN' ||
-                    session.user.role === 'SUPER_ADMIN'
-
-    if (!isAdmin) {
+    // FIX #4: Hardcoded email kaldırıldı - sadece rol kontrolü
+    const userRole = session.user.role || 'EMPLOYEE'
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

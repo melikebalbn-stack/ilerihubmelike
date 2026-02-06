@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 
 // GET - Duyuruları listele
 export async function GET(request: NextRequest) {
@@ -23,10 +24,8 @@ export async function GET(request: NextRequest) {
     const userRole = session.user.role || 'EMPLOYEE'
     const userDepartment = session.user.department
 
-    // Yönetici mi kontrol et
-    const isAdmin = userEmail === 'melih.dilben@ilerigroup.com' ||
-                    userRole === 'ADMIN' ||
-                    userRole === 'SUPER_ADMIN'
+    // FIX #4: Yönetici kontrolü - merkezi utility kullanıldı
+    const isAdmin = checkIsAdmin(userEmail, userRole)
 
     // Filtre oluştur - AND array kullanarak tüm filtreleri güvenli şekilde birleştir
     const andConditions: Record<string, unknown>[] = []

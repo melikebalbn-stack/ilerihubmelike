@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,6 +19,7 @@ import Link from "next/link"
 import { ParticipantInput, ExternalParticipantInput } from "@/components/forms/ParticipantInput"
 import { RecipientInput, Recipient } from "@/components/forms/RecipientInput"
 import { ReportPreviewModal } from "@/components/forms/ReportPreviewModal"
+import { FileUploadDropzone, type UploadedFile } from "@/components/ui/file-upload-dropzone"
 
 interface Participant {
   name: string
@@ -64,6 +65,9 @@ export default function NewVisitReportPage() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([
     { description: "", responsible: "", dueDate: "", status: "PENDING" }
   ])
+
+  // Dosyalar
+  const [uploadFiles, setUploadFiles] = useState<UploadedFile[]>([])
 
   // Alıcılar
   const [recipients, setRecipients] = useState<Recipient[]>([
@@ -187,6 +191,25 @@ export default function NewVisitReportPage() {
 
       if (res.ok) {
         const data = await res.json()
+
+        // Upload files if any
+        if (uploadFiles.length > 0) {
+          const formDataUpload = new FormData()
+          for (const f of uploadFiles) {
+            if (f.file) formDataUpload.append('files', f.file)
+          }
+          const uploadRes = await fetch('/api/upload', { method: 'POST', body: formDataUpload })
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json()
+            // Save attachments to the report
+            await fetch(`/api/forms/visit-reports/${data.id}/attachments`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ files: uploadData.files }),
+            })
+          }
+        }
+
         if (status === "SENT") {
           alert("Rapor başarıyla gönderildi!")
         }
@@ -500,6 +523,22 @@ export default function NewVisitReportPage() {
             <Plus className="h-4 w-4 mr-2" />
             Alıcı Ekle
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Dosya / Fotoğraf */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Dosya / Fotoğraf</CardTitle>
+          <CardDescription>Ziyaret ile ilgili fotoğraf ve belgeleri ekleyin</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FileUploadDropzone
+            files={uploadFiles}
+            onFilesChange={setUploadFiles}
+            maxFiles={10}
+            maxSizeMB={10}
+          />
         </CardContent>
       </Card>
 

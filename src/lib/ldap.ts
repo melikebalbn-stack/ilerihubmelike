@@ -2,6 +2,8 @@
 // Kullanıcı doğrulama ve bilgi çekme
 
 import { Client } from 'ldapts';
+import { appCache, CACHE_KEYS, CACHE_TTL } from './cache';
+import { logger } from './logger';
 
 // LDAP Filter özel karakterlerini escape et (LDAP Injection koruması)
 function escapeLDAPFilter(str: string): string {
@@ -23,10 +25,7 @@ const LDAP_CONFIG = {
   bindPassword: process.env.LDAP_BIND_PASSWORD || '',
 };
 
-// LDAP Cache - kullanıcı listesi için (5 dakika)
-const CACHE_TTL = 5 * 60 * 1000; // 5 dakika
-let ldapUsersCache: { data: LDAPUser[]; timestamp: number } | null = null;
-let subordinatesCache: Map<string, { data: string[]; timestamp: number }> = new Map();
+// FIX #11 & #24: Subordinates cache (appCache kullanıyor)
 
 // Kullanıcı tipi
 export interface LDAPUser {
@@ -84,7 +83,7 @@ export async function authenticateUser(username: string, password: string): Prom
 
     // Kullanıcıyı ara (sAMAccountName veya mail ile) - LDAP Injection korumalı
     const safeUsername = escapeLDAPFilter(username);
-    console.log(`🔍 LDAP arama: ${username} -> DN: ${LDAP_CONFIG.usersDN}`);
+    logger.debug('LDAP', 'Searching for user', { username });
     const { searchEntries } = await client.search(LDAP_CONFIG.usersDN, {
       scope: 'sub',
       filter: `(&(objectClass=user)(objectCategory=person)(|(sAMAccountName=${safeUsername})(mail=${safeUsername}@ilerigroup.com)))`,
@@ -92,7 +91,7 @@ export async function authenticateUser(username: string, password: string): Prom
     });
 
     if (searchEntries.length === 0) {
-      console.log(`Kullanıcı bulunamadı: ${username}`);
+      logger.debug('LDAP', 'User not found', { username });
       return null;
     }
 
@@ -108,7 +107,7 @@ export async function authenticateUser(username: string, password: string): Prom
       await authClient.bind(`${username}@ilerigroup.com`, password);
       await authClient.unbind();
     } catch (authError) {
-      console.log(`Kimlik doğrulama başarısız: ${username}`);
+      logger.debug('LDAP', 'Authentication failed', { username });
       return null;
     }
 
@@ -175,7 +174,7 @@ export function determineUserRole(user: LDAPUser): UserRole {
       titleLower.includes('ceo') ||
       ouLower === 'üst yönetim' ||
       ouLower === 'yonetim') {
-    console.log(`🎯 Rol: ${user.title} -> SUPER_ADMIN`);
+    logger.debug('LDAP', 'Role determined: SUPER_ADMIN', { title: user.title });
     return 'SUPER_ADMIN';
   }
 
@@ -184,46 +183,46 @@ export function determineUserRole(user: LDAPUser): UserRole {
     // IT/Sistem departmanı müdürü
     if (ouLower.includes('sistem') || ouLower.includes('bilgi teknoloji') || ouLower === 'it' ||
         deptLower.includes('sistem') || deptLower.includes('bilgi teknoloji') || deptLower.includes('it')) {
-      console.log(`🎯 Rol: ${user.title} (${user.department}) -> ADMIN`);
+      logger.debug('LDAP', 'Role determined: ADMIN', { title: user.title, department: user.department });
       return 'ADMIN';
     }
 
     // Kalite departmanı müdürü
     if (ouLower.includes('kalite') || deptLower.includes('kalite')) {
-      console.log(`🎯 Rol: ${user.title} (${user.department}) -> QUALITY_MANAGER`);
+      logger.debug('LDAP', 'Role determined: QUALITY_MANAGER', { title: user.title, department: user.department });
       return 'QUALITY_MANAGER';
     }
 
     // İK departmanı müdürü
     if (ouLower.includes('insan') || ouLower.includes('hr') ||
         deptLower.includes('insan') || deptLower.includes('hr')) {
-      console.log(`🎯 Rol: ${user.title} (${user.department}) -> HR_MANAGER`);
+      logger.debug('LDAP', 'Role determined: HR_MANAGER', { title: user.title, department: user.department });
       return 'HR_MANAGER';
     }
 
     // Diğer departman müdürleri
-    console.log(`🎯 Rol: ${user.title} (${user.department}) -> DEPT_HEAD`);
+    logger.debug('LDAP', 'Role determined: USER (dept head)', { title: user.title, department: user.department });
     return 'USER'; // DEPT_HEAD rolü yoksa USER olarak devam
   }
 
   // Müdür/Manager unvanı olmayan herkes USER
-  console.log(`🎯 Rol: ${user.title || 'unvan yok'} -> USER`);
+  logger.debug('LDAP', 'Role determined: USER', { title: user.title || 'no title' });
   return 'USER';
 }
 
-// Tüm kullanıcıları listele (CACHED - 5 dakika)
+// FIX #11 & #24: Tüm kullanıcıları listele (appCache kullanarak - 5 dakika, max 500 entry)
 export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
   // Cache kontrolü
-  const now = Date.now();
-  if (ldapUsersCache && (now - ldapUsersCache.timestamp) < CACHE_TTL) {
-    console.log('📦 LDAP kullanıcı cache\'den döndürülüyor');
-    return ldapUsersCache.data;
+  const cached = appCache.get<LDAPUser[]>(CACHE_KEYS.LDAP_ALL_USERS);
+  if (cached) {
+    logger.debug('LDAP', 'Users returned from cache');
+    return cached;
   }
 
   const client = createClient();
 
   try {
-    console.log('🔍 LDAP kullanıcı sorgusu yapılıyor...');
+    logger.debug('LDAP', 'Fetching all users from directory');
     await bindServiceAccount(client);
 
     const { searchEntries } = await client.search(LDAP_CONFIG.usersDN, {
@@ -268,14 +267,16 @@ export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
       return true;
     });
 
-    // Cache'e kaydet
-    ldapUsersCache = { data: users, timestamp: now };
-    console.log(`✅ LDAP ${users.length} kullanıcı cache'lendi`);
+    // FIX #11 & #24: appCache'e kaydet (5 dakika TTL, memory limit korumalı)
+    appCache.set(CACHE_KEYS.LDAP_ALL_USERS, users, CACHE_TTL.MEDIUM);
+    logger.info('LDAP', 'Users cached', { count: users.length });
 
     return users;
 
   } catch (error) {
-    console.error('LDAP kullanıcı listesi hatası:', error);
+    logger.error('LDAP', 'Failed to fetch users', {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
     return [];
   } finally {
     await client.unbind();
@@ -310,10 +311,12 @@ export async function getDirectReports(managerDN: string): Promise<LDAPUser[]> {
 
 // Dahili: Tüm kullanıcı haritasını cache'le (subordinates için)
 let userHierarchyCache: { data: Map<string, { email: string | null; managerDN: string | null }>; timestamp: number } | null = null;
+// Subordinates cache
+const subordinatesCache: Map<string, { data: string[]; timestamp: number }> = new Map();
 
 async function getUserHierarchyMap(): Promise<Map<string, { email: string | null; managerDN: string | null }>> {
   const now = Date.now();
-  if (userHierarchyCache && (now - userHierarchyCache.timestamp) < CACHE_TTL) {
+  if (userHierarchyCache && (now - userHierarchyCache.timestamp) < CACHE_TTL.MEDIUM) {
     return userHierarchyCache.data;
   }
 
@@ -348,7 +351,7 @@ async function getUserHierarchyMap(): Promise<Map<string, { email: string | null
     }
 
     userHierarchyCache = { data: userMap, timestamp: now };
-    console.log(`✅ Kullanıcı hiyerarşisi cache'lendi (${userMap.size} kullanıcı)`);
+    logger.debug('LDAP', 'User hierarchy cached', { count: userMap.size });
 
     return userMap;
   } finally {
@@ -363,8 +366,8 @@ export async function getAllSubordinates(managerDN: string): Promise<string[]> {
   const now = Date.now();
   const cacheKey = managerDN.toLowerCase();
   const cached = subordinatesCache.get(cacheKey);
-  if (cached && (now - cached.timestamp) < CACHE_TTL) {
-    console.log(`📦 Subordinates cache'den döndürülüyor: ${managerDN.substring(0, 30)}...`);
+  if (cached && (now - cached.timestamp) < CACHE_TTL.MEDIUM) {
+    logger.debug('LDAP', 'Subordinates returned from cache');
     return cached.data;
   }
 
@@ -394,7 +397,7 @@ export async function getAllSubordinates(managerDN: string): Promise<string[]> {
 
     // Cache'e kaydet
     subordinatesCache.set(cacheKey, { data: allSubordinateEmails, timestamp: now });
-    console.log(`✅ ${allSubordinateEmails.length} ast cache'lendi`);
+    logger.debug('LDAP', 'Subordinates cached', { count: allSubordinateEmails.length });
 
     return allSubordinateEmails;
 
@@ -472,14 +475,14 @@ const OU_CACHE_TTL = 10 * 60 * 1000; // 10 dakika
 export async function getAllOUs(): Promise<ADOrgUnit[]> {
   const now = Date.now();
   if (ouCache && (now - ouCache.timestamp) < OU_CACHE_TTL) {
-    console.log('📦 OU cache\'den döndürülüyor');
+    logger.debug('LDAP', 'OUs returned from cache');
     return ouCache.data;
   }
 
   const client = createClient();
 
   try {
-    console.log('🔍 AD OU sorgusu yapılıyor...');
+    logger.debug('LDAP', 'Fetching OUs from AD');
     await bindServiceAccount(client);
 
     // Tüm OU'ları çek
@@ -569,7 +572,7 @@ export async function getAllOUs(): Promise<ADOrgUnit[]> {
 
     // Cache'e kaydet
     ouCache = { data: ous, timestamp: now };
-    console.log(`✅ AD ${ous.length} OU cache'lendi`);
+    logger.debug('LDAP', 'OUs cached', { count: ous.length });
 
     return ous;
 
@@ -622,7 +625,7 @@ export async function getOUHierarchy(): Promise<ADOrgTree[]> {
 // OU cache'ini temizle
 export function clearOUCache(): void {
   ouCache = null;
-  console.log('🗑️ OU cache temizlendi');
+  logger.debug('LDAP', 'OU cache cleared');
 }
 
 // Departman bazlı çalışan sayıları

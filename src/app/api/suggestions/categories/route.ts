@@ -60,7 +60,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // TODO: Admin kontrolü
+    // FIX #7: Admin kontrolü eklendi
+    const userRole = session.user.role || 'EMPLOYEE'
+    if (!['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(userRole)) {
+      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+    }
+
     const body = await request.json()
     const { name, description, color, icon, sortOrder } = body
 

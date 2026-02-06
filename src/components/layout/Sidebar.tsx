@@ -48,6 +48,7 @@ import {
   Package,
   Server,
   Calendar,
+  Calculator,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -58,6 +59,7 @@ const mainMenuItems = [
   { name: "Mesajlar", icon: MessageSquare, href: "/messages", roles: ["*"] },
   { name: "Duyurular", icon: Megaphone, href: "/announcements", roles: ["*"] },
   { name: "Öneri Sistemi", icon: Lightbulb, href: "/suggestions", roles: ["*"] },
+  { name: "Maliyet Analizi", icon: Calculator, href: "/cost-analysis", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Planlı Görevler", icon: CalendarCheck, href: "/tasks", roles: ["*"] },
   // { name: "Eğitimlerim", icon: GraduationCap, href: "/my-trainings", roles: ["*"] }, // BGYS ile ilgili - şimdilik gizli
   { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
@@ -558,8 +560,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       </nav>
 
       {/* User Info & Logout */}
-      {session?.user && (
-        <div className="border-t p-4 space-y-3">
+      <div className="border-t p-4 space-y-3">
+        {session?.user && (
           <div className="flex items-center space-x-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
               <User className="h-5 w-5" />
@@ -569,17 +571,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <p className="text-xs text-muted-foreground truncate">{session.user.department || session.user.role}</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => signOut({ callbackUrl: '/login' })}
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Cikis Yap
-          </Button>
-        </div>
-      )}
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => signOut({ callbackUrl: '/login' })}
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          Çıkış Yap
+        </Button>
+      </div>
 
       {/* Footer */}
       <div className="border-t p-4">

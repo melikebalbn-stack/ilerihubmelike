@@ -23,7 +23,8 @@ import {
   Loader2,
   Mail,
   Send,
-  Plus
+  Plus,
+  Paperclip
 } from "lucide-react"
 import { RecipientInput, Recipient } from "@/components/forms/RecipientInput"
 import Link from "next/link"
@@ -45,6 +46,23 @@ interface ActionItem {
   responsible: string
   dueDate: string | null
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
+}
+
+interface Attachment {
+  id: string
+  fileName: string
+  filePath: string
+  fileSize: number
+  mimeType: string
+  createdAt: string
+}
+
+interface EmailLog {
+  id: string
+  sentBy: string
+  sentByName: string | null
+  recipients: string // JSON string
+  sentAt: string
 }
 
 interface VisitReport {
@@ -100,6 +118,8 @@ export default function VisitReportDetailPage() {
   const { data: session } = useSession()
   const printRef = useRef<HTMLDivElement>(null)
   const [report, setReport] = useState<VisitReport | null>(null)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [emailLogs, setEmailLogs] = useState<EmailLog[]>([])
   const [loading, setLoading] = useState(true)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [mailSending, setMailSending] = useState(false)
@@ -117,6 +137,26 @@ export default function VisitReportDetailPage() {
       if (res.ok) {
         const data = await res.json()
         setReport(data)
+        // Fetch attachments
+        try {
+          const attRes = await fetch(`/api/forms/visit-reports/${id}/attachments`)
+          if (attRes.ok) {
+            const attData = await attRes.json()
+            setAttachments(attData)
+          }
+        } catch {
+          console.error("Ekler yüklenemedi")
+        }
+        // Fetch email logs
+        try {
+          const logRes = await fetch(`/api/forms/visit-reports/${id}/email-logs`)
+          if (logRes.ok) {
+            const logData = await logRes.json()
+            setEmailLogs(logData)
+          }
+        } catch {
+          console.error("Email logları yüklenemedi")
+        }
       } else {
         router.push("/forms/visit-reports")
       }
@@ -214,6 +254,14 @@ export default function VisitReportDetailPage() {
       if (res.ok) {
         alert("Mail başarıyla gönderildi!")
         setRecipients([{ name: "", email: "" }])
+        // Gönderim geçmişini yenile
+        try {
+          const logRes = await fetch(`/api/forms/visit-reports/${id}/email-logs`)
+          if (logRes.ok) {
+            const logData = await logRes.json()
+            setEmailLogs(logData)
+          }
+        } catch { /* ignore */ }
       } else {
         const data = await res.json()
         alert(data.error || "Mail gönderilemedi")
@@ -526,6 +574,41 @@ export default function VisitReportDetailPage() {
             </Card>
           )}
 
+          {/* Ekler */}
+          {attachments.length > 0 && (
+            <Card className="print:shadow-none print:border-0">
+              <CardHeader className="print:pb-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Paperclip className="h-5 w-5" />
+                  Ekler ({attachments.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {attachments.map((att) => (
+                    <a
+                      key={att.id}
+                      href={att.filePath}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group border rounded-lg p-3 hover:bg-gray-50 transition-colors"
+                    >
+                      {att.mimeType.startsWith("image/") ? (
+                        <img src={att.filePath} alt={att.fileName} className="w-full h-24 object-cover rounded mb-2" />
+                      ) : (
+                        <div className="w-full h-24 flex items-center justify-center bg-gray-100 rounded mb-2">
+                          <FileText className="h-8 w-8 text-gray-400" />
+                        </div>
+                      )}
+                      <p className="text-xs font-medium truncate">{att.fileName}</p>
+                      <p className="text-xs text-gray-400">{(att.fileSize / 1024).toFixed(0)} KB</p>
+                    </a>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Onay Bilgisi */}
           <Card className="print:shadow-none print:border-0">
             <CardContent className="pt-6">
@@ -603,6 +686,47 @@ export default function VisitReportDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Gönderim Geçmişi */}
+        {emailLogs.length > 0 && (
+          <Card className="no-print">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Gönderim Geçmişi
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {emailLogs.map((log) => {
+                  let parsedRecipients: { name?: string; email: string }[] = []
+                  try {
+                    parsedRecipients = JSON.parse(log.recipients)
+                  } catch { /* ignore */ }
+                  return (
+                    <div key={log.id} className="p-3 border rounded-lg bg-gray-50 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">
+                          {log.sentByName || log.sentBy}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(log.sentAt), "dd.MM.yyyy HH:mm", { locale: tr })}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {parsedRecipients.map((r, i) => (
+                          <Badge key={i} variant="secondary" className="text-xs">
+                            {r.name ? `${r.name} (${r.email})` : r.email}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </>
   )

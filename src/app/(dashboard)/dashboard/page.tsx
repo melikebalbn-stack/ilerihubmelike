@@ -2,11 +2,22 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight, FolderSync, GraduationCap } from "lucide-react"
+import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight, FolderSync, GraduationCap, Settings2, RefreshCw, Eye, EyeOff, GripVertical, X, Check, LayoutDashboard, Users, FileText, Shield, Briefcase } from "lucide-react"
 import { useSession } from "next-auth/react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 
 // Yemek menüsü verileri
 interface DailyMenu {
@@ -126,6 +137,62 @@ interface TicketStats {
   }>
 }
 
+// Widget tanımları
+type WidgetId = 'tasks' | 'calendar' | 'menu' | 'tickets' | 'announcements' | 'quickAccess' | 'systemInfo'
+
+interface WidgetConfig {
+  id: WidgetId
+  name: string
+  icon: React.ReactNode
+  description: string
+}
+
+const WIDGET_CONFIGS: WidgetConfig[] = [
+  { id: 'tasks', name: 'Bana Atanan Görevler', icon: <ClipboardList className="h-4 w-4" />, description: 'Görev listesi ve durumları' },
+  { id: 'calendar', name: 'Bugünkü Toplantılarım', icon: <Calendar className="h-4 w-4" />, description: 'Outlook takvim etkinlikleri' },
+  { id: 'menu', name: 'Yemek Menüsü', icon: <UtensilsCrossed className="h-4 w-4" />, description: 'Günlük yemek menüsü' },
+  { id: 'tickets', name: 'IT Destek', icon: <Headphones className="h-4 w-4" />, description: 'Teknik destek talepleri' },
+  { id: 'announcements', name: 'Son Duyurular', icon: <Megaphone className="h-4 w-4" />, description: 'Şirket duyuruları' },
+  { id: 'quickAccess', name: 'Hızlı Erişim', icon: <LayoutDashboard className="h-4 w-4" />, description: 'Sık kullanılan modüller' },
+  { id: 'systemInfo', name: 'Sistem Bilgileri', icon: <Settings2 className="h-4 w-4" />, description: 'Teknik detaylar' },
+]
+
+// Hızlı erişim modül tanımları
+interface QuickAccessModule {
+  id: string
+  name: string
+  href: string
+  icon: React.ReactNode
+  color: string
+}
+
+const ALL_QUICK_ACCESS_MODULES: QuickAccessModule[] = [
+  { id: 'it-support', name: 'IT Destek Merkezi', href: '/it-support', icon: <Headphones className="h-4 w-4" />, color: 'text-green-500' },
+  { id: 'tasks', name: 'Planlı Görevler', href: '/tasks', icon: <ClipboardList className="h-4 w-4" />, color: 'text-blue-500' },
+  { id: 'suggestions', name: 'Öneri Sistemi', href: '/suggestions', icon: <Lightbulb className="h-4 w-4" />, color: 'text-amber-500' },
+  { id: 'meetings', name: 'Toplantılar', href: '/meetings', icon: <Users className="h-4 w-4" />, color: 'text-indigo-500' },
+  { id: 'iso27001', name: 'ISO 27001 BGYS', href: '/iso27001', icon: <Shield className="h-4 w-4" />, color: 'text-emerald-500' },
+  { id: 'forms', name: 'Formlar', href: '/forms', icon: <FileText className="h-4 w-4" />, color: 'text-purple-500' },
+  { id: 'calibration', name: 'Kalibrasyon Takibi', href: '/calibration', icon: <Settings2 className="h-4 w-4" />, color: 'text-orange-500' },
+  { id: 'strategic-hr', name: 'Stratejik İK', href: '/strategic-hr/recruitment', icon: <Briefcase className="h-4 w-4" />, color: 'text-pink-500' },
+  { id: 'announcements', name: 'Duyurular', href: '/announcements', icon: <Megaphone className="h-4 w-4" />, color: 'text-violet-500' },
+  { id: 'settings', name: 'Ayarlar', href: '/settings', icon: <Settings2 className="h-4 w-4" />, color: 'text-gray-500' },
+]
+
+// Dashboard ayarları tipi
+interface DashboardSettings {
+  visibleWidgets: WidgetId[]
+  quickAccessModules: string[]
+}
+
+const DEFAULT_SETTINGS: DashboardSettings = {
+  visibleWidgets: ['tasks', 'calendar', 'menu', 'tickets', 'announcements', 'quickAccess'],
+  quickAccessModules: ['it-support', 'tasks', 'suggestions', 'meetings', 'calibration', 'settings']
+}
+
+// localStorage key
+const DASHBOARD_SETTINGS_KEY = 'ilerihub_dashboard_settings'
+
 export default function DashboardPage() {
   const { data: session } = useSession()
   const [myTasks, setMyTasks] = useState<Task[]>([])
@@ -137,6 +204,12 @@ export default function DashboardPage() {
   const [calendarError, setCalendarError] = useState<string | null>(null)
   const [ticketStats, setTicketStats] = useState<TicketStats | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Dashboard özelleştirme state'leri
+  const [settings, setSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS)
+  const [tempSettings, setTempSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [refreshingWidget, setRefreshingWidget] = useState<string | null>(null)
 
   // IT Ekibi kontrolü: IT_MANAGER/ADMIN rolü VEYA Sistem Geliştirme OU'sunda
   const userOu = (session?.user?.ou || "").toLowerCase()
@@ -159,6 +232,59 @@ export default function DashboardPage() {
     return new Date(today.setDate(diff))
   })
   const [weeklyMenu, setWeeklyMenu] = useState<DailyMenu[]>([])
+
+  // localStorage'dan ayarları yükle
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DASHBOARD_SETTINGS_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        setSettings(parsed)
+        setTempSettings(parsed)
+      }
+    } catch (e) {
+      console.error('Dashboard ayarları yüklenemedi:', e)
+    }
+  }, [])
+
+  // Ayarları kaydet
+  const saveSettings = () => {
+    setSettings(tempSettings)
+    localStorage.setItem(DASHBOARD_SETTINGS_KEY, JSON.stringify(tempSettings))
+    setSettingsOpen(false)
+  }
+
+  // Widget görünürlüğünü toggle et
+  const toggleWidget = (widgetId: WidgetId) => {
+    setTempSettings(prev => {
+      const isVisible = prev.visibleWidgets.includes(widgetId)
+      return {
+        ...prev,
+        visibleWidgets: isVisible
+          ? prev.visibleWidgets.filter(id => id !== widgetId)
+          : [...prev.visibleWidgets, widgetId]
+      }
+    })
+  }
+
+  // Hızlı erişim modülünü toggle et
+  const toggleQuickAccess = (moduleId: string) => {
+    setTempSettings(prev => {
+      const isSelected = prev.quickAccessModules.includes(moduleId)
+      if (isSelected) {
+        return {
+          ...prev,
+          quickAccessModules: prev.quickAccessModules.filter(id => id !== moduleId)
+        }
+      } else if (prev.quickAccessModules.length < 6) {
+        return {
+          ...prev,
+          quickAccessModules: [...prev.quickAccessModules, moduleId]
+        }
+      }
+      return prev
+    })
+  }
 
   // Haftalık menüyü API'den yükle
   useEffect(() => {
@@ -234,6 +360,83 @@ export default function DashboardPage() {
     const diff = today.getDate() - day + (day === 0 ? -6 : 1)
     setWeekStart(new Date(today.setDate(diff)))
     setSelectedMenuDate(new Date().toISOString().split('T')[0])
+  }
+
+  // Veri yükleme fonksiyonları
+  const fetchTasks = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tasks?viewMode=my&limit=5')
+      if (res.ok) {
+        const data = await res.json()
+        setMyTasks(data)
+      }
+    } catch (error) {
+      console.error('Görevler yüklenirken hata:', error)
+    }
+  }, [])
+
+  const fetchCalendar = useCallback(async () => {
+    try {
+      const res = await fetch('/api/calendar/events?range=today')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.error) {
+          setCalendarError(data.message || 'Takvim yuklenemedi')
+        } else {
+          setCalendarEvents(data.events || [])
+          setCalendarError(null)
+        }
+      }
+    } catch (error) {
+      console.error('Takvim yüklenirken hata:', error)
+    }
+  }, [])
+
+  const fetchTickets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tickets/stats')
+      if (res.ok) {
+        const data = await res.json()
+        setTicketStats(data)
+      }
+    } catch (error) {
+      console.error('Ticket istatistikleri yüklenirken hata:', error)
+    }
+  }, [])
+
+  const fetchAnnouncements = useCallback(async () => {
+    try {
+      const res = await fetch('/api/announcements?limit=5')
+      if (res.ok) {
+        const data = await res.json()
+        setLatestAnnouncements(data.announcements || [])
+      }
+    } catch (error) {
+      console.error('Duyurular yüklenirken hata:', error)
+    }
+  }, [])
+
+  // Widget yenileme fonksiyonu
+  const refreshWidget = async (widgetId: string) => {
+    setRefreshingWidget(widgetId)
+    try {
+      switch (widgetId) {
+        case 'tasks':
+          await fetchTasks()
+          break
+        case 'calendar':
+          await fetchCalendar()
+          break
+        case 'tickets':
+          await fetchTickets()
+          break
+        case 'announcements':
+          await fetchAnnouncements()
+          break
+      }
+    } finally {
+      setTimeout(() => setRefreshingWidget(null), 500)
+    }
   }
 
   useEffect(() => {
@@ -346,6 +549,14 @@ export default function DashboardPage() {
   const overdueTasks = myTasks.filter(t => t.status === 'OVERDUE').length
   const pendingTasks = myTasks.filter(t => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length
 
+  // Widget görünürlük kontrolü
+  const isWidgetVisible = (widgetId: WidgetId) => settings.visibleWidgets.includes(widgetId)
+
+  // Seçili hızlı erişim modülleri
+  const selectedQuickAccessModules = ALL_QUICK_ACCESS_MODULES.filter(m =>
+    settings.quickAccessModules.includes(m.id)
+  )
+
   return (
     <div className="space-y-6">
       {/* Welcome Section with Quick Links */}
@@ -357,26 +568,133 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Hızlı Erişim Butonları */}
-        <div className="flex gap-2">
+        {/* Hızlı Erişim Butonları ve Ayarlar */}
+        <div className="flex gap-2 flex-wrap">
           <a
             href="http://transfer.ilerigroup.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-blue-700 dark:text-blue-300"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-blue-700 dark:text-blue-300"
           >
             <FolderSync className="h-4 w-4" />
-            <span className="text-sm font-medium">Dosya Transferi</span>
+            <span className="text-sm font-medium hidden sm:inline">Dosya Transferi</span>
           </a>
           <a
             href="/api/sso/akademi"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors text-indigo-700 dark:text-indigo-300"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors text-indigo-700 dark:text-indigo-300"
           >
             <GraduationCap className="h-4 w-4" />
-            <span className="text-sm font-medium">ILERI Akademi</span>
+            <span className="text-sm font-medium hidden sm:inline">ILERI Akademi</span>
           </a>
+
+          {/* Dashboard Özelleştirme Butonu */}
+          <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Settings2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Özelleştir</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Settings2 className="h-5 w-5" />
+                  Dashboard Özelleştir
+                </DialogTitle>
+                <DialogDescription>
+                  Görüntülemek istediğiniz widget'ları ve hızlı erişim modüllerini seçin.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 py-4">
+                {/* Widget Ayarları */}
+                <div>
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Eye className="h-4 w-4" />
+                    Görünür Widget'lar
+                  </h4>
+                  <div className="space-y-3">
+                    {WIDGET_CONFIGS.map(widget => (
+                      <div key={widget.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-muted">
+                            {widget.icon}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">{widget.name}</p>
+                            <p className="text-xs text-muted-foreground">{widget.description}</p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={tempSettings.visibleWidgets.includes(widget.id)}
+                          onCheckedChange={() => toggleWidget(widget.id)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Hızlı Erişim Modülleri */}
+                <div>
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <LayoutDashboard className="h-4 w-4" />
+                    Hızlı Erişim Modülleri
+                    <Badge variant="secondary" className="ml-2">
+                      {tempSettings.quickAccessModules.length}/6
+                    </Badge>
+                  </h4>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    En fazla 6 modül seçebilirsiniz
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ALL_QUICK_ACCESS_MODULES.map(module => {
+                      const isSelected = tempSettings.quickAccessModules.includes(module.id)
+                      const isDisabled = !isSelected && tempSettings.quickAccessModules.length >= 6
+                      return (
+                        <button
+                          key={module.id}
+                          onClick={() => toggleQuickAccess(module.id)}
+                          disabled={isDisabled}
+                          className={`
+                            flex items-center gap-2 p-2 rounded-lg border transition-all text-left
+                            ${isSelected
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                              : isDisabled
+                                ? 'border-muted bg-muted/50 opacity-50 cursor-not-allowed'
+                                : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                            }
+                          `}
+                        >
+                          <div className={`${module.color}`}>
+                            {module.icon}
+                          </div>
+                          <span className="text-xs font-medium truncate">{module.name}</span>
+                          {isSelected && <Check className="h-3 w-3 text-primary ml-auto" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button variant="outline" onClick={() => {
+                  setTempSettings(settings)
+                  setSettingsOpen(false)
+                }}>
+                  İptal
+                </Button>
+                <Button onClick={saveSettings}>
+                  <Check className="h-4 w-4 mr-2" />
+                  Kaydet
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -498,460 +816,521 @@ export default function DashboardPage() {
       {/* Main Content Grid */}
       <div className="grid gap-3 sm:gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {/* Bana Atanan Görevler - Büyük Kart */}
-        <Card className="md:col-span-2 lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5 text-blue-500" />
-                Bana Atanan Görevler
-              </CardTitle>
-              <CardDescription>
-                {overdueTasks > 0 && (
-                  <span className="text-red-500 font-medium">{overdueTasks} gecikmiş, </span>
-                )}
-                {pendingTasks} bekleyen görev
-              </CardDescription>
-            </div>
-            <Link
-              href="/tasks?viewMode=my"
-              className="text-sm text-blue-600 hover:underline"
-            >
-              Tümünü Gör →
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="classic-spinner" />
+        {isWidgetVisible('tasks') && (
+          <Card className="md:col-span-2 lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <ClipboardList className="h-5 w-5 text-blue-500" />
+                  Bana Atanan Görevler
+                </CardTitle>
+                <CardDescription>
+                  {overdueTasks > 0 && (
+                    <span className="text-red-500 font-medium">{overdueTasks} gecikmiş, </span>
+                  )}
+                  {pendingTasks} bekleyen görev
+                </CardDescription>
               </div>
-            ) : myTasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <ClipboardList className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>Size atanmış görev bulunmuyor</p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => refreshWidget('tasks')}
+                  disabled={refreshingWidget === 'tasks'}
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshingWidget === 'tasks' ? 'animate-spin' : ''}`} />
+                </Button>
+                <Link
+                  href="/tasks?viewMode=my"
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  Tümünü Gör →
+                </Link>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {myTasks.slice(0, 5).map((task) => (
-                  <Link
-                    key={task.id}
-                    href={`/tasks?highlight=${task.id}`}
-                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {getStatusIcon(task.status)}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{task.title}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          {task.category && (
-                            <span
-                              className="text-xs px-1.5 py-0.5 rounded"
-                              style={{
-                                backgroundColor: task.category.color + '20',
-                                color: task.category.color
-                              }}
-                            >
-                              {task.category.name}
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="classic-spinner" />
+                </div>
+              ) : myTasks.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ClipboardList className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>Size atanmış görev bulunmuyor</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {myTasks.slice(0, 5).map((task) => (
+                    <Link
+                      key={task.id}
+                      href={`/tasks?highlight=${task.id}`}
+                      className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {getStatusIcon(task.status)}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{task.title}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {task.category && (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded"
+                                style={{
+                                  backgroundColor: task.category.color + '20',
+                                  color: task.category.color
+                                }}
+                              >
+                                {task.category.name}
+                              </span>
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                              {formatDate(task.dueDate)}
                             </span>
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(task.dueDate)}
-                          </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="ml-2">
+                        {getPriorityBadge(task.priority)}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bugunku Toplantilarim */}
+        {isWidgetVisible('calendar') && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-indigo-500" />
+                  Bugunku Toplantilarim
+                </CardTitle>
+                <CardDescription>
+                  Outlook takviminizdeki toplantilar
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => refreshWidget('calendar')}
+                  disabled={refreshingWidget === 'calendar'}
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshingWidget === 'calendar' ? 'animate-spin' : ''}`} />
+                </Button>
+                <Link
+                  href="/calendar"
+                  className="text-sm text-indigo-600 hover:underline"
+                >
+                  Detay →
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {calendarError ? (
+                <div className="text-center py-4 text-muted-foreground">
+                  <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">{calendarError}</p>
+                </div>
+              ) : calendarEvents.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground">
+                  <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Bugun toplantiniz yok</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {calendarEvents.slice(0, 5).map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex flex-col items-center min-w-[50px] text-center">
+                        <span className="text-sm font-bold text-indigo-600">{event.startTime}</span>
+                        <span className="text-xs text-muted-foreground">{event.endTime}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{event.subject}</p>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                          {event.isOnline ? (
+                            <span className="flex items-center gap-1">
+                              <Video className="h-3 w-3" />
+                              {event.onlineMeetingUrl ? (
+                                <a
+                                  href={event.onlineMeetingUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  Teams
+                                </a>
+                              ) : (
+                                'Online'
+                              )}
+                            </span>
+                          ) : event.location ? (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {event.location}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </div>
-                    <div className="ml-2">
-                      {getPriorityBadge(task.priority)}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Bugunku Toplantilarim */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-indigo-500" />
-                Bugunku Toplantilarim
-              </CardTitle>
-              <CardDescription>
-                Outlook takviminizdeki toplantilar
-              </CardDescription>
-            </div>
-            <Link
-              href="/calendar"
-              className="text-sm text-indigo-600 hover:underline"
-            >
-              Detay →
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {calendarError ? (
-              <div className="text-center py-4 text-muted-foreground">
-                <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">{calendarError}</p>
-              </div>
-            ) : calendarEvents.length === 0 ? (
-              <div className="text-center py-4 text-muted-foreground">
-                <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Bugun toplantiniz yok</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {calendarEvents.slice(0, 5).map((event) => (
-                  <div
-                    key={event.id}
-                    className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex flex-col items-center min-w-[50px] text-center">
-                      <span className="text-sm font-bold text-indigo-600">{event.startTime}</span>
-                      <span className="text-xs text-muted-foreground">{event.endTime}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{event.subject}</p>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                        {event.isOnline ? (
-                          <span className="flex items-center gap-1">
-                            <Video className="h-3 w-3" />
-                            {event.onlineMeetingUrl ? (
-                              <a
-                                href={event.onlineMeetingUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                Teams
-                              </a>
-                            ) : (
-                              'Online'
-                            )}
-                          </span>
-                        ) : event.location ? (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {event.location}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {calendarEvents.length > 5 && (
-                  <p className="text-xs text-center text-muted-foreground pt-2">
-                    +{calendarEvents.length - 5} toplanti daha
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                  {calendarEvents.length > 5 && (
+                    <p className="text-xs text-center text-muted-foreground pt-2">
+                      +{calendarEvents.length - 5} toplanti daha
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Günün Yemeği - Takvimli */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <UtensilsCrossed className="h-5 w-5 text-orange-500" />
-                Yemek Menüsü
-              </CardTitle>
-              <Button variant="ghost" size="sm" onClick={goToToday} className="text-xs h-7 px-2">
-                Bugün
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {/* Hafta Navigasyonu */}
-            <div className="flex items-center justify-between mb-3">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToPreviousWeek}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-xs font-medium text-muted-foreground">
-                {weekStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} - {
-                  new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
-                }
-              </span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToNextWeek}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Mini Takvim - Haftanın Günleri */}
-            <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-3">
-              {weeklyMenu.map((day) => {
-                const isToday = day.date === new Date().toISOString().split('T')[0]
-                const isSelected = day.date === selectedMenuDate
-                const isWeekend = day.dayName === 'Cumartesi' || day.dayName === 'Pazar'
-                const dayNum = new Date(day.date).getDate()
-
-                return (
-                  <button
-                    key={day.date}
-                    onClick={() => setSelectedMenuDate(day.date)}
-                    className={`
-                      flex flex-col items-center p-1 sm:p-1.5 rounded-lg transition-all text-center min-h-[44px] sm:min-h-0
-                      ${isSelected
-                        ? 'bg-orange-500 text-white shadow-md'
-                        : isToday
-                          ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300'
-                          : isWeekend
-                            ? 'bg-gray-100 dark:bg-gray-800 text-gray-400'
-                            : 'hover:bg-orange-50 dark:hover:bg-orange-900/20'
-                      }
-                    `}
-                  >
-                    <span className="text-[9px] sm:text-[10px] font-medium">{day.dayName.slice(0, 2)}</span>
-                    <span className={`text-xs sm:text-sm font-bold ${isSelected ? '' : isToday ? 'text-orange-600 dark:text-orange-400' : ''}`}>
-                      {dayNum}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Seçili Günün Menüsü */}
-            {selectedDayMenu && (
-              <div className={`rounded-lg p-3 border ${
-                selectedDayMenu.isHoliday
-                  ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
-                  : 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900'
-              }`}>
-                <p className={`text-xs font-medium mb-2 ${
-                  selectedDayMenu.isHoliday
-                    ? 'text-gray-500'
-                    : 'text-orange-600 dark:text-orange-400'
-                }`}>
-                  {new Date(selectedDayMenu.date).toLocaleDateString('tr-TR', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                    weekday: 'long'
-                  })}
-                </p>
-
-                {selectedDayMenu.isHoliday ? (
-                  <div className="text-center py-3">
-                    <UtensilsCrossed className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-500">{selectedDayMenu.holidayName || 'Tatil'}</p>
-                    <p className="text-xs text-gray-400 mt-1">Yemek servisi yok</p>
-                  </div>
-                ) : selectedDayMenu.items.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {selectedDayMenu.items.map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
-                        <p className="text-sm font-medium">{item}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-3">
-                    <p className="text-sm text-muted-foreground">Menü henüz belirlenmedi</p>
-                  </div>
-                )}
+        {isWidgetVisible('menu') && (
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <UtensilsCrossed className="h-5 w-5 text-orange-500" />
+                  Yemek Menüsü
+                </CardTitle>
+                <Button variant="ghost" size="sm" onClick={goToToday} className="text-xs h-7 px-2">
+                  Bugün
+                </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {/* Hafta Navigasyonu */}
+              <div className="flex items-center justify-between mb-3">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToPreviousWeek}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-xs font-medium text-muted-foreground">
+                  {weekStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} - {
+                    new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })
+                  }
+                </span>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goToNextWeek}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
 
-        {/* IT Destek Taleplerim */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Headphones className="h-5 w-5 text-green-500" />
-                IT Destek
-              </CardTitle>
-              <CardDescription>
-                Teknik destek talepleriniz
-              </CardDescription>
-            </div>
-            <Link
-              href="/it-support"
-              className="text-sm text-green-600 hover:underline"
-            >
-              Taleplerim →
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {ticketStats ? (
-              <div className="space-y-3">
-                <div className={`grid gap-2 ${isITStaff ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                  <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-3 text-center">
-                    <p className="text-2xl font-bold text-green-600">{ticketStats.summary.myOpenTickets}</p>
-                    <p className="text-xs text-muted-foreground">Acik Taleplerim</p>
-                  </div>
-                  {isITStaff && (
-                    <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-3 text-center">
-                      <p className="text-2xl font-bold text-blue-600">{ticketStats.summary.totalOpen}</p>
-                      <p className="text-xs text-muted-foreground">Toplam Acik</p>
+              {/* Mini Takvim - Haftanın Günleri */}
+              <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-3">
+                {weeklyMenu.map((day) => {
+                  const isToday = day.date === new Date().toISOString().split('T')[0]
+                  const isSelected = day.date === selectedMenuDate
+                  const isWeekend = day.dayName === 'Cumartesi' || day.dayName === 'Pazar'
+                  const dayNum = new Date(day.date).getDate()
+
+                  return (
+                    <button
+                      key={day.date}
+                      onClick={() => setSelectedMenuDate(day.date)}
+                      className={`
+                        flex flex-col items-center p-1 sm:p-1.5 rounded-lg transition-all text-center min-h-[44px] sm:min-h-0
+                        ${isSelected
+                          ? 'bg-orange-500 text-white shadow-md'
+                          : isToday
+                            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 ring-1 ring-orange-300'
+                            : isWeekend
+                              ? 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                              : 'hover:bg-orange-50 dark:hover:bg-orange-900/20'
+                        }
+                      `}
+                    >
+                      <span className="text-[9px] sm:text-[10px] font-medium">{day.dayName.slice(0, 2)}</span>
+                      <span className={`text-xs sm:text-sm font-bold ${isSelected ? '' : isToday ? 'text-orange-600 dark:text-orange-400' : ''}`}>
+                        {dayNum}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Seçili Günün Menüsü */}
+              {selectedDayMenu && (
+                <div className={`rounded-lg p-3 border ${
+                  selectedDayMenu.isHoliday
+                    ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
+                    : 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-900'
+                }`}>
+                  <p className={`text-xs font-medium mb-2 ${
+                    selectedDayMenu.isHoliday
+                      ? 'text-gray-500'
+                      : 'text-orange-600 dark:text-orange-400'
+                  }`}>
+                    {new Date(selectedDayMenu.date).toLocaleDateString('tr-TR', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                      weekday: 'long'
+                    })}
+                  </p>
+
+                  {selectedDayMenu.isHoliday ? (
+                    <div className="text-center py-3">
+                      <UtensilsCrossed className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm text-gray-500">{selectedDayMenu.holidayName || 'Tatil'}</p>
+                      <p className="text-xs text-gray-400 mt-1">Yemek servisi yok</p>
+                    </div>
+                  ) : selectedDayMenu.items.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {selectedDayMenu.items.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
+                          <p className="text-sm font-medium">{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-3">
+                      <p className="text-sm text-muted-foreground">Menü henüz belirlenmedi</p>
                     </div>
                   )}
                 </div>
-                {ticketStats.recentTickets.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t">
-                    <p className="text-xs font-medium text-muted-foreground">Son Talepler</p>
-                    {ticketStats.recentTickets.slice(0, 3).map((ticket) => (
-                      <Link
-                        key={ticket.id}
-                        href="/it-support"
-                        className="flex items-center justify-between rounded-lg border p-2 hover:bg-muted/50 transition-colors text-sm"
-                      >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="font-mono text-xs text-muted-foreground">{ticket.ticketNumber}</span>
-                          <span className="truncate">{ticket.subject}</span>
-                        </div>
-                        <Badge variant={ticket.status === 'NEW' ? 'default' : 'secondary'} className="ml-2 text-xs">
-                          {ticket.status === 'NEW' ? 'Yeni' : ticket.status === 'IN_PROGRESS' ? 'Islemde' : ticket.status === 'RESOLVED' ? 'Cozuldu' : ticket.status}
-                        </Badge>
-                      </Link>
-                    ))}
-                  </div>
-                )}
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* IT Destek Taleplerim */}
+        {isWidgetVisible('tickets') && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Headphones className="h-5 w-5 text-green-500" />
+                  IT Destek
+                </CardTitle>
+                <CardDescription>
+                  Teknik destek talepleriniz
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => refreshWidget('tickets')}
+                  disabled={refreshingWidget === 'tickets'}
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshingWidget === 'tickets' ? 'animate-spin' : ''}`} />
+                </Button>
                 <Link
                   href="/it-support"
-                  className="block w-full text-center text-sm text-green-600 hover:underline pt-2"
+                  className="text-sm text-green-600 hover:underline"
                 >
-                  + Yeni Talep Olustur
+                  Taleplerim →
                 </Link>
               </div>
-            ) : (
-              <div className="text-center py-4">
-                <Headphones className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
-                <p className="text-sm text-muted-foreground">Yukluyor...</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              {ticketStats ? (
+                <div className="space-y-3">
+                  <div className={`grid gap-2 ${isITStaff ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    <div className="rounded-lg bg-green-50 dark:bg-green-950/30 p-3 text-center">
+                      <p className="text-2xl font-bold text-green-600">{ticketStats.summary.myOpenTickets}</p>
+                      <p className="text-xs text-muted-foreground">Acik Taleplerim</p>
+                    </div>
+                    {isITStaff && (
+                      <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-3 text-center">
+                        <p className="text-2xl font-bold text-blue-600">{ticketStats.summary.totalOpen}</p>
+                        <p className="text-xs text-muted-foreground">Toplam Acik</p>
+                      </div>
+                    )}
+                  </div>
+                  {ticketStats.recentTickets.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t">
+                      <p className="text-xs font-medium text-muted-foreground">Son Talepler</p>
+                      {ticketStats.recentTickets.slice(0, 3).map((ticket) => (
+                        <Link
+                          key={ticket.id}
+                          href="/it-support"
+                          className="flex items-center justify-between rounded-lg border p-2 hover:bg-muted/50 transition-colors text-sm"
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="font-mono text-xs text-muted-foreground">{ticket.ticketNumber}</span>
+                            <span className="truncate">{ticket.subject}</span>
+                          </div>
+                          <Badge variant={ticket.status === 'NEW' ? 'default' : 'secondary'} className="ml-2 text-xs">
+                            {ticket.status === 'NEW' ? 'Yeni' : ticket.status === 'IN_PROGRESS' ? 'Islemde' : ticket.status === 'RESOLVED' ? 'Cozuldu' : ticket.status}
+                          </Badge>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                  <Link
+                    href="/it-support"
+                    className="block w-full text-center text-sm text-green-600 hover:underline pt-2"
+                  >
+                    + Yeni Talep Olustur
+                  </Link>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <Headphones className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
+                  <p className="text-sm text-muted-foreground">Yukluyor...</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Son Duyurular */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
+        {isWidgetVisible('announcements') && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Megaphone className="h-5 w-5 text-purple-500" />
+                  Son Duyurular
+                </CardTitle>
+                <CardDescription>
+                  Sirket haberlerinden haberdar olun
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => refreshWidget('announcements')}
+                  disabled={refreshingWidget === 'announcements'}
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshingWidget === 'announcements' ? 'animate-spin' : ''}`} />
+                </Button>
+                <Link
+                  href="/announcements"
+                  className="text-sm text-purple-600 hover:underline"
+                >
+                  Tumunu Gor →
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {latestAnnouncements.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground">
+                  <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Henuz duyuru yok</p>
+                </div>
+              ) : (
+                latestAnnouncements.slice(0, 4).map((announcement) => (
+                  <Link
+                    key={announcement.id}
+                    href={`/announcements/${announcement.id}`}
+                    className={`flex items-start gap-2 rounded-lg border p-3 hover:bg-muted/50 transition-colors ${
+                      !announcement.isRead ? 'border-l-4 border-l-purple-500' : ''
+                    } ${announcement.priority === 'URGENT' ? 'bg-red-50 dark:bg-red-950/20 border-red-200' : ''}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        {announcement.isPinned && (
+                          <Pin className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                        )}
+                        <p className={`text-sm font-medium truncate ${!announcement.isRead ? 'text-purple-600' : ''}`}>
+                          {announcement.title}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {announcement.category && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs px-1 py-0"
+                            style={{
+                              backgroundColor: announcement.category.color ? `${announcement.category.color}20` : undefined,
+                              color: announcement.category.color || undefined,
+                              borderColor: announcement.category.color || undefined
+                            }}
+                          >
+                            {announcement.category.name}
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(announcement.publishedAt || announcement.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Hızlı Erişim - Özelleştirilebilir */}
+        {isWidgetVisible('quickAccess') && selectedQuickAccessModules.length > 0 && (
+          <Card>
+            <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Megaphone className="h-5 w-5 text-purple-500" />
-                Son Duyurular
+                <LayoutDashboard className="h-5 w-5" />
+                Hızlı Erişim
               </CardTitle>
               <CardDescription>
-                Sirket haberlerinden haberdar olun
+                Sık kullanılan modüller
               </CardDescription>
-            </div>
-            <Link
-              href="/announcements"
-              className="text-sm text-purple-600 hover:underline"
-            >
-              Tumunu Gor →
-            </Link>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {latestAnnouncements.length === 0 ? (
-              <div className="text-center py-4 text-muted-foreground">
-                <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Henuz duyuru yok</p>
-              </div>
-            ) : (
-              latestAnnouncements.slice(0, 4).map((announcement) => (
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {selectedQuickAccessModules.map((module) => (
                 <Link
-                  key={announcement.id}
-                  href={`/announcements/${announcement.id}`}
-                  className={`flex items-start gap-2 rounded-lg border p-3 hover:bg-muted/50 transition-colors ${
-                    !announcement.isRead ? 'border-l-4 border-l-purple-500' : ''
-                  } ${announcement.priority === 'URGENT' ? 'bg-red-50 dark:bg-red-950/20 border-red-200' : ''}`}
+                  key={module.id}
+                  href={module.href}
+                  className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {announcement.isPinned && (
-                        <Pin className="h-3 w-3 text-purple-500 flex-shrink-0" />
-                      )}
-                      <p className={`text-sm font-medium truncate ${!announcement.isRead ? 'text-purple-600' : ''}`}>
-                        {announcement.title}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {announcement.category && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs px-1 py-0"
-                          style={{
-                            backgroundColor: announcement.category.color ? `${announcement.category.color}20` : undefined,
-                            color: announcement.category.color || undefined,
-                            borderColor: announcement.category.color || undefined
-                          }}
-                        >
-                          {announcement.category.name}
-                        </Badge>
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(announcement.publishedAt || announcement.createdAt)}
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <span className={module.color}>{module.icon}</span>
+                    <span className="text-sm font-medium">{module.name}</span>
                   </div>
+                  <span className="text-xs text-muted-foreground">→</span>
                 </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Hızlı Erişim */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Hızlı Erişim</CardTitle>
-            <CardDescription>
-              Sık kullanılan modüller
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Link href="/it-support" className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors">
-              <span className="text-sm font-medium">IT Destek Merkezi</span>
-              <span className="text-xs text-muted-foreground">→</span>
-            </Link>
-            <Link href="/tasks" className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors">
-              <span className="text-sm font-medium">Planlı Görevler</span>
-              <span className="text-xs text-muted-foreground">→</span>
-            </Link>
-            <Link href="/calibration" className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors">
-              <span className="text-sm font-medium">Kalibrasyon Takibi</span>
-              <span className="text-xs text-muted-foreground">→</span>
-            </Link>
-            <Link href="/settings" className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors">
-              <span className="text-sm font-medium">Ayarlar</span>
-              <span className="text-xs text-muted-foreground">→</span>
-            </Link>
-          </CardContent>
-        </Card>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Sistem Bilgileri */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Sistem Bilgileri</CardTitle>
-            <CardDescription>
-              Teknik detaylar
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Framework:</span>
-                <span className="font-medium">Next.js 15.5.9</span>
+        {isWidgetVisible('systemInfo') && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings2 className="h-5 w-5" />
+                Sistem Bilgileri
+              </CardTitle>
+              <CardDescription>
+                Teknik detaylar
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Framework:</span>
+                  <span className="font-medium">Next.js 15.5.9</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Database:</span>
+                  <span className="font-medium">PostgreSQL 14</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Auth:</span>
+                  <span className="font-medium">Active Directory</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Server:</span>
+                  <span className="font-medium">172.16.16.33:3000</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Database:</span>
-                <span className="font-medium">PostgreSQL 14</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Auth:</span>
-                <span className="font-medium">Active Directory</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Server:</span>
-                <span className="font-medium">172.16.16.33:3000</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

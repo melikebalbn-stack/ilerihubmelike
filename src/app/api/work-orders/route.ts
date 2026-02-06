@@ -12,6 +12,14 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
+
+    // FIX #15: Pagination parametreleri
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '50')), 100)
+    const skip = (page - 1) * limit
+    const search = searchParams.get('search')
+
+    // Filtre parametreleri
     const status = searchParams.get('status')
     const machineId = searchParams.get('machineId')
     const type = searchParams.get('type')
@@ -42,40 +50,65 @@ export async function GET(request: NextRequest) {
       where.assignedTo = assignedTo
     }
 
-    const workOrders = await prisma.maintenanceWorkOrder.findMany({
-      where,
-      orderBy: [
-        { priority: 'asc' },
-        { createdAt: 'desc' },
-      ],
-      include: {
-        machine: {
-          select: {
-            id: true,
-            machineCode: true,
-            name: true,
-            location: true,
-            area: true,
-          },
-        },
-        maintenancePlan: {
-          select: {
-            id: true,
-            planCode: true,
-            name: true,
-          },
-        },
-        _count: {
-          select: {
-            downtimeRecords: true,
-            sparePartsUsed: true,
-            laborLogs: true,
-          },
-        },
-      },
-    })
+    // Arama filtresi
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { workOrderNumber: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ]
+    }
 
-    return NextResponse.json(workOrders)
+    // FIX #15: Paralel sorgu - data + count
+    const [workOrders, total] = await Promise.all([
+      prisma.maintenanceWorkOrder.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: [
+          { priority: 'asc' },
+          { createdAt: 'desc' },
+        ],
+        include: {
+          machine: {
+            select: {
+              id: true,
+              machineCode: true,
+              name: true,
+              location: true,
+              area: true,
+            },
+          },
+          maintenancePlan: {
+            select: {
+              id: true,
+              planCode: true,
+              name: true,
+            },
+          },
+          _count: {
+            select: {
+              downtimeRecords: true,
+              sparePartsUsed: true,
+              laborLogs: true,
+            },
+          },
+        },
+      }),
+      prisma.maintenanceWorkOrder.count({ where })
+    ])
+
+    return NextResponse.json({
+      data: workOrders,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      }
+    })
   } catch (error) {
     console.error('Error fetching work orders:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

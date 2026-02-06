@@ -39,6 +39,7 @@ const SUPER_ADMIN_EMAILS = [
   'hilmi.ileri@ilerigroup.com',
   'eren.ileri@ilerigroup.com',
   'koray.ileri@ilerigroup.com',
+  'melike.balaban@ilerigroup.com',
 ];
 
 // LDAP rolünü Prisma Role enum'una dönüştür
@@ -277,16 +278,13 @@ export const authOptions: NextAuthOptions = {
           // Kullanıcı rolünü belirle
           const role = determineUserRole(ldapUser);
 
-          // Debug: LDAP'tan gelen verileri logla
-          console.log('🔐 Login - LDAP Kullanıcı Bilgileri:', {
-            username: ldapUser.username,
-            displayName: ldapUser.displayName,
-            email: ldapUser.email,
-            department: ldapUser.department,
-            ou: ldapUser.ou,
-            distinguishedName: ldapUser.distinguishedName,
-            determinedRole: role,
-          });
+          // FIX #17: Production'da hassas LDAP bilgilerini loglama
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[AUTH] LDAP login:', {
+              username: ldapUser.username,
+              role: role,
+            });
+          }
 
           // Manager email'ini al
           let managerEmail: string | null = null;
@@ -301,29 +299,54 @@ export const authOptions: NextAuthOptions = {
 
           // Kullanıcıyı veritabanına kaydet veya güncelle (upsert)
           const prismaRole = mapLdapRoleToPrismaRole(role, userEmail);
-          try {
-            await prisma.user.upsert({
-              where: { email: userEmail },
-              update: {
-                name: ldapUser.displayName,
-                department: ldapUser.department,
-                jobTitle: ldapUser.title, // LDAP'tan gelen unvan
-                role: prismaRole,
-                isActive: true,
-              },
-              create: {
-                id: `ad_${ldapUser.username}`,
-                email: userEmail,
-                name: ldapUser.displayName,
-                department: ldapUser.department,
-                jobTitle: ldapUser.title, // LDAP'tan gelen unvan
-                role: prismaRole,
-                isActive: true,
-              },
+
+          // FIX #16: DB hata yönetimi - retry mekanizması ve hata izleme
+          const maxRetries = 3;
+          let dbSyncSuccess = false;
+          let lastDbError: unknown = null;
+
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              await prisma.user.upsert({
+                where: { email: userEmail },
+                update: {
+                  name: ldapUser.displayName,
+                  department: ldapUser.department,
+                  jobTitle: ldapUser.title,
+                  role: prismaRole,
+                  isActive: true,
+                },
+                create: {
+                  id: `ad_${ldapUser.username}`,
+                  email: userEmail,
+                  name: ldapUser.displayName,
+                  department: ldapUser.department,
+                  jobTitle: ldapUser.title,
+                  role: prismaRole,
+                  isActive: true,
+                },
+              });
+              dbSyncSuccess = true;
+              break;
+            } catch (dbError) {
+              lastDbError = dbError;
+              if (attempt < maxRetries) {
+                // Exponential backoff: 100ms, 200ms, 400ms
+                await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt - 1)));
+              }
+            }
+          }
+
+          if (!dbSyncSuccess) {
+            // Tüm retry'lar başarısız - detaylı log ve hata izleme
+            console.error('[AUTH] DB sync failed after retries:', {
+              email: userEmail,
+              username: ldapUser.username,
+              error: lastDbError instanceof Error ? lastDbError.message : String(lastDbError),
+              timestamp: new Date().toISOString(),
             });
-          } catch (dbError) {
-            // Veritabanı hatası login'i engellemeyecek, sadece logla
-            console.error('Kullanıcı veritabanına kaydedilemedi:', dbError);
+            // Login devam eder ama kullanıcı DB'de olmayabilir
+            // İleride bir background job ile sync edilebilir
           }
 
           // Üst yönetim için session role'ünü de SUPER_ADMIN yap

@@ -162,59 +162,64 @@ export async function POST(
         return NextResponse.json({ error: 'Geçersiz karar' }, { status: 400 })
     }
 
-    // Öneriyi güncelle
-    const updatedSuggestion = await prisma.suggestion.update({
-      where: { id },
-      data: {
-        status: newStatus,
-        currentApprovalLevel: approvalLevel,
-        assignedTo: assignTo || suggestion.assignedTo,
-        assignedToName: assignToName || suggestion.assignedToName,
-        assignedDept: assignDept || suggestion.assignedDept,
-        evaluationNotes: (decision === 'APPROVE' || decision === 'MANAGER_APPROVE' || decision === 'FORWARD')
-          ? comments
-          : suggestion.evaluationNotes,
-        rejectionReason: (decision === 'REJECT' || decision === 'MANAGER_REJECT') ? comments : suggestion.rejectionReason,
-        implementedDate: decision === 'COMPLETE' ? new Date() : suggestion.implementedDate,
-        implementedBy: decision === 'COMPLETE' ? session.user.email : suggestion.implementedBy,
-        implementedByName: decision === 'COMPLETE' ? session.user.name : suggestion.implementedByName
-      },
-      include: {
-        category: true
-      }
-    })
-
-    // Onay geçmişine ekle
-    if (['APPROVE', 'REJECT', 'RETURN', 'FORWARD', 'MANAGER_APPROVE', 'MANAGER_REJECT'].includes(decision)) {
-      let approvalDecision: 'APPROVED' | 'REJECTED' | 'RETURNED' | 'FORWARDED' = 'APPROVED'
-      if (decision === 'REJECT' || decision === 'MANAGER_REJECT') approvalDecision = 'REJECTED'
-      else if (decision === 'RETURN') approvalDecision = 'RETURNED'
-      else if (decision === 'FORWARD') approvalDecision = 'FORWARDED'
-
-      await prisma.suggestionApproval.create({
+    // FIX #23: Tüm işlemleri transaction içinde yap
+    const updatedSuggestion = await prisma.$transaction(async (tx) => {
+      // 1. Öneriyi güncelle
+      const updated = await tx.suggestion.update({
+        where: { id },
         data: {
-          suggestionId: id,
-          approvalLevel,
-          approverEmail: session.user.email,
-          approverName: session.user.name || 'Bilinmiyor',
-          approverRole: approvalLevel === 1 ? 'Departman Yöneticisi' : 'Öneri Kurulu Üyesi',
-          decision: approvalDecision,
-          comments
+          status: newStatus,
+          currentApprovalLevel: approvalLevel,
+          assignedTo: assignTo || suggestion.assignedTo,
+          assignedToName: assignToName || suggestion.assignedToName,
+          assignedDept: assignDept || suggestion.assignedDept,
+          evaluationNotes: (decision === 'APPROVE' || decision === 'MANAGER_APPROVE' || decision === 'FORWARD')
+            ? comments
+            : suggestion.evaluationNotes,
+          rejectionReason: (decision === 'REJECT' || decision === 'MANAGER_REJECT') ? comments : suggestion.rejectionReason,
+          implementedDate: decision === 'COMPLETE' ? new Date() : suggestion.implementedDate,
+          implementedBy: decision === 'COMPLETE' ? session.user.email : suggestion.implementedBy,
+          implementedByName: decision === 'COMPLETE' ? session.user.name : suggestion.implementedByName
+        },
+        include: {
+          category: true
         }
       })
-    }
 
-    // Timeline'a ekle
-    await prisma.suggestionTimeline.create({
-      data: {
-        suggestionId: id,
-        action: timelineAction,
-        description: timelineDescription,
-        performedBy: session.user.email,
-        performedByName: session.user.name || 'Bilinmiyor',
-        oldStatus: suggestion.status,
-        newStatus
+      // 2. Onay geçmişine ekle
+      if (['APPROVE', 'REJECT', 'RETURN', 'FORWARD', 'MANAGER_APPROVE', 'MANAGER_REJECT'].includes(decision)) {
+        let approvalDecision: 'APPROVED' | 'REJECTED' | 'RETURNED' | 'FORWARDED' = 'APPROVED'
+        if (decision === 'REJECT' || decision === 'MANAGER_REJECT') approvalDecision = 'REJECTED'
+        else if (decision === 'RETURN') approvalDecision = 'RETURNED'
+        else if (decision === 'FORWARD') approvalDecision = 'FORWARDED'
+
+        await tx.suggestionApproval.create({
+          data: {
+            suggestionId: id,
+            approvalLevel,
+            approverEmail: session.user.email,
+            approverName: session.user.name || 'Bilinmiyor',
+            approverRole: approvalLevel === 1 ? 'Departman Yöneticisi' : 'Öneri Kurulu Üyesi',
+            decision: approvalDecision,
+            comments
+          }
+        })
       }
+
+      // 3. Timeline'a ekle
+      await tx.suggestionTimeline.create({
+        data: {
+          suggestionId: id,
+          action: timelineAction,
+          description: timelineDescription,
+          performedBy: session.user.email,
+          performedByName: session.user.name || 'Bilinmiyor',
+          oldStatus: suggestion.status,
+          newStatus
+        }
+      })
+
+      return updated
     })
 
     return NextResponse.json(updatedSuggestion)

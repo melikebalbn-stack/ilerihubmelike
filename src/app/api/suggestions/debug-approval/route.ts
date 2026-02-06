@@ -4,9 +4,14 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getAllLDAPUsers } from '@/lib/ldap'
 
-// GET - Debug approval info (SADECE ADMIN)
+// GET - Debug approval info (SADECE ADMIN, SADECE DEVELOPMENT)
 export async function GET(request: NextRequest) {
   try {
+    // FIX #10: Production'da bu endpoint tamamen kapalı
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

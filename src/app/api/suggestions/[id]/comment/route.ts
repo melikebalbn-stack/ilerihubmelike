@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isAdmin } from '@/lib/auth-utils'
 
 // GET - Yorumları listele
 export async function GET(
@@ -16,12 +17,17 @@ export async function GET(
 
     const { id } = await params
 
-    // TODO: Yönetici kontrolü - internal yorumlar için
+    // FIX #18: Internal yorum filtrelemesi - yöneticiler internal yorumları da görebilir
+    const userEmail = String(session.user.email).toLowerCase()
+    const userRole = session.user.role || 'EMPLOYEE'
+    const userIsAdmin = isAdmin(userEmail, userRole)
+
+    const commentFilter = userIsAdmin
+      ? { suggestionId: id } // Admin tüm yorumları görür
+      : { suggestionId: id, isInternal: false } // Normal kullanıcılar sadece public yorumları görür
+
     const comments = await prisma.suggestionComment.findMany({
-      where: {
-        suggestionId: id,
-        isInternal: false // Şimdilik sadece public yorumlar
-      },
+      where: commentFilter,
       orderBy: { createdAt: 'desc' }
     })
 

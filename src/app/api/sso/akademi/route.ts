@@ -4,7 +4,8 @@ import { authOptions } from '@/lib/auth'
 import crypto from 'crypto'
 
 // Shared secret for SSO token validation (must match Akademi)
-const SSO_SECRET = process.env.AKADEMI_SSO_SECRET || 'ileri-sso-secret-2024-hub-akademi'
+// FIX #1: Hardcoded fallback kaldırıldı - secret sadece env'den gelir
+const SSO_SECRET = process.env.AKADEMI_SSO_SECRET
 // Internal IP kullanıyoruz - Cloudflare bypass ve SSL sorunu önlemek için
 const AKADEMI_INTERNAL_URL = 'https://172.16.16.30'
 // Kullanıcının browser'ında açılacak URL (Cloudflare üzerinden)
@@ -13,6 +14,15 @@ const AKADEMI_PUBLIC_URL = 'https://akademi.ilerigroup.com'
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+
+    // FIX #1: Environment variable kontrolü
+    if (!SSO_SECRET) {
+      console.error('[SSO] AKADEMI_SSO_SECRET environment variable is not set')
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      )
+    }
 
     if (!session?.user?.email) {
       return NextResponse.redirect(new URL('/login', request.url))

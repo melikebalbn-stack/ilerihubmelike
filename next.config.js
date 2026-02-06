@@ -99,7 +99,7 @@ const nextConfig = {
   poweredByHeader: false,
   experimental: {
     serverActions: {
-      allowedOrigins: ['172.16.16.33:3000', 'localhost:3000'],
+      allowedOrigins: ['172.16.16.33:3000', 'localhost:3000', 'hub.ilerigroup.com'],
       bodySizeLimit: '50mb',
     },
   },
@@ -137,9 +137,9 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Next.js için gerekli
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "font-src 'self' https://fonts.gstatic.com",
+              "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: blob: https:",
-              "connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com",
+              "connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com wss: ws:",
               "frame-ancestors 'self'",
               "form-action 'self'",
               "base-uri 'self'",

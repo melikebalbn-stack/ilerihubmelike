@@ -14,10 +14,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ArrowLeft, Plus, Trash2, Save, Loader2, Mail, Send } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Save, Loader2, Mail, Send, Paperclip, Download, X } from "lucide-react"
 import Link from "next/link"
 import { ParticipantInput, ExternalParticipantInput } from "@/components/forms/ParticipantInput"
 import { RecipientInput, Recipient } from "@/components/forms/RecipientInput"
+import { FileUploadDropzone, type UploadedFile } from "@/components/ui/file-upload-dropzone"
+
+interface Attachment {
+  id: string
+  fileName: string
+  filePath: string
+  fileSize: number
+  mimeType: string
+}
 
 interface Participant {
   id?: string
@@ -76,6 +85,11 @@ export default function EditVisitReportPage() {
     { name: "", email: "" }
   ])
 
+  // Dosya ekleri
+  const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([])
+  const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<string[]>([])
+  const [newFiles, setNewFiles] = useState<UploadedFile[]>([])
+
   useEffect(() => {
     fetchReport()
   }, [id])
@@ -120,6 +134,17 @@ export default function EditVisitReportPage() {
           ...a,
           dueDate: a.dueDate?.split('T')[0] || ""
         })) : [{ description: "", responsible: "", dueDate: "", status: "PENDING" }])
+
+        // Ekleri yukle
+        try {
+          const attRes = await fetch(`/api/forms/visit-reports/${id}/attachments`)
+          if (attRes.ok) {
+            const attData = await attRes.json()
+            setExistingAttachments(attData)
+          }
+        } catch {
+          console.error("Ekler yuklenemedi")
+        }
       } else {
         router.push("/forms/visit-reports")
       }
@@ -171,6 +196,21 @@ export default function EditVisitReportPage() {
     const updated = [...actionItems]
     updated[index] = { ...updated[index], [field]: value }
     setActionItems(updated)
+  }
+
+  function removeExistingAttachment(attachmentId: string) {
+    setDeletedAttachmentIds(prev => [...prev, attachmentId])
+    setExistingAttachments(prev => prev.filter(a => a.id !== attachmentId))
+  }
+
+  function isImageMimeType(mimeType: string) {
+    return mimeType.startsWith("image/")
+  }
+
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   function addRecipient() {
@@ -241,6 +281,30 @@ export default function EditVisitReportPage() {
       })
 
       if (res.ok) {
+        // Silinen ekleri kaldir
+        for (const attId of deletedAttachmentIds) {
+          await fetch(`/api/forms/visit-reports/${id}/attachments?attachmentId=${attId}`, {
+            method: 'DELETE',
+          })
+        }
+
+        // Yeni dosyalari yukle
+        if (newFiles.length > 0) {
+          const formDataUpload = new FormData()
+          for (const f of newFiles) {
+            if (f.file) formDataUpload.append('files', f.file)
+          }
+          const uploadRes = await fetch('/api/upload', { method: 'POST', body: formDataUpload })
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json()
+            await fetch(`/api/forms/visit-reports/${id}/attachments`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ files: uploadData.files }),
+            })
+          }
+        }
+
         if (finalStatus === "SENT") {
           alert("Rapor basariyla gonderildi!")
         }
@@ -529,6 +593,71 @@ export default function EditVisitReportPage() {
               value={nextSteps}
               onChange={(e) => setNextSteps(e.target.value)}
               rows={3}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Dosya / Fotograf Ekleri */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Paperclip className="h-5 w-5" />
+            Dosya / Fotograf
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Mevcut ekler */}
+          {existingAttachments.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Mevcut Dosyalar</Label>
+              <div className="grid gap-2">
+                {existingAttachments.map((att) => (
+                  <div key={att.id} className="flex items-center gap-3 p-2 border rounded-lg bg-gray-50">
+                    {isImageMimeType(att.mimeType) ? (
+                      <img
+                        src={att.filePath}
+                        alt={att.fileName}
+                        className="h-10 w-10 object-cover rounded"
+                      />
+                    ) : (
+                      <div className="h-10 w-10 bg-gray-200 rounded flex items-center justify-center">
+                        <Paperclip className="h-5 w-5 text-gray-500" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{att.fileName}</p>
+                      <p className="text-xs text-muted-foreground">{formatFileSize(att.fileSize)}</p>
+                    </div>
+                    <a href={att.filePath} target="_blank" rel="noopener noreferrer">
+                      <Button variant="ghost" size="icon" type="button">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      type="button"
+                      onClick={() => removeExistingAttachment(att.id)}
+                    >
+                      <X className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Yeni dosya ekleme */}
+          <div className="space-y-2">
+            {existingAttachments.length > 0 && (
+              <Label className="text-sm font-medium">Yeni Dosya Ekle</Label>
+            )}
+            <FileUploadDropzone
+              files={newFiles}
+              onFilesChange={setNewFiles}
+              maxFiles={10}
+              maxSizeMB={10}
             />
           </div>
         </CardContent>

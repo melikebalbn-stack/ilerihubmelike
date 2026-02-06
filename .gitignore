@@ -19,3 +19,4 @@ public/uploads/*
 !public/uploads/.gitkeep
 .claude/
 .claude/
+src/generated/

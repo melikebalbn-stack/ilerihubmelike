@@ -18,6 +18,4 @@ Thumbs.db
 public/uploads/*
 !public/uploads/.gitkeep
 .claude/
-.claude/
-src/generated/
 src/generated/

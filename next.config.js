@@ -1,3 +1,5 @@
+const { withSentryConfig } = require('@sentry/nextjs')
+
 const withPWA = require('@ducanh2912/next-pwa').default({
   dest: 'public',
   disable: process.env.NODE_ENV === 'development',
@@ -152,4 +154,23 @@ const nextConfig = {
   },
 }
 
-module.exports = withPWA(nextConfig)
+// Sentry konfigürasyonu
+const sentryWebpackPluginOptions = {
+  // Source maps yükleme için token (CI'da set edilmeli)
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Organizasyon ve proje slug'ları
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  // Source maps'leri gizle
+  hideSourceMaps: true,
+
+  // Telemetry'yi devre dışı bırak
+  telemetry: false,
+
+  // Build sırasında hata vermesin (token yoksa)
+  silent: !process.env.SENTRY_AUTH_TOKEN,
+}
+
+module.exports = withSentryConfig(withPWA(nextConfig), sentryWebpackPluginOptions)

@@ -7,7 +7,7 @@ interface Notification {
   id: string
   title: string
   message: string
-  type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR'
+  type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR' | 'REMINDER'
   isRead: boolean
   link?: string
   createdAt: string
@@ -95,7 +95,7 @@ export function useNotifications() {
   const markAsRead = useCallback(async (id: string) => {
     try {
       const response = await fetch(`/api/notifications/${id}/read`, {
-        method: 'POST',
+        method: 'PATCH',
       })
 
       if (response.ok) {
@@ -112,7 +112,7 @@ export function useNotifications() {
   // Tümünü okundu olarak işaretle
   const markAllAsRead = useCallback(async () => {
     try {
-      const response = await fetch('/api/notifications/mark-all-read', {
+      const response = await fetch('/api/notifications/read-all', {
         method: 'POST',
       })
 

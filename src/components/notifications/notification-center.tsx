@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useNotifications } from '@/hooks/use-notifications'
 import { Bell, Check, CheckCheck, Info, AlertTriangle, AlertCircle, CheckCircle, ExternalLink, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ const typeIcons = {
   SUCCESS: CheckCircle,
   WARNING: AlertTriangle,
   ERROR: AlertCircle,
+  REMINDER: Bell,
 }
 
 const typeColors = {
@@ -26,6 +28,7 @@ const typeColors = {
   SUCCESS: 'text-green-500',
   WARNING: 'text-yellow-500',
   ERROR: 'text-red-500',
+  REMINDER: 'text-purple-500',
 }
 
 export function NotificationCenter() {
@@ -155,8 +158,8 @@ export function NotificationCenter() {
           )}
         </ScrollArea>
 
-        {notifications.length > 0 && (
-          <div className="border-t p-2">
+        <div className="border-t p-2 space-y-1">
+          {notifications.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
@@ -165,8 +168,15 @@ export function NotificationCenter() {
             >
               Daha Fazla Yükle
             </Button>
-          </div>
-        )}
+          )}
+          <Link
+            href="/notifications"
+            className="block w-full text-center text-xs text-primary hover:underline py-1"
+            onClick={() => setOpen(false)}
+          >
+            Tüm bildirimleri gör
+          </Link>
+        </div>
       </PopoverContent>
     </Popover>
   )

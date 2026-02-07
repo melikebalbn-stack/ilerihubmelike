@@ -136,6 +136,9 @@ model User {
   // FAQ Relations
   faqsCreated             FAQ[] @relation("FAQAuthor")
 
+  // Calendar Relations
+  calendarEvents          CalendarEvent[] @relation("EventCreator")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -187,6 +190,9 @@ model Department {
   qdmsChangeRequests        QdmsChangeRequest[]
   qdmsCustomerComplaints    QdmsCustomerComplaint[]
 
+  // Calendar Relations
+  calendarEvents            CalendarEvent[]
+
   @@index([isActive, sortOrder])
 }
 
@@ -207,6 +213,7 @@ enum NotificationType {
   SUCCESS
   WARNING
   ERROR
+  REMINDER
 }
 
 // Push Notification Subscriptions
@@ -7590,4 +7597,70 @@ model FAQFeedback {
   @@unique([faqId, userId])
   @@unique([faqId, ipHash])
   @@index([faqId])
+}
+
+// ==========================================
+// Takvim Modülü
+// ==========================================
+
+// Takvim Etkinlik Tipleri
+enum CalendarEventType {
+  MEETING           // Toplantı
+  TRAINING          // Eğitim
+  CALIBRATION       // Kalibrasyon
+  FIRE_INSPECTION   // Yangın Kontrolü
+  LEAVE             // İzin
+  HOLIDAY           // Tatil
+  REMINDER          // Hatırlatma
+  OTHER             // Diğer
+}
+
+// Takvim Etkinliği
+model CalendarEvent {
+  id              String            @id @default(cuid())
+  title           String
+  description     String?           @db.Text
+  
+  // Tarih/Saat
+  startDate       DateTime
+  endDate         DateTime
+  allDay          Boolean           @default(false)
+  
+  // Tip ve Görünüm
+  type            CalendarEventType @default(OTHER)
+  color           String?           // Hex renk kodu (#3b82f6)
+  
+  // Konum
+  location        String?
+  
+  // Oluşturan
+  createdById     String
+  createdBy       User              @relation("EventCreator", fields: [createdById], references: [id])
+  
+  // Departman (opsiyonel)
+  departmentId    String?
+  department      Department?       @relation(fields: [departmentId], references: [id])
+  
+  // Tekrarlama
+  isRecurring     Boolean           @default(false)
+  recurrenceRule  String?           // iCal RRULE formatı (FREQ=WEEKLY;BYDAY=MO,WE,FR)
+  
+  // Hatırlatma (dakika önce)
+  remindBefore    Int?              // 15, 30, 60 dakika gibi
+  
+  // Görünürlük
+  isPublic        Boolean           @default(true)  // false ise sadece oluşturan görür
+  
+  // Kaynak referansı (opsiyonel - kalibrasyon, yangın kontrolü vb. için)
+  sourceType      String?           // "calibration", "fire_inspection", "leave" vb.
+  sourceId        String?           // İlgili kaydın ID'si
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([startDate, endDate])
+  @@index([createdById])
+  @@index([departmentId])
+  @@index([type])
+  @@index([isPublic])
 }

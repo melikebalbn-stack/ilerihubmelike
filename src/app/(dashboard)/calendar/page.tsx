@@ -1,382 +1,335 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useState, useEffect, useCallback } from 'react'
+import { useSession } from 'next-auth/react'
+import { toast } from 'sonner'
+import { Calendar, Plus, Filter, Loader2, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
-  Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
-  Video,
-  MapPin,
-  Clock,
-  Users,
-  ExternalLink,
-  RefreshCw,
-  Loader2,
-} from "lucide-react"
-import { useSession } from "next-auth/react"
+  CalendarView,
+  EventForm,
+  EventDetail,
+  CalendarFiltersComponent,
+} from '@/components/calendar'
+import type { CalendarEvent, CalendarFilters } from '@/components/calendar'
 
-interface CalendarEvent {
-  id: string
-  subject: string
-  startTime: string
-  endTime: string
-  startDate: string
-  location: string | null
-  isOnline: boolean
-  onlineMeetingUrl: string | null
-  organizer: string | null
-  isAllDay: boolean
-}
-
-interface DayEvents {
-  date: string
-  dayName: string
-  dayNumber: number
-  events: CalendarEvent[]
-  isToday: boolean
-}
+// Admin rolleri
+const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN', 'HR_MANAGER']
 
 export default function CalendarPage() {
   const { data: session } = useSession()
+
+  // State
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"today" | "week">("week")
-  const [currentWeekOffset, setCurrentWeekOffset] = useState(0)
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
+  const [showEventForm, setShowEventForm] = useState(false)
+  const [showEventDetail, setShowEventDetail] = useState(false)
+  const [filters, setFilters] = useState<CalendarFilters>({
+    types: undefined,
+    departmentId: null,
+  })
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
+    // Varsayilan olarak bu ayin baslasindan gelecek ay sonuna kadar
+    const today = new Date()
+    const start = new Date(today.getFullYear(), today.getMonth(), 1)
+    const end = new Date(today.getFullYear(), today.getMonth() + 2, 0)
+    return { start, end }
+  })
+  const [initialDate, setInitialDate] = useState<Date | null>(null)
+  const [initialAllDay, setInitialAllDay] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
-  const fetchEvents = async (range: string) => {
+  // Kullanici bilgileri
+  const currentUser = session?.user
+  const isAdmin = currentUser?.role && ADMIN_ROLES.includes(currentUser.role)
+
+  // Etkinlikleri yukle
+  const fetchEvents = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
-      const response = await fetch(`/api/calendar/events?range=${range}`)
-      if (response.ok) {
-        const data = await response.json()
-        if (data.error) {
-          setError(data.message || "Takvim yuklenemedi")
-          setEvents([])
-        } else {
-          setEvents(data.events || [])
-        }
+      const params = new URLSearchParams({
+        start: dateRange.start.toISOString(),
+        end: dateRange.end.toISOString(),
+      })
+
+      const res = await fetch(`/api/calendar/integrated?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        // API'den gelen integrated events'i CalendarEvent formatina donustur
+        const mappedEvents: CalendarEvent[] = (data.data?.events || []).map((event: any) => ({
+          id: event.extendedProps?.sourceId || event.id,
+          title: event.title,
+          description: event.extendedProps?.description || null,
+          startDate: event.start,
+          endDate: event.end,
+          allDay: event.allDay,
+          type: event.type,
+          color: event.color,
+          location: event.extendedProps?.location || null,
+          departmentId: event.extendedProps?.departmentId || null,
+          department: event.extendedProps?.departmentId
+            ? { id: event.extendedProps.departmentId, name: event.extendedProps.departmentName || '' }
+            : null,
+          createdBy: event.extendedProps?.createdByName
+            ? { id: '', name: event.extendedProps.createdByName, email: '' }
+            : null,
+          isPublic: true,
+          isRecurring: false,
+          remindBefore: null,
+          // sourceType'i sakla (edit/delete icin onemli)
+          _sourceType: event.extendedProps?.sourceType,
+        }))
+        setEvents(mappedEvents)
       } else {
-        setError("Takvim verileri alinamadi")
+        toast.error('Etkinlikler yuklenemedi')
       }
-    } catch (err) {
-      setError("Baglanti hatasi")
+    } catch (error) {
+      console.error('Etkinlikler yuklenirken hata:', error)
+      toast.error('Etkinlikler yuklenemedi')
     } finally {
       setLoading(false)
     }
-  }
+  }, [dateRange])
 
   useEffect(() => {
-    if (session?.user?.email) {
-      fetchEvents(activeTab)
-    } else {
-      setLoading(false)
+    if (session?.user) {
+      fetchEvents()
     }
-  }, [session?.user?.email, activeTab])
+  }, [session?.user, fetchEvents])
 
-  // Haftanin gunlerini olustur
-  const getWeekDays = (): DayEvents[] => {
-    const today = new Date()
-    const startOfWeek = new Date(today)
-    startOfWeek.setDate(today.getDate() - today.getDay() + 1 + currentWeekOffset * 7) // Pazartesi
+  // Tarih tiklama - yeni etkinlik olustur
+  const handleDateClick = (date: Date, allDay: boolean) => {
+    setInitialDate(date)
+    setInitialAllDay(allDay)
+    setEditingEvent(null)
+    setShowEventForm(true)
+  }
 
-    const days: DayEvents[] = []
-    const dayNames = ["Pazartesi", "Sali", "Carsamba", "Persembe", "Cuma", "Cumartesi", "Pazar"]
+  // Etkinlik tiklama - detay goster
+  const handleEventClick = (event: CalendarEvent) => {
+    // Sadece calendar_event tipindeki etkinlikler duzenlenebilir
+    const eventWithMeta = event as CalendarEvent & { _sourceType?: string }
+    if (eventWithMeta._sourceType === 'calibration') {
+      // Kalibrasyon etkinlikleri icin sadece bilgi goster
+      toast.info('Kalibrasyon etkinlikleri kalibrasyon modulunden yonetilir')
+      return
+    }
+    setSelectedEvent(event)
+    setShowEventDetail(true)
+  }
 
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(startOfWeek)
-      date.setDate(startOfWeek.getDate() + i)
-      const dateStr = date.toLocaleDateString("tr-TR")
-      const isToday = date.toDateString() === today.toDateString()
-
-      const dayEvents = events.filter(e => e.startDate === dateStr)
-
-      days.push({
-        date: dateStr,
-        dayName: dayNames[i],
-        dayNumber: date.getDate(),
-        events: dayEvents,
-        isToday,
+  // Etkinlik surukle-birak
+  const handleEventDrop = async (eventId: string, start: Date, end: Date, allDay: boolean) => {
+    try {
+      const res = await fetch(`/api/calendar/local-events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          allDay,
+        }),
       })
-    }
 
-    return days
+      if (res.ok) {
+        toast.success('Etkinlik tarihi guncellendi')
+        fetchEvents()
+      } else {
+        const data = await res.json()
+        toast.error(data.message || 'Etkinlik guncellenemedi')
+        // Degisikligi geri al
+        fetchEvents()
+      }
+    } catch (error) {
+      console.error('Etkinlik guncellenirken hata:', error)
+      toast.error('Etkinlik guncellenemedi')
+      fetchEvents()
+    }
   }
 
-  const weekDays = getWeekDays()
-
-  // Hafta basligi
-  const getWeekTitle = () => {
-    const today = new Date()
-    const startOfWeek = new Date(today)
-    startOfWeek.setDate(today.getDate() - today.getDay() + 1 + currentWeekOffset * 7)
-    const endOfWeek = new Date(startOfWeek)
-    endOfWeek.setDate(startOfWeek.getDate() + 6)
-
-    const startMonth = startOfWeek.toLocaleDateString("tr-TR", { month: "short" })
-    const endMonth = endOfWeek.toLocaleDateString("tr-TR", { month: "short" })
-    const year = endOfWeek.getFullYear()
-
-    if (startMonth === endMonth) {
-      return `${startOfWeek.getDate()} - ${endOfWeek.getDate()} ${startMonth} ${year}`
-    }
-    return `${startOfWeek.getDate()} ${startMonth} - ${endOfWeek.getDate()} ${endMonth} ${year}`
+  // Etkinlik duzenleme
+  const handleEdit = (event: CalendarEvent) => {
+    setEditingEvent(event)
+    setInitialDate(null)
+    setShowEventDetail(false)
+    setShowEventForm(true)
   }
 
-  // Bugunun toplantilari
-  const todayEvents = events.filter(e => {
-    const today = new Date().toLocaleDateString("tr-TR")
-    return e.startDate === today
+  // Etkinlik silme
+  const handleDelete = async (eventId: string) => {
+    try {
+      const res = await fetch(`/api/calendar/local-events/${eventId}`, {
+        method: 'DELETE',
+      })
+
+      if (res.ok || res.status === 204) {
+        toast.success('Etkinlik silindi')
+        setShowEventDetail(false)
+        setSelectedEvent(null)
+        fetchEvents()
+      } else {
+        const data = await res.json()
+        toast.error(data.message || 'Etkinlik silinemedi')
+      }
+    } catch (error) {
+      console.error('Etkinlik silinirken hata:', error)
+      toast.error('Etkinlik silinemedi')
+    }
+  }
+
+  // Duzenleme yetkisi kontrolu
+  const canEditEvent = (event: CalendarEvent): boolean => {
+    if (!currentUser) return false
+    if (isAdmin) return true
+    // Oluşturan kullanici kontrol et
+    if (event.createdBy?.email === currentUser.email) return true
+    return false
+  }
+
+  // Form kapatildiginda
+  const handleFormClose = (open: boolean) => {
+    setShowEventForm(open)
+    if (!open) {
+      setEditingEvent(null)
+      setInitialDate(null)
+    }
+  }
+
+  // Form basarili oldugunda
+  const handleFormSuccess = () => {
+    fetchEvents()
+  }
+
+  // Filtrelenmis etkinlikler
+  const filteredEvents = events.filter((event) => {
+    // Tip filtresi
+    if (filters.types && filters.types.length > 0) {
+      if (!filters.types.includes(event.type)) return false
+    }
+    // Departman filtresi
+    if (filters.departmentId) {
+      if (event.departmentId !== filters.departmentId) return false
+    }
+    return true
   })
+
+  // Aktif filtre sayisi
+  const activeFilterCount =
+    (filters.types?.length !== undefined && filters.types.length < 8 ? 1 : 0) +
+    (filters.departmentId ? 1 : 0)
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <CalendarIcon className="h-8 w-8 text-indigo-500" />
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Calendar className="h-7 w-7 sm:h-8 sm:w-8 text-indigo-500" />
             Takvim
           </h1>
-          <p className="text-muted-foreground">
-            Outlook takviminizdeki toplantilariniz
+          <p className="text-muted-foreground text-sm sm:text-base">
+            Etkinliklerinizi planlayın ve yonetin
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchEvents(activeTab)}
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
-          )}
-          Yenile
+        <Button onClick={() => {
+          setEditingEvent(null)
+          setInitialDate(null)
+          setShowEventForm(true)
+        }}>
+          <Plus className="h-4 w-4 mr-2" />
+          Yeni Etkinlik
         </Button>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "today" | "week")}>
-        <div className="flex items-center justify-between">
-          <TabsList>
-            <TabsTrigger value="today">Bugun</TabsTrigger>
-            <TabsTrigger value="week">Hafta</TabsTrigger>
-          </TabsList>
-
-          {activeTab === "week" && (
-            <div className="flex items-center gap-2">
+      {/* Main Content */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Mobile Filters Toggle */}
+        <div className="lg:hidden">
+          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <CollapsibleTrigger asChild>
               <Button
                 variant="outline"
-                size="icon"
-                onClick={() => setCurrentWeekOffset(prev => prev - 1)}
+                className="w-full justify-between"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <span className="flex items-center gap-2">
+                  <Filter className="h-4 w-4" />
+                  Filtreler
+                  {activeFilterCount > 0 && (
+                    <span className="bg-primary text-primary-foreground text-xs rounded-full px-2 py-0.5">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </span>
+                {filtersOpen ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
               </Button>
-              <span className="text-sm font-medium min-w-[180px] text-center">
-                {getWeekTitle()}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setCurrentWeekOffset(prev => prev + 1)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              {currentWeekOffset !== 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentWeekOffset(0)}
-                >
-                  Bugune Don
-                </Button>
-              )}
-            </div>
-          )}
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-4">
+              <CalendarFiltersComponent
+                filters={filters}
+                onChange={setFilters}
+              />
+            </CollapsibleContent>
+          </Collapsible>
         </div>
 
-        {/* Bugun Tab */}
-        <TabsContent value="today" className="mt-6">
-          {error ? (
+        {/* Desktop Filters Sidebar */}
+        <div className="hidden lg:block w-72 shrink-0">
+          <div className="sticky top-6">
+            <CalendarFiltersComponent
+              filters={filters}
+              onChange={setFilters}
+            />
+          </div>
+        </div>
+
+        {/* Calendar View */}
+        <div className="flex-1 min-w-0">
+          {loading ? (
             <Card>
-              <CardContent className="py-12 text-center">
-                <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <p className="text-muted-foreground">{error}</p>
-              </CardContent>
-            </Card>
-          ) : loading ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Loader2 className="h-8 w-8 mx-auto mb-4 animate-spin text-muted-foreground" />
-                <p className="text-muted-foreground">Yukluyor...</p>
-              </CardContent>
-            </Card>
-          ) : todayEvents.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <p className="text-muted-foreground">Bugun toplantiniz yok</p>
+              <CardContent className="py-12 flex flex-col items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">Etkinlikler yukleniyor...</p>
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
-              {todayEvents.map((event) => (
-                <EventCard key={event.id} event={event} />
-              ))}
-            </div>
+            <CalendarView
+              events={filteredEvents}
+              onEventClick={handleEventClick}
+              onDateClick={handleDateClick}
+              onEventDrop={handleEventDrop}
+              filters={filters}
+            />
           )}
-        </TabsContent>
+        </div>
+      </div>
 
-        {/* Hafta Tab */}
-        <TabsContent value="week" className="mt-6">
-          {error ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <p className="text-muted-foreground">{error}</p>
-              </CardContent>
-            </Card>
-          ) : loading ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Loader2 className="h-8 w-8 mx-auto mb-4 animate-spin text-muted-foreground" />
-                <p className="text-muted-foreground">Yukluyor...</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-7 gap-4">
-              {weekDays.map((day) => (
-                <div
-                  key={day.date}
-                  className={`min-h-[400px] rounded-lg border p-3 ${
-                    day.isToday
-                      ? "border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20"
-                      : "bg-card"
-                  }`}
-                >
-                  {/* Gun Basligi */}
-                  <div className="text-center mb-3 pb-2 border-b">
-                    <p className="text-xs text-muted-foreground">{day.dayName}</p>
-                    <p
-                      className={`text-xl font-bold ${
-                        day.isToday ? "text-indigo-600" : ""
-                      }`}
-                    >
-                      {day.dayNumber}
-                    </p>
-                  </div>
+      {/* Event Form Dialog */}
+      <EventForm
+        open={showEventForm}
+        onOpenChange={handleFormClose}
+        event={editingEvent}
+        onSuccess={handleFormSuccess}
+        initialDate={initialDate}
+        initialAllDay={initialAllDay}
+      />
 
-                  {/* Etkinlikler */}
-                  <div className="space-y-2">
-                    {day.events.length === 0 ? (
-                      <p className="text-xs text-center text-muted-foreground py-4">
-                        Toplanti yok
-                      </p>
-                    ) : (
-                      day.events.map((event) => (
-                        <div
-                          key={event.id}
-                          className={`p-2 rounded text-xs ${
-                            event.isOnline
-                              ? "bg-blue-100 dark:bg-blue-950/40 border-l-2 border-blue-500"
-                              : "bg-gray-100 dark:bg-gray-800 border-l-2 border-gray-400"
-                          }`}
-                        >
-                          <p className="font-medium truncate">{event.subject}</p>
-                          <p className="text-muted-foreground flex items-center gap-1 mt-1">
-                            <Clock className="h-3 w-3" />
-                            {event.startTime} - {event.endTime}
-                          </p>
-                          {event.isOnline && event.onlineMeetingUrl && (
-                            <a
-                              href={event.onlineMeetingUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:underline flex items-center gap-1 mt-1"
-                            >
-                              <Video className="h-3 w-3" />
-                              Katil
-                            </a>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+      {/* Event Detail Dialog */}
+      <EventDetail
+        event={selectedEvent}
+        open={showEventDetail}
+        onOpenChange={setShowEventDetail}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        canEdit={selectedEvent ? canEditEvent(selectedEvent) : false}
+      />
     </div>
-  )
-}
-
-// Event Card Component
-function EventCard({ event }: { event: CalendarEvent }) {
-  return (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardContent className="p-4">
-        <div className="flex items-start gap-4">
-          {/* Saat */}
-          <div className="text-center min-w-[70px]">
-            <p className="text-lg font-bold text-indigo-600">{event.startTime}</p>
-            <p className="text-sm text-muted-foreground">{event.endTime}</p>
-          </div>
-
-          {/* Detaylar */}
-          <div className="flex-1">
-            <h3 className="font-semibold text-lg">{event.subject}</h3>
-
-            <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
-              {event.isOnline ? (
-                <span className="flex items-center gap-1">
-                  <Video className="h-4 w-4 text-blue-500" />
-                  Online Toplanti
-                </span>
-              ) : event.location ? (
-                <span className="flex items-center gap-1">
-                  <MapPin className="h-4 w-4" />
-                  {event.location}
-                </span>
-              ) : null}
-
-              {event.organizer && (
-                <span className="flex items-center gap-1">
-                  <Users className="h-4 w-4" />
-                  {event.organizer}
-                </span>
-              )}
-            </div>
-
-            {/* Teams Linki */}
-            {event.isOnline && event.onlineMeetingUrl && (
-              <a
-                href={event.onlineMeetingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-              >
-                <Video className="h-4 w-4" />
-                Teams Toplantisina Katil
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
-
-          {/* Badge */}
-          {event.isAllDay && (
-            <Badge variant="secondary">Tum Gun</Badge>
-          )}
-        </div>
-      </CardContent>
-    </Card>
   )
 }

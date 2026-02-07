@@ -65,6 +65,7 @@ const mainMenuItems = [
   { name: "Öneri Sistemi", icon: Lightbulb, href: "/suggestions", roles: ["*"] },
   { name: "Maliyet Analizi", icon: Calculator, href: "/cost-analysis", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Planlı Görevler", icon: CalendarCheck, href: "/tasks", roles: ["*"] },
+  { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] },
   // { name: "Eğitimlerim", icon: GraduationCap, href: "/my-trainings", roles: ["*"] }, // BGYS ile ilgili - şimdilik gizli
   { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
 ]

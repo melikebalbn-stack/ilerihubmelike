@@ -5,10 +5,10 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiUnauthorized, apiNotFound } from '@/lib/api-response'
 
 /**
- * PATCH: Tek bir bildirimi okundu olarak işaretle
+ * DELETE: Tek bir bildirimi sil
  * Bildirimin kullanıcıya ait olduğunu doğrular
  */
-export async function PATCH(
+export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -41,16 +41,18 @@ export async function PATCH(
       return apiNotFound('Bildirim bulunamadı veya bu bildirime erişim yetkiniz yok')
     }
 
-    // Bildirimi okundu olarak işaretle
-    const updatedNotification = await prisma.notification.update({
+    // Bildirimi sil
+    await prisma.notification.delete({
       where: { id },
-      data: { isRead: true },
     })
 
-    return apiSuccess(updatedNotification)
+    return apiSuccess({
+      success: true,
+      message: 'Bildirim başarıyla silindi',
+    })
   } catch (error) {
-    return apiError('Bildirim okundu olarak işaretlenirken bir hata oluştu', 500, {
-      endpoint: 'PATCH /api/notifications/[id]/read',
+    return apiError('Bildirim silinirken bir hata oluştu', 500, {
+      endpoint: 'DELETE /api/notifications/[id]',
       error,
     })
   }

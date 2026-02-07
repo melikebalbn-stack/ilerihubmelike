@@ -49,6 +49,7 @@ import {
   Server,
   Calendar,
   Calculator,
+  HelpCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -60,6 +61,7 @@ const mainMenuItems = [
   { name: "Duyurular", icon: Megaphone, href: "/announcements", roles: ["*"] },
   { name: "Çalışan Rehberi", icon: Users, href: "/employees", roles: ["*"] },
   { name: "Organizasyon", icon: Network, href: "/organization", roles: ["*"] },
+  { name: "SSS", icon: HelpCircle, href: "/faq", roles: ["*"] },
   { name: "Öneri Sistemi", icon: Lightbulb, href: "/suggestions", roles: ["*"] },
   { name: "Maliyet Analizi", icon: Calculator, href: "/cost-analysis", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Planlı Görevler", icon: CalendarCheck, href: "/tasks", roles: ["*"] },

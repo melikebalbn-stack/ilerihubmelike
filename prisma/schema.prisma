@@ -133,6 +133,9 @@ model User {
   // Project Plan Relations
   projectPlansCreated     ProjectPlan[] @relation("ProjectPlanCreator")
 
+  // FAQ Relations
+  faqsCreated             FAQ[] @relation("FAQAuthor")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -7522,4 +7525,69 @@ model CostAnalysisVersion {
 
   @@index([costAnalysisId])
   @@index([createdAt])
+}
+
+// ==================== SSS / Bilgi Bankası ====================
+
+// SSS Kategorisi
+model FAQCategory {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  icon        String?  // Lucide icon adı
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  faqs        FAQ[]
+
+  @@index([isActive, sortOrder])
+}
+
+// Sıkça Sorulan Sorular
+model FAQ {
+  id              String   @id @default(cuid())
+  question        String   @db.Text
+  answer          String   @db.Text // Rich text (HTML)
+  tags            String[] @default([])
+  sortOrder       Int      @default(0)
+  isPublished     Boolean  @default(false)
+  viewCount       Int      @default(0)
+  helpfulCount    Int      @default(0)
+  notHelpfulCount Int      @default(0)
+
+  categoryId      String
+  category        FAQCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  authorId        String
+  author          User @relation("FAQAuthor", fields: [authorId], references: [id])
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  feedbacks       FAQFeedback[]
+
+  @@index([categoryId, isPublished, sortOrder])
+  @@index([isPublished, viewCount])
+  @@index([isPublished, helpfulCount])
+}
+
+// SSS Geri Bildirim (Kullanıcı başına tek oy)
+model FAQFeedback {
+  id        String   @id @default(cuid())
+  faqId     String
+  faq       FAQ      @relation(fields: [faqId], references: [id], onDelete: Cascade)
+
+  userId    String?  // Anonim kullanıcılar için null
+  ipHash    String?  // Anonim kullanıcılar için IP hash
+  helpful   Boolean  // true = faydalı, false = faydalı değil
+
+  createdAt DateTime @default(now())
+
+  @@unique([faqId, userId])
+  @@unique([faqId, ipHash])
+  @@index([faqId])
 }

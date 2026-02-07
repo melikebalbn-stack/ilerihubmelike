@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight, FolderSync, GraduationCap, Settings2, RefreshCw, Eye, EyeOff, GripVertical, X, Check, LayoutDashboard, Users, FileText, Shield, Briefcase } from "lucide-react"
+import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight, FolderSync, GraduationCap, Settings2, RefreshCw, Eye, EyeOff, GripVertical, X, Check, LayoutDashboard, Users, FileText, Shield, Briefcase, Wrench, Activity, TrendingUp, Ticket } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
@@ -137,8 +137,39 @@ interface TicketStats {
   }>
 }
 
+// Dashboard istatistikleri
+interface DashboardStats {
+  stats: {
+    employees: { total: number; label: string }
+    devices: { total: number; upcoming: number; label: string }
+    suggestions: { pending: number; label: string }
+    tickets: { open: number; label: string }
+  }
+  myTasks: {
+    suggestions: number
+    tickets: number
+  }
+  upcomingCalibrations: Array<{
+    id: string
+    deviceCode: string
+    deviceName: string
+    location: string
+    nextCalibrationDate: string
+    daysLeft: number
+  }>
+  recentActivities: Array<{
+    type: 'suggestion' | 'calibration'
+    id: string
+    title: string
+    status: string
+    date: string
+    user: string | null
+  }>
+  isAdmin: boolean
+}
+
 // Widget tanımları
-type WidgetId = 'tasks' | 'calendar' | 'menu' | 'tickets' | 'announcements' | 'quickAccess' | 'systemInfo'
+type WidgetId = 'tasks' | 'calendar' | 'menu' | 'tickets' | 'announcements' | 'quickAccess' | 'systemInfo' | 'upcomingCalibrations' | 'recentActivities'
 
 interface WidgetConfig {
   id: WidgetId
@@ -153,6 +184,8 @@ const WIDGET_CONFIGS: WidgetConfig[] = [
   { id: 'menu', name: 'Yemek Menüsü', icon: <UtensilsCrossed className="h-4 w-4" />, description: 'Günlük yemek menüsü' },
   { id: 'tickets', name: 'IT Destek', icon: <Headphones className="h-4 w-4" />, description: 'Teknik destek talepleri' },
   { id: 'announcements', name: 'Son Duyurular', icon: <Megaphone className="h-4 w-4" />, description: 'Şirket duyuruları' },
+  { id: 'upcomingCalibrations', name: 'Yaklaşan Kalibrasyonlar', icon: <Wrench className="h-4 w-4" />, description: '30 gün içindeki kalibrasyonlar' },
+  { id: 'recentActivities', name: 'Son Aktiviteler', icon: <Activity className="h-4 w-4" />, description: 'Sistemdeki son hareketler' },
   { id: 'quickAccess', name: 'Hızlı Erişim', icon: <LayoutDashboard className="h-4 w-4" />, description: 'Sık kullanılan modüller' },
   { id: 'systemInfo', name: 'Sistem Bilgileri', icon: <Settings2 className="h-4 w-4" />, description: 'Teknik detaylar' },
 ]
@@ -186,7 +219,7 @@ interface DashboardSettings {
 }
 
 const DEFAULT_SETTINGS: DashboardSettings = {
-  visibleWidgets: ['tasks', 'calendar', 'menu', 'tickets', 'announcements', 'quickAccess'],
+  visibleWidgets: ['tasks', 'calendar', 'menu', 'tickets', 'announcements', 'upcomingCalibrations', 'recentActivities', 'quickAccess'],
   quickAccessModules: ['it-support', 'tasks', 'suggestions', 'meetings', 'calibration', 'settings']
 }
 
@@ -203,6 +236,7 @@ export default function DashboardPage() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
   const [calendarError, setCalendarError] = useState<string | null>(null)
   const [ticketStats, setTicketStats] = useState<TicketStats | null>(null)
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Dashboard özelleştirme state'leri
@@ -416,6 +450,20 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/dashboard/stats')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success) {
+          setDashboardStats(data.data)
+        }
+      }
+    } catch (error) {
+      console.error('Dashboard istatistikleri yüklenirken hata:', error)
+    }
+  }, [])
+
   // Widget yenileme fonksiyonu
   const refreshWidget = async (widgetId: string) => {
     setRefreshingWidget(widgetId)
@@ -442,15 +490,16 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Görevleri, bekleyen önerileri, kendi önerilerimin güncellemelerini, sistem notunu, duyuruları, takvimi ve ticket istatistiklerini paralel olarak yükle
-        const [tasksRes, suggestionsRes, myUpdatesRes, systemRes, announcementsRes, calendarRes, ticketsRes] = await Promise.all([
+        // Görevleri, bekleyen önerileri, kendi önerilerimin güncellemelerini, sistem notunu, duyuruları, takvimi, ticket ve dashboard istatistiklerini paralel olarak yükle
+        const [tasksRes, suggestionsRes, myUpdatesRes, systemRes, announcementsRes, calendarRes, ticketsRes, dashboardStatsRes] = await Promise.all([
           fetch('/api/tasks?viewMode=my&limit=5'),
           fetch('/api/suggestions?viewMode=awaiting_my_approval&limit=5'),
           fetch('/api/suggestions/my-updates?limit=5'),
           fetch('/api/system/settings?category=dashboard'),
           fetch('/api/announcements?limit=5'),
           fetch('/api/calendar/events?range=today'),
-          fetch('/api/tickets/stats')
+          fetch('/api/tickets/stats'),
+          fetch('/api/dashboard/stats')
         ])
 
         if (tasksRes.ok) {
@@ -496,6 +545,13 @@ export default function DashboardPage() {
         if (ticketsRes.ok) {
           const data = await ticketsRes.json()
           setTicketStats(data)
+        }
+
+        if (dashboardStatsRes.ok) {
+          const data = await dashboardStatsRes.json()
+          if (data.success) {
+            setDashboardStats(data.data)
+          }
         }
       } catch (error) {
         console.error('Veriler yüklenirken hata:', error)
@@ -710,6 +766,76 @@ export default function DashboardPage() {
               <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">{systemNotice.message}</p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Genel Bakış İstatistikleri */}
+      {dashboardStats && (
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+          {/* Çalışan Sayısı */}
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/50 dark:to-blue-900/30 border-blue-200 dark:border-blue-800">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{dashboardStats.stats.employees.label}</p>
+                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{dashboardStats.stats.employees.total}</p>
+                </div>
+                <div className="p-3 rounded-full bg-blue-500/10">
+                  <Users className="h-6 w-6 text-blue-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Aktif Cihaz */}
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30 border-orange-200 dark:border-orange-800">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{dashboardStats.stats.devices.label}</p>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{dashboardStats.stats.devices.total}</p>
+                    {dashboardStats.stats.devices.upcoming > 0 && (
+                      <span className="text-xs text-orange-500">({dashboardStats.stats.devices.upcoming} yaklaşan)</span>
+                    )}
+                  </div>
+                </div>
+                <div className="p-3 rounded-full bg-orange-500/10">
+                  <Wrench className="h-6 w-6 text-orange-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Bekleyen Öneriler */}
+          <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/50 dark:to-amber-900/30 border-amber-200 dark:border-amber-800">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{dashboardStats.stats.suggestions.label}</p>
+                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{dashboardStats.stats.suggestions.pending}</p>
+                </div>
+                <div className="p-3 rounded-full bg-amber-500/10">
+                  <Lightbulb className="h-6 w-6 text-amber-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Açık Ticketlar */}
+          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/50 dark:to-green-900/30 border-green-200 dark:border-green-800">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{dashboardStats.stats.tickets.label}</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{dashboardStats.stats.tickets.open}</p>
+                </div>
+                <div className="p-3 rounded-full bg-green-500/10">
+                  <Ticket className="h-6 w-6 text-green-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -1263,6 +1389,105 @@ export default function DashboardPage() {
                   </Link>
                 ))
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Yaklaşan Kalibrasyonlar */}
+        {isWidgetVisible('upcomingCalibrations') && dashboardStats && dashboardStats.upcomingCalibrations.length > 0 && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Wrench className="h-5 w-5 text-orange-500" />
+                  Yaklaşan Kalibrasyonlar
+                </CardTitle>
+                <CardDescription>
+                  30 gün içinde kalibrasyon gereken cihazlar
+                </CardDescription>
+              </div>
+              <Link
+                href="/calibration"
+                className="text-sm text-orange-600 hover:underline"
+              >
+                Tümünü Gör →
+              </Link>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {dashboardStats.upcomingCalibrations.map((cal) => (
+                  <Link
+                    key={cal.id}
+                    href={`/calibration/devices/${cal.id}`}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className={`w-2 h-2 rounded-full ${
+                        cal.daysLeft <= 7 ? 'bg-red-500' : cal.daysLeft <= 14 ? 'bg-amber-500' : 'bg-green-500'
+                      }`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{cal.deviceName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {cal.deviceCode} {cal.location && `• ${cal.location}`}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge
+                      variant={cal.daysLeft <= 7 ? 'destructive' : cal.daysLeft <= 14 ? 'default' : 'secondary'}
+                      className="ml-2"
+                    >
+                      {cal.daysLeft} gün
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Son Aktiviteler */}
+        {isWidgetVisible('recentActivities') && dashboardStats && dashboardStats.recentActivities.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-indigo-500" />
+                Son Aktiviteler
+              </CardTitle>
+              <CardDescription>
+                Sistemdeki son hareketler
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {dashboardStats.recentActivities.slice(0, 5).map((activity) => (
+                  <Link
+                    key={`${activity.type}-${activity.id}`}
+                    href={activity.type === 'suggestion' ? `/suggestions/${activity.id}` : `/calibration/devices`}
+                    className="flex items-center gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className={`p-2 rounded-full ${
+                      activity.type === 'suggestion' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                    }`}>
+                      {activity.type === 'suggestion' ? (
+                        <Lightbulb className="h-4 w-4" />
+                      ) : (
+                        <Wrench className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{activity.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {activity.user || 'Sistem'} • {formatDate(activity.date)}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {activity.type === 'suggestion'
+                        ? activity.status === 'PENDING' ? 'Bekliyor' : activity.status === 'APPROVED' ? 'Onaylı' : activity.status
+                        : activity.status === 'PASS' ? 'Geçti' : 'Kaldı'}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}

@@ -25,7 +25,14 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
 
+    const showAllRevisions = searchParams.get('showAllRevisions') === 'true'
+
     const where: any = {}
+
+    // Varsayılan: sadece en güncel revizyonları göster
+    if (!showAllRevisions) {
+      where.isLatest = true
+    }
 
     // FIX #8: Yetkisiz kullanıcılar sadece kendi oluşturduklarını görebilir
     if (!isPrivileged) {
@@ -143,9 +150,9 @@ export async function POST(request: NextRequest) {
     // finishedWeight opsiyonel - sonradan girilebilir
     const weightValue = finishedWeight ? parseFloat(finishedWeight) : 0
 
-    // Kod benzersizlik kontrolü
-    const existingAnalysis = await prisma.costAnalysis.findUnique({
-      where: { code },
+    // Kod benzersizlik kontrolü (composite unique: code + revisionNumber)
+    const existingAnalysis = await prisma.costAnalysis.findFirst({
+      where: { code: code.trim(), revisionNumber: 0 },
     })
 
     if (existingAnalysis) {
@@ -170,7 +177,9 @@ export async function POST(request: NextRequest) {
         code: code.trim(),
         name: name.trim(),
         description: description?.trim() || null,
-        revision: revision?.trim() || 'A',
+        revision: 'Rev.00',
+        revisionNumber: 0,
+        isLatest: true,
         finishedWeight: weightValue,
         currency: currency || 'EUR',
         categoryId: categoryId || null,

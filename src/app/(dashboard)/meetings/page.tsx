@@ -385,7 +385,7 @@ export default function MeetingsPage() {
         </Card>
       ) : (
         <Tabs defaultValue="all">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto gap-1">
             <TabsTrigger value="all">Tumu ({filteredMeetings.length})</TabsTrigger>
             <TabsTrigger value="planned">Planli ({plannedMeetings.length})</TabsTrigger>
             <TabsTrigger value="in_progress">Devam Eden ({inProgressMeetings.length})</TabsTrigger>

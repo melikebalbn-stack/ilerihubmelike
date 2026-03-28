@@ -43,10 +43,19 @@ export interface CalibrationDepartment {
   sortOrder: number
 }
 
+export interface ProductionSection {
+  id: string
+  name: string
+  code: string | null
+  isActive: boolean
+  sortOrder: number
+}
+
 export interface NotificationEmail {
   id: string
   email: string
   name: string | null
+  category: 'EXPIRING' | 'EXPIRED'
   isActive: boolean
 }
 
@@ -132,6 +141,7 @@ export type EditingType =
   | 'device-model'
   | 'device-name'
   | 'department'
+  | 'production-section'
   | 'task-category'
   | 'announcement-category'
   | 'ticket-category'

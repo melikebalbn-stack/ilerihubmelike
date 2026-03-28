@@ -358,7 +358,7 @@ export default function BackupsPage() {
   return (
     <div className="space-y-6">
       {/* Başlık */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <HardDrive className="h-7 w-7 text-primary" />
@@ -474,6 +474,7 @@ export default function BackupsPage() {
       {/* Yedekler Tablosu */}
       {activeTab === "backups" && (
         <div className="bg-card border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-muted/50">
               <tr>
@@ -555,12 +556,14 @@ export default function BackupsPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
       {/* Zamanlamalar Tablosu */}
       {activeTab === "schedules" && (
         <div className="bg-card border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-muted/50">
               <tr>
@@ -622,6 +625,7 @@ export default function BackupsPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

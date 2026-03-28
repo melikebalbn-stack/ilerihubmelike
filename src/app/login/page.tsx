@@ -3,13 +3,15 @@
 import { useState, Suspense } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Building2, Loader2, AlertCircle, Briefcase, HardHat } from 'lucide-react';
+import { Loader2, AlertCircle, Briefcase, HardHat } from 'lucide-react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AuroraBackground } from '@/components/ui/aurora-background';
 
 function LoginForm() {
   const router = useRouter();
@@ -102,20 +104,13 @@ function LoginForm() {
 
   return (
     <Card className="w-full max-w-md">
-      <CardHeader className="text-center space-y-4">
+      <CardHeader className="text-center space-y-3">
         <div className="flex justify-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Building2 className="h-10 w-10" />
-          </div>
+          <Image src="/ilerihublogo.png" alt="ILERIHub" width={264} height={72} priority />
         </div>
-        <div>
-          <CardTitle className="text-2xl font-bold">
-            ILERI<span className="text-primary">Hub</span>
-          </CardTitle>
-          <CardDescription className="mt-2">
-            Kurumsal Portalınıza Hoş Geldiniz
-          </CardDescription>
-        </div>
+        <CardDescription>
+          Kurumsal Portalınıza Hoş Geldiniz
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="whitecollar" className="w-full">
@@ -262,16 +257,9 @@ function LoginForm() {
 function LoginLoading() {
   return (
     <Card className="w-full max-w-md">
-      <CardHeader className="text-center space-y-4">
+      <CardHeader className="text-center space-y-3">
         <div className="flex justify-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Building2 className="h-10 w-10" />
-          </div>
-        </div>
-        <div>
-          <CardTitle className="text-2xl font-bold">
-            ILERI<span className="text-primary">Hub</span>
-          </CardTitle>
+          <Image src="/ilerihublogo.png" alt="ILERIHub" width={264} height={72} priority />
         </div>
       </CardHeader>
       <CardContent className="flex justify-center py-8">
@@ -283,10 +271,12 @@ function LoginLoading() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 p-4">
-      <Suspense fallback={<LoginLoading />}>
-        <LoginForm />
-      </Suspense>
-    </div>
+    <AuroraBackground className="min-h-screen bg-zinc-50 p-4">
+      <div className="relative z-10 flex items-center justify-center w-full">
+        <Suspense fallback={<LoginLoading />}>
+          <LoginForm />
+        </Suspense>
+      </div>
+    </AuroraBackground>
   );
 }

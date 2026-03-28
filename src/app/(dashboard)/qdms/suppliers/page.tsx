@@ -161,7 +161,7 @@ export default function SuppliersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Tedarikçi Yönetimi</h1>
           <p className="text-muted-foreground">Tedarikçi değerlendirme ve takip</p>
@@ -221,14 +221,14 @@ export default function SuppliersPage() {
               <Input placeholder="Tedarikçi ara..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Kategori" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Kategori" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Kategoriler</SelectItem>
                 {supplierCategories.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Durumlar</SelectItem>
                 {supplierStatuses.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
@@ -240,7 +240,8 @@ export default function SuppliersPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -291,11 +292,12 @@ export default function SuppliersPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Tedarikçi Ekle</DialogTitle>
             <DialogDescription>Yeni bir tedarikçi kaydı oluşturun</DialogDescription>
@@ -328,7 +330,7 @@ export default function SuppliersPage() {
                 placeholder="Ad Soyad"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="email">E-posta</Label>
                 <Input
@@ -400,7 +402,7 @@ export default function SuppliersPage() {
                 <Building className="h-5 w-5 text-purple-600" />
                 Tedarikçi Kategorileri
               </h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {supplierCategories.slice(0, 8).map((cat) => (
                   <div key={cat.value} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                     <ArrowRight className="h-4 w-4 text-purple-500" />
@@ -454,7 +456,7 @@ export default function SuppliersPage() {
                 <Star className="h-5 w-5 text-yellow-600" />
                 Değerlendirme Kriterleri
               </h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <div className="font-medium text-blue-800">Kalite Skoru</div>
                   <p className="text-sm text-blue-700">Ürün/hizmet kalitesi değerlendirmesi</p>
@@ -480,7 +482,7 @@ export default function SuppliersPage() {
                 <Target className="h-5 w-5 text-green-600" />
                 Rating Sistemi
               </h3>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div className="p-3 bg-green-50 rounded-lg text-center">
                   <div className="text-2xl font-bold text-green-600">A</div>
                   <p className="text-xs text-green-700">4.0 - 5.0</p>

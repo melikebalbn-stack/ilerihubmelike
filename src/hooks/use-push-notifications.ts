@@ -18,7 +18,12 @@ export function usePushNotifications() {
 
   const checkSubscription = async () => {
     try {
-      const registration = await navigator.serviceWorker.ready
+      const registration = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("SW timeout")), 5000)
+        )
+      ])
       const sub = await registration.pushManager.getSubscription()
       setSubscription(sub)
       setIsSubscribed(!!sub)
@@ -39,8 +44,13 @@ export function usePushNotifications() {
         return false
       }
 
-      // Service worker'ı kaydet
-      const registration = await navigator.serviceWorker.ready
+      // Service worker'ı kaydet (10 saniye timeout)
+      const registration = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Service worker zaman aşımı")), 10000)
+        )
+      ])
 
       // Push subscription oluştur
       const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY

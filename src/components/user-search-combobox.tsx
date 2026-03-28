@@ -25,6 +25,8 @@ export type ADUser = {
   department?: string | null
   jobTitle?: string | null
   username?: string
+  employeeId?: string | null
+  source?: 'ldap' | 'bluecollar' | 'db'
 }
 
 interface UserSearchComboboxProps {
@@ -202,11 +204,25 @@ export function UserSearchCombobox({
                   <div className="flex flex-col flex-1 min-w-0">
                     <span className="font-medium truncate">{user.name}</span>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="truncate">{user.email}</span>
-                      {user.department && (
+                      {user.source === 'bluecollar' ? (
                         <>
-                          <span>-</span>
-                          <span className="truncate">{user.department}</span>
+                          {user.employeeId && <span className="truncate">Sicil: {user.employeeId}</span>}
+                          {user.department && (
+                            <>
+                              <span>-</span>
+                              <span className="truncate">{user.department}</span>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="truncate">{user.email}</span>
+                          {user.department && (
+                            <>
+                              <span>-</span>
+                              <span className="truncate">{user.department}</span>
+                            </>
+                          )}
                         </>
                       )}
                     </div>

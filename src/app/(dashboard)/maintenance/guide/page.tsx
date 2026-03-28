@@ -41,7 +41,7 @@ export default function MaintenanceGuidePage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
+            <h1 className="text-xl lg:text-3xl font-bold flex items-center gap-2">
               <BookOpen className="h-8 w-8 text-primary" />
               Tezgah Bakim Yonetimi Kilavuzu
             </h1>
@@ -58,14 +58,14 @@ export default function MaintenanceGuidePage() {
 
       {/* Print Header - artık kullanılmıyor, guide-print-container içinde */}
       <div className="hidden">
-        <h1 className="text-3xl font-bold">Tezgah Bakim Yonetimi</h1>
+        <h1 className="text-xl lg:text-3xl font-bold">Tezgah Bakim Yonetimi</h1>
         <p className="text-xl">Kullanim Kilavuzu</p>
         <p className="text-sm text-gray-500 mt-2">ILERIHub | Versiyon 1.0</p>
       </div>
 
       {/* Navigation Tabs */}
       <Tabs value={activeSection} onValueChange={setActiveSection} className="guide-screen-only">
-        <TabsList className="grid grid-cols-5 w-full">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-5 w-full">
           <TabsTrigger value="giris">
             <Info className="h-4 w-4 mr-2" />
             Giris

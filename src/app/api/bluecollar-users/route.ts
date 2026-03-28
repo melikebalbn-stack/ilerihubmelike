@@ -1,3 +1,4 @@
+import { syncUserToAkademi } from '@/lib/akademi-sync'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -23,7 +24,20 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const skip = (page - 1) * limit
 
-    const where = {
+    // Sıralama parametreleri
+    const sortBy = searchParams.get('sortBy') || 'employeeId'
+    const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc'
+    const validSortFields = ['employeeId', 'name', 'department', 'jobTitle', 'duty', 'section', 'serviceRoute', 'serviceStop', 'lastLoginAt', 'isActive']
+    const orderBy = validSortFields.includes(sortBy)
+      ? { [sortBy]: sortOrder }
+      : { employeeId: 'asc' as const }
+
+    // Filtre parametreleri
+    const filterDepartment = searchParams.get('department') || ''
+    const filterServiceRoute = searchParams.get('serviceRoute') || ''
+    const filterIsActive = searchParams.get('isActive') || ''
+
+    const where: Record<string, unknown> = {
       employeeId: { not: null },
       ...(search && {
         OR: [
@@ -32,10 +46,14 @@ export async function GET(request: NextRequest) {
           { email: { contains: search, mode: 'insensitive' as const } },
           { department: { contains: search, mode: 'insensitive' as const } },
         ]
-      })
+      }),
+      ...(filterDepartment && { department: filterDepartment }),
+      ...(filterServiceRoute && { serviceRoute: filterServiceRoute }),
+      ...(filterIsActive && { isActive: filterIsActive === 'true' }),
     }
 
-    const [users, total] = await Promise.all([
+    // Filtre seçenekleri için distinct değerler
+    const [users, total, distinctDepts, distinctRoutes] = await Promise.all([
       prisma.user.findMany({
         where,
         select: {
@@ -46,15 +64,31 @@ export async function GET(request: NextRequest) {
           // FIX #3: tcLastFour kaldırıldı - KVKK
           department: true,
           jobTitle: true,
+          duty: true,
+          section: true,
+          serviceRoute: true,
+          serviceStop: true,
           isActive: true,
           createdAt: true,
           lastLoginAt: true,
         },
-        orderBy: { employeeId: 'asc' },
+        orderBy,
         skip,
         take: limit,
       }),
-      prisma.user.count({ where })
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where: { employeeId: { not: null }, department: { not: null } },
+        select: { department: true },
+        distinct: ['department'],
+        orderBy: { department: 'asc' },
+      }),
+      prisma.user.findMany({
+        where: { employeeId: { not: null }, serviceRoute: { not: null } },
+        select: { serviceRoute: true },
+        distinct: ['serviceRoute'],
+        orderBy: { serviceRoute: 'asc' },
+      }),
     ])
 
     return NextResponse.json({
@@ -64,6 +98,10 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         pages: Math.ceil(total / limit)
+      },
+      filters: {
+        departments: distinctDepts.map(d => d.department).filter(Boolean),
+        serviceRoutes: distinctRoutes.map(r => r.serviceRoute).filter(Boolean),
       }
     })
   } catch (error) {
@@ -87,7 +125,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { employeeId, tcLastFour, name, email, department, jobTitle } = body
+    const { employeeId, tcLastFour, name, email, department, jobTitle, duty, section, serviceRoute, serviceStop } = body
 
     // Doğrulama
     if (!employeeId || !tcLastFour || !name) {
@@ -141,6 +179,10 @@ export async function POST(request: NextRequest) {
         name,
         department,
         jobTitle,
+        duty: duty || null,
+        section: section || null,
+        serviceRoute: serviceRoute || null,
+        serviceStop: serviceStop || null,
         role: 'EMPLOYEE',
         isActive: true,
       },
@@ -152,11 +194,20 @@ export async function POST(request: NextRequest) {
         // FIX #3: tcLastFour kaldırıldı - KVKK
         department: true,
         jobTitle: true,
+        duty: true,
+        section: true,
+        serviceRoute: true,
+        serviceStop: true,
         isActive: true,
         createdAt: true,
       }
     })
 
+
+    // Akademi'ye senkronize et (arka planda, hata ana islemi engellemez)
+    syncUserToAkademi(user, "blue_collar").catch((err) =>
+      console.error("Akademi sync hatasi:", err)
+    )
     return NextResponse.json(user, { status: 201 })
   } catch (error) {
     console.error('Mavi yaka kullanıcı oluşturulurken hata:', error)

@@ -63,7 +63,7 @@ export default function CostAnalysisSettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div className="flex items-center space-x-2 text-sm mb-2">
             <Link href="/cost-analysis" className="text-teal-600 hover:underline">

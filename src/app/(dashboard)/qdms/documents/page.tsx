@@ -640,7 +640,7 @@ export default function DocumentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Doküman Kontrolü</h1>
           <p className="text-muted-foreground">
@@ -788,7 +788,7 @@ export default function DocumentsPage() {
               />
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Kategori" />
               </SelectTrigger>
               <SelectContent>
@@ -801,7 +801,7 @@ export default function DocumentsPage() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Durum" />
               </SelectTrigger>
               <SelectContent>
@@ -814,7 +814,7 @@ export default function DocumentsPage() {
               </SelectContent>
             </Select>
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Departman" />
               </SelectTrigger>
               <SelectContent>
@@ -835,7 +835,8 @@ export default function DocumentsPage() {
 
       {/* Documents Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -959,12 +960,13 @@ export default function DocumentsPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
       {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Doküman Oluştur</DialogTitle>
             <DialogDescription>
@@ -972,7 +974,7 @@ export default function DocumentsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="documentNumber">Doküman No *</Label>
                 <Input
@@ -1020,7 +1022,7 @@ export default function DocumentsPage() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="departmentId">Departman</Label>
                 <Select
@@ -1128,7 +1130,7 @@ export default function DocumentsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Dokümanı Düzenle</DialogTitle>
             <DialogDescription>
@@ -1136,7 +1138,7 @@ export default function DocumentsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-documentNumber">Doküman No</Label>
                 <Input
@@ -1268,7 +1270,7 @@ export default function DocumentsPage() {
                 <FileText className="h-5 w-5 text-blue-500" />
                 Doküman Türleri
               </h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="p-3 bg-muted/50 rounded-lg">
                   <span className="font-medium text-blue-600">Prosedür</span>
                   <p className="text-xs text-muted-foreground mt-1">Süreçlerin nasıl yürütüleceğini tanımlar</p>
@@ -1394,7 +1396,7 @@ export default function DocumentsPage() {
 
       {/* View Document Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {getFileIcon(selectedDocument?.mimeType || null)}
@@ -1408,7 +1410,7 @@ export default function DocumentsPage() {
           {selectedDocument && (
             <div className="space-y-6">
               {/* Doküman Bilgileri */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label className="text-muted-foreground text-xs">Kategori</Label>
                   <p className="font-medium">{getCategoryLabel(selectedDocument.category)}</p>
@@ -1588,7 +1590,7 @@ export default function DocumentsPage() {
                       .filter((approval) => approval.status === "APPROVED")
                       .map((approval) => (
                         <div key={approval.id} className="p-4 border rounded-lg bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800">
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1">
                               <Label className="text-muted-foreground text-xs">Onay Adımı</Label>
                               <p className="font-medium">{approval.stepName}</p>
@@ -1651,7 +1653,7 @@ export default function DocumentsPage() {
 
       {/* Revision History Dialog */}
       <Dialog open={isRevisionDialogOpen} onOpenChange={setIsRevisionDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="h-5 w-5" />

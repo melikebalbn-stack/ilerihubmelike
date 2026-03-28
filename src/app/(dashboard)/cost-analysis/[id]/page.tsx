@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog"
 import { NativeSelect as Select } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Plus,
@@ -38,10 +39,21 @@ import {
   Calculator,
   Info,
   ChevronRight,
+  Download,
+  Loader2,
+  TrendingUp,
+  X,
+  GitBranch,
+  History,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Copy,
 } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import * as XLSX from "xlsx"
 
 type CostAnalysis = {
   id: string
@@ -49,6 +61,11 @@ type CostAnalysis = {
   name: string
   description: string | null
   revision: string
+  revisionNumber: number
+  revisionNote: string | null
+  revisionDate: string
+  parentId: string | null
+  isLatest: boolean
   finishedWeight: number
   currency: string
   status: string
@@ -66,10 +83,27 @@ type CostAnalysis = {
   category: { id: string; name: string; color: string } | null
   customer: { id: string; name: string } | null
   createdBy: { id: string; name: string | null; email: string } | null
+  parent: { id: string; code: string; revision: string; revisionNumber: number } | null
   materials: CostMaterial[]
   laborItems: CostLabor[]
   externalServices: CostExternalService[]
   otherCosts: CostOtherItem[]
+}
+
+type RevisionItem = {
+  id: string
+  code: string
+  name: string
+  revision: string
+  revisionNumber: number
+  revisionNote: string | null
+  revisionDate: string
+  status: string
+  totalCost: number
+  salesPrice: number
+  currency: string
+  isLatest: boolean
+  createdAt: string
 }
 
 type CostMaterial = {
@@ -111,6 +145,7 @@ type CostExternalService = {
 type CostOtherItem = {
   id: string
   name: string
+  description: string | null
   category: string
   unitPrice: number
   quantity: number
@@ -229,6 +264,7 @@ export default function CostAnalysisDetailPage({
     costType: "OTHER",
     unitPrice: "",
     quantity: "1",
+    description: "",
   })
 
   const loadAnalysis = async () => {
@@ -276,6 +312,26 @@ export default function CostAnalysisDetailPage({
     loadCatalog()
   }, [id])
 
+  // Kâr karşılaştırma: profitRate başlat ve döviz kuru yükle
+  useEffect(() => {
+    if (analysis) {
+      setProfitRates(prev => prev.length === 0 ? [Number(analysis.profitRate)] : prev)
+      if (analysis.currency !== "TRY" && !exchangeRatesLoaded) {
+        fetch("/api/cost-analysis/exchange-rates?latestOnly=true")
+          .then(res => res.ok ? res.json() : [])
+          .then(data => {
+            setExchangeRates(Array.isArray(data) ? data.map((r: any) => ({
+              fromCurrency: r.fromCurrency,
+              toCurrency: r.toCurrency,
+              rate: Number(r.rate),
+            })) : [])
+            setExchangeRatesLoaded(true)
+          })
+          .catch(() => setExchangeRatesLoaded(true))
+      }
+    }
+  }, [analysis?.profitRate, analysis?.currency])
+
   const recalculateCosts = async () => {
     try {
       const res = await fetch(`/api/cost-analysis/${id}/recalculate`, {
@@ -289,6 +345,124 @@ export default function CostAnalysisDetailPage({
       console.error("Hesaplama hatası:", error)
       toast.error("Maliyetler hesaplanırken hata oluştu")
     }
+  }
+
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [excelLoading, setExcelLoading] = useState(false)
+
+  // Kâr marjı karşılaştırma
+  const [profitRates, setProfitRates] = useState<number[]>([])
+  const [customRate, setCustomRate] = useState("")
+  const [exchangeRates, setExchangeRates] = useState<{ fromCurrency: string; toCurrency: string; rate: number }[]>([])
+  const [exchangeRatesLoaded, setExchangeRatesLoaded] = useState(false)
+
+  // Revizyon
+  const [revisionDialogOpen, setRevisionDialogOpen] = useState(false)
+  const [revisionNote, setRevisionNote] = useState("")
+  const [revisionLoading, setRevisionLoading] = useState(false)
+  const [revisions, setRevisions] = useState<RevisionItem[]>([])
+  const [revisionsOpen, setRevisionsOpen] = useState(false)
+  const [revisionsLoaded, setRevisionsLoaded] = useState(false)
+
+  const handleDownloadPDF = async () => {
+    try {
+      setPdfLoading(true)
+      const res = await fetch(`/api/cost-analysis/${id}/pdf`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'PDF oluşturulamadı' }))
+        toast.error(err.error || 'PDF oluşturulamadı')
+        return
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || `Maliyet_Analizi_${analysis?.code}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('PDF raporu indirildi')
+    } catch (error) {
+      console.error('PDF indirme hatası:', error)
+      toast.error('PDF indirilirken hata oluştu')
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
+  const handleDownloadExcel = async () => {
+    try {
+      setExcelLoading(true)
+      const res = await fetch(`/api/cost-analysis/${id}/excel`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Excel oluşturulamadı' }))
+        toast.error(err.error || 'Excel oluşturulamadı')
+        return
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || `Maliyet_Analizi_${analysis?.code}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('Excel dosyası indirildi')
+    } catch (error) {
+      console.error('Excel indirme hatası:', error)
+      toast.error('Excel indirilirken hata oluştu')
+    } finally {
+      setExcelLoading(false)
+    }
+  }
+
+  // Revizyon işlemleri
+  const loadRevisions = async () => {
+    try {
+      const res = await fetch(`/api/cost-analysis/${id}/revisions`)
+      if (res.ok) {
+        const data = await res.json()
+        setRevisions(data)
+        setRevisionsLoaded(true)
+      }
+    } catch (error) {
+      console.error("Revizyonlar yüklenirken hata:", error)
+    }
+  }
+
+  const handleCreateRevision = async () => {
+    try {
+      setRevisionLoading(true)
+      const res = await fetch(`/api/cost-analysis/${id}/revision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revisionNote: revisionNote.trim() }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success(`${data.revision} oluşturuldu`)
+        setRevisionDialogOpen(false)
+        setRevisionNote("")
+        router.push(`/cost-analysis/${data.id}`)
+      } else {
+        const err = await res.json().catch(() => ({ error: "Revizyon oluşturulamadı" }))
+        toast.error(err.error || "Revizyon oluşturulamadı")
+      }
+    } catch (error) {
+      console.error("Revizyon oluşturma hatası:", error)
+      toast.error("Revizyon oluşturulurken hata oluştu")
+    } finally {
+      setRevisionLoading(false)
+    }
+  }
+
+  const toggleRevisions = () => {
+    if (!revisionsOpen && !revisionsLoaded) {
+      loadRevisions()
+    }
+    setRevisionsOpen(!revisionsOpen)
   }
 
   // Material operations
@@ -455,6 +629,7 @@ export default function CostAnalysisDetailPage({
           costType: "OTHER",
           unitPrice: "",
           quantity: "1",
+          description: "",
         })
         await loadAnalysis()
       } else {
@@ -551,13 +726,21 @@ export default function CostAnalysisDetailPage({
           <span className="text-gray-600">{analysis.code} - {analysis.name}</span>
         </div>
         <div className="flex space-x-2">
-          <Button variant="outline" size="sm">
-            <FileText className="h-4 w-4 mr-2" />
+          <Button variant="outline" size="sm" onClick={handleDownloadPDF} disabled={pdfLoading}>
+            {pdfLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
             PDF
           </Button>
-          <Button variant="outline" size="sm">
-            <FileSpreadsheet className="h-4 w-4 mr-2" />
+          <Button variant="outline" size="sm" onClick={handleDownloadExcel} disabled={excelLoading}>
+            {excelLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />}
             Excel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRevisionDialogOpen(true)}
+          >
+            <GitBranch className="h-4 w-4 mr-2" />
+            Yeni Revizyon
           </Button>
           <Link href={`/cost-analysis/${id}/edit`}>
             <Button size="sm">
@@ -592,7 +775,7 @@ export default function CostAnalysisDetailPage({
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-6 mt-6 pt-6 border-t">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 mt-6 pt-6 border-t">
             <div>
               <div className="text-sm text-gray-500">Bitmiş Ağırlık</div>
               <div className="text-xl font-semibold">{analysis.finishedWeight} kg</div>
@@ -613,8 +796,120 @@ export default function CostAnalysisDetailPage({
         </CardContent>
       </Card>
 
+      {/* Revizyon Geçmişi */}
+      <Card>
+        <CardHeader
+          className="cursor-pointer py-3 px-6"
+          onClick={toggleRevisions}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <History className="h-4 w-4 text-gray-500" />
+              <CardTitle className="text-sm font-medium">
+                Revizyon Geçmişi
+              </CardTitle>
+              <Badge variant="outline" className="text-xs">
+                {analysis.revision}
+              </Badge>
+              {!analysis.isLatest && (
+                <Badge className="bg-amber-100 text-amber-700 text-xs">
+                  Eski Revizyon
+                </Badge>
+              )}
+            </div>
+            {revisionsOpen ? (
+              <ChevronUp className="h-4 w-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-gray-400" />
+            )}
+          </div>
+        </CardHeader>
+        {revisionsOpen && (
+          <CardContent className="pt-0 px-6 pb-4">
+            {!revisionsLoaded ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+              </div>
+            ) : revisions.length <= 1 ? (
+              <p className="text-sm text-gray-500 py-2">
+                Henüz başka revizyon bulunmuyor.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[100px]">Revizyon</TableHead>
+                    <TableHead>Tarih</TableHead>
+                    <TableHead>Not</TableHead>
+                    <TableHead>Durum</TableHead>
+                    <TableHead className="text-right">Toplam Maliyet</TableHead>
+                    <TableHead className="text-right">Satış Fiyatı</TableHead>
+                    <TableHead className="w-[80px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {revisions.map((rev) => (
+                    <TableRow
+                      key={rev.id}
+                      className={rev.id === id ? "bg-teal-50" : ""}
+                    >
+                      <TableCell>
+                        <div className="flex items-center space-x-1">
+                          <span className="font-mono font-medium text-sm">
+                            {rev.revision}
+                          </span>
+                          {rev.isLatest && (
+                            <Badge className="bg-teal-100 text-teal-700 text-[10px] px-1">
+                              Son
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {formatDate(rev.revisionDate || rev.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-600 max-w-[200px] truncate">
+                        {rev.revisionNote || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            statusConfig[rev.status]?.color || "bg-gray-100"
+                          }
+                        >
+                          {statusConfig[rev.status]?.label || rev.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {formatCurrency(rev.totalCost, rev.currency)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {formatCurrency(rev.salesPrice, rev.currency)}
+                      </TableCell>
+                      <TableCell>
+                        {rev.id !== id ? (
+                          <Link href={`/cost-analysis/${rev.id}`}>
+                            <Button variant="ghost" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-gray-400 px-2">
+                            Aktif
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
       {/* Cost Summary Cards - Pastel Colors */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card
           className="bg-[#E8F4FD] border-0 cursor-pointer hover:shadow-md transition-shadow"
           onClick={() => setActiveTab("materials")}
@@ -710,17 +1005,17 @@ export default function CostAnalysisDetailPage({
           <div className="flex items-center justify-between">
             <div>
               <span className="text-gray-500">Toplam Maliyet</span>
-              <div className="text-3xl font-bold text-gray-900">
+              <div className="text-xl sm:text-3xl font-bold text-gray-900">
                 {formatCurrency(totalWithOverhead, analysis.currency)}
               </div>
             </div>
             <div className="text-center px-8 border-l border-r">
               <span className="text-gray-500">Kar Oranı</span>
-              <div className="text-3xl font-bold text-teal-600">%{analysis.profitRate}</div>
+              <div className="text-xl sm:text-3xl font-bold text-teal-600">%{analysis.profitRate}</div>
             </div>
             <div className="text-right">
               <span className="text-gray-500">Satış Fiyatı</span>
-              <div className="text-3xl font-bold text-teal-600">
+              <div className="text-xl sm:text-3xl font-bold text-teal-600">
                 {formatCurrency(analysis.salesPrice, analysis.currency)}
               </div>
             </div>
@@ -736,12 +1031,13 @@ export default function CostAnalysisDetailPage({
           <TabsTrigger value="labor">İşçilik</TabsTrigger>
           <TabsTrigger value="services">Dış Hizmetler</TabsTrigger>
           <TabsTrigger value="other">Diğer Maliyetler</TabsTrigger>
+          <TabsTrigger value="profit-comparison">Kâr Karşılaştırma</TabsTrigger>
           <TabsTrigger value="summary">Maliyet Özeti</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {/* Cost Distribution */}
             <Card>
               <CardHeader>
@@ -799,10 +1095,10 @@ export default function CostAnalysisDetailPage({
                 </div>
 
                 <div className="border-t border-teal-400 pt-4">
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex justify-between items-center">
                     <span className="opacity-80">İşletme Gideri (%{analysis.overheadRate})</span>
+                    <span className="font-medium">{formatCurrency(overheadCost, analysis.currency)}</span>
                   </div>
-                  <div className="text-right font-medium">{formatCurrency(overheadCost, analysis.currency)}</div>
                 </div>
 
                 <div className="border-t border-teal-400 pt-4">
@@ -813,16 +1109,16 @@ export default function CostAnalysisDetailPage({
                 </div>
 
                 <div className="border-t border-teal-400 pt-4">
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex justify-between items-center">
                     <span className="opacity-80">Kar (%{analysis.profitRate})</span>
+                    <span className="font-medium">{formatCurrency(profit, analysis.currency)}</span>
                   </div>
-                  <div className="text-right font-medium">{formatCurrency(profit, analysis.currency)}</div>
                 </div>
 
                 <div className="mt-6 pt-4 border-t-2 border-white">
                   <div className="flex justify-between items-center">
                     <span className="font-semibold">SATIŞ FİYATI</span>
-                    <span className="text-3xl font-bold">{formatCurrency(analysis.salesPrice, analysis.currency)}</span>
+                    <span className="text-xl lg:text-3xl font-bold">{formatCurrency(analysis.salesPrice, analysis.currency)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -835,19 +1131,21 @@ export default function CostAnalysisDetailPage({
               <CardTitle>Birim Fiyatlar</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-6">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Bitmiş Ağırlık</span>
+              <div className="flex items-center gap-8">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600">Bitmiş Ağırlık:</span>
                   <span className="font-medium">{analysis.finishedWeight} kg</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">kg Başına Maliyet</span>
+                <div className="h-8 border-l" />
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600">kg Başına Maliyet:</span>
                   <span className="font-medium">
                     {formatCurrency(Number(analysis.finishedWeight) > 0 ? totalWithOverhead / Number(analysis.finishedWeight) : 0, analysis.currency)}/kg
                   </span>
                 </div>
-                <div className="flex justify-between pt-2 border-t">
-                  <span className="text-gray-600">kg Başına Fiyat</span>
+                <div className="h-8 border-l" />
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600">kg Başına Fiyat:</span>
                   <span className="font-bold text-teal-600 text-lg">
                     {formatCurrency(analysis.pricePerKg, analysis.currency)}/kg
                   </span>
@@ -863,7 +1161,7 @@ export default function CostAnalysisDetailPage({
           <div className="bg-[#E8F4FD] rounded-lg p-5 border-l-4 border-blue-500">
             <h3 className="font-semibold text-blue-800 mb-2">Malzeme Yönetimi Kılavuzu</h3>
             <p className="text-blue-700 text-sm mb-4">Ürün maliyetinin temelini oluşturan hammadde ve yarı mamullerin takibi.</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white bg-opacity-60 rounded-lg p-3">
                 <h4 className="font-medium text-blue-800 mb-2">Malzeme Türleri</h4>
                 <ul className="text-sm text-blue-700 space-y-1">
@@ -1023,7 +1321,7 @@ export default function CostAnalysisDetailPage({
           <div className="bg-[#E8F5E9] rounded-lg p-5 border-l-4 border-green-500">
             <h3 className="font-semibold text-green-800 mb-2">İşçilik Yönetimi Kılavuzu</h3>
             <p className="text-green-700 text-sm mb-4">Üretim operasyonlarının süre ve maliyet takibi.</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white bg-opacity-60 rounded-lg p-3">
                 <h4 className="font-medium text-green-800 mb-2">İşçilik Türleri</h4>
                 <ul className="text-sm text-green-700 space-y-1">
@@ -1176,7 +1474,7 @@ export default function CostAnalysisDetailPage({
           <div className="bg-[#FFF3E0] rounded-lg p-5 border-l-4 border-orange-500">
             <h3 className="font-semibold text-orange-800 mb-2">Dış Hizmet Yönetimi Kılavuzu</h3>
             <p className="text-orange-700 text-sm mb-4">Tedarikçilerden alınan hizmetlerin maliyet takibi.</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white bg-opacity-60 rounded-lg p-3">
                 <h4 className="font-medium text-orange-800 mb-2">Yaygın Dış Hizmetler</h4>
                 <ul className="text-sm text-orange-700 space-y-1">
@@ -1307,7 +1605,7 @@ export default function CostAnalysisDetailPage({
           <div className="bg-[#F3E5F5] rounded-lg p-5 border-l-4 border-purple-500">
             <h3 className="font-semibold text-purple-800 mb-2">Diğer Maliyetler Kılavuzu</h3>
             <p className="text-purple-700 text-sm mb-4">Üretime dolaylı katkı sağlayan ek maliyet kalemleri.</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-white bg-opacity-60 rounded-lg p-3">
                 <h4 className="font-medium text-purple-800 mb-2">Maliyet Kategorileri</h4>
                 <ul className="text-sm text-purple-700 space-y-1">
@@ -1342,6 +1640,7 @@ export default function CostAnalysisDetailPage({
                     costType: "OTHER",
                     unitPrice: "",
                     quantity: "1",
+                    description: "",
                   })
                   setOtherDialogOpen(true)
                 }}>
@@ -1389,6 +1688,7 @@ export default function CostAnalysisDetailPage({
                               costType: item.category,
                               unitPrice: item.unitPrice.toString(),
                               quantity: item.quantity.toString(),
+                              description: item.description || "",
                             })
                             setOtherDialogOpen(true)
                           }}
@@ -1434,13 +1734,290 @@ export default function CostAnalysisDetailPage({
           </Card>
         </TabsContent>
 
+        {/* Profit Comparison Tab */}
+        <TabsContent value="profit-comparison" className="space-y-6">
+          {/* Quick Select */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-teal-600" />
+                Kâr Oranı Seçimi
+              </CardTitle>
+              <CardDescription>Karşılaştırmak istediğiniz kâr oranlarını seçin veya manuel girin.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {[10, 15, 20, 25, 30, 35, 40].map(rate => (
+                    <Button
+                      key={rate}
+                      variant={profitRates.includes(rate) ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setProfitRates(prev =>
+                          prev.includes(rate) && prev.length > 1
+                            ? prev.filter(r => r !== rate)
+                            : prev.includes(rate)
+                            ? prev
+                            : [...prev, rate].sort((a, b) => a - b)
+                        )
+                      }}
+                    >
+                      %{rate}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Özel oran (%)"
+                    value={customRate}
+                    onChange={(e) => setCustomRate(e.target.value)}
+                    className="w-40"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const rate = parseFloat(customRate)
+                      if (!isNaN(rate) && rate >= 0 && rate <= 100 && !profitRates.includes(rate)) {
+                        setProfitRates(prev => [...prev, rate].sort((a, b) => a - b))
+                        setCustomRate("")
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Ekle
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setProfitRates(analysis ? [Number(analysis.profitRate)] : [])}
+                  >
+                    Sıfırla
+                  </Button>
+                </div>
+                {/* Selected rates badges */}
+                <div className="flex flex-wrap gap-1">
+                  {profitRates.map((rate, idx) => (
+                    <Badge key={rate} variant={idx === 0 ? "default" : "secondary"} className="gap-1">
+                      %{rate}{idx === 0 ? " (baz)" : ""}
+                      {profitRates.length > 1 && (
+                        <X
+                          className="h-3 w-3 cursor-pointer"
+                          onClick={() => setProfitRates(prev => prev.filter(r => r !== rate))}
+                        />
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Comparison Table */}
+          {profitRates.length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Karşılaştırma Tablosu</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const baseRate = profitRates[0]
+                    const baseSales = totalWithOverhead * (1 + baseRate / 100)
+                    const exTlRate = exchangeRates.find(
+                      r => r.fromCurrency === analysis?.currency && r.toCurrency === "TRY"
+                    )?.rate || 0
+                    const rows = [
+                      {
+                        "Kalem": "Toplam Maliyet",
+                        ...Object.fromEntries(profitRates.map(r => [`%${r} Kâr`, Number(totalWithOverhead.toFixed(2))]))
+                      },
+                      {
+                        "Kalem": "Kâr Tutarı",
+                        ...Object.fromEntries(profitRates.map(r => [`%${r} Kâr`, Number((totalWithOverhead * r / 100).toFixed(2))]))
+                      },
+                      {
+                        "Kalem": "Satış Fiyatı",
+                        ...Object.fromEntries(profitRates.map(r => [`%${r} Kâr`, Number((totalWithOverhead * (1 + r / 100)).toFixed(2))]))
+                      },
+                      {
+                        "Kalem": "Birim Fiyat (kg)",
+                        ...Object.fromEntries(profitRates.map(r => {
+                          const sp = totalWithOverhead * (1 + r / 100)
+                          const w = Number(analysis?.finishedWeight) || 0
+                          return [`%${r} Kâr`, w > 0 ? Number((sp / w).toFixed(2)) : 0]
+                        }))
+                      },
+                      ...(exTlRate > 0 ? [{
+                        "Kalem": "TL Karşılığı",
+                        ...Object.fromEntries(profitRates.map(r => [`%${r} Kâr`, Number((totalWithOverhead * (1 + r / 100) * exTlRate).toFixed(2))]))
+                      }] : []),
+                      {
+                        "Kalem": "Fark (baz'a göre)",
+                        ...Object.fromEntries(profitRates.map((r, i) => {
+                          const sp = totalWithOverhead * (1 + r / 100)
+                          return [`%${r} Kâr`, i === 0 ? "-" : Number((sp - baseSales).toFixed(2))]
+                        }))
+                      },
+                      {
+                        "Kalem": "Fark %",
+                        ...Object.fromEntries(profitRates.map((r, i) => {
+                          const sp = totalWithOverhead * (1 + r / 100)
+                          return [`%${r} Kâr`, i === 0 ? "-" : `%${((sp - baseSales) / baseSales * 100).toFixed(1)}`]
+                        }))
+                      },
+                    ]
+                    const ws = XLSX.utils.json_to_sheet(rows)
+                    ws["!cols"] = [{ wch: 22 }, ...profitRates.map(() => ({ wch: 18 }))]
+                    const wb = XLSX.utils.book_new()
+                    XLSX.utils.book_append_sheet(wb, ws, "Kâr Karşılaştırma")
+                    XLSX.writeFile(wb, `Kar_Karsilastirma_${analysis?.code || "analiz"}.xlsx`)
+                    toast.success("Excel dosyası indirildi")
+                  }}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Excel'e Aktar
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const baseRate = profitRates[0]
+                  const baseSalesPrice = totalWithOverhead * (1 + baseRate / 100)
+                  const tlRate = exchangeRates.find(
+                    r => r.fromCurrency === analysis?.currency && r.toCurrency === "TRY"
+                  )?.rate || 0
+                  const weight = Number(analysis?.finishedWeight) || 0
+
+                  return (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="min-w-[160px]">Kalem</TableHead>
+                            {profitRates.map((rate, idx) => (
+                              <TableHead key={rate} className={`text-right min-w-[130px] ${idx === 0 ? "bg-teal-50" : ""}`}>
+                                %{rate} Kâr{idx === 0 ? " (baz)" : ""}
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {/* Toplam Maliyet */}
+                          <TableRow>
+                            <TableCell className="font-medium">Toplam Maliyet</TableCell>
+                            {profitRates.map((_, idx) => (
+                              <TableCell key={idx} className={`text-right ${idx === 0 ? "bg-teal-50" : ""}`}>
+                                {formatCurrency(totalWithOverhead, analysis?.currency || "EUR")}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                          {/* Kâr Tutarı */}
+                          <TableRow>
+                            <TableCell className="font-medium">Kâr Tutarı</TableCell>
+                            {profitRates.map((rate, idx) => (
+                              <TableCell key={rate} className={`text-right ${idx === 0 ? "bg-teal-50" : ""}`}>
+                                {formatCurrency(totalWithOverhead * rate / 100, analysis?.currency || "EUR")}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                          {/* Satış Fiyatı */}
+                          <TableRow className="border-t-2 bg-gray-50 font-bold">
+                            <TableCell className="font-bold">Satış Fiyatı</TableCell>
+                            {profitRates.map((rate, idx) => {
+                              const sp = totalWithOverhead * (1 + rate / 100)
+                              return (
+                                <TableCell key={rate} className={`text-right font-bold text-lg ${idx === 0 ? "bg-teal-100 text-teal-700" : ""}`}>
+                                  {formatCurrency(sp, analysis?.currency || "EUR")}
+                                </TableCell>
+                              )
+                            })}
+                          </TableRow>
+                          {/* Birim Fiyat (kg) */}
+                          <TableRow>
+                            <TableCell className="font-medium">Birim Fiyat (kg)</TableCell>
+                            {profitRates.map((rate, idx) => {
+                              const sp = totalWithOverhead * (1 + rate / 100)
+                              return (
+                                <TableCell key={rate} className={`text-right ${idx === 0 ? "bg-teal-50" : ""}`}>
+                                  {weight > 0 ? `${formatCurrency(sp / weight, analysis?.currency || "EUR")}/kg` : "-"}
+                                </TableCell>
+                              )
+                            })}
+                          </TableRow>
+                          {/* TL Karşılığı */}
+                          {analysis?.currency !== "TRY" && tlRate > 0 && (
+                            <TableRow className="border-t">
+                              <TableCell className="font-medium">
+                                TL Karşılığı
+                                <span className="text-xs text-muted-foreground ml-1">(1 {analysis?.currency} = {tlRate.toFixed(4)} ₺)</span>
+                              </TableCell>
+                              {profitRates.map((rate, idx) => {
+                                const sp = totalWithOverhead * (1 + rate / 100)
+                                return (
+                                  <TableCell key={rate} className={`text-right ${idx === 0 ? "bg-teal-50" : ""}`}>
+                                    {formatCurrency(sp * tlRate, "TRY")}
+                                  </TableCell>
+                                )
+                              })}
+                            </TableRow>
+                          )}
+                          {analysis?.currency !== "TRY" && !tlRate && exchangeRatesLoaded && (
+                            <TableRow className="border-t">
+                              <TableCell className="font-medium text-amber-600">TL Karşılığı</TableCell>
+                              <TableCell colSpan={profitRates.length} className="text-center text-amber-600 text-sm">
+                                Döviz kuru bilgisi bulunamadı. Ayarlar sayfasından kur ekleyebilirsiniz.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {/* Separator */}
+                          <TableRow className="border-t-2">
+                            <TableCell className="font-medium text-gray-500">Fark (baz'a göre)</TableCell>
+                            {profitRates.map((rate, idx) => {
+                              if (idx === 0) return <TableCell key={rate} className="text-right text-gray-400 bg-teal-50">(baz)</TableCell>
+                              const sp = totalWithOverhead * (1 + rate / 100)
+                              const diff = sp - baseSalesPrice
+                              return (
+                                <TableCell key={rate} className={`text-right ${diff > 0 ? "text-green-600" : "text-red-600"}`}>
+                                  {diff > 0 ? "+" : ""}{formatCurrency(diff, analysis?.currency || "EUR")}
+                                </TableCell>
+                              )
+                            })}
+                          </TableRow>
+                          <TableRow>
+                            <TableCell className="font-medium text-gray-500">Fark %</TableCell>
+                            {profitRates.map((rate, idx) => {
+                              if (idx === 0) return <TableCell key={rate} className="text-right text-gray-400 bg-teal-50">(baz)</TableCell>
+                              const sp = totalWithOverhead * (1 + rate / 100)
+                              const diffPct = baseSalesPrice > 0 ? ((sp - baseSalesPrice) / baseSalesPrice) * 100 : 0
+                              return (
+                                <TableCell key={rate} className={`text-right font-medium ${diffPct > 0 ? "text-green-600" : "text-red-600"}`}>
+                                  {diffPct > 0 ? "+" : ""}{diffPct.toFixed(1)}%
+                                </TableCell>
+                              )
+                            })}
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )
+                })()}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
         {/* Summary Tab */}
         <TabsContent value="summary" className="space-y-6">
           {/* Guide Box */}
           <div className="bg-[#E0F2F1] rounded-lg p-5 border-l-4 border-teal-500">
             <h3 className="font-semibold text-teal-800 mb-2">Maliyet Hesaplama Kılavuzu</h3>
             <p className="text-teal-700 text-sm mb-4">Should-Cost analizi ve fiyatlandırma metodolojisi hakkında bilgi.</p>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white bg-opacity-60 rounded-lg p-3">
                 <h4 className="font-medium text-teal-800 mb-2">Maliyet Bileşenleri</h4>
                 <ul className="text-sm text-teal-700 space-y-1">
@@ -1471,7 +2048,7 @@ export default function CostAnalysisDetailPage({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {/* Cost Detail */}
             <Card className="col-span-2">
               <CardHeader>
@@ -1570,12 +2147,12 @@ export default function CostAnalysisDetailPage({
                   <CardTitle>İşlemler</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  <Button variant="outline" className="w-full justify-start">
-                    <FileText className="h-4 w-4 mr-2" />
+                  <Button variant="outline" className="w-full justify-start" onClick={handleDownloadPDF} disabled={pdfLoading}>
+                    {pdfLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     PDF Rapor İndir
                   </Button>
-                  <Button variant="outline" className="w-full justify-start">
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  <Button variant="outline" className="w-full justify-start" onClick={handleDownloadExcel} disabled={excelLoading}>
+                    {excelLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     Excel'e Aktar
                   </Button>
                   <Button variant="outline" className="w-full justify-start" onClick={recalculateCosts}>
@@ -1671,7 +2248,7 @@ export default function CostAnalysisDetailPage({
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Malzeme Kodu</Label>
                 <Input
@@ -1689,7 +2266,7 @@ export default function CostAnalysisDetailPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Spesifikasyon</Label>
                 <Input
@@ -1712,7 +2289,7 @@ export default function CostAnalysisDetailPage({
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Birim</Label>
                 <Select
@@ -1747,7 +2324,7 @@ export default function CostAnalysisDetailPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2 col-span-2">
                 <Label>Birim Fiyat *</Label>
                 <Input
@@ -1793,7 +2370,7 @@ export default function CostAnalysisDetailPage({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Operasyon Adı *</Label>
                 <Input
@@ -1835,7 +2412,7 @@ export default function CostAnalysisDetailPage({
                 ))}
               </Select>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Hazırlık Süresi (sa)</Label>
                 <Input
@@ -1905,7 +2482,7 @@ export default function CostAnalysisDetailPage({
                 placeholder="Isıl işlem + NDT"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Birim Fiyat *</Label>
                 <Input
@@ -1958,21 +2535,31 @@ export default function CostAnalysisDetailPage({
               />
             </div>
             <div className="space-y-2">
+              <Label>Açıklama</Label>
+              <Input
+                value={otherForm.description}
+                onChange={(e) => setOtherForm({ ...otherForm, description: e.target.value })}
+                placeholder="Maliyet kalemi açıklaması"
+              />
+            </div>
+            <div className="space-y-2">
               <Label>Maliyet Türü</Label>
               <Select
                 value={otherForm.costType}
                 onChange={(e) => setOtherForm({ ...otherForm, costType: e.target.value })}
               >
-                <option value="ASSEMBLY">Montaj</option>
-                <option value="FASTENERS">Bağlantı Elemanları</option>
+                <option value="ASSEMBLY_LABOR">Montaj</option>
+                <option value="CONNECTION_PARTS">Bağlantı Elemanları</option>
                 <option value="QUALITY_CONTROL">Kalite Kontrol</option>
                 <option value="PACKAGING">Paketleme</option>
-                <option value="SHIPPING">Nakliye</option>
+                <option value="TRANSPORT">Nakliye</option>
                 <option value="ENGINEERING">Mühendislik</option>
+                <option value="TOOLING">Takım/Kalıp</option>
+                <option value="CERTIFICATION">Sertifikasyon</option>
                 <option value="OTHER">Diğer</option>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Birim Fiyat *</Label>
                 <Input
@@ -2021,6 +2608,77 @@ export default function CostAnalysisDetailPage({
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
               Sil
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revizyon Oluşturma Dialog */}
+      <Dialog open={revisionDialogOpen} onOpenChange={setRevisionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Yeni Revizyon Oluştur</DialogTitle>
+            <DialogDescription>
+              Mevcut analizin tüm verileri kopyalanarak yeni bir revizyon oluşturulacaktır.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-sm text-gray-500">Mevcut Revizyon</Label>
+                <div className="mt-1 font-mono font-medium text-lg">
+                  {analysis.revision}
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm text-gray-500">Yeni Revizyon</Label>
+                <div className="mt-1 font-mono font-medium text-lg text-teal-600">
+                  Rev.{String((analysis.revisionNumber || 0) + 1).padStart(2, "0")}
+                </div>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="revisionNote">Revizyon Notu</Label>
+              <Textarea
+                id="revisionNote"
+                placeholder="Bu revizyonda yapılan değişiklikleri açıklayın..."
+                value={revisionNote}
+                onChange={(e) => setRevisionNote(e.target.value)}
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm text-amber-800">
+              <div className="flex items-start space-x-2">
+                <Copy className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">Tüm veriler kopyalanacaktır</p>
+                  <p className="text-amber-600 mt-1">
+                    Malzemeler ({analysis.materials.length}), İşçilik ({analysis.laborItems.length}),
+                    Dış Hizmetler ({analysis.externalServices.length}), Diğer Maliyetler ({analysis.otherCosts.length})
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRevisionDialogOpen(false)
+                setRevisionNote("")
+              }}
+              disabled={revisionLoading}
+            >
+              İptal
+            </Button>
+            <Button onClick={handleCreateRevision} disabled={revisionLoading}>
+              {revisionLoading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <GitBranch className="h-4 w-4 mr-2" />
+              )}
+              Revizyon Oluştur
             </Button>
           </DialogFooter>
         </DialogContent>

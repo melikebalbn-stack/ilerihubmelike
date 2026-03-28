@@ -16,13 +16,22 @@ export async function GET() {
     })
 
     // Frontend icin donustur
-    const formatted = reviews.map(r => ({
+    const formatted = reviews.map(r => {
+      let attendees: string[] = []
+      try {
+        const parsed = r.participants ? JSON.parse(r.participants) : []
+        attendees = parsed.map((p: unknown) =>
+          typeof p === "string" ? p : (p as { name?: string; title?: string }).name || String(p)
+        )
+      } catch { attendees = [] }
+
+      return {
       id: r.id,
       reviewNumber: r.reviewNumber,
       title: r.title,
       description: null,
       meetingDate: r.reviewDate,
-      attendees: r.participants ? JSON.parse(r.participants) : [],
+      attendees,
       agenda: [],
       status: r.status,
       auditResults: r.auditResults,
@@ -34,8 +43,10 @@ export async function GET() {
       actionItems: r.actionItems ? JSON.parse(r.actionItems) : [],
       nextReviewDate: null,
       conclusion: null,
+      minutesUrl: r.minutesUrl,
+      chairperson: r.chairperson,
       createdAt: r.createdAt,
-    }))
+    }})
 
     return NextResponse.json(formatted)
   } catch (error) {

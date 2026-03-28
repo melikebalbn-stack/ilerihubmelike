@@ -257,6 +257,28 @@ export default function Iso27001DocumentsPage() {
     }
   }
 
+  // Doküman yayınlama (APPROVED → PUBLISHED)
+  const handlePublish = async (id: string) => {
+    try {
+      const res = await fetch(`/api/iso27001/documents/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "PUBLISHED" }),
+      })
+
+      if (res.ok) {
+        toast.success("Dokuman yayina alindi")
+        fetchDocuments()
+      } else {
+        const error = await res.json()
+        toast.error(error.error || "Yayinlama basarisiz")
+      }
+    } catch (error) {
+      console.error("Yayinlama hatasi:", error)
+      toast.error("Yayinlama sirasinda hata olustu")
+    }
+  }
+
   // Doküman silme
   const handleDelete = async (id: string) => {
     if (!confirm("Bu dokumani silmek istediginizden emin misiniz?")) return
@@ -344,6 +366,27 @@ export default function Iso27001DocumentsPage() {
     }
   }
 
+  // Dosya indirme (programmatik - sayfa navigasyonu tetiklemez)
+  const handleDownload = async (doc: Document) => {
+    try {
+      const url = doc.fileUrl.startsWith("/api/") ? doc.fileUrl : `/api/files${doc.fileUrl}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error("Dosya indirilemedi")
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = blobUrl
+      a.download = doc.fileName || "dosya"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch (error) {
+      console.error("Indirme hatasi:", error)
+      toast.error("Dosya indirilemedi")
+    }
+  }
+
   // Dosya boyutu formatla
   const formatFileSize = (bytes: number | null) => {
     if (!bytes) return "-"
@@ -361,7 +404,7 @@ export default function Iso27001DocumentsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <FileCheck className="h-6 w-6 text-primary" />
@@ -381,7 +424,7 @@ export default function Iso27001DocumentsPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-0 sm:min-w-[200px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -394,7 +437,7 @@ export default function Iso27001DocumentsPage() {
               </div>
             </div>
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Kategori" />
               </SelectTrigger>
               <SelectContent>
@@ -405,7 +448,7 @@ export default function Iso27001DocumentsPage() {
               </SelectContent>
             </Select>
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Durum" />
               </SelectTrigger>
               <SelectContent>
@@ -479,6 +522,7 @@ export default function Iso27001DocumentsPage() {
               Henuz dokuman bulunmuyor. Yeni dokuman yuklemek icin yukardaki butonu kullanin.
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -540,21 +584,25 @@ export default function Iso27001DocumentsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem asChild>
-                              <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
+                              <a href={doc.fileUrl.startsWith("/api/") ? doc.fileUrl : `/api/files${doc.fileUrl}`} target="_blank" rel="noopener noreferrer">
                                 <Eye className="h-4 w-4 mr-2" />
                                 Goruntule
                               </a>
                             </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <a href={doc.fileUrl} download>
-                                <Download className="h-4 w-4 mr-2" />
-                                Indir
-                              </a>
+                            <DropdownMenuItem onClick={() => handleDownload(doc)}>
+                              <Download className="h-4 w-4 mr-2" />
+                              Indir
                             </DropdownMenuItem>
                             {(doc.status === "DRAFT" || doc.status === "PENDING_APPROVAL") && (
                               <DropdownMenuItem onClick={() => handleApprove(doc.id)}>
                                 <CheckCircle2 className="h-4 w-4 mr-2" />
                                 Onayla
+                              </DropdownMenuItem>
+                            )}
+                            {doc.status === "APPROVED" && (
+                              <DropdownMenuItem onClick={() => handlePublish(doc.id)}>
+                                <FileCheck className="h-4 w-4 mr-2" />
+                                Yayinla
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem onClick={() => handleSign(doc.id, doc.title)}>
@@ -580,13 +628,14 @@ export default function Iso27001DocumentsPage() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
 
       {/* Yükleme Dialog */}
       <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Dokuman Yukle</DialogTitle>
             <DialogDescription>
@@ -660,7 +709,7 @@ export default function Iso27001DocumentsPage() {
             </div>
 
             {/* Kategori ve Madde */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Kategori *</Label>
                 <Select
@@ -780,7 +829,7 @@ export default function Iso27001DocumentsPage() {
 
       {/* İmzalar Görüntüleme Dialog */}
       <Dialog open={isSignaturesDialogOpen} onOpenChange={setIsSignaturesDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileCheck className="h-5 w-5" />
@@ -811,7 +860,7 @@ export default function Iso27001DocumentsPage() {
                         {sig.signatureCode}
                       </Badge>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+                    <div className="grid grid-cols-1 md:grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
                       <div>
                         <span className="text-muted-foreground">Unvan:</span> {sig.signerTitle || "-"}
                       </div>

@@ -69,10 +69,30 @@ export async function GET(request: NextRequest) {
             findings: true,
           },
         },
+        findings: {
+          select: { findingType: true },
+        },
       },
     })
 
-    return NextResponse.json(audits)
+    // Bulgu tiplerini say
+    const result = audits.map(audit => {
+      const findingCounts = {
+        MAJOR_NC: 0,
+        MINOR_NC: 0,
+        OBSERVATION: 0,
+        OPPORTUNITY: 0,
+        POSITIVE: 0,
+      }
+      for (const f of audit.findings) {
+        const t = f.findingType as keyof typeof findingCounts
+        if (t in findingCounts) findingCounts[t]++
+      }
+      const { findings: _findings, ...rest } = audit
+      return { ...rest, findingCounts }
+    })
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error("Denetim listesi hatasi:", error)
     return NextResponse.json(

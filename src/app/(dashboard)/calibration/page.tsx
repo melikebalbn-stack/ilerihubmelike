@@ -24,9 +24,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Search, Filter, Calendar, AlertCircle, CheckCircle2, Clock, Pencil, Trash2, Download, Upload, FileText, Trash, UserX, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Plus, Search, Filter, Calendar, AlertCircle, CheckCircle2, Clock, Pencil, Trash2, Download, Upload, FileText, Trash, UserX, ArrowUpDown, ArrowUp, ArrowDown, History, Settings2, Wrench, Ban, Coins } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
+import { useSession } from "next-auth/react"
+import { canEditCalibration } from "@/lib/calibration-auth"
+import { UserSearchCombobox } from "@/components/user-search-combobox"
+
+// TL ikonu (lucide'da yok)
+const TLIcon = ({ className }: { className?: string }) => (
+  <span className={`font-bold ${className}`}>₺</span>
+)
 
 type CalibrationDevice = {
   id: string
@@ -44,20 +52,31 @@ type CalibrationDevice = {
   calibrationInterval: number
   lastCalibrationDate: string
   nextCalibrationDate: string
+  plannedCalibrationDate?: string | null
+  verificationInterval?: number | null
+  lastVerificationDate?: string | null
+  nextVerificationDate?: string | null
+  plannedVerificationDate?: string | null
   certificateNumber?: string | null
   status: string
+  statusManualOverride?: boolean
   notes?: string | null
   imageUrl?: string | null
   attachments?: string | null
   requiresResponsible?: boolean
 }
 
-type ADUser = {
+type CalibrationHistoryRecord = {
   id: string
-  name: string
-  email: string
-  department?: string | null
-  jobTitle?: string | null
+  calibrationDate: string
+  nextDueDate: string
+  certificateNumber?: string | null
+  calibratedBy: string
+  cost?: number | null
+  result: string
+  notes?: string | null
+  certificatePath?: string | null
+  createdAt: string
 }
 
 type Stats = {
@@ -65,12 +84,18 @@ type Stats = {
   valid: number
   expiring: number
   expired: number
+  inProcess: number
+  outOfOrder: number
   noResponsible: number
+  totalCost: number
 }
 
 export default function CalibrationPage() {
+  const { data: session } = useSession()
+  const canEdit = canEditCalibration(session?.user?.role, session?.user?.ou, session?.user?.department)
+
   const [devices, setDevices] = useState<CalibrationDevice[]>([])
-  const [stats, setStats] = useState<Stats>({ total: 0, valid: 0, expiring: 0, expired: 0, noResponsible: 0 })
+  const [stats, setStats] = useState<Stats>({ total: 0, valid: 0, expiring: 0, expired: 0, inProcess: 0, outOfOrder: 0, noResponsible: 0, totalCost: 0 })
   const [selectedDevice, setSelectedDevice] = useState<CalibrationDevice | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -92,6 +117,10 @@ export default function CalibrationPage() {
     responsiblePersonEmail: "",
     calibrationInterval: "365",
     lastCalibrationDate: new Date().toISOString().split('T')[0],
+    plannedCalibrationDate: "",
+    verificationInterval: "",
+    lastVerificationDate: "",
+    plannedVerificationDate: "",
     certificateNumber: "",
     notes: "",
     imageUrl: "",
@@ -107,7 +136,7 @@ export default function CalibrationPage() {
   const [deviceTypes, setDeviceTypes] = useState<string[]>([])
   const [deviceNames, setDeviceNames] = useState<string[]>([])
   const [models, setModels] = useState<string[]>([])
-  const [responsiblePersons, setResponsiblePersons] = useState<ADUser[]>([])
+  const [productionSections, setProductionSections] = useState<string[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [lastImportErrors, setLastImportErrors] = useState<string[]>([])
@@ -117,6 +146,26 @@ export default function CalibrationPage() {
   const [showAttachmentsDialog, setShowAttachmentsDialog] = useState(false)
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([])
   const [selectedDeviceName, setSelectedDeviceName] = useState("")
+
+  // History dialog
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+  const [historyDevice, setHistoryDevice] = useState<CalibrationDevice | null>(null)
+  const [historyRecords, setHistoryRecords] = useState<CalibrationHistoryRecord[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [showAddHistoryForm, setShowAddHistoryForm] = useState(false)
+  const [historyFormData, setHistoryFormData] = useState({
+    calibrationDate: new Date().toISOString().split('T')[0],
+    certificateNumber: "",
+    calibratedBy: "",
+    cost: "",
+    result: "PASS",
+    notes: "",
+  })
+
+  // Status dialog
+  const [showStatusDialog, setShowStatusDialog] = useState(false)
+  const [statusDevice, setStatusDevice] = useState<CalibrationDevice | null>(null)
+  const [selectedStatus, setSelectedStatus] = useState("")
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -167,10 +216,9 @@ export default function CalibrationPage() {
   // Dropdown verilerini yükle
   const loadDropdownData = async () => {
     try {
-      const [settingsRes, deptRes, usersRes] = await Promise.all([
+      const [settingsRes, deptRes] = await Promise.all([
         fetch('/api/settings/calibration'),
         fetch('/api/departments'),
-        fetch('/api/users'),
       ])
 
       if (settingsRes.ok) {
@@ -179,16 +227,12 @@ export default function CalibrationPage() {
         setDeviceTypes(data.deviceTypes?.map((t: any) => t.name) || [])
         setDeviceNames(data.deviceModels?.map((m: any) => m.name) || [])
         setModels(data.deviceModels?.map((m: any) => m.name) || [])
+        setProductionSections(data.productionSections?.map((s: any) => s.name) || [])
       }
 
       if (deptRes.ok) {
         const depts = await deptRes.json()
         setDepartments(depts.map((d: any) => d.name))
-      }
-
-      if (usersRes.ok) {
-        const users = await usersRes.json()
-        setResponsiblePersons(users.filter((u: any) => u.name && u.email))
       }
     } catch (error) {
       console.error('Dropdown verileri yüklenirken hata:', error)
@@ -198,10 +242,6 @@ export default function CalibrationPage() {
       setDeviceTypes(["Ölçüm Cihazı", "Test Ekipmanı", "Analiz Cihazı"])
       setDeviceNames(["Dijital Kumpas", "Hassas Terazi", "pH Metre"])
       setModels(["Mitutoyo 500-196", "Sartorius BP 210 S"])
-      setResponsiblePersons([
-        { id: "1", name: "Ahmet Yılmaz", email: "ahmet.yilmaz@ilerigroup.com" },
-        { id: "2", name: "Ayşe Kaya", email: "ayse.kaya@ilerigroup.com" }
-      ])
     }
   }
 
@@ -236,8 +276,15 @@ export default function CalibrationPage() {
       case "IN_PROCESS":
         return (
           <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-            <Clock className="mr-1 h-3 w-3" />
+            <Wrench className="mr-1 h-3 w-3" />
             Kalibrasyonda
+          </Badge>
+        )
+      case "OUT_OF_ORDER":
+        return (
+          <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">
+            <Ban className="mr-1 h-3 w-3" />
+            Arızalı
           </Badge>
         )
       default:
@@ -281,6 +328,13 @@ export default function CalibrationPage() {
       color: "text-gray-600",
       bgColor: "bg-gray-100",
     },
+    {
+      title: "Toplam Maliyet",
+      value: `${Number(stats.totalCost).toLocaleString('tr-TR')} TL`,
+      icon: TLIcon,
+      color: "text-purple-600",
+      bgColor: "bg-purple-100",
+    },
   ]
 
   // Sıralama fonksiyonu
@@ -315,7 +369,7 @@ export default function CalibrationPage() {
       if (bValue === null || bValue === undefined) return -1
 
       // Tarih alanları için özel karşılaştırma
-      if (sortField === 'lastCalibrationDate' || sortField === 'nextCalibrationDate') {
+      if (sortField === 'lastCalibrationDate' || sortField === 'nextCalibrationDate' || sortField === 'plannedCalibrationDate' || sortField === ('lastVerificationDate' as any) || sortField === ('plannedVerificationDate' as any)) {
         const dateA = new Date(aValue as string).getTime()
         const dateB = new Date(bValue as string).getTime()
         return sortDirection === 'asc' ? dateA - dateB : dateB - dateA
@@ -362,6 +416,10 @@ export default function CalibrationPage() {
       responsiblePersonEmail: "",
       calibrationInterval: "365",
       lastCalibrationDate: new Date().toISOString().split('T')[0],
+      plannedCalibrationDate: "",
+      verificationInterval: "",
+      lastVerificationDate: "",
+      plannedVerificationDate: "",
       certificateNumber: "",
       notes: "",
       imageUrl: "",
@@ -437,7 +495,7 @@ export default function CalibrationPage() {
     e.preventDefault()
     try {
       // deviceId boşsa otomatik oluştur
-      const deviceId = formData.deviceId || generateDeviceId()
+      const deviceId = formData.deviceId
 
       const response = await fetch('/api/calibration', {
         method: 'POST',
@@ -446,6 +504,10 @@ export default function CalibrationPage() {
           ...formData,
           deviceId,
           calibrationInterval: parseInt(formData.calibrationInterval),
+          plannedCalibrationDate: formData.plannedCalibrationDate || null,
+          verificationInterval: formData.verificationInterval || null,
+          lastVerificationDate: formData.lastVerificationDate || null,
+          plannedVerificationDate: formData.plannedVerificationDate || null,
           attachments: JSON.stringify(formData.attachments),
         }),
       })
@@ -475,7 +537,12 @@ export default function CalibrationPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          calibrationInterval: parseInt(formData.calibrationInterval),
+          calibrationInterval: parseInt(formData.calibrationInterval) || null,
+          lastCalibrationDate: formData.lastCalibrationDate || null,
+          plannedCalibrationDate: formData.plannedCalibrationDate || null,
+          verificationInterval: formData.verificationInterval || null,
+          lastVerificationDate: formData.lastVerificationDate || null,
+          plannedVerificationDate: formData.plannedVerificationDate || null,
           attachments: JSON.stringify(formData.attachments),
         }),
       })
@@ -529,7 +596,8 @@ export default function CalibrationPage() {
         setCurrentPage(1)
         toast.success('Tüm cihazlar başarıyla silindi!')
       } else {
-        toast.error('Cihazlar silinirken bir hata oluştu')
+        const err = await response.json().catch(() => ({}))
+        toast.error(err.error || 'Cihazlar silinirken bir hata oluştu')
       }
     } catch (error) {
       console.error('Toplu silme hatası:', error)
@@ -554,8 +622,20 @@ export default function CalibrationPage() {
       department: device.department || "",
       responsiblePerson: device.responsiblePerson || "",
       responsiblePersonEmail: device.responsiblePersonEmail || "",
-      calibrationInterval: device.calibrationInterval.toString(),
-      lastCalibrationDate: new Date(device.lastCalibrationDate).toISOString().split('T')[0],
+      calibrationInterval: device.calibrationInterval?.toString() || "",
+      lastCalibrationDate: device.lastCalibrationDate
+        ? new Date(device.lastCalibrationDate).toISOString().split('T')[0]
+        : "",
+      plannedCalibrationDate: device.plannedCalibrationDate
+        ? new Date(device.plannedCalibrationDate).toISOString().split('T')[0]
+        : "",
+      verificationInterval: device.verificationInterval?.toString() || "",
+      lastVerificationDate: device.lastVerificationDate
+        ? new Date(device.lastVerificationDate).toISOString().split('T')[0]
+        : "",
+      plannedVerificationDate: device.plannedVerificationDate
+        ? new Date(device.plannedVerificationDate).toISOString().split('T')[0]
+        : "",
       certificateNumber: device.certificateNumber || "",
       notes: device.notes || "",
       imageUrl: device.imageUrl || "",
@@ -563,6 +643,86 @@ export default function CalibrationPage() {
       requiresResponsible: device.requiresResponsible || false,
     })
     setIsEditDialogOpen(true)
+  }
+
+  // Geçmiş dialog
+  const openHistoryDialog = async (device: CalibrationDevice) => {
+    setHistoryDevice(device)
+    setShowHistoryDialog(true)
+    setLoadingHistory(true)
+    setShowAddHistoryForm(false)
+    setHistoryFormData({
+      calibrationDate: new Date().toISOString().split('T')[0],
+      certificateNumber: "",
+      calibratedBy: "",
+      cost: "",
+      result: "PASS",
+      notes: "",
+    })
+    try {
+      const res = await fetch(`/api/calibration/${device.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setHistoryRecords(data.calibrationHistory || [])
+      }
+    } catch (error) {
+      console.error('Geçmiş yükleme hatası:', error)
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
+  const handleAddHistory = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!historyDevice) return
+    try {
+      const res = await fetch('/api/calibration/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId: historyDevice.id,
+          calibrationDate: historyFormData.calibrationDate,
+          certificateNumber: historyFormData.certificateNumber || undefined,
+          calibratedBy: historyFormData.calibratedBy,
+          cost: historyFormData.cost ? parseFloat(historyFormData.cost) : null,
+          result: historyFormData.result,
+          notes: historyFormData.notes || undefined,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Kalibrasyon kaydı eklendi!')
+        openHistoryDialog(historyDevice)
+        loadData()
+      } else {
+        const error = await res.json()
+        toast.error(error.error || 'Kayıt eklenemedi')
+      }
+    } catch (error) {
+      toast.error('Kayıt eklenirken hata oluştu')
+    }
+  }
+
+  // Durum değiştir
+  const handleStatusChange = async () => {
+    if (!statusDevice) return
+    try {
+      const res = await fetch(`/api/calibration/${statusDevice.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: selectedStatus || undefined,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Durum güncellendi')
+        setShowStatusDialog(false)
+        loadData()
+      } else {
+        toast.error('Durum güncellenemedi')
+      }
+    } catch (error) {
+      toast.error('Durum güncellenirken hata oluştu')
+    }
   }
 
   // Excel'e aktar
@@ -577,9 +737,23 @@ export default function CalibrationPage() {
       'Lokasyon': device.location || '',
       'Departman': device.department || '',
       'Sorumlu Kişi': device.responsiblePerson || '',
-      'Kalibrasyon Periyodu (Gün)': device.calibrationInterval,
-      'Son Kalibrasyon': new Date(device.lastCalibrationDate).toLocaleDateString('tr-TR'),
-      'Sonraki Kalibrasyon': new Date(device.nextCalibrationDate).toLocaleDateString('tr-TR'),
+      'Kalibrasyon Periyodu (Gün)': device.calibrationInterval || '',
+      'Son Kalibrasyon': device.lastCalibrationDate
+        ? new Date(device.lastCalibrationDate).toLocaleDateString('tr-TR')
+        : '',
+      'Sonraki Kalibrasyon': device.nextCalibrationDate
+        ? new Date(device.nextCalibrationDate).toLocaleDateString('tr-TR')
+        : '',
+      'Planlanan Kalibrasyon': device.plannedCalibrationDate
+        ? new Date(device.plannedCalibrationDate).toLocaleDateString('tr-TR')
+        : '',
+      'Doğrulama Periyodu (Gün)': device.verificationInterval || '',
+      'Son Doğrulama': device.lastVerificationDate
+        ? new Date(device.lastVerificationDate).toLocaleDateString('tr-TR')
+        : '',
+      'Planlanan Doğrulama': device.plannedVerificationDate
+        ? new Date(device.plannedVerificationDate).toLocaleDateString('tr-TR')
+        : '',
       'Sertifika No': device.certificateNumber || '',
       'Durum': device.status,
       'Notlar': device.notes || '',
@@ -676,6 +850,57 @@ export default function CalibrationPage() {
             const certificateNumber = row['Sertifika No'] || row['SertifikaNo'] || row['Sertifika'] || ''
             const notes = row['Notlar'] || row['Not'] || row['NOTLAR'] || ''
 
+            // Planlanan tarih
+            let plannedCalibrationDate = row['Planlanan Kalibrasyon'] || row['Planlanan Tarih'] ||
+                                         row['Planlanan Kalibrasyon Tarihi'] || row['PLANLANAN KALIBRASYON'] || ''
+            if (typeof plannedCalibrationDate === 'number') {
+              const excelEpoch = new Date(1899, 11, 30)
+              const msPerDay = 86400000
+              const date = new Date(excelEpoch.getTime() + plannedCalibrationDate * msPerDay)
+              plannedCalibrationDate = date.toISOString().split('T')[0]
+            } else if (plannedCalibrationDate) {
+              const parsedDate = new Date(plannedCalibrationDate)
+              if (!isNaN(parsedDate.getTime())) {
+                plannedCalibrationDate = parsedDate.toISOString().split('T')[0]
+              } else {
+                plannedCalibrationDate = ''
+              }
+            }
+
+            // Doğrulama alanları
+            const verificationIntervalRaw = row['Doğrulama Periyodu (Gün)'] || row['Doğrulama Periyodu'] ||
+                                             row['Dogrulama Periyodu'] || ''
+            let lastVerificationDate = row['Son Doğrulama'] || row['Son Doğrulama Tarihi'] ||
+                                        row['Son Dogrulama'] || ''
+            if (typeof lastVerificationDate === 'number') {
+              const excelEpoch = new Date(1899, 11, 30)
+              const msPerDay = 86400000
+              const date = new Date(excelEpoch.getTime() + lastVerificationDate * msPerDay)
+              lastVerificationDate = date.toISOString().split('T')[0]
+            } else if (lastVerificationDate) {
+              const parsedDate = new Date(lastVerificationDate)
+              if (!isNaN(parsedDate.getTime())) {
+                lastVerificationDate = parsedDate.toISOString().split('T')[0]
+              } else {
+                lastVerificationDate = ''
+              }
+            }
+            let plannedVerificationDate = row['Planlanan Doğrulama'] || row['Planlanan Doğrulama Tarihi'] ||
+                                           row['Planlanan Dogrulama'] || ''
+            if (typeof plannedVerificationDate === 'number') {
+              const excelEpoch = new Date(1899, 11, 30)
+              const msPerDay = 86400000
+              const date = new Date(excelEpoch.getTime() + plannedVerificationDate * msPerDay)
+              plannedVerificationDate = date.toISOString().split('T')[0]
+            } else if (plannedVerificationDate) {
+              const parsedDate = new Date(plannedVerificationDate)
+              if (!isNaN(parsedDate.getTime())) {
+                plannedVerificationDate = parsedDate.toISOString().split('T')[0]
+              } else {
+                plannedVerificationDate = ''
+              }
+            }
+
             const response = await fetch('/api/calibration', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -693,6 +918,10 @@ export default function CalibrationPage() {
                 lastCalibrationDate,
                 certificateNumber: certificateNumber.toString().trim(),
                 notes: notes.toString().trim(),
+                plannedCalibrationDate: plannedCalibrationDate || null,
+                verificationInterval: verificationIntervalRaw ? parseInt(verificationIntervalRaw.toString()) : null,
+                lastVerificationDate: lastVerificationDate || null,
+                plannedVerificationDate: plannedVerificationDate || null,
               }),
             })
 
@@ -781,9 +1010,9 @@ export default function CalibrationPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Kalibrasyon Yönetimi</h1>
+          <h1 className="text-xl lg:text-3xl font-bold tracking-tight">Kalibrasyon Yönetimi</h1>
           <p className="text-muted-foreground">
             Cihaz takibi, periyodik kontrol ve sertifika yönetimi
           </p>
@@ -813,40 +1042,48 @@ export default function CalibrationPage() {
               </Button>
             </>
           )}
-          <Button
-            variant="destructive"
-            onClick={() => setShowDeleteAllDialog(true)}
-            disabled={devices.length === 0}
-          >
-            <Trash className="mr-2 h-4 w-4" />
-            Tüm Verileri Sil
-          </Button>
+          {canEdit && (
+            <Button
+              variant="destructive"
+              onClick={() => setShowDeleteAllDialog(true)}
+              disabled={devices.length === 0}
+            >
+              <Trash className="mr-2 h-4 w-4" />
+              Tüm Verileri Sil
+            </Button>
+          )}
           <Button variant="outline" onClick={handleExportToExcel}>
             <Download className="mr-2 h-4 w-4" />
             Excel'e Aktar
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => document.getElementById('excel-import')?.click()}
-            disabled={isImporting}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            {isImporting ? `İçeri aktarılıyor... (${importProgress.current}/${importProgress.total})` : 'Excel\'den İçeri Aktar'}
-          </Button>
-          <input
-            id="excel-import"
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleImportFromExcel}
-            className="hidden"
-          />
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={resetForm}>
-                <Plus className="mr-2 h-4 w-4" />
-                Yeni Cihaz Ekle
+          {canEdit && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => document.getElementById('excel-import')?.click()}
+                disabled={isImporting}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {isImporting ? `İçeri aktarılıyor... (${importProgress.current}/${importProgress.total})` : 'Excel\'den İçeri Aktar'}
               </Button>
-            </DialogTrigger>
+              <input
+                id="excel-import"
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleImportFromExcel}
+                className="hidden"
+              />
+            </>
+          )}
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            {canEdit && (
+              <DialogTrigger asChild>
+                <Button onClick={resetForm}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Yeni Cihaz Ekle
+                </Button>
+              </DialogTrigger>
+            )}
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <form onSubmit={handleAddDevice}>
               <DialogHeader>
@@ -856,15 +1093,14 @@ export default function CalibrationPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="deviceId">Cihaz ID (Otomatik)</Label>
+                    <Label htmlFor="deviceId">Cihaz ID</Label>
                     <Input
                       id="deviceId"
-                      value={formData.deviceId || generateDeviceId()}
+                      value={formData.deviceId}
                       onChange={(e) => setFormData({ ...formData, deviceId: e.target.value })}
-                      placeholder="Otomatik oluşturulacak"
-                      disabled
+                      placeholder="Cihaz ID girin"
                     />
                   </div>
                   <div className="space-y-2">
@@ -882,7 +1118,7 @@ export default function CalibrationPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="calibrationType">Tip</Label>
                     <Select
@@ -907,7 +1143,7 @@ export default function CalibrationPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="model">Model</Label>
                     <Input
@@ -928,7 +1164,7 @@ export default function CalibrationPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="location">Lokasyon</Label>
                     <Select
@@ -947,7 +1183,7 @@ export default function CalibrationPage() {
                     <Select
                       id="department"
                       value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, department: e.target.value, ...(e.target.value !== "Üretim" ? { location: formData.location } : {}) })}
                     >
                       <option value="">Seçiniz</option>
                       {departments.map((dept) => (
@@ -957,28 +1193,36 @@ export default function CalibrationPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                {formData.department === "Üretim" && (
                   <div className="space-y-2">
-                    <Label htmlFor="responsiblePerson">Sorumlu Kişi (AD)</Label>
+                    <Label htmlFor="productionSection">Üretim Bölümü</Label>
                     <Select
-                      id="responsiblePerson"
-                      value={formData.responsiblePersonEmail}
-                      onChange={(e) => {
-                        const selectedUser = responsiblePersons.find(p => p.email === e.target.value)
-                        setFormData({
-                          ...formData,
-                          responsiblePerson: selectedUser?.name || "",
-                          responsiblePersonEmail: selectedUser?.email || ""
-                        })
-                      }}
+                      id="productionSection"
+                      value={formData.location}
+                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                     >
-                      <option value="">Seçiniz</option>
-                      {responsiblePersons.map((person) => (
-                        <option key={person.email} value={person.email}>
-                          {person.name} ({person.email})
-                        </option>
+                      <option value="">Bölüm Seçiniz</option>
+                      {productionSections.map((section) => (
+                        <option key={section} value={section}>{section}</option>
                       ))}
                     </Select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="responsiblePerson">Sorumlu Kişi</Label>
+                    <UserSearchCombobox
+                      value={formData.responsiblePersonEmail}
+                      onSelect={(user) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          responsiblePerson: user?.name || "",
+                          responsiblePersonEmail: user?.email || ""
+                        }))
+                      }}
+                      placeholder="Sorumlu kişi arayın..."
+                    />
                     {formData.responsiblePersonEmail && (
                       <p className="text-xs text-muted-foreground">
                         Kalibrasyon süresi dolmadan 7 gün önce bu kişiye mail gönderilecektir.
@@ -1002,27 +1246,152 @@ export default function CalibrationPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="calibrationInterval">Kalibrasyon Periyodu (gün)</Label>
-                    <Input
-                      id="calibrationInterval"
-                      type="number"
-                      value={formData.calibrationInterval}
-                      onChange={(e) => setFormData({ ...formData, calibrationInterval: e.target.value })}
-                      placeholder="365"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastCalibrationDate">Son Kalibrasyon Tarihi</Label>
-                    <Input
-                      id="lastCalibrationDate"
-                      type="date"
-                      value={formData.lastCalibrationDate}
-                      onChange={(e) => setFormData({ ...formData, lastCalibrationDate: e.target.value })}
-                    />
-                  </div>
-                </div>
+                {/* Kalibrasyon alanları - Kalibrasyon veya Kal/Doğ seçildiğinde */}
+                {(formData.calibrationType === 'Kalibrasyon' || formData.calibrationType === 'Kal/Doğ') && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="calibrationInterval">Kalibrasyon Periyodu (gün)</Label>
+                        <Input
+                          id="calibrationInterval"
+                          type="number"
+                          value={formData.calibrationInterval}
+                          onChange={(e) => {
+                            const newInterval = e.target.value
+                            const interval = parseInt(newInterval) || 365
+                            const planned = formData.lastCalibrationDate ? new Date(new Date(formData.lastCalibrationDate).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                            setFormData({ ...formData, calibrationInterval: newInterval, plannedCalibrationDate: planned || formData.plannedCalibrationDate })
+                          }}
+                          placeholder="365"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="lastCalibrationDate">Son Kalibrasyon Tarihi</Label>
+                        <Input
+                          id="lastCalibrationDate"
+                          type="date"
+                          value={formData.lastCalibrationDate}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            const interval = parseInt(formData.calibrationInterval) || 365
+                            const planned = val ? new Date(new Date(val).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                            setFormData({ ...formData, lastCalibrationDate: val, plannedCalibrationDate: planned })
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="plannedCalibrationDate">Planlanan Kalibrasyon Tarihi</Label>
+                      <Input
+                        id="plannedCalibrationDate"
+                        type="date"
+                        value={formData.plannedCalibrationDate}
+                        onChange={(e) => setFormData({ ...formData, plannedCalibrationDate: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Sonraki kalibrasyon tarihinden 20 gün önce otomatik hesaplanır, değiştirilebilir
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Doğrulama alanları - Doğrulama veya Kal/Doğ seçildiğinde */}
+                {(formData.calibrationType === 'Doğrulama' || formData.calibrationType === 'Kal/Doğ') && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="verificationInterval">Doğrulama Periyodu (gün)</Label>
+                        <Input
+                          id="verificationInterval"
+                          type="number"
+                          value={formData.verificationInterval}
+                          onChange={(e) => {
+                            const newInterval = e.target.value
+                            const interval = parseInt(newInterval) || 365
+                            const planned = formData.lastVerificationDate ? new Date(new Date(formData.lastVerificationDate).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                            setFormData({ ...formData, verificationInterval: newInterval, plannedVerificationDate: planned || formData.plannedVerificationDate })
+                          }}
+                          placeholder="365"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="lastVerificationDate">Son Doğrulama Tarihi</Label>
+                        <Input
+                          id="lastVerificationDate"
+                          type="date"
+                          value={formData.lastVerificationDate}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            const interval = parseInt(formData.verificationInterval) || 365
+                            const planned = val ? new Date(new Date(val).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                            setFormData({ ...formData, lastVerificationDate: val, plannedVerificationDate: planned })
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="plannedVerificationDate">Planlanan Doğrulama Tarihi</Label>
+                      <Input
+                        id="plannedVerificationDate"
+                        type="date"
+                        value={formData.plannedVerificationDate}
+                        onChange={(e) => setFormData({ ...formData, plannedVerificationDate: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Sonraki doğrulama tarihinden 20 gün önce otomatik hesaplanır, değiştirilebilir
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Tip seçilmediğinde default kalibrasyon alanları */}
+                {!formData.calibrationType && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="calibrationInterval">Kalibrasyon Periyodu (gün)</Label>
+                        <Input
+                          id="calibrationInterval"
+                          type="number"
+                          value={formData.calibrationInterval}
+                          onChange={(e) => {
+                            const newInterval = e.target.value
+                            const interval = parseInt(newInterval) || 365
+                            const planned = formData.lastCalibrationDate ? new Date(new Date(formData.lastCalibrationDate).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                            setFormData({ ...formData, calibrationInterval: newInterval, plannedCalibrationDate: planned || formData.plannedCalibrationDate })
+                          }}
+                          placeholder="365"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="lastCalibrationDate">Son Kalibrasyon Tarihi</Label>
+                        <Input
+                          id="lastCalibrationDate"
+                          type="date"
+                          value={formData.lastCalibrationDate}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            const interval = parseInt(formData.calibrationInterval) || 365
+                            const planned = val ? new Date(new Date(val).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                            setFormData({ ...formData, lastCalibrationDate: val, plannedCalibrationDate: planned })
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="plannedCalibrationDate">Planlanan Kalibrasyon Tarihi</Label>
+                      <Input
+                        id="plannedCalibrationDate"
+                        type="date"
+                        value={formData.plannedCalibrationDate}
+                        onChange={(e) => setFormData({ ...formData, plannedCalibrationDate: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Sonraki kalibrasyon tarihinden 20 gün önce otomatik hesaplanır, değiştirilebilir
+                      </p>
+                    </div>
+                  </>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="certificateNumber">Sertifika No</Label>
@@ -1106,7 +1475,7 @@ export default function CalibrationPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         {statCards.map((stat) => {
           const Icon = stat.icon
           return (
@@ -1149,7 +1518,7 @@ export default function CalibrationPage() {
           </div>
 
           {/* Table */}
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1233,6 +1602,45 @@ export default function CalibrationPage() {
                   </TableHead>
                   <TableHead
                     className="cursor-pointer select-none hover:bg-accent"
+                    onClick={() => handleSort('plannedCalibrationDate')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Planlanan Kal.
+                      {sortField === 'plannedCalibrationDate' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="h-4 w-4 opacity-50" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none hover:bg-accent"
+                    onClick={() => handleSort('lastVerificationDate' as keyof CalibrationDevice)}
+                  >
+                    <div className="flex items-center gap-1">
+                      Son Doğrulama
+                      {sortField === ('lastVerificationDate' as keyof CalibrationDevice) ? (
+                        sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="h-4 w-4 opacity-50" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none hover:bg-accent"
+                    onClick={() => handleSort('plannedVerificationDate' as keyof CalibrationDevice)}
+                  >
+                    <div className="flex items-center gap-1">
+                      Planlanan Doğ.
+                      {sortField === ('plannedVerificationDate' as keyof CalibrationDevice) ? (
+                        sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="h-4 w-4 opacity-50" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none hover:bg-accent"
                     onClick={() => handleSort('status')}
                   >
                     <div className="flex items-center gap-1">
@@ -1245,13 +1653,13 @@ export default function CalibrationPage() {
                     </div>
                   </TableHead>
                   <TableHead>Ekler</TableHead>
-                  <TableHead className="text-right">İşlemler</TableHead>
+                  {canEdit && <TableHead className="text-right">İşlemler</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedDevices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground">
+                    <TableCell colSpan={13} className="text-center text-muted-foreground">
                       {searchTerm ? 'Arama sonucu bulunamadı' : 'Henüz cihaz eklenmemiş'}
                     </TableCell>
                   </TableRow>
@@ -1262,12 +1670,75 @@ export default function CalibrationPage() {
 
                     return (
                     <TableRow key={device.id}>
-                      <TableCell className="font-medium">{device.deviceId}</TableCell>
+                      <TableCell
+                        className="font-medium cursor-pointer hover:underline text-blue-600"
+                        onClick={() => openHistoryDialog(device)}
+                        title="Kalibrasyon geçmişini görüntüle"
+                      >
+                        {device.deviceId}
+                      </TableCell>
                       <TableCell>{device.model || "-"}</TableCell>
                       <TableCell>{device.calibrationType || "-"}</TableCell>
                       <TableCell>{device.department || "-"}</TableCell>
-                      <TableCell>{new Date(device.lastCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
-                      <TableCell>{new Date(device.nextCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
+                      <TableCell>{device.calibrationType === 'Doğrulama' || !device.lastCalibrationDate ? '-' : new Date(device.lastCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
+                      <TableCell>{device.calibrationType === 'Doğrulama' || !device.nextCalibrationDate ? '-' : new Date(device.nextCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
+                      <TableCell>
+                        {device.calibrationType === 'Doğrulama' ? '-' : device.plannedCalibrationDate ? (() => {
+                          const planned = new Date(device.plannedCalibrationDate!)
+                          const lastCal = new Date(device.lastCalibrationDate)
+                          const now = new Date()
+                          if (lastCal >= planned) {
+                            return (
+                              <span className="text-green-600 font-medium" title="Kalibrasyon tamamlandı">
+                                {planned.toLocaleDateString('tr-TR')} ✓
+                              </span>
+                            )
+                          }
+                          if (planned < now) {
+                            return (
+                              <span className="text-red-600 font-medium" title="Kalibrasyon gecikmiş">
+                                {planned.toLocaleDateString('tr-TR')} !
+                              </span>
+                            )
+                          }
+                          return (
+                            <span className="text-yellow-600" title="Kalibrasyon bekliyor">
+                              {planned.toLocaleDateString('tr-TR')}
+                            </span>
+                          )
+                        })() : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {device.calibrationType === 'Kalibrasyon' ? '-' : device.lastVerificationDate
+                          ? new Date(device.lastVerificationDate).toLocaleDateString('tr-TR')
+                          : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {device.calibrationType === 'Kalibrasyon' ? '-' : device.plannedVerificationDate ? (() => {
+                          const planned = new Date(device.plannedVerificationDate!)
+                          const lastVer = device.lastVerificationDate ? new Date(device.lastVerificationDate) : null
+                          const now = new Date()
+                          if (lastVer && lastVer >= planned) {
+                            return (
+                              <span className="text-green-600 font-medium" title="Doğrulama tamamlandı">
+                                {planned.toLocaleDateString('tr-TR')} ✓
+                              </span>
+                            )
+                          }
+                          if (planned < now) {
+                            return (
+                              <span className="text-red-600 font-medium" title="Doğrulama gecikmiş">
+                                {planned.toLocaleDateString('tr-TR')} !
+                              </span>
+                            )
+                          }
+                          return (
+                            <span className="text-yellow-600" title="Doğrulama bekliyor">
+                              {planned.toLocaleDateString('tr-TR')}
+                            </span>
+                          )
+                        })() : "-"}
+                      </TableCell>
                       <TableCell>{getStatusBadge(device.status)}</TableCell>
                       <TableCell>
                         {attachmentCount > 0 ? (
@@ -1287,22 +1758,36 @@ export default function CalibrationPage() {
                           <span className="text-muted-foreground text-sm">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditDialog(device)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteDevice(device.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </TableCell>
+                      {canEdit && (
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setStatusDevice(device)
+                              setSelectedStatus(device.status)
+                              setShowStatusDialog(true)
+                            }}
+                            title="Durum Değiştir"
+                          >
+                            <Settings2 className="h-4 w-4 text-blue-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(device)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteDevice(device.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                     )
                   })
@@ -1375,7 +1860,83 @@ export default function CalibrationPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              {/* Kalibrasyon Bilgisi Özeti */}
+              {selectedDevice && (
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm">Kalibrasyon Bilgisi</h4>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsEditDialogOpen(false)
+                        openHistoryDialog(selectedDevice)
+                      }}
+                    >
+                      <History className="mr-2 h-3 w-3" />
+                      Geçmişi Gör
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <p className="text-muted-foreground text-xs">Son Kalibrasyon</p>
+                      <p className="font-medium">{new Date(selectedDevice.lastCalibrationDate).toLocaleDateString('tr-TR')}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Sonraki Vade</p>
+                      <p className="font-medium">{new Date(selectedDevice.nextCalibrationDate).toLocaleDateString('tr-TR')}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Planlanan Tarih</p>
+                      <p className="font-medium">
+                        {formData.plannedCalibrationDate
+                          ? new Date(formData.plannedCalibrationDate).toLocaleDateString('tr-TR')
+                          : '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground text-xs">Kalibrasyon Durumu</p>
+                      {(() => {
+                        if (!formData.plannedCalibrationDate) {
+                          return <p className="text-muted-foreground text-xs mt-1">Tarih planlanmadı</p>
+                        }
+                        const planned = new Date(formData.plannedCalibrationDate)
+                        const lastCal = new Date(selectedDevice.lastCalibrationDate)
+                        const now = new Date()
+                        if (lastCal >= planned) {
+                          return (
+                            <Badge className="bg-green-100 text-green-800 hover:bg-green-100 mt-1">
+                              <CheckCircle2 className="mr-1 h-3 w-3" />
+                              Tamamlandı
+                            </Badge>
+                          )
+                        }
+                        if (planned < now) {
+                          return (
+                            <Badge className="bg-red-100 text-red-800 hover:bg-red-100 mt-1">
+                              <AlertCircle className="mr-1 h-3 w-3" />
+                              Gecikmiş
+                            </Badge>
+                          )
+                        }
+                        const daysLeft = Math.ceil((planned.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                        return (
+                          <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 mt-1">
+                            <Clock className="mr-1 h-3 w-3" />
+                            {daysLeft} gün kaldı
+                          </Badge>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Maliyet bilgisi &quot;Geçmişi Gör&quot; bölümünden her kalibrasyon kaydına ayrı ayrı girilir.
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-deviceId">Cihaz ID</Label>
                   <Input
@@ -1399,7 +1960,7 @@ export default function CalibrationPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-calibrationType">Tip</Label>
                   <Select
@@ -1423,7 +1984,7 @@ export default function CalibrationPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-model">Model</Label>
                   <Input
@@ -1443,7 +2004,7 @@ export default function CalibrationPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-location">Lokasyon</Label>
                   <Select
@@ -1462,7 +2023,7 @@ export default function CalibrationPage() {
                   <Select
                     id="edit-department"
                     value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value, ...(e.target.value !== "Üretim" ? { location: formData.location } : {}) })}
                   >
                     <option value="">Seçiniz</option>
                     {departments.map((dept) => (
@@ -1472,28 +2033,36 @@ export default function CalibrationPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {formData.department === "Üretim" && (
                 <div className="space-y-2">
-                  <Label htmlFor="edit-responsiblePerson">Sorumlu Kişi (AD)</Label>
+                  <Label htmlFor="edit-productionSection">Üretim Bölümü</Label>
                   <Select
-                    id="edit-responsiblePerson"
-                    value={formData.responsiblePersonEmail}
-                    onChange={(e) => {
-                      const selectedUser = responsiblePersons.find(p => p.email === e.target.value)
-                      setFormData({
-                        ...formData,
-                        responsiblePerson: selectedUser?.name || "",
-                        responsiblePersonEmail: selectedUser?.email || ""
-                      })
-                    }}
+                    id="edit-productionSection"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                   >
-                    <option value="">Seçiniz</option>
-                    {responsiblePersons.map((person) => (
-                      <option key={person.email} value={person.email}>
-                        {person.name} ({person.email})
-                      </option>
+                    <option value="">Bölüm Seçiniz</option>
+                    {productionSections.map((section) => (
+                      <option key={section} value={section}>{section}</option>
                     ))}
                   </Select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-responsiblePerson">Sorumlu Kişi</Label>
+                  <UserSearchCombobox
+                    value={formData.responsiblePersonEmail}
+                    onSelect={(user) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        responsiblePerson: user?.name || "",
+                        responsiblePersonEmail: user?.email || ""
+                      }))
+                    }}
+                    placeholder="Sorumlu kişi arayın..."
+                  />
                   {formData.responsiblePersonEmail && (
                     <p className="text-xs text-muted-foreground">
                       Kalibrasyon süresi dolmadan 7 gün önce bu kişiye mail gönderilecektir.
@@ -1517,26 +2086,144 @@ export default function CalibrationPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-calibrationInterval">Kalibrasyon Periyodu (gün)</Label>
-                  <Input
-                    id="edit-calibrationInterval"
-                    type="number"
-                    value={formData.calibrationInterval}
-                    onChange={(e) => setFormData({ ...formData, calibrationInterval: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-lastCalibrationDate">Son Kalibrasyon Tarihi</Label>
-                  <Input
-                    id="edit-lastCalibrationDate"
-                    type="date"
-                    value={formData.lastCalibrationDate}
-                    onChange={(e) => setFormData({ ...formData, lastCalibrationDate: e.target.value })}
-                  />
-                </div>
-              </div>
+              {/* Kalibrasyon alanları - Kalibrasyon veya Kal/Doğ seçildiğinde */}
+              {(formData.calibrationType === 'Kalibrasyon' || formData.calibrationType === 'Kal/Doğ') && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-calibrationInterval">Kalibrasyon Periyodu (gün)</Label>
+                      <Input
+                        id="edit-calibrationInterval"
+                        type="number"
+                        value={formData.calibrationInterval}
+                        onChange={(e) => {
+                          const newInterval = e.target.value
+                          const interval = parseInt(newInterval) || 365
+                          const planned = formData.lastCalibrationDate ? new Date(new Date(formData.lastCalibrationDate).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                          setFormData({ ...formData, calibrationInterval: newInterval, plannedCalibrationDate: planned || formData.plannedCalibrationDate })
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-lastCalibrationDate">Son Kalibrasyon Tarihi</Label>
+                      <Input
+                        id="edit-lastCalibrationDate"
+                        type="date"
+                        value={formData.lastCalibrationDate}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          const interval = parseInt(formData.calibrationInterval) || 365
+                          const planned = val ? new Date(new Date(val).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                          setFormData({ ...formData, lastCalibrationDate: val, plannedCalibrationDate: planned })
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-plannedCalibrationDate">Planlanan Kalibrasyon Tarihi</Label>
+                    <Input
+                      id="edit-plannedCalibrationDate"
+                      type="date"
+                      value={formData.plannedCalibrationDate}
+                      onChange={(e) => setFormData({ ...formData, plannedCalibrationDate: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Sonraki kalibrasyon tarihinden 20 gün önce otomatik hesaplanır, değiştirilebilir
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Doğrulama alanları - Doğrulama veya Kal/Doğ seçildiğinde */}
+              {(formData.calibrationType === 'Doğrulama' || formData.calibrationType === 'Kal/Doğ') && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-verificationInterval">Doğrulama Periyodu (gün)</Label>
+                      <Input
+                        id="edit-verificationInterval"
+                        type="number"
+                        value={formData.verificationInterval}
+                        onChange={(e) => {
+                          const newInterval = e.target.value
+                          const interval = parseInt(newInterval) || 365
+                          const planned = formData.lastVerificationDate ? new Date(new Date(formData.lastVerificationDate).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                          setFormData({ ...formData, verificationInterval: newInterval, plannedVerificationDate: planned || formData.plannedVerificationDate })
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-lastVerificationDate">Son Doğrulama Tarihi</Label>
+                      <Input
+                        id="edit-lastVerificationDate"
+                        type="date"
+                        value={formData.lastVerificationDate}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          const interval = parseInt(formData.verificationInterval) || 365
+                          const planned = val ? new Date(new Date(val).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                          setFormData({ ...formData, lastVerificationDate: val, plannedVerificationDate: planned })
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-plannedVerificationDate">Planlanan Doğrulama Tarihi</Label>
+                    <Input
+                      id="edit-plannedVerificationDate"
+                      type="date"
+                      value={formData.plannedVerificationDate}
+                      onChange={(e) => setFormData({ ...formData, plannedVerificationDate: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Sonraki doğrulama tarihinden 20 gün önce otomatik hesaplanır, değiştirilebilir
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Tip seçilmediğinde default kalibrasyon alanları */}
+              {!formData.calibrationType && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-calibrationInterval">Kalibrasyon Periyodu (gün)</Label>
+                      <Input
+                        id="edit-calibrationInterval"
+                        type="number"
+                        value={formData.calibrationInterval}
+                        onChange={(e) => setFormData({ ...formData, calibrationInterval: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-lastCalibrationDate">Son Kalibrasyon Tarihi</Label>
+                      <Input
+                        id="edit-lastCalibrationDate"
+                        type="date"
+                        value={formData.lastCalibrationDate}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          const interval = parseInt(formData.calibrationInterval) || 365
+                          const planned = val ? new Date(new Date(val).getTime() + (interval - 20) * 86400000).toISOString().split('T')[0] : ""
+                          setFormData({ ...formData, lastCalibrationDate: val, plannedCalibrationDate: planned })
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-plannedCalibrationDate">Planlanan Kalibrasyon Tarihi</Label>
+                    <Input
+                      id="edit-plannedCalibrationDate"
+                      type="date"
+                      value={formData.plannedCalibrationDate}
+                      onChange={(e) => setFormData({ ...formData, plannedCalibrationDate: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Sonraki kalibrasyon tarihinden 20 gün önce otomatik hesaplanır, değiştirilebilir
+                    </p>
+                  </div>
+                </>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="edit-certificateNumber">Sertifika No</Label>
@@ -1655,7 +2342,7 @@ export default function CalibrationPage() {
 
       {/* Attachments Dialog */}
       <Dialog open={showAttachmentsDialog} onOpenChange={setShowAttachmentsDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Ekler - {selectedDeviceName}</DialogTitle>
             <DialogDescription>
@@ -1706,6 +2393,160 @@ export default function CalibrationPage() {
             >
               Kapat
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Dialog */}
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Kalibrasyon Geçmişi - {historyDevice?.deviceId} ({historyDevice?.name})
+            </DialogTitle>
+            <DialogDescription>
+              Cihazın tüm kalibrasyon kayıtları
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingHistory ? (
+            <p className="text-center text-muted-foreground py-8">Yükleniyor...</p>
+          ) : historyRecords.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">Henüz kalibrasyon kaydı yok</p>
+          ) : (
+            <>
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tarih</TableHead>
+                      <TableHead>Sonraki Vade</TableHead>
+                      <TableHead>Sertifika No</TableHead>
+                      <TableHead>Kalibre Eden</TableHead>
+                      <TableHead>Sonuç</TableHead>
+                      <TableHead>Maliyet</TableHead>
+                      <TableHead>Notlar</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {historyRecords.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell>{new Date(record.calibrationDate).toLocaleDateString('tr-TR')}</TableCell>
+                        <TableCell>{new Date(record.nextDueDate).toLocaleDateString('tr-TR')}</TableCell>
+                        <TableCell>{record.certificateNumber || '-'}</TableCell>
+                        <TableCell>{record.calibratedBy || '-'}</TableCell>
+                        <TableCell>
+                          <Badge className={
+                            record.result === 'PASS' ? 'bg-green-100 text-green-800 hover:bg-green-100' :
+                            record.result === 'FAIL' ? 'bg-red-100 text-red-800 hover:bg-red-100' :
+                            'bg-yellow-100 text-yellow-800 hover:bg-yellow-100'
+                          }>
+                            {record.result === 'PASS' ? 'Başarılı' :
+                             record.result === 'FAIL' ? 'Başarısız' : 'Şartlı'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{record.cost ? `${Number(record.cost).toLocaleString('tr-TR')} TL` : '-'}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">{record.notes || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="mt-2 text-sm text-right text-muted-foreground">
+                Toplam Maliyet: <strong>
+                  {historyRecords.reduce((sum, r) => sum + (Number(r.cost) || 0), 0).toLocaleString('tr-TR')} TL
+                </strong>
+              </div>
+            </>
+          )}
+
+          {canEdit && (
+            <>
+              {!showAddHistoryForm ? (
+                <Button onClick={() => setShowAddHistoryForm(true)} className="mt-2">
+                  <Plus className="mr-2 h-4 w-4" /> Yeni Kalibrasyon Kaydı Ekle
+                </Button>
+              ) : (
+                <form onSubmit={handleAddHistory} className="mt-4 border-t pt-4 space-y-4">
+                  <h4 className="font-medium">Yeni Kalibrasyon Kaydı</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Kalibrasyon Tarihi</Label>
+                      <Input type="date" value={historyFormData.calibrationDate}
+                        onChange={e => setHistoryFormData({...historyFormData, calibrationDate: e.target.value})} required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Kalibre Eden</Label>
+                      <Input value={historyFormData.calibratedBy}
+                        onChange={e => setHistoryFormData({...historyFormData, calibratedBy: e.target.value})}
+                        placeholder="Firma/Kişi adı" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sertifika No</Label>
+                      <Input value={historyFormData.certificateNumber}
+                        onChange={e => setHistoryFormData({...historyFormData, certificateNumber: e.target.value})}
+                        placeholder="CERT-2024-001" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Maliyet (TL)</Label>
+                      <Input type="number" step="0.01" value={historyFormData.cost}
+                        onChange={e => setHistoryFormData({...historyFormData, cost: e.target.value})}
+                        placeholder="0.00" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sonuç</Label>
+                      <Select value={historyFormData.result}
+                        onChange={e => setHistoryFormData({...historyFormData, result: e.target.value})}>
+                        <option value="PASS">Başarılı</option>
+                        <option value="FAIL">Başarısız</option>
+                        <option value="CONDITIONAL">Şartlı</option>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Notlar</Label>
+                      <Input value={historyFormData.notes}
+                        onChange={e => setHistoryFormData({...historyFormData, notes: e.target.value})}
+                        placeholder="Ek bilgiler..." />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button type="button" variant="outline" onClick={() => setShowAddHistoryForm(false)}>İptal</Button>
+                    <Button type="submit">Kaydet</Button>
+                  </div>
+                </form>
+              )}
+            </>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHistoryDialog(false)}>Kapat</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Status Change Dialog */}
+      <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>
+        <DialogContent className="w-[95vw] max-w-sm max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Durum Değiştir - {statusDevice?.deviceId}</DialogTitle>
+            <DialogDescription>
+              Cihazın durumunu manuel olarak değiştirin
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)}>
+              <option value="IN_PROCESS">Kalibrasyonda</option>
+              <option value="OUT_OF_ORDER">Arızalı</option>
+              <option value="">Otomatik Hesapla (Sıfırla)</option>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              &quot;Kalibrasyonda&quot; veya &quot;Arızalı&quot; seçildiğinde otomatik durum hesaplaması devre dışı kalır.
+              &quot;Otomatik Hesapla&quot; seçeneği tarihe göre durumu yeniden hesaplar.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStatusDialog(false)}>İptal</Button>
+            <Button onClick={handleStatusChange}>Kaydet</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

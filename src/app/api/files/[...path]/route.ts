@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { createReadStream, existsSync, statSync } from 'fs'
 import path from 'path'
 import { Readable } from 'stream'
@@ -24,6 +25,8 @@ const mimeTypes: Record<string, string> = {
   '.csv': 'text/csv',
   '.zip': 'application/zip',
   '.rar': 'application/vnd.rar',
+  '.html': 'text/html',
+  '.htm': 'text/html',
 }
 
 // Node.js stream'i Web ReadableStream'e dönüştür
@@ -80,7 +83,12 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const filePath = path.join(process.cwd(), 'public', relativePath)
+    // Oncelikle public/ altinda ara, bulamazsa proje kokunde ara
+    let filePath = path.join(process.cwd(), 'public', relativePath)
+
+    if (!existsSync(filePath)) {
+      filePath = path.join(process.cwd(), relativePath)
+    }
 
     if (!existsSync(filePath)) {
       return NextResponse.json({ error: 'File not found' }, { status: 404 })
@@ -92,8 +100,29 @@ export async function GET(
     const ext = path.extname(filePath).toLowerCase()
     const contentType = mimeTypes[ext] || 'application/octet-stream'
 
-    // Dosya adını RFC 5987 uyumlu şekilde encode et (Türkçe karakterler için)
-    const fileName = path.basename(filePath)
+    // DB'den orijinal dosya adini bul (fileUrl ile eslestir)
+    let fileName = path.basename(filePath)
+    try {
+      const fileUrlSuffix = `/${relativePath}`
+      const doc = await prisma.iso27001Document.findFirst({
+        where: { fileUrl: fileUrlSuffix },
+        select: { fileName: true },
+      })
+      if (doc?.fileName) {
+        fileName = doc.fileName
+      } else {
+        // Kanit tablosunda da ara
+        const evidence = await prisma.iso27001Evidence.findFirst({
+          where: { fileUrl: fileUrlSuffix },
+          select: { fileName: true },
+        })
+        if (evidence?.fileName) {
+          fileName = evidence.fileName
+        }
+      }
+    } catch {
+      // DB sorgusu basarisiz olursa disk adini kullan
+    }
     const encodedFileName = encodeURIComponent(fileName).replace(/['()]/g, escape)
 
     // Range request kontrolü (PDF viewer'lar için önemli)
@@ -136,13 +165,19 @@ export async function GET(
     const nodeStream = createReadStream(filePath)
     const webStream = nodeStreamToWebStream(nodeStream)
 
+    // HTML dosyaları cache'lenmemeli (düzenlenebilir), diğerleri uzun süre cache'lenebilir
+    const isHtml = ext === '.html' || ext === '.htm'
+    const cacheControl = isHtml
+      ? 'no-cache, no-store, must-revalidate'
+      : 'public, max-age=31536000, immutable'
+
     return new NextResponse(webStream, {
       headers: {
         'Content-Type': contentType,
         'Content-Length': fileSize.toString(),
         'Accept-Ranges': 'bytes',
         'Content-Disposition': `inline; filename*=UTF-8''${encodedFileName}`,
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': cacheControl,
         'X-Accel-Buffering': 'no', // nginx buffering'i devre dışı bırak
       },
     })

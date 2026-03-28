@@ -552,7 +552,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       <Tabs defaultValue="details">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="details">Detaylar</TabsTrigger>
           <TabsTrigger value="agenda">Gundem ({meeting.agendaItems.length})</TabsTrigger>
           <TabsTrigger value="attendees">Katilimcilar ({meeting.attendees.length})</TabsTrigger>
@@ -568,7 +568,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
                 <CardTitle className="text-lg">Toplanti Bilgileri</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Tur</p>
                     <p className="font-medium">
@@ -583,7 +583,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
 
                 <Separator />
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-3 w-3" /> Tarih
@@ -895,7 +895,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
                           onValueChange={(value) => updateAttendanceStatus(attendee.id, value)}
                           disabled={meeting.status === "COMPLETED"}
                         >
-                          <SelectTrigger className="w-[140px]">
+                          <SelectTrigger className="w-full sm:w-[140px]">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

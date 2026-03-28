@@ -42,11 +42,11 @@ const withPWA = require('@ducanh2912/next-pwa').default({
     },
     {
       urlPattern: /\/_next\/static.+\.js$/i,
-      handler: 'CacheFirst',
+      handler: 'StaleWhileRevalidate',
       options: {
         cacheName: 'next-static-js-assets',
         expiration: {
-          maxEntries: 32,
+          maxEntries: 64,
           maxAgeSeconds: 24 * 60 * 60, // 24 hours
         },
       },

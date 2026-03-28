@@ -61,16 +61,28 @@ export async function GET(request: NextRequest) {
       // viewMode'a göre filtrele
       switch (viewMode) {
         case 'my':
-          // Sadece bana atanan görevler
+          // Bana atanan görevler (tek kişi + çoklu kişi + departman)
           if (userEmail) {
-            where.responsiblePersonEmail = { equals: userEmail, mode: 'insensitive' }
+            const myConditions: any[] = [
+              // Doğrudan bana atanan (tek kişi)
+              { responsiblePersonEmail: { equals: userEmail, mode: 'insensitive' } },
+              // Çoklu kişi atamasında benim email'im geçiyor
+              { responsiblePersons: { contains: userEmail, mode: 'insensitive' } },
+            ]
+            // Departmanıma atanan görevler de "benim görevlerim"de görünsün
+            if (userDeptName) {
+              myConditions.push(
+                { responsibleDepartment: { equals: userDeptName, mode: 'insensitive' } }
+              )
+            }
+            where.OR = myConditions
           } else {
             return NextResponse.json([])
           }
           break
 
         case 'department':
-          // Departmanıma atanan görevler
+          // Sadece departmanıma atanan görevler
           if (userDeptName) {
             where.responsibleDepartment = { equals: userDeptName, mode: 'insensitive' }
           } else {
@@ -202,6 +214,7 @@ export async function GET(request: NextRequest) {
 // POST - Yeni görev ekle
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions)
     const body = await request.json()
 
     const {
@@ -311,6 +324,41 @@ export async function POST(request: NextRequest) {
       emailsToSend.push(responsiblePersonEmail)
     }
 
+    // Departmana atanan görevlerde departman üyelerine bildirim gönder
+    if (finalResponsibleDepartments.length > 0) {
+      try {
+        for (const deptName of finalResponsibleDepartments) {
+          // Departmanın AD OU adını bul
+          const dept = await prisma.department.findFirst({
+            where: { name: deptName },
+            select: { adOuName: true },
+          })
+          const ouName = dept?.adOuName || deptName
+
+          // Bu departmandaki kullanıcıları DB'den çek
+          const deptUsers = await prisma.user.findMany({
+            where: {
+              isActive: true,
+              OR: [
+                { department: { equals: deptName, mode: 'insensitive' } },
+                { department: { equals: ouName, mode: 'insensitive' } },
+                { officeLocation: { equals: ouName, mode: 'insensitive' } },
+              ],
+            },
+            select: { email: true, name: true },
+          })
+
+          for (const deptUser of deptUsers) {
+            if (deptUser.email && !emailsToSend.includes(deptUser.email)) {
+              emailsToSend.push(deptUser.email)
+            }
+          }
+        }
+      } catch (deptError) {
+        console.error('Departman kullanıcıları alınamadı:', deptError)
+      }
+    }
+
     // Ayarlardaki global bildirim e-postalarını da ekle
     const globalNotificationEmails = await prisma.taskNotificationEmail.findMany({
       where: { isActive: true },
@@ -359,6 +407,79 @@ export async function POST(request: NextRequest) {
         .catch((error) => {
           console.error('E-posta gönderme hatası:', error)
         })
+    }
+
+    // In-app bildirim oluştur (bildirim zili)
+    try {
+      // Bildirim gönderilecek kullanıcıları bul (email listesinden)
+      const notifyEmails = new Set<string>()
+
+      // Sorumlu kişiler
+      if (responsiblePersons && responsiblePersons.length > 0) {
+        for (const person of responsiblePersons) {
+          if (person.email) notifyEmails.add(person.email.toLowerCase())
+        }
+      } else if (finalResponsiblePersonEmail) {
+        notifyEmails.add(finalResponsiblePersonEmail.toLowerCase())
+      }
+
+      // Departman üyeleri
+      if (finalResponsibleDepartments.length > 0) {
+        for (const deptName of finalResponsibleDepartments) {
+          const dept = await prisma.department.findFirst({
+            where: { name: deptName },
+            select: { adOuName: true },
+          })
+          const ouName = dept?.adOuName || deptName
+
+          const deptUsers = await prisma.user.findMany({
+            where: {
+              isActive: true,
+              OR: [
+                { department: { equals: deptName, mode: 'insensitive' } },
+                { department: { equals: ouName, mode: 'insensitive' } },
+                { officeLocation: { equals: ouName, mode: 'insensitive' } },
+              ],
+            },
+            select: { email: true },
+          })
+
+          for (const u of deptUsers) {
+            if (u.email) notifyEmails.add(u.email.toLowerCase())
+          }
+        }
+      }
+
+      // Görev oluşturanı bildirimden çıkar
+      const creatorEmail = session?.user?.email?.toLowerCase()
+      if (creatorEmail) notifyEmails.delete(creatorEmail)
+
+      if (notifyEmails.size > 0) {
+        // Email'lerden user ID'lerini bul
+        const usersToNotify = await prisma.user.findMany({
+          where: {
+            email: { in: Array.from(notifyEmails), mode: 'insensitive' },
+            isActive: true,
+          },
+          select: { id: true },
+        })
+
+        if (usersToNotify.length > 0) {
+          await prisma.notification.createMany({
+            data: usersToNotify.map(u => ({
+              userId: u.id,
+              title: `Yeni Görev: ${title}`,
+              message: description
+                ? `${description.substring(0, 150)}${description.length > 150 ? '...' : ''}`
+                : `Size yeni bir görev atandı: ${title}`,
+              type: 'INFO' as const,
+              link: `/tasks?highlight=${task.id}`,
+            })),
+          })
+        }
+      }
+    } catch (notifError) {
+      console.error('In-app bildirim oluşturma hatası:', notifError)
     }
 
     return NextResponse.json(task, { status: 201 })

@@ -395,7 +395,7 @@ export default function MaterialCatalogSettingsPage() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingMaterial ? "Malzeme Düzenle" : "Yeni Malzeme"}
@@ -403,7 +403,7 @@ export default function MaterialCatalogSettingsPage() {
             <DialogDescription>Malzeme bilgilerini girin</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Malzeme Adı *</Label>
                 <Input
@@ -434,7 +434,7 @@ export default function MaterialCatalogSettingsPage() {
                 placeholder="3mm x 1500mm x 3000mm"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Tür *</Label>
                 <Select
@@ -469,7 +469,7 @@ export default function MaterialCatalogSettingsPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Para Birimi</Label>
                 <Select

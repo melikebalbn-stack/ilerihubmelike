@@ -123,9 +123,9 @@ export default function VisitReportsPage() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Ziyaret Raporları</h1>
+          <h1 className="text-xl lg:text-3xl font-bold">Ziyaret Raporları</h1>
           <p className="text-muted-foreground">
             Müşteri ve tedarikçi ziyaret raporlarını yönetin
           </p>
@@ -198,7 +198,7 @@ export default function VisitReportsPage() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Durum" />
               </SelectTrigger>
               <SelectContent>
@@ -215,7 +215,7 @@ export default function VisitReportsPage() {
 
       {/* Tablo */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>

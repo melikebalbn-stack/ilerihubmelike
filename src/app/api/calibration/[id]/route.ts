@@ -46,7 +46,7 @@ export async function GET(
   }
 }
 
-// PUT - Cihazı güncelle (QUALITY_MANAGER, ADMIN, SUPER_ADMIN)
+// PUT - Cihazı güncelle (ADMIN, Kalite departmanı veya QUALITY_MANAGER)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -59,9 +59,8 @@ export async function PUT(
     }
 
     // Yetki kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    const { canEditCalibration } = await import('@/lib/calibration-auth')
+    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -81,6 +80,10 @@ export async function PUT(
       responsiblePersonEmail,
       calibrationInterval,
       lastCalibrationDate,
+      plannedCalibrationDate,
+      verificationInterval,
+      lastVerificationDate,
+      plannedVerificationDate,
       certificateNumber,
       notes,
       status,
@@ -106,11 +109,27 @@ export async function PUT(
     if (lastCalibrationDate && calibrationInterval) {
       const lastCalDate = new Date(lastCalibrationDate)
       nextCalDate = new Date(lastCalDate.getTime() + calibrationInterval * 24 * 60 * 60 * 1000)
-    } else if (lastCalibrationDate) {
+    } else if (lastCalibrationDate && existingDevice.calibrationInterval) {
       const lastCalDate = new Date(lastCalibrationDate)
       nextCalDate = new Date(lastCalDate.getTime() + existingDevice.calibrationInterval * 24 * 60 * 60 * 1000)
-    } else if (calibrationInterval) {
+    } else if (calibrationInterval && existingDevice.lastCalibrationDate) {
       nextCalDate = new Date(existingDevice.lastCalibrationDate.getTime() + calibrationInterval * 24 * 60 * 60 * 1000)
+    }
+
+    // nextVerificationDate'i yeniden hesapla
+    let nextVerDate = existingDevice.nextVerificationDate
+    const verInt = verificationInterval ?? existingDevice.verificationInterval
+    const lastVerDateVal = lastVerificationDate ? new Date(lastVerificationDate) : existingDevice.lastVerificationDate
+    if (verInt && lastVerDateVal) {
+      nextVerDate = new Date(lastVerDateVal.getTime() + verInt * 24 * 60 * 60 * 1000)
+    }
+
+    // Manuel durum override kontrolü
+    let statusManualOverride = existingDevice.statusManualOverride
+    if (status === 'IN_PROCESS' || status === 'OUT_OF_ORDER') {
+      statusManualOverride = true
+    } else if (status === 'VALID' || status === 'EXPIRING' || status === 'EXPIRED' || !status) {
+      statusManualOverride = false
     }
 
     const device = await prisma.calibrationDevice.update({
@@ -129,9 +148,19 @@ export async function PUT(
         calibrationInterval,
         lastCalibrationDate: lastCalibrationDate ? new Date(lastCalibrationDate) : undefined,
         nextCalibrationDate: nextCalDate,
+        plannedCalibrationDate: plannedCalibrationDate !== undefined
+          ? (plannedCalibrationDate ? new Date(plannedCalibrationDate) : null)
+          : undefined,
+        verificationInterval: verificationInterval !== undefined ? (verificationInterval ? parseInt(verificationInterval) : null) : undefined,
+        lastVerificationDate: lastVerificationDate !== undefined ? (lastVerificationDate ? new Date(lastVerificationDate) : null) : undefined,
+        nextVerificationDate: nextVerDate,
+        plannedVerificationDate: plannedVerificationDate !== undefined
+          ? (plannedVerificationDate ? new Date(plannedVerificationDate) : null)
+          : undefined,
         certificateNumber,
         notes,
         status: status as CalibrationStatus | undefined,
+        statusManualOverride,
         imageUrl,
         attachments,
         requiresResponsible,
@@ -148,7 +177,7 @@ export async function PUT(
   }
 }
 
-// DELETE - Cihazı sil (soft delete) (QUALITY_MANAGER, ADMIN, SUPER_ADMIN)
+// DELETE - Cihazı sil (soft delete) (ADMIN, Kalite departmanı veya QUALITY_MANAGER)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -161,9 +190,8 @@ export async function DELETE(
     }
 
     // Yetki kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    const { canEditCalibration } = await import('@/lib/calibration-auth')
+    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

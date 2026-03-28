@@ -1,13 +1,19 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Users, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Users, Loader2, ChevronLeft, ChevronRight, Building2, ChevronDown } from 'lucide-react'
 import { EmployeeCard } from '@/components/employees/EmployeeCard'
 import { EmployeeListItem } from '@/components/employees/EmployeeListItem'
 import { EmployeeFilters } from '@/components/employees/EmployeeFilters'
 import { Button } from '@/components/ui/button'
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from '@/components/ui/accordion'
 
 interface Employee {
   id: string
@@ -15,7 +21,6 @@ interface Employee {
   email: string | null
   department: string | null
   title: string | null
-  location: string | null
   phone: string | null
   avatar: string | null
 }
@@ -30,7 +35,6 @@ interface EmployeesResponse {
   }
   filters: {
     departments: string[]
-    locations: string[]
   }
 }
 
@@ -45,10 +49,9 @@ export default function EmployeesPage() {
   // Filtreler
   const [search, setSearch] = useState('')
   const [department, setDepartment] = useState('')
-  const [location, setLocation] = useState('')
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'department'>('department')
 
-  // Sayfalama
+  // Sayfalama (grid/list modları için)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -56,7 +59,6 @@ export default function EmployeesPage() {
 
   // Filtre seçenekleri
   const [departments, setDepartments] = useState<string[]>([])
-  const [locations, setLocations] = useState<string[]>([])
 
   // Debounce için
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -64,7 +66,7 @@ export default function EmployeesPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search)
-      setPage(1) // Arama değiştiğinde sayfa 1'e dön
+      setPage(1)
     }, 300)
     return () => clearTimeout(timer)
   }, [search])
@@ -73,14 +75,17 @@ export default function EmployeesPage() {
   const fetchEmployees = useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
+
+      // Departman görünümünde tüm çalışanları getir (limit=0)
+      const fetchLimit = viewMode === 'department' ? 0 : limit
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: limit.toString(),
+        limit: fetchLimit.toString(),
       })
 
       if (debouncedSearch) params.set('search', debouncedSearch)
-      if (department) params.set('department', department)
-      if (location) params.set('location', location)
+      if (department && viewMode !== 'department') params.set('department', department)
 
       const res = await fetch(`/api/employees?${params}`)
       if (!res.ok) throw new Error('Çalışanlar yüklenemedi')
@@ -91,19 +96,42 @@ export default function EmployeesPage() {
       setTotalPages(data.pagination.totalPages)
       setTotal(data.pagination.total)
       setDepartments(data.filters.departments)
-      setLocations(data.filters.locations)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bir hata oluştu')
     } finally {
       setLoading(false)
     }
-  }, [page, limit, debouncedSearch, department, location])
+  }, [page, limit, debouncedSearch, department, viewMode])
 
   useEffect(() => {
     if (status === 'authenticated') {
       fetchEmployees()
     }
   }, [status, fetchEmployees])
+
+  // Departman görünümü için gruplama
+  const groupedByDepartment = useMemo(() => {
+    if (viewMode !== 'department') return {}
+
+    const groups: Record<string, Employee[]> = {}
+    for (const emp of employees) {
+      const dept = emp.department || 'Diğer'
+      if (!groups[dept]) groups[dept] = []
+      groups[dept].push(emp)
+    }
+
+    // Departman ismine göre sırala, "Diğer" en sona
+    const sorted: Record<string, Employee[]> = {}
+    const keys = Object.keys(groups).sort((a, b) => {
+      if (a === 'Diğer') return 1
+      if (b === 'Diğer') return -1
+      return a.localeCompare(b, 'tr')
+    })
+    for (const key of keys) {
+      sorted[key] = groups[key]
+    }
+    return sorted
+  }, [employees, viewMode])
 
   // Auth kontrolü
   if (status === 'loading') {
@@ -141,15 +169,12 @@ export default function EmployeesPage() {
           setDepartment(v)
           setPage(1)
         }}
-        location={location}
-        onLocationChange={(v) => {
-          setLocation(v)
+        viewMode={viewMode}
+        onViewModeChange={(mode) => {
+          setViewMode(mode)
           setPage(1)
         }}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
         departments={departments}
-        locations={locations}
       />
 
       {/* Sonuç sayısı */}
@@ -186,6 +211,34 @@ export default function EmployeesPage() {
               <p className="text-lg">Çalışan bulunamadı</p>
               <p className="text-sm">Filtrelerinizi değiştirmeyi deneyin</p>
             </div>
+          ) : viewMode === 'department' ? (
+            /* Departman Accordion Görünümü */
+            <Accordion type="multiple" className="space-y-2">
+              {Object.entries(groupedByDepartment).map(([dept, deptEmployees]) => (
+                <AccordionItem
+                  key={dept}
+                  value={dept}
+                  className="border rounded-lg px-4"
+                >
+                  <AccordionTrigger className="hover:no-underline">
+                    <div className="flex items-center gap-3">
+                      <Building2 className="h-5 w-5 text-primary" />
+                      <span className="font-semibold text-base">{dept}</span>
+                      <span className="text-sm text-muted-foreground font-normal">
+                        ({deptEmployees.length} kişi)
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-2 pt-2">
+                      {deptEmployees.map((employee) => (
+                        <EmployeeListItem key={employee.id} employee={employee} />
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           ) : viewMode === 'grid' ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {employees.map((employee) => (
@@ -200,8 +253,8 @@ export default function EmployeesPage() {
             </div>
           )}
 
-          {/* Sayfalama */}
-          {totalPages > 1 && (
+          {/* Sayfalama (departman görünümünde yok) */}
+          {viewMode !== 'department' && totalPages > 1 && (
             <div className="flex items-center justify-center gap-4 pt-4">
               <Button
                 variant="outline"

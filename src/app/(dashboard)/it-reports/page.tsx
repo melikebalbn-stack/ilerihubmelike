@@ -400,9 +400,9 @@ export default function ITReportsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <h1 className="text-xl lg:text-3xl font-bold flex items-center gap-2">
             <BarChart3 className="h-8 w-8" />
             IT Raporlari
           </h1>
@@ -412,7 +412,7 @@ export default function ITReportsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-full sm:w-[150px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -443,7 +443,7 @@ export default function ITReportsPage() {
                   <Ticket className="h-4 w-4" />
                   Toplam Ticket
                 </CardDescription>
-                <CardTitle className="text-3xl">{report.summary.totalTickets}</CardTitle>
+                <CardTitle className="text-xl sm:text-3xl">{report.summary.totalTickets}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center text-sm text-muted-foreground">
@@ -461,7 +461,7 @@ export default function ITReportsPage() {
                   <Timer className="h-4 w-4" />
                   Ort. Cozum Suresi
                 </CardDescription>
-                <CardTitle className="text-3xl">{formatDuration(report.summary.avgResolutionTime)}</CardTitle>
+                <CardTitle className="text-xl sm:text-3xl">{formatDuration(report.summary.avgResolutionTime)}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center text-sm text-muted-foreground">
@@ -477,7 +477,7 @@ export default function ITReportsPage() {
                   <CheckCircle2 className="h-4 w-4" />
                   Cozum Orani
                 </CardDescription>
-                <CardTitle className="text-3xl">{report.summary.resolutionRate}%</CardTitle>
+                <CardTitle className="text-xl sm:text-3xl">{report.summary.resolutionRate}%</CardTitle>
               </CardHeader>
               <CardContent>
                 <Progress value={report.summary.resolutionRate} className="h-2" />
@@ -490,7 +490,7 @@ export default function ITReportsPage() {
                   <AlertTriangle className={`h-4 w-4 ${report.summary.slaBreached > 0 ? "text-red-500" : ""}`} />
                   SLA Ihlali
                 </CardDescription>
-                <CardTitle className={`text-3xl ${report.summary.slaBreached > 0 ? "text-red-500" : ""}`}>
+                <CardTitle className={`text-xl sm:text-3xl ${report.summary.slaBreached > 0 ? "text-red-500" : ""}`}>
                   {report.summary.slaBreached}
                 </CardTitle>
               </CardHeader>
@@ -624,7 +624,7 @@ export default function ITReportsPage() {
                 <CardTitle>Durum Dagilimi</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {Object.entries(report.byStatus).map(([status, count]) => (
                     count > 0 && (
                       <div key={status} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">

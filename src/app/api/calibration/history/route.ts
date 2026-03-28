@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CalibrationResult, CalibrationStatus } from '@/generated/prisma'
 
-// POST - Yeni kalibrasyon kaydı ekle (QUALITY_MANAGER, ADMIN, SUPER_ADMIN)
+// POST - Yeni kalibrasyon kaydı ekle (ADMIN, Kalite departmanı veya QUALITY_MANAGER)
 export async function POST(request: NextRequest) {
   try {
     // Kimlik doğrulama kontrolü
@@ -14,9 +14,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Yetki kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    const { canEditCalibration } = await import('@/lib/calibration-auth')
+    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -46,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const calDate = new Date(calibrationDate)
-    const nextDueDate = new Date(calDate.getTime() + device.calibrationInterval * 24 * 60 * 60 * 1000)
+    const nextDueDate = new Date(calDate.getTime() + (device.calibrationInterval || 365) * 24 * 60 * 60 * 1000)
 
     // Kalibrasyon kaydı oluştur
     const history = await prisma.calibrationHistory.create({
@@ -81,6 +80,7 @@ export async function POST(request: NextRequest) {
         nextCalibrationDate: nextDueDate,
         certificateNumber,
         status,
+        statusManualOverride: false, // Yeni kalibrasyon yapıldı, manuel override sıfırla
       },
     })
 

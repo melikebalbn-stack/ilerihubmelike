@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   Card,
   CardContent,
@@ -45,6 +45,7 @@ import {
   Loader2,
   Search,
   Download,
+  Upload,
   HardDrive,
   Globe,
   Database,
@@ -54,6 +55,10 @@ import {
   Package,
   Filter,
   AlertTriangle,
+  Clock,
+  FileSpreadsheet,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -75,6 +80,21 @@ interface Asset {
   criticality: string
   classification: string
   status: string
+  manufacturer: string | null
+  model: string | null
+  serialNumber: string | null
+  hostname: string | null
+  ipAddress: string | null
+  macAddress: string | null
+  operatingSystem: string | null
+  processor: string | null
+  ram: string | null
+  diskSize: string | null
+  barcode: string | null
+  warrantyEndDate: string | null
+  assignedTo: string | null
+  assignedToEmail: string | null
+  notes: string | null
   _count?: { childAssets: number }
 }
 
@@ -83,6 +103,16 @@ interface Stats {
   byCategory: Record<string, number>
   byCriticality: Record<string, number>
   byStatus: Record<string, number>
+  reviewDue: number
+}
+
+interface ImportResult {
+  message: string
+  success: number
+  failed: number
+  skipped: number
+  errors: string[]
+  columnMapping: Record<string, string | null>
 }
 
 const CATEGORIES = [
@@ -158,6 +188,45 @@ const CLASSIFICATION_COLORS: Record<string, string> = {
   RESTRICTED: "bg-red-100 text-red-700",
 }
 
+const CATEGORY_COLORS: Record<string, string> = {
+  INFORMATION: "bg-indigo-500",
+  SOFTWARE: "bg-purple-500",
+  HARDWARE: "bg-blue-500",
+  NETWORK: "bg-teal-500",
+  PERSONNEL: "bg-amber-500",
+  PHYSICAL: "bg-emerald-500",
+  SERVICE: "bg-pink-500",
+}
+
+const initialFormData = {
+  name: "",
+  description: "",
+  category: "",
+  type: "",
+  location: "",
+  department: "",
+  confidentiality: 1,
+  integrity: 1,
+  availability: 1,
+  classification: "INTERNAL",
+  status: "ACTIVE",
+  manufacturer: "",
+  model: "",
+  serialNumber: "",
+  hostname: "",
+  ipAddress: "",
+  macAddress: "",
+  operatingSystem: "",
+  processor: "",
+  ram: "",
+  diskSize: "",
+  barcode: "",
+  warrantyEndDate: "",
+  assignedTo: "",
+  assignedToEmail: "",
+  notes: "",
+}
+
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
@@ -168,36 +237,31 @@ export default function AssetsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterCategory, setFilterCategory] = useState<string>("")
   const [filterStatus, setFilterStatus] = useState<string>("")
+  const [filterCriticality, setFilterCriticality] = useState<string>("")
+
+  // Import state
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] = useState<Record<string, unknown>[]>([])
+  const [importColumns, setImportColumns] = useState<string[]>([])
+  const [isImporting, setIsImporting] = useState(false)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Form state
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    category: "",
-    type: "",
-    location: "",
-    department: "",
-    confidentiality: 1,
-    integrity: 1,
-    availability: 1,
-    classification: "INTERNAL",
-    status: "ACTIVE",
-    manufacturer: "",
-    model: "",
-    serialNumber: "",
-    notes: "",
-  })
+  const [formData, setFormData] = useState(initialFormData)
 
   useEffect(() => {
     fetchAssets()
-  }, [filterCategory, filterStatus])
+  }, [filterCategory, filterStatus, filterCriticality])
 
   const fetchAssets = async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      if (filterCategory) params.append("category", filterCategory)
-      if (filterStatus) params.append("status", filterStatus)
+      if (filterCategory && filterCategory !== "all") params.append("category", filterCategory)
+      if (filterStatus && filterStatus !== "all") params.append("status", filterStatus)
+      if (filterCriticality && filterCriticality !== "all") params.append("criticality", filterCriticality)
 
       const res = await fetch(`/api/iso27001/assets?${params}`)
       if (res.ok) {
@@ -241,7 +305,7 @@ export default function AssetsPage() {
         const error = await res.json()
         toast.error(error.error || "Islem basarisiz")
       }
-    } catch (error) {
+    } catch {
       toast.error("Bir hata olustu")
     } finally {
       setSaving(false)
@@ -260,29 +324,13 @@ export default function AssetsPage() {
         const error = await res.json()
         toast.error(error.error || "Silme basarisiz")
       }
-    } catch (error) {
+    } catch {
       toast.error("Bir hata olustu")
     }
   }
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      description: "",
-      category: "",
-      type: "",
-      location: "",
-      department: "",
-      confidentiality: 1,
-      integrity: 1,
-      availability: 1,
-      classification: "INTERNAL",
-      status: "ACTIVE",
-      manufacturer: "",
-      model: "",
-      serialNumber: "",
-      notes: "",
-    })
+    setFormData(initialFormData)
     setEditingAsset(null)
   }
 
@@ -300,10 +348,21 @@ export default function AssetsPage() {
       availability: asset.availability,
       classification: asset.classification,
       status: asset.status,
-      manufacturer: "",
-      model: "",
-      serialNumber: "",
-      notes: "",
+      manufacturer: asset.manufacturer || "",
+      model: asset.model || "",
+      serialNumber: asset.serialNumber || "",
+      hostname: asset.hostname || "",
+      ipAddress: asset.ipAddress || "",
+      macAddress: asset.macAddress || "",
+      operatingSystem: asset.operatingSystem || "",
+      processor: asset.processor || "",
+      ram: asset.ram || "",
+      diskSize: asset.diskSize || "",
+      barcode: asset.barcode || "",
+      warrantyEndDate: asset.warrantyEndDate ? asset.warrantyEndDate.split("T")[0] : "",
+      assignedTo: asset.assignedTo || "",
+      assignedToEmail: asset.assignedToEmail || "",
+      notes: asset.notes || "",
     })
     setDialogOpen(true)
   }
@@ -311,16 +370,64 @@ export default function AssetsPage() {
   const filteredAssets = assets.filter(
     (a) =>
       a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.assetNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      a.assetNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (a.hostname && a.hostname.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (a.ipAddress && a.ipAddress.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (a.assignedTo && a.assignedTo.toLowerCase().includes(searchTerm.toLowerCase()))
   )
 
-  const exportAssets = () => {
-    const blob = new Blob([JSON.stringify(assets, null, 2)], { type: "application/json" })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `ISO27001-Varlik-Envanteri-${new Date().toISOString().split("T")[0]}.json`
-    a.click()
+  // Excel import - dosya secildiginde on izleme
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportFile(file)
+    setImportResult(null)
+
+    try {
+      const XLSX = await import("xlsx")
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: "array" })
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        const jsonData = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[]
+        setImportColumns(Object.keys(jsonData[0] || {}))
+        setImportPreview(jsonData.slice(0, 5))
+      }
+      reader.readAsArrayBuffer(file)
+    } catch {
+      toast.error("Dosya okunamadi")
+    }
+  }
+
+  const handleImport = async () => {
+    if (!importFile) return
+    setIsImporting(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", importFile)
+      const res = await fetch("/api/iso27001/assets/import", { method: "POST", body: fd })
+      const result = await res.json()
+      if (res.ok) {
+        setImportResult(result)
+        toast.success(result.message)
+        fetchAssets()
+      } else {
+        toast.error(result.error || "Import basarisiz")
+      }
+    } catch {
+      toast.error("Import sirasinda hata olustu")
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const resetImport = () => {
+    setImportFile(null)
+    setImportPreview([])
+    setImportColumns([])
+    setImportResult(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   const getCategoryIcon = (category: string) => {
@@ -341,9 +448,9 @@ export default function AssetsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 lg:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Server className="h-6 w-6 text-primary" />
@@ -353,10 +460,14 @@ export default function AssetsPage() {
             ISO 27001:2022 A.5.9 - Bilgi ve diger iliskili varliklarin envanteri
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportAssets}>
-            <Download className="h-4 w-4 mr-2" />
-            Disari Aktar
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => { setImportDialogOpen(true); resetImport(); }}>
+            <Upload className="h-4 w-4 mr-2" />
+            Toplu Ice Aktar
+          </Button>
+          <Button variant="outline" onClick={() => window.open("/api/iso27001/assets/export", "_blank")}>
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            Excel Aktar
           </Button>
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
@@ -373,7 +484,7 @@ export default function AssetsPage() {
 
               <div className="grid gap-4 py-4">
                 {/* Temel Bilgiler */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Varlik Adi *</Label>
                     <Input
@@ -403,7 +514,7 @@ export default function AssetsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="type">Tur *</Label>
                     <Select
@@ -454,7 +565,7 @@ export default function AssetsPage() {
                 </div>
 
                 {/* Konum ve Departman */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="location">Konum</Label>
                     <Input
@@ -475,10 +586,138 @@ export default function AssetsPage() {
                   </div>
                 </div>
 
-                {/* CIA Değerleme */}
+                {/* Uretici / Model / Seri No */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Uretici</Label>
+                    <Input
+                      value={formData.manufacturer}
+                      onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
+                      placeholder="orn: Dell"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Model</Label>
+                    <Input
+                      value={formData.model}
+                      onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                      placeholder="orn: OptiPlex 7090"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Seri No</Label>
+                    <Input
+                      value={formData.serialNumber}
+                      onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {/* BT Donanim Detaylari - HARDWARE kategorisinde goruntulenir */}
+                {(formData.category === "HARDWARE" || formData.category === "NETWORK") && (
+                  <div className="border rounded-lg p-4 space-y-4">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <HardDrive className="h-4 w-4" />
+                      BT Donanim Detaylari
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Hostname</Label>
+                        <Input
+                          value={formData.hostname}
+                          onChange={(e) => setFormData({ ...formData, hostname: e.target.value })}
+                          placeholder="orn: PC-MUHASEBE-01"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>IP Adresi</Label>
+                        <Input
+                          value={formData.ipAddress}
+                          onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })}
+                          placeholder="orn: 192.168.1.100"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>MAC Adresi</Label>
+                        <Input
+                          value={formData.macAddress}
+                          onChange={(e) => setFormData({ ...formData, macAddress: e.target.value })}
+                          placeholder="orn: AA:BB:CC:DD:EE:FF"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Isletim Sistemi</Label>
+                        <Input
+                          value={formData.operatingSystem}
+                          onChange={(e) => setFormData({ ...formData, operatingSystem: e.target.value })}
+                          placeholder="orn: Windows 11 Pro"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Islemci</Label>
+                        <Input
+                          value={formData.processor}
+                          onChange={(e) => setFormData({ ...formData, processor: e.target.value })}
+                          placeholder="orn: Intel Core i7-12700"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>RAM</Label>
+                        <Input
+                          value={formData.ram}
+                          onChange={(e) => setFormData({ ...formData, ram: e.target.value })}
+                          placeholder="orn: 16 GB"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Disk</Label>
+                        <Input
+                          value={formData.diskSize}
+                          onChange={(e) => setFormData({ ...formData, diskSize: e.target.value })}
+                          placeholder="orn: 512 GB SSD"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Barkod</Label>
+                        <Input
+                          value={formData.barcode}
+                          onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Garanti Bitis</Label>
+                        <Input
+                          type="date"
+                          value={formData.warrantyEndDate}
+                          onChange={(e) => setFormData({ ...formData, warrantyEndDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Atanan Kisi</Label>
+                        <Input
+                          value={formData.assignedTo}
+                          onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
+                          placeholder="orn: Ahmet Yilmaz"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Atanan Email</Label>
+                        <Input
+                          value={formData.assignedToEmail}
+                          onChange={(e) => setFormData({ ...formData, assignedToEmail: e.target.value })}
+                          placeholder="orn: ahmet.yilmaz@ilerigroup.com"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* CIA Degerleme */}
                 <div className="border rounded-lg p-4 space-y-4">
                   <h4 className="font-medium">Varlik Degerleme (CIA)</h4>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>Gizlilik (C)</Label>
                       <Select
@@ -539,7 +778,7 @@ export default function AssetsPage() {
                   </p>
                 </div>
 
-                {/* Sınıflandırma */}
+                {/* Siniflandirma */}
                 <div className="space-y-2">
                   <Label>Bilgi Siniflandirmasi</Label>
                   <Select
@@ -585,9 +824,9 @@ export default function AssetsPage() {
         </div>
       </div>
 
-      {/* İstatistikler */}
+      {/* Istatistikler */}
       {stats && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Toplam Varlik</CardTitle>
@@ -595,7 +834,7 @@ export default function AssetsPage() {
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.byStatus.active} aktif
+                {stats.byStatus.active || 0} aktif
               </p>
             </CardContent>
           </Card>
@@ -607,9 +846,9 @@ export default function AssetsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{stats.byCriticality.critical}</div>
+              <div className="text-2xl font-bold text-red-600">{stats.byCriticality.critical || 0}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.byCriticality.high} yuksek
+                {stats.byCriticality.high || 0} yuksek
               </p>
             </CardContent>
           </Card>
@@ -621,9 +860,9 @@ export default function AssetsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.byCategory.hardware}</div>
+              <div className="text-2xl font-bold">{stats.byCategory.hardware || 0}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.byCategory.software} yazilim
+                {stats.byCategory.software || 0} yazilim
               </p>
             </CardContent>
           </Card>
@@ -631,28 +870,73 @@ export default function AssetsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Cloud className="h-4 w-4 text-purple-500" />
-                Hizmet
+                Hizmet / Ag
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.byCategory.service}</div>
+              <div className="text-2xl font-bold">{(stats.byCategory.service || 0) + (stats.byCategory.network || 0)}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.byCategory.network} ag
+                {stats.byCategory.information || 0} bilgi
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Clock className="h-4 w-4 text-orange-500" />
+                Gozden Gecirme
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600">{stats.reviewDue || 0}</div>
+              <p className="text-xs text-muted-foreground">
+                bekleyen
               </p>
             </CardContent>
           </Card>
         </div>
       )}
 
+      {/* Kategori Dagilimi */}
+      {stats && stats.total > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Kategori Dagilimi</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {CATEGORIES.map((cat) => {
+                const count = stats.byCategory[cat.value.toLowerCase()] || 0
+                const pct = stats.total > 0 ? (count / stats.total) * 100 : 0
+                if (count === 0) return null
+                return (
+                  <div key={cat.value} className="flex items-center gap-3 text-sm">
+                    <span className="w-28 text-muted-foreground">{cat.label}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-3">
+                      <div
+                        className={`${CATEGORY_COLORS[cat.value]} rounded-full h-3 transition-all`}
+                        style={{ width: `${Math.max(pct, 2)}%` }}
+                      />
+                    </div>
+                    <span className="w-12 text-right font-medium">{count}</span>
+                    <span className="w-12 text-right text-muted-foreground text-xs">{pct.toFixed(0)}%</span>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filtreler */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-0 sm:min-w-[200px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Varlik ara..."
+                  placeholder="Varlik, hostname, IP veya kullanici ara..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9"
@@ -660,7 +944,7 @@ export default function AssetsPage() {
               </div>
             </div>
             <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <Filter className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Kategori" />
               </SelectTrigger>
@@ -673,8 +957,20 @@ export default function AssetsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={filterCriticality} onValueChange={setFilterCriticality}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue placeholder="Kritiklik" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tum Seviyeler</SelectItem>
+                <SelectItem value="CRITICAL">Kritik</SelectItem>
+                <SelectItem value="HIGH">Yuksek</SelectItem>
+                <SelectItem value="MEDIUM">Orta</SelectItem>
+                <SelectItem value="LOW">Dusuk</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Durum" />
               </SelectTrigger>
               <SelectContent>
@@ -689,21 +985,21 @@ export default function AssetsPage() {
         </CardContent>
       </Card>
 
-      {/* Varlık Tablosu */}
+      {/* Varlik Tablosu */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Varlik Listesi</CardTitle>
           <CardDescription>{filteredAssets.length} varlik listeleniyor</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="border rounded-md">
+          <div className="border rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[120px]">Varlik No</TableHead>
                   <TableHead>Ad</TableHead>
                   <TableHead>Kategori</TableHead>
-                  <TableHead>Sinif</TableHead>
+                  <TableHead>Atanan Kisi</TableHead>
                   <TableHead>CIA</TableHead>
                   <TableHead>Kritiklik</TableHead>
                   <TableHead>Durum</TableHead>
@@ -729,6 +1025,9 @@ export default function AssetsPage() {
                             {asset.location && (
                               <div className="text-xs text-muted-foreground">{asset.location}</div>
                             )}
+                            {asset.hostname && (
+                              <div className="text-xs text-muted-foreground font-mono">{asset.hostname}</div>
+                            )}
                           </div>
                         </div>
                       </TableCell>
@@ -738,9 +1037,16 @@ export default function AssetsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge className={CLASSIFICATION_COLORS[asset.classification]}>
-                          {asset.classification}
-                        </Badge>
+                        {asset.assignedTo ? (
+                          <div>
+                            <div className="text-sm">{asset.assignedTo}</div>
+                            {asset.department && (
+                              <div className="text-xs text-muted-foreground">{asset.department}</div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm font-mono">
@@ -790,6 +1096,147 @@ export default function AssetsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Toplu Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={(open) => { setImportDialogOpen(open); if (!open) resetImport(); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Toplu Varlik Ice Aktar
+            </DialogTitle>
+            <DialogDescription>
+              Excel dosyasindan (.xlsx, .xls) varliklari toplu olarak import edin.
+              Kolon adlari otomatik olarak eslestirilir.
+            </DialogDescription>
+            <Button
+              variant="link"
+              size="sm"
+              className="p-0 h-auto text-xs"
+              onClick={() => window.open("/api/iso27001/assets/template", "_blank")}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Ornek Excel sablonu indir
+            </Button>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Dosya Secimi */}
+            <div className="space-y-2">
+              <Label>Excel Dosyasi</Label>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileSelect}
+                disabled={isImporting}
+              />
+            </div>
+
+            {/* On Izleme */}
+            {importPreview.length > 0 && !importResult && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Tespit Edilen Kolonlar ({importColumns.length})</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {importColumns.map((col) => (
+                      <Badge key={col} variant="outline" className="text-xs">
+                        {col}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">On Izleme (ilk 5 satir)</Label>
+                  <div className="border rounded-md overflow-x-auto max-h-48">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {importColumns.slice(0, 6).map((col) => (
+                            <TableHead key={col} className="text-xs whitespace-nowrap">
+                              {col}
+                            </TableHead>
+                          ))}
+                          {importColumns.length > 6 && (
+                            <TableHead className="text-xs">+{importColumns.length - 6} daha</TableHead>
+                          )}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {importPreview.map((row, i) => (
+                          <TableRow key={i}>
+                            {importColumns.slice(0, 6).map((col) => (
+                              <TableCell key={col} className="text-xs whitespace-nowrap max-w-[150px] truncate">
+                                {String(row[col] || "")}
+                              </TableCell>
+                            ))}
+                            {importColumns.length > 6 && (
+                              <TableCell className="text-xs text-muted-foreground">...</TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Import Sonucu */}
+            {importResult && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    <div>
+                      <div className="text-lg font-bold text-green-700">{importResult.success}</div>
+                      <div className="text-xs text-green-600">Basarili</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg">
+                    <XCircle className="h-5 w-5 text-red-600" />
+                    <div>
+                      <div className="text-lg font-bold text-red-700">{importResult.failed}</div>
+                      <div className="text-xs text-red-600">Basarisiz</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                    <Clock className="h-5 w-5 text-gray-500" />
+                    <div>
+                      <div className="text-lg font-bold text-gray-700">{importResult.skipped}</div>
+                      <div className="text-xs text-gray-500">Atlanan</div>
+                    </div>
+                  </div>
+                </div>
+
+                {importResult.errors.length > 0 && (
+                  <div className="space-y-1">
+                    <Label className="text-sm text-red-600">Hatalar:</Label>
+                    <div className="bg-red-50 rounded p-2 max-h-32 overflow-y-auto">
+                      {importResult.errors.map((err, i) => (
+                        <div key={i} className="text-xs text-red-700">{err}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              {importResult ? "Kapat" : "Iptal"}
+            </Button>
+            {!importResult && (
+              <Button onClick={handleImport} disabled={!importFile || isImporting}>
+                {isImporting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {isImporting ? "Import Ediliyor..." : "Import Et"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bilgi Notu */}
       <Card className="bg-blue-50 border-blue-200">

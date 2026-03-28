@@ -51,6 +51,7 @@ import {
   Upload,
   File,
   X,
+  Download,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
@@ -408,6 +409,30 @@ export default function TrainingsPage() {
     }
   }
 
+  const handleDownloadPDF = async (trainingId: string) => {
+    try {
+      toast.info("PDF hazirlaniyor...")
+      const res = await fetch(`/api/iso27001/trainings/${trainingId}/pdf`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        toast.error(data?.error || "PDF olusturulamadi")
+        return
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = res.headers.get("content-disposition")?.split("filename=")[1]?.replace(/"/g, "") || "egitim-formu.pdf"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success("PDF indirildi")
+    } catch {
+      toast.error("PDF indirilirken bir hata olustu")
+    }
+  }
+
   const filteredTrainings = trainings.filter(
     (t) =>
       t.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -429,9 +454,9 @@ export default function TrainingsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 lg:p-6">
       {/* Baslik */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">BGYS Egitim Kayitlari</h1>
           <p className="text-muted-foreground">
@@ -774,7 +799,7 @@ export default function TrainingsPage() {
               </div>
 
               {formData.participants.length > 0 && (
-                <div className="border rounded-md">
+                <div className="border rounded-md overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -919,7 +944,7 @@ export default function TrainingsPage() {
                 <h4 className="font-medium mb-2">
                   Katilimcilar ({selectedTraining.participants.length})
                 </h4>
-                <div className="border rounded-md">
+                <div className="border rounded-md overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1023,7 +1048,14 @@ export default function TrainingsPage() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="default"
+              onClick={() => selectedTraining && handleDownloadPDF(selectedTraining.id)}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              PDF Indir
+            </Button>
             <Button variant="outline" onClick={() => setShowViewDialog(false)}>
               Kapat
             </Button>

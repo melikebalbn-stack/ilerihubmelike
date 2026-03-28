@@ -804,7 +804,7 @@ export default function SurveyResultsPage() {
           </div>
           <div className="flex items-center gap-2">
             <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <Building2 className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Departman Seç" />
               </SelectTrigger>
@@ -829,7 +829,7 @@ export default function SurveyResultsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Toplam Katılım</p>
-                  <p className="text-3xl font-bold">{aiStats.totalResponses}</p>
+                  <p className="text-xl lg:text-3xl font-bold">{aiStats.totalResponses}</p>
                 </div>
                 <Users className="h-8 w-8 text-purple-500" />
               </div>
@@ -841,7 +841,7 @@ export default function SurveyResultsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">AI Kullanım Oranı</p>
-                  <p className="text-3xl font-bold text-green-600">{aiStats.aiAdoptionRate}%</p>
+                  <p className="text-xl sm:text-3xl font-bold text-green-600">{aiStats.aiAdoptionRate}%</p>
                 </div>
                 <Bot className="h-8 w-8 text-green-500" />
               </div>
@@ -853,7 +853,7 @@ export default function SurveyResultsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Aktif Kullanıcı</p>
-                  <p className="text-3xl font-bold text-blue-600">{aiStats.activeUserRate}%</p>
+                  <p className="text-xl sm:text-3xl font-bold text-blue-600">{aiStats.activeUserRate}%</p>
                   <p className="text-xs text-muted-foreground">Günlük/Haftalık</p>
                 </div>
                 <Zap className="h-8 w-8 text-blue-500" />
@@ -866,7 +866,7 @@ export default function SurveyResultsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Zaman Tasarrufu</p>
-                  <p className="text-3xl font-bold text-orange-600">{aiStats.avgTimeSavedPercent}%</p>
+                  <p className="text-xl sm:text-3xl font-bold text-orange-600">{aiStats.avgTimeSavedPercent}%</p>
                   <p className="text-xs text-muted-foreground">Ortalama</p>
                 </div>
                 <Clock className="h-8 w-8 text-orange-500" />
@@ -913,7 +913,7 @@ export default function SurveyResultsPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
+          <TabsList className="flex-wrap h-auto gap-1">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <Bot className="h-4 w-4" />
               Araç Kullanımı
@@ -1314,7 +1314,7 @@ export default function SurveyResultsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <Building2 className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Departman Seç" />
             </SelectTrigger>
@@ -1339,7 +1339,7 @@ export default function SurveyResultsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Toplam Katılım</p>
-                <p className="text-3xl font-bold">{stats?.totalResponses || 0}</p>
+                <p className="text-xl lg:text-3xl font-bold">{stats?.totalResponses || 0}</p>
               </div>
               <Users className="h-8 w-8 text-muted-foreground" />
             </div>
@@ -1351,7 +1351,7 @@ export default function SurveyResultsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Olumlu Yanıt</p>
-                <p className="text-3xl font-bold text-green-600">{stats?.overallPositive || 0}%</p>
+                <p className="text-xl sm:text-3xl font-bold text-green-600">{stats?.overallPositive || 0}%</p>
               </div>
               <CheckCircle2 className="h-8 w-8 text-green-500" />
             </div>
@@ -1363,7 +1363,7 @@ export default function SurveyResultsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Kararsız</p>
-                <p className="text-3xl font-bold text-yellow-600">{stats?.overallNeutral || 0}%</p>
+                <p className="text-xl sm:text-3xl font-bold text-yellow-600">{stats?.overallNeutral || 0}%</p>
               </div>
               <HelpCircle className="h-8 w-8 text-yellow-500" />
             </div>
@@ -1375,7 +1375,7 @@ export default function SurveyResultsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Olumsuz Yanıt</p>
-                <p className="text-3xl font-bold text-red-600">{stats?.overallNegative || 0}%</p>
+                <p className="text-xl sm:text-3xl font-bold text-red-600">{stats?.overallNegative || 0}%</p>
               </div>
               <XCircle className="h-8 w-8 text-red-500" />
             </div>
@@ -1493,7 +1493,7 @@ export default function SurveyResultsPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <PieChart className="h-4 w-4" />
             Kategori Analizi

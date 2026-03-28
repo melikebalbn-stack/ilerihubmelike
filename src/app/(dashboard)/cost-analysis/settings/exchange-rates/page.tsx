@@ -322,7 +322,7 @@ export default function ExchangeRatesSettingsPage() {
       </div>
 
       {/* Current Rates Summary */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {latestTRYRates.map((currency) => (
           <Card key={currency.code} className="bg-gradient-to-br from-gray-50 to-white">
             <CardContent className="p-4">
@@ -429,7 +429,7 @@ export default function ExchangeRatesSettingsPage() {
 
       {/* TCMB Dialog */}
       <Dialog open={tcmbDialogOpen} onOpenChange={setTcmbDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <Building2 className="h-5 w-5 text-red-600" />
@@ -566,7 +566,7 @@ export default function ExchangeRatesSettingsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Kaynak Para Birimi *</Label>
                 <Select
@@ -594,7 +594,7 @@ export default function ExchangeRatesSettingsPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Kur Değeri *</Label>
                 <Input

@@ -16,10 +16,13 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status")
     const classification = searchParams.get("classification")
 
+    const criticality = searchParams.get("criticality")
+
     const where: any = {}
     if (category) where.category = category
     if (status) where.status = status
     if (classification) where.classification = classification
+    if (criticality) where.criticality = criticality
 
     const assets = await prisma.iso27001Asset.findMany({
       where,
@@ -56,6 +59,7 @@ export async function GET(request: NextRequest) {
         maintenance: assets.filter(a => a.status === "UNDER_MAINTENANCE").length,
         disposed: assets.filter(a => a.status === "DISPOSED").length,
       },
+      reviewDue: assets.filter(a => a.nextReviewDate && new Date(a.nextReviewDate) < new Date()).length,
     }
 
     return NextResponse.json({ assets, stats })
@@ -129,6 +133,17 @@ export async function POST(request: NextRequest) {
         version: body.version,
         licenseType: body.licenseType,
         licenseExpiry: body.licenseExpiry ? new Date(body.licenseExpiry) : null,
+        hostname: body.hostname || null,
+        ipAddress: body.ipAddress || null,
+        macAddress: body.macAddress || null,
+        operatingSystem: body.operatingSystem || null,
+        processor: body.processor || null,
+        ram: body.ram || null,
+        diskSize: body.diskSize || null,
+        barcode: body.barcode || null,
+        warrantyEndDate: body.warrantyEndDate ? new Date(body.warrantyEndDate) : null,
+        assignedTo: body.assignedTo || null,
+        assignedToEmail: body.assignedToEmail || null,
         parentAssetId: body.parentAssetId || null,
         notes: body.notes,
         nextReviewDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 yıl sonra

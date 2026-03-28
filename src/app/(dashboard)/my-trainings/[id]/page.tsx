@@ -243,7 +243,7 @@ export default function TrainingViewPage() {
   const needsSignature = assignment.status === "COMPLETED"
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 lg:p-6">
       {/* Geri butonu */}
       <Link href="/my-trainings">
         <Button variant="ghost" size="sm">

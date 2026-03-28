@@ -3,31 +3,36 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CalibrationStatus, CalibrationEmailType, NotificationRuleType } from '@/generated/prisma'
-import { sendEmail, generateEmailContent, CalibrationEmailData } from '@/lib/email'
+import { sendEmail } from '@/lib/email'
+
+type DeviceAlert = {
+  deviceId: string
+  deviceName: string
+  alertDate: Date // nextCalibrationDate veya nextVerificationDate
+  responsiblePerson: string
+  responsiblePersonEmail?: string | null
+  daysRemaining: number
+  alertType: 'calibration' | 'verification' // Kalibrasyon mu doğrulama mı
+}
 
 /**
  * POST /api/calibration/check-notifications
  * Checks all devices and sends notifications based on configured rules
- * This endpoint is called by the cron scheduler (ADMIN only)
+ * Hem kalibrasyon hem doğrulama tarihlerini kontrol eder
  */
 export async function POST() {
   try {
-    // Kimlik doğrulama kontrolü - sistem yönetimi işlemi
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Sadece ADMIN veya SUPER_ADMIN erişebilir
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    const { canEditCalibration } = await import('@/lib/calibration-auth')
+    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
-    const now = new Date()
-    const today = new Date(now)
-    today.setHours(0, 0, 0, 0)
 
-    // Get current day of week (0=Sunday, 1=Monday, ...)
+    const now = new Date()
     const dayOfWeek = now.getDay()
     const isMonday = dayOfWeek === 1
 
@@ -35,18 +40,26 @@ export async function POST() {
     let errors = 0
     let rulesProcessed = 0
 
-    // Get active notification rules
+    // Aktif kuralları al
     const rules = await prisma.calibrationNotificationRule.findMany({
       where: { isActive: true },
       orderBy: { createdAt: 'asc' },
     })
 
-    // Get notification email recipients
-    const notificationEmails = await prisma.calibrationNotificationEmail.findMany({
+    // Bildirim alıcılarını kategoriye göre al
+    const allNotificationEmails = await prisma.calibrationNotificationEmail.findMany({
       where: { isActive: true },
     })
 
-    if (notificationEmails.length === 0) {
+    const expiringRecipients = allNotificationEmails
+      .filter(e => e.category === 'EXPIRING')
+      .map(e => ({ email: e.email, name: e.name || e.email }))
+
+    const expiredRecipients = allNotificationEmails
+      .filter(e => e.category === 'EXPIRED')
+      .map(e => ({ email: e.email, name: e.name || e.email }))
+
+    if (expiringRecipients.length === 0 && expiredRecipients.length === 0) {
       console.log('⚠️ No notification email recipients configured')
       return NextResponse.json({
         success: true,
@@ -55,171 +68,169 @@ export async function POST() {
       })
     }
 
-    const recipients = notificationEmails.map((e) => ({
-      email: e.email,
-      name: e.name || e.email,
-    }))
+    // Tüm aktif cihazları çek
+    const allDevices = await prisma.calibrationDevice.findMany({
+      where: { isActive: true },
+    })
 
-    // Process each rule
+    // Her kural için kontrol et
     for (const rule of rules) {
       rulesProcessed++
 
-      // For EXPIRED rules with weekly repeat, only run on Mondays
+      // Haftalık tekrar kuralları sadece Pazartesi çalışır
       if (rule.type === NotificationRuleType.EXPIRED && rule.repeatWeekly && !isMonday) {
         console.log(`⏭️ Skipping weekly rule (not Monday): ${rule.type} ${rule.days} days`)
         continue
       }
 
-      // Calculate the target date based on rule
-      let targetDate: Date
       let emailType: CalibrationEmailType
-
       if (rule.type === NotificationRuleType.EXPIRING) {
-        // EXPIRING + BEFORE: X gün kala
-        targetDate = new Date(now.getTime() + rule.days * 24 * 60 * 60 * 1000)
         emailType = 'EXPIRING_SOON'
       } else {
-        // EXPIRED + AFTER: X gün sonra
-        targetDate = new Date(now.getTime() - rule.days * 24 * 60 * 60 * 1000)
         emailType = rule.repeatWeekly ? 'REMINDER' : 'EXPIRED'
       }
 
-      // Find devices matching this rule
-      let devices
-      if (rule.type === NotificationRuleType.EXPIRING) {
-        // Find devices expiring within the specified days
-        const targetStart = new Date(now)
-        targetStart.setHours(0, 0, 0, 0)
-        const targetEnd = new Date(targetDate)
-        targetEnd.setHours(23, 59, 59, 999)
+      // Cihazları tara - hem kalibrasyon hem doğrulama tarihlerini kontrol et
+      const alertDevices: DeviceAlert[] = []
 
-        devices = await prisma.calibrationDevice.findMany({
-          where: {
-            isActive: true,
-            status: CalibrationStatus.EXPIRING,
-            nextCalibrationDate: {
-              gte: targetStart,
-              lte: targetEnd,
-            },
-          },
-        })
-      } else {
-        // Find devices expired for at least the specified days
-        if (rule.repeatWeekly) {
-          // For weekly repeat, get all expired devices
-          devices = await prisma.calibrationDevice.findMany({
-            where: {
-              isActive: true,
-              status: CalibrationStatus.EXPIRED,
-              nextCalibrationDate: {
-                lt: now,
-              },
-            },
-          })
-        } else {
-          // For non-repeat, get devices expired exactly X days ago
-          const targetStart = new Date(targetDate)
-          targetStart.setHours(0, 0, 0, 0)
-          const targetEnd = new Date(targetDate)
-          targetEnd.setHours(23, 59, 59, 999)
+      for (const device of allDevices) {
+        const calType = device.calibrationType || 'Kalibrasyon'
 
-          devices = await prisma.calibrationDevice.findMany({
-            where: {
-              isActive: true,
-              status: CalibrationStatus.EXPIRED,
-              nextCalibrationDate: {
-                gte: targetStart,
-                lte: targetEnd,
-              },
-            },
-          })
-        }
-      }
-
-      console.log(`📋 Rule: ${rule.type} ${rule.days} days - Found ${devices.length} devices`)
-
-      if (devices.length === 0) continue
-
-      // Group devices for batch email
-      const deviceList = devices.map((d) => ({
-        deviceId: d.deviceId,
-        deviceName: d.name,
-        nextCalibrationDate: d.nextCalibrationDate,
-        responsiblePerson: d.responsiblePerson || 'Atanmamış',
-        responsiblePersonEmail: d.responsiblePersonEmail,
-        daysRemaining: Math.ceil(
-          (d.nextCalibrationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-        ),
-      }))
-
-      // Generate and send batch email to admin recipients
-      const subject = generateBatchEmailSubject(emailType, devices.length)
-      const body = generateBatchEmailBody(emailType, deviceList, rule)
-
-      try {
-        const result = await sendEmail(recipients, subject, body)
-
-        if (result.success) {
-          notificationsSent++
-          console.log(`✅ Sent ${emailType} notification for ${devices.length} devices to admins`)
-
-          // Log emails for each device
-          const recipientEmailList = recipients.map((r) => r.email).join(', ')
-          for (const device of devices) {
-            await prisma.calibrationEmailLog.create({
-              data: {
-                deviceId: device.id,
-                emailType,
-                subject,
-                body: `Batch notification for rule: ${rule.type} ${rule.days} days`,
-                status: 'SENT',
-                recipientEmails: recipientEmailList,
-              },
-            })
+        // Kalibrasyon tarihi kontrolü (Kalibrasyon veya Kal/Doğ tiplerinde)
+        if (calType === 'Kalibrasyon' || calType === 'Kal/Doğ' || !device.calibrationType) {
+          const nextDate = device.nextCalibrationDate
+          if (nextDate) {
+            const daysRemaining = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            const match = checkRuleMatch(rule, daysRemaining, now, nextDate)
+            if (match) {
+              alertDevices.push({
+                deviceId: device.deviceId,
+                deviceName: device.name,
+                alertDate: nextDate,
+                responsiblePerson: device.responsiblePerson || 'Atanmamış',
+                responsiblePersonEmail: device.responsiblePersonEmail,
+                daysRemaining,
+                alertType: 'calibration',
+              })
+            }
           }
-        } else {
-          errors++
-          console.error(`❌ Failed to send notification: ${result.error}`)
         }
-      } catch (error) {
-        errors++
-        console.error('❌ Error sending batch notification:', error)
+
+        // Doğrulama tarihi kontrolü (Doğrulama veya Kal/Doğ tiplerinde)
+        if (calType === 'Doğrulama' || calType === 'Kal/Doğ') {
+          const nextDate = device.nextVerificationDate
+          if (nextDate) {
+            const daysRemaining = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            const match = checkRuleMatch(rule, daysRemaining, now, nextDate)
+            if (match) {
+              alertDevices.push({
+                deviceId: device.deviceId,
+                deviceName: device.name,
+                alertDate: nextDate,
+                responsiblePerson: device.responsiblePerson || 'Atanmamış',
+                responsiblePersonEmail: device.responsiblePersonEmail,
+                daysRemaining,
+                alertType: 'verification',
+              })
+            }
+          }
+        }
       }
 
-      // Send individual emails to responsible persons (only for EXPIRING rules, 7 days before)
-      if (rule.type === NotificationRuleType.EXPIRING && rule.days === 7) {
-        for (const device of deviceList) {
-          if (device.responsiblePersonEmail) {
+      console.log(`📋 Rule: ${rule.type} ${rule.days} days - Found ${alertDevices.length} alerts`)
+
+      if (alertDevices.length === 0) continue
+
+      // Kalibrasyon ve doğrulama uyarılarını ayır
+      const calAlerts = alertDevices.filter(d => d.alertType === 'calibration')
+      const verAlerts = alertDevices.filter(d => d.alertType === 'verification')
+
+      // Kural tipine göre alıcı listesini belirle
+      const ruleRecipients = rule.type === NotificationRuleType.EXPIRING
+        ? expiringRecipients
+        : expiredRecipients
+
+      if (ruleRecipients.length === 0) {
+        console.log(`⏭️ No recipients for ${rule.type} category, skipping`)
+        continue
+      }
+
+      // Kalibrasyon uyarıları için batch email
+      if (calAlerts.length > 0) {
+        const subject = generateBatchEmailSubject(emailType, calAlerts.length, 'Kalibrasyon')
+        const body = generateBatchEmailBody(emailType, calAlerts, rule, 'Kalibrasyon')
+
+        try {
+          const result = await sendEmail(ruleRecipients, subject, body)
+          if (result.success) {
+            notificationsSent++
+            console.log(`✅ Sent calibration ${emailType} notification for ${calAlerts.length} devices`)
+            await logEmails(calAlerts, allDevices, emailType, subject, ruleRecipients)
+          } else {
+            errors++
+            console.error(`❌ Failed to send calibration notification: ${result.error}`)
+          }
+        } catch (error) {
+          errors++
+          console.error('❌ Error sending calibration batch notification:', error)
+        }
+      }
+
+      // Doğrulama uyarıları için batch email
+      if (verAlerts.length > 0) {
+        const subject = generateBatchEmailSubject(emailType, verAlerts.length, 'Doğrulama')
+        const body = generateBatchEmailBody(emailType, verAlerts, rule, 'Doğrulama')
+
+        try {
+          const result = await sendEmail(ruleRecipients, subject, body)
+          if (result.success) {
+            notificationsSent++
+            console.log(`✅ Sent verification ${emailType} notification for ${verAlerts.length} devices`)
+            await logEmails(verAlerts, allDevices, emailType, subject, ruleRecipients)
+          } else {
+            errors++
+            console.error(`❌ Failed to send verification notification: ${result.error}`)
+          }
+        } catch (error) {
+          errors++
+          console.error('❌ Error sending verification batch notification:', error)
+        }
+      }
+
+      // Sorumlu kişilere bireysel e-posta gönder (tüm EXPIRING kurallarında)
+      if (rule.type === NotificationRuleType.EXPIRING) {
+        for (const alert of alertDevices) {
+          if (alert.responsiblePersonEmail) {
             try {
-              const personalSubject = `⚠️ Kalibrasyon Hatırlatması: ${device.deviceName} (${device.deviceId})`
-              const personalBody = generatePersonalEmailBody(device)
-              const personalRecipients = [{ email: device.responsiblePersonEmail, name: device.responsiblePerson }]
+              const typeLabel = alert.alertType === 'calibration' ? 'Kalibrasyon' : 'Doğrulama'
+              const personalSubject = `⚠️ ${typeLabel} Hatırlatması: ${alert.deviceName} (${alert.deviceId})`
+              const personalBody = generatePersonalEmailBody(alert)
+              const personalRecipients = [{ email: alert.responsiblePersonEmail, name: alert.responsiblePerson }]
 
               const personalResult = await sendEmail(personalRecipients, personalSubject, personalBody)
 
               if (personalResult.success) {
                 notificationsSent++
-                console.log(`✅ Sent personal notification to ${device.responsiblePerson} (${device.responsiblePersonEmail})`)
+                console.log(`✅ Sent personal ${typeLabel} notification to ${alert.responsiblePerson}`)
 
-                // Find the device by deviceId to get the actual id
-                const dbDevice = devices.find(d => d.deviceId === device.deviceId)
+                const dbDevice = allDevices.find(d => d.deviceId === alert.deviceId)
                 if (dbDevice) {
                   await prisma.calibrationEmailLog.create({
                     data: {
                       deviceId: dbDevice.id,
                       emailType: 'EXPIRING_SOON',
                       subject: personalSubject,
-                      body: `Personal notification to responsible person`,
+                      body: `Personal ${typeLabel.toLowerCase()} notification to responsible person`,
                       status: 'SENT',
-                      recipientEmails: device.responsiblePersonEmail,
+                      recipientEmails: alert.responsiblePersonEmail,
                     },
                   })
                 }
               } else {
-                console.error(`❌ Failed to send personal notification to ${device.responsiblePersonEmail}: ${personalResult.error}`)
+                console.error(`❌ Failed to send personal notification to ${alert.responsiblePersonEmail}: ${personalResult.error}`)
               }
             } catch (error) {
-              console.error(`❌ Error sending personal notification to ${device.responsiblePersonEmail}:`, error)
+              console.error(`❌ Error sending personal notification to ${alert.responsiblePersonEmail}:`, error)
             }
           }
         }
@@ -233,62 +244,102 @@ export async function POST() {
         rulesProcessed,
         notificationsSent,
         errors,
-        recipientCount: recipients.length,
+        expiringRecipientCount: expiringRecipients.length,
+        expiredRecipientCount: expiredRecipients.length,
       },
     })
   } catch (error) {
     console.error('Error checking calibration notifications:', error)
     return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to check notifications',
-      },
+      { success: false, error: 'Failed to check notifications' },
       { status: 500 }
     )
   }
 }
 
 /**
- * Generate personal email body for responsible person
+ * Kuralın bir tarih ile eşleşip eşleşmediğini kontrol et
  */
-function generatePersonalEmailBody(device: {
-  deviceId: string
-  deviceName: string
-  nextCalibrationDate: Date
-  responsiblePerson: string
-  daysRemaining: number
-}): string {
-  const now = new Date()
-  const dateStr = now.toLocaleDateString('tr-TR', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
+function checkRuleMatch(
+  rule: { type: string; days: number; repeatWeekly: boolean },
+  daysRemaining: number,
+  now: Date,
+  nextDate: Date
+): boolean {
+  if (rule.type === 'EXPIRING') {
+    // Süresi yaklaşan: nextDate gelecekte ve rule.days gün veya daha az kalmış
+    return daysRemaining > 0 && daysRemaining <= rule.days
+  } else {
+    // Süresi geciken: nextDate geçmişte
+    if (rule.repeatWeekly) {
+      // Haftalık tekrar: tüm geçmiş tarihli cihazlar
+      return nextDate < now
+    } else {
+      // Tam eşleşme: tam olarak rule.days gün geçmiş
+      const daysExpired = Math.abs(daysRemaining)
+      return daysRemaining <= 0 && daysExpired >= rule.days && daysExpired < rule.days + 1
+    }
+  }
+}
 
-  const daysText = device.daysRemaining > 0
-    ? `${device.daysRemaining} gün kaldı`
-    : device.daysRemaining === 0
+/**
+ * E-posta loglarını kaydet
+ */
+async function logEmails(
+  alerts: DeviceAlert[],
+  allDevices: any[],
+  emailType: CalibrationEmailType,
+  subject: string,
+  recipients: { email: string; name: string }[]
+) {
+  const recipientEmailList = recipients.map((r) => r.email).join(', ')
+  for (const alert of alerts) {
+    const dbDevice = allDevices.find(d => d.deviceId === alert.deviceId)
+    if (dbDevice) {
+      await prisma.calibrationEmailLog.create({
+        data: {
+          deviceId: dbDevice.id,
+          emailType,
+          subject,
+          body: `Batch notification - ${alert.alertType}`,
+          status: 'SENT',
+          recipientEmails: recipientEmailList,
+        },
+      })
+    }
+  }
+}
+
+/**
+ * Sorumlu kişi için bireysel e-posta gövdesi
+ */
+function generatePersonalEmailBody(alert: DeviceAlert): string {
+  const now = new Date()
+  const typeLabel = alert.alertType === 'calibration' ? 'Kalibrasyon' : 'Doğrulama'
+
+  const daysText = alert.daysRemaining > 0
+    ? `${alert.daysRemaining} gün kaldı`
+    : alert.daysRemaining === 0
       ? 'Bugün doluyor'
-      : `${Math.abs(device.daysRemaining)} gün geçti`
+      : `${Math.abs(alert.daysRemaining)} gün geçti`
 
   return `
-Sayın ${device.responsiblePerson},
+Sayın ${alert.responsiblePerson},
 
-Sorumluluğunuzdaki aşağıdaki cihazın kalibrasyon süresi yaklaşmaktadır.
+Sorumluluğunuzdaki aşağıdaki cihazın ${typeLabel.toLowerCase()} süresi yaklaşmaktadır.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📌 Cihaz Bilgileri:
 
-• Cihaz ID: ${device.deviceId}
-• Cihaz Adı: ${device.deviceName}
-• Kalibrasyon Bitiş Tarihi: ${device.nextCalibrationDate.toLocaleDateString('tr-TR')}
+• Cihaz ID: ${alert.deviceId}
+• Cihaz Adı: ${alert.deviceName}
+• ${typeLabel} Bitiş Tarihi: ${alert.alertDate.toLocaleDateString('tr-TR')}
 • ⏱️ ${daysText}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ Lütfen cihazın kalibrasyonu için gerekli işlemleri başlatınız.
+⚠️ Lütfen cihazın ${typeLabel.toLowerCase()}su için gerekli işlemleri başlatınız.
 
 Herhangi bir sorunuz varsa lütfen Kalite Departmanı ile iletişime geçiniz.
 
@@ -299,35 +350,29 @@ Bu e-posta otomatik olarak ILERIHub Kalibrasyon Yönetim Sistemi tarafından gö
 }
 
 /**
- * Generate batch email subject
+ * Batch e-posta konusu
  */
-function generateBatchEmailSubject(type: CalibrationEmailType, count: number): string {
+function generateBatchEmailSubject(type: CalibrationEmailType, count: number, label: string): string {
   switch (type) {
     case 'EXPIRING_SOON':
-      return `⚠️ Kalibrasyon Uyarısı: ${count} cihazın süresi yaklaşıyor`
+      return `⚠️ ${label} Uyarısı: ${count} cihazın süresi yaklaşıyor`
     case 'EXPIRED':
-      return `🚨 ACİL: ${count} cihazın kalibrasyon süresi doldu`
+      return `🚨 ACİL: ${count} cihazın ${label.toLowerCase()} süresi doldu`
     case 'REMINDER':
-      return `🔔 Haftalık Hatırlatma: ${count} cihaz kalibrasyon bekliyor`
+      return `🔔 Haftalık Hatırlatma: ${count} cihaz ${label.toLowerCase()} bekliyor`
     default:
-      return `Kalibrasyon Bildirimi: ${count} cihaz`
+      return `${label} Bildirimi: ${count} cihaz`
   }
 }
 
 /**
- * Generate batch email body
+ * Batch e-posta gövdesi
  */
 function generateBatchEmailBody(
   type: CalibrationEmailType,
-  devices: Array<{
-    deviceId: string
-    deviceName: string
-    nextCalibrationDate: Date
-    responsiblePerson: string
-    responsiblePersonEmail?: string | null
-    daysRemaining: number
-  }>,
-  rule: { type: string; days: number; repeatWeekly: boolean }
+  alerts: DeviceAlert[],
+  rule: { type: string; days: number; repeatWeekly: boolean },
+  label: string
 ): string {
   const now = new Date()
   const dateStr = now.toLocaleDateString('tr-TR', {
@@ -342,23 +387,23 @@ function generateBatchEmailBody(
 
   switch (type) {
     case 'EXPIRING_SOON':
-      header = `📅 Kalibrasyon Süresi Yaklaşan Cihazlar (${rule.days} gün kala)`
-      urgency = 'Lütfen aşağıdaki cihazların kalibrasyonlarını zamanında yaptırınız.'
+      header = `📅 ${label} Süresi Yaklaşan Cihazlar (${rule.days} gün kala)`
+      urgency = `Lütfen aşağıdaki cihazların ${label.toLowerCase()}larını zamanında yaptırınız.`
       break
     case 'EXPIRED':
-      header = `🚨 Kalibrasyon Süresi Dolan Cihazlar (${rule.days} gün sonra)`
-      urgency = '⚠️ UYARI: Kalibrasyonu geçmiş cihazlar kullanıma uygun değildir. ACİL işlem gereklidir!'
+      header = `🚨 ${label} Süresi Dolan Cihazlar`
+      urgency = `⚠️ UYARI: ${label}su geçmiş cihazlar kullanıma uygun değildir. ACİL işlem gereklidir!`
       break
     case 'REMINDER':
-      header = `🔔 Haftalık Kalibrasyon Hatırlatması`
-      urgency = 'Aşağıdaki cihazların kalibrasyonları hala beklemektedir.'
+      header = `🔔 Haftalık ${label} Hatırlatması`
+      urgency = `Aşağıdaki cihazların ${label.toLowerCase()}ları hala beklemektedir.`
       break
     default:
-      header = 'Kalibrasyon Bildirimi'
+      header = `${label} Bildirimi`
       urgency = ''
   }
 
-  const deviceLines = devices
+  const deviceLines = alerts
     .map((d, i) => {
       const daysText =
         d.daysRemaining > 0
@@ -369,7 +414,7 @@ function generateBatchEmailBody(
 
       return `${i + 1}. ${d.deviceName} (${d.deviceId})
    📍 Sorumlu: ${d.responsiblePerson}
-   📅 Kalibrasyon Tarihi: ${d.nextCalibrationDate.toLocaleDateString('tr-TR')}
+   📅 ${label} Tarihi: ${d.alertDate.toLocaleDateString('tr-TR')}
    ⏱️  ${daysText}`
     })
     .join('\n\n')
@@ -386,7 +431,7 @@ ${deviceLines}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Toplam: ${devices.length} cihaz
+Toplam: ${alerts.length} cihaz
 
 --
 Bu e-posta otomatik olarak ILERIHub Kalibrasyon Yönetim Sistemi tarafından gönderilmiştir.

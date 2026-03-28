@@ -57,12 +57,21 @@ import {
   AlertTriangle,
   Users,
   Loader2,
+  Download,
 } from "lucide-react"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 
 // Tipler
+interface FindingCounts {
+  MAJOR_NC: number
+  MINOR_NC: number
+  OBSERVATION: number
+  OPPORTUNITY: number
+  POSITIVE: number
+}
+
 interface Audit {
   id: string
   auditNumber: string
@@ -82,6 +91,7 @@ interface Audit {
     teamMembers: number
     findings: number
   }
+  findingCounts?: FindingCounts
 }
 
 interface Finding {
@@ -145,7 +155,7 @@ export default function AuditsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string>("all")
   const [selectedType, setSelectedType] = useState<string>("all")
-  const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString())
+  const [selectedYear, setSelectedYear] = useState<string>("all")
 
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -209,13 +219,31 @@ export default function AuditsPage() {
   }, [fetchAudits])
 
   // İstatistikler
-  const stats = useMemo(() => ({
-    total: audits.length,
-    planned: audits.filter(a => a.status === "PLANNED").length,
-    inProgress: audits.filter(a => a.status === "IN_PROGRESS").length,
-    completed: audits.filter(a => a.status === "COMPLETED").length,
-    totalFindings: audits.reduce((sum, a) => sum + a._count.findings, 0),
-  }), [audits])
+  const stats = useMemo(() => {
+    const fc = { major: 0, minor: 0, positive: 0, observation: 0, opportunity: 0, total: 0 }
+    for (const a of audits) {
+      if (a.findingCounts) {
+        fc.major += a.findingCounts.MAJOR_NC || 0
+        fc.minor += a.findingCounts.MINOR_NC || 0
+        fc.positive += a.findingCounts.POSITIVE || 0
+        fc.observation += a.findingCounts.OBSERVATION || 0
+        fc.opportunity += a.findingCounts.OPPORTUNITY || 0
+      }
+      fc.total += a._count.findings
+    }
+    return {
+      total: audits.length,
+      planned: audits.filter(a => a.status === "PLANNED").length,
+      inProgress: audits.filter(a => a.status === "IN_PROGRESS").length,
+      completed: audits.filter(a => a.status === "COMPLETED").length,
+      totalFindings: fc.total,
+      majorFindings: fc.major,
+      minorFindings: fc.minor,
+      positiveFindings: fc.positive,
+      observationFindings: fc.observation,
+      opportunityFindings: fc.opportunity,
+    }
+  }, [audits])
 
   // Yıllar listesi
   const years = useMemo(() => {
@@ -331,6 +359,30 @@ export default function AuditsPage() {
       }
     } catch (error) {
       toast.error("Bir hata olustu")
+    }
+  }
+
+  // PDF indir
+  const handleDownloadPDF = async (auditId: string, auditNumber: string) => {
+    try {
+      toast.info("PDF hazırlanıyor...")
+      const res = await fetch(`/api/iso27001/audits/${auditId}/pdf`)
+      if (!res.ok) {
+        toast.error("PDF oluşturulamadı")
+        return
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `Ic_Denetim_Raporu_${auditNumber.replace(/[/\\?%*:|"<>]/g, '-')}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success("PDF indirildi")
+    } catch (error) {
+      toast.error("PDF indirme hatası")
     }
   }
 
@@ -452,7 +504,7 @@ export default function AuditsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <ClipboardCheck className="h-6 w-6 text-primary" />
@@ -469,45 +521,49 @@ export default function AuditsPage() {
       </div>
 
       {/* İstatistik Kartları */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Toplam Denetim</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+              <span>{stats.planned} planlanan</span>
+              <span>{stats.inProgress} devam eden</span>
+              <span>{stats.completed} tamamlanan</span>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-blue-600">Planlanan</CardTitle>
+            <CardTitle className="text-sm font-medium text-green-600">Olumlu Bulgu</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.planned}</div>
+            <div className="text-2xl font-bold text-green-600">{stats.positiveFindings}</div>
+            <p className="text-xs text-muted-foreground mt-1">Toplam {stats.totalFindings} bulgu icinden</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-yellow-600">Devam Eden</CardTitle>
+            <CardTitle className="text-sm font-medium text-orange-600">Minor Bulgu</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.inProgress}</div>
+            <div className="text-2xl font-bold text-orange-600">{stats.minorFindings}</div>
+            {stats.observationFindings > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">+{stats.observationFindings} gozlem</p>
+            )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-green-600">Tamamlanan</CardTitle>
+            <CardTitle className="text-sm font-medium text-red-600">Major Bulgu</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.completed}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-orange-600">Toplam Bulgu</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalFindings}</div>
+            <div className="text-2xl font-bold text-red-600">{stats.majorFindings}</div>
+            {stats.opportunityFindings > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">+{stats.opportunityFindings} iyilestirme firsati</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -516,7 +572,7 @@ export default function AuditsPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-0 sm:min-w-[200px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -528,7 +584,7 @@ export default function AuditsPage() {
               </div>
             </div>
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Durum" />
               </SelectTrigger>
               <SelectContent>
@@ -539,7 +595,7 @@ export default function AuditsPage() {
               </SelectContent>
             </Select>
             <Select value={selectedType} onValueChange={setSelectedType}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Tip" />
               </SelectTrigger>
               <SelectContent>
@@ -550,7 +606,7 @@ export default function AuditsPage() {
               </SelectContent>
             </Select>
             <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger className="w-full sm:w-[120px]">
                 <SelectValue placeholder="Yil" />
               </SelectTrigger>
               <SelectContent>
@@ -566,7 +622,7 @@ export default function AuditsPage() {
 
       {/* Denetim Listesi */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -585,6 +641,7 @@ export default function AuditsPage() {
               </Button>
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -623,9 +680,26 @@ export default function AuditsPage() {
                       {getStatusBadge(audit.status)}
                     </TableCell>
                     <TableCell onClick={() => handleViewAudit(audit)}>
-                      <Badge variant="outline">
-                        {audit._count.findings} bulgu
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        {audit.findingCounts && audit.findingCounts.POSITIVE > 0 && (
+                          <Badge className="bg-green-100 text-green-800 text-xs px-1.5">
+                            {audit.findingCounts.POSITIVE}
+                          </Badge>
+                        )}
+                        {audit.findingCounts && audit.findingCounts.MINOR_NC > 0 && (
+                          <Badge className="bg-orange-100 text-orange-800 text-xs px-1.5">
+                            {audit.findingCounts.MINOR_NC}
+                          </Badge>
+                        )}
+                        {audit.findingCounts && audit.findingCounts.MAJOR_NC > 0 && (
+                          <Badge className="bg-red-100 text-red-800 text-xs px-1.5">
+                            {audit.findingCounts.MAJOR_NC}
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground ml-1">
+                          {audit._count.findings} bulgu
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -638,6 +712,10 @@ export default function AuditsPage() {
                           <DropdownMenuItem onClick={() => handleViewAudit(audit)}>
                             <Eye className="h-4 w-4 mr-2" />
                             Detay
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDownloadPDF(audit.id, audit.auditNumber)}>
+                            <Download className="h-4 w-4 mr-2" />
+                            PDF İndir
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {audit.status === "PLANNED" && (
@@ -673,13 +751,14 @@ export default function AuditsPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
 
       {/* Denetim Oluşturma Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Denetim Olustur</DialogTitle>
             <DialogDescription>
@@ -687,7 +766,7 @@ export default function AuditsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Denetim Basligi *</Label>
                 <Input
@@ -734,7 +813,7 @@ export default function AuditsPage() {
                 rows={2}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="plannedDate">Planlanan Tarih *</Label>
                 <Input
@@ -756,7 +835,7 @@ export default function AuditsPage() {
             </div>
             <div className="border-t pt-4">
               <h4 className="font-medium mb-3">Lider Denetci Bilgileri *</h4>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="leadAuditorName">Ad Soyad</Label>
                   <Input
@@ -778,7 +857,7 @@ export default function AuditsPage() {
             </div>
             <div className="border-t pt-4">
               <h4 className="font-medium mb-3">Denetlenen Kisi (Opsiyonel)</h4>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="auditeeName">Ad Soyad</Label>
                   <Input
@@ -826,6 +905,14 @@ export default function AuditsPage() {
                     <DialogDescription>{selectedAudit.title}</DialogDescription>
                   </div>
                   <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDownloadPDF(selectedAudit.id, selectedAudit.auditNumber)}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      PDF İndir
+                    </Button>
                     {selectedAudit.status === "PLANNED" && (
                       <Button
                         size="sm"
@@ -849,7 +936,7 @@ export default function AuditsPage() {
               </DialogHeader>
 
               <Tabs defaultValue="details" className="mt-4">
-                <TabsList>
+                <TabsList className="flex-wrap h-auto gap-1">
                   <TabsTrigger value="details">Detaylar</TabsTrigger>
                   <TabsTrigger value="findings">
                     Bulgular ({findings.length})
@@ -857,7 +944,7 @@ export default function AuditsPage() {
                 </TabsList>
 
                 <TabsContent value="details" className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-muted-foreground">Denetim Tipi</Label>
                       <p className="font-medium">{getTypeBadge(selectedAudit.auditType)}</p>
@@ -898,7 +985,7 @@ export default function AuditsPage() {
                       <Users className="h-4 w-4" />
                       Denetim Ekibi
                     </h4>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <Card>
                         <CardHeader className="pb-2">
                           <CardTitle className="text-sm">Lider Denetci</CardTitle>
@@ -1025,7 +1112,7 @@ export default function AuditsPage() {
 
       {/* Bulgu Oluşturma Dialog */}
       <Dialog open={findingDialogOpen} onOpenChange={setFindingDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Bulgu Ekle</DialogTitle>
             <DialogDescription>
@@ -1033,7 +1120,7 @@ export default function AuditsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="findingType">Bulgu Tipi *</Label>
                 <Select
@@ -1115,7 +1202,7 @@ export default function AuditsPage() {
                 rows={2}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="responsibleName">Sorumlu Kisi</Label>
                 <Input

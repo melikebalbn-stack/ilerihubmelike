@@ -24,6 +24,15 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+
+    --white: #fff;
+    --black: #000;
+    --transparent: transparent;
+    --blue-500: #3b82f6;
+    --indigo-300: #a5b4fc;
+    --blue-300: #93c5fd;
+    --violet-200: #ddd6fe;
+    --blue-400: #60a5fa;
   }
 
   .dark {
@@ -94,6 +103,25 @@
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Dark sidebar scrollbar */
+  .sidebar-dark-nav {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.15) transparent;
+  }
+  .sidebar-dark-nav::-webkit-scrollbar {
+    width: 4px;
+  }
+  .sidebar-dark-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-dark-nav::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 4px;
+  }
+  .sidebar-dark-nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.25);
   }
 
   /* Mobile-only classes */

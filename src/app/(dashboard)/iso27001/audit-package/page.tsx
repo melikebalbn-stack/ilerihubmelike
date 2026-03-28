@@ -30,12 +30,16 @@ import {
   ClipboardCheck,
   Scale,
   GraduationCap,
-  Users,
   AlertTriangle,
   Calendar,
   Package,
-  FileJson,
   Printer,
+  FolderArchive,
+  FileSpreadsheet,
+  Eye,
+  Server,
+  BookOpen,
+  ShieldCheck,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -63,6 +67,17 @@ interface AuditPackage {
   complianceChecklist: {
     items: { requirement: string; status: string }[]
   }
+  packageFileStats?: {
+    policies: number
+    soa: number
+    risks: number
+    audits: number
+    incidents: number
+    trainings: number
+    managementReviews: number
+    assets: number
+    evidences: number
+  }
 }
 
 export default function AuditPackagePage() {
@@ -83,32 +98,35 @@ export default function AuditPackagePage() {
         setData(packageData)
       }
     } catch (error) {
-      console.error("Paket alinamadi:", error)
-      toast.error("Veriler yuklenemedi")
+      console.error("Paket alınamadı:", error)
+      toast.error("Veriler yüklenemedi")
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDownload = async () => {
+  const handleDownloadZip = async () => {
     setDownloading(true)
     try {
-      const res = await fetch("/api/iso27001/audit-package")
-      if (res.ok) {
-        const packageData = await res.json()
-        const blob = new Blob([JSON.stringify(packageData, null, 2)], { type: "application/json" })
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `ISO27001-Denetim-Paketi-${new Date().toISOString().split("T")[0]}.json`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        a.remove()
-        toast.success("Denetim paketi indirildi")
+      const res = await fetch("/api/iso27001/auditor-package/download")
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "ZIP oluşturulamadı" }))
+        toast.error(err.error || "ZIP oluşturulamadı")
+        return
       }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ILERI-GROUP-ISO27001-Denetci-Paketi-${new Date().toISOString().split("T")[0]}.zip`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success("Denetçi paketi indirildi")
     } catch (error) {
-      toast.error("Indirme hatasi")
+      console.error("İndirme hatası:", error)
+      toast.error("İndirme sırasında hata oluştu")
     } finally {
       setDownloading(false)
     }
@@ -129,39 +147,51 @@ export default function AuditPackagePage() {
   if (!data) {
     return (
       <div className="text-center py-12 text-muted-foreground">
-        Veriler yuklenemedi
+        Veriler yüklenemedi
       </div>
     )
   }
 
-  const { summary, complianceChecklist } = data
+  const { summary, complianceChecklist, packageFileStats } = data
   const { stats } = summary
+
+  const packageCards = [
+    { icon: FileText, label: "Politika & Prosedürler", count: packageFileStats?.policies || 0, color: "text-blue-500", bg: "bg-blue-50" },
+    { icon: ShieldCheck, label: "SoA Beyanı", count: packageFileStats?.soa || 1, color: "text-emerald-500", bg: "bg-emerald-50" },
+    { icon: Scale, label: "Risk Değerlendirme", count: packageFileStats?.risks || 1, color: "text-orange-500", bg: "bg-orange-50" },
+    { icon: ClipboardCheck, label: "İç Denetim", count: packageFileStats?.audits || 0, color: "text-indigo-500", bg: "bg-indigo-50" },
+    { icon: AlertTriangle, label: "Olay Yönetimi", count: packageFileStats?.incidents || 1, color: "text-red-500", bg: "bg-red-50" },
+    { icon: GraduationCap, label: "Eğitim Kayıtları", count: packageFileStats?.trainings || 1, color: "text-purple-500", bg: "bg-purple-50" },
+    { icon: Calendar, label: "YGG Tutanakları", count: packageFileStats?.managementReviews || 1, color: "text-teal-500", bg: "bg-teal-50" },
+    { icon: Server, label: "Varlık Envanteri", count: packageFileStats?.assets || 1, color: "text-cyan-500", bg: "bg-cyan-50" },
+    { icon: Eye, label: "Kanıtlar", count: packageFileStats?.evidences || 0, color: "text-amber-500", bg: "bg-amber-50" },
+  ]
 
   return (
     <div className="space-y-6 p-6 print:p-0">
       {/* Header */}
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Package className="h-6 w-6 text-primary" />
-            Denetci Rapor Paketi
+            Denetçi Rapor Paketi
           </h1>
           <p className="text-muted-foreground">
-            ISO 27001:2022 denetimi icin hazir rapor paketi
+            ISO 27001:2022 denetimi için hazır rapor paketi
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />
-            Yazdir
+            Yazdır
           </Button>
-          <Button onClick={handleDownload} disabled={downloading}>
+          <Button onClick={handleDownloadZip} disabled={downloading}>
             {downloading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}
-            Paketi Indir (JSON)
+            {downloading ? "Paket Hazırlanıyor..." : "Paketi İndir (ZIP)"}
           </Button>
         </div>
       </div>
@@ -169,9 +199,9 @@ export default function AuditPackagePage() {
       {/* Print Header */}
       <div className="hidden print:block text-center mb-8">
         <h1 className="text-2xl font-bold">ISO 27001:2022 Denetim Rapor Paketi</h1>
-        <p className="text-muted-foreground">ILERI Group - Bilgi Guvenligi Yonetim Sistemi</p>
+        <p className="text-muted-foreground">İLERİ Group - Bilgi Güvenliği Yönetim Sistemi</p>
         <p className="text-sm text-muted-foreground mt-2">
-          Olusturma: {new Date().toLocaleDateString("tr-TR")}
+          Oluşturma: {new Date().toLocaleDateString("tr-TR")}
         </p>
       </div>
 
@@ -190,7 +220,7 @@ export default function AuditPackagePage() {
           <div className="flex items-center gap-8">
             <div className="flex-1">
               <div className="flex justify-between mb-2">
-                <span className="text-sm font-medium">Uyumluluk Orani</span>
+                <span className="text-sm font-medium">Uyumluluk Oranı</span>
                 <span className="text-2xl font-bold">{summary.overallCompliance}%</span>
               </div>
               <Progress value={summary.overallCompliance} className="h-4" />
@@ -211,13 +241,13 @@ export default function AuditPackagePage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <FileText className="h-4 w-4 text-blue-500" />
-              Dokumanlar
+              Dokümanlar
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.documents.total}</div>
             <div className="text-xs text-muted-foreground">
-              {stats.documents.approved} onayli, {stats.documents.signatures} imza
+              {stats.documents.approved} onaylı, {stats.documents.signatures} imza
             </div>
           </CardContent>
         </Card>
@@ -247,7 +277,7 @@ export default function AuditPackagePage() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.risks.total}</div>
             <div className="text-xs text-muted-foreground">
-              {stats.risks.high} yuksek, {stats.risks.treated} islenmis
+              {stats.risks.high} yüksek, {stats.risks.treated} işlenmiş
             </div>
           </CardContent>
         </Card>
@@ -256,7 +286,7 @@ export default function AuditPackagePage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <GraduationCap className="h-4 w-4 text-purple-500" />
-              Egitimler
+              Eğitimler
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -267,6 +297,61 @@ export default function AuditPackagePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Paket İçeriği */}
+      <Card className="print:hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FolderArchive className="h-5 w-5 text-primary" />
+            Paket İçeriği
+          </CardTitle>
+          <CardDescription>
+            ZIP dosyasında yer alacak klasörler ve dosya sayıları
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 md:grid-cols-3">
+            {packageCards.map((card) => (
+              <div
+                key={card.label}
+                className={`flex items-center gap-3 p-3 rounded-lg ${card.bg}`}
+              >
+                <card.icon className={`h-5 w-5 ${card.color} flex-shrink-0`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{card.label}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {card.count} dosya
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* İndirme butonu */}
+          <div className="mt-6">
+            <Button
+              className="w-full h-14 text-base"
+              onClick={handleDownloadZip}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-3 animate-spin" />
+                  Denetçi paketi hazırlanıyor...
+                </>
+              ) : (
+                <>
+                  <Download className="h-5 w-5 mr-3" />
+                  Denetçi Paketini İndir (ZIP)
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-center text-muted-foreground mt-2">
+              Son güncelleme: {new Date().toLocaleDateString("tr-TR")}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Detaylı İstatistikler */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -292,7 +377,7 @@ export default function AuditPackagePage() {
                 <Badge variant="secondary">{stats.audits.totalFindings}</Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span>Acik Bulgu</span>
+                <span>Açık Bulgu</span>
                 <Badge className={stats.audits.openFindings > 0 ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}>
                   {stats.audits.openFindings}
                 </Badge>
@@ -305,7 +390,7 @@ export default function AuditPackagePage() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
-              Guvenlik Olaylari
+              Güvenlik Olayları
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -315,17 +400,17 @@ export default function AuditPackagePage() {
                 <Badge variant="outline">{stats.incidents.total}</Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span>Bu Yil</span>
+                <span>Bu Yıl</span>
                 <Badge variant="secondary">{stats.incidents.thisYear}</Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span>Acik Olay</span>
+                <span>Açık Olay</span>
                 <Badge className={stats.incidents.open > 0 ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}>
                   {stats.incidents.open}
                 </Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span>Cozulen</span>
+                <span>Çözülen</span>
                 <Badge className="bg-green-100 text-green-700">{stats.incidents.resolved}</Badge>
               </div>
             </div>
@@ -342,7 +427,7 @@ export default function AuditPackagePage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="border rounded-md">
+          <div className="border rounded-md overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -367,7 +452,7 @@ export default function AuditPackagePage() {
                       ) : item.status === "HAYIR" ? (
                         <Badge className="bg-red-100 text-red-700">
                           <XCircle className="h-3 w-3 mr-1" />
-                          Hayir
+                          Hayır
                         </Badge>
                       ) : (
                         <Badge className="bg-yellow-100 text-yellow-700">
@@ -389,21 +474,21 @@ export default function AuditPackagePage() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            Yonetim Gozden Gecirme
+            Yönetim Gözden Geçirme
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
             <div>
-              <div className="text-sm text-muted-foreground">Toplam Toplanti</div>
+              <div className="text-sm text-muted-foreground">Toplam Toplantı</div>
               <div className="text-2xl font-bold">{stats.managementReviews.total}</div>
             </div>
             <div className="border-l pl-4">
-              <div className="text-sm text-muted-foreground">Son Toplanti</div>
+              <div className="text-sm text-muted-foreground">Son Toplantı</div>
               <div className="text-lg font-medium">
                 {stats.managementReviews.lastReviewDate
                   ? new Date(stats.managementReviews.lastReviewDate).toLocaleDateString("tr-TR")
-                  : "Henuz yapilmadi"}
+                  : "Henüz yapılmadı"}
               </div>
             </div>
           </div>
@@ -414,13 +499,14 @@ export default function AuditPackagePage() {
       <Card className="bg-blue-50 border-blue-200 print:hidden">
         <CardContent className="pt-6">
           <div className="flex gap-4">
-            <FileJson className="h-6 w-6 text-blue-500 flex-shrink-0" />
+            <FolderArchive className="h-6 w-6 text-blue-500 flex-shrink-0" />
             <div>
-              <h3 className="font-semibold text-blue-900">Denetim Paketi Hakkinda</h3>
+              <h3 className="font-semibold text-blue-900">Denetçi Paketi Hakkında</h3>
               <p className="text-sm text-blue-700 mt-1">
-                Bu rapor paketi, ISO 27001 denetimi icin gerekli tum verileri icerir.
-                JSON formatinda indirdiginizde Statement of Applicability (SoA), dokuman listesi,
-                risk degerlendirmesi, denetim kayitlari, egitim kayitlari ve daha fazlasi yer alir.
+                Bu rapor paketi, ISO 27001 denetimi için gerekli tüm verileri içerir.
+                ZIP formatında indirdiğinizde Statement of Applicability (SoA), doküman listesi,
+                risk değerlendirmesi, denetim kayıtları, eğitim kayıtları, olay kayıtları,
+                varlık envanteri ve kanıt dokümanları klasörlenmiş şekilde yer alır.
               </p>
             </div>
           </div>

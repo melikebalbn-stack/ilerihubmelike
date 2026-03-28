@@ -236,7 +236,7 @@ export default function PerformanceManagementPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Target className="h-6 w-6 text-primary" />
@@ -258,7 +258,7 @@ export default function PerformanceManagementPage() {
                 Yeni Dongu
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Yeni Performans Dongusu</DialogTitle>
               <DialogDescription>
@@ -266,7 +266,7 @@ export default function PerformanceManagementPage() {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <Label>Dongu Adi</Label>
                   <Input
@@ -548,7 +548,7 @@ export default function PerformanceManagementPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="cycles">Donguler</TabsTrigger>
           <TabsTrigger value="reviews">Degerlendirmeler</TabsTrigger>
         </TabsList>
@@ -567,6 +567,7 @@ export default function PerformanceManagementPage() {
                   Henuz performans dongusu olusturulmamis.
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -605,6 +606,7 @@ export default function PerformanceManagementPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -624,6 +626,7 @@ export default function PerformanceManagementPage() {
                   Henuz degerlendirme olusturulmamis.
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -652,6 +655,7 @@ export default function PerformanceManagementPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>

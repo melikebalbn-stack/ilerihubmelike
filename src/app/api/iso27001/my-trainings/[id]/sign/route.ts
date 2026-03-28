@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { sendPushToUser } from "@/lib/push-notifications"
 import crypto from "crypto"
 import { verifyPin } from "@/lib/pin-utils"
 
@@ -145,15 +146,21 @@ export async function POST(
 
     // Basarili imza bildirimi
     try {
+      const notifMsg = `"${updated.training.title}" egitimini basariyla tamamladiniz ve imzaladiniz.`
       await prisma.notification.create({
         data: {
           userId: user.id,
           title: "Egitim Tamamlandi",
-          message: `"${updated.training.title}" egitimini basariyla tamamladiniz ve imzaladiniz.`,
+          message: notifMsg,
           type: "SUCCESS",
           link: `/my-trainings`,
         },
       })
+      sendPushToUser(prisma, user.id, {
+        title: "Eğitim Tamamlandı",
+        body: notifMsg,
+        url: `/my-trainings`,
+      }).catch(() => {})
     } catch (e) {
       console.error("Bildirim gonderilemedi:", e)
     }

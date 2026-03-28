@@ -1,3 +1,4 @@
+import { syncUserToAkademi, deactivateUserInAkademi } from '@/lib/akademi-sync'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -22,7 +23,7 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
-    const { employeeId, tcLastFour, name, department, jobTitle, isActive } = body
+    const { employeeId, tcLastFour, name, department, jobTitle, duty, section, serviceRoute, serviceStop, isActive } = body
 
     // Kullanıcı var mı kontrol et
     const existingUser = await prisma.user.findUnique({
@@ -64,6 +65,10 @@ export async function PUT(
         ...(name && { name }),
         ...(department !== undefined && { department }),
         ...(jobTitle !== undefined && { jobTitle }),
+        ...(duty !== undefined && { duty: duty || null }),
+        ...(section !== undefined && { section: section || null }),
+        ...(serviceRoute !== undefined && { serviceRoute: serviceRoute || null }),
+        ...(serviceStop !== undefined && { serviceStop: serviceStop || null }),
         ...(isActive !== undefined && { isActive }),
       },
       select: {
@@ -74,12 +79,21 @@ export async function PUT(
         // FIX #3: tcLastFour kaldırıldı - KVKK
         department: true,
         jobTitle: true,
+        duty: true,
+        section: true,
+        serviceRoute: true,
+        serviceStop: true,
         isActive: true,
         createdAt: true,
         lastLoginAt: true,
       }
     })
 
+
+    // Akademi'ye senkronize et
+    syncUserToAkademi(user, "blue_collar").catch((err) =>
+      console.error("Akademi sync hatasi:", err)
+    )
     return NextResponse.json(user)
   } catch (error) {
     console.error('Mavi yaka kullanıcı güncellenirken hata:', error)
@@ -87,7 +101,7 @@ export async function PUT(
   }
 }
 
-// DELETE - Mavi yaka kullanıcı sil (soft delete - deaktif et)
+// DELETE - Mavi yaka kullanıcı kalıcı sil
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -115,14 +129,24 @@ export async function DELETE(
       return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
     }
 
-    // Soft delete - deaktif et
-    await prisma.user.update({
-      where: { id },
-      data: { isActive: false }
+    // Kalıcı silme
+    await prisma.user.delete({
+      where: { id }
     })
 
-    return NextResponse.json({ message: 'Kullanıcı deaktif edildi' })
-  } catch (error) {
+    // Akademi'de devre disi birak
+    deactivateUserInAkademi(id, existingUser.name || undefined).catch((err) =>
+      console.error("Akademi sync hatasi:", err)
+    )
+    return NextResponse.json({ message: 'Kullanıcı kalıcı olarak silindi' })
+  } catch (error: any) {
+    // Foreign key constraint hatası
+    if (error?.code === 'P2003') {
+      return NextResponse.json(
+        { error: 'Bu kullanıcı başka kayıtlarla ilişkili olduğu için silinemez. Önce deaktif etmeyi deneyin.' },
+        { status: 409 }
+      )
+    }
     console.error('Mavi yaka kullanıcı silinirken hata:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }

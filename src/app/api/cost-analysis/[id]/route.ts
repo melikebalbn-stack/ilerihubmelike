@@ -46,6 +46,14 @@ export async function GET(
           orderBy: { version: 'desc' },
           take: 5,
         },
+        parent: {
+          select: {
+            id: true,
+            code: true,
+            revision: true,
+            revisionNumber: true,
+          },
+        },
       },
     })
 
@@ -129,10 +137,10 @@ export async function PUT(
       status,
     } = body
 
-    // Kod değiştiyse benzersizlik kontrolü
+    // Kod değiştiyse benzersizlik kontrolü (composite unique: code + revisionNumber)
     if (code && code !== existingAnalysis.code) {
-      const duplicateCode = await prisma.costAnalysis.findUnique({
-        where: { code },
+      const duplicateCode = await prisma.costAnalysis.findFirst({
+        where: { code, revisionNumber: existingAnalysis.revisionNumber },
       })
       if (duplicateCode) {
         return NextResponse.json(

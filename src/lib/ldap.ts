@@ -38,6 +38,7 @@ export interface LDAPUser {
   memberOf: string[];
   ou: string | null; // Organizational Unit
   managerDN: string | null; // Yöneticinin DN'i
+  ipPhone: string | null; // 3CX dahili numarası
 }
 
 // Rol eşleme - OU veya grup bazlı
@@ -87,7 +88,7 @@ export async function authenticateUser(username: string, password: string): Prom
     const { searchEntries } = await client.search(LDAP_CONFIG.usersDN, {
       scope: 'sub',
       filter: `(&(objectClass=user)(objectCategory=person)(|(sAMAccountName=${safeUsername})(mail=${safeUsername}@ilerigroup.com)))`,
-      attributes: ['cn', 'sAMAccountName', 'mail', 'department', 'title', 'distinguishedName', 'memberOf', 'manager'],
+      attributes: ['cn', 'sAMAccountName', 'mail', 'department', 'title', 'distinguishedName', 'memberOf', 'manager', 'ipPhone'],
     });
 
     if (searchEntries.length === 0) {
@@ -140,6 +141,7 @@ export async function authenticateUser(username: string, password: string): Prom
       memberOf,
       ou,
       managerDN: getStringValue(userEntry.manager),
+      ipPhone: getStringValue(userEntry.ipPhone),
     };
 
   } catch (error) {
@@ -228,7 +230,7 @@ export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
     const { searchEntries } = await client.search(LDAP_CONFIG.usersDN, {
       scope: 'sub',
       filter: '(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))',
-      attributes: ['cn', 'sAMAccountName', 'mail', 'department', 'title', 'distinguishedName', 'memberOf', 'manager'],
+      attributes: ['cn', 'sAMAccountName', 'mail', 'department', 'title', 'distinguishedName', 'memberOf', 'manager', 'ipPhone'],
     });
 
     const users = searchEntries.map(entry => {
@@ -258,6 +260,7 @@ export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
         memberOf,
         ou: ouMatch ? ouMatch[1] : null,
         managerDN: getStringValue(entry.manager),
+        ipPhone: getStringValue(entry.ipPhone),
       };
     }).filter(user => {
       // Sistem hesaplarını filtrele

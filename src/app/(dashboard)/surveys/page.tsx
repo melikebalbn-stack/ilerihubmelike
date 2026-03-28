@@ -388,7 +388,7 @@ export default function SurveysPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Anket Yonetimi</h1>
           <p className="text-muted-foreground">Public anketler olusturun ve sonuclari goruntuley</p>
@@ -491,7 +491,7 @@ export default function SurveysPage() {
                 {/* Yeni Soru Ekleme */}
                 <Card>
                   <CardContent className="pt-4 space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="col-span-2 space-y-2">
                         <Label>Soru Metni</Label>
                         <Input
@@ -580,7 +580,7 @@ export default function SurveysPage() {
         </Card>
       ) : (
         <Tabs defaultValue="all">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto gap-1">
             <TabsTrigger value="all">Tumu ({surveys.length})</TabsTrigger>
             <TabsTrigger value="active">Aktif ({surveys.filter(s => s.status === "ACTIVE").length})</TabsTrigger>
             <TabsTrigger value="draft">Taslak ({surveys.filter(s => s.status === "DRAFT").length})</TabsTrigger>
@@ -636,7 +636,7 @@ export default function SurveysPage() {
               </DialogHeader>
 
               <Tabs defaultValue="responses">
-                <TabsList>
+                <TabsList className="flex-wrap h-auto gap-1">
                   <TabsTrigger value="responses">Yanitlar ({selectedSurvey.responses.length})</TabsTrigger>
                   <TabsTrigger value="stats">Istatistikler</TabsTrigger>
                 </TabsList>
@@ -645,6 +645,7 @@ export default function SurveysPage() {
                   {selectedSurvey.responses.length === 0 ? (
                     <p className="text-muted-foreground text-center py-8">Henuz yanit yok</p>
                   ) : (
+                    <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -663,6 +664,7 @@ export default function SurveysPage() {
                         ))}
                       </TableBody>
                     </Table>
+                    </div>
                   )}
                 </TabsContent>
 
@@ -768,6 +770,7 @@ function SurveyTable({
 }) {
   return (
     <Card>
+      <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -855,6 +858,7 @@ function SurveyTable({
           ))}
         </TableBody>
       </Table>
+      </div>
     </Card>
   )
 }

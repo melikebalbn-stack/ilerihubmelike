@@ -165,7 +165,7 @@ export default function ComplaintsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Müşteri Şikayetleri</h1>
           <p className="text-muted-foreground">Şikayet takibi ve çözüm süreçleri</p>
@@ -225,14 +225,14 @@ export default function ComplaintsPage() {
               <Input placeholder="Şikayet ara..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Kategori" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Kategori" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Kategoriler</SelectItem>
                 {complaintCategories.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Durumlar</SelectItem>
                 {complaintStatuses.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
@@ -244,7 +244,8 @@ export default function ComplaintsPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -289,11 +290,12 @@ export default function ComplaintsPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Müşteri Şikayeti</DialogTitle>
             <DialogDescription>Yeni bir şikayet kaydı oluşturun</DialogDescription>
@@ -308,7 +310,7 @@ export default function ComplaintsPage() {
                 placeholder="Şikayet başlığı"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="category">Kategori *</Label>
                 <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
@@ -337,7 +339,7 @@ export default function ComplaintsPage() {
                 placeholder="Müşteri / Firma adı"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="customerContact">İletişim Kişisi</Label>
                 <Input
@@ -418,7 +420,7 @@ export default function ComplaintsPage() {
                 <Target className="h-5 w-5 text-purple-600" />
                 Şikayet Kategorileri
               </h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {complaintCategories.map((cat) => (
                   <div key={cat.value} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                     <ArrowRight className="h-4 w-4 text-purple-500" />
@@ -434,7 +436,7 @@ export default function ComplaintsPage() {
                 <AlertTriangle className="h-5 w-5 text-orange-600" />
                 Öncelik Seviyeleri
               </h3>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div className="p-3 rounded-lg text-center bg-green-100 text-green-800">
                   <div className="font-medium">Düşük</div>
                 </div>

@@ -169,7 +169,7 @@ export default function EditCostAnalysisPage() {
             <CardTitle>Temel Bilgiler</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="code">Ürün Kodu *</Label>
                 <Input
@@ -213,7 +213,7 @@ export default function EditCostAnalysisPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="finishedWeight">Bitmiş Ağırlık (kg)</Label>
                 <Input
@@ -240,7 +240,7 @@ export default function EditCostAnalysisPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="categoryId">Kategori</Label>
                 <Select
@@ -273,7 +273,7 @@ export default function EditCostAnalysisPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="overheadRate">İşletme Gideri (%)</Label>
                 <Input

@@ -21,6 +21,10 @@ export async function GET(request: NextRequest) {
       trainingAssignments,
       managementReviews,
       incidents,
+      evidencesWithFile,
+      auditPrograms,
+      assets,
+      suppliers,
     ] = await Promise.all([
       // Dokümanlar
       prisma.iso27001Document.findMany({
@@ -92,6 +96,28 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { detectedAt: "desc" },
       }),
+
+      // Kanıtlar (dosyası olan)
+      prisma.iso27001Evidence.count({
+        where: { fileUrl: { not: null } },
+      }),
+
+      // Denetim Programları
+      prisma.iso27001AuditProgram.count(),
+
+      // Varlıklar
+      prisma.iso27001Asset.count(),
+
+      // Tedarikçiler
+      prisma.supplier.findMany({
+        include: {
+          evaluations: {
+            orderBy: { evaluationDate: "desc" },
+            take: 1,
+          },
+        },
+        orderBy: { companyName: "asc" },
+      }),
     ])
 
     // İstatistikler hesapla
@@ -122,10 +148,11 @@ export async function GET(request: NextRequest) {
       // Riskler
       risks: {
         total: risks.length,
-        high: risks.filter(r => r.riskLevel === "VERY_HIGH").length,
+        critical: risks.filter(r => r.riskLevel === "CRITICAL").length,
+        high: risks.filter(r => r.riskLevel === "HIGH").length,
         medium: risks.filter(r => r.riskLevel === "MEDIUM").length,
         low: risks.filter(r => r.riskLevel === "LOW").length,
-        treated: risks.filter(r => r.status === "TREATING" || r.status === "CLOSED").length,
+        treated: risks.filter(r => r.status === "IN_TREATMENT" || r.status === "CLOSED").length,
       },
 
       // Denetimler
@@ -225,10 +252,12 @@ export async function GET(request: NextRequest) {
           riskNumber: r.riskNumber,
           title: r.title,
           assetName: r.assetName,
-          threat: r.threat,
-          vulnerability: r.vulnerability,
+          assetValue: r.assetValue,
+          threatName: r.threatName,
+          scenario: r.scenario,
           likelihood: r.likelihood,
           impact: r.impact,
+          riskScore: r.riskScore,
           riskLevel: r.riskLevel,
           treatmentOption: r.treatmentOption,
           status: r.status,
@@ -314,13 +343,36 @@ export async function GET(request: NextRequest) {
           severity: i.severity,
           status: i.status,
           detectedAt: i.detectedAt,
-          reportedBy: i.reportedBy.name,
+          detectionMethod: (i as any).detectionMethod,
+          reportedBy: i.reportedBy?.name || (i as any).reportedByName || "-",
+          correctiveAction: (i as any).correctiveAction,
+          relatedRiskIds: (i as any).relatedRiskIds,
           resolvedAt: i.resolvedAt,
           lessonsLearned: i.lessonsLearned,
         })),
       },
 
-      // 8. Uyumluluk Kontrol Listesi
+      // 8. Tedarikçi Değerlendirme
+      supplierEvaluations: {
+        description: "Tedarikci degerlendirme kayitlari (A.5.19-22)",
+        total: suppliers.length,
+        aGroup: suppliers.filter(s => s.group === "A_APPROVED").length,
+        bGroup: suppliers.filter(s => s.group === "B_CANDIDATE").length,
+        cGroup: suppliers.filter(s => s.group === "C_REJECTED").length,
+        items: suppliers.map(s => ({
+          companyName: s.companyName,
+          serviceType: s.serviceType,
+          group: s.group,
+          status: s.status,
+          lastScore: s.lastScore,
+          lastEvalDate: s.lastEvalDate,
+          hasNDA: s.hasNDA,
+          hasDataAccess: s.hasDataAccess,
+          bgRiskLevel: s.bgRiskLevel,
+        })),
+      },
+
+      // 9. Uyumluluk Kontrol Listesi
       complianceChecklist: {
         description: "ISO 27001:2022 temel gereksinimler kontrol listesi",
         items: [
@@ -337,13 +389,28 @@ export async function GET(request: NextRequest) {
           { requirement: "7.5 Dokumante bilgi", status: documents.length > 0 ? "EVET" : "HAYIR" },
           { requirement: "8.1 Operasyonel planlama ve kontrol", status: "KONTROL ET" },
           { requirement: "8.2 Risk degerlendirmesi", status: risks.length > 0 ? "EVET" : "HAYIR" },
-          { requirement: "8.3 Risk isleme", status: risks.filter(r => r.status === "TREATING" || r.status === "CLOSED").length > 0 ? "EVET" : "KONTROL ET" },
+          { requirement: "8.3 Risk isleme", status: risks.filter(r => r.status === "IN_TREATMENT" || r.status === "CLOSED").length > 0 ? "EVET" : "KONTROL ET" },
           { requirement: "9.1 Izleme ve olcme", status: "KONTROL ET" },
           { requirement: "9.2 Ic denetim", status: audits.length > 0 ? "EVET" : "HAYIR" },
           { requirement: "9.3 Yonetim gozden gecirme", status: managementReviews.length > 0 ? "EVET" : "HAYIR" },
           { requirement: "10.1 Uygunsuzluk ve duzeltici faaliyet", status: audits.some(a => a.findings.length > 0) ? "EVET" : "KONTROL ET" },
           { requirement: "10.2 Surekli iyilestirme", status: "KONTROL ET" },
         ],
+      },
+
+      // Paket dosya istatistikleri (ZIP için)
+      packageFileStats: {
+        policies: documents.filter(d =>
+          ["POLICY", "PROCEDURE", "MANDATORY", "GUIDELINE", "FORM"].includes(d.category) && d.fileUrl
+        ).length,
+        soa: 1,
+        risks: 1,
+        audits: (auditPrograms > 0 ? 1 : 0) + (audits.length > 0 ? 1 : 0) + (audits.some(a => a.findings.length > 0) ? 1 : 0),
+        incidents: 1,
+        trainings: 1,
+        managementReviews: 1,
+        assets: 1,
+        evidences: evidencesWithFile,
       },
     }
 

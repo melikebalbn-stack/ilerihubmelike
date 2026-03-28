@@ -235,7 +235,7 @@ export default function NewVisitReportPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-3xl font-bold">Yeni Ziyaret Raporu</h1>
+          <h1 className="text-xl lg:text-3xl font-bold">Yeni Ziyaret Raporu</h1>
           <p className="text-muted-foreground">
             Müşteri veya tedarikçi ziyaret raporu oluşturun
           </p>

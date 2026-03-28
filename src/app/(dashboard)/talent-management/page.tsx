@@ -752,9 +752,9 @@ export default function TalentManagementPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <h1 className="text-xl lg:text-3xl font-bold flex items-center gap-2">
             <Users className="h-8 w-8" />
             Yetenek Yonetimi
           </h1>
@@ -782,7 +782,7 @@ export default function TalentManagementPage() {
               <Target className="h-4 w-4" />
               Tanimli Yetkinlikler
             </CardDescription>
-            <CardTitle className="text-3xl">{competencies.length}</CardTitle>
+            <CardTitle className="text-xl sm:text-3xl">{competencies.length}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex gap-2 flex-wrap">
@@ -805,7 +805,7 @@ export default function TalentManagementPage() {
               <UserCheck className="h-4 w-4" />
               Yetenek Profilleri
             </CardDescription>
-            <CardTitle className="text-3xl">{profiles.length}</CardTitle>
+            <CardTitle className="text-xl sm:text-3xl">{profiles.length}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-sm text-muted-foreground">
@@ -820,7 +820,7 @@ export default function TalentManagementPage() {
               <Briefcase className="h-4 w-4" />
               Pozisyonlar
             </CardDescription>
-            <CardTitle className="text-3xl">{positions.length}</CardTitle>
+            <CardTitle className="text-xl sm:text-3xl">{positions.length}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-sm text-muted-foreground">
@@ -835,7 +835,7 @@ export default function TalentManagementPage() {
               <TrendingUp className="h-4 w-4" />
               Ort. Yetenek Skoru
             </CardDescription>
-            <CardTitle className="text-3xl">
+            <CardTitle className="text-xl sm:text-3xl">
               {profiles.length > 0
                 ? Math.round(profiles.reduce((sum, p) => sum + p.talentScore, 0) / profiles.length)
                 : 0}
@@ -854,7 +854,7 @@ export default function TalentManagementPage() {
 
       {/* Sekmeler */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="competencies" className="flex items-center gap-2">
             <Target className="h-4 w-4" />
             Yetkinlikler
@@ -902,6 +902,7 @@ export default function TalentManagementPage() {
                 </div>
               ) : (
                 <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -967,6 +968,7 @@ export default function TalentManagementPage() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               )}
             </CardContent>
@@ -1012,6 +1014,7 @@ export default function TalentManagementPage() {
                 </div>
               ) : (
                 <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1091,6 +1094,7 @@ export default function TalentManagementPage() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               )}
             </CardContent>
@@ -1107,7 +1111,7 @@ export default function TalentManagementPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-2 max-w-3xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-3xl mx-auto">
                 {/* Grid başlıkları */}
                 <div className="col-span-3 flex justify-center mb-2">
                   <span className="text-sm font-medium text-muted-foreground">POTANSIYEL</span>
@@ -1216,6 +1220,7 @@ export default function TalentManagementPage() {
                 </div>
               ) : (
                 <ScrollArea className="h-[500px]">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1301,6 +1306,7 @@ export default function TalentManagementPage() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
               )}
             </CardContent>
@@ -1324,7 +1330,7 @@ export default function TalentManagementPage() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="code">Yetkinlik Kodu *</Label>
                 <Input
@@ -1505,7 +1511,7 @@ export default function TalentManagementPage() {
               )}
 
               {/* Istatistikler */}
-              <div className="grid grid-cols-4 gap-4 text-center">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                 <div>
                   <p className="text-2xl font-bold">{selectedProfile._count.developmentPlans}</p>
                   <p className="text-xs text-muted-foreground">Gelisim Plani</p>
@@ -1632,7 +1638,7 @@ export default function TalentManagementPage() {
                   9-Box Grid, calisanlarinizi performans ve potansiyel eksenlerinde
                   konumlandirmanizi saglayan stratejik bir aractir.
                 </p>
-                <div className="grid grid-cols-3 gap-2 max-w-md mx-auto text-center text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-md mx-auto text-center text-xs">
                   <div className="bg-yellow-200 p-3 rounded">
                     <p className="font-medium">Potansiyel Proje</p>
                     <p className="text-muted-foreground">Gelistir</p>
@@ -1855,7 +1861,7 @@ export default function TalentManagementPage() {
 
       {/* Yeni Profil Ekleme Dialog */}
       <Dialog open={newProfileDialogOpen} onOpenChange={setNewProfileDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserCheck className="h-5 w-5" />
@@ -1978,7 +1984,7 @@ export default function TalentManagementPage() {
               <div className="space-y-4 border-t pt-4">
                 <h4 className="font-medium">Ilk Degerlendirme</h4>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Performans Seviyesi</Label>
                     <Select
@@ -2158,6 +2164,7 @@ export default function TalentManagementPage() {
                 </div>
 
                 <ScrollArea className="h-[400px] border rounded-lg">
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -2186,6 +2193,7 @@ export default function TalentManagementPage() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
                 </ScrollArea>
 
                 <div className="text-sm text-muted-foreground">
@@ -2236,7 +2244,7 @@ export default function TalentManagementPage() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="posCode">Pozisyon Kodu *</Label>
                 <Input
@@ -2296,7 +2304,7 @@ export default function TalentManagementPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="posNextPosition">Kariyer Yolu (Sonraki Pozisyon)</Label>
                 <Select
@@ -2456,7 +2464,7 @@ export default function TalentManagementPage() {
                 </div>
 
                 {/* Pozisyon Detayları */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Mevcut Pozisyon Bilgileri</CardTitle>
@@ -2521,6 +2529,7 @@ export default function TalentManagementPage() {
                       <CardTitle className="text-sm">Departmandaki Tum Pozisyonlar</CardTitle>
                     </CardHeader>
                     <CardContent>
+                      <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -2559,6 +2568,7 @@ export default function TalentManagementPage() {
                           })}
                         </TableBody>
                       </Table>
+                      </div>
                     </CardContent>
                   </Card>
                 )}

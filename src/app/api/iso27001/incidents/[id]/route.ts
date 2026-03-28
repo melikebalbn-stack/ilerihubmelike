@@ -94,8 +94,12 @@ export async function PUT(
       containmentAt,
       rootCause,
       resolution,
+      correctiveAction,
+      preventiveAction,
       closureNotes,
       lessonsLearned,
+      detectionMethod,
+      relatedRiskIds,
     } = body
 
     const updateData: any = {}
@@ -106,23 +110,10 @@ export async function PUT(
       updateData.status = status
 
       switch (status) {
-        case "ANALYZING":
+        case "INVESTIGATING":
           timelineEntries.push({
             action: "Inceleme baslatildi",
             description: `Olay incelemeye alindi`,
-          })
-          break
-        case "CONTAINED":
-          updateData.containmentAt = containmentAt || new Date()
-          timelineEntries.push({
-            action: "Kontrol altina alindi",
-            description: `Olay kontrol altina alindi`,
-          })
-          break
-        case "RESOLVING":
-          timelineEntries.push({
-            action: "Cozum sureci baslatildi",
-            description: `Olay cozum surecine alindi`,
           })
           break
         case "RESOLVED":
@@ -142,6 +133,18 @@ export async function PUT(
           timelineEntries.push({
             action: "Olay kapatildi",
             description: closureNotes || "Olay kapatildi",
+          })
+          break
+        case "ON_HOLD":
+          timelineEntries.push({
+            action: "Beklemeye alindi",
+            description: `Olay beklemeye alindi`,
+          })
+          break
+        case "OPEN":
+          timelineEntries.push({
+            action: "Yeniden acildi",
+            description: `Olay yeniden acildi`,
           })
           break
       }
@@ -171,6 +174,13 @@ export async function PUT(
     }
 
     if (immediateActions) updateData.immediateActions = immediateActions
+    if (containmentAt) {
+      updateData.containmentAt = new Date(containmentAt)
+      timelineEntries.push({
+        action: "Kontrol altina alindi",
+        description: `Olay kontrol altina alindi`,
+      })
+    }
     if (rootCause) {
       updateData.rootCause = rootCause
       updateData.rootCauseAnalyzedAt = new Date()
@@ -180,8 +190,12 @@ export async function PUT(
       })
     }
     if (resolution) updateData.resolution = resolution
+    if (correctiveAction !== undefined) updateData.correctiveAction = correctiveAction
+    if (preventiveAction !== undefined) updateData.preventiveAction = preventiveAction
     if (closureNotes) updateData.closureNotes = closureNotes
     if (lessonsLearned) updateData.lessonsLearned = lessonsLearned
+    if (detectionMethod !== undefined) updateData.detectionMethod = detectionMethod
+    if (relatedRiskIds !== undefined) updateData.relatedRiskIds = relatedRiskIds
 
     // Olay güncelle
     const incident = await prisma.iso27001Incident.update({

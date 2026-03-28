@@ -118,7 +118,7 @@ export function CalendarFilters({ filters, onChange }: CalendarFiltersProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {ALL_EVENT_TYPES.map((type) => {
             const isChecked = selectedTypes.includes(type)
             const color = EVENT_TYPE_COLORS[type]

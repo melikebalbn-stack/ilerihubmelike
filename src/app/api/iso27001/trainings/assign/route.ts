@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { sendPushToUser } from "@/lib/push-notifications"
 
 // Egitimi kullanicilara ata
 export async function POST(request: NextRequest) {
@@ -72,15 +73,21 @@ export async function POST(request: NextRequest) {
 
         // Bildirim gonder (opsiyonel)
         try {
+          const notifMsg = `"${training.title}" egitimi size atandi. Lutfen tamamlayin.`
           await prisma.notification.create({
             data: {
               userId,
               title: "Yeni Egitim Atandi",
-              message: `"${training.title}" egitimi size atandi. Lutfen tamamlayin.`,
+              message: notifMsg,
               type: "INFO",
               link: `/my-trainings/${trainingId}`,
             },
           })
+          sendPushToUser(prisma, userId, {
+            title: "Yeni Eğitim Atandı",
+            body: notifMsg,
+            url: `/my-trainings/${trainingId}`,
+          }).catch(() => {})
         } catch (e) {
           // Bildirim gonderme hatasi kritik degil
           console.error("Bildirim gonderilemedi:", e)

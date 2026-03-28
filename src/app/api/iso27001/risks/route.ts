@@ -3,7 +3,14 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
-// Risk listesi
+function calculateRiskLevel(score: number) {
+  if (score >= 51) return "CRITICAL"
+  if (score >= 31) return "HIGH"
+  if (score >= 13) return "MEDIUM"
+  return "LOW"
+}
+
+// Risk listesi + istatistikler
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -15,60 +22,120 @@ export async function GET(request: NextRequest) {
     const level = searchParams.get("level")
     const status = searchParams.get("status")
     const search = searchParams.get("search")
+    const assetId = searchParams.get("assetId")
+    const threatCategory = searchParams.get("threatCategory")
+    const includeStats = searchParams.get("stats") !== "false"
 
     const where: any = {}
 
-    if (level) {
-      where.riskLevel = level
-    }
+    if (level) where.riskLevel = level
+    if (status) where.status = status
+    if (assetId) where.assetId = assetId
 
-    if (status) {
-      where.status = status
+    if (threatCategory) {
+      where.threat = { category: threatCategory }
     }
 
     if (search) {
       where.OR = [
         { riskNumber: { contains: search, mode: "insensitive" } },
         { title: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
         { assetName: { contains: search, mode: "insensitive" } },
+        { threatName: { contains: search, mode: "insensitive" } },
+        { scenario: { contains: search, mode: "insensitive" } },
       ]
     }
 
-    const risks = await prisma.iso27001Risk.findMany({
-      where,
-      orderBy: [{ riskScore: "desc" }, { identifiedDate: "desc" }],
-    })
+    const [risks, stats] = await Promise.all([
+      prisma.iso27001Risk.findMany({
+        where,
+        include: {
+          asset: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
+              confidentiality: true,
+              integrity: true,
+              availability: true,
+            },
+          },
+          threat: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              category: true,
+            },
+          },
+          treatmentPlans: {
+            select: {
+              id: true,
+              treatmentOption: true,
+              status: true,
+              responsibleName: true,
+              targetDate: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+        orderBy: [{ riskScore: "desc" }, { createdAt: "desc" }],
+      }),
+      includeStats
+        ? Promise.all([
+            // Seviye dagilimi
+            prisma.iso27001Risk.groupBy({
+              by: ["riskLevel"],
+              _count: { _all: true },
+            }),
+            // Durum dagilimi
+            prisma.iso27001Risk.groupBy({
+              by: ["status"],
+              _count: { _all: true },
+            }),
+            // Tedavi turu dagilimi
+            prisma.iso27001Risk.groupBy({
+              by: ["treatmentOption"],
+              where: { treatmentOption: { not: null } },
+              _count: { _all: true },
+            }),
+            // Kabul edilen risk sayisi (skor <= 12)
+            prisma.iso27001Risk.count({
+              where: { riskScore: { lte: 12 } },
+            }),
+          ])
+        : null,
+    ])
 
-    // Frontend icin donustur
-    const formatted = risks.map(r => ({
-      id: r.id,
-      riskNumber: r.riskNumber,
-      title: r.title,
-      description: r.description,
-      category: r.assetType || "Diger",
-      assetName: r.assetName,
-      threatSource: r.threat,
-      vulnerability: r.vulnerability,
-      likelihood: r.likelihood,
-      impact: r.impact,
-      riskScore: r.riskScore,
-      riskLevel: r.riskLevel,
-      currentControls: r.relatedControls?.join(", ") || null,
-      treatmentPlan: r.treatmentPlan,
-      treatmentType: r.treatmentOption,
-      residualLikelihood: null,
-      residualImpact: null,
-      residualRiskScore: r.residualRisk,
-      residualRiskLevel: null,
-      riskOwnerName: r.ownerName,
-      riskOwnerEmail: r.ownerEmail,
-      status: r.status,
-      reviewDate: r.reviewDate,
-      createdAt: r.identifiedDate,
-    }))
+    const response: any = { risks }
 
-    return NextResponse.json(formatted)
+    if (stats) {
+      const [levelStats, statusStats, treatmentStats, acceptedCount] = stats
+      response.stats = {
+        total: risks.length,
+        byLevel: {
+          CRITICAL: levelStats.find((s) => s.riskLevel === "CRITICAL")?._count._all || 0,
+          HIGH: levelStats.find((s) => s.riskLevel === "HIGH")?._count._all || 0,
+          MEDIUM: levelStats.find((s) => s.riskLevel === "MEDIUM")?._count._all || 0,
+          LOW: levelStats.find((s) => s.riskLevel === "LOW")?._count._all || 0,
+        },
+        byStatus: {
+          OPEN: statusStats.find((s) => s.status === "OPEN")?._count._all || 0,
+          IN_TREATMENT: statusStats.find((s) => s.status === "IN_TREATMENT")?._count._all || 0,
+          CLOSED: statusStats.find((s) => s.status === "CLOSED")?._count._all || 0,
+          MONITORING: statusStats.find((s) => s.status === "MONITORING")?._count._all || 0,
+        },
+        byTreatment: {
+          AVOID: treatmentStats.find((s) => s.treatmentOption === "AVOID")?._count._all || 0,
+          MITIGATE: treatmentStats.find((s) => s.treatmentOption === "MITIGATE")?._count._all || 0,
+          TRANSFER: treatmentStats.find((s) => s.treatmentOption === "TRANSFER")?._count._all || 0,
+          ACCEPT: treatmentStats.find((s) => s.treatmentOption === "ACCEPT")?._count._all || 0,
+        },
+        acceptedCount,
+      }
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error("Risk listesi hatasi:", error)
     return NextResponse.json(
@@ -90,45 +157,72 @@ export async function POST(request: NextRequest) {
     const {
       title,
       description,
-      category,
-      assetName,
-      threatSource,
+      assetId,
+      assetName: bodyAssetName,
+      assetValue: bodyAssetValue,
+      threatId,
+      threatName: bodyThreatName,
+      scenario,
       vulnerability,
       likelihood,
       impact,
-      riskScore,
-      riskLevel,
-      treatmentPlan,
-      treatmentType,
-      riskOwnerName,
-      riskOwnerEmail,
+      existingControls,
+      treatmentOption,
+      treatmentSummary,
+      relatedControls,
+      ownerName,
+      ownerEmail,
     } = body
 
-    if (!title || !description || !assetName) {
+    if (!title || !scenario) {
       return NextResponse.json(
-        { error: "Baslik, aciklama ve varlik adi zorunludur" },
+        { error: "Baslik ve senaryo zorunludur" },
         { status: 400 }
       )
     }
 
-    // Risk numarasi olustur: ISO-RSK-YYYY-XXXX
-    const year = new Date().getFullYear()
+    // Varlik bilgilerini al
+    let assetName = bodyAssetName || "Belirtilmedi"
+    let assetValue = bodyAssetValue || 1
+    if (assetId) {
+      const asset = await prisma.iso27001Asset.findUnique({
+        where: { id: assetId },
+        select: { name: true, confidentiality: true, integrity: true, availability: true },
+      })
+      if (asset) {
+        assetName = asset.name
+        assetValue = Math.min(3, Math.max(asset.confidentiality, asset.integrity, asset.availability))
+      }
+    }
+
+    // Tehdit bilgilerini al
+    let threatName = bodyThreatName || "Belirtilmedi"
+    if (threatId) {
+      const threat = await prisma.iso27001Threat.findUnique({
+        where: { id: threatId },
+        select: { name: true },
+      })
+      if (threat) threatName = threat.name
+    }
+
+    // Risk skoru hesapla
+    const l = likelihood || 3
+    const i = impact || 3
+    const riskScore = assetValue * l * i
+    const riskLevel = calculateRiskLevel(riskScore)
+
+    // Risk numarasi olustur: R-XXX
     const lastRisk = await prisma.iso27001Risk.findFirst({
-      where: {
-        riskNumber: {
-          startsWith: `ISO-RSK-${year}`,
-        },
-      },
       orderBy: { riskNumber: "desc" },
       select: { riskNumber: true },
     })
 
     let nextNum = 1
     if (lastRisk) {
-      const lastNum = parseInt(lastRisk.riskNumber.split("-")[3])
-      nextNum = lastNum + 1
+      const num = parseInt(lastRisk.riskNumber.replace("R-", ""))
+      if (!isNaN(num)) nextNum = num + 1
     }
-    const riskNumber = `ISO-RSK-${year}-${String(nextNum).padStart(4, "0")}`
+    const riskNumber = `R-${String(nextNum).padStart(3, "0")}`
 
     // Kullanici bilgilerini al
     const user = await prisma.user.findUnique({
@@ -140,21 +234,30 @@ export async function POST(request: NextRequest) {
       data: {
         riskNumber,
         title,
-        description,
+        description: description || null,
+        assetId: assetId || null,
         assetName,
-        assetType: category || null,
-        threat: threatSource || "Belirtilmedi",
-        vulnerability: vulnerability || "Belirtilmedi",
-        likelihood: likelihood || 3,
-        impact: impact || 3,
-        riskScore: riskScore || 9,
-        riskLevel: riskLevel || "MEDIUM",
-        treatmentPlan: treatmentPlan || null,
-        treatmentOption: treatmentType || null,
+        assetValue,
+        threatId: threatId || null,
+        threatName,
+        scenario,
+        vulnerability: vulnerability || null,
+        existingControls: existingControls || null,
+        likelihood: l,
+        impact: i,
+        riskScore,
+        riskLevel,
+        treatmentOption: treatmentOption || null,
+        treatmentSummary: treatmentSummary || null,
+        relatedControls: relatedControls || [],
         ownerId: user?.id || "",
-        ownerName: riskOwnerName || user?.name || "",
-        ownerEmail: riskOwnerEmail || user?.email || "",
-        status: "IDENTIFIED",
+        ownerName: ownerName || user?.name || "",
+        ownerEmail: ownerEmail || user?.email || "",
+        status: riskScore <= 12 ? "MONITORING" : "OPEN",
+      },
+      include: {
+        asset: { select: { id: true, name: true, category: true } },
+        threat: { select: { id: true, code: true, name: true, category: true } },
       },
     })
 

@@ -105,7 +105,7 @@ export default function VerifySignaturePage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
             <Shield className="h-8 w-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold">Imza Dogrulama</h1>
+          <h1 className="text-xl lg:text-3xl font-bold">Imza Dogrulama</h1>
           <p className="text-muted-foreground mt-2">
             ISO 27001 dokuman imzalarini dogrulayin
           </p>
@@ -183,7 +183,7 @@ export default function VerifySignaturePage() {
                         <FileCheck className="h-4 w-4" />
                         Imza Bilgileri
                       </h4>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-muted-foreground" />
                           <div>
@@ -239,7 +239,7 @@ export default function VerifySignaturePage() {
                         <FileText className="h-4 w-4" />
                         Dokuman Bilgileri
                       </h4>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm text-muted-foreground">Dokuman No</p>
                           <p className="font-mono text-sm">{result.document.number}</p>

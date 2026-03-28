@@ -135,6 +135,7 @@ export async function GET(request: NextRequest) {
 
     for (const device of calibrationDevices) {
       const calibrationDate = device.nextCalibrationDate
+      if (!calibrationDate) continue
 
       integratedEvents.push({
         id: `calibration_${device.id}`,
@@ -147,7 +148,7 @@ export async function GET(request: NextRequest) {
         extendedProps: {
           sourceType: 'calibration',
           sourceId: device.id,
-          description: `Cihaz: ${device.name} (${device.deviceId})\nSon kalibrasyon: ${device.lastCalibrationDate.toLocaleDateString('tr-TR')}`,
+          description: `Cihaz: ${device.name} (${device.deviceId})\nSon kalibrasyon: ${device.lastCalibrationDate?.toLocaleDateString('tr-TR') || '-'}`,
           location: device.location || undefined,
           deviceId: device.deviceId,
           status: device.status,

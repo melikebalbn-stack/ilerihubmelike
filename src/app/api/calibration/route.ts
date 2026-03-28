@@ -56,13 +56,23 @@ export async function GET(request: NextRequest) {
     const devicesToUpdate: { id: string; status: CalibrationStatus }[] = []
 
     for (const device of devices) {
+      // Manuel override edilen cihazları atla (IN_PROCESS, OUT_OF_ORDER)
+      if (device.statusManualOverride) continue
+
       let newStatus = device.status
 
-      if (device.nextCalibrationDate < now && device.status !== CalibrationStatus.EXPIRED) {
+      // Doğrulama tipinde doğrulama tarihine göre, diğerlerinde kalibrasyon tarihine göre durum belirle
+      const refDate = device.calibrationType === 'Doğrulama' && device.nextVerificationDate
+        ? device.nextVerificationDate
+        : device.nextCalibrationDate
+
+      if (!refDate) continue
+
+      if (refDate < now && device.status !== CalibrationStatus.EXPIRED) {
         newStatus = CalibrationStatus.EXPIRED
       } else if (
-        device.nextCalibrationDate > now &&
-        device.nextCalibrationDate <= thirtyDaysFromNow &&
+        refDate > now &&
+        refDate <= thirtyDaysFromNow &&
         device.status === CalibrationStatus.VALID
       ) {
         newStatus = CalibrationStatus.EXPIRING
@@ -105,10 +115,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Yetki kontrolü - sadece QUALITY_MANAGER, ADMIN veya SUPER_ADMIN
-    const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    // Yetki kontrolü - ADMIN, QUALITY_MANAGER veya Kalite departmanı
+    const { canEditCalibration } = await import('@/lib/calibration-auth')
+    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -128,6 +137,10 @@ export async function POST(request: NextRequest) {
       responsiblePersonEmail,
       calibrationInterval,
       lastCalibrationDate,
+      plannedCalibrationDate,
+      verificationInterval,
+      lastVerificationDate,
+      plannedVerificationDate,
       certificateNumber,
       notes,
       imageUrl,
@@ -144,16 +157,31 @@ export async function POST(request: NextRequest) {
       type = 'Diğer'
     }
 
-    // Tarih validasyonu
-    if (!lastCalibrationDate) {
-      lastCalibrationDate = new Date().toISOString().split('T')[0]
+    // Tip bazlı tarih validasyonu
+    const isKalibrasyon = !calibrationType || calibrationType === 'Kalibrasyon' || calibrationType === 'Kal/Doğ'
+    const isDogrulama = calibrationType === 'Doğrulama' || calibrationType === 'Kal/Doğ'
+
+    if (isKalibrasyon) {
+      if (!lastCalibrationDate) {
+        lastCalibrationDate = new Date().toISOString().split('T')[0]
+      }
+      if (!calibrationInterval || isNaN(parseInt(calibrationInterval))) {
+        calibrationInterval = 365
+      } else {
+        calibrationInterval = parseInt(calibrationInterval)
+      }
+    } else {
+      // Sadece Doğrulama tipinde kalibrasyon alanları null
+      lastCalibrationDate = null
+      calibrationInterval = null
+      plannedCalibrationDate = null
     }
 
-    // calibrationInterval validasyonu
-    if (!calibrationInterval || isNaN(parseInt(calibrationInterval))) {
-      calibrationInterval = 365
-    } else {
-      calibrationInterval = parseInt(calibrationInterval)
+    if (!isDogrulama) {
+      // Sadece Kalibrasyon tipinde doğrulama alanları null
+      lastVerificationDate = null
+      verificationInterval = null
+      plannedVerificationDate = null
     }
 
     // deviceId yoksa otomatik oluştur
@@ -173,32 +201,59 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // deviceId benzersizlik kontrolü
+    // deviceId benzersizlik kontrolü (sadece aktif cihazlar)
     const existingDevice = await prisma.calibrationDevice.findUnique({
       where: { deviceId },
     })
 
-    if (existingDevice) {
+    if (existingDevice && existingDevice.isActive) {
       return NextResponse.json(
         { error: 'Bu cihaz ID zaten mevcut' },
         { status: 400 }
       )
     }
 
-    // nextCalibrationDate'i hesapla
-    const lastCalDate = new Date(lastCalibrationDate)
-    const nextCalDate = new Date(lastCalDate.getTime() + calibrationInterval * 24 * 60 * 60 * 1000)
+    // Silinmiş (soft delete) aynı ID varsa, eski kaydı kalıcı olarak sil
+    if (existingDevice && !existingDevice.isActive) {
+      await prisma.calibrationDevice.delete({
+        where: { id: existingDevice.id },
+      })
+    }
+
+    // nextCalibrationDate hesapla (sadece kalibrasyon tipi varsa)
+    let lastCalDate: Date | null = null
+    let nextCalDate: Date | null = null
+    if (isKalibrasyon && lastCalibrationDate) {
+      lastCalDate = new Date(lastCalibrationDate)
+      nextCalDate = new Date(lastCalDate.getTime() + (calibrationInterval || 365) * 24 * 60 * 60 * 1000)
+    }
 
     // Durumu belirle
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
     let status: CalibrationStatus = CalibrationStatus.VALID
-    if (nextCalDate < now) {
-      status = CalibrationStatus.EXPIRED
-    } else if (nextCalDate <= thirtyDaysFromNow) {
-      status = CalibrationStatus.EXPIRING
+
+    // Kalibrasyon tipinde kalibrasyon tarihine göre, Doğrulama tipinde doğrulama tarihine göre durum belirle
+    const referenceDate = nextCalDate || (lastVerificationDate ? (() => {
+      const verInt = verificationInterval ? parseInt(verificationInterval) : 365
+      return new Date(new Date(lastVerificationDate).getTime() + verInt * 24 * 60 * 60 * 1000)
+    })() : null)
+
+    if (referenceDate) {
+      if (referenceDate < now) {
+        status = CalibrationStatus.EXPIRED
+      } else if (referenceDate <= thirtyDaysFromNow) {
+        status = CalibrationStatus.EXPIRING
+      }
     }
+
+    // Doğrulama tarihlerini hesapla
+    const verIntParsed = verificationInterval ? parseInt(verificationInterval) : null
+    const lastVerDate = lastVerificationDate ? new Date(lastVerificationDate) : null
+    const nextVerDate = (lastVerDate && verIntParsed)
+      ? new Date(lastVerDate.getTime() + verIntParsed * 24 * 60 * 60 * 1000)
+      : null
 
     const device = await prisma.calibrationDevice.create({
       data: {
@@ -213,9 +268,14 @@ export async function POST(request: NextRequest) {
         department,
         responsiblePerson,
         responsiblePersonEmail,
-        calibrationInterval,
+        calibrationInterval: calibrationInterval || null,
         lastCalibrationDate: lastCalDate,
         nextCalibrationDate: nextCalDate,
+        plannedCalibrationDate: plannedCalibrationDate ? new Date(plannedCalibrationDate) : null,
+        verificationInterval: verIntParsed,
+        lastVerificationDate: lastVerDate,
+        nextVerificationDate: nextVerDate,
+        plannedVerificationDate: plannedVerificationDate ? new Date(plannedVerificationDate) : null,
         certificateNumber,
         status,
         notes,

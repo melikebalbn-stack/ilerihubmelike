@@ -171,7 +171,7 @@ export default function NCRPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Uygunsuzluk Yönetimi (NCR)</h1>
           <p className="text-muted-foreground">Uygunsuzluk raporları ve düzeltici faaliyetler</p>
@@ -231,14 +231,14 @@ export default function NCRPage() {
               <Input placeholder="NCR ara..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
             </div>
             <Select value={sourceFilter} onValueChange={setSourceFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Kaynak" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Kaynak" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Kaynaklar</SelectItem>
                 {ncrSources.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Durumlar</SelectItem>
                 {ncrStatuses.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
@@ -250,7 +250,7 @@ export default function NCRPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -299,7 +299,7 @@ export default function NCRPage() {
       </Card>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Uygunsuzluk Raporu</DialogTitle>
             <DialogDescription>Yeni bir NCR kaydı oluşturun</DialogDescription>
@@ -314,7 +314,7 @@ export default function NCRPage() {
                 placeholder="Uygunsuzluk başlığı"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="source">Kaynak *</Label>
                 <Select value={formData.source} onValueChange={(v) => setFormData({ ...formData, source: v })}>
@@ -334,7 +334,7 @@ export default function NCRPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="productCode">Ürün Kodu</Label>
                 <Input
@@ -415,7 +415,7 @@ export default function NCRPage() {
                 <AlertTriangle className="h-5 w-5 text-orange-600" />
                 Ciddiyet Seviyeleri
               </h3>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-center">
                   <div className="font-medium text-green-800">Küçük (Minor)</div>
                   <p className="text-xs text-green-700 mt-1">Kullanımı etkilemez</p>
@@ -437,7 +437,7 @@ export default function NCRPage() {
                 <Target className="h-5 w-5 text-purple-600" />
                 Tespit Kaynakları
               </h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {ncrSources.map((source) => (
                   <div key={source.value} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                     <ArrowRight className="h-4 w-4 text-purple-500" />
@@ -453,7 +453,7 @@ export default function NCRPage() {
                 <Shield className="h-5 w-5 text-indigo-600" />
                 Karar (Disposition) Seçenekleri
               </h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {dispositions.map((disp) => (
                   <div key={disp.value} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                     <ArrowRight className="h-4 w-4 text-indigo-500" />

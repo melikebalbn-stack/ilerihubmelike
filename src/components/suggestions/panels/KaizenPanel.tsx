@@ -15,6 +15,7 @@ interface KaizenPanelProps {
   onViewModeChange: (mode: KaizenViewMode) => void
   onCreateNew: () => void
   onOpenGuide: () => void
+  onView: (id: string) => void
 }
 
 export function KaizenPanel({
@@ -23,7 +24,8 @@ export function KaizenPanel({
   viewMode,
   onViewModeChange,
   onCreateNew,
-  onOpenGuide
+  onOpenGuide,
+  onView
 }: KaizenPanelProps) {
   return (
     <div className="space-y-3 sm:space-y-4">

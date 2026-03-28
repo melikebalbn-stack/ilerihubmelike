@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sendPushToUser } from '@/lib/push-notifications'
 
 // GET - Denetimin aksiyon planını ve bulgularını getir
 export async function GET(
@@ -195,15 +196,21 @@ export async function PUT(
     })
 
     if (responsibleUser) {
+      const notifMsg = `Size yeni bir 5S aksiyon görevi atandı: ${categoryNames[finding.sCategory]} - ${finding.audit.area.name}. Hedef tarih: ${new Date(dueDate).toLocaleDateString('tr-TR')}`
       await prisma.notification.create({
         data: {
           userId: responsibleUser.id,
           title: '5S Aksiyon Görevi Atandı',
-          message: `Size yeni bir 5S aksiyon görevi atandı: ${categoryNames[finding.sCategory]} - ${finding.audit.area.name}. Hedef tarih: ${new Date(dueDate).toLocaleDateString('tr-TR')}`,
+          message: notifMsg,
           type: 'INFO',
           link: '/tasks'
         }
       })
+      sendPushToUser(prisma, responsibleUser.id, {
+        title: '5S Aksiyon Görevi Atandı',
+        body: notifMsg,
+        url: '/tasks',
+      }).catch(() => {})
     }
 
     return NextResponse.json({

@@ -38,6 +38,7 @@ export async function GET() {
       openFindings,
       // Risk istatistikleri
       totalRisks,
+      criticalRisks,
       highRisks,
       mediumRisks,
       lowRisks,
@@ -72,6 +73,7 @@ export async function GET() {
       prisma.iso27001AuditFinding.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
       // Riskler
       prisma.iso27001Risk.count({ where: { status: { not: "CLOSED" } } }),
+      prisma.iso27001Risk.count({ where: { riskLevel: "CRITICAL", status: { not: "CLOSED" } } }),
       prisma.iso27001Risk.count({ where: { riskLevel: "HIGH", status: { not: "CLOSED" } } }),
       prisma.iso27001Risk.count({ where: { riskLevel: "MEDIUM", status: { not: "CLOSED" } } }),
       prisma.iso27001Risk.count({ where: { riskLevel: "LOW", status: { not: "CLOSED" } } }),
@@ -137,6 +139,7 @@ export async function GET() {
       },
       risks: {
         total: totalRisks,
+        critical: criticalRisks,
         high: highRisks,
         medium: mediumRisks,
         low: lowRisks,

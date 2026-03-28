@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiUnauthorized, apiNotFound } from '@/lib/api-response'
+import { sendPushToUser } from '@/lib/push-notifications'
 
 /**
  * GET: Kullanıcının bildirimlerini sayfalı olarak listele
@@ -115,6 +116,13 @@ export async function POST(request: NextRequest) {
         link,
       },
     })
+
+    // Push bildirim gönder
+    sendPushToUser(prisma, userId, {
+      title,
+      body: message,
+      url: link || '/',
+    }).catch(() => {})
 
     return apiSuccess(notification, 201)
   } catch (error) {

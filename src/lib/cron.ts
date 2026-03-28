@@ -8,6 +8,7 @@ import {
   getFileSize,
   cleanOldBackups
 } from '@/lib/backup-service'
+import { syncLDAPUsersToDb } from '@/lib/ldap-sync'
 
 let isSchedulerInitialized = false
 
@@ -71,6 +72,39 @@ export function initializeCalibrationScheduler() {
     }
   })
 
+  // LDAP → DB kullanıcı senkronizasyonu - Her 6 saatte bir (02:00, 08:00, 14:00, 20:00)
+  cron.schedule('0 2,8,14,20 * * *', async () => {
+    console.log('⏰ Running scheduled LDAP user sync...')
+
+    try {
+      const result = await syncLDAPUsersToDb()
+      console.log('✅ LDAP sync completed:', {
+        created: result.created,
+        updated: result.updated,
+        deactivated: result.deactivated,
+        errors: result.errors,
+        duration: `${result.duration}s`,
+      })
+    } catch (error) {
+      console.error('❌ LDAP sync failed:', error)
+    }
+  })
+
+  // Uygulama başlangıcında ilk LDAP sync'i çalıştır (30 saniye gecikmeyle)
+  setTimeout(async () => {
+    console.log('⏰ Running initial LDAP user sync...')
+    try {
+      const result = await syncLDAPUsersToDb()
+      console.log('✅ Initial LDAP sync completed:', {
+        created: result.created,
+        updated: result.updated,
+        duration: `${result.duration}s`,
+      })
+    } catch (error) {
+      console.error('❌ Initial LDAP sync failed:', error)
+    }
+  }, 30000)
+
   // Yedekleme kontrolü - Her dakika
   cron.schedule('* * * * *', async () => {
     await checkScheduledBackups()
@@ -81,6 +115,8 @@ export function initializeCalibrationScheduler() {
   console.log('   - Calibration: 09:00 AM daily')
   console.log('   - Task notifications: 09:15 AM daily')
   console.log('   - Escalation check: 09:30 AM daily')
+  console.log('   - LDAP user sync: every 6 hours (02:00, 08:00, 14:00, 20:00)')
+  console.log('   - LDAP initial sync: 30s after startup')
   console.log('   - Backup scheduler: every minute')
 }
 

@@ -38,6 +38,9 @@ export async function GET(request: NextRequest) {
           department: true,
           jobTitle: true,
           azureAdId: true,
+          serviceRoute: true,
+          mobilePhone: true,
+          employeeId: true,
         },
         orderBy: { name: 'asc' },
       })
@@ -81,7 +84,50 @@ export async function GET(request: NextRequest) {
         }))
         .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
 
-      return NextResponse.json(formattedUsers)
+      // Mavi yaka kullanıcıları DB'den ekle (LDAP'ta olmayan)
+      const ldapEmails = new Set(formattedUsers.map(u => u.email.toLowerCase()))
+      const blueCollarUsers = await prisma.user.findMany({
+        where: {
+          isActive: true,
+          employeeId: { not: null },
+          name: { not: null },
+          ...(search && {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+              { employeeId: { contains: search, mode: 'insensitive' } },
+            ],
+          }),
+          ...(department && { department: { contains: department, mode: 'insensitive' } }),
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          department: true,
+          jobTitle: true,
+          employeeId: true,
+        },
+        orderBy: { name: 'asc' },
+      })
+
+      // LDAP'ta zaten olan mavi yaka kullanıcıları hariç tut
+      const uniqueBlueCollar = blueCollarUsers
+        .filter(u => u.email && !ldapEmails.has(u.email.toLowerCase()))
+        .map(u => ({
+          id: u.id,
+          name: u.name || '',
+          email: u.email,
+          department: u.department,
+          jobTitle: u.jobTitle,
+          employeeId: u.employeeId,
+          source: 'bluecollar' as const,
+        }))
+
+      const allUsers = [...formattedUsers, ...uniqueBlueCollar]
+        .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+
+      return NextResponse.json(allUsers)
     } catch (ldapError) {
       console.warn('LDAP erişilemedi, veritabanından çekiliyor:', ldapError)
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import * as XLSX from "xlsx"
 
 // ISO 27001:2022 Annex A Kontrolleri
 const ANNEX_A_CONTROLS = {
@@ -120,6 +121,13 @@ const ANNEX_A_CONTROLS = {
   },
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  IMPLEMENTED: "Uygulanmis",
+  PARTIALLY: "Kismi Uygulanmis",
+  NOT_IMPLEMENTED: "Uygulanmamis",
+  PLANNED: "Planlanan",
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -128,9 +136,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const format = searchParams.get("format") || "json"
+    const format = searchParams.get("format")
 
-    // Veritabanından kontrolleri çek
+    // Veritabanindan kontrolleri cek
     const dbControls = await prisma.iso27001Control.findMany({
       include: {
         documents: {
@@ -147,15 +155,36 @@ export async function GET(request: NextRequest) {
       orderBy: { controlId: "asc" },
     })
 
-    // Tüm kontrolleri birleştir
-    const allControls: any[] = []
+    // Tum kontrolleri birlestir
+    interface ControlRow {
+      controlId: string
+      title: string
+      category: string
+      categoryNumber: string
+      applicable: boolean
+      applicableJustification: string | null
+      status: string
+      implementationNotes: string | null
+      justification: string | null
+      responsiblePerson: string | null
+      implementationDate: Date | null
+      reviewDate: Date | null
+      documents: { id: string; title: string; documentNumber: string }[]
+      evidences: { id: string; title: string; evidenceType: string }[]
+    }
+
+    const allControls: ControlRow[] = []
 
     Object.entries(ANNEX_A_CONTROLS).forEach(([catNum, category]) => {
       category.controls.forEach((control) => {
-        const dbControl = dbControls.find((c) => c.controlId === control.id)
+        // DB'de "A.5.1" formatinda, ANNEX tablosunda "5.1" formatinda
+        const dbControl = dbControls.find((c) =>
+          c.controlId === control.id ||
+          c.controlId === `A.${control.id}`
+        )
 
         allControls.push({
-          controlId: control.id,
+          controlId: dbControl?.controlId || `A.${control.id}`,
           title: control.title,
           category: category.name,
           categoryNumber: catNum,
@@ -177,7 +206,7 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // İstatistikler
+    // Istatistikler
     const applicable = allControls.filter((c) => c.applicable)
     const stats = {
       total: allControls.length,
@@ -191,36 +220,125 @@ export async function GET(request: NextRequest) {
         : 0,
     }
 
-    // Kategori bazlı istatistikler
-    const categoryStats = Object.entries(ANNEX_A_CONTROLS).map(([catNum, category]) => {
+    // JSON format istenmisse
+    if (format === "json") {
+      const categoryStats = Object.entries(ANNEX_A_CONTROLS).map(([catNum, category]) => {
+        const catControls = allControls.filter((c) => c.categoryNumber === catNum)
+        const catApplicable = catControls.filter((c) => c.applicable)
+        const catImplemented = catApplicable.filter((c) => c.status === "IMPLEMENTED")
+        return {
+          category: category.name,
+          categoryNumber: catNum,
+          total: catControls.length,
+          applicable: catApplicable.length,
+          implemented: catImplemented.length,
+          complianceRate: catApplicable.length > 0
+            ? Math.round((catImplemented.length / catApplicable.length) * 100)
+            : 0,
+        }
+      })
+
+      return NextResponse.json({
+        title: "Statement of Applicability (SoA)",
+        organization: "ILERI Group",
+        standard: "ISO/IEC 27001:2022",
+        generatedAt: new Date().toISOString(),
+        generatedBy: session.user.name || session.user.email,
+        summary: stats,
+        categoryStats,
+        controls: allControls,
+      })
+    }
+
+    // ===== EXCEL FORMAT =====
+    const wb = XLSX.utils.book_new()
+
+    // Sayfa 1: SoA Kontrol Listesi
+    const soaRows = allControls.map((c) => ({
+      "Kontrol No": c.controlId,
+      "Kategori": c.category,
+      "Kontrol Adi": c.title,
+      "Uygulanabilir": c.applicable ? "Evet" : "Hayir",
+      "Uygulanabilirlik Gerekcelendirme": c.applicableJustification || "",
+      "Uygulama Durumu": STATUS_LABELS[c.status] || c.status,
+      "Uygulama Notlari": c.implementationNotes || "",
+      "Gerekcelendirme": c.justification || "",
+      "Sorumlu": c.responsiblePerson || "",
+      "Uygulama Tarihi": c.implementationDate
+        ? new Date(c.implementationDate).toLocaleDateString("tr-TR")
+        : "",
+      "Son Gozden Gecirme": c.reviewDate
+        ? new Date(c.reviewDate).toLocaleDateString("tr-TR")
+        : "",
+      "Iliskili Dokumanlar": c.documents.map(d => d.documentNumber || d.title).join(", "),
+      "Kanitlar": c.evidences.map(e => e.title).join(", "),
+    }))
+
+    const wsSoa = XLSX.utils.json_to_sheet(soaRows)
+    wsSoa["!cols"] = [
+      { wch: 12 },  // Kontrol No
+      { wch: 28 },  // Kategori
+      { wch: 55 },  // Kontrol Adi
+      { wch: 14 },  // Uygulanabilir
+      { wch: 30 },  // Uyg. Gerekcelendirme
+      { wch: 22 },  // Uygulama Durumu
+      { wch: 40 },  // Uygulama Notlari
+      { wch: 35 },  // Gerekcelendirme
+      { wch: 20 },  // Sorumlu
+      { wch: 16 },  // Uygulama Tarihi
+      { wch: 18 },  // Son Gozden Gecirme
+      { wch: 30 },  // Iliskili Dokumanlar
+      { wch: 30 },  // Kanitlar
+    ]
+    XLSX.utils.book_append_sheet(wb, wsSoa, "SoA Kontrolleri")
+
+    // Sayfa 2: Ozet Istatistikler
+    const summaryRows = [
+      { "Metrik": "Toplam Kontrol Sayisi", "Deger": stats.total },
+      { "Metrik": "Uygulanabilir", "Deger": stats.applicable },
+      { "Metrik": "Uygulanabilir Degil", "Deger": stats.notApplicable },
+      { "Metrik": "Uygulanmis", "Deger": stats.implemented },
+      { "Metrik": "Kismi Uygulanmis", "Deger": stats.partiallyImplemented },
+      { "Metrik": "Uygulanmamis", "Deger": stats.notImplemented },
+      { "Metrik": "Uyum Orani (%)", "Deger": stats.complianceRate },
+      { "Metrik": "", "Deger": "" },
+      { "Metrik": "Olusturma Tarihi", "Deger": new Date().toLocaleDateString("tr-TR") },
+      { "Metrik": "Olusturan", "Deger": session.user.name || session.user.email || "" },
+      { "Metrik": "Standart", "Deger": "ISO/IEC 27001:2022" },
+      { "Metrik": "Kurum", "Deger": "ILERI Group" },
+    ]
+
+    // Kategori bazli istatistikler
+    summaryRows.push({ "Metrik": "", "Deger": "" })
+    summaryRows.push({ "Metrik": "--- Kategori Bazli ---", "Deger": "" })
+
+    Object.entries(ANNEX_A_CONTROLS).forEach(([catNum, category]) => {
       const catControls = allControls.filter((c) => c.categoryNumber === catNum)
       const catApplicable = catControls.filter((c) => c.applicable)
       const catImplemented = catApplicable.filter((c) => c.status === "IMPLEMENTED")
-
-      return {
-        category: category.name,
-        categoryNumber: catNum,
-        total: catControls.length,
-        applicable: catApplicable.length,
-        implemented: catImplemented.length,
-        complianceRate: catApplicable.length > 0
-          ? Math.round((catImplemented.length / catApplicable.length) * 100)
-          : 0,
-      }
+      const rate = catApplicable.length > 0
+        ? Math.round((catImplemented.length / catApplicable.length) * 100)
+        : 0
+      summaryRows.push({
+        "Metrik": `${catNum}. ${category.name}`,
+        "Deger": `${catImplemented.length}/${catApplicable.length} (%${rate})`,
+      })
     })
 
-    const soaReport = {
-      title: "Statement of Applicability (SoA)",
-      organization: "ILERI Group",
-      standard: "ISO/IEC 27001:2022",
-      generatedAt: new Date().toISOString(),
-      generatedBy: session.user.name || session.user.email,
-      summary: stats,
-      categoryStats,
-      controls: allControls,
-    }
+    const wsSummary = XLSX.utils.json_to_sheet(summaryRows)
+    wsSummary["!cols"] = [{ wch: 35 }, { wch: 30 }]
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Ozet")
 
-    return NextResponse.json(soaReport)
+    // Excel buffer olustur
+    const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" })
+
+    const today = new Date().toISOString().split("T")[0]
+    return new NextResponse(excelBuffer, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="ISO27001-SoA-${today}.xlsx"`,
+      },
+    })
   } catch (error) {
     console.error("SoA export hatasi:", error)
     return NextResponse.json(

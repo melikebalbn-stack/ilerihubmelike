@@ -1,13 +1,13 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import {
   Home,
   Users,
-  Building2,
   Bell,
   FileText,
   Wrench,
@@ -50,6 +50,9 @@ import {
   Calendar,
   Calculator,
   HelpCircle,
+  ShieldAlert,
+  UserCog,
+  FlaskConical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -60,12 +63,11 @@ const mainMenuItems = [
   { name: "Mesajlar", icon: MessageSquare, href: "/messages", roles: ["*"] },
   { name: "Duyurular", icon: Megaphone, href: "/announcements", roles: ["*"] },
   { name: "Çalışan Rehberi", icon: Users, href: "/employees", roles: ["*"] },
-  { name: "Organizasyon", icon: Network, href: "/organization", roles: ["*"] },
-  { name: "SSS", icon: HelpCircle, href: "/faq", roles: ["*"] },
   { name: "Öneri Sistemi", icon: Lightbulb, href: "/suggestions", roles: ["*"] },
   { name: "Maliyet Analizi", icon: Calculator, href: "/cost-analysis", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Planlı Görevler", icon: CalendarCheck, href: "/tasks", roles: ["*"] },
-  { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] },
+  // { name: "SSS", icon: HelpCircle, href: "/faq", roles: ["*"] }, // Şimdilik gizli
+  // { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] }, // Şimdilik gizli
   // { name: "Eğitimlerim", icon: GraduationCap, href: "/my-trainings", roles: ["*"] }, // BGYS ile ilgili - şimdilik gizli
   { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
 ]
@@ -74,7 +76,8 @@ const mainMenuItems = [
 const formsMenuItems = [
   { name: "Ziyaret Raporları", icon: FileText, href: "/forms/visit-reports", roles: ["*"] },
   { name: "Toplantı Raporu", icon: Calendar, href: "/meetings", roles: ["*"] },
-  { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] },
+  { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"] },
+  // { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] }, // Şimdilik gizli
 ]
 
 // ILERI Teknik alt menüsü
@@ -95,7 +98,6 @@ const strategicHrMenuItems = [
   { name: "Performans Yönetimi", icon: Target, href: "/strategic-hr/performance", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
-  { name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
 ]
 
 // Kalite Yönetim Sistemi (KYS) alt menüsü
@@ -126,15 +128,25 @@ const iso27001MenuItems = [
   { name: "Olay Yönetimi", icon: AlertTriangle, href: "/iso27001/incidents", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
   { name: "Varlık Envanteri", icon: Server, href: "/iso27001/assets", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
   { name: "Eğitimler", icon: GraduationCap, href: "/iso27001/trainings", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Tedarikçi Değerlendirme", icon: Truck, href: "/iso27001/suppliers", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
   { name: "İç Denetim", icon: ClipboardList, href: "/iso27001/audits", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Denetim Programı", icon: Calendar, href: "/iso27001/audit-program", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
   { name: "Yönetim Gözden Geçirme", icon: Target, href: "/iso27001/management-review", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Sızma Testleri", icon: ShieldAlert, href: "/iso27001/penetration-tests", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Denetçi Paketi", icon: Package, href: "/iso27001/audit-package", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+]
+
+// Sandbox modülleri (sadece SUPER_ADMIN)
+const sandboxMenuItems = [
+  { name: "Elif Sandbox", icon: FlaskConical, href: "/sandbox/elif", roles: ["SUPER_ADMIN"], ownerEmail: "elif.yildirim@ilerigroup.com" },
+  { name: "Melike Sandbox", icon: FlaskConical, href: "/sandbox/melike", roles: ["SUPER_ADMIN"], ownerEmail: "melike.balaban@ilerigroup.com" },
+  { name: "Nurgül Sandbox", icon: FlaskConical, href: "/sandbox/nurgul", roles: ["SUPER_ADMIN"], ownerEmail: "nurgul.tastan@ilerigroup.com" },
 ]
 
 // Alt menü öğeleri
 const bottomMenuItems = [
   { name: "IT Destek", icon: Headphones, href: "/it-support", roles: ["*"] },
-  { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN"] },
+  { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN", "QUALITY_MANAGER"], departments: ["Kalite", "Laboratuvar"] },
 ]
 
 interface SidebarProps {
@@ -147,11 +159,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { data: session } = useSession()
   const [teknikOpen, setTeknikOpen] = useState(false)
   const [qdmsOpen, setQdmsOpen] = useState(false)
+  const [ikOpen, setIkOpen] = useState(false)
   const [strategicHrOpen, setStrategicHrOpen] = useState(false)
   const [auditsOpen, setAuditsOpen] = useState(false)
   const [iso27001Open, setIso27001Open] = useState(false)
   const [formsOpen, setFormsOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
+  const [overtimeAuthorized, setOvertimeAuthorized] = useState(false)
 
   // Pathname değiştiğinde ilgili menüyü otomatik aç
   useEffect(() => {
@@ -163,8 +177,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (pathname.startsWith('/qdms')) {
       setQdmsOpen(true)
     }
-    if (pathname.startsWith('/strategic-hr') || pathname.startsWith('/talent-management')) {
-      setStrategicHrOpen(true)
+    if (pathname.startsWith('/strategic-hr') || pathname.startsWith('/talent-management') || pathname.startsWith('/organization') || pathname.startsWith('/personnel')) {
+      setIkOpen(true)
+      if (pathname.startsWith('/strategic-hr') || pathname.startsWith('/talent-management') || pathname.startsWith('/organization')) {
+        setStrategicHrOpen(true)
+      }
     }
     if (pathname.startsWith('/calibration') || pathname.startsWith('/fire-safety') ||
         pathname.startsWith('/maintenance') || pathname.startsWith('/it-reports') ||
@@ -195,6 +212,24 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       // Her 30 saniyede bir kontrol et
       const interval = setInterval(fetchUnreadCount, 30000)
       return () => clearInterval(interval)
+    }
+  }, [session])
+
+  // Mesai formu yetki kontrolü
+  useEffect(() => {
+    async function checkOvertimeAuth() {
+      try {
+        const res = await fetch('/api/overtime/authorized-users?check=me')
+        if (res.ok) {
+          const data = await res.json()
+          setOvertimeAuthorized(data.authorized === true)
+        }
+      } catch {
+        // Yetki kontrolü başarısızsa gizle
+      }
+    }
+    if (session?.user) {
+      checkOvertimeAuth()
     }
   }, [session])
 
@@ -239,8 +274,21 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   const filteredStrategicHrItems = filterStrategicHrItems(strategicHrMenuItems)
-  const filteredFormsItems = filterItems(formsMenuItems)
+  const filteredFormsItems = filterItems(formsMenuItems).filter(item => {
+    // Mesai Formu sadece yetkili kullanıcılara gösterilir
+    if (item.href === '/forms/overtime') {
+      return overtimeAuthorized
+    }
+    return true
+  })
   const filteredBottomItems = filterItems(bottomMenuItems)
+
+  // Sandbox: SUPER_ADMIN tümünü görür, diğerleri sadece kendi sandbox'ını
+  const filteredSandboxItems = sandboxMenuItems.filter(item => {
+    if (userRole === 'SUPER_ADMIN') return true
+    if (item.ownerEmail && session?.user?.email?.toLowerCase() === item.ownerEmail.toLowerCase()) return true
+    return false
+  })
 
   // Teknik menüsünde aktif sayfa var mı kontrol et (IT Raporları, Login Aktiviteleri ve Yedekleme dahil)
   const isTeknikActive = teknikMenuItems.some(item =>
@@ -256,6 +304,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   // Denetimler menüsünde aktif sayfa var mı kontrol et
   const isAuditsActive = pathname.startsWith('/iso27001/')
+
+  // İK menüsünde aktif sayfa var mı kontrol et
+  const isIkActive = pathname === '/strategic-hr/bluecollar-users' || pathname.startsWith('/strategic-hr/bluecollar-users/') ||
+    strategicHrMenuItems.some(item =>
+      pathname === item.href || pathname.startsWith(item.href + "/")
+    ) || pathname.startsWith('/talent-management/')
 
   // Stratejik IK menüsünde aktif sayfa var mı kontrol et
   const isStrategicHrActive = strategicHrMenuItems.some(item =>
@@ -284,6 +338,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     } else if (item.href === "/iso27001") {
       // ISO 27001 Dashboard sadece tam eşleşmede aktif (alt sayfalar için değil)
       isActive = pathname === "/iso27001"
+    } else if (item.href === "/personnel") {
+      // Personel Yönetimi: sadece tam eşleşme, /personnel/reports gibi alt sayfalar hariç
+      isActive = pathname === "/personnel"
     } else {
       // Diğer menüler normal davranış
       isActive = pathname === item.href || pathname.startsWith(item.href + "/")
@@ -299,8 +356,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
-            "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-            "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+            "text-white/50 hover:text-white/90 hover:bg-white/[0.07]",
             indent && "ml-4"
           )}
         >
@@ -338,10 +395,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         href={item.href}
         onClick={handleClick}
         className={cn(
-          "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+          "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
           isActive
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            ? "bg-teal-600 text-white shadow-[0_2px_8px_rgba(13,148,136,0.4)]"
+            : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]",
           indent && "ml-4"
         )}
       >
@@ -351,8 +408,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           <span className={cn(
             "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold",
             isActive
-              ? "bg-white text-primary"
-              : "bg-primary text-white"
+              ? "bg-white text-teal-600"
+              : "bg-rose-500 text-white"
           )}>
             {unreadMessages > 99 ? "99+" : unreadMessages}
           </span>
@@ -364,25 +421,30 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   return (
     <div
       className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 flex-col border-r bg-card transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:flex",
-        isOpen ? "translate-x-0 flex" : "-translate-x-full hidden lg:flex"
+        "w-64 flex-col border-r border-white/[0.07] bg-slate-900 flex h-full",
+        // Masaüstü: sabit sidebar
+        "max-lg:hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30",
+        // Sheet içindeyse (isOpen=true) her zaman göster, fixed kullanma
+        isOpen && "!flex !max-lg:flex !relative !inset-auto !z-auto"
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center justify-between border-b px-6">
-        <Link href="/dashboard" className="flex items-center space-x-2" onClick={onClose}>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Building2 className="h-5 w-5" />
-          </div>
-          <span className="text-xl font-bold">
-            ILERI<span className="text-primary">Hub</span>
-          </span>
+      <div className="flex h-16 items-center justify-between border-b border-white/[0.07] px-6">
+        <Link href="/dashboard" className="flex items-center" onClick={onClose}>
+          <Image
+            src="/ilerihublogo.png"
+            alt="ILERIHub"
+            width={192}
+            height={48}
+            className="h-11 w-auto brightness-0 invert"
+            priority
+          />
         </Link>
         {/* Mobile close button */}
         <Button
           variant="ghost"
           size="icon"
-          className="lg:hidden"
+          className="lg:hidden text-white/70 hover:text-white hover:bg-white/10"
           onClick={onClose}
         >
           <X className="h-5 w-5" />
@@ -390,7 +452,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-4 sidebar-dark-nav">
         {/* Ana Menü Öğeleri */}
         {filteredMainItems.map(item => renderMenuItem(item))}
 
@@ -400,10 +462,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <button
               onClick={() => setFormsOpen(!formsOpen)}
               className={cn(
-                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
                 isFormsActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  ? "text-teal-300"
+                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
               )}
             >
               <FileText className="h-5 w-5" />
@@ -428,10 +490,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <button
               onClick={() => setQdmsOpen(!qdmsOpen)}
               className={cn(
-                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
                 isQdmsActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  ? "text-teal-300"
+                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
               )}
             >
               <Shield className="h-5 w-5" />
@@ -452,10 +514,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                     <button
                       onClick={() => setAuditsOpen(!auditsOpen)}
                       className={cn(
-                        "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
                         isAuditsActive
-                          ? "text-primary"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          ? "text-teal-300"
+                          : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
                       )}
                     >
                       <ClipboardList className="h-5 w-5" />
@@ -474,10 +536,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                             <button
                               onClick={() => setIso27001Open(!iso27001Open)}
                               className={cn(
-                                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
                                 isIso27001Active
-                                  ? "text-primary"
-                                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                  ? "text-teal-300"
+                                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
                               )}
                             >
                               <Shield className="h-5 w-5" />
@@ -504,32 +566,58 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </>
         )}
 
-        {/* Stratejik IK */}
-        {filteredStrategicHrItems.length > 0 && (
-          <>
-            <button
-              onClick={() => setStrategicHrOpen(!strategicHrOpen)}
-              className={cn(
-                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isStrategicHrActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              )}
-            >
-              <Users className="h-5 w-5" />
-              <span className="flex-1 text-left">Stratejik IK</span>
-              {strategicHrOpen ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </button>
-            {strategicHrOpen && (
-              <div className="space-y-1 ml-4">
-                {filteredStrategicHrItems.map(item => renderMenuItem(item))}
-              </div>
+        {/* İK */}
+        <button
+          onClick={() => setIkOpen(!ikOpen)}
+          className={cn(
+            "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+            isIkActive
+              ? "text-teal-300"
+              : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+          )}
+        >
+          <Users className="h-5 w-5" />
+          <span className="flex-1 text-left">İV</span>
+          {ikOpen ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+        </button>
+        {ikOpen && (
+          <div className="space-y-1 ml-4">
+            {renderMenuItem({ name: "Personel Yönetimi", icon: UserCog, href: "/personnel", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {renderMenuItem({ name: "İK Raporları", icon: BarChart3, href: "/personnel/reports", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {/* {renderMenuItem({ name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"] })} */}
+
+            {/* Stratejik IK */}
+            {filteredStrategicHrItems.length > 0 && (
+              <>
+                <button
+                  onClick={() => setStrategicHrOpen(!strategicHrOpen)}
+                  className={cn(
+                    "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                    isStrategicHrActive
+                      ? "text-teal-300"
+                      : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+                  )}
+                >
+                  <Briefcase className="h-5 w-5" />
+                  <span className="flex-1 text-left">Stratejik İK</span>
+                  {strategicHrOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+                {strategicHrOpen && (
+                  <div className="space-y-1 ml-4">
+                    {filteredStrategicHrItems.map(item => renderMenuItem(item))}
+                  </div>
+                )}
+              </>
             )}
-          </>
+          </div>
         )}
 
         {/* ILERI Teknik Grubu */}
@@ -538,10 +626,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <button
               onClick={() => setTeknikOpen(!teknikOpen)}
               className={cn(
-                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
                 isTeknikActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  ? "text-teal-300"
+                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
               )}
             >
               <Cog className="h-5 w-5" />
@@ -562,25 +650,33 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Diğer Menü Öğeleri */}
         {filteredBottomItems.map(item => renderMenuItem(item))}
+
+        {/* Sandbox Modülleri */}
+        {filteredSandboxItems.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-white/[0.07]">
+            <p className="px-3 py-1 text-[9px] font-semibold uppercase tracking-widest text-white/20">Sandbox</p>
+            {filteredSandboxItems.map(item => renderMenuItem(item))}
+          </div>
+        )}
       </nav>
 
       {/* User Info & Logout */}
-      <div className="border-t p-4 space-y-3">
+      <div className="border-t border-white/[0.07] p-4 space-y-3">
         {session?.user && (
           <div className="flex items-center space-x-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <User className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white text-xs font-bold flex-shrink-0">
+              {session.user.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || <User className="h-5 w-5" />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{session.user.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{session.user.department || session.user.role}</p>
+              <p className="text-[12.5px] font-semibold text-white truncate leading-tight">{session.user.name}</p>
+              <p className="text-[10.5px] text-white/40 truncate">{session.user.department || session.user.role}</p>
             </div>
           </div>
         )}
         <Button
           variant="outline"
           size="sm"
-          className="w-full"
+          className="w-full border-white/10 text-white/60 hover:text-white hover:bg-white/10 hover:border-white/20 bg-transparent"
           onClick={() => signOut({ callbackUrl: '/login' })}
         >
           <LogOut className="h-4 w-4 mr-2" />
@@ -589,9 +685,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       </div>
 
       {/* Footer */}
-      <div className="border-t p-4">
-        <div className="text-[10px] text-muted-foreground">
-          System Development Team ILERI<span className="text-primary">Hub</span> V.1.1
+      <div className="border-t border-white/[0.07] p-4">
+        <div className="text-[10px] text-white/20">
+          System Development Team ILERI<span className="text-teal-300">Hub</span> V.1.1
         </div>
       </div>
     </div>

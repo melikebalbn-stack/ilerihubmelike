@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { NotificationRuleType, NotificationRulePeriod } from '@/generated/prisma'
 
+export const dynamic = 'force-dynamic'
+
 // GET - Tüm bildirim kurallarını listele
 export async function GET() {
   try {

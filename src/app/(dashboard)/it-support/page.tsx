@@ -343,9 +343,9 @@ export default function ITSupportPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <h1 className="text-xl lg:text-3xl font-bold tracking-tight flex items-center gap-3">
             <Headphones className="h-8 w-8 text-green-500" />
             IT Destek Merkezi
           </h1>
@@ -367,7 +367,7 @@ export default function ITSupportPage() {
                 Yeni Talep
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Yeni Destek Talebi</DialogTitle>
                 <DialogDescription>
@@ -468,7 +468,7 @@ export default function ITSupportPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Benim Taleplerim</CardDescription>
-              <CardTitle className="text-3xl">{stats.summary.myOpenTickets}</CardTitle>
+              <CardTitle className="text-xl sm:text-3xl">{stats.summary.myOpenTickets}</CardTitle>
             </CardHeader>
           </Card>
           {isITStaff && (
@@ -476,26 +476,26 @@ export default function ITSupportPage() {
               <Card>
                 <CardHeader className="pb-2">
                   <CardDescription>Acik Talepler</CardDescription>
-                  <CardTitle className="text-3xl">{stats.summary.totalOpen}</CardTitle>
+                  <CardTitle className="text-xl sm:text-3xl">{stats.summary.totalOpen}</CardTitle>
                 </CardHeader>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
                   <CardDescription>Yeni</CardDescription>
-                  <CardTitle className="text-3xl text-blue-500">{stats.summary.totalNew}</CardTitle>
+                  <CardTitle className="text-xl sm:text-3xl text-blue-500">{stats.summary.totalNew}</CardTitle>
                 </CardHeader>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
                   <CardDescription>Bana Atanan</CardDescription>
-                  <CardTitle className="text-3xl text-green-500">{stats.summary.assignedToMe}</CardTitle>
+                  <CardTitle className="text-xl sm:text-3xl text-green-500">{stats.summary.assignedToMe}</CardTitle>
                 </CardHeader>
               </Card>
               {stats.summary.slaBreached > 0 && (
                 <Card className="border-red-300">
                   <CardHeader className="pb-2">
                     <CardDescription className="text-red-500">SLA Ihlali</CardDescription>
-                    <CardTitle className="text-3xl text-red-500">{stats.summary.slaBreached}</CardTitle>
+                    <CardTitle className="text-xl sm:text-3xl text-red-500">{stats.summary.slaBreached}</CardTitle>
                   </CardHeader>
                 </Card>
               )}
@@ -512,7 +512,7 @@ export default function ITSupportPage() {
             <CardHeader className="pb-3">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <div className="flex items-center justify-between">
-                  <TabsList>
+                  <TabsList className="flex-wrap h-auto gap-1">
                     <TabsTrigger value="my">Taleplerim</TabsTrigger>
                     {isITStaff && (
                       <>
@@ -527,7 +527,7 @@ export default function ITSupportPage() {
 
               {/* Filters */}
               <div className="flex flex-wrap gap-2 mt-4">
-                <div className="relative flex-1 min-w-[200px]">
+                <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Ticket no, konu veya isim ara..."

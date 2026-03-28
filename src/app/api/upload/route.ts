@@ -14,7 +14,14 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData()
-    const files = formData.getAll('files') as File[]
+    // 'files' (çoğul) veya 'file' (tekil) key destekle
+    let files = formData.getAll('files') as File[]
+    if (!files || files.length === 0) {
+      const singleFile = formData.get('file') as File | null
+      if (singleFile) {
+        files = [singleFile]
+      }
+    }
 
     if (!files || files.length === 0) {
       return NextResponse.json({ error: 'Dosya bulunamadı' }, { status: 400 })
@@ -69,7 +76,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ files: uploadedFiles })
+    // Hem eski format (fileUrl) hem yeni format (files[]) döndür
+    return NextResponse.json({
+      files: uploadedFiles,
+      fileUrl: uploadedFiles[0]?.url || null,
+    })
   } catch (error) {
     console.error('Dosya yükleme hatası:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

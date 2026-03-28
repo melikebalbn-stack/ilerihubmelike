@@ -299,7 +299,7 @@ export default function SuppliersSettingsPage() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingSupplier ? "Tedarikçi Düzenle" : "Yeni Tedarikçi"}</DialogTitle>
             <DialogDescription>
@@ -307,7 +307,7 @@ export default function SuppliersSettingsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Kod *</Label>
                 <Input
@@ -336,7 +336,7 @@ export default function SuppliersSettingsPage() {
                 placeholder="Çelik A.Ş."
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Ülke</Label>
                 <Input
@@ -354,7 +354,7 @@ export default function SuppliersSettingsPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>E-posta</Label>
                 <Input

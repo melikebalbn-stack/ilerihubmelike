@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { sendPushToUser } from "@/lib/push-notifications"
 
 // Olay listesi
 export async function GET(request: NextRequest) {
@@ -15,11 +16,18 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status")
     const severity = searchParams.get("severity")
     const category = searchParams.get("category")
+    const search = searchParams.get("search")
 
     const where: any = {}
     if (status && status !== "all") where.status = status
     if (severity && severity !== "all") where.severity = severity
     if (category && category !== "all") where.category = category
+    if (search) {
+      where.OR = [
+        { incidentNumber: { contains: search, mode: "insensitive" } },
+        { title: { contains: search, mode: "insensitive" } },
+      ]
+    }
 
     const incidents = await prisma.iso27001Incident.findMany({
       where,
@@ -79,11 +87,16 @@ export async function POST(request: NextRequest) {
       category,
       severity,
       detectedAt,
+      detectionMethod,
       affectedSystems,
       affectedAssets,
       impactScope,
       immediateActions,
       assignedToId,
+      relatedControls,
+      relatedRiskIds,
+      correctiveAction,
+      preventiveAction,
     } = body
 
     if (!title || !description || !category || !severity || !detectedAt) {
@@ -103,16 +116,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Kullanici bulunamadi" }, { status: 404 })
     }
 
-    // Olay numarası oluştur
+    // Olay numarası oluştur (OY-YYYY-NNN)
     const year = new Date().getFullYear()
     const count = await prisma.iso27001Incident.count({
       where: {
         incidentNumber: {
-          startsWith: `INC-${year}`,
+          startsWith: `OY-${year}`,
         },
       },
     })
-    const incidentNumber = `INC-${year}-${String(count + 1).padStart(3, "0")}`
+    const incidentNumber = `OY-${year}-${String(count + 1).padStart(3, "0")}`
 
     // Olay oluştur
     const incident = await prisma.iso27001Incident.create({
@@ -123,13 +136,18 @@ export async function POST(request: NextRequest) {
         category,
         severity,
         detectedAt: new Date(detectedAt),
+        detectionMethod: detectionMethod || null,
         reportedById: user.id,
+        reportedByName: user.name,
         affectedSystems,
         affectedAssets,
         impactScope,
         immediateActions,
         assignedToId: assignedToId || null,
-        relatedControls: "5.24,5.25,5.26", // Varsayılan ilişkili kontroller
+        relatedControls: relatedControls || "5.24,5.25,5.26",
+        relatedRiskIds: relatedRiskIds || [],
+        correctiveAction: correctiveAction || null,
+        preventiveAction: preventiveAction || null,
       },
       include: {
         reportedBy: {
@@ -157,15 +175,24 @@ export async function POST(request: NextRequest) {
         select: { id: true },
       })
 
-      await prisma.notification.createMany({
-        data: itManagers.map(m => ({
-          userId: m.id,
-          title: `${severity === "CRITICAL" ? "🚨 KRİTİK" : "⚠️ YÜKSEK"} Güvenlik Olayı`,
-          message: `${incidentNumber}: ${title}`,
-          type: severity === "CRITICAL" ? "ERROR" : "WARNING",
-          link: `/iso27001/incidents/${incident.id}`,
-        })),
-      })
+      const incidentNotifs = itManagers.map(m => ({
+        userId: m.id,
+        title: `${severity === "CRITICAL" ? "KRİTİK" : "YÜKSEK"} Güvenlik Olayı`,
+        message: `${incidentNumber}: ${title}`,
+        type: severity === "CRITICAL" ? "ERROR" as const : "WARNING" as const,
+        link: `/iso27001/incidents/${incident.id}`,
+      }))
+
+      await prisma.notification.createMany({ data: incidentNotifs })
+
+      // Push bildirim gönder
+      for (const notif of incidentNotifs) {
+        sendPushToUser(prisma, notif.userId, {
+          title: notif.title,
+          body: notif.message,
+          url: notif.link,
+        }).catch(() => {})
+      }
     }
 
     return NextResponse.json({

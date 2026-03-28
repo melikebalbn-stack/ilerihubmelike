@@ -28,7 +28,6 @@ interface EmployeeDetailData {
   email: string | null
   department: string | null
   title: string | null
-  location: string | null
   phone: string | null
   avatar: string | null
   manager: Manager | null
@@ -118,7 +117,13 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
       )}
 
       {/* Çalışan detayı */}
-      {!loading && !error && employee && <EmployeeDetail employee={employee} />}
+      {!loading && !error && employee && (
+        <EmployeeDetail
+          employee={employee}
+          canEdit={['ADMIN', 'SUPER_ADMIN', 'HR_MANAGER'].includes(session?.user?.role || '')}
+          onPhoneUpdate={(phone) => setEmployee({ ...employee, phone: phone || null })}
+        />
+      )}
     </div>
   )
 }

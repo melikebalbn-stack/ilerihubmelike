@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/settings/calibration
  * Get all calibration dropdown settings
  */
 export async function GET() {
   try {
-    const [departments, locations, deviceTypes, deviceModels] = await Promise.all([
+    const [departments, locations, deviceTypes, deviceModels, productionSections] = await Promise.all([
       prisma.department.findMany({
         where: { isActive: true },
         orderBy: { name: 'asc' },
@@ -28,6 +30,11 @@ export async function GET() {
         orderBy: { sortOrder: 'asc' },
         select: { id: true, name: true, manufacturer: true, code: true },
       }),
+      prisma.calibrationProductionSection.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, name: true, code: true },
+      }),
     ])
 
     return NextResponse.json({
@@ -35,6 +42,7 @@ export async function GET() {
       locations,
       deviceTypes,
       deviceModels,
+      productionSections,
     })
   } catch (error) {
     console.error('Ayarlar alınırken hata:', error)

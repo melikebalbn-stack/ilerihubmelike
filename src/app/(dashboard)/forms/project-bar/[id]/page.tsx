@@ -326,7 +326,7 @@ export default function ProjectPlanDetailPage({
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-2 text-center">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
         <div className="bg-rose-50 border border-rose-200 rounded p-2">
           <p className="text-xs text-rose-500">{plan.label1}</p>
           <p className="text-xl font-bold text-rose-600">{totalConsultant}</p>
@@ -441,7 +441,7 @@ export default function ProjectPlanDetailPage({
       {editMode && (
         <Card className="border-dashed">
           <CardContent className="p-3">
-            <div className="grid grid-cols-5 gap-2 items-end">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
               <div className="col-span-2">
                 <label className="text-xs text-muted-foreground">Madde Adı</label>
                 <Input

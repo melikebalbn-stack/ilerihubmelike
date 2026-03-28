@@ -2,25 +2,20 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { logger } from '@/lib/logger'
 
 // DELETE - Tüm kalibrasyon kayıtlarını arşivle (SADECE SUPER_ADMIN)
-// FIX #20: Hard delete yerine soft delete + audit trail
 export async function DELETE() {
   try {
-    // Kimlik doğrulama kontrolü
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // SADECE SUPER_ADMIN erişebilir - çok tehlikeli işlem
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (userRole !== 'SUPER_ADMIN') {
-      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok. Sadece SUPER_ADMIN bu işlemi yapabilir.' }, { status: 403 })
+    const { canEditCalibration } = await import('@/lib/calibration-auth')
+    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
+      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok.' }, { status: 403 })
     }
 
-    // FIX #20: Önce aktif kayıt sayısını al (audit trail için)
     const activeCount = await prisma.calibrationDevice.count({
       where: { isActive: true }
     })
@@ -33,21 +28,12 @@ export async function DELETE() {
       })
     }
 
-    // FIX #20: Hard delete yerine soft delete - isActive: false
     const result = await prisma.calibrationDevice.updateMany({
       where: { isActive: true },
       data: { isActive: false }
     })
 
-    // FIX #20: Audit trail - detaylı log
-    logger.warn('CALIBRATION', 'Bulk archive operation performed', {
-      action: 'BULK_ARCHIVE',
-      performedBy: session.user.email,
-      performedByName: session.user.name || 'Unknown',
-      userRole,
-      archivedCount: result.count,
-      timestamp: new Date().toISOString()
-    })
+    console.log(`[CALIBRATION] Bulk archive: ${result.count} devices archived by ${session.user.email}`)
 
     return NextResponse.json({
       success: true,
@@ -55,9 +41,7 @@ export async function DELETE() {
       archivedCount: result.count
     })
   } catch (error) {
-    logger.error('CALIBRATION', 'Bulk archive failed', {
-      error: error instanceof Error ? error.message : 'Unknown error'
-    })
+    console.error('[CALIBRATION] Bulk archive failed:', error)
     return NextResponse.json(
       { error: 'Kayıtlar arşivlenirken bir hata oluştu' },
       { status: 500 }

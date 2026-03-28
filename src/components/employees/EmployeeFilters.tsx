@@ -1,6 +1,6 @@
 'use client'
 
-import { Search, LayoutGrid, List, Filter } from 'lucide-react'
+import { Search, LayoutGrid, List, Building2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { NativeSelect as Select } from '@/components/ui/select'
@@ -10,12 +10,9 @@ interface EmployeeFiltersProps {
   onSearchChange: (value: string) => void
   department: string
   onDepartmentChange: (value: string) => void
-  location: string
-  onLocationChange: (value: string) => void
-  viewMode: 'grid' | 'list'
-  onViewModeChange: (mode: 'grid' | 'list') => void
+  viewMode: 'grid' | 'list' | 'department'
+  onViewModeChange: (mode: 'grid' | 'list' | 'department') => void
   departments: string[]
-  locations: string[]
 }
 
 export function EmployeeFilters({
@@ -23,12 +20,9 @@ export function EmployeeFilters({
   onSearchChange,
   department,
   onDepartmentChange,
-  location,
-  onLocationChange,
   viewMode,
   onViewModeChange,
   departments,
-  locations,
 }: EmployeeFiltersProps) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -45,37 +39,33 @@ export function EmployeeFilters({
           />
         </div>
 
-        {/* Departman Filtre */}
-        <Select
-          value={department}
-          onChange={(e) => onDepartmentChange(e.target.value)}
-          className="w-full sm:w-48"
-        >
-          <option value="">Tüm Departmanlar</option>
-          {departments.map((dept) => (
-            <option key={dept} value={dept}>
-              {dept}
-            </option>
-          ))}
-        </Select>
-
-        {/* Lokasyon Filtre */}
-        <Select
-          value={location}
-          onChange={(e) => onLocationChange(e.target.value)}
-          className="w-full sm:w-48"
-        >
-          <option value="">Tüm Lokasyonlar</option>
-          {locations.map((loc) => (
-            <option key={loc} value={loc}>
-              {loc}
-            </option>
-          ))}
-        </Select>
+        {/* Departman Filtre (departman görünümünde gizle) */}
+        {viewMode !== 'department' && (
+          <Select
+            value={department}
+            onChange={(e) => onDepartmentChange(e.target.value)}
+            className="w-full sm:w-48"
+          >
+            <option value="">Tüm Departmanlar</option>
+            {departments.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
+          </Select>
+        )}
       </div>
 
       {/* Sağ: Görünüm Değiştir */}
       <div className="flex items-center gap-2">
+        <Button
+          variant={viewMode === 'department' ? 'default' : 'outline'}
+          size="icon"
+          onClick={() => onViewModeChange('department')}
+          title="Departman Görünümü"
+        >
+          <Building2 className="h-4 w-4" />
+        </Button>
         <Button
           variant={viewMode === 'grid' ? 'default' : 'outline'}
           size="icon"

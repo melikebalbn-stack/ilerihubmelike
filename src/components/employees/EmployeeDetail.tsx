@@ -1,9 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { Mail, Phone, Building2, MapPin, Briefcase, User, Users, ChevronRight } from 'lucide-react'
+import { Mail, Phone, Building2, Briefcase, User, Users, ChevronRight, Pencil, Check, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
 
 interface TeamMember {
   id: string
@@ -25,7 +29,6 @@ interface EmployeeDetailData {
   email: string | null
   department: string | null
   title: string | null
-  location: string | null
   phone: string | null
   avatar: string | null
   manager: Manager | null
@@ -34,6 +37,8 @@ interface EmployeeDetailData {
 
 interface EmployeeDetailProps {
   employee: EmployeeDetailData
+  canEdit?: boolean
+  onPhoneUpdate?: (phone: string) => void
 }
 
 // Avatar renkleri
@@ -62,7 +67,33 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
-export function EmployeeDetail({ employee }: EmployeeDetailProps) {
+export function EmployeeDetail({ employee, canEdit, onPhoneUpdate }: EmployeeDetailProps) {
+  const [editingPhone, setEditingPhone] = useState(false)
+  const [phoneValue, setPhoneValue] = useState(employee.phone || '')
+  const [savingPhone, setSavingPhone] = useState(false)
+
+  const handleSavePhone = async () => {
+    setSavingPhone(true)
+    try {
+      const res = await fetch(`/api/employees/${employee.id}/extension`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ extension3cx: phoneValue }),
+      })
+      if (res.ok) {
+        toast.success('Dahili numara güncellendi')
+        setEditingPhone(false)
+        onPhoneUpdate?.(phoneValue)
+      } else {
+        toast.error('Güncelleme başarısız')
+      }
+    } catch {
+      toast.error('Bir hata oluştu')
+    } finally {
+      setSavingPhone(false)
+    }
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       {/* Sol: Profil Kartı */}
@@ -106,27 +137,54 @@ export function EmployeeDetail({ employee }: EmployeeDetailProps) {
                   </a>
                 </div>
               )}
-              {employee.phone && (
-                <div className="flex items-center gap-3 text-sm">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <a
-                    href={`tel:${employee.phone}`}
-                    className="hover:underline"
+              <div className="flex items-center gap-3 text-sm">
+                <Phone className="h-4 w-4 text-muted-foreground" />
+                {editingPhone ? (
+                  <div className="flex items-center gap-1 flex-1">
+                    <Input
+                      value={phoneValue}
+                      onChange={(e) => setPhoneValue(e.target.value)}
+                      placeholder="Dahili no"
+                      className="h-7 text-sm"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSavePhone()
+                        if (e.key === 'Escape') { setEditingPhone(false); setPhoneValue(employee.phone || '') }
+                      }}
+                    />
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleSavePhone} disabled={savingPhone}>
+                      <Check className="h-3.5 w-3.5 text-green-600" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingPhone(false); setPhoneValue(employee.phone || '') }}>
+                      <X className="h-3.5 w-3.5 text-red-600" />
+                    </Button>
+                  </div>
+                ) : employee.phone ? (
+                  <div className="flex items-center gap-2">
+                    <a href={`tel:${employee.phone}`} className="text-primary hover:underline">
+                      {employee.phone}
+                    </a>
+                    {canEdit && (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingPhone(true)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ) : canEdit ? (
+                  <button
+                    onClick={() => setEditingPhone(true)}
+                    className="text-muted-foreground hover:text-primary transition-colors"
                   >
-                    {employee.phone}
-                  </a>
-                </div>
-              )}
+                    Dahili no ekle
+                  </button>
+                ) : (
+                  <span className="text-muted-foreground">-</span>
+                )}
+              </div>
               {employee.department && (
                 <div className="flex items-center gap-3 text-sm">
                   <Building2 className="h-4 w-4 text-muted-foreground" />
                   <span>{employee.department}</span>
-                </div>
-              )}
-              {employee.location && (
-                <div className="flex items-center gap-3 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span>{employee.location}</span>
                 </div>
               )}
             </div>

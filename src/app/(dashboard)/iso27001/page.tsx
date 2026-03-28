@@ -73,12 +73,15 @@ interface DashboardStats {
     completed: number
   }
   audits: {
+    total: number
     planned: number
     inProgress: number
+    completed: number
     openFindings: number
   }
   risks: {
     total: number
+    critical: number
     high: number
     medium: number
     low: number
@@ -108,6 +111,7 @@ const CONTROL_COLORS = {
 }
 
 const RISK_COLORS = {
+  critical: "#dc2626",
   high: "#ef4444",
   medium: "#f97316",
   low: "#22c55e",
@@ -119,8 +123,8 @@ export default function Iso27001DashboardPage() {
     documents: { total: 0, approved: 0, pendingApproval: 0, needsReview: 0 },
     controls: { total: 93, implemented: 0, partiallyImplemented: 0, notImplemented: 0, notApplicable: 0 },
     signatures: { pending: 0, completed: 0 },
-    audits: { planned: 0, inProgress: 0, openFindings: 0 },
-    risks: { total: 0, high: 0, medium: 0, low: 0 },
+    audits: { total: 0, planned: 0, inProgress: 0, completed: 0, openFindings: 0 },
+    risks: { total: 0, critical: 0, high: 0, medium: 0, low: 0 },
     trainings: { total: 0, completed: 0, digitalSignatures: 0 },
     incidents: { total: 0, open: 0, resolved: 0 },
     managementReview: { total: 0, lastReviewDate: null },
@@ -162,6 +166,7 @@ export default function Iso27001DashboardPage() {
 
   // Risk dağılımı pie chart verisi
   const riskPieData = useMemo(() => [
+    { name: "Kritik", value: stats.risks.critical || 0, color: RISK_COLORS.critical },
     { name: "Yuksek", value: stats.risks.high, color: RISK_COLORS.high },
     { name: "Orta", value: stats.risks.medium, color: RISK_COLORS.medium },
     { name: "Dusuk", value: stats.risks.low, color: RISK_COLORS.low },
@@ -221,7 +226,7 @@ export default function Iso27001DashboardPage() {
       { name: "Bilgi Guvenligi Politikasi", status: stats.documents.approved > 0 },
       { name: "Risk Degerlendirmesi", status: stats.risks.total >= 5 }, // En az 5 risk kaydı
       { name: "SoA (Uygulanabilirlik Beyani)", status: soaCompleted },
-      { name: "Ic Denetim", status: stats.audits.planned > 0 || stats.audits.inProgress > 0 },
+      { name: "Ic Denetim", status: (stats.audits.total || 0) > 0 },
       { name: "Yonetim Gozden Gecirme", status: (stats.managementReview?.total || 0) > 0 },
       { name: "Farkindalik Egitimleri", status: (stats.trainings?.digitalSignatures || 0) > 0 },
       { name: "Olay Yonetimi", status: true }, // Modül mevcut
@@ -234,7 +239,7 @@ export default function Iso27001DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Shield className="h-6 w-6 text-primary" />
@@ -283,7 +288,7 @@ export default function Iso27001DashboardPage() {
                 {auditReadiness.completed} / {auditReadiness.total} gereksinim karsilandi
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {auditReadiness.checks.map((check, i) => (
                 <div key={i} className="flex items-center gap-2 text-sm">
                   {check.status ? (
@@ -346,6 +351,9 @@ export default function Iso27001DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.risks.total}</div>
             <div className="flex gap-1 mt-2 flex-wrap">
+              {(stats.risks.critical || 0) > 0 && (
+                <Badge className="bg-red-200 text-red-800 text-xs">{stats.risks.critical} Kritik</Badge>
+              )}
               {stats.risks.high > 0 && (
                 <Badge className="bg-red-100 text-red-700 text-xs">{stats.risks.high} Yuksek</Badge>
               )}
@@ -490,7 +498,11 @@ export default function Iso27001DashboardPage() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                  <div className="p-2 rounded bg-red-100">
+                    <div className="text-xl font-bold text-red-700">{stats.risks.critical || 0}</div>
+                    <div className="text-xs text-red-700">Kritik</div>
+                  </div>
                   <div className="p-2 rounded bg-red-50">
                     <div className="text-xl font-bold text-red-600">{stats.risks.high}</div>
                     <div className="text-xs text-red-600">Yuksek</div>
@@ -528,7 +540,7 @@ export default function Iso27001DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-3 rounded-lg border">
                   <div className="text-2xl font-bold text-blue-600">{stats.audits.planned}</div>
                   <div className="text-xs text-muted-foreground">Planlanan</div>

@@ -40,6 +40,7 @@ const SUPER_ADMIN_EMAILS = [
   'eren.ileri@ilerigroup.com',
   'koray.ileri@ilerigroup.com',
   'melike.balaban@ilerigroup.com',
+  'melih.dilben@ilerigroup.com',
 ];
 
 // LDAP rolünü Prisma Role enum'una dönüştür

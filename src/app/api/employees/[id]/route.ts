@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { getAllLDAPUsers, getDirectReports, LDAPUser } from '@/lib/ldap'
 
 // Çalışan detay formatı
@@ -10,7 +11,6 @@ interface EmployeeDetail {
   email: string | null
   department: string | null
   title: string | null
-  location: string | null
   phone: string | null
   avatar: string | null
   managerDN: string | null
@@ -79,14 +79,23 @@ export async function GET(
       email: member.email,
     }))
 
+    // DB'den extension3cx al
+    let extension3cx: string | null = null
+    if (user.email) {
+      const dbUser = await prisma.user.findFirst({
+        where: { email: { equals: user.email, mode: 'insensitive' } },
+        select: { extension3cx: true },
+      })
+      extension3cx = dbUser?.extension3cx || null
+    }
+
     const employee: EmployeeDetail = {
       id: user.username,
       name: user.displayName,
       email: user.email,
       department: user.department,
       title: user.title,
-      location: user.ou,
-      phone: null,
+      phone: extension3cx,
       avatar: null,
       managerDN: user.managerDN,
       manager,

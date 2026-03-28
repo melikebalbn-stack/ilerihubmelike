@@ -165,7 +165,7 @@ export default function ChangesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Değişiklik Yönetimi</h1>
           <p className="text-muted-foreground">Değişiklik talepleri ve onay süreçleri</p>
@@ -225,14 +225,14 @@ export default function ChangesPage() {
               <Input placeholder="Değişiklik ara..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
             </div>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Tür" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Tür" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Türler</SelectItem>
                 {changeTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Durumlar</SelectItem>
                 {changeStatuses.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
@@ -244,7 +244,7 @@ export default function ChangesPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -291,7 +291,7 @@ export default function ChangesPage() {
       </Card>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Değişiklik Talebi</DialogTitle>
             <DialogDescription>Yeni bir değişiklik talebi oluşturun</DialogDescription>
@@ -306,7 +306,7 @@ export default function ChangesPage() {
                 placeholder="Değişiklik başlığı"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="type">Tür *</Label>
                 <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
@@ -396,7 +396,7 @@ export default function ChangesPage() {
                 <Target className="h-5 w-5 text-purple-600" />
                 Değişiklik Türleri
               </h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {changeTypes.map((type) => (
                   <div key={type.value} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                     <ArrowRight className="h-4 w-4 text-purple-500" />

@@ -102,7 +102,7 @@ export function FiveSPanel({
       </div>
 
       {/* 5S Info Cards */}
-      <div className="grid grid-cols-5 gap-1 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 sm:gap-4">
         {['Seiri (Ayıkla)', 'Seiton (Düzenle)', 'Seiso (Temizle)', 'Seiketsu (Standartlaştır)', 'Shitsuke (Sürdür)'].map((s, i) => (
           <Card key={i} className="text-center">
             <CardContent className="p-2 sm:p-4">

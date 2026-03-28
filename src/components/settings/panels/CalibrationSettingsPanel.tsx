@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Plus, MapPin, Box, Layers, Tag, Building2, Mail, Bell, RefreshCw, Trash2, Pencil } from "lucide-react"
+import { Plus, MapPin, Box, Layers, Tag, Building2, Mail, Bell, RefreshCw, Trash2, Pencil, Factory } from "lucide-react"
 import { Subsection } from "../CollapsibleSection"
 import { SettingsList, SimpleItem } from "../SettingsList"
 import type {
@@ -12,6 +12,7 @@ import type {
   DeviceModel,
   DeviceName,
   CalibrationDepartment,
+  ProductionSection,
   NotificationEmail,
   NotificationRule,
   EditingType
@@ -23,7 +24,9 @@ interface CalibrationSettingsPanelProps {
   deviceModels: DeviceModel[]
   deviceNames: DeviceName[]
   departments: CalibrationDepartment[]
-  notificationEmails: NotificationEmail[]
+  productionSections: ProductionSection[]
+  expiringEmails: NotificationEmail[]
+  expiredEmails: NotificationEmail[]
   notificationRules: NotificationRule[]
   // Search states
   locationSearch: string
@@ -36,10 +39,16 @@ interface CalibrationSettingsPanelProps {
   setDeviceNameSearch: (value: string) => void
   departmentSearch: string
   setDepartmentSearch: (value: string) => void
-  // New email
-  newEmail: string
-  setNewEmail: (value: string) => void
-  addingEmail: boolean
+  productionSectionSearch: string
+  setProductionSectionSearch: (value: string) => void
+  // New email - expiring
+  newExpiringEmail: string
+  setNewExpiringEmail: (value: string) => void
+  addingExpiringEmail: boolean
+  // New email - expired
+  newExpiredEmail: string
+  setNewExpiredEmail: (value: string) => void
+  addingExpiredEmail: boolean
   // New rule
   newRule: {
     type: 'EXPIRING' | 'EXPIRED'
@@ -50,7 +59,8 @@ interface CalibrationSettingsPanelProps {
   setNewRule: (rule: { type: 'EXPIRING' | 'EXPIRED'; period: 'BEFORE' | 'AFTER'; days: number; repeatWeekly: boolean }) => void
   addingRule: boolean
   // Handlers
-  onAddEmail: () => void
+  onAddExpiringEmail: () => void
+  onAddExpiredEmail: () => void
   onDeleteEmail: (id: string) => void
   onAddRule: () => void
   onDeleteRule: (id: string) => void
@@ -72,7 +82,9 @@ export function CalibrationSettingsPanel({
   deviceModels,
   deviceNames,
   departments,
-  notificationEmails,
+  productionSections,
+  expiringEmails,
+  expiredEmails,
   notificationRules,
   locationSearch,
   setLocationSearch,
@@ -84,13 +96,19 @@ export function CalibrationSettingsPanel({
   setDeviceNameSearch,
   departmentSearch,
   setDepartmentSearch,
-  newEmail,
-  setNewEmail,
-  addingEmail,
+  productionSectionSearch,
+  setProductionSectionSearch,
+  newExpiringEmail,
+  setNewExpiringEmail,
+  addingExpiringEmail,
+  newExpiredEmail,
+  setNewExpiredEmail,
+  addingExpiredEmail,
   newRule,
   setNewRule,
   addingRule,
-  onAddEmail,
+  onAddExpiringEmail,
+  onAddExpiredEmail,
   onDeleteEmail,
   onAddRule,
   onDeleteRule,
@@ -122,6 +140,11 @@ export function CalibrationSettingsPanel({
   const filteredDepartments = departments.filter(item =>
     item.name.toLowerCase().includes(departmentSearch.toLowerCase()) ||
     (item.code && item.code.toLowerCase().includes(departmentSearch.toLowerCase()))
+  )
+
+  const filteredProductionSections = productionSections.filter(item =>
+    item.name.toLowerCase().includes(productionSectionSearch.toLowerCase()) ||
+    (item.code && item.code.toLowerCase().includes(productionSectionSearch.toLowerCase()))
   )
 
   const ItemWithActions = ({ item, type }: { item: any; type: EditingType }) => (
@@ -321,29 +344,63 @@ export function CalibrationSettingsPanel({
         </div>
       </Subsection>
 
-      {/* Bildirim E-postaları */}
-      <Subsection title="Bildirim E-postaları" icon={Mail} count={notificationEmails.length}>
+      {/* Üretim Bölümleri */}
+      <Subsection title="Üretim Bölümleri" icon={Factory} count={productionSections.length}>
+        <div className="p-3 border-b bg-background flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenAddDialog('production-section')}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Ekle
+          </Button>
+        </div>
+        <div className="p-3 border-b bg-background">
+          <Input
+            placeholder="Üretim bölümü ara..."
+            value={productionSectionSearch}
+            onChange={(e) => setProductionSectionSearch(e.target.value)}
+            className="h-9"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+        <div className="p-3 max-h-64 overflow-y-auto space-y-2">
+          {filteredProductionSections.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              {productionSectionSearch ? "Sonuç bulunamadı" : "Henüz üretim bölümü eklenmemiş"}
+            </p>
+          ) : (
+            filteredProductionSections.map((item) => (
+              <ItemWithActions key={item.id} item={item} type="production-section" />
+            ))
+          )}
+        </div>
+      </Subsection>
+
+      {/* Süresi Yaklaşanlar - Bildirim E-postaları */}
+      <Subsection title="Süresi Yaklaşanlar E-postaları" icon={Mail} count={expiringEmails.length}>
         <div className="p-3 border-b bg-background">
           <p className="text-sm text-muted-foreground mb-3">
-            Kalibrasyon bildirimleri bu e-posta adreslerine gönderilecektir.
+            Kalibrasyon/doğrulama süresi <strong>yaklaşan</strong> cihaz bildirimleri bu kişilere gönderilecektir.
           </p>
           <div className="flex gap-2">
             <Input
               type="email"
               placeholder="ornek@ilerigroup.com"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
+              value={newExpiringEmail}
+              onChange={(e) => setNewExpiringEmail(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  onAddEmail()
+                  onAddExpiringEmail()
                 }
               }}
               className="flex-1"
             />
             <Button
-              onClick={onAddEmail}
-              disabled={addingEmail || !newEmail}
+              onClick={onAddExpiringEmail}
+              disabled={addingExpiringEmail || !newExpiringEmail}
               size="sm"
             >
               <Plus className="h-4 w-4 mr-1" />
@@ -352,19 +409,80 @@ export function CalibrationSettingsPanel({
           </div>
         </div>
         <div className="p-3 max-h-64 overflow-y-auto">
-          {notificationEmails.length === 0 ? (
+          {expiringEmails.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              Henüz bildirim e-postası eklenmemiş
+              Henüz e-posta eklenmemiş
             </p>
           ) : (
             <div className="space-y-2">
-              {notificationEmails.map((item) => (
+              {expiringEmails.map((item) => (
                 <div
                   key={item.id}
                   className="flex items-center justify-between p-2 rounded-lg border bg-background hover:bg-accent/50 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <Mail className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm">{item.email}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDeleteEmail(item.id)}
+                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-100"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Subsection>
+
+      {/* Süresi Dolanlar - Bildirim E-postaları */}
+      <Subsection title="Süresi Dolanlar E-postaları" icon={Mail} count={expiredEmails.length}>
+        <div className="p-3 border-b bg-background">
+          <p className="text-sm text-muted-foreground mb-3">
+            Kalibrasyon/doğrulama süresi <strong>dolan</strong> cihaz bildirimleri bu kişilere gönderilecektir.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              placeholder="ornek@ilerigroup.com"
+              value={newExpiredEmail}
+              onChange={(e) => setNewExpiredEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  onAddExpiredEmail()
+                }
+              }}
+              className="flex-1"
+            />
+            <Button
+              onClick={onAddExpiredEmail}
+              disabled={addingExpiredEmail || !newExpiredEmail}
+              size="sm"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Ekle
+            </Button>
+          </div>
+        </div>
+        <div className="p-3 max-h-64 overflow-y-auto">
+          {expiredEmails.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Henüz e-posta eklenmemiş
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {expiredEmails.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-2 rounded-lg border bg-background hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-red-500" />
                     <span className="text-sm">{item.email}</span>
                   </div>
                   <Button

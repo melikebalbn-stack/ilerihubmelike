@@ -291,7 +291,7 @@ export default function ProjectBarPage() {
             <div>
               <label className="text-sm font-medium">Sütun Etiketleri</label>
               <p className="text-xs text-muted-foreground mb-2">Her sütunun başlığını belirleyin</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-xs text-rose-500">1. Sütun</label>
                   <Input

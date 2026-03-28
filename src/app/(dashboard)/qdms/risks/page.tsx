@@ -162,7 +162,7 @@ export default function RisksPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Risk Yönetimi</h1>
           <p className="text-muted-foreground">Risk tanımlama, değerlendirme ve izleme</p>
@@ -222,21 +222,21 @@ export default function RisksPage() {
               <Input placeholder="Risk ara..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" />
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Kategori" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Kategori" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Kategoriler</SelectItem>
                 {riskCategories.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Durum" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Durumlar</SelectItem>
                 {riskStatuses.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={levelFilter} onValueChange={setLevelFilter}>
-              <SelectTrigger className="w-[150px]"><SelectValue placeholder="Seviye" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[150px]"><SelectValue placeholder="Seviye" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tüm Seviyeler</SelectItem>
                 {riskLevels.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
@@ -248,7 +248,8 @@ export default function RisksPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -295,11 +296,12 @@ export default function RisksPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Risk Tanımla</DialogTitle>
             <DialogDescription>Yeni bir risk kaydı oluşturun</DialogDescription>
@@ -333,7 +335,7 @@ export default function RisksPage() {
                 rows={3}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Olasılık (1-5)</Label>
                 <Select value={formData.probability.toString()} onValueChange={(v) => setFormData({ ...formData, probability: parseInt(v) })}>
@@ -401,7 +403,7 @@ export default function RisksPage() {
               <p className="text-muted-foreground">
                 Risk skoru = Olasılık × Etki formülüyle hesaplanır:
               </p>
-              <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                 <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                   <div className="font-medium text-green-800">Düşük (1-5)</div>
                   <p className="text-sm text-green-700">İzleme yeterli</p>
@@ -427,7 +429,7 @@ export default function RisksPage() {
                 <Shield className="h-5 w-5 text-indigo-600" />
                 Risk Kategorileri
               </h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {riskCategories.map((cat) => (
                   <div key={cat.value} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                     <ArrowRight className="h-4 w-4 text-indigo-500" />

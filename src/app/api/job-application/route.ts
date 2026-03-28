@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { sendPushToUser } from '@/lib/push-notifications'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
@@ -290,6 +291,15 @@ async function sendHRNotifications(application: {
   await prisma.notification.createMany({
     data: notifications
   })
+
+  // Push bildirim gönder
+  for (const notif of notifications) {
+    sendPushToUser(prisma, notif.userId, {
+      title: notif.title,
+      body: notif.message,
+      url: notif.link,
+    }).catch(() => {})
+  }
 
   console.log(`${hrUsers.length} İK kullanıcısına bildirim gönderildi`)
 }

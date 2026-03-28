@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Mail, Building2, MapPin, ChevronRight } from 'lucide-react'
+import { Mail, Building2, Phone, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Employee {
@@ -10,7 +10,6 @@ interface Employee {
   email: string | null
   department: string | null
   title: string | null
-  location: string | null
   phone: string | null
   avatar: string | null
 }
@@ -93,16 +92,16 @@ export function EmployeeListItem({ employee, className }: EmployeeListItemProps)
           <span className="truncate">{employee.department || '-'}</span>
         </div>
 
-        {/* Lokasyon */}
-        <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
-          <MapPin className="h-4 w-4 shrink-0" />
-          <span className="truncate">{employee.location || '-'}</span>
-        </div>
-
         {/* E-posta */}
         <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
           <Mail className="h-4 w-4 shrink-0" />
           <span className="truncate">{employee.email || '-'}</span>
+        </div>
+
+        {/* Dahili */}
+        <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
+          <Phone className="h-4 w-4 shrink-0" />
+          <span>{employee.phone || '-'}</span>
         </div>
       </div>
 

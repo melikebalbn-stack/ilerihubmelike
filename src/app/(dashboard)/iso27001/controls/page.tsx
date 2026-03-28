@@ -767,7 +767,7 @@ export default function Iso27001ControlsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <ClipboardCheck className="h-6 w-6 text-primary" />
@@ -833,7 +833,7 @@ export default function Iso27001ControlsPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-0 sm:min-w-[200px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -846,7 +846,7 @@ export default function Iso27001ControlsPage() {
               </div>
             </div>
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-[220px]">
+              <SelectTrigger className="w-full sm:w-[220px]">
                 <SelectValue placeholder="Kategori" />
               </SelectTrigger>
               <SelectContent>
@@ -859,7 +859,7 @@ export default function Iso27001ControlsPage() {
               </SelectContent>
             </Select>
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Durum" />
               </SelectTrigger>
               <SelectContent>
@@ -898,7 +898,7 @@ export default function Iso27001ControlsPage() {
         </Card>
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
             {CATEGORIES.map(cat => {
               const catControls = groupedControls[cat.value] || []
               const implemented = catControls.filter(c => c.status === "IMPLEMENTED" || c.status === "EFFECTIVE").length
@@ -1088,7 +1088,7 @@ export default function Iso27001ControlsPage() {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Kaynak</Label>
                 <Input
@@ -1127,7 +1127,7 @@ export default function Iso27001ControlsPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Sorumlu Adı</Label>
                 <Input
@@ -1274,7 +1274,7 @@ export default function Iso27001ControlsPage() {
               {evidenceTab === "new" ? (
                 /* Yeni kanıt formu */
                 <div className="grid gap-3 border rounded-md p-3 bg-muted/20">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-xs">Kanıt Başlığı <span className="text-red-500">*</span></Label>
                       <Input
@@ -1489,7 +1489,7 @@ export default function Iso27001ControlsPage() {
 
       {/* Kanıt Görüntüleme Dialog */}
       <Dialog open={isEvidenceDialogOpen} onOpenChange={setIsEvidenceDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
@@ -1571,7 +1571,7 @@ export default function Iso27001ControlsPage() {
 
       {/* Hızlı Kanıt Ekleme Dialog */}
       <Dialog open={isQuickEvidenceDialogOpen} onOpenChange={setIsQuickEvidenceDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Upload className="h-5 w-5 text-green-600" />

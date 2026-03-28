@@ -276,7 +276,7 @@ export default function CapaPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">CAPA Yönetimi</h1>
           <p className="text-muted-foreground">
@@ -353,7 +353,7 @@ export default function CapaPage() {
               />
             </div>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Tür" />
               </SelectTrigger>
               <SelectContent>
@@ -366,7 +366,7 @@ export default function CapaPage() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Durum" />
               </SelectTrigger>
               <SelectContent>
@@ -379,7 +379,7 @@ export default function CapaPage() {
               </SelectContent>
             </Select>
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Öncelik" />
               </SelectTrigger>
               <SelectContent>
@@ -400,7 +400,7 @@ export default function CapaPage() {
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -480,7 +480,7 @@ export default function CapaPage() {
 
       {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni CAPA Oluştur</DialogTitle>
             <DialogDescription>
@@ -488,7 +488,7 @@ export default function CapaPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Tür *</Label>
                 <Select
@@ -543,7 +543,7 @@ export default function CapaPage() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Kaynak Türü</Label>
                 <Select
@@ -571,7 +571,7 @@ export default function CapaPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Sorumlu *</Label>
                 <Select
@@ -654,7 +654,7 @@ export default function CapaPage() {
                 temel araçlarından biridir. Sorunların kök nedenlerini analiz ederek
                 tekrarını önlemeyi ve potansiyel sorunları proaktif olarak engellemeyi amaçlar.
               </p>
-              <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                 <div className="p-4 bg-orange-50 rounded-lg border border-orange-200">
                   <h4 className="font-medium text-orange-800 mb-2">Düzeltici Faaliyet (CA)</h4>
                   <p className="text-sm text-orange-700">
@@ -679,7 +679,7 @@ export default function CapaPage() {
               <p className="text-muted-foreground">
                 CAPA süreçleri PDCA (Plan-Do-Check-Act) metodolojisine göre yönetilir:
               </p>
-              <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                 <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
                   <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">P</div>
                   <div>
@@ -720,7 +720,7 @@ export default function CapaPage() {
               <p className="text-muted-foreground">
                 CAPA kayıtları farklı kaynaklardan tetiklenebilir:
               </p>
-              <div className="grid grid-cols-2 gap-2 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
                 {sourceTypes.map((source) => (
                   <div key={source.value} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
                     <ArrowRight className="h-4 w-4 text-indigo-500" />

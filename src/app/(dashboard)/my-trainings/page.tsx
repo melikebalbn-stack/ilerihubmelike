@@ -120,7 +120,7 @@ export default function MyTrainingsPage() {
   const completedAssignments = assignments.filter(a => a.status === "SIGNED")
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 lg:p-6">
       {/* Baslik */}
       <div>
         <h1 className="text-2xl font-bold">Egitimlerim</h1>

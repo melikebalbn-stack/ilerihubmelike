@@ -18,6 +18,8 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import AnimatedNumber from "@/components/dashboard/AnimatedNumber"
+import ModuleCarousel from "@/components/dashboard/ModuleCarousel"
 
 // Yemek menüsü verileri
 interface DailyMenu {
@@ -706,7 +708,7 @@ export default function DashboardPage() {
                   <p className="text-xs text-muted-foreground mb-3">
                     En fazla 6 modül seçebilirsiniz
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {ALL_QUICK_ACCESS_MODULES.map(module => {
                       const isSelected = tempSettings.quickAccessModules.includes(module.id)
                       const isDisabled = !isSelected && tempSettings.quickAccessModules.length >= 6
@@ -773,12 +775,12 @@ export default function DashboardPage() {
       {dashboardStats && (
         <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
           {/* Çalışan Sayısı */}
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/50 dark:to-blue-900/30 border-blue-200 dark:border-blue-800">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/50 dark:to-blue-900/30 border-blue-200 dark:border-blue-800 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg cursor-default">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">{dashboardStats.stats.employees.label}</p>
-                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{dashboardStats.stats.employees.total}</p>
+                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400"><AnimatedNumber value={dashboardStats.stats.employees.total} /></p>
                 </div>
                 <div className="p-3 rounded-full bg-blue-500/10">
                   <Users className="h-6 w-6 text-blue-500" />
@@ -788,13 +790,13 @@ export default function DashboardPage() {
           </Card>
 
           {/* Aktif Cihaz */}
-          <Card className="bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30 border-orange-200 dark:border-orange-800">
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/50 dark:to-orange-900/30 border-orange-200 dark:border-orange-800 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg cursor-default">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">{dashboardStats.stats.devices.label}</p>
                   <div className="flex items-baseline gap-2">
-                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{dashboardStats.stats.devices.total}</p>
+                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400"><AnimatedNumber value={dashboardStats.stats.devices.total} /></p>
                     {dashboardStats.stats.devices.upcoming > 0 && (
                       <span className="text-xs text-orange-500">({dashboardStats.stats.devices.upcoming} yaklaşan)</span>
                     )}
@@ -808,12 +810,12 @@ export default function DashboardPage() {
           </Card>
 
           {/* Bekleyen Öneriler */}
-          <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/50 dark:to-amber-900/30 border-amber-200 dark:border-amber-800">
+          <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/50 dark:to-amber-900/30 border-amber-200 dark:border-amber-800 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg cursor-default">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">{dashboardStats.stats.suggestions.label}</p>
-                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{dashboardStats.stats.suggestions.pending}</p>
+                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400"><AnimatedNumber value={dashboardStats.stats.suggestions.pending} /></p>
                 </div>
                 <div className="p-3 rounded-full bg-amber-500/10">
                   <Lightbulb className="h-6 w-6 text-amber-500" />
@@ -823,12 +825,12 @@ export default function DashboardPage() {
           </Card>
 
           {/* Açık Ticketlar */}
-          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/50 dark:to-green-900/30 border-green-200 dark:border-green-800">
+          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/50 dark:to-green-900/30 border-green-200 dark:border-green-800 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg cursor-default">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">{dashboardStats.stats.tickets.label}</p>
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{dashboardStats.stats.tickets.open}</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400"><AnimatedNumber value={dashboardStats.stats.tickets.open} /></p>
                 </div>
                 <div className="p-3 rounded-full bg-green-500/10">
                   <Ticket className="h-6 w-6 text-green-500" />
@@ -838,6 +840,16 @@ export default function DashboardPage() {
           </Card>
         </div>
       )}
+
+      {/* Hızlı Erişim Carousel */}
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">
+            Hizli Erisim
+          </span>
+        </div>
+        <ModuleCarousel />
+      </div>
 
       {/* Onay Bekleyen Öneriler - Alert Banner */}
       {pendingSuggestions.length > 0 && (
@@ -987,7 +999,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {myTasks.slice(0, 5).map((task) => (
+                  {myTasks.slice(0, 3).map((task) => (
                     <Link
                       key={task.id}
                       href={`/tasks?highlight=${task.id}`}
@@ -1070,7 +1082,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {calendarEvents.slice(0, 5).map((event) => (
+                  {calendarEvents.slice(0, 3).map((event) => (
                     <div
                       key={event.id}
                       className="flex items-start gap-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
@@ -1492,35 +1504,7 @@ export default function DashboardPage() {
           </Card>
         )}
 
-        {/* Hızlı Erişim - Özelleştirilebilir */}
-        {isWidgetVisible('quickAccess') && selectedQuickAccessModules.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <LayoutDashboard className="h-5 w-5" />
-                Hızlı Erişim
-              </CardTitle>
-              <CardDescription>
-                Sık kullanılan modüller
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {selectedQuickAccessModules.map((module) => (
-                <Link
-                  key={module.id}
-                  href={module.href}
-                  className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={module.color}>{module.icon}</span>
-                    <span className="text-sm font-medium">{module.name}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">→</span>
-                </Link>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+        {/* Hızlı Erişim kaldırıldı - Carousel olarak üst kısımda gösteriliyor */}
 
         {/* Sistem Bilgileri */}
         {isWidgetVisible('systemInfo') && (

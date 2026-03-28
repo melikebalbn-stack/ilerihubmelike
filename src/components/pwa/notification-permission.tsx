@@ -1,170 +1,186 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Bell, BellOff, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
+
+const DISMISS_KEY = "push-banner-dismissed"
+const DISMISS_DAYS = 30
+
+// URL-safe base64'ü Uint8Array'e çevir
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
+function isDismissed(): boolean {
+  try {
+    const ts = localStorage.getItem(DISMISS_KEY)
+    if (!ts) return false
+    const dismissedAt = parseInt(ts, 10)
+    const daysSince = (Date.now() - dismissedAt) / (1000 * 60 * 60 * 24)
+    return daysSince < DISMISS_DAYS
+  } catch {
+    return false
+  }
+}
+
+function setDismissed() {
+  try {
+    localStorage.setItem(DISMISS_KEY, Date.now().toString())
+  } catch { /* ignore */ }
+}
+
+// Service worker'ı hazır hale getir (register + activate bekle)
+async function ensureServiceWorkerReady(timeoutMs = 15000): Promise<ServiceWorkerRegistration> {
+  // Zaten aktif SW var mı kontrol et
+  const existingReg = await navigator.serviceWorker.getRegistration()
+  if (existingReg?.active) {
+    return existingReg
+  }
+
+  // SW kayıtlı değilse veya aktif değilse, kaydet
+  if (!existingReg) {
+    await navigator.serviceWorker.register("/sw.js", { scope: "/" })
+  }
+
+  // SW'nin aktif olmasını bekle (timeout ile)
+  return new Promise<ServiceWorkerRegistration>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Service worker zaman aşımı"))
+    }, timeoutMs)
+
+    navigator.serviceWorker.ready.then((reg) => {
+      clearTimeout(timer)
+      resolve(reg)
+    }).catch((err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+  })
+}
+
+// Sessiz arka plan subscription (banner göstermeden)
+async function silentSubscribe(): Promise<boolean> {
+  try {
+    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    if (!vapidPublicKey) return false
+
+    const registration = await ensureServiceWorkerReady(10000)
+
+    // Mevcut subscription varsa zaten OK
+    const existingSub = await registration.pushManager.getSubscription()
+    if (existingSub) return true
+
+    // Yeni subscription oluştur
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    })
+
+    // Sunucuya kaydet
+    const response = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey("p256dh")!))),
+          auth: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey("auth")!))),
+        },
+      }),
+    })
+
+    return response.ok
+  } catch (error) {
+    console.warn("[Push] Sessiz subscription başarısız:", error)
+    return false
+  }
+}
 
 export function NotificationPermission() {
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default")
   const [isSubscribing, setIsSubscribing] = useState(false)
   const [showBanner, setShowBanner] = useState(false)
-  const [isSubscribed, setIsSubscribed] = useState(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     // Bildirim desteğini kontrol et
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       setPermission("unsupported")
       return
     }
 
-    setPermission(Notification.permission)
+    const perm = Notification.permission
+    setPermission(perm)
 
-    // Mevcut subscription'ı kontrol et
-    checkExistingSubscription()
+    // İzin reddedilmişse hiçbir şey yapma
+    if (perm === "denied") return
 
-    // İzin henüz istenmemişse banner'ı göster
-    if (Notification.permission === "default") {
-      // Biraz bekle, kullanıcı sayfaya alışsın
+    // İzin zaten verilmişse sessizce arka planda subscribe ol (banner yok)
+    if (perm === "granted") {
+      silentSubscribe()
+      return
+    }
+
+    // İzin henüz istenmemişse ("default") ve kullanıcı daha önce kapatmamışsa banner göster
+    if (perm === "default" && !isDismissed()) {
       const timer = setTimeout(() => {
-        setShowBanner(true)
+        if (mountedRef.current) setShowBanner(true)
       }, 5000)
       return () => clearTimeout(timer)
     }
   }, [])
 
-  const checkExistingSubscription = async () => {
-    try {
-      const registration = await navigator.serviceWorker.ready
-      const subscription = await registration.pushManager.getSubscription()
-      setIsSubscribed(!!subscription)
-    } catch (error) {
-      console.error("Subscription kontrol hatası:", error)
-    }
-  }
-
-  const subscribeToPush = async () => {
-    setIsSubscribing(true)
-
-    try {
-      // Service Worker hazır olana kadar bekle
-      const registration = await navigator.serviceWorker.ready
-
-      // VAPID public key'i al
-      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-      if (!vapidPublicKey) {
-        throw new Error("VAPID public key bulunamadı")
-      }
-
-      // URL-safe base64'ü Uint8Array'e çevir
-      const urlBase64ToUint8Array = (base64String: string) => {
-        const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
-        const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
-        const rawData = window.atob(base64)
-        const outputArray = new Uint8Array(rawData.length)
-        for (let i = 0; i < rawData.length; ++i) {
-          outputArray[i] = rawData.charCodeAt(i)
-        }
-        return outputArray
-      }
-
-      // Push subscription oluştur
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-      })
-
-      // Subscription'ı sunucuya kaydet
-      const response = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey("p256dh")!))),
-            auth: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey("auth")!))),
-          },
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Sunucuya kaydetme başarısız")
-      }
-
-      setIsSubscribed(true)
-      setShowBanner(false)
-      toast.success("Bildirimler aktif!", {
-        description: "Artık mesaj bildirimlerini alacaksınız.",
-      })
-    } catch (error) {
-      console.error("Push subscription hatası:", error)
-      toast.error("Bildirim ayarlanamadı", {
-        description: "Lütfen tarayıcı ayarlarınızı kontrol edin.",
-      })
-    } finally {
-      setIsSubscribing(false)
-    }
+  const dismissBanner = () => {
+    setShowBanner(false)
+    setDismissed()
   }
 
   const requestPermission = async () => {
+    setIsSubscribing(true)
     try {
       const result = await Notification.requestPermission()
-      setPermission(result)
+      if (mountedRef.current) setPermission(result)
 
       if (result === "granted") {
-        await subscribeToPush()
+        await new Promise((r) => setTimeout(r, 500))
+        const ok = await silentSubscribe()
+        if (ok) {
+          toast.success("Bildirimler aktif!", {
+            description: "Artık mesaj bildirimlerini alacaksınız.",
+          })
+        }
+        if (mountedRef.current) setShowBanner(false)
       } else if (result === "denied") {
         toast.error("Bildirim izni reddedildi", {
           description: "Tarayıcı ayarlarından bildirimleri etkinleştirebilirsiniz.",
         })
-        setShowBanner(false)
+        if (mountedRef.current) setShowBanner(false)
       }
     } catch (error) {
-      console.error("İzin isteme hatası:", error)
+      console.error("[Push] İzin isteme hatası:", error)
+    } finally {
+      if (mountedRef.current) {
+        setIsSubscribing(false)
+      }
     }
   }
 
-  const unsubscribeFromPush = async () => {
-    try {
-      const registration = await navigator.serviceWorker.ready
-      const subscription = await registration.pushManager.getSubscription()
-
-      if (subscription) {
-        await subscription.unsubscribe()
-
-        // Sunucudan da sil
-        await fetch("/api/push/subscribe", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: subscription.endpoint }),
-        })
-
-        setIsSubscribed(false)
-        toast.success("Bildirimler kapatıldı")
-      }
-    } catch (error) {
-      console.error("Unsubscribe hatası:", error)
-      toast.error("İşlem başarısız")
-    }
-  }
-
-  // Desteklenmiyorsa gösterme
-  if (permission === "unsupported") {
-    return null
-  }
-
-  // Zaten izin verilmiş ve subscribe olmuş
-  if (permission === "granted" && isSubscribed && !showBanner) {
-    return null
-  }
-
-  // İzin reddedilmiş
-  if (permission === "denied") {
-    return null
-  }
-
-  // Banner göster
-  if (!showBanner) {
+  // Banner gösterilmeyecek durumlar
+  if (permission === "unsupported" || permission === "denied" || permission === "granted" || !showBanner) {
     return null
   }
 
@@ -201,14 +217,14 @@ export function NotificationPermission() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setShowBanner(false)}
+                onClick={dismissBanner}
               >
                 Sonra
               </Button>
             </div>
           </div>
           <button
-            onClick={() => setShowBanner(false)}
+            onClick={dismissBanner}
             className="flex-shrink-0 text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4" />
@@ -226,7 +242,7 @@ export function NotificationToggle() {
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       setPermission("unsupported")
       return
     }
@@ -237,30 +253,25 @@ export function NotificationToggle() {
 
   const checkSubscription = async () => {
     try {
-      const registration = await navigator.serviceWorker.ready
+      const registration = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("SW timeout")), 5000)
+        )
+      ])
       const subscription = await registration.pushManager.getSubscription()
       setIsSubscribed(!!subscription)
     } catch (error) {
-      console.error("Subscription kontrol hatası:", error)
+      console.error("[Push] Subscription kontrol hatası:", error)
     }
   }
 
   const handleToggle = async () => {
     setIsLoading(true)
     try {
-      // Service worker için timeout ekle (10 saniye)
-      const getRegistrationWithTimeout = () => {
-        return Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Service worker zaman aşımı")), 10000)
-          )
-        ])
-      }
-
       if (isSubscribed) {
         // Unsubscribe
-        const registration = await getRegistrationWithTimeout()
+        const registration = await ensureServiceWorkerReady(15000)
         const subscription = await registration.pushManager.getSubscription()
         if (subscription) {
           await subscription.unsubscribe()
@@ -281,21 +292,18 @@ export function NotificationToggle() {
             toast.error("Bildirim izni verilmedi")
             return
           }
+          // Mobilde SW hazır olması için bekle
+          await new Promise((r) => setTimeout(r, 500))
         }
 
-        const registration = await getRegistrationWithTimeout()
+        const registration = await ensureServiceWorkerReady(15000)
         const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-        if (!vapidPublicKey) throw new Error("VAPID key yok")
+        if (!vapidPublicKey) throw new Error("VAPID yapılandırması eksik")
 
-        const urlBase64ToUint8Array = (base64String: string) => {
-          const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
-          const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
-          const rawData = window.atob(base64)
-          const outputArray = new Uint8Array(rawData.length)
-          for (let i = 0; i < rawData.length; ++i) {
-            outputArray[i] = rawData.charCodeAt(i)
-          }
-          return outputArray
+        // Mevcut subscription varsa temizle
+        const existingSub = await registration.pushManager.getSubscription()
+        if (existingSub) {
+          await existingSub.unsubscribe()
         }
 
         const subscription = await registration.pushManager.subscribe({
@@ -303,7 +311,7 @@ export function NotificationToggle() {
           applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
         })
 
-        await fetch("/api/push/subscribe", {
+        const response = await fetch("/api/push/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -315,11 +323,15 @@ export function NotificationToggle() {
           }),
         })
 
+        if (!response.ok) {
+          throw new Error("Sunucuya kaydetme başarısız")
+        }
+
         setIsSubscribed(true)
         toast.success("Bildirimler açıldı!")
       }
     } catch (error) {
-      console.error("Toggle hatası:", error)
+      console.error("[Push] Toggle hatası:", error)
       const errorMessage = error instanceof Error ? error.message : "Bilinmeyen hata"
       toast.error(`İşlem başarısız: ${errorMessage}`)
     } finally {

@@ -713,7 +713,7 @@ export default function EditMeetingPage({ params }: { params: Promise<{ id: stri
                               placeholder="misafir@sirket.com"
                             />
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div className="space-y-2">
                               <Label>Sirket</Label>
                               <Input

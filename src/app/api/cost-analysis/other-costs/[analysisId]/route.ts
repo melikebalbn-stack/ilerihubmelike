@@ -104,6 +104,8 @@ export async function POST(
       },
     })
 
+    await recalculateCosts(analysisId)
+
     return NextResponse.json(item, { status: 201 })
   } catch (error) {
     console.error('Maliyet kalemi eklenirken hata:', error)
@@ -166,6 +168,8 @@ export async function PUT(
       },
     })
 
+    await recalculateCosts(analysisId)
+
     return NextResponse.json(item)
   } catch (error) {
     console.error('Maliyet kalemi güncellenirken hata:', error)
@@ -212,6 +216,8 @@ export async function DELETE(
     await prisma.costOtherItem.delete({
       where: { id: itemId },
     })
+
+    await recalculateCosts(analysisId)
 
     return NextResponse.json({ message: 'Maliyet kalemi silindi' })
   } catch (error) {

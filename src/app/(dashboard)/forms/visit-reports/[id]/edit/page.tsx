@@ -337,7 +337,7 @@ export default function EditVisitReportPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-3xl font-bold">Raporu Duzenle</h1>
+          <h1 className="text-xl lg:text-3xl font-bold">Raporu Duzenle</h1>
           <p className="text-muted-foreground">
             {reportNumber} - {companyName}
           </p>

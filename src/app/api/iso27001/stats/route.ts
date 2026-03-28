@@ -34,7 +34,9 @@ export async function GET() {
       digitalSignatures,
       // 7. Olay istatistikleri - groupBy ile tek sorgu
       incidentStats,
-      // 8. Yönetim gözden geçirme
+      // 8. Tedarikçi istatistikleri
+      supplierStats,
+      // 9. Yönetim gözden geçirme
       reviewStats,
     ] = await Promise.all([
       // Doküman status grupları
@@ -89,6 +91,11 @@ export async function GET() {
         by: ['status'],
         _count: { _all: true }
       }),
+      // Tedarikçi grup dağılımı
+      prisma.supplier.groupBy({
+        by: ['group'],
+        _count: { _all: true }
+      }),
       // Yönetim gözden geçirme - count ve son tarih birlikte
       prisma.iso27001ManagementReview.aggregate({
         _count: { _all: true },
@@ -121,9 +128,12 @@ export async function GET() {
     // Denetim istatistiklerini hesapla
     const plannedAudits = auditStats.find(s => s.status === 'PLANNED')?._count._all || 0
     const inProgressAudits = auditStats.find(s => s.status === 'IN_PROGRESS')?._count._all || 0
+    const completedAudits = auditStats.find(s => s.status === 'COMPLETED')?._count._all || 0
+    const totalAudits = auditStats.reduce((sum, s) => sum + s._count._all, 0)
 
     // Risk istatistiklerini hesapla
     const totalRisks = riskStats.reduce((sum, s) => sum + s._count._all, 0)
+    const criticalRisks = riskStats.find(s => s.riskLevel === 'CRITICAL')?._count._all || 0
     const highRisks = riskStats.find(s => s.riskLevel === 'HIGH')?._count._all || 0
     const mediumRisks = riskStats.find(s => s.riskLevel === 'MEDIUM')?._count._all || 0
     const lowRisks = riskStats.find(s => s.riskLevel === 'LOW')?._count._all || 0
@@ -138,6 +148,13 @@ export async function GET() {
       .filter(s => s.status === 'RESOLVED' || s.status === 'CLOSED')
       .reduce((sum, s) => sum + s._count._all, 0)
     const openIncidents = totalIncidents - resolvedIncidents
+
+    // Tedarikçi istatistiklerini hesapla
+    const totalSuppliers = supplierStats.reduce((sum, s) => sum + s._count._all, 0)
+    const aGroupSuppliers = supplierStats.find(s => s.group === 'A_APPROVED')?._count._all || 0
+    const bGroupSuppliers = supplierStats.find(s => s.group === 'B_CANDIDATE')?._count._all || 0
+    const cGroupSuppliers = supplierStats.find(s => s.group === 'C_REJECTED')?._count._all || 0
+    const pendingSuppliers = supplierStats.find(s => s.group === 'PENDING')?._count._all || 0
 
     return NextResponse.json({
       documents: {
@@ -165,12 +182,15 @@ export async function GET() {
         completed: totalSignatures,
       },
       audits: {
+        total: totalAudits,
         planned: plannedAudits,
         inProgress: inProgressAudits,
+        completed: completedAudits,
         openFindings: openFindings,
       },
       risks: {
         total: totalRisks,
+        critical: criticalRisks,
         high: highRisks,
         medium: mediumRisks,
         low: lowRisks,
@@ -184,6 +204,13 @@ export async function GET() {
         total: totalIncidents,
         open: openIncidents,
         resolved: resolvedIncidents,
+      },
+      suppliers: {
+        total: totalSuppliers,
+        aGroup: aGroupSuppliers,
+        bGroup: bGroupSuppliers,
+        cGroup: cGroupSuppliers,
+        pending: pendingSuppliers,
       },
       managementReview: {
         total: reviewStats._count._all,

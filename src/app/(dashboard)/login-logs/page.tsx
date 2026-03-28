@@ -169,7 +169,7 @@ export default function LoginLogsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Bugün Başarılı Giriş</p>
-                <p className="text-3xl font-bold text-green-600">{stats?.todaySuccess || 0}</p>
+                <p className="text-xl sm:text-3xl font-bold text-green-600">{stats?.todaySuccess || 0}</p>
               </div>
               <CheckCircle2 className="h-8 w-8 text-green-500" />
             </div>
@@ -181,7 +181,7 @@ export default function LoginLogsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Bugün Başarısız Giriş</p>
-                <p className="text-3xl font-bold text-red-600">{stats?.todayFailed || 0}</p>
+                <p className="text-xl sm:text-3xl font-bold text-red-600">{stats?.todayFailed || 0}</p>
               </div>
               <XCircle className="h-8 w-8 text-red-500" />
             </div>
@@ -193,7 +193,7 @@ export default function LoginLogsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Bugün Giriş Yapan Kullanıcı</p>
-                <p className="text-3xl font-bold">{stats?.todayUniqueUsers || 0}</p>
+                <p className="text-xl lg:text-3xl font-bold">{stats?.todayUniqueUsers || 0}</p>
               </div>
               <Users className="h-8 w-8 text-muted-foreground" />
             </div>

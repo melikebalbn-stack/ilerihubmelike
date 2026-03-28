@@ -220,7 +220,7 @@ export default function PublicSurveyPage() {
             value={answers[question.id] as string || ""}
             onChange={(e) => handleAnswerChange(question.id, e.target.value)}
             placeholder="Yanıtınızı yazın..."
-            className="max-w-md"
+            className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto"
           />
         )
 
@@ -403,7 +403,7 @@ export default function PublicSurveyPage() {
                 value={respondentName}
                 onChange={(e) => setRespondentName(e.target.value)}
                 placeholder="Örnek: Ahmet Yılmaz"
-                className="max-w-md"
+                className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto"
               />
             </div>
             <div className="space-y-2">
@@ -416,7 +416,7 @@ export default function PublicSurveyPage() {
                 value={respondentDepartment}
                 onChange={(e) => setRespondentDepartment(e.target.value)}
                 placeholder="Örnek: Üretim, Montaj, Kalite"
-                className="max-w-md"
+                className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto"
               />
             </div>
           </CardContent>

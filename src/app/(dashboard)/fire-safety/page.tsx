@@ -6,9 +6,9 @@ import { Flame } from "lucide-react"
 export default function FireSafetyPage() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Yangın Güvenliği</h1>
+          <h1 className="text-xl lg:text-3xl font-bold tracking-tight">Yangın Güvenliği</h1>
           <p className="text-muted-foreground">
             Yangın güvenlik ekipmanları ve kontrol yönetimi
           </p>

@@ -366,7 +366,8 @@ export default function MaintenancePage() {
 
       if (workOrdersRes.ok) {
         const data = await workOrdersRes.json()
-        setWorkOrders(data)
+        // work-orders API paginated yanıt döndürüyor: { data: [...], pagination: {...} }
+        setWorkOrders(Array.isArray(data) ? data : data.data || [])
       }
 
       if (statsRes.ok) {
@@ -558,9 +559,9 @@ export default function MaintenancePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <h1 className="text-xl lg:text-3xl font-bold flex items-center gap-2">
             <Factory className="h-8 w-8 text-primary" />
             Tezgah Bakim Yonetimi
           </h1>
@@ -583,14 +584,14 @@ export default function MaintenancePage() {
                   Yeni Makine
                 </Button>
               </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Yeni Makine Ekle</DialogTitle>
                 <DialogDescription>
                   Yeni bir makine/tezgah tanimlayin
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Makine Adi *</Label>
                   <Input
@@ -772,7 +773,7 @@ export default function MaintenancePage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="machines">
             <Cog className="h-4 w-4 mr-2" />
             Makineler
@@ -926,14 +927,14 @@ export default function MaintenancePage() {
                     Yeni Plan
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Yeni Bakim Plani</DialogTitle>
                     <DialogDescription>
                       Periyodik bakim plani olusturun
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Makine *</Label>
                       <Select
@@ -1193,14 +1194,14 @@ export default function MaintenancePage() {
                     Ariza Bildir
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Ariza Bildirimi</DialogTitle>
                     <DialogDescription>
                       Makine arizasi veya is emri olusturun
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Makine *</Label>
                       <Select

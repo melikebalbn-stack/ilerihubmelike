@@ -935,7 +935,7 @@ export default function RecruitmentPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Briefcase className="h-6 w-6 text-primary" />
@@ -980,7 +980,7 @@ export default function RecruitmentPage() {
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <Label>Pozisyon Adi *</Label>
                     <Input
@@ -1153,7 +1153,7 @@ export default function RecruitmentPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => handleRequestSubmit(e, false)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <Label>Pozisyon Adi *</Label>
                 <Input
@@ -1374,7 +1374,7 @@ export default function RecruitmentPage() {
               </DialogHeader>
 
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Talep Eden:</span>
                     <p className="font-medium">{selectedRequest.requesterName}</p>
@@ -1544,7 +1544,7 @@ export default function RecruitmentPage() {
 
       {/* Aday Ekleme Modal */}
       <Dialog open={isCandidateDialogOpen} onOpenChange={setIsCandidateDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Yeni Aday Ekle</DialogTitle>
             <DialogDescription>
@@ -1552,7 +1552,7 @@ export default function RecruitmentPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCandidateSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>Ad *</Label>
                 <Input
@@ -1686,7 +1686,7 @@ export default function RecruitmentPage() {
 
               <div className="space-y-6">
                 {/* Temel Bilgiler */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex items-center gap-2 text-sm">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
                     <span>{selectedOpening.department}</span>
@@ -1756,7 +1756,7 @@ export default function RecruitmentPage() {
                     </Button>
                   </div>
                   {selectedOpening.applications && selectedOpening.applications.length > 0 ? (
-                    <div className="border rounded-lg">
+                    <div className="border rounded-lg overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -2042,7 +2042,7 @@ export default function RecruitmentPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="job-applications">
             Is Basvurulari ({filteredJobApplications.length})
             {pendingJobApps > 0 && (
@@ -2073,6 +2073,7 @@ export default function RecruitmentPage() {
                   {searchTerm || statusFilter !== "all" ? "Aramanizla eslesen talep bulunamadi." : "Henuz eleman talebi yok."}
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2167,6 +2168,7 @@ export default function RecruitmentPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -2186,6 +2188,7 @@ export default function RecruitmentPage() {
                   {searchTerm || statusFilter !== "all" ? "Aramanizla eslesen ilan bulunamadi." : "Henuz is ilani olusturulmamis."}
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2281,6 +2284,7 @@ export default function RecruitmentPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -2300,6 +2304,7 @@ export default function RecruitmentPage() {
                   {searchTerm ? "Aramanizla eslesen aday bulunamadi." : "Henuz aday kaydedilmemis."}
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2374,6 +2379,7 @@ export default function RecruitmentPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -2396,6 +2402,7 @@ export default function RecruitmentPage() {
                   {searchTerm || statusFilter !== "all" ? "Aramanizla eslesen basvuru bulunamadi." : "Henuz is basvurusu yok."}
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -2500,6 +2507,7 @@ export default function RecruitmentPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </CardContent>
           </Card>

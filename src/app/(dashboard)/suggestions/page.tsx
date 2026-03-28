@@ -690,7 +690,7 @@ function SuggestionsPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-4 sm:py-6">
+      <div className="px-4 py-4 sm:py-6">
         {/* Header */}
         <div className="mb-6">
           {activeModule ? (
@@ -818,6 +818,7 @@ function SuggestionsPageContent() {
                 onViewModeChange={setKaizenViewMode}
                 onCreateNew={() => setIsCreateKaizenOpen(true)}
                 onOpenGuide={() => setIsKaizenGuideOpen(true)}
+                onView={(id) => window.open(`/suggestions/kaizen/${id}`, '_blank')}
               />
             )}
 
@@ -894,7 +895,7 @@ function SuggestionsPageContent() {
 
       {/* Create 5S Area Dialog */}
       <Dialog open={isCreateFiveSAreaOpen} onOpenChange={setIsCreateFiveSAreaOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ClipboardCheck className="h-5 w-5 text-emerald-500" />
@@ -1171,7 +1172,7 @@ function SuggestionsPageContent() {
 
           {selectedFiveSArea && (
             <div className="space-y-6 mt-4">
-              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
                 {selectedFiveSArea.department && (
                   <div><span className="text-xs text-muted-foreground">Departman:</span><p className="font-medium">{selectedFiveSArea.department}</p></div>
                 )}
@@ -1240,7 +1241,7 @@ function SuggestionsPageContent() {
           {selectedAuditForAction && (
             <div className="space-y-6 mt-4">
               {/* Score Summary */}
-              <div className="grid grid-cols-5 gap-4 p-4 bg-muted/50 rounded-lg">
+              <div className="grid grid-cols-3 md:grid-cols-5 gap-4 p-4 bg-muted/50 rounded-lg">
                 {['seiri', 'seiton', 'seiso', 'seiketsu', 'shitsuke'].map((s, i) => {
                   const score = selectedAuditForAction[`${s}Score` as keyof typeof selectedAuditForAction] as number || 0
                   return (
@@ -1462,7 +1463,7 @@ function ActionFindingCard({
 
         {isAssigning && (
           <div className="mt-4 p-4 bg-white rounded-lg border space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Sorumlu Kişi *</Label>
                 <UserSearchCombobox

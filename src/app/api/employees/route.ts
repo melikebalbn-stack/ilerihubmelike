@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getAllLDAPUsers, LDAPUser } from '@/lib/ldap'
+import { getAllLDAPUsers } from '@/lib/ldap'
+import { prisma } from '@/lib/prisma'
 
 // Türkçe karakterleri normalize et (arama için)
 function normalizeText(text: string): string {
@@ -15,6 +16,64 @@ function normalizeText(text: string): string {
     .replace(/ç/g, 'c')
 }
 
+/**
+ * LDAP raw department string → DB Department name mapping
+ * LDAP'tan gelen departman string'lerini DB'deki temiz isimlere eşler
+ */
+const DEPARTMENT_MAPPING: Record<string, string> = {
+  // Asansör
+  'ASANSÖR': 'Asansör',
+  // İnsan Varlıkları
+  'Insan Varliklari Departmanı': 'İnsan Varlıkları',
+  // Muhasebe
+  'Muhasebe Departmanı': 'Muhasebe',
+  'Muhasebe Departmani': 'Muhasebe',
+  // Kalite
+  'Kalite Departmanı': 'Kalite',
+  'Kalite Kontrol': 'Kalite',
+  'Kalite Mudurlugu': 'Kalite',
+  'KALİTE MÜDÜRLÜĞÜ': 'Kalite',
+  'Laboratuvar': 'Kalite',
+  // Mühendislik
+  'PROTOTİP ATÖLYE': 'Mühendislik',
+  // Satınalma
+  'Satinalma Mudurlugu': 'Satınalma',
+  'Satınalma': 'Satınalma',
+  // Satış Pazarlama
+  'Satıs Pazarlama Mudurlugu': 'Satış Pazarlama',
+  // Sistem Geliştirme
+  'Sistem Geliştirme Departmanı': 'Sistem Geliştirme',
+  'Sistem Gelistirme Mudurlugu': 'Sistem Geliştirme',
+  // Üretim
+  'BAKIMHANE': 'Üretim',
+  'DEPO': 'Üretim',
+  'Fabrika Mudurlugu': 'Üretim Planlama',
+  'KALIPHANE': 'Üretim',
+  'KAYNAKHANE': 'Üretim',
+  'LAZER & DAİRE TESTERE': 'Üretim',
+  'MEKANİK MONTAJ': 'Üretim',
+  'PAKETLEME & DİREKSİYON': 'Üretim',
+  'PLASTİK ENJEKSİYON': 'Üretim',
+  'PRESHANE': 'Üretim',
+  'TALAŞLI İMALAT': 'Üretim',
+  'Üretim': 'Üretim',
+  // Yönetim
+  'İDARİ İŞLER': 'Yönetim',
+  'Yatırım Ve Tesvik': 'Yönetim',
+  'Yönetim': 'Yönetim',
+}
+
+/**
+ * LDAP raw department string'ini DB Department name'e çevir
+ * Mapping'de yoksa null döner (Diğer kategorisine gider)
+ */
+function mapDepartment(rawDept: string | null | undefined): string | null {
+  if (!rawDept) return null
+  const trimmed = rawDept.trim()
+  if (!trimmed) return null
+  return DEPARTMENT_MAPPING[trimmed] || null
+}
+
 // GET /api/employees - Tüm çalışanları listele
 export async function GET(request: NextRequest) {
   try {
@@ -26,38 +85,77 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const search = searchParams.get('search') || ''
     const department = searchParams.get('department') || ''
-    const location = searchParams.get('location') || ''
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
+    // DB'den temiz departman listesini al (dropdown için)
+    const dbDepartments = await prisma.department.findMany({
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    })
+    const departmentNames = dbDepartments.map(d => d.name)
+
     // LDAP'tan tüm kullanıcıları al
-    const allUsers = await getAllLDAPUsers()
+    let allUsers = await getAllLDAPUsers()
+
+    // LDAP boş dönerse DB fallback
+    if (allUsers.length === 0) {
+      const dbUsers = await prisma.user.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          department: true,
+          jobTitle: true,
+          officeLocation: true,
+        },
+      })
+      allUsers = dbUsers.map(u => ({
+        username: u.id,
+        displayName: u.name || '',
+        email: u.email,
+        department: u.department,
+        title: u.jobTitle,
+        distinguishedName: '',
+        memberOf: [],
+        ou: u.officeLocation,
+        managerDN: null,
+        ipPhone: null,
+      }))
+    }
+
+    // Mail adresi olmayanları gizle
+    const usersWithEmail = allUsers.filter(user => user.email)
+
+    // Her kullanıcıya mappedDepartment ekle
+    const usersWithMappedDept = usersWithEmail.map(user => ({
+      ...user,
+      mappedDepartment: mapDepartment(user.department),
+    }))
 
     // Filtreleme
-    let filteredUsers = allUsers
+    let filteredUsers = usersWithMappedDept
 
     if (search) {
       const normalizedSearch = normalizeText(search)
       filteredUsers = filteredUsers.filter(user =>
         normalizeText(user.displayName || '').includes(normalizedSearch) ||
         normalizeText(user.department || '').includes(normalizedSearch) ||
+        normalizeText(user.mappedDepartment || '').includes(normalizedSearch) ||
         normalizeText(user.title || '').includes(normalizedSearch) ||
         normalizeText(user.email || '').includes(normalizedSearch)
       )
     }
 
     if (department) {
-      const normalizedDept = normalizeText(department)
-      filteredUsers = filteredUsers.filter(user =>
-        normalizeText(user.department || '').includes(normalizedDept)
-      )
-    }
-
-    if (location) {
-      const normalizedLoc = normalizeText(location)
-      filteredUsers = filteredUsers.filter(user =>
-        normalizeText(user.ou || '').includes(normalizedLoc)
-      )
+      if (department === 'Diğer') {
+        // Mapping'de eşleşmeyen kullanıcıları göster
+        filteredUsers = filteredUsers.filter(user => user.mappedDepartment === null)
+      } else {
+        // DB departman adına göre filtrele
+        filteredUsers = filteredUsers.filter(user => user.mappedDepartment === department)
+      }
     }
 
     // Sıralama (ada göre)
@@ -68,26 +166,36 @@ export async function GET(request: NextRequest) {
     // Toplam sayı
     const total = filteredUsers.length
 
-    // Sayfalama
-    const startIndex = (page - 1) * limit
-    const paginatedUsers = filteredUsers.slice(startIndex, startIndex + limit)
+    // Sayfalama (limit=0 ise tümünü döndür)
+    const paginatedUsers = limit === 0
+      ? filteredUsers
+      : filteredUsers.slice((page - 1) * limit, (page - 1) * limit + limit)
 
-    // Benzersiz departmanlar ve lokasyonlar (filtre için)
-    const departments = [...new Set(allUsers.map(u => u.department).filter(Boolean))]
-      .sort((a, b) => (a || '').localeCompare(b || '', 'tr'))
-    const locations = [...new Set(allUsers.map(u => u.ou).filter(Boolean))]
-      .sort((a, b) => (a || '').localeCompare(b || '', 'tr'))
+    // Sadece en az 1 kullanıcısı olan departmanları göster
+    const activeDepts = new Set(usersWithMappedDept.map(u => u.mappedDepartment).filter(Boolean))
+    const departments: string[] = departmentNames.filter(name => activeDepts.has(name))
+
+    // Eşleşmeyen departman var mı kontrol et ("Diğer" kategorisi)
+    const hasUnmapped = usersWithMappedDept.some(u => u.mappedDepartment === null && u.department)
+    if (hasUnmapped) departments.push('Diğer')
+
+    // DB'den extension3cx map'i oluştur
+    const dbExtensions = await prisma.user.findMany({
+      where: { extension3cx: { not: null } },
+      select: { email: true, extension3cx: true },
+    })
+    const extensionMap = new Map(dbExtensions.map(u => [u.email.toLowerCase(), u.extension3cx]))
 
     // Employee format'a dönüştür
     const employees = paginatedUsers.map(user => ({
       id: user.username,
       name: user.displayName,
       email: user.email,
-      department: user.department,
+      department: user.mappedDepartment || user.department,
+      rawDepartment: user.department,
       title: user.title,
-      location: user.ou,
-      phone: null, // LDAP'ta telefon bilgisi yok
-      avatar: null, // Avatar URL'si yok
+      phone: extensionMap.get(user.email!.toLowerCase()) || null,
+      avatar: null,
       managerDN: user.managerDN,
     }))
 
@@ -101,7 +209,6 @@ export async function GET(request: NextRequest) {
       },
       filters: {
         departments,
-        locations,
       },
     })
 

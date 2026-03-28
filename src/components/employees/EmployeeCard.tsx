@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { User, Mail, Phone, Building2, MapPin, Briefcase } from 'lucide-react'
+import { User, Mail, Phone, Building2, Briefcase } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Employee {
@@ -10,7 +10,6 @@ interface Employee {
   email: string | null
   department: string | null
   title: string | null
-  location: string | null
   phone: string | null
   avatar: string | null
 }
@@ -91,12 +90,6 @@ export function EmployeeCard({ employee, className }: EmployeeCardProps) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Building2 className="h-4 w-4 shrink-0" />
             <span className="truncate">{employee.department}</span>
-          </div>
-        )}
-        {employee.location && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-4 w-4 shrink-0" />
-            <span className="truncate">{employee.location}</span>
           </div>
         )}
         {employee.email && (

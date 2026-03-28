@@ -326,7 +326,7 @@ export default function VisitReportDetailPage() {
             </Link>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold">{report.reportNumber}</h1>
+                <h1 className="text-xl lg:text-3xl font-bold">{report.reportNumber}</h1>
                 <Badge variant={statusLabels[report.status]?.variant || "secondary"}>
                   {statusLabels[report.status]?.label || report.status}
                 </Badge>

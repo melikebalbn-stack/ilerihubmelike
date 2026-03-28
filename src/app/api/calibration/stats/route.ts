@@ -12,7 +12,7 @@ export async function GET() {
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const [total, valid, expiring, expired, noResponsible] = await Promise.all([
+    const [total, valid, expiring, expired, inProcess, outOfOrder, noResponsible, totalCostAgg] = await Promise.all([
       prisma.calibrationDevice.count({
         where: { isActive: true },
       }),
@@ -26,6 +26,12 @@ export async function GET() {
         where: { isActive: true, status: CalibrationStatus.EXPIRED },
       }),
       prisma.calibrationDevice.count({
+        where: { isActive: true, status: CalibrationStatus.IN_PROCESS },
+      }),
+      prisma.calibrationDevice.count({
+        where: { isActive: true, status: CalibrationStatus.OUT_OF_ORDER },
+      }),
+      prisma.calibrationDevice.count({
         where: {
           isActive: true,
           requiresResponsible: true,
@@ -35,6 +41,9 @@ export async function GET() {
           ]
         },
       }),
+      prisma.calibrationHistory.aggregate({
+        _sum: { cost: true },
+      }),
     ])
 
     return NextResponse.json({
@@ -42,7 +51,10 @@ export async function GET() {
       valid,
       expiring,
       expired,
+      inProcess,
+      outOfOrder,
       noResponsible,
+      totalCost: totalCostAgg._sum.cost || 0,
     })
   } catch (error) {
     console.error('İstatistikler alınırken hata:', error)

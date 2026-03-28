@@ -680,7 +680,7 @@ export default function OrgChartPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Building2 className="h-6 w-6 text-primary" />
@@ -716,7 +716,7 @@ export default function OrgChartPage() {
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label>Birim Kodu</Label>
                     <Input
@@ -929,7 +929,7 @@ export default function OrgChartPage() {
                   <Layers className="h-4 w-4 text-purple-500" />
                   Birim Tipleri
                 </h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                   <div className="flex items-center gap-2">
                     <Badge className="bg-purple-100 text-purple-800">Sirket</Badge>
                     <span className="text-muted-foreground">En ust seviye, ana sirket</span>
@@ -1028,7 +1028,7 @@ export default function OrgChartPage() {
 
       {/* Personel/Pozisyon Ekleme Modal */}
       <Dialog open={isEmployeeDialogOpen} onOpenChange={setIsEmployeeDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Personel / Pozisyon Ekle</DialogTitle>
             <DialogDescription>
@@ -1036,7 +1036,7 @@ export default function OrgChartPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleEmployeeSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <Label>Durum</Label>
                 <Select

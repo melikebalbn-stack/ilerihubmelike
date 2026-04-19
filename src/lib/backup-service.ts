@@ -57,7 +57,7 @@ export const PROJECT_CONFIGS = {
     excludes: ['node_modules', '.git', 'uploads'],
     isLocal: false,
     sshUser: 'rokunet',
-    sshPass: '1qaz2wsx'
+    sshKeyPath: '/home/rokunet/.ssh/ilerihub_akademi_backup'
   },
   Database: {
     path: '',
@@ -144,23 +144,25 @@ export async function backupAkademi(backupName: string): Promise<{ success: bool
 
   const excludeArgs = config.excludes.map(e => `--exclude='${e}'`).join(' ')
 
+  const sshOpts = `-i ${config.sshKeyPath} -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=30`
+
   try {
     // Uzak sunucuda yedek oluştur
-    const createCmd = `sshpass -p '${config.sshPass}' ssh -o StrictHostKeyChecking=no ${config.sshUser}@${config.serverIp} "cd /var/www && tar -czf ${remotePath} ${excludeArgs} akademi"`
+    const createCmd = `ssh ${sshOpts} ${config.sshUser}@${config.serverIp} "cd /var/www && tar -czf ${remotePath} ${excludeArgs} akademi"`
     await execAsync(createCmd, {
       timeout: BACKUP_TIMEOUT_MS,
       maxBuffer: BACKUP_MAX_BUFFER,
     })
 
     // Yedeği bu sunucuya kopyala
-    const copyCmd = `sshpass -p '${config.sshPass}' scp -o StrictHostKeyChecking=no ${config.sshUser}@${config.serverIp}:${remotePath} ${localPath}`
+    const copyCmd = `scp ${sshOpts} ${config.sshUser}@${config.serverIp}:${remotePath} ${localPath}`
     await execAsync(copyCmd, {
       timeout: BACKUP_TIMEOUT_MS,
       maxBuffer: BACKUP_MAX_BUFFER,
     })
 
     // Uzak sunucudaki geçici dosyayı sil
-    const cleanCmd = `sshpass -p '${config.sshPass}' ssh -o StrictHostKeyChecking=no ${config.sshUser}@${config.serverIp} "rm -f ${remotePath}"`
+    const cleanCmd = `ssh ${sshOpts} ${config.sshUser}@${config.serverIp} "rm -f ${remotePath}"`
     await execAsync(cleanCmd, { timeout: 60_000 })
 
     const size = assertFileNonEmpty(localPath)
@@ -298,14 +300,16 @@ export async function restoreAkademi(backupPath: string): Promise<{ success: boo
   const backupName = path.basename(backupPath)
   const remotePath = `/tmp/${backupName}`
 
+  const sshOpts = `-i ${config.sshKeyPath} -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=30`
+
   try {
     // Yedeği uzak sunucuya kopyala
-    const copyCmd = `sshpass -p '${config.sshPass}' scp -o StrictHostKeyChecking=no ${backupPath} ${config.sshUser}@${config.serverIp}:${remotePath}`
-    await execAsync(copyCmd, { maxBuffer: 1024 * 1024 * 500 })
+    const copyCmd = `scp ${sshOpts} ${backupPath} ${config.sshUser}@${config.serverIp}:${remotePath}`
+    await execAsync(copyCmd, { timeout: BACKUP_TIMEOUT_MS, maxBuffer: BACKUP_MAX_BUFFER })
 
     // Uzak sunucuda geri yükle
-    const restoreCmd = `sshpass -p '${config.sshPass}' ssh -o StrictHostKeyChecking=no ${config.sshUser}@${config.serverIp} "cd /var/www && rm -rf akademi_old && mv akademi akademi_old && tar -xzvf ${remotePath} && rm ${remotePath}"`
-    await execAsync(restoreCmd, { maxBuffer: 1024 * 1024 * 100 })
+    const restoreCmd = `ssh ${sshOpts} ${config.sshUser}@${config.serverIp} "cd /var/www && rm -rf akademi_old && mv akademi akademi_old && tar -xzvf ${remotePath} && rm ${remotePath}"`
+    await execAsync(restoreCmd, { timeout: BACKUP_TIMEOUT_MS, maxBuffer: BACKUP_MAX_BUFFER })
 
     return { success: true }
   } catch (error: unknown) {

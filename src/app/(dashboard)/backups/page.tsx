@@ -159,6 +159,8 @@ export default function BackupsPage() {
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
   const [selectedProject, setSelectedProject] = useState("ILERIHub")
   const [includeDatabase, setIncludeDatabase] = useState(false)
+  // Restore kill switch — fail-closed default (PR-3a)
+  const [restoreEnabled, setRestoreEnabled] = useState(false)
 
   // Yetki kontrolü
   const hasAccess = session?.user?.role && ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(session.user.role)
@@ -168,6 +170,15 @@ export default function BackupsPage() {
       redirect("/dashboard")
     }
   }, [status, hasAccess])
+
+  // Restore feature flag fetch (auth-gated endpoint)
+  useEffect(() => {
+    if (!session?.user?.email) return
+    fetch("/api/backups/config")
+      .then((r) => (r.ok ? r.json() : { restoreEnabled: false }))
+      .then((c) => setRestoreEnabled(c.restoreEnabled === true))
+      .catch(() => setRestoreEnabled(false))
+  }, [session?.user?.email])
 
   // Verileri yükle
   const fetchData = async () => {
@@ -278,6 +289,12 @@ export default function BackupsPage() {
 
   // Geri yükle
   const restoreBackup = async (id: string, name: string) => {
+    // Defense-in-depth: client-side kill switch check (PR-3a)
+    if (!restoreEnabled) {
+      alert("Geri yükleme geçici olarak devre dışı. Sistem yöneticisi ile iletişime geçin.")
+      return
+    }
+
     if (!confirm(`${name} yedeğini geri yüklemek istediğinizden emin misiniz?\n\nBu işlem mevcut verilerin üzerine yazacaktır!`)) return
     if (!confirm("Bu işlem geri alınamaz. Devam etmek istediğinizden EMİN misiniz?")) return
 
@@ -532,13 +549,23 @@ export default function BackupsPage() {
                               <Download className="h-4 w-4 text-blue-600" />
                             </button>
                             {backup.projectName !== "Database" && (
-                              <button
-                                onClick={() => restoreBackup(backup.id, backup.backupName)}
-                                className="p-2 hover:bg-accent rounded-lg"
-                                title="Geri Yükle"
-                              >
-                                <RotateCcw className="h-4 w-4 text-orange-600" />
-                              </button>
+                              restoreEnabled ? (
+                                <button
+                                  onClick={() => restoreBackup(backup.id, backup.backupName)}
+                                  className="p-2 hover:bg-accent rounded-lg"
+                                  title="Geri Yükle"
+                                >
+                                  <RotateCcw className="h-4 w-4 text-orange-600" />
+                                </button>
+                              ) : (
+                                <button
+                                  disabled
+                                  className="p-2 rounded-lg opacity-40 cursor-not-allowed"
+                                  title="Geri yükleme geçici olarak devre dışı (PR-3b bekleniyor)"
+                                >
+                                  <RotateCcw className="h-4 w-4 text-orange-600" />
+                                </button>
+                              )
                             )}
                           </>
                         )}

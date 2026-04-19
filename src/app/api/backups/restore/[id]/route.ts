@@ -17,6 +17,24 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Kill switch — çalışmadan önce, auth'tan önce
+  if (process.env.ENABLE_BACKUP_RESTORE !== 'true') {
+    const { id: blockedId } = await params
+    console.warn(
+      `[backup-restore] Blocked by kill switch. ` +
+      `backupId=${blockedId}, ip=${request.headers.get('x-forwarded-for') ?? 'n/a'}`
+    )
+    return NextResponse.json(
+      {
+        error: 'Restore is disabled',
+        message:
+          'Backup restore is currently disabled by operations policy. ' +
+          'Contact system administrator.',
+      },
+      { status: 503 }
+    )
+  }
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {

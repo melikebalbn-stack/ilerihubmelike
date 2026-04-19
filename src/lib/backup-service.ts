@@ -6,6 +6,43 @@ import * as path from 'path'
 
 const execAsync = promisify(exec)
 
+const BACKUP_TIMEOUT_MS = 30 * 60 * 1000
+const BACKUP_MAX_BUFFER = 10 * 1024 * 1024
+const MIN_BACKUP_BYTES = 1024
+
+function getBackupDbConfig() {
+  const url = process.env.PG_BACKUP_URL
+  if (!url) {
+    throw new Error(
+      'PG_BACKUP_URL environment variable not set. ' +
+      'Expected format: postgresql://user:password@host:port/database'
+    )
+  }
+  const parsed = new URL(url)
+  return {
+    host: parsed.hostname,
+    port: parsed.port || '5432',
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: parsed.pathname.slice(1),
+  }
+}
+
+function assertFileNonEmpty(filePath: string, minBytes = MIN_BACKUP_BYTES): number {
+  let stat: fs.Stats
+  try {
+    stat = fs.statSync(filePath)
+  } catch {
+    throw new Error(`Backup file not created: ${filePath}`)
+  }
+  if (stat.size < minBytes) {
+    throw new Error(
+      `Backup file suspiciously small (${stat.size} bytes < ${minBytes}): ${filePath}`
+    )
+  }
+  return stat.size
+}
+
 // Proje Yapılandırmaları
 export const PROJECT_CONFIGS = {
   ILERIHub: {
@@ -78,14 +115,23 @@ export async function backupILERIHub(backupName: string): Promise<{ success: boo
   const filePath = path.join(BACKUP_DIR, backupName)
 
   const excludeArgs = config.excludes.map(e => `--exclude='${e}'`).join(' ')
-  const command = `cd ${path.dirname(config.path)} && tar -czvf ${filePath} ${excludeArgs} ${path.basename(config.path)}`
+  const command = `cd ${path.dirname(config.path)} && tar -czf ${filePath} ${excludeArgs} ${path.basename(config.path)}`
 
   try {
-    await execAsync(command, { maxBuffer: 1024 * 1024 * 100 })
+    await execAsync(command, {
+      timeout: BACKUP_TIMEOUT_MS,
+      maxBuffer: BACKUP_MAX_BUFFER,
+    })
+    const size = assertFileNonEmpty(filePath)
+    console.log(`[backup] Project archive verified: ${filePath} (${size} bytes)`)
     return { success: true, filePath }
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return { success: false, filePath: '', error: errorMessage }
+    try { fs.unlinkSync(filePath) } catch {}
+    const err = error as NodeJS.ErrnoException & { code?: string | number; signal?: string }
+    const parts = [err?.message || 'Unknown error']
+    if (err?.code !== undefined) parts.push(`code=${err.code}`)
+    if (err?.signal) parts.push(`signal=${err.signal}`)
+    return { success: false, filePath: '', error: parts.join(' ') }
   }
 }
 
@@ -100,21 +146,33 @@ export async function backupAkademi(backupName: string): Promise<{ success: bool
 
   try {
     // Uzak sunucuda yedek oluştur
-    const createCmd = `sshpass -p '${config.sshPass}' ssh -o StrictHostKeyChecking=no ${config.sshUser}@${config.serverIp} "cd /var/www && tar -czvf ${remotePath} ${excludeArgs} akademi"`
-    await execAsync(createCmd, { maxBuffer: 1024 * 1024 * 100 })
+    const createCmd = `sshpass -p '${config.sshPass}' ssh -o StrictHostKeyChecking=no ${config.sshUser}@${config.serverIp} "cd /var/www && tar -czf ${remotePath} ${excludeArgs} akademi"`
+    await execAsync(createCmd, {
+      timeout: BACKUP_TIMEOUT_MS,
+      maxBuffer: BACKUP_MAX_BUFFER,
+    })
 
     // Yedeği bu sunucuya kopyala
     const copyCmd = `sshpass -p '${config.sshPass}' scp -o StrictHostKeyChecking=no ${config.sshUser}@${config.serverIp}:${remotePath} ${localPath}`
-    await execAsync(copyCmd, { maxBuffer: 1024 * 1024 * 500 })
+    await execAsync(copyCmd, {
+      timeout: BACKUP_TIMEOUT_MS,
+      maxBuffer: BACKUP_MAX_BUFFER,
+    })
 
     // Uzak sunucudaki geçici dosyayı sil
     const cleanCmd = `sshpass -p '${config.sshPass}' ssh -o StrictHostKeyChecking=no ${config.sshUser}@${config.serverIp} "rm -f ${remotePath}"`
-    await execAsync(cleanCmd)
+    await execAsync(cleanCmd, { timeout: 60_000 })
 
+    const size = assertFileNonEmpty(localPath)
+    console.log(`[backup] Akademi archive verified: ${localPath} (${size} bytes)`)
     return { success: true, filePath: localPath }
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return { success: false, filePath: '', error: errorMessage }
+    try { fs.unlinkSync(localPath) } catch {}
+    const err = error as NodeJS.ErrnoException & { code?: string | number; signal?: string }
+    const parts = [err?.message || 'Unknown error']
+    if (err?.code !== undefined) parts.push(`code=${err.code}`)
+    if (err?.signal) parts.push(`signal=${err.signal}`)
+    return { success: false, filePath: '', error: parts.join(' ') }
   }
 }
 
@@ -122,25 +180,51 @@ export async function backupAkademi(backupName: string): Promise<{ success: bool
 export async function backupDatabase(backupName: string): Promise<{ success: boolean; filePath: string; error?: string }> {
   await ensureBackupDir()
   const filePath = path.join(BACKUP_DIR, backupName)
-
-  // PostgreSQL bağlantı bilgileri (.env'den alınmalı, şimdilik sabit)
-  const dbName = 'ilerihub'
-  const dbUser = 'rokunet'
-  const dbHost = 'localhost'
-
-  const command = `pg_dump -h ${dbHost} -U ${dbUser} -d ${dbName} -F c -f ${filePath.replace('.tar.gz', '.dump')}`
+  const dumpName = backupName.replace('.tar.gz', '.dump')
+  const dumpPath = path.join(BACKUP_DIR, dumpName)
 
   try {
-    await execAsync(command)
+    const db = getBackupDbConfig()
 
-    // Dump dosyasını tar.gz yap
-    const tarCmd = `cd ${BACKUP_DIR} && tar -czvf ${backupName} ${backupName.replace('.tar.gz', '.dump')} && rm ${backupName.replace('.tar.gz', '.dump')}`
-    await execAsync(tarCmd)
+    // -w: never prompt for password (fail fast instead of hang)
+    // -F c: custom format, most flexible for restore
+    // Password travels via env (PGPASSWORD), not argv — not visible in `ps aux`
+    const pgDumpCmd = [
+      'pg_dump',
+      '-h', db.host,
+      '-p', db.port,
+      '-U', db.user,
+      '-d', db.database,
+      '-w',
+      '-F', 'c',
+      '-f', dumpPath,
+    ].map(arg => `"${arg}"`).join(' ')
+
+    await execAsync(pgDumpCmd, {
+      env: { ...process.env, PGPASSWORD: db.password },
+      timeout: BACKUP_TIMEOUT_MS,
+      maxBuffer: BACKUP_MAX_BUFFER,
+    })
+
+    assertFileNonEmpty(dumpPath)
+
+    const tarCmd = `cd "${BACKUP_DIR}" && tar -czf "${backupName}" "${dumpName}" && rm "${dumpName}"`
+    await execAsync(tarCmd, {
+      timeout: BACKUP_TIMEOUT_MS,
+      maxBuffer: BACKUP_MAX_BUFFER,
+    })
+
+    const size = assertFileNonEmpty(filePath)
+    console.log(`[backup] Database dump verified: ${filePath} (${size} bytes)`)
 
     return { success: true, filePath }
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return { success: false, filePath: '', error: errorMessage }
+    try { fs.unlinkSync(dumpPath) } catch {}
+    const err = error as NodeJS.ErrnoException & { code?: string | number; signal?: string }
+    const parts = [err?.message || 'Unknown error']
+    if (err?.code !== undefined) parts.push(`code=${err.code}`)
+    if (err?.signal) parts.push(`signal=${err.signal}`)
+    return { success: false, filePath: '', error: parts.join(' ') }
   }
 }
 

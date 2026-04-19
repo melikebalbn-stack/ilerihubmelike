@@ -149,10 +149,18 @@ async function processBackup(backupId: string, projectName: string, backupName: 
         result = { success: false, filePath: '', error: 'Geçersiz proje' }
     }
 
-    // Veritabanı yedeği (opsiyonel)
+    // Veritabanı yedeği (opsiyonel) — başarısızlık parent kaydına yansıtılır
     if (includeDatabase && projectName !== 'Database') {
       const dbBackupName = generateBackupName('database')
-      await backupDatabase(dbBackupName)
+      const dbResult = await backupDatabase(dbBackupName)
+      if (!dbResult.success) {
+        result = {
+          success: false,
+          filePath: result.filePath,
+          error: [result.error, `Database dump failed: ${dbResult.error ?? 'unknown'}`]
+            .filter(Boolean).join(' | '),
+        }
+      }
     }
 
     const endTime = Date.now()

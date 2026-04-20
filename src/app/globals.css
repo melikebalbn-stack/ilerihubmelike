@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Akademi modülü - scoped theme (sadece .akademi-scope altında aktif) */
+@import "../styles/akademi.css";
+
 @layer base {
   :root {
     --background: 0 0% 100%;

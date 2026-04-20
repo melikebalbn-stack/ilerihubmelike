@@ -1,0 +1,152 @@
+/* =========================================================
+   Akademi Scoped Theme — sadece .akademi-scope altında aktif
+   ILERIHub'ın genel temasını etkilemez. Dark mode atlandı.
+   ========================================================= */
+
+.akademi-scope {
+  /* --- Accent (mavi) --- */
+  --ak-accent: #3878ff;
+  --ak-accent-hover: #2860e0;
+  --ak-accent-glow: rgba(56, 120, 255, 0.12);
+  --ak-accent-shadow: 0 2px 12px rgba(56, 120, 255, 0.2);
+
+  /* --- Renk paleti --- */
+  --ak-teal: #00d4b4;
+  --ak-teal-glow: rgba(0, 212, 180, 0.12);
+  --ak-green: #10b981;
+  --ak-green-glow: rgba(16, 185, 129, 0.12);
+  --ak-orange: #f59e0b;
+  --ak-orange-glow: rgba(245, 158, 11, 0.12);
+  --ak-red: #ef4444;
+  --ak-red-glow: rgba(239, 68, 68, 0.12);
+  --ak-purple: #a855f7;
+  --ak-purple-glow: rgba(168, 85, 247, 0.12);
+
+  /* --- Background --- */
+  --ak-bg-primary: #f3f4f8;
+  --ak-bg-sidebar: #ffffff;
+  --ak-bg-card: #ffffff;
+  --ak-bg-topbar: rgba(243, 244, 248, 0.9);
+  --ak-bg-input: #f8f9fc;
+  --ak-bg-search: #f1f2f6;
+
+  /* --- Text --- */
+  --ak-text-primary: #0f172a;
+  --ak-text-secondary: rgba(15, 23, 42, 0.6);
+  --ak-text-tertiary: rgba(15, 23, 42, 0.4);
+  --ak-text-muted: rgba(15, 23, 42, 0.1);
+
+  /* --- Border --- */
+  --ak-border-card: rgba(15, 23, 42, 0.06);
+  --ak-border-input: rgba(15, 23, 42, 0.08);
+  --ak-border-search: rgba(15, 23, 42, 0.06);
+  --ak-border-sidebar: rgba(15, 23, 42, 0.06);
+  --ak-border-divider: rgba(15, 23, 42, 0.05);
+
+  /* --- Nav active --- */
+  --ak-nav-active: rgba(56, 120, 255, 0.08);
+  --ak-nav-active-border: #3878ff;
+
+  /* --- Component tokens --- */
+  --ak-badge-bg: rgba(56, 120, 255, 0.08);
+  --ak-badge-border: rgba(56, 120, 255, 0.15);
+  --ak-progress-bg: rgba(15, 23, 42, 0.06);
+
+  /* --- Radius --- */
+  --ak-radius-card: 14px;
+  --ak-radius-card-lg: 16px;
+  --ak-radius-btn: 10px;
+  --ak-radius-badge: 6px;
+  --ak-radius-avatar: 10px;
+
+  /* --- Font --- */
+  font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "ss01", "cv01";
+
+  /* --- Card shadow --- */
+  --ak-card-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --ak-card-hover-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+}
+
+/* =========================================================
+   Component Classes
+   ========================================================= */
+
+.akademi-scope .ak-card {
+  background: var(--ak-bg-card);
+  border: 1px solid var(--ak-border-card);
+  border-radius: var(--ak-radius-card);
+  box-shadow: var(--ak-card-shadow);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.akademi-scope .ak-card:hover {
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: var(--ak-card-hover-shadow);
+  transform: translateY(-3px);
+}
+
+.akademi-scope .ak-card-static {
+  background: var(--ak-bg-card);
+  border: 1px solid var(--ak-border-card);
+  border-radius: var(--ak-radius-card);
+  box-shadow: var(--ak-card-shadow);
+}
+
+/* =========================================================
+   Staggered Entrance Animations
+   ========================================================= */
+
+@keyframes akSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.akademi-scope .ak-animate-in {
+  animation: akSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.akademi-scope .ak-delay-1 { animation-delay: 0.05s; }
+.akademi-scope .ak-delay-2 { animation-delay: 0.09s; }
+.akademi-scope .ak-delay-3 { animation-delay: 0.13s; }
+.akademi-scope .ak-delay-4 { animation-delay: 0.17s; }
+.akademi-scope .ak-delay-5 { animation-delay: 0.21s; }
+.akademi-scope .ak-delay-6 { animation-delay: 0.25s; }
+.akademi-scope .ak-delay-7 { animation-delay: 0.29s; }
+.akademi-scope .ak-delay-8 { animation-delay: 0.33s; }
+
+/* =========================================================
+   Selection + Scrollbar
+   ========================================================= */
+
+.akademi-scope ::selection {
+  background: var(--ak-accent-glow);
+}
+
+.akademi-scope ::-webkit-scrollbar { width: 5px; }
+.akademi-scope ::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.15);
+  border-radius: 3px;
+}
+.akademi-scope ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.25);
+}
+
+/* =========================================================
+   Utility Helpers
+   ========================================================= */
+
+.akademi-scope .ak-text-accent { color: var(--ak-accent); }
+.akademi-scope .ak-text-teal { color: var(--ak-teal); }
+.akademi-scope .ak-text-green { color: var(--ak-green); }
+.akademi-scope .ak-text-orange { color: var(--ak-orange); }
+.akademi-scope .ak-text-red { color: var(--ak-red); }
+.akademi-scope .ak-text-purple { color: var(--ak-purple); }
+
+.akademi-scope .ak-bg-accent-glow { background: var(--ak-accent-glow); }
+.akademi-scope .ak-bg-teal-glow { background: var(--ak-teal-glow); }
+.akademi-scope .ak-bg-green-glow { background: var(--ak-green-glow); }
+.akademi-scope .ak-bg-orange-glow { background: var(--ak-orange-glow); }
+.akademi-scope .ak-bg-red-glow { background: var(--ak-red-glow); }
+.akademi-scope .ak-bg-purple-glow { background: var(--ak-purple-glow); }

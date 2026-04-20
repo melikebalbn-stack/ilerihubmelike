@@ -68,7 +68,7 @@ const mainMenuItems = [
   { name: "Planlı Görevler", icon: CalendarCheck, href: "/tasks", roles: ["*"] },
   // { name: "SSS", icon: HelpCircle, href: "/faq", roles: ["*"] }, // Şimdilik gizli
   // { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] }, // Şimdilik gizli
-  // { name: "Eğitimlerim", icon: GraduationCap, href: "/my-trainings", roles: ["*"] }, // BGYS ile ilgili - şimdilik gizli
+  { name: "Akademi", icon: GraduationCap, href: "/akademi", roles: ["*"] },
   { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
 ]
 

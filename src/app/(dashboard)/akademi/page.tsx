@@ -1,84 +1,270 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { GraduationCap, Sparkles } from "lucide-react";
+import { resolveAkademiUserId } from "@/lib/akademi-user";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
+import { StatCard } from "@/components/akademi/dashboard/StatCard";
+import { CourseListItem } from "@/components/akademi/dashboard/CourseListItem";
+import { XpCard } from "@/components/akademi/dashboard/XpCard";
+import { LeaderboardMini } from "@/components/akademi/dashboard/LeaderboardMini";
+import {
+  resolveUserDisplayName,
+  resolveFirstName,
+  getInitials,
+} from "@/lib/akademi-helpers";
+import type {
+  CourseListItem as CourseListItemType,
+  LeaderboardEntry,
+  XpSummary,
+} from "@/types/akademi";
 
-export default async function AkademiHomePage() {
+export default async function AkademiDashboardPage() {
   const session = await getServerSession(authOptions);
-  const u = session?.user as { firstName?: string; name?: string | null } | undefined;
-  const firstName = u?.firstName ?? u?.name?.split(" ")[0] ?? "";
+  const userId = await resolveAkademiUserId(session);
+  if (!userId) redirect("/login");
+
+  const [user, myCourses, xpSummary, topLeaderboard] = await Promise.all([
+    fetchUser(userId),
+    fetchMyCourses(userId),
+    fetchXpSummary(userId),
+    fetchLeaderboardTop(userId, 5),
+  ]);
+
+  const firstName = user
+    ? resolveFirstName({
+        firstName: user.firstName,
+        name: user.name,
+        email: user.email,
+      })
+    : "";
+
+  const assignedCount = myCourses.length;
+  const completedCount = myCourses.filter((c) => c.isCompleted).length;
+  const inProgressCount = myCourses.filter(
+    (c) => !c.isCompleted && c.progressPercent > 0
+  ).length;
 
   return (
-    <div className="px-8 py-7">
-      <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-10 ak-animate-in">
-          <div
-            className="w-20 h-20 mx-auto rounded-3xl flex items-center justify-center mb-6"
-            style={{ background: "var(--ak-accent-glow)" }}
-          >
-            <GraduationCap
-              className="w-10 h-10"
+    <div className="px-8 py-7 max-w-7xl mx-auto">
+      <div className="mb-6 ak-animate-in">
+        <h1
+          className="text-2xl font-bold mb-1"
+          style={{ color: "var(--ak-text-primary)" }}
+        >
+          Merhaba{firstName ? `, ${firstName}` : ""}! 👋
+        </h1>
+        <p className="text-sm" style={{ color: "var(--ak-text-secondary)" }}>
+          Bugün hangi eğitime devam etmek istersin?
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+        <StatCard
+          icon="bookOpen"
+          label="Atanan Eğitim"
+          value={assignedCount}
+          color="accent"
+          delayIndex={1}
+        />
+        <StatCard
+          icon="award"
+          label="Tamamlanan"
+          value={completedCount}
+          color="green"
+          delayIndex={2}
+        />
+        <StatCard
+          icon="clock"
+          label="Devam Eden"
+          value={inProgressCount}
+          color="orange"
+          delayIndex={3}
+        />
+        <StatCard
+          icon="trendingUp"
+          label="XP Puanı"
+          value={xpSummary.xp}
+          color="purple"
+          delayIndex={4}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <h2
+              className="text-base font-bold"
+              style={{ color: "var(--ak-text-primary)" }}
+            >
+              📚 Eğitimlerim
+            </h2>
+            <Link
+              href="/akademi/courses"
+              className="text-xs font-medium flex items-center gap-1"
               style={{ color: "var(--ak-accent)" }}
-            />
+            >
+              Tümünü Gör
+              <ChevronRight className="w-3 h-3" />
+            </Link>
           </div>
-          <h1
-            className="text-3xl font-bold mb-3"
-            style={{ color: "var(--ak-text-primary)" }}
-          >
-            İleri Akademi&apos;ye Hoş Geldin{firstName ? `, ${firstName}` : ""}!
-          </h1>
-          <p
-            className="text-base max-w-xl mx-auto"
-            style={{ color: "var(--ak-text-secondary)" }}
-          >
-            Kurumsal eğitim platformumuza ILERIHub içinden erişim
-            sağlayabilirsin. Modül şu anda kurulum aşamasında — yakında
-            eğitimlerin, sınavların ve sertifikaların burada olacak.
-          </p>
+
+          {myCourses.length === 0 ? (
+            <div
+              className="ak-card-static p-6 text-center text-sm"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              Henüz sana atanmış bir eğitim yok. Yöneticinle iletişime geç.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {myCourses.slice(0, 5).map((c, i) => (
+                <CourseListItem
+                  key={c.id}
+                  course={c}
+                  delayIndex={Math.min(i + 1, 8)}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="ak-card-static p-6 ak-animate-in ak-delay-2">
-          <div className="flex items-start gap-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: "var(--ak-orange-glow)" }}
-            >
-              <Sparkles
-                className="w-5 h-5"
-                style={{ color: "var(--ak-orange)" }}
-              />
-            </div>
-            <div>
-              <h2
-                className="text-base font-semibold mb-2"
-                style={{ color: "var(--ak-text-primary)" }}
-              >
-                Geliştirme Sprint Planı
-              </h2>
-              <ul
-                className="text-sm space-y-1.5"
-                style={{ color: "var(--ak-text-secondary)" }}
-              >
-                <li>
-                  <span style={{ color: "var(--ak-accent)" }}>Sprint 1:</span>{" "}
-                  Dashboard, Eğitimler, Kurs Detayı, Sıralama
-                </li>
-                <li>
-                  <span style={{ color: "var(--ak-accent)" }}>Sprint 2:</span>{" "}
-                  Yönetim paneli (kurs CRUD, atama)
-                </li>
-                <li>
-                  <span style={{ color: "var(--ak-accent)" }}>Sprint 3:</span>{" "}
-                  Sınav sistemi (çözme, sonuç, analiz)
-                </li>
-                <li>
-                  <span style={{ color: "var(--ak-accent)" }}>Sprint 4:</span>{" "}
-                  Sertifika üretimi ve profil yönetimi
-                </li>
-              </ul>
-            </div>
-          </div>
+        <div className="space-y-5 lg:sticky lg:top-20 lg:self-start">
+          <XpCard summary={xpSummary} />
+          <LeaderboardMini entries={topLeaderboard} />
         </div>
       </div>
     </div>
   );
+}
+
+async function fetchUser(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+    },
+  });
+}
+
+async function fetchMyCourses(userId: string): Promise<CourseListItemType[]> {
+  const courses = await prisma.course.findMany({
+    where: {
+      isActive: true,
+      directAssignments: {
+        some: { userAssignments: { some: { userId } } },
+      },
+    },
+    include: {
+      _count: { select: { contents: { where: { isActive: true } } } },
+      progress: { where: { userId }, take: 1 },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return courses.map((c) => {
+    const prog = c.progress[0];
+    return {
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      thumbnail: c.thumbnail,
+      category: c.category,
+      difficulty: c.difficulty,
+      duration: c.duration,
+      contentCount: c._count.contents,
+      progressPercent: prog?.percentage ?? 0,
+      isCompleted: Boolean(prog?.completedAt),
+      isAssigned: true,
+    };
+  });
+}
+
+async function fetchXpSummary(userId: string): Promise<XpSummary> {
+  const [xp, levels, history] = await Promise.all([
+    prisma.userXp.findUnique({ where: { userId } }),
+    prisma.akademiLevel.findMany({ orderBy: { level: "asc" } }),
+    prisma.xpHistory.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
+  ]);
+
+  const total = xp?.total ?? 0;
+  const currentLevel = levels.find(
+    (l) => total >= l.minXp && (l.maxXp === null || total <= l.maxXp)
+  );
+  const nextLevel = levels.find((l) => l.minXp > total);
+
+  return {
+    xp: total,
+    level: currentLevel?.level ?? 1,
+    levelTitle: currentLevel?.title ?? "Başlangıç",
+    nextLevelAt: nextLevel?.minXp ?? null,
+    streakDays: 0,
+    recentHistory: history.map((h) => ({
+      id: h.id,
+      amount: h.amount,
+      reason: h.reason,
+      createdAt: h.createdAt.toISOString(),
+    })),
+  };
+}
+
+async function fetchLeaderboardTop(
+  currentUserId: string,
+  n: number
+): Promise<LeaderboardEntry[]> {
+  const [topXp, levels] = await Promise.all([
+    prisma.userXp.findMany({
+      orderBy: { total: "desc" },
+      take: n,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            department: true,
+          },
+        },
+      },
+    }),
+    prisma.akademiLevel.findMany({ orderBy: { level: "asc" } }),
+  ]);
+
+  const getLevel = (xp: number) => {
+    const found = levels.find(
+      (l) => xp >= l.minXp && (l.maxXp === null || xp <= l.maxXp)
+    );
+    return {
+      level: found?.level ?? 1,
+      title: found?.title ?? "Başlangıç",
+    };
+  };
+
+  return topXp.map((u, idx) => {
+    const name = resolveUserDisplayName(u.user);
+    const { level, title } = getLevel(u.total);
+    return {
+      userId: u.userId,
+      rank: idx + 1,
+      name,
+      avatarInitials: getInitials(name),
+      department: u.user.department ?? null,
+      xp: u.total,
+      level,
+      levelTitle: title,
+      streakDays: 0,
+      isCurrentUser: u.userId === currentUserId,
+    };
+  });
 }

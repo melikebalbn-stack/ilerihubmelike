@@ -59,10 +59,6 @@
   --ak-radius-badge: 6px;
   --ak-radius-avatar: 10px;
 
-  /* --- Font --- */
-  font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-feature-settings: "ss01", "cv01";
-
   /* --- Card shadow --- */
   --ak-card-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
   --ak-card-hover-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);

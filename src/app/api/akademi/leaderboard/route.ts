@@ -1,15 +1,16 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { NextResponse } from "next/server";
 import type { LeaderboardEntry, LeaderboardResponse } from "@/types/akademi";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const currentUserId = await resolveAkademiUserId(session);
+  if (!currentUserId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const currentUserId = (session.user as { id?: string }).id ?? "";
 
   const [topXp, levels] = await Promise.all([
     prisma.userXp.findMany({

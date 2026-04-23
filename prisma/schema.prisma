@@ -66,6 +66,10 @@ model User {
   employeeId  String? @unique // Sicil numarası
   tcLastFour  String?         // TC Kimlik No son 4 hanesi
 
+  // Personnel (HR master) link — 1:1
+  personnelId String?    @unique
+  personnel   Personnel? @relation("UserPersonnel", fields: [personnelId], references: [id])
+
   // Mavi yaka ek alanlar
   duty          String?   // Görev
   section       String?   // Bölüm
@@ -8421,6 +8425,7 @@ model Personnel {
   // İlişkiler
   sensitive         PersonnelSensitive?
   accessLogs        PersonnelAccessLog[]
+  user              User?     @relation("UserPersonnel")
 
   @@index([bolum])
   @@index([yakaRengi])

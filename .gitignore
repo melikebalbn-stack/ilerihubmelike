@@ -19,3 +19,4 @@ public/uploads/*
 !public/uploads/.gitkeep
 .claude/
 src/generated/
+prisma/scripts/output/

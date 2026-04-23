@@ -1,24 +1,107 @@
-import { PlaceholderPage } from "@/components/akademi/layout/PlaceholderPage";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
-import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { AdminStatCard } from "@/components/akademi/admin/AdminStatCard";
+import { AdminActionCard } from "@/components/akademi/admin/AdminActionCard";
 
-export default async function AkademiAdminPlaceholder() {
-  const { error } = await requireAkademiAdmin();
-  if (error) {
-    redirect("/akademi");
-  }
+export default async function AkademiAdminDashboardPage() {
+  const [activeCourses, totalAssignments, activeUsers, xpAgg] =
+    await Promise.all([
+      prisma.course.count({ where: { isActive: true } }),
+      prisma.userCourseAssignment.count(),
+      prisma.userXp.count({ where: { total: { gt: 0 } } }),
+      prisma.xpHistory.aggregate({ _sum: { amount: true } }),
+    ]);
+
+  const totalXp = xpAgg._sum.amount ?? 0;
 
   return (
-    <PlaceholderPage
-      title="Akademi Yönetimi"
-      description="Eğitim oluşturma, içerik yükleme ve kullanıcı atama yönetim paneli hazırlanıyor."
-      expectedSprint="Sprint 2"
-      features={[
-        "Eğitim CRUD (oluşturma, düzenleme, silme)",
-        "Video/PDF içerik yükleme",
-        "Departman ve kullanıcı bazlı atama",
-        "Paket yönetimi ve toplu atama",
-      ]}
-    />
+    <div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+        <AdminStatCard
+          icon="bookOpen"
+          label="Aktif Kurs"
+          value={activeCourses}
+          color="accent"
+          delayIndex={1}
+        />
+        <AdminStatCard
+          icon="users"
+          label="Toplam Atama"
+          value={totalAssignments}
+          color="green"
+          delayIndex={2}
+        />
+        <AdminStatCard
+          icon="award"
+          label="Aktif Öğrenci"
+          value={activeUsers}
+          color="orange"
+          delayIndex={3}
+        />
+        <AdminStatCard
+          icon="trendingUp"
+          label="Toplam XP"
+          value={totalXp}
+          color="purple"
+          delayIndex={4}
+        />
+      </div>
+
+      <div className="mb-4">
+        <h2
+          className="text-base font-bold mb-3"
+          style={{ color: "var(--ak-text-primary)" }}
+        >
+          Hızlı Eylemler
+        </h2>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        <AdminActionCard
+          href="/akademi/admin/courses"
+          title="Kursları Yönet"
+          description="Yeni kurs oluştur, mevcut kursları düzenle veya sil"
+          icon="bookOpen"
+          color="accent"
+          delayIndex={1}
+        />
+        <AdminActionCard
+          href="/akademi/admin/assignments"
+          title="Atamaları Yönet"
+          description="Kullanıcılara kurs ata veya atamaları kaldır"
+          icon="userCheck"
+          color="green"
+          delayIndex={2}
+        />
+        <AdminActionCard
+          href="/akademi/admin/users"
+          title="Kullanıcı İlerlemesi"
+          description="Kullanıcı bazlı eğitim ilerlemesini görüntüle"
+          icon="users"
+          color="orange"
+          delayIndex={3}
+        />
+        <AdminActionCard
+          href="#"
+          title="İçerik Yükle"
+          description="Sprint 2b'de aktif olacak — video ve PDF yükleme"
+          icon="upload"
+          color="purple"
+          delayIndex={4}
+          disabled
+        />
+      </div>
+
+      <div
+        className="mt-8 p-4 rounded-[10px] text-sm"
+        style={{
+          background: "var(--ak-accent-glow)",
+          color: "var(--ak-text-secondary)",
+        }}
+      >
+        <strong style={{ color: "var(--ak-accent)" }}>ℹ️ Sprint 2a:</strong>{" "}
+        Şu an kurs listesi ve atamalar (PR-B2/B3) yapılıyor. İçerik yükleme
+        (video/PDF) Sprint 2b&apos;de aktif olacak.
+      </div>
+    </div>
   );
 }

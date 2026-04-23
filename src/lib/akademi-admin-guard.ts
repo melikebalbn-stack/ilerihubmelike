@@ -1,13 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { NextResponse } from "next/server";
-
-const AKADEMI_ADMIN_ROLES = [
-  "SUPER_ADMIN",
-  "ADMIN",
-  "HR_MANAGER",
-  "IT_MANAGER",
-];
+import { isAkademiAdminRole } from "@/lib/akademi-admin-roles";
 
 export async function requireAkademiAdmin() {
   const session = await getServerSession(authOptions);
@@ -18,7 +12,7 @@ export async function requireAkademiAdmin() {
     };
   }
   const role = (session.user as { role?: string }).role ?? "";
-  if (!AKADEMI_ADMIN_ROLES.includes(role)) {
+  if (!isAkademiAdminRole(role)) {
     return {
       session,
       error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),

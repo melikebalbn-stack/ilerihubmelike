@@ -76,13 +76,12 @@ export default async function AkademiAdminDashboardPage() {
           delayIndex={3}
         />
         <AdminActionCard
-          href="#"
-          title="İçerik Yükle"
-          description="Sprint 2b'de aktif olacak — video ve PDF yükleme"
+          href="/akademi/admin/courses"
+          title="İçerik Yönetimi"
+          description="Kurs detayından video ve PDF içerikleri yükleyin"
           icon="upload"
           color="purple"
           delayIndex={4}
-          disabled
         />
       </div>
 
@@ -94,10 +93,10 @@ export default async function AkademiAdminDashboardPage() {
         }}
       >
         <strong style={{ color: "var(--ak-accent)" }}>
-          ℹ️ Sprint 2a tamam:
+          ✅ Sprint 2b tamam:
         </strong>{" "}
-        Kurs CRUD + atamalar + kullanıcı ilerlemesi aktif. İçerik yükleme
-        (video/PDF) Sprint 2b&apos;de aktif olacak.
+        Kurs içerikleri artık yüklenebilir (video/PDF/doküman). Drag-drop
+        ile sıralayın. Sınav sistemi Sprint 3&apos;te gelecek.
       </div>
     </div>
   );

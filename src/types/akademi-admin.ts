@@ -129,3 +129,52 @@ export interface AdminUserProgressResponse {
   courses: AdminUserCourseProgress[];
   recentHistory: AdminUserXpHistoryItem[];
 }
+
+// =========================================================
+// Content types (admin side)
+// =========================================================
+
+export type AdminContentType = "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ";
+
+export interface AdminContentItem {
+  id: string;
+  courseId: string;
+  title: string;
+  description: string | null;
+  type: AdminContentType;
+  filePath: string | null;
+  fileUrl: string | null;
+  duration: number | null;
+  fileSize: number | null;
+  order: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminContentListResponse {
+  contents: AdminContentItem[];
+}
+
+export interface AdminContentCreateInput {
+  courseId: string;
+  title: string;
+  description?: string;
+  type: AdminContentType;
+  duration?: number | null;
+  filePath?: string | null;
+  fileSize?: number | null;
+}
+
+export type AdminContentUpdateInput = Partial<
+  Omit<AdminContentCreateInput, "courseId">
+> & {
+  order?: number;
+  isActive?: boolean;
+};
+
+export interface AdminUploadResponse {
+  filePath: string;
+  fileSize: number;
+  message: string;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Pencil, Trash2, BookOpen } from "lucide-react";
 import type { AdminCourseListItem } from "@/types/akademi-admin";
 import { getDifficultyLabel, formatDuration } from "@/lib/akademi-helpers";
@@ -17,6 +18,8 @@ export function AdminCoursesTable({
   onDelete,
   onToggleActive,
 }: Props) {
+  const router = useRouter();
+
   if (courses.length === 0) {
     return (
       <div
@@ -64,7 +67,12 @@ export function AdminCoursesTable({
             {courses.map((c) => (
               <tr
                 key={c.id}
-                className="transition-colors hover:bg-gray-50"
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.closest("button")) return;
+                  router.push(`/akademi/admin/courses/${c.id}`);
+                }}
+                className="transition-colors hover:bg-gray-50 cursor-pointer"
                 style={{
                   borderBottom: "1px solid var(--ak-border-divider)",
                   opacity: c.isActive ? 1 : 0.6,
@@ -122,7 +130,10 @@ export function AdminCoursesTable({
                 <td className="px-4 py-3">
                   <button
                     type="button"
-                    onClick={() => onToggleActive(c)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleActive(c);
+                    }}
                     className="text-xs font-semibold px-2.5 py-1 rounded-full transition-colors"
                     style={{
                       background: c.isActive
@@ -140,7 +151,10 @@ export function AdminCoursesTable({
                   <div className="inline-flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => onEdit(c)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(c);
+                      }}
                       className="p-2 rounded-md transition-colors hover:bg-gray-100"
                       title="Düzenle"
                     >
@@ -151,7 +165,10 @@ export function AdminCoursesTable({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onDelete(c)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(c);
+                      }}
                       className="p-2 rounded-md transition-colors hover:bg-red-50"
                       title="Sil"
                     >

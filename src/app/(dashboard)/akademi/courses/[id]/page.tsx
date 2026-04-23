@@ -46,10 +46,7 @@ export default function AkademiCourseDetailPage() {
         alert("İşlem başarısız oldu. Lütfen tekrar deneyin.");
         return;
       }
-      const data = await res.json();
-      if (data.xpGranted > 0) {
-        console.log(`+${data.xpGranted} XP kazandın!`);
-      }
+      await res.json();
       loadCourse();
       if (viewerContent?.id === contentId) {
         setViewerContent(null);

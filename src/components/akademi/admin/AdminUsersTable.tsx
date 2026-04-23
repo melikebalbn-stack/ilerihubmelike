@@ -37,12 +37,8 @@ export function AdminUsersTable({ users, onSelect }: Props) {
               <th className="text-left px-4 py-3 font-semibold hidden md:table-cell">
                 Departman
               </th>
-              <th className="text-left px-4 py-3 font-semibold hidden lg:table-cell">
-                Seviye
-              </th>
               <th className="text-left px-4 py-3 font-semibold">Atamalar</th>
               <th className="text-left px-4 py-3 font-semibold">Tamamlama</th>
-              <th className="text-left px-4 py-3 font-semibold">XP</th>
             </tr>
           </thead>
           <tbody>
@@ -86,12 +82,6 @@ export function AdminUsersTable({ users, onSelect }: Props) {
                   {u.department ?? "—"}
                 </td>
                 <td
-                  className="px-4 py-3 text-sm hidden lg:table-cell"
-                  style={{ color: "var(--ak-text-secondary)" }}
-                >
-                  Seviye {u.level}
-                </td>
-                <td
                   className="px-4 py-3 text-sm"
                   style={{ color: "var(--ak-text-secondary)" }}
                 >
@@ -113,12 +103,6 @@ export function AdminUsersTable({ users, onSelect }: Props) {
                   ) : (
                     <span className="text-xs text-gray-400">Atama yok</span>
                   )}
-                </td>
-                <td
-                  className="px-4 py-3 text-sm font-semibold"
-                  style={{ color: "var(--ak-accent)" }}
-                >
-                  {u.totalXp}
                 </td>
               </tr>
             ))}

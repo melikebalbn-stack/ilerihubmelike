@@ -3,19 +3,21 @@ import { AdminStatCard } from "@/components/akademi/admin/AdminStatCard";
 import { AdminActionCard } from "@/components/akademi/admin/AdminActionCard";
 
 export default async function AkademiAdminDashboardPage() {
-  const [activeCourses, totalAssignments, activeUsers, xpAgg] =
-    await Promise.all([
-      prisma.course.count({ where: { isActive: true } }),
-      prisma.userCourseAssignment.count(),
-      prisma.userXp.count({ where: { total: { gt: 0 } } }),
-      prisma.xpHistory.aggregate({ _sum: { amount: true } }),
-    ]);
-
-  const totalXp = xpAgg._sum.amount ?? 0;
+  const [activeCourses, totalAssignments, activeUsers] = await Promise.all([
+    prisma.course.count({ where: { isActive: true } }),
+    prisma.userCourseAssignment.count(),
+    prisma.user.count({
+      where: {
+        courseAssignments: {
+          some: {},
+        },
+      },
+    }),
+  ]);
 
   return (
     <div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-6">
         <AdminStatCard
           icon="bookOpen"
           label="Aktif Kurs"
@@ -36,13 +38,6 @@ export default async function AkademiAdminDashboardPage() {
           value={activeUsers}
           color="orange"
           delayIndex={3}
-        />
-        <AdminStatCard
-          icon="trendingUp"
-          label="Toplam XP"
-          value={totalXp}
-          color="purple"
-          delayIndex={4}
         />
       </div>
 
@@ -98,8 +93,10 @@ export default async function AkademiAdminDashboardPage() {
           color: "var(--ak-text-secondary)",
         }}
       >
-        <strong style={{ color: "var(--ak-accent)" }}>ℹ️ Sprint 2a:</strong>{" "}
-        Şu an kurs listesi ve atamalar (PR-B2/B3) yapılıyor. İçerik yükleme
+        <strong style={{ color: "var(--ak-accent)" }}>
+          ℹ️ Sprint 2a tamam:
+        </strong>{" "}
+        Kurs CRUD + atamalar + kullanıcı ilerlemesi aktif. İçerik yükleme
         (video/PDF) Sprint 2b&apos;de aktif olacak.
       </div>
     </div>

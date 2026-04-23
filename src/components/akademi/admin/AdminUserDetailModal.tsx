@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { BookOpen, TrendingUp, Calendar, CheckCircle2 } from "lucide-react";
+import { BookOpen, Calendar, CheckCircle2 } from "lucide-react";
 import { AdminUserProgressBar } from "./AdminUserProgressBar";
 import { getInitials } from "@/lib/akademi-helpers";
 import type { AdminUserProgressResponse } from "@/types/akademi-admin";
@@ -84,20 +84,6 @@ export function AdminUserDetailModal({ userId, onClose }: Props) {
                   {data.user.department && ` · ${data.user.department}`}
                 </div>
               </div>
-              <div className="text-right shrink-0">
-                <div
-                  className="text-xs"
-                  style={{ color: "var(--ak-text-tertiary)" }}
-                >
-                  Seviye {data.level}
-                </div>
-                <div
-                  className="text-xl font-bold"
-                  style={{ color: "var(--ak-accent)" }}
-                >
-                  {data.totalXp} XP
-                </div>
-              </div>
             </div>
 
             <div>
@@ -170,48 +156,6 @@ export function AdminUserDetailModal({ userId, onClose }: Props) {
               )}
             </div>
 
-            <div>
-              <div
-                className="text-xs font-semibold uppercase tracking-wide mb-2"
-                style={{ color: "var(--ak-text-tertiary)" }}
-              >
-                ⚡ Son Kazanımlar ({data.recentHistory.length})
-              </div>
-              {data.recentHistory.length === 0 ? (
-                <div className="text-sm text-gray-500 text-center py-4">
-                  Henüz XP kazanımı yok
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {data.recentHistory.map((h) => (
-                    <div
-                      key={h.id}
-                      className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-50"
-                    >
-                      <TrendingUp
-                        className="w-4 h-4 shrink-0"
-                        style={{ color: "var(--ak-green)" }}
-                      />
-                      <div
-                        className="text-sm font-semibold"
-                        style={{ color: "var(--ak-green)" }}
-                      >
-                        +{h.amount}
-                      </div>
-                      <div
-                        className="text-sm flex-1 truncate"
-                        style={{ color: "var(--ak-text-secondary)" }}
-                      >
-                        {h.reason}
-                      </div>
-                      <div className="text-xs text-gray-400 shrink-0">
-                        {formatDate(h.createdAt)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         )}
       </DialogContent>

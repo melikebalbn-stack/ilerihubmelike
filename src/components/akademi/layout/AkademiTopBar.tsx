@@ -8,7 +8,6 @@ import {
   BookOpen,
   ClipboardList,
   Award,
-  Trophy,
   User,
   Shield,
   type LucideIcon,
@@ -27,7 +26,6 @@ const tabs: TabItem[] = [
   { label: "Eğitimler", href: "/akademi/courses", icon: BookOpen },
   { label: "Sınavlar", href: "/akademi/exams", icon: ClipboardList },
   { label: "Sertifikalarım", href: "/akademi/certificates", icon: Award },
-  { label: "Sıralama", href: "/akademi/leaderboard", icon: Trophy },
   { label: "Profilim", href: "/akademi/profile", icon: User },
   { label: "Yönetim", href: "/akademi/admin", icon: Shield, adminOnly: true },
 ];

@@ -53,31 +53,31 @@ model User {
   jobTitle       String?
   officeLocation String?
   mobilePhone    String?
-  extension3cx   String?           // 3CX dahili numarası
+  extension3cx   String? // 3CX dahili numarası
 
   // ILERIHub fields
-  role        Role    @default(EMPLOYEE)
-  isActive    Boolean @default(true)
-  managerId   String?
-  manager     User?   @relation("ManagerEmployees", fields: [managerId], references: [id])
-  employees   User[]  @relation("ManagerEmployees")
+  role      Role    @default(EMPLOYEE)
+  isActive  Boolean @default(true)
+  managerId String?
+  manager   User?   @relation("ManagerEmployees", fields: [managerId], references: [id])
+  employees User[]  @relation("ManagerEmployees")
 
   // Blue-collar login fields
-  employeeId  String? @unique // Sicil numarası
-  tcLastFour  String?         // TC Kimlik No son 4 hanesi
+  employeeId String? @unique // Sicil numarası
+  tcLastFour String? // TC Kimlik No son 4 hanesi
 
   // Personnel (HR master) link — 1:1
   personnelId String?    @unique
   personnel   Personnel? @relation("UserPersonnel", fields: [personnelId], references: [id])
 
   // Mavi yaka ek alanlar
-  duty          String?   // Görev
-  section       String?   // Bölüm
-  serviceRoute  String?   // Servis
-  serviceStop   String?   // Servis Durak
+  duty         String? // Görev
+  section      String? // Bölüm
+  serviceRoute String? // Servis
+  serviceStop  String? // Servis Durak
 
   // Digital signature PIN (bcrypt hashed)
-  signaturePin String?         // Dijital imza için PIN (min 6 karakter, bcrypt hash)
+  signaturePin String? // Dijital imza için PIN (min 6 karakter, bcrypt hash)
 
   // Relations
   accounts           Account[]
@@ -119,47 +119,61 @@ model User {
   iso27001TrainingAssignments Iso27001TrainingAssignment[]
 
   // ISO 27001 Olay Yönetimi
-  reportedIncidents  Iso27001Incident[] @relation("IncidentReporter")
-  assignedIncidents  Iso27001Incident[] @relation("IncidentHandler")
-  incidentActions    Iso27001IncidentAction[]
+  reportedIncidents Iso27001Incident[]       @relation("IncidentReporter")
+  assignedIncidents Iso27001Incident[]       @relation("IncidentHandler")
+  incidentActions   Iso27001IncidentAction[]
 
   // ISO 27001 Varlık Envanteri
-  ownedAssets        Iso27001Asset[] @relation("AssetOwner")
-  custodianAssets    Iso27001Asset[] @relation("AssetCustodian")
+  ownedAssets     Iso27001Asset[] @relation("AssetOwner")
+  custodianAssets Iso27001Asset[] @relation("AssetCustodian")
 
   // ISO 27001 Tedarikçi Değerlendirme
-  suppliersCreated             Supplier[]
-  supplierEvaluationsCreated   SupplierEvaluation[]
+  suppliersCreated           Supplier[]
+  supplierEvaluationsCreated SupplierEvaluation[]
 
   // Ziyaret Raporları
   visitReportsCreated  VisitReport[] @relation("VisitReportCreatedBy")
   visitReportsApproved VisitReport[] @relation("VisitReportApprovedBy")
 
   // Toplantı Yönetimi
-  meetingsOrganized       Meeting[] @relation("MeetingOrganizer")
-  meetingsChaired         Meeting[] @relation("MeetingChairman")
-  meetingsRapporteur      Meeting[] @relation("MeetingRapporteur")
-  meetingsMinutesApproved Meeting[] @relation("MeetingMinutesApprover")
-  meetingAttendances      MeetingAttendee[] @relation("MeetingAttendees")
+  meetingsOrganized       Meeting[]           @relation("MeetingOrganizer")
+  meetingsChaired         Meeting[]           @relation("MeetingChairman")
+  meetingsRapporteur      Meeting[]           @relation("MeetingRapporteur")
+  meetingsMinutesApproved Meeting[]           @relation("MeetingMinutesApprover")
+  meetingAttendances      MeetingAttendee[]   @relation("MeetingAttendees")
   meetingPresentations    MeetingAgendaItem[] @relation("AgendaPresenter")
-  meetingDecisions        MeetingDecision[] @relation("DecisionResponsible")
+  meetingDecisions        MeetingDecision[]   @relation("DecisionResponsible")
   meetingAttachments      MeetingAttachment[] @relation("MeetingAttachmentUploader")
 
   // Project Plan Relations
-  projectPlansCreated     ProjectPlan[] @relation("ProjectPlanCreator")
+  projectPlansCreated ProjectPlan[] @relation("ProjectPlanCreator")
 
   // FAQ Relations
-  faqsCreated             FAQ[] @relation("FAQAuthor")
+  faqsCreated FAQ[] @relation("FAQAuthor")
 
   // Calendar Relations
-  calendarEvents          CalendarEvent[] @relation("EventCreator")
+  calendarEvents CalendarEvent[] @relation("EventCreator")
 
   // Overtime (Mesai) Relations
-  overtimeFormsCreated    OvertimeForm[]        @relation("OvertimeCreator")
-  overtimePersonnel       OvertimePersonnel[]   @relation("OvertimePersonnel")
-  overtimeApprovals       OvertimeApproval[]    @relation("OvertimeApprover")
-  approvalPositions       ApprovalPosition[]    @relation("ApprovalPositionUser")
-  overtimeAuthorized      OvertimeAuthorizedUser? @relation("OvertimeAuthorizedUser")
+  overtimeFormsCreated OvertimeForm[]          @relation("OvertimeCreator")
+  overtimePersonnel    OvertimePersonnel[]     @relation("OvertimePersonnel")
+  overtimeApprovals    OvertimeApproval[]      @relation("OvertimeApprover")
+  approvalPositions    ApprovalPosition[]      @relation("ApprovalPositionUser")
+  overtimeAuthorized   OvertimeAuthorizedUser? @relation("OvertimeAuthorizedUser")
+
+  // Akademi Relations
+  courseAssignments    UserCourseAssignment[]
+  packageAssignments   UserPackageAssignment[]
+  courseProgresses     CourseProgress[]
+  contentProgresses    ContentProgress[]
+  examAttempts         UserExamAttempt[]
+  akademiCertificates  AkademiCertificate[]
+  userAchievements     UserAchievement[]
+  userBadges           UserBadge[]
+  userXp               UserXp[]
+  xpHistories          XpHistory[]
+  dailyChallenges      UserDailyChallenge[]
+  akademiNotifications AkademiNotification[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -213,7 +227,10 @@ model Department {
   qdmsCustomerComplaints    QdmsCustomerComplaint[]
 
   // Calendar Relations
-  calendarEvents            CalendarEvent[]
+  calendarEvents CalendarEvent[]
+
+  // Akademi Relations
+  departmentPackages DepartmentPackage[]
 
   @@index([isActive, sortOrder])
 }
@@ -365,10 +382,17 @@ model CalibrationDevice {
   plannedCalibrationDate DateTime?
 
   // Doğrulama bilgileri
-  verificationInterval     Int?      // Gün cinsinden
-  lastVerificationDate     DateTime?
-  nextVerificationDate     DateTime?
-  plannedVerificationDate  DateTime?
+  verificationInterval    Int? // Gün cinsinden
+  lastVerificationDate    DateTime?
+  nextVerificationDate    DateTime?
+  plannedVerificationDate DateTime?
+
+  // Cihaz Durumu (Kalibrasyonda / Şirkette / Hurda)
+  deviceCondition       String? // "Kalibrasyonda", "Şirkette", "Hurda"
+  calibrationSentDate   DateTime? // Kalibrasyona gönderim tarihi
+  calibrationReturnDate DateTime? // Kalibrasyondan dönüş tarihi
+  scrapDate             DateTime? // Hurda tarihi (sadece Hurda seçildiğinde)
+  scrapDescription      String?   @db.Text // Hurda açıklaması
 
   // Durum
   status               CalibrationStatus @default(VALID)
@@ -1658,6 +1682,8 @@ model Badge {
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+
+  userBadges UserBadge[]
 
   @@index([category])
 }
@@ -5650,6 +5676,8 @@ enum ReferralSource {
 enum JobApplicationStatus {
   PENDING // Beklemede
   REVIEWED // İncelendi
+  REVIEWING // İnceleniyor
+  SHORTLISTED // Ön Eleme
   INTERVIEW // Mülakata Çağrıldı
   ACCEPTED // Kabul Edildi
   REJECTED // Reddedildi
@@ -5843,7 +5871,7 @@ model Iso27001Control {
   // Uygulama Detayları
   implementationNotes String?   @db.Text
   implementationDate  DateTime?
-  controlSource       String?   // Kontrol Kaynağı (BGYS, Yasal, Müşteri, vb.)
+  controlSource       String? // Kontrol Kaynağı (BGYS, Yasal, Müşteri, vb.)
   relatedAssets       String?   @db.Text // İlgili Varlıklar
 
   // Sorumlu
@@ -5962,22 +5990,22 @@ model Iso27001AuditProgram {
   id            String @id @default(cuid())
   programNumber String @unique // BGYS-DNT-001
 
-  title         String // 2025 Yılı İç Denetim Programı
-  revision      String @default("Rev.01")
-  publishDate   DateTime
-  year          Int    @unique
-  periodStart   DateTime
-  periodEnd     DateTime
-  periodLabel   String? // Ocak-Aralık 2025
+  title       String // 2025 Yılı İç Denetim Programı
+  revision    String   @default("Rev.01")
+  publishDate DateTime
+  year        Int      @unique
+  periodStart DateTime
+  periodEnd   DateTime
+  periodLabel String? // Ocak-Aralık 2025
 
   // Amaç ve Kapsam
-  purpose       String? @db.Text
+  purpose String? @db.Text
 
   // Denetim Yaklaşımı (madde listesi)
   auditApproach String[]
 
   // Durum
-  status        Iso27001AuditProgramStatus @default(DRAFT)
+  status Iso27001AuditProgramStatus @default(DRAFT)
 
   // Hazırlayan
   preparedByName  String
@@ -6011,17 +6039,17 @@ enum Iso27001AuditProgramStatus {
 }
 
 model Iso27001AuditProgramAuditor {
-  id        String @id @default(cuid())
+  id        String               @id @default(cuid())
   programId String
   program   Iso27001AuditProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   name            String
-  role            String  // Baş Denetçi, İç Denetçi, vb.
+  role            String // Baş Denetçi, İç Denetçi, vb.
   title           String? // BGYS Sorumlusu
   certifications  String[] // ["ISO 27001 LA"]
   experienceYears Int?
   email           String?
-  sortOrder       Int     @default(0)
+  sortOrder       Int      @default(0)
 
   createdAt DateTime @default(now())
 
@@ -6029,12 +6057,12 @@ model Iso27001AuditProgramAuditor {
 }
 
 model Iso27001AuditProgramItem {
-  id        String @id @default(cuid())
+  id        String               @id @default(cuid())
   programId String
   program   Iso27001AuditProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
 
-  itemNumber      String  // ID-01, ID-02
-  auditArea       String  // Erişim Kontrolü (A.8)
+  itemNumber      String // ID-01, ID-02
+  auditArea       String // Erişim Kontrolü (A.8)
   scope           String? @db.Text
   plannedDate     String? // 10-11 Mart 2025
   leadAuditorName String
@@ -6206,31 +6234,31 @@ enum Iso27001FindingStatus {
 // ==========================================
 
 model Iso27001Threat {
-  id          String @id @default(cuid())
-  code        String @unique // T-01, T-02, ...
-  name        String
-  category    Iso27001ThreatCategory
-  description String? @db.Text
+  id                 String                 @id @default(cuid())
+  code               String                 @unique // T-01, T-02, ...
+  name               String
+  category           Iso27001ThreatCategory
+  description        String?                @db.Text
   affectedAssetTypes String? // Virgul ile ayrilmis
-  typicalLikelihood  Int     @default(3) // 1-5
-  typicalImpact      Int     @default(3) // 1-5
+  typicalLikelihood  Int                    @default(3) // 1-5
+  typicalImpact      Int                    @default(3) // 1-5
 
-  risks       Iso27001Risk[]
+  risks Iso27001Risk[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category])
 }
 
 enum Iso27001ThreatCategory {
-  NATURAL_DISASTER     // Dogal Afet
-  CYBER_ATTACK         // Siber Saldiri
-  HUMAN                // Insan Kaynakli
-  TECHNICAL_FAILURE    // Teknik Ariza
-  PHYSICAL_SECURITY    // Fiziksel Guvenlik
-  SUPPLY_CHAIN         // Tedarik Zinciri
-  COMPLIANCE           // Uyumluluk
+  NATURAL_DISASTER // Dogal Afet
+  CYBER_ATTACK // Siber Saldiri
+  HUMAN // Insan Kaynakli
+  TECHNICAL_FAILURE // Teknik Ariza
+  PHYSICAL_SECURITY // Fiziksel Guvenlik
+  SUPPLY_CHAIN // Tedarik Zinciri
+  COMPLIANCE // Uyumluluk
 }
 
 // ==========================================
@@ -6242,9 +6270,9 @@ model Iso27001Risk {
   riskNumber String @unique // R-001, R-002, ...
 
   // Varlik Baglantisi
-  assetId    String?
-  asset      Iso27001Asset? @relation(fields: [assetId], references: [id])
-  assetName  String
+  assetId   String?
+  asset     Iso27001Asset? @relation(fields: [assetId], references: [id])
+  assetName String
 
   // Varlik Degeri (risk hesaplama icin)
   assetValue Int // MAX(C,I,A) -> 1-3
@@ -6273,7 +6301,7 @@ model Iso27001Risk {
 
   // Risk Isleme
   treatmentOption  Iso27001RiskTreatment?
-  treatmentSummary String? @db.Text
+  treatmentSummary String?                @db.Text
 
   // Artik Risk (isleme sonrasi)
   residualLikelihood Int?
@@ -6315,54 +6343,54 @@ model Iso27001Risk {
 // ==========================================
 
 model Iso27001RiskTreatmentPlan {
-  id              String @id @default(cuid())
+  id String @id @default(cuid())
 
-  riskId          String
-  risk            Iso27001Risk @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  riskId String
+  risk   Iso27001Risk @relation(fields: [riskId], references: [id], onDelete: Cascade)
 
-  treatmentOption Iso27001RiskTreatment
-  description     String @db.Text
-  responsibleName String
+  treatmentOption  Iso27001RiskTreatment
+  description      String                  @db.Text
+  responsibleName  String
   responsibleEmail String?
-  targetDate      DateTime?
-  completionDate  DateTime?
-  status          Iso27001TreatmentStatus @default(PLANNED)
-  notes           String? @db.Text
+  targetDate       DateTime?
+  completionDate   DateTime?
+  status           Iso27001TreatmentStatus @default(PLANNED)
+  notes            String?                 @db.Text
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([riskId])
   @@index([status])
 }
 
 enum Iso27001RiskLevel {
-  LOW      // Dusuk (1-12)
-  MEDIUM   // Orta (13-30)
-  HIGH     // Yuksek (31-50)
+  LOW // Dusuk (1-12)
+  MEDIUM // Orta (13-30)
+  HIGH // Yuksek (31-50)
   CRITICAL // Kritik (51-75)
 }
 
 enum Iso27001RiskTreatment {
-  AVOID    // Kacinma
+  AVOID // Kacinma
   MITIGATE // Azaltma
   TRANSFER // Transfer
-  ACCEPT   // Kabul
+  ACCEPT // Kabul
 }
 
 enum Iso27001RiskStatus {
-  OPEN       // Acik
+  OPEN // Acik
   IN_TREATMENT // Isleniyor
-  CLOSED     // Kapali
+  CLOSED // Kapali
   MONITORING // Izleniyor
 }
 
 enum Iso27001TreatmentStatus {
-  PLANNED     // Planlandi
+  PLANNED // Planlandi
   IN_PROGRESS // Devam Ediyor
-  COMPLETED   // Tamamlandi
-  MONITORING  // Izleniyor
-  CANCELLED   // Iptal
+  COMPLETED // Tamamlandi
+  MONITORING // Izleniyor
+  CANCELLED // Iptal
 }
 
 // Yönetim Gözden Geçirme
@@ -6418,57 +6446,57 @@ enum Iso27001ReviewStatus {
 
 // BGYS Eğitim Kayıtları
 model Iso27001Training {
-  id             String   @id @default(cuid())
-  trainingNumber String   @unique // TRN-2025-001
+  id             String @id @default(cuid())
+  trainingNumber String @unique // TRN-2025-001
 
   // Eğitim Bilgileri
-  title          String // Eğitim Konusu
-  description    String?  @db.Text
-  trainingType   Iso27001TrainingType @default(AWARENESS)
-  duration       Int      @default(60) // Dakika cinsinden
-  location       String?  // Eğitim yeri (online ise boş)
+  title        String // Eğitim Konusu
+  description  String?              @db.Text
+  trainingType Iso27001TrainingType @default(AWARENESS)
+  duration     Int                  @default(60) // Dakika cinsinden
+  location     String? // Eğitim yeri (online ise boş)
 
   // Eğitim Modu
-  isOnline       Boolean  @default(false) // Online/dijital eğitim mi?
-  contentType    String?  // PDF, VIDEO, PRESENTATION
-  contentUrl     String?  // Eğitim içeriği URL'si
+  isOnline    Boolean @default(false) // Online/dijital eğitim mi?
+  contentType String? // PDF, VIDEO, PRESENTATION
+  contentUrl  String? // Eğitim içeriği URL'si
 
   // Zorunlu görüntüleme
-  minViewTime    Int?     // Minimum görüntüleme süresi (saniye)
-  hasQuiz        Boolean  @default(false)
-  passingScore   Int?     // Quiz geçme notu (%)
+  minViewTime  Int? // Minimum görüntüleme süresi (saniye)
+  hasQuiz      Boolean @default(false)
+  passingScore Int? // Quiz geçme notu (%)
 
   // Eğitimci
-  trainerName    String
-  trainerTitle   String?
-  trainerEmail   String?
+  trainerName  String
+  trainerTitle String?
+  trainerEmail String?
 
   // Tarihler
-  trainingDate   DateTime
-  plannedDate    DateTime?
-  deadline       DateTime? // Tamamlama son tarihi
+  trainingDate DateTime
+  plannedDate  DateTime?
+  deadline     DateTime? // Tamamlama son tarihi
 
   // İlişkili Kontrol
-  controlId      String?  // A.6.3 gibi
+  controlId String? // A.6.3 gibi
 
   // Katılımcılar (yüz yüze eğitimler için)
-  participants   Iso27001TrainingParticipant[]
+  participants Iso27001TrainingParticipant[]
 
   // Atamalar (online eğitimler için)
-  assignments    Iso27001TrainingAssignment[]
+  assignments Iso27001TrainingAssignment[]
 
   // Dosyalar
-  documentUrl    String?  // Eğitim materyali
-  signatureUrl   String?  // İmzalı katılım formu
+  documentUrl  String? // Eğitim materyali
+  signatureUrl String? // İmzalı katılım formu
 
   // Durum
-  status         Iso27001TrainingStatus @default(PLANNED)
+  status Iso27001TrainingStatus @default(PLANNED)
 
   // Meta
-  createdById    String?
-  createdByName  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([trainingDate])
   @@index([status])
@@ -6478,73 +6506,73 @@ model Iso27001Training {
 
 // Eğitim Katılımcıları (yüz yüze eğitimler için)
 model Iso27001TrainingParticipant {
-  id           String @id @default(cuid())
+  id String @id @default(cuid())
 
-  trainingId   String
-  training     Iso27001Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  trainingId String
+  training   Iso27001Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
 
   // Katılımcı Bilgileri
-  name         String
-  title        String?  // Görev/Ünvan
-  department   String?
-  email        String?
+  name       String
+  title      String? // Görev/Ünvan
+  department String?
+  email      String?
 
   // Katılım
-  attended     Boolean  @default(true)
-  signedAt     DateTime?
+  attended Boolean   @default(true)
+  signedAt DateTime?
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([trainingId])
 }
 
 // Online Eğitim Atamaları
 model Iso27001TrainingAssignment {
-  id           String @id @default(cuid())
+  id String @id @default(cuid())
 
-  trainingId   String
-  training     Iso27001Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  trainingId String
+  training   Iso27001Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
 
   // Atanan kullanıcı
-  userId       String
-  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Atama bilgileri
-  assignedAt   DateTime @default(now())
-  assignedById String?
+  assignedAt     DateTime  @default(now())
+  assignedById   String?
   assignedByName String?
-  deadline     DateTime? // Kişiye özel deadline
+  deadline       DateTime? // Kişiye özel deadline
 
   // İlerleme
-  status       Iso27001AssignmentStatus @default(PENDING)
-  startedAt    DateTime? // Eğitime başlama zamanı
-  viewTime     Int       @default(0) // Toplam görüntüleme süresi (saniye)
-  progress     Int       @default(0) // İlerleme yüzdesi (0-100)
+  status    Iso27001AssignmentStatus @default(PENDING)
+  startedAt DateTime? // Eğitime başlama zamanı
+  viewTime  Int                      @default(0) // Toplam görüntüleme süresi (saniye)
+  progress  Int                      @default(0) // İlerleme yüzdesi (0-100)
 
   // Quiz sonuçları
-  quizScore    Int?      // Quiz puanı
+  quizScore    Int? // Quiz puanı
   quizAttempts Int       @default(0) // Quiz deneme sayısı
   quizPassedAt DateTime? // Quiz geçme tarihi
 
   // Tamamlama ve İmza
-  completedAt  DateTime? // Tamamlama tarihi
+  completedAt DateTime? // Tamamlama tarihi
 
   // Dijital İmza
-  signedAt     DateTime?
-  signatureHash String?  // İmza hash'i (şifre + zaman + kullanıcı)
-  signatureIp  String?   // İmza atılan IP
+  signedAt        DateTime?
+  signatureHash   String? // İmza hash'i (şifre + zaman + kullanıcı)
+  signatureIp     String? // İmza atılan IP
   signatureDevice String? // Cihaz bilgisi
 
   // Hatırlatmalar
-  reminderSent Boolean   @default(false)
-  reminderCount Int      @default(0)
+  reminderSent   Boolean   @default(false)
+  reminderCount  Int       @default(0)
   lastReminderAt DateTime?
 
   // Sertifika
   certificateUrl String? // Oluşturulan sertifika
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([trainingId, userId])
   @@index([trainingId])
@@ -6554,26 +6582,26 @@ model Iso27001TrainingAssignment {
 }
 
 enum Iso27001TrainingType {
-  AWARENESS    // Farkındalık Eğitimi
-  TECHNICAL    // Teknik Eğitim
-  ORIENTATION  // Oryantasyon
-  REFRESHER    // Yenileme Eğitimi
-  SPECIALIZED  // Özel Eğitim
+  AWARENESS // Farkındalık Eğitimi
+  TECHNICAL // Teknik Eğitim
+  ORIENTATION // Oryantasyon
+  REFRESHER // Yenileme Eğitimi
+  SPECIALIZED // Özel Eğitim
 }
 
 enum Iso27001TrainingStatus {
-  PLANNED      // Planlandı
-  IN_PROGRESS  // Devam Ediyor
-  COMPLETED    // Tamamlandı
-  CANCELLED    // İptal Edildi
+  PLANNED // Planlandı
+  IN_PROGRESS // Devam Ediyor
+  COMPLETED // Tamamlandı
+  CANCELLED // İptal Edildi
 }
 
 enum Iso27001AssignmentStatus {
-  PENDING      // Bekliyor
-  IN_PROGRESS  // Devam Ediyor
-  COMPLETED    // Tamamlandı (imza bekleniyor)
-  SIGNED       // İmzalandı
-  EXPIRED      // Süresi Doldu
+  PENDING // Bekliyor
+  IN_PROGRESS // Devam Ediyor
+  COMPLETED // Tamamlandı (imza bekleniyor)
+  SIGNED // İmzalandı
+  EXPIRED // Süresi Doldu
 }
 
 // ===== ISO 27001 Varlık Envanteri (A.5.9) =====
@@ -6584,7 +6612,7 @@ model Iso27001Asset {
 
   // Varlık Bilgileri
   name        String
-  description String? @db.Text
+  description String?               @db.Text
   category    Iso27001AssetCategory
   type        Iso27001AssetType
 
@@ -6597,58 +6625,58 @@ model Iso27001Asset {
   custodian   User?   @relation("AssetCustodian", fields: [custodianId], references: [id])
 
   // Değerleme
-  confidentiality    Int       @default(1) // 1-5
-  integrity          Int       @default(1) // 1-5
-  availability       Int       @default(1) // 1-5
-  assetValue         Int?      // Hesaplanan değer (C+I+A)
-  financialValue     Float?    // Maddi değer (TL)
-  criticality        Iso27001AssetCriticality @default(LOW)
+  confidentiality Int                      @default(1) // 1-5
+  integrity       Int                      @default(1) // 1-5
+  availability    Int                      @default(1) // 1-5
+  assetValue      Int? // Hesaplanan değer (C+I+A)
+  financialValue  Float? // Maddi değer (TL)
+  criticality     Iso27001AssetCriticality @default(LOW)
 
   // Sınıflandırma
-  classification     Iso27001Classification @default(INTERNAL)
+  classification Iso27001Classification @default(INTERNAL)
 
   // Durum
-  status             Iso27001AssetStatus @default(ACTIVE)
-  acquisitionDate    DateTime?
-  disposalDate       DateTime?
+  status          Iso27001AssetStatus @default(ACTIVE)
+  acquisitionDate DateTime?
+  disposalDate    DateTime?
 
   // Teknik Bilgiler (yazılım/donanım için)
-  manufacturer       String?
-  model              String?
-  serialNumber       String?
-  version            String?
-  licenseType        String?
-  licenseExpiry      DateTime?
+  manufacturer  String?
+  model         String?
+  serialNumber  String?
+  version       String?
+  licenseType   String?
+  licenseExpiry DateTime?
 
   // BT Donanım Detayları
-  hostname           String?
-  ipAddress          String?
-  macAddress         String?
-  operatingSystem    String?
-  processor          String?
-  ram                String?
-  diskSize           String?
-  barcode            String?
-  warrantyEndDate    DateTime?
-  assignedTo         String?
-  assignedToEmail    String?
+  hostname        String?
+  ipAddress       String?
+  macAddress      String?
+  operatingSystem String?
+  processor       String?
+  ram             String?
+  diskSize        String?
+  barcode         String?
+  warrantyEndDate DateTime?
+  assignedTo      String?
+  assignedToEmail String?
 
   // İlişkiler
-  parentAssetId      String?
-  parentAsset        Iso27001Asset?  @relation("AssetHierarchy", fields: [parentAssetId], references: [id])
-  childAssets        Iso27001Asset[] @relation("AssetHierarchy")
+  parentAssetId String?
+  parentAsset   Iso27001Asset?  @relation("AssetHierarchy", fields: [parentAssetId], references: [id])
+  childAssets   Iso27001Asset[] @relation("AssetHierarchy")
 
   // Notlar
-  notes              String? @db.Text
+  notes String? @db.Text
 
   // Risk Iliskileri
-  risks              Iso27001Risk[]
+  risks Iso27001Risk[]
 
   // Zaman Damgaları
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  lastReviewDate     DateTime?
-  nextReviewDate     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastReviewDate DateTime?
+  nextReviewDate DateTime?
 
   @@index([category])
   @@index([type])
@@ -6660,137 +6688,137 @@ model Iso27001Asset {
 }
 
 enum Iso27001AssetCategory {
-  INFORMATION        // Bilgi Varlıkları
-  SOFTWARE           // Yazılım Varlıkları
-  HARDWARE           // Donanım Varlıkları
-  NETWORK            // Ağ Varlıkları
-  PERSONNEL          // İnsan Kaynakları
-  PHYSICAL           // Fiziksel Varlıklar
-  SERVICE            // Hizmetler
-  INTANGIBLE         // Soyut Varlıklar (marka, itibar vb.)
+  INFORMATION // Bilgi Varlıkları
+  SOFTWARE // Yazılım Varlıkları
+  HARDWARE // Donanım Varlıkları
+  NETWORK // Ağ Varlıkları
+  PERSONNEL // İnsan Kaynakları
+  PHYSICAL // Fiziksel Varlıklar
+  SERVICE // Hizmetler
+  INTANGIBLE // Soyut Varlıklar (marka, itibar vb.)
 }
 
 enum Iso27001AssetType {
   // Bilgi
-  DATABASE           // Veritabanı
-  DOCUMENT           // Doküman
-  RECORD             // Kayıt
-  BACKUP             // Yedek
+  DATABASE // Veritabanı
+  DOCUMENT // Doküman
+  RECORD // Kayıt
+  BACKUP // Yedek
   // Yazılım
-  APPLICATION        // Uygulama
-  OPERATING_SYSTEM   // İşletim Sistemi
-  MIDDLEWARE         // Ara Katman
-  DEVELOPMENT_TOOL   // Geliştirme Aracı
+  APPLICATION // Uygulama
+  OPERATING_SYSTEM // İşletim Sistemi
+  MIDDLEWARE // Ara Katman
+  DEVELOPMENT_TOOL // Geliştirme Aracı
   // Donanım
-  SERVER             // Sunucu
-  DESKTOP            // Masaüstü Bilgisayar
-  LAPTOP             // Dizüstü Bilgisayar
-  MOBILE_DEVICE      // Mobil Cihaz
-  STORAGE            // Depolama
-  PRINTER            // Yazıcı
+  SERVER // Sunucu
+  DESKTOP // Masaüstü Bilgisayar
+  LAPTOP // Dizüstü Bilgisayar
+  MOBILE_DEVICE // Mobil Cihaz
+  STORAGE // Depolama
+  PRINTER // Yazıcı
   // Ağ
-  ROUTER             // Yönlendirici
-  SWITCH             // Anahtar
-  FIREWALL           // Güvenlik Duvarı
-  ACCESS_POINT       // Erişim Noktası
+  ROUTER // Yönlendirici
+  SWITCH // Anahtar
+  FIREWALL // Güvenlik Duvarı
+  ACCESS_POINT // Erişim Noktası
   // Fiziksel
-  BUILDING           // Bina
-  ROOM               // Oda
-  CABINET            // Kabin
-  MEDIA              // Ortam (USB, CD vb.)
+  BUILDING // Bina
+  ROOM // Oda
+  CABINET // Kabin
+  MEDIA // Ortam (USB, CD vb.)
   // Hizmet
-  CLOUD_SERVICE      // Bulut Hizmeti
-  EXTERNAL_SERVICE   // Dış Hizmet
-  UTILITY            // Altyapı Hizmeti
+  CLOUD_SERVICE // Bulut Hizmeti
+  EXTERNAL_SERVICE // Dış Hizmet
+  UTILITY // Altyapı Hizmeti
   // Diğer
-  OTHER              // Diğer
+  OTHER // Diğer
 }
 
 enum Iso27001AssetCriticality {
-  CRITICAL           // Kritik
-  HIGH               // Yüksek
-  MEDIUM             // Orta
-  LOW                // Düşük
+  CRITICAL // Kritik
+  HIGH // Yüksek
+  MEDIUM // Orta
+  LOW // Düşük
 }
 
 enum Iso27001Classification {
-  PUBLIC             // Genel
-  INTERNAL           // Dahili
-  CONFIDENTIAL       // Gizli
-  RESTRICTED         // Kısıtlı
+  PUBLIC // Genel
+  INTERNAL // Dahili
+  CONFIDENTIAL // Gizli
+  RESTRICTED // Kısıtlı
 }
 
 enum Iso27001AssetStatus {
-  ACTIVE             // Aktif
-  INACTIVE           // Pasif
-  UNDER_MAINTENANCE  // Bakımda
-  DISPOSED           // İmha Edildi
-  LOST               // Kayıp
+  ACTIVE // Aktif
+  INACTIVE // Pasif
+  UNDER_MAINTENANCE // Bakımda
+  DISPOSED // İmha Edildi
+  LOST // Kayıp
 }
 
 // ===== ISO 27001 Bilgi Güvenliği Olay Yönetimi =====
 
 model Iso27001Incident {
-  id              String @id @default(cuid())
-  incidentNumber  String @unique // OY-2025-001 formatında
+  id             String @id @default(cuid())
+  incidentNumber String @unique // OY-2025-001 formatında
 
   // Olay Bilgileri
-  title           String
-  description     String @db.Text
-  category        Iso27001IncidentCategory
-  severity        Iso27001IncidentSeverity
-  status          Iso27001IncidentStatus @default(OPEN)
+  title       String
+  description String                   @db.Text
+  category    Iso27001IncidentCategory
+  severity    Iso27001IncidentSeverity
+  status      Iso27001IncidentStatus   @default(OPEN)
 
   // Tespit ve Raporlama
   detectedAt      DateTime // Olayın tespit edildiği tarih
-  detectionMethod String?  // Tespit yöntemi
+  detectionMethod String? // Tespit yöntemi
   reportedAt      DateTime @default(now()) // Raporlama tarihi
   reportedById    String?
-  reportedBy      User? @relation("IncidentReporter", fields: [reportedById], references: [id])
-  reportedByName  String?  // Raporlayan kişi adı
+  reportedBy      User?    @relation("IncidentReporter", fields: [reportedById], references: [id])
+  reportedByName  String? // Raporlayan kişi adı
 
   // Etkilenen Sistemler/Varlıklar
-  affectedSystems String?  @db.Text // Virgülle ayrılmış liste
-  affectedAssets  String?  @db.Text
-  impactScope     String?  // Etki alanı: Departman, Şirket geneli, vb.
+  affectedSystems String? @db.Text // Virgülle ayrılmış liste
+  affectedAssets  String? @db.Text
+  impactScope     String? // Etki alanı: Departman, Şirket geneli, vb.
 
   // Sorumluluk ve Atama
-  assignedToId    String?
-  assignedTo      User? @relation("IncidentHandler", fields: [assignedToId], references: [id])
+  assignedToId String?
+  assignedTo   User?   @relation("IncidentHandler", fields: [assignedToId], references: [id])
 
   // Müdahale Bilgileri
-  immediateActions String? @db.Text // Alınan acil önlemler
-  containmentAt   DateTime? // Kontrol altına alınma tarihi
+  immediateActions String?   @db.Text // Alınan acil önlemler
+  containmentAt    DateTime? // Kontrol altına alınma tarihi
 
   // Kök Neden Analizi
-  rootCause       String?  @db.Text
+  rootCause           String?   @db.Text
   rootCauseAnalyzedAt DateTime?
 
   // Çözüm ve Düzeltici/Önleyici Faaliyetler
-  resolution      String?  @db.Text
-  correctiveAction String? @db.Text  // Düzeltici faaliyet
-  preventiveAction String? @db.Text  // Önleyici faaliyet
-  resolvedAt      DateTime?
-  resolvedById    String?
+  resolution       String?   @db.Text
+  correctiveAction String?   @db.Text // Düzeltici faaliyet
+  preventiveAction String?   @db.Text // Önleyici faaliyet
+  resolvedAt       DateTime?
+  resolvedById     String?
 
   // Kapatma
-  closedAt        DateTime?
-  closedById      String?
-  closureNotes    String?  @db.Text
-  lessonsLearned  String?  @db.Text // Öğrenilen dersler
+  closedAt       DateTime?
+  closedById     String?
+  closureNotes   String?   @db.Text
+  lessonsLearned String?   @db.Text // Öğrenilen dersler
 
   // İlişkili Kontroller ve Riskler
-  relatedControls String?  // Virgülle ayrılmış kontrol ID'leri (5.24, 5.25, vb.)
+  relatedControls String? // Virgülle ayrılmış kontrol ID'leri (5.24, 5.25, vb.)
   relatedRiskIds  String[] // İlişkili risk ID'leri (R-001, R-005, vb.)
 
   // Eklentiler
-  attachments     Iso27001IncidentAttachment[]
-  actions         Iso27001IncidentAction[]
-  timeline        Iso27001IncidentTimeline[]
+  attachments Iso27001IncidentAttachment[]
+  actions     Iso27001IncidentAction[]
+  timeline    Iso27001IncidentTimeline[]
 
   // Meta
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([incidentNumber])
   @@index([status])
@@ -6801,34 +6829,34 @@ model Iso27001Incident {
 }
 
 model Iso27001IncidentAttachment {
-  id          String @id @default(cuid())
-  incidentId  String
-  incident    Iso27001Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  id         String           @id @default(cuid())
+  incidentId String
+  incident   Iso27001Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
-  fileName    String
-  filePath    String
-  fileSize    Int
-  mimeType    String?
+  fileName     String
+  filePath     String
+  fileSize     Int
+  mimeType     String?
   uploadedById String
-  uploadedAt  DateTime @default(now())
+  uploadedAt   DateTime @default(now())
 
   @@index([incidentId])
 }
 
 model Iso27001IncidentAction {
-  id          String @id @default(cuid())
-  incidentId  String
-  incident    Iso27001Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  id         String           @id @default(cuid())
+  incidentId String
+  incident   Iso27001Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
   // Aksiyon Bilgileri
   title       String
-  description String? @db.Text
+  description String?                    @db.Text
   actionType  Iso27001IncidentActionType
-  priority    Iso27001ActionPriority @default(MEDIUM)
+  priority    Iso27001ActionPriority     @default(MEDIUM)
 
   // Sorumluluk
   assignedToId String?
-  assignedTo   User? @relation(fields: [assignedToId], references: [id])
+  assignedTo   User?   @relation(fields: [assignedToId], references: [id])
 
   // Tarihler
   dueDate     DateTime?
@@ -6836,10 +6864,10 @@ model Iso27001IncidentAction {
   status      Iso27001ActionStatus @default(OPEN)
 
   // Notlar
-  notes       String? @db.Text
+  notes String? @db.Text
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([incidentId])
   @@index([status])
@@ -6847,50 +6875,50 @@ model Iso27001IncidentAction {
 }
 
 model Iso27001IncidentTimeline {
-  id          String @id @default(cuid())
-  incidentId  String
-  incident    Iso27001Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  id         String           @id @default(cuid())
+  incidentId String
+  incident   Iso27001Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
-  action      String // Yapılan işlem
-  description String? @db.Text
-  performedById String?
+  action          String // Yapılan işlem
+  description     String?  @db.Text
+  performedById   String?
   performedByName String?
-  performedAt DateTime @default(now())
+  performedAt     DateTime @default(now())
 
   @@index([incidentId])
   @@index([performedAt])
 }
 
 enum Iso27001IncidentCategory {
-  CYBER_ATTACK        // Siber Saldırı (CAT-01)
+  CYBER_ATTACK // Siber Saldırı (CAT-01)
   UNAUTHORIZED_ACCESS // Yetkisiz Erişim (CAT-02)
-  DATA_BREACH         // Veri İhlali (CAT-03)
-  SYSTEM_FAILURE      // Sistem Arızası (CAT-04)
-  PHYSICAL_SECURITY   // Fiziksel Güvenlik (CAT-05)
-  HUMAN_ERROR         // İnsan Hatası (CAT-06)
-  POLICY_VIOLATION    // Politika İhlali (CAT-07)
-  SUPPLIER_RELATED    // Tedarikçi Kaynaklı (CAT-08)
+  DATA_BREACH // Veri İhlali (CAT-03)
+  SYSTEM_FAILURE // Sistem Arızası (CAT-04)
+  PHYSICAL_SECURITY // Fiziksel Güvenlik (CAT-05)
+  HUMAN_ERROR // İnsan Hatası (CAT-06)
+  POLICY_VIOLATION // Politika İhlali (CAT-07)
+  SUPPLIER_RELATED // Tedarikçi Kaynaklı (CAT-08)
 }
 
 enum Iso27001IncidentSeverity {
   CRITICAL // Kritik - Acil müdahale
-  HIGH     // Yüksek - 24 saat içinde
-  MEDIUM   // Orta - 72 saat içinde
-  LOW      // Düşük - Planlı müdahale
+  HIGH // Yüksek - 24 saat içinde
+  MEDIUM // Orta - 72 saat içinde
+  LOW // Düşük - Planlı müdahale
 }
 
 enum Iso27001IncidentStatus {
-  OPEN          // Açık
+  OPEN // Açık
   INVESTIGATING // İnceleniyor
-  RESOLVED      // Çözüldü
-  CLOSED        // Kapatıldı
-  ON_HOLD       // Beklemede
+  RESOLVED // Çözüldü
+  CLOSED // Kapatıldı
+  ON_HOLD // Beklemede
 }
 
 enum Iso27001IncidentActionType {
-  IMMEDIATE   // Acil Aksiyon
-  CORRECTIVE  // Düzeltici Faaliyet
-  PREVENTIVE  // Önleyici Faaliyet
+  IMMEDIATE // Acil Aksiyon
+  CORRECTIVE // Düzeltici Faaliyet
+  PREVENTIVE // Önleyici Faaliyet
   IMPROVEMENT // İyileştirme
 }
 
@@ -6902,10 +6930,10 @@ enum Iso27001ActionPriority {
 }
 
 enum Iso27001ActionStatus {
-  OPEN        // Açık
+  OPEN // Açık
   IN_PROGRESS // Devam Ediyor
-  COMPLETED   // Tamamlandı
-  CANCELLED   // İptal
+  COMPLETED // Tamamlandı
+  CANCELLED // İptal
 }
 
 // ==========================================
@@ -6913,49 +6941,49 @@ enum Iso27001ActionStatus {
 // ==========================================
 
 model VisitReport {
-  id              String @id @default(cuid())
-  reportNumber    String @unique // ZR-2025-001 formatında
+  id           String @id @default(cuid())
+  reportNumber String @unique // ZR-2025-001 formatında
 
   // Temel Bilgiler
-  visitDate       DateTime
-  endDate         DateTime?
-  visitTime       String // "10:00" formatında
-  companyName     String // Ziyaret edilen firma
-  visitType       VisitType
-  location        String? // Ziyaret yeri/adres
-  project         String? // İlgili proje/konu
+  visitDate   DateTime
+  endDate     DateTime?
+  visitTime   String // "10:00" formatında
+  companyName String // Ziyaret edilen firma
+  visitType   VisitType
+  location    String? // Ziyaret yeri/adres
+  project     String? // İlgili proje/konu
 
   // Görüşme Özeti
-  meetingSummary  String @db.Text
+  meetingSummary String @db.Text
 
   // Ek Notlar
   additionalNotes String? @db.Text
   nextSteps       String? @db.Text
 
   // Dosya Ekleri
-  attachments     VisitReportAttachment[]
+  attachments VisitReportAttachment[]
 
   // Katılımcılar
-  participants    VisitReportParticipant[]
+  participants VisitReportParticipant[]
 
   // Aksiyon Maddeleri
-  actionItems     VisitReportAction[]
+  actionItems VisitReportAction[]
 
   // E-posta Gönderim Geçmişi
-  emailLogs       VisitReportEmailLog[]
+  emailLogs VisitReportEmailLog[]
 
   // Oluşturan/Onaylayan
-  createdById     String
-  createdBy       User @relation("VisitReportCreatedBy", fields: [createdById], references: [id])
-  approvedById    String?
-  approvedBy      User? @relation("VisitReportApprovedBy", fields: [approvedById], references: [id])
-  approvedAt      DateTime?
+  createdById  String
+  createdBy    User      @relation("VisitReportCreatedBy", fields: [createdById], references: [id])
+  approvedById String?
+  approvedBy   User?     @relation("VisitReportApprovedBy", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
 
   // Durum
-  status          VisitReportStatus @default(DRAFT)
+  status VisitReportStatus @default(DRAFT)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([createdById])
   @@index([status])
@@ -6964,94 +6992,94 @@ model VisitReport {
 }
 
 model VisitReportParticipant {
-  id            String @id @default(cuid())
-  reportId      String
-  report        VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  id       String      @id @default(cuid())
+  reportId String
+  report   VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
-  name          String
-  title         String? // Unvan
-  company       ParticipantCompany // ILERI_GROUP veya VISITED_COMPANY
+  name    String
+  title   String? // Unvan
+  company ParticipantCompany // ILERI_GROUP veya VISITED_COMPANY
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([reportId])
 }
 
 model VisitReportAction {
-  id            String @id @default(cuid())
-  reportId      String
-  report        VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  id       String      @id @default(cuid())
+  reportId String
+  report   VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
-  description   String
-  responsible   String // Sorumlu kişi/departman
-  dueDate       DateTime?
-  status        ActionItemStatus @default(PENDING)
-  completedAt   DateTime?
+  description String
+  responsible String // Sorumlu kişi/departman
+  dueDate     DateTime?
+  status      ActionItemStatus @default(PENDING)
+  completedAt DateTime?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([reportId])
   @@index([status])
 }
 
 model VisitReportAttachment {
-  id            String @id @default(cuid())
-  reportId      String
-  report        VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  id       String      @id @default(cuid())
+  reportId String
+  report   VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
-  fileName      String
-  filePath      String
-  fileSize      Int
-  mimeType      String
+  fileName String
+  filePath String
+  fileSize Int
+  mimeType String
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([reportId])
 }
 
 model VisitReportEmailLog {
-  id            String @id @default(cuid())
-  reportId      String
-  report        VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  id       String      @id @default(cuid())
+  reportId String
+  report   VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
-  sentBy        String   // Gönderen kullanıcı email
-  sentByName    String?  // Gönderen kullanıcı adı
-  recipients    String   @db.Text // JSON array: [{"name":"...","email":"..."}]
+  sentBy     String // Gönderen kullanıcı email
+  sentByName String? // Gönderen kullanıcı adı
+  recipients String  @db.Text // JSON array: [{"name":"...","email":"..."}]
 
-  sentAt        DateTime @default(now())
+  sentAt DateTime @default(now())
 
   @@index([reportId])
 }
 
 enum VisitType {
-  CUSTOMER      // Müşteri Ziyareti
-  SUPPLIER      // Tedarikçi Ziyareti
-  FAIR          // Fuar/Etkinlik
-  TECHNICAL     // Teknik Görüşme
-  AUDIT         // Denetim/Audit
-  TRAINING      // Eğitim
-  OTHER         // Diğer
+  CUSTOMER // Müşteri Ziyareti
+  SUPPLIER // Tedarikçi Ziyareti
+  FAIR // Fuar/Etkinlik
+  TECHNICAL // Teknik Görüşme
+  AUDIT // Denetim/Audit
+  TRAINING // Eğitim
+  OTHER // Diğer
 }
 
 enum VisitReportStatus {
-  DRAFT         // Taslak
-  SENT          // Gönderildi
-  PENDING       // Onay Bekliyor
-  APPROVED      // Onaylandı
-  REJECTED      // Reddedildi
+  DRAFT // Taslak
+  SENT // Gönderildi
+  PENDING // Onay Bekliyor
+  APPROVED // Onaylandı
+  REJECTED // Reddedildi
 }
 
 enum ParticipantCompany {
-  ILERI_GROUP     // İleri Grup'tan
+  ILERI_GROUP // İleri Grup'tan
   VISITED_COMPANY // Ziyaret edilen firmadan
 }
 
 enum ActionItemStatus {
-  PENDING     // Bekliyor
+  PENDING // Bekliyor
   IN_PROGRESS // Devam Ediyor
-  COMPLETED   // Tamamlandı
-  CANCELLED   // İptal
+  COMPLETED // Tamamlandı
+  CANCELLED // İptal
 }
 
 // ==========================================
@@ -7059,65 +7087,65 @@ enum ActionItemStatus {
 // ==========================================
 
 model Meeting {
-  id              String @id @default(cuid())
-  meetingNumber   String @unique // TPL-2026-0001
-  
+  id            String @id @default(cuid())
+  meetingNumber String @unique // TPL-2026-0001
+
   // Temel Bilgiler
-  title           String
-  description     String? @db.Text
-  meetingType     MeetingType
-  
+  title       String
+  description String?     @db.Text
+  meetingType MeetingType
+
   // Tarih/Saat
-  scheduledDate   DateTime
-  startTime       DateTime?
-  endTime         DateTime?
-  duration        Int? // dakika cinsinden
-  
+  scheduledDate DateTime
+  startTime     DateTime?
+  endTime       DateTime?
+  duration      Int? // dakika cinsinden
+
   // Konum
-  location        String?
-  isOnline        Boolean @default(false)
-  onlineLink      String?
-  
+  location   String?
+  isOnline   Boolean @default(false)
+  onlineLink String?
+
   // Organizatör
-  organizerId     String
-  organizer       User @relation("MeetingOrganizer", fields: [organizerId], references: [id])
-  
+  organizerId String
+  organizer   User   @relation("MeetingOrganizer", fields: [organizerId], references: [id])
+
   // Toplantı Başkanı ve Raportör
-  chairmanId      String?
-  chairman        User? @relation("MeetingChairman", fields: [chairmanId], references: [id])
-  rapporteurId    String?
-  rapporteur      User? @relation("MeetingRapporteur", fields: [rapporteurId], references: [id])
-  
+  chairmanId   String?
+  chairman     User?   @relation("MeetingChairman", fields: [chairmanId], references: [id])
+  rapporteurId String?
+  rapporteur   User?   @relation("MeetingRapporteur", fields: [rapporteurId], references: [id])
+
   // Departman (opsiyonel)
-  department      String?
-  
+  department String?
+
   // Durum
-  status          MeetingStatus @default(PLANNED)
-  
+  status MeetingStatus @default(PLANNED)
+
   // İlişkiler
-  attendees       MeetingAttendee[]
-  agendaItems     MeetingAgendaItem[]
-  decisions       MeetingDecision[]
-  attachments     MeetingAttachment[]
-  
+  attendees   MeetingAttendee[]
+  agendaItems MeetingAgendaItem[]
+  decisions   MeetingDecision[]
+  attachments MeetingAttachment[]
+
   // Tutanak
-  minutesApproved Boolean @default(false)
-  minutesApprovedAt DateTime?
+  minutesApproved     Boolean   @default(false)
+  minutesApprovedAt   DateTime?
   minutesApprovedById String?
-  minutesApprovedBy User? @relation("MeetingMinutesApprover", fields: [minutesApprovedById], references: [id])
-  
+  minutesApprovedBy   User?     @relation("MeetingMinutesApprover", fields: [minutesApprovedById], references: [id])
+
   // Notlar
-  openingRemarks  String? @db.Text
-  closingRemarks  String? @db.Text
-  generalNotes    String? @db.Text
-  
+  openingRemarks String? @db.Text
+  closingRemarks String? @db.Text
+  generalNotes   String? @db.Text
+
   // Önceki/Sonraki toplantı referansı
   previousMeetingId String?
-  previousMeeting Meeting? @relation("MeetingChain", fields: [previousMeetingId], references: [id])
-  nextMeetings    Meeting[] @relation("MeetingChain")
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  previousMeeting   Meeting?  @relation("MeetingChain", fields: [previousMeetingId], references: [id])
+  nextMeetings      Meeting[] @relation("MeetingChain")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([organizerId])
   @@index([status])
@@ -7127,33 +7155,33 @@ model Meeting {
 }
 
 model MeetingAttendee {
-  id              String @id @default(cuid())
-  meetingId       String
-  meeting         Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
   // Dahili katılımcı
-  userId          String?
-  user            User? @relation("MeetingAttendees", fields: [userId], references: [id])
-  
+  userId String?
+  user   User?   @relation("MeetingAttendees", fields: [userId], references: [id])
+
   // Harici katılımcı (misafir)
   externalName    String?
   externalEmail   String?
   externalCompany String?
   externalTitle   String?
-  
+
   // Katılım durumu
-  inviteStatus    InviteStatus @default(PENDING)
+  inviteStatus     InviteStatus     @default(PENDING)
   attendanceStatus AttendanceStatus @default(UNKNOWN)
-  absenceReason   String?
-  
+  absenceReason    String?
+
   // Rol
-  role            AttendeeRole @default(PARTICIPANT)
-  
-  arrivalTime     DateTime?
-  departureTime   DateTime?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  role AttendeeRole @default(PARTICIPANT)
+
+  arrivalTime   DateTime?
+  departureTime DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([meetingId, userId])
   @@index([meetingId])
@@ -7161,73 +7189,73 @@ model MeetingAttendee {
 }
 
 model MeetingAgendaItem {
-  id              String @id @default(cuid())
-  meetingId       String
-  meeting         Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  
-  orderNo         Int
-  title           String
-  description     String? @db.Text
-  
+  id        String  @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  orderNo     Int
+  title       String
+  description String? @db.Text
+
   // Sunan kişi
-  presenterId     String?
-  presenter       User? @relation("AgendaPresenter", fields: [presenterId], references: [id])
-  presenterName   String? // Harici kişi için
-  
+  presenterId   String?
+  presenter     User?   @relation("AgendaPresenter", fields: [presenterId], references: [id])
+  presenterName String? // Harici kişi için
+
   // Süre
   plannedDuration Int? // dakika
   actualDuration  Int? // dakika
-  
+
   // Tartışma ve Sonuç
-  discussionNotes String? @db.Text
+  discussionNotes String?        @db.Text
   outcome         AgendaOutcome?
   outcomeNotes    String?
-  
+
   // Oylama (gerekirse)
-  votesFor        Int?
-  votesAgainst    Int?
-  votesAbstain    Int?
-  
+  votesFor     Int?
+  votesAgainst Int?
+  votesAbstain Int?
+
   // Durum
-  status          AgendaItemStatus @default(PENDING)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status AgendaItemStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([meetingId])
   @@index([orderNo])
 }
 
 model MeetingDecision {
-  id              String @id @default(cuid())
-  meetingId       String
-  meeting         Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  
-  decisionNumber  String // K-001, K-002
-  
+  id        String  @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  decisionNumber String // K-001, K-002
+
   // Karar detayları
-  title           String
-  description     String @db.Text
-  
+  title       String
+  description String @db.Text
+
   // Sorumlu
   responsibleId   String?
-  responsible     User? @relation("DecisionResponsible", fields: [responsibleId], references: [id])
+  responsible     User?   @relation("DecisionResponsible", fields: [responsibleId], references: [id])
   responsibleName String? // Harici kişi veya departman için
-  
+
   // Tarih ve öncelik
-  dueDate         DateTime?
-  priority        MeetingPriority @default(MEDIUM)
-  
+  dueDate  DateTime?
+  priority MeetingPriority @default(MEDIUM)
+
   // Durum takibi
   status          DecisionStatus @default(PENDING)
   completedAt     DateTime?
   completionNotes String?
-  
+
   // İlişkili görev (Planlı Görevler modülü ile entegrasyon)
-  linkedTaskId    String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  linkedTaskId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([meetingId])
   @@index([responsibleId])
@@ -7236,19 +7264,19 @@ model MeetingDecision {
 }
 
 model MeetingAttachment {
-  id              String @id @default(cuid())
-  meetingId       String
-  meeting         Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  
-  fileName        String
-  filePath        String
-  fileSize        Int
-  mimeType        String
-  
-  uploadedById    String
-  uploadedBy      User @relation("MeetingAttachmentUploader", fields: [uploadedById], references: [id])
-  
-  createdAt       DateTime @default(now())
+  id        String  @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  fileName String
+  filePath String
+  fileSize Int
+  mimeType String
+
+  uploadedById String
+  uploadedBy   User   @relation("MeetingAttachmentUploader", fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
 
   @@index([meetingId])
 }
@@ -7258,144 +7286,144 @@ model MeetingAttachment {
 // ========================================
 
 model ProjectPlan {
-  id              String @id @default(cuid())
-  planNumber      String @unique // PP-2026-0001
+  id         String @id @default(cuid())
+  planNumber String @unique // PP-2026-0001
 
   // Temel Bilgiler
-  title           String
-  description     String? @db.Text
+  title       String
+  description String? @db.Text
 
   // Sütun etiketleri (özelleştirilebilir)
-  label1          String @default("Danışman")
-  label2          String @default("Hedef")
-  label3          String @default("Gerçekleşen")
+  label1 String @default("Danışman")
+  label2 String @default("Hedef")
+  label3 String @default("Gerçekleşen")
 
   // Oluşturan
-  createdById     String
-  createdBy       User @relation("ProjectPlanCreator", fields: [createdById], references: [id])
+  createdById String
+  createdBy   User   @relation("ProjectPlanCreator", fields: [createdById], references: [id])
 
   // Durum
-  status          ProjectPlanStatus @default(ACTIVE)
+  status ProjectPlanStatus @default(ACTIVE)
 
   // Maddeler
-  items           ProjectPlanItem[]
+  items ProjectPlanItem[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([createdById])
   @@index([status])
 }
 
 model ProjectPlanItem {
-  id              String @id @default(cuid())
-  planId          String
-  plan            ProjectPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  id     String      @id @default(cuid())
+  planId String
+  plan   ProjectPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  orderNo         Int
-  name            String
-  consultant      Int @default(0) // Danışman hedefi (adam/gün)
-  target          Int @default(0) // Bizim hedef (adam/gün)
-  actual          Int @default(0) // Gerçekleşen (adam/gün)
+  orderNo    Int
+  name       String
+  consultant Int    @default(0) // Danışman hedefi (adam/gün)
+  target     Int    @default(0) // Bizim hedef (adam/gün)
+  actual     Int    @default(0) // Gerçekleşen (adam/gün)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([planId])
   @@index([orderNo])
 }
 
 enum ProjectPlanStatus {
-  ACTIVE          // Aktif
-  COMPLETED       // Tamamlandı
-  ARCHIVED        // Arşivlendi
+  ACTIVE // Aktif
+  COMPLETED // Tamamlandı
+  ARCHIVED // Arşivlendi
 }
 
 // Toplantı Türleri
 enum MeetingType {
-  BOARD           // Yönetim Kurulu
-  MANAGEMENT      // Yönetim Toplantısı
-  DEPARTMENT      // Departman Toplantısı
-  PROJECT         // Proje Toplantısı
-  WEEKLY          // Haftalık Toplantı
-  MONTHLY         // Aylık Toplantı
-  ONE_ON_ONE      // 1:1 Görüşme
-  BRAINSTORM      // Beyin Fırtınası
-  TRAINING        // Eğitim
-  REVIEW          // Değerlendirme
-  EMERGENCY       // Acil Toplantı
-  OTHER           // Diğer
+  BOARD // Yönetim Kurulu
+  MANAGEMENT // Yönetim Toplantısı
+  DEPARTMENT // Departman Toplantısı
+  PROJECT // Proje Toplantısı
+  WEEKLY // Haftalık Toplantı
+  MONTHLY // Aylık Toplantı
+  ONE_ON_ONE // 1:1 Görüşme
+  BRAINSTORM // Beyin Fırtınası
+  TRAINING // Eğitim
+  REVIEW // Değerlendirme
+  EMERGENCY // Acil Toplantı
+  OTHER // Diğer
 }
 
 // Toplantı Durumu
 enum MeetingStatus {
-  PLANNED         // Planlandı
-  IN_PROGRESS     // Devam Ediyor
-  COMPLETED       // Tamamlandı
-  CANCELLED       // İptal Edildi
-  POSTPONED       // Ertelendi
+  PLANNED // Planlandı
+  IN_PROGRESS // Devam Ediyor
+  COMPLETED // Tamamlandı
+  CANCELLED // İptal Edildi
+  POSTPONED // Ertelendi
 }
 
 // Davet Durumu
 enum InviteStatus {
-  PENDING         // Bekliyor
-  ACCEPTED        // Kabul Edildi
-  DECLINED        // Reddedildi
-  TENTATIVE       // Belirsiz
+  PENDING // Bekliyor
+  ACCEPTED // Kabul Edildi
+  DECLINED // Reddedildi
+  TENTATIVE // Belirsiz
 }
 
 // Katılım Durumu
 enum AttendanceStatus {
-  UNKNOWN         // Bilinmiyor
-  PRESENT         // Katıldı
-  ABSENT          // Katılmadı
-  LATE            // Geç Geldi
-  LEFT_EARLY      // Erken Ayrıldı
-  EXCUSED         // Mazeretli
+  UNKNOWN // Bilinmiyor
+  PRESENT // Katıldı
+  ABSENT // Katılmadı
+  LATE // Geç Geldi
+  LEFT_EARLY // Erken Ayrıldı
+  EXCUSED // Mazeretli
 }
 
 // Katılımcı Rolü
 enum AttendeeRole {
-  CHAIRMAN        // Toplantı Başkanı
-  RAPPORTEUR      // Raportör
-  PRESENTER       // Sunucu
-  PARTICIPANT     // Katılımcı
-  OBSERVER        // Gözlemci
-  GUEST           // Misafir
+  CHAIRMAN // Toplantı Başkanı
+  RAPPORTEUR // Raportör
+  PRESENTER // Sunucu
+  PARTICIPANT // Katılımcı
+  OBSERVER // Gözlemci
+  GUEST // Misafir
 }
 
 // Gündem Maddesi Sonucu
 enum AgendaOutcome {
-  APPROVED        // Onaylandı
-  REJECTED        // Reddedildi
-  POSTPONED       // Ertelendi
-  NEEDS_INFO      // Bilgi Gerekli
-  NOTED           // Not Edildi
-  NO_DECISION     // Karar Alınmadı
+  APPROVED // Onaylandı
+  REJECTED // Reddedildi
+  POSTPONED // Ertelendi
+  NEEDS_INFO // Bilgi Gerekli
+  NOTED // Not Edildi
+  NO_DECISION // Karar Alınmadı
 }
 
 // Gündem Maddesi Durumu
 enum AgendaItemStatus {
-  PENDING         // Bekliyor
-  DISCUSSED       // Tartışıldı
-  SKIPPED         // Atlandı
+  PENDING // Bekliyor
+  DISCUSSED // Tartışıldı
+  SKIPPED // Atlandı
 }
 
 // Karar Durumu
 enum DecisionStatus {
-  PENDING         // Bekliyor
-  IN_PROGRESS     // Devam Ediyor
-  COMPLETED       // Tamamlandı
-  OVERDUE         // Gecikmiş
-  CANCELLED       // İptal
+  PENDING // Bekliyor
+  IN_PROGRESS // Devam Ediyor
+  COMPLETED // Tamamlandı
+  OVERDUE // Gecikmiş
+  CANCELLED // İptal
 }
 
 // Toplantı Karar Önceliği
 enum MeetingPriority {
-  LOW             // Düşük
-  MEDIUM          // Orta
-  HIGH            // Yüksek
-  URGENT          // Acil
+  LOW // Düşük
+  MEDIUM // Orta
+  HIGH // Yüksek
+  URGENT // Acil
 }
 
 // ==========================================
@@ -7404,67 +7432,67 @@ enum MeetingPriority {
 
 // Ana Model: Maliyet Analizi
 model CostAnalysis {
-  id                String   @id @default(cuid())
-  code              String               // 2910, 2911, vb.
-  name              String               // 2'li TG
-  description       String?  @db.Text
-  revision          String   @default("Rev.00")
+  id          String  @id @default(cuid())
+  code        String // 2910, 2911, vb.
+  name        String // 2'li TG
+  description String? @db.Text
+  revision    String  @default("Rev.00")
 
   // Revizyon sistemi
-  revisionNumber    Int      @default(0)
-  revisionNote      String?  @db.Text
-  revisionDate      DateTime @default(now())
-  parentId          String?
-  parent            CostAnalysis?  @relation("CostRevisions", fields: [parentId], references: [id])
-  childRevisions    CostAnalysis[] @relation("CostRevisions")
-  isLatest          Boolean  @default(true)
+  revisionNumber Int            @default(0)
+  revisionNote   String?        @db.Text
+  revisionDate   DateTime       @default(now())
+  parentId       String?
+  parent         CostAnalysis?  @relation("CostRevisions", fields: [parentId], references: [id])
+  childRevisions CostAnalysis[] @relation("CostRevisions")
+  isLatest       Boolean        @default(true)
 
   // Ürün bilgileri
-  finishedWeight    Decimal  @db.Decimal(10, 2)  // kg
-  currency          CostCurrency @default(EUR)
+  finishedWeight Decimal      @db.Decimal(10, 2) // kg
+  currency       CostCurrency @default(EUR)
 
   // İlişkiler
-  categoryId        String?
-  category          CostCategory? @relation(fields: [categoryId], references: [id])
-  customerId        String?
-  customer          CostCustomer? @relation(fields: [customerId], references: [id])
+  categoryId String?
+  category   CostCategory? @relation(fields: [categoryId], references: [id])
+  customerId String?
+  customer   CostCustomer? @relation(fields: [customerId], references: [id])
 
   // Hesaplanan değerler (cache)
-  materialCost      Decimal  @default(0) @db.Decimal(12, 2)
-  laborCost         Decimal  @default(0) @db.Decimal(12, 2)
-  externalCost      Decimal  @default(0) @db.Decimal(12, 2)
-  otherCost         Decimal  @default(0) @db.Decimal(12, 2)
-  subtotal          Decimal  @default(0) @db.Decimal(12, 2)
+  materialCost Decimal @default(0) @db.Decimal(12, 2)
+  laborCost    Decimal @default(0) @db.Decimal(12, 2)
+  externalCost Decimal @default(0) @db.Decimal(12, 2)
+  otherCost    Decimal @default(0) @db.Decimal(12, 2)
+  subtotal     Decimal @default(0) @db.Decimal(12, 2)
 
   // Genel gider ve kar
-  overheadRate      Decimal  @default(25) @db.Decimal(5, 2)  // %
-  overheadAmount    Decimal  @default(0) @db.Decimal(12, 2)
-  totalCost         Decimal  @default(0) @db.Decimal(12, 2)
+  overheadRate   Decimal @default(25) @db.Decimal(5, 2) // %
+  overheadAmount Decimal @default(0) @db.Decimal(12, 2)
+  totalCost      Decimal @default(0) @db.Decimal(12, 2)
 
-  profitRate        Decimal  @default(20) @db.Decimal(5, 2)  // %
-  profitAmount      Decimal  @default(0) @db.Decimal(12, 2)
-  salesPrice        Decimal  @default(0) @db.Decimal(12, 2)
-  pricePerKg        Decimal  @default(0) @db.Decimal(10, 2)
+  profitRate   Decimal @default(20) @db.Decimal(5, 2) // %
+  profitAmount Decimal @default(0) @db.Decimal(12, 2)
+  salesPrice   Decimal @default(0) @db.Decimal(12, 2)
+  pricePerKg   Decimal @default(0) @db.Decimal(10, 2)
 
   // Durum
-  status            CostAnalysisStatus @default(DRAFT)
+  status CostAnalysisStatus @default(DRAFT)
 
   // Onay bilgileri
-  approvedById      String?
-  approvedAt        DateTime?
-  rejectionReason   String?  @db.Text
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?   @db.Text
 
   // Audit
-  createdById       String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Alt tablolar
-  materials         CostMaterial[]
-  laborItems        CostLabor[]
-  externalServices  CostExternalService[]
-  otherCosts        CostOtherItem[]
-  versions          CostAnalysisVersion[]
+  materials        CostMaterial[]
+  laborItems       CostLabor[]
+  externalServices CostExternalService[]
+  otherCosts       CostOtherItem[]
+  versions         CostAnalysisVersion[]
 
   @@unique([code, revisionNumber])
   @@index([code])
@@ -7477,11 +7505,11 @@ model CostAnalysis {
 }
 
 enum CostAnalysisStatus {
-  DRAFT           // Taslak
-  PENDING_REVIEW  // İncelemede
-  APPROVED        // Onaylı
-  REJECTED        // Reddedildi
-  ARCHIVED        // Arşivlenmiş
+  DRAFT // Taslak
+  PENDING_REVIEW // İncelemede
+  APPROVED // Onaylı
+  REJECTED // Reddedildi
+  ARCHIVED // Arşivlenmiş
 }
 
 enum CostCurrency {
@@ -7493,64 +7521,64 @@ enum CostCurrency {
 
 // Malzeme: CostMaterial
 model CostMaterial {
-  id              String   @id @default(cuid())
-  costAnalysisId  String
-  costAnalysis    CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  costAnalysisId String
+  costAnalysis   CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
 
   // Malzeme bilgileri
-  materialCode    String?
-  name            String
-  specification   String?
-  category        MaterialCostCategory @default(RAW_MATERIAL)
+  materialCode  String?
+  name          String
+  specification String?
+  category      MaterialCostCategory @default(RAW_MATERIAL)
 
   // Miktar ve fiyat
-  unit            String   @default("kg")
-  currency        CostCurrency @default(EUR)
-  grossQuantity   Decimal  @db.Decimal(10, 3)
-  wasteRate       Decimal  @default(0) @db.Decimal(5, 2)  // Fire %
-  netQuantity     Decimal  @db.Decimal(10, 3)  // Hesaplanan
-  unitPrice       Decimal  @db.Decimal(10, 2)
-  totalPrice      Decimal  @db.Decimal(12, 2)  // Hesaplanan
+  unit          String       @default("kg")
+  currency      CostCurrency @default(EUR)
+  grossQuantity Decimal      @db.Decimal(10, 3)
+  wasteRate     Decimal      @default(0) @db.Decimal(5, 2) // Fire %
+  netQuantity   Decimal      @db.Decimal(10, 3) // Hesaplanan
+  unitPrice     Decimal      @db.Decimal(10, 2)
+  totalPrice    Decimal      @db.Decimal(12, 2) // Hesaplanan
 
   // Tedarikçi
-  supplierId      String?
-  supplier        CostSupplier? @relation(fields: [supplierId], references: [id])
+  supplierId String?
+  supplier   CostSupplier? @relation(fields: [supplierId], references: [id])
 
   // Sıralama
-  sortOrder       Int      @default(0)
+  sortOrder Int @default(0)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([costAnalysisId])
   @@index([supplierId])
 }
 
 enum MaterialCostCategory {
-  RAW_MATERIAL      // Hammadde
-  SEMI_FINISHED     // Yarı mamul
-  PURCHASED_PART    // Satın alınan parça
-  STANDARD_PART     // Standart parça (cıvata, somun)
-  CONSUMABLE        // Sarf malzeme
+  RAW_MATERIAL // Hammadde
+  SEMI_FINISHED // Yarı mamul
+  PURCHASED_PART // Satın alınan parça
+  STANDARD_PART // Standart parça (cıvata, somun)
+  CONSUMABLE // Sarf malzeme
 }
 
 // Malzeme Kataloğu: Paylaşılan malzeme kütüphanesi
 model CostMaterialCatalog {
-  id              String   @id @default(cuid())
-  code            String   @unique
-  name            String
-  specification   String?
-  category        MaterialCostCategory @default(RAW_MATERIAL)
-  unit            String   @default("kg")
-  currency        CostCurrency @default(EUR)
-  unitPrice       Decimal  @db.Decimal(10, 2)
+  id            String               @id @default(cuid())
+  code          String               @unique
+  name          String
+  specification String?
+  category      MaterialCostCategory @default(RAW_MATERIAL)
+  unit          String               @default("kg")
+  currency      CostCurrency         @default(EUR)
+  unitPrice     Decimal              @db.Decimal(10, 2)
 
-  supplierId      String?
-  supplier        CostSupplier? @relation(fields: [supplierId], references: [id])
+  supplierId String?
+  supplier   CostSupplier? @relation(fields: [supplierId], references: [id])
 
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category])
   @@index([isActive])
@@ -7559,219 +7587,219 @@ model CostMaterialCatalog {
 
 // İşçilik: CostLabor
 model CostLabor {
-  id              String   @id @default(cuid())
-  costAnalysisId  String
-  costAnalysis    CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  costAnalysisId String
+  costAnalysis   CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
 
   // Operasyon bilgileri
-  operationCode   String?
-  operationName   String
-  workCenter      String?
-  laborType       CostLaborType @default(INTERNAL)
+  operationCode String?
+  operationName String
+  workCenter    String?
+  laborType     CostLaborType @default(INTERNAL)
 
   // Süreler (saat)
-  setupTime       Decimal  @default(0) @db.Decimal(6, 2)
-  processTime     Decimal  @db.Decimal(6, 2)
-  totalTime       Decimal  @db.Decimal(6, 2)  // Hesaplanan
+  setupTime   Decimal @default(0) @db.Decimal(6, 2)
+  processTime Decimal @db.Decimal(6, 2)
+  totalTime   Decimal @db.Decimal(6, 2) // Hesaplanan
 
   // Ücret
-  hourlyRate      Decimal  @db.Decimal(8, 2)
-  totalCost       Decimal  @db.Decimal(12, 2)  // Hesaplanan
+  hourlyRate Decimal @db.Decimal(8, 2)
+  totalCost  Decimal @db.Decimal(12, 2) // Hesaplanan
 
   // Makine ilişkisi
-  machineId       String?
-  machine         CostMachine? @relation(fields: [machineId], references: [id])
+  machineId String?
+  machine   CostMachine? @relation(fields: [machineId], references: [id])
 
   // Sıralama
-  sortOrder       Int      @default(0)
+  sortOrder Int @default(0)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([costAnalysisId])
   @@index([machineId])
 }
 
 enum CostLaborType {
-  INTERNAL    // Dahili
-  EXTERNAL    // Dış hizmet
-  ASSEMBLY    // Montaj
+  INTERNAL // Dahili
+  EXTERNAL // Dış hizmet
+  ASSEMBLY // Montaj
 }
 
 // Dış Hizmet: CostExternalService
 model CostExternalService {
-  id              String   @id @default(cuid())
-  costAnalysisId  String
-  costAnalysis    CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  costAnalysisId String
+  costAnalysis   CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
 
   // Hizmet bilgileri
-  serviceCode     String?
-  serviceName     String
-  description     String?  @db.Text
-  serviceType     CostServiceType @default(PROCESSING)
+  serviceCode String?
+  serviceName String
+  description String?         @db.Text
+  serviceType CostServiceType @default(PROCESSING)
 
   // Miktar ve fiyat
-  quantity        Decimal  @default(1) @db.Decimal(10, 2)
-  unit            String   @default("adet")
-  unitPrice       Decimal  @db.Decimal(12, 2)
-  totalPrice      Decimal  @db.Decimal(12, 2)  // Hesaplanan
+  quantity   Decimal @default(1) @db.Decimal(10, 2)
+  unit       String  @default("adet")
+  unitPrice  Decimal @db.Decimal(12, 2)
+  totalPrice Decimal @db.Decimal(12, 2) // Hesaplanan
 
   // Tedarikçi
-  supplierId      String?
-  supplier        CostSupplier? @relation(fields: [supplierId], references: [id])
+  supplierId String?
+  supplier   CostSupplier? @relation(fields: [supplierId], references: [id])
 
   // Sıralama
-  sortOrder       Int      @default(0)
+  sortOrder Int @default(0)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([costAnalysisId])
   @@index([supplierId])
 }
 
 enum CostServiceType {
-  PROCESSING        // İşleme (ısıl işlem, vb.)
+  PROCESSING // İşleme (ısıl işlem, vb.)
   SURFACE_TREATMENT // Yüzey işleme (boya, kaplama)
-  TESTING           // Test (NDT, vb.)
-  CERTIFICATION     // Sertifikasyon
-  TRANSPORT         // Nakliye
-  OTHER             // Diğer
+  TESTING // Test (NDT, vb.)
+  CERTIFICATION // Sertifikasyon
+  TRANSPORT // Nakliye
+  OTHER // Diğer
 }
 
 // Diğer Maliyetler: CostOtherItem
 model CostOtherItem {
-  id              String   @id @default(cuid())
-  costAnalysisId  String
-  costAnalysis    CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  costAnalysisId String
+  costAnalysis   CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
 
   // Kalem bilgileri
-  name            String
-  description     String?  @db.Text
-  category        OtherCostCategory
+  name        String
+  description String?           @db.Text
+  category    OtherCostCategory
 
   // Miktar ve fiyat
-  quantity        Decimal  @default(1) @db.Decimal(10, 2)
-  unit            String   @default("adet")
-  unitPrice       Decimal  @db.Decimal(12, 2)
-  totalPrice      Decimal  @db.Decimal(12, 2)  // Hesaplanan
+  quantity   Decimal @default(1) @db.Decimal(10, 2)
+  unit       String  @default("adet")
+  unitPrice  Decimal @db.Decimal(12, 2)
+  totalPrice Decimal @db.Decimal(12, 2) // Hesaplanan
 
   // Sıralama
-  sortOrder       Int      @default(0)
+  sortOrder Int @default(0)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([costAnalysisId])
 }
 
 enum OtherCostCategory {
-  ASSEMBLY_LABOR      // Montaj işçiliği
-  CONNECTION_PARTS    // Bağlantı elemanları
-  QUALITY_CONTROL     // Kalite kontrol
-  TRANSPORT           // Nakliye
-  PACKAGING           // Paketleme
-  ENGINEERING         // Mühendislik
-  TOOLING             // Takım/kalıp
-  CERTIFICATION       // Sertifikasyon
-  OTHER               // Diğer
+  ASSEMBLY_LABOR // Montaj işçiliği
+  CONNECTION_PARTS // Bağlantı elemanları
+  QUALITY_CONTROL // Kalite kontrol
+  TRANSPORT // Nakliye
+  PACKAGING // Paketleme
+  ENGINEERING // Mühendislik
+  TOOLING // Takım/kalıp
+  CERTIFICATION // Sertifikasyon
+  OTHER // Diğer
 }
 
 // Ayar Tabloları
 
 // Maliyet Kategorisi
 model CostCategory {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
-  code        String   @unique
-  color       String   @default("#6366f1")  // Tailwind renk kodu
-  description String?  @db.Text
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
+  code        String  @unique
+  color       String  @default("#6366f1") // Tailwind renk kodu
+  description String? @db.Text
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  analyses    CostAnalysis[]
+  analyses CostAnalysis[]
 
   @@index([isActive, sortOrder])
 }
 
 // Maliyet Müşterisi
 model CostCustomer {
-  id          String   @id @default(cuid())
-  name        String
-  code        String   @unique
-  country     String?
-  contact     String?
-  email       String?
-  phone       String?
-  isActive    Boolean  @default(true)
+  id       String  @id @default(cuid())
+  name     String
+  code     String  @unique
+  country  String?
+  contact  String?
+  email    String?
+  phone    String?
+  isActive Boolean @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  analyses    CostAnalysis[]
+  analyses CostAnalysis[]
 
   @@index([isActive])
 }
 
 // Maliyet Tedarikçisi
 model CostSupplier {
-  id          String   @id @default(cuid())
-  name        String
-  code        String   @unique
-  type        CostSupplierType @default(MATERIAL)
-  country     String?
-  contact     String?
-  email       String?
-  phone       String?
-  isActive    Boolean  @default(true)
+  id       String           @id @default(cuid())
+  name     String
+  code     String           @unique
+  type     CostSupplierType @default(MATERIAL)
+  country  String?
+  contact  String?
+  email    String?
+  phone    String?
+  isActive Boolean          @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  materials         CostMaterial[]
-  catalogMaterials  CostMaterialCatalog[]
-  services          CostExternalService[]
+  materials        CostMaterial[]
+  catalogMaterials CostMaterialCatalog[]
+  services         CostExternalService[]
 
   @@index([isActive])
   @@index([type])
 }
 
 enum CostSupplierType {
-  MATERIAL    // Malzeme tedarikçisi
-  SERVICE     // Hizmet tedarikçisi
-  BOTH        // Her ikisi
+  MATERIAL // Malzeme tedarikçisi
+  SERVICE // Hizmet tedarikçisi
+  BOTH // Her ikisi
 }
 
 // Maliyet Makinesi / İş Merkezi
 model CostMachine {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
-  code        String   @unique
-  type        String?              // CNC, Lazer, Kaynak, vb.
-  hourlyRate  Decimal  @db.Decimal(8, 2)
-  description String?  @db.Text
-  isActive    Boolean  @default(true)
+  code        String  @unique
+  type        String? // CNC, Lazer, Kaynak, vb.
+  hourlyRate  Decimal @db.Decimal(8, 2)
+  description String? @db.Text
+  isActive    Boolean @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  laborItems  CostLabor[]
+  laborItems CostLabor[]
 
   @@index([isActive])
 }
 
 // Döviz Kuru
 model CostExchangeRate {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   fromCurrency  CostCurrency
   toCurrency    CostCurrency
-  rate          Decimal  @db.Decimal(10, 4)
-  effectiveDate DateTime @default(now())
+  rate          Decimal      @db.Decimal(10, 4)
+  effectiveDate DateTime     @default(now())
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([fromCurrency, toCurrency, effectiveDate])
   @@index([effectiveDate])
@@ -7779,16 +7807,16 @@ model CostExchangeRate {
 
 // Maliyet Analizi Versiyonu (Geçmiş)
 model CostAnalysisVersion {
-  id              String   @id @default(cuid())
-  costAnalysisId  String
-  costAnalysis    CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  costAnalysisId String
+  costAnalysis   CostAnalysis @relation(fields: [costAnalysisId], references: [id], onDelete: Cascade)
 
-  version         Int
-  snapshot        Json     // Tüm verilerin JSON snapshot'ı
-  reason          String?  @db.Text // Değişiklik nedeni
+  version  Int
+  snapshot Json // Tüm verilerin JSON snapshot'ı
+  reason   String? @db.Text // Değişiklik nedeni
 
-  createdById     String
-  createdAt       DateTime @default(now())
+  createdById String
+  createdAt   DateTime @default(now())
 
   @@index([costAnalysisId])
   @@index([createdAt])
@@ -7798,18 +7826,18 @@ model CostAnalysisVersion {
 
 // SSS Kategorisi
 model FAQCategory {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
-  slug        String   @unique
-  description String?  @db.Text
-  icon        String?  // Lucide icon adı
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
+  slug        String  @unique
+  description String? @db.Text
+  icon        String? // Lucide icon adı
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  faqs        FAQ[]
+  faqs FAQ[]
 
   @@index([isActive, sortOrder])
 }
@@ -7826,16 +7854,16 @@ model FAQ {
   helpfulCount    Int      @default(0)
   notHelpfulCount Int      @default(0)
 
-  categoryId      String
-  category        FAQCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   FAQCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  authorId        String
-  author          User @relation("FAQAuthor", fields: [authorId], references: [id])
+  authorId String
+  author   User   @relation("FAQAuthor", fields: [authorId], references: [id])
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  feedbacks       FAQFeedback[]
+  feedbacks FAQFeedback[]
 
   @@index([categoryId, isPublished, sortOrder])
   @@index([isPublished, viewCount])
@@ -7844,13 +7872,13 @@ model FAQ {
 
 // SSS Geri Bildirim (Kullanıcı başına tek oy)
 model FAQFeedback {
-  id        String   @id @default(cuid())
-  faqId     String
-  faq       FAQ      @relation(fields: [faqId], references: [id], onDelete: Cascade)
+  id    String @id @default(cuid())
+  faqId String
+  faq   FAQ    @relation(fields: [faqId], references: [id], onDelete: Cascade)
 
-  userId    String?  // Anonim kullanıcılar için null
-  ipHash    String?  // Anonim kullanıcılar için IP hash
-  helpful   Boolean  // true = faydalı, false = faydalı değil
+  userId  String? // Anonim kullanıcılar için null
+  ipHash  String? // Anonim kullanıcılar için IP hash
+  helpful Boolean // true = faydalı, false = faydalı değil
 
   createdAt DateTime @default(now())
 
@@ -7865,58 +7893,58 @@ model FAQFeedback {
 
 // Takvim Etkinlik Tipleri
 enum CalendarEventType {
-  MEETING           // Toplantı
-  TRAINING          // Eğitim
-  CALIBRATION       // Kalibrasyon
-  FIRE_INSPECTION   // Yangın Kontrolü
-  LEAVE             // İzin
-  HOLIDAY           // Tatil
-  REMINDER          // Hatırlatma
-  OTHER             // Diğer
+  MEETING // Toplantı
+  TRAINING // Eğitim
+  CALIBRATION // Kalibrasyon
+  FIRE_INSPECTION // Yangın Kontrolü
+  LEAVE // İzin
+  HOLIDAY // Tatil
+  REMINDER // Hatırlatma
+  OTHER // Diğer
 }
 
 // Takvim Etkinliği
 model CalendarEvent {
-  id              String            @id @default(cuid())
-  title           String
-  description     String?           @db.Text
-  
+  id          String  @id @default(cuid())
+  title       String
+  description String? @db.Text
+
   // Tarih/Saat
-  startDate       DateTime
-  endDate         DateTime
-  allDay          Boolean           @default(false)
-  
+  startDate DateTime
+  endDate   DateTime
+  allDay    Boolean  @default(false)
+
   // Tip ve Görünüm
-  type            CalendarEventType @default(OTHER)
-  color           String?           // Hex renk kodu (#3b82f6)
-  
+  type  CalendarEventType @default(OTHER)
+  color String? // Hex renk kodu (#3b82f6)
+
   // Konum
-  location        String?
-  
+  location String?
+
   // Oluşturan
-  createdById     String
-  createdBy       User              @relation("EventCreator", fields: [createdById], references: [id])
-  
+  createdById String
+  createdBy   User   @relation("EventCreator", fields: [createdById], references: [id])
+
   // Departman (opsiyonel)
-  departmentId    String?
-  department      Department?       @relation(fields: [departmentId], references: [id])
-  
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
   // Tekrarlama
-  isRecurring     Boolean           @default(false)
-  recurrenceRule  String?           // iCal RRULE formatı (FREQ=WEEKLY;BYDAY=MO,WE,FR)
-  
+  isRecurring    Boolean @default(false)
+  recurrenceRule String? // iCal RRULE formatı (FREQ=WEEKLY;BYDAY=MO,WE,FR)
+
   // Hatırlatma (dakika önce)
-  remindBefore    Int?              // 15, 30, 60 dakika gibi
-  
+  remindBefore Int? // 15, 30, 60 dakika gibi
+
   // Görünürlük
-  isPublic        Boolean           @default(true)  // false ise sadece oluşturan görür
-  
+  isPublic Boolean @default(true) // false ise sadece oluşturan görür
+
   // Kaynak referansı (opsiyonel - kalibrasyon, yangın kontrolü vb. için)
-  sourceType      String?           // "calibration", "fire_inspection", "leave" vb.
-  sourceId        String?           // İlgili kaydın ID'si
-  
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  sourceType String? // "calibration", "fire_inspection", "leave" vb.
+  sourceId   String? // İlgili kaydın ID'si
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([startDate, endDate])
   @@index([createdById])
@@ -7928,33 +7956,33 @@ model CalendarEvent {
 // ==================== OVERTIME (MESAİ FORMU) ====================
 
 model OvertimeForm {
-  id              String   @id @default(cuid())
-  formNo          String   @unique  // OT-2026-001
+  id     String @id @default(cuid())
+  formNo String @unique // OT-2026-001
 
   // Mesai bilgileri
-  overtimeType    OvertimeType
-  date            DateTime @db.Date
-  isFullDay       Boolean  @default(true)
-  startTime       String?  // "17:00" (saat aralığı için)
-  endTime         String?  // "20:30"
-  description     String?  // Genel açıklama
+  overtimeType OvertimeType
+  date         DateTime     @db.Date
+  isFullDay    Boolean      @default(true)
+  startTime    String? // "17:00" (saat aralığı için)
+  endTime      String? // "20:30"
+  description  String? // Genel açıklama
 
   // Oluşturan
-  createdById     String
-  createdBy       User     @relation("OvertimeCreator", fields: [createdById], references: [id])
+  createdById String
+  createdBy   User   @relation("OvertimeCreator", fields: [createdById], references: [id])
 
   // Durum
-  status          OvertimeStatus @default(DRAFT)
-  currentStep     Int      @default(0) // Hangi onay adımında
-  sendToGM        Boolean  @default(false) // Genel Müdür'e gönderilsin mi
+  status      OvertimeStatus @default(DRAFT)
+  currentStep Int            @default(0) // Hangi onay adımında
+  sendToGM    Boolean        @default(false) // Genel Müdür'e gönderilsin mi
 
   // Zaman damgaları
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // İlişkiler
-  personnel       OvertimePersonnel[]
-  approvals       OvertimeApproval[]
+  personnel OvertimePersonnel[]
+  approvals OvertimeApproval[]
 
   @@index([status])
   @@index([createdById])
@@ -7962,63 +7990,67 @@ model OvertimeForm {
 }
 
 enum OvertimeType {
-  SATURDAY      // Cumartesi Mesaisi
-  SUNDAY        // Pazar Mesaisi
+  SATURDAY // Cumartesi Mesaisi
+  SUNDAY // Pazar Mesaisi
   WEEKDAY_EXTRA // Hafta İçi Fazla Mesai
-  HOLIDAY       // Resmi Tatil Mesaisi
+  HOLIDAY // Resmi Tatil Mesaisi
 }
 
 enum OvertimeStatus {
-  DRAFT         // Taslak
-  PENDING       // Onay bekliyor
-  IN_PROGRESS   // Onay sürecinde
-  APPROVED      // Onaylandı
-  REJECTED      // Reddedildi
-  CANCELLED     // İptal edildi
+  DRAFT // Taslak
+  PENDING // Onay bekliyor
+  IN_PROGRESS // Onay sürecinde
+  APPROVED // Onaylandı
+  REJECTED // Reddedildi
+  CANCELLED // İptal edildi
 }
 
 model OvertimePersonnel {
-  id                  String   @id @default(cuid())
-  overtimeFormId      String
-  overtimeForm        OvertimeForm @relation(fields: [overtimeFormId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  overtimeFormId String
+  overtimeForm   OvertimeForm @relation(fields: [overtimeFormId], references: [id], onDelete: Cascade)
 
-  // Personel bilgileri
-  userId              String
-  user                User     @relation("OvertimePersonnel", fields: [userId], references: [id])
+  // Personel bilgileri — Personnel (IV) tablosundan
+  personnelId String?
+  personnel   Personnel? @relation(fields: [personnelId], references: [id])
+
+  // Geriye uyumluluk: eski kayıtlarda userId var
+  userId String?
+  user   User?   @relation("OvertimePersonnel", fields: [userId], references: [id])
 
   // Mesai detayları
-  workDepartment      String   // Mesai yapacak bölüm
-  serviceRoute        String?  // Servis güzergahı (mavi yaka için)
-  targetProduction    String?  // Hedef üretim
-  actualProduction    String?  // Gerçekleşen üretim
+  workDepartment   String // Mesai yapacak bölüm
+  serviceRoute     String? // Servis güzergahı (mavi yaka için)
+  targetProduction String? // Hedef üretim
+  actualProduction String? // Gerçekleşen üretim
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([overtimeFormId, userId])
+  @@unique([overtimeFormId, personnelId])
   @@index([overtimeFormId])
 }
 
 model OvertimeApproval {
-  id              String   @id @default(cuid())
-  overtimeFormId  String
-  overtimeForm    OvertimeForm @relation(fields: [overtimeFormId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  overtimeFormId String
+  overtimeForm   OvertimeForm @relation(fields: [overtimeFormId], references: [id], onDelete: Cascade)
 
   // Onay bilgileri
-  step            Int      // Sıra numarası (1-7)
-  role            String   // Onaylayan ünvan
-  approverId      String?
-  approver        User?    @relation("OvertimeApprover", fields: [approverId], references: [id])
+  step       Int // Sıra numarası (1-7)
+  role       String // Onaylayan ünvan
+  approverId String?
+  approver   User?   @relation("OvertimeApprover", fields: [approverId], references: [id])
 
   // Karar (null = beklemede)
-  decision        ApprovalDecision?
-  comment         String?
-  decidedAt       DateTime?
+  decision  ApprovalDecision?
+  comment   String?
+  decidedAt DateTime?
 
   // GM'e gönder seçeneği (sadece Genel Müdür Yardımcısı için)
-  forwardToGM     Boolean  @default(false)
+  forwardToGM Boolean @default(false)
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([overtimeFormId])
   @@index([approverId])
@@ -8027,16 +8059,20 @@ model OvertimeApproval {
 // ==================== ONAY POZİSYONLARI ====================
 
 model ApprovalPosition {
-  id          String   @id @default(cuid())
-  code        String   @unique  // PRODUCTION_DEPUTY, FACTORY_MANAGER, vb.
-  title       String             // Üretim Müdür Yardımcısı, Fabrika Müdürü, vb.
-  userId      String?            // Atanmış kullanıcı (null = henüz atanmamış)
-  user        User?    @relation("ApprovalPositionUser", fields: [userId], references: [id])
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
+  id        String  @id @default(cuid())
+  code      String  @unique // PRODUCTION_DEPUTY, FACTORY_MANAGER, vb.
+  title     String // Üretim Müdür Yardımcısı, Fabrika Müdürü, vb.
+  userId    String? // Atanmış kullanıcı (null = henüz atanmamış)
+  user      User?   @relation("ApprovalPositionUser", fields: [userId], references: [id])
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Departman bazlı onay: Dolu ise sadece bu departman personeli varsa dahil edilir.
+  // Boş ise ortak pozisyon — tüm formlara dahil edilir.
+  departments String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model OvertimeAuthorizedUser {
@@ -8051,17 +8087,17 @@ model OvertimeAuthorizedUser {
 // ===== ISO 27001 Sızma Testi / Zafiyet Değerlendirme =====
 
 model Iso27001PenetrationTest {
-  id          String   @id @default(cuid())
-  testNumber  String   @unique // PT-YYYY-NNN
+  id          String  @id @default(cuid())
+  testNumber  String  @unique // PT-YYYY-NNN
   title       String
-  description String?  @db.Text
+  description String? @db.Text
 
   // Test Detayları
   testDate    DateTime
   testType    Iso27001PenTestType
-  scope       String?  @db.Text // Tarama kapsamı
-  methodology String?  @db.Text // Metodoloji
-  tester      String   // Testi yapan kişi/firma
+  scope       String?             @db.Text // Tarama kapsamı
+  methodology String?             @db.Text // Metodoloji
+  tester      String // Testi yapan kişi/firma
 
   // Bulgu Sayıları
   criticalCount Int @default(0)
@@ -8107,19 +8143,19 @@ model Iso27001PenTestFinding {
   testId String
   test   Iso27001PenetrationTest @relation(fields: [testId], references: [id], onDelete: Cascade)
 
-  findingNumber String  // VLN-001, VLN-002, ...
-  severity      String  // CRITICAL, HIGH, MEDIUM, LOW, INFO
-  title         String
-  category      String? // Ağ Güvenliği, Kimlik Doğrulama, vb.
-  description   String? @db.Text
-  impact        String? @db.Text
+  findingNumber  String // VLN-001, VLN-002, ...
+  severity       String // CRITICAL, HIGH, MEDIUM, LOW, INFO
+  title          String
+  category       String? // Ağ Güvenliği, Kimlik Doğrulama, vb.
+  description    String? @db.Text
+  impact         String? @db.Text
   recommendation String? @db.Text
 
   // Düzeltici Faaliyet
-  responsiblePerson String?  // Sorumlu kişi
+  responsiblePerson String? // Sorumlu kişi
   deadline          DateTime? // Termin tarihi
-  actionStatus      String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, ACCEPTED
-  actionNote        String?  @db.Text // Düzeltici faaliyet notu
+  actionStatus      String    @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, ACCEPTED
+  actionNote        String?   @db.Text // Düzeltici faaliyet notu
   resolvedAt        DateTime?
   resolvedByName    String?
 
@@ -8169,17 +8205,17 @@ model Iso27001PenTestSignature {
 
 enum Iso27001PenTestType {
   VULNERABILITY_ASSESSMENT // Zafiyet Değerlendirme
-  INTERNAL_PENTEST         // İç Sızma Testi
-  EXTERNAL_PENTEST         // Dış Sızma Testi
-  WEB_APP                  // Web Uygulama Testi
-  SOCIAL_ENGINEERING       // Sosyal Mühendislik
+  INTERNAL_PENTEST // İç Sızma Testi
+  EXTERNAL_PENTEST // Dış Sızma Testi
+  WEB_APP // Web Uygulama Testi
+  SOCIAL_ENGINEERING // Sosyal Mühendislik
 }
 
 enum Iso27001PenTestStatus {
-  PLANNED     // Planlandı
+  PLANNED // Planlandı
   IN_PROGRESS // Devam Ediyor
-  COMPLETED   // Tamamlandı
-  APPROVED    // Onaylandı
+  COMPLETED // Tamamlandı
+  APPROVED // Onaylandı
 }
 
 // =============================================================================
@@ -8187,88 +8223,88 @@ enum Iso27001PenTestStatus {
 // =============================================================================
 
 enum SupplierServiceType {
-  IT_SERVICES         // BT Hizmetleri
-  CLOUD_SERVICES      // Bulut Hizmetleri
-  SECURITY_SERVICES   // Güvenlik Hizmetleri
-  MAINTENANCE         // Bakım Hizmetleri
-  TELECOM             // Telekomünikasyon
-  CONSULTING          // Danışmanlık
-  CLEANING            // Temizlik
-  SECURITY_PHYSICAL   // Fiziksel Güvenlik
-  TRANSPORTATION      // Taşımacılık / Lojistik
-  CATERING            // Yemek Hizmeti
-  TRAINING            // Eğitim Hizmeti
-  OTHER               // Diğer
+  IT_SERVICES // BT Hizmetleri
+  CLOUD_SERVICES // Bulut Hizmetleri
+  SECURITY_SERVICES // Güvenlik Hizmetleri
+  MAINTENANCE // Bakım Hizmetleri
+  TELECOM // Telekomünikasyon
+  CONSULTING // Danışmanlık
+  CLEANING // Temizlik
+  SECURITY_PHYSICAL // Fiziksel Güvenlik
+  TRANSPORTATION // Taşımacılık / Lojistik
+  CATERING // Yemek Hizmeti
+  TRAINING // Eğitim Hizmeti
+  OTHER // Diğer
 }
 
 enum SupplierGroup {
-  A_APPROVED    // 70-100: Onaylı Tedarikçi
-  B_CANDIDATE   // 50-69: Aday Tedarikçi
-  C_REJECTED    // 0-49: Yetersiz
-  PENDING       // Henüz değerlendirilmedi
+  A_APPROVED // 70-100: Onaylı Tedarikçi
+  B_CANDIDATE // 50-69: Aday Tedarikçi
+  C_REJECTED // 0-49: Yetersiz
+  PENDING // Henüz değerlendirilmedi
 }
 
 enum SupplierStatus {
   ACTIVE
   INACTIVE
-  SUSPENDED     // Askıya alınmış
-  BLACKLISTED   // Kara liste
+  SUSPENDED // Askıya alınmış
+  BLACKLISTED // Kara liste
 }
 
 enum SupplierBGRisk {
-  LOW           // Verilerimize erişimi yok
-  MEDIUM        // Sınırlı veri erişimi
-  HIGH          // Kritik veri/sistem erişimi
-  CRITICAL      // Tam sistem erişimi
+  LOW // Verilerimize erişimi yok
+  MEDIUM // Sınırlı veri erişimi
+  HIGH // Kritik veri/sistem erişimi
+  CRITICAL // Tam sistem erişimi
 }
 
 enum EvaluationType {
-  SERVICE     // Hizmet alımı
-  PRODUCT     // Ürün/malzeme alımı
+  SERVICE // Hizmet alımı
+  PRODUCT // Ürün/malzeme alımı
 }
 
 enum EvaluationStatus {
-  DRAFT       // Taslak
-  COMPLETED   // Tamamlandı
-  APPROVED    // Onaylandı
-  CANCELLED   // İptal
+  DRAFT // Taslak
+  COMPLETED // Tamamlandı
+  APPROVED // Onaylandı
+  CANCELLED // İptal
 }
 
 model Supplier {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Firma bilgileri
-  companyName     String
-  contactPerson   String?
-  phone           String?
-  email           String?
-  address         String?  @db.Text
-  taxNumber       String?
+  companyName   String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String? @db.Text
+  taxNumber     String?
 
   // Sınıflandırma
-  serviceType     SupplierServiceType
-  group           SupplierGroup    @default(PENDING)
-  status          SupplierStatus   @default(ACTIVE)
+  serviceType SupplierServiceType
+  group       SupplierGroup       @default(PENDING)
+  status      SupplierStatus      @default(ACTIVE)
 
   // Son değerlendirme özet
-  lastScore       Int?
-  lastEvalDate    DateTime?
+  lastScore    Int?
+  lastEvalDate DateTime?
 
   // BG (Bilgi Güvenliği) bilgileri
-  hasNDA          Boolean  @default(false)
-  ndaDate         DateTime?
-  ndaExpiry       DateTime?
-  hasDataAccess   Boolean  @default(false)
-  bgRiskLevel     SupplierBGRisk?
-  notes           String?  @db.Text
+  hasNDA        Boolean         @default(false)
+  ndaDate       DateTime?
+  ndaExpiry     DateTime?
+  hasDataAccess Boolean         @default(false)
+  bgRiskLevel   SupplierBGRisk?
+  notes         String?         @db.Text
 
   // İlişkiler
-  evaluations     SupplierEvaluation[]
+  evaluations SupplierEvaluation[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdById     String
-  createdBy       User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
 
   @@index([group])
   @@index([status])
@@ -8276,74 +8312,74 @@ model Supplier {
 }
 
 model SupplierEvaluation {
-  id              String   @id @default(cuid())
-  evaluationNo    String   @unique
+  id           String @id @default(cuid())
+  evaluationNo String @unique
 
   // İlişki
-  supplierId      String
-  supplier        Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
   // Değerlendirme bilgileri
-  evaluationDate  DateTime
-  evaluationType  EvaluationType @default(SERVICE)
-  period          String?
+  evaluationDate DateTime
+  evaluationType EvaluationType @default(SERVICE)
+  period         String?
 
   // Puanlama
-  criteria        SupplierCriteriaScore[]
+  criteria SupplierCriteriaScore[]
 
   // Sonuç
-  totalScore      Int
-  resultGroup     SupplierGroup
-  isApproved      Boolean
+  totalScore  Int
+  resultGroup SupplierGroup
+  isApproved  Boolean
 
   // Denetçi
-  evaluatorName   String
-  evaluatorTitle  String?
+  evaluatorName  String
+  evaluatorTitle String?
 
   // Ek bilgiler
-  generalNotes    String?  @db.Text
-  improvements    String?  @db.Text
+  generalNotes String? @db.Text
+  improvements String? @db.Text
 
   // Durum
-  status          EvaluationStatus @default(DRAFT)
+  status EvaluationStatus @default(DRAFT)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  createdById     String
-  createdBy       User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
 
   @@index([supplierId])
   @@index([evaluationDate])
 }
 
 model SupplierCriteriaScore {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  evaluationId    String
-  evaluation      SupplierEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  evaluationId String
+  evaluation   SupplierEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
 
-  criteriaId      String
-  criteria        SupplierCriteria   @relation(fields: [criteriaId], references: [id])
+  criteriaId String
+  criteria   SupplierCriteria @relation(fields: [criteriaId], references: [id])
 
-  score           Int
-  notes           String?
+  score Int
+  notes String?
 
   @@index([evaluationId])
   @@index([criteriaId])
 }
 
 model SupplierCriteria {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  code            String   @unique
-  name            String
-  description     String?  @db.Text
-  maxScore        Int
-  evaluationType  EvaluationType
-  sortOrder       Int
-  isActive        Boolean  @default(true)
+  code           String         @unique
+  name           String
+  description    String?        @db.Text
+  maxScore       Int
+  evaluationType EvaluationType
+  sortOrder      Int
+  isActive       Boolean        @default(true)
 
-  scores          SupplierCriteriaScore[]
+  scores SupplierCriteriaScore[]
 }
 
 // ═══════════════════════════════════════════════
@@ -8367,100 +8403,154 @@ enum AsansorMekanik {
 }
 
 model Personnel {
-  id                String    @id @default(cuid())
+  id String @id @default(cuid())
 
   // Kimlik
-  sicilNo           String    @unique
-  sinif             String?
-  cinsiyet          Gender
-  adSoyad           String
-  yakaRengi         YakaRengi
-  direktEndirekt    DirektEndirekt?
-  asansorMekanik    AsansorMekanik?
+  sicilNo        String          @unique
+  sinif          String?
+  cinsiyet       Gender
+  adSoyad        String
+  yakaRengi      YakaRengi
+  direktEndirekt DirektEndirekt?
+  asansorMekanik AsansorMekanik?
 
   // İstihdam
-  iseGirisTarihi    DateTime  @db.Date
-  gorev             String
-  bolumDetay        String?
-  bolum             String
-  birimSorumlusu    String?
-  bolumMuduru       String?
-  masrafMerkezi     String?
-  interKepMail      String?
+  iseGirisTarihi DateTime @db.Date
+  gorev          String
+  bolumDetay     String?
+  bolum          String
+  birimSorumlusu String?
+  sorumlu2       String?
+  sorumlu3       String?
+  bolumMuduru    String?
+  masrafMerkezi  String?
+  interKepMail   String?
+  ikametAdresi   String?
 
   // Servis
-  serviceRoute      String?
-  serviceStop       String?
+  serviceRoute String?
+  serviceStop  String?
 
   // Değerlendirme
-  denemeDegerlendirme    String?
-  altiAyDegerlendirme    String?
+  denemeDegerlendirme DateTime? @db.Date
+  altiAyDegerlendirme DateTime? @db.Date
 
   // İletişim
-  telefon           String?
-  kanGrubu          BloodType?
+  telefon  String?
+  kanGrubu BloodType?
+
+  // İletişim ek
+  mailAdresi String?
 
   // Eğitim
-  egitimYeri        String?
-  egitimTipi        String?
-  egitimAlani       String?
-  mezuniyetYili     Int?
-  mykUstalikKalfalik Boolean  @default(false)
-  ilkYardimci       Boolean  @default(false)
+  egitimYeri    String?
+  egitimTipi    String?
+  egitimAlani   String?
+  mezuniyetYili Int?
+
+  // Belgeler (tarih alanları belge alınma tarihini tutar)
+  ilkYardimciBelgesi  DateTime? @db.Date
+  kalfalikBelgesi     DateTime? @db.Date
+  ustalikBelgesi      DateTime? @db.Date
+  yanginSertifikasi   DateTime? @db.Date
+  mykBelgesiTarihi    DateTime? @db.Date
+  forkliftEhliyeti    Boolean   @default(false)
+  vincEhliyeti        Boolean   @default(false)
+  eTrans              Boolean   @default(false)
+  ustaOgreticiBelgesi Boolean   @default(false)
 
   // Özel durum
-  emekli            Boolean  @default(false)
-  engelli           Boolean  @default(false)
-  aktif             Boolean  @default(true)
+  emekli  Boolean @default(false)
+  engelli Boolean @default(false)
+  aktif   Boolean @default(true)
 
   // Azure AD bağlantısı
-  azureAdId         String?  @unique
-  azureAdEmail      String?
+  azureAdId    String? @unique
+  azureAdEmail String?
 
   // Meta
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  createdBy         String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
 
   // İlişkiler
-  sensitive         PersonnelSensitive?
-  accessLogs        PersonnelAccessLog[]
-  user              User?     @relation("UserPersonnel")
+  sensitive        PersonnelSensitive?
+  accessLogs       PersonnelAccessLog[]
+  overtimeRecords  OvertimePersonnel[]
+  evaluationEmails PersonnelEvaluationEmailLog[]
+  user             User?                         @relation("UserPersonnel")
 
   @@index([bolum])
   @@index([yakaRengi])
   @@index([aktif])
 }
 
+// İV ekibine gönderilen değerlendirme hatırlatma e-postaları (tekrar gönderimi önlemek için)
+model PersonnelEvaluationEmailLog {
+  id              String    @id @default(cuid())
+  personnelId     String
+  personnel       Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  type            String // 'TWO_MONTH' | 'SIX_MONTH'
+  recipientEmails String
+  subject         String
+  sentAt          DateTime  @default(now())
+
+  @@index([personnelId])
+  @@index([sentAt])
+}
+
 // KVKK KAPSAMLI HASSAS VERİLER — AYRI TABLO
 model PersonnelSensitive {
-  id              String    @id @default(cuid())
-  personnelId     String    @unique
-  personnel       Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  personnelId String    @unique
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
 
-  tcKimlikNo      String?
-  sgkNo           String?
-  dogumTarihi     DateTime? @db.Date
-  bankaSube       String?
-  bankaHesapNo    String?
+  tcKimlikNo   String?
+  sgkNo        String?
+  dogumTarihi  DateTime? @db.Date
+  bankaSube    String?
+  bankaHesapNo String?
+  ibanNo       String?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  updatedBy       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String?
 }
 
 // ERİŞİM LOG — ISO 27001 A.8.15
 model PersonnelAccessLog {
-  id            String    @id @default(cuid())
-  personnelId   String
-  personnel     Personnel @relation(fields: [personnelId], references: [id])
-  accessedBy    String
-  accessType    String
-  ipAddress     String?
-  createdAt     DateTime  @default(now())
+  id          String    @id @default(cuid())
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id])
+  accessedBy  String
+  accessType  String
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
 
   @@index([personnelId])
   @@index([accessedBy])
+}
+
+// İV Ayarları: Görev Tanımları
+model JobTitle {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+// İV Ayarları: Bölüm Tanımları
+model DepartmentDefinition {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
 }
 
 // İSKELET: STAJYER
@@ -8498,4 +8588,426 @@ model Consultant {
   updatedAt         DateTime  @updatedAt
 
   @@index([aktif])
+}
+
+// =============================================
+// 🎓 AKADEMİ MODELLERİ
+// =============================================
+
+model Course {
+  id          String           @id @default(cuid())
+  title       String
+  description String?          @db.Text
+  thumbnail   String?
+  category    String?
+  difficulty  CourseDifficulty @default(BEGINNER)
+  duration    Int?
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  contents          Content[]
+  packages          CoursePackage[]
+  directAssignments CourseAssignment[]
+  progress          CourseProgress[]
+  exams             Exam[]
+  certificates      AkademiCertificate[]
+
+  @@map("courses")
+}
+
+enum CourseDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+model Content {
+  id          String      @id @default(cuid())
+  courseId    String
+  title       String
+  description String?     @db.Text
+  type        ContentType
+  filePath    String?
+  fileUrl     String?
+  duration    Int?
+  fileSize    Int?
+  order       Int         @default(0)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  course   Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress ContentProgress[]
+
+  @@map("contents")
+}
+
+enum ContentType {
+  VIDEO
+  PDF
+  DOCUMENT
+  QUIZ
+}
+
+model CoursePackage {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  @db.Text
+  courseId    String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  course             Course                  @relation(fields: [courseId], references: [id])
+  departmentPackages DepartmentPackage[]
+  userAssignments    UserPackageAssignment[]
+
+  @@map("course_packages")
+}
+
+model CourseAssignment {
+  id        String    @id @default(cuid())
+  courseId  String
+  dueDate   DateTime?
+  createdAt DateTime  @default(now())
+
+  course          Course                 @relation(fields: [courseId], references: [id])
+  userAssignments UserCourseAssignment[]
+
+  @@map("course_assignments")
+}
+
+model DepartmentPackage {
+  id           String   @id @default(cuid())
+  packageId    String
+  departmentId String
+  createdAt    DateTime @default(now())
+
+  package    CoursePackage @relation(fields: [packageId], references: [id])
+  department Department    @relation(fields: [departmentId], references: [id])
+
+  @@unique([packageId, departmentId])
+  @@map("department_packages")
+}
+
+model UserCourseAssignment {
+  id           String    @id @default(cuid())
+  userId       String
+  assignmentId String
+  assignedAt   DateTime  @default(now())
+  dueDate      DateTime?
+
+  user       User             @relation(fields: [userId], references: [id])
+  assignment CourseAssignment @relation(fields: [assignmentId], references: [id])
+
+  @@unique([userId, assignmentId])
+  @@map("user_course_assignments")
+}
+
+model UserPackageAssignment {
+  id         String   @id @default(cuid())
+  userId     String
+  packageId  String
+  assignedAt DateTime @default(now())
+
+  user    User          @relation(fields: [userId], references: [id])
+  package CoursePackage @relation(fields: [packageId], references: [id])
+
+  @@unique([userId, packageId])
+  @@map("user_package_assignments")
+}
+
+model CourseProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  courseId    String
+  percentage  Float     @default(0)
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@map("course_progress")
+}
+
+model ContentProgress {
+  id             String    @id @default(cuid())
+  userId         String
+  contentId      String
+  completed      Boolean   @default(false)
+  watchedSeconds Int?
+  completedAt    DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  content Content @relation(fields: [contentId], references: [id])
+
+  @@unique([userId, contentId])
+  @@map("content_progress")
+}
+
+model Exam {
+  id           String   @id @default(cuid())
+  courseId     String?
+  title        String
+  description  String?  @db.Text
+  passingScore Int      @default(70)
+  timeLimit    Int?
+  maxAttempts  Int      @default(3)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  course    Course?           @relation(fields: [courseId], references: [id])
+  questions ExamQuestion[]
+  attempts  UserExamAttempt[]
+
+  @@map("exams")
+}
+
+model ExamQuestion {
+  id       String       @id @default(cuid())
+  examId   String
+  question String       @db.Text
+  type     QuestionType @default(MULTIPLE_CHOICE)
+  points   Int          @default(1)
+  order    Int          @default(0)
+
+  exam    Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+  options QuestionOption[]
+  answers UserExamAnswer[]
+
+  @@map("exam_questions")
+}
+
+// QuestionType enum zaten yukarıda tanımlı (satır ~1959)
+
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  text       String
+  isCorrect  Boolean @default(false)
+  order      Int     @default(0)
+
+  question ExamQuestion     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  UserExamAnswer[]
+
+  @@map("question_options")
+}
+
+model UserExamAttempt {
+  id          String    @id @default(cuid())
+  userId      String
+  examId      String
+  score       Float?
+  passed      Boolean?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  user    User             @relation(fields: [userId], references: [id])
+  exam    Exam             @relation(fields: [examId], references: [id])
+  answers UserExamAnswer[]
+
+  @@map("user_exam_attempts")
+}
+
+model UserExamAnswer {
+  id         String  @id @default(cuid())
+  attemptId  String
+  questionId String
+  optionId   String?
+  textAnswer String? @db.Text
+
+  attempt  UserExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question ExamQuestion    @relation(fields: [questionId], references: [id])
+  option   QuestionOption? @relation(fields: [optionId], references: [id])
+
+  @@map("user_exam_answers")
+}
+
+model AkademiCertificate {
+  id               String   @id @default(cuid())
+  userId           String
+  courseId         String?
+  certificateNo    String   @unique
+  verificationCode String   @unique
+  issuedAt         DateTime @default(now())
+  filePath         String?
+  templateId       String?
+
+  user          User                             @relation(fields: [userId], references: [id])
+  course        Course?                          @relation(fields: [courseId], references: [id])
+  template      AkademiCertificateTemplate?      @relation(fields: [templateId], references: [id])
+  downloads     AkademiCertificateDownload[]
+  verifications AkademiCertificateVerification[]
+
+  @@map("akademi_certificates")
+}
+
+model AkademiCertificateTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  content   String   @db.Text
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  certificates AkademiCertificate[]
+
+  @@map("akademi_certificate_templates")
+}
+
+model AkademiCertificateDownload {
+  id            String   @id @default(cuid())
+  certificateId String
+  downloadedAt  DateTime @default(now())
+  ipAddress     String?
+
+  certificate AkademiCertificate @relation(fields: [certificateId], references: [id])
+
+  @@map("akademi_certificate_downloads")
+}
+
+model AkademiCertificateVerification {
+  id            String   @id @default(cuid())
+  certificateId String
+  verifiedAt    DateTime @default(now())
+  ipAddress     String?
+
+  certificate AkademiCertificate @relation(fields: [certificateId], references: [id])
+
+  @@map("akademi_certificate_verifications")
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  @db.Text
+  icon        String?
+  xpReward    Int      @default(0)
+  condition   Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+// Badge modeli zaten yukarıda tanımlı (satır ~1651)
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  earnedAt      DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id])
+  achievement Achievement @relation(fields: [achievementId], references: [id])
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  badge Badge @relation(fields: [badgeId], references: [id])
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+model UserXp {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  total     Int      @default(0)
+  level     Int      @default(1)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_xp")
+}
+
+model XpHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  reason    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("xp_history")
+}
+
+model AkademiLevel {
+  id       Int     @id @default(autoincrement())
+  level    Int     @unique
+  title    String
+  minXp    Int
+  maxXp    Int?
+  badgeUrl String?
+
+  @@map("akademi_levels")
+}
+
+model DailyChallenge {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  xpReward    Int      @default(50)
+  date        DateTime @db.Date
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  userChallenges UserDailyChallenge[]
+
+  @@map("daily_challenges")
+}
+
+model UserDailyChallenge {
+  id          String   @id @default(cuid())
+  userId      String
+  challengeId String
+  completedAt DateTime @default(now())
+
+  user      User           @relation(fields: [userId], references: [id])
+  challenge DailyChallenge @relation(fields: [challengeId], references: [id])
+
+  @@unique([userId, challengeId])
+  @@map("user_daily_challenges")
+}
+
+model LeaderboardCache {
+  id       String   @id @default(cuid())
+  userId   String   @unique
+  rank     Int
+  xp       Int
+  period   String
+  cachedAt DateTime @default(now())
+
+  @@map("leaderboard_cache")
+}
+
+model AkademiNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String   @db.Text
+  type      String
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("akademi_notifications")
 }

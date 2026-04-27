@@ -3,21 +3,23 @@ import { AdminStatCard } from "@/components/akademi/admin/AdminStatCard";
 import { AdminActionCard } from "@/components/akademi/admin/AdminActionCard";
 
 export default async function AkademiAdminDashboardPage() {
-  const [activeCourses, totalAssignments, activeUsers] = await Promise.all([
-    prisma.course.count({ where: { isActive: true } }),
-    prisma.userCourseAssignment.count(),
-    prisma.user.count({
-      where: {
-        courseAssignments: {
-          some: {},
+  const [activeCourses, totalAssignments, activeUsers, activePackages] =
+    await Promise.all([
+      prisma.course.count({ where: { isActive: true } }),
+      prisma.userCourseAssignment.count(),
+      prisma.user.count({
+        where: {
+          courseAssignments: {
+            some: {},
+          },
         },
-      },
-    }),
-  ]);
+      }),
+      prisma.coursePackage.count({ where: { isActive: true } }),
+    ]);
 
   return (
     <div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
         <AdminStatCard
           icon="bookOpen"
           label="Aktif Kurs"
@@ -26,18 +28,25 @@ export default async function AkademiAdminDashboardPage() {
           delayIndex={1}
         />
         <AdminStatCard
+          icon="package"
+          label="Aktif Paket"
+          value={activePackages}
+          color="purple"
+          delayIndex={2}
+        />
+        <AdminStatCard
           icon="users"
           label="Toplam Atama"
           value={totalAssignments}
           color="green"
-          delayIndex={2}
+          delayIndex={3}
         />
         <AdminStatCard
           icon="award"
           label="Aktif Öğrenci"
           value={activeUsers}
           color="orange"
-          delayIndex={3}
+          delayIndex={4}
         />
       </div>
 
@@ -60,12 +69,20 @@ export default async function AkademiAdminDashboardPage() {
           delayIndex={1}
         />
         <AdminActionCard
+          href="/akademi/admin/packages"
+          title="Paketleri Yönet"
+          description="Departman bazlı kurs paketleri oluştur ve ata"
+          icon="package"
+          color="purple"
+          delayIndex={2}
+        />
+        <AdminActionCard
           href="/akademi/admin/assignments"
           title="Atamaları Yönet"
           description="Kullanıcılara kurs ata veya atamaları kaldır"
           icon="userCheck"
           color="green"
-          delayIndex={2}
+          delayIndex={3}
         />
         <AdminActionCard
           href="/akademi/admin/users"

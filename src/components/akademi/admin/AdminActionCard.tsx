@@ -7,6 +7,7 @@ import {
   UserCheck,
   Users,
   Upload,
+  Package,
   type LucideIcon,
 } from "lucide-react";
 
@@ -15,6 +16,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   userCheck: UserCheck,
   users: Users,
   upload: Upload,
+  package: Package,
 };
 
 export type AdminActionIcon = keyof typeof ICON_MAP;

@@ -68,3 +68,24 @@ export interface BolumWithCount {
   bolum: string;
   userCount: number;
 }
+
+export interface PackageFormState {
+  name: string;
+  description: string;
+  iconColor: string;
+  isActive: boolean;
+}
+
+export interface PackageCourseFormItem {
+  courseId: string;
+  courseTitle: string;
+  order: number;
+  isRequired: boolean;
+}
+
+export interface CourseListItem {
+  id: string;
+  title: string;
+  difficulty: string;
+  isActive: boolean;
+}

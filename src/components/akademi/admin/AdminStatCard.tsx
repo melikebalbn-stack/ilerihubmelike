@@ -7,6 +7,7 @@ import {
   Award,
   TrendingUp,
   Clock,
+  Package,
   type LucideIcon,
 } from "lucide-react";
 
@@ -16,6 +17,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   award: Award,
   trendingUp: TrendingUp,
   clock: Clock,
+  package: Package,
 };
 
 export type AdminStatIcon = keyof typeof ICON_MAP;

@@ -1,0 +1,194 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import type {
+  AdminPackageListItem,
+  PackageFormState,
+} from "@/types/akademi-package";
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: "create" | "edit";
+  existing?: AdminPackageListItem | null;
+  onSaved: () => void;
+}
+
+const COLOR_OPTIONS = [
+  { value: "", label: "Varsayılan" },
+  { value: "#3b82f6", label: "Mavi" },
+  { value: "#10b981", label: "Yeşil" },
+  { value: "#f59e0b", label: "Turuncu" },
+  { value: "#8b5cf6", label: "Mor" },
+  { value: "#14b8a6", label: "Teal" },
+  { value: "#ef4444", label: "Kırmızı" },
+];
+
+export function AdminPackageFormModal({
+  open,
+  onOpenChange,
+  mode,
+  existing,
+  onSaved,
+}: Props) {
+  const [form, setForm] = useState<PackageFormState>({
+    name: "",
+    description: "",
+    iconColor: "",
+    isActive: true,
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      if (mode === "edit" && existing) {
+        setForm({
+          name: existing.name,
+          description: existing.description ?? "",
+          iconColor: existing.iconColor ?? "",
+          isActive: existing.isActive,
+        });
+      } else {
+        setForm({ name: "", description: "", iconColor: "", isActive: true });
+      }
+    }
+  }, [open, mode, existing]);
+
+  const handleSubmit = async () => {
+    if (!form.name.trim()) {
+      toast.error("Paket adı zorunlu");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const url =
+        mode === "edit" && existing
+          ? `/api/akademi/admin/packages/${existing.id}`
+          : "/api/akademi/admin/packages";
+      const method = mode === "edit" ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          description: form.description.trim() || null,
+          iconColor: form.iconColor || null,
+          isActive: form.isActive,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Kaydedilemedi");
+      }
+
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Hata oluştu");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {mode === "edit" ? "Paketi Düzenle" : "Yeni Paket"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div>
+            <Label htmlFor="pkg-name">Paket Adı *</Label>
+            <Input
+              id="pkg-name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="Örn. Yeni Çalışan Oryantasyonu"
+              maxLength={200}
+              className="mt-1.5"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="pkg-desc">Açıklama</Label>
+            <Textarea
+              id="pkg-desc"
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+              placeholder="Bu paketin ne için kullanıldığını yazın..."
+              rows={3}
+              className="mt-1.5"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="pkg-color">İkon Rengi</Label>
+            <div className="flex gap-2 mt-1.5">
+              {COLOR_OPTIONS.map((c) => (
+                <button
+                  key={c.value || "default"}
+                  type="button"
+                  onClick={() => setForm({ ...form, iconColor: c.value })}
+                  className="w-8 h-8 rounded-md border-2 transition-all"
+                  style={{
+                    background: c.value || "var(--ak-surface-2)",
+                    borderColor:
+                      form.iconColor === c.value
+                        ? "var(--ak-accent)"
+                        : "transparent",
+                  }}
+                  title={c.label}
+                  aria-label={c.label}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Switch
+              id="pkg-active"
+              checked={form.isActive}
+              onCheckedChange={(v) => setForm({ ...form, isActive: v })}
+            />
+            <Label htmlFor="pkg-active" className="cursor-pointer">
+              Aktif
+            </Label>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            İptal
+          </Button>
+          <Button onClick={handleSubmit} disabled={saving}>
+            {saving ? "Kaydediliyor..." : mode === "edit" ? "Güncelle" : "Oluştur"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

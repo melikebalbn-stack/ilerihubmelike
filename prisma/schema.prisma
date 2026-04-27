@@ -229,9 +229,6 @@ model Department {
   // Calendar Relations
   calendarEvents CalendarEvent[]
 
-  // Akademi Relations
-  departmentPackages DepartmentPackage[]
-
   @@index([isActive, sortOrder])
 }
 
@@ -8607,7 +8604,7 @@ model Course {
   updatedAt   DateTime         @updatedAt
 
   contents          Content[]
-  packages          CoursePackage[]
+  packageCourses    PackageCourse[]
   directAssignments CourseAssignment[]
   progress          CourseProgress[]
   exams             Exam[]
@@ -8652,18 +8649,34 @@ enum ContentType {
 
 model CoursePackage {
   id          String   @id @default(cuid())
-  title       String
+  name        String
   description String?  @db.Text
-  courseId    String
+  iconColor   String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  course             Course                  @relation(fields: [courseId], references: [id])
+  packageCourses     PackageCourse[]
   departmentPackages DepartmentPackage[]
   userAssignments    UserPackageAssignment[]
 
   @@map("course_packages")
+}
+
+model PackageCourse {
+  id         String   @id @default(cuid())
+  packageId  String
+  courseId   String
+  order      Int      @default(0)
+  isRequired Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  package CoursePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  course  Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, courseId])
+  @@index([packageId, order])
+  @@map("package_courses")
 }
 
 model CourseAssignment {
@@ -8679,15 +8692,15 @@ model CourseAssignment {
 }
 
 model DepartmentPackage {
-  id           String   @id @default(cuid())
-  packageId    String
-  departmentId String
-  createdAt    DateTime @default(now())
+  id        String   @id @default(cuid())
+  packageId String
+  bolum     String
+  createdAt DateTime @default(now())
 
-  package    CoursePackage @relation(fields: [packageId], references: [id])
-  department Department    @relation(fields: [departmentId], references: [id])
+  package CoursePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
 
-  @@unique([packageId, departmentId])
+  @@unique([packageId, bolum])
+  @@index([bolum])
   @@map("department_packages")
 }
 

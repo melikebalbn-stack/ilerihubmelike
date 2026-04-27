@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { prisma } from "@/lib/prisma";
+import type {
+  AdminPackageCreateInput,
+  AdminPackageListItem,
+} from "@/types/akademi-package";
+
+export async function GET(req: NextRequest) {
+  const { error } = await requireAkademiAdmin();
+  if (error) return error;
+
+  const includeInactive =
+    req.nextUrl.searchParams.get("includeInactive") === "true";
+
+  const packages = await prisma.coursePackage.findMany({
+    where: includeInactive ? {} : { isActive: true },
+    include: {
+      _count: {
+        select: {
+          packageCourses: true,
+          departmentPackages: true,
+          userAssignments: true,
+        },
+      },
+    },
+    orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+  });
+
+  const result: AdminPackageListItem[] = packages.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    iconColor: p.iconColor,
+    isActive: p.isActive,
+    courseCount: p._count.packageCourses,
+    bolumCount: p._count.departmentPackages,
+    userAssignmentCount: p._count.userAssignments,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+  }));
+
+  return NextResponse.json({ packages: result });
+}
+
+export async function POST(req: NextRequest) {
+  const { error } = await requireAkademiAdmin();
+  if (error) return error;
+
+  let body: AdminPackageCreateInput;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (!body.name || body.name.trim().length === 0) {
+    return NextResponse.json({ error: "Paket adı zorunlu" }, { status: 400 });
+  }
+
+  if (body.name.length > 200) {
+    return NextResponse.json(
+      { error: "Paket adı 200 karakterden uzun olamaz" },
+      { status: 400 }
+    );
+  }
+
+  const created = await prisma.coursePackage.create({
+    data: {
+      name: body.name.trim(),
+      description: body.description?.trim() || null,
+      iconColor: body.iconColor?.trim() || null,
+      isActive: body.isActive ?? true,
+    },
+  });
+
+  return NextResponse.json({ package: created }, { status: 201 });
+}

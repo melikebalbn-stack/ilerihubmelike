@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
 import { prisma } from "@/lib/prisma";
+import { materializePackage } from "@/lib/akademi-package-materialize";
 import type { AdminPackageUsersAddInput } from "@/types/akademi-package";
 
 export async function POST(
@@ -41,5 +42,17 @@ export async function POST(
     skipDuplicates: true,
   });
 
-  return NextResponse.json({ success: true, count: created.count });
+  const materializeResult = await materializePackage(id);
+
+  return NextResponse.json({
+    success: true,
+    count: created.count,
+    materialize: {
+      courseCount: materializeResult.courseCount,
+      targetUserCount: materializeResult.targetUserCount,
+      newAssignments: materializeResult.newAssignments,
+      skippedExisting: materializeResult.skippedExisting,
+      errors: materializeResult.errors,
+    },
+  });
 }

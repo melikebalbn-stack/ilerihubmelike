@@ -19,7 +19,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Plus, X, Save } from "lucide-react";
+import { GripVertical, Plus, X, Save, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -133,6 +133,7 @@ export function AdminPackageCoursesPicker({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -225,6 +226,26 @@ export function AdminPackageCoursesPicker({
     }
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(
+        `/api/akademi/admin/packages/${packageId}/sync`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error("sync failed");
+      const data = await res.json();
+      const m = data.materialize;
+      toast.success(
+        `Senkronize edildi: ${m.targetUserCount} kullanıcı, ${m.newAssignments} yeni atama`
+      );
+    } catch {
+      toast.error("Senkronize edilemedi");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -247,6 +268,20 @@ export function AdminPackageCoursesPicker({
             <Button size="sm" onClick={handleSave} disabled={saving}>
               <Save className="w-4 h-4 mr-1.5" />
               {saving ? "Kaydediliyor..." : "Kaydet"}
+            </Button>
+          )}
+          {!dirty && items.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSync}
+              disabled={syncing}
+              title="Pakete kurs ekledikten/çıkardıktan sonra mevcut kullanıcılara yeni kursları dağıt"
+            >
+              <RefreshCw
+                className={`w-4 h-4 mr-1.5 ${syncing ? "animate-spin" : ""}`}
+              />
+              {syncing ? "Senkronize ediliyor..." : "Yeniden Senkronize Et"}
             </Button>
           )}
         </div>

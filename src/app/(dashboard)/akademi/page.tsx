@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/akademi/dashboard/StatCard";
 import { CourseListItem } from "@/components/akademi/dashboard/CourseListItem";
+import { MyPackagesWidget } from "@/components/akademi/MyPackagesWidget";
 import { resolveFirstName } from "@/lib/akademi-helpers";
 import type { CourseListItem as CourseListItemType } from "@/types/akademi";
 
@@ -71,6 +72,8 @@ export default async function AkademiDashboardPage() {
           delayIndex={3}
         />
       </div>
+
+      <MyPackagesWidget />
 
       <div>
         <div className="flex items-center justify-between mb-3">

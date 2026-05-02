@@ -53,6 +53,7 @@ import {
   ShieldAlert,
   UserCog,
   FlaskConical,
+  Archive,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -85,6 +86,7 @@ const teknikMenuItems = [
   { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"] },
   { name: "Yangın Güvenliği", icon: Flame, href: "/fire-safety", roles: ["QUALITY_MANAGER", "ADMIN"] },
   { name: "Tezgah Bakım", icon: Factory, href: "/maintenance", roles: ["*"] },
+  { name: "Arşiv", icon: Archive, href: "/arsiv/koli", roles: ["*"] },
   { name: "IT Raporları", icon: BarChart3, href: "/it-reports", roles: ["IT_MANAGER", "ADMIN"] },
   { name: "Login Aktiviteleri", icon: LogIn, href: "/login-logs", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Yedekleme", icon: HardDrive, href: "/backups", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
@@ -185,7 +187,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
     if (pathname.startsWith('/calibration') || pathname.startsWith('/fire-safety') ||
         pathname.startsWith('/maintenance') || pathname.startsWith('/it-reports') ||
-        pathname.startsWith('/login-logs') || pathname.startsWith('/backups')) {
+        pathname.startsWith('/login-logs') || pathname.startsWith('/backups') ||
+        pathname.startsWith('/arsiv')) {
       setTeknikOpen(true)
     }
     if (pathname.startsWith('/forms') || pathname.startsWith('/meetings')) {
@@ -393,6 +396,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       <Link
         key={item.href}
         href={item.href}
+        prefetch={false}
         onClick={handleClick}
         className={cn(
           "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
@@ -430,7 +434,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     >
       {/* Logo */}
       <div className="flex h-16 items-center justify-between border-b border-white/[0.07] px-6">
-        <Link href="/dashboard" className="flex items-center" onClick={onClose}>
+        <Link href="/dashboard" prefetch={false} className="flex items-center" onClick={onClose}>
           <Image
             src="/ilerihublogo.png"
             alt="ILERIHub"

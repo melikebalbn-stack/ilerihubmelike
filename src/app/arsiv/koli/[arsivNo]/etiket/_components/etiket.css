@@ -1,0 +1,509 @@
+/* Etiket sayfası global CSS — vanilla import.
+ *
+ * Sebep: styled-jsx <style jsx global> SSR + print-time'da bazı kuralları
+ * uygulamıyordu (header/footer/QR print'te kayboluyordu). Vanilla CSS
+ * dosyası deterministik şekilde yüklenir, print engine doğru hesaplar.
+ *
+ * @media print bloğu whitelist yaklaşımı: SADECE toolbar gizli, gerisi
+ * default görünür.
+ */
+
+/* ============ ON-SCREEN ============ */
+
+.etiket-root {
+  background: #f1f5f9;
+  min-height: 100vh;
+}
+
+.etiket-toolbar {
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.etiket-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 14px;
+  text-decoration: none;
+}
+.etiket-back:hover {
+  color: #0f172a;
+}
+.etiket-print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #0f172a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.etiket-print-btn:hover {
+  background: #1e293b;
+}
+.etiket-print-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.page {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 24px auto;
+  background: #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  page-break-after: always;
+  break-after: page;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page-ana {
+  padding: 0;
+}
+.page-alt {
+  padding: 0;
+}
+
+/* ============ ANA KOLİ ETİKETİ (A5 = 148×210mm) ============ */
+.etiket-ana {
+  width: 148mm;
+  height: 210mm;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  overflow: hidden;
+  position: relative;
+}
+.ea-stripes {
+  height: 4mm;
+  width: 100%;
+}
+.ea-header {
+  padding: 6mm 7mm 5mm;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 22mm;
+}
+.ea-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+}
+.ea-brand {
+  font-size: 8pt;
+  font-weight: 500;
+  color: #64748b;
+  letter-spacing: 0.5px;
+}
+.ea-tip {
+  font-size: 16pt;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #0f172a;
+  line-height: 1.05;
+}
+.ea-no-buyuk {
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-size: 28pt;
+  font-weight: 700;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.ea-uyt-meta {
+  padding: 4mm 7mm;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6mm;
+  border-top: 0.5px solid #e2e8f0;
+  border-bottom: 0.5px solid #e2e8f0;
+  background: #f8fafc;
+}
+.ea-meta-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+}
+.ea-meta-lbl {
+  font-size: 7pt;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.ea-meta-val {
+  font-size: 10pt;
+  color: #0f172a;
+  line-height: 1.3;
+}
+.ea-mono {
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-weight: 600;
+  color: #0f172a;
+}
+.ea-imha {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.ea-icerik {
+  padding: 4mm 7mm;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.ea-icerik-baslik {
+  font-size: 8pt;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.5px;
+  margin-bottom: 3mm;
+}
+.ea-icerik-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5mm;
+}
+.ea-icerik-row {
+  display: grid;
+  grid-template-columns: 7mm 1fr auto;
+  gap: 3mm;
+  align-items: center;
+  padding: 1.5mm 0;
+  border-bottom: 0.5px solid #f1f5f9;
+}
+.ea-icerik-harf {
+  width: 6mm;
+  height: 6mm;
+  border-radius: 1mm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9pt;
+  font-weight: 700;
+}
+.ea-icerik-ad {
+  font-size: 9pt;
+  color: #0f172a;
+  line-height: 1.3;
+}
+.ea-icerik-donem {
+  font-size: 9pt;
+  color: #475569;
+  font-family: ui-monospace, 'Courier New', monospace;
+}
+
+.ea-alt-meta {
+  padding: 4mm 7mm;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+  border-top: 0.5px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.ea-footer {
+  padding: 4mm 7mm 5mm;
+  border-top: 0.5px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  background: #f8fafc;
+}
+.ea-qr-block {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+}
+.ea-qr-frame {
+  background: white;
+  padding: 1mm;
+  border: 0.5px solid #e2e8f0;
+  border-radius: 1mm;
+}
+.ea-qr-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+}
+.ea-qr-baslik {
+  font-size: 7pt;
+  color: #475569;
+}
+.ea-qr-url {
+  font-size: 7pt;
+  color: #94a3b8;
+  font-family: ui-monospace, 'Courier New', monospace;
+}
+.ea-firma {
+  text-align: right;
+  font-size: 7pt;
+  color: #475569;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* ============ ALT KOLİ ETİKETİ (A6 = 105×148mm) ============ */
+.alt-grid {
+  display: grid;
+  grid-template-columns: 105mm 105mm;
+  grid-template-rows: 148mm 148mm;
+  gap: 0;
+  width: 210mm;
+  height: 296mm;
+}
+.etiket-alt {
+  width: 105mm;
+  height: 148mm;
+  background: #ffffff;
+  color: #0f172a;
+  border: 0.5px dashed #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.ealt-header {
+  background: var(--alt-renk);
+  color: var(--alt-text);
+  padding: 4mm 5mm;
+  min-height: 18mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1mm;
+}
+.ealt-brand {
+  font-size: 7pt;
+  font-weight: 500;
+  opacity: 0.85;
+  letter-spacing: 0.5px;
+}
+.ealt-bolum {
+  font-size: 14pt;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.5px;
+}
+
+.ealt-row-2 {
+  padding: 3mm 5mm;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3mm;
+  border-bottom: 0.5px solid #e2e8f0;
+  background: #f8fafc;
+}
+.ealt-text-right {
+  text-align: right;
+}
+.ealt-text-right .ealt-meta-val {
+  text-align: right;
+}
+.ealt-meta-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+}
+.ealt-meta-lbl {
+  font-size: 6pt;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.ealt-meta-val {
+  font-size: 9pt;
+  color: #0f172a;
+  line-height: 1.3;
+}
+.ealt-mono {
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-weight: 600;
+  font-size: 8.5pt;
+  color: #0f172a;
+}
+.ealt-bold {
+  font-weight: 600;
+  color: #0f172a;
+}
+.ealt-imha {
+  color: #dc2626;
+  font-weight: 600;
+}
+.ealt-hazirlayan {
+  font-size: 8pt;
+  color: #94a3b8;
+  letter-spacing: 1px;
+}
+
+.ealt-evrak {
+  padding: 3mm 5mm;
+  border-bottom: 0.5px solid #e2e8f0;
+}
+.ealt-grid-2 {
+  padding: 3mm 5mm;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3mm;
+  border-bottom: 0.5px solid #e2e8f0;
+}
+.ealt-bottom-meta {
+  flex: 1;
+  align-content: start;
+  border-bottom: none;
+}
+
+.ealt-footer {
+  padding: 3mm 5mm 4mm;
+  border-top: 0.5px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  background: #f8fafc;
+}
+.ealt-qr-frame {
+  background: white;
+  padding: 0.5mm;
+  border: 0.5px solid #e2e8f0;
+  border-radius: 1mm;
+}
+.ealt-qr-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+}
+.ealt-qr-url-1,
+.ealt-qr-url-2 {
+  font-size: 7pt;
+  color: #94a3b8;
+  font-family: ui-monospace, 'Courier New', monospace;
+}
+
+/* Mobile / dar viewport — etiketler küçülmesin, horizontal scroll */
+@media screen and (max-width: 230mm) {
+  .etiket-root {
+    overflow-x: auto;
+  }
+}
+
+/* ============ PRINT (whitelist: sadece toolbar gizli) ============ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  /* Renkleri Chrome "Background graphics" off ayarına rağmen bas */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  .etiket-root {
+    background: white !important;
+  }
+
+  .etiket-toolbar {
+    display: none !important;
+  }
+
+  .page {
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    background: white !important;
+    page-break-after: always;
+    break-after: page;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .page-alt {
+    align-items: flex-start !important;
+  }
+
+  .alt-grid {
+    width: 210mm !important;
+    height: 296mm !important;
+    grid-template-columns: 105mm 105mm !important;
+    grid-template-rows: 148mm 148mm !important;
+    margin: 0 !important;
+  }
+
+  .etiket-ana {
+    width: 148mm !important;
+    height: 210mm !important;
+    border: 1px solid #1e293b !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .etiket-alt {
+    width: 105mm !important;
+    height: 148mm !important;
+    border: 0.5px dashed #cbd5e1 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  /* Print engine bazı flex container'ları clipping yapıyor — header/footer
+   * içeriklerini garanti altında göstermek için explicit display + visibility */
+  .ea-header,
+  .ea-footer,
+  .ealt-header,
+  .ealt-footer {
+    display: flex !important;
+    visibility: visible !important;
+    overflow: visible !important;
+  }
+  .ea-header *,
+  .ea-footer *,
+  .ealt-header *,
+  .ealt-footer * {
+    visibility: visible !important;
+  }
+
+  /* QR'lar her durumda görünür kalsın */
+  .ea-qr-frame img,
+  .ealt-qr-frame img {
+    display: block !important;
+    visibility: visible !important;
+    max-width: none !important;
+    max-height: none !important;
+  }
+}

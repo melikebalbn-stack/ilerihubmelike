@@ -110,6 +110,22 @@ const nextConfig = {
       bodySizeLimit: '50mb',
     },
   },
+  // Eski Arşiv URL'lerini yeni route group konumuna yönlendir
+  // /dashboard/arsiv/* → /arsiv/*  (PR-ArsivHotfix-Sidebar, 28 Nis 2026)
+  async redirects() {
+    return [
+      {
+        source: '/dashboard/arsiv',
+        destination: '/arsiv/koli',
+        permanent: false,
+      },
+      {
+        source: '/dashboard/arsiv/:path*',
+        destination: '/arsiv/:path*',
+        permanent: false,
+      },
+    ];
+  },
   // Güvenlik header'ları
   async headers() {
     return [

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FileQuestion } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AdminDeleteConfirm } from "@/components/akademi/admin/AdminDeleteConfirm";
+import { QuestionsManager } from "./_components/questions-manager";
 
 type CourseOption = { id: string; title: string };
 
@@ -356,33 +357,7 @@ export default function EditExamPage() {
         </div>
       </div>
 
-      {/* Questions placeholder — PR-3 */}
-      <div
-        className="ak-card-static p-6 border border-dashed rounded-lg"
-        style={{ borderColor: "var(--ak-border-default)" }}
-      >
-        <div className="flex items-center gap-3 mb-2">
-          <FileQuestion
-            size={18}
-            style={{ color: "var(--ak-text-tertiary)" }}
-          />
-          <h3
-            className="text-sm font-semibold"
-            style={{ color: "var(--ak-text-primary)" }}
-          >
-            Soru Yönetimi
-          </h3>
-        </div>
-        <p className="text-sm" style={{ color: "var(--ak-text-secondary)" }}>
-          Soru ve seçenek yönetimi <strong>PR-3</strong>&apos;te eklenecek.
-        </p>
-        <p
-          className="text-xs mt-1"
-          style={{ color: "var(--ak-text-tertiary)" }}
-        >
-          Mevcut soru sayısı: <strong>{exam.questions.length}</strong>
-        </p>
-      </div>
+      <QuestionsManager examId={examId} onChange={loadExam} />
 
       <AdminDeleteConfirm
         open={deleteOpen}

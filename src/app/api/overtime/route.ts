@@ -228,8 +228,8 @@ export async function POST(request: NextRequest) {
 
     // Personel alanları doğrulama
     for (const p of personnel) {
-      if (!p.userId || !p.workDepartment) {
-        return apiBadRequest('Her personel için userId ve workDepartment alanları zorunludur')
+      if (!p.personnelId || !p.workDepartment) {
+        return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
       }
     }
 
@@ -257,12 +257,12 @@ export async function POST(request: NextRequest) {
         currentStep: 0,
         personnel: {
           create: personnel.map((p: {
-            userId: string
+            personnelId: string
             workDepartment: string
             serviceRoute?: string
             targetProduction?: string
           }) => ({
-            userId: p.userId,
+            personnelId: p.personnelId,
             workDepartment: p.workDepartment,
             serviceRoute: p.serviceRoute || null,
             targetProduction: p.targetProduction || null,
@@ -272,8 +272,8 @@ export async function POST(request: NextRequest) {
       include: {
         personnel: {
           include: {
-            user: {
-              select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
+            personnel: {
+              select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
           },
         },

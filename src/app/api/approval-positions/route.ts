@@ -58,17 +58,21 @@ export async function PUT(request: NextRequest) {
     }
 
     const updates = await Promise.all(
-      body.map((item: { code: string; userId: string | null }) =>
-        prisma.approvalPosition.update({
+      body.map((item: { code: string; userId: string | null; departments?: string[] }) => {
+        const data: Record<string, unknown> = { userId: item.userId }
+        if (item.departments !== undefined) {
+          data.departments = item.departments
+        }
+        return prisma.approvalPosition.update({
           where: { code: item.code },
-          data: { userId: item.userId },
+          data,
           include: {
             user: {
               select: { id: true, name: true, email: true },
             },
           },
         })
-      )
+      })
     )
 
     return apiSuccess(updates)

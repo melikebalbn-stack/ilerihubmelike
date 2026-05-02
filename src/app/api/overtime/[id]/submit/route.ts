@@ -59,6 +59,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Form onaya gönderilebilmesi için en az bir personel eklenmelidir')
     }
 
+    // Formdaki personel departmanlarını topla (Personnel tablosundan)
+    const personnelIds = form.personnel.map((p) => p.personnelId).filter(Boolean) as string[]
+    const personnelRecords = personnelIds.length > 0
+      ? await prisma.personnel.findMany({
+          where: { id: { in: personnelIds } },
+          select: { bolum: true },
+        })
+      : []
+    const formDepartments = new Set(personnelRecords.map((p) => p.bolum))
+
     // Onay pozisyonlarını veritabanından çek
     const positions = await prisma.approvalPosition.findMany({
       where: { isActive: true },
@@ -66,11 +76,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       include: { user: true },
     })
 
-    // GM hariç, userId atanmış pozisyonları filtrele (boş pozisyonlar atlanır)
+    // Departman bazlı filtreleme:
+    // - departments boş → ortak pozisyon, her zaman dahil
+    // - departments dolu → sadece formda o departmandan personel varsa dahil
     const maxStep = form.sendToGM ? 7 : 6
-    const assignedPositions = positions.filter(
-      (p) => p.userId && p.sortOrder <= maxStep
-    )
+    const assignedPositions = positions.filter((p) => {
+      if (!p.userId) return false
+      if (p.sortOrder > maxStep) return false
+
+      // Ortak pozisyon (departments boş)
+      if (!p.departments || p.departments.length === 0) return true
+
+      // Koşullu pozisyon: formda eşleşen departman var mı?
+      return p.departments.some((dept) => formDepartments.has(dept))
+    })
 
     // En az 1 atanmış pozisyon olmalı
     if (assignedPositions.length === 0) {

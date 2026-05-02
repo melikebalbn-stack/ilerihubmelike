@@ -7,22 +7,20 @@ import { NativeSelect as Select } from "@/components/ui/select"
 import { Clock, ChevronRight, ChevronLeft, Search, X, Users, Check, Save, Send, Loader2 } from "lucide-react"
 import { useRouter, useParams } from "next/navigation"
 import { toast } from "sonner"
-import { BOLUMLER, SERVIS_GUZERGAHLARI, MESAI_TURLERI } from "@/lib/overtime-constants"
-import { APPROVAL_CHAIN } from "@/lib/overtime-approval-chain"
+import { BOLUMLER, MESAI_TURLERI } from "@/lib/overtime-constants"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface User {
+interface PersonnelItem {
   id: string
-  name: string
-  email: string
-  department: string | null
-  jobTitle: string | null
+  sicilNo: string
+  adSoyad: string
+  bolum: string
+  gorev: string
   serviceRoute: string | null
-  mobilePhone: string | null
-  employeeId: string | null
+  telefon: string | null
 }
 
 interface PersonnelDetail {
@@ -78,29 +76,31 @@ export default function EditOvertimeFormPage() {
   const [description, setDescription] = useState("")
 
   // Step 2 state
-  const [users, setUsers] = useState<User[]>([])
-  const [usersLoading, setUsersLoading] = useState(false)
+  const [personnelList, setPersonnelList] = useState<PersonnelItem[]>([])
+  const [personnelLoading, setPersonnelLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [departmentFilter, setDepartmentFilter] = useState("")
-  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [personnelDetails, setPersonnelDetails] = useState<Record<string, PersonnelDetail>>({})
 
   // Step 3 state
   const [sendToGM, setSendToGM] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [approvalChain, setApprovalChain] = useState<{ step: number; role: string; position: string; approver: { id: string; name: string } | null; isCommon: boolean }[]>([])
+  const [chainLoading, setChainLoading] = useState(false)
 
-  // Fetch users
-  const fetchUsers = useCallback(async () => {
-    setUsersLoading(true)
+  // Fetch personnel from IV module
+  const fetchPersonnel = useCallback(async () => {
+    setPersonnelLoading(true)
     try {
-      const res = await fetch("/api/users?source=db")
-      if (!res.ok) throw new Error("Kullanıcılar yüklenemedi")
-      const data: User[] = await res.json()
-      setUsers(data)
+      const res = await fetch("/api/overtime/personnel-list")
+      if (!res.ok) throw new Error("Personel listesi yüklenemedi")
+      const data: PersonnelItem[] = await res.json()
+      setPersonnelList(data)
     } catch {
       toast.error("Personel listesi yüklenirken hata oluştu")
     } finally {
-      setUsersLoading(false)
+      setPersonnelLoading(false)
     }
   }, [])
 
@@ -130,19 +130,21 @@ export default function EditOvertimeFormPage() {
         setDescription(form.description || "")
         setSendToGM(form.sendToGM)
 
-        // Personnel
+        // Personnel - personnelId bazlı (fallback: user.id eski kayıtlar için)
         const ids = new Set<string>()
         const details: Record<string, PersonnelDetail> = {}
         for (const p of form.personnel || []) {
-          ids.add(p.user.id)
-          details[p.user.id] = {
+          const key = p.personnelId || p.user?.id
+          if (!key) continue
+          ids.add(key)
+          details[key] = {
             workDepartment: p.workDepartment || BOLUMLER[0],
             serviceRoute: p.serviceRoute || "",
             targetProduction: p.targetProduction || "",
             actualProduction: p.actualProduction || "",
           }
         }
-        setSelectedUserIds(ids)
+        setSelectedIds(ids)
         setPersonnelDetails(details)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Form yüklenemedi")
@@ -153,36 +155,36 @@ export default function EditOvertimeFormPage() {
     }
 
     loadForm()
-    fetchUsers()
-  }, [id, router, fetchUsers])
+    fetchPersonnel()
+  }, [id, router, fetchPersonnel])
 
-  // Filtered user list
-  const filteredUsers = users.filter((u) => {
+  // Filtered personnel list
+  const filteredPersonnel = personnelList.filter((p) => {
     const q = searchQuery.toLowerCase()
     const matchesSearch =
-      !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-    const matchesDept = !departmentFilter || u.department === departmentFilter
+      !q || p.adSoyad.toLowerCase().includes(q) || p.sicilNo.toLowerCase().includes(q)
+    const matchesDept = !departmentFilter || p.bolum === departmentFilter
     return matchesSearch && matchesDept
   })
 
-  // Toggle user selection
-  function toggleUser(user: User) {
-    setSelectedUserIds((prev) => {
+  // Toggle personnel selection
+  function togglePersonnel(person: PersonnelItem) {
+    setSelectedIds((prev) => {
       const next = new Set(prev)
-      if (next.has(user.id)) {
-        next.delete(user.id)
+      if (next.has(person.id)) {
+        next.delete(person.id)
         setPersonnelDetails((pd) => {
           const copy = { ...pd }
-          delete copy[user.id]
+          delete copy[person.id]
           return copy
         })
       } else {
-        next.add(user.id)
+        next.add(person.id)
         setPersonnelDetails((pd) => ({
           ...pd,
-          [user.id]: {
-            workDepartment: user.department || BOLUMLER[0],
-            serviceRoute: user.serviceRoute || "",
+          [person.id]: {
+            workDepartment: person.bolum || BOLUMLER[0],
+            serviceRoute: person.serviceRoute || "",
             targetProduction: "",
             actualProduction: "",
           },
@@ -192,35 +194,62 @@ export default function EditOvertimeFormPage() {
     })
   }
 
-  function removeUser(userId: string) {
-    setSelectedUserIds((prev) => {
+  function removePerson(personnelId: string) {
+    setSelectedIds((prev) => {
       const next = new Set(prev)
-      next.delete(userId)
+      next.delete(personnelId)
       return next
     })
     setPersonnelDetails((pd) => {
       const copy = { ...pd }
-      delete copy[userId]
+      delete copy[personnelId]
       return copy
     })
   }
 
-  function updateDetail(userId: string, field: keyof PersonnelDetail, value: string) {
+  function updateDetail(personnelId: string, field: keyof PersonnelDetail, value: string) {
     setPersonnelDetails((pd) => ({
       ...pd,
-      [userId]: { ...pd[userId], [field]: value },
+      [personnelId]: { ...pd[personnelId], [field]: value },
     }))
   }
 
-  // Selected user objects in selection order
-  const selectedUsers = users.filter((u) => selectedUserIds.has(u.id))
+  // Selected personnel objects in selection order
+  const selectedPersonnel = personnelList.filter((p) => selectedIds.has(p.id))
 
   // Current overtime type meta
   const currentTypeMeta = MESAI_TURLERI.find((t) => t.value === overtimeType)
 
   // Helpers
   const canProceedStep1 = overtimeType !== "" && date !== ""
-  const canProceedStep2 = selectedUserIds.size > 0
+  const canProceedStep2 = selectedIds.size > 0
+
+  async function fetchApprovalChain(toGM: boolean = sendToGM) {
+    setChainLoading(true)
+    try {
+      const res = await fetch("/api/overtime/approval-chain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          personnelIds: Array.from(selectedIds),
+          sendToGM: toGM,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setApprovalChain(data.chain || [])
+      }
+    } catch {
+      // fallback
+    } finally {
+      setChainLoading(false)
+    }
+  }
+
+  function goToStep3() {
+    fetchApprovalChain()
+    setStep(3)
+  }
 
   // ---------------------------------------------------------------------------
   // Save / Submit
@@ -237,11 +266,11 @@ export default function EditOvertimeFormPage() {
         endTime: isFullDay ? null : endTime,
         description: description || null,
         sendToGM,
-        personnel: selectedUsers.map((u) => ({
-          userId: u.id,
-          workDepartment: personnelDetails[u.id]?.workDepartment || BOLUMLER[0],
-          serviceRoute: personnelDetails[u.id]?.serviceRoute || null,
-          targetProduction: personnelDetails[u.id]?.targetProduction || null,
+        personnel: selectedPersonnel.map((p) => ({
+          personnelId: p.id,
+          workDepartment: personnelDetails[p.id]?.workDepartment || BOLUMLER[0],
+          serviceRoute: personnelDetails[p.id]?.serviceRoute || null,
+          targetProduction: personnelDetails[p.id]?.targetProduction || null,
         })),
       }
 
@@ -496,7 +525,7 @@ export default function EditOvertimeFormPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="İsim veya email ile ara..."
+                  placeholder="İsim veya sicil no ile ara..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -515,30 +544,30 @@ export default function EditOvertimeFormPage() {
                 onChange={(e) => setDepartmentFilter(e.target.value)}
               >
                 <option value="">Tüm Bölümler</option>
-                {BOLUMLER.map((b) => (
+                {Array.from(new Set(personnelList.map((p) => p.bolum))).sort((a, b) => a.localeCompare(b, "tr")).map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
               </Select>
             </div>
 
             <div className="max-h-80 overflow-y-auto">
-              {usersLoading ? (
+              {personnelLoading ? (
                 <div className="flex items-center justify-center py-10 text-gray-400">
                   <Loader2 className="h-5 w-5 animate-spin mr-2" />
                   Yükleniyor...
                 </div>
-              ) : filteredUsers.length === 0 ? (
+              ) : filteredPersonnel.length === 0 ? (
                 <div className="text-center py-10 text-gray-400 text-sm">
                   Sonuç bulunamadı
                 </div>
               ) : (
-                filteredUsers.map((user) => {
-                  const isSelected = selectedUserIds.has(user.id)
+                filteredPersonnel.map((person) => {
+                  const isSelected = selectedIds.has(person.id)
                   return (
                     <button
-                      key={user.id}
+                      key={person.id}
                       type="button"
-                      onClick={() => toggleUser(user)}
+                      onClick={() => togglePersonnel(person)}
                       className={`w-full text-left px-4 py-3 border-b last:border-b-0 transition-colors ${
                         isSelected
                           ? "bg-teal-50 border-l-4 border-l-teal-500"
@@ -547,15 +576,11 @@ export default function EditOvertimeFormPage() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+                          <p className="text-sm font-medium text-gray-900 truncate">{person.adSoyad}</p>
                           <p className="text-xs text-gray-500 truncate">
-                            {user.department || "-"} {user.jobTitle ? `/ ${user.jobTitle}` : ""}
+                            {person.bolum} {person.gorev ? `/ ${person.gorev}` : ""}
                           </p>
-                          {user.serviceRoute && (
-                            <p className="text-xs text-teal-600 truncate">
-                              Servis: {user.serviceRoute}
-                            </p>
-                          )}
+                          <p className="text-xs text-gray-400 font-mono">{person.sicilNo}</p>
                         </div>
                         {isSelected && (
                           <Check className="h-4 w-4 text-teal-600 flex-shrink-0 ml-2" />
@@ -568,7 +593,7 @@ export default function EditOvertimeFormPage() {
             </div>
 
             <div className="p-3 border-t bg-gray-50 text-xs text-gray-500">
-              {filteredUsers.length} personel · {selectedUserIds.size} seçili
+              {filteredPersonnel.length} personel · {selectedIds.size} seçili
             </div>
           </div>
 
@@ -576,33 +601,33 @@ export default function EditOvertimeFormPage() {
           <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border overflow-hidden">
             <div className="p-4 border-b">
               <h2 className="font-semibold text-gray-900">
-                Seçili Personel ({selectedUserIds.size})
+                Seçili Personel ({selectedIds.size})
               </h2>
             </div>
 
             <div className="p-4 space-y-4 max-h-[32rem] overflow-y-auto">
-              {selectedUsers.length === 0 ? (
+              {selectedPersonnel.length === 0 ? (
                 <div className="text-center py-16 text-gray-400 text-sm">
                   Soldaki listeden personel seçin
                 </div>
               ) : (
-                selectedUsers.map((user) => {
-                  const detail = personnelDetails[user.id]
+                selectedPersonnel.map((person) => {
+                  const detail = personnelDetails[person.id]
                   if (!detail) return null
                   return (
                     <div
-                      key={user.id}
+                      key={person.id}
                       className="border rounded-lg p-4 space-y-3 bg-gray-50/50"
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                          <p className="text-xs text-gray-500">{user.department || "-"}</p>
+                          <p className="text-sm font-medium text-gray-900">{person.adSoyad}</p>
+                          <p className="text-xs text-gray-500">{person.bolum} <span className="font-mono text-gray-400">({person.sicilNo})</span></p>
                         </div>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => removeUser(user.id)}
+                          onClick={() => removePerson(person.id)}
                           className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 px-2"
                         >
                           <X className="h-3.5 w-3.5 mr-1" />
@@ -617,7 +642,7 @@ export default function EditOvertimeFormPage() {
                           </label>
                           <Select
                             value={detail.workDepartment}
-                            onChange={(e) => updateDetail(user.id, "workDepartment", e.target.value)}
+                            onChange={(e) => updateDetail(person.id, "workDepartment", e.target.value)}
                           >
                             {BOLUMLER.map((b) => (
                               <option key={b} value={b}>{b}</option>
@@ -628,15 +653,9 @@ export default function EditOvertimeFormPage() {
                           <label className="block text-xs font-medium text-gray-600 mb-1">
                             Servis Güzergahı
                           </label>
-                          <Select
-                            value={detail.serviceRoute}
-                            onChange={(e) => updateDetail(user.id, "serviceRoute", e.target.value)}
-                          >
-                            <option value="">Seçiniz...</option>
-                            {SERVIS_GUZERGAHLARI.map((s) => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </Select>
+                          <div className="flex h-10 w-full rounded-md border border-input bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                            {detail.serviceRoute || <span className="text-gray-400">Tanımlı değil</span>}
+                          </div>
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -645,7 +664,7 @@ export default function EditOvertimeFormPage() {
                           <Input
                             placeholder="Ör: KR09-8041-8042"
                             value={detail.targetProduction}
-                            onChange={(e) => updateDetail(user.id, "targetProduction", e.target.value)}
+                            onChange={(e) => updateDetail(person.id, "targetProduction", e.target.value)}
                           />
                         </div>
                         <div>
@@ -655,7 +674,7 @@ export default function EditOvertimeFormPage() {
                           <Input
                             placeholder="Mesai sonrası girilecek"
                             value={detail.actualProduction}
-                            onChange={(e) => updateDetail(user.id, "actualProduction", e.target.value)}
+                            onChange={(e) => updateDetail(person.id, "actualProduction", e.target.value)}
                           />
                         </div>
                       </div>
@@ -672,7 +691,7 @@ export default function EditOvertimeFormPage() {
                 Geri
               </Button>
               <Button
-                onClick={() => setStep(3)}
+                onClick={goToStep3}
                 disabled={!canProceedStep2}
                 className="bg-teal-600 hover:bg-teal-700"
               >
@@ -691,9 +710,7 @@ export default function EditOvertimeFormPage() {
   // ---------------------------------------------------------------------------
 
   function Step3() {
-    const visibleChain = sendToGM
-      ? APPROVAL_CHAIN
-      : APPROVAL_CHAIN.filter((s) => s.position !== "GM")
+    const visibleChain = approvalChain
 
     return (
       <div className="space-y-4">
@@ -734,22 +751,22 @@ export default function EditOvertimeFormPage() {
                 </tr>
               </thead>
               <tbody>
-                {selectedUsers.map((user, idx) => {
-                  const detail = personnelDetails[user.id]
+                {selectedPersonnel.map((person, idx) => {
+                  const detail = personnelDetails[person.id]
                   return (
                     <tr
-                      key={user.id}
+                      key={person.id}
                       className={idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"}
                     >
                       <td className="px-4 py-3 text-gray-400">{idx + 1}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-600">{user.employeeId || "-"}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-600">{person.sicilNo}</td>
                       <td className="px-4 py-3 font-medium text-gray-900">
                         {detail?.workDepartment || "-"}
                       </td>
-                      <td className="px-4 py-3 text-gray-900">{user.name}</td>
-                      <td className="px-4 py-3 text-xs text-gray-600">{user.mobilePhone || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{user.department || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{user.jobTitle || "-"}</td>
+                      <td className="px-4 py-3 text-gray-900">{person.adSoyad}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{person.telefon || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{person.bolum}</td>
+                      <td className="px-4 py-3 text-gray-600">{person.gorev || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.serviceRoute || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.targetProduction || "-"}</td>
                     </tr>
@@ -768,24 +785,42 @@ export default function EditOvertimeFormPage() {
             Form gönderildiğinde aşağıdaki sıraya göre onay sürecine girer.
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 py-2">
-            {visibleChain.map((s, i) => (
-              <div key={s.step} className="flex items-center gap-2">
-                <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-xs font-medium text-teal-800 whitespace-nowrap">
-                  {s.step}. {s.role}
+          {chainLoading ? (
+            <div className="flex items-center gap-2 py-4 text-gray-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Onay zinciri hesaplanıyor...</span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 py-2">
+              {visibleChain.map((s, i) => (
+                <div key={s.step} className="flex items-center gap-2">
+                  <div className={`border rounded-lg px-3 py-2 text-xs font-medium whitespace-nowrap ${
+                    s.isCommon
+                      ? "bg-gray-50 border-gray-200 text-gray-700"
+                      : "bg-teal-50 border-teal-200 text-teal-800"
+                  }`}>
+                    {i + 1}. {s.role}
+                    {s.approver && <span className="text-[10px] opacity-60 ml-1">({s.approver.name})</span>}
+                  </div>
+                  {i < visibleChain.length - 1 && (
+                    <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                  )}
                 </div>
-                {i < visibleChain.length - 1 && (
-                  <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+              {visibleChain.length === 0 && (
+                <p className="text-sm text-gray-400">Onay zinciri bulunamadı</p>
+              )}
+            </div>
+          )}
 
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={sendToGM}
-              onChange={(e) => setSendToGM(e.target.checked)}
+              onChange={(e) => {
+                setSendToGM(e.target.checked)
+                fetchApprovalChain(e.target.checked)
+              }}
               className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
             />
             <span className="text-sm text-gray-700">Genel Müdür onayına da gönder</span>

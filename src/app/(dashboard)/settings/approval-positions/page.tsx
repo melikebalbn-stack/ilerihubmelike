@@ -21,6 +21,7 @@ interface Position {
   isActive: boolean
   userId: string | null
   user: UserOption | null
+  departments: string[]
 }
 
 export default function ApprovalPositionsPage() {
@@ -149,8 +150,8 @@ export default function ApprovalPositionsPage() {
             <p className="font-medium">Mesai Formu Onay Zinciri</p>
             <p className="mt-1">
               Mesai formu onay sürecinde her pozisyona bir kullanıcı atanmalıdır.
-              Atanmamış pozisyon varsa form onaya gönderilemez.
-              Genel Müdür opsiyoneldir (sadece GMY tarafından yönlendirildiğinde aktif olur).
+              <strong> Departman ataması olan pozisyonlar koşulludur</strong> — sadece o departmandan personel varsa onay sürecine dahil edilir.
+              Departmanı boş olan pozisyonlar (İV, GMY, GM) tüm formlara dahil edilir.
             </p>
           </div>
         </div>
@@ -179,6 +180,7 @@ export default function ApprovalPositionsPage() {
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground">Pozisyon</th>
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground">Kod</th>
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground min-w-[300px]">Atanmış Kişi</th>
+                <th className="text-left py-3 px-4 font-medium text-muted-foreground">Departmanlar</th>
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground w-24">Durum</th>
               </tr>
             </thead>
@@ -247,6 +249,19 @@ export default function ApprovalPositionsPage() {
                           </Button>
                         )}
                       </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {pos.departments && pos.departments.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {pos.departments.map((dept) => (
+                            <span key={dept} className="inline-block bg-teal-50 text-teal-700 border border-teal-200 rounded px-1.5 py-0.5 text-[10px] font-medium">
+                              {dept}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Tüm formlar (ortak)</span>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       {isAssigned ? (

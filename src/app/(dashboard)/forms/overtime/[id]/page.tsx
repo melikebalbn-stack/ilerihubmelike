@@ -16,10 +16,20 @@ import { useSession } from "next-auth/react"
 
 interface Personnel {
   id: string
+  personnelId: string | null
   workDepartment: string
   serviceRoute: string | null
   targetProduction: string | null
   actualProduction: string | null
+  personnel: {
+    id: string
+    sicilNo: string
+    adSoyad: string
+    bolum: string
+    gorev: string
+    telefon: string | null
+    serviceRoute: string | null
+  } | null
   user: {
     id: string
     name: string
@@ -28,7 +38,7 @@ interface Personnel {
     jobTitle: string | null
     employeeId: string | null
     mobilePhone: string | null
-  }
+  } | null
 }
 
 interface Approval {
@@ -76,6 +86,23 @@ function getOvertimeTypeInfo(type: string) {
   return MESAI_TURLERI.find((m) => m.value === type)
 }
 
+/** Personnel veya User'dan field çek (Personnel öncelikli, User fallback) */
+function pName(p: Personnel): string {
+  return p.personnel?.adSoyad || p.user?.name || "—"
+}
+function pSicilNo(p: Personnel): string {
+  return p.personnel?.sicilNo || p.user?.employeeId || "—"
+}
+function pTelefon(p: Personnel): string {
+  return p.personnel?.telefon || p.user?.mobilePhone || "—"
+}
+function pBolum(p: Personnel): string {
+  return p.personnel?.bolum || p.user?.department || "—"
+}
+function pGorev(p: Personnel): string {
+  return p.personnel?.gorev || p.user?.jobTitle || "—"
+}
+
 export default function OvertimeDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -91,8 +118,8 @@ export default function OvertimeDetailPage() {
 
   // Personnel editing state
   const [showAddPanel, setShowAddPanel] = useState(false)
-  const [allUsers, setAllUsers] = useState<{ id: string; name: string; email: string; department: string | null; jobTitle: string | null; serviceRoute: string | null }[]>([])
-  const [usersLoading, setUsersLoading] = useState(false)
+  const [allPersonnelItems, setAllPersonnelItems] = useState<{ id: string; sicilNo: string; adSoyad: string; bolum: string; gorev: string; serviceRoute: string | null; telefon: string | null }[]>([])
+  const [personnelItemsLoading, setPersonnelItemsLoading] = useState(false)
   const [personnelSearch, setPersonnelSearch] = useState("")
   const [addWorkDept, setAddWorkDept] = useState(BOLUMLER[0])
   const [addingId, setAddingId] = useState<string | null>(null)
@@ -104,29 +131,29 @@ export default function OvertimeDetailPage() {
   const [actualValues, setActualValues] = useState<Record<string, string>>({})
   const [savingActual, setSavingActual] = useState(false)
 
-  const fetchAllUsers = useCallback(async () => {
-    if (allUsers.length > 0) return
-    setUsersLoading(true)
+  const fetchAllPersonnelItems = useCallback(async () => {
+    if (allPersonnelItems.length > 0) return
+    setPersonnelItemsLoading(true)
     try {
-      const res = await fetch("/api/users?source=db")
+      const res = await fetch("/api/overtime/personnel-list")
       if (!res.ok) throw new Error()
       const data = await res.json()
-      setAllUsers(Array.isArray(data) ? data : data.data || [])
+      setAllPersonnelItems(Array.isArray(data) ? data : [])
     } catch {
-      toast.error("Kullanıcı listesi yüklenemedi")
+      toast.error("Personel listesi yüklenemedi")
     } finally {
-      setUsersLoading(false)
+      setPersonnelItemsLoading(false)
     }
-  }, [allUsers.length])
+  }, [allPersonnelItems.length])
 
-  async function handleAddPersonnel(userId: string) {
-    setAddingId(userId)
+  async function handleAddPersonnel(personnelItemId: string) {
+    setAddingId(personnelItemId)
     try {
-      const targetUser = allUsers.find((u) => u.id === userId)
+      const targetPerson = allPersonnelItems.find((p) => p.id === personnelItemId)
       const res = await fetch(`/api/overtime/${id}/personnel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, workDepartment: addWorkDept, serviceRoute: targetUser?.serviceRoute || null }),
+        body: JSON.stringify({ personnelId: personnelItemId, workDepartment: addWorkDept, serviceRoute: targetPerson?.serviceRoute || null }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -169,7 +196,7 @@ export default function OvertimeDetailPage() {
     if (!form) return
     const values: Record<string, string> = {}
     form.personnel.forEach((p) => {
-      values[p.user.id] = p.actualProduction || ""
+      values[p.id] = p.actualProduction || ""
     })
     setActualValues(values)
     setEditingActual(true)
@@ -179,8 +206,8 @@ export default function OvertimeDetailPage() {
     if (!form) return
     setSavingActual(true)
     try {
-      const personnelData = Object.entries(actualValues).map(([userId, actualProduction]) => ({
-        userId,
+      const personnelData = Object.entries(actualValues).map(([overtimePersonnelId, actualProduction]) => ({
+        overtimePersonnelId,
         actualProduction,
       }))
       const res = await fetch(`/api/overtime/${id}/personnel`, {
@@ -388,11 +415,11 @@ export default function OvertimeDetailPage() {
   const userRole = (session?.user as Record<string, unknown>)?.role as string | undefined
   const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN"
   const canEditActual = form.status === "APPROVED" && (isCreator || isAdmin || isAuthorizedUser)
-  const existingUserIds = new Set(form.personnel.map((p) => p.user.id))
-  const filteredAddUsers = allUsers.filter((u) => {
-    if (existingUserIds.has(u.id)) return false
+  const existingPersonnelIds = new Set(form.personnel.map((p) => p.personnelId).filter(Boolean))
+  const filteredAddPersonnel = allPersonnelItems.filter((pi) => {
+    if (existingPersonnelIds.has(pi.id)) return false
     const q = personnelSearch.toLowerCase()
-    return !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+    return !q || pi.adSoyad.toLowerCase().includes(q) || pi.sicilNo.toLowerCase().includes(q)
   })
 
   return (
@@ -503,7 +530,7 @@ export default function OvertimeDetailPage() {
               size="sm"
               onClick={() => {
                 setShowAddPanel(!showAddPanel)
-                if (!showAddPanel) fetchAllUsers()
+                if (!showAddPanel) fetchAllPersonnelItems()
               }}
             >
               <Plus className="h-4 w-4 mr-1" />
@@ -519,7 +546,7 @@ export default function OvertimeDetailPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="İsim veya email ile ara..."
+                  placeholder="İsim veya sicil no ile ara..."
                   value={personnelSearch}
                   onChange={(e) => setPersonnelSearch(e.target.value)}
                   className="pl-9"
@@ -543,40 +570,36 @@ export default function OvertimeDetailPage() {
               </Button>
             </div>
             <div className="max-h-48 overflow-y-auto border rounded-md bg-background">
-              {usersLoading ? (
+              {personnelItemsLoading ? (
                 <div className="flex items-center justify-center py-6 text-muted-foreground text-sm">
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Yükleniyor...
                 </div>
-              ) : filteredAddUsers.length === 0 ? (
+              ) : filteredAddPersonnel.length === 0 ? (
                 <div className="text-center py-6 text-muted-foreground text-sm">
-                  {personnelSearch ? "Sonuç bulunamadı" : "Eklenecek kullanıcı yok"}
+                  {personnelSearch ? "Sonuç bulunamadı" : "Eklenecek personel yok"}
                 </div>
               ) : (
-                filteredAddUsers.slice(0, 50).map((u) => (
+                filteredAddPersonnel.slice(0, 50).map((pi) => (
                   <div
-                    key={u.id}
+                    key={pi.id}
                     className="flex items-center justify-between px-3 py-2 border-b last:border-0 hover:bg-muted/50"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{u.name}</p>
+                      <p className="text-sm font-medium truncate">{pi.adSoyad}</p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {u.department || "-"} {u.jobTitle ? `/ ${u.jobTitle}` : ""}
+                        {pi.bolum} {pi.gorev ? `/ ${pi.gorev}` : ""}
                       </p>
-                      {u.serviceRoute && (
-                        <p className="text-xs text-teal-600 truncate">
-                          Servis: {u.serviceRoute}
-                        </p>
-                      )}
+                      <p className="text-xs text-gray-400 font-mono">{pi.sicilNo}</p>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-green-600 hover:text-green-800 hover:bg-green-50 h-8 px-2 flex-shrink-0"
-                      onClick={() => handleAddPersonnel(u.id)}
+                      onClick={() => handleAddPersonnel(pi.id)}
                       disabled={addingId !== null}
                     >
-                      {addingId === u.id ? (
+                      {addingId === pi.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Plus className="h-3.5 w-3.5" />
@@ -644,20 +667,20 @@ export default function OvertimeDetailPage() {
               {form.personnel.map((p, index) => (
                 <tr key={p.id} className="border-b last:border-0 hover:bg-muted/50">
                   <td className="py-3 px-2 text-muted-foreground">{index + 1}</td>
-                  <td className="py-3 px-2 font-mono text-xs">{p.user.employeeId || "—"}</td>
-                  <td className="py-3 px-2 font-medium">{p.user.name}</td>
-                  <td className="py-3 px-2 text-xs">{p.user.mobilePhone || "—"}</td>
-                  <td className="py-3 px-2">{p.user.department || "—"}</td>
-                  <td className="py-3 px-2">{p.user.jobTitle || "—"}</td>
+                  <td className="py-3 px-2 font-mono text-xs">{pSicilNo(p)}</td>
+                  <td className="py-3 px-2 font-medium">{pName(p)}</td>
+                  <td className="py-3 px-2 text-xs">{pTelefon(p)}</td>
+                  <td className="py-3 px-2">{pBolum(p)}</td>
+                  <td className="py-3 px-2">{pGorev(p)}</td>
                   <td className="py-3 px-2">{p.workDepartment}</td>
                   <td className="py-3 px-2">{p.serviceRoute || "—"}</td>
                   <td className="py-3 px-2">{p.targetProduction || "—"}</td>
                   <td className="py-3 px-2">
                     {editingActual ? (
                       <Input
-                        value={actualValues[p.user.id] || ""}
+                        value={actualValues[p.id] || ""}
                         onChange={(e) =>
-                          setActualValues((prev) => ({ ...prev, [p.user.id]: e.target.value }))
+                          setActualValues((prev) => ({ ...prev, [p.id]: e.target.value }))
                         }
                         placeholder="Üretim girin..."
                         className="h-8 w-32 text-sm"

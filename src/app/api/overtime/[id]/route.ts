@@ -35,16 +35,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       include: {
         personnel: {
           include: {
+            personnel: {
+              select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
+            },
             user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                department: true,
-                jobTitle: true,
-                employeeId: true,
-                mobilePhone: true,
-              },
+              select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -163,8 +158,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         return apiBadRequest('En az bir personel eklenmelidir')
       }
       for (const p of personnel) {
-        if (!p.userId || !p.workDepartment) {
-          return apiBadRequest('Her personel için userId ve workDepartment alanları zorunludur')
+        if (!p.personnelId || !p.workDepartment) {
+          return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
         }
       }
     }
@@ -203,13 +198,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         // Yeni personel listesini ekle
         await tx.overtimePersonnel.createMany({
           data: personnel.map((p: {
-            userId: string
+            personnelId: string
             workDepartment: string
             serviceRoute?: string
             targetProduction?: string
           }) => ({
             overtimeFormId: id,
-            userId: p.userId,
+            personnelId: p.personnelId,
             workDepartment: p.workDepartment,
             serviceRoute: p.serviceRoute || null,
             targetProduction: p.targetProduction || null,
@@ -223,16 +218,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         include: {
           personnel: {
             include: {
+              personnel: {
+                select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
+              },
               user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  department: true,
-                  jobTitle: true,
-                  employeeId: true,
-                  mobilePhone: true,
-                },
+                select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
               },
             },
           },

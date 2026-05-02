@@ -63,14 +63,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!access.allowed) return apiError(access.reason!, 403)
 
     const body = await request.json()
-    const { userId: targetUserId, workDepartment, serviceRoute, targetProduction } = body
+    const { personnelId: targetPersonnelId, workDepartment, serviceRoute, targetProduction } = body
 
-    if (!targetUserId || !workDepartment) {
-      return apiBadRequest('userId ve workDepartment alanları zorunludur')
+    if (!targetPersonnelId || !workDepartment) {
+      return apiBadRequest('personnelId ve workDepartment alanları zorunludur')
     }
 
     // Zaten ekliyse hata ver
-    const alreadyExists = form.personnel.some((p) => p.userId === targetUserId)
+    const alreadyExists = form.personnel.some((p) => p.personnelId === targetPersonnelId)
     if (alreadyExists) {
       return apiBadRequest('Bu personel zaten formda mevcut')
     }
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     await prisma.overtimePersonnel.create({
       data: {
         overtimeFormId: id,
-        userId: targetUserId,
+        personnelId: targetPersonnelId,
         workDepartment,
         serviceRoute: serviceRoute || null,
         targetProduction: targetProduction || null,
@@ -92,6 +92,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       include: {
         personnel: {
           include: {
+            personnel: {
+              select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
+            },
             user: {
               select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
             },
@@ -174,6 +177,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       include: {
         personnel: {
           include: {
+            personnel: {
+              select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
+            },
             user: {
               select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
             },
@@ -262,14 +268,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     // Her personel için actualProduction güncelle
-    const updatePromises = personnel.map(async (p: { userId: string; actualProduction: string }) => {
-      if (!p.userId) {
+    const updatePromises = personnel.map(async (p: { overtimePersonnelId: string; actualProduction: string }) => {
+      if (!p.overtimePersonnelId) {
         return null
       }
 
       // Bu formda bu personel var mı kontrol et
       const existingPersonnel = form.personnel.find(
-        (ep) => ep.userId === p.userId
+        (ep) => ep.id === p.overtimePersonnelId
       )
 
       if (!existingPersonnel) {

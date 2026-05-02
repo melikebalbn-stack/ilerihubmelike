@@ -52,6 +52,8 @@ export async function GET(
       userName: cert.user.name || cert.user.email,
       courseName: cert.course?.title ?? "Kurs",
       issuedAt: cert.issuedAt,
+      validUntil: cert.validUntil,
+      templateId: cert.templateId,
     });
     await prisma.akademiCertificate.update({
       where: { id: cert.id },

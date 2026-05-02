@@ -57,6 +57,13 @@ export async function issueCertificateIfEligible(
     .slice(0, 12)
     .toUpperCase();
 
+  const validUntil = template.defaultValidityMonths
+    ? new Date(
+        Date.now() +
+          template.defaultValidityMonths * 30 * 24 * 60 * 60 * 1000
+      )
+    : null;
+
   let cert;
   try {
     cert = await prisma.akademiCertificate.create({
@@ -67,6 +74,7 @@ export async function issueCertificateIfEligible(
         certificateNo,
         verificationCode,
         filePath: null,
+        validUntil,
       },
     });
   } catch (e) {
@@ -85,6 +93,8 @@ export async function issueCertificateIfEligible(
       userName: user.name || user.email,
       courseName: course.title,
       issuedAt: cert.issuedAt,
+      validUntil: cert.validUntil,
+      templateId: template.id,
     });
     cert = await prisma.akademiCertificate.update({
       where: { id: cert.id },

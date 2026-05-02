@@ -11,6 +11,7 @@ type Certificate = {
   verificationCode: string;
   filePath: string | null;
   issuedAt: string;
+  validUntil: string | null;
   course: { id: string; title: string } | null;
   _count: { downloads: number };
 };
@@ -106,6 +107,26 @@ export default function CertificatesPage() {
                   >
                     Tarih: {new Date(c.issuedAt).toLocaleDateString("tr-TR")}
                   </div>
+                  {c.validUntil && (
+                    <div
+                      className={`text-xs mt-0.5 ${
+                        new Date(c.validUntil) < new Date()
+                          ? "text-red-600 font-semibold"
+                          : ""
+                      }`}
+                      style={
+                        new Date(c.validUntil) < new Date()
+                          ? undefined
+                          : { color: "var(--ak-text-tertiary)" }
+                      }
+                    >
+                      Geçerlilik:{" "}
+                      {new Date(c.validUntil).toLocaleDateString("tr-TR")}
+                      {new Date(c.validUntil) < new Date() && (
+                        <span className="ml-1">(SÜRESİ DOLMUŞ)</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

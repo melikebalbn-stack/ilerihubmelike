@@ -1,11 +1,22 @@
 import { headers } from "next/headers";
-import { CheckCircle2, XCircle, Award } from "lucide-react";
+import { CheckCircle2, XCircle, Award, AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-async function verifyAndLog(code: string) {
-  if (!code || code.length < 6) return null;
+type VerifyResult =
+  | {
+      kind: "valid" | "expired";
+      certificateNo: string;
+      userName: string;
+      courseName: string;
+      issuedAt: Date;
+      validUntil: Date | null;
+    }
+  | { kind: "notfound" };
+
+async function verifyAndLog(code: string): Promise<VerifyResult> {
+  if (!code || code.length < 6) return { kind: "notfound" };
 
   const cert = await prisma.akademiCertificate.findUnique({
     where: { verificationCode: code },
@@ -15,7 +26,7 @@ async function verifyAndLog(code: string) {
     },
   });
 
-  if (!cert) return null;
+  if (!cert) return { kind: "notfound" };
 
   const hdrs = await headers();
   const ip =
@@ -35,12 +46,25 @@ async function verifyAndLog(code: string) {
       /* log fail kritik değil */
     });
 
+  const isExpired =
+    cert.validUntil && new Date(cert.validUntil) < new Date();
+
   return {
+    kind: isExpired ? "expired" : "valid",
     certificateNo: cert.certificateNo,
     userName: cert.user?.name ?? "Bilinmeyen",
     courseName: cert.course?.title ?? "Kurs",
     issuedAt: cert.issuedAt,
+    validUntil: cert.validUntil,
   };
+}
+
+function fmtDate(d: Date | string) {
+  return new Date(d).toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 export default async function VerifyPage({
@@ -49,9 +73,9 @@ export default async function VerifyPage({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
-  const cert = await verifyAndLog(code);
+  const result = await verifyAndLog(code);
 
-  if (!cert) {
+  if (result.kind === "notfound") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
         <div className="bg-white border border-slate-200 rounded-lg p-8 max-w-md w-full text-center shadow-sm">
@@ -70,11 +94,38 @@ export default async function VerifyPage({
     );
   }
 
-  const dateStr = new Date(cert.issuedAt).toLocaleDateString("tr-TR", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  if (result.kind === "expired") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-amber-50 p-6">
+        <div className="bg-white border-2 border-amber-300 rounded-lg p-8 max-w-md w-full text-center shadow-lg">
+          <div className="bg-amber-100 p-3 rounded-full inline-block mb-3">
+            <AlertTriangle size={48} className="text-amber-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-amber-800">
+            Sertifika Geçerlilik Süresi Dolmuş
+          </h1>
+          <p className="text-sm text-slate-600 mt-2">
+            Bu sertifika{" "}
+            {result.validUntil ? fmtDate(result.validUntil) : "—"} tarihine
+            kadar geçerliydi.
+          </p>
+          <div className="mt-6 space-y-3 text-left">
+            <Field label="Kullanıcı" value={result.userName} />
+            <Field label="Kurs" value={result.courseName} />
+            <Field label="Düzenlenme" value={fmtDate(result.issuedAt)} />
+            {result.validUntil && (
+              <Field label="Son Geçerlilik" value={fmtDate(result.validUntil)} />
+            )}
+            <Field label="Sertifika No" value={result.certificateNo} mono />
+          </div>
+          <div className="mt-6 pt-4 border-t border-slate-100 inline-flex items-center gap-1.5 text-xs text-slate-500">
+            <Award size={14} />
+            İLERİ AKADEMİ
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-slate-50 p-6">
@@ -86,10 +137,13 @@ export default async function VerifyPage({
           Geçerli Sertifika
         </h1>
         <div className="mt-6 space-y-3 text-left">
-          <Field label="Kullanıcı" value={cert.userName} />
-          <Field label="Kurs" value={cert.courseName} />
-          <Field label="Tarih" value={dateStr} />
-          <Field label="Sertifika No" value={cert.certificateNo} mono />
+          <Field label="Kullanıcı" value={result.userName} />
+          <Field label="Kurs" value={result.courseName} />
+          <Field label="Düzenlenme" value={fmtDate(result.issuedAt)} />
+          {result.validUntil && (
+            <Field label="Geçerlilik Tarihi" value={fmtDate(result.validUntil)} />
+          )}
+          <Field label="Sertifika No" value={result.certificateNo} mono />
         </div>
         <div className="mt-6 pt-4 border-t border-slate-100 inline-flex items-center gap-1.5 text-xs text-slate-500">
           <Award size={14} />

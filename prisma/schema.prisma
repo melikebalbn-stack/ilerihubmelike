@@ -8882,12 +8882,13 @@ model UserExamAnswer {
 }
 
 model AkademiCertificate {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   userId           String
   courseId         String?
-  certificateNo    String   @unique
-  verificationCode String   @unique
-  issuedAt         DateTime @default(now())
+  certificateNo    String    @unique
+  verificationCode String    @unique
+  issuedAt         DateTime  @default(now())
+  validUntil       DateTime?
   filePath         String?
   templateId       String?
 
@@ -8902,11 +8903,17 @@ model AkademiCertificate {
 }
 
 model AkademiCertificateTemplate {
-  id        String   @id @default(cuid())
-  name      String
-  content   String   @db.Text
-  isDefault Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id                    String   @id @default(cuid())
+  name                  String
+  description           String?
+  content               String   @db.Text
+  logoPath              String?
+  primaryColor          String   @default("#0d2659")
+  accentColor           String   @default("#b38c26")
+  defaultValidityMonths Int?
+  isDefault             Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now()) @updatedAt
 
   certificates AkademiCertificate[]
 

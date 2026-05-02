@@ -43,13 +43,18 @@ export async function GET(
       /* log fail kritik değil */
     });
 
+  const isExpired =
+    cert.validUntil && new Date(cert.validUntil) < new Date();
+
   return NextResponse.json({
     valid: true,
+    expired: !!isExpired,
     certificate: {
       certificateNo: cert.certificateNo,
       userName: cert.user?.name ?? "Bilinmeyen",
       courseName: cert.course?.title ?? "Kurs",
       issuedAt: cert.issuedAt,
+      validUntil: cert.validUntil,
     },
   });
 }

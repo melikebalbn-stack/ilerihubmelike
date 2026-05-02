@@ -2,31 +2,41 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Plus,
   ChevronUp,
   ChevronDown,
   Edit2,
   Trash2,
   FileQuestion,
+  GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AdminDeleteConfirm } from "@/components/akademi/admin/AdminDeleteConfirm";
 import { QuestionEditModal } from "./question-edit-modal";
+import {
+  TYPE_LABELS,
+  AUTO_SCORED_TYPES,
+} from "@/lib/akademi/question-types";
 
-const TYPE_LABELS: Record<string, string> = {
-  SINGLE_CHOICE: "Tek Seçim",
-  MULTIPLE_CHOICE: "Çoklu Seçim",
-  TRUE_FALSE: "Doğru/Yanlış",
-  TEXT_SHORT: "Kısa Metin",
-  TEXT_LONG: "Uzun Metin",
-  RATING: "Değerlendirme (1-5)",
-  SCALE: "Skala (1-10)",
-  YES_NO: "Evet/Hayır",
-  DATE: "Tarih",
-};
-
-const AUTO_TYPES = ["SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE"];
+const AUTO_TYPES = AUTO_SCORED_TYPES as unknown as string[];
 
 export type QuestionItem = {
   id: string;
@@ -36,6 +46,8 @@ export type QuestionItem = {
   order: number;
   explanation: string | null;
   isManualGraded: boolean;
+  matrixConfig?: { rows: string[]; cols: string[] } | null;
+  allowedFileTypes?: string | null;
   options: Array<{
     id: string;
     text: string;
@@ -61,6 +73,13 @@ export function QuestionsManager({
   const [deleteTarget, setDeleteTarget] = useState<QuestionItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -78,7 +97,41 @@ export function QuestionsManager({
     load();
   }, [load]);
 
-  const handleReorder = async (
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIdx = questions.findIndex((q) => q.id === active.id);
+    const newIdx = questions.findIndex((q) => q.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+
+    const reordered = arrayMove(questions, oldIdx, newIdx);
+    setQuestions(reordered);
+
+    try {
+      const res = await fetch(
+        `/api/akademi/admin/exams/${examId}/questions/reorder-bulk`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            questionIds: reordered.map((q) => q.id),
+          }),
+        }
+      );
+      if (!res.ok) {
+        toast.error("Sıralama kaydedilemedi");
+        load();
+        return;
+      }
+      onChange?.();
+    } catch {
+      toast.error("Sıralama hatası");
+      load();
+    }
+  };
+
+  const handleReorderUpDown = async (
     questionId: string,
     direction: "up" | "down"
   ) => {
@@ -160,6 +213,12 @@ export function QuestionsManager({
           >
             Toplam {totalPoints} puan · {autoCount} otomatik · {manualCount}{" "}
             manuel
+            <span
+              className="ml-2"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              · Sürükleyerek sıralayın
+            </span>
           </p>
         </div>
         <Button onClick={openNew} className="gap-2" size="sm">
@@ -190,122 +249,32 @@ export function QuestionsManager({
       )}
 
       {!loading && questions.length > 0 && (
-        <div className="space-y-2">
-          {questions.map((q, idx) => (
-            <div
-              key={q.id}
-              className="border rounded-md p-3 transition-colors"
-              style={{ borderColor: "var(--ak-border-divider)" }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex flex-col gap-0.5 pt-0.5">
-                  <button
-                    onClick={() => handleReorder(q.id, "up")}
-                    disabled={idx === 0 || reorderingId === q.id}
-                    className="p-0.5 rounded hover:bg-slate-100 disabled:opacity-30 transition-opacity"
-                    title="Yukarı taşı"
-                  >
-                    <ChevronUp size={14} />
-                  </button>
-                  <button
-                    onClick={() => handleReorder(q.id, "down")}
-                    disabled={
-                      idx === questions.length - 1 || reorderingId === q.id
-                    }
-                    className="p-0.5 rounded hover:bg-slate-100 disabled:opacity-30 transition-opacity"
-                    title="Aşağı taşı"
-                  >
-                    <ChevronDown size={14} />
-                  </button>
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <span
-                      className="text-xs font-mono"
-                      style={{ color: "var(--ak-text-tertiary)" }}
-                    >
-                      #{idx + 1}
-                    </span>
-                    <span
-                      className="text-xs px-2 py-0.5 rounded font-medium"
-                      style={{
-                        background: "var(--ak-surface-secondary)",
-                        color: "var(--ak-text-secondary)",
-                      }}
-                    >
-                      {TYPE_LABELS[q.type] || q.type}
-                    </span>
-                    <span className="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded font-medium">
-                      {q.points} puan
-                    </span>
-                    {q.isManualGraded && (
-                      <span className="text-xs px-2 py-0.5 bg-purple-50 text-purple-700 rounded font-medium">
-                        Manuel
-                      </span>
-                    )}
-                  </div>
-                  <p
-                    className="text-sm font-medium"
-                    style={{ color: "var(--ak-text-primary)" }}
-                  >
-                    {q.question}
-                  </p>
-                  {q.options.length > 0 && (
-                    <div className="mt-2 space-y-0.5">
-                      {q.options.map((o) => (
-                        <div
-                          key={o.id}
-                          className="text-xs flex items-center gap-2"
-                          style={{ color: "var(--ak-text-secondary)" }}
-                        >
-                          {AUTO_TYPES.includes(q.type) && (
-                            <span
-                              className={
-                                o.isCorrect
-                                  ? "text-green-600 font-bold"
-                                  : "text-slate-300"
-                              }
-                            >
-                              {o.isCorrect ? "✓" : "○"}
-                            </span>
-                          )}
-                          <span>{o.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {q.explanation && (
-                    <p
-                      className="mt-2 text-xs italic"
-                      style={{ color: "var(--ak-text-tertiary)" }}
-                    >
-                      💡 {q.explanation}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => openEdit(q)}
-                    className="p-1.5 rounded hover:opacity-70 transition-opacity"
-                    title="Düzenle"
-                    style={{ color: "var(--ak-text-secondary)" }}
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(q)}
-                    className="p-1.5 rounded text-red-500 hover:bg-red-50 transition-colors"
-                    title="Sil"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={questions.map((q) => q.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-2">
+              {questions.map((q, idx) => (
+                <SortableQuestionRow
+                  key={q.id}
+                  question={q}
+                  index={idx}
+                  total={questions.length}
+                  reorderingId={reorderingId}
+                  onUp={() => handleReorderUpDown(q.id, "up")}
+                  onDown={() => handleReorderUpDown(q.id, "down")}
+                  onEdit={() => openEdit(q)}
+                  onDelete={() => setDeleteTarget(q)}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       <QuestionEditModal
@@ -339,6 +308,176 @@ export function QuestionsManager({
         onConfirm={handleDeleteConfirm}
         loading={deleting}
       />
+    </div>
+  );
+}
+
+function SortableQuestionRow({
+  question: q,
+  index,
+  total,
+  reorderingId,
+  onUp,
+  onDown,
+  onEdit,
+  onDelete,
+}: {
+  question: QuestionItem;
+  index: number;
+  total: number;
+  reorderingId: string | null;
+  onUp: () => void;
+  onDown: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: q.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ ...style, borderColor: "var(--ak-border-divider)" }}
+      className={`border rounded-md p-3 transition-colors bg-white ${
+        isDragging ? "shadow-lg" : ""
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <button
+          {...attributes}
+          {...listeners}
+          className="p-1 cursor-grab active:cursor-grabbing rounded hover:bg-slate-100 mt-0.5"
+          style={{ color: "var(--ak-text-tertiary)" }}
+          title="Sürükle"
+        >
+          <GripVertical size={14} />
+        </button>
+
+        <div className="flex flex-col gap-0.5 pt-0.5">
+          <button
+            onClick={onUp}
+            disabled={index === 0 || reorderingId === q.id}
+            className="p-0.5 rounded hover:bg-slate-100 disabled:opacity-30 transition-opacity"
+            title="Yukarı taşı"
+          >
+            <ChevronUp size={14} />
+          </button>
+          <button
+            onClick={onDown}
+            disabled={index === total - 1 || reorderingId === q.id}
+            className="p-0.5 rounded hover:bg-slate-100 disabled:opacity-30 transition-opacity"
+            title="Aşağı taşı"
+          >
+            <ChevronDown size={14} />
+          </button>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <span
+              className="text-xs font-mono"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              #{index + 1}
+            </span>
+            <span
+              className="text-xs px-2 py-0.5 rounded font-medium"
+              style={{
+                background: "var(--ak-surface-secondary)",
+                color: "var(--ak-text-secondary)",
+              }}
+            >
+              {TYPE_LABELS[q.type] || q.type}
+            </span>
+            <span className="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded font-medium">
+              {q.points} puan
+            </span>
+            {q.isManualGraded && (
+              <span className="text-xs px-2 py-0.5 bg-purple-50 text-purple-700 rounded font-medium">
+                Manuel
+              </span>
+            )}
+          </div>
+          <p
+            className="text-sm font-medium"
+            style={{ color: "var(--ak-text-primary)" }}
+          >
+            {q.question}
+          </p>
+          {q.options.length > 0 && (
+            <div className="mt-2 space-y-0.5">
+              {q.options.map((o) => (
+                <div
+                  key={o.id}
+                  className="text-xs flex items-center gap-2"
+                  style={{ color: "var(--ak-text-secondary)" }}
+                >
+                  {AUTO_TYPES.includes(q.type) && (
+                    <span
+                      className={
+                        o.isCorrect
+                          ? "text-green-600 font-bold"
+                          : "text-slate-300"
+                      }
+                    >
+                      {o.isCorrect ? "✓" : "○"}
+                    </span>
+                  )}
+                  <span>{o.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {q.type === "MATRIX" && q.matrixConfig && (
+            <div
+              className="mt-2 text-xs"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              {q.matrixConfig.rows?.length || 0} satır ×{" "}
+              {q.matrixConfig.cols?.length || 0} sütun
+            </div>
+          )}
+          {q.type === "FILE_UPLOAD" && q.allowedFileTypes && (
+            <div
+              className="mt-2 text-xs font-mono"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              Dosya: {q.allowedFileTypes}
+            </div>
+          )}
+          {q.explanation && (
+            <p
+              className="mt-2 text-xs italic"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              💡 {q.explanation}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onEdit}
+            className="p-1.5 rounded hover:opacity-70 transition-opacity"
+            title="Düzenle"
+            style={{ color: "var(--ak-text-secondary)" }}
+          >
+            <Edit2 size={14} />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded text-red-500 hover:bg-red-50 transition-colors"
+            title="Sil"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

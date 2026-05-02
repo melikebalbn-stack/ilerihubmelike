@@ -1,4 +1,5 @@
 import { QuestionType } from '@/generated/prisma';
+import { AUTO_SCORED_TYPES as SHARED_AUTO_SCORED_TYPES } from './question-types';
 
 export type QuestionInput = {
   id: string;
@@ -39,14 +40,11 @@ export type ExamScoreResult = {
   questions: QuestionResult[];
 };
 
-const AUTO_SCORED_TYPES: QuestionType[] = [
-  QuestionType.SINGLE_CHOICE,
-  QuestionType.MULTIPLE_CHOICE,
-  QuestionType.TRUE_FALSE,
-];
+// Auto-scored tipler artık src/lib/akademi/question-types.ts merkezinden geliyor.
+// Sprint 3 PR-2: DROPDOWN da otomatik puanlanır (SINGLE_CHOICE davranışı).
 
 export function isAutoScoredType(type: QuestionType): boolean {
-  return AUTO_SCORED_TYPES.includes(type);
+  return SHARED_AUTO_SCORED_TYPES.includes(type);
 }
 
 export function scoreQuestion(
@@ -82,7 +80,8 @@ export function scoreQuestion(
 
   switch (question.type) {
     case QuestionType.SINGLE_CHOICE:
-    case QuestionType.TRUE_FALSE: {
+    case QuestionType.TRUE_FALSE:
+    case QuestionType.DROPDOWN: {
       const selected = selectedOptionIds[0];
       const isCorrect = correctOptionIds.includes(selected) && selectedOptionIds.length === 1;
       return {

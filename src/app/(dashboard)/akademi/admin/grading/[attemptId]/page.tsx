@@ -12,18 +12,7 @@ import {
   Clock,
 } from "lucide-react";
 import { toast } from "sonner";
-
-const TYPE_LABELS: Record<string, string> = {
-  SINGLE_CHOICE: "Tek Seçim",
-  MULTIPLE_CHOICE: "Çoklu Seçim",
-  TRUE_FALSE: "Doğru/Yanlış",
-  TEXT_SHORT: "Kısa Metin",
-  TEXT_LONG: "Uzun Metin",
-  RATING: "Değerlendirme (1-5)",
-  SCALE: "Skala (1-10)",
-  YES_NO: "Evet/Hayır",
-  DATE: "Tarih",
-};
+import { TYPE_LABELS } from "@/lib/akademi/question-types";
 
 type Option = { id: string; text: string; isCorrect: boolean };
 
@@ -35,6 +24,8 @@ type UserAnswer = {
   ratingValue: number | null;
   scaleValue: number | null;
   dateValue: string | null;
+  fileUrl?: string | null;
+  matrixAnswer?: Record<string, number> | null;
 };
 
 type ManualGrade = {
@@ -52,6 +43,8 @@ type AttemptQuestion = {
   order: number;
   explanation: string | null;
   isManualGraded: boolean;
+  matrixConfig?: { rows: string[]; cols: string[] } | null;
+  allowedFileTypes?: string | null;
   options: Option[];
   userAnswer: UserAnswer | null;
   autoScore: { earnedPoints: number; isCorrect: boolean } | null;
@@ -369,7 +362,11 @@ function QuestionGradeCard({
               color: "var(--ak-text-primary)",
             }}
           >
-            <NonOptionAnswerView answer={userAnswer} type={question.type} />
+            <NonOptionAnswerView
+              answer={userAnswer}
+              type={question.type}
+              question={question}
+            />
           </div>
         </div>
       )}
@@ -466,16 +463,20 @@ function hasNonOptionAnswer(a: UserAnswer): boolean {
     a.textAnswer ||
     a.ratingValue !== null ||
     a.scaleValue !== null ||
-    a.dateValue
+    a.dateValue ||
+    a.fileUrl ||
+    (a.matrixAnswer && Object.keys(a.matrixAnswer).length > 0)
   );
 }
 
 function NonOptionAnswerView({
   answer,
   type,
+  question,
 }: {
   answer: UserAnswer;
   type: string;
+  question: AttemptQuestion;
 }) {
   if (type === "TEXT_SHORT" || type === "TEXT_LONG") {
     return <span>{answer.textAnswer || "(boş)"}</span>;
@@ -488,6 +489,66 @@ function NonOptionAnswerView({
   }
   if (type === "DATE" && answer.dateValue) {
     return <span>{new Date(answer.dateValue).toLocaleDateString("tr-TR")}</span>;
+  }
+  if (type === "FILE_UPLOAD") {
+    return answer.fileUrl ? (
+      <a
+        href={answer.fileUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-700 hover:underline inline-flex items-center gap-1 font-medium"
+      >
+        📎 Yüklenen dosyayı aç / indir
+      </a>
+    ) : (
+      <span className="italic">Dosya yüklenmedi</span>
+    );
+  }
+  if (
+    type === "MATRIX" &&
+    answer.matrixAnswer &&
+    question.matrixConfig
+  ) {
+    const cfg = question.matrixConfig;
+    return (
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr>
+            <th className="border border-slate-300 bg-white p-1 text-left" />
+            {cfg.cols.map((c, idx) => (
+              <th
+                key={idx}
+                className="border border-slate-300 bg-white p-1"
+              >
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {cfg.rows.map((r, rIdx) => {
+            const colIdx = answer.matrixAnswer![String(rIdx)];
+            return (
+              <tr key={rIdx}>
+                <td className="border border-slate-300 bg-white p-1 font-medium">
+                  {r}
+                </td>
+                {cfg.cols.map((_, cIdx) => (
+                  <td
+                    key={cIdx}
+                    className="border border-slate-300 bg-white p-1 text-center"
+                  >
+                    {colIdx === cIdx && (
+                      <span className="text-green-600 font-bold">●</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
   }
   return <span className="italic">Cevap yok</span>;
 }

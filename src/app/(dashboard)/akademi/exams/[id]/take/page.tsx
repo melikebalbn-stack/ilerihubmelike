@@ -19,6 +19,8 @@ type Question = {
   points: number;
   order: number;
   options: Array<{ id: string; text: string; order: number }>;
+  matrixConfig?: { rows: string[]; cols: string[] } | null;
+  allowedFileTypes?: string | null;
 };
 
 type AnswerState = {
@@ -28,6 +30,9 @@ type AnswerState = {
   ratingValue?: number | null;
   scaleValue?: number | null;
   dateValue?: string | null;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  matrixAnswer?: Record<string, number> | null;
 };
 
 type SavedAnswer = {
@@ -38,6 +43,8 @@ type SavedAnswer = {
   ratingValue: number | null;
   scaleValue: number | null;
   dateValue: string | null;
+  fileUrl: string | null;
+  matrixAnswer: Record<string, number> | null;
 };
 
 const AUTO_SAVE_DEBOUNCE = 800;
@@ -50,7 +57,9 @@ function isAnswered(a: AnswerState | undefined): boolean {
     (a.textAnswer && a.textAnswer.length > 0) ||
     (a.ratingValue !== undefined && a.ratingValue !== null) ||
     (a.scaleValue !== undefined && a.scaleValue !== null) ||
-    a.dateValue
+    a.dateValue ||
+    a.fileUrl ||
+    (a.matrixAnswer && Object.keys(a.matrixAnswer).length > 0)
   );
 }
 
@@ -78,6 +87,7 @@ export default function ExamTakePage({
   const attemptIdRef = useRef<string | null>(null);
   const examIdRef = useRef(examId);
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const questionsRef = useRef<Question[]>([]);
 
   useEffect(() => {
     examIdRef.current = examId;
@@ -115,6 +125,7 @@ export default function ExamTakePage({
           return;
         }
         setQuestions(detData.questions);
+        questionsRef.current = detData.questions;
         setExamMeta({
           title: detData.exam.title,
           passingScore: detData.exam.passingScore,
@@ -130,6 +141,8 @@ export default function ExamTakePage({
             ratingValue: sa.ratingValue,
             scaleValue: sa.scaleValue,
             dateValue: sa.dateValue,
+            fileUrl: sa.fileUrl,
+            matrixAnswer: sa.matrixAnswer,
           };
         }
         setAnswers(map);
@@ -218,6 +231,9 @@ export default function ExamTakePage({
     (questionId: string, payload: AnswerState) => {
       const aId = attemptIdRef.current;
       if (!aId) return;
+      // FILE_UPLOAD ayrı endpoint kullanır; autosave atlanır
+      const q = questionsRef.current.find((x) => x.id === questionId);
+      if (q?.type === "FILE_UPLOAD") return;
       if (saveTimers.current[questionId]) {
         clearTimeout(saveTimers.current[questionId]);
       }
@@ -296,6 +312,7 @@ export default function ExamTakePage({
           <QuestionInput
             question={current}
             answer={currentAnswer}
+            attemptId={attemptId}
             onChange={(partial) => updateAnswer(current.id, partial)}
           />
         </div>
@@ -412,13 +429,46 @@ function QuestionNav({
 function QuestionInput({
   question,
   answer,
+  attemptId,
   onChange,
 }: {
   question: Question;
   answer: AnswerState;
+  attemptId: string | null;
   onChange: (partial: AnswerState) => void;
 }) {
   switch (question.type) {
+    case "DROPDOWN":
+      return (
+        <select
+          value={answer.optionId ?? ""}
+          onChange={(e) => onChange({ optionId: e.target.value || null })}
+          className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"
+        >
+          <option value="">— Seçiniz —</option>
+          {question.options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.text}
+            </option>
+          ))}
+        </select>
+      );
+
+    case "FILE_UPLOAD":
+      return (
+        <FileUploadInput
+          question={question}
+          answer={answer}
+          attemptId={attemptId}
+          onChange={onChange}
+        />
+      );
+
+    case "MATRIX":
+      return (
+        <MatrixInput question={question} answer={answer} onChange={onChange} />
+      );
+
     case "SINGLE_CHOICE":
     case "TRUE_FALSE":
     case "YES_NO":
@@ -559,4 +609,166 @@ function QuestionInput({
         </div>
       );
   }
+}
+
+function FileUploadInput({
+  question,
+  answer,
+  attemptId,
+  onChange,
+}: {
+  question: Question;
+  answer: AnswerState;
+  attemptId: string | null;
+  onChange: (partial: AnswerState) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const allowed = (question.allowedFileTypes || "pdf,doc,docx,jpg,jpeg,png")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !attemptId) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("questionId", question.id);
+      const res = await fetch(`/api/akademi/attempts/${attemptId}/upload`, {
+        method: "POST",
+        body: fd,
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        toast.error(d.error || "Yükleme başarısız");
+        return;
+      }
+      onChange({ fileUrl: d.fileUrl, fileName: d.fileName });
+      toast.success("Dosya yüklendi");
+    } catch {
+      toast.error("Beklenmeyen hata");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  if (answer.fileUrl) {
+    return (
+      <div className="border-2 border-dashed border-green-300 bg-green-50 rounded-lg p-5 text-center">
+        <div className="text-sm text-green-800 font-medium mb-1">
+          ✓ Dosya yüklendi
+        </div>
+        <a
+          href={answer.fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-blue-600 hover:underline inline-block mb-3"
+        >
+          {answer.fileName ?? "Yüklenen dosyayı aç"}
+        </a>
+        <div>
+          <label className="inline-flex items-center gap-2 px-3 py-1.5 border border-slate-300 bg-white rounded cursor-pointer hover:bg-slate-50 text-sm">
+            {uploading ? "Yükleniyor..." : "Yeniden Yükle"}
+            <input
+              type="file"
+              accept={allowed.map((e) => `.${e}`).join(",")}
+              onChange={handleUpload}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center">
+      <label className="cursor-pointer block">
+        <div className="text-sm text-slate-700 font-medium mb-1">
+          Cevabınızı dosya olarak yükleyin
+        </div>
+        <div className="text-xs text-slate-500 mb-3">
+          İzin verilen: {allowed.join(", ")} · Max 10MB
+        </div>
+        <span className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded hover:bg-slate-800 text-sm">
+          {uploading ? "Yükleniyor..." : "Dosya Seç"}
+        </span>
+        <input
+          type="file"
+          accept={allowed.map((e) => `.${e}`).join(",")}
+          onChange={handleUpload}
+          disabled={uploading}
+          className="hidden"
+        />
+      </label>
+    </div>
+  );
+}
+
+function MatrixInput({
+  question,
+  answer,
+  onChange,
+}: {
+  question: Question;
+  answer: AnswerState;
+  onChange: (partial: AnswerState) => void;
+}) {
+  const cfg = question.matrixConfig;
+  if (!cfg || !Array.isArray(cfg.rows) || !Array.isArray(cfg.cols)) {
+    return (
+      <div className="text-red-600 text-sm">Matris konfigürasyonu eksik</div>
+    );
+  }
+  const ans = answer.matrixAnswer ?? {};
+
+  function setCell(rowIdx: number, colIdx: number) {
+    const next = { ...ans, [String(rowIdx)]: colIdx };
+    onChange({ matrixAnswer: next });
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr>
+            <th className="border border-slate-300 bg-slate-50 p-2 text-left text-xs font-medium" />
+            {cfg.cols.map((c, idx) => (
+              <th
+                key={idx}
+                className="border border-slate-300 bg-slate-50 p-2 text-xs font-medium"
+              >
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {cfg.rows.map((r, rIdx) => (
+            <tr key={rIdx}>
+              <td className="border border-slate-300 p-2 font-medium">{r}</td>
+              {cfg.cols.map((_, cIdx) => (
+                <td
+                  key={cIdx}
+                  className="border border-slate-300 p-2 text-center"
+                >
+                  <input
+                    type="radio"
+                    name={`matrix-${question.id}-${rIdx}`}
+                    checked={ans[String(rIdx)] === cIdx}
+                    onChange={() => setCell(rIdx, cIdx)}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }

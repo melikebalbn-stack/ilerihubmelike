@@ -71,6 +71,8 @@ export async function GET(
       order: q.order,
       explanation: q.explanation,
       isManualGraded: q.isManualGraded,
+      matrixConfig: q.matrixConfig,
+      allowedFileTypes: q.allowedFileTypes,
       options: q.options.map((o) => ({
         id: o.id,
         text: o.text,
@@ -85,6 +87,8 @@ export async function GET(
             ratingValue: answer.ratingValue,
             scaleValue: answer.scaleValue,
             dateValue: answer.dateValue,
+            fileUrl: answer.fileUrl,
+            matrixAnswer: answer.matrixAnswer,
           }
         : null,
       autoScore,

@@ -8807,14 +8807,16 @@ model Exam {
 }
 
 model ExamQuestion {
-  id             String       @id @default(cuid())
-  examId         String
-  question       String       @db.Text
-  type           QuestionType @default(MULTIPLE_CHOICE)
-  points         Int          @default(1)
-  order          Int          @default(0)
-  explanation    String?      @db.Text
-  isManualGraded Boolean      @default(false)
+  id               String       @id @default(cuid())
+  examId           String
+  question         String       @db.Text
+  type             QuestionType @default(MULTIPLE_CHOICE)
+  points           Int          @default(1)
+  order            Int          @default(0)
+  explanation      String?      @db.Text
+  isManualGraded   Boolean      @default(false)
+  matrixConfig     Json?
+  allowedFileTypes String?
 
   exam    Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
   options QuestionOption[]

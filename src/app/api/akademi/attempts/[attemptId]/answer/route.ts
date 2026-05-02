@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
-import { QuestionType } from "@/generated/prisma";
+import { QuestionType, Prisma } from "@/generated/prisma";
 
 export async function POST(
   req: NextRequest,
@@ -80,6 +80,7 @@ export async function POST(
     ratingValue: number | null;
     scaleValue: number | null;
     dateValue: Date | null;
+    matrixAnswer?: Record<string, number> | typeof Prisma.JsonNull;
   } = {
     attemptId,
     questionId,
@@ -95,6 +96,7 @@ export async function POST(
     case QuestionType.SINGLE_CHOICE:
     case QuestionType.TRUE_FALSE:
     case QuestionType.YES_NO:
+    case QuestionType.DROPDOWN:
       data.optionId =
         typeof body.optionId === "string" ? body.optionId : null;
       break;
@@ -150,6 +152,31 @@ export async function POST(
         );
       }
       break;
+    case QuestionType.MATRIX: {
+      // matrixAnswer: { rowIndex (string): colIndex (number) }
+      const raw = body.matrixAnswer;
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const cleaned: Record<string, number> = {};
+        for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+          if (Number.isInteger(Number(k)) && Number.isInteger(Number(v))) {
+            cleaned[String(Number(k))] = Number(v);
+          }
+        }
+        data.matrixAnswer = cleaned;
+      } else {
+        data.matrixAnswer = Prisma.JsonNull;
+      }
+      break;
+    }
+    case QuestionType.FILE_UPLOAD:
+      // FILE_UPLOAD ayrı endpoint kullanıyor (/upload)
+      return NextResponse.json(
+        {
+          error:
+            "FILE_UPLOAD soruları için /api/akademi/attempts/[attemptId]/upload endpoint'ini kullanın",
+        },
+        { status: 400 }
+      );
     default:
       return NextResponse.json(
         { error: "Bu soru tipi desteklenmiyor" },

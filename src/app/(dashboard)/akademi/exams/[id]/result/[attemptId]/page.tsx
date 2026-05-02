@@ -13,20 +13,12 @@ import {
   Star,
 } from "lucide-react";
 import { useAkademiAuth } from "@/lib/akademi-auth";
+import {
+  TYPE_LABELS,
+  AUTO_SCORED_TYPES,
+} from "@/lib/akademi/question-types";
 
-const TYPE_LABELS: Record<string, string> = {
-  SINGLE_CHOICE: "Tek Seçim",
-  MULTIPLE_CHOICE: "Çoklu Seçim",
-  TRUE_FALSE: "Doğru/Yanlış",
-  TEXT_SHORT: "Kısa Metin",
-  TEXT_LONG: "Uzun Metin",
-  RATING: "Değerlendirme",
-  SCALE: "Skala",
-  YES_NO: "Evet/Hayır",
-  DATE: "Tarih",
-};
-
-const AUTO_TYPES = ["SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE"];
+const AUTO_TYPES = AUTO_SCORED_TYPES as unknown as string[];
 
 type Option = { id: string; text: string; isCorrect: boolean };
 
@@ -37,6 +29,8 @@ type UserAnswer = {
   ratingValue: number | null;
   scaleValue: number | null;
   dateValue: string | null;
+  fileUrl?: string | null;
+  matrixAnswer?: Record<string, number> | null;
 };
 
 type ResultQuestion = {
@@ -47,6 +41,8 @@ type ResultQuestion = {
   order: number;
   explanation: string | null;
   isManualGraded: boolean;
+  matrixConfig?: { rows: string[]; cols: string[] } | null;
+  allowedFileTypes?: string | null;
   options: Option[];
   userAnswer: UserAnswer | null;
   autoScore: { earnedPoints: number; isCorrect: boolean } | null;
@@ -509,6 +505,50 @@ function NonOptionAnswer({ question }: { question: ResultQuestion }) {
         <span className="italic text-slate-500">Cevap verilmedi</span>
       );
       break;
+
+    case "FILE_UPLOAD":
+      content = a.fileUrl ? (
+        <a
+          href={a.fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-700 hover:underline inline-flex items-center gap-1 font-medium"
+        >
+          📎 Yüklediğiniz dosyayı aç
+        </a>
+      ) : (
+        <span className="italic text-slate-500">Dosya yüklenmedi</span>
+      );
+      break;
+
+    case "MATRIX": {
+      const cfg = question.matrixConfig;
+      if (!cfg || !a.matrixAnswer || Object.keys(a.matrixAnswer).length === 0) {
+        content = <span className="italic text-slate-500">Cevap verilmedi</span>;
+        break;
+      }
+      content = (
+        <div className="space-y-1 text-sm">
+          {cfg.rows.map((r, rIdx) => {
+            const colIdx = a.matrixAnswer![String(rIdx)];
+            const colLabel =
+              colIdx !== undefined && cfg.cols[colIdx] !== undefined
+                ? cfg.cols[colIdx]
+                : "—";
+            return (
+              <div
+                key={rIdx}
+                className="flex justify-between border-b border-slate-100 py-1 last:border-0"
+              >
+                <span className="text-slate-700">{r}</span>
+                <span className="font-medium">{colLabel}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+      break;
+    }
 
     default:
       content = (

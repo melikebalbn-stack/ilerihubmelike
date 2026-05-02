@@ -64,6 +64,8 @@ export async function GET(
     points: q.points,
     order: q.order,
     options: q.options,
+    matrixConfig: q.matrixConfig,
+    allowedFileTypes: q.allowedFileTypes,
   }));
 
   const savedAnswers = attempt.answers.map((a) => ({
@@ -74,6 +76,8 @@ export async function GET(
     ratingValue: a.ratingValue,
     scaleValue: a.scaleValue,
     dateValue: a.dateValue,
+    fileUrl: a.fileUrl,
+    matrixAnswer: a.matrixAnswer,
   }));
 
   const remainingMs = attempt.expiresAt

@@ -2,33 +2,50 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
 import { QuestionType } from "@/generated/prisma";
-
-const SUPPORTED_TYPES: QuestionType[] = [
-  QuestionType.SINGLE_CHOICE,
-  QuestionType.MULTIPLE_CHOICE,
-  QuestionType.TRUE_FALSE,
-  QuestionType.TEXT_SHORT,
-  QuestionType.TEXT_LONG,
-  QuestionType.RATING,
-  QuestionType.SCALE,
-  QuestionType.YES_NO,
-  QuestionType.DATE,
-];
-
-const AUTO_TYPES: QuestionType[] = [
-  QuestionType.SINGLE_CHOICE,
-  QuestionType.MULTIPLE_CHOICE,
-  QuestionType.TRUE_FALSE,
-];
-
-const OPTION_BASED_TYPES: QuestionType[] = [
-  QuestionType.SINGLE_CHOICE,
-  QuestionType.MULTIPLE_CHOICE,
-  QuestionType.TRUE_FALSE,
-  QuestionType.YES_NO,
-];
+import {
+  SUPPORTED_TYPES,
+  AUTO_SCORED_TYPES,
+  OPTION_BASED_TYPES,
+  isFileUpload,
+  requiresMatrixConfig,
+} from "@/lib/akademi/question-types";
 
 type IncomingOption = { text?: unknown; isCorrect?: unknown };
+type IncomingMatrixConfig = { rows?: unknown; cols?: unknown } | null;
+
+function validateMatrixConfig(
+  raw: IncomingMatrixConfig
+): { rows: string[]; cols: string[] } | { error: string } {
+  if (!raw || typeof raw !== "object") {
+    return { error: "MATRIX: matrixConfig.rows[] ve cols[] gerekli" };
+  }
+  if (!Array.isArray(raw.rows) || !Array.isArray(raw.cols)) {
+    return { error: "MATRIX: matrixConfig.rows[] ve cols[] dizi olmalı" };
+  }
+  const rows = (raw.rows as unknown[])
+    .map((r) => (r ?? "").toString().trim())
+    .filter(Boolean);
+  const cols = (raw.cols as unknown[])
+    .map((c) => (c ?? "").toString().trim())
+    .filter(Boolean);
+  if (rows.length < 1 || cols.length < 2) {
+    return { error: "MATRIX: en az 1 satır ve 2 sütun olmalı" };
+  }
+  if (rows.length > 20 || cols.length > 10) {
+    return { error: "MATRIX: max 20 satır × 10 sütun" };
+  }
+  return { rows, cols };
+}
+
+function normalizeAllowedFileTypes(raw: unknown): string | null | { error: string } {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const s = (raw as string).toString().toLowerCase().trim();
+  if (!s) return null;
+  if (!/^[a-z0-9]+(,[a-z0-9]+)*$/.test(s)) {
+    return { error: "allowedFileTypes formatı: pdf,doc,jpg gibi virgüllü" };
+  }
+  return s;
+}
 
 export async function GET(
   _req: NextRequest,
@@ -104,6 +121,10 @@ export async function POST(
     ? (body.options as IncomingOption[])
     : [];
 
+  // Tip-spesifik validation
+  let matrixConfig: { rows: string[]; cols: string[] } | null = null;
+  let allowedFileTypes: string | null = null;
+
   if (OPTION_BASED_TYPES.includes(type)) {
     if (type === QuestionType.TRUE_FALSE && options.length !== 2) {
       return NextResponse.json(
@@ -119,7 +140,8 @@ export async function POST(
     }
     if (
       (type === QuestionType.SINGLE_CHOICE ||
-        type === QuestionType.MULTIPLE_CHOICE) &&
+        type === QuestionType.MULTIPLE_CHOICE ||
+        type === QuestionType.DROPDOWN) &&
       options.length < 2
     ) {
       return NextResponse.json(
@@ -128,11 +150,12 @@ export async function POST(
       );
     }
 
-    if (AUTO_TYPES.includes(type)) {
+    if (AUTO_SCORED_TYPES.includes(type)) {
       const correctCount = options.filter((o) => Boolean(o.isCorrect)).length;
       if (
         (type === QuestionType.SINGLE_CHOICE ||
-          type === QuestionType.TRUE_FALSE) &&
+          type === QuestionType.TRUE_FALSE ||
+          type === QuestionType.DROPDOWN) &&
         correctCount !== 1
       ) {
         return NextResponse.json(
@@ -149,6 +172,22 @@ export async function POST(
     }
   }
 
+  if (requiresMatrixConfig(type)) {
+    const result = validateMatrixConfig(body.matrixConfig as IncomingMatrixConfig);
+    if ("error" in result) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    matrixConfig = result;
+  }
+
+  if (isFileUpload(type)) {
+    const result = normalizeAllowedFileTypes(body.allowedFileTypes);
+    if (result && typeof result === "object" && "error" in result) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    allowedFileTypes = result as string | null;
+  }
+
   const last = await prisma.examQuestion.findFirst({
     where: { examId },
     orderBy: { order: "desc" },
@@ -156,7 +195,7 @@ export async function POST(
   });
   const nextOrder = (last?.order ?? 0) + 1;
 
-  const isManualGraded = !AUTO_TYPES.includes(type);
+  const isManualGraded = !AUTO_SCORED_TYPES.includes(type);
 
   const created = await prisma.examQuestion.create({
     data: {
@@ -167,13 +206,15 @@ export async function POST(
       order: nextOrder,
       explanation,
       isManualGraded,
+      matrixConfig: matrixConfig ?? undefined,
+      allowedFileTypes,
       options: OPTION_BASED_TYPES.includes(type)
         ? {
             create: options.map((o, idx) => ({
               text:
                 ((o.text ?? "") as string).toString().trim() ||
                 `Seçenek ${idx + 1}`,
-              isCorrect: AUTO_TYPES.includes(type)
+              isCorrect: AUTO_SCORED_TYPES.includes(type)
                 ? Boolean(o.isCorrect)
                 : false,
               order: idx + 1,

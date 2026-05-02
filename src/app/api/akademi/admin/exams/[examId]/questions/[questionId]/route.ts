@@ -2,31 +2,50 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
 import { QuestionType } from "@/generated/prisma";
-
-const SUPPORTED_TYPES: QuestionType[] = [
-  QuestionType.SINGLE_CHOICE,
-  QuestionType.MULTIPLE_CHOICE,
-  QuestionType.TRUE_FALSE,
-  QuestionType.TEXT_SHORT,
-  QuestionType.TEXT_LONG,
-  QuestionType.RATING,
-  QuestionType.SCALE,
-  QuestionType.YES_NO,
-  QuestionType.DATE,
-];
-
-const AUTO_TYPES: QuestionType[] = [
-  QuestionType.SINGLE_CHOICE,
-  QuestionType.MULTIPLE_CHOICE,
-  QuestionType.TRUE_FALSE,
-];
-
-const OPTION_BASED_TYPES: QuestionType[] = [
-  ...AUTO_TYPES,
-  QuestionType.YES_NO,
-];
+import {
+  SUPPORTED_TYPES,
+  AUTO_SCORED_TYPES,
+  OPTION_BASED_TYPES,
+  isFileUpload,
+  requiresMatrixConfig,
+} from "@/lib/akademi/question-types";
 
 type IncomingOption = { text?: unknown; isCorrect?: unknown };
+type IncomingMatrixConfig = { rows?: unknown; cols?: unknown } | null;
+
+function validateMatrixConfig(
+  raw: IncomingMatrixConfig
+): { rows: string[]; cols: string[] } | { error: string } {
+  if (!raw || typeof raw !== "object") {
+    return { error: "MATRIX: matrixConfig.rows[] ve cols[] gerekli" };
+  }
+  if (!Array.isArray(raw.rows) || !Array.isArray(raw.cols)) {
+    return { error: "MATRIX: matrixConfig.rows[] ve cols[] dizi olmalı" };
+  }
+  const rows = (raw.rows as unknown[])
+    .map((r) => (r ?? "").toString().trim())
+    .filter(Boolean);
+  const cols = (raw.cols as unknown[])
+    .map((c) => (c ?? "").toString().trim())
+    .filter(Boolean);
+  if (rows.length < 1 || cols.length < 2) {
+    return { error: "MATRIX: en az 1 satır ve 2 sütun olmalı" };
+  }
+  if (rows.length > 20 || cols.length > 10) {
+    return { error: "MATRIX: max 20 satır × 10 sütun" };
+  }
+  return { rows, cols };
+}
+
+function normalizeAllowedFileTypes(raw: unknown): string | null | { error: string } {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const s = (raw as string).toString().toLowerCase().trim();
+  if (!s) return null;
+  if (!/^[a-z0-9]+(,[a-z0-9]+)*$/.test(s)) {
+    return { error: "allowedFileTypes formatı: pdf,doc,jpg gibi virgüllü" };
+  }
+  return s;
+}
 
 export async function GET(
   _req: NextRequest,
@@ -104,7 +123,7 @@ export async function PATCH(
       );
     }
     data.type = t;
-    data.isManualGraded = !AUTO_TYPES.includes(t);
+    data.isManualGraded = !AUTO_SCORED_TYPES.includes(t);
   }
 
   const finalType = (data.type ?? existing.type) as QuestionType;
@@ -113,6 +132,41 @@ export async function PATCH(
     ? (body.options as IncomingOption[])
     : [];
 
+  // matrixConfig
+  if (body.matrixConfig !== undefined) {
+    if (requiresMatrixConfig(finalType)) {
+      const result = validateMatrixConfig(
+        body.matrixConfig as IncomingMatrixConfig
+      );
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      data.matrixConfig = result;
+    } else {
+      // tip MATRIX değilse temizle
+      data.matrixConfig = null;
+    }
+  } else if (data.type !== undefined && !requiresMatrixConfig(finalType)) {
+    // tip değişti ve MATRIX değil; eski matrixConfig'i sıfırla
+    data.matrixConfig = null;
+  }
+
+  // allowedFileTypes
+  if (body.allowedFileTypes !== undefined) {
+    if (isFileUpload(finalType)) {
+      const result = normalizeAllowedFileTypes(body.allowedFileTypes);
+      if (result && typeof result === "object" && "error" in result) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      data.allowedFileTypes = (result as string | null) ?? null;
+    } else {
+      data.allowedFileTypes = null;
+    }
+  } else if (data.type !== undefined && !isFileUpload(finalType)) {
+    data.allowedFileTypes = null;
+  }
+
+  // Options validation
   if (optionsProvided && OPTION_BASED_TYPES.includes(finalType)) {
     if (finalType === QuestionType.TRUE_FALSE && opts.length !== 2) {
       return NextResponse.json(
@@ -128,19 +182,18 @@ export async function PATCH(
     }
     if (
       (finalType === QuestionType.SINGLE_CHOICE ||
-        finalType === QuestionType.MULTIPLE_CHOICE) &&
+        finalType === QuestionType.MULTIPLE_CHOICE ||
+        finalType === QuestionType.DROPDOWN) &&
       opts.length < 2
     ) {
-      return NextResponse.json(
-        { error: "En az 2 seçenek" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "En az 2 seçenek" }, { status: 400 });
     }
-    if (AUTO_TYPES.includes(finalType)) {
+    if (AUTO_SCORED_TYPES.includes(finalType)) {
       const cc = opts.filter((o) => Boolean(o.isCorrect)).length;
       if (
         (finalType === QuestionType.SINGLE_CHOICE ||
-          finalType === QuestionType.TRUE_FALSE) &&
+          finalType === QuestionType.TRUE_FALSE ||
+          finalType === QuestionType.DROPDOWN) &&
         cc !== 1
       ) {
         return NextResponse.json(
@@ -167,7 +220,7 @@ export async function PATCH(
               text:
                 ((o.text ?? "") as string).toString().trim() ||
                 `Seçenek ${idx + 1}`,
-              isCorrect: AUTO_TYPES.includes(finalType)
+              isCorrect: AUTO_SCORED_TYPES.includes(finalType)
                 ? Boolean(o.isCorrect)
                 : false,
               order: idx + 1,

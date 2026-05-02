@@ -21,22 +21,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  TYPE_LABELS,
+  AUTO_SCORED_TYPES,
+  OPTION_BASED_TYPES,
+  DEFAULT_FILE_TYPES,
+} from "@/lib/akademi/question-types";
 import type { QuestionItem } from "./questions-manager";
 
 const TYPES = [
-  { value: "SINGLE_CHOICE", label: "Tek Seçim (otomatik)" },
-  { value: "MULTIPLE_CHOICE", label: "Çoklu Seçim (otomatik)" },
-  { value: "TRUE_FALSE", label: "Doğru/Yanlış (otomatik)" },
-  { value: "TEXT_SHORT", label: "Kısa Metin (manuel)" },
-  { value: "TEXT_LONG", label: "Uzun Metin (manuel)" },
-  { value: "RATING", label: "Değerlendirme 1-5 (manuel)" },
-  { value: "SCALE", label: "Skala 1-10 (manuel)" },
-  { value: "YES_NO", label: "Evet/Hayır (manuel)" },
-  { value: "DATE", label: "Tarih (manuel)" },
+  { value: "SINGLE_CHOICE", label: `${TYPE_LABELS.SINGLE_CHOICE} (otomatik)` },
+  { value: "MULTIPLE_CHOICE", label: `${TYPE_LABELS.MULTIPLE_CHOICE} (otomatik)` },
+  { value: "TRUE_FALSE", label: `${TYPE_LABELS.TRUE_FALSE} (otomatik)` },
+  { value: "DROPDOWN", label: `${TYPE_LABELS.DROPDOWN} (otomatik)` },
+  { value: "YES_NO", label: `${TYPE_LABELS.YES_NO} (manuel)` },
+  { value: "TEXT_SHORT", label: `${TYPE_LABELS.TEXT_SHORT} (manuel)` },
+  { value: "TEXT_LONG", label: `${TYPE_LABELS.TEXT_LONG} (manuel)` },
+  { value: "RATING", label: `${TYPE_LABELS.RATING} (manuel)` },
+  { value: "SCALE", label: `${TYPE_LABELS.SCALE} (manuel)` },
+  { value: "DATE", label: `${TYPE_LABELS.DATE} (manuel)` },
+  { value: "FILE_UPLOAD", label: `${TYPE_LABELS.FILE_UPLOAD} (manuel)` },
+  { value: "MATRIX", label: `${TYPE_LABELS.MATRIX} (manuel)` },
 ];
 
-const AUTO = ["SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE"];
-const OPTION_BASED = [...AUTO, "YES_NO"];
+const AUTO = AUTO_SCORED_TYPES as unknown as string[];
+const OPTION_BASED = OPTION_BASED_TYPES as unknown as string[];
 
 type LocalOption = { text: string; isCorrect: boolean };
 
@@ -61,6 +70,9 @@ export function QuestionEditModal({
     { text: "", isCorrect: false },
     { text: "", isCorrect: false },
   ]);
+  const [matrixRows, setMatrixRows] = useState<string[]>([""]);
+  const [matrixCols, setMatrixCols] = useState<string[]>(["", ""]);
+  const [allowedFileTypes, setAllowedFileTypes] = useState(DEFAULT_FILE_TYPES);
   const [saving, setSaving] = useState(false);
   const [initializedFor, setInitializedFor] = useState<string | null>(null);
 
@@ -90,6 +102,22 @@ export function QuestionEditModal({
           { text: "", isCorrect: false },
         ]);
       }
+      // Matrix config
+      const cfg = (question as QuestionItem & {
+        matrixConfig?: { rows?: string[]; cols?: string[] } | null;
+      }).matrixConfig;
+      if (cfg && Array.isArray(cfg.rows) && Array.isArray(cfg.cols)) {
+        setMatrixRows(cfg.rows.length > 0 ? cfg.rows : [""]);
+        setMatrixCols(cfg.cols.length >= 2 ? cfg.cols : ["", ""]);
+      } else {
+        setMatrixRows([""]);
+        setMatrixCols(["", ""]);
+      }
+      // Allowed file types
+      const aft = (question as QuestionItem & {
+        allowedFileTypes?: string | null;
+      }).allowedFileTypes;
+      setAllowedFileTypes(aft ?? DEFAULT_FILE_TYPES);
     } else {
       setText("");
       setType("SINGLE_CHOICE");
@@ -99,11 +127,14 @@ export function QuestionEditModal({
         { text: "", isCorrect: false },
         { text: "", isCorrect: false },
       ]);
+      setMatrixRows([""]);
+      setMatrixCols(["", ""]);
+      setAllowedFileTypes(DEFAULT_FILE_TYPES);
     }
     setInitializedFor(key);
   }, [open, question, initializedFor]);
 
-  // Tip değişince options'ı tipe göre normalize et
+  // Tip değişince options / matrix / file types normalize
   useEffect(() => {
     if (!open) return;
     if (type === "TRUE_FALSE") {
@@ -151,7 +182,11 @@ export function QuestionEditModal({
   const setOptionCorrect = (idx: number, value: boolean) => {
     setOptions((prev) =>
       prev.map((o, i) => {
-        if (type === "SINGLE_CHOICE" || type === "TRUE_FALSE") {
+        if (
+          type === "SINGLE_CHOICE" ||
+          type === "TRUE_FALSE" ||
+          type === "DROPDOWN"
+        ) {
           return { ...o, isCorrect: i === idx ? value : false };
         }
         return i === idx ? { ...o, isCorrect: value } : o;
@@ -183,7 +218,9 @@ export function QuestionEditModal({
         return;
       }
       if (
-        (type === "SINGLE_CHOICE" || type === "MULTIPLE_CHOICE") &&
+        (type === "SINGLE_CHOICE" ||
+          type === "MULTIPLE_CHOICE" ||
+          type === "DROPDOWN") &&
         options.length < 2
       ) {
         toast.error("En az 2 seçenek gerekli");
@@ -192,7 +229,9 @@ export function QuestionEditModal({
       if (AUTO.includes(type)) {
         const correctCount = options.filter((o) => o.isCorrect).length;
         if (
-          (type === "SINGLE_CHOICE" || type === "TRUE_FALSE") &&
+          (type === "SINGLE_CHOICE" ||
+            type === "TRUE_FALSE" ||
+            type === "DROPDOWN") &&
           correctCount !== 1
         ) {
           toast.error("Tam 1 doğru cevap işaretleyin");
@@ -204,10 +243,33 @@ export function QuestionEditModal({
         }
       }
       if (
-        (type === "SINGLE_CHOICE" || type === "MULTIPLE_CHOICE") &&
+        (type === "SINGLE_CHOICE" ||
+          type === "MULTIPLE_CHOICE" ||
+          type === "DROPDOWN") &&
         options.some((o) => o.text.trim().length === 0)
       ) {
         toast.error("Tüm seçenek metinleri doldurulmalı");
+        return;
+      }
+    }
+
+    if (type === "MATRIX") {
+      const cleanRows = matrixRows.map((r) => r.trim()).filter(Boolean);
+      const cleanCols = matrixCols.map((c) => c.trim()).filter(Boolean);
+      if (cleanRows.length < 1 || cleanCols.length < 2) {
+        toast.error("MATRIX: en az 1 satır ve 2 sütun olmalı");
+        return;
+      }
+      if (cleanRows.length > 20 || cleanCols.length > 10) {
+        toast.error("MATRIX: max 20 satır × 10 sütun");
+        return;
+      }
+    }
+
+    if (type === "FILE_UPLOAD" && allowedFileTypes.trim()) {
+      const aft = allowedFileTypes.toLowerCase().trim();
+      if (!/^[a-z0-9]+(,[a-z0-9]+)*$/.test(aft)) {
+        toast.error("Dosya tipleri formatı: pdf,doc,jpg gibi");
         return;
       }
     }
@@ -233,6 +295,20 @@ export function QuestionEditModal({
       } else {
         payload.options = [];
       }
+      if (type === "MATRIX") {
+        payload.matrixConfig = {
+          rows: matrixRows.map((r) => r.trim()).filter(Boolean),
+          cols: matrixCols.map((c) => c.trim()).filter(Boolean),
+        };
+      } else {
+        payload.matrixConfig = null;
+      }
+      if (type === "FILE_UPLOAD") {
+        payload.allowedFileTypes =
+          allowedFileTypes.trim().toLowerCase() || null;
+      } else {
+        payload.allowedFileTypes = null;
+      }
 
       const res = await fetch(url, {
         method,
@@ -256,7 +332,9 @@ export function QuestionEditModal({
   const showOptions = OPTION_BASED.includes(type);
   const isAuto = AUTO.includes(type);
   const canAddRemoveOptions =
-    type === "SINGLE_CHOICE" || type === "MULTIPLE_CHOICE";
+    type === "SINGLE_CHOICE" ||
+    type === "MULTIPLE_CHOICE" ||
+    type === "DROPDOWN";
 
   return (
     <Dialog
@@ -403,7 +481,124 @@ export function QuestionEditModal({
             </div>
           )}
 
-          {!showOptions && (
+          {type === "MATRIX" && (
+            <div className="space-y-3 border-t pt-3">
+              <div>
+                <Label className="text-sm">Satırlar (sorulan ifadeler)</Label>
+                <div className="space-y-1 mt-2">
+                  {matrixRows.map((r, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 w-6 text-right font-mono">
+                        #{idx + 1}
+                      </span>
+                      <Input
+                        value={r}
+                        onChange={(e) => {
+                          const next = [...matrixRows];
+                          next[idx] = e.target.value;
+                          setMatrixRows(next);
+                        }}
+                        placeholder={`Satır ${idx + 1}`}
+                      />
+                      {matrixRows.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMatrixRows(matrixRows.filter((_, i) => i !== idx))
+                          }
+                          className="p-1.5 rounded text-red-500 hover:bg-red-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMatrixRows([...matrixRows, ""])}
+                  className="gap-1.5 h-7 text-xs mt-2"
+                  disabled={matrixRows.length >= 20}
+                >
+                  <Plus size={12} />
+                  Satır Ekle
+                </Button>
+              </div>
+
+              <div>
+                <Label className="text-sm">Sütunlar (cevap seçenekleri)</Label>
+                <div className="space-y-1 mt-2">
+                  {matrixCols.map((c, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 w-6 text-right font-mono">
+                        #{idx + 1}
+                      </span>
+                      <Input
+                        value={c}
+                        onChange={(e) => {
+                          const next = [...matrixCols];
+                          next[idx] = e.target.value;
+                          setMatrixCols(next);
+                        }}
+                        placeholder={`Sütun ${idx + 1}`}
+                      />
+                      {matrixCols.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMatrixCols(matrixCols.filter((_, i) => i !== idx))
+                          }
+                          className="p-1.5 rounded text-red-500 hover:bg-red-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMatrixCols([...matrixCols, ""])}
+                  className="gap-1.5 h-7 text-xs mt-2"
+                  disabled={matrixCols.length >= 10}
+                >
+                  <Plus size={12} />
+                  Sütun Ekle
+                </Button>
+              </div>
+              <p className="text-xs text-amber-700 font-medium">
+                ⚠ Manuel grading gerekli
+              </p>
+            </div>
+          )}
+
+          {type === "FILE_UPLOAD" && (
+            <div className="space-y-2 border-t pt-3">
+              <Label>İzin Verilen Dosya Tipleri</Label>
+              <Input
+                value={allowedFileTypes}
+                onChange={(e) => setAllowedFileTypes(e.target.value)}
+                placeholder={DEFAULT_FILE_TYPES}
+                className="font-mono text-sm"
+              />
+              <p
+                className="text-xs"
+                style={{ color: "var(--ak-text-tertiary)" }}
+              >
+                Virgülle ayrılmış uzantılar (nokta yok). Boş bırakırsanız
+                varsayılan: <span className="font-mono">{DEFAULT_FILE_TYPES}</span>
+              </p>
+              <p className="text-xs text-amber-700 font-medium">
+                ⚠ Manuel grading gerekli (admin dosyayı incelemeli)
+              </p>
+            </div>
+          )}
+
+          {!showOptions && type !== "MATRIX" && type !== "FILE_UPLOAD" && (
             <div
               className="border rounded-md p-3 text-xs space-y-1"
               style={{

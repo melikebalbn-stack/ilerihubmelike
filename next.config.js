@@ -2,7 +2,12 @@ const { withSentryConfig } = require('@sentry/nextjs')
 
 const withPWA = require('@ducanh2912/next-pwa').default({
   dest: 'public',
-  disable: process.env.NODE_ENV === 'development',
+  // PWA geçici olarak production'da da disable —
+  // Workbox NetworkFirst cache'i polling endpoint'lerinde devasa kuyruk yaratıp
+  // sayfayı render edilemez hale getiriyordu (29 Nis 2026 incident).
+  // Kalıcı fix: polling endpoint'lerini NetworkOnly listesine almak veya
+  // SW'siz yeniden yapılandırmak. Şimdilik tamamen kapalı.
+  disable: true,
   register: true,
   skipWaiting: true,
   customWorkerSrc: 'service-worker',

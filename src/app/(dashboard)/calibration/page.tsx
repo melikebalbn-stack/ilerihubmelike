@@ -24,7 +24,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Search, Filter, Calendar, AlertCircle, CheckCircle2, Clock, Pencil, Trash2, Download, Upload, FileText, Trash, UserX, ArrowUpDown, ArrowUp, ArrowDown, History, Settings2, Wrench, Ban, Coins } from "lucide-react"
+import { Plus, Search, Filter, Calendar, AlertCircle, CheckCircle2, Clock, Pencil, Trash2, Download, Upload, FileText, Trash, UserX, ArrowUpDown, ArrowUp, ArrowDown, History, Settings2, Wrench, Ban, Coins, Building2, Beaker, XCircle } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
 import { useSession } from "next-auth/react"
@@ -60,6 +60,11 @@ type CalibrationDevice = {
   certificateNumber?: string | null
   status: string
   statusManualOverride?: boolean
+  deviceCondition?: string | null
+  calibrationSentDate?: string | null
+  calibrationReturnDate?: string | null
+  scrapDate?: string | null
+  scrapDescription?: string | null
   notes?: string | null
   imageUrl?: string | null
   attachments?: string | null
@@ -87,6 +92,9 @@ type Stats = {
   inProcess: number
   outOfOrder: number
   noResponsible: number
+  atCompany: number
+  atCalibration: number
+  scrap: number
   totalCost: number
 }
 
@@ -95,7 +103,7 @@ export default function CalibrationPage() {
   const canEdit = canEditCalibration(session?.user?.role, session?.user?.ou, session?.user?.department)
 
   const [devices, setDevices] = useState<CalibrationDevice[]>([])
-  const [stats, setStats] = useState<Stats>({ total: 0, valid: 0, expiring: 0, expired: 0, inProcess: 0, outOfOrder: 0, noResponsible: 0, totalCost: 0 })
+  const [stats, setStats] = useState<Stats>({ total: 0, valid: 0, expiring: 0, expired: 0, inProcess: 0, outOfOrder: 0, noResponsible: 0, atCompany: 0, atCalibration: 0, scrap: 0, totalCost: 0 })
   const [selectedDevice, setSelectedDevice] = useState<CalibrationDevice | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -122,6 +130,11 @@ export default function CalibrationPage() {
     lastVerificationDate: "",
     plannedVerificationDate: "",
     certificateNumber: "",
+    deviceCondition: "",
+    calibrationSentDate: "",
+    calibrationReturnDate: "",
+    scrapDate: "",
+    scrapDescription: "",
     notes: "",
     imageUrl: "",
     attachments: [] as string[],
@@ -322,18 +335,32 @@ export default function CalibrationPage() {
       bgColor: "bg-red-100",
     },
     {
+      title: "Şirkette",
+      value: stats.atCompany,
+      icon: Building2,
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-100",
+    },
+    {
+      title: "Kalibrasyonda",
+      value: stats.atCalibration,
+      icon: Beaker,
+      color: "text-sky-600",
+      bgColor: "bg-sky-100",
+    },
+    {
+      title: "Hurda",
+      value: stats.scrap,
+      icon: XCircle,
+      color: "text-orange-600",
+      bgColor: "bg-orange-100",
+    },
+    {
       title: "Zimmeti Yok",
       value: stats.noResponsible,
       icon: UserX,
       color: "text-gray-600",
       bgColor: "bg-gray-100",
-    },
-    {
-      title: "Toplam Maliyet",
-      value: `${Number(stats.totalCost).toLocaleString('tr-TR')} TL`,
-      icon: TLIcon,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
     },
   ]
 
@@ -421,6 +448,11 @@ export default function CalibrationPage() {
       lastVerificationDate: "",
       plannedVerificationDate: "",
       certificateNumber: "",
+      deviceCondition: "",
+      calibrationSentDate: "",
+      calibrationReturnDate: "",
+      scrapDate: "",
+      scrapDescription: "",
       notes: "",
       imageUrl: "",
       attachments: [],
@@ -508,6 +540,12 @@ export default function CalibrationPage() {
           verificationInterval: formData.verificationInterval || null,
           lastVerificationDate: formData.lastVerificationDate || null,
           plannedVerificationDate: formData.plannedVerificationDate || null,
+          deviceCondition: formData.deviceCondition || null,
+          // Tarihler durum değişse bile korunur (geçmiş kalibrasyon bilgisi kaybolmasın)
+          calibrationSentDate: formData.calibrationSentDate || null,
+          calibrationReturnDate: formData.calibrationReturnDate || null,
+          scrapDate: formData.scrapDate || null,
+          scrapDescription: formData.scrapDescription || null,
           attachments: JSON.stringify(formData.attachments),
         }),
       })
@@ -543,6 +581,12 @@ export default function CalibrationPage() {
           verificationInterval: formData.verificationInterval || null,
           lastVerificationDate: formData.lastVerificationDate || null,
           plannedVerificationDate: formData.plannedVerificationDate || null,
+          deviceCondition: formData.deviceCondition || null,
+          // Tarihler durum değişse bile korunur (geçmiş kalibrasyon bilgisi kaybolmasın)
+          calibrationSentDate: formData.calibrationSentDate || null,
+          calibrationReturnDate: formData.calibrationReturnDate || null,
+          scrapDate: formData.scrapDate || null,
+          scrapDescription: formData.scrapDescription || null,
           attachments: JSON.stringify(formData.attachments),
         }),
       })
@@ -637,6 +681,17 @@ export default function CalibrationPage() {
         ? new Date(device.plannedVerificationDate).toISOString().split('T')[0]
         : "",
       certificateNumber: device.certificateNumber || "",
+      deviceCondition: device.deviceCondition || "",
+      calibrationSentDate: device.calibrationSentDate
+        ? new Date(device.calibrationSentDate).toISOString().split('T')[0]
+        : "",
+      calibrationReturnDate: device.calibrationReturnDate
+        ? new Date(device.calibrationReturnDate).toISOString().split('T')[0]
+        : "",
+      scrapDate: device.scrapDate
+        ? new Date(device.scrapDate).toISOString().split('T')[0]
+        : "",
+      scrapDescription: device.scrapDescription || "",
       notes: device.notes || "",
       imageUrl: device.imageUrl || "",
       attachments: Array.isArray(deviceAttachments) ? deviceAttachments : [],
@@ -731,6 +786,7 @@ export default function CalibrationPage() {
       'Cihaz ID': device.deviceId,
       'Cihaz Adı': device.name,
       'Cihaz Tipi': device.type,
+      'Kalibrasyon Tipi': device.calibrationType || '',
       'Üretici': device.manufacturer || '',
       'Model': device.model || '',
       'Seri No': device.serialNumber || '',
@@ -755,6 +811,17 @@ export default function CalibrationPage() {
         ? new Date(device.plannedVerificationDate).toLocaleDateString('tr-TR')
         : '',
       'Sertifika No': device.certificateNumber || '',
+      'Cihaz Durumu': device.deviceCondition || '',
+      'Gönderim Tarihi': device.calibrationSentDate
+        ? new Date(device.calibrationSentDate).toLocaleDateString('tr-TR')
+        : '',
+      'Dönüş Tarihi': device.calibrationReturnDate
+        ? new Date(device.calibrationReturnDate).toLocaleDateString('tr-TR')
+        : '',
+      'Hurda Tarihi': device.scrapDate
+        ? new Date(device.scrapDate).toLocaleDateString('tr-TR')
+        : '',
+      'Hurda Açıklaması': device.scrapDescription || '',
       'Durum': device.status,
       'Notlar': device.notes || '',
     }))
@@ -901,6 +968,42 @@ export default function CalibrationPage() {
               }
             }
 
+            // Kalibrasyon Tipi
+            const calibrationType = row['Kalibrasyon Tipi'] || row['Tip'] || row['TIP'] || row['Kalibrasyon tipi'] || ''
+
+            // Cihaz Durumu alanları
+            const deviceCondition = row['Cihaz Durumu'] || row['Cihaz durumu'] || row['CIHAZ DURUMU'] || ''
+
+            // Gönderim/Dönüş tarihleri (Kalibrasyonda durumu için)
+            let calibrationSentDate = row['Gönderim Tarihi'] || row['Gonderim Tarihi'] || row['GÖNDERİM TARİHİ'] || ''
+            if (typeof calibrationSentDate === 'number') {
+              const excelEpoch = new Date(1899, 11, 30)
+              calibrationSentDate = new Date(excelEpoch.getTime() + calibrationSentDate * 86400000).toISOString().split('T')[0]
+            } else if (calibrationSentDate) {
+              const parsed = new Date(calibrationSentDate)
+              calibrationSentDate = !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : ''
+            }
+
+            let calibrationReturnDate = row['Dönüş Tarihi'] || row['Donus Tarihi'] || row['DÖNÜŞ TARİHİ'] || ''
+            if (typeof calibrationReturnDate === 'number') {
+              const excelEpoch = new Date(1899, 11, 30)
+              calibrationReturnDate = new Date(excelEpoch.getTime() + calibrationReturnDate * 86400000).toISOString().split('T')[0]
+            } else if (calibrationReturnDate) {
+              const parsed = new Date(calibrationReturnDate)
+              calibrationReturnDate = !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : ''
+            }
+
+            // Hurda alanları
+            let scrapDate = row['Hurda Tarihi'] || row['HURDA TARİHİ'] || ''
+            if (typeof scrapDate === 'number') {
+              const excelEpoch = new Date(1899, 11, 30)
+              scrapDate = new Date(excelEpoch.getTime() + scrapDate * 86400000).toISOString().split('T')[0]
+            } else if (scrapDate) {
+              const parsed = new Date(scrapDate)
+              scrapDate = !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : ''
+            }
+            const scrapDescription = row['Hurda Açıklaması'] || row['Hurda Aciklamasi'] || row['HURDA AÇIKLAMASI'] || ''
+
             const response = await fetch('/api/calibration', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -908,6 +1011,7 @@ export default function CalibrationPage() {
                 deviceId: deviceId.toString().trim(),
                 name: deviceName.toString().trim(),
                 type: deviceType.toString().trim(),
+                calibrationType: calibrationType.toString().trim() || null,
                 manufacturer: manufacturer.toString().trim(),
                 model: model.toString().trim(),
                 serialNumber: serialNumber.toString().trim(),
@@ -922,6 +1026,11 @@ export default function CalibrationPage() {
                 verificationInterval: verificationIntervalRaw ? parseInt(verificationIntervalRaw.toString()) : null,
                 lastVerificationDate: lastVerificationDate || null,
                 plannedVerificationDate: plannedVerificationDate || null,
+                deviceCondition: deviceCondition.toString().trim() || null,
+                calibrationSentDate: calibrationSentDate || null,
+                calibrationReturnDate: calibrationReturnDate || null,
+                scrapDate: scrapDate || null,
+                scrapDescription: scrapDescription.toString().trim() || null,
               }),
             })
 
@@ -1104,7 +1213,7 @@ export default function CalibrationPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="name">Cihaz Adı</Label>
+                    <Label htmlFor="name">Cihaz Tipi</Label>
                     <Select
                       id="name"
                       value={formData.name}
@@ -1120,7 +1229,7 @@ export default function CalibrationPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="calibrationType">Tip</Label>
+                    <Label htmlFor="calibrationType">Yöntem</Label>
                     <Select
                       id="calibrationType"
                       value={formData.calibrationType}
@@ -1133,7 +1242,7 @@ export default function CalibrationPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="manufacturer">Üretici</Label>
+                    <Label htmlFor="manufacturer">Marka</Label>
                     <Input
                       id="manufacturer"
                       value={formData.manufacturer}
@@ -1245,6 +1354,98 @@ export default function CalibrationPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Cihaz Durumu */}
+                <div className="space-y-2">
+                  <Label htmlFor="deviceCondition">Cihaz Durumu</Label>
+                  <Select
+                    id="deviceCondition"
+                    value={formData.deviceCondition}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setFormData({
+                        ...formData,
+                        deviceCondition: val,
+                        // Tarihler durum değişse bile korunur - geçmiş kalibrasyon bilgisi saklanır
+                      })
+                    }}
+                  >
+                    <option value="">Seçiniz</option>
+                    <option value="Kalibrasyonda">Kalibrasyonda</option>
+                    <option value="Şirkette">Şirkette</option>
+                    <option value="Hurda">Hurda</option>
+                  </Select>
+                </div>
+
+                {formData.deviceCondition === "Kalibrasyonda" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="calibrationSentDate">Gönderim Tarihi</Label>
+                      <Input
+                        id="calibrationSentDate"
+                        type="date"
+                        value={formData.calibrationSentDate}
+                        onChange={(e) => setFormData({ ...formData, calibrationSentDate: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="calibrationReturnDate">Dönüş Tarihi</Label>
+                      <Input
+                        id="calibrationReturnDate"
+                        type="date"
+                        value={formData.calibrationReturnDate}
+                        onChange={(e) => setFormData({ ...formData, calibrationReturnDate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Gün sayısı bilgisi: durum değişse bile tarihler varsa gösterilir */}
+                {formData.calibrationSentDate && (() => {
+                  const sent = new Date(formData.calibrationSentDate)
+                  const isOngoing = !formData.calibrationReturnDate && formData.deviceCondition === "Kalibrasyonda"
+                  const end = formData.calibrationReturnDate
+                    ? new Date(formData.calibrationReturnDate)
+                    : new Date()
+                  const days = Math.max(0, Math.floor((end.getTime() - sent.getTime()) / 86400000))
+                  return (
+                    <div className={`rounded-md border px-3 py-2 text-sm flex items-center gap-2 ${
+                      isOngoing ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-sky-50 border-sky-200 text-sky-800'
+                    }`}>
+                      <Clock className="h-4 w-4" />
+                      <span>
+                        {isOngoing
+                          ? `${days} gün kalibrasyonda (devam ediyor)`
+                          : formData.calibrationReturnDate
+                            ? `Son kalibrasyon: ${days} gün sürdü (${new Date(formData.calibrationSentDate).toLocaleDateString('tr-TR')} → ${new Date(formData.calibrationReturnDate).toLocaleDateString('tr-TR')})`
+                            : `Son gönderim: ${new Date(formData.calibrationSentDate).toLocaleDateString('tr-TR')} (${days} gün)`}
+                      </span>
+                    </div>
+                  )
+                })()}
+
+                {formData.deviceCondition === "Hurda" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="scrapDate">Hurda Tarihi</Label>
+                      <Input
+                        id="scrapDate"
+                        type="date"
+                        value={formData.scrapDate}
+                        onChange={(e) => setFormData({ ...formData, scrapDate: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="scrapDescription">Hurda Açıklaması</Label>
+                      <Input
+                        id="scrapDescription"
+                        value={formData.scrapDescription}
+                        onChange={(e) => setFormData({ ...formData, scrapDescription: e.target.value })}
+                        placeholder="Hurda sebebini yazınız..."
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Kalibrasyon alanları - Kalibrasyon veya Kal/Doğ seçildiğinde */}
                 {(formData.calibrationType === 'Kalibrasyon' || formData.calibrationType === 'Kal/Doğ') && (
@@ -1475,19 +1676,19 @@ export default function CalibrationPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-8">
         {statCards.map((stat) => {
           const Icon = stat.icon
           return (
             <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                <div className={`rounded-lg p-2 ${stat.bgColor}`}>
-                  <Icon className={`h-4 w-4 ${stat.color}`} />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-1">
+                <CardTitle className="text-xs font-medium text-muted-foreground">{stat.title}</CardTitle>
+                <div className={`rounded-md p-1 ${stat.bgColor}`}>
+                  <Icon className={`h-3 w-3 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
+              <CardContent className="p-3 pt-0">
+                <div className="text-lg font-semibold">{stat.value}</div>
               </CardContent>
             </Card>
           )
@@ -1553,7 +1754,7 @@ export default function CalibrationPage() {
                     onClick={() => handleSort('calibrationType')}
                   >
                     <div className="flex items-center gap-1">
-                      Tip
+                      Yöntem
                       {sortField === 'calibrationType' ? (
                         sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
                       ) : (
@@ -1946,7 +2147,7 @@ export default function CalibrationPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-name">Cihaz Adı</Label>
+                  <Label htmlFor="edit-name">Cihaz Tipi</Label>
                   <Select
                     id="edit-name"
                     value={formData.name}
@@ -1962,7 +2163,7 @@ export default function CalibrationPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-calibrationType">Tip</Label>
+                  <Label htmlFor="edit-calibrationType">Yöntem</Label>
                   <Select
                     id="edit-calibrationType"
                     value={formData.calibrationType}
@@ -1975,7 +2176,7 @@ export default function CalibrationPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-manufacturer">Üretici</Label>
+                  <Label htmlFor="edit-manufacturer">Marka</Label>
                   <Input
                     id="edit-manufacturer"
                     value={formData.manufacturer}
@@ -2085,6 +2286,98 @@ export default function CalibrationPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Cihaz Durumu */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-deviceCondition">Cihaz Durumu</Label>
+                <Select
+                  id="edit-deviceCondition"
+                  value={formData.deviceCondition}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setFormData({
+                      ...formData,
+                      deviceCondition: val,
+                      // Tarihler durum değişse bile korunur - geçmiş kalibrasyon bilgisi saklanır
+                    })
+                  }}
+                >
+                  <option value="">Seçiniz</option>
+                  <option value="Kalibrasyonda">Kalibrasyonda</option>
+                  <option value="Şirkette">Şirkette</option>
+                  <option value="Hurda">Hurda</option>
+                </Select>
+              </div>
+
+              {formData.deviceCondition === "Kalibrasyonda" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-calibrationSentDate">Gönderim Tarihi</Label>
+                    <Input
+                      id="edit-calibrationSentDate"
+                      type="date"
+                      value={formData.calibrationSentDate}
+                      onChange={(e) => setFormData({ ...formData, calibrationSentDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-calibrationReturnDate">Dönüş Tarihi</Label>
+                    <Input
+                      id="edit-calibrationReturnDate"
+                      type="date"
+                      value={formData.calibrationReturnDate}
+                      onChange={(e) => setFormData({ ...formData, calibrationReturnDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Gün sayısı bilgisi: durum değişse bile tarihler varsa gösterilir */}
+              {formData.calibrationSentDate && (() => {
+                const sent = new Date(formData.calibrationSentDate)
+                const isOngoing = !formData.calibrationReturnDate && formData.deviceCondition === "Kalibrasyonda"
+                const end = formData.calibrationReturnDate
+                  ? new Date(formData.calibrationReturnDate)
+                  : new Date()
+                const days = Math.max(0, Math.floor((end.getTime() - sent.getTime()) / 86400000))
+                return (
+                  <div className={`rounded-md border px-3 py-2 text-sm flex items-center gap-2 ${
+                    isOngoing ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-sky-50 border-sky-200 text-sky-800'
+                  }`}>
+                    <Clock className="h-4 w-4" />
+                    <span>
+                      {isOngoing
+                        ? `${days} gün kalibrasyonda (devam ediyor)`
+                        : formData.calibrationReturnDate
+                          ? `Son kalibrasyon: ${days} gün sürdü (${new Date(formData.calibrationSentDate).toLocaleDateString('tr-TR')} → ${new Date(formData.calibrationReturnDate).toLocaleDateString('tr-TR')})`
+                          : `Son gönderim: ${new Date(formData.calibrationSentDate).toLocaleDateString('tr-TR')} (${days} gün)`}
+                    </span>
+                  </div>
+                )
+              })()}
+
+              {formData.deviceCondition === "Hurda" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-scrapDate">Hurda Tarihi</Label>
+                    <Input
+                      id="edit-scrapDate"
+                      type="date"
+                      value={formData.scrapDate}
+                      onChange={(e) => setFormData({ ...formData, scrapDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-scrapDescription">Hurda Açıklaması</Label>
+                    <Input
+                      id="edit-scrapDescription"
+                      value={formData.scrapDescription}
+                      onChange={(e) => setFormData({ ...formData, scrapDescription: e.target.value })}
+                      placeholder="Hurda sebebini yazınız..."
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Kalibrasyon alanları - Kalibrasyon veya Kal/Doğ seçildiğinde */}
               {(formData.calibrationType === 'Kalibrasyon' || formData.calibrationType === 'Kal/Doğ') && (

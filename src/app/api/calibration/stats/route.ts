@@ -12,7 +12,7 @@ export async function GET() {
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const [total, valid, expiring, expired, inProcess, outOfOrder, noResponsible, totalCostAgg] = await Promise.all([
+    const [total, valid, expiring, expired, inProcess, outOfOrder, noResponsible, atCompany, atCalibration, scrap, totalCostAgg] = await Promise.all([
       prisma.calibrationDevice.count({
         where: { isActive: true },
       }),
@@ -41,6 +41,25 @@ export async function GET() {
           ]
         },
       }),
+      // Şirkette: deviceCondition null/boş/Şirkette olanlar
+      prisma.calibrationDevice.count({
+        where: {
+          isActive: true,
+          OR: [
+            { deviceCondition: null },
+            { deviceCondition: '' },
+            { deviceCondition: 'Şirkette' },
+          ],
+        },
+      }),
+      // Kalibrasyonda
+      prisma.calibrationDevice.count({
+        where: { isActive: true, deviceCondition: 'Kalibrasyonda' },
+      }),
+      // Hurda
+      prisma.calibrationDevice.count({
+        where: { isActive: true, deviceCondition: 'Hurda' },
+      }),
       prisma.calibrationHistory.aggregate({
         _sum: { cost: true },
       }),
@@ -54,6 +73,9 @@ export async function GET() {
       inProcess,
       outOfOrder,
       noResponsible,
+      atCompany,
+      atCalibration,
+      scrap,
       totalCost: totalCostAgg._sum.cost || 0,
     })
   } catch (error) {

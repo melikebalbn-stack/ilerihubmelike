@@ -146,6 +146,11 @@ export async function POST(request: NextRequest) {
       imageUrl,
       attachments,
       requiresResponsible,
+      deviceCondition,
+      calibrationSentDate,
+      calibrationReturnDate,
+      scrapDate,
+      scrapDescription,
     } = body
 
     // Default değerler
@@ -282,6 +287,11 @@ export async function POST(request: NextRequest) {
         imageUrl,
         attachments,
         requiresResponsible: requiresResponsible || false,
+        deviceCondition: deviceCondition || null,
+        calibrationSentDate: calibrationSentDate ? new Date(calibrationSentDate) : null,
+        calibrationReturnDate: calibrationReturnDate ? new Date(calibrationReturnDate) : null,
+        scrapDate: scrapDate ? new Date(scrapDate) : null,
+        scrapDescription: scrapDescription || null,
       },
     })
 

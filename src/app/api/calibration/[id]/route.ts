@@ -90,6 +90,11 @@ export async function PUT(
       imageUrl,
       attachments,
       requiresResponsible,
+      deviceCondition,
+      calibrationSentDate,
+      calibrationReturnDate,
+      scrapDate,
+      scrapDescription,
     } = body
 
     // Cihazın var olup olmadığını kontrol et
@@ -164,6 +169,11 @@ export async function PUT(
         imageUrl,
         attachments,
         requiresResponsible,
+        deviceCondition: deviceCondition || null,
+        calibrationSentDate: calibrationSentDate ? new Date(calibrationSentDate) : null,
+        calibrationReturnDate: calibrationReturnDate ? new Date(calibrationReturnDate) : null,
+        scrapDate: scrapDate ? new Date(scrapDate) : null,
+        scrapDescription: scrapDescription || null,
       },
     })
 

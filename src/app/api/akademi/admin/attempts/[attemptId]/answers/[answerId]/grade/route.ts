@@ -41,61 +41,73 @@ export async function POST(
     );
   }
 
-  const answer = await prisma.userExamAnswer.findUnique({
-    where: { id: answerId },
-    include: { question: true },
-  });
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"attempt:" + attemptId}))`;
 
-  if (!answer) {
-    return NextResponse.json({ error: "Cevap bulunamadı" }, { status: 404 });
-  }
-  if (answer.attemptId !== attemptId) {
-    return NextResponse.json(
-      { error: "Cevap bu attempt'e ait değil" },
-      { status: 400 }
-    );
-  }
-  if (!answer.question.isManualGraded) {
-    return NextResponse.json(
-      { error: "Bu soru otomatik puanlanır, manuel grade yapılamaz" },
-      { status: 400 }
-    );
-  }
-  if (score > answer.question.points) {
-    return NextResponse.json(
-      {
+    const answer = await tx.userExamAnswer.findUnique({
+      where: { id: answerId },
+      include: { question: true },
+    });
+
+    if (!answer) {
+      return { ok: false as const, status: 404, error: "Cevap bulunamadı" };
+    }
+    if (answer.attemptId !== attemptId) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "Cevap bu attempt'e ait değil",
+      };
+    }
+    if (!answer.question.isManualGraded) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "Bu soru otomatik puanlanır, manuel grade yapılamaz",
+      };
+    }
+    if (score > answer.question.points) {
+      return {
+        ok: false as const,
+        status: 400,
         error: `Puan ${answer.question.points}'i geçemez (sorunun max puanı)`,
+      };
+    }
+
+    const attempt = await tx.userExamAttempt.findUnique({
+      where: { id: attemptId },
+      select: { status: true },
+    });
+    if (!attempt) {
+      return { ok: false as const, status: 404, error: "Attempt bulunamadı" };
+    }
+    if (attempt.status !== "PENDING_REVIEW") {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "Bu attempt grade edilebilir durumda değil",
+      };
+    }
+
+    const updated = await tx.userExamAnswer.update({
+      where: { id: answerId },
+      data: {
+        manualScore: score,
+        manualFeedback: feedback,
+        gradedById: adminId,
+        gradedAt: new Date(),
       },
-      { status: 400 }
-    );
-  }
+      include: {
+        gradedBy: { select: { id: true, name: true } },
+      },
+    });
 
-  const attempt = await prisma.userExamAttempt.findUnique({
-    where: { id: attemptId },
-    select: { status: true },
-  });
-  if (!attempt) {
-    return NextResponse.json({ error: "Attempt bulunamadı" }, { status: 404 });
-  }
-  if (attempt.status !== "PENDING_REVIEW") {
-    return NextResponse.json(
-      { error: "Bu attempt grade edilebilir durumda değil" },
-      { status: 400 }
-    );
-  }
-
-  const updated = await prisma.userExamAnswer.update({
-    where: { id: answerId },
-    data: {
-      manualScore: score,
-      manualFeedback: feedback,
-      gradedById: adminId,
-      gradedAt: new Date(),
-    },
-    include: {
-      gradedBy: { select: { id: true, name: true } },
-    },
+    return { ok: true as const, answer: updated };
   });
 
-  return NextResponse.json({ ok: true, answer: updated });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  return NextResponse.json({ ok: true, answer: result.answer });
 }

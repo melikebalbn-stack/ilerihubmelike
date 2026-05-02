@@ -83,27 +83,29 @@ export async function recomputeCourseProgress(
 
   const isComplete = percentage >= 100;
 
-  const existing = await prisma.courseProgress.findUnique({
-    where: { userId_courseId: { userId, courseId } },
-  });
-
+  // Race-safe upsert: ilk %100 anını koru, paralel tetiklerde P2002 yutulup update'e geç
   let progress;
-  if (existing) {
-    progress = await prisma.courseProgress.update({
-      where: { id: existing.id },
-      data: {
-        percentage,
-        // İlk tamamlanma anını koru; daha sonra tekrar 100 olursa zaten timestamp duruyor
-        completedAt: existing.completedAt ?? (isComplete ? new Date() : null),
-      },
-    });
-  } else {
+  try {
     progress = await prisma.courseProgress.create({
       data: {
         userId,
         courseId,
         percentage,
         completedAt: isComplete ? new Date() : null,
+      },
+    });
+  } catch (e: unknown) {
+    const code = (e as { code?: string })?.code;
+    if (code !== "P2002") throw e;
+
+    const existing = await prisma.courseProgress.findUnique({
+      where: { userId_courseId: { userId, courseId } },
+    });
+    progress = await prisma.courseProgress.update({
+      where: { userId_courseId: { userId, courseId } },
+      data: {
+        percentage,
+        completedAt: existing?.completedAt ?? (isComplete ? new Date() : null),
       },
     });
   }

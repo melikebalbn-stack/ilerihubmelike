@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createReadStream, statSync } from "fs";
 import { join, normalize } from "path";
-import type { Readable } from "stream";
+import { Readable } from "stream";
 
 const UPLOADS_ROOT = join(process.cwd(), "public", "uploads", "akademi");
 
@@ -35,7 +35,23 @@ export async function GET(
   }
 
   const contentType = guessContentType(full);
+  const etag = `"${stat.size.toString(36)}-${Math.floor(stat.mtimeMs).toString(36)}"`;
+  const lastModified = stat.mtime.toUTCString();
+
+  const ifNoneMatch = req.headers.get("if-none-match");
+  const ifModifiedSince = req.headers.get("if-modified-since");
   const range = req.headers.get("range");
+
+  if (!range && (ifNoneMatch === etag || (ifModifiedSince && new Date(ifModifiedSince).getTime() >= Math.floor(stat.mtimeMs)))) {
+    return new NextResponse(null, {
+      status: 304,
+      headers: {
+        ETag: etag,
+        "Last-Modified": lastModified,
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  }
 
   if (range) {
     const m = /bytes=(\d+)-(\d*)/.exec(range);
@@ -51,41 +67,38 @@ export async function GET(
       }
 
       const chunkSize = end - start + 1;
-      const stream = createReadStream(full, { start, end });
+      const nodeStream = createReadStream(full, { start, end });
+      req.signal.addEventListener("abort", () => nodeStream.destroy());
 
-      return new NextResponse(nodeToWeb(stream), {
+      const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
+
+      return new NextResponse(webStream, {
         status: 206,
         headers: {
           "Content-Range": `bytes ${start}-${end}/${stat.size}`,
           "Accept-Ranges": "bytes",
           "Content-Length": String(chunkSize),
           "Content-Type": contentType,
+          ETag: etag,
+          "Last-Modified": lastModified,
+          "Cache-Control": "private, max-age=3600",
         },
       });
     }
   }
 
-  const stream = createReadStream(full);
-  return new NextResponse(nodeToWeb(stream), {
+  const nodeStream = createReadStream(full);
+  req.signal.addEventListener("abort", () => nodeStream.destroy());
+  const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
+
+  return new NextResponse(webStream, {
     headers: {
       "Content-Length": String(stat.size),
       "Content-Type": contentType,
       "Accept-Ranges": "bytes",
-    },
-  });
-}
-
-function nodeToWeb(stream: Readable): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    start(controller) {
-      stream.on("data", (chunk: Buffer | string) => {
-        controller.enqueue(typeof chunk === "string" ? new TextEncoder().encode(chunk) : new Uint8Array(chunk));
-      });
-      stream.on("end", () => controller.close());
-      stream.on("error", (err) => controller.error(err));
-    },
-    cancel() {
-      stream.destroy();
+      ETag: etag,
+      "Last-Modified": lastModified,
+      "Cache-Control": "private, max-age=3600",
     },
   });
 }

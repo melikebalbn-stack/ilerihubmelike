@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search")?.trim() ?? "";
   const courseId = searchParams.get("courseId");
+  const missingPdf = searchParams.get("missingPdf") === "true";
 
   const where: Prisma.AkademiCertificateWhereInput = {};
   if (search) {
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
     ];
   }
   if (courseId) where.courseId = courseId;
+  if (missingPdf) where.filePath = null;
 
   const certs = await prisma.akademiCertificate.findMany({
     where,

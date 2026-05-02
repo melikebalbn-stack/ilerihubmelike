@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Settings, Gauge, Lightbulb, CalendarCheck, Flame, Mail, Megaphone, Headphones, Smartphone, LayoutDashboard, UserCheck, Clock, Plus, Trash2, Search, Loader2, RefreshCw, Users, CheckCircle2, AlertTriangle } from "lucide-react"
+import { Settings, Gauge, Lightbulb, CalendarCheck, Flame, Mail, Megaphone, Headphones, Smartphone, LayoutDashboard, UserCheck, Clock, Plus, Trash2, Search, Loader2, RefreshCw, Users, CheckCircle2, AlertTriangle, Briefcase } from "lucide-react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
@@ -1058,6 +1058,29 @@ export default function SettingsPage() {
           onAddEmail={handleAddTaskNotificationEmail}
           onDeleteEmail={handleDeleteTaskNotificationEmail}
         />
+      </CollapsibleSection>
+
+      {/* İV Ayarları */}
+      <CollapsibleSection
+        title="İV Ayarları"
+        description="Görev tanımları ve İnsan Varlıkları yapılandırması"
+        icon={Briefcase}
+        iconBgColor="bg-indigo-100 dark:bg-indigo-900"
+        iconColor="text-indigo-600 dark:text-indigo-400"
+        externalLink="/personnel"
+      >
+        <div className="text-center py-6">
+          <Briefcase className="h-12 w-12 mx-auto mb-3 opacity-30" />
+          <p className="text-muted-foreground mb-4">
+            Personel formlarında kullanılan görev tanımlarını, bölüm detaylarını ve diğer İV ayarlarını yönetin.
+          </p>
+          <Link href="/settings/hr">
+            <Button>
+              <Briefcase className="h-4 w-4 mr-2" />
+              İV Ayarlarını Yönet
+            </Button>
+          </Link>
+        </div>
       </CollapsibleSection>
 
       {/* Mesai Formu Onay Pozisyonları */}

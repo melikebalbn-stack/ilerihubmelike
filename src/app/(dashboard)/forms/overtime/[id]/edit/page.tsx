@@ -130,11 +130,11 @@ export default function EditOvertimeFormPage() {
         setDescription(form.description || "")
         setSendToGM(form.sendToGM)
 
-        // Personnel - personnelId bazlı (fallback: user.id eski kayıtlar için)
+        // Personnel - personnelId bazlı
         const ids = new Set<string>()
         const details: Record<string, PersonnelDetail> = {}
         for (const p of form.personnel || []) {
-          const key = p.personnelId || p.user?.id
+          const key = p.personnelId
           if (!key) continue
           ids.add(key)
           details[key] = {

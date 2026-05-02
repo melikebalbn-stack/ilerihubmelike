@@ -30,15 +30,6 @@ interface Personnel {
     telefon: string | null
     serviceRoute: string | null
   } | null
-  user: {
-    id: string
-    name: string
-    email: string
-    department: string | null
-    jobTitle: string | null
-    employeeId: string | null
-    mobilePhone: string | null
-  } | null
 }
 
 interface Approval {
@@ -86,21 +77,20 @@ function getOvertimeTypeInfo(type: string) {
   return MESAI_TURLERI.find((m) => m.value === type)
 }
 
-/** Personnel veya User'dan field çek (Personnel öncelikli, User fallback) */
 function pName(p: Personnel): string {
-  return p.personnel?.adSoyad || p.user?.name || "—"
+  return p.personnel?.adSoyad || "—"
 }
 function pSicilNo(p: Personnel): string {
-  return p.personnel?.sicilNo || p.user?.employeeId || "—"
+  return p.personnel?.sicilNo || "—"
 }
 function pTelefon(p: Personnel): string {
-  return p.personnel?.telefon || p.user?.mobilePhone || "—"
+  return p.personnel?.telefon || "—"
 }
 function pBolum(p: Personnel): string {
-  return p.personnel?.bolum || p.user?.department || "—"
+  return p.personnel?.bolum || "—"
 }
 function pGorev(p: Personnel): string {
-  return p.personnel?.gorev || p.user?.jobTitle || "—"
+  return p.personnel?.gorev || "—"
 }
 
 export default function OvertimeDetailPage() {

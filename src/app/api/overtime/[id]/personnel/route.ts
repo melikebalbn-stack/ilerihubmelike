@@ -95,9 +95,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
-            user: {
-              select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
-            },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -179,9 +176,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
           include: {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
-            },
-            user: {
-              select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
             },
           },
           orderBy: { createdAt: 'asc' },
@@ -298,16 +292,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       include: {
         personnel: {
           include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                department: true,
-                jobTitle: true,
-                employeeId: true,
-                mobilePhone: true,
-              },
+            personnel: {
+              select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
           },
           orderBy: { createdAt: 'asc' },

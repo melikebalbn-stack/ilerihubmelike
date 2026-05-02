@@ -38,6 +38,8 @@
     "node_modules",
     "prisma/seed-suggestions.ts",
     "prisma/seed-arsiv.ts",
+    "prisma/scripts/check-overtime-personnel-backfill.ts",
+    "prisma/scripts/delete-test-overtime-forms.ts",
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/**/*.spec.ts",

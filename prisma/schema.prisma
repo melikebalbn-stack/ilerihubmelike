@@ -156,7 +156,6 @@ model User {
 
   // Overtime (Mesai) Relations
   overtimeFormsCreated OvertimeForm[]          @relation("OvertimeCreator")
-  overtimePersonnel    OvertimePersonnel[]     @relation("OvertimePersonnel")
   overtimeApprovals    OvertimeApproval[]      @relation("OvertimeApprover")
   approvalPositions    ApprovalPosition[]      @relation("ApprovalPositionUser")
   overtimeAuthorized   OvertimeAuthorizedUser? @relation("OvertimeAuthorizedUser")
@@ -8033,12 +8032,8 @@ model OvertimePersonnel {
   overtimeForm   OvertimeForm @relation(fields: [overtimeFormId], references: [id], onDelete: Cascade)
 
   // Personel bilgileri — Personnel (IV) tablosundan
-  personnelId String?
-  personnel   Personnel? @relation(fields: [personnelId], references: [id])
-
-  // Geriye uyumluluk: eski kayıtlarda userId var
-  userId String?
-  user   User?   @relation("OvertimePersonnel", fields: [userId], references: [id])
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Restrict)
 
   // Mesai detayları
   workDepartment   String // Mesai yapacak bölüm

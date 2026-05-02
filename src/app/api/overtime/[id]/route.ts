@@ -38,9 +38,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
-            user: {
-              select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
-            },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -77,7 +74,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Erişim kontrolü: admin, form sahibi, personel veya onaylayıcı olmalı
     const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
     const isCreator = form.createdById === user.id
-    const isPersonnel = form.personnel.some((p) => p.userId === user.id)
+    const isPersonnel = !!user.personnelId && form.personnel.some((p) => p.personnelId === user.personnelId)
     const isApprover = form.approvals.some((a) => a.approverId === user.id)
 
     if (!isAdmin && !isCreator && !isPersonnel && !isApprover) {
@@ -220,9 +217,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             include: {
               personnel: {
                 select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
-              },
-              user: {
-                select: { id: true, name: true, email: true, department: true, jobTitle: true, employeeId: true, mobilePhone: true },
               },
             },
           },

@@ -131,8 +131,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         include: {
           personnel: {
             include: {
-              user: {
-                select: { id: true, name: true, email: true, department: true },
+              personnel: {
+                select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true },
               },
             },
           },

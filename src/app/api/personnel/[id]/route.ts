@@ -8,6 +8,16 @@ export const dynamic = 'force-dynamic'
 const EDIT_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
 const DELETE_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
+function isHRDepartment(dept: string | undefined | null): boolean {
+  if (!dept) return false
+  const d = dept.toLowerCase()
+  return d.includes('insan') || d.includes('human') || d.includes('hr') || d.includes('ik')
+}
+
+function hasEditAccess(role: string, department?: string | null): boolean {
+  return EDIT_ROLES.includes(role) || isHRDepartment(department)
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -33,19 +43,32 @@ export async function GET(
         bolumDetay: true,
         bolum: true,
         birimSorumlusu: true,
+        sorumlu2: true,
+        sorumlu3: true,
         bolumMuduru: true,
         masrafMerkezi: true,
         interKepMail: true,
+        mailAdresi: true,
+        ikametAdresi: true,
         denemeDegerlendirme: true,
         altiAyDegerlendirme: true,
         telefon: true,
         kanGrubu: true,
+        serviceRoute: true,
+        serviceStop: true,
         egitimYeri: true,
         egitimTipi: true,
         egitimAlani: true,
         mezuniyetYili: true,
-        mykUstalikKalfalik: true,
-        ilkYardimci: true,
+        ilkYardimciBelgesi: true,
+        kalfalikBelgesi: true,
+        ustalikBelgesi: true,
+        forkliftEhliyeti: true,
+        vincEhliyeti: true,
+        mykBelgesiTarihi: true,
+        yanginSertifikasi: true,
+        eTrans: true,
+        ustaOgreticiBelgesi: true,
         emekli: true,
         engelli: true,
         aktif: true,
@@ -78,7 +101,8 @@ export async function PUT(
 
     const { id: personnelId } = await params
     const userRole = (session.user as any).role
-    if (!EDIT_ROLES.includes(userRole)) {
+    const userDept = (session.user as any).department
+    if (!hasEditAccess(userRole, userDept)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -89,16 +113,32 @@ export async function PUT(
 
     const body = await request.json()
 
-    // Parse date fields
-    if (body.iseGirisTarihi) {
-      body.iseGirisTarihi = new Date(body.iseGirisTarihi)
-    }
-
     // Remove fields that should not be updated directly
     delete body.id
     delete body.createdAt
     delete body.updatedAt
     delete body.sensitive
+
+    // Boş stringleri null'a çevir (Prisma enum/date/int hataları için)
+    for (const key of Object.keys(body)) {
+      if (body[key] === '') body[key] = null
+    }
+
+    // Parse date fields (null değerler atlanır)
+    const dateFields = [
+      'iseGirisTarihi', 'denemeDegerlendirme', 'altiAyDegerlendirme',
+      'ilkYardimciBelgesi', 'kalfalikBelgesi', 'ustalikBelgesi', 'yanginSertifikasi', 'mykBelgesiTarihi',
+    ]
+    for (const field of dateFields) {
+      if (body[field]) {
+        body[field] = new Date(body[field])
+      }
+    }
+
+    // Parse int fields
+    if (body.mezuniyetYili) {
+      body.mezuniyetYili = parseInt(body.mezuniyetYili) || null
+    }
 
     const personnel = await prisma.personnel.update({
       where: { id: personnelId },

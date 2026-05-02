@@ -31,6 +31,11 @@ function formatDate(date: Date | null | undefined): string {
   return new Date(date).toLocaleDateString('tr-TR')
 }
 
+function toExcelDate(date: Date | null | undefined): Date | string {
+  if (!date) return ''
+  return new Date(date)
+}
+
 function boolToStr(val: boolean | null | undefined): string {
   if (val === null || val === undefined) return ''
   return val ? 'Evet' : 'Hayır'
@@ -76,113 +81,152 @@ export async function GET(request: NextRequest) {
     })
 
     // Build Excel data
-    const data = personnel.map((p: any) => {
+    // Excel sırasıyla birebir aynı sütun düzeni
+    const data = personnel.map((p: any, idx: number) => {
+      const s = (includeSensitive && p.sensitive) ? p.sensitive : null
+      const bank = (includeBank && s) ? true : false
+
       const row: Record<string, any> = {
+        'NO': idx + 1,
         'SİCİL NO': p.sicilNo,
-        'ADI VE SOYADI': p.adSoyad,
         'SINIF': p.sinif || '',
         'CİNSİYET': CINSIYET_LABELS[p.cinsiyet] || p.cinsiyet,
+        'ADI VE SOYADI': p.adSoyad,
         'YAKA': YAKA_LABELS[p.yakaRengi] || p.yakaRengi,
         'DİREK ENDİREK': p.direktEndirekt ? (DIREKT_ENDIREKT_LABELS[p.direktEndirekt] || p.direktEndirekt) : '',
         'ASANSÖR/MEKANİK': p.asansorMekanik ? (ASANSOR_MEKANIK_LABELS[p.asansorMekanik] || p.asansorMekanik) : '',
-        'İŞE GİRİŞ TARİHİ': formatDate(p.iseGirisTarihi),
+        'SGK NO': s ? (s.sgkNo || '') : '',
+        'TC KİMLİK NO': s ? (s.tcKimlikNo || '') : '',
+        'İŞE GİRİŞ TARİHİ': toExcelDate(p.iseGirisTarihi),
+        'DENEME (2 AY) DEĞERLENDİRME': toExcelDate(p.denemeDegerlendirme),
+        'İLK 6 AY DEĞERLENDİRME': toExcelDate(p.altiAyDegerlendirme),
         'GÖREV': p.gorev,
         'BÖLÜM/DETAY': p.bolumDetay || '',
         'BÖLÜM': p.bolum,
-        'BİRİM SORUMLUSU': p.birimSorumlusu || '',
+        '1. SORUMLU': p.birimSorumlusu || '',
+        '2. SORUMLU': p.sorumlu2 || '',
+        '3. SORUMLU': p.sorumlu3 || '',
         'BÖLÜM MÜDÜRÜ': p.bolumMuduru || '',
-        'TELEFON': p.telefon || '',
-        'KAN GRUBU': p.kanGrubu ? (KAN_GRUBU_LABELS[p.kanGrubu] || p.kanGrubu) : '',
-        'MASRAF MERKEZİ': p.masrafMerkezi || '',
-        'İNTERKEP MAİL ADRESLERİ': p.interKepMail || '',
-        'MYK USTALIK-KALFALIK': boolToStr(p.mykUstalikKalfalik),
-        'İLK YARDIMCI': boolToStr(p.ilkYardimci),
+        'BANKA ŞUBE': bank ? (s.bankaSube || '') : '',
+        'BANKA HESAP NO': bank ? (s.bankaHesapNo || '') : '',
+        'TELEFON NO': p.telefon || '',
+        'DOĞUM TARİHİ': s ? toExcelDate(s.dogumTarihi) : '',
         'EMEKLİ': boolToStr(p.emekli),
         'ENGELLİ': boolToStr(p.engelli),
         'EĞİTİM YERİ': p.egitimYeri || '',
         'EĞİTİM TİPİ': p.egitimTipi || '',
         'EĞİTİM ALANI': p.egitimAlani || '',
         'MEZUNİYET YILI': p.mezuniyetYili || '',
-        'DENEME (2 AY) DEĞERLENDİRME': p.denemeDegerlendirme || '',
-        'İLK 6 AY DEĞERLENDİRME': p.altiAyDegerlendirme || '',
-      }
-
-      // Add sensitive data based on role
-      if (includeSensitive && p.sensitive) {
-        row['SGK NO'] = p.sensitive.sgkNo || ''
-        row['TC KİMLİK NUMARASI'] = p.sensitive.tcKimlikNo || ''
-        row['DOĞUM TARİHLERİ'] = formatDate(p.sensitive.dogumTarihi)
-
-        if (includeBank) {
-          row['BANKA ŞUBE'] = p.sensitive.bankaSube || ''
-          row['BANKA HESAP NO'] = p.sensitive.bankaHesapNo || ''
-        }
+        'KEP ADRESLERİ': p.interKepMail || '',
+        'MASRAF MERKEZİ': p.masrafMerkezi || '',
+        'KAN GRUBU': p.kanGrubu ? (KAN_GRUBU_LABELS[p.kanGrubu] || p.kanGrubu) : '',
+        'İKAMET ADRESİ': p.ikametAdresi || '',
+        'MAİL ADRESİ': p.mailAdresi || '',
+        'SERVİS': p.serviceRoute || '',
+        'DURAK ADI': p.serviceStop || '',
+        'IBAN NO': bank ? (s.ibanNo || '') : '',
+        'İLKYARDIMCI BELGESİ': toExcelDate(p.ilkYardimciBelgesi),
+        'KALFALIK BELGESİ': toExcelDate(p.kalfalikBelgesi),
+        'USTALIK BELGESİ': toExcelDate(p.ustalikBelgesi),
+        'FORKLİFT EHLİYETİ': boolToStr(p.forkliftEhliyeti),
+        'E.TRANSPALET EHLİYETİ': boolToStr(p.eTrans),
+        'YANGIN SERTİFİKASI': toExcelDate(p.yanginSertifikasi),
+        'USTA ÖĞRETİCİ BELGESİ': boolToStr(p.ustaOgreticiBelgesi),
       }
 
       return row
     })
 
-    // Define headers explicitly so they always appear even with empty data
+    // Excel ile birebir aynı sırada header
     const headers = [
-      'SİCİL NO', 'ADI VE SOYADI', 'SINIF', 'CİNSİYET', 'YAKA',
-      'DİREK ENDİREK', 'ASANSÖR/MEKANİK', 'İŞE GİRİŞ TARİHİ',
-      'GÖREV', 'BÖLÜM/DETAY', 'BÖLÜM', 'BİRİM SORUMLUSU', 'BÖLÜM MÜDÜRÜ',
-      'TELEFON', 'KAN GRUBU', 'MASRAF MERKEZİ', 'İNTERKEP MAİL ADRESLERİ',
-      'MYK USTALIK-KALFALIK', 'İLK YARDIMCI', 'EMEKLİ', 'ENGELLİ',
+      'NO', 'SİCİL NO', 'SINIF', 'CİNSİYET', 'ADI VE SOYADI', 'YAKA',
+      'DİREK ENDİREK', 'ASANSÖR/MEKANİK',
+      'SGK NO', 'TC KİMLİK NO',
+      'İŞE GİRİŞ TARİHİ', 'DENEME (2 AY) DEĞERLENDİRME', 'İLK 6 AY DEĞERLENDİRME',
+      'GÖREV', 'BÖLÜM/DETAY', 'BÖLÜM',
+      '1. SORUMLU', '2. SORUMLU', '3. SORUMLU', 'BÖLÜM MÜDÜRÜ',
+      'BANKA ŞUBE', 'BANKA HESAP NO',
+      'TELEFON NO', 'DOĞUM TARİHİ',
+      'EMEKLİ', 'ENGELLİ',
       'EĞİTİM YERİ', 'EĞİTİM TİPİ', 'EĞİTİM ALANI', 'MEZUNİYET YILI',
-      'DENEME (2 AY) DEĞERLENDİRME', 'İLK 6 AY DEĞERLENDİRME',
+      'KEP ADRESLERİ', 'MASRAF MERKEZİ', 'KAN GRUBU',
+      'İKAMET ADRESİ', 'MAİL ADRESİ',
+      'SERVİS', 'DURAK ADI', 'IBAN NO',
+      'İLKYARDIMCI BELGESİ', 'KALFALIK BELGESİ', 'USTALIK BELGESİ',
+      'FORKLİFT EHLİYETİ', 'E.TRANSPALET EHLİYETİ',
+      'YANGIN SERTİFİKASI', 'USTA ÖĞRETİCİ BELGESİ',
     ]
-    if (includeSensitive) {
-      headers.push('SGK NO', 'TC KİMLİK NUMARASI', 'DOĞUM TARİHLERİ')
-      if (includeBank) headers.push('BANKA ŞUBE', 'BANKA HESAP NO')
-    }
 
     // Add example row when no data exists (template download)
     if (data.length === 0) {
       const exampleRow: Record<string, any> = {
-        'SİCİL NO': 'V001',
-        'ADI VE SOYADI': 'Ahmet Yılmaz',
-        'SINIF': 'B',
+        'NO': 1,
+        'SİCİL NO': 'ILR-00001',
+        'SINIF': 'İŞÇİ',
         'CİNSİYET': 'Erkek',
+        'ADI VE SOYADI': 'Ahmet Yılmaz',
         'YAKA': 'Mavi Yaka',
         'DİREK ENDİREK': 'Direkt',
-        'ASANSÖR/MEKANİK': 'Asansör',
+        'ASANSÖR/MEKANİK': 'Mekanik',
+        'SGK NO': '1234567890123',
+        'TC KİMLİK NO': '12345678901',
         'İŞE GİRİŞ TARİHİ': '15.03.2024',
+        'DENEME (2 AY) DEĞERLENDİRME': 'Başarılı',
+        'İLK 6 AY DEĞERLENDİRME': 'Başarılı',
         'GÖREV': 'CNC Operatörü',
         'BÖLÜM/DETAY': 'CNC Atölyesi',
         'BÖLÜM': 'Üretim',
-        'BİRİM SORUMLUSU': 'Mehmet Demir',
-        'BÖLÜM MÜDÜRÜ': 'Ali Kaya',
-        'TELEFON': '05321234567',
-        'KAN GRUBU': 'A Rh(+)',
-        'MASRAF MERKEZİ': 'ÜRETİM-01',
-        'İNTERKEP MAİL ADRESLERİ': 'ahmet.yilmaz@ilerigroup.com',
-        'MYK USTALIK-KALFALIK': 'Evet',
-        'İLK YARDIMCI': 'Hayır',
+        '1. SORUMLU': 'Mehmet Demir',
+        '2. SORUMLU': 'Ali Kaya',
+        '3. SORUMLU': '',
+        'BÖLÜM MÜDÜRÜ': 'Veli Yıldız',
+        'BANKA ŞUBE': '389',
+        'BANKA HESAP NO': '6645044',
+        'TELEFON NO': '05321234567',
+        'DOĞUM TARİHİ': '01.01.1990',
         'EMEKLİ': 'Hayır',
         'ENGELLİ': 'Hayır',
         'EĞİTİM YERİ': 'İstanbul Teknik Üniversitesi',
         'EĞİTİM TİPİ': 'Lisans',
         'EĞİTİM ALANI': 'Makine Mühendisliği',
         'MEZUNİYET YILI': '2020',
-        'DENEME (2 AY) DEĞERLENDİRME': 'Başarılı',
-        'İLK 6 AY DEĞERLENDİRME': 'Başarılı',
-      }
-      if (includeSensitive) {
-        exampleRow['SGK NO'] = '1234567890'
-        exampleRow['TC KİMLİK NUMARASI'] = '12345678901'
-        exampleRow['DOĞUM TARİHLERİ'] = '01.01.1990'
-        if (includeBank) {
-          exampleRow['BANKA ŞUBE'] = 'Ziraat Bankası - Merkez'
-          exampleRow['BANKA HESAP NO'] = 'TR00 0000 0000 0000 0000 00'
-        }
+        'KEP ADRESLERİ': 'ahmet.yilmaz@hs09.kep.tr',
+        'MASRAF MERKEZİ': '720.1.01',
+        'KAN GRUBU': 'A Rh(+)',
+        'İKAMET ADRESİ': 'Örnek Mah. No:1 Çayırova',
+        'MAİL ADRESİ': 'ahmet.yilmaz@ilerigroup.com',
+        'SERVİS': 'BEYLİKBAĞI',
+        'DURAK ADI': 'CAN EMLAK',
+        'IBAN NO': 'TR85 0006 2000 3890 0006 6450 44',
+        'İLKYARDIMCI BELGESİ': 'Hayır',
+        'KALFALIK BELGESİ': '',
+        'USTALIK BELGESİ': '',
+        'FORKLİFT EHLİYETİ': 'Hayır',
+        'E.TRANSPALET EHLİYETİ': 'Hayır',
+        'YANGIN SERTİFİKASI': 'Hayır',
+        'USTA ÖĞRETİCİ BELGESİ': 'Hayır',
       }
       data.push(exampleRow)
     }
 
-    const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
+    const worksheet = XLSX.utils.json_to_sheet(data, { header: headers, cellDates: true })
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Personel')
+
+    // Tarih sütunlarına DD.MM.YYYY formatı uygula
+    const dateColumns = ['İŞE GİRİŞ TARİHİ', 'DENEME (2 AY) DEĞERLENDİRME', 'İLK 6 AY DEĞERLENDİRME', 'DOĞUM TARİHİ', 'İLKYARDIMCI BELGESİ', 'KALFALIK BELGESİ', 'USTALIK BELGESİ', 'YANGIN SERTİFİKASI']
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1')
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const headerCell = worksheet[XLSX.utils.encode_cell({ r: 0, c: C })]
+      if (headerCell && dateColumns.includes(headerCell.v)) {
+        for (let R = range.s.r + 1; R <= range.e.r; R++) {
+          const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })]
+          if (cell && cell.t === 'd') {
+            cell.z = 'DD.MM.YYYY'
+          }
+        }
+      }
+    }
 
     // Auto-size columns
     const colWidths = headers.map((key) => ({

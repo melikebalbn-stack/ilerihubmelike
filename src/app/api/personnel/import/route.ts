@@ -16,7 +16,7 @@ function isHRDepartment(dept: string | undefined | null): boolean {
 }
 
 // Hassas alan isimleri - PersonnelSensitive tablosuna gidecekler
-const SENSITIVE_FIELDS = ['tcKimlikNo', 'sgkNo', 'dogumTarihi', 'bankaSube', 'bankaHesapNo']
+const SENSITIVE_FIELDS = ['tcKimlikNo', 'sgkNo', 'dogumTarihi', 'bankaSube', 'bankaHesapNo', 'ibanNo']
 
 function normalizeGender(value: string | null | undefined): string | null {
   if (!value) return null
@@ -123,7 +123,18 @@ export async function POST(request: NextRequest) {
     const workbook = XLSX.read(arrayBuffer, { type: 'array' })
     const sheetName = workbook.SheetNames[0]
     const sheet = workbook.Sheets[sheetName]
-    const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: null })
+
+    // Başlık satırını otomatik bul ("SİCİL NO" içeren satır)
+    const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+    let headerRowIndex = 0
+    for (let i = 0; i < Math.min(10, rawRows.length); i++) {
+      const row = rawRows[i]
+      if (row && row.some((cell: any) => cell && cell.toString().includes('SİCİL'))) {
+        headerRowIndex = i
+        break
+      }
+    }
+    const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: null, range: headerRowIndex })
 
     let created = 0
     let updated = 0
@@ -195,15 +206,21 @@ export async function POST(request: NextRequest) {
           sinif: mapped.sinif?.toString().trim() || null,
           bolumDetay: mapped.bolumDetay?.toString().trim() || null,
           birimSorumlusu: mapped.birimSorumlusu?.toString().trim() || null,
+          sorumlu2: mapped.sorumlu2?.toString().trim() || null,
+          sorumlu3: mapped.sorumlu3?.toString().trim() || null,
           bolumMuduru: mapped.bolumMuduru?.toString().trim() || null,
           masrafMerkezi: mapped.masrafMerkezi?.toString().trim() || null,
           interKepMail: mapped.interKepMail?.toString().trim() || null,
+          mailAdresi: mapped.mailAdresi?.toString().trim() || null,
+          ikametAdresi: mapped.ikametAdresi?.toString().trim() || null,
+          serviceRoute: mapped.serviceRoute?.toString().trim() || null,
+          serviceStop: mapped.serviceStop?.toString().trim() || null,
           telefon: mapped.telefon?.toString().trim() || null,
           egitimYeri: mapped.egitimYeri?.toString().trim() || null,
           egitimTipi: mapped.egitimTipi?.toString().trim() || null,
           egitimAlani: mapped.egitimAlani?.toString().trim() || null,
-          denemeDegerlendirme: mapped.denemeDegerlendirme?.toString().trim() || null,
-          altiAyDegerlendirme: mapped.altiAyDegerlendirme?.toString().trim() || null,
+          denemeDegerlendirme: mapped.denemeDegerlendirme ? parseDate(mapped.denemeDegerlendirme) : null,
+          altiAyDegerlendirme: mapped.altiAyDegerlendirme ? parseDate(mapped.altiAyDegerlendirme) : null,
           createdBy: session.user.id,
         }
 
@@ -223,10 +240,31 @@ export async function POST(request: NextRequest) {
         }
 
         // Booleans
-        personnelData.mykUstalikKalfalik = parseBoolean(mapped.mykUstalikKalfalik)
-        personnelData.ilkYardimci = parseBoolean(mapped.ilkYardimci)
+        // ilkYardimciBelgesi tarih alanı
+        if (mapped.ilkYardimciBelgesi) {
+          const ilkYardimciDate = parseDate(mapped.ilkYardimciBelgesi)
+          if (ilkYardimciDate) personnelData.ilkYardimciBelgesi = ilkYardimciDate
+        }
         personnelData.emekli = parseBoolean(mapped.emekli)
         personnelData.engelli = parseBoolean(mapped.engelli)
+        personnelData.forkliftEhliyeti = parseBoolean(mapped.forkliftEhliyeti)
+        personnelData.eTrans = parseBoolean(mapped.eTrans)
+        // yanginSertifikasi tarih alanı
+        if (mapped.yanginSertifikasi) {
+          const yanginDate = parseDate(mapped.yanginSertifikasi)
+          if (yanginDate) personnelData.yanginSertifikasi = yanginDate
+        }
+        personnelData.ustaOgreticiBelgesi = parseBoolean(mapped.ustaOgreticiBelgesi)
+
+        // Belge tarihleri
+        if (mapped.kalfalikBelgesi) {
+          const kalfalikDate = parseDate(mapped.kalfalikBelgesi)
+          if (kalfalikDate) personnelData.kalfalikBelgesi = kalfalikDate
+        }
+        if (mapped.ustalikBelgesi) {
+          const ustalikDate = parseDate(mapped.ustalikBelgesi)
+          if (ustalikDate) personnelData.ustalikBelgesi = ustalikDate
+        }
 
         // Upsert personnel
         const existing = await prisma.personnel.findUnique({ where: { sicilNo } })
@@ -266,6 +304,10 @@ export async function POST(request: NextRequest) {
         }
         if (mapped.bankaHesapNo) {
           sensitiveData.bankaHesapNo = mapped.bankaHesapNo.toString().trim()
+          hasSensitive = true
+        }
+        if (mapped.ibanNo) {
+          sensitiveData.ibanNo = mapped.ibanNo.toString().trim()
           hasSensitive = true
         }
         if (mapped.dogumTarihi) {

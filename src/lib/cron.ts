@@ -72,6 +72,22 @@ export function initializeCalibrationScheduler() {
     }
   })
 
+  // Personel değerlendirme hatırlatması (2 ay / 6 ay) - Her gün 09:45
+  cron.schedule('45 9 * * *', async () => {
+    console.log('⏰ Running scheduled personnel evaluation check...')
+
+    try {
+      const response = await fetch(`${baseUrl}/api/personnel/check-evaluations`, {
+        method: 'POST',
+      })
+
+      const data = await response.json()
+      console.log('✅ Personnel evaluation check completed:', data)
+    } catch (error) {
+      console.error('❌ Personnel evaluation check failed:', error)
+    }
+  })
+
   // LDAP → DB kullanıcı senkronizasyonu - Her 6 saatte bir (02:00, 08:00, 14:00, 20:00)
   cron.schedule('0 2,8,14,20 * * *', async () => {
     console.log('⏰ Running scheduled LDAP user sync...')
@@ -115,6 +131,7 @@ export function initializeCalibrationScheduler() {
   console.log('   - Calibration: 09:00 AM daily')
   console.log('   - Task notifications: 09:15 AM daily')
   console.log('   - Escalation check: 09:30 AM daily')
+  console.log('   - Personnel evaluation (2ay/6ay): 09:45 AM daily')
   console.log('   - LDAP user sync: every 6 hours (02:00, 08:00, 14:00, 20:00)')
   console.log('   - LDAP initial sync: 30s after startup')
   console.log('   - Backup scheduler: every minute')

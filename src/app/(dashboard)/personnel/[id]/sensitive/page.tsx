@@ -17,6 +17,7 @@ type SensitiveData = {
   dogumTarihi: string | null
   bankaSube: string | null
   bankaHesapNo: string | null
+  ibanNo: string | null
   updatedBy: string | null
   updatedAt: string | null
 }
@@ -89,6 +90,7 @@ export default function SensitivePage() {
           dogumTarihi: form.dogumTarihi,
           bankaSube: form.bankaSube,
           bankaHesapNo: form.bankaHesapNo,
+          ibanNo: form.ibanNo,
         }),
       })
       if (!res.ok) {
@@ -238,9 +240,13 @@ export default function SensitivePage() {
                 <Label>Banka Şube</Label>
                 <Input value={form.bankaSube || ""} onChange={(e) => setForm(prev => ({ ...prev, bankaSube: e.target.value }))} />
               </div>
-              <div className="space-y-2 md:col-span-2">
+              <div className="space-y-2">
                 <Label>Banka Hesap No</Label>
                 <Input value={form.bankaHesapNo || ""} onChange={(e) => setForm(prev => ({ ...prev, bankaHesapNo: e.target.value }))} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>IBAN No</Label>
+                <Input value={form.ibanNo || ""} onChange={(e) => setForm(prev => ({ ...prev, ibanNo: e.target.value }))} placeholder="TR..." />
               </div>
             </div>
           ) : data ? (
@@ -266,9 +272,13 @@ export default function SensitivePage() {
                 <p className="text-sm text-muted-foreground">Banka Şube</p>
                 <p className="font-medium">{data.bankaSube || "-"}</p>
               </div>
-              <div className="md:col-span-2">
+              <div>
                 <p className="text-sm text-muted-foreground">Banka Hesap No</p>
                 <p className="font-medium font-mono">{data.bankaHesapNo || "-"}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">IBAN No</p>
+                <p className="font-medium font-mono">{data.ibanNo || "-"}</p>
               </div>
             </div>
           ) : (

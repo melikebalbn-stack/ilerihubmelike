@@ -60,6 +60,7 @@ export async function GET(
         dogumTarihi: sensitive.dogumTarihi,
         bankaSube: sensitive.bankaSube,
         bankaHesapNo: sensitive.bankaHesapNo,
+        ibanNo: sensitive.ibanNo,
         updatedAt: sensitive.updatedAt,
         updatedBy: sensitive.updatedBy,
       })
@@ -74,6 +75,7 @@ export async function GET(
       dogumTarihi: sensitive.dogumTarihi,
       bankaSube: sensitive.bankaSube,
       bankaHesapNo: maskValue(sensitive.bankaHesapNo),
+      ibanNo: maskValue(sensitive.ibanNo),
       updatedAt: sensitive.updatedAt,
       updatedBy: sensitive.updatedBy,
     })

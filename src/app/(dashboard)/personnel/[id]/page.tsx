@@ -11,11 +11,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { NativeSelect as Select } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye } from "lucide-react"
+import { PersonnelAutocomplete } from "@/components/ui/personnel-autocomplete"
 import { toast } from "sonner"
 import {
-  BOLUMLER,
   KAN_GRUBU_LABELS,
   CINSIYET_LABELS,
   YAKA_LABELS,
@@ -35,6 +34,8 @@ type PersonnelData = {
   bolum: string | null
   bolumDetay: string | null
   birimSorumlusu: string | null
+  sorumlu2: string | null
+  sorumlu3: string | null
   bolumMuduru: string | null
   direktEndirekt: string | null
   asansorMekanik: string | null
@@ -42,13 +43,23 @@ type PersonnelData = {
   iseGirisTarihi: string | null
   telefon: string | null
   interKepMail: string | null
-  azureAdEmail: string | null
+  mailAdresi: string | null
+  ikametAdresi: string | null
+  serviceRoute: string | null
+  serviceStop: string | null
   egitimYeri: string | null
   egitimTipi: string | null
   egitimAlani: string | null
   mezuniyetYili: string | null
-  mykUstalikKalfalik: boolean
-  ilkYardimci: boolean
+  ilkYardimciBelgesi: string | null
+  kalfalikBelgesi: string | null
+  ustalikBelgesi: string | null
+  forkliftEhliyeti: boolean
+  vincEhliyeti: boolean
+  yanginSertifikasi: string | null
+  mykBelgesiTarihi: string | null
+  eTrans: boolean
+  ustaOgreticiBelgesi: boolean
   emekli: boolean
   engelli: boolean
   aktif: boolean
@@ -72,6 +83,24 @@ export default function PersonnelDetailPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(searchParams.get("edit") === "true")
+  const [jobTitles, setJobTitles] = useState<string[]>([])
+  const [departments, setDepartments] = useState<string[]>([])
+  const [personnelNames, setPersonnelNames] = useState<string[]>([])
+
+  useEffect(() => {
+    fetch("/api/settings/job-titles")
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { name: string }[]) => setJobTitles(data.map(j => j.name)))
+      .catch(() => {})
+    fetch("/api/settings/hr-departments")
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { name: string }[]) => setDepartments(data.map(d => d.name)))
+      .catch(() => {})
+    fetch("/api/overtime/personnel-list")
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { adSoyad: string }[]) => setPersonnelNames(data.map(p => p.adSoyad)))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -100,8 +129,26 @@ export default function PersonnelDetailPage() {
     if (id) fetchData()
   }, [id])
 
+  const addMonths = (iso: string, months: number): string => {
+    if (!iso) return ""
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return ""
+    const day = d.getDate()
+    d.setMonth(d.getMonth() + months)
+    if (d.getDate() !== day) d.setDate(0)
+    return d.toISOString().split("T")[0]
+  }
+
   const set = (field: string, value: string | boolean) => {
-    setForm((prev) => ({ ...prev, [field]: value }))
+    setForm((prev) => {
+      const next: Record<string, unknown> = { ...prev, [field]: value }
+      // İşe giriş tarihi değişince deneme (2 ay) ve 6 ay değerlendirme tarihlerini otomatik hesapla
+      if (field === "iseGirisTarihi" && typeof value === "string") {
+        next.denemeDegerlendirme = addMonths(value, 2) || null
+        next.altiAyDegerlendirme = addMonths(value, 6) || null
+      }
+      return next as typeof prev
+    })
   }
 
   const handleSave = async () => {
@@ -182,13 +229,32 @@ export default function PersonnelDetailPage() {
             <h1 className="text-2xl font-bold">{data.adSoyad}</h1>
             <p className="text-sm text-muted-foreground">Sicil No: {data.sicilNo}</p>
           </div>
-          {!data.aktif && <Badge variant="destructive">Pasif</Badge>}
+          {editMode ? (
+            <div className="flex items-center gap-2 ml-2">
+              <button
+                type="button"
+                onClick={() => set("aktif", !form.aktif)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  form.aktif ? "bg-green-500" : "bg-gray-300"
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                  form.aktif ? "translate-x-6" : "translate-x-1"
+                }`} />
+              </button>
+              <span className={`text-sm font-medium ${form.aktif ? "text-green-700" : "text-red-600"}`}>
+                {form.aktif ? "Aktif" : "Pasif"}
+              </span>
+            </div>
+          ) : (
+            !data.aktif && <Badge variant="destructive">Pasif</Badge>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/personnel/${id}/sensitive`}>
-                <Shield className="h-4 w-4 mr-2" />
+              <Link href={`/personnel/${id}/sensitive`} className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                <Shield className="h-4 w-4" />
                 Hassas Bilgiler
               </Link>
             </Button>
@@ -292,15 +358,26 @@ export default function PersonnelDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Görev *</Label>
-                <Input value={form.gorev || ""} onChange={(e) => set("gorev", e.target.value)} />
+                <Select value={form.gorev || ""} onChange={(e) => set("gorev", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  {jobTitles.map((j) => (
+                    <option key={j} value={j}>{j}</option>
+                  ))}
+                  {form.gorev && !jobTitles.includes(form.gorev) && (
+                    <option value={form.gorev}>{form.gorev} (eski)</option>
+                  )}
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Bölüm *</Label>
                 <Select value={form.bolum || ""} onChange={(e) => set("bolum", e.target.value)}>
                   <option value="">Seçiniz</option>
-                  {BOLUMLER.map((b) => (
+                  {departments.map((b) => (
                     <option key={b} value={b}>{b}</option>
                   ))}
+                  {form.bolum && !departments.includes(form.bolum) && (
+                    <option value={form.bolum}>{form.bolum} (eski)</option>
+                  )}
                 </Select>
               </div>
               <div className="space-y-2">
@@ -308,12 +385,20 @@ export default function PersonnelDetailPage() {
                 <Input value={form.bolumDetay || ""} onChange={(e) => set("bolumDetay", e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Birim Sorumlusu</Label>
-                <Input value={form.birimSorumlusu || ""} onChange={(e) => set("birimSorumlusu", e.target.value)} />
+                <Label>1. Sorumlu</Label>
+                <PersonnelAutocomplete value={form.birimSorumlusu || ""} onChange={(v) => set("birimSorumlusu", v)} personnel={personnelNames} />
+              </div>
+              <div className="space-y-2">
+                <Label>2. Sorumlu</Label>
+                <PersonnelAutocomplete value={form.sorumlu2 || ""} onChange={(v) => set("sorumlu2", v)} personnel={personnelNames} />
+              </div>
+              <div className="space-y-2">
+                <Label>3. Sorumlu</Label>
+                <PersonnelAutocomplete value={form.sorumlu3 || ""} onChange={(v) => set("sorumlu3", v)} personnel={personnelNames} />
               </div>
               <div className="space-y-2">
                 <Label>Bölüm Müdürü</Label>
-                <Input value={form.bolumMuduru || ""} onChange={(e) => set("bolumMuduru", e.target.value)} />
+                <PersonnelAutocomplete value={form.bolumMuduru || ""} onChange={(v) => set("bolumMuduru", v)} personnel={personnelNames} />
               </div>
               <div className="space-y-2">
                 <Label>Direkt / Endirekt</Label>
@@ -335,11 +420,42 @@ export default function PersonnelDetailPage() {
               </div>
               <div className="space-y-2">
                 <Label>Masraf Merkezi</Label>
-                <Input value={form.masrafMerkezi || ""} onChange={(e) => set("masrafMerkezi", e.target.value)} />
+                <Select value={form.masrafMerkezi || ""} onChange={(e) => set("masrafMerkezi", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  <option value="720.1.01">720.1.01</option>
+                  <option value="750.1.01">750.1.01</option>
+                  <option value="760.1.01">760.1.01</option>
+                  <option value="770.1.01">770.1.01</option>
+                  {form.masrafMerkezi && !["720.1.01","750.1.01","760.1.01","770.1.01"].includes(form.masrafMerkezi) && (
+                    <option value={form.masrafMerkezi}>{form.masrafMerkezi} (eski)</option>
+                  )}
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>İşe Giriş Tarihi *</Label>
                 <Input type="date" value={form.iseGirisTarihi || ""} onChange={(e) => set("iseGirisTarihi", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Servis</Label>
+                <Select value={form.serviceRoute || ""} onChange={(e) => set("serviceRoute", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  <option value="ARAPÇEŞME">ARAPÇEŞME</option>
+                  <option value="AYDOS-KURTKÖY">AYDOS-KURTKÖY</option>
+                  <option value="KAVACIK-BEYKOZ">KAVACIK-BEYKOZ</option>
+                  <option value="BEYLİKBAĞI GÜZELTEPE">BEYLİKBAĞI GÜZELTEPE</option>
+                  <option value="BEYLİKBAĞI ULAŞTEPE">BEYLİKBAĞI ULAŞTEPE</option>
+                  <option value="DARICA">DARICA</option>
+                  <option value="ÇARŞI-DEVELİ">ÇARŞI-DEVELİ</option>
+                  <option value="KAYNARCA-KARTAL">KAYNARCA-KARTAL</option>
+                  <option value="ÜSKÜDAR">ÜSKÜDAR</option>
+                  {form.serviceRoute && !["ARAPÇEŞME","AYDOS-KURTKÖY","KAVACIK-BEYKOZ","BEYLİKBAĞI GÜZELTEPE","BEYLİKBAĞI ULAŞTEPE","DARICA","ÇARŞI-DEVELİ","KAYNARCA-KARTAL","ÜSKÜDAR"].includes(form.serviceRoute) && (
+                    <option value={form.serviceRoute}>{form.serviceRoute} (eski)</option>
+                  )}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Durak Adı</Label>
+                <Input value={form.serviceStop || ""} onChange={(e) => set("serviceStop", e.target.value)} />
               </div>
             </div>
           ) : (
@@ -347,12 +463,16 @@ export default function PersonnelDetailPage() {
               <div><p className="text-sm text-muted-foreground">Görev</p><p className="font-medium">{data.gorev || "-"}</p></div>
               <div><p className="text-sm text-muted-foreground">Bölüm</p><p className="font-medium">{data.bolum || "-"}</p></div>
               <div><p className="text-sm text-muted-foreground">Bölüm Detay</p><p className="font-medium">{data.bolumDetay || "-"}</p></div>
-              <div><p className="text-sm text-muted-foreground">Birim Sorumlusu</p><p className="font-medium">{data.birimSorumlusu || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">1. Sorumlu</p><p className="font-medium">{data.birimSorumlusu || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">2. Sorumlu</p><p className="font-medium">{data.sorumlu2 || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">3. Sorumlu</p><p className="font-medium">{data.sorumlu3 || "-"}</p></div>
               <div><p className="text-sm text-muted-foreground">Bölüm Müdürü</p><p className="font-medium">{data.bolumMuduru || "-"}</p></div>
               <div><p className="text-sm text-muted-foreground">Direkt / Endirekt</p><p className="font-medium">{displayValue(data.direktEndirekt, DIREKT_ENDIREKT_LABELS)}</p></div>
               <div><p className="text-sm text-muted-foreground">Asansör / Mekanik</p><p className="font-medium">{displayValue(data.asansorMekanik, ASANSOR_MEKANIK_LABELS)}</p></div>
               <div><p className="text-sm text-muted-foreground">Masraf Merkezi</p><p className="font-medium">{data.masrafMerkezi || "-"}</p></div>
               <div><p className="text-sm text-muted-foreground">İşe Giriş Tarihi</p><p className="font-medium">{formatDate(data.iseGirisTarihi)}</p></div>
+              <div><p className="text-sm text-muted-foreground">Servis</p><p className="font-medium">{data.serviceRoute || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Durak Adı</p><p className="font-medium">{data.serviceStop || "-"}</p></div>
             </div>
           )}
         </CardContent>
@@ -371,19 +491,24 @@ export default function PersonnelDetailPage() {
                 <Input value={form.telefon || ""} onChange={(e) => set("telefon", e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>İnterkep Mail</Label>
+                <Label>KEP Adresi</Label>
                 <Input type="email" value={form.interKepMail || ""} onChange={(e) => set("interKepMail", e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Azure AD Email</Label>
-                <Input type="email" value={form.azureAdEmail || ""} onChange={(e) => set("azureAdEmail", e.target.value)} />
+                <Label>Mail Adresi</Label>
+                <Input type="email" value={form.mailAdresi || ""} onChange={(e) => set("mailAdresi", e.target.value)} />
+              </div>
+              <div className="space-y-2 md:col-span-3">
+                <Label>İkamet Adresi</Label>
+                <Input value={form.ikametAdresi || ""} onChange={(e) => set("ikametAdresi", e.target.value)} />
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div><p className="text-sm text-muted-foreground">Telefon</p><p className="font-medium">{data.telefon || "-"}</p></div>
-              <div><p className="text-sm text-muted-foreground">İnterkep Mail</p><p className="font-medium">{data.interKepMail || "-"}</p></div>
-              <div><p className="text-sm text-muted-foreground">Azure AD Email</p><p className="font-medium">{data.azureAdEmail || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">KEP Adresi</p><p className="font-medium">{data.interKepMail || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Mail Adresi</p><p className="font-medium">{data.mailAdresi || "-"}</p></div>
+              <div className="md:col-span-3"><p className="text-sm text-muted-foreground">İkamet Adresi</p><p className="font-medium">{data.ikametAdresi || "-"}</p></div>
             </div>
           )}
         </CardContent>
@@ -403,7 +528,20 @@ export default function PersonnelDetailPage() {
               </div>
               <div className="space-y-2">
                 <Label>Eğitim Tipi</Label>
-                <Input value={form.egitimTipi || ""} onChange={(e) => set("egitimTipi", e.target.value)} />
+                <Select value={form.egitimTipi || ""} onChange={(e) => set("egitimTipi", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  <option value="İlköğretim">İlköğretim</option>
+                  <option value="Lise">Lise</option>
+                  <option value="E.M.L.">E.M.L.</option>
+                  <option value="T.M.L">T.M.L</option>
+                  <option value="M.Y.O.">M.Y.O.</option>
+                  <option value="Üniversite">Üniversite</option>
+                  <option value="ÜNİVERSİTE MH.">ÜNİVERSİTE MH.</option>
+                  <option value="ÜNİVERSİTE Y.L.">ÜNİVERSİTE Y.L.</option>
+                  {form.egitimTipi && !["İlköğretim","Lise","E.M.L.","T.M.L","M.Y.O.","Üniversite","ÜNİVERSİTE MH.","ÜNİVERSİTE Y.L."].includes(form.egitimTipi) && (
+                    <option value={form.egitimTipi}>{form.egitimTipi} (eski)</option>
+                  )}
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Eğitim Alanı</Label>
@@ -413,14 +551,6 @@ export default function PersonnelDetailPage() {
                 <Label>Mezuniyet Yılı</Label>
                 <Input value={form.mezuniyetYili || ""} onChange={(e) => set("mezuniyetYili", e.target.value)} />
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox id="edit-myk" checked={!!form.mykUstalikKalfalik} onCheckedChange={(v) => set("mykUstalikKalfalik", !!v)} />
-                <Label htmlFor="edit-myk" className="cursor-pointer">MYK Ustalık/Kalfalık</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox id="edit-ilkyardim" checked={!!form.ilkYardimci} onCheckedChange={(v) => set("ilkYardimci", !!v)} />
-                <Label htmlFor="edit-ilkyardim" className="cursor-pointer">İlk Yardımcı</Label>
-              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -428,14 +558,79 @@ export default function PersonnelDetailPage() {
               <div><p className="text-sm text-muted-foreground">Eğitim Tipi</p><p className="font-medium">{data.egitimTipi || "-"}</p></div>
               <div><p className="text-sm text-muted-foreground">Eğitim Alanı</p><p className="font-medium">{data.egitimAlani || "-"}</p></div>
               <div><p className="text-sm text-muted-foreground">Mezuniyet Yılı</p><p className="font-medium">{data.mezuniyetYili || "-"}</p></div>
-              <div><p className="text-sm text-muted-foreground">MYK Ustalık/Kalfalık</p><p className="font-medium">{data.mykUstalikKalfalik ? "Evet" : "Hayır"}</p></div>
-              <div><p className="text-sm text-muted-foreground">İlk Yardımcı</p><p className="font-medium">{data.ilkYardimci ? "Evet" : "Hayır"}</p></div>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Section 5: Özel Durum */}
+      {/* Section 5: Belgeler */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Belgeler</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {editMode ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>İlk Yardımcı Belgesi Tarihi</Label>
+                <Input type="date" value={form.ilkYardimciBelgesi ? new Date(form.ilkYardimciBelgesi).toISOString().slice(0, 10) : ""} onChange={(e) => set("ilkYardimciBelgesi", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 pt-6">
+                  <Checkbox id="edit-kalfalikBelgesi" checked={!!form.kalfalikBelgesi} onCheckedChange={(c) => set("kalfalikBelgesi", c ? new Date().toISOString() : "")} />
+                  <Label htmlFor="edit-kalfalikBelgesi" className="cursor-pointer">Kalfalık Belgesi Var</Label>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 pt-6">
+                  <Checkbox id="edit-ustalikBelgesi" checked={!!form.ustalikBelgesi} onCheckedChange={(c) => set("ustalikBelgesi", c ? new Date().toISOString() : "")} />
+                  <Label htmlFor="edit-ustalikBelgesi" className="cursor-pointer">Ustalık Belgesi Var</Label>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Yangın Sertifikası Tarihi</Label>
+                <Input type="date" value={form.yanginSertifikasi ? new Date(form.yanginSertifikasi).toISOString().slice(0, 10) : ""} onChange={(e) => set("yanginSertifikasi", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>MYK Belgesi Geçerlilik Tarihi</Label>
+                <Input type="date" value={form.mykBelgesiTarihi ? new Date(form.mykBelgesiTarihi).toISOString().slice(0, 10) : ""} onChange={(e) => set("mykBelgesiTarihi", e.target.value)} />
+              </div>
+              <div className="flex flex-wrap gap-6 items-center md:col-span-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox id="edit-forklift" checked={!!form.forkliftEhliyeti} onCheckedChange={(v) => set("forkliftEhliyeti", !!v)} />
+                  <Label htmlFor="edit-forklift" className="cursor-pointer">Forklift Ehliyet</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox id="edit-vincEhliyeti" checked={!!form.vincEhliyeti} onCheckedChange={(v) => set("vincEhliyeti", !!v)} />
+                  <Label htmlFor="edit-vincEhliyeti" className="cursor-pointer">Vinç Operatörlük Ehliyet</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox id="edit-etrans" checked={!!form.eTrans} onCheckedChange={(v) => set("eTrans", !!v)} />
+                  <Label htmlFor="edit-etrans" className="cursor-pointer">E.Transpalet Ehliyet</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox id="edit-ustaogretici" checked={!!form.ustaOgreticiBelgesi} onCheckedChange={(v) => set("ustaOgreticiBelgesi", !!v)} />
+                  <Label htmlFor="edit-ustaogretici" className="cursor-pointer">Usta Öğretici Belgesi</Label>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div><p className="text-sm text-muted-foreground">İlk Yardımcı Belgesi</p><p className="font-medium">{formatDate(data.ilkYardimciBelgesi)}</p></div>
+              <div><p className="text-sm text-muted-foreground">Kalfalık Belgesi</p><p className="font-medium">{data.kalfalikBelgesi ? "Var" : "Yok"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Ustalık Belgesi</p><p className="font-medium">{data.ustalikBelgesi ? "Var" : "Yok"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Yangın Sertifikası</p><p className="font-medium">{formatDate(data.yanginSertifikasi)}</p></div>
+              <div><p className="text-sm text-muted-foreground">MYK Belgesi Geçerlilik</p><p className="font-medium">{formatDate(data.mykBelgesiTarihi)}</p></div>
+              <div><p className="text-sm text-muted-foreground">Forklift Ehliyet</p><p className="font-medium">{data.forkliftEhliyeti ? "Evet" : "Hayır"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Vinç Operatörlük Ehliyet</p><p className="font-medium">{data.vincEhliyeti ? "Evet" : "Hayır"}</p></div>
+              <div><p className="text-sm text-muted-foreground">E.Transpalet Ehliyet</p><p className="font-medium">{data.eTrans ? "Evet" : "Hayır"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Usta Öğretici Belgesi</p><p className="font-medium">{data.ustaOgreticiBelgesi ? "Evet" : "Hayır"}</p></div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Section 6: Özel Durum */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Özel Durum</CardTitle>
@@ -451,16 +646,11 @@ export default function PersonnelDetailPage() {
                 <Checkbox id="edit-engelli" checked={!!form.engelli} onCheckedChange={(v) => set("engelli", !!v)} />
                 <Label htmlFor="edit-engelli" className="cursor-pointer">Engelli</Label>
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox id="edit-aktif" checked={!!form.aktif} onCheckedChange={(v) => set("aktif", !!v)} />
-                <Label htmlFor="edit-aktif" className="cursor-pointer">Aktif</Label>
-              </div>
             </div>
           ) : (
             <div className="flex flex-wrap gap-6">
               <div><p className="text-sm text-muted-foreground">Emekli</p><p className="font-medium">{data.emekli ? "Evet" : "Hayır"}</p></div>
               <div><p className="text-sm text-muted-foreground">Engelli</p><p className="font-medium">{data.engelli ? "Evet" : "Hayır"}</p></div>
-              <div><p className="text-sm text-muted-foreground">Aktif</p><p className="font-medium">{data.aktif ? "Evet" : "Hayır"}</p></div>
             </div>
           )}
         </CardContent>
@@ -473,20 +663,37 @@ export default function PersonnelDetailPage() {
         </CardHeader>
         <CardContent>
           {editMode ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Deneme Süresi (2 Ay) Değerlendirme</Label>
-                <Textarea value={form.denemeDegerlendirme || ""} onChange={(e) => set("denemeDegerlendirme", e.target.value)} rows={3} />
-              </div>
-              <div className="space-y-2">
-                <Label>İlk 6 Ay Değerlendirme</Label>
-                <Textarea value={form.altiAyDegerlendirme || ""} onChange={(e) => set("altiAyDegerlendirme", e.target.value)} rows={3} />
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Değerlendirme tarihleri, İşe Giriş Tarihi alanından otomatik hesaplanır.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Deneme Süresi (2 Ay) Değerlendirme</Label>
+                  <Input
+                    type="date"
+                    value={form.denemeDegerlendirme ? new Date(form.denemeDegerlendirme).toISOString().slice(0, 10) : ""}
+                    readOnly
+                    disabled
+                    className="bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>İlk 6 Ay Değerlendirme</Label>
+                  <Input
+                    type="date"
+                    value={form.altiAyDegerlendirme ? new Date(form.altiAyDegerlendirme).toISOString().slice(0, 10) : ""}
+                    readOnly
+                    disabled
+                    className="bg-gray-50"
+                  />
+                </div>
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><p className="text-sm text-muted-foreground">Deneme Süresi (2 Ay) Değerlendirme</p><p className="font-medium whitespace-pre-wrap">{data.denemeDegerlendirme || "-"}</p></div>
-              <div><p className="text-sm text-muted-foreground">İlk 6 Ay Değerlendirme</p><p className="font-medium whitespace-pre-wrap">{data.altiAyDegerlendirme || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Deneme Süresi (2 Ay) Değerlendirme</p><p className="font-medium">{formatDate(data.denemeDegerlendirme)}</p></div>
+              <div><p className="text-sm text-muted-foreground">İlk 6 Ay Değerlendirme</p><p className="font-medium">{formatDate(data.altiAyDegerlendirme)}</p></div>
             </div>
           )}
         </CardContent>

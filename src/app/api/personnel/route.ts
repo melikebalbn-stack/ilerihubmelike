@@ -24,15 +24,26 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const bolum = searchParams.get('bolum')
-    const yakaRengi = searchParams.get('yakaRengi')
+    const yakaRengi = searchParams.get('yakaRengi') || searchParams.get('yaka')
+    const durumParam = searchParams.get('durum')
     const aktifParam = searchParams.get('aktif')
     const search = searchParams.get('search')
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '25')))
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '25')))
+    const sortBy = searchParams.get('sortBy') || 'adSoyad'
+    const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc'
 
-    const aktif = aktifParam === 'false' ? false : true
-
-    const where: any = { aktif }
+    // Durum filtresi
+    const where: any = {}
+    if (durumParam === 'PASIF') {
+      where.aktif = false
+    } else if (durumParam === 'TUMU') {
+      // tümü - aktif filtresi yok
+    } else if (aktifParam === 'false') {
+      where.aktif = false
+    } else {
+      where.aktif = true
+    }
 
     if (bolum) {
       where.bolum = bolum
@@ -50,53 +61,29 @@ export async function GET(request: NextRequest) {
       ]
     }
 
+    // Sıralama
+    const orderBy: any = {}
+    orderBy[sortBy] = sortDir
+
     const [personnel, total] = await Promise.all([
       prisma.personnel.findMany({
         where,
-        select: {
-          id: true,
-          sicilNo: true,
-          sinif: true,
-          cinsiyet: true,
-          adSoyad: true,
-          yakaRengi: true,
-          direktEndirekt: true,
-          asansorMekanik: true,
-          iseGirisTarihi: true,
-          gorev: true,
-          bolumDetay: true,
-          bolum: true,
-          birimSorumlusu: true,
-          bolumMuduru: true,
-          masrafMerkezi: true,
-          interKepMail: true,
-          denemeDegerlendirme: true,
-          altiAyDegerlendirme: true,
-          telefon: true,
-          kanGrubu: true,
-          egitimYeri: true,
-          egitimTipi: true,
-          egitimAlani: true,
-          mezuniyetYili: true,
-          mykUstalikKalfalik: true,
-          ilkYardimci: true,
-          emekli: true,
-          engelli: true,
-          aktif: true,
-          serviceRoute: true,
-          serviceStop: true,
-          azureAdEmail: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-        orderBy: { adSoyad: 'asc' },
+        orderBy,
         skip: (page - 1) * limit,
         take: limit,
       }),
       prisma.personnel.count({ where }),
     ])
 
-    return NextResponse.json({ personnel, total, page, limit })
+    const totalPages = Math.ceil(total / limit)
+
+    return NextResponse.json({
+      personnel,
+      total,
+      page,
+      limit,
+      pagination: { page, limit, total, totalPages },
+    })
   } catch (error) {
     console.error('Personel listesi alınırken hata:', error)
     return NextResponse.json({ error: 'Personel listesi alınırken bir hata oluştu' }, { status: 500 })
@@ -120,6 +107,37 @@ export async function POST(request: NextRequest) {
     // Parse date fields
     if (personnelData.iseGirisTarihi) {
       personnelData.iseGirisTarihi = new Date(personnelData.iseGirisTarihi)
+    }
+    if (personnelData.denemeDegerlendirme) {
+      personnelData.denemeDegerlendirme = new Date(personnelData.denemeDegerlendirme)
+    }
+    if (personnelData.altiAyDegerlendirme) {
+      personnelData.altiAyDegerlendirme = new Date(personnelData.altiAyDegerlendirme)
+    }
+    if (personnelData.ilkYardimciBelgesi) {
+      personnelData.ilkYardimciBelgesi = new Date(personnelData.ilkYardimciBelgesi)
+    }
+    if (personnelData.kalfalikBelgesi) {
+      personnelData.kalfalikBelgesi = new Date(personnelData.kalfalikBelgesi)
+    }
+    if (personnelData.ustalikBelgesi) {
+      personnelData.ustalikBelgesi = new Date(personnelData.ustalikBelgesi)
+    }
+    if (personnelData.yanginSertifikasi) {
+      personnelData.yanginSertifikasi = new Date(personnelData.yanginSertifikasi)
+    }
+    if (personnelData.mykBelgesiTarihi) {
+      personnelData.mykBelgesiTarihi = new Date(personnelData.mykBelgesiTarihi)
+    }
+
+    // Parse int fields
+    if (personnelData.mezuniyetYili) {
+      personnelData.mezuniyetYili = parseInt(personnelData.mezuniyetYili) || null
+    }
+
+    // Boş stringleri temizle (Prisma enum hataları için)
+    for (const key of Object.keys(personnelData)) {
+      if (personnelData[key] === '') personnelData[key] = null
     }
 
     personnelData.createdBy = session.user.id

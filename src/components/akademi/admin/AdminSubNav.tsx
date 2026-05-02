@@ -8,6 +8,7 @@ import {
   UserCheck,
   LayoutDashboard,
   Package,
+  FileQuestion,
   type LucideIcon,
 } from "lucide-react";
 
@@ -20,6 +21,7 @@ const TABS: {
   { href: "/akademi/admin", label: "Genel Bakış", icon: LayoutDashboard, exact: true },
   { href: "/akademi/admin/courses", label: "Kurslar", icon: BookOpen },
   { href: "/akademi/admin/packages", label: "Paketler", icon: Package },
+  { href: "/akademi/admin/exams", label: "Sınavlar", icon: FileQuestion },
   { href: "/akademi/admin/assignments", label: "Atamalar", icon: UserCheck },
   { href: "/akademi/admin/users", label: "Kullanıcılar", icon: Users },
 ];

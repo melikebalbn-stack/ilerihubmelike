@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Award,
   Palette,
+  BarChart3,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,6 +29,7 @@ const TABS: {
   { href: "/akademi/admin/grading", label: "Değerlendirme", icon: ClipboardCheck },
   { href: "/akademi/admin/certificates", label: "Sertifikalar", icon: Award },
   { href: "/akademi/admin/certificate-templates", label: "Şablonlar", icon: Palette },
+  { href: "/akademi/admin/reports", label: "Raporlar", icon: BarChart3 },
   { href: "/akademi/admin/assignments", label: "Atamalar", icon: UserCheck },
   { href: "/akademi/admin/users", label: "Kullanıcılar", icon: Users },
 ];

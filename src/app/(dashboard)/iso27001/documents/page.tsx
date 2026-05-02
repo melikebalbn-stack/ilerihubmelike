@@ -64,6 +64,24 @@ import {
 import { toast } from "sonner"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { ExcelViewerDialog } from "@/components/iso27001/excel-viewer-dialog"
+import { NewVersionModal } from "@/components/iso27001/NewVersionModal"
+import { useRouter } from "next/navigation"
+import {
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
+import { FileUp, Info } from "lucide-react"
+
+const BGYS_ALLOWED_ROLES = ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "QUALITY_MANAGER"]
+const BGYS_ALLOWED_EMAILS = [
+  "melike.balaban@ilerigroup.com",
+  "melih.dilben@ilerigroup.com",
+]
+const isBgysSorumlu = (email?: string | null, role?: string | null) => {
+  if (!email) return false
+  if (BGYS_ALLOWED_EMAILS.includes(email.toLowerCase())) return true
+  return BGYS_ALLOWED_ROLES.includes(role ?? "")
+}
 
 // Kategori bilgileri
 const CATEGORIES = [
@@ -134,6 +152,22 @@ export default function Iso27001DocumentsPage() {
     controlId: "",
     reviewFrequency: "365",
   })
+
+  // Excel viewer state
+  const [excelViewerOpen, setExcelViewerOpen] = useState(false)
+  const [viewingDoc, setViewingDoc] = useState<Document | null>(null)
+
+  // Yeni Versiyon Modal state
+  const [newVersionModalOpen, setNewVersionModalOpen] = useState(false)
+  const [versionTargetDoc, setVersionTargetDoc] = useState<Document | null>(null)
+
+  const router = useRouter()
+  const currentUser = session?.user as
+    | { email?: string | null; role?: string | null; id?: string }
+    | undefined
+  const canManageVersions = (doc: Document) =>
+    isBgysSorumlu(currentUser?.email, currentUser?.role) ||
+    currentUser?.email === doc.ownerEmail
 
   // İmza state
   const [isSignDialogOpen, setIsSignDialogOpen] = useState(false)
@@ -366,6 +400,28 @@ export default function Iso27001DocumentsPage() {
     }
   }
 
+  // Görüntüle: Excel ise tablo viewer, diğerlerinde yeni sekmede aç
+  const isExcelDoc = (doc: Document) => {
+    const ft = (doc.fileType || "").toLowerCase()
+    const fn = (doc.fileName || "").toLowerCase()
+    return (
+      ft === "xlsx" ||
+      ft === "xls" ||
+      fn.endsWith(".xlsx") ||
+      fn.endsWith(".xls")
+    )
+  }
+
+  const handleView = (doc: Document) => {
+    if (isExcelDoc(doc)) {
+      setViewingDoc(doc)
+      setExcelViewerOpen(true)
+      return
+    }
+    const url = doc.fileUrl.startsWith("/api/") ? doc.fileUrl : `/api/files${doc.fileUrl}`
+    window.open(url, "_blank", "noopener,noreferrer")
+  }
+
   // Dosya indirme (programmatik - sayfa navigasyonu tetiklemez)
   const handleDownload = async (doc: Document) => {
     try {
@@ -544,7 +600,11 @@ export default function Iso27001DocumentsPage() {
                     Math.ceil((new Date(doc.nextReviewDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) <= 30
 
                   return (
-                    <TableRow key={doc.id}>
+                    <TableRow
+                      key={doc.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => router.push(`/iso27001/documents/${doc.id}`)}
+                    >
                       <TableCell className="font-mono text-sm">{doc.documentNumber}</TableCell>
                       <TableCell>
                         <div>
@@ -575,7 +635,10 @@ export default function Iso27001DocumentsPage() {
                           </div>
                         ) : "-"}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell
+                        className="text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">
@@ -583,11 +646,15 @@ export default function Iso27001DocumentsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <a href={doc.fileUrl.startsWith("/api/") ? doc.fileUrl : `/api/files${doc.fileUrl}`} target="_blank" rel="noopener noreferrer">
-                                <Eye className="h-4 w-4 mr-2" />
-                                Goruntule
-                              </a>
+                            <DropdownMenuItem
+                              onClick={() => router.push(`/iso27001/documents/${doc.id}`)}
+                            >
+                              <Info className="h-4 w-4 mr-2" />
+                              Detay
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleView(doc)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              Goruntule
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleDownload(doc)}>
                               <Download className="h-4 w-4 mr-2" />
@@ -613,6 +680,20 @@ export default function Iso27001DocumentsPage() {
                               <FileCheck className="h-4 w-4 mr-2" />
                               Imzalari Gor ({doc._count?.signatures || 0})
                             </DropdownMenuItem>
+                            {canManageVersions(doc) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setVersionTargetDoc(doc)
+                                    setNewVersionModalOpen(true)
+                                  }}
+                                >
+                                  <FileUp className="h-4 w-4 mr-2" />
+                                  Yeni Versiyon Yükle
+                                </DropdownMenuItem>
+                              </>
+                            )}
                             <DropdownMenuItem
                               onClick={() => handleDelete(doc.id)}
                               className="text-red-600"
@@ -899,6 +980,44 @@ export default function Iso27001DocumentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Yeni Versiyon Modal */}
+      <NewVersionModal
+        open={newVersionModalOpen}
+        onClose={() => {
+          setNewVersionModalOpen(false)
+          setVersionTargetDoc(null)
+        }}
+        document={
+          versionTargetDoc
+            ? {
+                id: versionTargetDoc.id,
+                documentNumber: versionTargetDoc.documentNumber,
+                title: versionTargetDoc.title,
+                version: versionTargetDoc.version,
+                fileName: versionTargetDoc.fileName,
+              }
+            : null
+        }
+        onSuccess={fetchDocuments}
+      />
+
+      {/* Excel Viewer Dialog */}
+      {viewingDoc && (
+        <ExcelViewerDialog
+          open={excelViewerOpen}
+          onOpenChange={(open) => {
+            setExcelViewerOpen(open)
+            if (!open) setViewingDoc(null)
+          }}
+          documentId={viewingDoc.id}
+          documentTitle={viewingDoc.title}
+          fileUrl={viewingDoc.fileUrl}
+          fileName={viewingDoc.fileName}
+          canEdit={viewingDoc.status === "DRAFT" || viewingDoc.status === "PUBLISHED" || viewingDoc.status === "APPROVED"}
+          onVersionUploaded={fetchDocuments}
+        />
+      )}
     </div>
   )
 }

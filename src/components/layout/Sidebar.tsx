@@ -116,26 +116,30 @@ const qdmsMenuItems = [
 ]
 
 // Denetimler alt menüsü (ISO 27001 dahil)
+// Kalite Sistem Departmanı tüm ISO 27001 modülünü görebilir (Sızma Testleri hariç)
+const ISO27001_DEPTS = ["Kalite Sistem Departmanı", "Kalite", "Quality"]
+
 const auditsMenuItems = [
-  { name: "ISO 27001", icon: Shield, href: "/iso27001", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], isSubmenu: true },
+  { name: "ISO 27001", icon: Shield, href: "/iso27001", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS, isSubmenu: true },
 ]
 
 // ISO 27001 Bilgi Güvenliği Yönetim Sistemi alt menüsü
 const iso27001MenuItems = [
-  { name: "Dashboard", icon: Home, href: "/iso27001", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "SoA (Uygulanabilirlik)", icon: FileCheck, href: "/iso27001/soa", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Dokümanlar", icon: FileText, href: "/iso27001/documents", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Kontroller", icon: ClipboardCheck, href: "/iso27001/controls", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Risk Analizi", icon: Scale, href: "/iso27001/risks", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Olay Yönetimi", icon: AlertTriangle, href: "/iso27001/incidents", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Varlık Envanteri", icon: Server, href: "/iso27001/assets", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Eğitimler", icon: GraduationCap, href: "/iso27001/trainings", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Tedarikçi Değerlendirme", icon: Truck, href: "/iso27001/suppliers", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "İç Denetim", icon: ClipboardList, href: "/iso27001/audits", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Denetim Programı", icon: Calendar, href: "/iso27001/audit-program", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
-  { name: "Yönetim Gözden Geçirme", icon: Target, href: "/iso27001/management-review", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Dashboard", icon: Home, href: "/iso27001", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "SoA (Uygulanabilirlik)", icon: FileCheck, href: "/iso27001/soa", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Dokümanlar", icon: FileText, href: "/iso27001/documents", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Kontroller", icon: ClipboardCheck, href: "/iso27001/controls", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Risk Analizi", icon: Scale, href: "/iso27001/risks", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Olay Yönetimi", icon: AlertTriangle, href: "/iso27001/incidents", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Varlık Envanteri", icon: Server, href: "/iso27001/assets", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Eğitimler", icon: GraduationCap, href: "/iso27001/trainings", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Tedarikçi Değerlendirme", icon: Truck, href: "/iso27001/suppliers", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "İç Denetim", icon: ClipboardList, href: "/iso27001/audits", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Denetim Programı", icon: Calendar, href: "/iso27001/audit-program", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Yönetim Gözden Geçirme", icon: Target, href: "/iso27001/management-review", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
+  { name: "Envanter Gözden Geçirme", icon: ClipboardCheck, href: "/iso27001/envanter-gozden-gecirme", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
   { name: "Sızma Testleri", icon: ShieldAlert, href: "/iso27001/penetration-tests", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
-  { name: "Denetçi Paketi", icon: Package, href: "/iso27001/audit-package", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"] },
+  { name: "Denetçi Paketi", icon: Package, href: "/iso27001/audit-package", roles: ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ISO27001_DEPTS },
 ]
 
 // Sandbox modülleri (sadece SUPER_ADMIN)

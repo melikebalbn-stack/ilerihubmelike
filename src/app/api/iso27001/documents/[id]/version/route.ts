@@ -32,6 +32,8 @@ export async function POST(
     const formData = await request.formData()
     const file = formData.get("file") as File | null
     const changeDescription = formData.get("changeDescription") as string
+    const versionInput = (formData.get("version") as string | null)?.trim() || ""
+    const revisionDateInput = (formData.get("revisionDate") as string | null) || ""
 
     if (!file) {
       return NextResponse.json({ error: "Dosya zorunludur" }, { status: 400 })
@@ -72,21 +74,39 @@ export async function POST(
     // Content hash hesapla
     const contentHash = crypto.createHash("sha256").update(buffer).digest("hex")
 
-    // Yeni versiyon numarası hesapla
-    const versionParts = currentDoc.version.split(".")
-    const major = parseInt(versionParts[0]) || 1
-    const minor = parseInt(versionParts[1]) || 0
-    const newVersion = `${major}.${minor + 1}`
+    // Yeni versiyon numarası: form'dan gelirse onu kullan, yoksa otomatik artır
+    let newVersion: string
+    if (versionInput) {
+      if (!/^\d+\.\d+$/.test(versionInput)) {
+        return NextResponse.json(
+          { error: "Versiyon formatı geçersiz (örn: 2.0)" },
+          { status: 400 },
+        )
+      }
+      // Yeni versiyon mevcuttan büyük olmalı
+      const cmp = (a: string, b: string) => {
+        const [am, an] = a.split(".").map((x) => parseInt(x) || 0)
+        const [bm, bn] = b.split(".").map((x) => parseInt(x) || 0)
+        return am !== bm ? am - bm : an - bn
+      }
+      if (cmp(versionInput, currentDoc.version) <= 0) {
+        return NextResponse.json(
+          {
+            error: `Yeni versiyon (${versionInput}) mevcut versiyondan (${currentDoc.version}) büyük olmalı`,
+          },
+          { status: 400 },
+        )
+      }
+      newVersion = versionInput
+    } else {
+      const versionParts = currentDoc.version.split(".")
+      const major = parseInt(versionParts[0]) || 1
+      const minor = parseInt(versionParts[1]) || 0
+      newVersion = `${major}.${minor + 1}`
+    }
 
-    // Eski dokümanı güncelle (artık en son değil)
-    await prisma.iso27001Document.update({
-      where: { id },
-      data: {
-        isLatestVersion: false,
-      },
-    })
-
-    // Versiyon geçmişine kaydet
+    // Eski sürümü versiyon geçmişine yaz (supersede)
+    const supersededAt = new Date()
     await prisma.iso27001DocumentVersion.create({
       data: {
         documentId: id,
@@ -98,38 +118,35 @@ export async function POST(
         changeDescription: changeDescription || "Yeni versiyon yuklendi",
         changedById: session.user.id || "",
         changedByName: session.user.name || "",
+        createdAt: supersededAt,
       },
     })
 
-    // Yeni doküman oluştur
-    const newDoc = await prisma.iso27001Document.create({
+    // revisionDate sağlanırsa lastReviewDate olarak işle (gözden geçirme tarihi)
+    const revisionDate = revisionDateInput ? new Date(revisionDateInput) : null
+    const validRevisionDate = revisionDate && !isNaN(revisionDate.getTime())
+      ? revisionDate
+      : null
+
+    // Mevcut dokümanı yeni dosya/versiyon ile güncelle
+    // supersededAt aktif kayıtta null — bu doküman henüz supersede edilmedi
+    const updatedDoc = await prisma.iso27001Document.update({
+      where: { id },
       data: {
-        documentNumber: currentDoc.documentNumber,
-        title: currentDoc.title,
-        description: currentDoc.description,
-        category: currentDoc.category,
-        clause: currentDoc.clause,
-        controlId: currentDoc.controlId,
         fileName: file.name,
         fileUrl: `/uploads/iso27001/documents/${uniqueFileName}`,
         fileType: fileExtension.replace(".", ""),
         fileSize: file.size,
         version: newVersion,
-        isLatestVersion: true,
-        previousVersionId: id,
-        status: "DRAFT",
-        ownerId: currentDoc.ownerId,
-        ownerName: currentDoc.ownerName,
-        ownerEmail: currentDoc.ownerEmail,
         contentHash,
-        reviewFrequency: currentDoc.reviewFrequency,
-        nextReviewDate: currentDoc.nextReviewDate,
+        supersededAt: null,
+        ...(validRevisionDate ? { lastReviewDate: validRevisionDate } : {}),
       },
     })
 
     return NextResponse.json({
       success: true,
-      document: newDoc,
+      document: updatedDoc,
       message: `Versiyon ${newVersion} basariyla yuklendi`,
     })
   } catch (error) {

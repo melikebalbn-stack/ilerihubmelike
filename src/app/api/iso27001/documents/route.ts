@@ -73,13 +73,21 @@ export async function GET(request: NextRequest) {
 
 // Yeni doküman yükleme
 export async function POST(request: NextRequest) {
+  const t0 = Date.now()
+  const reqId = crypto.randomBytes(4).toString("hex")
+  const log = (msg: string, meta?: Record<string, unknown>) =>
+    console.log(`[doc-upload ${reqId}] +${Date.now() - t0}ms ${msg}`, meta ?? "")
+
   try {
+    log("start")
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
     }
+    log("session ok", { email: session.user.email })
 
     const formData = await request.formData()
+    log("formData parsed")
     const file = formData.get("file") as File | null
     const title = formData.get("title") as string
     const description = formData.get("description") as string
@@ -132,15 +140,18 @@ export async function POST(request: NextRequest) {
     const filePath = path.join(uploadDir, uniqueFileName)
 
     // Dosyayı kaydet
+    log("writing file", { name: file.name, size: file.size, type: file.type })
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await writeFile(filePath, buffer)
+    log("file written", { path: filePath })
 
     // Content hash hesapla (bütünlük kontrolü için)
     const contentHash = crypto.createHash("sha256").update(buffer).digest("hex")
 
     // Doküman numarası oluştur
     const year = new Date().getFullYear()
+    log("querying lastDoc", { year })
     const lastDoc = await prisma.iso27001Document.findFirst({
       where: {
         documentNumber: {
@@ -156,6 +167,7 @@ export async function POST(request: NextRequest) {
       nextNumber = parseInt(parts[3]) + 1
     }
     const documentNumber = `ISO-DOC-${year}-${String(nextNumber).padStart(4, "0")}`
+    log("documentNumber computed", { documentNumber })
 
     // Gözden geçirme tarihi hesapla
     const reviewDays = parseInt(reviewFrequency) || 365
@@ -187,16 +199,22 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    log("db record created", { id: document.id })
     return NextResponse.json({
       success: true,
       document,
       message: "Dokuman basariyla yuklendi",
     })
   } catch (error) {
-    console.error("Dokuman yukleme hatasi:", error)
+    console.error(`[doc-upload ${reqId}] +${Date.now() - t0}ms FAILED:`, error)
     return NextResponse.json(
-      { error: "Dokuman yuklenemedi" },
-      { status: 500 }
+      {
+        error:
+          error instanceof Error
+            ? `Dokuman yuklenemedi: ${error.message}`
+            : "Dokuman yuklenemedi",
+      },
+      { status: 500 },
     )
   }
 }

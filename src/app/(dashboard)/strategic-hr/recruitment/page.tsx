@@ -2668,7 +2668,7 @@ export default function RecruitmentPage() {
               <DialogFooter className="gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => window.open(`/api/strategic-hr/recruitment/job-applications/${selectedJobApp.id}`, "_blank")}
+                  onClick={() => window.open(`/strategic-hr/recruitment/job-applications/${selectedJobApp.id}`, "_blank")}
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />
                   Tam Detay

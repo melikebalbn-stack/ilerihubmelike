@@ -17,6 +17,9 @@ next-env.d.ts
 Thumbs.db
 public/uploads/*
 !public/uploads/.gitkeep
+uploads/
+public/sw.js.backup-*
+prisma/*.xlsx
 .claude/
 src/generated/
 prisma/scripts/output/

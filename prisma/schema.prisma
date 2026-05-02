@@ -167,6 +167,7 @@ model User {
   courseProgresses     CourseProgress[]
   contentProgresses    ContentProgress[]
   examAttempts         UserExamAttempt[]
+  examAnswersGraded    UserExamAnswer[]     @relation("UserExamAnswerGradedBy")
   akademiCertificates  AkademiCertificate[]
   userAchievements     UserAchievement[]
   userBadges           UserBadge[]
@@ -174,6 +175,20 @@ model User {
   xpHistories          XpHistory[]
   dailyChallenges      UserDailyChallenge[]
   akademiNotifications AkademiNotification[]
+
+  // Arşiv Yönetimi Relations
+  arsivKolilerSorumlu      ArsivKoli[]        @relation("ArsivKoliSorumlu")
+  arsivKolilerOlusturan    ArsivKoli[]        @relation("ArsivKoliOlusturan")
+  arsivKolilerGuncelleyen  ArsivKoli[]        @relation("ArsivKoliGuncelleyen")
+  arsivAltKolilerOlusturan ArsivAltKoli[]     @relation("ArsivAltKoliOlusturan")
+  arsivAltKolilerGuncelle  ArsivAltKoli[]     @relation("ArsivAltKoliGuncelleyen")
+  arsivImhaOnaylayan       ArsivImhaKaydi[]   @relation("ImhaKaydiOnaylayan")
+  arsivImhaIkincilOnay     ArsivImhaKaydi[]   @relation("ImhaKaydiIkincilOnay")
+  arsivAktiviteLog         ArsivAktiviteLog[] @relation("ArsivAktiviteLogKullanici")
+
+  // BGYS Envanter Gözden Geçirme
+  inventoryReviewsHazirlanan InventoryReview[] @relation("InventoryReviewHazirlayan")
+  inventoryReviewsOnaylanan  InventoryReview[] @relation("InventoryReviewOnaylayan")
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1979,6 +1994,7 @@ model SurveyQuestion {
 enum QuestionType {
   SINGLE_CHOICE // Tek seçim (radio)
   MULTIPLE_CHOICE // Çoklu seçim (checkbox)
+  TRUE_FALSE // Doğru/Yanlış
   TEXT_SHORT // Kısa metin
   TEXT_LONG // Uzun metin (textarea)
   RATING // Puanlama (1-5 yıldız)
@@ -1988,6 +2004,14 @@ enum QuestionType {
   FILE_UPLOAD // Dosya yükleme
   DROPDOWN // Dropdown seçim
   MATRIX // Matris sorusu
+}
+
+enum AttemptStatus {
+  IN_PROGRESS    // sınav başladı, henüz submit edilmedi
+  SUBMITTED      // user submit etti, henüz skorlanmadı
+  PENDING_REVIEW // otomatik kısım skorlandı ama manuel sorular var, admin bekleniyor
+  COMPLETED      // tüm skorlama tamam
+  EXPIRED        // süre doldu, attempt iptal
 }
 
 // Anket Seçenekleri (Çoktan seçmeli sorular için)
@@ -5724,9 +5748,10 @@ model Iso27001Document {
   fileSize Int?
 
   // Versiyon Kontrolü
-  version           String  @default("1.0")
-  isLatestVersion   Boolean @default(true)
+  version           String    @default("1.0")
+  isLatestVersion   Boolean   @default(true)
   previousVersionId String?
+  supersededAt      DateTime? @map("superseded_at")
 
   // Durum
   status Iso27001DocumentStatus @default(DRAFT)
@@ -8782,12 +8807,14 @@ model Exam {
 }
 
 model ExamQuestion {
-  id       String       @id @default(cuid())
-  examId   String
-  question String       @db.Text
-  type     QuestionType @default(MULTIPLE_CHOICE)
-  points   Int          @default(1)
-  order    Int          @default(0)
+  id             String       @id @default(cuid())
+  examId         String
+  question       String       @db.Text
+  type           QuestionType @default(MULTIPLE_CHOICE)
+  points         Int          @default(1)
+  order          Int          @default(0)
+  explanation    String?      @db.Text
+  isManualGraded Boolean      @default(false)
 
   exam    Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
   options QuestionOption[]
@@ -8812,13 +8839,15 @@ model QuestionOption {
 }
 
 model UserExamAttempt {
-  id          String    @id @default(cuid())
+  id          String        @id @default(cuid())
   userId      String
   examId      String
   score       Float?
   passed      Boolean?
-  startedAt   DateTime  @default(now())
+  startedAt   DateTime      @default(now())
   completedAt DateTime?
+  status      AttemptStatus @default(IN_PROGRESS)
+  expiresAt   DateTime?
 
   user    User             @relation(fields: [userId], references: [id])
   exam    Exam             @relation(fields: [examId], references: [id])
@@ -8828,15 +8857,26 @@ model UserExamAttempt {
 }
 
 model UserExamAnswer {
-  id         String  @id @default(cuid())
-  attemptId  String
-  questionId String
-  optionId   String?
-  textAnswer String? @db.Text
+  id                String    @id @default(cuid())
+  attemptId         String
+  questionId        String
+  optionId          String?
+  textAnswer        String?   @db.Text
+  selectedOptionIds String[]  @default([])
+  ratingValue       Int?
+  scaleValue        Int?
+  dateValue         DateTime?
+  fileUrl           String?
+  matrixAnswer      Json?
+  manualScore       Float?
+  manualFeedback    String?   @db.Text
+  gradedById        String?
+  gradedAt          DateTime?
 
   attempt  UserExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question ExamQuestion    @relation(fields: [questionId], references: [id])
   option   QuestionOption? @relation(fields: [optionId], references: [id])
+  gradedBy User?           @relation("UserExamAnswerGradedBy", fields: [gradedById], references: [id])
 
   @@map("user_exam_answers")
 }
@@ -9023,4 +9063,286 @@ model AkademiNotification {
   user User @relation(fields: [userId], references: [id])
 
   @@map("akademi_notifications")
+}
+
+// ============================================================================
+// ARŞİV YÖNETİMİ MODÜLÜ
+// ============================================================================
+
+enum ArsivKoliDurum {
+  Aktif
+  ImhaYaklasti
+  ImhaEdildi
+  Arsivde
+}
+
+enum ArsivGizlilik {
+  KamuyaAcik
+  SirketIci
+  Gizli
+  CokGizli
+}
+
+enum ArsivImhaYontemi {
+  Imhaci
+  EvrakImhaMakinesi
+  Yakma
+  GuvenliSilme
+  Diger
+}
+
+enum ArsivIslemTuru {
+  Olustur
+  Goruntule
+  Duzenle
+  Sil
+  EtiketBas
+  QrTara
+  AltKoliEkle
+  AltKoliCikar
+  EvrakTuruEkle
+  ImhaTalep
+  ImhaOnayla
+  ImhaReddet
+  KoliAc
+  TopluIceAktar
+  RaporCikar
+}
+
+enum ArsivKoliTipi {
+  Ana
+  Alt
+}
+
+model ArsivBolum {
+  id      Int     @id @default(autoincrement())
+  ad      String  @unique @db.VarChar(100)
+  kod     String  @unique @db.VarChar(3)
+  renkHex String  @default("#888780") @map("renk_hex") @db.Char(7)
+  siraNo  Int     @default(0) @map("sira_no")
+  aktifMi Boolean @default(true) @map("aktif_mi")
+
+  olusturmaTarihi  DateTime  @default(now()) @map("olusturma_tarihi") @db.Timestamptz(3)
+  guncellemeTarihi DateTime? @updatedAt @map("guncelleme_tarihi") @db.Timestamptz(3)
+
+  evrakTurleri ArsivEvrakTuru[]
+  koliler      ArsivKoli[]
+  sayaclar     ArsivSayac[]
+
+  @@map("arsiv_bolum")
+}
+
+model ArsivLokasyon {
+  id              Int      @id @default(autoincrement())
+  depoNo          String   @map("depo_no") @db.VarChar(20)
+  rafKodu         String   @map("raf_kodu") @db.VarChar(20)
+  siraNo          Int      @map("sira_no")
+  kapasite        Int      @default(50)
+  mevcutDoluluk   Int      @default(0) @map("mevcut_doluluk")
+  aciklama        String?  @db.VarChar(250)
+  aktifMi         Boolean  @default(true) @map("aktif_mi")
+  olusturmaTarihi DateTime @default(now()) @map("olusturma_tarihi") @db.Timestamptz(3)
+
+  koliler ArsivKoli[]
+
+  @@unique([depoNo, rafKodu, siraNo], map: "uq_arsiv_lokasyon_adres")
+  @@map("arsiv_lokasyon")
+}
+
+model ArsivEvrakTuru {
+  id                    Int      @id @default(autoincrement())
+  bolumId               Int      @map("bolum_id")
+  ad                    String   @db.VarChar(150)
+  varsayilanSaklamaYili Int      @default(10) @map("varsayilan_saklama_yili")
+  yasalDayanak          String?  @map("yasal_dayanak") @db.VarChar(250)
+  aktifMi               Boolean  @default(true) @map("aktif_mi")
+  olusturmaTarihi       DateTime @default(now()) @map("olusturma_tarihi") @db.Timestamptz(3)
+
+  bolum      ArsivBolum     @relation(fields: [bolumId], references: [id], onDelete: Restrict)
+  altKoliler ArsivAltKoli[]
+
+  @@unique([bolumId, ad], map: "uq_arsiv_evrak_turu_bolum_ad")
+  @@map("arsiv_evrak_turu")
+}
+
+model ArsivSayac {
+  bolumId Int @map("bolum_id")
+  yil     Int
+  sonSira Int @default(0) @map("son_sira")
+
+  bolum ArsivBolum @relation(fields: [bolumId], references: [id], onDelete: Restrict)
+
+  @@id([bolumId, yil])
+  @@map("arsiv_sayac")
+}
+
+model ArsivKoli {
+  id                    BigInt         @id @default(autoincrement())
+  arsivNo               String         @unique @map("arsiv_no") @db.VarChar(20)
+  bolumId               Int            @map("bolum_id")
+  lokasyonId            Int?           @map("lokasyon_id")
+  tarihAraligiBaslangic DateTime       @map("tarih_araligi_baslangic") @db.Date
+  tarihAraligiSonu      DateTime       @map("tarih_araligi_sonu") @db.Date
+  arsivlemeTarihi       DateTime       @default(now()) @map("arsivleme_tarihi") @db.Date
+  imhaTarihi            DateTime       @map("imha_tarihi") @db.Date
+  durum                 ArsivKoliDurum @default(Aktif)
+  qrKod                 String         @map("qr_kod") @db.VarChar(500)
+  aciklama              String?        @db.VarChar(500)
+
+  sorumluKullaniciId     String  @map("sorumlu_kullanici_id")
+  olusturanKullaniciId   String  @map("olusturan_kullanici_id")
+  guncelleyenKullaniciId String? @map("guncelleyen_kullanici_id")
+
+  olusturmaTarihi  DateTime  @default(now()) @map("olusturma_tarihi") @db.Timestamptz(3)
+  guncellemeTarihi DateTime? @updatedAt @map("guncelleme_tarihi") @db.Timestamptz(3)
+
+  bolum       ArsivBolum     @relation(fields: [bolumId], references: [id], onDelete: Restrict)
+  lokasyon    ArsivLokasyon? @relation(fields: [lokasyonId], references: [id], onDelete: SetNull)
+  sorumlu     User           @relation("ArsivKoliSorumlu", fields: [sorumluKullaniciId], references: [id])
+  olusturan   User           @relation("ArsivKoliOlusturan", fields: [olusturanKullaniciId], references: [id])
+  guncelleyen User?          @relation("ArsivKoliGuncelleyen", fields: [guncelleyenKullaniciId], references: [id])
+
+  altKoliler ArsivAltKoli[]
+  imhaKaydi  ArsivImhaKaydi[]
+
+  @@index([bolumId, durum], map: "ix_arsiv_koli_bolum_durum")
+  @@index([imhaTarihi], map: "ix_arsiv_koli_imha_tarihi")
+  @@index([lokasyonId], map: "ix_arsiv_koli_lokasyon")
+  @@map("arsiv_koli")
+}
+
+model ArsivAltKoli {
+  id               BigInt        @id @default(autoincrement())
+  altArsivNo       String        @unique @map("alt_arsiv_no") @db.VarChar(22)
+  anaKoliId        BigInt        @map("ana_koli_id")
+  harf             String        @db.Char(1)
+  evrakTuruId      Int           @map("evrak_turu_id")
+  donemBaslangic   DateTime      @map("donem_baslangic") @db.Date
+  donemSonu        DateTime      @map("donem_sonu") @db.Date
+  evrakSayisi      Int?          @map("evrak_sayisi")
+  gizlilikSeviyesi ArsivGizlilik @default(SirketIci) @map("gizlilik_seviyesi")
+  saklamaSuresiYil Int           @map("saklama_suresi_yil")
+  imhaTarihi       DateTime      @map("imha_tarihi") @db.Date
+  hazirlayan       String?       @db.VarChar(150)
+  qrKod            String        @map("qr_kod") @db.VarChar(500)
+  aciklama         String?       @db.VarChar(500)
+
+  olusturanKullaniciId   String    @map("olusturan_kullanici_id")
+  guncelleyenKullaniciId String?   @map("guncelleyen_kullanici_id")
+  olusturmaTarihi        DateTime  @default(now()) @map("olusturma_tarihi") @db.Timestamptz(3)
+  guncellemeTarihi       DateTime? @updatedAt @map("guncelleme_tarihi") @db.Timestamptz(3)
+
+  anaKoli     ArsivKoli      @relation(fields: [anaKoliId], references: [id], onDelete: Cascade)
+  evrakTuru   ArsivEvrakTuru @relation(fields: [evrakTuruId], references: [id], onDelete: Restrict)
+  olusturan   User           @relation("ArsivAltKoliOlusturan", fields: [olusturanKullaniciId], references: [id])
+  guncelleyen User?          @relation("ArsivAltKoliGuncelleyen", fields: [guncelleyenKullaniciId], references: [id])
+
+  @@unique([anaKoliId, harf], map: "uq_arsiv_alt_koli_ana_harf")
+  @@index([anaKoliId], map: "ix_arsiv_alt_koli_ana")
+  @@index([evrakTuruId], map: "ix_arsiv_alt_koli_evrak_turu")
+  @@index([imhaTarihi], map: "ix_arsiv_alt_koli_imha")
+  @@map("arsiv_alt_koli")
+}
+
+model ArsivImhaKaydi {
+  id                   BigInt           @id @default(autoincrement())
+  anaKoliId            BigInt           @map("ana_koli_id")
+  imhaTarihi           DateTime         @map("imha_tarihi") @db.Timestamptz(3)
+  onaylayanKullaniciId String           @map("onaylayan_kullanici_id")
+  ikincilOnaylayanId   String?          @map("ikincil_onaylayan_id")
+  imhaYontemi          ArsivImhaYontemi @map("imha_yontemi")
+  imhaBelgesiURL       String?          @map("imha_belgesi_url") @db.VarChar(500)
+  notlar               String?          @db.VarChar(1000)
+  olusturmaTarihi      DateTime         @default(now()) @map("olusturma_tarihi") @db.Timestamptz(3)
+
+  anaKoli          ArsivKoli @relation(fields: [anaKoliId], references: [id], onDelete: Restrict)
+  onaylayan        User      @relation("ImhaKaydiOnaylayan", fields: [onaylayanKullaniciId], references: [id])
+  ikincilOnaylayan User?     @relation("ImhaKaydiIkincilOnay", fields: [ikincilOnaylayanId], references: [id])
+
+  @@index([anaKoliId], map: "ix_arsiv_imha_kaydi_ana")
+  @@index([imhaTarihi(sort: Desc)], map: "ix_arsiv_imha_kaydi_tarih")
+  @@map("arsiv_imha_kaydi")
+}
+
+model ArsivAktiviteLog {
+  id            BigInt         @id @default(autoincrement())
+  kullaniciId   String         @map("kullanici_id")
+  islemTuru     ArsivIslemTuru @map("islem_turu")
+  koliId        BigInt?        @map("koli_id")
+  koliTipi      ArsivKoliTipi? @map("koli_tipi")
+  tarih         DateTime       @default(now()) @db.Timestamptz(3)
+  ipAdresi      String?        @map("ip_adresi") @db.VarChar(45)
+  kullaniciAjan String?        @map("kullanici_ajan") @db.VarChar(500)
+  detay         Json?
+
+  kullanici User @relation("ArsivAktiviteLogKullanici", fields: [kullaniciId], references: [id])
+
+  @@index([koliId, tarih(sort: Desc)], map: "ix_arsiv_log_koli_tarih")
+  @@index([kullaniciId, tarih(sort: Desc)], map: "ix_arsiv_log_kullanici_tarih")
+  @@index([tarih(sort: Desc)], map: "ix_arsiv_log_tarih")
+  @@map("arsiv_aktivite_log")
+}
+
+// ==========================================
+// BGYS Envanter Gözden Geçirme (ISO 27001 A.5.9 / Madde 9.1)
+// ==========================================
+
+enum InventoryReviewStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+}
+
+model InventoryReview {
+  id String @id @default(cuid())
+
+  tutanakNo    String @unique @map("tutanak_no")
+  internalCode String @map("internal_code")
+  baslik       String @map("baslik")
+
+  reviewDate     DateTime @map("review_date") @db.Date
+  nextReviewDate DateTime @map("next_review_date") @db.Date
+
+  hardwareCount    Int? @map("hardware_count")
+  softwareCount    Int? @map("software_count")
+  informationCount Int? @map("information_count")
+
+  amac            String @db.Text
+  kapsam          String @db.Text
+  surecTarihcesi  String @db.Text @map("surec_tarihcesi")
+  bulgular        String @db.Text
+  sonucAksiyonlar Json   @map("sonuc_aksiyonlar")
+
+  iliskiliDokumanIds String[] @map("iliskili_dokuman_ids")
+
+  hazirlayanId    String @map("hazirlayan_id")
+  hazirlayanAd    String @map("hazirlayan_ad")
+  hazirlayanUnvan String @map("hazirlayan_unvan")
+
+  onaylayanId    String? @map("onaylayan_id")
+  onaylayanAd    String? @map("onaylayan_ad")
+  onaylayanUnvan String? @map("onaylayan_unvan")
+
+  hazirlanmaTarihi DateTime? @map("hazirlanma_tarihi")
+  onayTarihi       DateTime? @map("onay_tarihi")
+
+  // Dijital imza kayıtları (Hazırlayan + Onaylayan)
+  // Schema: { hazirlayan: {...}, onaylayan: {...} }
+  // Her imza: signatureCode, signedAt, documentHash, signerId, signerName,
+  //          signerEmail, signerTitle, signerDepartment, signatureType
+  signatures Json? @map("signatures")
+  contentHash String? @map("content_hash")
+
+  durum InventoryReviewStatus @default(DRAFT)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  hazirlayan User  @relation("InventoryReviewHazirlayan", fields: [hazirlayanId], references: [id])
+  onaylayan  User? @relation("InventoryReviewOnaylayan", fields: [onaylayanId], references: [id])
+
+  @@index([durum])
+  @@index([reviewDate(sort: Desc)])
+  @@map("inventory_review")
 }

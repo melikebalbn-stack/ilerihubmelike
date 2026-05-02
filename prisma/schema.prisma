@@ -8897,6 +8897,7 @@ model AkademiCertificate {
   downloads     AkademiCertificateDownload[]
   verifications AkademiCertificateVerification[]
 
+  @@unique([userId, courseId], map: "akademi_certificates_user_course_unique")
   @@map("akademi_certificates")
 }
 

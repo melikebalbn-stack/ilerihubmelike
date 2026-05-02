@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { scoreExam, type AnswerInput } from "@/lib/akademi/scoring";
+import { recomputeCourseProgress } from "@/lib/akademi/course-progress";
 
 export async function POST(
   _req: NextRequest,
@@ -113,6 +114,16 @@ export async function POST(
       },
     }),
   ]);
+
+  // Otomatik geçildi ve kursa bağlıysa kurs ilerlemesini yeniden hesapla
+  // (sertifika tetiklenebilir; PENDING_REVIEW'da bekletilecek, finalize'da yeniden çağrılır)
+  if (passed === true && attempt.exam.courseId) {
+    try {
+      await recomputeCourseProgress(userId, attempt.exam.courseId);
+    } catch (e) {
+      console.error("[submit] recomputeCourseProgress failed:", e);
+    }
+  }
 
   return NextResponse.json({
     attemptId,

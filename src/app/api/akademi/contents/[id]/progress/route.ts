@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
+import { recomputeCourseProgress } from "@/lib/akademi/course-progress";
 import { NextResponse } from "next/server";
 import type { ProgressMarkResponse } from "@/types/akademi";
 
@@ -31,13 +32,12 @@ export async function POST(
     return NextResponse.json({ error: "Content not found" }, { status: 404 });
   }
 
-  // Idempotency check — upsert'ten ÖNCE oku
   const existingProgress = await prisma.contentProgress.findUnique({
     where: { userId_contentId: { userId, contentId: content.id } },
   });
   const alreadyCompleted = Boolean(existingProgress?.completed);
 
-  const result = await prisma.$transaction(async (tx) => {
+  const xpGranted = await prisma.$transaction(async (tx) => {
     await tx.contentProgress.upsert({
       where: { userId_contentId: { userId, contentId: content.id } },
       create: {
@@ -54,63 +54,34 @@ export async function POST(
       },
     });
 
-    const [totalContents, completedContents] = await Promise.all([
-      tx.content.count({
-        where: { courseId: content.courseId, isActive: true },
-      }),
-      tx.contentProgress.count({
-        where: {
-          userId,
-          content: { courseId: content.courseId, isActive: true },
-          completed: true,
-        },
-      }),
-    ]);
-    const percentage =
-      totalContents === 0 ? 0 : (completedContents / totalContents) * 100;
-    const courseCompleted = percentage >= 100;
+    if (alreadyCompleted) return 0;
 
-    await tx.courseProgress.upsert({
-      where: { userId_courseId: { userId, courseId: content.courseId } },
-      create: {
+    await tx.xpHistory.create({
+      data: {
         userId,
-        courseId: content.courseId,
-        percentage,
-        completedAt: courseCompleted ? new Date() : null,
-      },
-      update: {
-        percentage,
-        completedAt: courseCompleted ? new Date() : null,
+        amount: XP_PER_CONTENT,
+        reason: `İçerik tamamlandı: ${content.title}`,
       },
     });
 
-    let xpGranted = 0;
-    if (!alreadyCompleted) {
-      xpGranted = XP_PER_CONTENT;
+    await tx.userXp.upsert({
+      where: { userId },
+      create: { userId, total: XP_PER_CONTENT, level: 1 },
+      update: { total: { increment: XP_PER_CONTENT } },
+    });
 
-      await tx.xpHistory.create({
-        data: {
-          userId,
-          amount: xpGranted,
-          reason: `İçerik tamamlandı: ${content.title}`,
-        },
-      });
-
-      await tx.userXp.upsert({
-        where: { userId },
-        create: { userId, total: xpGranted, level: 1 },
-        update: { total: { increment: xpGranted } },
-      });
-    }
-
-    return { percentage, isCompleted: courseCompleted, xpGranted };
+    return XP_PER_CONTENT;
   });
+
+  // Transaction dışında: kurs progress'ini sınav ağırlığı dahil yeniden hesapla.
+  // %100 olursa sertifika otomatik tetiklenir.
+  const progress = await recomputeCourseProgress(userId, content.courseId);
 
   const response: ProgressMarkResponse = {
     success: true,
-    percentage: result.percentage,
-    isCompleted: result.isCompleted,
-    xpGranted: result.xpGranted,
+    percentage: progress?.percentage ?? 0,
+    isCompleted: !!progress?.completedAt,
+    xpGranted,
   };
 
   return NextResponse.json(response);

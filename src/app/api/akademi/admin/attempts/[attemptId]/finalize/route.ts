@@ -7,6 +7,7 @@ import {
   computeFinalScore,
   type GradedAnswer,
 } from "@/lib/akademi/scoring";
+import { recomputeCourseProgress } from "@/lib/akademi/course-progress";
 
 export async function POST(
   _req: NextRequest,
@@ -120,6 +121,14 @@ export async function POST(
       },
     }),
   ]);
+
+  if (final.passed && attempt.exam.courseId) {
+    try {
+      await recomputeCourseProgress(attempt.userId, attempt.exam.courseId);
+    } catch (e) {
+      console.error("[finalize] recomputeCourseProgress failed:", e);
+    }
+  }
 
   return NextResponse.json({
     ok: true,

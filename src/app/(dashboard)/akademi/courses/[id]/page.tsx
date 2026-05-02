@@ -7,6 +7,7 @@ import Link from "next/link";
 import { CourseHero } from "@/components/akademi/courses/CourseHero";
 import { ContentRow } from "@/components/akademi/courses/ContentRow";
 import { ContentViewerModal } from "@/components/akademi/courses/ContentViewerModal";
+import { CourseExamsSection } from "./_components/course-exams-section";
 import type { CourseDetail, ContentItem } from "@/types/akademi";
 
 export default function AkademiCourseDetailPage() {
@@ -137,6 +138,8 @@ export default function AkademiCourseDetailPage() {
           ))}
         </div>
       )}
+
+      <CourseExamsSection courseId={course.id} />
 
       <ContentViewerModal
         content={viewerContent}

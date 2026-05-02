@@ -1,3 +1,5 @@
+'use client'
+
 import {
   Card,
   CardContent,
@@ -62,7 +64,7 @@ export default function SandboxWorkspace({ ownerName }: SandboxWorkspaceProps) {
           <CardContent>
             <p className="text-xs text-violet-700 mb-3">
               Bu alandaki özelliği ilgili ILERIHub modülüne taşımak için BT
-              Müdürü&apos;ne haber ver.
+              Müdürüne haber ver.
             </p>
             <Badge className="bg-violet-100 text-violet-800 text-xs">
               Geliştirici → Üretim
@@ -84,7 +86,7 @@ export default function SandboxWorkspace({ ownerName }: SandboxWorkspaceProps) {
         <CardContent>
           <div className="h-32 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center">
             <p className="text-sm text-gray-400">
-              Burası {ownerName}&apos;nin notlar alanı — yakında eklenecek
+              Burası {ownerName} için notlar alanı — yakında eklenecek
             </p>
           </div>
         </CardContent>

@@ -1,24 +1,40 @@
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { getSandboxBySlug } from '@/lib/sandbox-config'
-import SandboxGuard from '@/components/sandbox/SandboxGuard'
+'use client'
+
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { getSandboxBySlug, canAccessSandbox } from '@/lib/sandbox-config'
 import SandboxHeader from '@/components/sandbox/SandboxHeader'
 import SandboxWorkspace from '@/components/sandbox/SandboxWorkspace'
 
-export const metadata = { title: 'Sandbox — ILERIHub' }
+export default function MelikeSandboxPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  const [authorized, setAuthorized] = useState(false)
 
-export default async function MelikeSandboxPage() {
-  return (
-    <SandboxGuard slug="melike">
-      <MelikeSandboxContent />
-    </SandboxGuard>
-  )
-}
+  useEffect(() => {
+    if (status === 'loading') return
+    if (!session?.user?.email) {
+      router.push('/login')
+      return
+    }
+    const userRole = (session.user as any).role || 'EMPLOYEE'
+    if (!canAccessSandbox('melike', session.user.email, userRole)) {
+      router.push('/')
+      return
+    }
+    setAuthorized(true)
+  }, [session, status, router])
 
-async function MelikeSandboxContent() {
-  const session = await getServerSession(authOptions)
+  if (status === 'loading' || !authorized) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
+      </div>
+    )
+  }
+
   const sandboxModule = getSandboxBySlug('melike')
-
   if (!sandboxModule) return null
 
   return (

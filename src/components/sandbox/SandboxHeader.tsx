@@ -1,6 +1,7 @@
+'use client'
+
 import type { SandboxModule } from '@/lib/sandbox-config'
 import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FlaskConical, ShieldCheck, EyeOff } from 'lucide-react'
 
 interface SandboxHeaderProps {
@@ -11,10 +12,10 @@ interface SandboxHeaderProps {
 export default function SandboxHeader({ module, userName }: SandboxHeaderProps) {
   return (
     <div className="mb-6 space-y-3">
-      <Alert className="border-amber-400 bg-amber-50">
-        <FlaskConical className="h-4 w-4 text-amber-600" />
-        <AlertDescription className="flex items-center justify-between flex-wrap gap-2">
+      <div className="border border-amber-400 bg-amber-50 rounded-lg p-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 text-amber-800 font-medium">
+            <FlaskConical className="h-4 w-4 text-amber-600" />
             <span>🧪 GELİŞTİRİCİ MODU AKTİF</span>
             <Badge
               variant="outline"
@@ -33,8 +34,8 @@ export default function SandboxHeader({ module, userName }: SandboxHeaderProps) 
               Diğer kullanıcılara gizli
             </span>
           </div>
-        </AlertDescription>
-      </Alert>
+        </div>
+      </div>
 
       <div className="flex items-center gap-3">
         <div className="text-3xl">{module.icon}</div>
@@ -48,8 +49,6 @@ export default function SandboxHeader({ module, userName }: SandboxHeaderProps) 
               {userName}
             </span>{' '}
             — Bu alan sadece sana özel kişisel geliştirici çalışma alanın.
-            Burada test ettiğin özellikleri daha sonra ilgili modüllere
-            dağıtabilirsin.
           </p>
         </div>
       </div>
@@ -59,7 +58,6 @@ export default function SandboxHeader({ module, userName }: SandboxHeaderProps) 
           <strong>💡 Nasıl Çalışır?</strong> Bu geliştirici alanında formlar,
           bileşenler veya modül yapıları oluşturabilirsin. Test ettikten sonra
           Melih ile birlikte ilgili ILERIHub modüllerine aktarabilirsiniz.
-          Burada yaptığın değişiklikler diğer kullanıcıları etkilemez.
         </p>
       </div>
     </div>

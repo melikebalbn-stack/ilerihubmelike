@@ -109,6 +109,21 @@ export function UserSearchCombobox({
     }
   }, [value, users])
 
+  // Resolve user from value when users list is not yet loaded
+  React.useEffect(() => {
+    if (value && !selectedUser) {
+      fetch(`/api/users?search=${encodeURIComponent(value)}`)
+        .then(res => res.ok ? res.json() : [])
+        .then((data: ADUser[]) => {
+          const found = data.find(u => u.email === value)
+          if (found) {
+            setSelectedUser(found)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSelect = (user: ADUser) => {
     setSelectedUser(user)
     onSelect(user)

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateCostAnalysisPDFBuffer, CostAnalysisForPDF } from '@/lib/pdf/cost-analysis-pdf'
+import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 
 export async function GET(
   request: NextRequest,
@@ -45,9 +46,8 @@ export async function GET(
 
     // Yetki kontrolü
     const userRole = session.user.role || 'EMPLOYEE'
-    const isPrivileged = ['SUPER_ADMIN', 'ADMIN', 'QUALITY_MANAGER'].includes(userRole)
 
-    if (!isPrivileged) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       const user = await prisma.user.findUnique({
         where: { email: session.user.email },
         select: { id: true },

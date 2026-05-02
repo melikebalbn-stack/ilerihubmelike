@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { recalculateCosts } from '@/lib/cost-analysis/calculations'
+import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 
 // GET - Diğer maliyetleri listele
 export async function GET(
@@ -44,8 +45,7 @@ export async function POST(
     }
 
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -128,8 +128,7 @@ export async function PUT(
     }
 
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -192,8 +191,7 @@ export async function DELETE(
     }
 
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CostAnalysisStatus } from '@/generated/prisma'
+import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 
 // GET - Tüm maliyet analizlerini listele
 export async function GET(request: NextRequest) {
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     // FIX #8: Authorization kontrolü eklendi
     const userRole = session.user.role || 'EMPLOYEE'
-    const isPrivileged = ['SUPER_ADMIN', 'ADMIN', 'QUALITY_MANAGER'].includes(userRole)
+    const isPrivileged = hasCostAnalysisAccess(userRole, session.user.email)
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
@@ -118,8 +119,7 @@ export async function POST(request: NextRequest) {
 
     // Yetki kontrolü
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

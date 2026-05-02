@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 
 // GET - Tek maliyet analizi detayı
 export async function GET(
@@ -63,9 +64,8 @@ export async function GET(
 
     // FIX #9: Authorization kontrolü - yetkisiz kullanıcılar sadece kendi oluşturduklarını görebilir
     const userRole = session.user.role || 'EMPLOYEE'
-    const isPrivileged = ['SUPER_ADMIN', 'ADMIN', 'QUALITY_MANAGER'].includes(userRole)
 
-    if (!isPrivileged) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       const user = await prisma.user.findUnique({
         where: { email: session.user.email },
         select: { id: true }
@@ -98,8 +98,7 @@ export async function PUT(
 
     // Yetki kontrolü
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -192,10 +191,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Yetki kontrolü - sadece ADMIN veya SUPER_ADMIN silebilir
+    // Yetki kontrolü - sadece yetkili kullanıcılar silebilir
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

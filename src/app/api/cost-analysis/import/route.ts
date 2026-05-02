@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { calculateMaterialRow, calculateLaborRow, recalculateCosts } from '@/lib/cost-analysis/calculations'
+import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 
 // ===================== LABEL REVERSE MAPS =====================
 
@@ -315,8 +316,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -399,8 +399,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

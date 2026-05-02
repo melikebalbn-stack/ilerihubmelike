@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CostCurrency } from '@/generated/prisma'
+import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 
 interface TCMBCurrency {
   code: string
@@ -128,8 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userRole = session.user.role || 'EMPLOYEE'
-    const allowedRoles = ['QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
+    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

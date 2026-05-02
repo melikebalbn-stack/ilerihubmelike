@@ -65,7 +65,7 @@ const mainMenuItems = [
   { name: "Duyurular", icon: Megaphone, href: "/announcements", roles: ["*"] },
   { name: "Çalışan Rehberi", icon: Users, href: "/employees", roles: ["*"] },
   { name: "Öneri Sistemi", icon: Lightbulb, href: "/suggestions", roles: ["*"] },
-  { name: "Maliyet Analizi", icon: Calculator, href: "/cost-analysis", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
+  { name: "Maliyet Analizi", icon: Calculator, href: "/cost-analysis", roles: ["SUPER_ADMIN"], emails: ["kadir.kocakoglu@ilerigroup.com", "hilmi.ileri@ilerigroup.com", "halit.ileri@ilerigroup.com", "eren.ileri@ilerigroup.com", "koray.ileri@ilerigroup.com", "gurhan.horbay@ilerigroup.com"] },
   { name: "Planlı Görevler", icon: CalendarCheck, href: "/tasks", roles: ["*"] },
   // { name: "SSS", icon: HelpCircle, href: "/faq", roles: ["*"] }, // Şimdilik gizli
   // { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] }, // Şimdilik gizli
@@ -248,6 +248,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (item.roles.includes('*')) return true
     if (item.roles.includes('SUPER_ADMIN') && userRole === 'SUPER_ADMIN') return true
     if (item.roles.includes(userRole)) return true
+
+    // E-posta bazlı erişim kontrolü
+    const itemEmails = (item as { emails?: string[] }).emails || []
+    if (itemEmails.length > 0 && session?.user?.email &&
+      itemEmails.some(e => e.toLowerCase() === session.user.email!.toLowerCase())
+    ) return true
 
     // Departman bazlı erişim kontrolü
     const itemDepartments = (item as { departments?: string[] }).departments || []

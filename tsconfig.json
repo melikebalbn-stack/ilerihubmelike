@@ -40,6 +40,7 @@
     "prisma/seed-arsiv.ts",
     "prisma/scripts/check-overtime-personnel-backfill.ts",
     "prisma/scripts/delete-test-overtime-forms.ts",
+    "prisma/scripts/test-akademi-notify.ts",
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/**/*.spec.ts",

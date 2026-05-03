@@ -139,7 +139,8 @@ function getTransporter() {
 export async function sendEmail(
   to: EmailRecipient[],
   subject: string,
-  body: string
+  body: string,
+  html?: string
 ): Promise<{ success: boolean; error?: string }> {
   const smtp = getTransporter()
 
@@ -165,7 +166,7 @@ export async function sendEmail(
       to: toAddresses,
       subject,
       text: body,
-      html: body.replace(/\n/g, '<br>'),
+      html: html ?? body.replace(/\n/g, '<br>'),
     })
 
     console.log('✅ E-posta gönderildi:', info.messageId)

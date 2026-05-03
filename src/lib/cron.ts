@@ -121,6 +121,36 @@ export function initializeCalibrationScheduler() {
     }
   }, 30000)
 
+  // Akademi: deadline kontrolleri - Her gün 10:00
+  cron.schedule('0 10 * * *', async () => {
+    console.log('⏰ Running Akademi deadline check...')
+    try {
+      const response = await fetch(`${baseUrl}/api/akademi/cron/check-deadlines`, {
+        method: 'POST',
+        headers: { 'x-cron-secret': process.env.CRON_SECRET || '' },
+      })
+      const data = await response.json()
+      console.log('✅ Akademi deadline check:', data)
+    } catch (error) {
+      console.error('❌ Akademi deadline check failed:', error)
+    }
+  })
+
+  // Akademi: sertifika expiry kontrolleri - Her gün 10:30
+  cron.schedule('30 10 * * *', async () => {
+    console.log('⏰ Running Akademi certificate check...')
+    try {
+      const response = await fetch(`${baseUrl}/api/akademi/cron/check-certificates`, {
+        method: 'POST',
+        headers: { 'x-cron-secret': process.env.CRON_SECRET || '' },
+      })
+      const data = await response.json()
+      console.log('✅ Akademi certificate check:', data)
+    } catch (error) {
+      console.error('❌ Akademi certificate check failed:', error)
+    }
+  })
+
   // Yedekleme kontrolü - Her dakika
   cron.schedule('* * * * *', async () => {
     await checkScheduledBackups()
@@ -132,6 +162,8 @@ export function initializeCalibrationScheduler() {
   console.log('   - Task notifications: 09:15 AM daily')
   console.log('   - Escalation check: 09:30 AM daily')
   console.log('   - Personnel evaluation (2ay/6ay): 09:45 AM daily')
+  console.log('   - Akademi deadlines: 10:00 AM daily')
+  console.log('   - Akademi certificates: 10:30 AM daily')
   console.log('   - LDAP user sync: every 6 hours (02:00, 08:00, 14:00, 20:00)')
   console.log('   - LDAP initial sync: 30s after startup')
   console.log('   - Backup scheduler: every minute')

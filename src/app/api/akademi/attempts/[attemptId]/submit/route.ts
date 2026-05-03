@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { scoreExam, type AnswerInput } from "@/lib/akademi/scoring";
 import { recomputeCourseProgress } from "@/lib/akademi/course-progress";
+import { notifyAkademiEvent } from "@/lib/akademi-notify";
 
 export async function POST(
   _req: NextRequest,
@@ -84,36 +85,30 @@ export async function POST(
     passed = result.passed ?? false;
   }
 
-  await prisma.$transaction([
-    prisma.userExamAttempt.update({
+  // PENDING_REVIEW için in-app burada (notify-akademi 9 event tipinde EXAM_PENDING_REVIEW yok).
+  // PASSED/FAILED durumları aşağıdaki notifyAkademiEvent tarafından yönetilir (in-app + mail).
+  if (result.hasManualQuestions) {
+    await prisma.$transaction([
+      prisma.userExamAttempt.update({
+        where: { id: attemptId },
+        data: { status: newStatus, completedAt, score: finalScore, passed },
+      }),
+      prisma.akademiNotification.create({
+        data: {
+          userId,
+          title: "Sınavınız değerlendirme bekleniyor",
+          message: `"${attempt.exam.title}" — Otomatik puan: ${result.totalEarned}/${result.autoMax}. Manuel sorular admin tarafından değerlendirildikten sonra sonuç netleşecek.`,
+          type: "EXAM_PENDING_REVIEW",
+          link: `/akademi/exams/${attempt.examId}/result/${attemptId}`,
+        },
+      }),
+    ]);
+  } else {
+    await prisma.userExamAttempt.update({
       where: { id: attemptId },
-      data: {
-        status: newStatus,
-        completedAt,
-        score: finalScore,
-        passed,
-      },
-    }),
-    prisma.akademiNotification.create({
-      data: {
-        userId,
-        title: result.hasManualQuestions
-          ? "Sınavınız değerlendirme bekleniyor"
-          : passed
-          ? "Tebrikler! Sınavı geçtiniz"
-          : "Sınavı geçemediniz",
-        message: result.hasManualQuestions
-          ? `"${attempt.exam.title}" — Otomatik puan: ${result.totalEarned}/${result.autoMax}. Manuel sorular admin tarafından değerlendirildikten sonra sonuç netleşecek.`
-          : `"${attempt.exam.title}" — Puan: ${result.totalEarned}/${result.totalMax} (%${result.percentage}). Geçme barajı: %${attempt.exam.passingScore}.`,
-        type: result.hasManualQuestions
-          ? "EXAM_PENDING_REVIEW"
-          : passed
-          ? "EXAM_PASSED"
-          : "EXAM_FAILED",
-        link: `/akademi/exams/${attempt.examId}/result/${attemptId}`,
-      },
-    }),
-  ]);
+      data: { status: newStatus, completedAt, score: finalScore, passed },
+    });
+  }
 
   // Otomatik geçildi ve kursa bağlıysa kurs ilerlemesini yeniden hesapla
   // (sertifika tetiklenebilir; PENDING_REVIEW'da bekletilecek, finalize'da yeniden çağrılır)
@@ -123,6 +118,33 @@ export async function POST(
     } catch (e) {
       console.error("[submit] recomputeCourseProgress failed:", e);
     }
+  }
+
+  // Mail bildirim — manuel review değilse direkt EXAM_PASSED/FAILED gönder
+  if (passed !== null) {
+    const courseTitle = attempt.exam.courseId
+      ? (
+          await prisma.course.findUnique({
+            where: { id: attempt.exam.courseId },
+            select: { title: true },
+          })
+        )?.title ?? attempt.exam.title
+      : attempt.exam.title;
+
+    notifyAkademiEvent({
+      userId,
+      eventType: passed ? "EXAM_PASSED" : "EXAM_FAILED",
+      courseTitle,
+      data: {
+        score: finalScore,
+        passingScore: attempt.exam.passingScore,
+        attemptNumber: 1,
+        canRetake: !passed,
+      },
+      link: `/akademi/exams/${attempt.examId}/result/${attemptId}`,
+    }).catch((err) =>
+      console.error(`[submit] notify ${passed ? "PASSED" : "FAILED"}:`, err)
+    );
   }
 
   return NextResponse.json({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
 import { prisma } from "@/lib/prisma";
 import { resolveUserDisplayName } from "@/lib/akademi-helpers";
+import { notifyAkademiEvent } from "@/lib/akademi-notify";
 import type { AdminAssignmentCreateInput } from "@/types/akademi-admin";
 
 export async function GET(req: NextRequest) {
@@ -176,6 +177,43 @@ export async function POST(req: NextRequest) {
 
   const skippedCount = validUserIds.length - createResult.count;
   const invalidCount = userIds.length - validUserIds.length;
+
+  // Bildirim — gerçekten yeni atanan user'lara (skipDuplicates yüzünden createResult.count yetmez)
+  if (createResult.count > 0) {
+    const courseInfo = await prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, title: true },
+    });
+    if (courseInfo) {
+      const newAssignments = await prisma.userCourseAssignment.findMany({
+        where: {
+          assignmentId: template!.id,
+          userId: { in: validUserIds },
+          assignedAt: { gte: new Date(Date.now() - 60_000) },
+        },
+        select: { userId: true, dueDate: true },
+      });
+
+      Promise.allSettled(
+        newAssignments.map((a) =>
+          notifyAkademiEvent({
+            userId: a.userId,
+            eventType: "COURSE_ASSIGNED",
+            courseTitle: courseInfo.title,
+            data: { deadline: a.dueDate },
+            link: `/akademi/courses/${courseInfo.id}`,
+          })
+        )
+      ).then((results) => {
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed > 0) {
+          console.error(
+            `[akademi-notify] COURSE_ASSIGNED ${failed}/${results.length} failed`
+          );
+        }
+      });
+    }
+  }
 
   return NextResponse.json({
     createdCount: createResult.count,

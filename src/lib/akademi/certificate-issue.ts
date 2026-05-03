@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { generateCertificatePdf } from "./certificate-pdf";
+import { notifyAkademiEvent } from "@/lib/akademi-notify";
 
 /**
  * Bir user için bir kursta sertifika oluşturur (idempotent).
@@ -105,15 +106,21 @@ export async function issueCertificateIfEligible(
     // Cert DB'de kayıtlı, filePath null kalır; download endpoint recovery yapar
   }
 
-  await prisma.akademiNotification.create({
+  // In-app + mail (notify-akademi her ikisini birden yönetir)
+  notifyAkademiEvent({
+    userId,
+    eventType: "CERTIFICATE_ISSUED",
+    courseTitle: course.title,
     data: {
-      userId,
       title: "Sertifikanız hazır",
       message: `"${course.title}" kursunu başarıyla tamamladınız. Sertifika numaranız: ${certificateNo}`,
-      type: "CERTIFICATE_ISSUED",
-      link: "/akademi/certificates",
+      certificateNo: cert.certificateNo,
+      validUntil: cert.validUntil,
     },
-  });
+    link: `/akademi/certificates/${cert.id}`,
+  }).catch((err) =>
+    console.error("[certificate-issue] notify failed:", err)
+  );
 
   return cert;
 }

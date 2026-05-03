@@ -8,6 +8,7 @@ import {
   type GradedAnswer,
 } from "@/lib/akademi/scoring";
 import { recomputeCourseProgress } from "@/lib/akademi/course-progress";
+import { notifyAkademiEvent } from "@/lib/akademi-notify";
 
 export async function POST(
   _req: NextRequest,
@@ -120,21 +121,13 @@ export async function POST(
       };
     }
 
-    await tx.akademiNotification.create({
-      data: {
-        userId: attempt.userId,
-        title: final.passed
-          ? "Tebrikler! Sınavı geçtiniz"
-          : "Sınavı geçemediniz",
-        message: `"${attempt.exam.title}" — Manuel değerlendirme tamamlandı. Toplam: ${final.totalEarned}/${final.totalMax} (%${final.percentage}). Geçme barajı: %${attempt.exam.passingScore}.`,
-        type: final.passed ? "EXAM_PASSED" : "EXAM_FAILED",
-        link: `/akademi/exams/${attempt.examId}/result/${attemptId}`,
-      },
-    });
+    // In-app + mail bildirimi transaction sonrası notifyAkademiEvent ile tek
+    // noktadan yönetilir (in-app duplicate önlemek için burada create yok).
 
     return {
       ok: true as const,
       userId: attempt.userId,
+      examTitle: attempt.exam.title,
       courseId: attempt.exam.courseId,
       final,
     };
@@ -150,6 +143,35 @@ export async function POST(
     } catch (e) {
       console.error("[finalize] recomputeCourseProgress failed:", e);
     }
+  }
+
+  // In-app + mail bildirim — manuel grading sonrası (tek source of truth)
+  try {
+    const courseTitle = result.courseId
+      ? (
+          await prisma.course.findUnique({
+            where: { id: result.courseId },
+            select: { title: true },
+          })
+        )?.title ?? result.examTitle
+      : result.examTitle;
+
+    notifyAkademiEvent({
+      userId: result.userId,
+      eventType: result.final.passed ? "EXAM_PASSED" : "EXAM_FAILED",
+      courseTitle,
+      data: {
+        score: result.final.percentage,
+        passingScore: result.final.totalMax > 0
+          ? Math.round((result.final.totalEarned / result.final.totalMax) * 100)
+          : 0,
+        attemptNumber: 1,
+        canRetake: !result.final.passed,
+      },
+      link: `/akademi/exams/${attemptId}`,
+    }).catch((err) => console.error("[finalize] notify failed:", err));
+  } catch (e) {
+    console.error("[finalize] notify wrap failed:", e);
   }
 
   return NextResponse.json({

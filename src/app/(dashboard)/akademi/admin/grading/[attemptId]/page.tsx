@@ -103,6 +103,31 @@ export default function GradingDetailPage({
     load();
   }, [load]);
 
+  // Save sonrası optimistic delta — load() çağrılmaz, scroll korunur
+  const handleAnswerGraded = useCallback(
+    (questionId: string, gradedValue: ManualGrade, wasNewGrade: boolean) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        const nextQuestions = prev.questions.map((q) =>
+          q.id === questionId ? { ...q, manualGrade: gradedValue } : q
+        );
+        const newManualGraded = wasNewGrade
+          ? prev.summary.manualGraded + 1
+          : prev.summary.manualGraded;
+        return {
+          ...prev,
+          questions: nextQuestions,
+          summary: {
+            ...prev.summary,
+            manualGraded: newManualGraded,
+            allManualGraded: newManualGraded >= prev.summary.manualTotal,
+          },
+        };
+      });
+    },
+    []
+  );
+
   async function handleFinalize() {
     if (
       !confirm(
@@ -222,7 +247,7 @@ export default function GradingDetailPage({
             key={q.id}
             question={q}
             attemptId={attemptId}
-            onGraded={load}
+            onGraded={handleAnswerGraded}
           />
         ))}
       </div>
@@ -237,11 +262,17 @@ function QuestionGradeCard({
 }: {
   question: AttemptQuestion;
   attemptId: string;
-  onGraded: () => void;
+  onGraded: (
+    questionId: string,
+    gradedValue: ManualGrade,
+    wasNewGrade: boolean
+  ) => void;
 }) {
   const isAuto = !question.isManualGraded;
   const userAnswer = question.userAnswer;
-  const existingGrade = question.manualGrade;
+  const [existingGrade, setExistingGrade] = useState<ManualGrade | null>(
+    question.manualGrade
+  );
 
   const initialScore =
     existingGrade?.score !== null && existingGrade?.score !== undefined
@@ -286,8 +317,20 @@ function QuestionGradeCard({
         toast.error(d.error || "Kayıt başarısız");
         return;
       }
-      toast.success("Değerlendirme kaydedildi");
-      onGraded();
+
+      const wasNewGrade = !existingGrade?.gradedAt;
+      // Backend response: { ok, answer: { manualScore, manualFeedback, gradedAt, gradedBy: {id, name} } }
+      const updated: ManualGrade = {
+        score: d.answer?.manualScore ?? n,
+        feedback: d.answer?.manualFeedback ?? (feedback.trim() || null),
+        gradedAt: d.answer?.gradedAt ?? new Date().toISOString(),
+        gradedBy: d.answer?.gradedBy ?? null,
+      };
+      setExistingGrade(updated);
+      toast.success(
+        wasNewGrade ? "Değerlendirme kaydedildi" : "Değerlendirme güncellendi"
+      );
+      onGraded(question.id, updated, wasNewGrade);
     } catch {
       toast.error("Beklenmeyen hata");
     } finally {

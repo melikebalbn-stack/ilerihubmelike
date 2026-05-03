@@ -8731,6 +8731,10 @@ model UserCourseAssignment {
   assignedAt   DateTime  @default(now())
   dueDate      DateTime?
 
+  // Notification idempotency
+  reminderSentAt   DateTime?
+  missedNotifiedAt DateTime?
+
   user       User             @relation(fields: [userId], references: [id])
   assignment CourseAssignment @relation(fields: [assignmentId], references: [id])
 
@@ -8888,6 +8892,10 @@ model AkademiCertificate {
   validUntil       DateTime?
   filePath         String?
   templateId       String?
+
+  // Notification idempotency (cron-driven)
+  expiringSoonNotifiedAt DateTime?
+  expiredNotifiedAt      DateTime?
 
   user          User                             @relation(fields: [userId], references: [id])
   course        Course?                          @relation(fields: [courseId], references: [id])

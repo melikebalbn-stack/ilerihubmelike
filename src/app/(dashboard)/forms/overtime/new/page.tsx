@@ -7,7 +7,8 @@ import { NativeSelect as Select } from "@/components/ui/select"
 import { Clock, ChevronRight, ChevronLeft, Search, X, Users, Check, Save, Send, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { BOLUMLER, MESAI_TURLERI } from "@/lib/overtime-constants"
+import { MESAI_TURLERI } from "@/lib/overtime-constants"
+import { useDepartments, resolveDefaultDepartment } from "@/lib/use-departments"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,6 +58,7 @@ const TYPE_CARD_COLORS: Record<OvertimeType, { idle: string; active: string }> =
 
 export default function NewOvertimeFormPage() {
   const router = useRouter()
+  const { departments, loading: depsLoading } = useDepartments()
 
   // Wizard step
   const [step, setStep] = useState(1)
@@ -136,7 +138,7 @@ export default function NewOvertimeFormPage() {
         setPersonnelDetails((pd) => ({
           ...pd,
           [person.id]: {
-            workDepartment: person.bolum || BOLUMLER[0],
+            workDepartment: resolveDefaultDepartment(person.bolum, departments),
             serviceRoute: person.serviceRoute || "",
             targetProduction: "",
             actualProduction: "",
@@ -222,7 +224,9 @@ export default function NewOvertimeFormPage() {
         sendToGM,
         personnel: selectedPersonnel.map((p) => ({
           personnelId: p.id,
-          workDepartment: personnelDetails[p.id]?.workDepartment || BOLUMLER[0],
+          workDepartment:
+            personnelDetails[p.id]?.workDepartment ||
+            resolveDefaultDepartment(p.bolum, departments),
           serviceRoute: personnelDetails[p.id]?.serviceRoute || null,
           targetProduction: personnelDetails[p.id]?.targetProduction || null,
         })),
@@ -476,9 +480,14 @@ export default function NewOvertimeFormPage() {
                 <Users className="h-4 w-4" />
                 Personel Seçimi
               </h2>
+              {depsLoading && (
+                <div className="text-xs text-gray-500 mt-2 py-1.5 px-2 bg-gray-50 rounded-md">
+                  Bölüm tanımları yükleniyor...
+                </div>
+              )}
             </div>
 
-            <div className="p-3 border-b space-y-2">
+            <div className={`p-3 border-b space-y-2 ${depsLoading ? "pointer-events-none opacity-50" : ""}`}>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
@@ -601,7 +610,7 @@ export default function NewOvertimeFormPage() {
                             value={detail.workDepartment}
                             onChange={(e) => updateDetail(person.id, "workDepartment", e.target.value)}
                           >
-                            {BOLUMLER.map((b) => (
+                            {departments.map((b) => (
                               <option key={b} value={b}>{b}</option>
                             ))}
                           </Select>

@@ -10,7 +10,8 @@ import Link from "next/link"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
-import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS, BOLUMLER } from "@/lib/overtime-constants"
+import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
+import { useDepartments } from "@/lib/use-departments"
 import { APPROVAL_CHAIN } from "@/lib/overtime-approval-chain"
 import { useSession } from "next-auth/react"
 
@@ -98,6 +99,7 @@ export default function OvertimeDetailPage() {
   const router = useRouter()
   const { data: session } = useSession()
   const id = params.id as string
+  const { departments } = useDepartments()
 
   const [form, setForm] = useState<OvertimeFormDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -111,7 +113,14 @@ export default function OvertimeDetailPage() {
   const [allPersonnelItems, setAllPersonnelItems] = useState<{ id: string; sicilNo: string; adSoyad: string; bolum: string; gorev: string; serviceRoute: string | null; telefon: string | null }[]>([])
   const [personnelItemsLoading, setPersonnelItemsLoading] = useState(false)
   const [personnelSearch, setPersonnelSearch] = useState("")
-  const [addWorkDept, setAddWorkDept] = useState(BOLUMLER[0])
+  const [addWorkDept, setAddWorkDept] = useState("")
+
+  // Bölümler yüklenince varsayılan workDept seç
+  useEffect(() => {
+    if (!addWorkDept && departments.length > 0) {
+      setAddWorkDept(departments[0])
+    }
+  }, [departments, addWorkDept])
   const [addingId, setAddingId] = useState<string | null>(null)
   const [removingId, setRemovingId] = useState<string | null>(null)
 
@@ -547,7 +556,7 @@ export default function OvertimeDetailPage() {
                 onChange={(e) => setAddWorkDept(e.target.value)}
                 className="w-48"
               >
-                {BOLUMLER.map((b) => (
+                {departments.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
               </Select>

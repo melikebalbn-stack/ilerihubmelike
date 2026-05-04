@@ -4,10 +4,16 @@ import { authOptions } from '@/lib/auth'
 import { initializeCalibrationScheduler } from '@/lib/cron'
 
 /**
- * GET /api/cron/init
- * Initialize the cron scheduler
- * Tüm authenticated kullanıcılar tarafından tetiklenebilir (sadece scheduler başlatır, hassas işlem değil)
- * Scheduler zaten çalışıyorsa tekrar başlatılmaz (isSchedulerInitialized guard)
+ * Manuel cron başlatma endpoint'i.
+ *
+ * @deprecated Production'da artık in-process cron kullanılmıyor.
+ * Tüm scheduled task'lar sistem cron üzerinden tetikleniyor:
+ *   /etc/cron.d/ilerihub-cron
+ *
+ * Bu endpoint sadece manuel debug/test için korundu.
+ * Production'da çağırma — sistem cron ile duplicate çalışma yapar.
+ *
+ * Detay için: docs/CRON.md
  */
 export async function GET() {
   try {

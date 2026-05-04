@@ -1,3 +1,19 @@
+/**
+ * @deprecated Bu dosyadaki node-cron schedule'ları artık production'da
+ * kullanılmıyor. PM2 restart sonrası ölüyordu (kanıtlanmış sorun,
+ * 2026-05-02 ile 2026-05-04 arası personel evaluation mailleri
+ * gönderilmedi).
+ *
+ * Yeni mekanizma: sistem cron (/etc/cron.d/ilerihub-cron).
+ * Endpoint mantığı (check-evaluations, check-deadlines vb.)
+ * değişmedi — sadece tetikleme noktası dışarıya taşındı.
+ *
+ * Bu dosya silinmedi çünkü:
+ * 1. /api/cron/init endpoint'i hâlâ manuel debug için kullanılabilir
+ * 2. Mantık geçmişi referans olarak değerli
+ *
+ * Detay: docs/CRON.md
+ */
 import cron from 'node-cron'
 import { prisma } from '@/lib/prisma'
 import {

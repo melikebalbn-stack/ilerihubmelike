@@ -299,11 +299,18 @@ export default function Iso27001DocumentsPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      setUploadForm(prev => ({
-        ...prev,
-        file,
-        title: prev.title || file.name.replace(/\.[^/.]+$/, ""),
-      }))
+      setUploadForm(prev => {
+        if (prev.title) {
+          return { ...prev, file }
+        }
+        // Otomatik title: uzantısız + " (1)" tekrarları kaldır + underscore → boşluk
+        const cleanName = file.name
+          .replace(/\.[^/.]+$/, "")
+          .replace(/ \(\d+\)/g, "")
+          .replace(/_/g, " ")
+          .trim()
+        return { ...prev, file, title: cleanName }
+      })
     }
   }
 

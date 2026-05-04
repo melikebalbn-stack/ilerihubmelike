@@ -1,103 +1,8 @@
 const { withSentryConfig } = require('@sentry/nextjs')
 
-const withPWA = require('@ducanh2912/next-pwa').default({
-  dest: 'public',
-  // PWA geçici olarak production'da da disable —
-  // Workbox NetworkFirst cache'i polling endpoint'lerinde devasa kuyruk yaratıp
-  // sayfayı render edilemez hale getiriyordu (29 Nis 2026 incident).
-  // Kalıcı fix: polling endpoint'lerini NetworkOnly listesine almak veya
-  // SW'siz yeniden yapılandırmak. Şimdilik tamamen kapalı.
-  disable: true,
-  register: true,
-  skipWaiting: true,
-  customWorkerSrc: 'service-worker',
-  runtimeCaching: [
-    {
-      urlPattern: /^https:\/\/fonts\.(?:gstatic|googleapis)\.com\/.*/i,
-      handler: 'CacheFirst',
-      options: {
-        cacheName: 'google-fonts',
-        expiration: {
-          maxEntries: 4,
-          maxAgeSeconds: 365 * 24 * 60 * 60, // 1 year
-        },
-      },
-    },
-    {
-      urlPattern: /\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-font-assets',
-        expiration: {
-          maxEntries: 4,
-          maxAgeSeconds: 7 * 24 * 60 * 60, // 1 week
-        },
-      },
-    },
-    {
-      urlPattern: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-image-assets',
-        expiration: {
-          maxEntries: 64,
-          maxAgeSeconds: 24 * 60 * 60, // 24 hours
-        },
-      },
-    },
-    {
-      urlPattern: /\/_next\/static.+\.js$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'next-static-js-assets',
-        expiration: {
-          maxEntries: 64,
-          maxAgeSeconds: 24 * 60 * 60, // 24 hours
-        },
-      },
-    },
-    {
-      urlPattern: /\.(?:css|less)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-style-assets',
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60, // 24 hours
-        },
-      },
-    },
-    {
-      urlPattern: /\/_next\/data\/.+\/.+\.json$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'next-data',
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60, // 24 hours
-        },
-      },
-    },
-    {
-      // Dosya yükleme API'leri - cache'leme yok
-      urlPattern: /\/api\/iso27001\/controls\/.*\/evidences/i,
-      handler: 'NetworkOnly',
-    },
-    {
-      // Diğer API'ler
-      urlPattern: /\/api\/.*$/i,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'apis',
-        networkTimeoutSeconds: 60, // 10'dan 60 saniyeye çıkarıldı
-        expiration: {
-          maxEntries: 16,
-          maxAgeSeconds: 24 * 60 * 60, // 24 hours
-        },
-      },
-    },
-  ],
-})
+// PWA: vanilla service worker public/sw.js (PR-PWA-2, 3 May 2026)
+// 29 Apr 2026 incident sonrası next-pwa wrapper'ı kaldırıldı; SW elle yazılı,
+// ServiceWorkerRegister component register ediyor.
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -194,4 +99,4 @@ const sentryWebpackPluginOptions = {
   silent: !process.env.SENTRY_AUTH_TOKEN,
 }
 
-module.exports = withSentryConfig(withPWA(nextConfig), sentryWebpackPluginOptions)
+module.exports = withSentryConfig(nextConfig, sentryWebpackPluginOptions)

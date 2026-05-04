@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSession } from "next-auth/react"
 import {
   Card,
@@ -85,25 +85,59 @@ const isBgysSorumlu = (email?: string | null, role?: string | null) => {
 
 // Kategori bilgileri
 const CATEGORIES = [
-  { value: "MANDATORY", label: "Zorunlu Dokumanlar", description: "Madde 4-10 kapsamindaki zorunlu dokumanlar" },
-  { value: "RECORD", label: "Zorunlu Kayitlar", description: "Egitim, denetim, gozden gecirme kayitlari" },
-  { value: "ANNEX_A", label: "Annex A Dokumanlari", description: "93 kontrol ile ilgili dokumanlar" },
-  { value: "POLICY", label: "Politikalar", description: "Bilgi guvenligi politikalari" },
-  { value: "PROCEDURE", label: "Prosedurler", description: "Is surecleri ve prosedurler" },
-  { value: "GUIDELINE", label: "Kilavuzlar", description: "Uygulama kilavuzlari" },
-  { value: "FORM", label: "Formlar", description: "Standart formlar ve sablonlar" },
-  { value: "OTHER", label: "Diger", description: "Diger dokumanlar" },
+  { value: "MANDATORY", label: "Zorunlu Dokümanlar", description: "Madde 4-10 kapsamındaki zorunlu dokümanlar" },
+  { value: "RECORD", label: "Zorunlu Kayıtlar", description: "Eğitim, denetim, gözden geçirme kayıtları" },
+  { value: "ANNEX_A", label: "Annex A Dokümanları", description: "93 kontrol ile ilgili dokümanlar" },
+  { value: "POLICY", label: "Politikalar", description: "Bilgi güvenliği politikaları" },
+  { value: "PROCEDURE", label: "Prosedürler", description: "İş süreçleri ve prosedürler" },
+  { value: "GUIDELINE", label: "Kılavuzlar", description: "Uygulama kılavuzları" },
+  { value: "FORM", label: "Formlar", description: "Standart formlar ve şablonlar" },
+  { value: "OTHER", label: "Diğer", description: "Diğer dokümanlar" },
 ]
 
 // Durum bilgileri
 const STATUS_MAP: Record<string, { label: string; color: string; icon: any }> = {
   DRAFT: { label: "Taslak", color: "bg-gray-100 text-gray-800", icon: FileText },
   PENDING_APPROVAL: { label: "Onay Bekliyor", color: "bg-yellow-100 text-yellow-800", icon: Clock },
-  APPROVED: { label: "Onayli", color: "bg-green-100 text-green-800", icon: CheckCircle2 },
-  PUBLISHED: { label: "Yayinda", color: "bg-blue-100 text-blue-800", icon: FileCheck },
-  UNDER_REVIEW: { label: "Gozden Geciriliyor", color: "bg-purple-100 text-purple-800", icon: Eye },
-  OBSOLETE: { label: "Gecersiz", color: "bg-red-100 text-red-800", icon: AlertCircle },
-  ARCHIVED: { label: "Arsivlenmis", color: "bg-gray-100 text-gray-500", icon: FileText },
+  APPROVED: { label: "Onaylı", color: "bg-green-100 text-green-800", icon: CheckCircle2 },
+  PUBLISHED: { label: "Yayında", color: "bg-blue-100 text-blue-800", icon: FileCheck },
+  UNDER_REVIEW: { label: "Gözden Geçiriliyor", color: "bg-purple-100 text-purple-800", icon: Eye },
+  OBSOLETE: { label: "Geçersiz", color: "bg-red-100 text-red-800", icon: AlertCircle },
+  ARCHIVED: { label: "Arşivlenmiş", color: "bg-gray-100 text-gray-500", icon: FileText },
+}
+
+// Sortable column header component
+type SortDir = "asc" | "desc"
+function SortableTh({
+  label,
+  sortKey,
+  currentSort,
+  currentDir,
+  onSort,
+  className = "",
+}: {
+  label: string
+  sortKey: string
+  currentSort: string | null
+  currentDir: SortDir
+  onSort: (key: string) => void
+  className?: string
+}) {
+  const isActive = currentSort === sortKey
+  return (
+    <TableHead
+      onClick={() => onSort(sortKey)}
+      className={`cursor-pointer hover:bg-slate-50 select-none ${className}`}
+    >
+      <div className="flex items-center gap-1">
+        <span>{label}</span>
+        <span className="inline-flex flex-col text-[9px] leading-[9px] opacity-60">
+          <span className={isActive && currentDir === "asc" ? "text-blue-600 font-bold" : ""}>▲</span>
+          <span className={isActive && currentDir === "desc" ? "text-blue-600 font-bold" : ""}>▼</span>
+        </span>
+      </div>
+    </TableHead>
+  )
 }
 
 interface Document {
@@ -139,6 +173,8 @@ export default function Iso27001DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedStatus, setSelectedStatus] = useState<string>("all")
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>("asc")
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
 
@@ -195,8 +231,8 @@ export default function Iso27001DocumentsPage() {
         setDocuments(data)
       }
     } catch (error) {
-      console.error("Dokumanlar yuklenemedi:", error)
-      toast.error("Dokumanlar yuklenemedi")
+      console.error("Dokümanlar yüklenemedi:", error)
+      toast.error("Dokümanlar yüklenemedi")
     } finally {
       setLoading(false)
     }
@@ -210,6 +246,54 @@ export default function Iso27001DocumentsPage() {
   const handleSearch = () => {
     fetchDocuments()
   }
+
+  // Sortable columns
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))
+    } else {
+      setSortKey(key)
+      setSortDir("asc")
+    }
+  }
+
+  const sortedDocuments = useMemo(() => {
+    if (!sortKey) return documents
+    const arr = [...documents]
+    arr.sort((a, b) => {
+      // Date sıralaması
+      if (sortKey === "nextReviewDate" || sortKey === "createdAt") {
+        const aT = a[sortKey as "nextReviewDate" | "createdAt"]
+          ? new Date(a[sortKey as "nextReviewDate" | "createdAt"]!).getTime()
+          : 0
+        const bT = b[sortKey as "nextReviewDate" | "createdAt"]
+          ? new Date(b[sortKey as "nextReviewDate" | "createdAt"]!).getTime()
+          : 0
+        return sortDir === "asc" ? aT - bT : bT - aT
+      }
+      // Category & status: label-bazlı sıralama (kullanıcının gördüğü TR metin)
+      if (sortKey === "category") {
+        const aL = CATEGORIES.find((c) => c.value === a.category)?.label ?? a.category
+        const bL = CATEGORIES.find((c) => c.value === b.category)?.label ?? b.category
+        return sortDir === "asc" ? aL.localeCompare(bL, "tr") : bL.localeCompare(aL, "tr")
+      }
+      if (sortKey === "status") {
+        const aL = STATUS_MAP[a.status]?.label ?? a.status
+        const bL = STATUS_MAP[b.status]?.label ?? b.status
+        return sortDir === "asc" ? aL.localeCompare(bL, "tr") : bL.localeCompare(aL, "tr")
+      }
+      // String alanlar (documentNumber, title, version, ownerName)
+      const av = (a[sortKey as keyof Document] ?? "") as string | number
+      const bv = (b[sortKey as keyof Document] ?? "") as string | number
+      if (typeof av === "number" && typeof bv === "number") {
+        return sortDir === "asc" ? av - bv : bv - av
+      }
+      return sortDir === "asc"
+        ? String(av).localeCompare(String(bv), "tr")
+        : String(bv).localeCompare(String(av), "tr")
+    })
+    return arr
+  }, [documents, sortKey, sortDir])
 
   // Dosya seçimi
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,7 +310,7 @@ export default function Iso27001DocumentsPage() {
   // Doküman yükleme
   const handleUpload = async () => {
     if (!uploadForm.file || !uploadForm.title || !uploadForm.category) {
-      toast.error("Dosya, baslik ve kategori zorunludur")
+      toast.error("Dosya, başlık ve kategori zorunludur")
       return
     }
 
@@ -247,7 +331,7 @@ export default function Iso27001DocumentsPage() {
       })
 
       if (res.ok) {
-        toast.success("Dokuman basariyla yuklendi")
+        toast.success("Doküman başarıyla yüklendi")
         setIsUploadDialogOpen(false)
         setUploadForm({
           file: null,
@@ -261,11 +345,11 @@ export default function Iso27001DocumentsPage() {
         fetchDocuments()
       } else {
         const error = await res.json()
-        toast.error(error.error || "Yukleme basarisiz")
+        toast.error(error.error || "Yükleme başarısız")
       }
     } catch (error) {
-      console.error("Yukleme hatasi:", error)
-      toast.error("Yukleme sirasinda hata olustu")
+      console.error("Yükleme hatası:", error)
+      toast.error("Yükleme sırasında hata oluştu")
     } finally {
       setUploading(false)
     }
@@ -279,15 +363,15 @@ export default function Iso27001DocumentsPage() {
       })
 
       if (res.ok) {
-        toast.success("Dokuman onaylandi")
+        toast.success("Doküman onaylandı")
         fetchDocuments()
       } else {
         const error = await res.json()
-        toast.error(error.error || "Onaylama basarisiz")
+        toast.error(error.error || "Onaylama başarısız")
       }
     } catch (error) {
-      console.error("Onaylama hatasi:", error)
-      toast.error("Onaylama sirasinda hata olustu")
+      console.error("Onaylama hatası:", error)
+      toast.error("Onaylama sırasında hata oluştu")
     }
   }
 
@@ -301,21 +385,21 @@ export default function Iso27001DocumentsPage() {
       })
 
       if (res.ok) {
-        toast.success("Dokuman yayina alindi")
+        toast.success("Doküman yayına alındı")
         fetchDocuments()
       } else {
         const error = await res.json()
-        toast.error(error.error || "Yayinlama basarisiz")
+        toast.error(error.error || "Yayınlama başarısız")
       }
     } catch (error) {
-      console.error("Yayinlama hatasi:", error)
-      toast.error("Yayinlama sirasinda hata olustu")
+      console.error("Yayınlama hatası:", error)
+      toast.error("Yayınlama sırasında hata oluştu")
     }
   }
 
   // Doküman silme
   const handleDelete = async (id: string) => {
-    if (!confirm("Bu dokumani silmek istediginizden emin misiniz?")) return
+    if (!confirm("Bu dokümanı silmek istediğinizden emin misiniz?")) return
 
     try {
       const res = await fetch(`/api/iso27001/documents/${id}`, {
@@ -323,15 +407,15 @@ export default function Iso27001DocumentsPage() {
       })
 
       if (res.ok) {
-        toast.success("Dokuman silindi")
+        toast.success("Doküman silindi")
         fetchDocuments()
       } else {
         const error = await res.json()
-        toast.error(error.error || "Silme basarisiz")
+        toast.error(error.error || "Silme başarısız")
       }
     } catch (error) {
-      console.error("Silme hatasi:", error)
-      toast.error("Silme sirasinda hata olustu")
+      console.error("Silme hatası:", error)
+      toast.error("Silme sırasında hata oluştu")
     }
   }
 
@@ -362,18 +446,18 @@ export default function Iso27001DocumentsPage() {
       if (res.ok) {
         toast.success(
           <div>
-            <p className="font-medium">Dokuman imzalandi!</p>
-            <p className="text-sm">Imza Kodu: <span className="font-mono">{data.signature.signatureCode}</span></p>
+            <p className="font-medium">Doküman imzalandı!</p>
+            <p className="text-sm">İmza Kodu: <span className="font-mono">{data.signature.signatureCode}</span></p>
           </div>
         )
         setIsSignDialogOpen(false)
         fetchDocuments()
       } else {
-        toast.error(data.error || "Imzalama basarisiz")
+        toast.error(data.error || "İmzalama başarısız")
       }
     } catch (error) {
-      console.error("Imzalama hatasi:", error)
-      toast.error("Imzalama sirasinda hata olustu")
+      console.error("İmzalama hatası:", error)
+      toast.error("İmzalama sırasında hata oluştu")
     } finally {
       setSigning(false)
     }
@@ -393,8 +477,8 @@ export default function Iso27001DocumentsPage() {
         setSignatures(data)
       }
     } catch (error) {
-      console.error("Imzalar alinamadi:", error)
-      toast.error("Imzalar alinamadi")
+      console.error("İmzalar alınamadı:", error)
+      toast.error("İmzalar alınamadı")
     } finally {
       setLoadingSignatures(false)
     }
@@ -438,7 +522,7 @@ export default function Iso27001DocumentsPage() {
       document.body.removeChild(a)
       URL.revokeObjectURL(blobUrl)
     } catch (error) {
-      console.error("Indirme hatasi:", error)
+      console.error("İndirme hatası:", error)
       toast.error("Dosya indirilemedi")
     }
   }
@@ -464,15 +548,15 @@ export default function Iso27001DocumentsPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <FileCheck className="h-6 w-6 text-primary" />
-            Dokuman Yonetimi
+            Doküman Yönetimi
           </h1>
           <p className="text-muted-foreground">
-            ISO 27001 zorunlu dokumanlar ve kayitlar
+            ISO 27001 zorunlu dokümanlar ve kayıtlar
           </p>
         </div>
         <Button onClick={() => setIsUploadDialogOpen(true)}>
           <Upload className="h-4 w-4 mr-2" />
-          Dokuman Yukle
+          Doküman Yükle
         </Button>
       </div>
 
@@ -484,7 +568,7 @@ export default function Iso27001DocumentsPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Dokuman ara..."
+                  placeholder="Doküman ara..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -497,7 +581,7 @@ export default function Iso27001DocumentsPage() {
                 <SelectValue placeholder="Kategori" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tum Kategoriler</SelectItem>
+                <SelectItem value="all">Tüm Kategoriler</SelectItem>
                 {CATEGORIES.map(cat => (
                   <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
                 ))}
@@ -508,7 +592,7 @@ export default function Iso27001DocumentsPage() {
                 <SelectValue placeholder="Durum" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tum Durumlar</SelectItem>
+                <SelectItem value="all">Tüm Durumlar</SelectItem>
                 {Object.entries(STATUS_MAP).map(([key, val]) => (
                   <SelectItem key={key} value={key}>{val.label}</SelectItem>
                 ))}
@@ -527,7 +611,7 @@ export default function Iso27001DocumentsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{documents.length}</div>
-            <p className="text-sm text-muted-foreground">Toplam Dokuman</p>
+            <p className="text-sm text-muted-foreground">Toplam Doküman</p>
           </CardContent>
         </Card>
         <Card>
@@ -535,7 +619,7 @@ export default function Iso27001DocumentsPage() {
             <div className="text-2xl font-bold text-green-600">
               {documents.filter(d => d.status === "APPROVED" || d.status === "PUBLISHED").length}
             </div>
-            <p className="text-sm text-muted-foreground">Onayli</p>
+            <p className="text-sm text-muted-foreground">Onaylı</p>
           </CardContent>
         </Card>
         <Card>
@@ -557,7 +641,7 @@ export default function Iso27001DocumentsPage() {
                 return diffDays <= 30 && diffDays > 0
               }).length}
             </div>
-            <p className="text-sm text-muted-foreground">Gozden Gecirme Yaklasan</p>
+            <p className="text-sm text-muted-foreground">Gözden Geçirme Yaklaşan</p>
           </CardContent>
         </Card>
       </div>
@@ -565,35 +649,35 @@ export default function Iso27001DocumentsPage() {
       {/* Doküman Tablosu */}
       <Card>
         <CardHeader>
-          <CardTitle>Dokumanlar</CardTitle>
+          <CardTitle>Dokümanlar</CardTitle>
           <CardDescription>
-            Tum ISO 27001 dokumanlari ve kayitlari
+            Tüm ISO 27001 dokümanları ve kayıtları
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8 text-muted-foreground">Yukleniyor...</div>
+            <div className="text-center py-8 text-muted-foreground">Yükleniyor...</div>
           ) : documents.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              Henuz dokuman bulunmuyor. Yeni dokuman yuklemek icin yukardaki butonu kullanin.
+              Henüz doküman bulunmuyor. Yeni doküman yüklemek için yukarıdaki butonu kullanın.
             </div>
           ) : (
             <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Dokuman No</TableHead>
-                  <TableHead>Baslik</TableHead>
-                  <TableHead>Kategori</TableHead>
-                  <TableHead>Versiyon</TableHead>
-                  <TableHead>Durum</TableHead>
-                  <TableHead>Sahip</TableHead>
-                  <TableHead>Gozden Gecirme</TableHead>
-                  <TableHead className="text-right">Islemler</TableHead>
+                  <SortableTh label="Doküman No" sortKey="documentNumber" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                  <SortableTh label="Başlık" sortKey="title" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                  <SortableTh label="Kategori" sortKey="category" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                  <SortableTh label="Versiyon" sortKey="version" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                  <SortableTh label="Durum" sortKey="status" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                  <SortableTh label="Sahip" sortKey="ownerName" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                  <SortableTh label="Gözden Geçirme" sortKey="nextReviewDate" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                  <TableHead className="text-right">İşlemler</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {documents.map((doc) => {
+                {sortedDocuments.map((doc) => {
                   const status = STATUS_MAP[doc.status] || STATUS_MAP.DRAFT
                   const StatusIcon = status.icon
                   const isReviewSoon = doc.nextReviewDate &&
@@ -654,11 +738,11 @@ export default function Iso27001DocumentsPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleView(doc)}>
                               <Eye className="h-4 w-4 mr-2" />
-                              Goruntule
+                              Görüntüle
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleDownload(doc)}>
                               <Download className="h-4 w-4 mr-2" />
-                              Indir
+                              İndir
                             </DropdownMenuItem>
                             {(doc.status === "DRAFT" || doc.status === "PENDING_APPROVAL") && (
                               <DropdownMenuItem onClick={() => handleApprove(doc.id)}>
@@ -669,16 +753,16 @@ export default function Iso27001DocumentsPage() {
                             {doc.status === "APPROVED" && (
                               <DropdownMenuItem onClick={() => handlePublish(doc.id)}>
                                 <FileCheck className="h-4 w-4 mr-2" />
-                                Yayinla
+                                Yayınla
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem onClick={() => handleSign(doc.id, doc.title)}>
                               <PenTool className="h-4 w-4 mr-2" />
-                              Imzala
+                              İmzala
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleViewSignatures(doc.id, doc.title)}>
                               <FileCheck className="h-4 w-4 mr-2" />
-                              Imzalari Gor ({doc._count?.signatures || 0})
+                              İmzaları Gör ({doc._count?.signatures || 0})
                             </DropdownMenuItem>
                             {canManageVersions(doc) && (
                               <>
@@ -718,9 +802,9 @@ export default function Iso27001DocumentsPage() {
       <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
         <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Yeni Dokuman Yukle</DialogTitle>
+            <DialogTitle>Yeni Doküman Yükle</DialogTitle>
             <DialogDescription>
-              ISO 27001 kapsaminda yeni bir dokuman yukleyin
+              ISO 27001 kapsamında yeni bir doküman yükleyin
             </DialogDescription>
           </DialogHeader>
 
@@ -743,14 +827,14 @@ export default function Iso27001DocumentsPage() {
                       size="sm"
                       onClick={() => setUploadForm(prev => ({ ...prev, file: null }))}
                     >
-                      Degistir
+                      Değiştir
                     </Button>
                   </div>
                 ) : (
                   <label className="cursor-pointer">
                     <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Dosya secmek icin tiklayin veya surukleyin
+                      Dosya seçmek için tıklayın veya sürükleyin
                     </p>
                     <p className="text-xs text-muted-foreground">
                       PDF, Word, Excel (Max 50MB)
@@ -768,23 +852,23 @@ export default function Iso27001DocumentsPage() {
 
             {/* Başlık */}
             <div className="space-y-2">
-              <Label htmlFor="title">Baslik *</Label>
+              <Label htmlFor="title">Başlık *</Label>
               <Input
                 id="title"
                 value={uploadForm.title}
                 onChange={(e) => setUploadForm(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="Dokuman basligi"
+                placeholder="Doküman başlığı"
               />
             </div>
 
             {/* Açıklama */}
             <div className="space-y-2">
-              <Label htmlFor="description">Aciklama</Label>
+              <Label htmlFor="description">Açıklama</Label>
               <Textarea
                 id="description"
                 value={uploadForm.description}
                 onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Dokuman hakkinda kisa aciklama"
+                placeholder="Doküman hakkında kısa açıklama"
                 rows={3}
               />
             </div>
@@ -798,7 +882,7 @@ export default function Iso27001DocumentsPage() {
                   onValueChange={(value) => setUploadForm(prev => ({ ...prev, category: value }))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Kategori secin" />
+                    <SelectValue placeholder="Kategori seçin" />
                   </SelectTrigger>
                   <SelectContent>
                     {CATEGORIES.map(cat => (
@@ -810,19 +894,19 @@ export default function Iso27001DocumentsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="clause">Ilgili Madde</Label>
+                <Label htmlFor="clause">İlgili Madde</Label>
                 <Input
                   id="clause"
                   value={uploadForm.clause}
                   onChange={(e) => setUploadForm(prev => ({ ...prev, clause: e.target.value }))}
-                  placeholder="Ornek: 6.1.2, A.5.1"
+                  placeholder="Örnek: 6.1.2, A.5.1"
                 />
               </div>
             </div>
 
             {/* Gözden Geçirme Süresi */}
             <div className="space-y-2">
-              <Label>Gozden Gecirme Periyodu</Label>
+              <Label>Gözden Geçirme Periyodu</Label>
               <Select
                 value={uploadForm.reviewFrequency}
                 onValueChange={(value) => setUploadForm(prev => ({ ...prev, reviewFrequency: value }))}
@@ -833,8 +917,8 @@ export default function Iso27001DocumentsPage() {
                 <SelectContent>
                   <SelectItem value="90">3 Ay</SelectItem>
                   <SelectItem value="180">6 Ay</SelectItem>
-                  <SelectItem value="365">1 Yil</SelectItem>
-                  <SelectItem value="730">2 Yil</SelectItem>
+                  <SelectItem value="365">1 Yıl</SelectItem>
+                  <SelectItem value="730">2 Yıl</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -842,10 +926,10 @@ export default function Iso27001DocumentsPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
-              Iptal
+              İptal
             </Button>
             <Button onClick={handleUpload} disabled={uploading}>
-              {uploading ? "Yukleniyor..." : "Yukle"}
+              {uploading ? "Yükleniyor..." : "Yükle"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -857,7 +941,7 @@ export default function Iso27001DocumentsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PenTool className="h-5 w-5" />
-              Dokuman Imzala
+              Doküman İmzala
             </DialogTitle>
             <DialogDescription>
               {signingDocTitle}
@@ -866,15 +950,15 @@ export default function Iso27001DocumentsPage() {
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Imza Turu</Label>
+              <Label>İmza Türü</Label>
               <Select value={signatureType} onValueChange={setSignatureType}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="APPROVAL">Onay Imzasi</SelectItem>
-                  <SelectItem value="REVIEW">Gozden Gecirme Imzasi</SelectItem>
-                  <SelectItem value="ACKNOWLEDGEMENT">Bilgi Alma Imzasi</SelectItem>
+                  <SelectItem value="APPROVAL">Onay İmzası</SelectItem>
+                  <SelectItem value="REVIEW">Gözden Geçirme İmzası</SelectItem>
+                  <SelectItem value="ACKNOWLEDGEMENT">Bilgi Alma İmzası</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -884,25 +968,25 @@ export default function Iso27001DocumentsPage() {
               <Textarea
                 value={signatureNotes}
                 onChange={(e) => setSignatureNotes(e.target.value)}
-                placeholder="Imza ile ilgili notlariniz..."
+                placeholder="İmza ile ilgili notlarınız..."
                 rows={3}
               />
             </div>
 
             <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                <strong>Dikkat:</strong> Bu islemi gerceklestirdiginizde, dijital imzaniz olusturulacak
-                ve benzersiz bir imza kodu atanacaktir. Imzaniz, IP adresiniz ve tarih bilgisi ile birlikte kaydedilecektir.
+                <strong>Dikkat:</strong> Bu işlemi gerçekleştirdiğinizde, dijital imzanız oluşturulacak
+                ve benzersiz bir imza kodu atanacaktır. İmzanız, IP adresiniz ve tarih bilgisi ile birlikte kaydedilecektir.
               </p>
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSignDialogOpen(false)}>
-              Iptal
+              İptal
             </Button>
             <Button onClick={handleSubmitSign} disabled={signing}>
-              {signing ? "Imzalaniyor..." : "Imzala"}
+              {signing ? "İmzalanıyor..." : "İmzala"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -914,7 +998,7 @@ export default function Iso27001DocumentsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileCheck className="h-5 w-5" />
-              Dokuman Imzalari
+              Doküman İmzaları
             </DialogTitle>
             <DialogDescription>
               {signingDocTitle}
@@ -923,10 +1007,10 @@ export default function Iso27001DocumentsPage() {
 
           <div className="max-h-[400px] overflow-y-auto">
             {loadingSignatures ? (
-              <div className="text-center py-8 text-muted-foreground">Yukleniyor...</div>
+              <div className="text-center py-8 text-muted-foreground">Yükleniyor...</div>
             ) : signatures.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                Bu dokumanda henuz imza bulunmuyor.
+                Bu dokümanda henüz imza bulunmuyor.
               </div>
             ) : (
               <div className="space-y-4">
@@ -943,15 +1027,15 @@ export default function Iso27001DocumentsPage() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
                       <div>
-                        <span className="text-muted-foreground">Unvan:</span> {sig.signerTitle || "-"}
+                        <span className="text-muted-foreground">Ünvan:</span> {sig.signerTitle || "-"}
                       </div>
                       <div>
                         <span className="text-muted-foreground">Departman:</span> {sig.signerDepartment || "-"}
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Imza Turu:</span>{" "}
+                        <span className="text-muted-foreground">İmza Türü:</span>{" "}
                         {sig.signatureType === "APPROVAL" ? "Onay" :
-                         sig.signatureType === "REVIEW" ? "Gozden Gecirme" : "Bilgi Alma"}
+                         sig.signatureType === "REVIEW" ? "Gözden Geçirme" : "Bilgi Alma"}
                       </div>
                       <div>
                         <span className="text-muted-foreground">Tarih:</span>{" "}
@@ -965,7 +1049,7 @@ export default function Iso27001DocumentsPage() {
                     )}
                     <div className="flex items-center gap-1 text-xs text-green-600">
                       <CheckCircle2 className="h-3 w-3" />
-                      {sig.isVerified ? "Dogrulanmis Imza" : "Imza Bekleniyor"}
+                      {sig.isVerified ? "Doğrulanmış İmza" : "İmza Bekleniyor"}
                     </div>
                   </div>
                 ))}

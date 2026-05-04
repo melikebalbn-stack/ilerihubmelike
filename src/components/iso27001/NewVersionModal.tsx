@@ -204,7 +204,10 @@ export function NewVersionModal({
               <div className="flex items-center gap-3 rounded-lg border bg-emerald-50/50 border-emerald-200 px-3 py-2.5">
                 <FileText className="h-5 w-5 text-emerald-600 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">
+                  <div
+                    className="text-sm font-medium truncate"
+                    title={file.name}
+                  >
                     {file.name}
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -215,8 +218,10 @@ export function NewVersionModal({
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="shrink-0"
                   onClick={() => setFile(null)}
                   disabled={submitting}
+                  aria-label="Dosyayı kaldır"
                 >
                   <X className="h-4 w-4" />
                 </Button>

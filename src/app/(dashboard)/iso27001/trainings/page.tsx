@@ -1263,7 +1263,9 @@ export default function TrainingsPage() {
               {selectedFile ? (
                 <div className="space-y-2">
                   <File className="mx-auto h-12 w-12 text-green-500" />
-                  <p className="font-medium">{selectedFile.name}</p>
+                  <p className="font-medium px-2 break-all" title={selectedFile.name}>
+                    {selectedFile.name}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                   </p>

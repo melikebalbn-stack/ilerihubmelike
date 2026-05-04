@@ -814,10 +814,12 @@ export default function Iso27001DocumentsPage() {
               <Label>Dosya *</Label>
               <div className="border-2 border-dashed rounded-lg p-6 text-center">
                 {uploadForm.file ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <FileText className="h-8 w-8 text-primary" />
-                    <div>
-                      <p className="font-medium">{uploadForm.file.name}</p>
+                  <div className="flex items-center gap-3 text-left">
+                    <FileText className="h-8 w-8 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate" title={uploadForm.file.name}>
+                        {uploadForm.file.name}
+                      </p>
                       <p className="text-sm text-muted-foreground">
                         {formatFileSize(uploadForm.file.size)}
                       </p>
@@ -825,6 +827,7 @@ export default function Iso27001DocumentsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="shrink-0"
                       onClick={() => setUploadForm(prev => ({ ...prev, file: null }))}
                     >
                       Değiştir

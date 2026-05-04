@@ -171,7 +171,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [iso27001Open, setIso27001Open] = useState(false)
   const [formsOpen, setFormsOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
-  const [overtimeAuthorized, setOvertimeAuthorized] = useState(false)
 
   // Pathname değiştiğinde ilgili menüyü otomatik aç
   useEffect(() => {
@@ -222,24 +221,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
   }, [session])
 
-  // Mesai formu yetki kontrolü
-  useEffect(() => {
-    async function checkOvertimeAuth() {
-      try {
-        const res = await fetch('/api/overtime/authorized-users?check=me')
-        if (res.ok) {
-          const data = await res.json()
-          setOvertimeAuthorized(data.authorized === true)
-        }
-      } catch {
-        // Yetki kontrolü başarısızsa gizle
-      }
-    }
-    if (session?.user) {
-      checkOvertimeAuth()
-    }
-  }, [session])
-
   // Kullanıcı rolüne göre menü filtreleme
   const userRole = session?.user?.role || 'USER'
   const userDepartment = session?.user?.department || ''
@@ -287,13 +268,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   const filteredStrategicHrItems = filterStrategicHrItems(strategicHrMenuItems)
-  const filteredFormsItems = filterItems(formsMenuItems).filter(item => {
-    // Mesai Formu sadece yetkili kullanıcılara gösterilir
-    if (item.href === '/forms/overtime') {
-      return overtimeAuthorized
-    }
-    return true
-  })
+  const filteredFormsItems = filterItems(formsMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 
   // Sandbox: SUPER_ADMIN tümünü görür, diğerleri sadece kendi sandbox'ını

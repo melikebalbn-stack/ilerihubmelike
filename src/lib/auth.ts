@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { authenticateUser, determineUserRole, getEmailFromDN } from '@/lib/ldap';
 import { prisma } from '@/lib/prisma';
 import { Role, LoginStatus } from '@/generated/prisma';
+import { inferRoleFromJobTitle } from '@/lib/ldap-sync';
 import { checkRateLimit, resetRateLimit, getRateLimitKey } from '@/lib/rate-limit';
 
 // Login log fonksiyonu
@@ -299,7 +300,8 @@ export const authOptions: NextAuthOptions = {
           const userEmail = (typeof ldapUser.email === 'string' ? ldapUser.email.trim() : null) || `${ldapUser.username}@ilerigroup.com`;
 
           // Kullanıcıyı veritabanına kaydet veya güncelle (upsert)
-          const prismaRole = mapLdapRoleToPrismaRole(role, userEmail);
+          const baseRole = mapLdapRoleToPrismaRole(role, userEmail);
+          const prismaRole = inferRoleFromJobTitle(ldapUser.title, baseRole);
 
           // FIX #16: DB hata yönetimi - retry mekanizması ve hata izleme
           const maxRetries = 3;

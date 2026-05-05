@@ -90,6 +90,31 @@ function mapLdapRoleToPrismaRole(ldapRole: string, email?: string): Role {
   return roleMap[ldapRole] || Role.EMPLOYEE
 }
 
+/**
+ * jobTitle bazlı role inference. LDAP'tan açık rol gelmediğinde
+ * (default: EMPLOYEE) unvana göre Müdür/Yardımcı user'ları yükseltir.
+ *
+ * Sadece EMPLOYEE rolünü ezer — manuel atanmış SUPER_ADMIN/ADMIN/
+ * *_MANAGER/DEPT_HEAD/SUPERVISOR rollerine dokunmaz.
+ *
+ *   "...Müdürü" / "...Mudur" / "...Muduru"  → DEPT_HEAD
+ *   "...Müdür Yardımcısı" / "...Mudur Yardimcisi" / "...Asistan" → SUPERVISOR
+ */
+export function inferRoleFromJobTitle(
+  jobTitle: string | null | undefined,
+  currentRole: Role
+): Role {
+  if (currentRole !== Role.EMPLOYEE) return currentRole
+  if (!jobTitle) return currentRole
+
+  const title = jobTitle.toLowerCase()
+  const hasMudur = /m[üu]d[üu]r/i.test(title)
+  if (!hasMudur) return currentRole
+
+  const isAssistant = /(yard[ıi]mc|asistan|vekil)/i.test(title)
+  return isAssistant ? Role.SUPERVISOR : Role.DEPT_HEAD
+}
+
 /** Bir kullanıcının sistem/ortak hesap olup olmadığını kontrol et */
 function isSystemAccount(email: string): boolean {
   return SYSTEM_ACCOUNTS.includes(email.toLowerCase())
@@ -239,7 +264,8 @@ async function upsertUser(
   const email = ldapUser.email!.trim()
   const emailLower = email.toLowerCase()
   const ldapRole = determineUserRole(ldapUser)
-  const prismaRole = mapLdapRoleToPrismaRole(ldapRole, emailLower)
+  const baseRole = mapLdapRoleToPrismaRole(ldapRole, emailLower)
+  const prismaRole = inferRoleFromJobTitle(ldapUser.title, baseRole)
   const userId = `ad_${ldapUser.username}`
 
   // Manager email'ini çöz

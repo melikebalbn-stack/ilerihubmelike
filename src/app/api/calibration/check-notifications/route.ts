@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -19,17 +19,24 @@ type DeviceAlert = {
  * POST /api/calibration/check-notifications
  * Checks all devices and sends notifications based on configured rules
  * Hem kalibrasyon hem doğrulama tarihlerini kontrol eder
+ *
+ * Auth: Session VEYA x-cron-secret header (sistem cron için)
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Sistem cron bypass: x-cron-secret header eşleşirse session zorunlu değil
+    const cronSecret = request.headers.get('x-cron-secret')
+    const isCron = !!cronSecret && cronSecret === process.env.CRON_SECRET
 
-    const { canEditCalibration } = await import('@/lib/calibration-auth')
-    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
-      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+    if (!isCron) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.email) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const { canEditCalibration } = await import('@/lib/calibration-auth')
+      if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
+        return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+      }
     }
 
     const now = new Date()
@@ -441,8 +448,8 @@ Bu e-posta otomatik olarak ILERIHub Kalibrasyon Yönetim Sistemi tarafından gö
 
 /**
  * GET /api/calibration/check-notifications
- * Manual trigger for testing - same as POST
+ * Manual trigger — POST'un aynısı.
  */
-export async function GET() {
-  return POST()
+export async function GET(request: NextRequest) {
+  return POST(request)
 }

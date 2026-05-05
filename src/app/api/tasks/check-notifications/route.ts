@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -8,20 +8,22 @@ import { sendEmail } from '@/lib/email'
 /**
  * POST /api/tasks/check-notifications
  * Checks all tasks and sends notifications based on reminder days
- * This endpoint is called by the cron scheduler (ADMIN only)
+ * Auth: Session (ADMIN+) VEYA x-cron-secret (sistem cron için)
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    // Kimlik doğrulama kontrolü - sistem yönetimi işlemi
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const cronSecret = request.headers.get('x-cron-secret')
+    const isCron = !!cronSecret && cronSecret === process.env.CRON_SECRET
 
-    // Sadece ADMIN veya SUPER_ADMIN erişebilir
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
-      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+    if (!isCron) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.email) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const userRole = session.user.role || 'EMPLOYEE'
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+        return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+      }
     }
     const now = new Date()
     now.setHours(0, 0, 0, 0)
@@ -387,8 +389,9 @@ Bu e-posta otomatik olarak ILERIHub Planlı Görevler Sistemi tarafından gönde
 
 /**
  * GET /api/tasks/check-notifications
- * Manual trigger for testing - same as POST
+ * Manual trigger for testing — POST'un aynısı.
+ * Sistem cron GET ile çağırır, x-cron-secret header forward edilir.
  */
-export async function GET() {
-  return POST()
+export async function GET(request: NextRequest) {
+  return POST(request)
 }

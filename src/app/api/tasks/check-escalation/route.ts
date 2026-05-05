@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -6,19 +6,21 @@ import { TaskStatus, TaskEmailType } from '@/generated/prisma'
 import { sendEscalationNotification, EscalationEmailData, EmailRecipient } from '@/lib/email'
 import { getAllLDAPUsers } from '@/lib/ldap'
 
-// Eskalasyon kontrolü - Cron job tarafından çağrılır (ADMIN only)
-export async function GET() {
+// Eskalasyon kontrolü - Cron job tarafından çağrılır (ADMIN+ veya x-cron-secret)
+export async function GET(request: NextRequest) {
   try {
-    // Kimlik doğrulama kontrolü - sistem yönetimi işlemi
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const cronSecret = request.headers.get('x-cron-secret')
+    const isCron = !!cronSecret && cronSecret === process.env.CRON_SECRET
 
-    // Sadece ADMIN veya SUPER_ADMIN erişebilir
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
-      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+    if (!isCron) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.email) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const userRole = session.user.role || 'EMPLOYEE'
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+        return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+      }
     }
     console.log('🔄 Eskalasyon kontrolü başlıyor...')
 

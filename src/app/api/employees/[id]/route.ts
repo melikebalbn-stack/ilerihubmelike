@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getAllLDAPUsers, getDirectReports, LDAPUser } from '@/lib/ldap'
+import { getAllLDAPUsers, getDirectReports } from '@/lib/ldap'
 
-// Çalışan detay formatı
 interface EmployeeDetail {
   id: string
   name: string
@@ -28,7 +27,20 @@ interface EmployeeDetail {
   }[]
 }
 
-// GET /api/employees/[id] - Tek çalışan detay
+const NOT_FOUND = NextResponse.json(
+  { error: 'Çalışan bulunamadı' },
+  { status: 404 }
+)
+
+/**
+ * GET /api/employees/[id]
+ *
+ * ID iki formatta gelebilir (list endpoint'inden):
+ *   - LDAP username (ör. "melih.dilben") → User'a bağlı, AD entegre kayıt
+ *   - "personnel-{cuid}" → User link'i olmayan Personnel-only kayıt (mavi yaka)
+ *
+ * Her durumda Personnel.aktif=true zorunlu.
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -41,44 +53,48 @@ export async function GET(
 
     const { id } = await params
 
-    // LDAP'tan tüm kullanıcıları al
-    const allUsers = await getAllLDAPUsers()
-
-    // Kullanıcıyı bul
-    const user = allUsers.find(u => u.username.toLowerCase() === id.toLowerCase())
-
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Çalışan bulunamadı' },
-        { status: 404 }
-      )
-    }
-
-    // İK whitelist: yalnızca Personnel'da aktif olanlar erişilebilir
-    // (Personnel pasife çekilince detay sayfası 404 döner — list ile tutarlı)
-    if (user.email) {
-      const linked = await prisma.user.findFirst({
-        where: {
-          email: { equals: user.email, mode: 'insensitive' },
-          isActive: true,
-          personnel: { aktif: true },
-        },
-        select: { id: true },
+    // Personnel-only kayıt (User link'i yok) — mavi yaka çoğunlukla
+    if (id.startsWith('personnel-')) {
+      const personnelId = id.slice('personnel-'.length)
+      const p = await prisma.personnel.findFirst({
+        where: { id: personnelId, aktif: true },
+        include: { user: { select: { extension3cx: true } } },
       })
-      if (!linked) {
-        return NextResponse.json(
-          { error: 'Çalışan bulunamadı' },
-          { status: 404 }
-        )
+      if (!p) return NOT_FOUND
+
+      const employee: EmployeeDetail = {
+        id,
+        name: p.adSoyad,
+        email: p.mailAdresi || null,
+        department: p.bolum,
+        title: p.gorev,
+        phone: p.user?.extension3cx || p.telefon || null,
+        avatar: null,
+        managerDN: null,
+        manager: null,
+        teamMembers: [],
       }
-    } else {
-      return NextResponse.json(
-        { error: 'Çalışan bulunamadı' },
-        { status: 404 }
-      )
+      return NextResponse.json(employee)
     }
 
-    // Yöneticiyi bul
+    // LDAP-tabanlı kayıt — User var, AD entegre. Personnel.aktif zorunlu.
+    const allUsers = await getAllLDAPUsers()
+    const user = allUsers.find(u => u.username.toLowerCase() === id.toLowerCase())
+    if (!user) return NOT_FOUND
+
+    if (!user.email) return NOT_FOUND
+
+    const linked = await prisma.user.findFirst({
+      where: {
+        email: { equals: user.email, mode: 'insensitive' },
+        isActive: true,
+        personnel: { aktif: true },
+      },
+      select: { id: true, extension3cx: true },
+    })
+    if (!linked) return NOT_FOUND
+
+    // Yönetici (LDAP'tan)
     let manager: EmployeeDetail['manager'] = null
     if (user.managerDN) {
       const managerUser = allUsers.find(u =>
@@ -94,7 +110,7 @@ export async function GET(
       }
     }
 
-    // Ekip üyelerini bul (bu kişinin yönettiği kişiler)
+    // Ekip üyeleri (LDAP'tan, sadece bu kişinin direkt raporları)
     const directReports = await getDirectReports(user.distinguishedName)
     const teamMembers = directReports.map(member => ({
       id: member.username,
@@ -103,23 +119,13 @@ export async function GET(
       email: member.email,
     }))
 
-    // DB'den extension3cx al
-    let extension3cx: string | null = null
-    if (user.email) {
-      const dbUser = await prisma.user.findFirst({
-        where: { email: { equals: user.email, mode: 'insensitive' } },
-        select: { extension3cx: true },
-      })
-      extension3cx = dbUser?.extension3cx || null
-    }
-
     const employee: EmployeeDetail = {
       id: user.username,
       name: user.displayName,
       email: user.email,
       department: user.department,
       title: user.title,
-      phone: extension3cx,
+      phone: linked.extension3cx || null,
       avatar: null,
       managerDN: user.managerDN,
       manager,
@@ -127,7 +133,6 @@ export async function GET(
     }
 
     return NextResponse.json(employee)
-
   } catch (error) {
     console.error('Employee detail API error:', error)
     return NextResponse.json(

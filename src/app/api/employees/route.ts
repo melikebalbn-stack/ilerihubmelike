@@ -125,8 +125,23 @@ export async function GET(request: NextRequest) {
       }))
     }
 
-    // Mail adresi olmayanları gizle
-    const usersWithEmail = allUsers.filter(user => user.email)
+    // İK whitelist: Çalışan Rehberi yalnızca Personnel'da aktif olanları gösterir.
+    // Personnel.aktif=false → otomatik gizlenir.
+    // Personnel'da hiç olmayan user → gizlenir (İK kontrolü dışı kayıtlar).
+    const activeUsers = await prisma.user.findMany({
+      where: { isActive: true, personnel: { aktif: true } },
+      select: { email: true },
+    })
+    const activeEmailSet = new Set(
+      activeUsers
+        .map(u => u.email?.toLowerCase())
+        .filter((e): e is string => !!e)
+    )
+
+    // Mail adresi olmayanları gizle + Personnel-aktif olanlarla kesişim
+    const usersWithEmail = allUsers.filter(
+      user => user.email && activeEmailSet.has(user.email.toLowerCase())
+    )
 
     // Her kullanıcıya mappedDepartment ekle
     const usersWithMappedDept = usersWithEmail.map(user => ({

@@ -54,6 +54,30 @@ export async function GET(
       )
     }
 
+    // İK whitelist: yalnızca Personnel'da aktif olanlar erişilebilir
+    // (Personnel pasife çekilince detay sayfası 404 döner — list ile tutarlı)
+    if (user.email) {
+      const linked = await prisma.user.findFirst({
+        where: {
+          email: { equals: user.email, mode: 'insensitive' },
+          isActive: true,
+          personnel: { aktif: true },
+        },
+        select: { id: true },
+      })
+      if (!linked) {
+        return NextResponse.json(
+          { error: 'Çalışan bulunamadı' },
+          { status: 404 }
+        )
+      }
+    } else {
+      return NextResponse.json(
+        { error: 'Çalışan bulunamadı' },
+        { status: 404 }
+      )
+    }
+
     // Yöneticiyi bul
     let manager: EmployeeDetail['manager'] = null
     if (user.managerDN) {

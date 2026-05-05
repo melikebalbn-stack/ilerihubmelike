@@ -53,13 +53,13 @@ export async function GET(
 
     const { id } = await params
 
-    // Aktif bölüm whitelist (Ayarlar → İV Bölüm Tanımları)
-    const activeBolumSet = new Set(
-      (await prisma.departmentDefinition.findMany({
-        where: { isActive: true },
-        select: { name: true },
-      })).map(d => d.name)
-    )
+    // Aktif whitelist'ler (Ayarlar → İV Tanımları)
+    const [activeBolumRows, activeGorevRows] = await Promise.all([
+      prisma.departmentDefinition.findMany({ where: { isActive: true }, select: { name: true } }),
+      prisma.jobTitle.findMany({ where: { isActive: true }, select: { name: true } }),
+    ])
+    const activeBolumSet = new Set(activeBolumRows.map(d => d.name))
+    const activeGorevSet = new Set(activeGorevRows.map(j => j.name))
 
     // Personnel-only kayıt (User link'i yok) — mavi yaka çoğunlukla
     if (id.startsWith('personnel-')) {
@@ -70,6 +70,7 @@ export async function GET(
       })
       if (!p) return NOT_FOUND
       if (!activeBolumSet.has(p.bolum)) return NOT_FOUND
+      if (!activeGorevSet.has(p.gorev)) return NOT_FOUND
 
       const employee: EmployeeDetail = {
         id,
@@ -100,10 +101,13 @@ export async function GET(
         isActive: true,
         personnel: { aktif: true },
       },
-      select: { id: true, extension3cx: true, personnel: { select: { bolum: true } } },
+      select: { id: true, extension3cx: true, personnel: { select: { bolum: true, gorev: true } } },
     })
     if (!linked) return NOT_FOUND
-    if (linked.personnel && !activeBolumSet.has(linked.personnel.bolum)) return NOT_FOUND
+    if (linked.personnel) {
+      if (!activeBolumSet.has(linked.personnel.bolum)) return NOT_FOUND
+      if (!activeGorevSet.has(linked.personnel.gorev)) return NOT_FOUND
+    }
 
     // Yönetici (LDAP'tan)
     let manager: EmployeeDetail['manager'] = null

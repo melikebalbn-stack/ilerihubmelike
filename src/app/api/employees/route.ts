@@ -38,18 +38,26 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
-    // Aktif bölüm whitelist (Ayarlar → İV Bölüm Tanımları)
-    const activeDepartments = await prisma.departmentDefinition.findMany({
-      where: { isActive: true },
-      select: { name: true },
-    })
+    // Aktif whitelist'ler (Ayarlar → İV Tanımları)
+    const [activeDepartments, activeJobTitles] = await Promise.all([
+      prisma.departmentDefinition.findMany({
+        where: { isActive: true },
+        select: { name: true },
+      }),
+      prisma.jobTitle.findMany({
+        where: { isActive: true },
+        select: { name: true },
+      }),
+    ])
     const activeBolumNames = activeDepartments.map(d => d.name)
+    const activeGorevNames = activeJobTitles.map(j => j.name)
 
-    // Personnel master — Personnel.aktif=true VE bolum whitelist'te olmalı
+    // Personnel master — Personnel.aktif=true VE bolum/gorev whitelist'lerinde olmalı
     const personnelList = await prisma.personnel.findMany({
       where: {
         aktif: true,
         bolum: { in: activeBolumNames },
+        gorev: { in: activeGorevNames },
       },
       include: {
         user: {

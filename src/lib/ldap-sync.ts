@@ -15,15 +15,22 @@ import { prisma } from './prisma'
 import { Role } from '@/generated/prisma'
 import { logger } from './logger'
 
-// SUPER_ADMIN listesi (auth.ts ile senkron)
-const SUPER_ADMIN_EMAILS = [
-  'halit.ileri@ilerigroup.com',
-  'gurhan.horbay@ilerigroup.com',
-  'hilmi.ileri@ilerigroup.com',
-  'eren.ileri@ilerigroup.com',
-  'koray.ileri@ilerigroup.com',
-  'melike.balaban@ilerigroup.com',
-]
+// Email-bazlı rol override'ları (auth.ts ile senkron — tek source of truth
+// gelecekte ortak modüle çıkarılabilir).
+const ROLE_OVERRIDES: Record<string, Role> = {
+  // SUPER_ADMIN — üst yönetim + sistem sahibi
+  'halit.ileri@ilerigroup.com': Role.SUPER_ADMIN,
+  'gurhan.horbay@ilerigroup.com': Role.SUPER_ADMIN,
+  'koray.ileri@ilerigroup.com': Role.SUPER_ADMIN,
+  'melike.balaban@ilerigroup.com': Role.SUPER_ADMIN,
+  'melih.dilben@ilerigroup.com': Role.SUPER_ADMIN,
+  // ADMIN — operasyonel yönetim
+  'hilmi.ileri@ilerigroup.com': Role.ADMIN,
+  'eren.ileri@ilerigroup.com': Role.ADMIN,
+  'kadir.kocakoglu@ilerigroup.com': Role.ADMIN,
+  // QUALITY_MANAGER
+  'sami.tekoglu@ilerigroup.com': Role.QUALITY_MANAGER,
+}
 
 // Ortak/sistem hesapları (senkronizasyondan hariç)
 const SYSTEM_ACCOUNTS = [
@@ -72,8 +79,9 @@ export interface SyncStatus {
 
 /** LDAP rolünü Prisma Role enum'una dönüştür */
 function mapLdapRoleToPrismaRole(ldapRole: string, email?: string): Role {
-  if (email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase())) {
-    return Role.SUPER_ADMIN
+  // Email-bazlı override (SUPER_ADMIN/ADMIN/QUALITY_MANAGER vs.)
+  if (email && ROLE_OVERRIDES[email.toLowerCase()]) {
+    return ROLE_OVERRIDES[email.toLowerCase()]
   }
 
   const roleMap: Record<string, Role> = {

@@ -33,22 +33,33 @@ async function logLogin(data: {
   }
 }
 
-// Üst yönetim e-postaları - otomatik SUPER_ADMIN
-const SUPER_ADMIN_EMAILS = [
-  'halit.ileri@ilerigroup.com',
-  'gurhan.horbay@ilerigroup.com',
-  'hilmi.ileri@ilerigroup.com',
-  'eren.ileri@ilerigroup.com',
-  'koray.ileri@ilerigroup.com',
-  'melike.balaban@ilerigroup.com',
-  'melih.dilben@ilerigroup.com',
-];
+// Email-bazlı rol override'ları — LDAP'tan gelen role'u ezer.
+// Kayıt sıralaması: en yüksek yetkiliden aşağıya.
+const ROLE_OVERRIDES: Record<string, Role> = {
+  // SUPER_ADMIN — üst yönetim + sistem sahibi
+  'halit.ileri@ilerigroup.com': Role.SUPER_ADMIN,
+  'gurhan.horbay@ilerigroup.com': Role.SUPER_ADMIN,
+  'koray.ileri@ilerigroup.com': Role.SUPER_ADMIN,
+  'melike.balaban@ilerigroup.com': Role.SUPER_ADMIN,
+  'melih.dilben@ilerigroup.com': Role.SUPER_ADMIN,
+  // ADMIN — operasyonel yönetim
+  'hilmi.ileri@ilerigroup.com': Role.ADMIN,
+  'eren.ileri@ilerigroup.com': Role.ADMIN,
+  'kadir.kocakoglu@ilerigroup.com': Role.ADMIN,
+  // QUALITY_MANAGER
+  'sami.tekoglu@ilerigroup.com': Role.QUALITY_MANAGER,
+};
+
+// Geriye uyumluluk: bazı eski kod yolları SUPER_ADMIN_EMAILS array'i bekliyor
+const SUPER_ADMIN_EMAILS = Object.entries(ROLE_OVERRIDES)
+  .filter(([, role]) => role === Role.SUPER_ADMIN)
+  .map(([email]) => email);
 
 // LDAP rolünü Prisma Role enum'una dönüştür
 function mapLdapRoleToPrismaRole(ldapRole: string, email?: string): Role {
-  // Üst yönetim için otomatik SUPER_ADMIN
-  if (email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase())) {
-    return Role.SUPER_ADMIN;
+  // Email-bazlı override (SUPER_ADMIN/ADMIN/QUALITY_MANAGER vs.)
+  if (email && ROLE_OVERRIDES[email.toLowerCase()]) {
+    return ROLE_OVERRIDES[email.toLowerCase()];
   }
 
   const roleMap: Record<string, Role> = {

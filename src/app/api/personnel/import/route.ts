@@ -101,6 +101,19 @@ function parseDate(value: any): Date | null {
   return isNaN(parsed.getTime()) ? null : parsed
 }
 
+/**
+ * Bir tarihe ay ekler (deneme süresi hesaplaması için).
+ * Ay taşmasını düzeltir (örn. 31 Ocak + 1 ay = 28 Şubat, 3 Mart değil).
+ */
+function addMonthsToDate(date: Date | null, months: number): Date | null {
+  if (!date) return null
+  const d = new Date(date)
+  const day = d.getDate()
+  d.setMonth(d.getMonth() + months)
+  if (d.getDate() !== day) d.setDate(0) // ay taşması fix
+  return d
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -219,8 +232,14 @@ export async function POST(request: NextRequest) {
           egitimYeri: mapped.egitimYeri?.toString().trim() || null,
           egitimTipi: mapped.egitimTipi?.toString().trim() || null,
           egitimAlani: mapped.egitimAlani?.toString().trim() || null,
-          denemeDegerlendirme: mapped.denemeDegerlendirme ? parseDate(mapped.denemeDegerlendirme) : null,
-          altiAyDegerlendirme: mapped.altiAyDegerlendirme ? parseDate(mapped.altiAyDegerlendirme) : null,
+          // Excel'de tarih varsa onu kullan; yoksa iseGirisTarihi + 2/6 ay
+          // (deneme süresi yasal sabit hesap; Excel'deki manuel girişler tutarsız oluyordu)
+          denemeDegerlendirme: mapped.denemeDegerlendirme
+            ? parseDate(mapped.denemeDegerlendirme)
+            : addMonthsToDate(iseGirisTarihi, 2),
+          altiAyDegerlendirme: mapped.altiAyDegerlendirme
+            ? parseDate(mapped.altiAyDegerlendirme)
+            : addMonthsToDate(iseGirisTarihi, 6),
           createdBy: session.user.id,
         }
 

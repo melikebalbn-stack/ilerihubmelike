@@ -68,7 +68,8 @@ export async function GET(
         email: p.mailAdresi || null,
         department: p.bolum,
         title: p.gorev,
-        phone: p.user?.extension3cx || p.telefon || null,
+        // SADECE şirket dahili (extension3cx). Personnel.telefon (cep) ASLA paylaşılmaz — KVKK.
+        phone: p.user?.extension3cx || null,
         avatar: null,
         managerDN: null,
         manager: null,

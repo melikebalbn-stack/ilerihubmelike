@@ -53,6 +53,14 @@ export async function GET(
 
     const { id } = await params
 
+    // Aktif bölüm whitelist (Ayarlar → İV Bölüm Tanımları)
+    const activeBolumSet = new Set(
+      (await prisma.departmentDefinition.findMany({
+        where: { isActive: true },
+        select: { name: true },
+      })).map(d => d.name)
+    )
+
     // Personnel-only kayıt (User link'i yok) — mavi yaka çoğunlukla
     if (id.startsWith('personnel-')) {
       const personnelId = id.slice('personnel-'.length)
@@ -61,6 +69,7 @@ export async function GET(
         include: { user: { select: { extension3cx: true } } },
       })
       if (!p) return NOT_FOUND
+      if (!activeBolumSet.has(p.bolum)) return NOT_FOUND
 
       const employee: EmployeeDetail = {
         id,
@@ -91,9 +100,10 @@ export async function GET(
         isActive: true,
         personnel: { aktif: true },
       },
-      select: { id: true, extension3cx: true },
+      select: { id: true, extension3cx: true, personnel: { select: { bolum: true } } },
     })
     if (!linked) return NOT_FOUND
+    if (linked.personnel && !activeBolumSet.has(linked.personnel.bolum)) return NOT_FOUND
 
     // Yönetici (LDAP'tan)
     let manager: EmployeeDetail['manager'] = null

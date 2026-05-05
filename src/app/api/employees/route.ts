@@ -38,9 +38,19 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
-    // Personnel master + opsiyonel User join (email/extension için)
+    // Aktif bölüm whitelist (Ayarlar → İV Bölüm Tanımları)
+    const activeDepartments = await prisma.departmentDefinition.findMany({
+      where: { isActive: true },
+      select: { name: true },
+    })
+    const activeBolumNames = activeDepartments.map(d => d.name)
+
+    // Personnel master — Personnel.aktif=true VE bolum whitelist'te olmalı
     const personnelList = await prisma.personnel.findMany({
-      where: { aktif: true },
+      where: {
+        aktif: true,
+        bolum: { in: activeBolumNames },
+      },
       include: {
         user: {
           select: {

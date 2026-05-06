@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Kullanicinin konusmalarini listele
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-messages: requireUser → user.email (DB casing, lowercase)
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userEmail = session.user.email
+    const userEmail = user.email
 
     // Kullanicinin katildigi konusmalar
     const conversations = await prisma.conversation.findMany({
@@ -82,20 +80,23 @@ export async function GET(request: NextRequest) {
 // POST - Yeni konusma baslat
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email || !session?.user?.name) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-messages: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
-    const { participantEmails, name, isGroup } = body
+    const { name, isGroup } = body
+    // PR-Y2.5-messages: input boundary normalization — UI'dan büyük harf gelirse normalize et
+    const participantEmails: string[] = Array.isArray(body.participantEmails)
+      ? body.participantEmails.map((e: string) => e.toLowerCase())
+      : []
 
-    if (!participantEmails || participantEmails.length === 0) {
+    if (participantEmails.length === 0) {
       return NextResponse.json({ error: 'Katilimci gerekli' }, { status: 400 })
     }
 
-    const userEmail = session.user.email
-    const userName = session.user.name
+    const userEmail = user.email
+    const userName = user.name ?? userEmail
 
     // 1-1 konusma icin: Ayni kisiyle mevcut konusma var mi kontrol et
     if (!isGroup && participantEmails.length === 1) {
@@ -132,7 +133,7 @@ export async function POST(request: NextRequest) {
             {
               userEmail,
               userName,
-              userDepartment: session.user.department || null,
+              userDepartment: user.department || null,
             },
             ...participantEmails.map((email: string) => ({
               userEmail: email,

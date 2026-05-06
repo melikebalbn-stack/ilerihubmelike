@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Kullanicinin toplam okunmamis mesaj sayisini getir
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-messages: requireUser → user.email (DB casing)
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userEmail = session.user.email
+    const userEmail = user.email
 
     // Kullanicinin tum konusmalarindaki okunmamis mesaj sayisini topla
     const result = await prisma.conversationParticipant.aggregate({

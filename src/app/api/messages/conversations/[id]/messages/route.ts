@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendPushNotification } from '@/lib/push-notifications'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Konusmadaki mesajlari getir
 export async function GET(
@@ -10,13 +9,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-messages: requireUser → user.email (DB casing)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: conversationId } = await params
-    const userEmail = session.user.email
+    const userEmail = user.email
 
     // Kullanici bu konusmaya katilimci mi kontrol et
     const participant = await prisma.conversationParticipant.findUnique({
@@ -89,14 +87,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email || !session?.user?.name) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-messages: requireUser → user.email + user.name (DB casing)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: conversationId } = await params
-    const userEmail = session.user.email
-    const userName = session.user.name
+    const userEmail = user.email
+    const userName = user.name ?? userEmail
 
     // Kullanici bu konusmaya katilimci mi kontrol et
     const participant = await prisma.conversationParticipant.findUnique({

@@ -185,7 +185,9 @@ export function NotificationPermission() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 sm:left-auto sm:right-4 sm:w-96">
+    <div
+      className="fixed left-4 right-4 z-[60] sm:left-auto sm:right-4 sm:w-96 bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-4"
+    >
       <div className="bg-card border rounded-lg shadow-lg p-4">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0">

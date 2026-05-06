@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, apiUnauthorized, apiNotFound } from '@/lib/api-response'
+import { apiSuccess, apiError, apiUnauthorized } from '@/lib/api-response'
 import { sendPushToUser } from '@/lib/push-notifications'
 
 /**
@@ -12,18 +12,12 @@ import { sendPushToUser } from '@/lib/push-notifications'
  */
 export async function GET(request: NextRequest) {
   try {
+    // PR-NTF-FIX: session.user.id (cuid) direkt kullan — email-based findUnique
+    // pattern'i LDAP email casing nedeniyle 401 üretiyordu (PR-Y2.1 sonrası).
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
+    const userId = session?.user?.id
+    if (!userId) {
       return apiUnauthorized()
-    }
-
-    // Kullanıcıyı bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return apiNotFound('Kullanıcı bulunamadı')
     }
 
     // Query parametrelerini al
@@ -34,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     // Filtreleme koşulları
     const where = {
-      userId: user.id,
+      userId,
       ...(unreadOnly && { isRead: false }),
     }
 
@@ -48,7 +42,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.notification.count({ where }),
       prisma.notification.count({
-        where: { userId: user.id, isRead: false },
+        where: { userId, isRead: false },
       }),
     ])
 

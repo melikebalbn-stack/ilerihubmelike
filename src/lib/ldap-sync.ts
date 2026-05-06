@@ -12,7 +12,7 @@
 
 import { getAllLDAPUsers, determineUserRole, getEmailFromDN, type LDAPUser } from './ldap'
 import { prisma } from './prisma'
-import { Role } from '@/generated/prisma'
+import { UserRoleEnum as Role } from '@/generated/prisma'
 import { logger } from './logger'
 
 // Email-bazlı rol override'ları (auth.ts ile senkron — tek source of truth
@@ -329,7 +329,8 @@ async function upsertUser(
   await prisma.user.create({
     data: {
       id: userId,
-      email,
+      // PR-EMAIL-NORMALIZE: DB lowercase invariant — yazımları toLowerCase ile garantile
+      email: email.toLowerCase(),
       ...adFields,
       ...managerData,
     },

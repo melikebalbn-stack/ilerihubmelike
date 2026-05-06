@@ -1,8 +1,7 @@
 import { NextRequest } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, apiUnauthorized, apiNotFound } from '@/lib/api-response'
+import { apiSuccess, apiError, apiNotFound } from '@/lib/api-response'
+import { requireSession } from '@/lib/auth/require-session'
 
 /**
  * PATCH: Tek bir bildirimi okundu olarak işaretle
@@ -13,19 +12,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
-
-    // Kullanıcıyı bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return apiNotFound('Kullanıcı bulunamadı')
-    }
+    // PR-Y2.5: requireSession — sadece userId yeterli
+    const { userId, error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -33,7 +22,7 @@ export async function PATCH(
     const notification = await prisma.notification.findFirst({
       where: {
         id,
-        userId: user.id,
+        userId,
       },
     })
 

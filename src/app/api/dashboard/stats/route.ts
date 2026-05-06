@@ -1,21 +1,17 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getAllLDAPUsers, getDirectReports } from '@/lib/ldap'
-import { apiSuccess, apiError, apiUnauthorized } from '@/lib/api-response'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET /api/dashboard/stats - Dashboard istatistikleri
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5: requireUser — DB casing email + güncel role bilgisi
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userId = session.user.id
-    const userEmail = session.user.email || ''
-    const userRole = session.user.role
+    const userEmail = user.email
+    const userRole = user.role
     const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'QUALITY_MANAGER', 'HR_MANAGER', 'IT_MANAGER'].includes(userRole)
 
     // Tarih hesaplamaları

@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, apiUnauthorized } from '@/lib/api-response'
+import { apiSuccess, apiError, apiForbidden } from '@/lib/api-response'
 import { sendPushToUser } from '@/lib/push-notifications'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 /**
  * GET: Kullanıcının bildirimlerini sayfalı olarak listele
@@ -12,13 +12,9 @@ import { sendPushToUser } from '@/lib/push-notifications'
  */
 export async function GET(request: NextRequest) {
   try {
-    // PR-NTF-FIX: session.user.id (cuid) direkt kullan — email-based findUnique
-    // pattern'i LDAP email casing nedeniyle 401 üretiyordu (PR-Y2.1 sonrası).
-    const session = await getServerSession(authOptions)
-    const userId = session?.user?.id
-    if (!userId) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5: requireSession — DB hit yok (sadece userId yeter)
+    const { userId, error } = await requireSession()
+    if (error) return error
 
     // Query parametrelerini al
     const { searchParams } = new URL(request.url)
@@ -72,18 +68,12 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5: requireUser — rol kontrolü için DB user gerekli
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    // Kullanıcıyı bul ve yetkisini kontrol et
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!currentUser || !['SUPER_ADMIN', 'ADMIN', 'IT_MANAGER'].includes(currentUser.role)) {
-      return apiError('Bu işlem için yetkiniz yok', 403)
+    if (!['SUPER_ADMIN', 'ADMIN', 'IT_MANAGER'].includes(user.role)) {
+      return apiForbidden()
     }
 
     const body = await request.json()

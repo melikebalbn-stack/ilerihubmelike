@@ -1,37 +1,20 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 
 // GET - Mevcut kullanıcı bilgilerini döndür
 export async function GET() {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+  // PR-Y2.5: requireUser helper — id-based lookup, email casing bağımlılığı yok
+  const { user, error } = await requireUser()
+  if (error) return error
 
-    // Kullanıcıyı email ile bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        department: true,
-        jobTitle: true,
-        isActive: true,
-      },
-    })
-
-    if (!user) {
-      return NextResponse.json({ message: "Kullanıcı bulunamadı" }, { status: 404 })
-    }
-
-    return NextResponse.json(user)
-  } catch (error) {
-    console.error("Kullanıcı bilgisi hatası:", error)
-    return NextResponse.json({ message: "Sunucu hatası" }, { status: 500 })
-  }
+  // Frontend kontratını birebir koru — eski select'tekiyle aynı subset
+  return NextResponse.json({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    department: user.department,
+    jobTitle: user.jobTitle,
+    isActive: user.isActive,
+  })
 }

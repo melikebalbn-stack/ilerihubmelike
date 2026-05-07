@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Risk seviyesi hesaplama
 function calculateRiskLevel(likelihood: number, impact: number): string {
@@ -15,10 +14,9 @@ function calculateRiskLevel(likelihood: number, impact: number): string {
 // GET - Riskleri listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (userId JWT'de mevcut)
+    const { userId, error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search")
@@ -82,10 +80,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni risk oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (userId JWT'de mevcut)
+    const { userId, error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
     const { title, description, category, probability, impact, departmentId } = body
@@ -129,8 +126,8 @@ export async function POST(request: NextRequest) {
         riskLevel: riskLevel as any,
         status: "OPEN",
         reviewDate,
-        createdById: session.user.id,
-        responsibleId: session.user.id,
+        createdById: userId,
+        responsibleId: userId,
         departmentId: departmentId || null,
       },
       include: {

@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // GET - Denetimleri listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (read-only liste)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search")
@@ -57,10 +55,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni denetim oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (PR-Y2.1 sonrası userId cuid, email lookup gereksiz)
+    const { userId, error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
     const { title, type, standard, plannedDate, scope, description, departmentId } = body
@@ -70,18 +67,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { message: "Başlık, tür ve planlanan tarih zorunludur" },
         { status: 400 }
-      )
-    }
-
-    // Kullanıcıyı email ile bul (session.user.id LDAP DN olabilir)
-    const dbUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!dbUser) {
-      return NextResponse.json(
-        { message: "Kullanıcı bulunamadı. Lütfen tekrar giriş yapın." },
-        { status: 401 }
       )
     }
 
@@ -107,7 +92,7 @@ export async function POST(request: NextRequest) {
         scope: scope || null,
         description: description || null,
         status: "PLANNED",
-        leadAuditorId: dbUser.id,
+        leadAuditorId: userId,
         departmentId: validDepartmentId,
       },
       include: {

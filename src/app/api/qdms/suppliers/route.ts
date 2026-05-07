@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // GET - Tedarikçileri listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search")
@@ -52,10 +50,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni tedarikçi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
     const { name, category, contactPerson, email, phone, address } = body

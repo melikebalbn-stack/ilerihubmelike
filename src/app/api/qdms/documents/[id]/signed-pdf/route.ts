@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { readFile } from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib"
 import * as QRCode from "qrcode"
+import { requireSession } from "@/lib/auth/require-session"
 
 // GET - Onay bilgisi ve QR kod eklenmiş PDF'i indir
 export async function GET(
@@ -14,10 +13,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

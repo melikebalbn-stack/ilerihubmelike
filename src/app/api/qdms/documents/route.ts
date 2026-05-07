@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // GET - Dokümanları listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (read-only liste)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search")
@@ -71,10 +69,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni doküman oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (PR-Y2.1 sonrası userId cuid, email lookup gereksiz)
+    const { userId, error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
     const { documentNumber, title, description, category, departmentId, reviewPeriodMonths } = body
@@ -99,18 +96,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Kullanıcıyı email ile bul (session.user.id LDAP DN olabilir)
-    const dbUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!dbUser) {
-      return NextResponse.json(
-        { message: "Kullanıcı bulunamadı. Lütfen tekrar giriş yapın." },
-        { status: 401 }
-      )
-    }
-
     // Gözden geçirme tarihini hesapla
     const reviewDate = new Date()
     reviewDate.setMonth(reviewDate.getMonth() + (reviewPeriodMonths || 12))
@@ -127,8 +112,8 @@ export async function POST(request: NextRequest) {
         departmentId: validDepartmentId,
         reviewPeriodMonths: reviewPeriodMonths || 12,
         reviewDate,
-        ownerId: dbUser.id,
-        createdById: dbUser.id,
+        ownerId: userId,
+        createdById: userId,
         status: "DRAFT",
         version: "1.0",
         revisionNumber: 0,

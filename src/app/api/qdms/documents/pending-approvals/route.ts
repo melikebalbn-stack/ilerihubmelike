@@ -1,27 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 
 // GET - Onay bekleyen dokümanları listele (Kalite Müdürü için)
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    // Kullanıcıyı email ile bul
-    const dbUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!dbUser) {
-      return NextResponse.json(
-        { message: "Kullanıcı bulunamadı" },
-        { status: 401 }
-      )
-    }
+    // PR-Y2.5-qdms: requireUser — role check icin
+    const { user: dbUser, error } = await requireUser()
+    if (error) return error
 
     // Sadece QUALITY_MANAGER veya ADMIN görebilir
     if (!["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(dbUser.role)) {

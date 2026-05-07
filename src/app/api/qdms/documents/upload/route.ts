@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { writeFile, mkdir } from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
+import { requireSession } from "@/lib/auth/require-session"
 
 // İzin verilen dosya tipleri
 const ALLOWED_TYPES = [
@@ -27,10 +26,9 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024
 // POST - Dosya yükle
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ message: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-qdms: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const formData = await request.formData()
     const file = formData.get("file") as File | null

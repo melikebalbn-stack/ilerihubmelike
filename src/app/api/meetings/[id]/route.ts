@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Yetki kontrolü
 const MANAGEMENT_ROLES = [
@@ -20,21 +19,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireUser — yönetici/organizer/attendee kontrolü
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
 
     const meeting = await prisma.meeting.findUnique({
       where: { id },
@@ -118,21 +107,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireUser — yönetici/organizer kontrolü, minutesApprovedById = currentUser.id
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
 
     const meeting = await prisma.meeting.findUnique({
       where: { id },
@@ -193,9 +172,9 @@ export async function PUT(
 
     // Chairman - email veya ID ile
     if (chairmanEmail !== undefined) {
-      if (chairmanEmail) {
+      if (typeof chairmanEmail === 'string' && chairmanEmail) {
         const chairmanUser = await prisma.user.findUnique({
-          where: { email: chairmanEmail },
+          where: { email: chairmanEmail.toLowerCase() },
           select: { id: true }
         })
         updateData.chairmanId = chairmanUser?.id || null
@@ -208,9 +187,9 @@ export async function PUT(
 
     // Rapporteur - email veya ID ile
     if (rapporteurEmail !== undefined) {
-      if (rapporteurEmail) {
+      if (typeof rapporteurEmail === 'string' && rapporteurEmail) {
         const rapporteurUser = await prisma.user.findUnique({
-          where: { email: rapporteurEmail },
+          where: { email: rapporteurEmail.toLowerCase() },
           select: { id: true }
         })
         updateData.rapporteurId = rapporteurUser?.id || null
@@ -285,21 +264,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireUser — admin/organizer kontrolü
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
 
     const meeting = await prisma.meeting.findUnique({
       where: { id },

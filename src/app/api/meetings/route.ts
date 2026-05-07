@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Toplantı numarası oluştur
 async function generateMeetingNumber(): Promise<string> {
@@ -38,10 +37,9 @@ const MANAGEMENT_ROLES = [
 // GET - Toplantıları listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireUser — yönetici değilse organizerId/attendees filtresi
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -52,15 +50,6 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const search = searchParams.get('search')
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true, department: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
 
     // Filtre oluştur
     const where: Record<string, unknown> = {}
@@ -150,19 +139,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni toplantı oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true, department: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
+    // PR-Y2.5-meetings: requireUser — organizerId = currentUser.id
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -196,17 +175,17 @@ export async function POST(request: NextRequest) {
     let resolvedChairmanId: string | null = null
     let resolvedRapporteurId: string | null = null
 
-    if (chairmanEmail) {
+    if (typeof chairmanEmail === 'string' && chairmanEmail) {
       const chairmanUser = await prisma.user.findUnique({
-        where: { email: chairmanEmail },
+        where: { email: chairmanEmail.toLowerCase() },
         select: { id: true }
       })
       resolvedChairmanId = chairmanUser?.id || null
     }
 
-    if (rapporteurEmail) {
+    if (typeof rapporteurEmail === 'string' && rapporteurEmail) {
       const rapporteurUser = await prisma.user.findUnique({
-        where: { email: rapporteurEmail },
+        where: { email: rapporteurEmail.toLowerCase() },
         select: { id: true }
       })
       resolvedRapporteurId = rapporteurUser?.id || null
@@ -245,9 +224,13 @@ export async function POST(request: NextRequest) {
           let fallbackDepartment: string | null = null
           let fallbackTitle: string | null = null
 
-          if (attendee.userEmail) {
+          const attendeeEmail = typeof attendee.userEmail === 'string'
+            ? attendee.userEmail.toLowerCase()
+            : null
+
+          if (attendeeEmail) {
             const user = await tx.user.findUnique({
-              where: { email: attendee.userEmail },
+              where: { email: attendeeEmail },
               select: { id: true }
             })
             resolvedUserId = user?.id || null
@@ -266,7 +249,7 @@ export async function POST(request: NextRequest) {
               userId: resolvedUserId,
               // DB'de olmayan LDAP kullanıcıları için bilgilerini external alanlara kaydet
               externalName: attendee.externalName || fallbackName || null,
-              externalEmail: attendee.externalEmail || (fallbackName ? attendee.userEmail : null),
+              externalEmail: attendee.externalEmail || (fallbackName ? attendeeEmail : null),
               externalCompany: attendee.externalCompany || fallbackDepartment || null,
               externalTitle: attendee.externalTitle || fallbackTitle || null,
               role: attendee.role || 'PARTICIPANT',

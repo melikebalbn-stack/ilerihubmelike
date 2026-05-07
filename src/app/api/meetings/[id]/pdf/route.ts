@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateMeetingMinutesPDFBuffer, MeetingForPDF } from '@/lib/pdf/meeting-minutes-pdf'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Yetki kontrolü
 const MANAGEMENT_ROLES = [
@@ -21,21 +20,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireUser — yönetici/organizer/attendee kontrolü
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
 
     const meeting = await prisma.meeting.findUnique({
       where: { id },

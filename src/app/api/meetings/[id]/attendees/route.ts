@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // POST - Katılımcı ekle
 export async function POST(
@@ -9,10 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id: meetingId } = await params
 
@@ -53,9 +51,13 @@ export async function POST(
     let fallbackDepartment: string | null = null // DB'de yoksa LDAP departmanını sakla
     let fallbackTitle: string | null = null // DB'de yoksa LDAP ünvanını sakla
 
-    if (userEmail) {
+    const normalizedUserEmail = typeof userEmail === 'string'
+      ? userEmail.toLowerCase()
+      : null
+
+    if (normalizedUserEmail) {
       const user = await prisma.user.findUnique({
-        where: { email: userEmail },
+        where: { email: normalizedUserEmail },
         select: { id: true }
       })
       resolvedUserId = user?.id || null
@@ -95,7 +97,7 @@ export async function POST(
         userId: resolvedUserId,
         // DB'de olmayan LDAP kullanıcıları için bilgilerini external alanlara kaydet
         externalName: externalName || fallbackName || null,
-        externalEmail: externalEmail || (fallbackName ? userEmail : null),
+        externalEmail: externalEmail || (fallbackName ? normalizedUserEmail : null),
         externalCompany: externalCompany || fallbackDepartment || null,
         externalTitle: externalTitle || fallbackTitle || null,
         role,
@@ -122,10 +124,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -173,10 +174,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const attendeeId = searchParams.get('attendeeId')

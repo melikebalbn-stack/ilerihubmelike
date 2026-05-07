@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AgendaOutcome, AgendaItemStatus } from '@/generated/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // POST - Gündem maddesi ekle
 export async function POST(
@@ -10,10 +9,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id: meetingId } = await params
 
@@ -78,10 +76,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id: meetingId } = await params
     const body = await request.json()
@@ -134,10 +131,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-meetings: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const itemId = searchParams.get('itemId')

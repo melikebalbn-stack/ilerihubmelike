@@ -1,21 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { TaskStatus, TaskPriority } from '@/generated/prisma'
 import { getAllSubordinates } from '@/lib/ldap'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tek bir görevi getir
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tasks: requireSession — sade auth, DB hit yok
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -53,11 +51,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tasks: requireUser + session (distinguishedName LDAP-only)
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -102,8 +98,8 @@ export async function PUT(
     }
 
     // Yetki kontrolü: Görevi kim güncelleyebilir/tamamlayabilir?
-    const userEmail = session.user.email?.toLowerCase()
-    const userRole = session.user.role
+    const userEmail = user.email
+    const userRole = user.role
     const userDN = session.user.distinguishedName
 
     // Admin ve Super Admin her şeyi yapabilir
@@ -244,15 +240,13 @@ export async function PUT(
 
 // DELETE - Görevi sil (soft delete)
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tasks: requireSession — sade auth (admin kontrolü yok mevcut)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

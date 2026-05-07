@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tüm bildirim e-postalarını listele
 export async function GET() {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tasks: requireSession
+    const { error } = await requireSession()
+    if (error) return error
     const emails = await prisma.taskNotificationEmail.findMany({
       orderBy: { createdAt: 'desc' },
     })
@@ -27,20 +25,19 @@ export async function GET() {
 // POST - Yeni bildirim e-postası ekle (ADMIN only)
 export async function POST(request: NextRequest) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tasks: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    // Yetki kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userRole = user.role || 'EMPLOYEE'
     if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
     const body = await request.json()
-    const { email, name } = body
+    const { name } = body
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    const email = typeof body.email === 'string' ? body.email.toLowerCase() : null
 
     if (!email || !email.includes('@')) {
       return NextResponse.json(
@@ -81,14 +78,11 @@ export async function POST(request: NextRequest) {
 // DELETE - Bildirim e-postasını sil (ADMIN only)
 export async function DELETE(request: NextRequest) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tasks: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    // Yetki kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userRole = user.role || 'EMPLOYEE'
     if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }

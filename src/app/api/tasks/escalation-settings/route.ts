@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Eskalasyon ayarlarını al
 export async function GET() {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tasks: requireSession
+    const { error } = await requireSession()
+    if (error) return error
     let settings = await prisma.taskEscalationSettings.findFirst({
       where: { isActive: true },
     })
@@ -39,14 +37,11 @@ export async function GET() {
 // PUT - Eskalasyon ayarlarını güncelle (ADMIN only)
 export async function PUT(request: NextRequest) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tasks: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    // Yetki kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userRole = user.role || 'EMPLOYEE'
     if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }

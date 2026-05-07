@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { TaskStatus, TaskEmailType } from '@/generated/prisma'
 import { sendEmail } from '@/lib/email'
+import { requireUser } from '@/lib/auth/require-user'
 
 /**
  * POST /api/tasks/check-notifications
@@ -16,11 +15,10 @@ export async function POST(request: NextRequest) {
     const isCron = !!cronSecret && cronSecret === process.env.CRON_SECRET
 
     if (!isCron) {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.email) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
-      const userRole = session.user.role || 'EMPLOYEE'
+      // PR-Y2.5-tasks: requireUser → admin check
+      const { user, error } = await requireUser()
+      if (error) return error
+      const userRole = user.role || 'EMPLOYEE'
       if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
         return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
       }

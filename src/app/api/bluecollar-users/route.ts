@@ -1,20 +1,17 @@
 import { syncUserToAkademi } from '@/lib/akademi-sync'
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Mavi yaka kullanıcıları listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-bluecollar-users: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Sadece HR_MANAGER, ADMIN, SUPER_ADMIN erişebilir
-    const userRole = session.user.role
-    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 })
     }
 
@@ -113,14 +110,12 @@ export async function GET(request: NextRequest) {
 // POST - Yeni mavi yaka kullanıcı ekle
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-bluecollar-users: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Sadece HR_MANAGER, ADMIN, SUPER_ADMIN erişebilir
-    const userRole = session.user.role
-    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 })
     }
 
@@ -155,8 +150,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Email oluştur (verilmediyse)
-    const userEmail = email || `${employeeId}@bluecollar.ilerigroup.com`
+    // Email oluştur (verilmediyse) — PR-EMAIL-NORMALIZE pattern: DB casing tutarlılığı için lowercase
+    // Bu, ldap-sync.ts:332 ve auth.ts:320'den sonraki 3. yazım kaynağı
+    const rawEmail = email || `${employeeId}@bluecollar.ilerigroup.com`
+    const userEmail = typeof rawEmail === 'string' ? rawEmail.toLowerCase() : rawEmail
 
     // Email benzersiz mi kontrol et
     const existingByEmail = await prisma.user.findUnique({
@@ -171,7 +168,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Kullanıcı oluştur
-    const user = await prisma.user.create({
+    const newUser = await prisma.user.create({
       data: {
         email: userEmail,
         employeeId,
@@ -205,10 +202,10 @@ export async function POST(request: NextRequest) {
 
 
     // Akademi'ye senkronize et (arka planda, hata ana islemi engellemez)
-    syncUserToAkademi(user, "blue_collar").catch((err) =>
+    syncUserToAkademi(newUser, "blue_collar").catch((err) =>
       console.error("Akademi sync hatasi:", err)
     )
-    return NextResponse.json(user, { status: 201 })
+    return NextResponse.json(newUser, { status: 201 })
   } catch (error) {
     console.error('Mavi yaka kullanıcı oluşturulurken hata:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

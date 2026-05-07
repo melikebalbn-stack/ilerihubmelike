@@ -1,8 +1,7 @@
 import { syncUserToAkademi, deactivateUserInAkademi } from '@/lib/akademi-sync'
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // PUT - Mavi yaka kullanıcı güncelle
 export async function PUT(
@@ -10,14 +9,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-bluecollar-users: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Sadece HR_MANAGER, ADMIN, SUPER_ADMIN erişebilir
-    const userRole = session.user.role
-    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 })
     }
 
@@ -57,7 +54,7 @@ export async function PUT(
     }
 
     // Kullanıcı güncelle
-    const user = await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id },
       data: {
         ...(employeeId && { employeeId }),
@@ -91,10 +88,10 @@ export async function PUT(
 
 
     // Akademi'ye senkronize et
-    syncUserToAkademi(user, "blue_collar").catch((err) =>
+    syncUserToAkademi(updatedUser, "blue_collar").catch((err) =>
       console.error("Akademi sync hatasi:", err)
     )
-    return NextResponse.json(user)
+    return NextResponse.json(updatedUser)
   } catch (error) {
     console.error('Mavi yaka kullanıcı güncellenirken hata:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
@@ -107,14 +104,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-bluecollar-users: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Sadece HR_MANAGER, ADMIN, SUPER_ADMIN erişebilir
-    const userRole = session.user.role
-    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 })
     }
 

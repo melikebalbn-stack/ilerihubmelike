@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { CycleType, PerformanceCycleStatus } from "@/generated/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // Yetki kontrolü helper
 async function checkAccess(session: any) {
@@ -24,10 +23,9 @@ async function checkAccess(session: any) {
 // GET - Performans döngüleri listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (checkAccess session okuyor)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const { hasFullAccess, isDeptHead } = await checkAccess(session);
 
@@ -82,10 +80,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni performans döngüsü oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (createdBy = userId)
+    const { session, userId, error } = await requireSession();
+    if (error) return error;
 
     const { hasFullAccess } = await checkAccess(session);
 
@@ -146,7 +143,7 @@ export async function POST(request: NextRequest) {
         calibrationEnd: calibrationEnd ? new Date(calibrationEnd) : null,
         status: status || "DRAFT",
         isActive: isActive || false,
-        createdBy: session.user.id || session.user.email || "",
+        createdBy: userId,
         createdByName: session.user.name || ""
       }
     });

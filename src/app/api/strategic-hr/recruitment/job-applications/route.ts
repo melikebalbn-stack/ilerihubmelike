@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // GET - Tüm iş başvurularını listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
+    const { session, error } = await requireSession()
+    if (error) return error
 
     // Yetki kontrolü - sadece IK ve admin görebilir
     const userRole = session.user.role || ''

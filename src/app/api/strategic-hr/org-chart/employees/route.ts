@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { EmploymentStatus } from "@/generated/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // GET - Organizasyon çalışanları listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (read-only liste)
+    const { error } = await requireSession();
+    if (error) return error;
 
     const { searchParams } = new URL(request.url);
     const orgUnitId = searchParams.get("orgUnitId");
@@ -91,10 +89,9 @@ export async function GET(request: NextRequest) {
 // POST - Manuel personel veya boş pozisyon ekle
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const userRole = session.user.role;
     const userDepartment = session.user.department || "";
@@ -132,8 +129,9 @@ export async function POST(request: NextRequest) {
 
       for (const emp of employees) {
         try {
-          const existingEmployee = emp.email ? await prisma.orgEmployee.findFirst({
-            where: { email: emp.email }
+          const empEmail = typeof emp.email === "string" ? emp.email.toLowerCase() : null;
+          const existingEmployee = empEmail ? await prisma.orgEmployee.findFirst({
+            where: { email: empEmail }
           }) : null;
 
           if (existingEmployee) {
@@ -175,8 +173,8 @@ export async function POST(request: NextRequest) {
 
             await prisma.orgEmployee.create({
               data: {
-                userId: emp.userId || emp.email || null,
-                email: emp.email || null,
+                userId: emp.userId || empEmail || null,
+                email: empEmail || null,
                 displayName: emp.displayName,
                 title: emp.title,
                 orgUnitId: orgUnit.id,
@@ -230,10 +228,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Personel oluştur
+    const normalizedEmail = typeof email === "string" ? email.toLowerCase() : null;
     const employee = await prisma.orgEmployee.create({
       data: {
-        userId: email || null,
-        email: email || null,
+        userId: normalizedEmail || null,
+        email: normalizedEmail || null,
         displayName,
         title,
         orgUnitId,

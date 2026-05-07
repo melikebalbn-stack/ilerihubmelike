@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { OrgUnitType } from "@/generated/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // Yetki kontrolü helper
 async function checkAccess(session: any) {
@@ -23,10 +22,9 @@ async function checkAccess(session: any) {
 // GET - Organizasyon birimleri listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (org chart herkese açık)
+    const { error } = await requireSession();
+    if (error) return error;
 
     // Org chart herkese açık olabilir
     const { searchParams } = new URL(request.url);
@@ -103,10 +101,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni organizasyon birimi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (checkAccess session okuyor)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const { hasFullAccess } = await checkAccess(session);
 
@@ -173,7 +170,7 @@ export async function POST(request: NextRequest) {
         sortOrder: sortOrder || 0,
         unitType: unitType as OrgUnitType,
         managerId,
-        managerEmail,
+        managerEmail: typeof managerEmail === "string" ? managerEmail.toLowerCase() : managerEmail,
         managerName,
         location,
         costCenter,

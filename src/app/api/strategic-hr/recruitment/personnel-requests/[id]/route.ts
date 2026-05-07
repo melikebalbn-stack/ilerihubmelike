@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // GET - Tek talep detayı
 export async function GET(
@@ -10,10 +9,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (read-only detay)
+    const { error } = await requireSession();
+    if (error) return error;
 
     const { id } = await params;
 
@@ -54,10 +52,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (approvedBy/rejectedBy = userId)
+    const { session, userId, error } = await requireSession();
+    if (error) return error;
 
     const { id } = await params;
     const body = await request.json();
@@ -104,7 +101,7 @@ export async function PUT(
         }
         updateData = {
           status: "APPROVED" as PersonnelRequestStatus,
-          approvedById: session.user.id || userEmail,
+          approvedById: userId,
           approvedByEmail: userEmail,
           approvedByName: session.user.name || "",
           approvedAt: new Date(),
@@ -121,7 +118,7 @@ export async function PUT(
         }
         updateData = {
           status: "REJECTED" as PersonnelRequestStatus,
-          rejectedById: session.user.id || userEmail,
+          rejectedById: userId,
           rejectedByEmail: userEmail,
           rejectedByName: session.user.name || "",
           rejectedAt: new Date(),
@@ -213,7 +210,7 @@ export async function PUT(
             status: "DRAFT",
             hiringManagerEmail: existingRequest.requesterEmail,
             hiringManagerName: existingRequest.requesterName,
-            createdBy: userEmail,
+            createdBy: userId,
             createdByName: session.user.name || ""
           }
         });
@@ -260,10 +257,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department/email session'dan)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const { id } = await params;
     const userEmail = session.user.email || "";

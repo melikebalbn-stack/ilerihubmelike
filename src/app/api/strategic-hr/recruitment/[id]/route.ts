@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // GET - Tek ilan detayı
 export async function GET(
@@ -9,10 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (read-only detay)
+    const { error } = await requireSession();
+    if (error) return error;
 
     const { id } = await params;
 
@@ -58,10 +56,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const userRole = session.user.role;
     const userDepartment = session.user.department || "";
@@ -109,7 +106,9 @@ export async function PUT(
         salaryMax: body.salaryMax !== undefined ? body.salaryMax : existingOpening.salaryMax,
         closingDate: body.closingDate !== undefined ? (body.closingDate ? new Date(body.closingDate) : null) : existingOpening.closingDate,
         hiringManagerName: body.hiringManagerName !== undefined ? body.hiringManagerName : existingOpening.hiringManagerName,
-        hiringManagerEmail: body.hiringManagerEmail !== undefined ? body.hiringManagerEmail : existingOpening.hiringManagerEmail,
+        hiringManagerEmail: body.hiringManagerEmail !== undefined
+          ? (typeof body.hiringManagerEmail === "string" ? body.hiringManagerEmail.toLowerCase() : body.hiringManagerEmail)
+          : existingOpening.hiringManagerEmail,
         postingDate
       }
     });
@@ -130,10 +129,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const userRole = session.user.role;
     const userDepartment = session.user.department || "";

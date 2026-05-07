@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getAllOUs, getOUHierarchy, clearOUCache, getAllLDAPUsers, ADOrgTree } from "@/lib/ldap";
+import { requireSession } from "@/lib/auth/require-session";
 
 // GET - AD'den organizasyon şemasını çek
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (basit auth gate)
+    const { error } = await requireSession();
+    if (error) return error;
 
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format") || "flat"; // flat veya hierarchy
@@ -50,10 +48,9 @@ export async function GET(request: NextRequest) {
 // POST - AD'den OrgUnit tablosuna senkronize et
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (admin role check)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     // Yetki kontrolü - sadece admin
     const userRole = session.user.role;

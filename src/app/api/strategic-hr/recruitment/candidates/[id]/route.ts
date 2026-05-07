@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // GET - Tek aday detayı
 export async function GET(
@@ -9,10 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (read-only detay)
+    const { error } = await requireSession();
+    if (error) return error;
 
     const { id } = await params;
 
@@ -64,10 +62,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const userRole = session.user.role;
     const userDepartment = session.user.department || "";
@@ -93,10 +90,12 @@ export async function PUT(
       return NextResponse.json({ error: "Aday bulunamadı" }, { status: 404 });
     }
 
+    const normalizedEmail = typeof body.email === "string" ? body.email.toLowerCase() : body.email;
+
     // E-posta değiştiyse benzersizlik kontrolü
-    if (body.email && body.email !== existingCandidate.email) {
+    if (normalizedEmail && normalizedEmail !== existingCandidate.email) {
       const emailExists = await prisma.candidate.findUnique({
-        where: { email: body.email }
+        where: { email: normalizedEmail }
       });
       if (emailExists) {
         return NextResponse.json(
@@ -111,7 +110,7 @@ export async function PUT(
       data: {
         firstName: body.firstName ?? existingCandidate.firstName,
         lastName: body.lastName ?? existingCandidate.lastName,
-        email: body.email ?? existingCandidate.email,
+        email: normalizedEmail ?? existingCandidate.email,
         phone: body.phone !== undefined ? body.phone : existingCandidate.phone,
         currentTitle: body.currentTitle !== undefined ? body.currentTitle : existingCandidate.currentTitle,
         currentCompany: body.currentCompany !== undefined ? body.currentCompany : existingCandidate.currentCompany,
@@ -144,10 +143,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const userRole = session.user.role;
     const userDepartment = session.user.department || "";

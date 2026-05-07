@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // POST - Yeni başvuru oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const userRole = session.user.role;
     const userDepartment = session.user.department || "";
@@ -106,10 +104,9 @@ export async function POST(request: NextRequest) {
 // GET - Başvuruları listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (read-only liste)
+    const { error } = await requireSession();
+    if (error) return error;
 
     const { searchParams } = new URL(request.url);
     const jobOpeningId = searchParams.get("jobOpeningId");

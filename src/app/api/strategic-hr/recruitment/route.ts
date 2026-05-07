@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { JobOpeningStatus, JobPriority, EmploymentType } from "@/generated/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // Yetki kontrolü helper
 async function checkAccess(session: any) {
@@ -24,10 +23,9 @@ async function checkAccess(session: any) {
 // GET - Açık pozisyonlar listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (checkAccess session okuyor)
+    const { session, userId, error } = await requireSession();
+    if (error) return error;
 
     const { hasFullAccess, isDeptHead, userDepartment, userEmail } = await checkAccess(session);
 
@@ -104,10 +102,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni iş ilanı oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (checkAccess session okuyor)
+    const { session, userId, error } = await requireSession();
+    if (error) return error;
 
     const { hasFullAccess, isDeptHead } = await checkAccess(session);
 
@@ -179,10 +176,10 @@ export async function POST(request: NextRequest) {
         salaryCurrency: salaryCurrency || "TRY",
         showSalary: showSalary || false,
         hiringManagerId,
-        hiringManagerEmail,
+        hiringManagerEmail: typeof hiringManagerEmail === "string" ? hiringManagerEmail.toLowerCase() : hiringManagerEmail,
         hiringManagerName,
         recruiterId,
-        recruiterEmail,
+        recruiterEmail: typeof recruiterEmail === "string" ? recruiterEmail.toLowerCase() : recruiterEmail,
         recruiterName,
         headcount: headcount || 1,
         postingDate: postingDate ? new Date(postingDate) : null,
@@ -190,7 +187,7 @@ export async function POST(request: NextRequest) {
         targetHireDate: targetHireDate ? new Date(targetHireDate) : null,
         status: "DRAFT",
         priority: priority || "MEDIUM",
-        createdBy: session.user.id || session.user.email || "",
+        createdBy: userId,
         createdByName: session.user.name || "",
         interviewStages: interviewStages ? {
           create: interviewStages.map((stage: any, index: number) => ({

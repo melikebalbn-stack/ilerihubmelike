@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus, PersonnelRequestType, EmploymentType, JobPriority } from "@/generated/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // Talep numarası oluştur
 async function generateRequestNumber(): Promise<string> {
@@ -28,10 +27,9 @@ async function generateRequestNumber(): Promise<string> {
 // GET - Eleman taleplerini listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (role/department/email session'dan)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const userRole = session.user.role;
     const userEmail = session.user.email || "";
@@ -91,10 +89,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni eleman talebi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (requesterId = userId)
+    const { session, userId, error } = await requireSession();
+    if (error) return error;
 
     // Tüm kullanıcılar talep oluşturabilir (kendi departmanları için)
     const body = await request.json();
@@ -128,7 +125,7 @@ export async function POST(request: NextRequest) {
     const personnelRequest = await prisma.personnelRequest.create({
       data: {
         requestNumber,
-        requesterId: session.user.id || session.user.email || "",
+        requesterId: userId,
         requesterEmail: session.user.email || "",
         requesterName: session.user.name || "",
         department: session.user.department || "",

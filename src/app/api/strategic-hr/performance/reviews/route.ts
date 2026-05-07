@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ReviewStatus } from "@/generated/prisma";
+import { requireSession } from "@/lib/auth/require-session";
 
 // Yetki kontrolü helper
 async function checkAccess(session: any) {
@@ -24,10 +23,9 @@ async function checkAccess(session: any) {
 // GET - Performans değerlendirmeleri listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (checkAccess session okuyor)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const { hasFullAccess, isDeptHead, userDepartment, userEmail } = await checkAccess(session);
 
@@ -50,11 +48,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (employeeEmail) {
-      where.employeeEmail = employeeEmail;
+      where.employeeEmail = employeeEmail.toLowerCase();
     }
 
     if (managerEmail) {
-      where.managerEmail = managerEmail;
+      where.managerEmail = managerEmail.toLowerCase();
     }
 
     // Kendi değerlendirmelerim
@@ -120,10 +118,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni performans değerlendirmesi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
+    // PR-Y2.5-strategic-hr: requireSession (checkAccess session okuyor)
+    const { session, error } = await requireSession();
+    if (error) return error;
 
     const { hasFullAccess } = await checkAccess(session);
 
@@ -171,11 +168,11 @@ export async function POST(request: NextRequest) {
       data: {
         cycleId,
         employeeId,
-        employeeEmail,
+        employeeEmail: typeof employeeEmail === "string" ? employeeEmail.toLowerCase() : employeeEmail,
         employeeName,
         employeeDepartment,
         managerId,
-        managerEmail,
+        managerEmail: typeof managerEmail === "string" ? managerEmail.toLowerCase() : managerEmail,
         managerName,
         status: "NOT_STARTED"
       },

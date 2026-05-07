@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // IT Ekibi kontrolü
 function isITStaff(role: string, department: string | null): boolean {
@@ -19,17 +18,16 @@ function isITStaff(role: string, department: string | null): boolean {
 
 // GET - Ticket detayı
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser → user.role/department (DB taze)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-    const userIsITStaff = isITStaff(session.user.role, session.user.department || null)
+    const userIsITStaff = isITStaff(user.role, user.department || null)
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
@@ -73,14 +71,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email || !session?.user?.name) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
-    const userIsITStaff = isITStaff(session.user.role, session.user.department || null)
+    const userIsITStaff = isITStaff(user.role, user.department || null)
 
     const existingTicket = await prisma.ticket.findUnique({
       where: { id }
@@ -91,7 +88,8 @@ export async function PUT(
     }
 
     // Yetki kontrolü: Normal kullanıcılar sadece kendi ticket'larını güncelleyebilir
-    const isOwner = existingTicket.requesterEmail === session.user.email
+    // PR-EMAIL-NORMALIZE sonrası DB casing lowercase, user.email lowercase → match güvenli
+    const isOwner = existingTicket.requesterEmail === user.email
     if (!userIsITStaff && !isOwner) {
       return NextResponse.json({ error: 'Bu ticket\'ı güncelleme yetkiniz yok' }, { status: 403 })
     }
@@ -290,8 +288,8 @@ export async function PUT(
           description: entry.description,
           oldValue: entry.oldValue,
           newValue: entry.newValue,
-          performedBy: session.user.email,
-          performedByName: session.user.name,
+          performedBy: user.email,
+          performedByName: user.name ?? user.email,
         }))
       })
     }
@@ -305,17 +303,16 @@ export async function PUT(
 
 // DELETE - Ticket sil (soft delete)
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Sadece admin silebilir
-    if (session.user.role !== 'ADMIN' && session.user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'Yetkiniz yok' }, { status: 403 })
     }
 

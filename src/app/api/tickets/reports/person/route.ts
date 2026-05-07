@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Sadece IT Manager veya Admin erişebilir
-    if (session.user.role !== 'IT_MANAGER' && session.user.role !== 'ADMIN' && session.user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'IT_MANAGER' && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'Yetkiniz yok' }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
-    const email = searchParams.get('email')
+    // PR-Y2.5-tickets: query email lowercase normalize (DB casing invariant)
+    const email = searchParams.get('email')?.toLowerCase()
     const period = parseInt(searchParams.get('period') || '30')
 
     if (!email) {

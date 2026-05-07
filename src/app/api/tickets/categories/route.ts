@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Kategori listesi
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireSession — sade auth, DB hit yok
+    const { error } = await requireSession()
+    if (error) return error
 
     const categories = await prisma.ticketCategory.findMany({
       where: { isActive: true },
@@ -44,12 +43,11 @@ export async function GET(request: NextRequest) {
 // POST - Yeni kategori oluştur (Admin only)
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    if (session.user.role !== 'ADMIN' && session.user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'Yetkiniz yok' }, { status: 403 })
     }
 
@@ -72,6 +70,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Kategori adı zorunludur' }, { status: 400 })
     }
 
+    // PR-Y2.5-tickets: input boundary normalization — DB email lowercase invariant
+    const normalizedAssigneeEmail = typeof defaultAssigneeEmail === 'string' && defaultAssigneeEmail.trim() !== ''
+      ? defaultAssigneeEmail.toLowerCase()
+      : null
+
     const category = await prisma.ticketCategory.create({
       data: {
         name: name.trim(),
@@ -82,7 +85,7 @@ export async function POST(request: NextRequest) {
         defaultPriority: defaultPriority || 'NORMAL',
         slaResponseMinutes,
         slaResolutionMinutes,
-        defaultAssigneeEmail,
+        defaultAssigneeEmail: normalizedAssigneeEmail,
         defaultTeamId,
         sortOrder: sortOrder || 0,
       }
@@ -98,12 +101,11 @@ export async function POST(request: NextRequest) {
 // DELETE - Kategori sil (Admin only)
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    if (session.user.role !== 'ADMIN' && session.user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'Yetkiniz yok' }, { status: 403 })
     }
 

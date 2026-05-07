@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - IT Raporları (Sadece IT Manager erişebilir)
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Sadece IT Manager veya Admin erişebilir
-    if (session.user.role !== 'IT_MANAGER' && session.user.role !== 'ADMIN' && session.user.role !== 'SUPER_ADMIN') {
+    if (user.role !== 'IT_MANAGER' && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'Bu rapora erişim yetkiniz yok' }, { status: 403 })
     }
 

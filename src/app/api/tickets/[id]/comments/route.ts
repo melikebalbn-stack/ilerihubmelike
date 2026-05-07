@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Ticket yorumları
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: ticketId } = await params
     // FIX #18: IT_MANAGER da internal yorumları görebilir
-    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'IT_MANAGER'].includes(session.user.role || '')
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'IT_MANAGER'].includes(user.role || '')
 
     const comments = await prisma.ticketComment.findMany({
       where: {
@@ -40,10 +38,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email || !session?.user?.name) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: ticketId } = await params
     const body = await request.json()
@@ -63,15 +60,15 @@ export async function POST(
     }
 
     // Sadece admin/IT yöneticisi dahili not ekleyebilir
-    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'IT_MANAGER'].includes(session.user.role || '')
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'IT_MANAGER'].includes(user.role || '')
     const finalIsInternal = isAdmin ? isInternal : false
 
     // Yorum oluştur
     const comment = await prisma.ticketComment.create({
       data: {
         ticketId,
-        authorEmail: session.user.email,
-        authorName: session.user.name,
+        authorEmail: user.email,
+        authorName: user.name ?? user.email,
         content: content.trim(),
         isInternal: finalIsInternal,
         isResolution,
@@ -85,8 +82,8 @@ export async function POST(
         ticketId,
         action: finalIsInternal ? 'internal_note_added' : 'comment_added',
         description: finalIsInternal ? 'Dahili not eklendi' : 'Yorum eklendi',
-        performedBy: session.user.email,
-        performedByName: session.user.name,
+        performedBy: user.email,
+        performedByName: user.name ?? user.email,
       }
     })
 
@@ -121,8 +118,8 @@ export async function POST(
           description: 'Durum değiştirildi',
           oldValue: ticket.status,
           newValue: 'RESOLVED',
-          performedBy: session.user.email,
-          performedByName: session.user.name,
+          performedBy: user.email,
+          performedByName: user.name ?? user.email,
         }
       })
     }

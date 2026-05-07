@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { dispatchTicketCreated } from '@/lib/ticket-notifications'
+import { requireUser } from '@/lib/auth/require-user'
 
 // IT Ekibi kontrolü
 function isITStaff(role: string, department: string | null): boolean {
@@ -59,10 +59,9 @@ function calculateSLA(priority: string, createdAt: Date) {
 // GET - Ticket listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser → user.email/role/department (DB taze)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const viewMode = searchParams.get('viewMode') || 'all'
@@ -72,9 +71,9 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    const userEmail = session.user.email
-    const userRole = session.user.role
-    const userDept = session.user.department || null
+    const userEmail = user.email
+    const userRole = user.role
+    const userDept = user.department || null
     const userIsITStaff = isITStaff(userRole, userDept)
 
     // Filtreler
@@ -163,10 +162,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni ticket oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email || !session?.user?.name) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -227,9 +225,9 @@ export async function POST(request: NextRequest) {
         impact,
         urgency,
         status: assignedTo ? 'ASSIGNED' : 'NEW',
-        requesterEmail: session.user.email,
-        requesterName: session.user.name,
-        requesterDept: session.user.department || null,
+        requesterEmail: user.email,
+        requesterName: user.name ?? user.email,
+        requesterDept: user.department || null,
         location,
         assetInfo,
         assignedTo,
@@ -251,10 +249,28 @@ export async function POST(request: NextRequest) {
         ticketId: ticket.id,
         action: 'created',
         description: 'Ticket oluşturuldu',
-        performedBy: session.user.email,
-        performedByName: session.user.name,
+        performedBy: user.email,
+        performedByName: user.name ?? user.email,
       }
     })
+
+    // ── Bildirim dispatcher (PR-TKT-NTF-1A) ─────────────────────
+    // Fire-and-forget: response'u bloklamaz. Hata olursa loglanır.
+    // IT ekibi (Sistem Geliştirme dept'i) email + in-app + push alır.
+    void dispatchTicketCreated({
+      id: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      subject: ticket.subject,
+      description: ticket.description,
+      priority: ticket.priority,
+      category: ticket.category?.name ?? '(Kategorisiz)',
+      requesterName: ticket.requesterName,
+      requesterDept: ticket.requesterDept ?? '',
+      createdAt: ticket.createdAt,
+    }).catch((err) => {
+      console.error('[ticket-notify] unhandled dispatch error:', err)
+    })
+    // ────────────────────────────────────────────────────────────
 
     return NextResponse.json(ticket, { status: 201 })
   } catch (error) {

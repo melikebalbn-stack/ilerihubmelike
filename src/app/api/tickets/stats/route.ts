@@ -1,27 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Ticket istatistikleri
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-tickets: requireUser + session (ou LDAP-only)
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const viewMode = searchParams.get('viewMode') || 'all'
-    const userEmail = session.user.email
+    const userEmail = user.email
     const userOu = (session.user.ou || '').toLowerCase()
-    const userDept = (session.user.department || '').toLowerCase()
-    const isAdmin = session.user.role === 'ADMIN' || session.user.role === 'SUPER_ADMIN'
+    const userDept = (user.department || '').toLowerCase()
+    const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
 
     // IT Ekibi kontrolü
-    const isITStaff = session.user.role === 'IT_MANAGER' ||
-      session.user.role === 'ADMIN' ||
-      session.user.role === 'SUPER_ADMIN' ||
+    const isITStaff = user.role === 'IT_MANAGER' ||
+      user.role === 'ADMIN' ||
+      user.role === 'SUPER_ADMIN' ||
       userOu.includes('sistem') ||
       userOu.includes('bilgi teknoloji') ||
       userOu.includes('information') ||

@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 
 // ISO 27001 Uyumluluk Raporu - JSON formatında
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireUser — generatedBy = user
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Tüm verileri paralel çek
     const [
@@ -90,7 +88,7 @@ export async function GET() {
     // Rapor verisi
     const reportData = {
       generatedAt: new Date().toISOString(),
-      generatedBy: session.user.name || session.user.email,
+      generatedBy: user.name || user.email,
       summary: {
         compliancePercentage,
         totalControls,

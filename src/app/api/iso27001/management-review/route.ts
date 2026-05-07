@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Yonetim gozden gecirme listesi
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireSession (read-only liste)
+    const { error } = await requireSession()
+    if (error) return error
 
     const reviews = await prisma.iso27001ManagementReview.findMany({
       orderBy: { reviewDate: "desc" },
@@ -61,10 +60,9 @@ export async function GET() {
 // Yeni toplanti olustur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireUser — chairperson default user.name fallback
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -110,7 +108,7 @@ export async function POST(request: NextRequest) {
         title,
         reviewDate: new Date(meetingDate),
         participants: JSON.stringify(attendees || []),
-        chairperson: chairperson || session.user.name || "",
+        chairperson: chairperson || user.name || "",
         status: "DRAFT",
       },
     })

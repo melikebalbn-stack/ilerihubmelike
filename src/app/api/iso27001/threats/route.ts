@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireBgysSorumlu } from "@/lib/permissions/bgys"
 
 // Tehdit listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireSession (read-only liste)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
@@ -52,10 +51,9 @@ export async function GET(request: NextRequest) {
 // Yeni tehdit olustur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireBgysSorumlu (admin CRUD)
+    const { error } = await requireBgysSorumlu()
+    if (error) return error
 
     const body = await request.json()
     const { name, category, description, affectedAssetTypes, typicalLikelihood, typicalImpact } = body

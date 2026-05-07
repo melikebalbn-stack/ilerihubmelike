@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import archiver from 'archiver'
 import * as XLSX from 'xlsx'
 import fs from 'fs'
 import path from 'path'
+import { requireBgysSorumlu } from '@/lib/permissions/bgys'
 
 // Label maps
 const riskLevelLabels: Record<string, string> = {
@@ -211,16 +210,9 @@ function safeName(name: string): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 401 })
-    }
-
-    const userRole = (session.user as any).role || 'EMPLOYEE'
-    const allowedRoles = ['IT_MANAGER', 'QUALITY_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(userRole)) {
-      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-    }
+    // PR-Y2.5-iso27001-C: requireBgysSorumlu (admin paket; ALLOWED_ROLES helper'a tasindi)
+    const { user, error } = await requireBgysSorumlu()
+    if (error) return error
 
     // Tüm verileri topla
     const [
@@ -295,7 +287,7 @@ export async function GET(request: NextRequest) {
     const today = new Date().toISOString().split('T')[0]
     const year = new Date().getFullYear()
     const rootDir = `ILERI-GROUP-ISO27001-Denetci-Paketi-${year}`
-    const userName = session.user.name || session.user.email || '-'
+    const userName = user.name || user.email || '-'
 
     // ZIP oluştur (streaming)
     const archive = archiver('zip', { zlib: { level: 5 } })

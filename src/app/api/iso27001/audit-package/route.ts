@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Denetçi Rapor Paketi - Tüm BGYS verilerini tek bir pakette indir
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireUser — generatedBy = user
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Tüm verileri topla
     const [
@@ -195,7 +193,7 @@ export async function GET(request: NextRequest) {
         title: "ISO 27001:2022 Denetim Rapor Paketi",
         organization: "ILERI Group",
         generatedAt: new Date().toISOString(),
-        generatedBy: session.user.name || session.user.email,
+        generatedBy: user.name || user.email,
         standard: "ISO/IEC 27001:2022",
         scope: "Bilgi Guvenligi Yonetim Sistemi (BGYS)",
       },

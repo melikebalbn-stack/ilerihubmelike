@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import * as XLSX from "xlsx"
+import { requireUser } from "@/lib/auth/require-user"
 
 // ISO 27001:2022 Annex A Kontrolleri
 const ANNEX_A_CONTROLS = {
@@ -130,10 +129,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireUser — generatedBy alani user.name kullanir
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const format = searchParams.get("format")
@@ -243,7 +241,7 @@ export async function GET(request: NextRequest) {
         organization: "ILERI Group",
         standard: "ISO/IEC 27001:2022",
         generatedAt: new Date().toISOString(),
-        generatedBy: session.user.name || session.user.email,
+        generatedBy: user.name || user.email,
         summary: stats,
         categoryStats,
         controls: allControls,
@@ -303,7 +301,7 @@ export async function GET(request: NextRequest) {
       { "Metrik": "Uyum Orani (%)", "Deger": stats.complianceRate },
       { "Metrik": "", "Deger": "" },
       { "Metrik": "Olusturma Tarihi", "Deger": new Date().toLocaleDateString("tr-TR") },
-      { "Metrik": "Olusturan", "Deger": session.user.name || session.user.email || "" },
+      { "Metrik": "Olusturan", "Deger": user.name || user.email || "" },
       { "Metrik": "Standart", "Deger": "ISO/IEC 27001:2022" },
       { "Metrik": "Kurum", "Deger": "ILERI Group" },
     ]

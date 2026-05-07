@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-
-const ALLOWED_ROLES = ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "QUALITY_MANAGER"]
+import { requireSession } from "@/lib/auth/require-session"
+import { requireBgysSorumlu } from "@/lib/permissions/bgys"
 
 // Program listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireSession (read-only liste)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const year = searchParams.get("year")
@@ -47,19 +44,9 @@ export async function GET(request: NextRequest) {
 // Yeni program oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true },
-    })
-
-    if (!currentUser?.role || !ALLOWED_ROLES.includes(currentUser.role)) {
-      return NextResponse.json({ error: "Yetkiniz yok" }, { status: 403 })
-    }
+    // PR-Y2.5-iso27001-C: requireBgysSorumlu (admin CRUD; ALLOWED_ROLES helper'a tasindi)
+    const { error } = await requireBgysSorumlu()
+    if (error) return error
 
     const body = await request.json()
     const {

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-
-const ALLOWED_ROLES = ["IT_MANAGER", "QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"]
+import { requireSession } from "@/lib/auth/require-session"
+import { requireBgysSorumlu } from "@/lib/permissions/bgys"
 
 // GET - Tek test detayı
 export async function GET(
@@ -11,10 +9,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireSession (read-only detay)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -47,15 +44,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    const userRole = (session.user as any).role || "EMPLOYEE"
-    if (!ALLOWED_ROLES.includes(userRole)) {
-      return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 })
-    }
+    // PR-Y2.5-iso27001-C: requireBgysSorumlu (admin CRUD; APPROVED durumunda approvedBy = user)
+    const { user, error } = await requireBgysSorumlu()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -84,12 +75,8 @@ export async function PUT(
     if (body.status !== undefined) {
       updateData.status = body.status
       if (body.status === "APPROVED") {
-        const user = await prisma.user.findUnique({
-          where: { email: session.user.email },
-          select: { id: true, name: true },
-        })
-        updateData.approvedById = user?.id
-        updateData.approvedByName = user?.name || session.user.name
+        updateData.approvedById = user.id
+        updateData.approvedByName = user.name || user.email
         updateData.approvedAt = new Date()
       }
     }
@@ -113,15 +100,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    const userRole = (session.user as any).role || "EMPLOYEE"
-    if (!ALLOWED_ROLES.includes(userRole)) {
-      return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 })
-    }
+    // PR-Y2.5-iso27001-C: requireBgysSorumlu (admin CRUD)
+    const { error } = await requireBgysSorumlu()
+    if (error) return error
 
     const { id } = await params
 

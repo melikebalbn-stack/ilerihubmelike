@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Dashboard istatistikleri - Optimize edilmiş (26 sorgu → 10 sorgu)
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireSession (read-only stats)
+    const { error } = await requireSession()
+    if (error) return error
 
     const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     const now = new Date()

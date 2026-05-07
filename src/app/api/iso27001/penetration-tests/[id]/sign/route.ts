@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import crypto from "crypto"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 function generateSignatureCode(): string {
   const now = new Date()
@@ -19,10 +19,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireUser — DB user gerek (signer)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -38,7 +37,7 @@ export async function POST(
     const existingSignature = await prisma.iso27001PenTestSignature.findFirst({
       where: {
         testId: id,
-        signerEmail: session.user.email,
+        signerEmail: user.email,
         signatureType: signatureType || "APPROVAL",
       },
     })
@@ -49,12 +48,6 @@ export async function POST(
         { status: 400 }
       )
     }
-
-    // Kullanıcı bilgileri
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true, email: true, jobTitle: true, department: true },
-    })
 
     // IP ve User Agent
     const forwarded = request.headers.get("x-forwarded-for")
@@ -72,11 +65,11 @@ export async function POST(
     const signature = await prisma.iso27001PenTestSignature.create({
       data: {
         testId: id,
-        signerId: user?.id || "",
-        signerName: user?.name || session.user.name || "",
-        signerEmail: session.user.email,
-        signerTitle: user?.jobTitle || null,
-        signerDepartment: user?.department || null,
+        signerId: user.id,
+        signerName: user.name || user.email,
+        signerEmail: user.email,
+        signerTitle: user.jobTitle || null,
+        signerDepartment: user.department || null,
         signatureCode,
         signedAt: new Date(),
         testHash,
@@ -102,10 +95,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireSession (read-only liste)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

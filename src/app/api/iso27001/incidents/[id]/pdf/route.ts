@@ -1,30 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { generateIncidentReportPDFBuffer, IncidentForPDF } from "@/lib/pdf/incident-report-pdf"
+import { requireUser } from "@/lib/auth/require-user"
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireUser — DB user gerek (signer)
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-
-    // İmzalayan kullanıcı bilgilerini al
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true, email: true, jobTitle: true, role: true },
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
-    }
 
     const incident = await prisma.iso27001Incident.findUnique({
       where: { id },

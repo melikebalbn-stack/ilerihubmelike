@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Mevcut bir kanıtı yeni bir kontrole bağla (dosyayı kopyalamadan referans oluştur)
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireUser — DB user gerek (uploadedBy)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const { evidenceId, controlId } = body
@@ -69,12 +67,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Kullanıcı bilgilerini al
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true }
-    })
-
     // Yeni kanıt kaydı oluştur (aynı dosyaya referans)
     const newEvidence = await prisma.iso27001Evidence.create({
       data: {
@@ -88,8 +80,8 @@ export async function POST(request: NextRequest) {
         referenceUrl: existingEvidence.referenceUrl,
         referenceNote: existingEvidence.referenceNote,
         evidenceDate: new Date(),
-        uploadedById: user?.id || "system",
-        uploadedByName: user?.name || session.user.email,
+        uploadedById: user.id,
+        uploadedByName: user.name || user.email,
       },
       select: {
         id: true,

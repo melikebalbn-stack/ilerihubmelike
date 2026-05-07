@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendPushToUser } from "@/lib/push-notifications"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Olay listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireSession (read-only liste)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
@@ -75,10 +74,9 @@ export async function GET(request: NextRequest) {
 // Yeni olay oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-C: requireUser — DB user gerek (reportedBy)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -104,16 +102,6 @@ export async function POST(request: NextRequest) {
         { error: "Zorunlu alanlar eksik" },
         { status: 400 }
       )
-    }
-
-    // Kullanıcıyı bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanici bulunamadi" }, { status: 404 })
     }
 
     // Olay numarası oluştur (OY-YYYY-NNN)

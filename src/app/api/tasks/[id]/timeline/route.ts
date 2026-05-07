@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { RecurrenceType } from '@/generated/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // GET - Görevin zaman çizelgesini getir (ana görev + tüm child görevler + gelecek periyotlar)
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // PR-TASKS-SECURITY: requireSession ZORUNLU — önceki kod auth check yoktu
+    const { error } = await requireSession()
+    if (error) return error
+
     const { id } = await params
 
     // Önce görevi al
@@ -129,6 +134,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // PR-TASKS-SECURITY: requireSession ZORUNLU — önceki kod auth check yoktu
+    const { error } = await requireSession()
+    if (error) return error
+
     const { id } = await params
     const body = await request.json()
     const { dueDate } = body

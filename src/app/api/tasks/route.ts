@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { TaskStatus, TaskPriority, TaskEmailType } from '@/generated/prisma'
 import { sendTaskNotification, TaskEmailData, EmailRecipient } from '@/lib/email'
 import { getAllSubordinates } from '@/lib/ldap'
-import { authOptions } from '@/lib/auth'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Departman adını AD OU adına çevir
 async function getDepartmentAdOuName(departmentName: string): Promise<string | null> {
@@ -18,6 +17,11 @@ async function getDepartmentAdOuName(departmentName: string): Promise<string | n
 // GET - Görevleri listele (görünürlük kurallarına göre)
 export async function GET(request: NextRequest) {
   try {
+    // PR-TASKS-SECURITY: requireUser ZORUNLU + session (ou/distinguishedName LDAP-only)
+    // Önceki "if (session?.user)" optional auth — auth'sız tüm task listesi sızdırıyordu
+    const { session, user, error } = await requireUser()
+    if (error) return error
+
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const status = searchParams.get('status')
@@ -26,27 +30,16 @@ export async function GET(request: NextRequest) {
     // viewMode: 'my' (benim görevlerim), 'department' (departman), 'subordinates' (astlarım), 'all' (tümü - sadece admin)
     const viewMode = searchParams.get('viewMode') || 'my'
 
-    // Session'dan kullanıcı bilgisini al
-    const session = await getServerSession(authOptions)
-
-    // Debug log
-    console.log('📋 Tasks API - Session:', {
-      email: session?.user?.email,
-      ou: session?.user?.ou,
-      role: session?.user?.role,
-      viewMode,
-    })
-
     const where: any = {
       isActive: true,
     }
 
-    // Görünürlük filtreleme
-    if (session?.user) {
-      const userEmail = session.user.email?.toLowerCase()
+    // Görünürlük filtreleme — auth artık zorunlu
+    {
+      const userEmail = user.email
       const userOU = session.user.ou
       const userDN = session.user.distinguishedName
-      const userRole = session.user.role
+      const userRole = user.role
 
       // Kullanıcının departman adını bul
       let userDeptName: string | null = null
@@ -214,7 +207,11 @@ export async function GET(request: NextRequest) {
 // POST - Yeni görev ekle
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    // PR-TASKS-SECURITY: requireUser ZORUNLU
+    // Önceki kod session import edip hiç kullanmıyordu — auth'sız task oluşturma açıktı
+    const { user, error } = await requireUser()
+    if (error) return error
+
     const body = await request.json()
 
     const {
@@ -228,7 +225,6 @@ export async function POST(request: NextRequest) {
       recurrenceInterval,
       reminderDays,
       responsiblePerson,
-      responsiblePersonEmail,
       responsibleDepartment,
       responsiblePersons, // Yeni: Çoklu kişiler [{name, email}]
       responsibleDepartments, // Yeni: Çoklu departmanlar [string]
@@ -241,6 +237,11 @@ export async function POST(request: NextRequest) {
       escalationCategory,
       escalationPriority,
     } = body
+    // PR-Y2.5-tasks: input boundary normalization — DB email lowercase invariant
+    let { responsiblePersonEmail } = body
+    if (typeof responsiblePersonEmail === 'string' && responsiblePersonEmail.trim() !== '') {
+      responsiblePersonEmail = responsiblePersonEmail.toLowerCase()
+    }
 
     if (!title || !dueDate) {
       return NextResponse.json(
@@ -451,8 +452,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Görev oluşturanı bildirimden çıkar
-      const creatorEmail = session?.user?.email?.toLowerCase()
-      if (creatorEmail) notifyEmails.delete(creatorEmail)
+      const creatorEmail = user.email
+      notifyEmails.delete(creatorEmail)
 
       if (notifyEmails.size > 0) {
         // Email'lerden user ID'lerini bul

@@ -1,8 +1,7 @@
 import { NextRequest } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, apiUnauthorized, apiBadRequest } from '@/lib/api-response'
+import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
+import { requireUser } from '@/lib/auth/require-user'
 
 /**
  * GET: Yetkili kullanıcıları listele veya mevcut kullanıcının yetkisini kontrol et
@@ -11,23 +10,15 @@ import { apiSuccess, apiError, apiUnauthorized, apiBadRequest } from '@/lib/api-
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5-overtime: requireUser — role + id check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const check = searchParams.get('check')
 
     // Sidebar hafif kontrol modu
     if (check === 'me') {
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: { id: true, role: true },
-      })
-
-      if (!user) return apiUnauthorized()
-
       // Admin her zaman yetkili
       if (['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
         return apiSuccess({ authorized: true })
@@ -41,12 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Admin kontrolü (liste görüntüleme)
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { role: true },
-    })
-
-    if (!user || !['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+    if (!['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
@@ -80,17 +66,10 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { role: true },
-    })
-
-    if (!user || !['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+    // PR-Y2.5-overtime: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
@@ -150,17 +129,10 @@ export async function POST(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { role: true },
-    })
-
-    if (!user || !['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+    // PR-Y2.5-overtime: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 

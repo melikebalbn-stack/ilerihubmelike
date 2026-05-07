@@ -1,7 +1,6 @@
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, apiUnauthorized } from '@/lib/api-response'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { requireSession } from '@/lib/auth/require-session'
 
 /**
  * Mesai saatini hesapla
@@ -31,10 +30,9 @@ function calculateHours(isFullDay: boolean, startTime: string | null, endTime: s
  */
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5-overtime: requireSession (read-only stats)
+    const { error } = await requireSession()
+    if (error) return error
 
     const now = new Date()
 

@@ -1,7 +1,6 @@
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, apiUnauthorized } from '@/lib/api-response'
+import { apiSuccess, apiError } from '@/lib/api-response'
+import { requireSession } from '@/lib/auth/require-session'
 
 /**
  * GET: Sonraki mesai form numarasını oluştur
@@ -9,10 +8,9 @@ import { apiSuccess, apiError, apiUnauthorized } from '@/lib/api-response'
  */
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5-overtime: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const year = new Date().getFullYear()
     const prefix = `OT-${year}-`

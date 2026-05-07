@@ -1,9 +1,8 @@
 import { NextRequest } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, apiUnauthorized, apiBadRequest } from '@/lib/api-response'
+import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
 import { OvertimeType, OvertimeStatus } from '@/generated/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 /**
  * Form numarası oluştur: OT-YYYY-NNN
@@ -32,18 +31,9 @@ async function generateFormNo(): Promise<string> {
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5-overtime: requireUser — admin/creator/approver/personnel filter için user.id+role gerek
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
@@ -175,18 +165,9 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5-overtime: requireUser — createdById = user.id, role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Yetki kontrolü: Admin değilse yetkili kullanıcı listesinde olmalı
     const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)

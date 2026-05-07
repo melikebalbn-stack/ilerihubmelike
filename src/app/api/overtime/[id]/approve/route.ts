@@ -1,9 +1,8 @@
 import { NextRequest } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { apiSuccess, apiError, apiUnauthorized, apiNotFound, apiBadRequest } from '@/lib/api-response'
+import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { sendPushToUser } from '@/lib/push-notifications'
+import { requireUser } from '@/lib/auth/require-user'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -16,20 +15,11 @@ interface RouteParams {
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return apiUnauthorized()
-    }
+    // PR-Y2.5-overtime: requireUser — approverId = user.id, role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return apiUnauthorized()
-    }
 
     const body = await request.json()
     const { decision, comment, forwardToGM } = body

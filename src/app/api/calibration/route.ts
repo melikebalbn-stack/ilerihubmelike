@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CalibrationStatus } from '@/generated/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tüm cihazları listele
 export async function GET(request: NextRequest) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-calibration: requireSession — sadece auth check, DB hit yok
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
@@ -109,15 +107,13 @@ export async function GET(request: NextRequest) {
 // POST - Yeni cihaz ekle
 export async function POST(request: NextRequest) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-calibration: requireUser → user.role/department + session.user.ou (LDAP-only)
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
     // Yetki kontrolü - ADMIN, QUALITY_MANAGER veya Kalite departmanı
     const { canEditCalibration } = await import('@/lib/calibration-auth')
-    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
+    if (!canEditCalibration(user.role, session.user.ou, user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -152,6 +148,13 @@ export async function POST(request: NextRequest) {
       scrapDate,
       scrapDescription,
     } = body
+
+    // PR-Y2.5-calibration: input boundary normalization — DB email lowercase invariant
+    if (typeof responsiblePersonEmail === 'string' && responsiblePersonEmail.trim() !== '') {
+      responsiblePersonEmail = responsiblePersonEmail.toLowerCase()
+    } else {
+      responsiblePersonEmail = null
+    }
 
     // Default değerler
     if (!name || name.trim() === '') {

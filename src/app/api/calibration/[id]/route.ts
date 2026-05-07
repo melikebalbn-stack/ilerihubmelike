@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CalibrationStatus } from '@/generated/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tek bir cihazı getir
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-calibration: requireSession — sade auth (DB hit yok)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -52,21 +50,22 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-calibration: requireUser → user.role/department + session.user.ou
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
     // Yetki kontrolü
     const { canEditCalibration } = await import('@/lib/calibration-auth')
-    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
+    if (!canEditCalibration(user.role, session.user.ou, user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
     const { id } = await params
     const body = await request.json()
 
+    let {
+      responsiblePersonEmail,
+    } = body
     const {
       name,
       type,
@@ -77,7 +76,6 @@ export async function PUT(
       location,
       department,
       responsiblePerson,
-      responsiblePersonEmail,
       calibrationInterval,
       lastCalibrationDate,
       plannedCalibrationDate,
@@ -96,6 +94,11 @@ export async function PUT(
       scrapDate,
       scrapDescription,
     } = body
+
+    // PR-Y2.5-calibration: input boundary normalization — DB email lowercase invariant
+    if (typeof responsiblePersonEmail === 'string' && responsiblePersonEmail.trim() !== '') {
+      responsiblePersonEmail = responsiblePersonEmail.toLowerCase()
+    }
 
     // Cihazın var olup olmadığını kontrol et
     const existingDevice = await prisma.calibrationDevice.findUnique({
@@ -189,19 +192,17 @@ export async function PUT(
 
 // DELETE - Cihazı sil (soft delete) (ADMIN, Kalite departmanı veya QUALITY_MANAGER)
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-calibration: requireUser → user.role/department + session.user.ou
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
     // Yetki kontrolü
     const { canEditCalibration } = await import('@/lib/calibration-auth')
-    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
+    if (!canEditCalibration(user.role, session.user.ou, user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

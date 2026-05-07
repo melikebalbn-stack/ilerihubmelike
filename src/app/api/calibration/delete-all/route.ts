@@ -1,18 +1,16 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // DELETE - Tüm kalibrasyon kayıtlarını arşivle (SADECE SUPER_ADMIN)
 export async function DELETE() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-calibration: requireUser → user.role/department + session.user.ou
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
     const { canEditCalibration } = await import('@/lib/calibration-auth')
-    if (!canEditCalibration(session.user.role, session.user.ou, session.user.department)) {
+    if (!canEditCalibration(user.role, session.user.ou, user.department)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok.' }, { status: 403 })
     }
 
@@ -33,7 +31,7 @@ export async function DELETE() {
       data: { isActive: false }
     })
 
-    console.log(`[CALIBRATION] Bulk archive: ${result.count} devices archived by ${session.user.email}`)
+    console.log(`[CALIBRATION] Bulk archive: ${result.count} devices archived by ${user.email}`)
 
     return NextResponse.json({
       success: true,

@@ -1,17 +1,14 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CalibrationStatus } from '@/generated/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // GET - İstatistikleri getir
 export async function GET() {
   try {
-    // Kimlik doğrulama kontrolü
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-calibration: requireSession — sade auth (DB hit yok)
+    const { error } = await requireSession()
+    if (error) return error
     const [total, valid, expiring, expired, inProcess, outOfOrder, noResponsible, atCompany, atCalibration, scrap, totalCostAgg] = await Promise.all([
       prisma.calibrationDevice.count({
         where: { isActive: true },

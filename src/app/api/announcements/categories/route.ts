@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Kategorileri listele
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireSession — sade auth, DB hit yok
+    const { error } = await requireSession()
+    if (error) return error
 
     const categories = await prisma.announcementCategory.findMany({
       where: { isActive: true },
@@ -32,13 +31,12 @@ export async function GET() {
 // POST - Yeni kategori oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser — admin check için DB user gerekli
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
 
     // FIX #4: Merkezi utility kullanıldı
     const isAdmin = checkIsAdmin(userEmail, userRole)
@@ -83,13 +81,12 @@ export async function POST(request: NextRequest) {
 // PUT - Kategori güncelle
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
 
     // FIX #4: Merkezi utility kullanıldı
     const isAdmin = checkIsAdmin(userEmail, userRole)
@@ -128,13 +125,12 @@ export async function PUT(request: NextRequest) {
 // DELETE - Kategori sil
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
 
     // FIX #4: Merkezi utility kullanıldı
     const isAdmin = checkIsAdmin(userEmail, userRole)

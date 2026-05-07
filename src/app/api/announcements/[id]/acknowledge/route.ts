@@ -1,23 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
+import { requireUser } from '@/lib/auth/require-user'
 
 // POST - Okundu onayı ver
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-    const userEmail = String(session.user.email).toLowerCase()
-    const userDepartment = session.user.department
+    const userEmail = user.email
+    const userDepartment = user.department
 
     // Duyuruyu kontrol et
     const announcement = await prisma.announcement.findUnique({
@@ -43,7 +41,7 @@ export async function POST(
       create: {
         announcementId: id,
         userEmail,
-        userName: session.user.name || userEmail,
+        userName: user.name || userEmail,
         userDepartment,
         acknowledged: true,
         acknowledgedAt: new Date()
@@ -63,18 +61,17 @@ export async function POST(
 
 // GET - Okundu istatistikleri (Admin için)
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
 
     // FIX #4: Merkezi utility kullanıldı
     const isAdmin = checkIsAdmin(userEmail, userRole)

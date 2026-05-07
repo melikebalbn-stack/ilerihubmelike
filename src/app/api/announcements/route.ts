@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Duyuruları listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser → user.email/role/department (DB taze)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -20,9 +18,9 @@ export async function GET(request: NextRequest) {
     const priority = searchParams.get('priority')
     const search = searchParams.get('search')
 
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
-    const userDepartment = session.user.department
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
+    const userDepartment = user.department
 
     // FIX #4: Yönetici kontrolü - merkezi utility kullanıldı
     const isAdmin = checkIsAdmin(userEmail, userRole)
@@ -150,13 +148,12 @@ export async function GET(request: NextRequest) {
 // POST - Yeni duyuru oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser → user.role (DB taze, JWT stale değil)
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
 
     // Yönetici kontrolü
     const isAdmin = userEmail === 'melih.dilben@ilerigroup.com' ||
@@ -219,10 +216,10 @@ export async function POST(request: NextRequest) {
         surveyId: cleanSurveyId,
         status,
         publishedAt: status === 'PUBLISHED' ? new Date() : null,
-        authorId: session.user.id || '',
+        authorId: user.id,
         authorEmail: userEmail,
-        authorName: session.user.name || userEmail,
-        authorDepartment: session.user.department
+        authorName: user.name || userEmail,
+        authorDepartment: user.department
       },
       include: {
         category: true,

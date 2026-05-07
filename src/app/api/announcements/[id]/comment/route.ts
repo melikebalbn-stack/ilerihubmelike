@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
+import { requireUser } from '@/lib/auth/require-user'
 
 // POST - Yorum ekle
 export async function POST(
@@ -10,13 +9,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
     const body = await request.json()
     const { content, parentId } = body
 
@@ -53,7 +51,7 @@ export async function POST(
       data: {
         announcementId: id,
         authorEmail: userEmail,
-        authorName: session.user.name || userEmail,
+        authorName: user.name || userEmail,
         content: content.trim(),
         parentId
       }
@@ -72,14 +70,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
 
     const { searchParams } = new URL(request.url)
     const commentId = searchParams.get('commentId')

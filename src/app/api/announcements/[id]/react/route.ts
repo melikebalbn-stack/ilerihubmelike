@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // POST - Tepki ekle/kaldır
 export async function POST(
@@ -9,13 +8,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-announcements: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
     const body = await request.json()
     const { reactionType } = body
 
@@ -60,7 +58,7 @@ export async function POST(
         data: {
           announcementId: id,
           userEmail,
-          userName: session.user.name || userEmail,
+          userName: user.name || userEmail,
           reactionType
         }
       })

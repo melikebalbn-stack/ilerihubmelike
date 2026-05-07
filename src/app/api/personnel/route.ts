@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,8 +19,10 @@ function hasPersonnelAccess(role: string, department?: string | null): boolean {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireSession (mevcut iş mantığı: sadece auth gate, role check yok)
+    // NOT: GET'te role check eksikliği güvenlik bulgusu — PR-PERSONNEL-SECURITY-GET backlog
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const bolum = searchParams.get('bolum')
@@ -92,12 +94,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireUser — createdBy + sensitive yazımı için user.id
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userRole = (session.user as any).role
-    const userDept = (session.user as any).department
-    if (!hasPersonnelAccess(userRole, userDept)) {
+    if (!hasPersonnelAccess(user.role, user.department)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -140,9 +141,9 @@ export async function POST(request: NextRequest) {
       if (personnelData[key] === '') personnelData[key] = null
     }
 
-    personnelData.createdBy = session.user.id
+    personnelData.createdBy = user.id
 
-    const personnel = await prisma.personnel.create({
+    const newPersonnel = await prisma.personnel.create({
       data: personnelData,
     })
 
@@ -154,8 +155,8 @@ export async function POST(request: NextRequest) {
 
       await prisma.personnelSensitive.create({
         data: {
-          personnelId: personnel.id,
-          updatedBy: session.user.id,
+          personnelId: newPersonnel.id,
+          updatedBy: user.id,
           ...sensitive,
         },
       })
@@ -163,15 +164,15 @@ export async function POST(request: NextRequest) {
       // Log sensitive data write
       await prisma.personnelAccessLog.create({
         data: {
-          personnelId: personnel.id,
-          accessedBy: session.user.id,
+          personnelId: newPersonnel.id,
+          accessedBy: user.id,
           accessType: 'CREATE_SENSITIVE',
           ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
         },
       })
     }
 
-    return NextResponse.json(personnel, { status: 201 })
+    return NextResponse.json(newPersonnel, { status: 201 })
   } catch (error: any) {
     console.error('Personel oluşturulurken hata:', error)
     if (error?.code === 'P2002') {

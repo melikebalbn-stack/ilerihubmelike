@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
+import { requireUser } from '@/lib/auth/require-user'
 import {
   KAN_GRUBU_LABELS,
   CINSIYET_LABELS,
@@ -43,12 +42,11 @@ function boolToStr(val: boolean | null | undefined): string {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireUser — admin role + sensitive data export check
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userRole = (session.user as any).role
-    const userDept = (session.user as any).department
-    if (!hasPersonnelAccess(userRole, userDept)) {
+    if (!hasPersonnelAccess(user.role, user.department)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -71,8 +69,8 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    const includeSensitive = ALLOWED_ROLES.includes(userRole)
-    const includeBank = FULL_SENSITIVE_ROLES.includes(userRole)
+    const includeSensitive = ALLOWED_ROLES.includes(user.role)
+    const includeBank = FULL_SENSITIVE_ROLES.includes(user.role)
 
     const personnel = await prisma.personnel.findMany({
       where,

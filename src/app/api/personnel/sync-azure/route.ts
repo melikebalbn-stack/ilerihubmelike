@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getAllADUsers } from '@/lib/azure-ad'
+import { requireUser } from '@/lib/auth/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,11 +9,11 @@ const ALLOWED_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userRole = (session.user as any).role
-    if (!ALLOWED_ROLES.includes(userRole)) {
+    if (!ALLOWED_ROLES.includes(user.role)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -105,7 +104,7 @@ export async function POST(request: NextRequest) {
                 telefon: adUser.mobilePhone || null,
                 azureAdId: adUser.id,
                 azureAdEmail: email,
-                createdBy: session.user.id,
+                createdBy: user.id,
               },
             })
             created++

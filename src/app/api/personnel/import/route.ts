@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { EXCEL_COLUMN_MAP } from '@/lib/personnel-constants'
+import { requireUser } from '@/lib/auth/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -116,12 +115,11 @@ function addMonthsToDate(date: Date | null, months: number): Date | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireUser — Excel import + createdBy/updatedBy yazımı
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userRole = (session.user as any).role
-    const userDept = (session.user as any).department
-    if (!ALLOWED_ROLES.includes(userRole) && !isHRDepartment(userDept)) {
+    if (!ALLOWED_ROLES.includes(user.role) && !isHRDepartment(user.department)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -240,7 +238,7 @@ export async function POST(request: NextRequest) {
           altiAyDegerlendirme: mapped.altiAyDegerlendirme
             ? parseDate(mapped.altiAyDegerlendirme)
             : addMonthsToDate(iseGirisTarihi, 6),
-          createdBy: session.user.id,
+          createdBy: user.id,
         }
 
         // Optional enums
@@ -338,7 +336,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (hasSensitive) {
-          sensitiveData.updatedBy = session.user.id
+          sensitiveData.updatedBy = user.id
           await prisma.personnelSensitive.upsert({
             where: { personnelId },
             update: sensitiveData,

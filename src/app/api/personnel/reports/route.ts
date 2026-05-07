@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireSession (mevcut iş mantığı: sadece auth gate)
+    // NOT: role check yok + sensitive data dahil — PR-PERSONNEL-SECURITY-REPORTS backlog
+    const { error } = await requireSession()
+    if (error) return error
 
     const [personnel, interns, consultants] = await Promise.all([
       prisma.personnel.findMany({

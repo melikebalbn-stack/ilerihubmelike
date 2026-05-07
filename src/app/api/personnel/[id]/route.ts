@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,8 +24,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireSession (mevcut iş mantığı: sadece auth gate, role check yok)
+    // NOT: GET'te role check eksikliği güvenlik bulgusu — PR-PERSONNEL-SECURITY-GET backlog
+    const { error } = await requireSession()
+    if (error) return error
 
     const personnel = await prisma.personnel.findUnique({
       where: { id },
@@ -96,13 +98,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireUser — role + department check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: personnelId } = await params
-    const userRole = (session.user as any).role
-    const userDept = (session.user as any).department
-    if (!hasEditAccess(userRole, userDept)) {
+
+    if (!hasEditAccess(user.role, user.department)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -140,12 +142,12 @@ export async function PUT(
       body.mezuniyetYili = parseInt(body.mezuniyetYili) || null
     }
 
-    const personnel = await prisma.personnel.update({
+    const updatedPersonnel = await prisma.personnel.update({
       where: { id: personnelId },
       data: body,
     })
 
-    return NextResponse.json(personnel)
+    return NextResponse.json(updatedPersonnel)
   } catch (error: any) {
     console.error('Personel güncellenirken hata:', error)
     if (error?.code === 'P2002') {
@@ -160,12 +162,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireUser — admin role check (soft delete)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: delId } = await params
-    const userRole = (session.user as any).role
-    if (!DELETE_ROLES.includes(userRole)) {
+
+    if (!DELETE_ROLES.includes(user.role)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -175,12 +178,12 @@ export async function DELETE(
     }
 
     // Soft delete: aktif = false
-    const personnel = await prisma.personnel.update({
+    const updatedPersonnel = await prisma.personnel.update({
       where: { id: delId },
       data: { aktif: false },
     })
 
-    return NextResponse.json({ message: 'Personel pasif duruma alındı', personnel })
+    return NextResponse.json({ message: 'Personel pasif duruma alındı', personnel: updatedPersonnel })
   } catch (error) {
     console.error('Personel silinirken hata:', error)
     return NextResponse.json({ error: 'Personel silinirken bir hata oluştu' }, { status: 500 })

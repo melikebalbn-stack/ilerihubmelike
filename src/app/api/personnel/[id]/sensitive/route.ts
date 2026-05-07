@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,11 +19,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireUser — accessLog yazımı + admin role
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userRole = (session.user as any).role
-    if (!VIEW_ROLES.includes(userRole)) {
+    if (!VIEW_ROLES.includes(user.role)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -45,7 +44,7 @@ export async function GET(
     await prisma.personnelAccessLog.create({
       data: {
         personnelId: id,
-        accessedBy: session.user.id,
+        accessedBy: user.id,
         accessType: unmask ? 'UNMASK_SENSITIVE' : 'VIEW_SENSITIVE',
         ipAddress,
       },
@@ -91,11 +90,11 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const session = await getServerSession(authOptions)
-    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // PR-Y2.5-personnel: requireUser — updatedBy yazımı + admin role
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    const userRole = (session.user as any).role
-    if (!UPDATE_ROLES.includes(userRole)) {
+    if (!UPDATE_ROLES.includes(user.role)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 
@@ -118,9 +117,9 @@ export async function PUT(
     delete body.createdAt
     delete body.updatedAt
 
-    body.updatedBy = session.user.id
+    body.updatedBy = user.id
 
-    const sensitive = await prisma.personnelSensitive.upsert({
+    const updatedSensitive = await prisma.personnelSensitive.upsert({
       where: { personnelId: id },
       update: body,
       create: {
@@ -134,13 +133,13 @@ export async function PUT(
     await prisma.personnelAccessLog.create({
       data: {
         personnelId: id,
-        accessedBy: session.user.id,
+        accessedBy: user.id,
         accessType: 'UPDATE_SENSITIVE',
         ipAddress,
       },
     })
 
-    return NextResponse.json(sensitive)
+    return NextResponse.json(updatedSensitive)
   } catch (error) {
     console.error('Hassas veri güncellenirken hata:', error)
     return NextResponse.json({ error: 'Hassas veri güncellenirken bir hata oluştu' }, { status: 500 })

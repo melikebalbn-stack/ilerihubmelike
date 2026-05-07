@@ -5,10 +5,9 @@ import { restoreILERIHub, restoreAkademi, generateBackupName, backupILERIHub, ba
 import * as fs from 'fs'
 import { requireUser } from '@/lib/auth/require-user'
 
-// Yetki kontrolü - Sadece ADMIN ve SUPER_ADMIN restore yapabilir
+// Yetki kontrolü — KVKK + veri bütünlüğü: restore tüm DB üzerine yazar, sadece SUPER_ADMIN
 function isAuthorized(userRole: string): boolean {
-  const allowedRoles = ['ADMIN', 'SUPER_ADMIN']
-  return allowedRoles.includes(userRole)
+  return userRole === 'SUPER_ADMIN'
 }
 
 // POST - Yedeği Geri Yükle
@@ -40,7 +39,7 @@ export async function POST(
     if (error) return error
 
     if (!isAuthorized(user.role)) {
-      return NextResponse.json({ error: 'Geri yükleme için ADMIN yetkisi gerekiyor' }, { status: 403 })
+      return NextResponse.json({ error: 'Restore işlemi sadece SUPER_ADMIN yetkisi gerektirir' }, { status: 403 })
     }
 
     const { id } = await params

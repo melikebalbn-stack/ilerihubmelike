@@ -5,8 +5,8 @@ import { requireUser } from '@/lib/auth/require-user'
 
 // Yetki kontrolü
 function isAuthorized(userRole: string): boolean {
-  const allowedRoles = ['IT_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-  return allowedRoles.includes(userRole)
+  // KVKK: backup tüm DB dump içerir, sadece SUPER_ADMIN
+  return userRole === 'SUPER_ADMIN'
 }
 
 // Sonraki çalışma zamanını hesapla
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
     if (error) return error
 
     if (!isAuthorized(user.role)) {
-      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+      return NextResponse.json({ error: 'Backup yönetimi sadece SUPER_ADMIN yetkisi gerektirir' }, { status: 403 })
     }
 
     const schedules = await prisma.backupSchedule.findMany({
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     if (error) return error
 
     if (!isAuthorized(user.role)) {
-      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+      return NextResponse.json({ error: 'Backup yönetimi sadece SUPER_ADMIN yetkisi gerektirir' }, { status: 403 })
     }
 
     const body = await request.json()

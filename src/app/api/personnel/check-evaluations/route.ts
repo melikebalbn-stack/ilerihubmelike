@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { requireUser } from '@/lib/auth/require-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +11,29 @@ export const dynamic = 'force-dynamic'
  * 2. Belge süreleri (İlk Yardım, Yangın Sertifikası, MYK) — 1 ay önce + süresi dolunca bildirim
  *
  * İV ekibine e-posta gönderir. Tekrar gönderimi PersonnelEvaluationEmailLog ile engeller.
+ *
+ * Auth (PR-PERSONNEL-SECURITY):
+ * - Sistem cron bypass: x-cron-secret header CRON_SECRET ile eşleşirse session zorunlu değil
+ * - Manuel tetikleme: SUPER_ADMIN/ADMIN role check (HR e-posta gönderir, kötüye kullanım önlemi)
  */
+async function checkAuth(request: NextRequest): Promise<NextResponse | null> {
+  const cronSecret = request.headers.get('x-cron-secret')
+  const isCron = !!cronSecret && cronSecret === process.env.CRON_SECRET
+
+  if (isCron) return null
+
+  const { user, error } = await requireUser()
+  if (error) return error
+
+  if (user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN') {
+    return NextResponse.json(
+      { error: 'Bu endpoint sadece cron job veya admin tarafından çağrılabilir' },
+      { status: 403 }
+    )
+  }
+
+  return null
+}
 async function runCheck() {
   const now = new Date()
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
@@ -258,7 +281,10 @@ Bu e-posta otomatik olarak ILERIHub İnsan Varlıkları Yönetim Sistemi tarafı
 © 2025 İleri Group`
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const authError = await checkAuth(request)
+  if (authError) return authError
+
   try {
     const result = await runCheck()
     return NextResponse.json(result)
@@ -268,6 +294,6 @@ export async function POST() {
   }
 }
 
-export async function GET() {
-  return POST()
+export async function GET(request: NextRequest) {
+  return POST(request)
 }

@@ -1,15 +1,29 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 export const dynamic = 'force-dynamic'
 
+const REPORT_ROLES = ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN']
+
+function isHRDepartment(dept: string | undefined | null): boolean {
+  if (!dept) return false
+  const d = dept.toLowerCase()
+  return d.includes('insan') || d.includes('human') || d.includes('hr') || d.includes('ik')
+}
+
 export async function GET() {
   try {
-    // PR-Y2.5-personnel: requireSession (mevcut iş mantığı: sadece auth gate)
-    // NOT: role check yok + sensitive data dahil — PR-PERSONNEL-SECURITY-REPORTS backlog
-    const { error } = await requireSession()
+    // PR-PERSONNEL-SECURITY: HR-only role check (rapor TC/SGK içeren sensitive data dahil)
+    const { user, error } = await requireUser()
     if (error) return error
+
+    if (!REPORT_ROLES.includes(user.role) && !isHRDepartment(user.department)) {
+      return NextResponse.json(
+        { error: 'Personnel raporu için HR_MANAGER veya admin yetkisi gerekli' },
+        { status: 403 }
+      )
+    }
 
     const [personnel, interns, consultants] = await Promise.all([
       prisma.personnel.findMany({

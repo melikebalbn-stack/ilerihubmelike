@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
 
 export const dynamic = 'force-dynamic'
@@ -24,10 +23,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    // PR-Y2.5-personnel: requireSession (mevcut iş mantığı: sadece auth gate, role check yok)
-    // NOT: GET'te role check eksikliği güvenlik bulgusu — PR-PERSONNEL-SECURITY-GET backlog
-    const { error } = await requireSession()
+    // PR-PERSONNEL-SECURITY: HR-only role check (PII expose kapatıldı)
+    const { user, error } = await requireUser()
     if (error) return error
+
+    if (!hasEditAccess(user.role, user.department)) {
+      return NextResponse.json({ error: 'Personel detayı için HR yetkisi gerekli' }, { status: 403 })
+    }
 
     const personnel = await prisma.personnel.findUnique({
       where: { id },

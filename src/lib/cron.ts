@@ -95,6 +95,7 @@ export function initializeCalibrationScheduler() {
     try {
       const response = await fetch(`${baseUrl}/api/personnel/check-evaluations`, {
         method: 'POST',
+        headers: { 'x-cron-secret': process.env.CRON_SECRET || '' },
       })
 
       const data = await response.json()

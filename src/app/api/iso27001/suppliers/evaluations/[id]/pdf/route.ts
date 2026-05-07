@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { generateSupplierEvaluationPDFBuffer, SupplierEvaluationForPDF } from "@/lib/pdf/supplier-evaluation-pdf"
+import { requireSession } from "@/lib/auth/require-session"
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession (read-only PDF)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

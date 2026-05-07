@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import * as XLSX from "xlsx"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Turkce karakter normalizasyonu
 function normalize(s: string): string {
@@ -165,13 +164,12 @@ function detectCategory(type: string): string {
 // POST - Excel'den toplu varlik import
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const allowedRoles = ["ADMIN", "SUPER_ADMIN", "QUALITY_MANAGER"]
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!allowedRoles.includes(user.role)) {
       return NextResponse.json({ error: "Bu islem icin yetkiniz yok" }, { status: 403 })
     }
 

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendPushToUser } from "@/lib/push-notifications"
 import crypto from "crypto"
 import { verifyPin } from "@/lib/pin-utils"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Dijital imza ile egitimi onayla
 export async function POST(
@@ -12,10 +11,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser — DB user (signaturePin dahil) gerek
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: trainingId } = await params
     const body = await request.json()
@@ -33,16 +31,6 @@ export async function POST(
         { error: "Onay metni zorunludur" },
         { status: 400 }
       )
-    }
-
-    // Kullanici bilgilerini al (signaturePin dahil)
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true, email: true, signaturePin: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanici bulunamadi" }, { status: 404 })
     }
 
     // FIX #2: PIN doğrulama güçlendirildi

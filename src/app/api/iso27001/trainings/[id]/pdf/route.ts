@@ -1,31 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateTrainingFormPDFBuffer, TrainingForPDF } from '@/lib/pdf/training-form-pdf'
+import { requireUser } from '@/lib/auth/require-user'
 
 const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'IT_MANAGER', 'QUALITY_MANAGER']
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser — role + isCreator check (requireBgysSorumlu
+    // burada uygulanmaz çünkü role yetersizliğinde isCreator OR'u var)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
 
     const training = await prisma.iso27001Training.findUnique({
       where: { id },
@@ -55,8 +45,8 @@ export async function GET(
     }
 
     // Yetki kontrolü: admin/IT_MANAGER/QUALITY_MANAGER veya eğitimi oluşturan kişi
-    const isAllowed = currentUser.role && ALLOWED_ROLES.includes(currentUser.role)
-    const isCreator = training.createdById === currentUser.id
+    const isAllowed = user.role && ALLOWED_ROLES.includes(user.role)
+    const isCreator = training.createdById === user.id
 
     if (!isAllowed && !isCreator) {
       return NextResponse.json(

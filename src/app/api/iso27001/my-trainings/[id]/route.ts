@@ -1,31 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import crypto from "crypto"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Tek egitim detayi getir
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser — kendi atama lookup'ı
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: trainingId } = await params
-
-    // Kullanici ID'sini bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanici bulunamadi" }, { status: 404 })
-    }
 
     const assignment = await prisma.iso27001TrainingAssignment.findUnique({
       where: {
@@ -59,24 +47,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id: trainingId } = await params
     const body = await request.json()
     const { action, viewTime, progress, quizScore } = body
-
-    // Kullanici ID'sini bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanici bulunamadi" }, { status: 404 })
-    }
 
     // Mevcut atamayi bul
     const assignment = await prisma.iso27001TrainingAssignment.findUnique({

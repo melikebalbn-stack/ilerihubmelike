@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Tek egitim getir
 export async function GET(
@@ -9,10 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -43,10 +41,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -58,13 +55,16 @@ export async function PUT(
       location,
       trainerName,
       trainerTitle,
-      trainerEmail,
       trainingDate,
       controlId,
       status,
       documentUrl,
       signatureUrl,
     } = body
+    // PR-Y2.5: input boundary normalization
+    const trainerEmail = body.trainerEmail !== undefined
+      ? (typeof body.trainerEmail === 'string' && body.trainerEmail.trim() !== '' ? body.trainerEmail.toLowerCase() : null)
+      : undefined
 
     const training = await prisma.iso27001Training.update({
       where: { id },
@@ -108,10 +108,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

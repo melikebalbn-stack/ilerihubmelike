@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import * as XLSX from "xlsx"
+import { requireSession } from "@/lib/auth/require-session"
 
 // GET - Bilgisayar envanteri Excel sablonu indir
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession (read-only template)
+    const { error } = await requireSession()
+    if (error) return error
 
     // Ornek satirlar
     const sampleData = [

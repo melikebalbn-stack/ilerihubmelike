@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Değerlendirme listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const supplierId = searchParams.get("supplierId")
@@ -45,10 +44,9 @@ export async function GET(request: NextRequest) {
 // Yeni değerlendirme oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser — DB user (evaluator) gerek
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -78,15 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Tedarikçi bulunamadı" }, { status: 404 })
     }
 
-    // Kullanıcı bilgileri
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
-    }
+    // PR-Y2.5: requireUser zaten DB user objesini verdi, ekstra findUnique gereksiz
 
     // Değerlendirme numarası oluştur: DEG-YYYY-NNN
     const year = new Date().getFullYear()

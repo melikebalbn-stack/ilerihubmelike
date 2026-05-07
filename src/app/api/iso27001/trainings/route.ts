@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Egitim listesi
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const trainings = await prisma.iso27001Training.findMany({
       orderBy: { trainingDate: "desc" },
@@ -36,10 +35,9 @@ export async function GET() {
 // Yeni egitim olustur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser — DB user (createdBy) gerek
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -50,12 +48,15 @@ export async function POST(request: NextRequest) {
       location,
       trainerName,
       trainerTitle,
-      trainerEmail,
       trainingDate,
       controlId,
       participants,
       status,
     } = body
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    const trainerEmail = typeof body.trainerEmail === 'string' && body.trainerEmail.trim() !== ''
+      ? body.trainerEmail.toLowerCase()
+      : null
 
     if (!title || !trainerName || !trainingDate) {
       return NextResponse.json(
@@ -99,14 +100,15 @@ export async function POST(request: NextRequest) {
         trainingDate: new Date(trainingDate),
         controlId: controlId || "A.6.3", // Varsayilan olarak A.6.3
         status: status || "COMPLETED",
-        createdById: session.user.id || null,
-        createdByName: session.user.name || null,
+        createdById: user.id,
+        createdByName: user.name || user.email,
         participants: {
           create: (participants || []).map((p: any) => ({
             name: p.name,
             title: p.title || null,
             department: p.department || null,
-            email: p.email || null,
+            // PR-Y2.5: input boundary normalization
+            email: typeof p.email === 'string' && p.email.trim() !== '' ? p.email.toLowerCase() : null,
             attended: p.attended !== false,
             signedAt: p.signedAt ? new Date(p.signedAt) : new Date(trainingDate),
           })),

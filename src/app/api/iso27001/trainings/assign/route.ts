@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendPushToUser } from "@/lib/push-notifications"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Egitimi kullanicilara ata
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser — DB user (assignedBy) gerek
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const { trainingId, userIds, deadline } = body
@@ -57,8 +56,8 @@ export async function POST(request: NextRequest) {
           data: {
             trainingId,
             userId,
-            assignedById: session.user.id || null,
-            assignedByName: session.user.name || null,
+            assignedById: user.id,
+            assignedByName: user.name || user.email,
             deadline: deadline ? new Date(deadline) : null,
             status: "PENDING",
           },
@@ -115,10 +114,9 @@ export async function POST(request: NextRequest) {
 // Egitim atamalarini getir
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const trainingId = searchParams.get("trainingId")

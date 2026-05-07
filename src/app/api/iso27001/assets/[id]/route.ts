@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Tek varlık detayı
 export async function GET(
@@ -9,10 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -48,10 +46,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -96,7 +93,10 @@ export async function PUT(
         barcode: body.barcode,
         warrantyEndDate: body.warrantyEndDate ? new Date(body.warrantyEndDate) : null,
         assignedTo: body.assignedTo,
-        assignedToEmail: body.assignedToEmail,
+        // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+        assignedToEmail: typeof body.assignedToEmail === 'string' && body.assignedToEmail.trim() !== ''
+          ? body.assignedToEmail.toLowerCase()
+          : null,
         parentAssetId: body.parentAssetId || null,
         notes: body.notes,
         lastReviewDate: body.lastReviewDate ? new Date(body.lastReviewDate) : undefined,
@@ -124,10 +124,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

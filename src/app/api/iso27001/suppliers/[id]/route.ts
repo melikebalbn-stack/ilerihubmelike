@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Tedarikçi detayı
 export async function GET(
@@ -9,10 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -52,10 +50,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -73,7 +70,12 @@ export async function PUT(
     if (body.companyName !== undefined) updateData.companyName = body.companyName
     if (body.contactPerson !== undefined) updateData.contactPerson = body.contactPerson
     if (body.phone !== undefined) updateData.phone = body.phone
-    if (body.email !== undefined) updateData.email = body.email
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    if (body.email !== undefined) {
+      updateData.email = typeof body.email === 'string' && body.email.trim() !== ''
+        ? body.email.toLowerCase()
+        : null
+    }
     if (body.address !== undefined) updateData.address = body.address
     if (body.taxNumber !== undefined) updateData.taxNumber = body.taxNumber
     if (body.serviceType !== undefined) updateData.serviceType = body.serviceType
@@ -110,10 +112,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

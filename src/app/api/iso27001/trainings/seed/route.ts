@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // BGYS Farkindalik Egitimi - 07/08/2025
 const INITIAL_TRAINING = {
@@ -30,10 +30,9 @@ const INITIAL_TRAINING = {
 
 export async function POST() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Mevcut egitimi kontrol et
     const existing = await prisma.iso27001Training.findFirst({
@@ -85,8 +84,8 @@ export async function POST() {
         trainingDate: INITIAL_TRAINING.trainingDate,
         controlId: INITIAL_TRAINING.controlId,
         status: INITIAL_TRAINING.status as any,
-        createdById: session.user.id || null,
-        createdByName: session.user.name || null,
+        createdById: user.id,
+        createdByName: user.name || user.email,
         participants: {
           create: INITIAL_TRAINING.participants.map((p) => ({
             name: p.name,
@@ -118,10 +117,9 @@ export async function POST() {
 // Mevcut egitim sayisini getir
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const count = await prisma.iso27001Training.count()
     const participantCount = await prisma.iso27001TrainingParticipant.count()

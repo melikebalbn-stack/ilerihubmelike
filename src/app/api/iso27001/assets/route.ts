@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Varlık listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
@@ -75,10 +73,9 @@ export async function GET(request: NextRequest) {
 // Yeni varlık oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
 
@@ -143,7 +140,10 @@ export async function POST(request: NextRequest) {
         barcode: body.barcode || null,
         warrantyEndDate: body.warrantyEndDate ? new Date(body.warrantyEndDate) : null,
         assignedTo: body.assignedTo || null,
-        assignedToEmail: body.assignedToEmail || null,
+        // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+        assignedToEmail: typeof body.assignedToEmail === 'string' && body.assignedToEmail.trim() !== ''
+          ? body.assignedToEmail.toLowerCase()
+          : null,
         parentAssetId: body.parentAssetId || null,
         notes: body.notes,
         nextReviewDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 yıl sonra

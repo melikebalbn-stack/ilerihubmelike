@@ -1,25 +1,13 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Kullanicinin atanmis egitimlerini getir
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
-
-    // Kullanici ID'sini bul
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanici bulunamadi" }, { status: 404 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser — kullanıcı kendi atamalarını filter
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const assignments = await prisma.iso27001TrainingAssignment.findMany({
       where: { userId: user.id },

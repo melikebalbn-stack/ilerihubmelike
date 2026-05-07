@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Tedarikçi listesi + istatistikler
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const group = searchParams.get("group")
@@ -71,10 +70,9 @@ export async function GET(request: NextRequest) {
 // Yeni tedarikçi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-B: requireUser — DB user (createdBy) gerek
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -82,7 +80,6 @@ export async function POST(request: NextRequest) {
       serviceType,
       contactPerson,
       phone,
-      email,
       address,
       taxNumber,
       hasNDA,
@@ -92,21 +89,16 @@ export async function POST(request: NextRequest) {
       bgRiskLevel,
       notes,
     } = body
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    const email = typeof body.email === 'string' && body.email.trim() !== ''
+      ? body.email.toLowerCase()
+      : null
 
     if (!companyName || !serviceType) {
       return NextResponse.json(
         { error: "Firma adı ve hizmet türü zorunludur" },
         { status: 400 }
       )
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
     }
 
     const supplier = await prisma.supplier.create({

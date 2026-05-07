@@ -1,9 +1,8 @@
 // Backups API - Dosya İndirme
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as fs from 'fs'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Yetki kontrolü
 function isAuthorized(userRole: string): boolean {
@@ -17,12 +16,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
-    }
+    // PR-Y2.5-backups: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    if (!isAuthorized(session.user.role)) {
+    if (!isAuthorized(user.role)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

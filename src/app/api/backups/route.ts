@@ -1,7 +1,5 @@
 // Backups API - Liste ve Oluşturma
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import {
   backupILERIHub,
@@ -11,6 +9,7 @@ import {
   getFileSize,
   PROJECT_CONFIGS
 } from '@/lib/backup-service'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Yetki kontrolü
 function isAuthorized(userRole: string): boolean {
@@ -21,12 +20,11 @@ function isAuthorized(userRole: string): boolean {
 // GET - Yedek Listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
-    }
+    // PR-Y2.5-backups: requireUser — admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    if (!isAuthorized(session.user.role)) {
+    if (!isAuthorized(user.role)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -61,12 +59,11 @@ export async function GET(request: NextRequest) {
 // POST - Yeni Yedek Oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
-    }
+    // PR-Y2.5-backups: requireUser — createdBy yazımı + admin role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    if (!isAuthorized(session.user.role)) {
+    if (!isAuthorized(user.role)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -92,8 +89,8 @@ export async function POST(request: NextRequest) {
         includeDatabase,
         excludePatterns: PROJECT_CONFIGS[projectName as keyof typeof PROJECT_CONFIGS]?.excludes?.join(',') || '',
         startedAt: startTime,
-        createdBy: session.user.email,
-        createdByName: session.user.name || session.user.email,
+        createdBy: user.email,
+        createdByName: user.name || user.email,
         serverIp: PROJECT_CONFIGS[projectName as keyof typeof PROJECT_CONFIGS]?.serverIp || '172.16.16.33',
         notes
       }

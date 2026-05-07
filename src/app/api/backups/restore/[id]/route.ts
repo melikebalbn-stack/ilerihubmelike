@@ -1,10 +1,9 @@
 // Backups API - Geri Yükleme
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { restoreILERIHub, restoreAkademi, generateBackupName, backupILERIHub, backupAkademi } from '@/lib/backup-service'
 import * as fs from 'fs'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Yetki kontrolü - Sadece ADMIN ve SUPER_ADMIN restore yapabilir
 function isAuthorized(userRole: string): boolean {
@@ -36,12 +35,11 @@ export async function POST(
   }
 
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
-    }
+    // PR-Y2.5-backups: requireUser — restore audit log için user.email/name gerek + admin role
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    if (!isAuthorized(session.user.role)) {
+    if (!isAuthorized(user.role)) {
       return NextResponse.json({ error: 'Geri yükleme için ADMIN yetkisi gerekiyor' }, { status: 403 })
     }
 
@@ -99,8 +97,8 @@ export async function POST(
           filePath: preRestoreResult.filePath,
           fileSize: BigInt(fs.statSync(preRestoreResult.filePath).size),
           status: 'COMPLETED',
-          createdBy: session.user.email,
-          createdByName: session.user.name || session.user.email,
+          createdBy: user.email,
+          createdByName: user.name || user.email,
           completedAt: new Date(),
           notes: `Geri yükleme öncesi otomatik yedek - Kaynak: ${backup.backupName}`
         }

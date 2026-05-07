@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma"
 import { writeFile, mkdir } from "fs/promises"
 import path from "path"
 import { existsSync } from "fs"
+import { requireSession } from "@/lib/auth/require-session"
+// NOT: getServerSession import'u POST handler'ında debug-amaçlı optional auth
+// için korundu (system fallback). Auth gate eklemek ayrı PR (PR-ISO27001-SECURITY).
 
 // Route segment config - dosya yüklemeleri için
 export const dynamic = 'force-dynamic'
@@ -12,14 +15,13 @@ export const maxDuration = 300 // 5 dakika timeout (büyük dosyalar için)
 
 // Kontrole bağlı kanıtları getir
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -233,10 +235,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const evidenceId = searchParams.get("evidenceId")

@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Doküman onaylama
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireUser — DB user gerek (approvedBy)
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
@@ -36,8 +34,8 @@ export async function POST(
       where: { id },
       data: {
         status: "APPROVED",
-        approvedById: session.user.id || "",
-        approvedByName: session.user.name || "",
+        approvedById: user.id,
+        approvedByName: user.name || user.email,
         approvedAt: new Date(),
       },
     })

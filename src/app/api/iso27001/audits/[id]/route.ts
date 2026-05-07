@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Tek denetim detayı
 export async function GET(
@@ -9,10 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -69,10 +67,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -122,10 +119,19 @@ export async function PATCH(
     if (endDate !== undefined) updateData.endDate = endDate ? new Date(endDate) : null
     if (leadAuditorId !== undefined) updateData.leadAuditorId = leadAuditorId || null
     if (leadAuditorName !== undefined) updateData.leadAuditorName = leadAuditorName
-    if (leadAuditorEmail !== undefined) updateData.leadAuditorEmail = leadAuditorEmail
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    if (leadAuditorEmail !== undefined) {
+      updateData.leadAuditorEmail = typeof leadAuditorEmail === 'string'
+        ? leadAuditorEmail.toLowerCase()
+        : leadAuditorEmail
+    }
     if (auditeeId !== undefined) updateData.auditeeId = auditeeId || null
     if (auditeeName !== undefined) updateData.auditeeName = auditeeName || null
-    if (auditeeEmail !== undefined) updateData.auditeeEmail = auditeeEmail || null
+    if (auditeeEmail !== undefined) {
+      updateData.auditeeEmail = typeof auditeeEmail === 'string' && auditeeEmail.trim() !== ''
+        ? auditeeEmail.toLowerCase()
+        : null
+    }
     if (auditeeDepartment !== undefined) updateData.auditeeDepartment = auditeeDepartment || null
     if (status !== undefined) updateData.status = status
     if (summary !== undefined) updateData.summary = summary || null
@@ -162,10 +168,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

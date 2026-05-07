@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 function calculateRiskLevel(score: number) {
   if (score >= 51) return "CRITICAL"
@@ -16,10 +15,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -71,10 +69,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -99,7 +96,12 @@ export async function PATCH(
     if (body.treatmentSummary !== undefined) updateData.treatmentSummary = body.treatmentSummary
     if (body.relatedControls !== undefined) updateData.relatedControls = body.relatedControls
     if (body.ownerName !== undefined) updateData.ownerName = body.ownerName
-    if (body.ownerEmail !== undefined) updateData.ownerEmail = body.ownerEmail
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    if (body.ownerEmail !== undefined) {
+      updateData.ownerEmail = typeof body.ownerEmail === 'string' && body.ownerEmail.trim() !== ''
+        ? body.ownerEmail.toLowerCase()
+        : null
+    }
     if (body.status !== undefined) updateData.status = body.status
     if (body.reviewDate !== undefined) updateData.reviewDate = body.reviewDate ? new Date(body.reviewDate) : null
     if (body.nextReviewDate !== undefined) updateData.nextReviewDate = body.nextReviewDate ? new Date(body.nextReviewDate) : null
@@ -193,10 +195,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

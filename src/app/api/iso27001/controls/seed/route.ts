@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // ISO 27001:2022 Annex A - 93 Kontrol (Türkçe açıklamalar dahil)
 const ISO27001_CONTROLS = [
@@ -110,14 +110,12 @@ const ISO27001_CONTROLS = [
 // 93 kontrolü seed et
 export async function POST() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireUser → user.role
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Sadece ADMIN veya IT_MANAGER yapabilir
-    const userRole = (session.user as any).role
-    if (!["ADMIN", "SUPER_ADMIN", "IT_MANAGER"].includes(userRole)) {
+    if (!["ADMIN", "SUPER_ADMIN", "IT_MANAGER"].includes(user.role)) {
       return NextResponse.json({ error: "Bu islemi yapmaya yetkiniz yok" }, { status: 403 })
     }
 
@@ -180,10 +178,9 @@ export async function POST() {
 // Kontrol sayısını getir
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const count = await prisma.iso27001Control.count()
     return NextResponse.json({ count, expected: 93 })

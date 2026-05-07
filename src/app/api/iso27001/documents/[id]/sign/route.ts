@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import crypto from "crypto"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Benzersiz imza kodu oluştur
 function generateSignatureCode(): string {
@@ -19,10 +19,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireUser — DB user (id, name, email, jobTitle, department) gerek
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -41,7 +40,7 @@ export async function POST(
     const existingSignature = await prisma.iso27001Signature.findFirst({
       where: {
         documentId: id,
-        signerEmail: session.user.email,
+        signerEmail: user.email,
         signatureType: signatureType || "APPROVAL",
       },
     })
@@ -61,27 +60,15 @@ export async function POST(
     // Benzersiz imza kodu
     const signatureCode = generateSignatureCode()
 
-    // Kullanıcı bilgilerini al
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        jobTitle: true,
-        department: true,
-      },
-    })
-
-    // İmza oluştur
+    // İmza oluştur — requireUser'dan gelen DB user kullanıyoruz, ekstra findUnique yok
     const signature = await prisma.iso27001Signature.create({
       data: {
         documentId: id,
-        signerId: user?.id || session.user.id || "",
-        signerName: user?.name || session.user.name || "",
-        signerEmail: session.user.email,
-        signerTitle: user?.jobTitle || null,
-        signerDepartment: user?.department || null,
+        signerId: user.id,
+        signerName: user.name || user.email,
+        signerEmail: user.email,
+        signerTitle: user.jobTitle || null,
+        signerDepartment: user.department || null,
         signatureCode,
         signedAt: new Date(),
         documentHash: document.contentHash || "",
@@ -100,8 +87,8 @@ export async function POST(
         where: { id },
         data: {
           status: "APPROVED",
-          approvedById: user?.id || session.user.id || "",
-          approvedByName: user?.name || session.user.name || "",
+          approvedById: user.id,
+          approvedByName: user.name || user.email,
           approvedAt: new Date(),
         },
       })
@@ -129,14 +116,13 @@ export async function POST(
 
 // Doküman imzalarını listele
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Risk'e ait tedavi planlarini listele
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -46,10 +44,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -63,7 +60,11 @@ export async function POST(
       return NextResponse.json({ error: "Risk bulunamadi" }, { status: 404 })
     }
 
-    const { treatmentOption, description, responsibleName, responsibleEmail, targetDate, notes } = body
+    const { treatmentOption, description, responsibleName, targetDate, notes } = body
+    // PR-Y2.5: input boundary normalization
+    const responsibleEmail = typeof body.responsibleEmail === 'string' && body.responsibleEmail.trim() !== ''
+      ? body.responsibleEmail.toLowerCase()
+      : null
 
     if (!treatmentOption || !description || !responsibleName) {
       return NextResponse.json(
@@ -78,7 +79,7 @@ export async function POST(
         treatmentOption,
         description,
         responsibleName,
-        responsibleEmail: responsibleEmail || null,
+        responsibleEmail,
         targetDate: targetDate ? new Date(targetDate) : null,
         notes: notes || null,
       },

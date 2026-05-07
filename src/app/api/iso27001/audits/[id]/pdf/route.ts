@@ -1,40 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateAuditReportPDFBuffer, AuditForPDF } from '@/lib/pdf/audit-report-pdf'
-
-const ALLOWED_ROLES = ['SUPER_ADMIN', 'ADMIN', 'IT_MANAGER', 'QUALITY_MANAGER']
+import { requireBgysSorumlu } from '@/lib/permissions/bgys'
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireBgysSorumlu — role + email allowlist tek helper
+    const { error } = await requireBgysSorumlu()
+    if (error) return error
 
     const { id } = await params
-
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
-
-    // Yetki kontrolü
-    const isAllowed = currentUser.role && ALLOWED_ROLES.includes(currentUser.role)
-    if (!isAllowed) {
-      return NextResponse.json(
-        { error: 'Bu denetim raporunun PDF çıktısını alma yetkiniz yok' },
-        { status: 403 }
-      )
-    }
 
     const audit = await prisma.iso27001Audit.findUnique({
       where: { id },

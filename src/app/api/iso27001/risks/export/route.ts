@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import * as XLSX from "xlsx"
+import { requireSession } from "@/lib/auth/require-session"
 
 const riskLevelLabels: Record<string, string> = {
   CRITICAL: "Kritik",
@@ -35,10 +34,9 @@ const treatmentStatusLabels: Record<string, string> = {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession — read-only export
+    const { error } = await requireSession()
+    if (error) return error
 
     const risks = await prisma.iso27001Risk.findMany({
       include: {

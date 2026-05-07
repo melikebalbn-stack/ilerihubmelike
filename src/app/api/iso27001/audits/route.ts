@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Denetim listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
@@ -105,10 +103,9 @@ export async function GET(request: NextRequest) {
 // Yeni denetim oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -121,13 +118,18 @@ export async function POST(request: NextRequest) {
       plannedDate,
       leadAuditorId,
       leadAuditorName,
-      leadAuditorEmail,
       auditeeId,
       auditeeName,
-      auditeeEmail,
       auditeeDepartment,
       teamMembers,
     } = body
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    const leadAuditorEmail = typeof body.leadAuditorEmail === 'string' && body.leadAuditorEmail.trim() !== ''
+      ? body.leadAuditorEmail.toLowerCase()
+      : null
+    const auditeeEmail = typeof body.auditeeEmail === 'string' && body.auditeeEmail.trim() !== ''
+      ? body.auditeeEmail.toLowerCase()
+      : null
 
     if (!title || !auditType || !plannedDate || !leadAuditorName || !leadAuditorEmail) {
       return NextResponse.json(
@@ -178,7 +180,10 @@ export async function POST(request: NextRequest) {
               create: teamMembers.map((member: any) => ({
                 memberId: member.memberId || "",
                 memberName: member.memberName,
-                memberEmail: member.memberEmail,
+                // PR-Y2.5: input boundary normalization
+                memberEmail: typeof member.memberEmail === 'string'
+                  ? member.memberEmail.toLowerCase()
+                  : member.memberEmail,
                 role: member.role || "Denetci",
               })),
             }

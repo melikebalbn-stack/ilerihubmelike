@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Kontrol listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
@@ -85,10 +83,9 @@ export async function GET(request: NextRequest) {
 // Kontrol güncelleme
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
     const { controlId, status, applicability, justification, implementationNotes, controlSource, relatedAssets, responsibleName, responsibleEmail } = body
@@ -116,7 +113,12 @@ export async function POST(request: NextRequest) {
     if (controlSource !== undefined) updateData.controlSource = controlSource || null
     if (relatedAssets !== undefined) updateData.relatedAssets = relatedAssets || null
     if (responsibleName !== undefined) updateData.responsibleName = responsibleName || null
-    if (responsibleEmail !== undefined) updateData.responsibleEmail = responsibleEmail || null
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    if (responsibleEmail !== undefined) {
+      updateData.responsibleEmail = typeof responsibleEmail === 'string' && responsibleEmail.trim() !== ''
+        ? responsibleEmail.toLowerCase()
+        : null
+    }
 
     // Uygulama tarihi - sadece yeni IMPLEMENTED/EFFECTIVE olduğunda
     if ((status === "IMPLEMENTED" || status === "EFFECTIVE") &&

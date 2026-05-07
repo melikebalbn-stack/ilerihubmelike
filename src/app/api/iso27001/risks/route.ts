@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 function calculateRiskLevel(score: number) {
   if (score >= 51) return "CRITICAL"
@@ -13,10 +13,9 @@ function calculateRiskLevel(score: number) {
 // Risk listesi + istatistikler
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession — sade auth
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const level = searchParams.get("level")
@@ -148,10 +147,9 @@ export async function GET(request: NextRequest) {
 // Yeni risk olustur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireUser — DB user (id, name, email) gerekli
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -171,8 +169,11 @@ export async function POST(request: NextRequest) {
       treatmentSummary,
       relatedControls,
       ownerName,
-      ownerEmail,
     } = body
+    // PR-Y2.5: input boundary normalization — ownerEmail body input lowercase
+    const ownerEmail = typeof body.ownerEmail === 'string' && body.ownerEmail.trim() !== ''
+      ? body.ownerEmail.toLowerCase()
+      : null
 
     if (!title || !scenario) {
       return NextResponse.json(
@@ -224,11 +225,7 @@ export async function POST(request: NextRequest) {
     }
     const riskNumber = `R-${String(nextNum).padStart(3, "0")}`
 
-    // Kullanici bilgilerini al
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, name: true, email: true },
-    })
+    // PR-Y2.5: requireUser zaten DB user objesini verdi, ekstra findUnique gereksiz
 
     const risk = await prisma.iso27001Risk.create({
       data: {
@@ -250,9 +247,9 @@ export async function POST(request: NextRequest) {
         treatmentOption: treatmentOption || null,
         treatmentSummary: treatmentSummary || null,
         relatedControls: relatedControls || [],
-        ownerId: user?.id || "",
-        ownerName: ownerName || user?.name || "",
-        ownerEmail: ownerEmail || user?.email || "",
+        ownerId: user.id,
+        ownerName: ownerName || user.name || user.email,
+        ownerEmail: ownerEmail || user.email,
         status: riskScore <= 12 ? "MONITORING" : "OPEN",
       },
       include: {

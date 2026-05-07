@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireSession } from "@/lib/auth/require-session"
 
 // Tedavi plani guncelle
 export async function PATCH(
@@ -9,10 +8,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; treatmentId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id, treatmentId } = await params
     const body = await request.json()
@@ -29,7 +27,12 @@ export async function PATCH(
     if (body.treatmentOption !== undefined) updateData.treatmentOption = body.treatmentOption
     if (body.description !== undefined) updateData.description = body.description
     if (body.responsibleName !== undefined) updateData.responsibleName = body.responsibleName
-    if (body.responsibleEmail !== undefined) updateData.responsibleEmail = body.responsibleEmail
+    // PR-Y2.5: input boundary normalization — DB email lowercase invariant
+    if (body.responsibleEmail !== undefined) {
+      updateData.responsibleEmail = typeof body.responsibleEmail === 'string' && body.responsibleEmail.trim() !== ''
+        ? body.responsibleEmail.toLowerCase()
+        : null
+    }
     if (body.targetDate !== undefined) updateData.targetDate = body.targetDate ? new Date(body.targetDate) : null
     if (body.completionDate !== undefined) updateData.completionDate = body.completionDate ? new Date(body.completionDate) : null
     if (body.status !== undefined) updateData.status = body.status
@@ -73,14 +76,13 @@ export async function PATCH(
 
 // Tedavi plani sil
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string; treatmentId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id, treatmentId } = await params
 

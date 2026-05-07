@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { writeFile, mkdir } from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
 import crypto from "crypto"
+import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Doküman listesi
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
+    // PR-Y2.5-iso27001-A: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
@@ -80,11 +79,10 @@ export async function POST(request: NextRequest) {
 
   try {
     log("start")
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erisim" }, { status: 401 })
-    }
-    log("session ok", { email: session.user.email })
+    // PR-Y2.5-iso27001-A: requireUser — DB user gerekli (ownerId/Email)
+    const { user, error } = await requireUser()
+    if (error) return error
+    log("session ok", { email: user.email })
 
     const formData = await request.formData()
     log("formData parsed")
@@ -190,9 +188,9 @@ export async function POST(request: NextRequest) {
         version: "1.0",
         isLatestVersion: true,
         status: "DRAFT",
-        ownerId: session.user.id || "",
-        ownerName: session.user.name || "",
-        ownerEmail: session.user.email,
+        ownerId: user.id,
+        ownerName: user.name || user.email,
+        ownerEmail: user.email,
         contentHash,
         reviewFrequency: reviewDays,
         nextReviewDate,

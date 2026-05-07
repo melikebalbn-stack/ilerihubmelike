@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { mapAdOuToDepartment } from '@/lib/department-utils'
 import { getAllLDAPUsers } from '@/lib/ldap'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Öneri numarası oluştur: ONR-2025-0001
 async function generateSuggestionNumber(): Promise<string> {
@@ -34,10 +33,9 @@ async function generateSuggestionNumber(): Promise<string> {
 // GET - Önerileri listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email || typeof session.user.email !== 'string') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser + session (distinguishedName LDAP-only)
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const viewMode = searchParams.get('viewMode') || 'all' // all, my, pending, approved, awaiting_my_approval
@@ -46,7 +44,7 @@ export async function GET(request: NextRequest) {
     // Pagination limiti - max 100 ile sınırla
     const requestedLimit = parseInt(searchParams.get('limit') || '50')
     const limit = Math.min(Math.max(1, requestedLimit), 100) // 1-100 arası
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
 
     // eslint-disable-next-line
     const where: Record<string, unknown> = { isActive: true }
@@ -177,7 +175,7 @@ export async function GET(request: NextRequest) {
 
     // Anonim önerilerde gönderen bilgisini gizle (kendi önerileri hariç)
     const processedSuggestions = suggestions.map(s => {
-      if (s.isAnonymous && s.submittedBy !== session.user?.email) {
+      if (s.isAnonymous && s.submittedBy !== userEmail) {
         return {
           ...s,
           submittedBy: 'anonim@ilerigroup.com',
@@ -198,19 +196,11 @@ export async function GET(request: NextRequest) {
 // POST - Yeni öneri oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email || typeof session.user.email !== 'string') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser + session (ou LDAP-only)
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
-    // Email kontrolü - boş string durumunda da hata ver
-    const userEmail = String(session.user.email).trim()
-    if (!userEmail) {
-      return NextResponse.json(
-        { error: 'Kullanıcı email adresi bulunamadı. Lütfen IT departmanına başvurun.' },
-        { status: 400 }
-      )
-    }
+    const userEmail = user.email
 
     const body = await request.json()
     const {
@@ -256,7 +246,7 @@ export async function POST(request: NextRequest) {
         priority: priority || 'NORMAL',
         suggestionType: suggestionType || 'IMPROVEMENT',
         submittedBy: userEmail,
-        submittedByName: session.user.name || 'Bilinmiyor',
+        submittedByName: user.name ?? userEmail,
         submittedByDept: departmentName,
         isAnonymous: isAnonymous || false,
         attachments: attachments ? JSON.stringify(attachments) : null,
@@ -274,7 +264,7 @@ export async function POST(request: NextRequest) {
         action: 'Öneri Oluşturuldu',
         description: 'Yeni öneri sisteme gönderildi',
         performedBy: userEmail,
-        performedByName: isAnonymous ? 'Anonim' : (session.user.name || 'Bilinmiyor'),
+        performedByName: isAnonymous ? 'Anonim' : (user.name ?? userEmail),
         newStatus: 'SUBMITTED'
       }
     })

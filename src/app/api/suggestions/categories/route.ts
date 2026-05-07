@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Varsayılan kategoriler
 const defaultCategories = [
@@ -55,13 +54,12 @@ export async function GET() {
 // POST - Yeni kategori ekle
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // FIX #7: Admin kontrolü eklendi
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userRole = user.role || 'EMPLOYEE'
     if (!['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(userRole)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Kaizen proje numarası oluştur: KZN-2025-0001
 async function generateProjectNumber(): Promise<string> {
@@ -25,17 +24,16 @@ async function generateProjectNumber(): Promise<string> {
 // GET - Kaizen projelerini listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const viewMode = searchParams.get('viewMode') || 'all'
     const status = searchParams.get('status')
     const pdcaStage = searchParams.get('pdcaStage')
     const limit = parseInt(searchParams.get('limit') || '50')
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
 
     const where: Record<string, unknown> = { isActive: true }
 
@@ -97,10 +95,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni Kaizen projesi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -151,10 +148,10 @@ export async function POST(request: NextRequest) {
         priority: priority || 'NORMAL',
         startDate: startDate ? new Date(startDate) : null,
         targetEndDate: targetEndDate ? new Date(targetEndDate) : null,
-        teamLeaderEmail: session.user.email,
-        teamLeaderName: session.user.name || 'Bilinmiyor',
-        createdBy: session.user.email,
-        createdByName: session.user.name || 'Bilinmiyor',
+        teamLeaderEmail: user.email,
+        teamLeaderName: user.name ?? user.email,
+        createdBy: user.email,
+        createdByName: user.name ?? user.email,
         status: 'DRAFT',
         pdcaStage: 'PLAN'
       },
@@ -182,8 +179,8 @@ export async function POST(request: NextRequest) {
         projectId: project.id,
         action: 'CREATED',
         description: 'Kaizen projesi oluşturuldu',
-        performedBy: session.user.email,
-        performedByName: session.user.name || 'Bilinmiyor',
+        performedBy: user.email,
+        performedByName: user.name ?? user.email,
         newStage: 'PLAN'
       }
     })

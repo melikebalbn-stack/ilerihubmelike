@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { NearMissStatus } from '@/generated/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Ramak kala detayı
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
@@ -37,7 +35,7 @@ export async function GET(
     }
 
     // Anonim bildirimlerde gönderen bilgisini gizle
-    if (report.isAnonymous && report.reportedBy !== session.user.email) {
+    if (report.isAnonymous && report.reportedBy !== user.email) {
       return NextResponse.json({
         ...report,
         reportedBy: 'anonim@ilerigroup.com',
@@ -59,10 +57,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -107,8 +104,8 @@ export async function PUT(
 
     if (newStatus === 'CLOSED' && oldStatus !== 'CLOSED') {
       closedAt = new Date()
-      closedBy = session.user.email
-      closedByName = session.user.name || 'Bilinmiyor'
+      closedBy = user.email
+      closedByName = user.name ?? user.email
     }
 
     const report = await prisma.nearMiss.update({
@@ -159,8 +156,8 @@ export async function PUT(
           nearMissId: id,
           action: 'STATUS_CHANGED',
           description: `Durum değiştirildi: ${statusLabels[newStatus]}`,
-          performedBy: session.user.email,
-          performedByName: session.user.name || 'Bilinmiyor',
+          performedBy: user.email,
+          performedByName: user.name ?? user.email,
           oldStatus,
           newStatus
         }
@@ -174,8 +171,8 @@ export async function PUT(
           nearMissId: id,
           action: 'ASSIGNED',
           description: `${assignedToName || assignedTo} kişisine atandı`,
-          performedBy: session.user.email,
-          performedByName: session.user.name || 'Bilinmiyor'
+          performedBy: user.email,
+          performedByName: user.name ?? user.email
         }
       })
     }
@@ -189,14 +186,13 @@ export async function PUT(
 
 // DELETE - Ramak kala bildirimini sil (soft delete)
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
@@ -209,7 +205,7 @@ export async function DELETE(
     }
 
     // Sadece bildiren kişi silebilir ve sadece REPORTED durumunda
-    if (existingReport.reportedBy !== session.user.email) {
+    if (existingReport.reportedBy !== user.email) {
       return NextResponse.json({ error: 'Bu bildirimi silme yetkiniz yok' }, { status: 403 })
     }
 

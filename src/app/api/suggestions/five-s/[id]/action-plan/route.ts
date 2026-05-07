@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendPushToUser } from '@/lib/push-notifications'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Denetimin aksiyon planını ve bulgularını getir
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession — sade auth
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -47,10 +46,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -94,7 +92,7 @@ export async function POST(
       data: {
         actionPlanStatus: 'CREATED',
         actionPlanCreatedAt: new Date(),
-        actionPlanCreatedBy: session.user.email
+        actionPlanCreatedBy: user.email
       }
     })
 
@@ -114,14 +112,16 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
-    const { findingId, assignedTo, assignedToName, dueDate, correctiveAction } = body
+    let { assignedTo } = body
+    const { findingId, assignedToName, dueDate, correctiveAction } = body
+    // PR-Y2.5: input boundary normalization (sorumlu kişi email)
+    if (typeof assignedTo === 'string') assignedTo = assignedTo.toLowerCase()
 
     if (!findingId || !assignedTo || !dueDate) {
       return NextResponse.json({ error: 'Sorumlu ve tarih zorunludur' }, { status: 400 })
@@ -161,7 +161,7 @@ export async function PUT(
         status: 'PENDING',
         priority: finding.priority === 'CRITICAL' ? 'CRITICAL' : finding.priority === 'HIGH' ? 'HIGH' : 'NORMAL',
         reminderDays: [7, 3, 1],
-        createdBy: session.user.email,
+        createdBy: user.email,
         isActive: true
       }
     })

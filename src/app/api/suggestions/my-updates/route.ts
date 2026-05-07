@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Kullanıcının önerilerindeki son güncellemeleri getir
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email || typeof session.user.email !== 'string') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '5')
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
 
     // Kullanıcının önerilerini getir - karar verilmiş olanları
     const suggestions = await prisma.suggestion.findMany({

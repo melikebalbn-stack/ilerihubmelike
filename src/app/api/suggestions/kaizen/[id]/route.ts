@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PDCAStage, KaizenStatus } from '@/generated/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Kaizen proje detayı
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession — sade auth, DB hit yok
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -50,10 +49,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -149,8 +147,8 @@ export async function PUT(
           projectId: id,
           action: 'STAGE_CHANGED',
           description: `PDCA aşaması değiştirildi: ${stageLabels[newStage]}`,
-          performedBy: session.user.email,
-          performedByName: session.user.name || 'Bilinmiyor',
+          performedBy: user.email,
+          performedByName: user.name ?? user.email,
           oldStage,
           newStage
         }
@@ -166,14 +164,13 @@ export async function PUT(
 
 // DELETE - Kaizen projesini sil (soft delete)
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
@@ -186,8 +183,9 @@ export async function DELETE(
     }
 
     // Sadece oluşturan kişi veya takım lideri silebilir
-    if (existingProject.createdBy !== session.user.email &&
-        existingProject.teamLeaderEmail !== session.user.email) {
+    // PR-EMAIL-NORMALIZE sonrası DB casing lowercase, user.email lowercase → match güvenli
+    if (existingProject.createdBy !== user.email &&
+        existingProject.teamLeaderEmail !== user.email) {
       return NextResponse.json({ error: 'Bu projeyi silme yetkiniz yok' }, { status: 403 })
     }
 

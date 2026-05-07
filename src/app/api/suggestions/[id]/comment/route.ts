@@ -1,25 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isAdmin } from '@/lib/auth-utils'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Yorumları listele
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
     // FIX #18: Internal yorum filtrelemesi - yöneticiler internal yorumları da görebilir
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
     const userIsAdmin = isAdmin(userEmail, userRole)
 
     const commentFilter = userIsAdmin
@@ -44,10 +42,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -70,8 +67,8 @@ export async function POST(
     const comment = await prisma.suggestionComment.create({
       data: {
         suggestionId: id,
-        authorEmail: session.user.email,
-        authorName: session.user.name || 'Bilinmiyor',
+        authorEmail: user.email,
+        authorName: user.name ?? user.email,
         content,
         isInternal: isInternal || false
       }
@@ -83,8 +80,8 @@ export async function POST(
         suggestionId: id,
         action: 'COMMENT',
         description: isInternal ? 'Dahili not eklendi' : 'Yorum eklendi',
-        performedBy: session.user.email,
-        performedByName: session.user.name || 'Bilinmiyor'
+        performedBy: user.email,
+        performedByName: user.name ?? user.email
       }
     })
 

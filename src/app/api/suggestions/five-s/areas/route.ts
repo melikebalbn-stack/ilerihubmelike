@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // GET - 5S denetim alanlarını listele
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession — sade auth
+    const { error } = await requireSession()
+    if (error) return error
 
     const areas = await prisma.fiveSArea.findMany({
       where: { isActive: true },
@@ -39,10 +37,9 @@ export async function GET() {
 // POST - Yeni 5S denetim alanı oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession — sadece auth check
+    const { error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
     const { name, code, description, department, location, responsibleEmail, responsibleName } = body
@@ -50,6 +47,11 @@ export async function POST(request: NextRequest) {
     if (!name || !code) {
       return NextResponse.json({ error: 'Alan adı ve kodu zorunludur' }, { status: 400 })
     }
+
+    // PR-Y2.5: input boundary normalization
+    const normalizedResponsibleEmail = typeof responsibleEmail === 'string' && responsibleEmail.trim() !== ''
+      ? responsibleEmail.toLowerCase()
+      : null
 
     // Kod benzersiz mi kontrol et
     const existing = await prisma.fiveSArea.findUnique({ where: { code } })
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
         description,
         department,
         location,
-        responsibleEmail,
+        responsibleEmail: normalizedResponsibleEmail,
         responsibleName
       }
     })

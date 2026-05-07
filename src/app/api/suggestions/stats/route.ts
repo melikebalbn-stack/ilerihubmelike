@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // GET - İstatistikleri getir
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession — sade auth, DB hit yok
+    const { error } = await requireSession()
+    if (error) return error
 
     // Tarih hesaplamaları
     const startOfMonth = new Date()

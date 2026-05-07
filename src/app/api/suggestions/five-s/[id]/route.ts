@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - 5S denetim detayı
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession — sade auth
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 
@@ -47,10 +46,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -64,7 +62,7 @@ export async function PUT(
     }
 
     // Sadece denetçi güncelleyebilir
-    if (existingAudit.auditorEmail !== session.user.email) {
+    if (existingAudit.auditorEmail !== user.email) {
       return NextResponse.json({ error: 'Bu denetimi güncelleme yetkiniz yok' }, { status: 403 })
     }
 
@@ -130,14 +128,13 @@ export async function PUT(
 
 // DELETE - 5S denetimini sil
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
@@ -150,7 +147,7 @@ export async function DELETE(
     }
 
     // Sadece denetçi ve sadece DRAFT durumunda silebilir
-    if (existingAudit.auditorEmail !== session.user.email) {
+    if (existingAudit.auditorEmail !== user.email) {
       return NextResponse.json({ error: 'Bu denetimi silme yetkiniz yok' }, { status: 403 })
     }
 

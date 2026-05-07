@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isAdmin } from '@/lib/auth-utils'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Öneri detayı
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
     const userIsAdmin = isAdmin(userEmail, userRole)
 
     // Yönetici ise internal yorumları da göster
@@ -48,7 +46,7 @@ export async function GET(
     }
 
     // Anonim önerilerde gönderen bilgisini gizle (kendi önerileri hariç)
-    if (suggestion.isAnonymous && suggestion.submittedBy !== session.user.email) {
+    if (suggestion.isAnonymous && suggestion.submittedBy !== userEmail) {
       return NextResponse.json({
         ...suggestion,
         submittedBy: 'anonim@ilerigroup.com',
@@ -70,10 +68,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -88,8 +85,8 @@ export async function PUT(
     }
 
     // Sadece öneri sahibi veya admin düzenleyebilir
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userEmail = user.email
+    const userRole = user.role || 'EMPLOYEE'
     const userIsAdmin = isAdmin(userEmail, userRole)
 
     if (existingSuggestion.submittedBy.toLowerCase() !== userEmail && !userIsAdmin) {
@@ -142,8 +139,8 @@ export async function PUT(
         suggestionId: suggestion.id,
         action: 'UPDATED',
         description: 'Öneri güncellendi',
-        performedBy: session.user.email,
-        performedByName: session.user.name || 'Bilinmiyor'
+        performedBy: userEmail,
+        performedByName: user.name ?? userEmail
       }
     })
 
@@ -156,21 +153,20 @@ export async function PUT(
 
 // DELETE - Öneri sil
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
 
     // FIX #4: Merkezi utility kullanıldı
     // Admin kontrolü - sadece admin tüm önerileri silebilir
-    const userIsAdmin = isAdmin(userEmail, session.user.role)
+    const userIsAdmin = isAdmin(userEmail, user.role)
 
     const existingSuggestion = await prisma.suggestion.findUnique({
       where: { id }

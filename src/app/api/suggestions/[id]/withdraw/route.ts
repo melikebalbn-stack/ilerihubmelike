@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // POST - Öneriyi geri çek
 export async function POST(
@@ -9,10 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -28,7 +26,8 @@ export async function POST(
     }
 
     // Sadece öneriyi gönderen kişi geri çekebilir
-    if (suggestion.submittedBy !== session.user.email) {
+    // PR-EMAIL-NORMALIZE sonrası DB casing lowercase, user.email lowercase → match güvenli
+    if (suggestion.submittedBy !== user.email) {
       return NextResponse.json(
         { error: 'Bu öneriyi geri çekme yetkiniz yok' },
         { status: 403 }
@@ -59,8 +58,8 @@ export async function POST(
         suggestionId: id,
         action: 'Geri Çekildi',
         description: reason || 'Öneri sahibi tarafından geri çekildi',
-        performedBy: session.user.email,
-        performedByName: session.user.name || session.user.email,
+        performedBy: user.email,
+        performedByName: user.name ?? user.email,
         oldStatus: suggestion.status,
         newStatus: 'WITHDRAWN'
       }

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SuggestionStatus } from '@/generated/prisma'
 import { getAllLDAPUsers } from '@/lib/ldap'
+import { requireUser } from '@/lib/auth/require-user'
 
 // POST - Öneriyi onayla/reddet
 export async function POST(
@@ -11,10 +10,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -33,7 +31,7 @@ export async function POST(
       return NextResponse.json({ error: 'Öneri bulunamadı' }, { status: 404 })
     }
 
-    const userEmail = session.user.email.toLowerCase()
+    const userEmail = user.email
 
     // Öneri Kurulu üyelerini al
     const boardMembers = await prisma.suggestionBoardMember.findMany({
@@ -178,8 +176,8 @@ export async function POST(
             : suggestion.evaluationNotes,
           rejectionReason: (decision === 'REJECT' || decision === 'MANAGER_REJECT') ? comments : suggestion.rejectionReason,
           implementedDate: decision === 'COMPLETE' ? new Date() : suggestion.implementedDate,
-          implementedBy: decision === 'COMPLETE' ? session.user.email : suggestion.implementedBy,
-          implementedByName: decision === 'COMPLETE' ? session.user.name : suggestion.implementedByName
+          implementedBy: decision === 'COMPLETE' ? userEmail : suggestion.implementedBy,
+          implementedByName: decision === 'COMPLETE' ? (user.name ?? userEmail) : suggestion.implementedByName
         },
         include: {
           category: true
@@ -197,8 +195,8 @@ export async function POST(
           data: {
             suggestionId: id,
             approvalLevel,
-            approverEmail: session.user.email,
-            approverName: session.user.name || 'Bilinmiyor',
+            approverEmail: userEmail,
+            approverName: user.name ?? userEmail,
             approverRole: approvalLevel === 1 ? 'Departman Yöneticisi' : 'Öneri Kurulu Üyesi',
             decision: approvalDecision,
             comments
@@ -212,8 +210,8 @@ export async function POST(
           suggestionId: id,
           action: timelineAction,
           description: timelineDescription,
-          performedBy: session.user.email,
-          performedByName: session.user.name || 'Bilinmiyor',
+          performedBy: userEmail,
+          performedByName: user.name ?? userEmail,
           oldStatus: suggestion.status,
           newStatus
         }

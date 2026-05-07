@@ -1,29 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getAllLDAPUsers } from '@/lib/ldap'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Debug approval info (SADECE ADMIN, SADECE DEVELOPMENT)
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // FIX #10: Production'da bu endpoint tamamen kapalı
     if (process.env.NODE_ENV === 'production') {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser + session (distinguishedName LDAP-only)
+    const { session, user, error } = await requireUser()
+    if (error) return error
 
     // SADECE ADMIN erişebilir - hassas debug bilgileri
-    const userRole = session.user.role || 'EMPLOYEE'
+    const userRole = user.role || 'EMPLOYEE'
     if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
     const myDN = (session.user as { distinguishedName?: string }).distinguishedName?.toLowerCase()
 
     // LDAP kullanıcılarını al

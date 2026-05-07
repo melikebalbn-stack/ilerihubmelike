@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // GET - Öneri Kurulu üyelerini listele
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession — sade auth
+    const { error } = await requireSession()
+    if (error) return error
 
     const members = await prisma.suggestionBoardMember.findMany({
       where: { isActive: true },
@@ -26,13 +24,14 @@ export async function GET() {
 // POST - Yeni Öneri Kurulu üyesi ekle
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession (admin check yok mevcut kod)
+    const { error } = await requireSession()
+    if (error) return error
 
     const body = await request.json()
-    const { email, name, department, role } = body
+    const { name, department, role } = body
+    // PR-Y2.5: input boundary normalization
+    const email = typeof body.email === 'string' ? body.email.toLowerCase() : null
 
     if (!email || !name) {
       return NextResponse.json(
@@ -80,10 +79,9 @@ export async function POST(request: NextRequest) {
 // DELETE - Öneri Kurulu üyesini sil (soft delete)
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireSession
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

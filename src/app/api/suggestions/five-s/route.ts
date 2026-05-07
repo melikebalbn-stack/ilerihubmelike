@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // 5S denetim numarası oluştur: 5S-2025-0001
 async function generateAuditNumber(): Promise<string> {
@@ -25,17 +24,16 @@ async function generateAuditNumber(): Promise<string> {
 // GET - 5S denetimlerini listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const viewMode = searchParams.get('viewMode') || 'all'
     const areaId = searchParams.get('areaId')
     const status = searchParams.get('status')
     const limit = parseInt(searchParams.get('limit') || '50')
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
 
     const where: Record<string, unknown> = {}
 
@@ -88,10 +86,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni 5S denetimi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -150,8 +147,8 @@ export async function POST(request: NextRequest) {
         templateId,
         auditDate: auditDate ? new Date(auditDate) : new Date(),
         auditType: auditType || 'REGULAR',
-        auditorEmail: session.user.email,
-        auditorName: session.user.name || 'Bilinmiyor',
+        auditorEmail: user.email,
+        auditorName: user.name ?? user.email,
         seiriScore: seiriScore || 0,
         seitonScore: seitonScore || 0,
         seisoScore: seisoScore || 0,
@@ -185,8 +182,8 @@ export async function POST(request: NextRequest) {
             fileUrl: attachment.url || attachment.path,
             photoType: 'EVIDENCE',
             caption: attachment.originalName || attachment.name,
-            uploadedBy: session.user.email,
-            uploadedByName: session.user.name || 'Bilinmiyor'
+            uploadedBy: user.email,
+            uploadedByName: user.name ?? user.email
           }
         })
       }

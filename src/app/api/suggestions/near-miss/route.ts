@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 
 // Ramak kala numarası oluştur: RMK-2025-0001
 async function generateReportNumber(): Promise<string> {
@@ -25,10 +24,9 @@ async function generateReportNumber(): Promise<string> {
 // GET - Ramak kala bildirimlerini listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const viewMode = searchParams.get('viewMode') || 'all'
@@ -36,7 +34,7 @@ export async function GET(request: NextRequest) {
     const eventType = searchParams.get('eventType')
     const severity = searchParams.get('severity')
     const limit = parseInt(searchParams.get('limit') || '50')
-    const userEmail = String(session.user.email).toLowerCase()
+    const userEmail = user.email
 
     const where: Record<string, unknown> = { isActive: true }
 
@@ -106,10 +104,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni ramak kala bildirimi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-suggestions: requireUser
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -140,17 +137,8 @@ export async function POST(request: NextRequest) {
 
     const reportNumber = await generateReportNumber()
 
-    // AD'den departman bilgisini al
-    let reportedByDept = null
-    try {
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: { department: true }
-      })
-      reportedByDept = user?.department
-    } catch {
-      // Kullanıcı bulunamazsa devam et
-    }
+    // PR-Y2.5: requireUser zaten DB user objesini verdi, ekstra findUnique gereksiz
+    const reportedByDept = user.department
 
     const report = await prisma.nearMiss.create({
       data: {
@@ -168,8 +156,8 @@ export async function POST(request: NextRequest) {
         affectedPersons,
         affectedEquipment,
         witnesses: witnesses ? JSON.stringify(witnesses) : null,
-        reportedBy: isAnonymous ? 'anonim@ilerigroup.com' : session.user.email,
-        reportedByName: isAnonymous ? 'Anonim' : (session.user.name || 'Bilinmiyor'),
+        reportedBy: isAnonymous ? 'anonim@ilerigroup.com' : user.email,
+        reportedByName: isAnonymous ? 'Anonim' : (user.name ?? user.email),
         reportedByDept: isAnonymous ? null : reportedByDept,
         isAnonymous: isAnonymous || false,
         latitude,
@@ -188,8 +176,8 @@ export async function POST(request: NextRequest) {
         nearMissId: report.id,
         action: 'REPORTED',
         description: 'Ramak kala olayı bildirildi',
-        performedBy: isAnonymous ? 'anonim@ilerigroup.com' : session.user.email,
-        performedByName: isAnonymous ? 'Anonim' : (session.user.name || 'Bilinmiyor'),
+        performedBy: isAnonymous ? 'anonim@ilerigroup.com' : user.email,
+        performedByName: isAnonymous ? 'Anonim' : (user.name ?? user.email),
         newStatus: 'REPORTED'
       }
     })

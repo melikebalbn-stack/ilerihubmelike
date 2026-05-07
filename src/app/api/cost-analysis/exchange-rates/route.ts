@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Döviz kurlarını listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-cost-analysis: requireSession (read-only liste)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const latestOnly = searchParams.get('latestOnly') === 'true'
@@ -47,13 +46,10 @@ export async function GET(request: NextRequest) {
 // POST - Yeni döviz kuru ekle
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
+    // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!hasCostAnalysisAccess(user.role, user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -112,13 +108,10 @@ export async function POST(request: NextRequest) {
 // DELETE - Döviz kuru sil
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
+    // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!hasCostAnalysisAccess(user.role, user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

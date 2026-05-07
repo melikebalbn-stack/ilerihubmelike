@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CostCurrency } from '@/generated/prisma'
 import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
+import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 interface TCMBCurrency {
   code: string
@@ -75,10 +75,9 @@ function parseTCMBXml(xmlText: string): TCMBCurrency[] {
 // GET - TCMB'den güncel kurları getir (sadece göster, kaydetme)
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-cost-analysis: requireSession (read-only kur fetch)
+    const { error } = await requireSession()
+    if (error) return error
 
     // TCMB'den güncel kurları çek
     const tcmbUrl = 'https://www.tcmb.gov.tr/kurlar/today.xml'
@@ -123,13 +122,10 @@ export async function GET(request: NextRequest) {
 // POST - TCMB'den kurları çek ve kaydet
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
+    // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!hasCostAnalysisAccess(user.role, user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

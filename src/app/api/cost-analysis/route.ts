@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CostAnalysisStatus } from '@/generated/prisma'
 import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tüm maliyet analizlerini listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-cost-analysis: requireUser — yetkisiz kullanıcı kendi createdById ile filtrelenir
+    const { user, error } = await requireUser()
+    if (error) return error
 
-    // FIX #8: Authorization kontrolü eklendi
-    const userRole = session.user.role || 'EMPLOYEE'
-    const isPrivileged = hasCostAnalysisAccess(userRole, session.user.email)
+    const isPrivileged = hasCostAnalysisAccess(user.role, user.email)
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
@@ -35,16 +31,9 @@ export async function GET(request: NextRequest) {
       where.isLatest = true
     }
 
-    // FIX #8: Yetkisiz kullanıcılar sadece kendi oluşturduklarını görebilir
+    // Yetkisiz kullanıcılar sadece kendi oluşturduklarını görebilir
     if (!isPrivileged) {
-      // Kullanıcının ID'sini bul
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: { id: true }
-      })
-      if (user) {
-        where.createdById = user.id
-      }
+      where.createdById = user.id
     }
 
     if (search) {
@@ -112,14 +101,10 @@ export async function GET(request: NextRequest) {
 // POST - Yeni maliyet analizi oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Yetki kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
+    // PR-Y2.5-cost-analysis: requireUser — createdById = user.id
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!hasCostAnalysisAccess(user.role, user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -160,16 +145,6 @@ export async function POST(request: NextRequest) {
         { error: 'Bu ürün kodu zaten mevcut' },
         { status: 400 }
       )
-    }
-
-    // Kullanıcı ID'sini al
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
     }
 
     const analysis = await prisma.costAnalysis.create({

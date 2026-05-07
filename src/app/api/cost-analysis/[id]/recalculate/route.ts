@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { recalculateCosts } from '@/lib/cost-analysis/calculations'
+import { requireSession } from '@/lib/auth/require-session'
 
 // POST - Maliyet analizini yeniden hesapla
 export async function POST(
@@ -9,10 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-cost-analysis: requireSession (sadece sistem hesaplama, auth yeterli)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
 

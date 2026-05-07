@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tek maliyet analizi detayı
 export async function GET(
@@ -10,10 +9,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-cost-analysis: requireUser — yetkisiz user createdById eşleşmesi gerek
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
@@ -62,17 +60,9 @@ export async function GET(
       return NextResponse.json({ error: 'Maliyet analizi bulunamadı' }, { status: 404 })
     }
 
-    // FIX #9: Authorization kontrolü - yetkisiz kullanıcılar sadece kendi oluşturduklarını görebilir
-    const userRole = session.user.role || 'EMPLOYEE'
-
-    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: { id: true }
-      })
-      if (!user || analysis.createdById !== user.id) {
-        return NextResponse.json({ error: 'Bu analize erişim yetkiniz yok' }, { status: 403 })
-      }
+    // Authorization: yetkisiz kullanıcılar sadece kendi oluşturduklarını görebilir
+    if (!hasCostAnalysisAccess(user.role, user.email) && analysis.createdById !== user.id) {
+      return NextResponse.json({ error: 'Bu analize erişim yetkiniz yok' }, { status: 403 })
     }
 
     return NextResponse.json(analysis)
@@ -91,14 +81,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Yetki kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
+    // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!hasCostAnalysisAccess(user.role, user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -186,14 +172,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Yetki kontrolü - sadece yetkili kullanıcılar silebilir
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
+    // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!hasCostAnalysisAccess(user.role, user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

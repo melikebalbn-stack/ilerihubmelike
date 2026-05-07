@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
+import { requireUser } from '@/lib/auth/require-user'
 
 // POST - Yeni revizyon oluştur
 export async function POST(
@@ -10,29 +9,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!hasCostAnalysisAccess(userRole, session.user.email)) {
+    // PR-Y2.5-cost-analysis: requireUser — createdById = user.id
+    const { user, error } = await requireUser()
+    if (error) return error
+    if (!hasCostAnalysisAccess(user.role, user.email)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
     const { id } = await params
     const body = await request.json()
     const { revisionNote } = body
-
-    // Mevcut kullanıcıyı al
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 404 })
-    }
 
     // Kaynak analizi tüm alt kayıtlarıyla yükle
     const source = await prisma.costAnalysis.findUnique({

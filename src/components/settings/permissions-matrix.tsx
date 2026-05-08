@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -65,6 +65,7 @@ export function PermissionsMatrix({
   initialModule,
 }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
   const [activeModule, setActiveModule] = useState(initialModule)
   const [saving, setSaving] = useState(false)
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false)
@@ -116,6 +117,17 @@ export function PermissionsMatrix({
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
   }, [hasChanges])
+
+  // PR-IZIN-MATRISI-NAV-FIX: activeModule değişikliği URL'e sync.
+  // Pathname guard: Link/router.push ile başka sayfaya geçişte yarışı önler
+  // (PR-Y3-FIXES Bug 2 ile aynı pattern). Paylaşılabilir URL + tarayıcı geri tuşu.
+  useEffect(() => {
+    if (pathname !== '/settings/izin-matrisi') return
+    const url = activeModule
+      ? `/settings/izin-matrisi?module=${activeModule}`
+      : '/settings/izin-matrisi'
+    router.replace(url, { scroll: false })
+  }, [activeModule, pathname, router])
 
   function getCellState(roleId: string, permissionId: string): CellState {
     if (roleId === superAdminId) return 'locked'

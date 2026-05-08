@@ -56,7 +56,7 @@ model User {
   extension3cx   String? // 3CX dahili numarası
 
   // ILERIHub fields
-  role      Role    @default(EMPLOYEE)
+  role      UserRoleEnum @default(EMPLOYEE)
   isActive  Boolean @default(true)
   managerId String?
   manager   User?   @relation("ManagerEmployees", fields: [managerId], references: [id])
@@ -189,6 +189,12 @@ model User {
   inventoryReviewsHazirlanan InventoryReview[] @relation("InventoryReviewHazirlayan")
   inventoryReviewsOnaylanan  InventoryReview[] @relation("InventoryReviewOnaylayan")
 
+  // PR-Y1 yetkilendirme ilişkileri
+  userRoles              UserRole[]           @relation("UserRoleUser")
+  assignedUserRoles      UserRole[]           @relation("UserRoleAssignedBy")
+  grantedRolePermissions RolePermission[]     @relation("RolePermissionGrantedBy")
+  permissionAuditLogs    PermissionAuditLog[] @relation("PermissionAuditLogActor")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -203,7 +209,9 @@ model VerificationToken {
 }
 
 // ILERIHub tabloları
-enum Role {
+// PR-Y1: Yeni Role modeli ile çakışmaması için bu enum UserRoleEnum olarak yeniden adlandırıldı.
+// DB enum tipi adı "Role" olarak korunuyor (@@map), kullanıcı kodunda alias ile import edilir.
+enum UserRoleEnum {
   SUPER_ADMIN
   ADMIN
   HR_MANAGER
@@ -212,6 +220,8 @@ enum Role {
   DEPT_HEAD
   SUPERVISOR
   EMPLOYEE
+
+  @@map("Role")
 }
 
 model Department {
@@ -9358,4 +9368,110 @@ model InventoryReview {
   @@index([durum])
   @@index([reviewDate(sort: Desc)])
   @@map("inventory_review")
+}
+
+// ==================== YETKİLENDİRME (PR-Y1) ====================
+
+/// Sistem genelinde tanımlı yetki anahtarları.
+/// Kodda PERMISSION_KEYS sabiti olarak da bulunur, seed ile DB'ye yazılır.
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique(map: "permission_key_key")
+  module      String // gruplama için (akademi, bgys, helpdesk, vs.)
+  description String // UI'da gösterilecek Türkçe açıklama
+  isSystem    Boolean  @default(true) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@index([module], map: "permission_module_idx")
+  @@map("permission")
+}
+
+/// Yetki paketleri. Sistem rolleri korumalıdır, kullanıcı rolleri UI'dan oluşturulur.
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique(map: "role_name_key")
+  slug        String   @unique(map: "role_slug_key")
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  isProtected Boolean  @default(false) @map("is_protected")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rolePermissions      RolePermission[]
+  userRoles            UserRole[]
+  azureAdGroupMappings AzureAdGroupMapping[]
+
+  @@map("role")
+}
+
+/// Rol ↔ Permission M:N
+model RolePermission {
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  grantedAt    DateTime @default(now()) @map("granted_at")
+  grantedById  String?  @map("granted_by_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  grantedBy  User?      @relation("RolePermissionGrantedBy", fields: [grantedById], references: [id])
+
+  @@id([roleId, permissionId])
+  @@index([permissionId], map: "role_permission_permission_id_idx")
+  @@map("role_permission")
+}
+
+/// Kullanıcı ↔ Rol M:N. Scope, departman bazlı kısıtlama için (Faz 2).
+model UserRole {
+  userId       String    @map("user_id")
+  roleId       String    @map("role_id")
+  scope        String? // null | "own_department" | departmentId
+  assignedAt   DateTime  @default(now()) @map("assigned_at")
+  assignedById String?   @map("assigned_by_id")
+  expiresAt    DateTime? @map("expires_at")
+  source       String    @default("manual") // "manual" | "azure_ad"
+
+  user       User  @relation("UserRoleUser", fields: [userId], references: [id], onDelete: Cascade)
+  role       Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedBy User? @relation("UserRoleAssignedBy", fields: [assignedById], references: [id])
+
+  @@id([userId, roleId])
+  @@index([roleId], map: "user_role_role_id_idx")
+  @@index([source], map: "user_role_source_idx")
+  @@map("user_role")
+}
+
+/// Azure AD grup ID'sini ILERIHub rolüne eşler.
+/// Kullanıcı login olduğunda grup üyelikleri taranır, eşleşen roller otomatik atanır.
+model AzureAdGroupMapping {
+  id             String   @id @default(cuid())
+  azureGroupId   String   @unique(map: "azure_ad_group_mapping_group_id_key") @map("azure_group_id")
+  azureGroupName String   @map("azure_group_name")
+  roleId         String   @map("role_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@map("azure_ad_group_mapping")
+}
+
+/// Yetki değişiklikleri için denetim kaydı (ISO 27001 A.5.15 uyumu).
+model PermissionAuditLog {
+  id         String   @id @default(cuid())
+  action     String // ROLE_ASSIGNED, ROLE_REVOKED, PERMISSION_GRANTED_TO_ROLE, ROLE_CREATED, ROLE_DELETED, ROLE_UPDATED
+  actorId    String   @map("actor_id")
+  targetType String   @map("target_type") // USER | ROLE
+  targetId   String   @map("target_id")
+  details    Json
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User @relation("PermissionAuditLogActor", fields: [actorId], references: [id])
+
+  @@index([actorId], map: "permission_audit_log_actor_id_idx")
+  @@index([targetType, targetId], map: "permission_audit_log_target_idx")
+  @@index([createdAt], map: "permission_audit_log_created_at_idx")
+  @@map("permission_audit_log")
 }

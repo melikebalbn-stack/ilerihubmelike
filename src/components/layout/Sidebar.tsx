@@ -54,6 +54,7 @@ import {
   UserCog,
   FlaskConical,
   Archive,
+  ShieldCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -152,6 +153,7 @@ const sandboxMenuItems = [
 // Alt menü öğeleri
 const bottomMenuItems = [
   { name: "IT Destek", icon: Headphones, href: "/it-support", roles: ["*"] },
+  { name: "Yetkilendirme", icon: ShieldCheck, href: "/settings/roller", roles: ["SUPER_ADMIN"] },
   { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN", "QUALITY_MANAGER"], departments: ["Kalite", "Laboratuvar"] },
 ]
 

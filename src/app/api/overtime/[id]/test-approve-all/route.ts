@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
@@ -8,9 +8,22 @@ interface RouteParams {
 }
 
 /**
- * POST: Test modu - Tüm onay adımlarını otomatik onayla (sadece SUPER_ADMIN)
+ * POST: Test modu - Tüm onay adımlarını otomatik onayla
+ *
+ * Auth (PR-OVERTIME-TEST-FLAG):
+ * - Kill switch: ENABLE_OVERTIME_TEST_APPROVE env flag (default: false)
+ *   Production'da false → endpoint 503, auth check'e bile ulaşmaz
+ * - SUPER_ADMIN role check (flag true ise)
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  // Kill switch — auth'tan ÖNCE (backups restore pattern)
+  if (process.env.ENABLE_OVERTIME_TEST_APPROVE !== 'true') {
+    return NextResponse.json(
+      { error: 'Bu endpoint production ortamında devre dışı.' },
+      { status: 503 }
+    )
+  }
+
   try {
     // PR-Y2.5-overtime: requireUser — SUPER_ADMIN role check
     const { user, error } = await requireUser()

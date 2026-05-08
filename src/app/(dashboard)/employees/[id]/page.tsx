@@ -120,7 +120,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
       {!loading && !error && employee && (
         <EmployeeDetail
           employee={employee}
-          canEdit={['ADMIN', 'SUPER_ADMIN', 'HR_MANAGER'].includes(session?.user?.role || '')}
+          canEdit={session?.user?.permissions?.includes('calisanrehberi.admin') ?? false}
           onPhoneUpdate={(phone) => setEmployee({ ...employee, phone: phone || null })}
         />
       )}

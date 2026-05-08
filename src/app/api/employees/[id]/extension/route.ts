@@ -14,8 +14,10 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userRole = session.user.role
-    if (!['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    // PR-Y7a: enum check yerine RBAC permission. Y3c matrisinde calisanrehberi.admin
+    // hr-yoneticisi + super-admin'de. Eski ADMIN enum kullanıcıları artık 403
+    // (3CX dahili yönetimi HR Yöneticisi'nin işi, genel admin değil).
+    if (!session.user.permissions?.includes('calisanrehberi.admin')) {
       return NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 })
     }
 

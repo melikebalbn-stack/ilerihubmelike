@@ -96,10 +96,11 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
   {
     slug: 'kalibrasyon-operatoru',
     name: 'Kalibrasyon Operatörü',
-    description: 'Kalibrasyon cihazlarını yöneten operatör. Sadece kalibrasyon modülüne erişim.',
+    description: 'Kalibrasyon cihazlarını yöneten operatör. Sadece kalibrasyon modülü + çalışan rehberi erişimi.',
     isProtected: false,
     permissions: [
       P.KALIBRASYON_ADMIN, P.KALIBRASYON_VIEW,
+      P.CALISAN_REHBERI_VIEW, // Y7-PREP: telefon/departman bilgisi günlük iş için
     ],
   },
   {

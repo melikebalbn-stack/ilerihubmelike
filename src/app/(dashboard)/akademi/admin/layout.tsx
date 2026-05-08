@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { isAkademiAdminRole } from "@/lib/akademi-admin-roles";
+import { hasPermission } from "@/lib/auth/has-permission";
 import { AdminSubNav } from "@/components/akademi/admin/AdminSubNav";
 
 export default async function AkademiAdminLayout({
@@ -15,8 +15,11 @@ export default async function AkademiAdminLayout({
     redirect("/login");
   }
 
-  const role = (session.user as { role?: string }).role;
-  if (!isAkademiAdminRole(role)) {
+  // PR-Y5a: enum check yerine RBAC permission. requireAkademiAdmin guard'ı ile
+  // aynı kuralı uygular (akademi.admin perm'i super-admin, akademi-admin,
+  // hr-yoneticisi'nde).
+  const allowed = await hasPermission("akademi.admin");
+  if (!allowed) {
     redirect("/akademi?error=unauthorized");
   }
 

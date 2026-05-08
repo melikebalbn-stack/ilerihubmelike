@@ -6,16 +6,13 @@ import { hasPermission } from "@/lib/auth/has-permission";
 /**
  * Akademi admin server guard.
  *
- * PR-Y5a: Eski isAkademiAdminRole(role) enum check yerine RBAC permission
- * kontrolü kullanılıyor. akademi.admin permission'ı olan rollere izin verilir
- * (Y5-PREP sonrası: super-admin, akademi-admin, hr-yoneticisi).
+ * @deprecated PR-Y5b (2026-05-08) sonrası akademi backend endpoint'leri
+ * direkt `requirePermission('akademi.X')` kullanıyor. Bu helper artık
+ * tüketici tarafından çağrılmıyor (43 dosya granüler permission'a geçti).
  *
- * İmza KORUNDU: 44 dosya / 105 çağrı `{ session, error }` destructure ediyor,
- * 2 dosya `session`'ı da kullanıyor (grade/route.ts, packages/[id]/sync/route.ts).
- *
- * Geriye dönük uyum: Eski enum-tabanlı ADMIN, IT_MANAGER kullanıcıları artık
- * Akademi admin'ine erişemez. Erişim gerekirse o user'lara akademi-admin slug'ı
- * /settings/kullanici-rolleri'nden atansın.
+ * Y5c-CLEANUP'ta tamamen kaldırılacak. Şu an external import'lar varsa
+ * build kırılmasın diye bırakıldı (içerik Y5a'dan permission tabanlı,
+ * davranış değişmez).
  */
 export async function requireAkademiAdmin() {
   const session = await getServerSession(authOptions);

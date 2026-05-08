@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import { resolveUserDisplayName } from "@/lib/akademi-helpers";
 import { notifyAkademiEvent } from "@/lib/akademi-notify";
 import type { AdminAssignmentCreateInput } from "@/types/akademi-admin";
 
 export async function GET(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.admin');
   if (error) return error;
 
   const courseId = req.nextUrl.searchParams.get("courseId");
@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.admin');
   if (error) return error;
 
   let body: AdminAssignmentCreateInput;

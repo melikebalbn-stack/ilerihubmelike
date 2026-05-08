@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
@@ -14,7 +14,7 @@ const LOGOS_DIR = path.join(
 );
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.cert.manage');
   if (error) return error;
 
   let formData: FormData;

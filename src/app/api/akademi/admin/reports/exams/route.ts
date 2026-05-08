@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { isAutoScored } from "@/lib/akademi/question-types";
 import { scoreQuestion } from "@/lib/akademi/scoring";
 
 export async function GET(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.report.view');
   if (error) return error;
 
   const { searchParams } = new URL(req.url);

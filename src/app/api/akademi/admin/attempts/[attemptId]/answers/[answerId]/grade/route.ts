@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 
 export async function POST(
@@ -9,7 +9,7 @@ export async function POST(
     params,
   }: { params: Promise<{ attemptId: string; answerId: string }> }
 ) {
-  const { session, error } = await requireAkademiAdmin();
+  const { session, error } = await requirePermission('akademi.grade.manual');
   if (error) return error;
 
   const adminId = await resolveAkademiUserId(session);

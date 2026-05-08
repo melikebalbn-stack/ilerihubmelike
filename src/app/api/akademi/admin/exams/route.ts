@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export async function GET(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
 
   let body: Record<string, unknown>;

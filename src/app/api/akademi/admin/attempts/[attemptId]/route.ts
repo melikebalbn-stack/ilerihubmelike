@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { scoreQuestion, isAutoScoredType } from "@/lib/akademi/scoring";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ attemptId: string }> }
 ) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.grade.manual');
   if (error) return error;
   const { attemptId } = await params;
 

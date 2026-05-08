@@ -1,10 +1,10 @@
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import type { CourseListItem } from "@/types/akademi";
 
 export async function GET() {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
 
   const courses = await prisma.course.findMany({

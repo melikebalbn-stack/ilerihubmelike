@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { QuestionType } from "@/generated/prisma";
 import {
   SUPPORTED_TYPES,
@@ -49,9 +49,9 @@ function normalizeAllowedFileTypes(raw: unknown): string | null | { error: strin
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ examId: string; questionId: string }> }
+  { params }: { params: Promise<{ id: string; questionId: string }> }
 ) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
   const { questionId } = await params;
 
@@ -67,9 +67,9 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ examId: string; questionId: string }> }
+  { params }: { params: Promise<{ id: string; questionId: string }> }
 ) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
   const { questionId } = await params;
 
@@ -247,9 +247,9 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: Promise<{ examId: string; questionId: string }> }
+  { params }: { params: Promise<{ id: string; questionId: string }> }
 ) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
   const { questionId } = await params;
 

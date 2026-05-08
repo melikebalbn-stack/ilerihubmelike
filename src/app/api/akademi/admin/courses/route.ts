@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import type { AdminCourseCreateInput } from "@/types/akademi-admin";
 
 export async function GET(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission("akademi.kurs.edit");
   if (error) return error;
 
   const includeInactive =
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission("akademi.kurs.create");
   if (error) return error;
 
   let body: AdminCourseCreateInput;

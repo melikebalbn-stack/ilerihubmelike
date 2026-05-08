@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { writeFile } from "fs/promises";
 import {
   FILE_CONFIGS,
@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
 
   let formData: FormData;

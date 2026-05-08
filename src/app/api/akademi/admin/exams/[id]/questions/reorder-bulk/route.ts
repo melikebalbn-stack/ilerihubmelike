@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ examId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
-  const { examId } = await params;
+  const { id: examId } = await params;
 
   let body: { questionIds?: unknown };
   try {

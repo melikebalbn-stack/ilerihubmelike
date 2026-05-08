@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { QuestionType } from "@/generated/prisma";
 import {
   SUPPORTED_TYPES,
@@ -49,11 +49,11 @@ function normalizeAllowedFileTypes(raw: unknown): string | null | { error: strin
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ examId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
-  const { examId } = await params;
+  const { id: examId } = await params;
 
   const exam = await prisma.exam.findUnique({ where: { id: examId } });
   if (!exam) {
@@ -71,11 +71,11 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ examId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
-  const { examId } = await params;
+  const { id: examId } = await params;
 
   const exam = await prisma.exam.findUnique({ where: { id: examId } });
   if (!exam) {

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireAkademiAdmin } from "@/lib/akademi-admin-guard";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import type { BolumWithCount } from "@/types/akademi-package";
 
 export async function GET() {
-  const { error } = await requireAkademiAdmin();
+  const { error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
 
   const rows = await prisma.personnel.groupBy({

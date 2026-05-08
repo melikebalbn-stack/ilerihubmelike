@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { writeFile, mkdir } from "fs/promises"
 import path from "path"
 import { existsSync } from "fs"
 import { requireSession } from "@/lib/auth/require-session"
-// NOT: getServerSession import'u POST handler'ında debug-amaçlı optional auth
-// için korundu (system fallback). Auth gate eklemek ayrı PR (PR-ISO27001-SECURITY).
+import { requireUser } from "@/lib/auth/require-user"
 
 // Route segment config - dosya yüklemeleri için
 export const dynamic = 'force-dynamic'
@@ -77,21 +74,11 @@ export async function POST(
   try {
     console.log("[Evidence Upload] POST request received")
 
-    // Oturum kontrolü - geçici olarak devre dışı (debug için)
-    let userEmail = "system@ilerihub.com"
-    let userName = "Sistem"
-    try {
-      const session = await getServerSession(authOptions)
-      if (session?.user?.email) {
-        userEmail = session.user.email
-        userName = session.user.name || session.user.email
-        console.log("[Evidence Upload] User:", userEmail)
-      } else {
-        console.log("[Evidence Upload] No session, using system user")
-      }
-    } catch (e) {
-      console.log("[Evidence Upload] Session error:", e)
-    }
+    // PR-ISO27001-SECURITY: requireUser zorunlu (system fallback kaldırıldı, BGYS audit integrity)
+    const { user, error } = await requireUser()
+    if (error) return error
+
+    console.log("[Evidence Upload] User:", user.email)
 
     const { id } = await params
     console.log("[Evidence Upload] Control ID:", id)
@@ -182,13 +169,8 @@ export async function POST(
     }
 
     console.log("[Evidence Upload] Creating evidence record...")
-    // Kullanıcı bilgilerini al
-    const user = await prisma.user.findUnique({
-      where: { email: userEmail },
-      select: { id: true, name: true },
-    })
 
-    // Kanıt kaydı oluştur
+    // Kanıt kaydı oluştur — requireUser sayesinde user.id/email/name güvenle var
     const evidence = await prisma.iso27001Evidence.create({
       data: {
         controlId: control.id,
@@ -201,8 +183,8 @@ export async function POST(
         referenceUrl: referenceUrl || null,
         referenceNote: referenceNote || null,
         evidenceDate: new Date(),
-        uploadedById: user?.id || "system",
-        uploadedByName: user?.name || userName,
+        uploadedById: user.id,
+        uploadedByName: user.name || user.email,
       },
       select: {
         id: true,

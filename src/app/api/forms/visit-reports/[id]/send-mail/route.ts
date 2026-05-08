@@ -1,21 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { sendVisitReportEmail, VisitReportEmailData, EmailRecipient } from "@/lib/email"
 import { VisitReportForPDF } from "@/lib/pdf/visit-report-pdf-server"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { requireUser } from "@/lib/auth/require-user"
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-forms: requireUser — sentBy/sentByName audit log + email gönderimi
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -39,17 +37,12 @@ export async function POST(
       return NextResponse.json({ error: "Rapor bulunamadı" }, { status: 404 })
     }
 
-    // Kullanıcı bilgisi
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email }
-    })
-
     // Geçerli alıcıları filtrele
     const validRecipients: EmailRecipient[] = recipients
       .filter((r: { name?: string; email?: string }) => r.email && r.email.includes('@'))
       .map((r: { name?: string; email?: string }) => ({
         name: r.name || r.email!.split('@')[0],
-        email: r.email!
+        email: r.email!.toLowerCase() // PR-EMAIL-NORMALIZE
       }))
 
     if (validRecipients.length === 0) {
@@ -102,7 +95,7 @@ export async function POST(
         dueDate: a.dueDate ? formatDate(a.dueDate) : undefined,
         status: a.status
       })),
-      createdByName: user?.name || user?.email || session.user.email || 'Bilinmiyor'
+      createdByName: user.name || user.email || 'Bilinmiyor'
     }
 
     // PDF için rapor verisi
@@ -142,8 +135,8 @@ export async function POST(
       await prisma.visitReportEmailLog.create({
         data: {
           reportId: id,
-          sentBy: session.user.email,
-          sentByName: user?.name || null,
+          sentBy: user.email,
+          sentByName: user.name || null,
           recipients: JSON.stringify(validRecipients),
         },
       })

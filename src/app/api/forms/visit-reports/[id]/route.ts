@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 import { VisitType, VisitReportStatus, ParticipantCompany, ActionItemStatus } from "@/generated/prisma"
 import { sendVisitReportEmail, VisitReportEmailData, EmailRecipient } from "@/lib/email"
 import { VisitReportForPDF } from "@/lib/pdf/visit-report-pdf-server"
@@ -25,20 +24,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    // Kullanıcı bilgilerini al (rol kontrolü için)
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
-    }
+    // PR-Y2.5-forms: requireUser — yönetici/owner kontrolü
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 
@@ -78,20 +66,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    // Kullanıcı bilgilerini al (rol kontrolü için)
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true, name: true, email: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
-    }
+    // PR-Y2.5-forms: requireUser — yönetici/owner + email gönderimi user.name
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -185,7 +162,7 @@ export async function PUT(
         .filter((r: { name?: string; email?: string }) => r.email && r.email.includes('@'))
         .map((r: { name?: string; email?: string }) => ({
           name: r.name || r.email!.split('@')[0],
-          email: r.email!
+          email: r.email!.toLowerCase() // PR-EMAIL-NORMALIZE
         }))
 
       if (validRecipients.length > 0) {
@@ -235,7 +212,7 @@ export async function PUT(
             dueDate: a.dueDate ? formatDate(a.dueDate) : undefined,
             status: a.status
           })),
-          createdByName: currentUser?.name || currentUser?.email || session.user.email || 'Bilinmiyor'
+          createdByName: currentUser.name || currentUser.email || 'Bilinmiyor'
         }
 
         // PDF için rapor verisi
@@ -252,7 +229,7 @@ export async function PUT(
           additionalNotes: additionalNotes || null,
           nextSteps: nextSteps || null,
           status: status as string,
-          createdBy: { name: currentUser?.name || null, email: currentUser?.email || session.user.email || '' },
+          createdBy: { name: currentUser.name, email: currentUser.email },
           participants: (participants || []).map((p: { name: string; title?: string; company: string }) => ({
             name: p.name,
             title: p.title || null,
@@ -295,20 +272,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    // Kullanıcı bilgilerini al (rol kontrolü için)
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
-    }
+    // PR-Y2.5-forms: requireUser — yönetici/owner kontrolü
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { id } = await params
 

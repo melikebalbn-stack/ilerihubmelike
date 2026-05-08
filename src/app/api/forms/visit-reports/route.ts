@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { VisitType, VisitReportStatus, ParticipantCompany, ActionItemStatus } from "@/generated/prisma"
 import { sendVisitReportEmail, VisitReportEmailData, EmailRecipient } from "@/lib/email"
 import { VisitReportForPDF } from "@/lib/pdf/visit-report-pdf-server"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { requireUser } from "@/lib/auth/require-user"
 
 // Rapor numarası oluştur: ZR-2025-001
 async function generateReportNumber(): Promise<string> {
@@ -43,20 +42,9 @@ const MANAGEMENT_ROLES = [
 // GET - Ziyaret raporlarını listele
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    // Kullanıcı bilgilerini al (rol kontrolü için)
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true, role: true }
-    })
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
-    }
+    // PR-Y2.5-forms: requireUser — rol bazlı filtreleme için role + user.id gerek
+    const { user: currentUser, error } = await requireUser()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
@@ -117,18 +105,9 @@ export async function GET(request: NextRequest) {
 // POST - Yeni ziyaret raporu oluştur
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email }
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
-    }
+    // PR-Y2.5-forms: requireUser — createdById/createdByName + email gönderiminde user.name
+    const { user, error } = await requireUser()
+    if (error) return error
 
     const body = await request.json()
     const {
@@ -201,7 +180,7 @@ export async function POST(request: NextRequest) {
         .filter((r: { name?: string; email?: string }) => r.email && r.email.includes('@'))
         .map((r: { name?: string; email?: string }) => ({
           name: r.name || r.email!.split('@')[0],
-          email: r.email!
+          email: r.email!.toLowerCase() // PR-EMAIL-NORMALIZE
         }))
 
       if (validRecipients.length > 0) {

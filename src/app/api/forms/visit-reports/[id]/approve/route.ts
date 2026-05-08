@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { requireUser } from "@/lib/auth/require-user"
 
 // POST - Raporu onayla
 export async function POST(
@@ -9,23 +8,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-forms: requireUser — approvedById = user.id, role check
+    const { user, error } = await requireUser()
+    if (error) return error
 
     // Yönetici kontrolü
     const allowedRoles = ['ADMIN', 'SUPER_ADMIN', 'DEPT_HEAD', 'SUPERVISOR']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!allowedRoles.includes(user.role)) {
       return NextResponse.json({ error: "Onay yetkiniz yok" }, { status: 403 })
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email }
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 })
     }
 
     const { id } = await params

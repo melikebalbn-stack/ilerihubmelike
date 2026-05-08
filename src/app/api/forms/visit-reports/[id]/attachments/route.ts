@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { requireSession } from '@/lib/auth/require-session'
 
 // POST - Save uploaded file references as attachments
 export async function POST(
@@ -9,10 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-forms: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
     const body = await request.json()
@@ -54,10 +52,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-forms: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { id } = await params
     const attachments = await prisma.visitReportAttachment.findMany({
@@ -74,10 +71,9 @@ export async function GET(
 // DELETE - Remove an attachment
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // PR-Y2.5-forms: requireSession (basit auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const attachmentId = searchParams.get('attachmentId')

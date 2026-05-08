@@ -92,6 +92,15 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
     ],
   },
   {
+    slug: 'kalibrasyon-operatoru',
+    name: 'Kalibrasyon Operatörü',
+    description: 'Kalibrasyon cihazlarını yöneten operatör. Sadece kalibrasyon modülüne erişim.',
+    isProtected: false,
+    permissions: [
+      P.KALIBRASYON_ADMIN, P.KALIBRASYON_VIEW,
+    ],
+  },
+  {
     slug: 'akademi-admin',
     name: 'Akademi Admin',
     description: 'Akademi modülü tam yönetim.',

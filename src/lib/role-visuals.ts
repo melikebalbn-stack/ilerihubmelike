@@ -1,0 +1,52 @@
+import {
+  Shield,
+  Award,
+  Server,
+  GraduationCap,
+  Users,
+  ClipboardCheck,
+  UserCog,
+  User as UserIcon,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+export interface RoleVisual {
+  Icon: LucideIcon
+  tone: string
+}
+
+const ROLE_VISUAL: Record<string, RoleVisual> = {
+  'super-admin':       { Icon: Shield,         tone: 'text-red-600 bg-red-50' },
+  'admin':             { Icon: Shield,         tone: 'text-blue-600 bg-blue-50' },
+  'bgys-sorumlusu':    { Icon: Award,          tone: 'text-purple-600 bg-purple-50' },
+  'it-admin':          { Icon: Server,         tone: 'text-indigo-600 bg-indigo-50' },
+  'akademi-admin':     { Icon: GraduationCap,  tone: 'text-emerald-600 bg-emerald-50' },
+  'hr-yoneticisi':     { Icon: Users,          tone: 'text-pink-600 bg-pink-50' },
+  'kalite-yoneticisi': { Icon: ClipboardCheck, tone: 'text-amber-700 bg-amber-100' },
+  'departman-muduru':  { Icon: UserCog,        tone: 'text-cyan-600 bg-cyan-50' },
+  'kullanici':         { Icon: UserIcon,       tone: 'text-gray-600 bg-gray-100' },
+}
+
+const DEFAULT_VISUAL: RoleVisual = { Icon: Shield, tone: 'text-gray-600 bg-gray-100' }
+
+export function getRoleVisual(slug: string): RoleVisual {
+  return ROLE_VISUAL[slug] ?? DEFAULT_VISUAL
+}
+
+const MODULE_LABELS: Record<string, string> = {
+  admin:          'Yönetim',
+  akademi:        'Akademi',
+  arsiv:          'Arşiv',
+  bgys:           'BGYS',
+  calisanrehberi: 'Çalışan Rehberi',
+  costanalysis:   'Maliyet Analizi',
+  duyuru:         'Duyurular',
+  helpdesk:       'Helpdesk',
+  izin:           'İzin Yönetimi',
+  kalibrasyon:    'Kalibrasyon',
+  yangin:         'Yangın Güvenliği',
+}
+
+export function moduleLabel(module: string): string {
+  return MODULE_LABELS[module] ?? module
+}

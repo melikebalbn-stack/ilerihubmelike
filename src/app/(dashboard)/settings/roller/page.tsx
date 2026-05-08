@@ -13,33 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Shield,
-  Award,
-  Server,
-  GraduationCap,
-  Users,
-  ClipboardCheck,
-  UserCog,
-  User as UserIcon,
-  Plus,
-  ChevronRight,
-  ShieldCheck,
-} from 'lucide-react'
-
-const ROLE_VISUAL: Record<string, { Icon: typeof Shield; tone: string }> = {
-  'super-admin':       { Icon: Shield,         tone: 'text-red-600 bg-red-50' },
-  'admin':             { Icon: Shield,         tone: 'text-blue-600 bg-blue-50' },
-  'bgys-sorumlusu':    { Icon: Award,          tone: 'text-purple-600 bg-purple-50' },
-  'it-admin':          { Icon: Server,         tone: 'text-indigo-600 bg-indigo-50' },
-  'akademi-admin':     { Icon: GraduationCap,  tone: 'text-emerald-600 bg-emerald-50' },
-  'hr-yoneticisi':     { Icon: Users,          tone: 'text-pink-600 bg-pink-50' },
-  'kalite-yoneticisi': { Icon: ClipboardCheck, tone: 'text-amber-700 bg-amber-100' },
-  'departman-muduru':  { Icon: UserCog,        tone: 'text-cyan-600 bg-cyan-50' },
-  'kullanici':         { Icon: UserIcon,       tone: 'text-gray-600 bg-gray-100' },
-}
-
-const DEFAULT_VISUAL = { Icon: Shield, tone: 'text-gray-600 bg-gray-100' }
+import { Plus, ChevronRight, ShieldCheck } from 'lucide-react'
+import { getRoleVisual } from '@/lib/role-visuals'
 
 export default async function RollerPage() {
   const { user, error } = await requireUser()
@@ -125,7 +100,7 @@ export default async function RollerPage() {
             <TableBody>
               {roles.map((r) => {
                 const isUnassigned = r._count.userRoles === 0
-                const visual = ROLE_VISUAL[r.slug] ?? DEFAULT_VISUAL
+                const visual = getRoleVisual(r.slug)
                 const Icon = visual.Icon
                 return (
                   <TableRow
@@ -164,25 +139,11 @@ export default async function RollerPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {isUnassigned ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled
-                          title="PR-Y3d ile aktif olacak"
-                        >
-                          Ata
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled
-                          title="PR-Y3b ile aktif olacak"
-                        >
-                          Görüntüle
-                        </Button>
-                      )}
+                      <Button asChild size="sm" variant={isUnassigned ? 'outline' : 'ghost'}>
+                        <Link href={`/settings/roller/${r.id}`}>
+                          {isUnassigned ? 'Ata' : 'Görüntüle'}
+                        </Link>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 )

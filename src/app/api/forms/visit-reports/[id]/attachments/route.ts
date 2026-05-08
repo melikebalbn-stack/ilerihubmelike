@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
+
+// PR-FORMS-ATTACHMENTS-OWNERSHIP: visit-reports route.ts ile aynı 7-rol filtresi
+// Backlog: PR-FORMS-MANAGEMENT-ROLES-EXTRACT (lib helper'a çıkar — şu an inline tutarlılık)
+const MANAGEMENT_ROLES = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'DEPT_HEAD',
+  'SUPERVISOR',
+  'HR_MANAGER',
+  'QUALITY_MANAGER',
+  'IT_MANAGER',
+]
 
 // POST - Save uploaded file references as attachments
 export async function POST(
@@ -8,9 +20,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-forms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // PR-FORMS-ATTACHMENTS-OWNERSHIP: requireUser + MANAGEMENT_ROLES
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!MANAGEMENT_ROLES.includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Visit report ekine erişim için yönetim yetkisi gerekli' },
+        { status: 403 }
+      )
+    }
 
     const { id } = await params
     const body = await request.json()
@@ -52,9 +70,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-forms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // PR-FORMS-ATTACHMENTS-OWNERSHIP: requireUser + MANAGEMENT_ROLES
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!MANAGEMENT_ROLES.includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Visit report ekine erişim için yönetim yetkisi gerekli' },
+        { status: 403 }
+      )
+    }
 
     const { id } = await params
     const attachments = await prisma.visitReportAttachment.findMany({
@@ -71,9 +95,15 @@ export async function GET(
 // DELETE - Remove an attachment
 export async function DELETE(request: NextRequest) {
   try {
-    // PR-Y2.5-forms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // PR-FORMS-ATTACHMENTS-OWNERSHIP: requireUser + MANAGEMENT_ROLES
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!MANAGEMENT_ROLES.includes(user.role)) {
+      return NextResponse.json(
+        { error: 'Visit report ekine erişim için yönetim yetkisi gerekli' },
+        { status: 403 }
+      )
+    }
 
     const { searchParams } = new URL(request.url)
     const attachmentId = searchParams.get('attachmentId')

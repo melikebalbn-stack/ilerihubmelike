@@ -95,6 +95,24 @@ export async function DELETE(
       return NextResponse.json({ error: 'Yedek bulunamadı' }, { status: 404 })
     }
 
+    // PR-BACKUP-DELETE-AUDIT: Silme öncesi structured audit log
+    // (BackupLog modelinde action enum yok — schema migration scope dışı:
+    //  PR-BACKUPLOG-AUDIT-MIGRATION backlog. Bu arada production log
+    //  aggregator'da iz kalsin diye structured console.log)
+    console.log('[backup-delete-audit]', JSON.stringify({
+      action: 'DELETE',
+      backupId: backup.id,
+      backupName: backup.backupName,
+      filePath: backup.filePath,
+      fileSize: backup.fileSize.toString(),
+      backupType: backup.backupType,
+      originalCreatedBy: backup.createdBy,
+      originalCreatedAt: backup.createdAt.toISOString(),
+      deletedBy: user.email,
+      deletedByName: user.name || user.email,
+      deletedAt: new Date().toISOString(),
+    }))
+
     // Dosyayı sil
     if (backup.filePath) {
       await deleteBackupFile(backup.filePath)

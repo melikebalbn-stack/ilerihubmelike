@@ -4,7 +4,7 @@ import { useAkademiAuth } from "@/lib/akademi-auth";
 
 /**
  * Client-side admin check hook.
- * useAkademiAuth zaten ham Role → "admin"/"user" map ediyor.
+ * useAkademiAuth zaten permission tabanlı admin/user map ediyor (PR-Y5a).
  * Bu hook onu adminability semantik etiketine sarar.
  */
 export function useAkademiAdmin() {
@@ -12,5 +12,3 @@ export function useAkademiAdmin() {
   const isAdmin = user?.role === "admin";
   return { isAdmin, loading: status === "loading", user };
 }
-
-export { isAkademiAdminRole } from "@/lib/akademi-admin-roles";

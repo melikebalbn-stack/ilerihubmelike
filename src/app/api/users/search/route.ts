@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { searchLDAPUsers } from "@/lib/ldap"
+import { requireSession } from "@/lib/auth/require-session"
 
 // GET - Kullanıcı ara (Active Directory'den - tüm kullanıcılar)
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 })
-    }
+    // PR-Y2.5-users: requireSession (LDAP arama, auth gate)
+    const { error } = await requireSession()
+    if (error) return error
 
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('q') || ''

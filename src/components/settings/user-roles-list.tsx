@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -60,7 +60,6 @@ const PAGE_SIZE = 20
 
 export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Props) {
   const router = useRouter()
-  const pathname = usePathname()
   const [users, setUsers] = useState<UserRow[]>([])
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 })
   const [loading, setLoading] = useState(true)
@@ -110,18 +109,32 @@ export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Pro
     loadUsers()
   }, [loadUsers])
 
+  // Performance fix (PR-IZIN-MATRISI-NAV-FIX sonrası tespit):
+  // - router.replace Next App Router'da RSC payload fetch tetikliyor — aynı URL'de bile.
+  //   Bu sayfada 5 ayrı server-side render gözlendi; HTTP/1.1 6-concurrent-connection
+  //   limitiyle birlikte breadcrumb Link tıklamasını 20-30sn kuyruğa sokuyordu.
+  // - window.history.replaceState sadece tarayıcı URL'sini günceller, RSC tetiklemez.
+  // - Pathname guard window.location üzerinden (Y3-FIXES Bug 2 koruması korundu).
+  // - No-op guard: hesaplanan URL mevcutla aynıysa hiçbir şey yapma.
+  // - usePathname/useRouter referans stabilitesine güvenmemek için dependency array
+  //   sadece state değerlerini içerir (search/roleId/page).
   useEffect(() => {
-    if (pathname !== '/settings/kullanici-rolleri') return
+    if (typeof window === 'undefined') return
+    if (window.location.pathname !== '/settings/kullanici-rolleri') return
 
     const qs = new URLSearchParams()
     if (search) qs.set('search', search)
     if (roleId) qs.set('roleId', roleId)
     if (page > 1) qs.set('page', String(page))
-    const url = qs.toString()
+    const newUrl = qs.toString()
       ? `/settings/kullanici-rolleri?${qs}`
       : '/settings/kullanici-rolleri'
-    router.replace(url, { scroll: false })
-  }, [search, roleId, page, pathname, router])
+
+    const currentUrl = window.location.pathname + window.location.search
+    if (currentUrl === newUrl) return
+
+    window.history.replaceState({}, '', newUrl)
+  }, [search, roleId, page])
 
   const start = users.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const end = Math.min(page * PAGE_SIZE, pagination.total)

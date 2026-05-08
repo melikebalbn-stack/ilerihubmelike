@@ -70,12 +70,14 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
   {
     slug: 'hr-yoneticisi',
     name: 'HR Yöneticisi',
-    description: 'İK modülleri (personel, izin, eğitim raporları).',
+    description: 'İK modülleri (personel, izin, eğitim raporları). Akademi admin (Y5-PREP, eski HR_MANAGER enum uyumu).',
     isProtected: false,
     permissions: [
       P.CALISAN_REHBERI_ADMIN, P.CALISAN_REHBERI_VIEW,
       P.IZIN_ADMIN, P.IZIN_APPROVE, P.IZIN_CREATE,
-      P.AKADEMI_VIEW, P.AKADEMI_REPORT_VIEW,
+      // Y5-PREP: akademi.admin — eski HR_MANAGER enum'ında olan kullanıcılar
+      // Y5a Akademi adopt'unda Akademi admin sayfalarına erişimini koruyabilsin
+      P.AKADEMI_ADMIN, P.AKADEMI_VIEW, P.AKADEMI_REPORT_VIEW,
       P.DUYURU_CREATE, P.DUYURU_VIEW,
     ],
   },

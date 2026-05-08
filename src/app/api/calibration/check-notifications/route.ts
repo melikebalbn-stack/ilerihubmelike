@@ -32,8 +32,7 @@ export async function POST(request: NextRequest) {
       const { session, user, error } = await requireUser()
       if (error) return error
 
-      const { canEditCalibration } = await import('@/lib/calibration-auth')
-      if (!canEditCalibration(user.role, session.user.ou, user.department, session.user.permissions)) {
+      if (!session.user.permissions?.includes("kalibrasyon.admin")) {
         return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
       }
     }

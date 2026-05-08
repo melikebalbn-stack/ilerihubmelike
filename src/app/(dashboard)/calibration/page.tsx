@@ -28,7 +28,6 @@ import { Plus, Search, Filter, Calendar, AlertCircle, CheckCircle2, Clock, Penci
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
 import { useSession } from "next-auth/react"
-import { canEditCalibration } from "@/lib/calibration-auth"
 import { UserSearchCombobox } from "@/components/user-search-combobox"
 
 // TL ikonu (lucide'da yok)
@@ -100,7 +99,7 @@ type Stats = {
 
 export default function CalibrationPage() {
   const { data: session } = useSession()
-  const canEdit = canEditCalibration(session?.user?.role, session?.user?.ou, session?.user?.department, session?.user?.permissions)
+  const canEdit = session?.user?.permissions?.includes("kalibrasyon.admin") ?? false
 
   const [devices, setDevices] = useState<CalibrationDevice[]>([])
   const [stats, setStats] = useState<Stats>({ total: 0, valid: 0, expiring: 0, expired: 0, inProcess: 0, outOfOrder: 0, noResponsible: 0, atCompany: 0, atCalibration: 0, scrap: 0, totalCost: 0 })

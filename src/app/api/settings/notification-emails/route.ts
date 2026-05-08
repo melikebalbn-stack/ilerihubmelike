@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { canEditCalibration } from '@/lib/calibration-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = session.user as any
-    if (!canEditCalibration(user.role, user.ou, user.department, user.permissions)) {
+    if (!user.permissions?.includes("kalibrasyon.admin")) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

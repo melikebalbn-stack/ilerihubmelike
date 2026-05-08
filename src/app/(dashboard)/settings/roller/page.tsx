@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, ChevronRight, ShieldCheck, Grid3x3 } from 'lucide-react'
+import { Plus, ChevronRight, ShieldCheck, Grid3x3, Users } from 'lucide-react'
 import { getRoleVisual } from '@/lib/role-visuals'
 
 export default async function RollerPage() {
@@ -52,7 +52,13 @@ export default async function RollerPage() {
             {totalRoles} sistem rolü ve atanmış kullanıcıları yönet
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/settings/kullanici-rolleri">
+              <Users className="h-4 w-4 mr-2" />
+              Kullanıcı rolleri
+            </Link>
+          </Button>
           <Button asChild variant="outline" size="sm">
             <Link href="/settings/izin-matrisi">
               <Grid3x3 className="h-4 w-4 mr-2" />
@@ -147,11 +153,17 @@ export default async function RollerPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button asChild size="sm" variant={isUnassigned ? 'outline' : 'ghost'}>
-                        <Link href={`/settings/roller/${r.id}`}>
-                          {isUnassigned ? 'Ata' : 'Görüntüle'}
-                        </Link>
-                      </Button>
+                      {isUnassigned ? (
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/settings/kullanici-rolleri?roleId=${r.id}`}>
+                            Ata
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button asChild size="sm" variant="ghost">
+                          <Link href={`/settings/roller/${r.id}`}>Görüntüle</Link>
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 )

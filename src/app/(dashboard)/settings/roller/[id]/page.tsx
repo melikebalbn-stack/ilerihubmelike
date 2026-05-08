@@ -279,9 +279,11 @@ export default async function RoleDetailPage({ params }: PageProps) {
             <Users className="h-5 w-5 text-teal-600" />
             Atanmış kullanıcılar ({userCount})
           </CardTitle>
-          <Button variant="outline" size="sm" disabled title="PR-Y3d ile aktif olacak">
-            <UserPlus className="h-4 w-4 mr-2" />
-            Kullanıcı ata
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/settings/kullanici-rolleri?roleId=${role.id}`}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Kullanıcı ata
+            </Link>
           </Button>
         </CardHeader>
         <CardContent>
@@ -293,12 +295,14 @@ export default async function RoleDetailPage({ params }: PageProps) {
               <div>
                 <p className="font-medium">Henüz kullanıcı atanmamış</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Bu role kullanıcı atamak için PR-Y3d sürümünü bekleyin
+                  Kullanıcı listesinde bu role atama yapabilirsin
                 </p>
               </div>
-              <Button disabled title="PR-Y3d ile aktif olacak">
-                <UserPlus className="h-4 w-4 mr-2" />
-                İlk kullanıcıyı ata
+              <Button asChild>
+                <Link href={`/settings/kullanici-rolleri?roleId=${role.id}`}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  İlk kullanıcıyı ata
+                </Link>
               </Button>
             </div>
           ) : (
@@ -337,13 +341,15 @@ export default async function RoleDetailPage({ params }: PageProps) {
                         </Badge>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled
-                      title="PR-Y3d ile aktif olacak"
-                    >
-                      Kaldır
+                    <Button asChild variant="ghost" size="sm">
+                      <Link
+                        href={`/settings/kullanici-rolleri?search=${encodeURIComponent(
+                          ur.user.email
+                        )}`}
+                        title="Kullanıcının tüm rollerini düzenlemek için listeye git"
+                      >
+                        Düzenle
+                      </Link>
                     </Button>
                   </div>
                 </div>

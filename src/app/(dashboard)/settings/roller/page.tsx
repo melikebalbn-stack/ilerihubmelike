@@ -65,7 +65,10 @@ export default async function RollerPage() {
               İzin matrisi
             </Link>
           </Button>
-          <Button disabled title="PR-Y3b ile aktif olacak">
+          <Button
+            disabled
+            title="Custom rol oluşturma sonraki sürümde — şu an 9 sistem rolü kullanılıyor"
+          >
             <Plus className="h-4 w-4 mr-2" />
             Yeni rol
           </Button>

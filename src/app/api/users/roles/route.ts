@@ -34,7 +34,9 @@ export async function GET(req: NextRequest) {
   )
   const skip = (page - 1) * pageSize
 
-  const where: Prisma.UserWhereInput = { isActive: true }
+  const where: Prisma.UserWhereInput = {}
+  // Pasif user'lar da listelenir (frontend "Pasif" badge ile gösterir).
+  // PATCH /api/users/[id]/roles zaten pasif user'a atama reddediyor — admin görür ama atayamaz.
 
   if (search) {
     where.OR = [
@@ -54,6 +56,7 @@ export async function GET(req: NextRequest) {
         id: true,
         name: true,
         email: true,
+        isActive: true,
         jobTitle: true,
         department: true,
         userRoles: {
@@ -76,6 +79,7 @@ export async function GET(req: NextRequest) {
       id: u.id,
       name: u.name,
       email: u.email,
+      isActive: u.isActive,
       jobTitle: u.jobTitle,
       department: u.department,
       roles: u.userRoles.map((ur) => ({

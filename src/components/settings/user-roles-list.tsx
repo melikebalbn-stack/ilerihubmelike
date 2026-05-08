@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -38,6 +38,7 @@ export interface UserRow {
   id: string
   name: string | null
   email: string
+  isActive: boolean
   jobTitle: string | null
   department: string | null
   roles: Array<{
@@ -59,6 +60,7 @@ const PAGE_SIZE = 20
 
 export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
   const [users, setUsers] = useState<UserRow[]>([])
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 })
   const [loading, setLoading] = useState(true)
@@ -109,6 +111,8 @@ export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Pro
   }, [loadUsers])
 
   useEffect(() => {
+    if (pathname !== '/settings/kullanici-rolleri') return
+
     const qs = new URLSearchParams()
     if (search) qs.set('search', search)
     if (roleId) qs.set('roleId', roleId)
@@ -116,8 +120,8 @@ export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Pro
     const url = qs.toString()
       ? `/settings/kullanici-rolleri?${qs}`
       : '/settings/kullanici-rolleri'
-    window.history.replaceState({}, '', url)
-  }, [search, roleId, page])
+    router.replace(url, { scroll: false })
+  }, [search, roleId, page, pathname, router])
 
   const start = users.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const end = Math.min(page * PAGE_SIZE, pagination.total)
@@ -233,16 +237,32 @@ export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Pro
                     .join('')
                     .slice(0, 2)
                     .toUpperCase()
+                  const isPassive = !u.isActive
                   return (
-                    <TableRow key={u.id}>
+                    <TableRow key={u.id} className={isPassive ? 'opacity-60' : ''}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white text-xs font-bold flex-shrink-0">
+                          <div
+                            className={[
+                              'flex h-9 w-9 items-center justify-center rounded-full text-white text-xs font-bold flex-shrink-0',
+                              isPassive
+                                ? 'bg-gradient-to-br from-gray-400 to-gray-500'
+                                : 'bg-gradient-to-br from-teal-500 to-teal-700',
+                            ].join(' ')}
+                          >
                             {initials}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-medium truncate">
-                              {u.name ?? '(isimsiz)'}
+                            <div className="font-medium truncate flex items-center gap-2">
+                              <span className="truncate">{u.name ?? '(isimsiz)'}</span>
+                              {isPassive && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] text-muted-foreground border-muted-foreground/40 flex-shrink-0"
+                                >
+                                  Pasif
+                                </Badge>
+                              )}
                             </div>
                             <div className="text-xs text-muted-foreground truncate">
                               {u.email}
@@ -292,7 +312,11 @@ export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Pro
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => setEditingUser(u)}
+                          disabled={isPassive}
+                          title={
+                            isPassive ? 'Pasif kullanıcıya rol atanamaz' : undefined
+                          }
+                          onClick={() => !isPassive && setEditingUser(u)}
                         >
                           <Edit3 className="h-3.5 w-3.5 mr-1" />
                           Düzenle

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth/require-session"
+import { requireUser } from "@/lib/auth/require-user"
+
+// PR-OWNERSHIP-AUDIT: Doküman düzenleme/silme için owner veya QM yetkisi
+const QM_ROLES = ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] as const
 
 // GET - Tek doküman getir
 export async function GET(
@@ -62,8 +66,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-qdms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // PR-OWNERSHIP-AUDIT: requireUser — owner ID karşılaştırması için
+    const { user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -75,6 +79,16 @@ export async function PATCH(
 
     if (!document) {
       return NextResponse.json({ message: "Doküman bulunamadı" }, { status: 404 })
+    }
+
+    // PR-OWNERSHIP-AUDIT: Sadece doküman sahibi (Hazırlayan) veya Kalite Yöneticisi düzenleyebilir
+    const isOwner = document.ownerId === user.id
+    const isQM = QM_ROLES.includes(user.role as typeof QM_ROLES[number])
+    if (!isOwner && !isQM) {
+      return NextResponse.json(
+        { message: "Bu dokümanı düzenleme yetkiniz yok. Sadece dokümanı hazırlayan kişi veya Kalite Yöneticisi düzenleyebilir." },
+        { status: 403 }
+      )
     }
 
     // Sadece taslak veya reddedilen dokümanlar düzenlenebilir
@@ -118,8 +132,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-qdms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // PR-OWNERSHIP-AUDIT: requireUser — owner ID karşılaştırması için
+    const { user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -130,6 +144,16 @@ export async function DELETE(
 
     if (!document) {
       return NextResponse.json({ message: "Doküman bulunamadı" }, { status: 404 })
+    }
+
+    // PR-OWNERSHIP-AUDIT: Sadece doküman sahibi (Hazırlayan) veya Kalite Yöneticisi silebilir
+    const isOwner = document.ownerId === user.id
+    const isQM = QM_ROLES.includes(user.role as typeof QM_ROLES[number])
+    if (!isOwner && !isQM) {
+      return NextResponse.json(
+        { message: "Bu dokümanı silme yetkiniz yok. Sadece dokümanı hazırlayan kişi veya Kalite Yöneticisi silebilir." },
+        { status: 403 }
+      )
     }
 
     // Sadece taslak dokümanlar silinebilir

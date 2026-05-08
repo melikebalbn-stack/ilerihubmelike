@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = session.user as any
-    if (!canEditCalibration(user.role, user.ou, user.department)) {
+    if (!canEditCalibration(user.role, user.ou, user.department, user.permissions)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

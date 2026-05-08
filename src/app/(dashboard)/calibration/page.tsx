@@ -100,7 +100,7 @@ type Stats = {
 
 export default function CalibrationPage() {
   const { data: session } = useSession()
-  const canEdit = canEditCalibration(session?.user?.role, session?.user?.ou, session?.user?.department)
+  const canEdit = canEditCalibration(session?.user?.role, session?.user?.ou, session?.user?.department, session?.user?.permissions)
 
   const [devices, setDevices] = useState<CalibrationDevice[]>([])
   const [stats, setStats] = useState<Stats>({ total: 0, valid: 0, expiring: 0, expired: 0, inProcess: 0, outOfOrder: 0, noResponsible: 0, atCompany: 0, atCalibration: 0, scrap: 0, totalCost: 0 })

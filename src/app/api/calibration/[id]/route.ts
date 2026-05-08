@@ -56,7 +56,7 @@ export async function PUT(
 
     // Yetki kontrolü
     const { canEditCalibration } = await import('@/lib/calibration-auth')
-    if (!canEditCalibration(user.role, session.user.ou, user.department)) {
+    if (!canEditCalibration(user.role, session.user.ou, user.department, session.user.permissions)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -202,7 +202,7 @@ export async function DELETE(
 
     // Yetki kontrolü
     const { canEditCalibration } = await import('@/lib/calibration-auth')
-    if (!canEditCalibration(user.role, session.user.ou, user.department)) {
+    if (!canEditCalibration(user.role, session.user.ou, user.department, session.user.permissions)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

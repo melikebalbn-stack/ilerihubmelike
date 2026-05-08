@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress'
 import {
   ChevronRight,
   ArrowLeft,
+  ArrowRight,
   Edit3,
   Trash2,
   Users,
@@ -235,8 +236,15 @@ export default async function RoleDetailPage({ params }: PageProps) {
             <ShieldCheck className="h-5 w-5 text-teal-600" />
             İzinler ({permissionCount})
           </CardTitle>
-          <Button variant="outline" size="sm" disabled title="PR-Y3c ile aktif olacak">
-            İzin matrisinde düzenle
+          <Button asChild variant="outline" size="sm">
+            <Link
+              href={`/settings/izin-matrisi${
+                moduleStats[0] ? `?module=${moduleStats[0].module}` : ''
+              }`}
+            >
+              İzin matrisinde düzenle
+              <ArrowRight className="h-3.5 w-3.5 ml-1" />
+            </Link>
           </Button>
         </CardHeader>
         <CardContent>

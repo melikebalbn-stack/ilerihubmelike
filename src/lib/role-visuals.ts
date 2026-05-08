@@ -1,5 +1,6 @@
 import {
   Shield,
+  ShieldCheck,
   Award,
   Server,
   GraduationCap,
@@ -7,6 +8,15 @@ import {
   ClipboardCheck,
   UserCog,
   User as UserIcon,
+  Archive,
+  BookUser,
+  Calculator,
+  Megaphone,
+  Headphones,
+  CalendarCheck,
+  Ruler,
+  Flame,
+  Lock,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -49,4 +59,39 @@ const MODULE_LABELS: Record<string, string> = {
 
 export function moduleLabel(module: string): string {
   return MODULE_LABELS[module] ?? module
+}
+
+const MODULE_ICONS: Record<string, LucideIcon> = {
+  admin:          Lock,
+  akademi:        GraduationCap,
+  arsiv:          Archive,
+  bgys:           ShieldCheck,
+  calisanrehberi: BookUser,
+  costanalysis:   Calculator,
+  duyuru:         Megaphone,
+  helpdesk:       Headphones,
+  izin:           CalendarCheck,
+  kalibrasyon:    Ruler,
+  yangin:         Flame,
+}
+
+export function moduleIcon(module: string): LucideIcon {
+  return MODULE_ICONS[module] ?? Shield
+}
+
+/** Rol slug'undan 2 karakterlik kompakt başlık (matris sütun başlığı için). */
+export function roleAcronym(slug: string): string {
+  const map: Record<string, string> = {
+    'super-admin':       'SA',
+    'admin':             'AD',
+    'bgys-sorumlusu':    'BG',
+    'it-admin':          'IT',
+    'akademi-admin':     'AK',
+    'hr-yoneticisi':     'HR',
+    'kalite-yoneticisi': 'KA',
+    'departman-muduru':  'DM',
+    'kullanici':         'KU',
+  }
+  if (map[slug]) return map[slug]
+  return slug.slice(0, 2).toUpperCase()
 }

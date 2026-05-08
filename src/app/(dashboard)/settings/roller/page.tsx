@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, ChevronRight, ShieldCheck } from 'lucide-react'
+import { Plus, ChevronRight, ShieldCheck, Grid3x3 } from 'lucide-react'
 import { getRoleVisual } from '@/lib/role-visuals'
 
 export default async function RollerPage() {
@@ -52,10 +52,18 @@ export default async function RollerPage() {
             {totalRoles} sistem rolü ve atanmış kullanıcıları yönet
           </p>
         </div>
-        <Button disabled title="PR-Y3b ile aktif olacak">
-          <Plus className="h-4 w-4 mr-2" />
-          Yeni rol
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/settings/izin-matrisi">
+              <Grid3x3 className="h-4 w-4 mr-2" />
+              İzin matrisi
+            </Link>
+          </Button>
+          <Button disabled title="PR-Y3b ile aktif olacak">
+            <Plus className="h-4 w-4 mr-2" />
+            Yeni rol
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

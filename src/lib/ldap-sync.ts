@@ -171,6 +171,17 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
   try {
     logger.info('LDAP-SYNC', 'Senkronizasyon başlatılıyor...')
 
+    // PR-Y4a: Aktif LdapGroupRoleMap'leri tek seferde cache'le
+    // Her user için ayrı query yapmak yerine memory'de filtre.
+    const activeMappings = await prisma.ldapGroupRoleMap.findMany({
+      where: { isActive: true },
+      select: { groupCN: true, roleId: true },
+    })
+    const mappingByGroupCN = new Map<string, string>(
+      activeMappings.map((m) => [m.groupCN, m.roleId])
+    )
+    logger.info('LDAP-SYNC', `Aktif mapping: ${activeMappings.length} grup → role eşleşmesi`)
+
     // 1. LDAP'dan tüm aktif kullanıcıları çek
     const ldapUsers = await getAllLDAPUsers()
     lastSyncStatus.totalLdap = ldapUsers.length
@@ -212,7 +223,7 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
 
       await Promise.all(batch.map(async (ldapUser) => {
         try {
-          await upsertUser(ldapUser, managerEmailMap)
+          await upsertUser(ldapUser, managerEmailMap, mappingByGroupCN)
 
           if (dbEmailSet.has(ldapUser.email!.toLowerCase()) || dbIdSet.has(`ad_${ldapUser.username}`)) {
             lastSyncStatus.updated++
@@ -284,7 +295,8 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
 /** Tek bir LDAP kullanıcısını DB'ye upsert et */
 async function upsertUser(
   ldapUser: LDAPUser,
-  managerEmailMap: Map<string, string>
+  managerEmailMap: Map<string, string>,
+  mappingByGroupCN: Map<string, string>
 ): Promise<void> {
   const email = ldapUser.email!.trim()
   const emailLower = email.toLowerCase()
@@ -322,39 +334,119 @@ async function upsertUser(
     select: { id: true, email: true },
   })
 
+  let resolvedUserId: string
+
   if (existingById) {
-    // Kullanıcı var - güncelle (id ile)
     await prisma.user.update({
       where: { id: userId },
       data: { ...adFields, ...managerData },
     })
-    return
-  }
-
-  // id ile bulunamadı - email ile ara (case-insensitive)
-  const existingByEmail = await prisma.user.findFirst({
-    where: { email: { equals: emailLower, mode: 'insensitive' } },
-    select: { id: true, email: true },
-  })
-
-  if (existingByEmail) {
-    // Email eşleşti - güncelle
-    await prisma.user.update({
-      where: { id: existingByEmail.id },
-      data: { ...adFields, ...managerData },
+    resolvedUserId = userId
+  } else {
+    // id ile bulunamadı - email ile ara (case-insensitive)
+    const existingByEmail = await prisma.user.findFirst({
+      where: { email: { equals: emailLower, mode: 'insensitive' } },
+      select: { id: true, email: true },
     })
-    return
+
+    if (existingByEmail) {
+      await prisma.user.update({
+        where: { id: existingByEmail.id },
+        data: { ...adFields, ...managerData },
+      })
+      resolvedUserId = existingByEmail.id
+    } else {
+      // Kullanıcı hiç yok - oluştur
+      const created = await prisma.user.create({
+        data: {
+          id: userId,
+          // PR-EMAIL-NORMALIZE: DB lowercase invariant — yazımları toLowerCase ile garantile
+          email: email.toLowerCase(),
+          ...adFields,
+          ...managerData,
+        },
+        select: { id: true },
+      })
+      resolvedUserId = created.id
+    }
   }
 
-  // Kullanıcı hiç yok - oluştur
-  await prisma.user.create({
-    data: {
-      id: userId,
-      // PR-EMAIL-NORMALIZE: DB lowercase invariant — yazımları toLowerCase ile garantile
-      email: email.toLowerCase(),
-      ...adFields,
-      ...managerData,
-    },
+  // PR-Y4a: AD grupları → user_role tablosu (source='azure_ad') diff
+  await syncUserAzureRoles(resolvedUserId, groups, mappingByGroupCN)
+}
+
+/**
+ * PR-Y4a: Bir kullanıcının AD grup üyeliklerine göre user_role tablosunu
+ * source='azure_ad' kayıtlar için diff'ler.
+ *
+ * KRİTİK KORUMA:
+ *  - Manuel kayıtlar (source='manual') HİÇ DOKUNULMAZ.
+ *  - Composite PK (userId, roleId) nedeniyle aynı user+role için tek kayıt
+ *    olabilir; eğer mevcut kayıt 'manual' ise INSERT yapılmaz, manuel
+ *    kayıt korunur (efektif olarak rol zaten atanmış sayılır).
+ *  - Mapping inactive olduysa veya user gruptan çıktıysa, sadece
+ *    source='azure_ad' kayıtları silinir.
+ */
+async function syncUserAzureRoles(
+  userId: string,
+  groups: string[],
+  mappingByGroupCN: Map<string, string>
+): Promise<void> {
+  // 1. Hedef role ID'leri (AD'den match olanlar)
+  const targetRoleIds = new Set<string>()
+  for (const cn of groups) {
+    const roleId = mappingByGroupCN.get(cn)
+    if (roleId) targetRoleIds.add(roleId)
+  }
+
+  // 2. Bu user'ın mevcut KAYIT durumu (her source için)
+  const existing = await prisma.userRole.findMany({
+    where: { userId },
+    select: { roleId: true, source: true },
+  })
+  const existingByRoleId = new Map(existing.map((r) => [r.roleId, r.source]))
+
+  // 3. Diff hesapla
+  const toCreate: string[] = [] // sadece kayıt yoksa azure_ad ekle
+  const toRemove: string[] = [] // azure_ad kayıt var ama AD'de yok → sil
+
+  for (const targetRoleId of targetRoleIds) {
+    const existingSource = existingByRoleId.get(targetRoleId)
+    if (existingSource === undefined) {
+      toCreate.push(targetRoleId) // hiç kayıt yok
+    }
+    // existingSource='manual' → DOKUNMA (manuel korunur)
+    // existingSource='azure_ad' → ZATEN SENK (no-op)
+  }
+
+  for (const [existingRoleId, existingSource] of existingByRoleId) {
+    if (existingSource === 'azure_ad' && !targetRoleIds.has(existingRoleId)) {
+      toRemove.push(existingRoleId)
+    }
+  }
+
+  if (toCreate.length === 0 && toRemove.length === 0) return
+
+  await prisma.$transaction(async (tx) => {
+    if (toRemove.length > 0) {
+      await tx.userRole.deleteMany({
+        where: {
+          userId,
+          roleId: { in: toRemove },
+          source: 'azure_ad', // KRİTİK: sadece azure_ad sil, manuel'e dokunma
+        },
+      })
+    }
+    if (toCreate.length > 0) {
+      await tx.userRole.createMany({
+        data: toCreate.map((roleId) => ({
+          userId,
+          roleId,
+          source: 'azure_ad',
+        })),
+        skipDuplicates: true, // race condition koruması
+      })
+    }
   })
 }
 

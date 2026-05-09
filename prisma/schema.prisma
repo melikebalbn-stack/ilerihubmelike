@@ -9405,6 +9405,7 @@ model Role {
   rolePermissions      RolePermission[]
   userRoles            UserRole[]
   azureAdGroupMappings AzureAdGroupMapping[]
+  ldapGroupMaps        LdapGroupRoleMap[]
 
   @@map("role")
 }
@@ -9459,6 +9460,24 @@ model AzureAdGroupMapping {
   role Role @relation(fields: [roleId], references: [id])
 
   @@map("azure_ad_group_mapping")
+}
+
+/// PR-Y4a: On-prem LDAP grup CN'i → Role slug eşlemesi.
+/// AzureAdGroupMapping Graph API object id için tasarlandı; bu model
+/// LDAP'tan parse edilen "memberOf" CN'leri için ayrı tutulur.
+model LdapGroupRoleMap {
+  id          String   @id @default(cuid())
+  groupCN     String   @unique(map: "ldap_group_role_map_group_cn_key") @map("group_cn")
+  roleId      String   @map("role_id")
+  isActive    Boolean  @default(true) @map("is_active")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([roleId], map: "ldap_group_role_map_role_id_idx")
+  @@map("ldap_group_role_map")
 }
 
 /// Yetki değişiklikleri için denetim kaydı (ISO 27001 A.5.15 uyumu).

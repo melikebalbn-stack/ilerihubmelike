@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isAdmin } from '@/lib/auth-utils'
 import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Yorumları listele
@@ -10,15 +9,13 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-suggestions: requireUser
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
 
-    // FIX #18: Internal yorum filtrelemesi - yöneticiler internal yorumları da görebilir
-    const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
-    const userIsAdmin = isAdmin(userEmail, userRole)
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı (yöneticiler internal yorumları görebilir)
+    const userIsAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     const commentFilter = userIsAdmin
       ? { suggestionId: id } // Admin tüm yorumları görür

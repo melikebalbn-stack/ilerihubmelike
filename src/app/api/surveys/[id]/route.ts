@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 
 // GET - Tek anket getir
 export async function GET(
@@ -20,8 +19,8 @@ export async function GET(
     const userRole = session.user.role || 'EMPLOYEE'
     const userDepartment = session.user.department
 
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı
+    const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     const survey = await prisma.survey.findUnique({
       where: { id },
@@ -123,11 +122,9 @@ export async function PUT(
     }
 
     const { id } = await params
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
 
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı
+    const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     if (!isAdmin) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })
@@ -272,11 +269,9 @@ export async function DELETE(
     }
 
     const { id } = await params
-    const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
 
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı
+    const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     if (!isAdmin) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 
 // Anket numarası oluştur
 async function generateSurveyNumber(): Promise<string> {
@@ -43,8 +42,8 @@ export async function GET(request: NextRequest) {
     const userRole = session.user.role || 'EMPLOYEE'
     const userDepartment = session.user.department
 
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı (anketler duyuru modülü altında)
+    const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     // Filtre oluştur
     const where: Record<string, unknown> = {}
@@ -136,10 +135,9 @@ export async function POST(request: NextRequest) {
     }
 
     const userEmail = String(session.user.email).toLowerCase()
-    const userRole = session.user.role || 'EMPLOYEE'
 
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı
+    const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     if (!isAdmin) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })

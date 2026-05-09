@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { isAdmin as checkIsAdmin, hasRole } from '@/lib/auth-utils'
 
 // GET - Anket sonuçlarını getir
 export async function GET(
@@ -19,8 +18,9 @@ export async function GET(
     const userEmail = String(session.user.email).toLowerCase()
     const userRole = session.user.role || 'EMPLOYEE'
 
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole) || hasRole(userRole, ['HR_MANAGER', 'IT_MANAGER'])
+    // PR-AUTHUTILS-CLEAN: duyuru.admin (admin) || duyuru.create (HR yöneticisi sonuç görebilir)
+    const perms = session.user.permissions
+    const isAdmin = (perms?.includes('duyuru.admin') || perms?.includes('duyuru.create')) ?? false
 
     // DEPT_HEAD için özel kontrol - IK anketleri hariç sonuçları görebilir
     const isDeptHead = userRole === 'DEPT_HEAD'

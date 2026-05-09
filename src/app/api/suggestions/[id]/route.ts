@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isAdmin } from '@/lib/auth-utils'
 import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Öneri detayı
@@ -10,14 +9,15 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-suggestions: requireUser
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
 
     const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
-    const userIsAdmin = isAdmin(userEmail, userRole)
+
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı (suggestions admin yetkisi)
+    const userIsAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     // Yönetici ise internal yorumları da göster
     const commentFilter = userIsAdmin
@@ -69,7 +69,7 @@ export async function PUT(
 ) {
   try {
     // PR-Y2.5-suggestions: requireUser
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -86,8 +86,8 @@ export async function PUT(
 
     // Sadece öneri sahibi veya admin düzenleyebilir
     const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
-    const userIsAdmin = isAdmin(userEmail, userRole)
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı
+    const userIsAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     if (existingSuggestion.submittedBy.toLowerCase() !== userEmail && !userIsAdmin) {
       return NextResponse.json({ error: 'Bu öneriyi düzenleme yetkiniz yok' }, { status: 403 })
@@ -158,15 +158,14 @@ export async function DELETE(
 ) {
   try {
     // PR-Y2.5-suggestions: requireUser
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
     const userEmail = user.email
 
-    // FIX #4: Merkezi utility kullanıldı
-    // Admin kontrolü - sadece admin tüm önerileri silebilir
-    const userIsAdmin = isAdmin(userEmail, user.role)
+    // PR-AUTHUTILS-CLEAN: duyuru.admin permission'ı (admin tüm önerileri silebilir)
+    const userIsAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     const existingSuggestion = await prisma.suggestion.findUnique({
       where: { id }

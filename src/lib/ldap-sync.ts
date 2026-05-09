@@ -77,6 +77,23 @@ export interface SyncStatus {
   duration?: number
 }
 
+/**
+ * PR-Y4-PRE: memberOf DN string'ini CN'e indir.
+ *   "CN=BGYS-Yoneticileri,OU=Groups,DC=ilerigroup,DC=com" → "BGYS-Yoneticileri"
+ * Eşleşme yoksa null döner (sentinel/sistem grupları için).
+ */
+export function parseGroupCN(memberOfDN: string): string | null {
+  const match = memberOfDN.match(/^CN=([^,]+),/i)
+  return match ? match[1] : null
+}
+
+/** PR-Y4-PRE: LDAPUser.memberOf → CN array (null'lar elenir) */
+export function extractGroupCNs(memberOf: string[] | undefined | null): string[] {
+  return (memberOf ?? [])
+    .map(parseGroupCN)
+    .filter((cn): cn is string => cn !== null)
+}
+
 /** LDAP rolünü Prisma Role enum'una dönüştür */
 function mapLdapRoleToPrismaRole(ldapRole: string, email?: string): Role {
   // Email-bazlı override (SUPER_ADMIN/ADMIN/QUALITY_MANAGER vs.)
@@ -282,6 +299,9 @@ async function upsertUser(
     managerEmail = managerEmailMap.get(ldapUser.managerDN.toLowerCase()) || null
   }
 
+  // PR-Y4-PRE: memberOf DN'leri CN array'e indirgenir
+  const groups = extractGroupCNs(ldapUser.memberOf)
+
   // AD'den gelen alanlar (her sync'te güncellenir)
   const adFields = {
     name: ldapUser.displayName,
@@ -291,6 +311,7 @@ async function upsertUser(
     ...(ldapUser.ipPhone ? { extension3cx: ldapUser.ipPhone } : {}),
     role: prismaRole,
     isActive: true,
+    groups, // PR-Y4-PRE
   }
 
   const managerData = managerEmail ? { managerId: await getManagerId(managerEmail) } : {}

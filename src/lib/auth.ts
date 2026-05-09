@@ -3,7 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { authenticateUser, determineUserRole, getEmailFromDN } from '@/lib/ldap';
 import { prisma } from '@/lib/prisma';
 import { UserRoleEnum as Role, LoginStatus } from '@/generated/prisma';
-import { inferRoleFromJobTitle } from '@/lib/ldap-sync';
+import { inferRoleFromJobTitle, extractGroupCNs } from '@/lib/ldap-sync';
 import { checkRateLimit, resetRateLimit, getRateLimitKey } from '@/lib/rate-limit';
 
 // Login log fonksiyonu
@@ -334,6 +334,8 @@ export const authOptions: NextAuthOptions = {
 
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+              // PR-Y4-PRE: AD grup CN listesi
+              const groups = extractGroupCNs(ldapUser.memberOf);
               await prisma.user.upsert({
                 where: { email: userEmail },
                 update: {
@@ -342,6 +344,7 @@ export const authOptions: NextAuthOptions = {
                   jobTitle: ldapUser.title,
                   role: prismaRole,
                   isActive: true,
+                  groups,
                 },
                 create: {
                   id: `ad_${ldapUser.username}`,
@@ -351,6 +354,7 @@ export const authOptions: NextAuthOptions = {
                   jobTitle: ldapUser.title,
                   role: prismaRole,
                   isActive: true,
+                  groups,
                 },
               });
               dbSyncSuccess = true;

@@ -41,6 +41,7 @@ export interface UserRow {
   isActive: boolean
   jobTitle: string | null
   department: string | null
+  groups: string[] // PR-Y4-PRE: AD grup CN listesi
   roles: Array<{
     id: string
     slug: string
@@ -224,19 +225,20 @@ export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Pro
                 <TableHead>Kullanıcı</TableHead>
                 <TableHead>Departman / Unvan</TableHead>
                 <TableHead>Roller</TableHead>
+                <TableHead>AD Grupları</TableHead>
                 <TableHead className="text-right">Aksiyon</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center">
+                  <TableCell colSpan={5} className="py-10 text-center">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
                     {search || roleId
                       ? 'Filtreye uyan kullanıcı bulunamadı'
                       : 'Henüz kullanıcı yok'}
@@ -318,6 +320,36 @@ export function UserRolesList({ allRoles, unassignedRoles, initialFilters }: Pro
                                 </Badge>
                               )
                             })}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {u.groups.length === 0 ? (
+                          <span className="text-xs italic text-muted-foreground">
+                            —
+                          </span>
+                        ) : (
+                          <div
+                            className="flex flex-wrap gap-1"
+                            title={u.groups.join('\n')}
+                          >
+                            {u.groups.slice(0, 3).map((g) => (
+                              <Badge
+                                key={g}
+                                variant="outline"
+                                className="font-normal text-[10px] bg-blue-50 border-blue-200 text-blue-800"
+                              >
+                                {g}
+                              </Badge>
+                            ))}
+                            {u.groups.length > 3 && (
+                              <Badge
+                                variant="outline"
+                                className="font-normal text-[10px] text-muted-foreground"
+                              >
+                                +{u.groups.length - 3}
+                              </Badge>
+                            )}
                           </div>
                         )}
                       </TableCell>

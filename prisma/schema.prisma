@@ -59,6 +59,9 @@ model User {
   role      UserRoleEnum @default(EMPLOYEE)
   isActive  Boolean @default(true)
   managerId String?
+
+  // PR-Y4-PRE: AD grup CN listesi (LDAP memberOf'tan parse). Y4a'da → Role mapping.
+  groups String[] @default([])
   manager   User?   @relation("ManagerEmployees", fields: [managerId], references: [id])
   employees User[]  @relation("ManagerEmployees")
 

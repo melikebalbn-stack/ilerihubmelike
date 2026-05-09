@@ -23,12 +23,12 @@ export const PERMISSION_KEYS = {
   AKADEMI_GRADE_MANUAL: 'akademi.grade.manual',
 
   // === ARŞİV ===
+  // Y14: Arşiv modülü RBAC kapsam dışı — departman-bazlı resource-level
+  // access (arsiv-auth.ts: kullanıcı kendi bolumId'sine erişir) RBAC
+  // role-based ile uyumsuz. Sadece sidebar visibility için arsiv.view kalır.
+  // Koli/evrak CRUD permission'ları seed'den kaldırıldı (kullanılmıyordu,
+  // mevcut helper EMPLOYEE+ + bolüm match ile yetkilendiriyor).
   ARSIV_VIEW: 'arsiv.view',
-  ARSIV_KOLI_CREATE: 'arsiv.koli.create',
-  ARSIV_KOLI_EDIT: 'arsiv.koli.edit',
-  ARSIV_KOLI_DELETE: 'arsiv.koli.delete',
-  ARSIV_EVRAK_CREATE: 'arsiv.evrak.create',
-  ARSIV_ADMIN: 'arsiv.admin',
 
   // === BGYS / ISO 27001 ===
   BGYS_DOCUMENT_VIEW: 'bgys.document.view',
@@ -114,11 +114,6 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'akademi.grade.manual': 'Manuel notlandırma (açık uçlu sorular)',
 
   'arsiv.view': 'Arşiv görüntüleme',
-  'arsiv.koli.create': 'Yeni koli oluşturma',
-  'arsiv.koli.edit': 'Koli düzenleme',
-  'arsiv.koli.delete': 'Koli silme',
-  'arsiv.evrak.create': 'Evrak ekleme',
-  'arsiv.admin': 'Arşiv tam yönetim',
 
   'bgys.document.view': 'BGYS doküman görüntüleme',
   'bgys.document.create': 'BGYS doküman oluşturma',

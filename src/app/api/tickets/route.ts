@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { dispatchTicketCreated } from '@/lib/ticket-notifications'
 import { requireUser } from '@/lib/auth/require-user'
-import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // Ticket numarası oluştur
 async function generateTicketNumber(): Promise<string> {
@@ -59,9 +58,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
 
     const userEmail = user.email
-    const userRole = user.role
-    const userDept = user.department || null
-    const userIsITStaff = isHelpdeskStaff(userRole, userDept, session.user.permissions)
+    // PR-Y9c: saf RBAC, helpdesk.admin permission. Eski legacy (role/dept fallback) kaldırıldı.
+    const userIsITStaff = session.user.permissions?.includes('helpdesk.admin') ?? false
 
     // Filtreler
     const where: Record<string, unknown> = {

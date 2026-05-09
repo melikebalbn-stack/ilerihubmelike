@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // GET - Ticket detayı
 export async function GET(
@@ -14,7 +13,7 @@ export async function GET(
     if (error) return error
 
     const { id } = await params
-    const userIsITStaff = isHelpdeskStaff(user.role, user.department, session.user.permissions)
+    const userIsITStaff = session.user.permissions?.includes('helpdesk.admin') ?? false
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
@@ -64,7 +63,7 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
-    const userIsITStaff = isHelpdeskStaff(user.role, user.department, session.user.permissions)
+    const userIsITStaff = session.user.permissions?.includes('helpdesk.admin') ?? false
 
     const existingTicket = await prisma.ticket.findUnique({
       where: { id }

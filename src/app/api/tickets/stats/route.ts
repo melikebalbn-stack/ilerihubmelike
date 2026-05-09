@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // GET - Ticket istatistikleri
 export async function GET(request: NextRequest) {
@@ -13,15 +12,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const viewMode = searchParams.get('viewMode') || 'all'
     const userEmail = user.email
-    const userOu = (session.user.ou || '').toLowerCase()
     const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
 
-    // PR-Y9a: helpdesk-auth helper (dual-check tampon).
-    // userOu (LDAP-only) + user.department birlikte değerlendirilir; helper
-    // bunlardan birini "kalite/sistem/bilgi teknoloji" pattern ile match eder.
-    const isITStaff =
-      isHelpdeskStaff(user.role, user.department, session.user.permissions) ||
-      isHelpdeskStaff(user.role, userOu, session.user.permissions)
+    // PR-Y9c: saf RBAC, helpdesk.admin permission. Eski legacy (role/dept/ou fallback) kaldırıldı.
+    const isITStaff = session.user.permissions?.includes('helpdesk.admin') ?? false
 
     // Temel filtre
     const baseWhere: Record<string, unknown> = { isActive: true }

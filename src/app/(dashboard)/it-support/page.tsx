@@ -48,7 +48,6 @@ import {
 import { useSession } from "next-auth/react"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
-import { isHelpdeskStaff } from "@/lib/helpdesk-auth"
 
 interface TicketCategory {
   id: string
@@ -132,14 +131,8 @@ export default function ITSupportPage() {
 
   const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN"
 
-  // PR-Y9a: helpdesk-auth helper (dual-check tampon — permission önceliği + legacy enum + departman/ou fallback).
-  // ou (LDAP-only güncel) ve department (DB) ayrı match'lenir.
-  const userOu = session?.user?.ou || null
-  const userDept = session?.user?.department || null
-  const userPerms = session?.user?.permissions
-  const isITStaff =
-    isHelpdeskStaff(session?.user?.role, userDept, userPerms) ||
-    isHelpdeskStaff(session?.user?.role, userOu, userPerms)
+  // PR-Y9c: saf RBAC, helpdesk.admin permission. Eski legacy (role/dept/ou fallback) kaldırıldı.
+  const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
 
   // Verileri yukle
   const fetchData = async () => {

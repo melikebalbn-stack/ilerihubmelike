@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // GET - Ticket yorumları
 export async function GET(
@@ -14,9 +13,8 @@ export async function GET(
     if (error) return error
 
     const { id: ticketId } = await params
-    // PR-Y9a: helpdesk-auth dual-check (permission önceliği + legacy fallback)
     // Internal yorumları sadece IT staff görebilir.
-    const isAdmin = isHelpdeskStaff(user.role, user.department, session.user.permissions)
+    const isAdmin = session.user.permissions?.includes('helpdesk.admin') ?? false
 
     const comments = await prisma.ticketComment.findMany({
       where: {
@@ -62,7 +60,7 @@ export async function POST(
     }
 
     // PR-Y9a: Sadece IT staff dahili not ekleyebilir
-    const isAdmin = isHelpdeskStaff(user.role, user.department, session.user.permissions)
+    const isAdmin = session.user.permissions?.includes('helpdesk.admin') ?? false
     const finalIsInternal = isAdmin ? isInternal : false
 
     // Yorum oluştur

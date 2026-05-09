@@ -20,9 +20,9 @@ interface RouteParams {
  * - prisma.$transaction ile atomik
  */
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const { user, error } = await requireUser()
+  const { session, user, error } = await requireUser()
   if (error) return error
-  if (user.role !== 'SUPER_ADMIN') {
+  if (!session.user.permissions?.includes('admin.roles.manage')) {
     return NextResponse.json(
       { error: 'Kullanıcı rol yönetimi için SUPER_ADMIN yetkisi gerekli' },
       { status: 403 }

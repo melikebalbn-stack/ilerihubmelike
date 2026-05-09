@@ -15,9 +15,9 @@ import type { Prisma } from '@/generated/prisma'
  * - pageSize : number (default 20, max 100)
  */
 export async function GET(req: NextRequest) {
-  const { user, error } = await requireUser()
+  const { session, user, error } = await requireUser()
   if (error) return error
-  if (user.role !== 'SUPER_ADMIN') {
+  if (!session.user.permissions?.includes('admin.roles.manage')) {
     return NextResponse.json(
       { error: 'Kullanıcı rol yönetimi için SUPER_ADMIN yetkisi gerekli' },
       { status: 403 }

@@ -135,9 +135,9 @@ export default function LoginLogsPage() {
     fetchLogs()
   }
 
-  // Yetki kontrolü - sadece IT ekibi görebilir
-  const userRole = session?.user?.role || "USER"
-  const canView = ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"].includes(userRole)
+  // PR-Y13: enum check yerine RBAC permission.
+  // admin.audit.view → admin, bgys-sorumlusu, it-admin, super-admin
+  const canView = session?.user?.permissions?.includes("admin.audit.view") ?? false
 
   if (!canView) {
     return (

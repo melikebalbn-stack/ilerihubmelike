@@ -8,10 +8,10 @@ import { prisma } from '@/lib/prisma'
  * Her rol için kullanıcı ve permission sayısı döner.
  */
 export async function GET() {
-  const { user, error } = await requireUser()
+  const { session, user, error } = await requireUser()
   if (error) return error
 
-  if (user.role !== 'SUPER_ADMIN') {
+  if (!session.user.permissions?.includes('admin.roles.manage')) {
     return NextResponse.json(
       { error: 'Rol yönetimi için SUPER_ADMIN yetkisi gerekli' },
       { status: 403 }

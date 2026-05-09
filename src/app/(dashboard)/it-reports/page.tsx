@@ -127,10 +127,10 @@ export default function ITReportsPage() {
   const [personDetailOpen, setPersonDetailOpen] = useState(false)
   const [loadingPersonDetail, setLoadingPersonDetail] = useState(false)
 
-  // Sadece IT Manager veya Admin erişebilir
-  const canAccessReports = session?.user?.role === "IT_MANAGER" ||
-    session?.user?.role === "ADMIN" ||
-    session?.user?.role === "SUPER_ADMIN"
+  // PR-Y13: enum check yerine RBAC permission.
+  // IT raporları audit kapsamında — admin.audit.view permission'ı
+  // (admin, bgys-sorumlusu, it-admin, super-admin)
+  const canAccessReports = session?.user?.permissions?.includes("admin.audit.view") ?? false
 
   useEffect(() => {
     if (status === "authenticated" && !canAccessReports) {

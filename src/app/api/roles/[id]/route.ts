@@ -12,9 +12,9 @@ interface RouteParams {
  * SUPER_ADMIN-only.
  */
 export async function GET(_req: NextRequest, { params }: RouteParams) {
-  const { user, error } = await requireUser()
+  const { session, user, error } = await requireUser()
   if (error) return error
-  if (user.role !== 'SUPER_ADMIN') {
+  if (!session.user.permissions?.includes('admin.roles.manage')) {
     return NextResponse.json(
       { error: 'Rol detayı için SUPER_ADMIN yetkisi gerekli' },
       { status: 403 }
@@ -109,9 +109,9 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
  * SUPER_ADMIN-only. PermissionAuditLog'a ROLE_UPDATED kaydı düşer.
  */
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
-  const { user, error } = await requireUser()
+  const { session, user, error } = await requireUser()
   if (error) return error
-  if (user.role !== 'SUPER_ADMIN') {
+  if (!session.user.permissions?.includes('admin.roles.manage')) {
     return NextResponse.json(
       { error: 'Rol düzenleme için SUPER_ADMIN yetkisi gerekli' },
       { status: 403 }

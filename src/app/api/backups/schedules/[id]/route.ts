@@ -3,12 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 
-// Yetki kontrolü
-function isAuthorized(userRole: string): boolean {
-  // KVKK: backup tüm DB dump içerir, sadece SUPER_ADMIN
-  return userRole === 'SUPER_ADMIN'
-}
-
 // Sonraki çalışma zamanını hesapla
 function calculateNextRunAt(frequency: string, time: string, dayOfWeek?: number | null, dayOfMonth?: number | null): Date {
   const [hours, minutes] = time.split(':').map(Number)
@@ -53,10 +47,10 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-backups: requireUser — admin role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    if (!isAuthorized(user.role)) {
+    if (!session.user.permissions?.includes('admin.backup.manage')) {
       return NextResponse.json({ error: 'Backup yönetimi sadece SUPER_ADMIN yetkisi gerektirir' }, { status: 403 })
     }
 
@@ -84,10 +78,10 @@ export async function PUT(
 ) {
   try {
     // PR-Y2.5-backups: requireUser — admin role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    if (!isAuthorized(user.role)) {
+    if (!session.user.permissions?.includes('admin.backup.manage')) {
       return NextResponse.json({ error: 'Backup yönetimi sadece SUPER_ADMIN yetkisi gerektirir' }, { status: 403 })
     }
 
@@ -151,10 +145,10 @@ export async function DELETE(
 ) {
   try {
     // PR-Y2.5-backups: requireUser — admin role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    if (!isAuthorized(user.role)) {
+    if (!session.user.permissions?.includes('admin.backup.manage')) {
       return NextResponse.json({ error: 'Backup yönetimi sadece SUPER_ADMIN yetkisi gerektirir' }, { status: 403 })
     }
 

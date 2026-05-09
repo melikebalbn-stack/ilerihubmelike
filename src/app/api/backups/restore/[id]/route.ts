@@ -5,11 +5,6 @@ import { restoreILERIHub, restoreAkademi, generateBackupName, backupILERIHub, ba
 import * as fs from 'fs'
 import { requireUser } from '@/lib/auth/require-user'
 
-// Yetki kontrolü — KVKK + veri bütünlüğü: restore tüm DB üzerine yazar, sadece SUPER_ADMIN
-function isAuthorized(userRole: string): boolean {
-  return userRole === 'SUPER_ADMIN'
-}
-
 // POST - Yedeği Geri Yükle
 export async function POST(
   request: NextRequest,
@@ -35,10 +30,10 @@ export async function POST(
 
   try {
     // PR-Y2.5-backups: requireUser — restore audit log için user.email/name gerek + admin role
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    if (!isAuthorized(user.role)) {
+    if (!session.user.permissions?.includes('admin.backup.manage')) {
       return NextResponse.json({ error: 'Restore işlemi sadece SUPER_ADMIN yetkisi gerektirir' }, { status: 403 })
     }
 

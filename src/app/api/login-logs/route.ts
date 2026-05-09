@@ -11,10 +11,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userRole = session.user.role || 'EMPLOYEE'
-
-    // Sadece admin roller görebilir
-    if (!['SUPER_ADMIN', 'ADMIN', 'IT_MANAGER'].includes(userRole)) {
+    // PR-Y13: enum check yerine RBAC permission.
+    // admin.audit.view → admin, bgys-sorumlusu, it-admin, super-admin
+    if (!session.user.permissions?.includes('admin.audit.view')) {
       return NextResponse.json({ error: 'Bu sayfaya erişim yetkiniz yok' }, { status: 403 })
     }
 

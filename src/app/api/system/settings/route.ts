@@ -45,9 +45,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // FIX #4: Hardcoded email kaldırıldı - sadece rol kontrolü
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    // PR-Y13: enum check yerine RBAC permission.
+    // admin.system.manage → admin, it-admin, super-admin
+    if (!session.user.permissions?.includes('admin.system.manage')) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

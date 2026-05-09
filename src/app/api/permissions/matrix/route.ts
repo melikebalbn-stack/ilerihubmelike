@@ -8,9 +8,9 @@ import { prisma } from '@/lib/prisma'
  * SUPER_ADMIN-only.
  */
 export async function GET() {
-  const { user, error } = await requireUser()
+  const { session, user, error } = await requireUser()
   if (error) return error
-  if (user.role !== 'SUPER_ADMIN') {
+  if (!session.user.permissions?.includes('admin.roles.manage')) {
     return NextResponse.json(
       { error: 'İzin matrisi yönetimi için SUPER_ADMIN yetkisi gerekli' },
       { status: 403 }
@@ -67,9 +67,9 @@ interface MatrixChange {
  * - Bilinmeyen rol/izin id → 400
  */
 export async function PATCH(req: NextRequest) {
-  const { user, error } = await requireUser()
+  const { session, user, error } = await requireUser()
   if (error) return error
-  if (user.role !== 'SUPER_ADMIN') {
+  if (!session.user.permissions?.includes('admin.roles.manage')) {
     return NextResponse.json(
       { error: 'İzin matrisi düzenleme için SUPER_ADMIN yetkisi gerekli' },
       { status: 403 }

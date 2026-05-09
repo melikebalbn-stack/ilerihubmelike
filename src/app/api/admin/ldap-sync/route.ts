@@ -15,8 +15,9 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    // PR-Y13: enum check yerine RBAC permission.
+    // admin.system.manage → admin, it-admin, super-admin
+    if (!session.user.permissions?.includes('admin.system.manage')) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -43,8 +44,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const userRole = session.user.role || 'EMPLOYEE'
-    if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+    // PR-Y13: enum check yerine RBAC permission.
+    // admin.system.manage → admin, it-admin, super-admin
+    if (!session.user.permissions?.includes('admin.system.manage')) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

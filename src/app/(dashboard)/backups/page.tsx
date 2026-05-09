@@ -162,8 +162,9 @@ export default function BackupsPage() {
   // Restore kill switch — fail-closed default (PR-3a)
   const [restoreEnabled, setRestoreEnabled] = useState(false)
 
-  // Yetki kontrolü
-  const hasAccess = session?.user?.role && ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"].includes(session.user.role)
+  // PR-Y13: enum check yerine RBAC permission.
+  // admin.backup.manage → it-admin, super-admin
+  const hasAccess = session?.user?.permissions?.includes("admin.backup.manage") ?? false
 
   useEffect(() => {
     if (status === "authenticated" && !hasAccess) {

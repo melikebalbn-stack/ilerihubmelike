@@ -4,20 +4,14 @@ import { prisma } from '@/lib/prisma'
 import { getBackupStats, formatFileSize } from '@/lib/backup-service'
 import { requireUser } from '@/lib/auth/require-user'
 
-// Yetki kontrolü
-function isAuthorized(userRole: string): boolean {
-  // KVKK: backup tüm DB dump içerir, sadece SUPER_ADMIN
-  return userRole === 'SUPER_ADMIN'
-}
-
 // GET - Yedekleme İstatistikleri
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-backups: requireUser — admin role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    if (!isAuthorized(user.role)) {
+    if (!session.user.permissions?.includes('admin.backup.manage')) {
       return NextResponse.json({ error: 'Backup yönetimi sadece SUPER_ADMIN yetkisi gerektirir' }, { status: 403 })
     }
 

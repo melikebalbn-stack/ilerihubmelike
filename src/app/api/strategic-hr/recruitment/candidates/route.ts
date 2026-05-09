@@ -1,34 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { CandidateSource } from "@/generated/prisma";
+import { CandidateSource, Prisma } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 
-// Yetki kontrolü helper
-async function checkAccess(session: any) {
-  const userRole = session?.user?.role;
-  const userDepartment = session?.user?.department || "";
-
-  const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
-  const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
-  const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept));
-
+// PR-RECRUIT-RBAC: permissions tabanlı; aday detayını sadece admin veya
+// kendi departmanı pozisyonlarına başvuran adayları görür.
+function recruitAccess(session: { user: { permissions?: string[]; department?: string | null } }) {
+  const perms = session.user.permissions ?? [];
   return {
-    hasFullAccess: fullAccessRoles.includes(userRole) || isHrDepartment,
-    isDeptHead: userRole === "DEPT_HEAD",
-    userDepartment
+    isAdmin: perms.includes("recruitment.admin"),
+    canViewCandidate: perms.includes("recruitment.candidate.view"),
+    canViewByDept: perms.includes("recruitment.view"),
+    userDepartment: session.user.department || "",
   };
 }
 
 // GET - Adaylar listesi
 export async function GET(request: NextRequest) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (checkAccess session okuyor)
     const { session, error } = await requireSession();
     if (error) return error;
 
-    const { hasFullAccess, isDeptHead } = await checkAccess(session);
-
-    if (!hasFullAccess && !isDeptHead) {
+    const ctx = recruitAccess(session);
+    if (!ctx.isAdmin && !ctx.canViewByDept && !ctx.canViewCandidate) {
       return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
     }
 
@@ -37,7 +31,7 @@ export async function GET(request: NextRequest) {
     const source = searchParams.get("source") as CandidateSource | null;
     const skills = searchParams.get("skills");
 
-    const where: any = {};
+    const where: Prisma.CandidateWhereInput = {};
 
     if (search) {
       where.OR = [
@@ -45,16 +39,22 @@ export async function GET(request: NextRequest) {
         { lastName: { contains: search, mode: "insensitive" } },
         { email: { contains: search, mode: "insensitive" } },
         { currentTitle: { contains: search, mode: "insensitive" } },
-        { currentCompany: { contains: search, mode: "insensitive" } }
+        { currentCompany: { contains: search, mode: "insensitive" } },
       ];
     }
 
-    if (source) {
-      where.source = source;
-    }
+    if (source) where.source = source;
+    if (skills) where.skills = { hasSome: skills.split(",") };
 
-    if (skills) {
-      where.skills = { hasSome: skills.split(",") };
+    // Departman müdürü: sadece kendi departmanı pozisyonlarına başvuran adaylar
+    if (!ctx.isAdmin && !ctx.canViewCandidate && ctx.canViewByDept) {
+      where.applications = {
+        some: {
+          jobOpening: {
+            department: { contains: ctx.userDepartment, mode: "insensitive" },
+          },
+        },
+      };
     }
 
     const candidates = await prisma.candidate.findMany({
@@ -65,21 +65,11 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             status: true,
-            jobOpening: {
-              select: {
-                id: true,
-                title: true,
-                code: true
-              }
-            }
-          }
+            jobOpening: { select: { id: true, title: true, code: true } },
+          },
         },
-        _count: {
-          select: {
-            applications: true
-          }
-        }
-      }
+        _count: { select: { applications: true } },
+      },
     });
 
     return NextResponse.json(candidates);
@@ -92,16 +82,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Yeni aday ekle
+// POST - Yeni aday ekle (sadece admin veya recruitment.candidate.view)
 export async function POST(request: NextRequest) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (checkAccess session okuyor)
     const { session, error } = await requireSession();
     if (error) return error;
 
-    const { hasFullAccess } = await checkAccess(session);
-
-    if (!hasFullAccess) {
+    const ctx = recruitAccess(session);
+    if (!ctx.isAdmin && !ctx.canViewCandidate) {
       return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
     }
 
@@ -134,9 +122,8 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = typeof email === "string" ? email.toLowerCase() : email;
 
-    // E-posta benzersizlik kontrolü
     const existingCandidate = await prisma.candidate.findUnique({
-      where: { email: normalizedEmail }
+      where: { email: normalizedEmail },
     });
 
     if (existingCandidate) {

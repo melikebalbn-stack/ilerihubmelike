@@ -9,11 +9,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (read-only detay)
-    const { error } = await requireSession();
+    const { session, error } = await requireSession();
     if (error) return error;
 
     const { id } = await params;
+    const perms = session.user.permissions ?? [];
+    const isAdmin = perms.includes("recruitment.admin");
+    const canViewByDept = perms.includes("recruitment.view");
+    const userEmail = (session.user.email || "").toLowerCase();
+    const userDepartment = session.user.department || "";
 
     const personnelRequest = await prisma.personnelRequest.findUnique({
       where: { id },
@@ -24,16 +28,22 @@ export async function GET(
             title: true,
             code: true,
             status: true,
-            _count: {
-              select: { applications: true }
-            }
-          }
-        }
-      }
+            _count: { select: { applications: true } },
+          },
+        },
+      },
     });
 
     if (!personnelRequest) {
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
+    }
+
+    // PR-RECRUIT-RBAC: admin herşeyi; departman müdürü kendi dept VEYA owner;
+    // hiçbir yetkisi yoksa sadece kendi açtığı talep
+    const isOwner = personnelRequest.requesterEmail.toLowerCase() === userEmail;
+    const deptMatch = canViewByDept && personnelRequest.department === userDepartment;
+    if (!isAdmin && !isOwner && !deptMatch) {
+      return NextResponse.json({ error: "Bu talebi görüntüleme yetkiniz yok" }, { status: 403 });
     }
 
     return NextResponse.json(personnelRequest);
@@ -60,20 +70,14 @@ export async function PUT(
     const body = await request.json();
     const { action } = body; // "approve", "reject", "update", "submit", "cancel"
 
-    const userRole = session.user.role;
-    const userEmail = session.user.email || "";
-    const userDepartment = session.user.department || "";
+    const userEmail = (session.user.email || "").toLowerCase();
 
-    // Yetki kontrolü
-    const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
-    const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept));
-    const hasFullAccess = fullAccessRoles.includes(userRole) || isHrDepartment;
+    // PR-RECRUIT-RBAC: hasFullAccess=admin (onay/red için)
+    const perms = session.user.permissions ?? [];
+    const hasFullAccess = perms.includes("recruitment.admin");
 
     // Mevcut talebi al
-    const existingRequest = await prisma.personnelRequest.findUnique({
-      where: { id }
-    });
+    const existingRequest = await prisma.personnelRequest.findUnique({ where: { id } });
 
     if (!existingRequest) {
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
@@ -81,13 +85,13 @@ export async function PUT(
 
     // İşlem türüne göre yetki kontrolü
     if (action === "approve" || action === "reject") {
-      // Sadece IK onaylayabilir/reddedebilir
+      // Onay/red: sadece admin
       if (!hasFullAccess) {
         return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
       }
     } else if (action === "update" || action === "submit" || action === "cancel") {
-      // Sadece talep sahibi güncelleyebilir (DRAFT durumundayken)
-      if (existingRequest.requesterEmail !== userEmail && !hasFullAccess) {
+      // Sadece talep sahibi güncelleyebilir (DRAFT durumundayken) veya admin
+      if (existingRequest.requesterEmail.toLowerCase() !== userEmail && !hasFullAccess) {
         return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
       }
     }
@@ -262,19 +266,12 @@ export async function DELETE(
     if (error) return error;
 
     const { id } = await params;
-    const userEmail = session.user.email || "";
-    const userRole = session.user.role;
-    const userDepartment = session.user.department || "";
+    const userEmail = (session.user.email || "").toLowerCase();
 
-    // Yetki kontrolü
-    const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
-    const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept));
-    const hasFullAccess = fullAccessRoles.includes(userRole) || isHrDepartment;
+    // PR-RECRUIT-RBAC: silme — admin veya talep sahibi
+    const hasFullAccess = session.user.permissions?.includes("recruitment.admin") ?? false;
 
-    const existingRequest = await prisma.personnelRequest.findUnique({
-      where: { id }
-    });
+    const existingRequest = await prisma.personnelRequest.findUnique({ where: { id } });
 
     if (!existingRequest) {
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
@@ -286,7 +283,7 @@ export async function DELETE(
     }
 
     // Yetki kontrolü - sadece talep sahibi veya admin silebilir
-    if (existingRequest.requesterEmail !== userEmail && !hasFullAccess) {
+    if (existingRequest.requesterEmail.toLowerCase() !== userEmail && !hasFullAccess) {
       return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
     }
 

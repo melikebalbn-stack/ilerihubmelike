@@ -2,29 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 
+// PR-RECRUIT-RBAC: PublicJobApplication HR-only (recruitment.admin)
+
 // GET - Başvuru detayı
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
     const { session, error } = await requireSession()
     if (error) return error
 
-    const { id } = await params
-
-    // Yetki kontrolü
-    const userRole = session.user.role || ''
-    const userDepartment = session.user.department || ''
-    const fullAccessRoles = ['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER', 'IT_MANAGER']
-    const hrDepartments = ['insan varliklari', 'insan varlıkları', 'human resources', 'hr']
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept))
-    const hasAccess = fullAccessRoles.includes(userRole) || isHrDepartment
-
-    if (!hasAccess) {
+    if (!session.user.permissions?.includes('recruitment.admin')) {
       return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
     }
+
+    const { id } = await params
 
     const application = await prisma.publicJobApplication.findUnique({
       where: { id }
@@ -47,36 +40,20 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
     const { session, error } = await requireSession()
     if (error) return error
 
-    const { id } = await params
-
-    // Yetki kontrolü
-    const userRole = session.user.role || ''
-    const userDepartment = session.user.department || ''
-    const fullAccessRoles = ['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER', 'IT_MANAGER']
-    const hrDepartments = ['insan varliklari', 'insan varlıkları', 'human resources', 'hr']
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept))
-    const hasAccess = fullAccessRoles.includes(userRole) || isHrDepartment
-
-    if (!hasAccess) {
+    if (!session.user.permissions?.includes('recruitment.admin')) {
       return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
     }
 
+    const { id } = await params
     const body = await request.json()
     const { status, notes } = body
 
     const updateData: any = {}
-
-    if (status) {
-      updateData.status = status
-    }
-
-    if (notes !== undefined) {
-      updateData.notes = notes
-    }
+    if (status) updateData.status = status
+    if (notes !== undefined) updateData.notes = notes
 
     const application = await prisma.publicJobApplication.update({
       where: { id },
@@ -90,29 +67,22 @@ export async function PATCH(
   }
 }
 
-// DELETE - Başvuru sil
+// DELETE - Başvuru sil (sadece admin)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
     const { session, error } = await requireSession()
     if (error) return error
 
-    const { id } = await params
-
-    // Yetki kontrolü - sadece admin silebilir
-    const userRole = session.user.role || ''
-    const fullAccessRoles = ['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER']
-
-    if (!fullAccessRoles.includes(userRole)) {
+    if (!session.user.permissions?.includes('recruitment.admin')) {
       return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
     }
 
-    await prisma.publicJobApplication.delete({
-      where: { id }
-    })
+    const { id } = await params
+
+    await prisma.publicJobApplication.delete({ where: { id } })
 
     return NextResponse.json({ success: true })
   } catch (error) {

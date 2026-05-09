@@ -77,6 +77,12 @@ export const PERMISSION_KEYS = {
   // === FORMS (visit-reports, overtime, project-bar) ===
   FORMS_ADMIN: 'forms.admin',
   FORMS_APPROVE: 'forms.approve',
+
+  // === RECRUITMENT (strategic-hr/recruitment) ===
+  RECRUITMENT_ADMIN: 'recruitment.admin',
+  RECRUITMENT_VIEW: 'recruitment.view',
+  RECRUITMENT_CREATE: 'recruitment.create',
+  RECRUITMENT_CANDIDATE_VIEW: 'recruitment.candidate.view',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -97,6 +103,7 @@ export const MODULE_LABELS: Record<string, string> = {
   costanalysis: 'Maliyet Analizi',
   duyuru: 'Duyuru',
   forms: 'Form Modülleri',
+  recruitment: 'İşe Alım',
 };
 
 /**
@@ -158,4 +165,9 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'forms.admin': 'Form modüllerini yönet (visit-reports, overtime, project-bar)',
   'forms.approve': 'Form başvurularını onayla (departman müdürü dahil)',
+
+  'recruitment.admin': 'İşe alım tam yönetim (pozisyon/aday/talep)',
+  'recruitment.view': 'İşe alım kendi departmanı görünürlük',
+  'recruitment.create': 'Pozisyon/personel talebi oluşturma',
+  'recruitment.candidate.view': 'Aday detay görme (CV ve değerlendirme)',
 };

@@ -9,15 +9,8 @@ export async function GET(request: NextRequest) {
     const { session, error } = await requireSession()
     if (error) return error
 
-    // Yetki kontrolü - sadece IK ve admin görebilir
-    const userRole = session.user.role || ''
-    const userDepartment = session.user.department || ''
-    const fullAccessRoles = ['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER', 'IT_MANAGER']
-    const hrDepartments = ['insan varliklari', 'insan varlıkları', 'human resources', 'hr']
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept))
-    const hasAccess = fullAccessRoles.includes(userRole) || isHrDepartment
-
-    if (!hasAccess) {
+    // PR-RECRUIT-RBAC: PublicJobApplication (CV başvuruları) HR-only
+    if (!session.user.permissions?.includes('recruitment.admin')) {
       return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
     }
 

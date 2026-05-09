@@ -2,15 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 
+// PR-RECRUIT-RBAC: permissions tabanlı; departman müdürü kendi
+// departmanı VEYA hiring manager olduğu pozisyonu görür/düzenler.
+function recruitAccess(session: { user: { permissions?: string[]; department?: string | null; email?: string | null } }) {
+  const perms = session.user.permissions ?? [];
+  return {
+    isAdmin: perms.includes("recruitment.admin"),
+    canViewByDept: perms.includes("recruitment.view"),
+    userDepartment: (session.user.department || "").toLowerCase(),
+    userEmail: (session.user.email || "").toLowerCase(),
+  };
+}
+
+function canSeeOpening(
+  opening: { department: string; hiringManagerEmail: string | null },
+  ctx: { isAdmin: boolean; canViewByDept: boolean; userDepartment: string; userEmail: string }
+): boolean {
+  if (ctx.isAdmin) return true;
+  if (!ctx.canViewByDept) return false;
+  const deptMatch = opening.department.toLowerCase().includes(ctx.userDepartment) && ctx.userDepartment.length > 0;
+  const ownerMatch = (opening.hiringManagerEmail || "").toLowerCase() === ctx.userEmail;
+  return deptMatch || ownerMatch;
+}
+
 // GET - Tek ilan detayı
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (read-only detay)
-    const { error } = await requireSession();
+    const { session, error } = await requireSession();
     if (error) return error;
+
+    const ctx = recruitAccess(session);
+    if (!ctx.isAdmin && !ctx.canViewByDept) {
+      return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
+    }
 
     const { id } = await params;
 
@@ -20,24 +47,21 @@ export async function GET(
         applications: {
           include: {
             candidate: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true
-              }
-            }
+              select: { id: true, firstName: true, lastName: true, email: true },
+            },
           },
-          orderBy: { appliedAt: "desc" }
+          orderBy: { appliedAt: "desc" },
         },
-        _count: {
-          select: { applications: true }
-        }
-      }
+        _count: { select: { applications: true } },
+      },
     });
 
     if (!opening) {
       return NextResponse.json({ error: "İlan bulunamadı" }, { status: 404 });
+    }
+
+    if (!canSeeOpening(opening, ctx)) {
+      return NextResponse.json({ error: "Bu ilanı görüntüleme yetkiniz yok" }, { status: 403 });
     }
 
     return NextResponse.json(opening);
@@ -56,32 +80,24 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
     const { session, error } = await requireSession();
     if (error) return error;
 
-    const userRole = session.user.role;
-    const userDepartment = session.user.department || "";
-
-    // Yetki kontrolü
-    const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
-    const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept));
-
-    if (!fullAccessRoles.includes(userRole) && !isHrDepartment) {
+    const ctx = recruitAccess(session);
+    if (!ctx.isAdmin && !ctx.canViewByDept) {
       return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
     }
 
     const { id } = await params;
     const body = await request.json();
 
-    // Mevcut ilanı kontrol et
-    const existingOpening = await prisma.jobOpening.findUnique({
-      where: { id }
-    });
-
+    const existingOpening = await prisma.jobOpening.findUnique({ where: { id } });
     if (!existingOpening) {
       return NextResponse.json({ error: "İlan bulunamadı" }, { status: 404 });
+    }
+
+    if (!canSeeOpening(existingOpening, ctx)) {
+      return NextResponse.json({ error: "Bu ilanı düzenleme yetkiniz yok" }, { status: 403 });
     }
 
     // Durum değişikliği için postingDate güncelle
@@ -123,39 +139,26 @@ export async function PUT(
   }
 }
 
-// DELETE - İlan sil
+// DELETE - İlan sil (sadece admin)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (role/department session'dan)
     const { session, error } = await requireSession();
     if (error) return error;
 
-    const userRole = session.user.role;
-    const userDepartment = session.user.department || "";
-
-    // Yetki kontrolü
-    const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
-    const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept));
-
-    if (!fullAccessRoles.includes(userRole) && !isHrDepartment) {
-      return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
+    const ctx = recruitAccess(session);
+    if (!ctx.isAdmin) {
+      return NextResponse.json({ error: "İlan silmek için yönetim yetkisi gerekli" }, { status: 403 });
     }
 
     const { id } = await params;
 
     // Önce başvuruları sil (Interview'lar onDelete: Cascade ile otomatik silinir)
-    await prisma.jobApplication.deleteMany({
-      where: { jobOpeningId: id }
-    });
+    await prisma.jobApplication.deleteMany({ where: { jobOpeningId: id } });
 
-    // Son olarak ilanı sil
-    await prisma.jobOpening.delete({
-      where: { id }
-    });
+    await prisma.jobOpening.delete({ where: { id } });
 
     return NextResponse.json({ message: "İlan başarıyla silindi" });
   } catch (error) {

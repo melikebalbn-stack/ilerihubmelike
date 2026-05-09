@@ -31,8 +31,7 @@ export async function GET(request: NextRequest) {
     const { session, error } = await requireSession();
     if (error) return error;
 
-    const userRole = session.user.role;
-    const userEmail = session.user.email || "";
+    const userEmail = (session.user.email || "").toLowerCase();
     const userDepartment = session.user.department || "";
 
     const { searchParams } = new URL(request.url);
@@ -40,26 +39,33 @@ export async function GET(request: NextRequest) {
     const department = searchParams.get("department");
     const myRequests = searchParams.get("myRequests") === "true";
 
-    // Yetki kontrolü
-    const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
-    const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept));
-    const hasFullAccess = fullAccessRoles.includes(userRole) || isHrDepartment;
+    // PR-RECRUIT-RBAC: hasFullAccess=admin; canViewByDept=departman müdürü
+    // (kendi departmanı + kendi açtığı talepler görür)
+    const perms = session.user.permissions ?? [];
+    const hasFullAccess = perms.includes("recruitment.admin");
+    const canViewByDept = perms.includes("recruitment.view");
+
+    if (!hasFullAccess && !canViewByDept) {
+      // Hiç recruitment yetkisi yok: sadece kendi açtığı talepleri görür
+      // (talep oluşturma herkese açık olduğu için, kendi takip edebilsin)
+    }
 
     const where: any = {};
 
-    // Tam yetkisi olmayanlar sadece kendi taleplerini görebilir
-    if (!hasFullAccess || myRequests) {
+    if (myRequests) {
+      where.requesterEmail = userEmail;
+    } else if (!hasFullAccess && canViewByDept) {
+      // Departman müdürü: kendi departmanı VEYA kendi açtığı
+      where.OR = [
+        { department: userDepartment },
+        { requesterEmail: userEmail },
+      ];
+    } else if (!hasFullAccess) {
       where.requesterEmail = userEmail;
     }
 
-    if (status) {
-      where.status = status;
-    }
-
-    if (department && hasFullAccess) {
-      where.department = department;
-    }
+    if (status) where.status = status;
+    if (department && hasFullAccess) where.department = department;
 
     const requests = await prisma.personnelRequest.findMany({
       where,

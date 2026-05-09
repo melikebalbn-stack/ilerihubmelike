@@ -9,15 +9,10 @@ export async function POST(request: NextRequest) {
     const { session, error } = await requireSession();
     if (error) return error;
 
-    const userRole = session.user.role;
-    const userDepartment = session.user.department || "";
-
-    // Yetki kontrolü
-    const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
-    const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
-    const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept));
-
-    if (!fullAccessRoles.includes(userRole) && !isHrDepartment) {
+    // PR-RECRUIT-RBAC: aday-pozisyon başvuru ekleme — admin veya
+    // recruitment.candidate.view yetkisi (HR rolleri)
+    const perms = session.user.permissions ?? [];
+    if (!perms.includes('recruitment.admin') && !perms.includes('recruitment.candidate.view')) {
       return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
     }
 
@@ -104,9 +99,17 @@ export async function POST(request: NextRequest) {
 // GET - Başvuruları listele
 export async function GET(request: NextRequest) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (read-only liste)
-    const { error } = await requireSession();
+    const { session, error } = await requireSession();
     if (error) return error;
+
+    // PR-RECRUIT-RBAC: başvuru listesi — admin veya recruitment.view (departman)
+    const perms = session.user.permissions ?? [];
+    const isAdmin = perms.includes('recruitment.admin');
+    const canViewByDept = perms.includes('recruitment.view');
+    if (!isAdmin && !canViewByDept) {
+      return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
+    }
+    const userDepartment = (session.user.department || '').toLowerCase();
 
     const { searchParams } = new URL(request.url);
     const jobOpeningId = searchParams.get("jobOpeningId");
@@ -114,6 +117,13 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
 
     const where: any = {};
+
+    // Departman müdürü: sadece kendi departmanı pozisyonlarına başvurular
+    if (!isAdmin && canViewByDept && userDepartment) {
+      where.jobOpening = {
+        department: { contains: userDepartment, mode: "insensitive" },
+      };
+    }
 
     if (jobOpeningId) {
       where.jobOpeningId = jobOpeningId;

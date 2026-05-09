@@ -159,9 +159,14 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
 ]
 
 async function main() {
-  console.log('👥 Sistem rolleri seed başlıyor...')
+  console.log('👥 Sistem rolleri seed (bootstrap-only) başlıyor...')
 
-  // Tüm permission'ları çek (key → id eşlemesi için)
+  // PR-SEED-DRIFT: Bootstrap-only pattern
+  // - Role kayıtları: yoksa create, varsa DOKUNMA (UI'dan değiştirilmiş
+  //   name/description/isProtected korunur)
+  // - RolePermission tablosu: BOŞSA initial seed, DOLU ise hiç dokunma
+  //   (UI = tek doğruluk kaynağı, Y6c-PREP-NEW-ROLE drift bug'ı kapandı)
+
   const allPerms = await prisma.permission.findMany()
   const permIdByKey = new Map(allPerms.map(p => [p.key, p.id]))
   const allPermIds = allPerms.map(p => p.id)
@@ -170,69 +175,85 @@ async function main() {
     throw new Error('Permission tablosu boş. Önce seed-permissions çalıştır.')
   }
 
+  // Role kayıtlarını eksikse oluştur (mevcut kayda dokunma)
+  let rolesCreated = 0
+  let rolesSkipped = 0
   for (const def of SYSTEM_ROLES) {
-    // Rolü upsert et
-    const role = await prisma.role.upsert({
-      where: { slug: def.slug },
-      create: {
-        slug: def.slug,
-        name: def.name,
-        description: def.description,
-        isSystem: true,
-        isProtected: def.isProtected,
-      },
-      update: {
-        name: def.name,
-        description: def.description,
-        isSystem: true,
-        isProtected: def.isProtected,
-      },
-    })
-
-    // Bu rolün sahip olması gereken permission ID listesi
-    let targetPermIds: string[]
-    if (def.permissions === 'ALL') {
-      targetPermIds = allPermIds
+    const existing = await prisma.role.findUnique({ where: { slug: def.slug } })
+    if (existing) {
+      rolesSkipped++
     } else {
-      targetPermIds = def.permissions
-        .map(k => permIdByKey.get(k))
-        .filter((v): v is string => Boolean(v))
+      await prisma.role.create({
+        data: {
+          slug: def.slug,
+          name: def.name,
+          description: def.description,
+          isSystem: true,
+          isProtected: def.isProtected,
+        },
+      })
+      rolesCreated++
+      console.log(`  ✓ Role oluşturuldu: ${def.name} (${def.slug})`)
+    }
+  }
+  console.log(
+    `  Role özet: +${rolesCreated} oluşturuldu, ${rolesSkipped} mevcut korundu`
+  )
 
-      const missing = def.permissions.filter(k => !permIdByKey.has(k))
-      if (missing.length > 0) {
-        console.warn(`⚠️ ${def.slug}: bilinmeyen permission'lar atlandı:`, missing)
+  // RolePermission: tablo boşsa initial bootstrap, dolu ise dokunma
+  const rolePermCount = await prisma.rolePermission.count()
+
+  if (rolePermCount === 0) {
+    console.log('📦 RolePermission tablosu BOŞ — initial bootstrap yapılıyor...')
+
+    let totalCreated = 0
+    for (const def of SYSTEM_ROLES) {
+      const role = await prisma.role.findUnique({ where: { slug: def.slug } })
+      if (!role) {
+        console.warn(`  ⚠️ ${def.slug}: role bulunamadı, atlandı`)
+        continue
+      }
+
+      let targetPermIds: string[]
+      if (def.permissions === 'ALL') {
+        targetPermIds = allPermIds
+      } else {
+        targetPermIds = def.permissions
+          .map(k => permIdByKey.get(k))
+          .filter((v): v is string => Boolean(v))
+
+        const missing = def.permissions.filter(k => !permIdByKey.has(k))
+        if (missing.length > 0) {
+          console.warn(
+            `  ⚠️ ${def.slug}: bilinmeyen permission'lar atlandı:`,
+            missing
+          )
+        }
+      }
+
+      if (targetPermIds.length > 0) {
+        const result = await prisma.rolePermission.createMany({
+          data: targetPermIds.map(permissionId => ({
+            roleId: role.id,
+            permissionId,
+          })),
+          skipDuplicates: true,
+        })
+        totalCreated += result.count
+        console.log(`  ✓ ${def.name.padEnd(22)} → ${result.count} yetki bootstrap`)
       }
     }
-
-    // Mevcut role_permission kayıtları
-    const existing = await prisma.rolePermission.findMany({
-      where: { roleId: role.id },
-      select: { permissionId: true },
-    })
-    const existingIds = new Set(existing.map(r => r.permissionId))
-    const targetSet = new Set(targetPermIds)
-
-    // Eklenecekler
-    const toAdd = targetPermIds.filter(id => !existingIds.has(id))
-    // Silinecekler (artık rolde olmaması gerekenler)
-    const toRemove = [...existingIds].filter(id => !targetSet.has(id))
-
-    if (toAdd.length > 0) {
-      await prisma.rolePermission.createMany({
-        data: toAdd.map(permissionId => ({ roleId: role.id, permissionId })),
-        skipDuplicates: true,
-      })
-    }
-    if (toRemove.length > 0) {
-      await prisma.rolePermission.deleteMany({
-        where: { roleId: role.id, permissionId: { in: toRemove } },
-      })
-    }
-
-    console.log(`  ✓ ${def.name.padEnd(22)} → ${targetPermIds.length} yetki (+${toAdd.length} / -${toRemove.length})`)
+    console.log(`✅ Initial RolePermission bootstrap tamam: ${totalCreated} kayıt`)
+  } else {
+    console.log(
+      `ℹ️ RolePermission tablosu dolu (${rolePermCount} kayıt) — UI yönetiminde, seed dokunmadı.`
+    )
+    console.log(
+      '   Yeni permission key veya rol değişiklikleri için /settings/permissions matris UI üzerinden yapın.'
+    )
   }
 
-  console.log('✅ Sistem rolleri hazır.')
+  console.log('✅ Sistem rolleri seed (bootstrap-only) tamamlandı.')
 }
 
 main()

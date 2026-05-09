@@ -37,7 +37,14 @@ const INITIAL_MAPPINGS: MappingDef[] = [
 ]
 
 async function main() {
-  console.log('🔗 LDAP grup → Role mapping seed başlıyor...')
+  console.log('🔗 LDAP grup → Role mapping seed (bootstrap-only) başlıyor...')
+
+  // PR-SEED-DRIFT: Y4b mapping UI artık tek doğruluk kaynağı.
+  // Mevcut mapping kaydına dokunma (UI'dan değiştirilmiş roleId veya
+  // isActive=false korunur). Sadece eksik kayıtlar eklenir.
+
+  let created = 0
+  let skipped = 0
 
   for (const def of INITIAL_MAPPINGS) {
     const role = await prisma.role.findUnique({
@@ -51,20 +58,11 @@ async function main() {
 
     const existing = await prisma.ldapGroupRoleMap.findUnique({
       where: { groupCN: def.groupCN },
-      select: { id: true, roleId: true, isActive: true },
+      select: { id: true },
     })
 
     if (existing) {
-      // Idempotent: aynı grupCN için kayıt varsa role'ü ve isActive'i güncelle
-      await prisma.ldapGroupRoleMap.update({
-        where: { groupCN: def.groupCN },
-        data: {
-          roleId: role.id,
-          isActive: true,
-          description: def.description,
-        },
-      })
-      console.log(`  ✓ ${def.groupCN.padEnd(20)} → ${role.name} (güncellendi)`)
+      skipped++
     } else {
       await prisma.ldapGroupRoleMap.create({
         data: {
@@ -74,11 +72,14 @@ async function main() {
           description: def.description,
         },
       })
-      console.log(`  ✓ ${def.groupCN.padEnd(20)} → ${role.name} (yeni)`)
+      created++
+      console.log(`  ✓ ${def.groupCN.padEnd(20)} → ${role.name}`)
     }
   }
 
-  console.log('✅ Mapping seed tamamlandı.')
+  console.log(
+    `✅ Mapping seed tamam: +${created} oluşturuldu, ${skipped} mevcut korundu (UI yönetiminde).`
+  )
 }
 
 main()

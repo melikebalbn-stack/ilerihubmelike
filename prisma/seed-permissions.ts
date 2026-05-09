@@ -11,10 +11,15 @@ const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter })
 
 async function main() {
-  console.log('🔐 Permission seed başlıyor...')
+  console.log('🔐 Permission seed (bootstrap-only) başlıyor...')
+
+  // PR-SEED-DRIFT: Bootstrap-only pattern
+  // - Permission yoksa create, varsa DOKUNMA
+  // - module/description code-driven; kod değişirse manuel migration gerekir
+  // - Orphaned permission'lar uyarı olarak listelenir, otomatik silinmez
 
   let created = 0
-  let updated = 0
+  let skipped = 0
 
   for (const key of Object.values(PERMISSION_KEYS)) {
     const module = key.split('.')[0]
@@ -23,16 +28,13 @@ async function main() {
     const existing = await prisma.permission.findUnique({ where: { key } })
 
     if (existing) {
-      await prisma.permission.update({
-        where: { key },
-        data: { module, description, isSystem: true },
-      })
-      updated++
+      skipped++
     } else {
       await prisma.permission.create({
         data: { key, module, description, isSystem: true },
       })
       created++
+      console.log(`  ✓ ${key} (${description})`)
     }
   }
 
@@ -41,9 +43,12 @@ async function main() {
   const definedKeys = new Set<string>(Object.values(PERMISSION_KEYS) as string[])
   const orphaned = allInDb.filter(p => p.isSystem && !definedKeys.has(p.key))
 
-  console.log(`✅ Oluşturuldu: ${created}, güncellendi: ${updated}`)
+  console.log(`✅ Oluşturuldu: ${created}, mevcut korundu: ${skipped}`)
   if (orphaned.length > 0) {
-    console.warn(`⚠️ DB'de var ama kodda yok (manuel temizlik gerekebilir):`, orphaned.map(o => o.key))
+    console.warn(
+      `⚠️ DB'de var ama kodda yok (otomatik silinmez, manuel temizlik gerekirse):`,
+      orphaned.map(o => o.key)
+    )
   }
 }
 

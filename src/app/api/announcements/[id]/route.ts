@@ -14,13 +14,22 @@ export async function GET(
 
     const { id } = await params
     const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
     const userDepartment = user.department
 
     // PR-Y10: saf RBAC, duyuru.admin permission (admin tüm duyuruları görür,
-    // normal user sadece audience'a uygun olanı). userRole audience filter
-    // için hâlâ gerekli (Announcement.targetRoles eski UserRoleEnum saklıyor).
+    // normal user sadece audience'a uygun olanı).
     const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
+
+    // PR-DUYURU-TARGETROLES: targetRoles Role.slug saklıyor (text[]).
+    // User'ın tüm slug'larını user_role tablosundan tek seferde çek.
+    let userSlugs: string[] = []
+    if (!isAdmin) {
+      const userRoleRows = await prisma.userRole.findMany({
+        where: { userId: user.id },
+        select: { role: { select: { slug: true } } },
+      })
+      userSlugs = userRoleRows.map((r) => r.role.slug)
+    }
 
     const announcement = await prisma.announcement.findUnique({
       where: { id },
@@ -77,7 +86,7 @@ export async function GET(
       }
 
       if (announcement.targetType === 'ROLES' &&
-          !announcement.targetRoles.includes(userRole)) {
+          !announcement.targetRoles.some(slug => userSlugs.includes(slug))) {
         return NextResponse.json({ error: 'Bu duyuru sizin rolunuz icin degil' }, { status: 403 })
       }
 

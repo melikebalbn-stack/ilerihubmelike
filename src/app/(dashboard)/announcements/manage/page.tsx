@@ -143,6 +143,8 @@ export default function AnnouncementManagePage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [surveys, setSurveys] = useState<Survey[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  // PR-DUYURU-TARGETROLES: targetRoles artık Role.slug; rol listesi /api'den çekilir
+  const [roles, setRoles] = useState<Array<{ id: string; slug: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -212,11 +214,12 @@ export default function AnnouncementManagePage() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [announcementsRes, categoriesRes, surveysRes, departmentsRes] = await Promise.all([
+      const [announcementsRes, categoriesRes, surveysRes, departmentsRes, rolesRes] = await Promise.all([
         fetch("/api/announcements?limit=100"),
         fetch("/api/announcements/categories"),
         fetch("/api/surveys?limit=50"),
-        fetch("/api/departments")
+        fetch("/api/departments"),
+        fetch("/api/announcements/roles"),
       ])
 
       if (announcementsRes.ok) {
@@ -232,6 +235,10 @@ export default function AnnouncementManagePage() {
       }
       if (departmentsRes.ok) {
         setDepartments(await departmentsRes.json())
+      }
+      if (rolesRes.ok) {
+        const data = await rolesRes.json()
+        setRoles(data.roles || [])
       }
     } catch (error) {
       console.error("Veri yüklenirken hata:", error)
@@ -837,27 +844,28 @@ export default function AnnouncementManagePage() {
                     <div className="md:col-span-2 space-y-2">
                       <Label>Roller</Label>
                       <div className="flex flex-wrap gap-2">
-                        {["ADMIN", "HR_MANAGER", "QUALITY_MANAGER", "IT_MANAGER", "DEPT_HEAD", "SUPERVISOR", "EMPLOYEE"].map((role) => (
+                        {roles.map((role) => (
                           <Badge
-                            key={role}
-                            variant={formData.targetRoles.includes(role) ? "default" : "outline"}
+                            key={role.slug}
+                            variant={formData.targetRoles.includes(role.slug) ? "default" : "outline"}
                             className="cursor-pointer"
                             onClick={() => {
                               const current = formData.targetRoles
-                              if (current.includes(role)) {
+                              if (current.includes(role.slug)) {
                                 setFormData({
                                   ...formData,
-                                  targetRoles: current.filter(r => r !== role)
+                                  targetRoles: current.filter(r => r !== role.slug)
                                 })
                               } else {
                                 setFormData({
                                   ...formData,
-                                  targetRoles: [...current, role]
+                                  targetRoles: [...current, role.slug]
                                 })
                               }
                             }}
+                            title={role.slug}
                           >
-                            {role}
+                            {role.name}
                           </Badge>
                         ))}
                       </div>

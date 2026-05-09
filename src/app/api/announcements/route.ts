@@ -18,14 +18,22 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
 
     const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
     const userDepartment = user.department
 
     // PR-Y10: saf RBAC, duyuru.admin permission. Admin tüm duyuruları görür
     // (visibility filter bypass), normal user sadece audience'a uygun olanı.
-    // userRole audience filter için hâlâ gerekli (Announcement.targetRoles
-    // eski UserRoleEnum string'leri saklıyor — Faz 2 schema migration konusu).
     const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
+
+    // PR-DUYURU-TARGETROLES: targetRoles artık Role.slug saklıyor; user'ın
+    // tüm slug'larını user_role tablosundan tek seferde çek.
+    let userSlugs: string[] = []
+    if (!isAdmin) {
+      const userRoleRows = await prisma.userRole.findMany({
+        where: { userId: user.id },
+        select: { role: { select: { slug: true } } },
+      })
+      userSlugs = userRoleRows.map((r) => r.role.slug)
+    }
 
     // Filtre oluştur - AND array kullanarak tüm filtreleri güvenli şekilde birleştir
     const andConditions: Record<string, unknown>[] = []
@@ -37,8 +45,9 @@ export async function GET(request: NextRequest) {
         OR: [
           { targetType: 'ALL' },
           { targetType: 'DEPARTMENTS', targetDepartments: { has: userDepartment } },
-          { targetType: 'ROLES', targetRoles: { has: userRole } }
-        ]
+          // targetRoles ∩ userSlugs ≠ ∅ — Postgres array overlap (hasSome)
+          { targetType: 'ROLES', targetRoles: { hasSome: userSlugs } },
+        ],
       })
       // Süresi dolmuş duyuruları gösterme
       andConditions.push({

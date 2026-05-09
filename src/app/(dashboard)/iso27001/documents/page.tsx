@@ -72,16 +72,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { FileUp, Info } from "lucide-react"
 
-const BGYS_ALLOWED_ROLES = ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "QUALITY_MANAGER"]
-const BGYS_ALLOWED_EMAILS = [
-  "melike.balaban@ilerigroup.com",
-  "melih.dilben@ilerigroup.com",
-]
-const isBgysSorumlu = (email?: string | null, role?: string | null) => {
-  if (!email) return false
-  if (BGYS_ALLOWED_EMAILS.includes(email.toLowerCase())) return true
-  return BGYS_ALLOWED_ROLES.includes(role ?? "")
-}
 
 // Kategori bilgileri
 const CATEGORIES = [
@@ -201,8 +191,10 @@ export default function Iso27001DocumentsPage() {
   const currentUser = session?.user as
     | { email?: string | null; role?: string | null; id?: string }
     | undefined
+  // PR-Y12: saf RBAC, bgys.audit.manage permission. İnline check (server-only
+  // helper'ı client'tan import edemiyoruz, helper sadece backend için).
   const canManageVersions = (doc: Document) =>
-    isBgysSorumlu(currentUser?.email, currentUser?.role) ||
+    (session?.user?.permissions?.includes("bgys.audit.manage") ?? false) ||
     currentUser?.email === doc.ownerEmail
 
   // İmza state

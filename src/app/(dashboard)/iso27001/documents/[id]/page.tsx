@@ -59,16 +59,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   OTHER: "Diğer",
 }
 
-const BGYS_ALLOWED_ROLES = ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "QUALITY_MANAGER"]
-const BGYS_ALLOWED_EMAILS = [
-  "melike.balaban@ilerigroup.com",
-  "melih.dilben@ilerigroup.com",
-]
-const isBgysSorumlu = (email?: string | null, role?: string | null) => {
-  if (!email) return false
-  if (BGYS_ALLOWED_EMAILS.includes(email.toLowerCase())) return true
-  return BGYS_ALLOWED_ROLES.includes(role ?? "")
-}
+// PR-Y12: inline helper kopyası kaldırıldı, saf RBAC inline check kullanılıyor
 
 const formatBytes = (bytes: number | null) => {
   if (!bytes) return "-"
@@ -106,9 +97,11 @@ export default async function DocumentDetailPage({
 
   const status = STATUS_BADGE[doc.status] ?? STATUS_BADGE.DRAFT
   const userEmail = session.user.email
-  const userRole = (session.user as { role?: string }).role
+  const userPerms = (session.user as { permissions?: string[] }).permissions
+  // PR-Y12: saf RBAC, bgys.audit.manage permission
   const canManage =
-    isBgysSorumlu(userEmail, userRole) || userEmail === doc.ownerEmail
+    (userPerms?.includes("bgys.audit.manage") ?? false) ||
+    userEmail === doc.ownerEmail
 
   return (
     <div className="space-y-6 p-6 max-w-6xl mx-auto">

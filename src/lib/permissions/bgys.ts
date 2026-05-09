@@ -6,40 +6,31 @@ import type { Session } from 'next-auth'
 import type { User } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 
-// Role enum (Role): SUPER_ADMIN, ADMIN, HR_MANAGER, QUALITY_MANAGER,
-// IT_MANAGER, DEPT_HEAD, SUPERVISOR, EMPLOYEE
-// BGYS_SORUMLUSU rolü henüz Role enum'da yok — IT_MANAGER + ADMIN setiyle
-// kapsayıp ayrıca email allowlist'i destekliyoruz.
-const BGYS_ALLOWED_ROLES = [
-  'SUPER_ADMIN',
-  'ADMIN',
-  'IT_MANAGER',
-  'QUALITY_MANAGER',
-] as const
-
-// BGYS sorumluluğu rol-bazlı değil, kişi-bazlı verilebilir.
-// Sistem Geliştirme Mühendisi gibi BGYS işini yürüten ama Role enum'da
-// IT_MANAGER olmayan kullanıcılar için.
-// PR-EMAIL-NORMALIZE sonrası tüm DB email'ler lowercase, bu liste de lowercase.
-const BGYS_ALLOWED_EMAILS = [
-  'melike.balaban@ilerigroup.com',
-  'melih.dilben@ilerigroup.com',
-]
+/**
+ * PR-Y12 öncesi pattern: enum + hardcoded email allowlist.
+ * Şu an: saf RBAC. bgys-sorumlusu slug'ında olan + super-admin geçer.
+ *
+ * Y3a sırasında bgys-sorumlusu slug'ı oluşturuldu ve Melih + Melike'ye
+ * atandı. Hardcoded email + enum legacy fallback artık gerekmiyor —
+ * tüm aktif BGYS kullanıcıları zaten bgys-sorumlusu+super-admin slug'ında.
+ *
+ * Y3c matrisinde bgys.audit.manage permission'ı bgys-sorumlusu + super-admin'de.
+ * Bu permission "BGYS Sorumlusu yetkisi" semantiğini temsil eder (en üst yetki —
+ * doküman approve, risk yönetimi, audit yönetimi hep bunu içerir).
+ */
 
 export type RequireBgysSorumluResult =
   | { session: Session; user: User; error: null }
   | { session: null; user: null; error: NextResponse }
 
 /**
- * BGYS Sorumlusu auth helper.
+ * BGYS Sorumlusu auth helper (server).
  *
- * - Önce requireUser ile auth + DB user lookup yapar (id-based, casing-safe)
- * - Sonra rol VEYA hardcoded email listesi kontrolü
+ * Saf RBAC: bgys.audit.manage permission'ı kontrol edilir.
  *
- * Caller pattern (PR-Y2.5 standard):
- *   const { user, error } = await requireBgysSorumlu()
+ * Caller pattern (Y2.5 standard, imza KORUNDU):
+ *   const { session, user, error } = await requireBgysSorumlu()
  *   if (error) return error
- *   // user.role, user.email DB'den taze (PR-EMAIL-NORMALIZE sonrası lowercase)
  */
 export async function requireBgysSorumlu(): Promise<RequireBgysSorumluResult> {
   const result = await requireUser()
@@ -48,10 +39,7 @@ export async function requireBgysSorumlu(): Promise<RequireBgysSorumluResult> {
   }
   const { session, user } = result
 
-  const isAllowedRole = (BGYS_ALLOWED_ROLES as readonly string[]).includes(user.role)
-  const isAllowedEmail = BGYS_ALLOWED_EMAILS.includes(user.email)
-
-  if (!isAllowedRole && !isAllowedEmail) {
+  if (!session.user.permissions?.includes('bgys.audit.manage')) {
     return {
       session: null,
       user: null,
@@ -66,15 +54,11 @@ export async function requireBgysSorumlu(): Promise<RequireBgysSorumluResult> {
 }
 
 /**
- * Synchronous BGYS check (mevcut session/user objesi varsa).
- * Helper olmayan kontekstler için (örn. UI conditional render).
+ * Synchronous BGYS check (frontend conditional render için).
+ *
+ * PR-Y12 sonrası imza değişti: (email, role) → (permissions).
+ * Eski tüketici (documents/page.tsx) bu PR'da güncellendi.
  */
-export function isBgysSorumlu(
-  email: string | null | undefined,
-  role: string | null | undefined,
-): boolean {
-  if (!email) return false
-  const normalized = email.toLowerCase()
-  if (BGYS_ALLOWED_EMAILS.includes(normalized)) return true
-  return (BGYS_ALLOWED_ROLES as readonly string[]).includes(role ?? '')
+export function isBgysSorumlu(permissions?: string[] | null): boolean {
+  return permissions?.includes('bgys.audit.manage') ?? false
 }

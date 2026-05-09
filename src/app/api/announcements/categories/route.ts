@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
 
@@ -32,16 +31,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     // PR-Y2.5-announcements: requireUser — admin check için DB user gerekli
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
 
-    const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
-
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
-
-    if (!isAdmin) {
+    // PR-Y10: duyuru.admin permission
+    if (!session.user.permissions?.includes('duyuru.admin')) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })
     }
 
@@ -82,16 +76,11 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     // PR-Y2.5-announcements: requireUser
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
 
-    const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
-
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
-
-    if (!isAdmin) {
+    // PR-Y10: duyuru.admin permission
+    if (!session.user.permissions?.includes('duyuru.admin')) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })
     }
 
@@ -126,16 +115,11 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     // PR-Y2.5-announcements: requireUser
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
 
-    const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
-
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
-
-    if (!isAdmin) {
+    // PR-Y10: duyuru.admin permission
+    if (!session.user.permissions?.includes('duyuru.admin')) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })
     }
 

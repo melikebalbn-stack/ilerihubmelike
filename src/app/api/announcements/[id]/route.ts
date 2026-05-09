@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tek duyuru getir
@@ -10,7 +9,7 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-announcements: requireUser → user.email/role/department (DB taze)
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -18,8 +17,10 @@ export async function GET(
     const userRole = user.role || 'EMPLOYEE'
     const userDepartment = user.department
 
-    // FIX #4: Hardcoded email kaldırıldı, isAdmin utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
+    // PR-Y10: saf RBAC, duyuru.admin permission (admin tüm duyuruları görür,
+    // normal user sadece audience'a uygun olanı). userRole audience filter
+    // için hâlâ gerekli (Announcement.targetRoles eski UserRoleEnum saklıyor).
+    const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     const announcement = await prisma.announcement.findUnique({
       where: { id },
@@ -163,17 +164,14 @@ export async function PUT(
 ) {
   try {
     // PR-Y2.5-announcements: requireUser
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
     const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
 
-    // FIX #4: Hardcoded email kaldırıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
-
-    if (!isAdmin) {
+    // PR-Y10: duyuru.admin permission (admin slug + super-admin)
+    if (!session.user.permissions?.includes('duyuru.admin')) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })
     }
 
@@ -258,17 +256,13 @@ export async function DELETE(
 ) {
   try {
     // PR-Y2.5-announcements: requireUser
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
-    const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
 
-    // FIX #4: Hardcoded email kaldırıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
-
-    if (!isAdmin) {
+    // PR-Y10: duyuru.admin permission
+    if (!session.user.permissions?.includes('duyuru.admin')) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })
     }
 

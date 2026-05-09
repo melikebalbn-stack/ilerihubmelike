@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 import { requireUser } from '@/lib/auth/require-user'
 
 // POST - Yorum ekle
@@ -71,12 +70,11 @@ export async function DELETE(
 ) {
   try {
     // PR-Y2.5-announcements: requireUser
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
     const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
 
     const { searchParams } = new URL(request.url)
     const commentId = searchParams.get('commentId')
@@ -94,9 +92,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Yorum bulunamadi' }, { status: 404 })
     }
 
-    // FIX #4: Merkezi utility kullanıldı
-    // Yetki kontrolü - Sadece yorum sahibi veya admin silebilir
-    const isAdmin = checkIsAdmin(userEmail, userRole)
+    // PR-Y10: Yorum sahibi VEYA duyuru.admin yetkili
+    const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     if (comment.authorEmail !== userEmail && !isAdmin) {
       return NextResponse.json({ error: 'Bu yorumu silme yetkiniz yok' }, { status: 403 })

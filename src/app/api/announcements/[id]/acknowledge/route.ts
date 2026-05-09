@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 import { requireUser } from '@/lib/auth/require-user'
 
 // POST - Okundu onayı ver
@@ -66,17 +65,13 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-announcements: requireUser
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
-    const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
 
-    // FIX #4: Merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
-
-    if (!isAdmin) {
+    // PR-Y10: duyuru.admin permission (okundu istatistikleri admin işidir)
+    if (!session.user.permissions?.includes('duyuru.admin')) {
       return NextResponse.json({ error: 'Bu islem icin yetkiniz yok' }, { status: 403 })
     }
 

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { isAdmin as checkIsAdmin } from '@/lib/auth-utils'
 import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Duyuruları listele
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-announcements: requireUser → user.email/role/department (DB taze)
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { searchParams } = new URL(request.url)
@@ -22,8 +21,11 @@ export async function GET(request: NextRequest) {
     const userRole = user.role || 'EMPLOYEE'
     const userDepartment = user.department
 
-    // FIX #4: Yönetici kontrolü - merkezi utility kullanıldı
-    const isAdmin = checkIsAdmin(userEmail, userRole)
+    // PR-Y10: saf RBAC, duyuru.admin permission. Admin tüm duyuruları görür
+    // (visibility filter bypass), normal user sadece audience'a uygun olanı.
+    // userRole audience filter için hâlâ gerekli (Announcement.targetRoles
+    // eski UserRoleEnum string'leri saklıyor — Faz 2 schema migration konusu).
+    const isAdmin = session.user.permissions?.includes('duyuru.admin') ?? false
 
     // Filtre oluştur - AND array kullanarak tüm filtreleri güvenli şekilde birleştir
     const andConditions: Record<string, unknown>[] = []
@@ -149,18 +151,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // PR-Y2.5-announcements: requireUser → user.role (DB taze, JWT stale değil)
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const userEmail = user.email
-    const userRole = user.role || 'EMPLOYEE'
 
-    // Yönetici kontrolü
-    const isAdmin = userEmail === 'melih.dilben@ilerigroup.com' ||
-                    userRole === 'ADMIN' ||
-                    userRole === 'SUPER_ADMIN'
-
-    if (!isAdmin) {
+    // PR-Y10: duyuru.create permission (HR Yöneticisi de yetkilendirildi).
+    if (!session.user.permissions?.includes('duyuru.create')) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

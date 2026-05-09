@@ -127,10 +127,8 @@ export default function AnnouncementDetailPage({
   const [submittingSurvey, setSubmittingSurvey] = useState(false)
 
   const userEmail = session?.user?.email?.toLowerCase() || ""
-  const userRole = session?.user?.role || "EMPLOYEE"
-  const isAdmin = userEmail === "melih.dilben@ilerigroup.com" ||
-                  userRole === "ADMIN" ||
-                  userRole === "SUPER_ADMIN"
+  // PR-Y10: saf RBAC, duyuru.admin permission. Eski hardcoded email + enum kaldırıldı.
+  const isAdmin = session?.user?.permissions?.includes("duyuru.admin") ?? false
 
   const fetchAnnouncement = useCallback(async () => {
     setLoading(true)

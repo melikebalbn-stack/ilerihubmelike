@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { restoreILERIHub, restoreAkademi, generateBackupName, backupILERIHub, backupAkademi } from '@/lib/backup-service'
 import * as fs from 'fs'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
 
 // POST - Yedeği Geri Yükle
 export async function POST(
@@ -125,6 +126,21 @@ export async function POST(
         preRestoreBackup: preRestoreBackupName
       }, { status: 500 })
     }
+
+    // PR-AUDIT-LOG-EXPANSION: kritik operasyon — restore audit
+    await logAuditEvent({
+      action: 'BACKUP_RESTORED',
+      actorId: user.id,
+      targetType: 'BACKUP',
+      targetId: backup.id,
+      details: {
+        actorEmail: user.email,
+        backupName: backup.backupName,
+        projectName: backup.projectName,
+        backupCreatedAt: backup.createdAt.toISOString(),
+        preRestoreBackup: preRestoreBackupName,
+      },
+    })
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,6 +89,19 @@ export async function GET(
       return NextResponse.json({ error: 'Personel bulunamadı' }, { status: 404 })
     }
 
+    // PR-AUDIT-LOG-EXPANSION (KVKK): kişisel veriye erişim audit
+    // Hassas alan KAYDEDİLMEZ — sadece referans id + sicilNo
+    await logAuditEvent({
+      action: 'PERSONNEL_DETAIL_VIEWED',
+      actorId: user.id,
+      targetType: 'PERSONNEL',
+      targetId: personnel.id,
+      details: {
+        actorEmail: user.email,
+        sicilNo: personnel.sicilNo,
+      },
+    })
+
     return NextResponse.json(personnel)
   } catch (error) {
     console.error('Personel detayı alınırken hata:', error)
@@ -147,6 +161,19 @@ export async function PUT(
     const updatedPersonnel = await prisma.personnel.update({
       where: { id: personnelId },
       data: body,
+    })
+
+    // PR-AUDIT-LOG-EXPANSION (KVKK)
+    await logAuditEvent({
+      action: 'PERSONNEL_UPDATED',
+      actorId: user.id,
+      targetType: 'PERSONNEL',
+      targetId: personnelId,
+      details: {
+        actorEmail: user.email,
+        sicilNo: existing.sicilNo,
+        changedFieldKeys: Object.keys(body),
+      },
     })
 
     return NextResponse.json(updatedPersonnel)

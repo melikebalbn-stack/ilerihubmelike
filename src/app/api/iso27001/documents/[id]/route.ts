@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireSession } from "@/lib/auth/require-session"
+import { logAuditEvent } from "@/lib/audit-log"
 
 // Tek doküman detayı
 export async function GET(
@@ -52,7 +53,7 @@ export async function PATCH(
 ) {
   try {
     // PR-Y2.5-iso27001-A: requireSession
-    const { error } = await requireSession()
+    const { session, userId, error } = await requireSession()
     if (error) return error
 
     const { id } = await params
@@ -81,6 +82,28 @@ export async function PATCH(
       },
     })
 
+    // PR-AUDIT-LOG-EXPANSION
+    await logAuditEvent({
+      action: 'BGYS_DOCUMENT_UPDATED',
+      actorId: userId,
+      targetType: 'BGYS_DOCUMENT',
+      targetId: id,
+      details: {
+        actorEmail: session.user.email,
+        documentNumber: document.documentNumber,
+        before: {
+          title: document.title,
+          category: document.category,
+          status: document.status,
+        },
+        after: {
+          title: updated.title,
+          category: updated.category,
+          status: updated.status,
+        },
+      },
+    })
+
     return NextResponse.json({
       success: true,
       document: updated,
@@ -102,7 +125,7 @@ export async function DELETE(
 ) {
   try {
     // PR-Y2.5-iso27001-A: requireSession
-    const { error } = await requireSession()
+    const { session, userId, error } = await requireSession()
     if (error) return error
 
     const { id } = await params
@@ -121,6 +144,22 @@ export async function DELETE(
       data: {
         isActive: false,
         status: "ARCHIVED",
+      },
+    })
+
+    // PR-AUDIT-LOG-EXPANSION (soft delete = ARCHIVED)
+    await logAuditEvent({
+      action: 'BGYS_DOCUMENT_DELETED',
+      actorId: userId,
+      targetType: 'BGYS_DOCUMENT',
+      targetId: id,
+      details: {
+        actorEmail: session.user.email,
+        documentNumber: document.documentNumber,
+        title: document.title,
+        category: document.category,
+        version: document.version,
+        softDelete: true,
       },
     })
 

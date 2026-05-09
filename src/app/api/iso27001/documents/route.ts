@@ -6,6 +6,7 @@ import path from "path"
 import crypto from "crypto"
 import { requireSession } from "@/lib/auth/require-session"
 import { requireUser } from "@/lib/auth/require-user"
+import { logAuditEvent } from "@/lib/audit-log"
 
 // Doküman listesi
 export async function GET(request: NextRequest) {
@@ -198,6 +199,24 @@ export async function POST(request: NextRequest) {
     })
 
     log("db record created", { id: document.id })
+
+    // PR-AUDIT-LOG-EXPANSION: ISO 27001 doküman audit
+    await logAuditEvent({
+      action: 'BGYS_DOCUMENT_CREATED',
+      actorId: user.id,
+      targetType: 'BGYS_DOCUMENT',
+      targetId: document.id,
+      details: {
+        actorEmail: user.email,
+        documentNumber: document.documentNumber,
+        title: document.title,
+        category: document.category,
+        version: document.version,
+        clause: document.clause,
+        controlId: document.controlId,
+      },
+    })
+
     return NextResponse.json({
       success: true,
       document,

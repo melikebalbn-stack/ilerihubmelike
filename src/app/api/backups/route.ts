@@ -10,6 +10,7 @@ import {
   PROJECT_CONFIGS
 } from '@/lib/backup-service'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
 
 // GET - Yedek Listesi
 export async function GET(request: NextRequest) {
@@ -92,6 +93,21 @@ export async function POST(request: NextRequest) {
 
     // Yedekleme işlemini başlat (arka planda)
     processBackup(backupLog.id, projectName, backupName, includeDatabase)
+
+    // PR-AUDIT-LOG-EXPANSION
+    await logAuditEvent({
+      action: 'BACKUP_CREATED',
+      actorId: user.id,
+      targetType: 'BACKUP',
+      targetId: backupLog.id,
+      details: {
+        actorEmail: user.email,
+        backupName,
+        projectName,
+        includeDatabase,
+        backupType: 'MANUAL',
+      },
+    })
 
     return NextResponse.json({
       message: 'Yedekleme başlatıldı',

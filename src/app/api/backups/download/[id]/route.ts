@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as fs from 'fs'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
 
 // GET - Yedek Dosyasını İndir
 export async function GET(
@@ -39,6 +40,20 @@ export async function GET(
     // Dosyayı oku
     const fileBuffer = fs.readFileSync(backup.filePath)
     const fileStats = fs.statSync(backup.filePath)
+
+    // PR-AUDIT-LOG-EXPANSION
+    await logAuditEvent({
+      action: 'BACKUP_DOWNLOADED',
+      actorId: user.id,
+      targetType: 'BACKUP',
+      targetId: backup.id,
+      details: {
+        actorEmail: user.email,
+        backupName: backup.backupName,
+        fileSize: backup.fileSize.toString(),
+        backupType: backup.backupType,
+      },
+    })
 
     // Response oluştur
     const response = new NextResponse(fileBuffer)

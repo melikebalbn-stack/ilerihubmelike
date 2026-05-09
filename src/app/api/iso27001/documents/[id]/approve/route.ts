@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireUser } from "@/lib/auth/require-user"
+import { logAuditEvent } from "@/lib/audit-log"
 
 // Doküman onaylama
 export async function POST(
@@ -37,6 +38,21 @@ export async function POST(
         approvedById: user.id,
         approvedByName: user.name || user.email,
         approvedAt: new Date(),
+      },
+    })
+
+    // PR-AUDIT-LOG-EXPANSION: ISO 27001 denetim için onay zorunlu izlenir
+    await logAuditEvent({
+      action: 'BGYS_DOCUMENT_APPROVED',
+      actorId: user.id,
+      targetType: 'BGYS_DOCUMENT',
+      targetId: id,
+      details: {
+        actorEmail: user.email,
+        documentNumber: document.documentNumber,
+        title: document.title,
+        version: document.version,
+        previousStatus: document.status,
       },
     })
 

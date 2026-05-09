@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
 import {
   KAN_GRUBU_LABELS,
   CINSIYET_LABELS,
@@ -233,6 +234,21 @@ export async function GET(request: NextRequest) {
     worksheet['!cols'] = colWidths
 
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+
+    // PR-AUDIT-LOG-EXPANSION (KVKK): toplu kişisel veri export'u kritik
+    // Hassas alan KAYDEDİLMEZ — sadece kapsam ve filtre özeti
+    await logAuditEvent({
+      action: 'PERSONNEL_EXPORTED',
+      actorId: user.id,
+      targetType: 'PERSONNEL',
+      details: {
+        actorEmail: user.email,
+        recordCount: personnel.length,
+        includeSensitive,
+        includeBank,
+        filters: { bolum, yakaRengi, aktif, search: search ? '<filtered>' : null },
+      },
+    })
 
     return new NextResponse(buffer, {
       status: 200,

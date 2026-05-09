@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // GET - IT Raporları (Sadece IT Manager erişebilir)
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-tickets: requireUser → user.role
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    // Sadece IT Manager veya Admin erişebilir
-    if (user.role !== 'IT_MANAGER' && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    // PR-Y9a: helpdesk-auth dual-check (permission önceliği + legacy fallback)
+    if (!isHelpdeskStaff(user.role, user.department, session.user.permissions)) {
       return NextResponse.json({ error: 'Bu rapora erişim yetkiniz yok' }, { status: 403 })
     }
 

@@ -1,20 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-
-// IT Ekibi kontrolü
-function isITStaff(role: string, department: string | null): boolean {
-  const itRoles = ['IT_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-  if (itRoles.includes(role)) return true
-
-  if (department) {
-    const dept = department.toLowerCase()
-    if (dept.includes('sistem') || dept.includes('bilgi teknoloji') || dept.includes('information')) {
-      return true
-    }
-  }
-  return false
-}
+import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // GET - Ticket detayı
 export async function GET(
@@ -23,11 +10,11 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-tickets: requireUser → user.role/department (DB taze)
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
-    const userIsITStaff = isITStaff(user.role, user.department || null)
+    const userIsITStaff = isHelpdeskStaff(user.role, user.department, session.user.permissions)
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
@@ -72,12 +59,12 @@ export async function PUT(
 ) {
   try {
     // PR-Y2.5-tickets: requireUser
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
     const body = await request.json()
-    const userIsITStaff = isITStaff(user.role, user.department || null)
+    const userIsITStaff = isHelpdeskStaff(user.role, user.department, session.user.permissions)
 
     const existingTicket = await prisma.ticket.findUnique({
       where: { id }
@@ -308,7 +295,7 @@ export async function DELETE(
 ) {
   try {
     // PR-Y2.5-tickets: requireUser → user.role
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     // Sadece admin silebilir

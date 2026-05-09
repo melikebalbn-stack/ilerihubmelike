@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // GET - Ticket istatistikleri
 export async function GET(request: NextRequest) {
@@ -13,18 +14,14 @@ export async function GET(request: NextRequest) {
     const viewMode = searchParams.get('viewMode') || 'all'
     const userEmail = user.email
     const userOu = (session.user.ou || '').toLowerCase()
-    const userDept = (user.department || '').toLowerCase()
     const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
 
-    // IT Ekibi kontrolü
-    const isITStaff = user.role === 'IT_MANAGER' ||
-      user.role === 'ADMIN' ||
-      user.role === 'SUPER_ADMIN' ||
-      userOu.includes('sistem') ||
-      userOu.includes('bilgi teknoloji') ||
-      userOu.includes('information') ||
-      userOu.includes('it') ||
-      (!userOu && (userDept.includes('sistem') || userDept.includes('bilgi teknoloji') || userDept.includes('information')))
+    // PR-Y9a: helpdesk-auth helper (dual-check tampon).
+    // userOu (LDAP-only) + user.department birlikte değerlendirilir; helper
+    // bunlardan birini "kalite/sistem/bilgi teknoloji" pattern ile match eder.
+    const isITStaff =
+      isHelpdeskStaff(user.role, user.department, session.user.permissions) ||
+      isHelpdeskStaff(user.role, userOu, session.user.permissions)
 
     // Temel filtre
     const baseWhere: Record<string, unknown> = { isActive: true }

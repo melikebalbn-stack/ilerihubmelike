@@ -2,20 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { dispatchTicketCreated } from '@/lib/ticket-notifications'
 import { requireUser } from '@/lib/auth/require-user'
-
-// IT Ekibi kontrolü
-function isITStaff(role: string, department: string | null): boolean {
-  const itRoles = ['IT_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-  if (itRoles.includes(role)) return true
-
-  if (department) {
-    const dept = department.toLowerCase()
-    if (dept.includes('sistem') || dept.includes('bilgi teknoloji') || dept.includes('information')) {
-      return true
-    }
-  }
-  return false
-}
+import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // Ticket numarası oluştur
 async function generateTicketNumber(): Promise<string> {
@@ -60,7 +47,7 @@ function calculateSLA(priority: string, createdAt: Date) {
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-tickets: requireUser → user.email/role/department (DB taze)
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { searchParams } = new URL(request.url)
@@ -74,7 +61,7 @@ export async function GET(request: NextRequest) {
     const userEmail = user.email
     const userRole = user.role
     const userDept = user.department || null
-    const userIsITStaff = isITStaff(userRole, userDept)
+    const userIsITStaff = isHelpdeskStaff(userRole, userDept, session.user.permissions)
 
     // Filtreler
     const where: Record<string, unknown> = {

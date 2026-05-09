@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { isHelpdeskStaff } from '@/lib/helpdesk-auth'
 
 // GET - Ticket yorumları
 export async function GET(
@@ -9,12 +10,13 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-tickets: requireUser → user.role
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id: ticketId } = await params
-    // FIX #18: IT_MANAGER da internal yorumları görebilir
-    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'IT_MANAGER'].includes(user.role || '')
+    // PR-Y9a: helpdesk-auth dual-check (permission önceliği + legacy fallback)
+    // Internal yorumları sadece IT staff görebilir.
+    const isAdmin = isHelpdeskStaff(user.role, user.department, session.user.permissions)
 
     const comments = await prisma.ticketComment.findMany({
       where: {
@@ -39,7 +41,7 @@ export async function POST(
 ) {
   try {
     // PR-Y2.5-tickets: requireUser
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id: ticketId } = await params
@@ -59,8 +61,8 @@ export async function POST(
       return NextResponse.json({ error: 'Ticket bulunamadı' }, { status: 404 })
     }
 
-    // Sadece admin/IT yöneticisi dahili not ekleyebilir
-    const isAdmin = ['ADMIN', 'SUPER_ADMIN', 'IT_MANAGER'].includes(user.role || '')
+    // PR-Y9a: Sadece IT staff dahili not ekleyebilir
+    const isAdmin = isHelpdeskStaff(user.role, user.department, session.user.permissions)
     const finalIsInternal = isAdmin ? isInternal : false
 
     // Yorum oluştur

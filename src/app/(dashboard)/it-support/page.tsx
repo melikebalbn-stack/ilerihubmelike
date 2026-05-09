@@ -48,6 +48,7 @@ import {
 import { useSession } from "next-auth/react"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
+import { isHelpdeskStaff } from "@/lib/helpdesk-auth"
 
 interface TicketCategory {
   id: string
@@ -131,19 +132,14 @@ export default function ITSupportPage() {
 
   const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN"
 
-  // IT Ekibi kontrolü: IT_MANAGER/ADMIN rolü VEYA Sistem Geliştirme OU'sunda
-  // ou alanı AD'den gelen güncel bilgidir, department eski kalabilir
-  const userOu = (session?.user?.ou || "").toLowerCase()
-  const userDept = (session?.user?.department || "").toLowerCase()
-  const isITStaff = session?.user?.role === "IT_MANAGER" ||
-    session?.user?.role === "ADMIN" ||
-    session?.user?.role === "SUPER_ADMIN" ||
-    userOu.includes("sistem") ||
-    userOu.includes("bilgi teknoloji") ||
-    userOu.includes("information") ||
-    userOu.includes("it") ||
-    // Geriye uyumluluk için department kontrolü (ou boşsa)
-    (!userOu && (userDept.includes("sistem") || userDept.includes("bilgi teknoloji") || userDept.includes("information")))
+  // PR-Y9a: helpdesk-auth helper (dual-check tampon — permission önceliği + legacy enum + departman/ou fallback).
+  // ou (LDAP-only güncel) ve department (DB) ayrı match'lenir.
+  const userOu = session?.user?.ou || null
+  const userDept = session?.user?.department || null
+  const userPerms = session?.user?.permissions
+  const isITStaff =
+    isHelpdeskStaff(session?.user?.role, userDept, userPerms) ||
+    isHelpdeskStaff(session?.user?.role, userOu, userPerms)
 
   // Verileri yukle
   const fetchData = async () => {

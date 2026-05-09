@@ -55,6 +55,7 @@ import {
   FlaskConical,
   Archive,
   ShieldCheck,
+  ServerCog,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -150,12 +151,16 @@ const sandboxMenuItems = [
   { name: "Nurgül Sandbox", icon: FlaskConical, href: "/sandbox/nurgul", roles: ["SUPER_ADMIN"], ownerEmail: "nurgul.tastan@ilerigroup.com" },
 ]
 
-// Alt menü öğeleri
-const bottomMenuItems = [
-  { name: "IT Destek", icon: Headphones, href: "/it-support", roles: ["*"] },
+// Sistem Geliştirme alt menüsü (admin yetkilendirme + AD)
+const sistemGelistirmeMenuItems = [
   { name: "Yetkilendirme", icon: ShieldCheck, href: "/settings/roller", roles: ["SUPER_ADMIN"] },
   { name: "AD Eşleşme", icon: ShieldCheck, href: "/settings/personnel-ad-reconcile", roles: ["SUPER_ADMIN"] },
   { name: "AD Grup Mapping", icon: ShieldCheck, href: "/settings/azure-ad-mapping", roles: ["SUPER_ADMIN"] },
+]
+
+// Alt menü öğeleri
+const bottomMenuItems = [
+  { name: "IT Destek", icon: Headphones, href: "/it-support", roles: ["*"] },
   { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN", "QUALITY_MANAGER"], departments: ["Kalite", "Laboratuvar"] },
 ]
 
@@ -174,6 +179,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [auditsOpen, setAuditsOpen] = useState(false)
   const [iso27001Open, setIso27001Open] = useState(false)
   const [formsOpen, setFormsOpen] = useState(false)
+  const [sistemGelistirmeOpen, setSistemGelistirmeOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
 
   // Pathname değiştiğinde ilgili menüyü otomatik aç
@@ -200,6 +206,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
     if (pathname.startsWith('/forms') || pathname.startsWith('/meetings')) {
       setFormsOpen(true)
+    }
+    if (
+      pathname.startsWith('/settings/roller') ||
+      pathname.startsWith('/settings/personnel-ad-reconcile') ||
+      pathname.startsWith('/settings/azure-ad-mapping') ||
+      pathname.startsWith('/settings/kullanici-rolleri') ||
+      pathname.startsWith('/settings/permissions')
+    ) {
+      setSistemGelistirmeOpen(true)
     }
   }, [pathname])
 
@@ -273,6 +288,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   const filteredStrategicHrItems = filterStrategicHrItems(strategicHrMenuItems)
   const filteredFormsItems = filterItems(formsMenuItems)
+  const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 
   // Sandbox: SUPER_ADMIN tümünü görür, diğerleri sadece kendi sandbox'ını
@@ -317,6 +333,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isFormsActive = formsMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname.startsWith('/forms/') || pathname.startsWith('/meetings/')
+
+  // Sistem Geliştirme menüsünde aktif sayfa var mı kontrol et
+  const isSistemGelistirmeActive = sistemGelistirmeMenuItems.some(item =>
+    pathname === item.href || pathname.startsWith(item.href + "/")
+  ) ||
+    pathname.startsWith('/settings/kullanici-rolleri') ||
+    pathname.startsWith('/settings/permissions')
 
   // Menü öğesi render fonksiyonu
   const renderMenuItem = (item: typeof mainMenuItems[0], indent = false) => {
@@ -636,6 +659,34 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {teknikOpen && (
               <div className="space-y-1 ml-4">
                 {filteredTeknikItems.map(item => renderMenuItem(item))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Sistem Geliştirme */}
+        {filteredSistemGelistirmeItems.length > 0 && (
+          <>
+            <button
+              onClick={() => setSistemGelistirmeOpen(!sistemGelistirmeOpen)}
+              className={cn(
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                isSistemGelistirmeActive
+                  ? "text-teal-300"
+                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+              )}
+            >
+              <ServerCog className="h-5 w-5" />
+              <span className="flex-1 text-left">Sistem Geliştirme</span>
+              {sistemGelistirmeOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+            {sistemGelistirmeOpen && (
+              <div className="space-y-1 ml-4">
+                {filteredSistemGelistirmeItems.map(item => renderMenuItem(item))}
               </div>
             )}
           </>

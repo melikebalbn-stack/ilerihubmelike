@@ -8,13 +8,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-forms: requireUser — approvedById = user.id, role check
-    const { user, error } = await requireUser()
+    // PR-Y2.5-forms: requireUser — approvedById = user.id
+    // PR-FORMS-RBAC: forms.approve permission'ı (eski enum check)
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    // Yönetici kontrolü
-    const allowedRoles = ['ADMIN', 'SUPER_ADMIN', 'DEPT_HEAD', 'SUPERVISOR']
-    if (!allowedRoles.includes(user.role)) {
+    if (!session.user.permissions?.includes('forms.approve')) {
       return NextResponse.json({ error: "Onay yetkiniz yok" }, { status: 403 })
     }
 

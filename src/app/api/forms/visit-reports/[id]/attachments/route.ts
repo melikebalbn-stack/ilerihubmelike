@@ -2,17 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 
-// PR-FORMS-ATTACHMENTS-OWNERSHIP: visit-reports route.ts ile aynı 7-rol filtresi
-// Backlog: PR-FORMS-MANAGEMENT-ROLES-EXTRACT (lib helper'a çıkar — şu an inline tutarlılık)
-const MANAGEMENT_ROLES = [
-  'SUPER_ADMIN',
-  'ADMIN',
-  'DEPT_HEAD',
-  'SUPERVISOR',
-  'HR_MANAGER',
-  'QUALITY_MANAGER',
-  'IT_MANAGER',
-]
+// PR-FORMS-RBAC: forms.admin permission'ı (eski MANAGEMENT_ROLES enum,
+// "PR-FORMS-MANAGEMENT-ROLES-EXTRACT" backlog item'ı bu PR ile kapandı)
 
 // POST - Save uploaded file references as attachments
 export async function POST(
@@ -20,10 +11,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-FORMS-ATTACHMENTS-OWNERSHIP: requireUser + MANAGEMENT_ROLES
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
-    if (!MANAGEMENT_ROLES.includes(user.role)) {
+    if (!session.user.permissions?.includes('forms.admin')) {
       return NextResponse.json(
         { error: 'Visit report ekine erişim için yönetim yetkisi gerekli' },
         { status: 403 }
@@ -70,10 +60,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-FORMS-ATTACHMENTS-OWNERSHIP: requireUser + MANAGEMENT_ROLES
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
-    if (!MANAGEMENT_ROLES.includes(user.role)) {
+    if (!session.user.permissions?.includes('forms.admin')) {
       return NextResponse.json(
         { error: 'Visit report ekine erişim için yönetim yetkisi gerekli' },
         { status: 403 }
@@ -95,10 +84,9 @@ export async function GET(
 // DELETE - Remove an attachment
 export async function DELETE(request: NextRequest) {
   try {
-    // PR-FORMS-ATTACHMENTS-OWNERSHIP: requireUser + MANAGEMENT_ROLES
-    const { user, error } = await requireUser()
+    const { session, error } = await requireUser()
     if (error) return error
-    if (!MANAGEMENT_ROLES.includes(user.role)) {
+    if (!session.user.permissions?.includes('forms.admin')) {
       return NextResponse.json(
         { error: 'Visit report ekine erişim için yönetim yetkisi gerekli' },
         { status: 403 }

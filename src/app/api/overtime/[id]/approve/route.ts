@@ -15,8 +15,9 @@ interface RouteParams {
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    // PR-Y2.5-overtime: requireUser — approverId = user.id, role check
-    const { user, error } = await requireUser()
+    // PR-Y2.5-overtime: requireUser — approverId = user.id
+    // PR-FORMS-RBAC: forms.admin override (mevcut approver-chain logic'i korunur)
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Yetki kontrolü: Atanmış kişi mi veya admin mi?
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     const isAssignedApprover = pendingApproval.approverId === user.id
 
     if (!isAdmin && !isAssignedApprover) {

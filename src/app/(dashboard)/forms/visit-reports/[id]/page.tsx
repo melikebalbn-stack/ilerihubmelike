@@ -290,7 +290,7 @@ export default function VisitReportDetailPage() {
 
   const ourPeople = report.participants.filter(p => p.company === "ILERI_GROUP")
   const theirPeople = report.participants.filter(p => p.company === "VISITED_COMPANY")
-  const canApprove = session?.user?.role && ["ADMIN", "SUPER_ADMIN", "DEPT_HEAD", "SUPERVISOR"].includes(session.user.role)
+  const canApprove = session?.user?.permissions?.includes("forms.approve") ?? false
 
   return (
     <>

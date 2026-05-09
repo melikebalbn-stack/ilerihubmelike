@@ -7,16 +7,7 @@ import { VisitReportForPDF } from "@/lib/pdf/visit-report-pdf-server"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 
-// Üst yönetim rolleri - tüm raporları görebilir/düzenleyebilir
-const MANAGEMENT_ROLES = [
-  'SUPER_ADMIN',
-  'ADMIN',
-  'DEPT_HEAD',
-  'SUPERVISOR',
-  'HR_MANAGER',
-  'QUALITY_MANAGER',
-  'IT_MANAGER'
-]
+// PR-FORMS-RBAC: forms.admin permission'ı (eski MANAGEMENT_ROLES enum)
 
 // GET - Tekil rapor getir
 export async function GET(
@@ -25,7 +16,7 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-forms: requireUser — yönetici/owner kontrolü
-    const { user: currentUser, error } = await requireUser()
+    const { session, user: currentUser, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -45,8 +36,8 @@ export async function GET(
       return NextResponse.json({ error: "Rapor bulunamadı" }, { status: 404 })
     }
 
-    // Yetki kontrolü: Üst yönetim veya raporu oluşturan kişi görebilir
-    const isManagement = currentUser.role && MANAGEMENT_ROLES.includes(currentUser.role)
+    // Yetki kontrolü: forms.admin veya raporu oluşturan kişi görebilir
+    const isManagement = session.user.permissions?.includes('forms.admin') ?? false
     const isOwner = report.createdById === currentUser.id
 
     if (!isManagement && !isOwner) {
@@ -67,7 +58,7 @@ export async function PUT(
 ) {
   try {
     // PR-Y2.5-forms: requireUser — yönetici/owner + email gönderimi user.name
-    const { user: currentUser, error } = await requireUser()
+    const { session, user: currentUser, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -81,8 +72,8 @@ export async function PUT(
       return NextResponse.json({ error: "Rapor bulunamadı" }, { status: 404 })
     }
 
-    // Yetki kontrolü: Üst yönetim veya raporu oluşturan kişi düzenleyebilir
-    const isManagement = currentUser.role && MANAGEMENT_ROLES.includes(currentUser.role)
+    // Yetki kontrolü: forms.admin veya raporu oluşturan kişi düzenleyebilir
+    const isManagement = session.user.permissions?.includes('forms.admin') ?? false
     const isOwner = existingReport.createdById === currentUser.id
 
     if (!isManagement && !isOwner) {
@@ -273,7 +264,7 @@ export async function DELETE(
 ) {
   try {
     // PR-Y2.5-forms: requireUser — yönetici/owner kontrolü
-    const { user: currentUser, error } = await requireUser()
+    const { session, user: currentUser, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -286,8 +277,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Rapor bulunamadı" }, { status: 404 })
     }
 
-    // Yetki kontrolü: Üst yönetim veya raporu oluşturan kişi silebilir
-    const isManagement = currentUser.role && MANAGEMENT_ROLES.includes(currentUser.role)
+    // Yetki kontrolü: forms.admin veya raporu oluşturan kişi silebilir
+    const isManagement = session.user.permissions?.includes('forms.admin') ?? false
     const isOwner = existingReport.createdById === currentUser.id
 
     if (!isManagement && !isOwner) {

@@ -28,22 +28,12 @@ async function generateReportNumber(): Promise<string> {
   return `${prefix}${nextNumber.toString().padStart(3, '0')}`
 }
 
-// Üst yönetim rolleri - tüm raporları görebilir
-const MANAGEMENT_ROLES = [
-  'SUPER_ADMIN',
-  'ADMIN',
-  'DEPT_HEAD',
-  'SUPERVISOR',
-  'HR_MANAGER',
-  'QUALITY_MANAGER',
-  'IT_MANAGER'
-]
-
 // GET - Ziyaret raporlarını listele
 export async function GET(request: NextRequest) {
   try {
-    // PR-Y2.5-forms: requireUser — rol bazlı filtreleme için role + user.id gerek
-    const { user: currentUser, error } = await requireUser()
+    // PR-Y2.5-forms: requireUser — rol bazlı filtreleme için user.id gerek
+    // PR-FORMS-RBAC: forms.admin permission'ı (eski MANAGEMENT_ROLES enum)
+    const { session, user: currentUser, error } = await requireUser()
     if (error) return error
 
     const { searchParams } = new URL(request.url)
@@ -55,9 +45,9 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = {}
 
     // Rol bazlı filtreleme:
-    // - Üst yönetim: tüm raporları görebilir
-    // - EMPLOYEE: sadece kendi raporlarını görebilir
-    const isManagement = currentUser.role && MANAGEMENT_ROLES.includes(currentUser.role)
+    // - forms.admin: tüm raporları görebilir
+    // - aksi: sadece kendi raporlarını görür (createdById)
+    const isManagement = session.user.permissions?.includes('forms.admin') ?? false
     if (!isManagement) {
       where.createdById = currentUser.id
     }

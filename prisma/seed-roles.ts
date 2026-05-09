@@ -39,6 +39,7 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
       P.ARSIV_VIEW, P.BGYS_DOCUMENT_VIEW,
       P.CALISAN_REHBERI_VIEW, P.HELPDESK_TICKET_VIEW,
       P.DUYURU_VIEW, P.DUYURU_CREATE, P.DUYURU_ADMIN,
+      P.FORMS_ADMIN, P.FORMS_APPROVE,
     ],
   },
   {
@@ -65,6 +66,7 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
       P.ADMIN_USERS_MANAGE, P.ADMIN_SYSTEM_MANAGE, P.ADMIN_BACKUP_MANAGE,
       P.ADMIN_AUDIT_VIEW,
       P.CALISAN_REHBERI_VIEW,
+      P.FORMS_ADMIN,
     ],
   },
   {
@@ -79,6 +81,7 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
       // Y5a Akademi adopt'unda Akademi admin sayfalarına erişimini koruyabilsin
       P.AKADEMI_ADMIN, P.AKADEMI_VIEW, P.AKADEMI_REPORT_VIEW,
       P.DUYURU_CREATE, P.DUYURU_VIEW,
+      P.FORMS_ADMIN,
     ],
   },
   {
@@ -91,6 +94,7 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
       P.YANGIN_ADMIN, P.YANGIN_QR_SCAN, P.YANGIN_VIEW,
       P.BGYS_DOCUMENT_VIEW,
       P.CALISAN_REHBERI_VIEW,
+      P.FORMS_ADMIN,
     ],
   },
   {
@@ -138,6 +142,7 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
       P.CALISAN_REHBERI_VIEW,
       P.DUYURU_VIEW,
       P.COSTANALYSIS_VIEW,
+      P.FORMS_ADMIN, P.FORMS_APPROVE,
     ],
   },
   {

@@ -13,9 +13,8 @@ interface RouteParams {
 async function checkPersonnelEditAccess(
   form: { status: string; createdById: string; approvals: { approverId: string | null; decision: string | null }[] },
   userId: string,
-  userRole: string
+  isAdmin: boolean
 ): Promise<{ allowed: boolean; reason?: string }> {
-  const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(userRole)
   const isCreator = form.createdById === userId
 
   // DRAFT: sadece form sahibi veya admin
@@ -42,8 +41,10 @@ async function checkPersonnelEditAccess(
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role check
-    const { user, error } = await requireUser()
+    // PR-FORMS-RBAC: forms.admin permission
+    const { session, user, error } = await requireUser()
     if (error) return error
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
 
     const { id } = await params
 
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     if (!form) return apiNotFound('Mesai formu bulunamadı')
 
-    const access = await checkPersonnelEditAccess(form, user.id, user.role)
+    const access = await checkPersonnelEditAccess(form, user.id, isAdmin)
     if (!access.allowed) return apiError(access.reason!, 403)
 
     const body = await request.json()
@@ -124,8 +125,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role check
-    const { user, error } = await requireUser()
+    // PR-FORMS-RBAC: forms.admin permission
+    const { session, user, error } = await requireUser()
     if (error) return error
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
 
     const { id } = await params
 
@@ -139,7 +142,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     if (!form) return apiNotFound('Mesai formu bulunamadı')
 
-    const access = await checkPersonnelEditAccess(form, user.id, user.role)
+    const access = await checkPersonnelEditAccess(form, user.id, isAdmin)
     if (!access.allowed) return apiError(access.reason!, 403)
 
     const body = await request.json()
@@ -206,7 +209,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role/authorized-user check
-    const { user, error } = await requireUser()
+    // PR-FORMS-RBAC: forms.admin permission
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -229,7 +233,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     // Yetki kontrolü: form sahibi, admin veya mesai formu yetkili kullanıcısı
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     const isCreator = form.createdById === user.id
     let isAuthorizedOvertimeUser = false
     if (!isAdmin && !isCreator) {

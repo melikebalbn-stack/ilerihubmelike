@@ -73,6 +73,10 @@ export const PERMISSION_KEYS = {
   DUYURU_VIEW: 'duyuru.view',
   DUYURU_CREATE: 'duyuru.create',
   DUYURU_ADMIN: 'duyuru.admin',
+
+  // === FORMS (visit-reports, overtime, project-bar) ===
+  FORMS_ADMIN: 'forms.admin',
+  FORMS_APPROVE: 'forms.approve',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -92,6 +96,7 @@ export const MODULE_LABELS: Record<string, string> = {
   helpdesk: 'IT Destek',
   costanalysis: 'Maliyet Analizi',
   duyuru: 'Duyuru',
+  forms: 'Form Modülleri',
 };
 
 /**
@@ -150,4 +155,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'duyuru.view': 'Duyuru görüntüleme',
   'duyuru.create': 'Duyuru oluşturma',
   'duyuru.admin': 'Duyuru yönetimi',
+
+  'forms.admin': 'Form modüllerini yönet (visit-reports, overtime, project-bar)',
+  'forms.approve': 'Form başvurularını onayla (departman müdürü dahil)',
 };

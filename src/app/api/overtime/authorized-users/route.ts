@@ -11,7 +11,7 @@ import { requireUser } from '@/lib/auth/require-user'
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-overtime: requireUser — role + id check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { searchParams } = new URL(request.url)
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Sidebar hafif kontrol modu
     if (check === 'me') {
       // Admin her zaman yetkili
-      if (['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+      if (session.user.permissions?.includes('forms.admin')) {
         return apiSuccess({ authorized: true })
       }
 
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Admin kontrolü (liste görüntüleme)
-    if (!['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+    if (!session.user.permissions?.includes('forms.admin')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
@@ -67,9 +67,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // PR-Y2.5-overtime: requireUser — admin role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
-    if (!['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+    if (!session.user.permissions?.includes('forms.admin')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
@@ -130,9 +130,9 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     // PR-Y2.5-overtime: requireUser — admin role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
-    if (!['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+    if (!session.user.permissions?.includes('forms.admin')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 

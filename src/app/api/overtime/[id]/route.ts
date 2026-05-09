@@ -15,7 +15,7 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Erişim kontrolü: admin, form sahibi, personel veya onaylayıcı olmalı
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     const isCreator = form.createdById === user.id
     const isPersonnel = !!user.personnelId && form.personnel.some((p) => p.personnelId === user.personnelId)
     const isApprover = form.approvals.some((a) => a.approverId === user.id)
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -103,7 +103,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     // Sadece form sahibi veya admin güncelleyebilir
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     if (existingForm.createdById !== user.id && !isAdmin) {
       return apiError('Bu formu güncelleme yetkiniz yok', 403)
     }
@@ -231,7 +231,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -246,7 +246,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Sadece form sahibi veya admin silebilir
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     if (existingForm.createdById !== user.id && !isAdmin) {
       return apiError('Bu formu silme yetkiniz yok', 403)
     }

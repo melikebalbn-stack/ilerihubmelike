@@ -32,7 +32,7 @@ async function generateFormNo(): Promise<string> {
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-overtime: requireUser — admin/creator/approver/personnel filter için user.id+role gerek
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { searchParams } = new URL(request.url)
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
 
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
 
     // Filtre koşulları
     const where: Record<string, unknown> = {}
@@ -166,11 +166,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // PR-Y2.5-overtime: requireUser — createdById = user.id, role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     // Yetki kontrolü: Admin değilse yetkili kullanıcı listesinde olmalı
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     if (!isAdmin) {
       const authorized = await prisma.overtimeAuthorizedUser.findUnique({
         where: { userId: user.id },

@@ -15,7 +15,7 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role check
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Sadece form sahibi veya admin gönderebilir
-    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(user.role)
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     if (form.createdById !== user.id && !isAdmin) {
       return apiError('Bu formu onaya gönderme yetkiniz yok', 403)
     }

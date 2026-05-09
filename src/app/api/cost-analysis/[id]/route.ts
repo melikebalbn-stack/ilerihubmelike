@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tek maliyet analizi detayı
@@ -10,7 +9,7 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-cost-analysis: requireUser — yetkisiz user createdById eşleşmesi gerek
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -61,7 +60,7 @@ export async function GET(
     }
 
     // Authorization: yetkisiz kullanıcılar sadece kendi oluşturduklarını görebilir
-    if (!hasCostAnalysisAccess(user.role, user.email) && analysis.createdById !== user.id) {
+    if (!(session.user.permissions?.includes('costanalysis.admin') ?? false) && analysis.createdById !== user.id) {
       return NextResponse.json({ error: 'Bu analize erişim yetkiniz yok' }, { status: 403 })
     }
 
@@ -82,9 +81,9 @@ export async function PUT(
 ) {
   try {
     // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
-    if (!hasCostAnalysisAccess(user.role, user.email)) {
+    if (!(session.user.permissions?.includes('costanalysis.admin') ?? false)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -173,9 +172,9 @@ export async function DELETE(
 ) {
   try {
     // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
-    if (!hasCostAnalysisAccess(user.role, user.email)) {
+    if (!(session.user.permissions?.includes('costanalysis.admin') ?? false)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

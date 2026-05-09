@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
 
@@ -40,9 +39,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
-    if (!hasCostAnalysisAccess(user.role, user.email)) {
+    if (!(session.user.permissions?.includes('costanalysis.admin') ?? false)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -93,9 +92,9 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
-    if (!hasCostAnalysisAccess(user.role, user.email)) {
+    if (!(session.user.permissions?.includes('costanalysis.admin') ?? false)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -149,9 +148,9 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     // PR-Y2.5-cost-analysis: requireUser + hasCostAnalysisAccess
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
-    if (!hasCostAnalysisAccess(user.role, user.email)) {
+    if (!(session.user.permissions?.includes('costanalysis.admin') ?? false)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

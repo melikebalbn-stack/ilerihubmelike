@@ -34,6 +34,7 @@ const ROLE_VISUAL: Record<string, RoleVisual> = {
   'hr-yoneticisi':     { Icon: Users,          tone: 'text-pink-600 bg-pink-50' },
   'kalite-yoneticisi':     { Icon: ClipboardCheck, tone: 'text-amber-700 bg-amber-100' },
   'kalibrasyon-operatoru': { Icon: Ruler,          tone: 'text-orange-700 bg-orange-50' },
+  'maliyet-uzmani':        { Icon: Calculator,     tone: 'text-violet-700 bg-violet-50' },
   'departman-muduru':      { Icon: UserCog,        tone: 'text-cyan-600 bg-cyan-50' },
   'kullanici':             { Icon: UserIcon,       tone: 'text-gray-600 bg-gray-100' },
 }
@@ -91,6 +92,7 @@ export function roleAcronym(slug: string): string {
     'hr-yoneticisi':         'HR',
     'kalite-yoneticisi':     'KA',
     'kalibrasyon-operatoru': 'KO',
+    'maliyet-uzmani':        'MU',
     'departman-muduru':      'DM',
     'kullanici':             'KU',
   }

@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { CostAnalysisStatus } from '@/generated/prisma'
-import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Tüm maliyet analizlerini listele
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-cost-analysis: requireUser — yetkisiz kullanıcı kendi createdById ile filtrelenir
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    const isPrivileged = hasCostAnalysisAccess(user.role, user.email)
+    const isPrivileged = (session.user.permissions?.includes('costanalysis.admin') ?? false)
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
@@ -102,9 +101,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // PR-Y2.5-cost-analysis: requireUser — createdById = user.id
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
-    if (!hasCostAnalysisAccess(user.role, user.email)) {
+    if (!(session.user.permissions?.includes('costanalysis.admin') ?? false)) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

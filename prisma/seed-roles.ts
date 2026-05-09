@@ -104,6 +104,17 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
     ],
   },
   {
+    slug: 'maliyet-uzmani',
+    name: 'Maliyet Uzmanı',
+    description: 'Should-cost analizleri yöneten uzman. Tüm maliyet analizlerini görür, oluşturur, düzenler. Çalışan rehberi erişimi.',
+    isProtected: false,
+    permissions: [
+      P.COSTANALYSIS_ADMIN, P.COSTANALYSIS_VIEW,
+      P.COSTANALYSIS_CREATE, P.COSTANALYSIS_EDIT,
+      P.CALISAN_REHBERI_VIEW, // departman/telefon bilgisi maliyet hesabı için işe yarar
+    ],
+  },
+  {
     slug: 'akademi-admin',
     name: 'Akademi Admin',
     description: 'Akademi modülü tam yönetim.',

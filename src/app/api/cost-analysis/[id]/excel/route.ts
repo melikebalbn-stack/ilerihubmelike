@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
-import { hasCostAnalysisAccess } from '@/lib/cost-analysis/access'
 import { requireUser } from '@/lib/auth/require-user'
 
 const materialCategoryLabels: Record<string, string> = {
@@ -53,7 +52,7 @@ export async function GET(
 ) {
   try {
     // PR-Y2.5-cost-analysis: requireUser — yetkisiz user createdById eşleşmesi gerek
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const { id } = await params
@@ -86,7 +85,7 @@ export async function GET(
     }
 
     // Yetki kontrolü: yetkisiz kullanıcılar sadece kendi oluşturduklarını indirebilir
-    if (!hasCostAnalysisAccess(user.role, user.email) && analysis.createdById !== user.id) {
+    if (!(session.user.permissions?.includes('costanalysis.admin') ?? false) && analysis.createdById !== user.id) {
       return NextResponse.json({ error: 'Bu analize erişim yetkiniz yok' }, { status: 403 })
     }
 

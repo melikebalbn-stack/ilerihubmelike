@@ -186,6 +186,67 @@ export async function extractToStaging(
 }
 
 /**
+ * PR-RESTORE-3: Test DB ile canlı DB schema'sını karşılaştırır.
+ * Eksik kritik tablolar varsa restore reddedilmeli (eski backup,
+ * RBAC migration öncesi vb.).
+ */
+export interface SchemaCompatibilityResult {
+  compatible: boolean
+  liveTableCount: number
+  testTableCount: number
+  missingInTest: string[] // canlıda var, backup'ta yok (downgrade)
+  extraInTest: string[] // backup'ta var, canlıda yok (upgrade — düşük risk)
+  criticalMissing: string[] // missingInTest ∩ kritik liste
+}
+
+const CRITICAL_TABLES = [
+  'User',
+  'Personnel',
+  'BackupLog',
+  'role',
+  'permission',
+  'role_permission',
+  'user_role',
+  'permission_audit_log',
+  'CalibrationDevice',
+  'ldap_group_role_map',
+] as const
+
+export async function checkSchemaCompatibility(testDbName: string): Promise<SchemaCompatibilityResult> {
+  const db = parseDbConn()
+  const liveDbName = process.env.DATABASE_URL?.match(/\/([^/?]+)(\?|$)/)?.[1] ?? 'ilerihub'
+  const psqlBase = `PGPASSWORD=${JSON.stringify(db.password)} psql -w -h ${db.host} -U ${db.user}`
+
+  async function listTables(dbName: string): Promise<string[]> {
+    const { stdout } = await execAsync(
+      `${psqlBase} -d ${dbName} -tA -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name;" </dev/null`
+    )
+    return stdout
+      .trim()
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  const [liveTables, testTables] = await Promise.all([listTables(liveDbName), listTables(testDbName)])
+  const liveSet = new Set(liveTables)
+  const testSet = new Set(testTables)
+
+  const missingInTest = liveTables.filter((t) => !testSet.has(t))
+  const extraInTest = testTables.filter((t) => !liveSet.has(t))
+  const criticalMissing = missingInTest.filter((t) => (CRITICAL_TABLES as readonly string[]).includes(t))
+
+  return {
+    compatible: criticalMissing.length === 0,
+    liveTableCount: liveTables.length,
+    testTableCount: testTables.length,
+    missingInTest,
+    extraInTest,
+    criticalMissing,
+  }
+}
+
+/**
  * Staging dizinini ve test DB'sini temizler.
  * Path/db name guard: sadece bilinen prefix'leri siler (yanlış silme koruması).
  */

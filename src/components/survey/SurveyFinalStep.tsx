@@ -50,7 +50,7 @@ export function SurveyFinalStep({
 
         {!surveyIsAnonymous && (
           <div className="mt-5 bg-slate-50 border border-slate-200 rounded-xl p-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               {/* Switch (button) */}
               <button
                 type="button"
@@ -78,7 +78,7 @@ export function SurveyFinalStep({
                 {isAnonymous ? 'Anonim olarak gönder' : 'Kimliğimle birlikte gönder'}
               </label>
             </div>
-            <p className="text-xs text-slate-500 mt-2 ml-[52px] leading-relaxed">
+            <p className="text-xs text-slate-500 mt-2 ml-[56px] leading-relaxed">
               {isAnonymous
                 ? 'İsim ve departman bilgileriniz kaydedilmez.'
                 : 'İsim ve departman bilgileriniz cevaplarla birlikte saklanır.'}

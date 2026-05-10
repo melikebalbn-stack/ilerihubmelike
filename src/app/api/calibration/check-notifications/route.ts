@@ -78,6 +78,23 @@ export async function POST(request: NextRequest) {
       where: { isActive: true },
     })
 
+    // PR-CALIBRATION-MAIL-DEDUP: son 30 gün içinde EXPIRING_SOON maili
+    // atılmış cihaz ID'lerini topla — günlük spam önleme.
+    // 30 gün = bir kalibrasyon döngüsünden kısa; bir sonraki "ilk eşik girişi"
+    // tetiklenmeden önce dedup penceresi sıfırlanır.
+    // Kal/Doğ tipli cihazlarda ikinci tip mail (örn. kalibrasyon mail
+    // gittikten sonra aynı ay doğrulama) atlanır — kabul edilebilir trade-off,
+    // tek "yaklaşıyor" uyarısı yeterli.
+    const dedupSinceDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const recentExpiringLogs = await prisma.calibrationEmailLog.findMany({
+      where: {
+        emailType: 'EXPIRING_SOON',
+        sentAt: { gte: dedupSinceDate },
+      },
+      select: { deviceId: true },
+    })
+    const expiringDedupSet = new Set(recentExpiringLogs.map(l => l.deviceId))
+
     // Her kural için kontrol et
     for (const rule of rules) {
       rulesProcessed++
@@ -107,7 +124,10 @@ export async function POST(request: NextRequest) {
           if (nextDate) {
             const daysRemaining = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
             const match = checkRuleMatch(rule, daysRemaining, now, nextDate)
-            if (match) {
+            // PR-CALIBRATION-MAIL-DEDUP: EXPIRING için son 30 gün dedup
+            const dedupSkip = rule.type === NotificationRuleType.EXPIRING
+              && expiringDedupSet.has(device.id)
+            if (match && !dedupSkip) {
               alertDevices.push({
                 deviceId: device.deviceId,
                 deviceName: device.name,
@@ -127,7 +147,10 @@ export async function POST(request: NextRequest) {
           if (nextDate) {
             const daysRemaining = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
             const match = checkRuleMatch(rule, daysRemaining, now, nextDate)
-            if (match) {
+            // PR-CALIBRATION-MAIL-DEDUP: EXPIRING için son 30 gün dedup
+            const dedupSkip = rule.type === NotificationRuleType.EXPIRING
+              && expiringDedupSet.has(device.id)
+            if (match && !dedupSkip) {
               alertDevices.push({
                 deviceId: device.deviceId,
                 deviceName: device.name,

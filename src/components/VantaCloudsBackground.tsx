@@ -66,5 +66,11 @@ export function VantaCloudsBackground() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return <div ref={ref} className="fixed inset-0 -z-10 w-full h-full" aria-hidden="true" />
+  return (
+    <div
+      ref={ref}
+      className="fixed inset-0 z-0 w-full h-full pointer-events-none"
+      aria-hidden="true"
+    />
+  )
 }

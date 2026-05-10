@@ -41,14 +41,14 @@ export function VantaCloudsBackground() {
           gyroControls: false,
           minHeight: 200.0,
           minWidth: 200.0,
-          // ILERIHub teması — koyu mavi/lacivert vurgu
+          backgroundColor: 0xffffff,
           skyColor: 0x68b8d7,
           cloudColor: 0xadc1de,
           cloudShadowColor: 0x183550,
           sunColor: 0xff9919,
           sunGlareColor: 0xff6633,
           sunlightColor: 0xff9933,
-          speed: 0.8,
+          speed: 1,
         })
 
         if (mounted) setEffect(createdEffect)

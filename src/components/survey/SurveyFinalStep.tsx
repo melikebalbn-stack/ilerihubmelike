@@ -6,7 +6,7 @@
 // Aksi halde toggle default ON (anonim), kullanıcı isterse OFF yapıp
 // kimlik bilgilerini paylaşır.
 
-import { Send, Loader2, ShieldCheck, UserCheck } from 'lucide-react'
+import { Send, Loader2 } from 'lucide-react'
 
 interface Department {
   id: string
@@ -73,13 +73,8 @@ export function SurveyFinalStep({
               <label
                 id="anon-label"
                 onClick={() => onAnonymousChange(!isAnonymous)}
-                className="flex items-center gap-2 text-sm font-medium text-slate-900 cursor-pointer select-none"
+                className="text-sm font-medium text-slate-900 cursor-pointer select-none"
               >
-                {isAnonymous ? (
-                  <ShieldCheck className="w-4 h-4 text-[#1B4F72]" />
-                ) : (
-                  <UserCheck className="w-4 h-4 text-slate-500" />
-                )}
                 {isAnonymous ? 'Anonim olarak gönder' : 'Kimliğimle birlikte gönder'}
               </label>
             </div>
@@ -92,8 +87,7 @@ export function SurveyFinalStep({
         )}
 
         {surveyIsAnonymous && (
-          <div className="mt-5 flex items-center gap-2 text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <ShieldCheck className="w-4 h-4 text-[#1B4F72] flex-shrink-0" />
+          <div className="mt-5 text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3">
             Bu anket tamamen anonim — kimlik bilgisi toplamıyor.
           </div>
         )}

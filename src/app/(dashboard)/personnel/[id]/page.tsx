@@ -11,8 +11,19 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { NativeSelect as Select } from "@/components/ui/select"
-import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX } from "lucide-react"
 import { PersonnelAutocomplete } from "@/components/ui/personnel-autocomplete"
+import { PersonnelExitModal, type ExitData } from "@/components/personnel/PersonnelExitModal"
 import { toast } from "sonner"
 import {
   KAN_GRUBU_LABELS,
@@ -65,6 +76,17 @@ type PersonnelData = {
   aktif: boolean
   denemeDegerlendirme: string | null
   altiAyDegerlendirme: string | null
+  // PR-PERSONEL-CIKIS-FORMU
+  exitDate: string | null
+  exitParty: string | null
+  exitCode: string | null
+  exitReason: string | null
+  exitRootCause: string | null
+  exitTurnoverType: string | null
+  exitGeneralNote: string | null
+  exitRecordedAt: string | null
+  exitRecordedBy: { id: string; name: string | null; email: string } | null
+  workingPeriod: { years: number; months: number; totalMonths: number } | null
 }
 
 const ADMIN_ROLES = ["ADMIN", "HR_MANAGER", "SUPER_ADMIN"]
@@ -86,6 +108,11 @@ export default function PersonnelDetailPage() {
   const [jobTitles, setJobTitles] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
+  // PR-PERSONEL-CIKIS-FORMU
+  const [showExitModal, setShowExitModal] = useState(false)
+  const [exitModalMode, setExitModalMode] = useState<"create" | "edit">("create")
+  const [showReactivateConfirm, setShowReactivateConfirm] = useState(false)
+  const [reactivating, setReactivating] = useState(false)
 
   useEffect(() => {
     fetch("/api/settings/job-titles")
@@ -188,6 +215,73 @@ export default function PersonnelDetailPage() {
     }
   }
 
+  // PR-PERSONEL-CIKIS-FORMU: Toggle handler — modal/confirm tetikler
+  const handleToggleAktif = () => {
+    if (!data) return
+    if (data.aktif) {
+      setExitModalMode("create")
+      setShowExitModal(true)
+    } else {
+      setShowReactivateConfirm(true)
+    }
+  }
+
+  const refetchPersonnel = async () => {
+    try {
+      const res = await fetch(`/api/personnel/${id}`)
+      if (!res.ok) return
+      const json = await res.json()
+      setData(json)
+      const formData: Record<string, any> = {}
+      Object.entries(json).forEach(([k, v]) => {
+        if (k === "iseGirisTarihi" && v) {
+          formData[k] = new Date(v as string).toISOString().slice(0, 10)
+        } else if (k === "exitRecordedBy" || k === "workingPeriod") {
+          // Bu alanlar form'a girmez
+        } else {
+          formData[k] = v ?? ""
+        }
+      })
+      setForm(formData)
+    } catch {}
+  }
+
+  const saveExit = async (exitData: ExitData) => {
+    const res = await fetch(`/api/personnel/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aktif: false, ...exitData }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      toast.error(err.error || "Çıkış kaydı başarısız")
+      throw new Error(err.error || "patch failed")
+    }
+    toast.success(exitModalMode === "create" ? "Personel pasife alındı" : "Çıkış bilgileri güncellendi")
+    await refetchPersonnel()
+  }
+
+  const reactivate = async () => {
+    setReactivating(true)
+    try {
+      const res = await fetch(`/api/personnel/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aktif: true }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || "Aktive geri alma başarısız")
+        return
+      }
+      toast.success("Personel aktife alındı")
+      setShowReactivateConfirm(false)
+      await refetchPersonnel()
+    } finally {
+      setReactivating(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -231,19 +325,21 @@ export default function PersonnelDetailPage() {
           </div>
           {editMode ? (
             <div className="flex items-center gap-2 ml-2">
+              {/* PR-PERSONEL-CIKIS-FORMU: Toggle artık modal/confirm tetikler — bağımsız PATCH */}
               <button
                 type="button"
-                onClick={() => set("aktif", !form.aktif)}
+                onClick={handleToggleAktif}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  form.aktif ? "bg-green-500" : "bg-gray-300"
+                  data.aktif ? "bg-green-500" : "bg-gray-300"
                 }`}
+                title={data.aktif ? "Pasife al (çıkış formu)" : "Aktife geri al"}
               >
                 <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
-                  form.aktif ? "translate-x-6" : "translate-x-1"
+                  data.aktif ? "translate-x-6" : "translate-x-1"
                 }`} />
               </button>
-              <span className={`text-sm font-medium ${form.aktif ? "text-green-700" : "text-red-600"}`}>
-                {form.aktif ? "Aktif" : "Pasif"}
+              <span className={`text-sm font-medium ${data.aktif ? "text-green-700" : "text-red-600"}`}>
+                {data.aktif ? "Aktif" : "Pasif"}
               </span>
             </div>
           ) : (
@@ -698,6 +794,128 @@ export default function PersonnelDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* PR-PERSONEL-CIKIS-FORMU: Pasif personel için çıkış bilgileri kartı */}
+      {!data.aktif && data.exitDate && (
+        <Card className="border-amber-500/40 bg-amber-50/40 dark:bg-amber-950/10">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <UserX className="h-5 w-5 text-amber-600" />
+                Çıkış Bilgileri
+              </span>
+              {isAdmin && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setExitModalMode("edit")
+                    setShowExitModal(true)
+                  }}
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Düzenle
+                </Button>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Çıkış Tarihi</p>
+              <p className="font-medium">{formatDate(data.exitDate)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Çalışma Süresi</p>
+              <p className="font-medium">
+                {data.workingPeriod
+                  ? `${data.workingPeriod.years} yıl ${data.workingPeriod.months} ay`
+                  : "-"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Taraf</p>
+              <p className="font-medium">{data.exitParty || "-"}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Çıkış Kodu</p>
+              <p className="font-medium">{data.exitCode || "-"}</p>
+            </div>
+            <div className="md:col-span-2">
+              <p className="text-sm text-muted-foreground">Çıkış Nedeni</p>
+              <p className="font-medium">{data.exitReason || "-"}</p>
+            </div>
+            <div className="md:col-span-2">
+              <p className="text-sm text-muted-foreground">Kök Neden</p>
+              <p className="font-medium">{data.exitRootCause || "-"}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">İstenen / İstenmeyen</p>
+              <p className="font-medium">{data.exitTurnoverType || "-"}</p>
+            </div>
+            {data.exitGeneralNote && (
+              <div className="md:col-span-2">
+                <p className="text-sm text-muted-foreground">Açıklama</p>
+                <p className="font-medium whitespace-pre-wrap">{data.exitGeneralNote}</p>
+              </div>
+            )}
+            <div className="md:col-span-2 pt-2 border-t text-xs text-muted-foreground">
+              Kayıt eden: <strong>{data.exitRecordedBy?.name ?? data.exitRecordedBy?.email ?? "-"}</strong>
+              {data.exitRecordedAt && (
+                <> · {new Date(data.exitRecordedAt).toLocaleString("tr-TR")}</>
+              )}
+            </div>
+            {isAdmin && (
+              <div className="md:col-span-2 pt-2">
+                <Button size="sm" variant="outline" onClick={() => setShowReactivateConfirm(true)}>
+                  Aktife geri al
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* PR-PERSONEL-CIKIS-FORMU: Modal */}
+      <PersonnelExitModal
+        open={showExitModal}
+        onClose={() => setShowExitModal(false)}
+        onSave={saveExit}
+        personnelName={data.adSoyad}
+        hireDate={data.iseGirisTarihi}
+        mode={exitModalMode}
+        initialData={
+          exitModalMode === "edit" && data.exitDate
+            ? {
+                exitDate: data.exitDate.split("T")[0],
+                exitParty: data.exitParty ?? "",
+                exitCode: data.exitCode ?? "",
+                exitReason: data.exitReason ?? "",
+                exitRootCause: data.exitRootCause ?? "",
+                exitTurnoverType: data.exitTurnoverType ?? "",
+                exitGeneralNote: data.exitGeneralNote ?? "",
+              }
+            : undefined
+        }
+      />
+
+      {/* PR-PERSONEL-CIKIS-FORMU: Reactivate confirm */}
+      <AlertDialog open={showReactivateConfirm} onOpenChange={setShowReactivateConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Personeli aktife geri al?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {data.adSoyad} personelinin çıkış bilgileri silinecek. Bu işlem geri alınabilir
+              ancak tekrar pasife almak için çıkış bilgilerini yeniden girmeniz gerekecek.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={reactivating}>Vazgeç</AlertDialogCancel>
+            <AlertDialogAction onClick={reactivate} disabled={reactivating}>
+              {reactivating ? "İşleniyor..." : "Evet, aktife al"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

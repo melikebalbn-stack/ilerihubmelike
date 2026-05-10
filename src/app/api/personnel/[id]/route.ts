@@ -77,6 +77,16 @@ export async function GET(
         emekli: true,
         engelli: true,
         aktif: true,
+        // PR-PERSONEL-CIKIS-FORMU: çıkış bilgileri
+        exitDate: true,
+        exitParty: true,
+        exitCode: true,
+        exitReason: true,
+        exitRootCause: true,
+        exitTurnoverType: true,
+        exitGeneralNote: true,
+        exitRecordedAt: true,
+        exitRecordedBy: { select: { id: true, name: true, email: true } },
         azureAdId: true,
         azureAdEmail: true,
         createdAt: true,
@@ -87,6 +97,17 @@ export async function GET(
 
     if (!personnel) {
       return NextResponse.json({ error: 'Personel bulunamadı' }, { status: 404 })
+    }
+
+    // PR-PERSONEL-CIKIS-FORMU: workingPeriod runtime hesap (drift önler)
+    let workingPeriod: { years: number; months: number; totalMonths: number } | null = null
+    if (personnel.exitDate && personnel.iseGirisTarihi) {
+      const start = new Date(personnel.iseGirisTarihi)
+      const end = new Date(personnel.exitDate)
+      let totalMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
+      if (end.getDate() < start.getDate()) totalMonths -= 1
+      if (totalMonths < 0) totalMonths = 0
+      workingPeriod = { years: Math.floor(totalMonths / 12), months: totalMonths % 12, totalMonths }
     }
 
     // PR-AUDIT-LOG-EXPANSION (KVKK): kişisel veriye erişim audit
@@ -102,7 +123,7 @@ export async function GET(
       },
     })
 
-    return NextResponse.json(personnel)
+    return NextResponse.json({ ...personnel, workingPeriod })
   } catch (error) {
     console.error('Personel detayı alınırken hata:', error)
     return NextResponse.json({ error: 'Personel detayı alınırken bir hata oluştu' }, { status: 500 })
@@ -136,6 +157,19 @@ export async function PUT(
     delete body.createdAt
     delete body.updatedAt
     delete body.sensitive
+    // PR-PERSONEL-CIKIS-FORMU: exit alanları yalnızca PATCH üzerinden değişir
+    delete body.exitDate
+    delete body.exitParty
+    delete body.exitCode
+    delete body.exitReason
+    delete body.exitRootCause
+    delete body.exitTurnoverType
+    delete body.exitGeneralNote
+    delete body.exitRecordedAt
+    delete body.exitRecordedById
+    delete body.exitRecordedBy
+    delete body.workingPeriod
+    delete body.aktif // toggle artık PATCH ile yapılıyor
 
     // Boş stringleri null'a çevir (Prisma enum/date/int hataları için)
     for (const key of Object.keys(body)) {
@@ -183,6 +217,168 @@ export async function PUT(
       return NextResponse.json({ error: 'Bu sicil numarası zaten kayıtlı' }, { status: 409 })
     }
     return NextResponse.json({ error: 'Personel güncellenirken bir hata oluştu' }, { status: 500 })
+  }
+}
+
+// PR-PERSONEL-CIKIS-FORMU: Pasife alma + çıkış bilgileri akışı.
+//
+// 4 senaryo (mutually exclusive — order matters):
+//   1. Pasife alma: aktif true → false. 6 exit alanı zorunlu.
+//   2. Aktife geri alma: aktif false → true. Tüm exit alanları temizlenir.
+//   3. Pasif personel exit alanları düzenleme: aktif false ve aktif değişmiyor.
+//   4. Aktif personel için PATCH (yalnız exit field gönderirse) — reddedilir.
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user, error } = await requireUser()
+    if (error) return error
+
+    const { id } = await params
+
+    if (!hasEditAccess(user.role, user.department)) {
+      return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
+    }
+
+    const personnel = await prisma.personnel.findUnique({ where: { id } })
+    if (!personnel) {
+      return NextResponse.json({ error: 'Personel bulunamadı' }, { status: 404 })
+    }
+
+    const body = await request.json().catch(() => ({}))
+
+    // SENARYO 1: Pasife alma (aktif: true → false)
+    if (body.aktif === false && personnel.aktif === true) {
+      const required = ['exitDate', 'exitParty', 'exitCode', 'exitReason', 'exitRootCause', 'exitTurnoverType']
+      const missing = required.filter((k) => !body[k] || String(body[k]).trim() === '')
+      if (missing.length > 0) {
+        return NextResponse.json(
+          {
+            error: 'Çıkış bilgileri eksik',
+            required,
+            missing,
+          },
+          { status: 400 }
+        )
+      }
+
+      const updated = await prisma.personnel.update({
+        where: { id },
+        data: {
+          aktif: false,
+          exitDate: new Date(body.exitDate),
+          exitParty: String(body.exitParty).trim(),
+          exitCode: String(body.exitCode).trim(),
+          exitReason: String(body.exitReason).trim(),
+          exitRootCause: String(body.exitRootCause).trim(),
+          exitTurnoverType: String(body.exitTurnoverType).trim(),
+          exitGeneralNote: body.exitGeneralNote ? String(body.exitGeneralNote) : null,
+          exitRecordedById: user.id,
+          exitRecordedAt: new Date(),
+        },
+      })
+
+      // KVKK: kayıt anahtarları + tarih saklanır, açıklama metni saklanmaz
+      await logAuditEvent({
+        action: 'PERSONNEL_DEACTIVATED',
+        actorId: user.id,
+        targetType: 'PERSONNEL',
+        targetId: id,
+        details: {
+          actorEmail: user.email,
+          sicilNo: personnel.sicilNo,
+          exitDate: body.exitDate,
+          exitCode: String(body.exitCode).trim(),
+          exitTurnoverType: String(body.exitTurnoverType).trim(),
+        },
+      })
+
+      return NextResponse.json({ ok: true, personnel: updated })
+    }
+
+    // SENARYO 2: Aktife geri alma (aktif: false → true)
+    if (body.aktif === true && personnel.aktif === false) {
+      const updated = await prisma.personnel.update({
+        where: { id },
+        data: {
+          aktif: true,
+          exitDate: null,
+          exitParty: null,
+          exitCode: null,
+          exitReason: null,
+          exitRootCause: null,
+          exitTurnoverType: null,
+          exitGeneralNote: null,
+          exitRecordedById: null,
+          exitRecordedAt: null,
+        },
+      })
+
+      await logAuditEvent({
+        action: 'PERSONNEL_REACTIVATED',
+        actorId: user.id,
+        targetType: 'PERSONNEL',
+        targetId: id,
+        details: {
+          actorEmail: user.email,
+          sicilNo: personnel.sicilNo,
+          previousExitDate: personnel.exitDate,
+          previousExitCode: personnel.exitCode,
+        },
+      })
+
+      return NextResponse.json({ ok: true, personnel: updated })
+    }
+
+    // SENARYO 3: Pasif personel için exit alanları düzenleme
+    if (personnel.aktif === false && body.aktif !== true) {
+      const exitKeys = ['exitDate', 'exitParty', 'exitCode', 'exitReason', 'exitRootCause', 'exitTurnoverType', 'exitGeneralNote']
+      const data: Record<string, unknown> = {}
+      for (const k of exitKeys) {
+        if (body[k] === undefined) continue
+        if (k === 'exitDate') {
+          data.exitDate = body.exitDate ? new Date(body.exitDate) : null
+        } else {
+          data[k] = body[k] === '' ? null : body[k]
+        }
+      }
+      const changedKeys = Object.keys(data)
+      if (changedKeys.length === 0) {
+        return NextResponse.json({ error: 'Güncellenecek alan yok' }, { status: 400 })
+      }
+
+      const updated = await prisma.personnel.update({
+        where: { id },
+        data,
+      })
+
+      await logAuditEvent({
+        action: 'PERSONNEL_EXIT_UPDATED',
+        actorId: user.id,
+        targetType: 'PERSONNEL',
+        targetId: id,
+        details: {
+          actorEmail: user.email,
+          sicilNo: personnel.sicilNo,
+          changedFieldKeys: changedKeys,
+        },
+      })
+
+      return NextResponse.json({ ok: true, personnel: updated })
+    }
+
+    // SENARYO 4: Aktif personel için PATCH — bu endpoint sadece toggle akışı
+    return NextResponse.json(
+      {
+        error: 'Geçersiz istek',
+        message: 'Aktif personel için PATCH yalnız aktif=false toggle ile kullanılır. Diğer alan güncellemeleri PUT ile yapılır.',
+      },
+      { status: 400 }
+    )
+  } catch (error: unknown) {
+    console.error('Personel PATCH hatası:', error)
+    return NextResponse.json({ error: 'İşlem başarısız' }, { status: 500 })
   }
 }
 

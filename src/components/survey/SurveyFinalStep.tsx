@@ -7,6 +7,7 @@
 // kimlik bilgilerini paylaşır.
 
 import { Send, Loader2 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
 
 interface Department {
   id: string
@@ -51,34 +52,20 @@ export function SurveyFinalStep({
         {!surveyIsAnonymous && (
           <div className="mt-5 bg-slate-50 border border-slate-200 rounded-xl p-4">
             <div className="flex items-center gap-4">
-              {/* Switch (button) */}
-              <button
-                type="button"
-                role="switch"
-                aria-checked={isAnonymous}
-                aria-labelledby="anon-label"
-                onClick={() => onAnonymousChange(!isAnonymous)}
-                className={
-                  'flex-shrink-0 w-10 h-6 rounded-full relative transition-colors ' +
-                  (isAnonymous ? 'bg-[#1B4F72]' : 'bg-slate-300')
-                }
-              >
-                <span
-                  className={
-                    'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ' +
-                    (isAnonymous ? 'translate-x-[18px]' : 'translate-x-0.5')
-                  }
-                />
-              </button>
+              <Switch
+                id="anon-switch"
+                checked={isAnonymous}
+                onCheckedChange={onAnonymousChange}
+                className="data-[state=checked]:bg-[#1B4F72]"
+              />
               <label
-                id="anon-label"
-                onClick={() => onAnonymousChange(!isAnonymous)}
+                htmlFor="anon-switch"
                 className="text-sm font-medium text-slate-900 cursor-pointer select-none"
               >
                 {isAnonymous ? 'Anonim olarak gönder' : 'Kimliğimle birlikte gönder'}
               </label>
             </div>
-            <p className="text-xs text-slate-500 mt-2 ml-[56px] leading-relaxed">
+            <p className="text-xs text-slate-500 mt-2 ml-[52px] leading-relaxed">
               {isAnonymous
                 ? 'İsim ve departman bilgileriniz kaydedilmez.'
                 : 'İsim ve departman bilgileriniz cevaplarla birlikte saklanır.'}

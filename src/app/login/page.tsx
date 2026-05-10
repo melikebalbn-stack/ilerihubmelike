@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AuroraBackground } from '@/components/ui/aurora-background';
+import { VantaCloudsBackground } from '@/components/VantaCloudsBackground';
 
 function LoginForm() {
   const router = useRouter();
@@ -271,12 +271,13 @@ function LoginLoading() {
 
 export default function LoginPage() {
   return (
-    <AuroraBackground className="min-h-screen bg-zinc-50 p-4">
-      <div className="relative z-10 flex items-center justify-center w-full">
+    <>
+      <VantaCloudsBackground />
+      <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
         <Suspense fallback={<LoginLoading />}>
           <LoginForm />
         </Suspense>
       </div>
-    </AuroraBackground>
+    </>
   );
 }

@@ -11,7 +11,11 @@
     "test:ci": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "seed:permissions": "npx tsx prisma/seed-permissions.ts",
+    "seed:roles": "npx tsx prisma/seed-roles.ts",
+    "migrate:user-roles": "npx tsx prisma/migrate-user-roles.ts",
+    "seed:authz": "npm run seed:permissions && npm run seed:roles && npm run migrate:user-roles"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -79,6 +83,8 @@
     "react-pdf": "^10.3.0",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
+    "three": "^0.184.0",
+    "vanta": "^0.5.24",
     "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
@@ -92,6 +98,7 @@
     "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.184.1",
     "@types/uuid": "^10.0.0",
     "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^5.1.3",

@@ -20,7 +20,7 @@ export function SurveyQuestionCard({ number, title, isRequired, helperText, chil
           {String(number).padStart(2, '0')}
         </span>
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-medium text-slate-900 leading-snug">
+          <h3 className="text-base font-medium text-slate-900 leading-relaxed">
             {title}
             {isRequired && <span className="text-rose-500 ml-1" aria-label="zorunlu">*</span>}
           </h3>

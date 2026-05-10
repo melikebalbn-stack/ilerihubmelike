@@ -49,18 +49,15 @@ export function SurveyFinalStep({
         </p>
 
         {!surveyIsAnonymous && (
-          <div className="mt-5">
-            <button
-              type="button"
-              onClick={() => onAnonymousChange(!isAnonymous)}
-              className={
-                'w-full flex items-center gap-3 p-4 rounded-xl border transition-all duration-150 active:scale-[0.99] ' +
-                (isAnonymous
-                  ? 'border-[#1B4F72] bg-[#1B4F72]/[0.06]'
-                  : 'border-slate-200 bg-white hover:border-[#1B4F72]/60')
-              }
-            >
-              <span
+          <div className="mt-5 bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              {/* Switch (button) */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isAnonymous}
+                aria-labelledby="anon-label"
+                onClick={() => onAnonymousChange(!isAnonymous)}
                 className={
                   'flex-shrink-0 w-10 h-6 rounded-full relative transition-colors ' +
                   (isAnonymous ? 'bg-[#1B4F72]' : 'bg-slate-300')
@@ -72,19 +69,25 @@ export function SurveyFinalStep({
                     (isAnonymous ? 'translate-x-[18px]' : 'translate-x-0.5')
                   }
                 />
-              </span>
-              <span className="flex-1 text-left">
-                <span className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                  {isAnonymous ? <ShieldCheck className="w-4 h-4 text-[#1B4F72]" /> : <UserCheck className="w-4 h-4 text-slate-500" />}
-                  {isAnonymous ? 'Anonim olarak gönder' : 'Kimliğimle birlikte gönder'}
-                </span>
-                <span className="block text-xs text-slate-500 mt-0.5">
-                  {isAnonymous
-                    ? 'İsim ve departman bilgileriniz kaydedilmez.'
-                    : 'İsim ve departman bilgileriniz cevaplarla birlikte saklanır.'}
-                </span>
-              </span>
-            </button>
+              </button>
+              <label
+                id="anon-label"
+                onClick={() => onAnonymousChange(!isAnonymous)}
+                className="flex items-center gap-2 text-sm font-medium text-slate-900 cursor-pointer select-none"
+              >
+                {isAnonymous ? (
+                  <ShieldCheck className="w-4 h-4 text-[#1B4F72]" />
+                ) : (
+                  <UserCheck className="w-4 h-4 text-slate-500" />
+                )}
+                {isAnonymous ? 'Anonim olarak gönder' : 'Kimliğimle birlikte gönder'}
+              </label>
+            </div>
+            <p className="text-xs text-slate-500 mt-2 ml-[52px] leading-relaxed">
+              {isAnonymous
+                ? 'İsim ve departman bilgileriniz kaydedilmez.'
+                : 'İsim ve departman bilgileriniz cevaplarla birlikte saklanır.'}
+            </p>
           </div>
         )}
 
@@ -98,25 +101,25 @@ export function SurveyFinalStep({
         {showFields && (
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 İsim Soyisim
               </label>
               <input
                 type="text"
                 value={respondentName}
                 onChange={(e) => onNameChange(e.target.value)}
-                placeholder="İsim soyisim"
-                className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:border-[#1B4F72] focus:ring-0 outline-none"
+                placeholder="Ad Soyad"
+                className="w-full px-3 py-2.5 text-sm bg-white border border-slate-200 rounded-lg focus:border-[#1B4F72] focus:ring-0 outline-none transition-colors"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1.5">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Departman
               </label>
               <select
                 value={respondentDepartment}
                 onChange={(e) => onDepartmentChange(e.target.value)}
-                className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:border-[#1B4F72] focus:ring-0 outline-none"
+                className="w-full px-3 py-2.5 text-sm bg-white border border-slate-200 rounded-lg focus:border-[#1B4F72] focus:ring-0 outline-none transition-colors"
               >
                 <option value="">Departman seçin</option>
                 {departments.map((d) => (

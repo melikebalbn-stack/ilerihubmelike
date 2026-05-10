@@ -426,6 +426,22 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    // PR-AUTH-LASTLOGIN-FIX: Her başarılı login'de lastLoginAt = NOW().
+    // jwt callback'e değil burada — refresh sayılmasın, semantik olarak
+    // sadece "yeni oturum başlangıcı" sayılır. Hata kritik path'i bozmaz.
+    async signIn({ user }) {
+      if (user?.email) {
+        try {
+          await prisma.user.update({
+            where: { email: user.email.toLowerCase() },
+            data: { lastLoginAt: new Date() },
+          });
+        } catch (err) {
+          console.error('[AUTH] lastLoginAt update failed:', err);
+        }
+      }
+      return true;
+    },
     // Open Redirect koruması - sadece kendi domain'imize yönlendirmelere izin ver
     async redirect({ url, baseUrl }) {
       // Relative URL'ler güvenli

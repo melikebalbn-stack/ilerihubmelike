@@ -5,6 +5,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { Upload, X, Image as ImageIcon, Camera } from 'lucide-react'
+import { FormCameraCapture } from '../FormCameraCapture'
 
 interface Props {
   value: File | null
@@ -15,9 +16,9 @@ interface Props {
 
 export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const cameraRef = useRef<HTMLInputElement>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
 
   useEffect(() => {
     if (!value) {
@@ -50,7 +51,18 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
   const handleRemove = () => {
     onChange(null)
     if (inputRef.current) inputRef.current.value = ''
-    if (cameraRef.current) cameraRef.current.value = ''
+  }
+
+  // PR-JOBAPP-CAMERA-AND-SUCCESS: Modal'dan gelen base64 dataURL → File.
+  const handleCameraCapture = async (dataUrl: string) => {
+    try {
+      const res = await fetch(dataUrl)
+      const blob = await res.blob()
+      const file = new File([blob], `kamera-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      handleSelect(file)
+    } catch {
+      setError('Fotoğraf işlenemedi.')
+    }
   }
 
   if (previewUrl) {
@@ -73,7 +85,9 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
             <X className="w-4 h-4 text-slate-600" />
           </button>
         </div>
-        <p className="text-xs text-slate-500">{value?.name} · {(value!.size / 1024).toFixed(0)} KB</p>
+        <p className="text-xs text-slate-500">
+          {value?.name} · {(value!.size / 1024).toFixed(0)} KB
+        </p>
       </div>
     )
   }
@@ -97,12 +111,12 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
         <button
           type="button"
           disabled={disabled}
-          onClick={() => cameraRef.current?.click()}
+          onClick={() => setCameraOpen(true)}
           className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center hover:border-[#1B4F72]/60 hover:bg-slate-50 transition-colors disabled:opacity-50"
         >
           <Camera className="w-7 h-7 text-slate-400 mx-auto mb-2" />
           <p className="text-sm font-medium text-slate-700">Kameradan Çek</p>
-          <p className="text-xs text-slate-400 mt-1">Mobil/tablet: arka kamera</p>
+          <p className="text-xs text-slate-400 mt-1">Live preview · ön/arka kamera</p>
         </button>
       </div>
       <p className="text-xs text-slate-400 mt-2 text-center">Maks. {maxSizeMB} MB</p>
@@ -113,15 +127,12 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
         className="hidden"
         onChange={(e) => handleSelect(e.target.files?.[0] ?? null)}
       />
-      <input
-        ref={cameraRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => handleSelect(e.target.files?.[0] ?? null)}
-      />
       {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+      <FormCameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={handleCameraCapture}
+      />
     </div>
   )
 }

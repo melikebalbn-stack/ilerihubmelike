@@ -175,6 +175,17 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
   }
 
   if (submitted) {
+    const handleNewApplication = () => {
+      // PR-JOBAPP-CAMERA-AND-SUCCESS: Tablet senaryosu — bir sonraki aday için
+      // tüm form state'i sıfırla, ilk bölümden başla.
+      setForm(initialFormState)
+      setCurrentStep(0)
+      setSubmitted(null)
+      setError(null)
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+    }
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full text-center">
@@ -192,6 +203,21 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
           <p className="text-xs text-slate-400 mt-4">
             İnsan Varlıkları ekibimiz değerlendirme sonrası sizinle iletişime geçecektir.
           </p>
+          <div className="flex flex-col sm:flex-row gap-3 mt-6 justify-center">
+            <button
+              type="button"
+              onClick={handleNewApplication}
+              className="px-5 py-2.5 bg-[#1B4F72] text-white rounded-lg font-medium text-sm hover:bg-[#1B4F72]/90 transition-colors active:scale-[0.98]"
+            >
+              Yeni Başvuru Başlat
+            </button>
+            <a
+              href="/"
+              className="px-5 py-2.5 border border-slate-300 rounded-lg font-medium text-sm text-slate-700 hover:bg-slate-50 transition-colors text-center"
+            >
+              Anasayfaya Dön
+            </a>
+          </div>
         </div>
       </div>
     )

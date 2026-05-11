@@ -663,7 +663,7 @@ export default function JobApplicationDetailPage() {
               </Card>
             </div>
 
-            {/* Dijital Imza */}
+            {/* Dijital Imza — PR-JOBAPP-ADMIN-SIGNATURE: backward-compat */}
             {app.digitalSignature && (
               <div className="cv-section">
                 <Card className="print:border-0 print:shadow-none">
@@ -676,6 +676,24 @@ export default function JobApplicationDetailPage() {
                       <p className="text-sm text-green-600 mt-1 print:text-black">
                         {app.fullName} tarafindan {app.signatureDate} tarihinde dijital olarak imzalanmistir.
                       </p>
+                      {/* PR-JOBAPP-RENDERER sonrası canvas pad PNG; öncesinde "Name|date|ts" string */}
+                      {app.digitalSignature.startsWith('data:image') ? (
+                        <div className="mt-3 inline-block bg-white border border-slate-200 rounded p-2 print:border-gray-400">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={app.digitalSignature}
+                            alt="Dijital imza"
+                            className="max-w-[400px] max-h-[150px] object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="mt-3 text-xs font-mono text-slate-600 border border-slate-200 rounded p-2 bg-slate-50 print:bg-transparent print:border-gray-400 print:text-black break-all">
+                          {app.digitalSignature}
+                          <div className="text-[10px] text-slate-400 mt-1 print:text-gray-500">
+                            (eski format başvuru)
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -1,7 +1,7 @@
 'use client'
 
-// PR-SURVEY-UI-REFACTOR: Tek seçim — her seçenek tıklanabilir kart.
-// Mobile: 1 sütun, sm+: 2 sütun. Klavye erişilebilirliği için button.
+// PR-JOBAPP-REDESIGN: Generic tek seçim (formerly SingleChoice).
+// Her seçenek tıklanabilir kart. Mobile 1 sütun, sm+ 2 sütun.
 
 import { Check } from 'lucide-react'
 
@@ -18,7 +18,7 @@ interface Props {
   disabled?: boolean
 }
 
-export function SingleChoice({ options, value, onChange, disabled }: Props) {
+export function FormSingleChoice({ options, value, onChange, disabled }: Props) {
   const sorted = [...options].sort((a, b) => a.sortOrder - b.sortOrder)
 
   return (

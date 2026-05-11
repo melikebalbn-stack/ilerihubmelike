@@ -9,7 +9,7 @@ interface Props {
   rows?: number
 }
 
-export function LongText({ value, onChange, placeholder, disabled, maxLength = 1000, rows = 4 }: Props) {
+export function FormLongText({ value, onChange, placeholder, disabled, maxLength = 1000, rows = 4 }: Props) {
   return (
     <div>
       <textarea

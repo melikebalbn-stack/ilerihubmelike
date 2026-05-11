@@ -1,6 +1,7 @@
 'use client'
 
-// PR-SURVEY-UI-REFACTOR: Soru wrapper'ı — büyük gri numara + başlık + helper.
+// PR-JOBAPP-REDESIGN: Generic soru wrapper (formerly SurveyQuestionCard).
+// Büyük gri numara + başlık + helper + alt input.
 
 import { ReactNode } from 'react'
 
@@ -12,7 +13,7 @@ interface Props {
   children: ReactNode
 }
 
-export function SurveyQuestionCard({ number, title, isRequired, helperText, children }: Props) {
+export function FormQuestionCard({ number, title, isRequired, helperText, children }: Props) {
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6">
       <div className="flex items-start gap-4">

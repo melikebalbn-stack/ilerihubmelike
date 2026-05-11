@@ -8,7 +8,7 @@ interface Props {
   maxLength?: number
 }
 
-export function ShortText({ value, onChange, placeholder, disabled, maxLength }: Props) {
+export function FormShortText({ value, onChange, placeholder, disabled, maxLength }: Props) {
   return (
     <input
       type="text"

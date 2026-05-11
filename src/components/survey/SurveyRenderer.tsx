@@ -11,14 +11,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { SurveyProgressBar } from './SurveyProgressBar'
-import { SurveyQuestionCard } from './SurveyQuestionCard'
+import { FormProgressBar } from '@/components/forms/multi-step/FormProgressBar'
+import { FormQuestionCard } from '@/components/forms/multi-step/FormQuestionCard'
 import { SurveyFinalStep } from './SurveyFinalStep'
-import { SingleChoice } from './question-types/SingleChoice'
-import { MultiChoice } from './question-types/MultiChoice'
-import { ShortText } from './question-types/ShortText'
-import { LongText } from './question-types/LongText'
-import { LikertScale } from './question-types/LikertScale'
+import { FormSingleChoice } from '@/components/forms/multi-step/question-types/FormSingleChoice'
+import { FormMultiChoice } from '@/components/forms/multi-step/question-types/FormMultiChoice'
+import { FormShortText } from '@/components/forms/multi-step/question-types/FormShortText'
+import { FormLongText } from '@/components/forms/multi-step/question-types/FormLongText'
+import { FormLikertScale } from '@/components/forms/multi-step/question-types/FormLikertScale'
 import { chunkQuestionsBySections, stripQuestionPrefix, type SurveyQuestionLite } from './sections'
 
 interface Survey {
@@ -159,7 +159,7 @@ export function SurveyRenderer({ survey, departments, onSubmitted }: Props) {
       case 'TRUE_FALSE':
       case 'DROPDOWN':
         return (
-          <SingleChoice
+          <FormSingleChoice
             options={q.options}
             value={(value as string) ?? null}
             onChange={(opt) => handleAnswerChange(q.id, opt)}
@@ -168,7 +168,7 @@ export function SurveyRenderer({ survey, departments, onSubmitted }: Props) {
         )
       case 'MULTIPLE_CHOICE':
         return (
-          <MultiChoice
+          <FormMultiChoice
             options={q.options}
             selected={(value as string[]) ?? []}
             onToggle={(opt) => handleMultiToggle(q.id, opt)}
@@ -181,7 +181,7 @@ export function SurveyRenderer({ survey, departments, onSubmitted }: Props) {
         )
       case 'TEXT_SHORT':
         return (
-          <ShortText
+          <FormShortText
             value={(value as string) ?? ''}
             onChange={(v) => handleAnswerChange(q.id, v)}
             disabled={submitting}
@@ -189,7 +189,7 @@ export function SurveyRenderer({ survey, departments, onSubmitted }: Props) {
         )
       case 'TEXT_LONG':
         return (
-          <LongText
+          <FormLongText
             value={(value as string) ?? ''}
             onChange={(v) => handleAnswerChange(q.id, v)}
             disabled={submitting}
@@ -198,7 +198,7 @@ export function SurveyRenderer({ survey, departments, onSubmitted }: Props) {
       case 'RATING':
       case 'SCALE':
         return (
-          <LikertScale
+          <FormLikertScale
             min={1}
             max={q.questionType === 'SCALE' ? 10 : 5}
             value={(value as string) ?? ''}
@@ -208,7 +208,7 @@ export function SurveyRenderer({ survey, departments, onSubmitted }: Props) {
         )
       default:
         return (
-          <ShortText
+          <FormShortText
             value={(value as string) ?? ''}
             onChange={(v) => handleAnswerChange(q.id, v)}
             disabled={submitting}
@@ -225,7 +225,7 @@ export function SurveyRenderer({ survey, departments, onSubmitted }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <SurveyProgressBar
+      <FormProgressBar
         current={currentStep}
         total={totalSteps}
         answeredCount={answeredCount}
@@ -260,14 +260,14 @@ export function SurveyRenderer({ survey, departments, onSubmitted }: Props) {
                 <h2 className="mt-1 text-xl font-medium text-slate-900">{activeSection.title}</h2>
               </div>
               {activeSection.questions.map((q) => (
-                <SurveyQuestionCard
+                <FormQuestionCard
                   key={q.id}
                   number={numberOfQuestion(q.id)}
                   title={stripQuestionPrefix(q.questionText)}
                   isRequired={q.isRequired}
                 >
                   {renderQuestionInput(q)}
-                </SurveyQuestionCard>
+                </FormQuestionCard>
               ))}
             </>
           )}

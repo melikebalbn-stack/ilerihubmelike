@@ -1,7 +1,7 @@
 'use client'
 
-// PR-SURVEY-UI-REFACTOR: 1-N skala (RATING/SCALE soruları için).
-// Submit kontratı string bekliyor — değer string olarak gönderilir.
+// PR-JOBAPP-REDESIGN: Generic 1-N skala (formerly LikertScale).
+// RATING / SCALE soruları için, değer string olarak yönetilir.
 
 interface Props {
   min?: number
@@ -13,7 +13,7 @@ interface Props {
   disabled?: boolean
 }
 
-export function LikertScale({
+export function FormLikertScale({
   min = 1,
   max = 5,
   value,

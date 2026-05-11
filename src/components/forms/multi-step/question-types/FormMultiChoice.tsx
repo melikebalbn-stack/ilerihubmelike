@@ -1,8 +1,8 @@
 'use client'
 
-// PR-SURVEY-UI-REFACTOR: Çoklu seçim — checkbox kart + dinamik "Diğer" inputları.
-// "Diğer" değerleri submit'te `other:<text>` prefix'iyle gönderilir
-// (mevcut /api/public/survey/[id]/submit kontratı).
+// PR-JOBAPP-REDESIGN: Generic çoklu seçim (formerly MultiChoice).
+// Checkbox kart + dinamik "Diğer" inputları. Submit'te tüketici tarafı
+// `other:<text>` prefix konvansiyonunu uygular (bkz. Survey submit).
 
 import { Check, Plus, X } from 'lucide-react'
 
@@ -23,7 +23,7 @@ interface Props {
   disabled?: boolean
 }
 
-export function MultiChoice({
+export function FormMultiChoice({
   options,
   selected,
   onToggle,

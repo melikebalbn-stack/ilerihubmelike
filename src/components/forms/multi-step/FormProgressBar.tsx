@@ -1,7 +1,7 @@
 'use client'
 
-// PR-SURVEY-UI-REFACTOR: Sticky üst progress bar.
-// Bölüm sayacı + yüzde + doldurma çubuğu.
+// PR-JOBAPP-REDESIGN: Generic multi-step form progress bar (formerly SurveyProgressBar).
+// Sticky üst — bölüm sayacı + cevap yüzdesi + doldurma çubuğu.
 
 interface Props {
   current: number // 0-indexli aktif bölüm
@@ -10,7 +10,7 @@ interface Props {
   totalQuestions: number
 }
 
-export function SurveyProgressBar({ current, total, answeredCount, totalQuestions }: Props) {
+export function FormProgressBar({ current, total, answeredCount, totalQuestions }: Props) {
   const stepPct = total > 0 ? Math.round(((current + 1) / total) * 100) : 0
   const answerPct = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0
 

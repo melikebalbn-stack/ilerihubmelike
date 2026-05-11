@@ -5,7 +5,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { Upload, X, Image as ImageIcon, Camera } from 'lucide-react'
-import { FormCameraCapture } from '../FormCameraCapture'
+import { FormCameraCapture } from './FormCameraCapture'
 
 interface Props {
   value: File | null

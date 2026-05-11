@@ -17,16 +17,40 @@ export function SectionIletisim({ form, onChange }: SectionProps) {
         <FormLongText value={form.dependents} onChange={(v) => onChange({ dependents: v })} rows={2} maxLength={300} />
       </FormQuestionCard>
       <FormQuestionCard number={3} title="Cep Telefonu">
-        <FormShortText value={form.mobilePhone} onChange={(v) => onChange({ mobilePhone: v })} placeholder="05XX XXX XX XX" />
+        <FormShortText
+          value={form.mobilePhone}
+          onChange={(v) => onChange({ mobilePhone: v })}
+          placeholder="05XXXXXXXXX"
+          inputMode="tel"
+          onlyDigits
+          maxLength={11}
+        />
       </FormQuestionCard>
       <FormQuestionCard number={4} title="E-posta">
-        <FormShortText value={form.email} onChange={(v) => onChange({ email: v })} placeholder="ornek@mail.com" />
+        <FormShortText
+          value={form.email}
+          onChange={(v) => onChange({ email: v })}
+          placeholder="ornek@mail.com"
+          inputMode="email"
+        />
       </FormQuestionCard>
       <FormQuestionCard number={5} title="İş Telefonu">
-        <FormShortText value={form.workPhone} onChange={(v) => onChange({ workPhone: v })} />
+        <FormShortText
+          value={form.workPhone}
+          onChange={(v) => onChange({ workPhone: v })}
+          inputMode="tel"
+          onlyDigits
+          maxLength={11}
+        />
       </FormQuestionCard>
       <FormQuestionCard number={6} title="Ev Telefonu">
-        <FormShortText value={form.homePhone} onChange={(v) => onChange({ homePhone: v })} />
+        <FormShortText
+          value={form.homePhone}
+          onChange={(v) => onChange({ homePhone: v })}
+          inputMode="tel"
+          onlyDigits
+          maxLength={11}
+        />
       </FormQuestionCard>
     </>
   )

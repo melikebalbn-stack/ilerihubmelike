@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import {
   Card,
@@ -358,6 +359,7 @@ const referralSourceLabels: Record<string, string> = {
 
 export default function RecruitmentPage() {
   const { data: session } = useSession()
+  const router = useRouter()
   const [openings, setOpenings] = useState<JobOpening[]>([])
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [requests, setRequests] = useState<PersonnelRequest[]>([])
@@ -2419,7 +2421,11 @@ export default function RecruitmentPage() {
                   </TableHeader>
                   <TableBody>
                     {filteredJobApplications.map((app) => (
-                      <TableRow key={app.id}>
+                      <TableRow
+                        key={app.id}
+                        className="cursor-pointer hover:bg-slate-50"
+                        onClick={() => router.push(`/strategic-hr/recruitment/job-applications/${app.id}`)}
+                      >
                         <TableCell className="font-mono text-sm">{app.applicationNumber}</TableCell>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
@@ -2457,7 +2463,7 @@ export default function RecruitmentPage() {
                         <TableCell>
                           {format(new Date(app.createdAt), "d MMM yyyy", { locale: tr })}
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon">
@@ -2468,7 +2474,7 @@ export default function RecruitmentPage() {
                               <DropdownMenuLabel>Islemler</DropdownMenuLabel>
                               <DropdownMenuItem onClick={() => fetchJobAppDetail(app.id)}>
                                 <Eye className="h-4 w-4 mr-2" />
-                                Detay Gor
+                                Detay Gor (Inline)
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuLabel>Durum Degistir</DropdownMenuLabel>

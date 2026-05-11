@@ -37,7 +37,14 @@ export function SectionKisiselAile({ form, onChange }: SectionProps) {
         <FormShortText value={form.nationality} onChange={(v) => onChange({ nationality: v })} />
       </FormQuestionCard>
       <FormQuestionCard number={6} title="TC Kimlik No">
-        <FormShortText value={form.tcKimlikNo} onChange={(v) => onChange({ tcKimlikNo: v })} maxLength={11} />
+        <FormShortText
+          value={form.tcKimlikNo}
+          onChange={(v) => onChange({ tcKimlikNo: v })}
+          maxLength={11}
+          inputMode="numeric"
+          onlyDigits
+          placeholder="11 haneli"
+        />
       </FormQuestionCard>
       <FormQuestionCard number={7} title="Kan Grubu">
         <FormSegmentControl options={BLOOD_TYPE_OPTIONS as unknown as { value: string; label: string }[]} value={form.bloodType} onChange={(v) => onChange({ bloodType: v })} />

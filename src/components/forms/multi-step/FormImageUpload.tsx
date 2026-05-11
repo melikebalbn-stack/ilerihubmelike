@@ -4,7 +4,7 @@
 // Backend kontratı: multipart/form-data'da File object olarak.
 
 import { useRef, useState, useEffect } from 'react'
-import { Upload, X, Image as ImageIcon } from 'lucide-react'
+import { Upload, X, Image as ImageIcon, Camera } from 'lucide-react'
 
 interface Props {
   value: File | null
@@ -15,6 +15,7 @@ interface Props {
 
 export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,6 +50,7 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
   const handleRemove = () => {
     onChange(null)
     if (inputRef.current) inputRef.current.value = ''
+    if (cameraRef.current) cameraRef.current.value = ''
   }
 
   if (previewUrl) {
@@ -78,23 +80,44 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
 
   return (
     <div>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => inputRef.current?.click()}
-        className="w-full border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-[#1B4F72]/60 hover:bg-slate-50 transition-colors disabled:opacity-50"
-      >
-        <ImageIcon className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-        <p className="text-sm text-slate-600">
-          <Upload className="w-4 h-4 inline mr-1" />
-          Resim yüklemek için tıklayın
-        </p>
-        <p className="text-xs text-slate-400 mt-1">Maks. {maxSizeMB} MB · JPG / PNG / GIF</p>
-      </button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => inputRef.current?.click()}
+          className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center hover:border-[#1B4F72]/60 hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          <ImageIcon className="w-7 h-7 text-slate-400 mx-auto mb-2" />
+          <p className="text-sm font-medium text-slate-700">
+            <Upload className="w-4 h-4 inline mr-1" />
+            Dosyadan Seç
+          </p>
+          <p className="text-xs text-slate-400 mt-1">JPG / PNG / GIF</p>
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => cameraRef.current?.click()}
+          className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center hover:border-[#1B4F72]/60 hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          <Camera className="w-7 h-7 text-slate-400 mx-auto mb-2" />
+          <p className="text-sm font-medium text-slate-700">Kameradan Çek</p>
+          <p className="text-xs text-slate-400 mt-1">Mobil/tablet: arka kamera</p>
+        </button>
+      </div>
+      <p className="text-xs text-slate-400 mt-2 text-center">Maks. {maxSizeMB} MB</p>
       <input
         ref={inputRef}
         type="file"
         accept="image/*"
+        className="hidden"
+        onChange={(e) => handleSelect(e.target.files?.[0] ?? null)}
+      />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         className="hidden"
         onChange={(e) => handleSelect(e.target.files?.[0] ?? null)}
       />

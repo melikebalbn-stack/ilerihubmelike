@@ -73,18 +73,18 @@ export function SectionTercihEgitim({ form, onChange }: SectionProps) {
           renderRow={(row, _idx, onRowChange) => (
             <div className="space-y-2">
               <FormShortText value={row.language} onChange={(v) => onRowChange({ ...row, language: v })} placeholder="Dil (Örn. İngilizce)" />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Okuma</label>
-                  <FormSegmentControl options={LANGUAGE_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={row.reading} onChange={(v) => onRowChange({ ...row, reading: v })} mobileColumns={1} />
+                  <FormSegmentControl options={LANGUAGE_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={row.reading} onChange={(v) => onRowChange({ ...row, reading: v })} mobileColumns={2} />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Yazma</label>
-                  <FormSegmentControl options={LANGUAGE_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={row.writing} onChange={(v) => onRowChange({ ...row, writing: v })} mobileColumns={1} />
+                  <FormSegmentControl options={LANGUAGE_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={row.writing} onChange={(v) => onRowChange({ ...row, writing: v })} mobileColumns={2} />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Konuşma</label>
-                  <FormSegmentControl options={LANGUAGE_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={row.speaking} onChange={(v) => onRowChange({ ...row, speaking: v })} mobileColumns={1} />
+                  <FormSegmentControl options={LANGUAGE_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={row.speaking} onChange={(v) => onRowChange({ ...row, speaking: v })} mobileColumns={2} />
                 </div>
               </div>
               <FormShortText value={row.learnedAt} onChange={(v) => onRowChange({ ...row, learnedAt: v })} placeholder="Nerede öğrendiniz?" />
@@ -98,10 +98,15 @@ export function SectionTercihEgitim({ form, onChange }: SectionProps) {
           onChange={(v) => onChange({ computerSkills: v })}
           emptyRow={{ program: '', level: '', learnedAt: '' }}
           renderRow={(row, _idx, onRowChange) => (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <FormShortText value={row.program} onChange={(v) => onRowChange({ ...row, program: v })} placeholder="Program (Örn. Excel)" />
-              <FormSegmentControl options={COMPUTER_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={row.level} onChange={(v) => onRowChange({ ...row, level: v })} mobileColumns={2} />
-              <FormShortText value={row.learnedAt} onChange={(v) => onRowChange({ ...row, learnedAt: v })} placeholder="Nerede öğrendiniz?" />
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <FormShortText value={row.program} onChange={(v) => onRowChange({ ...row, program: v })} placeholder="Program (Örn. Excel)" />
+                <FormShortText value={row.learnedAt} onChange={(v) => onRowChange({ ...row, learnedAt: v })} placeholder="Nerede öğrendiniz?" />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Seviye</label>
+                <FormSegmentControl options={COMPUTER_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={row.level} onChange={(v) => onRowChange({ ...row, level: v })} mobileColumns={2} />
+              </div>
             </div>
           )}
         />

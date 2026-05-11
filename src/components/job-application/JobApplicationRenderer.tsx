@@ -14,7 +14,7 @@
 //
 // Backend kontratı (POST /api/job-application, multipart/form-data) aynı.
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Loader2, Send, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { FormProgressBar } from '@/components/forms/multi-step/FormProgressBar'
 import { SectionKisiselAile } from './sections/SectionKisiselAile'
@@ -59,6 +59,13 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
   const onChange = useCallback((patch: Partial<FormState>) => {
     setForm((prev) => ({ ...prev, ...patch }))
   }, [])
+
+  // PR-JOBAPP-UX-FIXES: Bölüm değişiminde üste smooth scroll.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [currentStep])
 
   const canSubmit =
     form.fullName.trim().length > 0 &&

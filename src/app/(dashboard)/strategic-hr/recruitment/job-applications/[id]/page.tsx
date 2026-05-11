@@ -276,6 +276,12 @@ export default function JobApplicationDetailPage() {
 
           /* Hide no-print elements */
           .no-print { display: none !important; }
+
+          /* PR-JOBAPP-UX-FIXES: Print images (foto + imza dataURL) */
+          img {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
         }
       `}</style>
 
@@ -314,23 +320,40 @@ export default function JobApplicationDetailPage() {
         <div className="lg:col-span-2" id="cv-print-area">
           {/* Print header - only visible when printing */}
           <div className="hidden print:block mb-4" style={{ borderBottom: "2px solid black", paddingBottom: "8px" }}>
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "2px" }}>{app.fullName}</h1>
-                <p style={{ fontSize: "11px", color: "#666" }}>
-                  Basvuru No: {app.applicationNumber} | Tarih: {format(new Date(app.createdAt), "d MMMM yyyy", { locale: tr })}
-                </p>
-                {app.requestedPosition && (
-                  <p style={{ fontSize: "12px", fontWeight: "600", marginTop: "2px" }}>
-                    Pozisyon: {app.requestedPosition}
+            <div className="flex items-start gap-4">
+              {app.photoUrl && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={app.photoUrl}
+                  alt={app.fullName}
+                  style={{
+                    width: "80px",
+                    height: "100px",
+                    objectFit: "cover",
+                    border: "1px solid #666",
+                    WebkitPrintColorAdjust: "exact",
+                    printColorAdjust: "exact",
+                  }}
+                />
+              )}
+              <div className="flex-1 flex items-start justify-between">
+                <div>
+                  <h1 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "2px" }}>{app.fullName}</h1>
+                  <p style={{ fontSize: "11px", color: "#666" }}>
+                    Basvuru No: {app.applicationNumber} | Tarih: {format(new Date(app.createdAt), "d MMMM yyyy", { locale: tr })}
                   </p>
-                )}
-              </div>
-              <div style={{ textAlign: "right", fontSize: "11px", color: "#666" }}>
-                {app.mobilePhone && <div>Tel: {app.mobilePhone}</div>}
-                {app.email && <div>{app.email}</div>}
-                <div style={{ marginTop: "4px" }}>
-                  <strong>Durum: {jobAppStatusLabels[app.status] || app.status}</strong>
+                  {app.requestedPosition && (
+                    <p style={{ fontSize: "12px", fontWeight: "600", marginTop: "2px" }}>
+                      Pozisyon: {app.requestedPosition}
+                    </p>
+                  )}
+                </div>
+                <div style={{ textAlign: "right", fontSize: "11px", color: "#666" }}>
+                  {app.mobilePhone && <div>Tel: {app.mobilePhone}</div>}
+                  {app.email && <div>{app.email}</div>}
+                  <div style={{ marginTop: "4px" }}>
+                    <strong>Durum: {jobAppStatusLabels[app.status] || app.status}</strong>
+                  </div>
                 </div>
               </div>
             </div>

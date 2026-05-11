@@ -15,6 +15,7 @@
 // Backend kontratı (POST /api/job-application, multipart/form-data) aynı.
 
 import { useState, useCallback, useEffect } from 'react'
+import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Loader2, Send, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { FormProgressBar } from '@/components/forms/multi-step/FormProgressBar'
 import { SectionKisiselAile } from './sections/SectionKisiselAile'
@@ -211,12 +212,12 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
             >
               Yeni Başvuru Başlat
             </button>
-            <a
+            <Link
               href="/"
               className="px-5 py-2.5 border border-slate-300 rounded-lg font-medium text-sm text-slate-700 hover:bg-slate-50 transition-colors text-center"
             >
               Anasayfaya Dön
-            </a>
+            </Link>
           </div>
         </div>
       </div>

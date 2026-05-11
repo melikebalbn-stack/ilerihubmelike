@@ -56,7 +56,9 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(self), interest-cohort=()',
+            // PR-JOBAPP-CAMERA-AND-SUCCESS: camera=(self) — job-application
+            // formundaki FormCameraCapture component'i getUserMedia çağırıyor.
+            value: 'camera=(self), microphone=(), geolocation=(self), interest-cohort=()',
           },
           {
             // Content Security Policy

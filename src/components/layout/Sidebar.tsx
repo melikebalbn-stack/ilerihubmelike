@@ -57,6 +57,7 @@ import {
   ShieldCheck,
   ServerCog,
   ArrowRightLeft,
+  UserMinus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -606,6 +607,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {renderMenuItem({ name: "Personel Yönetimi", icon: UserCog, href: "/personnel", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
             {renderMenuItem({ name: "İK Raporları", icon: BarChart3, href: "/personnel/reports", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
             {renderMenuItem({ name: "Bölüm Değişiklikleri", icon: ArrowRightLeft, href: "/personnel/department-transfers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {renderMenuItem({ name: "Ayrılan Personel", icon: UserMinus, href: "/personnel/leavers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
             {/* {renderMenuItem({ name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"] })} */}
 
             {/* Stratejik IK */}

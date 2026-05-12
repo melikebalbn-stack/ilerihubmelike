@@ -201,6 +201,9 @@ model User {
   // PR-PERSONEL-CIKIS-FORMU: Bu user'ın kaydettiği personel çıkışları
   recordedExits Personnel[] @relation("PersonnelExitRecorder")
 
+  // PR-PERSONNEL-DEPARTMENT-TRANSFER
+  recordedDepartmentTransfers PersonnelDepartmentTransfer[] @relation("DepartmentTransferRecorder")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -8521,15 +8524,62 @@ model Personnel {
   createdBy String?
 
   // İlişkiler
-  sensitive        PersonnelSensitive?
-  accessLogs       PersonnelAccessLog[]
-  overtimeRecords  OvertimePersonnel[]
-  evaluationEmails PersonnelEvaluationEmailLog[]
-  user             User?                         @relation("UserPersonnel")
+  sensitive           PersonnelSensitive?
+  accessLogs          PersonnelAccessLog[]
+  overtimeRecords     OvertimePersonnel[]
+  evaluationEmails    PersonnelEvaluationEmailLog[]
+  user                User?                          @relation("UserPersonnel")
+  departmentTransfers PersonnelDepartmentTransfer[]
 
   @@index([bolum])
   @@index([yakaRengi])
   @@index([aktif])
+}
+
+// PR-PERSONNEL-DEPARTMENT-TRANSFER: Bölüm değişikliği audit kaydı.
+// Her transfer Personnel.bolum güncellemesi + bu tabloya satır + audit log.
+model PersonnelDepartmentTransfer {
+  id          String    @id @default(cuid())
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+
+  // Talep
+  talepTarihi DateTime          @db.Date
+  talepEden   TransferTalepEden
+
+  // Onaylar
+  isgOnayi    TransferOnay
+  doktorOnayi TransferOnay
+
+  // Gerekçeler — multi-select array (KISI_* + IS_* enum string'leri)
+  gerekceler        String[]
+  gerekceAciklamasi String? @db.Text
+  gerekceDigerKisi  String?
+  gerekceDigerIs    String?
+
+  // Transfer
+  transferEdenBolum   String // snapshot — eski bölüm
+  transferEdilenBolum String // yeni bölüm
+  transferTarihi      DateTime @db.Date
+
+  // Audit
+  kayitEdenId String?
+  kayitEden   User?    @relation("DepartmentTransferRecorder", fields: [kayitEdenId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@map("personnel_department_transfer")
+  @@index([personnelId])
+  @@index([transferTarihi])
+}
+
+enum TransferTalepEden {
+  PERSONEL
+  BOLUM_YONETICISI
+}
+
+enum TransferOnay {
+  UYGUN
+  UYGUN_DEGIL
 }
 
 // İV ekibine gönderilen değerlendirme hatırlatma e-postaları (tekrar gönderimi önlemek için)

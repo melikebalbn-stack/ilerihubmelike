@@ -21,9 +21,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX } from "lucide-react"
+import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX, ArrowRightLeft } from "lucide-react"
 import { PersonnelAutocomplete } from "@/components/ui/personnel-autocomplete"
 import { PersonnelExitModal, type ExitData } from "@/components/personnel/PersonnelExitModal"
+import { PersonnelTransferModal } from "@/components/personnel/department-transfer/PersonnelTransferModal"
+import { PersonnelTransferHistory } from "@/components/personnel/department-transfer/PersonnelTransferHistory"
 import { toast } from "sonner"
 import {
   KAN_GRUBU_LABELS,
@@ -113,6 +115,9 @@ export default function PersonnelDetailPage() {
   const [exitModalMode, setExitModalMode] = useState<"create" | "edit">("create")
   const [showReactivateConfirm, setShowReactivateConfirm] = useState(false)
   const [reactivating, setReactivating] = useState(false)
+  // PR-PERSONNEL-DEPARTMENT-TRANSFER
+  const [showTransferModal, setShowTransferModal] = useState(false)
+  const [transferRefreshKey, setTransferRefreshKey] = useState(0)
 
   useEffect(() => {
     fetch("/api/settings/job-titles")
@@ -353,6 +358,12 @@ export default function PersonnelDetailPage() {
                 <Shield className="h-4 w-4" />
                 Hassas Bilgiler
               </Link>
+            </Button>
+          )}
+          {isAdmin && !editMode && data.aktif && (
+            <Button size="sm" variant="outline" onClick={() => setShowTransferModal(true)}>
+              <ArrowRightLeft className="h-4 w-4 mr-2" />
+              Bölüm Değiştir
             </Button>
           )}
           {isAdmin && !editMode && (
@@ -874,6 +885,22 @@ export default function PersonnelDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* PR-PERSONNEL-DEPARTMENT-TRANSFER: Geçmiş kartı + Modal */}
+      {isAdmin && <PersonnelTransferHistory personnelId={id} refreshKey={transferRefreshKey} />}
+
+      <PersonnelTransferModal
+        open={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        onSaved={() => {
+          toast.success("Bölüm değişikliği kaydedildi")
+          setTransferRefreshKey((k) => k + 1)
+          refetchPersonnel()
+        }}
+        personnelId={id}
+        personnelName={data.adSoyad}
+        currentBolum={data.bolum}
+      />
 
       {/* PR-PERSONEL-CIKIS-FORMU: Modal */}
       <PersonnelExitModal

@@ -15,16 +15,17 @@ import { gerekceLabel, talepEdenLabel, onayLabel } from '@/components/personnel/
 
 interface Transfer {
   id: string
-  talepTarihi: string
-  talepEden: string
-  isgOnayi: string
-  doktorOnayi: string
+  talepTarihi: string | null
+  talepEden: string | null
+  isgOnayi: string | null
+  doktorOnayi: string | null
   gerekceler: string[]
   gerekceDigerKisi: string | null
   gerekceDigerIs: string | null
   transferEdenBolum: string
   transferEdilenBolum: string
-  transferTarihi: string
+  transferTarihi: string | null
+  isHistorical: boolean
   createdAt: string
   personnel: { id: string; sicilNo: string; adSoyad: string; bolum: string | null }
   kayitEden: { id: string; name: string | null; email: string } | null
@@ -51,6 +52,7 @@ export default function DepartmentTransfersListPage() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [bolum, setBolum] = useState('')
+  const [isHistorical, setIsHistorical] = useState('') // '' (all) | 'false' (yeni form) | 'true' (historical)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -58,6 +60,7 @@ export default function DepartmentTransfersListPage() {
     if (from) params.set('from', from)
     if (to) params.set('to', to)
     if (bolum) params.set('bolum', bolum)
+    if (isHistorical !== '') params.set('isHistorical', isHistorical)
     try {
       const res = await fetch(`/api/personnel/department-transfers?${params}`)
       if (res.ok) setTransfers(await res.json())
@@ -67,7 +70,7 @@ export default function DepartmentTransfersListPage() {
     } finally {
       setLoading(false)
     }
-  }, [from, to, bolum])
+  }, [from, to, bolum, isHistorical])
 
   useEffect(() => {
     fetch('/api/settings/hr-departments')
@@ -97,7 +100,7 @@ export default function DepartmentTransfersListPage() {
           <CardTitle className="text-base">Filtreler</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
             <div>
               <Label htmlFor="from">Tarih (başlangıç)</Label>
               <Input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -115,12 +118,21 @@ export default function DepartmentTransfersListPage() {
                 ))}
               </Select>
             </div>
+            <div>
+              <Label htmlFor="kaynak">Kaynak</Label>
+              <Select id="kaynak" value={isHistorical} onChange={(e) => setIsHistorical(e.target.value)}>
+                <option value="">Tümü</option>
+                <option value="false">Yeni form</option>
+                <option value="true">Historical</option>
+              </Select>
+            </div>
             <Button
               variant="outline"
               onClick={() => {
                 setFrom('')
                 setTo('')
                 setBolum('')
+                setIsHistorical('')
               }}
             >
               <RefreshCcw className="h-4 w-4 mr-2" />
@@ -171,26 +183,44 @@ export default function DepartmentTransfersListPage() {
                     >
                       <td className="px-2 py-2 text-slate-400 tabular-nums">{idx + 1}</td>
                       <td className="px-2 py-2">
-                        <div className="font-medium text-slate-900">{t.personnel.adSoyad}</div>
+                        <div className="font-medium text-slate-900 flex items-center gap-1.5">
+                          {t.personnel.adSoyad}
+                          {t.isHistorical && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-normal bg-amber-50 text-amber-700 border-amber-200 px-1.5 py-0"
+                            >
+                              Historical
+                            </Badge>
+                          )}
+                        </div>
                         <div className="text-[10px] text-slate-500 font-mono">{t.personnel.sicilNo}</div>
                       </td>
-                      <td className="px-2 py-2 tabular-nums">{formatTrDate(t.talepTarihi)}</td>
-                      <td className="px-2 py-2">{talepEdenLabel(t.talepEden)}</td>
+                      <td className="px-2 py-2 tabular-nums">{t.talepTarihi ? formatTrDate(t.talepTarihi) : '-'}</td>
+                      <td className="px-2 py-2">{t.talepEden ? talepEdenLabel(t.talepEden) : '-'}</td>
                       <td className="px-2 py-2">
-                        <Badge
-                          variant="outline"
-                          className={t.isgOnayi === 'UYGUN' ? 'border-emerald-300 text-emerald-700' : 'border-rose-300 text-rose-700'}
-                        >
-                          {onayLabel(t.isgOnayi)}
-                        </Badge>
+                        {t.isgOnayi ? (
+                          <Badge
+                            variant="outline"
+                            className={t.isgOnayi === 'UYGUN' ? 'border-emerald-300 text-emerald-700' : 'border-rose-300 text-rose-700'}
+                          >
+                            {onayLabel(t.isgOnayi)}
+                          </Badge>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
                       </td>
                       <td className="px-2 py-2">
-                        <Badge
-                          variant="outline"
-                          className={t.doktorOnayi === 'UYGUN' ? 'border-emerald-300 text-emerald-700' : 'border-rose-300 text-rose-700'}
-                        >
-                          {onayLabel(t.doktorOnayi)}
-                        </Badge>
+                        {t.doktorOnayi ? (
+                          <Badge
+                            variant="outline"
+                            className={t.doktorOnayi === 'UYGUN' ? 'border-emerald-300 text-emerald-700' : 'border-rose-300 text-rose-700'}
+                          >
+                            {onayLabel(t.doktorOnayi)}
+                          </Badge>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
                       </td>
                       <td className="px-2 py-2">
                         <div className="flex flex-wrap gap-1 max-w-xs">
@@ -216,7 +246,7 @@ export default function DepartmentTransfersListPage() {
                         <ArrowRightLeft className="inline w-3 h-3 mx-1.5 text-slate-400" />
                         <span className="font-medium">{t.transferEdilenBolum}</span>
                       </td>
-                      <td className="px-2 py-2 tabular-nums font-medium">{formatTrDate(t.transferTarihi)}</td>
+                      <td className="px-2 py-2 tabular-nums font-medium">{t.transferTarihi ? formatTrDate(t.transferTarihi) : '-'}</td>
                       <td className="px-2 py-2 text-xs text-slate-500">
                         {t.kayitEden?.name ?? t.kayitEden?.email ?? '-'}
                       </td>

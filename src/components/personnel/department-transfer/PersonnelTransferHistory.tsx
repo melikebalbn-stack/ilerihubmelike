@@ -10,17 +10,18 @@ import { gerekceLabel, talepEdenLabel, onayLabel } from './constants'
 
 interface Transfer {
   id: string
-  talepTarihi: string
-  talepEden: string
-  isgOnayi: string
-  doktorOnayi: string
+  talepTarihi: string | null
+  talepEden: string | null
+  isgOnayi: string | null
+  doktorOnayi: string | null
   gerekceler: string[]
   gerekceAciklamasi: string | null
   gerekceDigerKisi: string | null
   gerekceDigerIs: string | null
   transferEdenBolum: string
   transferEdilenBolum: string
-  transferTarihi: string
+  transferTarihi: string | null
+  isHistorical: boolean
   createdAt: string
   kayitEden: { id: string; name: string | null; email: string } | null
 }
@@ -31,7 +32,8 @@ interface Props {
   refreshKey?: number
 }
 
-function formatTrDate(s: string): string {
+function formatTrDate(s: string | null | undefined): string {
+  if (!s) return '-'
   try {
     return new Date(s).toLocaleDateString('tr-TR')
   } catch {
@@ -87,24 +89,40 @@ export function PersonnelTransferHistory({ personnelId, refreshKey = 0 }: Props)
             {transfers.map((t) => (
               <div key={t.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50/40">
                 <div className="flex flex-wrap justify-between gap-2 mb-2">
-                  <div className="font-medium text-sm text-slate-900">
+                  <div className="font-medium text-sm text-slate-900 flex items-center gap-2 flex-wrap">
                     <span className="text-slate-600">{t.transferEdenBolum}</span>
-                    <ArrowRightLeft className="inline w-3.5 h-3.5 mx-2 text-slate-400" />
+                    <ArrowRightLeft className="inline w-3.5 h-3.5 text-slate-400" />
                     <span>{t.transferEdilenBolum}</span>
+                    {t.isHistorical && (
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] font-normal bg-amber-50 text-amber-700 border-amber-200 px-1.5 py-0"
+                      >
+                        Historical
+                      </Badge>
+                    )}
                   </div>
                   <div className="text-xs text-slate-500 tabular-nums">
-                    {formatTrDate(t.transferTarihi)}
+                    {t.transferTarihi ? formatTrDate(t.transferTarihi) : '(tarih yok)'}
                   </div>
                 </div>
                 <div className="text-xs text-slate-600 space-y-1">
-                  <div>
-                    Talep eden: <strong>{talepEdenLabel(t.talepEden)}</strong> · Talep tarihi:{' '}
-                    {formatTrDate(t.talepTarihi)}
-                  </div>
-                  <div>
-                    İSG: <strong>{onayLabel(t.isgOnayi)}</strong> · Doktor:{' '}
-                    <strong>{onayLabel(t.doktorOnayi)}</strong>
-                  </div>
+                  {t.isHistorical ? (
+                    <div className="text-slate-500 italic">
+                      İK Excel listesinden import edilmiş tarihsel kayıt — form alanları (talep/onay) o dönemde tutulmamış.
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        Talep eden: <strong>{t.talepEden ? talepEdenLabel(t.talepEden) : '-'}</strong> · Talep tarihi:{' '}
+                        {t.talepTarihi ? formatTrDate(t.talepTarihi) : '-'}
+                      </div>
+                      <div>
+                        İSG: <strong>{t.isgOnayi ? onayLabel(t.isgOnayi) : '-'}</strong> · Doktor:{' '}
+                        <strong>{t.doktorOnayi ? onayLabel(t.doktorOnayi) : '-'}</strong>
+                      </div>
+                    </>
+                  )}
                   <div className="flex flex-wrap gap-1 mt-1.5">
                     {t.gerekceler.map((g) => (
                       <Badge key={g} variant="secondary" className="text-[10px] font-normal">

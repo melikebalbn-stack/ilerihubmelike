@@ -44,13 +44,18 @@ export async function GET(request: NextRequest) {
       ]
     }
 
+    // PR-PERSONNEL-DEPARTMENT-HISTORY: historical filtresi (yeni form only / all / historical only)
+    const isHistorical = sp.get('isHistorical')
+    if (isHistorical === 'true') where.isHistorical = true
+    else if (isHistorical === 'false') where.isHistorical = false
+
     const transfers = await prisma.personnelDepartmentTransfer.findMany({
       where,
       include: {
         personnel: { select: { id: true, sicilNo: true, adSoyad: true, bolum: true } },
         kayitEden: { select: { id: true, name: true, email: true } },
       },
-      orderBy: { transferTarihi: 'desc' },
+      orderBy: [{ transferTarihi: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: 500,
     })
 

@@ -93,6 +93,16 @@ type PersonnelData = {
 
 const ADMIN_ROLES = ["ADMIN", "HR_MANAGER", "SUPER_ADMIN"]
 
+// Backend (PUT/PATCH/DELETE) hasEditAccess(role, department) kullanıyor —
+// İK departmanındaki herkesi role'den bağımsız HR sayar. Frontend isAdmin
+// kontrolü de aynı pattern'i kullanmalı, yoksa İK çalışanı butonları
+// göremez ama backend isteği kabul eder.
+function isHRDepartment(dept: string | undefined | null): boolean {
+  if (!dept) return false
+  const d = dept.toLowerCase()
+  return d.includes("insan") || d.includes("human") || d.includes("hr") || d.includes("ik")
+}
+
 export default function PersonnelDetailPage() {
   const { data: session } = useSession()
   const router = useRouter()
@@ -100,7 +110,8 @@ export default function PersonnelDetailPage() {
   const searchParams = useSearchParams()
   const id = params.id as string
   const userRole = session?.user?.role as string
-  const isAdmin = ADMIN_ROLES.includes(userRole)
+  const userDepartment = (session?.user as { department?: string | null } | undefined)?.department
+  const isAdmin = ADMIN_ROLES.includes(userRole) || isHRDepartment(userDepartment)
 
   const [data, setData] = useState<PersonnelData | null>(null)
   const [form, setForm] = useState<Record<string, any>>({})

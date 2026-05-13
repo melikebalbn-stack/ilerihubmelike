@@ -8543,13 +8543,13 @@ model PersonnelDepartmentTransfer {
   personnelId String
   personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
 
-  // Talep
-  talepTarihi DateTime          @db.Date
-  talepEden   TransferTalepEden
+  // Talep — nullable: historical import için. Yeni başvurularda API zorunlu tutar.
+  talepTarihi DateTime?          @db.Date
+  talepEden   TransferTalepEden?
 
-  // Onaylar
-  isgOnayi    TransferOnay
-  doktorOnayi TransferOnay
+  // Onaylar — nullable: historical import için. Yeni başvurularda API zorunlu tutar.
+  isgOnayi    TransferOnay?
+  doktorOnayi TransferOnay?
 
   // Gerekçeler — multi-select array (KISI_* + IS_* enum string'leri)
   gerekceler        String[]
@@ -8558,9 +8558,12 @@ model PersonnelDepartmentTransfer {
   gerekceDigerIs    String?
 
   // Transfer
-  transferEdenBolum   String // snapshot — eski bölüm
-  transferEdilenBolum String // yeni bölüm
-  transferTarihi      DateTime @db.Date
+  transferEdenBolum   String   // snapshot — eski bölüm
+  transferEdilenBolum String   // yeni bölüm
+  transferTarihi      DateTime? @db.Date // nullable: bazı historical kayıtlar tarihsiz
+
+  // PR-PERSONNEL-DEPARTMENT-HISTORY: Excel import işareti
+  isHistorical Boolean @default(false)
 
   // Audit
   kayitEdenId String?
@@ -8570,6 +8573,7 @@ model PersonnelDepartmentTransfer {
   @@map("personnel_department_transfer")
   @@index([personnelId])
   @@index([transferTarihi])
+  @@index([isHistorical])
 }
 
 enum TransferTalepEden {

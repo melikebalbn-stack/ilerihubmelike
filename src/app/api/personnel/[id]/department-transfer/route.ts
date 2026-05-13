@@ -103,7 +103,7 @@ export async function POST(
             personnelName: personnel.adSoyad,
             oldDepartment,
             newDepartment,
-            transferDate: transfer.transferTarihi.toISOString(),
+            transferDate: transfer.transferTarihi?.toISOString() ?? null,
             talepEden: transfer.talepEden,
             isgOnayi: transfer.isgOnayi,
             doktorOnayi: transfer.doktorOnayi,

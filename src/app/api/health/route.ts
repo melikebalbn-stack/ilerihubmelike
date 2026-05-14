@@ -79,3 +79,7 @@ export async function GET() {
     headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
   })
 }
+
+// PR-FAZ-4 controlled fail test (REVERTED IN NEXT COMMIT)
+import { kasitliBozukImport } from '@/lib/yok-boyle-bir-modul'
+console.log(kasitliBozukImport)

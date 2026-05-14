@@ -814,3 +814,109 @@ export async function sendVisitReportEmail(
     }
   }
 }
+
+// ==========================================
+// IT Ticket Bildirim E-posta Sistemi (PR-TKT-NTF-1A)
+// ==========================================
+
+/**
+ * Yeni IT ticket'ı oluşturulduğunda IT ekibine gönderilecek mail içeriği.
+ * @param ticket Ticket bilgileri (POST handler'dan gelen prisma.ticket.create sonucu)
+ * @param recipientName Mail'in gideceği kişinin adı (kişiselleştirme için)
+ */
+export function generateTicketCreatedEmailContent(
+  ticket: {
+    id: string
+    ticketNumber: string
+    subject: string
+    description: string
+    priority: string // LOW | MEDIUM | HIGH | CRITICAL (TicketPriority enum)
+    category: string // kategori adı
+    requesterName: string
+    requesterDept: string
+    createdAt: Date
+  },
+  recipientName: string,
+): { subject: string; body: string; html: string } {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.ilerigroup.com'
+  const ticketUrl = `${appUrl}/it-support?ticket=${ticket.ticketNumber}`
+  const isCritical = ticket.priority === 'CRITICAL' || ticket.priority === 'TICKET_CRITICAL'
+
+  const priorityLabel: Record<string, string> = {
+    LOW: 'Düşük',
+    MEDIUM: 'Orta',
+    NORMAL: 'Normal',
+    HIGH: 'Yüksek',
+    CRITICAL: 'Acil',
+    TICKET_LOW: 'Düşük',
+    TICKET_HIGH: 'Yüksek',
+    TICKET_CRITICAL: 'Acil',
+  }
+
+  // HTML escape — XSS koruma
+  const esc = (s: string): string =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+
+  const subject = `${isCritical ? '🔴 ACİL — ' : ''}[ILERIHub] Yeni IT Talebi: ${ticket.ticketNumber}`
+
+  const body = `Merhaba ${recipientName},
+
+Yeni bir IT destek talebi açıldı.
+
+Talep No   : ${ticket.ticketNumber}
+Başlık     : ${ticket.subject}
+Açan       : ${ticket.requesterName} (${ticket.requesterDept})
+Kategori   : ${ticket.category}
+Öncelik    : ${priorityLabel[ticket.priority] || ticket.priority}
+Açılış     : ${new Date(ticket.createdAt).toLocaleString('tr-TR')}
+
+Açıklama:
+${ticket.description}
+
+Talebi görüntülemek için: ${ticketUrl}
+
+—
+ILERIHub Bildirim Sistemi`
+
+  const headerBg = isCritical ? '#fee2e2' : '#dbeafe'
+  const headerBorder = isCritical ? '#fca5a5' : '#93c5fd'
+  const headerText = isCritical ? '#991b1b' : '#1e40af'
+  const labelText = isCritical ? '🔴 ACİL — YENİ IT TALEBİ' : 'YENİ IT TALEBİ'
+
+  const html = `<!DOCTYPE html>
+<html lang="tr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;">
+  <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+    <div style="background:${headerBg};padding:20px 24px;border-bottom:1px solid ${headerBorder};">
+      <div style="font-size:11px;color:${headerText};text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;font-weight:600;">${labelText}</div>
+      <div style="font-size:18px;font-weight:600;color:#0f172a;">${esc(ticket.ticketNumber)} — ${esc(ticket.subject)}</div>
+    </div>
+    <div style="padding:24px;">
+      <div style="margin-bottom:18px;color:#475569;font-size:14px;">Merhaba ${esc(recipientName)},<br>Yeni bir IT destek talebi açıldı. Detaylar aşağıdadır.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+        <tr><td style="padding:6px 0;color:#64748b;width:120px;">Açan</td><td style="padding:6px 0;color:#0f172a;font-weight:500;">${esc(ticket.requesterName)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;">Departman</td><td style="padding:6px 0;color:#0f172a;">${esc(ticket.requesterDept)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;">Kategori</td><td style="padding:6px 0;color:#0f172a;">${esc(ticket.category)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;">Öncelik</td><td style="padding:6px 0;color:#0f172a;font-weight:${isCritical ? '600' : '400'};">${priorityLabel[ticket.priority] || ticket.priority}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;">Açılış</td><td style="padding:6px 0;color:#0f172a;">${new Date(ticket.createdAt).toLocaleString('tr-TR')}</td></tr>
+      </table>
+      <div style="padding:14px 16px;background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:4px;font-size:14px;color:#334155;white-space:pre-wrap;line-height:1.5;">${esc(ticket.description)}</div>
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${ticketUrl}" style="display:inline-block;background:#3b82f6;color:#ffffff;padding:11px 28px;border-radius:6px;text-decoration:none;font-weight:500;font-size:14px;">Talebi Görüntüle</a>
+      </div>
+    </div>
+    <div style="background:#f8fafc;padding:14px 24px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;">
+      ILERIHub Bildirim Sistemi · İleri Group
+    </div>
+  </div>
+</body>
+</html>`
+
+  return { subject, body, html }
+}

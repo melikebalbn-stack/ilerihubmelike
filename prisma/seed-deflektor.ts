@@ -1,6 +1,6 @@
 import {
   PrismaClient,
-  Role,
+  UserRoleEnum as Role,
   CostCurrency,
   CostAnalysisStatus,
   MaterialCostCategory,
@@ -232,28 +232,7 @@ async function main() {
   console.log(`   CostLabor satırı:   ${laborCreates.length} (operasyon kırılımı)`)
   console.log(`   CostMaterial satır: ${materialCreates.length}`)
 
-  // —— Description ——
-  const description = [
-    'Roketsan Deflektör Montajı maliyet analizi. Kaynak: ROKETSAN_MALİYET_deflektör.xlsx.',
-    '',
-    '📋 Notlar:',
-    '• Birim fiyatlara BOYA dahil değildir; KATAFOREZ dahildir.',
-    '• Orta Ayak Komplesi: S700 150X150X5 MM yerine ST 52 verilmiştir.',
-    '• Hardox Hitemp yerine Hardox 500 verilmiştir.',
-    '• Stop lambaları kapsam dışıdır.',
-    '• Yatırım maliyetleri (kaynak makinesi, fikstür, kalıp, borverk) bu analize dahil değildir.',
-    '',
-    '🔧 Excel Formül Düzeltmesi:',
-    '• Excel kaynağındaki H7 hücresinde (ORTA AYAK KOMPLESİ malzeme toplamı) formül hatası tespit edildi.',
-    '• Excel: SUM(G7*E7)*D7 = 360€ (D7=adet ile çift çarpım). Doğru: G7*E7 = 60×2 = 120€.',
-    '• Sistem doğru hesaplanmış değerleri (4210€ malzeme, 8544€ subtotal, 17088€ satış) kullanır.',
-    '',
-    '💼 Teklif Bilgisi:',
-    `• Hesaplanan satış fiyatı (formül düzeltmeli): €${SALES_PRICE.toFixed(2)}`,
-    '• Excel\'in (hatalı formülle) verdiği satış fiyatı: €17.568,00',
-    '• 08.03.2026 tarihli müşteri teklifi: €21.960,00',
-    `• Teklif - hesaplanan farkı: €${(21960 - SALES_PRICE).toFixed(2)}`,
-  ].join('\n')
+  const description = 'Roketsan Deflektör Montajı maliyet analizi. Kaynak: ROKETSAN MALİYET deflektör.xlsx.'
 
   // —— CostAnalysis ——
   const analysis = await prisma.costAnalysis.create({

@@ -69,7 +69,7 @@ export function VantaCloudsBackground() {
   return (
     <div
       ref={ref}
-      className="fixed inset-0 z-0 w-full h-full pointer-events-none"
+      className="fixed inset-0 z-0 w-full h-full pointer-events-none bg-white"
       aria-hidden="true"
     />
   )

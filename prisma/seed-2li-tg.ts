@@ -1,6 +1,6 @@
 import {
   PrismaClient,
-  Role,
+  UserRoleEnum as Role,
   CostCurrency,
   CostAnalysisStatus,
   MaterialCostCategory,

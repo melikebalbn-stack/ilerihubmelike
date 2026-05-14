@@ -920,3 +920,186 @@ ILERIHub Bildirim Sistemi`
 
   return { subject, body, html }
 }
+
+// ════════════════════════════════════════════════════════════
+// PERFORMANS DEĞERLENDİRME EMAIL TEMPLATELERI (PR-HR-NOTIF)
+// ════════════════════════════════════════════════════════════
+
+type CycleSummary = {
+  id: string
+  name: string
+  year: number
+  yearEndReviewEnd: Date | null
+}
+
+type ReviewSummary = {
+  id: string
+  cycleId: string
+  cycleName: string
+  employeeName: string
+  employeeEmail: string
+  deadline: Date
+}
+
+function escapeHTML(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+/**
+ * CYCLE_LAUNCH — Yeni performans değerlendirme cycle'ı IN_PROGRESS'e geçti.
+ * Recipient: employee + manager + İK ekibi.
+ */
+export function generateReviewCycleLaunchEmail(
+  cycle: CycleSummary,
+  recipientName: string,
+): { subject: string; body: string; html: string } {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.ilerigroup.com'
+  const url = `${appUrl}/strategic-hr/performance?cycle=${cycle.id}`
+  const deadlineStr = cycle.yearEndReviewEnd ? fmtDate(cycle.yearEndReviewEnd) : 'belirlenmedi'
+  const subject = `Performans Değerlendirme Dönemi Başladı: ${cycle.name}`
+
+  const body = `Sayın ${recipientName},
+
+${cycle.year} performans değerlendirme dönemi (${cycle.name}) başlatıldı.
+Son tamamlanma tarihi: ${deadlineStr}
+
+ILERIHub > Stratejik İK > Performans sayfasından değerlendirmenizi başlatabilirsiniz:
+${url}
+
+İleri Group İnsan Varlıkları`
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f9fafb;">
+<table cellpadding="0" cellspacing="0" border="0" width="500" align="center" style="background:#fff;border:2px solid #1e40af;margin:20px auto;">
+<tr><td style="padding:14px 18px;border-bottom:1px solid #e5e7eb;">
+<span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">İLERİ GROUP</span><br>
+<span style="font-size:17px;font-weight:bold;color:#1e40af;">Performans Değerlendirme Başladı</span>
+</td></tr>
+<tr><td style="padding:18px;color:#374151;font-size:14px;line-height:22px;">
+Sayın <b>${escapeHTML(recipientName)}</b>,<br><br>
+<b>${escapeHTML(cycle.name)}</b> dönemi başlatıldı.<br>
+Son tamamlanma tarihi: <b>${escapeHTML(deadlineStr)}</b><br><br>
+Değerlendirmenizi sayfa üzerinden tamamlayabilirsiniz.
+</td></tr>
+<tr><td style="padding:12px 18px;border-top:1px solid #e5e7eb;">
+<a href="${url}" style="display:inline-block;background:#1e40af;color:#fff;padding:9px 18px;text-decoration:none;font-size:13px;font-weight:bold;">Değerlendirmeyi Aç</a>
+</td></tr>
+<tr><td style="padding:10px 18px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;">İnsan Varlıkları Departmanı · ILERIHub Bildirim Sistemi</td></tr>
+</table>
+</body></html>`
+
+  return { subject, body, html }
+}
+
+/**
+ * DEADLINE_7 / DEADLINE_0 — Review tamamlanmamış, hatırlatma.
+ * daysRemaining: 7 veya 0 (son gün).
+ * Recipient: employee + manager (review status'a göre).
+ */
+export function generateReviewReminderEmail(
+  review: ReviewSummary,
+  daysRemaining: number,
+  recipientName: string,
+): { subject: string; body: string; html: string } {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.ilerigroup.com'
+  const url = `${appUrl}/strategic-hr/performance?cycle=${review.cycleId}`
+  const deadlineStr = fmtDate(review.deadline)
+  const urgent = daysRemaining === 0
+  const subject = urgent
+    ? `SON GÜN: Performans Değerlendirme Tamamlanmalı (${review.cycleName})`
+    : `Hatırlatma: ${daysRemaining} gün içinde performans değerlendirme tamamlanmalı`
+
+  const body = `Sayın ${recipientName},
+
+${review.cycleName} dönemindeki performans değerlendirmesi henüz tamamlanmadı.
+Son tarih: ${deadlineStr}${urgent ? ' (BUGÜN)' : ` (${daysRemaining} gün kaldı)`}
+
+ILERIHub > Stratejik İK > Performans sayfasından tamamlayabilirsiniz:
+${url}
+
+İleri Group İnsan Varlıkları`
+
+  const borderColor = urgent ? '#dc2626' : '#f59e0b'
+  const labelText = urgent ? 'SON GÜN UYARISI' : 'HATIRLATMA'
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f9fafb;">
+<table cellpadding="0" cellspacing="0" border="0" width="500" align="center" style="background:#fff;border:2px solid ${borderColor};margin:20px auto;">
+<tr><td style="padding:14px 18px;border-bottom:1px solid #e5e7eb;">
+<span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">İLERİ GROUP</span><br>
+<span style="font-size:17px;font-weight:bold;color:${borderColor};">${labelText}</span>
+</td></tr>
+<tr><td style="padding:18px;color:#374151;font-size:14px;line-height:22px;">
+Sayın <b>${escapeHTML(recipientName)}</b>,<br><br>
+<b>${escapeHTML(review.cycleName)}</b> dönemi performans değerlendirmeniz henüz tamamlanmadı.<br>
+Son tarih: <b>${escapeHTML(deadlineStr)}</b>${urgent ? ' (<b>BUGÜN</b>)' : ` (${daysRemaining} gün kaldı)`}
+</td></tr>
+<tr><td style="padding:12px 18px;border-top:1px solid #e5e7eb;">
+<a href="${url}" style="display:inline-block;background:${borderColor};color:#fff;padding:9px 18px;text-decoration:none;font-size:13px;font-weight:bold;">Değerlendirmeyi Tamamla</a>
+</td></tr>
+<tr><td style="padding:10px 18px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;">İnsan Varlıkları Departmanı · ILERIHub Bildirim Sistemi</td></tr>
+</table>
+</body></html>`
+
+  return { subject, body, html }
+}
+
+/**
+ * OVERDUE — Review deadline geçti, hala tamamlanmadı.
+ * Recipient: manager + İK escalation (employee ana sorumlu ama manager+İK takip eder).
+ */
+export function generateReviewOverdueEmail(
+  review: ReviewSummary,
+  daysOverdue: number,
+  recipientName: string,
+): { subject: string; body: string; html: string } {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.ilerigroup.com'
+  const url = `${appUrl}/strategic-hr/performance?cycle=${review.cycleId}`
+  const deadlineStr = fmtDate(review.deadline)
+  const subject = `GECİKMİŞ: ${review.employeeName} performans değerlendirme (${daysOverdue} gün geçti)`
+
+  const body = `Sayın ${recipientName},
+
+${review.employeeName} (${review.employeeEmail}) için ${review.cycleName} dönemi
+performans değerlendirmesi ${daysOverdue} gündür gecikmiş durumda.
+
+Son tarih (geçti): ${deadlineStr}
+
+Acil tamamlanması için ilgililerle iletişime geçilmesi gerekiyor.
+${url}
+
+İleri Group İnsan Varlıkları`
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f9fafb;">
+<table cellpadding="0" cellspacing="0" border="0" width="500" align="center" style="background:#fff;border:2px solid #991b1b;margin:20px auto;">
+<tr><td style="padding:14px 18px;border-bottom:1px solid #e5e7eb;background:#fef2f2;">
+<span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">İLERİ GROUP · ESCALATION</span><br>
+<span style="font-size:17px;font-weight:bold;color:#991b1b;">GECİKMİŞ DEĞERLENDİRME</span>
+</td></tr>
+<tr><td style="padding:18px;color:#374151;font-size:14px;line-height:22px;">
+Sayın <b>${escapeHTML(recipientName)}</b>,<br><br>
+<b>${escapeHTML(review.employeeName)}</b> için <b>${escapeHTML(review.cycleName)}</b> dönemi
+performans değerlendirmesi <b>${daysOverdue} gündür gecikmiş</b> durumda.<br><br>
+Son tarih (geçti): <b>${escapeHTML(deadlineStr)}</b>
+</td></tr>
+<tr><td style="padding:12px 18px;border-top:1px solid #e5e7eb;">
+<a href="${url}" style="display:inline-block;background:#991b1b;color:#fff;padding:9px 18px;text-decoration:none;font-size:13px;font-weight:bold;">Aksiyon Al</a>
+</td></tr>
+<tr><td style="padding:10px 18px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;">İnsan Varlıkları Departmanı · ILERIHub Bildirim Sistemi</td></tr>
+</table>
+</body></html>`
+
+  return { subject, body, html }
+}

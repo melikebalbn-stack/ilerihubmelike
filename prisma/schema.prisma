@@ -9568,3 +9568,22 @@ model PermissionAuditLog {
   @@index([createdAt], map: "permission_audit_log_created_at_idx")
   @@map("permission_audit_log")
 }
+
+// Performans değerlendirme bildirim log'u (idempotency)
+// eventType: CYCLE_LAUNCH | DEADLINE_7 | DEADLINE_0 | OVERDUE
+// reviewId nullable: CYCLE_LAUNCH cycle-bazlı, diğerleri review-bazlı
+model PerformanceReviewEmailLog {
+  id          String   @id @default(cuid())
+  cycleId     String
+  reviewId    String?
+  eventType   String
+  recipientId String
+  sentAt      DateTime @default(now())
+  status      String   @default("sent")
+  error       String?  @db.Text
+
+  @@unique([cycleId, reviewId, eventType, recipientId], map: "perf_review_email_log_unique")
+  @@index([cycleId])
+  @@index([sentAt])
+  @@map("performance_review_email_log")
+}

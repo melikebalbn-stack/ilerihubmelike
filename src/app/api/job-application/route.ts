@@ -5,6 +5,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
 import { sendEmail } from '@/lib/email'
+import { resolveHRRecipients } from '@/lib/hr-notifications'
 
 // POST - İş başvurusu kaydet
 export async function POST(request: NextRequest) {
@@ -224,80 +225,51 @@ iş başvurusunda bulundu.
 </body>
 </html>`
 
-  // Sadece test kullanıcısına e-posta gönder
+  // Hat 1 fix (PR-HR-NOTIF): gerçek İK ekibine email gönder, hardcoded recipient yerine
+  const recipients = await resolveHRRecipients()
+  if (recipients.length === 0) {
+    console.warn('[job-application] HR recipient bulunamadı, email gönderilmedi')
+    return
+  }
   await sendEmail(
-    [
-      { email: 'melih.dilben@ilerigroup.com', name: 'Melih Dilben' }
-    ],
+    recipients.map(r => ({ email: r.email, name: r.name })),
     `Yeni İş Başvurusu - ${application.fullName}`,
     emailContent
   )
 }
 
-// İK departmanına bildirim gönderme fonksiyonu
+// İK departmanına bildirim gönderme fonksiyonu (PR-HR-NOTIF: ortak resolver)
 async function sendHRNotifications(application: {
   id: string
   applicationNumber: string
   fullName: string
 }) {
-  // İK departmanındaki tüm kullanıcıları bul
-  const hrDepartments = ['insan varliklari', 'insan varlıkları', 'human resources', 'hr', 'ik']
-
-  const hrUsers = await prisma.user.findMany({
-    where: {
-      OR: [
-        // Departman bazlı
-        {
-          department: {
-            in: hrDepartments,
-            mode: 'insensitive'
-          }
-        },
-        // HR_MANAGER rolü olanlar
-        {
-          role: 'HR_MANAGER'
-        },
-        // Test kullanıcısı
-        {
-          email: {
-            in: ['melih.dilben@ilerigroup.com'],
-            mode: 'insensitive'
-          }
-        }
-      ],
-      isActive: true
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true
-    }
-  })
+  const hrUsers = await resolveHRRecipients()
 
   if (hrUsers.length === 0) {
     console.log('İK kullanıcısı bulunamadı, bildirim gönderilmedi')
     return
   }
 
-  // Her İK kullanıcısına bildirim oluştur
-  const notifications = hrUsers.map(user => ({
-    userId: user.id,
-    title: 'Yeni İş Başvurusu',
-    message: `${application.fullName} adlı aday iş başvurusu yaptı. (${application.applicationNumber})`,
-    type: 'INFO' as const,
-    link: `/strategic-hr/recruitment?tab=job-applications&id=${application.id}`
-  }))
+  const link = `/strategic-hr/recruitment?tab=job-applications&id=${application.id}`
+  const title = 'Yeni İş Başvurusu'
+  const message = `${application.fullName} adlı aday iş başvurusu yaptı. (${application.applicationNumber})`
 
   await prisma.notification.createMany({
-    data: notifications
+    data: hrUsers.map(u => ({
+      userId: u.id,
+      title,
+      message,
+      type: 'INFO' as const,
+      link,
+    })),
   })
 
-  // Push bildirim gönder
-  for (const notif of notifications) {
-    sendPushToUser(prisma, notif.userId, {
-      title: notif.title,
-      body: notif.message,
-      url: notif.link,
+  for (const u of hrUsers) {
+    sendPushToUser(prisma, u.id, {
+      title,
+      body: message,
+      url: link,
     }).catch(() => {})
   }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUser } from '@/lib/auth/require-user'
+import { requirePermission } from '@/lib/auth/require-permission'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/generated/prisma'
 
@@ -10,11 +10,8 @@ import { Prisma } from '@/generated/prisma'
 
 /** GET — tüm mapping'ler + her biri için affected user count (User.groups'ta CN var mı). */
 export async function GET() {
-  const { session, error } = await requireUser()
+  const { error } = await requirePermission('admin.system.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('admin.system.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
-  }
 
   const mappings = await prisma.ldapGroupRoleMap.findMany({
     include: {
@@ -52,11 +49,10 @@ export async function GET() {
 
 /** POST — yeni mapping oluştur. */
 export async function POST(request: NextRequest) {
-  const { session, user, error } = await requireUser()
+  const { session, error } = await requirePermission('admin.system.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('admin.system.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
-  }
+  const actorId = session.user.id
+  const actorEmail = session.user.email
 
   let body: { groupCN?: unknown; roleId?: unknown; description?: unknown }
   try {
@@ -99,11 +95,11 @@ export async function POST(request: NextRequest) {
       await tx.permissionAuditLog.create({
         data: {
           action: 'LDAP_GROUP_MAP_CREATED',
-          actorId: user.id,
+          actorId,
           targetType: 'LDAP_GROUP_MAP',
           targetId: mapping.id,
           details: {
-            actorEmail: user.email,
+            actorEmail,
             groupCN: mapping.groupCN,
             roleId: role.id,
             roleSlug: role.slug,

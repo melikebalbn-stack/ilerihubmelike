@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, ChevronRight, ShieldCheck, Grid3x3, Users } from 'lucide-react'
+import { Plus, ChevronRight, ShieldCheck, Grid3x3, Users, Network } from 'lucide-react'
 import { getRoleVisual } from '@/lib/role-visuals'
 
 export default async function RollerPage() {
@@ -63,6 +63,12 @@ export default async function RollerPage() {
             <Link href="/settings/izin-matrisi">
               <Grid3x3 className="h-4 w-4 mr-2" />
               İzin matrisi
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/settings/azure-ad-mapping">
+              <Network className="h-4 w-4 mr-2" />
+              AD Grup Mapping
             </Link>
           </Button>
           <Button

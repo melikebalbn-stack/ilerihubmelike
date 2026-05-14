@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireUser } from '@/lib/auth/require-user'
+import { requirePermission } from '@/lib/auth/require-permission'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -9,11 +9,8 @@ import { prisma } from '@/lib/prisma'
  * durumunu döner. UI'da sol panelde 'henüz eşlenmemiş' grupları görmek için.
  */
 export async function GET() {
-  const { session, error } = await requireUser()
+  const { error } = await requirePermission('admin.system.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('admin.system.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
-  }
 
   const rows = await prisma.$queryRaw<
     Array<{

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUser } from '@/lib/auth/require-user'
+import { requirePermission } from '@/lib/auth/require-permission'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -20,11 +20,8 @@ import { prisma } from '@/lib/prisma'
  * "manuel + azure_ad" tüm role'leri ayırarak gösterir.
  */
 export async function POST(request: NextRequest) {
-  const { session, error } = await requireUser()
+  const { error } = await requirePermission('admin.system.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('admin.system.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
-  }
 
   let body: { email?: unknown }
   try {

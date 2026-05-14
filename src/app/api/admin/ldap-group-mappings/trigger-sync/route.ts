@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireUser } from '@/lib/auth/require-user'
+import { requirePermission } from '@/lib/auth/require-permission'
 import { syncLDAPUsersToDb } from '@/lib/ldap-sync'
 
 /**
@@ -11,11 +11,8 @@ import { syncLDAPUsersToDb } from '@/lib/ldap-sync'
  * permission domain'i (admin.system.manage) ile tutarlı.
  */
 export async function POST() {
-  const { session, error } = await requireUser()
+  const { error } = await requirePermission('admin.system.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('admin.system.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
-  }
 
   const result = await syncLDAPUsersToDb()
   return NextResponse.json(result)

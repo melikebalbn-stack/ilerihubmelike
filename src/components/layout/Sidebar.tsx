@@ -154,10 +154,11 @@ const sandboxMenuItems = [
 ]
 
 // Sistem Geliştirme alt menüsü (admin yetkilendirme + AD)
+// AD Eşleşme ve AD Grup Mapping: admin.system.manage permission'a uygun roller (super-admin + admin + it-admin)
 const sistemGelistirmeMenuItems = [
   { name: "Yetkilendirme", icon: ShieldCheck, href: "/settings/roller", roles: ["SUPER_ADMIN"] },
-  { name: "AD Eşleşme", icon: ShieldCheck, href: "/settings/personnel-ad-reconcile", roles: ["SUPER_ADMIN"] },
-  { name: "AD Grup Mapping", icon: ShieldCheck, href: "/settings/azure-ad-mapping", roles: ["SUPER_ADMIN"] },
+  { name: "AD Eşleşme", icon: ShieldCheck, href: "/settings/personnel-ad-reconcile", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
+  { name: "AD Grup Mapping", icon: ShieldCheck, href: "/settings/azure-ad-mapping", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
 ]
 
 // Alt menü öğeleri

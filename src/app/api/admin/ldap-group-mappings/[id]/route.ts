@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireUser } from '@/lib/auth/require-user'
+import { requirePermission } from '@/lib/auth/require-permission'
 import { prisma } from '@/lib/prisma'
 
 /** PATCH — mevcut mapping güncelle (role, isActive, description). */
@@ -7,11 +7,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { session, user, error } = await requireUser()
+  const { session, error } = await requirePermission('admin.system.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('admin.system.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
-  }
+  const actorId = session.user.id
+  const actorEmail = session.user.email
 
   const { id } = await params
 
@@ -76,11 +75,11 @@ export async function PATCH(
     await tx.permissionAuditLog.create({
       data: {
         action: 'LDAP_GROUP_MAP_UPDATED',
-        actorId: user.id,
+        actorId,
         targetType: 'LDAP_GROUP_MAP',
         targetId: id,
         details: {
-          actorEmail: user.email,
+          actorEmail,
           groupCN: existing.groupCN,
           before: {
             roleSlug: existing.role.slug,
@@ -110,11 +109,10 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { session, user, error } = await requireUser()
+  const { session, error } = await requirePermission('admin.system.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('admin.system.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz' }, { status: 403 })
-  }
+  const actorId = session.user.id
+  const actorEmail = session.user.email
 
   const { id } = await params
 
@@ -131,11 +129,11 @@ export async function DELETE(
     await tx.permissionAuditLog.create({
       data: {
         action: 'LDAP_GROUP_MAP_DELETED',
-        actorId: user.id,
+        actorId,
         targetType: 'LDAP_GROUP_MAP',
         targetId: id,
         details: {
-          actorEmail: user.email,
+          actorEmail,
           groupCN: existing.groupCN,
           roleSlug: existing.role.slug,
           roleName: existing.role.name,

@@ -102,3 +102,51 @@ Aksi halde her renk kendi uploads'ını tutar → tutarsızlık.
 - **pnpm workspaces**: 3 klon × 1.4GB node_modules duplicate. Faz 3'te hoist edilebilir (~3GB kazanç)
 
 <!-- deploy test: 2026-05-14T18:06:57Z -->
+
+---
+
+## Faz 4 — Deploy sertleştirme (14 May 2026)
+
+### /api/health endpoint
+Auth bypass (middleware matcher dışı). DB ping + `BUILD_ID` filesystem'den okunur (PM2 cache görmesin).
+
+Response:
+```json
+{
+  "status": "healthy" | "unhealthy" | "no-build-id",
+  "version": "0.1.0",
+  "buildId": "<hash>" | null,
+  "uptime": 1234.5,
+  "pid": 9999,
+  "timestamp": "...",
+  "checks": { "database": { "status": "up", "latencyMs": 2 } }
+}
+```
+
+- DB up + BUILD_ID var → `healthy` + HTTP 200
+- DB up + BUILD_ID yok → `no-build-id` + HTTP 503
+- DB down → `unhealthy` + HTTP 503
+
+### deploy.sh sertleştirme
+- `CURRENT_ACTIVE=` upstream config'ten okunur, doğru pasif klona deploy yapılır
+- Pre-build: `.next` → `.next.backup` (atomic rename)
+- Build fail → `trap ERR restore_on_fail`:
+  - `.next.backup` → `.next` (eski build geri yüklenir)
+  - `git reset --hard $COMMIT_BEFORE`
+  - `pm2 restart` (pasif klon eski sağlıklı state'e döner)
+  - Exit 1, aktif klon ETKİLENMEZ
+- Post-build: BUILD_ID dosyası existence gate
+- Health: `/api/health` body parse, `status=healthy` + filesystem BUILD_ID = runtime BUILD_ID
+
+### rollback.sh pre-flight
+1. Hedef klonun `.next/BUILD_ID` dosyası var mı
+2. `/api/health` status='healthy'
+3. Filesystem BUILD_ID = runtime BUILD_ID (PM2 stale cache koruma)
+
+Eğer bunlardan biri başarısızsa switch İPTAL (mevcut aktif kalır).
+
+### Test edildi
+1. **Controlled fail test**: kasıtlı broken commit (`import { kasitliBozukImport } from '@/lib/yok-boyle-bir-modul'`) origin'e push edildi → deploy.sh build fail → otomatik `.next.backup` restore + aktif klon (green) dokunulmadı → production healthy kaldı
+2. **Successful deploy**: revert sonrası → blue build temiz, `_XtiiY18Ri_6ez_boHFL2` BUILD_ID, `/api/health` doğru runtime BUILD_ID döndü
+
+Test artifact: broken commit'i blue klonunda yapmak `COMMIT_BEFORE`'ı broken hash'e set ediyor (gerçek senaryoda commit başka klonda yapılır, blue/green deploy klonlarına dokunulmaz). Bu yüzden bu testte git HEAD restore "1 commit önce" yerine "same commit" kaldı — production senaryosunda doğru çalışır.

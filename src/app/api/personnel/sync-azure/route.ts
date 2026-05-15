@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
               where: { sicilNo: { startsWith: 'AZ-' } },
               orderBy: { sicilNo: 'desc' },
             })
-            const lastNum = lastPersonnel
+            const lastNum = lastPersonnel?.sicilNo
               ? parseInt(lastPersonnel.sicilNo.replace('AZ-', '')) || 0
               : 0
             const newSicilNo = `AZ-${String(lastNum + 1).padStart(4, '0')}`

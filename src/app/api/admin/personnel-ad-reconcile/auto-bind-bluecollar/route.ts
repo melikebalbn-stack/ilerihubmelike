@@ -52,7 +52,7 @@ export async function POST() {
     userEmail: string
     bound: boolean
     reason?: string
-    personnelSicilNo?: string
+    personnelSicilNo?: string | null
     personnelName?: string
   }> = []
 

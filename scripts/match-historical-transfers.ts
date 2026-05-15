@@ -72,7 +72,7 @@ async function main() {
     excel: ExcelRow
     personnelId: string
     personnelAdSoyad: string
-    personnelSicilNo: string
+    personnelSicilNo: string | null
     aktif: boolean
     currentBolum: string | null
     method: string

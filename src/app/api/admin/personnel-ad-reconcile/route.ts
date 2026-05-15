@@ -63,7 +63,7 @@ export async function GET() {
     userEmail: string
     userName: string | null
     personnelId: string
-    personnelSicilNo: string
+    personnelSicilNo: string | null
     personnelName: string
   }> = []
   if (bluecollarUsers.length > 0) {
@@ -100,7 +100,7 @@ export async function GET() {
       userEmail: string
       userName: string | null
       personnelId: string
-      personnelSicilNo: string
+      personnelSicilNo: string | null
       personnelName: string
       similarity: number
     }>

@@ -55,7 +55,7 @@ interface BluecollarSuggestion {
   userEmail: string
   userName: string | null
   personnelId: string
-  personnelSicilNo: string
+  personnelSicilNo: string | null
   personnelName: string
 }
 interface WhitecollarSuggestion {
@@ -63,7 +63,7 @@ interface WhitecollarSuggestion {
   userEmail: string
   userName: string | null
   personnelId: string
-  personnelSicilNo: string
+  personnelSicilNo: string | null
   personnelName: string
   similarity: number
 }

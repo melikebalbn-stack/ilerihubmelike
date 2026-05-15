@@ -150,3 +150,5 @@ Eğer bunlardan biri başarısızsa switch İPTAL (mevcut aktif kalır).
 2. **Successful deploy**: revert sonrası → blue build temiz, `_XtiiY18Ri_6ez_boHFL2` BUILD_ID, `/api/health` doğru runtime BUILD_ID döndü
 
 Test artifact: broken commit'i blue klonunda yapmak `COMMIT_BEFORE`'ı broken hash'e set ediyor (gerçek senaryoda commit başka klonda yapılır, blue/green deploy klonlarına dokunulmaz). Bu yüzden bu testte git HEAD restore "1 commit önce" yerine "same commit" kaldı — production senaryosunda doğru çalışır.
+
+BACKLOG: /etc/cron.d/ilerihub-cron içindeki tüm route'lar localhost:3000 → https://hub.ilerigroup.com/'a migrate (cron-blue-gap)

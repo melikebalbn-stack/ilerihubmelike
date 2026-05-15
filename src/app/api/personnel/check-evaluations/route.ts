@@ -65,7 +65,7 @@ async function runCheck() {
   }
 
   async function logAndSend(
-    items: { id: string; sicilNo: string; adSoyad: string; bolum: string; gorev: string }[],
+    items: { id: string; sicilNo: string | null; adSoyad: string; bolum: string; gorev: string }[],
     type: string,
     subject: string,
     body: string
@@ -212,7 +212,7 @@ async function runCheck() {
 
 function buildEvalBody(
   evalType: string,
-  items: { sicilNo: string; adSoyad: string; bolum: string; gorev: string; date: Date; label: string }[]
+  items: { sicilNo: string | null; adSoyad: string; bolum: string; gorev: string; date: Date; label: string }[]
 ): string {
   const dateStr = new Date().toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   const lines = items.map((p, i) =>

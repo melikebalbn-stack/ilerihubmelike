@@ -8442,7 +8442,7 @@ model Personnel {
   id String @id @default(cuid())
 
   // Kimlik
-  sicilNo        String          @unique
+  sicilNo        String?         @unique
   sinif          String?
   cinsiyet       Gender
   adSoyad        String

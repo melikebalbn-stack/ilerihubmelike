@@ -23,3 +23,9 @@ prisma/*.xlsx
 .claude/
 src/generated/
 prisma/scripts/output/
+
+# KVKK Madde 12 + ISO 27001 A.8.10 — hassas personel verileri repo'ya alınmaz
+# Audit kopyalar /home/rokunet/audit/ altında 600 permission ile saklanır
+data/*.xlsx
+data/*.xls
+data/*.csv

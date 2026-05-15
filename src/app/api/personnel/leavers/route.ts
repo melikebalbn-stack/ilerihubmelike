@@ -85,7 +85,6 @@ export async function GET(request: NextRequest) {
         exitRecordedBy: { select: { id: true, name: true, email: true } },
       },
       orderBy: { exitDate: 'desc' },
-      take: 500,
     })
 
     const enriched = leavers.map((l) => ({

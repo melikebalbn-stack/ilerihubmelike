@@ -81,7 +81,7 @@ export async function PUT(
       verificationInterval,
       lastVerificationDate,
       plannedVerificationDate,
-      certificateNumber,
+      purchaseDate,
       notes,
       status,
       imageUrl,
@@ -164,7 +164,9 @@ export async function PUT(
         plannedVerificationDate: plannedVerificationDate !== undefined
           ? (plannedVerificationDate ? new Date(plannedVerificationDate) : null)
           : undefined,
-        certificateNumber,
+        purchaseDate: purchaseDate !== undefined
+          ? (purchaseDate ? new Date(purchaseDate) : null)
+          : undefined,
         notes,
         status: status as CalibrationStatus | undefined,
         statusManualOverride,

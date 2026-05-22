@@ -74,7 +74,6 @@ export async function POST(request: NextRequest) {
       data: {
         lastCalibrationDate: calDate,
         nextCalibrationDate: nextDueDate,
-        certificateNumber,
         status,
         statusManualOverride: false, // Yeni kalibrasyon yapıldı, manuel override sıfırla
       },

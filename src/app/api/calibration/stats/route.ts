@@ -38,7 +38,7 @@ export async function GET() {
           ]
         },
       }),
-      // Şirkette: deviceCondition null/boş/Şirkette olanlar
+      // Şirkette: deviceCondition null/boş/Şirkette/Kalibrasyon Planlanıyor olanlar
       prisma.calibrationDevice.count({
         where: {
           isActive: true,
@@ -46,6 +46,7 @@ export async function GET() {
             { deviceCondition: null },
             { deviceCondition: '' },
             { deviceCondition: 'Şirkette' },
+            { deviceCondition: 'Kalibrasyon Planlanıyor' },
           ],
         },
       }),

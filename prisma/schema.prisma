@@ -406,7 +406,7 @@ model CalibrationDevice {
   calibrationInterval Int? // Gün cinsinden
   lastCalibrationDate DateTime?
   nextCalibrationDate DateTime?
-  certificateNumber   String?
+  purchaseDate        DateTime?
 
   // Planlanan kalibrasyon tarihi
   plannedCalibrationDate DateTime?

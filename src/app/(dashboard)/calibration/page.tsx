@@ -56,7 +56,7 @@ type CalibrationDevice = {
   lastVerificationDate?: string | null
   nextVerificationDate?: string | null
   plannedVerificationDate?: string | null
-  certificateNumber?: string | null
+  purchaseDate?: string | null
   status: string
   statusManualOverride?: boolean
   deviceCondition?: string | null
@@ -128,7 +128,7 @@ export default function CalibrationPage() {
     verificationInterval: "",
     lastVerificationDate: "",
     plannedVerificationDate: "",
-    certificateNumber: "",
+    purchaseDate: "",
     deviceCondition: "",
     calibrationSentDate: "",
     calibrationReturnDate: "",
@@ -186,6 +186,10 @@ export default function CalibrationPage() {
   // Sorting
   const [sortField, setSortField] = useState<keyof CalibrationDevice | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  // Stat card filter
+  type StatFilterKey = 'all' | 'valid' | 'expiring' | 'expired' | 'atCompany' | 'atCalibration' | 'scrap' | 'noResponsible'
+  const [activeFilter, setActiveFilter] = useState<StatFilterKey>('all')
 
   // Otomatik ID oluştur
   const generateDeviceId = () => {
@@ -304,13 +308,23 @@ export default function CalibrationPage() {
     }
   }
 
-  const statCards = [
+  const statCards: Array<{
+    title: string
+    value: number
+    icon: typeof Calendar
+    color: string
+    bgColor: string
+    filterKey: StatFilterKey
+    activeRing: string
+  }> = [
     {
       title: "Toplam Cihaz",
       value: stats.total,
       icon: Calendar,
       color: "text-blue-600",
       bgColor: "bg-blue-100",
+      filterKey: 'all',
+      activeRing: "ring-blue-500",
     },
     {
       title: "Geçerli Kalibrasyon",
@@ -318,6 +332,8 @@ export default function CalibrationPage() {
       icon: CheckCircle2,
       color: "text-green-600",
       bgColor: "bg-green-100",
+      filterKey: 'valid',
+      activeRing: "ring-green-500",
     },
     {
       title: "Süresi Yaklaşan",
@@ -325,6 +341,8 @@ export default function CalibrationPage() {
       icon: Clock,
       color: "text-yellow-600",
       bgColor: "bg-yellow-100",
+      filterKey: 'expiring',
+      activeRing: "ring-yellow-500",
     },
     {
       title: "Süresi Dolan",
@@ -332,6 +350,8 @@ export default function CalibrationPage() {
       icon: AlertCircle,
       color: "text-red-600",
       bgColor: "bg-red-100",
+      filterKey: 'expired',
+      activeRing: "ring-red-500",
     },
     {
       title: "Şirkette",
@@ -339,6 +359,8 @@ export default function CalibrationPage() {
       icon: Building2,
       color: "text-emerald-600",
       bgColor: "bg-emerald-100",
+      filterKey: 'atCompany',
+      activeRing: "ring-emerald-500",
     },
     {
       title: "Kalibrasyonda",
@@ -346,6 +368,8 @@ export default function CalibrationPage() {
       icon: Beaker,
       color: "text-sky-600",
       bgColor: "bg-sky-100",
+      filterKey: 'atCalibration',
+      activeRing: "ring-sky-500",
     },
     {
       title: "Hurda",
@@ -353,6 +377,8 @@ export default function CalibrationPage() {
       icon: XCircle,
       color: "text-orange-600",
       bgColor: "bg-orange-100",
+      filterKey: 'scrap',
+      activeRing: "ring-orange-500",
     },
     {
       title: "Zimmeti Yok",
@@ -360,6 +386,8 @@ export default function CalibrationPage() {
       icon: UserX,
       color: "text-gray-600",
       bgColor: "bg-gray-100",
+      filterKey: 'noResponsible',
+      activeRing: "ring-gray-500",
     },
   ]
 
@@ -376,12 +404,28 @@ export default function CalibrationPage() {
   }
 
   // Filtreleme ve sıralama
+  const matchesStatFilter = (device: CalibrationDevice): boolean => {
+    switch (activeFilter) {
+      case 'all': return true
+      case 'valid': return device.status === 'VALID'
+      case 'expiring': return device.status === 'EXPIRING'
+      case 'expired': return device.status === 'EXPIRED'
+      case 'atCompany': return !device.deviceCondition || device.deviceCondition === 'Şirkette' || device.deviceCondition === 'Kalibrasyon Planlanıyor'
+      case 'atCalibration': return device.deviceCondition === 'Kalibrasyonda'
+      case 'scrap': return device.deviceCondition === 'Hurda'
+      case 'noResponsible': return !!device.requiresResponsible && (!device.responsiblePerson || device.responsiblePerson === '')
+      default: return true
+    }
+  }
+
   let filteredDevices = devices.filter(device =>
-    device.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    device.deviceId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (device.serialNumber && device.serialNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (device.location && device.location.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (device.model && device.model.toLowerCase().includes(searchTerm.toLowerCase()))
+    matchesStatFilter(device) && (
+      device.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      device.deviceId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (device.serialNumber && device.serialNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (device.location && device.location.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (device.model && device.model.toLowerCase().includes(searchTerm.toLowerCase()))
+    )
   )
 
   // Sıralama uygula
@@ -422,10 +466,10 @@ export default function CalibrationPage() {
   const endIndex = startIndex + itemsPerPage
   const paginatedDevices = filteredDevices.slice(startIndex, endIndex)
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or filter changes
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm])
+  }, [searchTerm, activeFilter])
 
   const resetForm = () => {
     setFormData({
@@ -446,7 +490,7 @@ export default function CalibrationPage() {
       verificationInterval: "",
       lastVerificationDate: "",
       plannedVerificationDate: "",
-      certificateNumber: "",
+      purchaseDate: "",
       deviceCondition: "",
       calibrationSentDate: "",
       calibrationReturnDate: "",
@@ -679,7 +723,9 @@ export default function CalibrationPage() {
       plannedVerificationDate: device.plannedVerificationDate
         ? new Date(device.plannedVerificationDate).toISOString().split('T')[0]
         : "",
-      certificateNumber: device.certificateNumber || "",
+      purchaseDate: device.purchaseDate
+        ? new Date(device.purchaseDate).toISOString().split('T')[0]
+        : "",
       deviceCondition: device.deviceCondition || "",
       calibrationSentDate: device.calibrationSentDate
         ? new Date(device.calibrationSentDate).toISOString().split('T')[0]
@@ -809,7 +855,9 @@ export default function CalibrationPage() {
       'Planlanan Doğrulama': device.plannedVerificationDate
         ? new Date(device.plannedVerificationDate).toLocaleDateString('tr-TR')
         : '',
-      'Sertifika No': device.certificateNumber || '',
+      'Satınalınma Tarihi': device.purchaseDate
+        ? new Date(device.purchaseDate).toLocaleDateString('tr-TR')
+        : '',
       'Cihaz Durumu': device.deviceCondition || '',
       'Gönderim Tarihi': device.calibrationSentDate
         ? new Date(device.calibrationSentDate).toLocaleDateString('tr-TR')
@@ -913,7 +961,14 @@ export default function CalibrationPage() {
             const responsiblePerson = row['Sorumlu Kişi'] || row['Sorumlu Kisi'] || row['Sorumlu'] || row['SORUMLU'] || ''
             const calibrationIntervalRaw = row['Kalibrasyon Periyodu (Gün)'] || row['Kalibrasyon Periyodu'] ||
                                           row['Periyot'] || row['Süre'] || '365'
-            const certificateNumber = row['Sertifika No'] || row['SertifikaNo'] || row['Sertifika'] || ''
+            let purchaseDate = row['Satınalınma Tarihi'] || row['Satinalinma Tarihi'] || row['Satin Alinma Tarihi'] || row['SATINALMA TARIHI'] || ''
+            if (typeof purchaseDate === 'number') {
+              const excelEpoch = new Date(1899, 11, 30)
+              purchaseDate = new Date(excelEpoch.getTime() + purchaseDate * 86400000).toISOString().split('T')[0]
+            } else if (purchaseDate) {
+              const parsed = new Date(purchaseDate)
+              purchaseDate = !isNaN(parsed.getTime()) ? parsed.toISOString().split('T')[0] : ''
+            }
             const notes = row['Notlar'] || row['Not'] || row['NOTLAR'] || ''
 
             // Planlanan tarih
@@ -1019,7 +1074,7 @@ export default function CalibrationPage() {
                 responsiblePerson: responsiblePerson.toString().trim(),
                 calibrationInterval: parseInt(calibrationIntervalRaw.toString()) || 365,
                 lastCalibrationDate,
-                certificateNumber: certificateNumber.toString().trim(),
+                purchaseDate: purchaseDate || null,
                 notes: notes.toString().trim(),
                 plannedCalibrationDate: plannedCalibrationDate || null,
                 verificationInterval: verificationIntervalRaw ? parseInt(verificationIntervalRaw.toString()) : null,
@@ -1371,6 +1426,7 @@ export default function CalibrationPage() {
                   >
                     <option value="">Seçiniz</option>
                     <option value="Kalibrasyonda">Kalibrasyonda</option>
+                    <option value="Kalibrasyon Planlanıyor">Kalibrasyon Planlanıyor</option>
                     <option value="Şirkette">Şirkette</option>
                     <option value="Hurda">Hurda</option>
                   </Select>
@@ -1594,12 +1650,12 @@ export default function CalibrationPage() {
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="certificateNumber">Sertifika No</Label>
+                  <Label htmlFor="purchaseDate">Satınalınma Tarihi</Label>
                   <Input
-                    id="certificateNumber"
-                    value={formData.certificateNumber}
-                    onChange={(e) => setFormData({ ...formData, certificateNumber: e.target.value })}
-                    placeholder="CERT-2024-001"
+                    id="purchaseDate"
+                    type="date"
+                    value={formData.purchaseDate}
+                    onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
                   />
                 </div>
 
@@ -1678,8 +1734,16 @@ export default function CalibrationPage() {
       <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-8">
         {statCards.map((stat) => {
           const Icon = stat.icon
+          const isActive = activeFilter === stat.filterKey
           return (
-            <Card key={stat.title}>
+            <Card
+              key={stat.title}
+              onClick={() => setActiveFilter(isActive ? 'all' : stat.filterKey)}
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                isActive ? `ring-2 ${stat.activeRing} shadow-md` : ''
+              }`}
+              title={isActive ? 'Filtreyi kaldır' : `${stat.title} olarak filtrele`}
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-1">
                 <CardTitle className="text-xs font-medium text-muted-foreground">{stat.title}</CardTitle>
                 <div className={`rounded-md p-1 ${stat.bgColor}`}>
@@ -2303,6 +2367,7 @@ export default function CalibrationPage() {
                 >
                   <option value="">Seçiniz</option>
                   <option value="Kalibrasyonda">Kalibrasyonda</option>
+                  <option value="Kalibrasyon Planlanıyor">Kalibrasyon Planlanıyor</option>
                   <option value="Şirkette">Şirkette</option>
                   <option value="Hurda">Hurda</option>
                 </Select>
@@ -2518,11 +2583,12 @@ export default function CalibrationPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="edit-certificateNumber">Sertifika No</Label>
+                <Label htmlFor="edit-purchaseDate">Satınalınma Tarihi</Label>
                 <Input
-                  id="edit-certificateNumber"
-                  value={formData.certificateNumber}
-                  onChange={(e) => setFormData({ ...formData, certificateNumber: e.target.value })}
+                  id="edit-purchaseDate"
+                  type="date"
+                  value={formData.purchaseDate}
+                  onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
                 />
               </div>
 

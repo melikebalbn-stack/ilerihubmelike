@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import AnimatedNumber from "@/components/dashboard/AnimatedNumber"
 import ModuleCarousel from "@/components/dashboard/ModuleCarousel"
+import { AcmeCertCard } from "@/components/dashboard/AcmeCertCard"
 
 // Yemek menüsü verileri
 interface DailyMenu {
@@ -1540,6 +1541,9 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* TLS Sertifika Monitor — sadece admin.system.manage permission'a sahip kullanıcılara görünür */}
+        <AcmeCertCard />
       </div>
     </div>
   )

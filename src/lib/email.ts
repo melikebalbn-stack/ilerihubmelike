@@ -1103,3 +1103,100 @@ Son tarih (geçti): <b>${escapeHTML(deadlineStr)}</b>
 
   return { subject, body, html }
 }
+
+// ════════════════════════════════════════════════════════════
+// ACME CERT EXPIRE ALERT (PR-ACME-MONITOR)
+// ════════════════════════════════════════════════════════════
+
+export type AcmeAlertData = {
+  domain: string
+  daysRemaining: number
+  threshold: number
+  validTo: Date
+  issuer: string
+}
+
+/**
+ * ACME cert expire alert email gönderir.
+ * Severity threshold'a göre konu + renk.
+ */
+export async function sendAcmeAlert(
+  data: AcmeAlertData,
+  recipients: EmailRecipient[],
+): Promise<{ success: boolean; error?: string }> {
+  if (recipients.length === 0) {
+    return { success: false, error: 'No recipients' }
+  }
+
+  const { domain, daysRemaining, threshold, validTo, issuer } = data
+
+  const expired = daysRemaining < 0
+  const critical = daysRemaining <= 1
+  const warning = daysRemaining <= 7
+
+  const severity = expired
+    ? { tag: 'SÜRESİ DOLDU', color: '#000000', bg: '#fef2f2' }
+    : critical
+      ? { tag: 'KRİTİK', color: '#991b1b', bg: '#fef2f2' }
+      : warning
+        ? { tag: 'UYARI', color: '#c2410c', bg: '#fff7ed' }
+        : { tag: 'BİLGİ', color: '#1d4ed8', bg: '#eff6ff' }
+
+  const subject = expired
+    ? `[ACME] ${domain} sertifikası SÜRESİ DOLDU (${Math.abs(daysRemaining)} gün önce)`
+    : `[ACME] ${domain} sertifikası ${daysRemaining} gün içinde sona eriyor (eşik: ${threshold} gün)`
+
+  const dateStr = validTo.toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Istanbul',
+  })
+
+  const body = `ACME Sertifika Uyarısı
+
+Domain     : ${domain}
+Issuer     : ${issuer}
+Bitiş      : ${dateStr}
+Kalan gün  : ${daysRemaining < 0 ? `${Math.abs(daysRemaining)} gün GEÇTİ` : `${daysRemaining} gün`}
+Eşik       : ${threshold} gün
+
+Acme.sh otomatik yenileme cron'da çalışıyor (günde 1 kez, 15:21 UTC).
+Eğer yenileme başarısız olursa /home/rokunet/.acme.sh/acme.sh.log incelenmeli.
+
+— ILERIHub ACME Monitor`
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f9fafb;">
+<table cellpadding="0" cellspacing="0" border="0" width="500" align="center" style="background:#fff;border:2px solid ${severity.color};margin:20px auto;">
+<tr><td style="padding:14px 18px;border-bottom:1px solid #e5e7eb;background:${severity.bg};">
+<span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">ILERIHUB · ACME MONITOR</span><br>
+<span style="font-size:17px;font-weight:bold;color:${severity.color};">${severity.tag}</span>
+</td></tr>
+<tr><td style="padding:18px;color:#374151;font-size:14px;line-height:22px;">
+<table cellpadding="4" cellspacing="0" border="0">
+<tr><td style="color:#6b7280;width:90px;">Domain:</td><td><b>${domain}</b></td></tr>
+<tr><td style="color:#6b7280;">Issuer:</td><td>${issuer}</td></tr>
+<tr><td style="color:#6b7280;">Bitiş:</td><td>${dateStr}</td></tr>
+<tr><td style="color:#6b7280;">Kalan:</td><td><b style="color:${severity.color};">${daysRemaining < 0 ? `${Math.abs(daysRemaining)} gün geçti` : `${daysRemaining} gün`}</b></td></tr>
+<tr><td style="color:#6b7280;">Eşik:</td><td>${threshold} gün</td></tr>
+</table>
+</td></tr>
+<tr><td style="padding:12px 18px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;">
+Acme.sh otomatik yenileme cron'da çalışıyor (15:21 UTC). Yenileme başarısız olursa
+<code style="background:#f3f4f6;padding:2px 4px;font-size:11px;">/home/rokunet/.acme.sh/acme.sh.log</code> incelenmeli.
+</td></tr>
+<tr><td style="padding:10px 18px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;">ILERIHub ACME Monitor</td></tr>
+</table>
+</body></html>`
+
+  try {
+    const result = await sendEmail(recipients, subject, body, html)
+    return result
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}

@@ -9587,3 +9587,23 @@ model PerformanceReviewEmailLog {
   @@index([sentAt])
   @@map("performance_review_email_log")
 }
+
+// ACME cert expire alert log (PR-ACME-MONITOR)
+// certExpiryDate dahil unique constraint → cert yenilendiğinde yeni log entries
+// (eski log'lar kalır: audit history, "X gün önce 30-gün uyarısı gitmişti" gözlemlenebilir)
+model AcmeAlertLog {
+  id              String   @id @default(cuid())
+  domain          String
+  threshold       Int      // 30, 14, 7, 1 (gün)
+  daysRemaining   Int      // Alert gönderildiği andaki kalan gün
+  certExpiryDate  DateTime // Cert'in notAfter — renewal'da değişir, yeni log entry
+  recipientEmails String   // Virgülle ayrılmış (audit)
+  sentAt          DateTime @default(now())
+  status          String   @default("sent") // sent | failed
+  error           String?  @db.Text
+
+  @@unique([domain, threshold, certExpiryDate], map: "acme_alert_log_unique")
+  @@index([domain])
+  @@index([sentAt])
+  @@map("acme_alert_log")
+}

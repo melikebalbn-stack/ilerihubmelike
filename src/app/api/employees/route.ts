@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { publicCorporateEmail } from '@/lib/email-visibility'
 
 // Türkçe karakterleri normalize et (arama için)
 function normalizeText(text: string): string {
@@ -19,8 +20,13 @@ function normalizeText(text: string): string {
  * GET /api/employees
  *
  * Çalışan Rehberi master kaynak: Personnel.aktif=true (İK whitelist).
- * 189 aktif personel = 130 mavi yaka + 59 beyaz yaka. User link'i
- * varsa email/avatar enrich edilir, yoksa Personnel.mailAdresi kullanılır.
+ * 189 aktif personel = 130 mavi yaka + 59 beyaz yaka. User link'i varsa
+ * kurumsal email + dahili telefon enrich edilir.
+ *
+ * KVKK (PR-DIRECTORY-KVKK-A): Email sadece publicCorporateEmail() filtresi
+ * ile döner — bluecollar placeholder + kişisel email (gmail/hotmail/vs)
+ * geniş erişimli bu endpoint'ten ASLA paylaşılmaz. Personnel.mailAdresi
+ * fallback'i kaldırıldı.
  *
  * Personnel pasife çekilince anında listeden düşer; yeni Personnel
  * eklendiğinde anında görünür. Sync gerekmez.
@@ -89,7 +95,10 @@ export async function GET(request: NextRequest) {
         ? p.user.id.slice(3)
         : `personnel-${p.id}`,
       name: p.adSoyad,
-      email: p.user?.email || p.mailAdresi || null,
+      // KVKK (PR-DIRECTORY-KVKK-A): sadece kurumsal email (publicCorporateEmail
+      // filtresi); placeholder bluecollar email + Personnel.mailAdresi
+      // kişisel adres olabileceği için response'a dahil edilmez.
+      email: publicCorporateEmail(p.user?.email),
       department: p.bolum,
       rawDepartment: p.bolum,
       title: p.gorev,

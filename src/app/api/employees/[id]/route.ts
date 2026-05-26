@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getAllLDAPUsers, getDirectReports } from '@/lib/ldap'
+import { publicCorporateEmail } from '@/lib/email-visibility'
 
 interface EmployeeDetail {
   id: string
@@ -75,7 +76,10 @@ export async function GET(
       const employee: EmployeeDetail = {
         id,
         name: p.adSoyad,
-        email: p.mailAdresi || null,
+        // KVKK (PR-DIRECTORY-KVKK-A): Personnel-only kayıt (mavi yaka, User
+        // yok) için kurumsal email kaynağı YOK. Personnel.mailAdresi kişisel
+        // email olabilir, response'a dahil edilmez.
+        email: null,
         department: p.bolum,
         title: p.gorev,
         // SADECE şirket dahili (extension3cx). Personnel.telefon (cep) ASLA paylaşılmaz — KVKK.
@@ -120,7 +124,8 @@ export async function GET(
           id: managerUser.username,
           name: managerUser.displayName,
           title: managerUser.title,
-          email: managerUser.email,
+          // KVKK (PR-DIRECTORY-KVKK-A): sadece kurumsal email
+          email: publicCorporateEmail(managerUser.email),
         }
       }
     }
@@ -131,13 +136,15 @@ export async function GET(
       id: member.username,
       name: member.displayName,
       title: member.title,
-      email: member.email,
+      // KVKK (PR-DIRECTORY-KVKK-A): sadece kurumsal email
+      email: publicCorporateEmail(member.email),
     }))
 
     const employee: EmployeeDetail = {
       id: user.username,
       name: user.displayName,
-      email: user.email,
+      // KVKK (PR-DIRECTORY-KVKK-A): sadece kurumsal email
+      email: publicCorporateEmail(user.email),
       department: user.department,
       title: user.title,
       phone: linked.extension3cx || null,

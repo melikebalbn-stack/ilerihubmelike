@@ -18,6 +18,7 @@ export function CritToggle({ value, onChange, disabled }: CritToggleProps) {
       type="button"
       disabled={disabled}
       onClick={() => onChange(!value)}
+      aria-pressed={value}
       title={value ? 'Kritik karakteristik (tıkla: kaldır)' : 'Kritik olarak işaretle'}
       className={cn(
         'inline-flex h-9 w-9 items-center justify-center rounded-md border text-sm font-bold transition-colors',

@@ -51,6 +51,13 @@ export const PERMISSION_KEYS = {
   KALIBRASYON_VIEW: 'kalibrasyon.view',
   KALIBRASYON_ADMIN: 'kalibrasyon.admin',
 
+  // === KALİTE / ÖLÇÜM RAPORLARI (KALITE-1) ===
+  QUALITY_SYMBOL_MANAGE: 'quality.symbol.manage',
+  QUALITY_TEMPLATE_MANAGE: 'quality.template.manage',
+  QUALITY_REPORT_CREATE: 'quality.report.create',
+  QUALITY_REPORT_FILL: 'quality.report.fill',
+  QUALITY_REPORT_READ: 'quality.report.read',
+
   // === YANGIN TÜPÜ ===
   YANGIN_VIEW: 'yangin.view',
   YANGIN_QR_SCAN: 'yangin.qr.scan',
@@ -143,6 +150,12 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'kalibrasyon.view': 'Kalibrasyon görüntüleme',
   'kalibrasyon.admin': 'Kalibrasyon yönetimi',
+
+  'quality.symbol.manage': 'GD&T sembol yönetimi',
+  'quality.template.manage': 'Ölçüm şablon yönetimi',
+  'quality.report.create': 'Ölçüm raporu açma',
+  'quality.report.fill': 'Ölçüm raporu doldurma',
+  'quality.report.read': 'Ölçüm raporu görüntüleme',
 
   'yangin.view': 'Yangın tüpü görüntüleme',
   'yangin.qr.scan': 'QR ile periyodik kontrol kaydı',

@@ -204,6 +204,12 @@ model User {
   // PR-PERSONNEL-DEPARTMENT-TRANSFER
   recordedDepartmentTransfers PersonnelDepartmentTransfer[] @relation("DepartmentTransferRecorder")
 
+  // KALITE-1: Ölçüm Raporları (back-relations)
+  qualitySymbolsCreated       QualitySymbol[]       @relation("QualitySymbolCreatedBy")
+  measurementTemplatesCreated MeasurementTemplate[] @relation("MeasurementTemplateCreatedBy")
+  measurementReportsCreated   MeasurementReport[]   @relation("MeasurementReportCreatedBy")
+  measurementReportsFinalized MeasurementReport[]   @relation("MeasurementReportFinalizedBy")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -9606,4 +9612,165 @@ model AcmeAlertLog {
   @@index([domain])
   @@index([sentAt])
   @@map("acme_alert_log")
+}
+
+// ==================== KALITE-1: Ölçüm Raporları Modülü ====================
+
+// GD&T sembol kütüphanesi (ISO 1101)
+model QualitySymbol {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  nameTr       String
+  nameEn       String
+  svgContent   String   @db.Text
+  displayOrder Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  createdBy    User?    @relation("QualitySymbolCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  templateChars MeasurementTemplateChar[]
+  reportChars   MeasurementReportChar[]
+
+  @@index([active, displayOrder])
+  @@map("QualitySymbol")
+}
+
+// Ölçüm şablonu (parça başına bir kez tanımlanır)
+model MeasurementTemplate {
+  id          String   @id @default(cuid())
+  formNo      String
+  partName    String
+  drawingNo   String
+  revision    String
+  department  String?
+  notes       String?  @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  createdBy   User?    @relation("MeasurementTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  characteristics MeasurementTemplateChar[]
+  reports         MeasurementReport[]
+
+  @@unique([formNo, drawingNo, revision], map: "uq_template_form_drawing_rev")
+  @@index([active])
+  @@index([partName])
+  @@map("MeasurementTemplate")
+}
+
+model MeasurementTemplateChar {
+  id              String   @id @default(cuid())
+  templateId      String
+  template        MeasurementTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  orderIndex      Int
+  department      String?
+  inspectionTool  String?
+  sampleFreq      String?
+  critical        Boolean  @default(false)
+  symbolId        String?
+  symbol          QualitySymbol? @relation(fields: [symbolId], references: [id], onDelete: SetNull)
+  charName        String
+  nominal         Decimal? @db.Decimal(12, 4)
+  maxValue        Decimal? @db.Decimal(12, 4)
+  minValue        Decimal? @db.Decimal(12, 4)
+  hasNumericRange Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@unique([templateId, orderIndex], map: "uq_template_char_order")
+  @@index([templateId])
+  @@map("MeasurementTemplateChar")
+}
+
+// Ölçüm raporu (lot başına form instance — şablon snapshot'lı)
+enum MeasurementReportResult {
+  PENDING
+  OK
+  RED
+}
+
+model MeasurementReport {
+  id                String   @id @default(cuid())
+  reportNo          String   @unique
+  templateId        String
+  template          MeasurementTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  // Şablon metadata snapshot (oluşturma anında kopyalanır)
+  formNo            String
+  partName          String
+  drawingNo         String
+  revision          String
+
+  // Form-specific alanlar
+  operatorNo        String?
+  lotNo             String?
+  orderQty          Int?
+  machine           String?
+  gaugeNo           String?
+  escalationContact String?
+  measurementDate   DateTime @default(now())
+
+  // Sonuç
+  result            MeasurementReportResult @default(PENDING)
+  notes             String?  @db.Text
+  controllerOpNo    String?
+
+  // PDF + QR doğrulama
+  qrKey             String   @unique
+  pdfPath           String?
+
+  // Audit
+  createdById       String?
+  createdBy         User?    @relation("MeasurementReportCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  finalizedById     String?
+  finalizedBy       User?    @relation("MeasurementReportFinalizedBy", fields: [finalizedById], references: [id], onDelete: SetNull)
+  finalizedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  characteristics   MeasurementReportChar[]
+
+  @@index([templateId])
+  @@index([measurementDate])
+  @@index([result])
+  @@index([lotNo])
+  @@index([drawingNo])
+  @@map("MeasurementReport")
+}
+
+enum MeasurementCharResult {
+  PENDING
+  OK
+  RED
+}
+
+model MeasurementReportChar {
+  id              String   @id @default(cuid())
+  reportId        String
+  report          MeasurementReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  orderIndex      Int
+
+  // Şablondan snapshot (şablon silinse bile satırlar kalır)
+  department      String?
+  inspectionTool  String?
+  sampleFreq      String?
+  critical        Boolean  @default(false)
+  symbolId        String?
+  symbol          QualitySymbol? @relation(fields: [symbolId], references: [id], onDelete: SetNull)
+  charName        String
+  nominal         Decimal? @db.Decimal(12, 4)
+  maxValue        Decimal? @db.Decimal(12, 4)
+  minValue        Decimal? @db.Decimal(12, 4)
+  hasNumericRange Boolean  @default(true)
+
+  // 10 ölçüm değeri (JSON array, nullable elements, string-typed Decimal)
+  // Örn: ["34.1", "34.0", null, "33.9", ...]
+  measurements    Json     @default("[]")
+  result          MeasurementCharResult @default(PENDING)
+
+  @@unique([reportId, orderIndex], map: "uq_report_char_order")
+  @@index([reportId])
+  @@map("MeasurementReportChar")
 }

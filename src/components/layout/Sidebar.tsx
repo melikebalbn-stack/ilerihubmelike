@@ -92,8 +92,6 @@ const teknikMenuItems = [
   { name: "Tezgah Bakım", icon: Factory, href: "/maintenance", roles: ["*"] },
   { name: "Arşiv", icon: Archive, href: "/arsiv/koli", roles: ["*"] },
   { name: "IT Raporları", icon: BarChart3, href: "/it-reports", roles: ["IT_MANAGER", "ADMIN"] },
-  { name: "Login Aktiviteleri", icon: LogIn, href: "/login-logs", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
-  { name: "Yedekleme", icon: HardDrive, href: "/backups", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
 ]
 
 // Stratejik IK alt menüsü
@@ -159,6 +157,8 @@ const sistemGelistirmeMenuItems = [
   { name: "Yetkilendirme", icon: ShieldCheck, href: "/settings/roller", roles: ["SUPER_ADMIN"] },
   { name: "AD Eşleşme", icon: ShieldCheck, href: "/settings/personnel-ad-reconcile", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
   { name: "AD Grup Mapping", icon: ShieldCheck, href: "/settings/azure-ad-mapping", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
+  { name: "Login Aktiviteleri", icon: LogIn, href: "/login-logs", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
+  { name: "Yedekleme", icon: HardDrive, href: "/backups", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
 ]
 
 // Alt menü öğeleri
@@ -203,7 +203,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
     if (pathname.startsWith('/calibration') || pathname.startsWith('/fire-safety') ||
         pathname.startsWith('/maintenance') || pathname.startsWith('/it-reports') ||
-        pathname.startsWith('/login-logs') || pathname.startsWith('/backups') ||
         pathname.startsWith('/arsiv')) {
       setTeknikOpen(true)
     }
@@ -215,7 +214,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       pathname.startsWith('/settings/personnel-ad-reconcile') ||
       pathname.startsWith('/settings/azure-ad-mapping') ||
       pathname.startsWith('/settings/kullanici-rolleri') ||
-      pathname.startsWith('/settings/permissions')
+      pathname.startsWith('/settings/permissions') ||
+      pathname.startsWith('/login-logs') ||
+      pathname.startsWith('/backups')
     ) {
       setSistemGelistirmeOpen(true)
     }
@@ -301,12 +302,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     return false
   })
 
-  // Teknik menüsünde aktif sayfa var mı kontrol et (IT Raporları, Login Aktiviteleri ve Yedekleme dahil)
+  // Teknik menüsünde aktif sayfa var mı kontrol et (IT Raporları dahil)
   const isTeknikActive = teknikMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname === '/it-reports' || pathname.startsWith('/it-reports/')
-    || pathname === '/login-logs' || pathname.startsWith('/login-logs/')
-    || pathname === '/backups' || pathname.startsWith('/backups/')
 
   // QDMS menüsünde aktif sayfa var mı kontrol et (ISO 27001 dahil)
   const isQdmsActive = qdmsMenuItems.some(item =>
@@ -337,12 +336,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname.startsWith('/forms/') || pathname.startsWith('/meetings/')
 
-  // Sistem Geliştirme menüsünde aktif sayfa var mı kontrol et
+  // Sistem Geliştirme menüsünde aktif sayfa var mı kontrol et (Login Aktiviteleri + Yedekleme dahil)
   const isSistemGelistirmeActive = sistemGelistirmeMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) ||
     pathname.startsWith('/settings/kullanici-rolleri') ||
-    pathname.startsWith('/settings/permissions')
+    pathname.startsWith('/settings/permissions') ||
+    pathname.startsWith('/login-logs') ||
+    pathname.startsWith('/backups')
 
   // Menü öğesi render fonksiyonu
   const renderMenuItem = (item: typeof mainMenuItems[0], indent = false) => {

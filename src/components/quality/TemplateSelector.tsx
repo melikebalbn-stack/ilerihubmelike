@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -52,12 +53,12 @@ export function TemplateSelector({ templates, value, onChange }: Props) {
         <p className="text-sm text-slate-600 mb-2">
           Henüz şablon tanımlanmamış. Önce şablon oluşturulmalı.
         </p>
-        <a
+        <Link
           href="/kalite/sablonlar/yeni"
           className="text-sm font-semibold text-[#1B4F72] hover:underline"
         >
           Şablon Tanımla →
-        </a>
+        </Link>
       </div>
     )
   }

@@ -29,3 +29,4 @@ prisma/scripts/output/
 data/*.xlsx
 data/*.xls
 data/*.csv
+public/uploads

@@ -80,6 +80,9 @@ export default async function ReportDetailPage({ params }: Props) {
     return {
       id: c.id,
       orderIndex: c.orderIndex,
+      department: c.department,
+      inspectionTool: c.inspectionTool,
+      sampleFreq: c.sampleFreq,
       charName: c.charName,
       critical: c.critical,
       symbol: c.symbol

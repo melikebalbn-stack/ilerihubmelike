@@ -6,10 +6,15 @@ import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { ReportResultBadge, type ReportResult } from './ReportResultBadge'
+import { CharacterCell } from './CharacterCell'
 
 export interface CharRow {
   id: string
   orderIndex: number
+  /** Şablon snapshot — rapor doldurmada read-only */
+  department: string | null
+  inspectionTool: string | null
+  sampleFreq: string | null
   charName: string
   critical: boolean
   symbol: { id: string; key: string; nameTr: string; svgContent: string } | null
@@ -59,16 +64,6 @@ const MEASUREMENT_COUNT = 10
 const DEBOUNCE_MS = 600
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
-
-function SymbolGlyph({ svg, className }: { svg: string; className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={cn('text-current', className)}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  )
-}
 
 function normalizeForServer(v: string | null): string | null {
   if (v === null) return null
@@ -148,7 +143,7 @@ export function MeasurementGrid({
         toast.error(err instanceof Error ? err.message : 'Kaydedilemedi')
       }
     },
-    [reportId, setRowSave],
+    [reportId, setRowSave, setRowsAndNotify],
   )
 
   const scheduleSave = useCallback(
@@ -182,124 +177,139 @@ export function MeasurementGrid({
   )
 
   return (
-    <div className="rounded-md border bg-white overflow-x-auto">
-      <table className="w-full border-collapse text-sm" style={{ minWidth: 'max-content' }}>
+    <div className="overflow-x-auto bg-white">
+      <table
+        className="w-full border-collapse text-[12.5px] font-quality"
+        style={{ minWidth: 'max-content' }}
+      >
         <thead>
+          {/* 1. satır — gruplar */}
           <tr className="bg-slate-50 border-b border-slate-200">
             <th
               rowSpan={2}
-              className="sticky left-0 z-20 bg-slate-50 px-2 py-2 w-12 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide border-r border-slate-200"
+              className="sticky left-0 z-20 bg-slate-50 px-2 py-2 w-10 text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
             >
               #
             </th>
             <th
+              rowSpan={2}
+              className="bg-slate-50 px-2 py-2 w-20 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
+            >
+              Bölüm
+            </th>
+            <th
+              rowSpan={2}
+              className="bg-slate-50 px-2 py-2 w-28 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
+            >
+              Muayene Aracı
+            </th>
+            <th
+              rowSpan={2}
+              className="bg-slate-50 px-2 py-2 w-28 text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
+            >
+              Numune / Sıklık
+            </th>
+            <th
               colSpan={4}
-              className="px-2 py-1.5 text-center text-[10px] font-bold text-[#1B4F72] uppercase tracking-wider bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
+              className="px-2 py-1.5 text-center text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
             >
               Karakter Özellikleri
             </th>
             <th
               colSpan={MEASUREMENT_COUNT}
-              className="px-2 py-1.5 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider bg-slate-100/60 border-b border-slate-200"
+              className="px-2 py-1.5 text-center text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15"
             >
-              Ölçümler
+              Numune Ölçümleri
             </th>
             <th
               rowSpan={2}
-              className="sticky right-0 z-20 bg-slate-50 px-2 py-2 w-32 text-center text-[10px] font-semibold text-slate-600 uppercase tracking-wide border-l border-slate-200"
+              className="sticky right-0 z-20 bg-slate-50 px-2 py-2 w-[76px] text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-l border-slate-200"
             >
               Sonuç
             </th>
           </tr>
+          {/* 2. satır — karakter detayları + 10 ölçüm numarası */}
           <tr className="bg-[#1B4F72]/[0.04] border-b border-slate-200">
-            <th
-              className="sticky z-20 bg-[#1B4F72]/[0.04] px-2 py-2 text-left text-[10px] font-semibold text-[#1B4F72] uppercase tracking-wide min-w-[220px]"
-              style={{ left: '3rem' }}
-            >
+            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 text-left text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em] min-w-[220px]">
               Karakter
             </th>
-            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-20 text-center text-[10px] font-semibold text-[#1B4F72] uppercase tracking-wide">
+            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
               Nominal
             </th>
-            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-20 text-center text-[10px] font-semibold text-[#1B4F72] uppercase tracking-wide">
-              Maks
+            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
+              Maksimum
             </th>
-            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-20 text-center text-[10px] font-semibold text-[#1B4F72] uppercase tracking-wide border-r border-slate-200">
-              Min
+            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em] border-r border-slate-200">
+              Minimum
             </th>
             {Array.from({ length: MEASUREMENT_COUNT }, (_, i) => (
               <th
                 key={i}
-                className="px-1 py-2 w-20 text-center text-[10px] font-semibold text-slate-600 uppercase tracking-wide tabular-nums"
+                className="px-1 py-2 w-14 text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] tabular-nums font-quality-mono"
               >
-                Ö{i + 1}
+                {i + 1}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => {
-            const rowBg = row.critical ? 'bg-amber-50/30' : 'bg-white'
-            const stickyBg = row.critical ? 'bg-amber-50/30' : 'bg-white'
+            const rowBg = row.critical ? 'bg-amber-50/40' : 'bg-white'
+            const stickyBg = row.critical ? 'bg-amber-50/40' : 'bg-white'
             const state = saveState[row.id] ?? 'idle'
             const disabled = locked || !row.hasNumericRange
 
             return (
-              <tr key={row.id} className={cn('border-b border-slate-100', rowBg)}>
+              <tr
+                key={row.id}
+                className={cn(
+                  'border-b border-slate-100 hover:bg-slate-50/60 transition-colors',
+                  rowBg,
+                )}
+              >
                 <td
                   className={cn(
-                    'sticky left-0 z-10 px-2 py-2 align-middle text-xs font-semibold text-slate-500 tabular-nums border-r border-slate-100',
+                    'sticky left-0 z-10 px-2 align-middle text-center text-[11px] font-semibold font-quality-mono text-slate-500 tabular-nums border-r border-slate-100',
                     stickyBg,
                   )}
+                  style={{ height: '44px' }}
                 >
                   {row.orderIndex}
                 </td>
-
-                <td
-                  className={cn('sticky z-10 px-2 py-2 align-middle', stickyBg)}
-                  style={{ left: '3rem' }}
-                >
-                  <div className="flex items-center gap-2">
-                    {row.critical && (
-                      <span
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-sm bg-amber-500 text-white text-xs font-bold shrink-0"
-                        title="Kritik karakteristik"
-                      >
-                        *
-                      </span>
-                    )}
-                    {row.symbol && (
-                      <SymbolGlyph
-                        svg={row.symbol.svgContent}
-                        className="h-4 w-4 text-slate-700 shrink-0"
-                      />
-                    )}
-                    <span className="text-sm text-slate-800">{row.charName}</span>
-                  </div>
+                <td className="px-2 align-middle text-left text-[12px] font-quality-mono text-slate-700 border-r border-slate-100">
+                  {row.department || ''}
+                </td>
+                <td className="px-2 align-middle text-left text-[12px] font-quality-mono text-slate-700 border-r border-slate-100">
+                  {row.inspectionTool || ''}
+                </td>
+                <td className="px-2 align-middle text-center text-[12px] font-quality-mono text-slate-700 border-r border-slate-100">
+                  {row.sampleFreq || ''}
                 </td>
 
-                <td
-                  className={cn(
-                    'sticky px-2 py-2 align-middle text-center text-xs font-mono text-slate-700 tabular-nums',
-                    stickyBg,
-                  )}
-                >
+                <td className="align-middle border-r border-slate-100">
+                  <CharacterCell
+                    mode="readonly"
+                    critical={row.critical}
+                    charName={row.charName}
+                    symbol={
+                      row.symbol
+                        ? {
+                            key: row.symbol.key,
+                            nameTr: row.symbol.nameTr,
+                            svgContent: row.symbol.svgContent,
+                          }
+                        : null
+                    }
+                  />
+                </td>
+
+                <td className="px-2 align-middle text-center text-[12px] font-quality-mono text-slate-900 font-semibold tabular-nums">
                   {row.hasNumericRange ? row.nominal ?? '—' : '—'}
                 </td>
-                <td
-                  className={cn(
-                    'sticky px-2 py-2 align-middle text-center text-xs font-mono text-slate-700 tabular-nums',
-                    stickyBg,
-                  )}
-                >
+                <td className="px-2 align-middle text-center text-[12px] font-quality-mono text-slate-700 tabular-nums">
                   {row.hasNumericRange ? row.maxValue ?? '—' : '—'}
                 </td>
-                <td
-                  className={cn(
-                    'sticky px-2 py-2 align-middle text-center text-xs font-mono text-slate-700 tabular-nums border-r border-slate-200',
-                    stickyBg,
-                  )}
-                >
+                <td className="px-2 align-middle text-center text-[12px] font-quality-mono text-slate-700 tabular-nums border-r border-slate-200">
                   {row.hasNumericRange ? row.minValue ?? '—' : '—'}
                 </td>
 
@@ -312,7 +322,7 @@ export function MeasurementGrid({
                     row.hasNumericRange,
                   )
                   return (
-                    <td key={i} className="px-1 py-2 align-middle">
+                    <td key={i} className="px-1 align-middle">
                       <Input
                         value={val}
                         onChange={(e) => handleCellChange(row.id, i, e.target.value)}
@@ -325,10 +335,12 @@ export function MeasurementGrid({
                             : undefined
                         }
                         className={cn(
-                          'h-8 w-full text-center text-xs font-mono tabular-nums px-1 transition-colors',
+                          'h-8 w-full text-center text-[12.5px] font-quality-mono tabular-nums px-1 transition-colors border-slate-200',
                           disabled && 'bg-slate-50 text-slate-400',
+                          tolerance === 'in' &&
+                            'bg-emerald-50 border-emerald-200 text-emerald-700 font-semibold focus-visible:ring-emerald-300',
                           tolerance === 'out' &&
-                            'bg-red-50 border-red-300 text-red-700 focus-visible:ring-red-300',
+                            'bg-red-50 border-red-200 text-red-700 font-bold focus-visible:ring-red-300',
                         )}
                       />
                     </td>
@@ -338,7 +350,7 @@ export function MeasurementGrid({
                 {/* Sonuç sticky right — badge + save state */}
                 <td
                   className={cn(
-                    'sticky right-0 z-10 px-2 py-2 align-middle text-center border-l border-slate-200',
+                    'sticky right-0 z-10 px-2 align-middle text-center border-l border-slate-200',
                     stickyBg,
                   )}
                 >
@@ -371,7 +383,7 @@ export function MeasurementGrid({
       </table>
 
       {locked && (
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500">
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500 font-quality">
           Bu rapor finalize edildi — ölçümler değiştirilemez.
         </div>
       )}

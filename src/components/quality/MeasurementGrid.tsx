@@ -183,7 +183,7 @@ export function MeasurementGrid({
         style={{ minWidth: 'max-content' }}
       >
         <thead>
-          {/* 1. satır — gruplar */}
+          {/* 1. satır — gruplar (KRİTİK KARAKTER standalone; KARAKTER ÖZELLİKLERİ = Nominal/Maksimum/Minimum) */}
           <tr className="bg-slate-50 border-b border-slate-200">
             <th
               rowSpan={2}
@@ -210,7 +210,13 @@ export function MeasurementGrid({
               Numune / Sıklık
             </th>
             <th
-              colSpan={4}
+              rowSpan={2}
+              className="bg-[#1B4F72]/[0.06] px-2 py-2 text-left text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] min-w-[220px] border-r border-slate-200"
+            >
+              Kritik Karakter
+            </th>
+            <th
+              colSpan={3}
               className="px-2 py-1.5 text-center text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
             >
               Karakter Özellikleri
@@ -228,11 +234,8 @@ export function MeasurementGrid({
               Sonuç
             </th>
           </tr>
-          {/* 2. satır — karakter detayları + 10 ölçüm numarası */}
+          {/* 2. satır — KARAKTER ÖZELLİKLERİ alt başlıkları (Nominal/Maksimum/Minimum) + 10 ölçüm numarası */}
           <tr className="bg-[#1B4F72]/[0.04] border-b border-slate-200">
-            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 text-left text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em] min-w-[220px]">
-              Karakter
-            </th>
             <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
               Nominal
             </th>

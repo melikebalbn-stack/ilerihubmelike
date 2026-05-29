@@ -14,7 +14,7 @@ export default async function NewTemplatePage() {
   const symbols = await prisma.qualitySymbol.findMany({
     where: { active: true },
     orderBy: { displayOrder: 'asc' },
-    select: { id: true, key: true, nameTr: true, svgContent: true },
+    select: { id: true, key: true, nameTr: true, nameEn: true, svgContent: true },
   })
 
   const initial: InitialTemplate = {

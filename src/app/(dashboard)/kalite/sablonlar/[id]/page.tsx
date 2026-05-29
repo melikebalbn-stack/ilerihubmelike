@@ -34,7 +34,7 @@ export default async function TemplateDetailPage({ params }: Props) {
     prisma.qualitySymbol.findMany({
       where: { active: true },
       orderBy: { displayOrder: 'asc' },
-      select: { id: true, key: true, nameTr: true, svgContent: true },
+      select: { id: true, key: true, nameTr: true, nameEn: true, svgContent: true },
     }),
   ])
 

@@ -9,6 +9,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { SymbolGlyph } from './SymbolGlyph'
 
 export interface SymbolOption {
   id: string
@@ -22,16 +23,6 @@ interface SymbolPickerProps {
   onChange: (id: string | null) => void
   symbols: SymbolOption[]
   disabled?: boolean
-}
-
-function SymbolGlyph({ svg, className }: { svg: string; className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={cn('text-current', className)}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  )
 }
 
 export function SymbolPicker({ value, onChange, symbols, disabled }: SymbolPickerProps) {

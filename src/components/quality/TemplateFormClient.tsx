@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { ArrowLeft, Loader2, Save, Power } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   AlertDialog,
@@ -26,6 +25,9 @@ import {
   type TemplateCharRow,
 } from './CharacteristicsBuilder'
 import type { SymbolOption } from './SymbolPicker'
+import { FormTopBar } from './FormTopBar'
+import { CardNumbered } from './CardNumbered'
+import { StickyFormFooter } from './StickyFormFooter'
 
 export interface InitialTemplate {
   id: string | null // null = yeni
@@ -59,7 +61,11 @@ interface Props {
   canDeactivate?: boolean
 }
 
-export function TemplateFormClient({ initial, symbols, canDeactivate = false }: Props) {
+export function TemplateFormClient({
+  initial,
+  symbols,
+  canDeactivate = false,
+}: Props) {
   const router = useRouter()
   const isEdit = initial.id !== null
 
@@ -194,110 +200,165 @@ export function TemplateFormClient({ initial, symbols, canDeactivate = false }: 
     }
   }
 
-  return (
-    <div className="space-y-6 pb-24">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-3 text-slate-500">
-            <Link href="/kalite/sablonlar">
-              <ArrowLeft className="h-4 w-4 mr-1" /> Şablonlar
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold text-[#1B4F72] mt-1">
-            {isEdit ? meta.partName || 'Şablon Düzenle' : 'Yeni Şablon'}
-          </h1>
-          {isEdit && (
-            <div className="flex items-center gap-2 mt-1 text-sm text-slate-500">
-              {initial.active ? (
-                <Badge variant="default" className="bg-emerald-600">Aktif</Badge>
-              ) : (
-                <Badge variant="outline">Pasif</Badge>
-              )}
-              {initial.reportCount > 0 && (
-                <span>
-                  • Bu şablon <strong>{initial.reportCount}</strong> rapor üretti
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-        {isEdit && initial.active && canDeactivate && (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" disabled={saving}>
-                Pasifleştir
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Şablon pasifleştirilsin mi?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Bu şablon {initial.reportCount > 0 ? `${initial.reportCount} rapor üretti — ` : ''}
-                  pasifleştirilse de eski raporlar (snapshot) etkilenmez. Sadece bundan
-                  sonra yeni rapor oluşturulamaz.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>İptal</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeactivate}>
-                  Evet, pasifleştir
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
-      </div>
+  // ════════ FormTopBar + StickyFormFooter content ════════
 
-      {isEdit && initial.reportCount > 0 && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          <strong>Bilgi:</strong> Bu şablonu güncellersen, mevcut raporlar etkilenmez
-          (her rapor karakterleri snapshot olarak tutar). Değişiklik sadece bundan
-          sonra oluşturulacak raporları etkiler.
-        </div>
+  const topBarMeta = [
+    { label: 'Parça Adı', value: meta.partName || '—' },
+    { label: 'Resim No', value: meta.drawingNo || '—' },
+    { label: 'Revizyon', value: meta.revision || '—' },
+  ]
+
+  const topBarActions = (
+    <>
+      <Button
+        asChild
+        variant="ghost"
+        size="sm"
+        className="text-white/90 hover:bg-white/10 hover:text-white border border-white/25"
+      >
+        <Link href="/kalite/sablonlar">
+          <ArrowLeft className="h-3.5 w-3.5 mr-1.5" /> Şablonlar
+        </Link>
+      </Button>
+      {isEdit && initial.active && canDeactivate && (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={saving}
+              className="text-white/90 hover:bg-white/10 hover:text-white border border-white/25"
+            >
+              <Power className="h-3.5 w-3.5 mr-1.5" /> Pasifleştir
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Şablon pasifleştirilsin mi?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Bu şablon{' '}
+                {initial.reportCount > 0
+                  ? `${initial.reportCount} rapor üretti — `
+                  : ''}
+                pasifleştirilse de eski raporlar (snapshot) etkilenmez. Sadece
+                bundan sonra yeni rapor oluşturulamaz.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>İptal</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeactivate}>
+                Evet, pasifleştir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
+    </>
+  )
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Şablon Bilgileri</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TemplateMetaForm value={meta} onChange={markDirty(setMeta)} errors={errors} />
-        </CardContent>
-      </Card>
+  const footerStatus: React.ReactNode = saving
+    ? 'Kaydediliyor...'
+    : dirty
+      ? 'Kaydedilmemiş değişiklik var'
+      : isEdit
+        ? 'Şablon güncel'
+        : 'Yeni şablon — kaydetmek için aşağıdaki butona tıklayın'
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Karakteristikler</CardTitle>
-        </CardHeader>
-        <CardContent>
+  const footerActions = (
+    <>
+      <Button asChild variant="outline" disabled={saving} size="sm" className="h-9">
+        <Link href="/kalite/sablonlar">Vazgeç</Link>
+      </Button>
+      <Button
+        type="button"
+        onClick={handleSubmit}
+        disabled={saving}
+        size="sm"
+        className="bg-[#1B4F72] hover:bg-[#1B4F72]/90 h-9"
+      >
+        {saving ? (
+          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+        ) : (
+          <Save className="h-3.5 w-3.5 mr-1.5" />
+        )}
+        {isEdit ? 'Kaydet' : 'Şablonu Kaydet'}
+      </Button>
+    </>
+  )
+
+  return (
+    <div className="min-h-screen bg-slate-100 pb-20">
+      <FormTopBar
+        formNo={meta.formNo || 'F18.8511'}
+        title={isEdit ? meta.partName || 'Şablon Düzenle' : 'Yeni Şablon'}
+        subtitle="Measurement Template"
+        meta={topBarMeta}
+        actions={topBarActions}
+      />
+
+      <div className="mx-auto max-w-[1500px] px-6 pt-7 flex flex-col gap-4">
+        {isEdit && (
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            {initial.active ? (
+              <Badge variant="default" className="bg-emerald-600">
+                Aktif
+              </Badge>
+            ) : (
+              <Badge variant="outline">Pasif</Badge>
+            )}
+            {initial.reportCount > 0 && (
+              <span>
+                Bu şablon <strong>{initial.reportCount}</strong> rapor üretti
+              </span>
+            )}
+          </div>
+        )}
+
+        {isEdit && initial.reportCount > 0 && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <strong>Bilgi:</strong> Bu şablonu güncellersen, mevcut raporlar
+            etkilenmez (her rapor karakterleri snapshot olarak tutar).
+            Değişiklik sadece bundan sonra oluşturulacak raporları etkiler.
+          </div>
+        )}
+
+        {/* ═══ Card 1 — Şablon Bilgileri ═══ */}
+        <CardNumbered
+          number={1}
+          title="Şablon Bilgileri"
+          hint="Form no, parça kimliği ve revizyon"
+        >
+          <TemplateMetaForm
+            value={meta}
+            onChange={markDirty(setMeta)}
+            errors={errors}
+          />
+        </CardNumbered>
+
+        {/* ═══ Card 2 — Karakteristikler ═══ */}
+        <CardNumbered
+          number={2}
+          title="Karakteristikler"
+          hint={
+            <span>
+              Sol kutu kritik (<span className="text-amber-700 font-bold">*</span>) işareti ·
+              Karakter alanından GD&amp;T sembolü seçilir
+            </span>
+          }
+        >
           <CharacteristicsBuilder
             value={chars}
             onChange={markDirty(setChars)}
             symbols={symbols}
           />
-        </CardContent>
-      </Card>
-
-      <div className="fixed bottom-0 inset-x-0 bg-white border-t shadow-lg z-20">
-        <div className="container mx-auto px-6 py-3 flex items-center justify-end gap-3 max-w-7xl">
-          <Button asChild variant="outline" disabled={saving}>
-            <Link href="/kalite/sablonlar">Vazgeç</Link>
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={saving}
-            className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            {isEdit ? 'Kaydet' : 'Şablonu Kaydet'}
-          </Button>
-        </div>
+        </CardNumbered>
       </div>
+
+      <StickyFormFooter
+        status={footerStatus}
+        statusTone={saving ? 'saving' : dirty ? 'idle' : 'saved'}
+        actions={footerActions}
+      />
     </div>
   )
 }

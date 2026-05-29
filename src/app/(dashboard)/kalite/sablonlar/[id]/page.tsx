@@ -67,12 +67,10 @@ export default async function TemplateDetailPage({ params }: Props) {
   }
 
   return (
-    <div className="container mx-auto px-6 py-8 max-w-7xl">
-      <TemplateFormClient
-        initial={initial}
-        symbols={symbols}
-        canDeactivate={canManage}
-      />
-    </div>
+    <TemplateFormClient
+      initial={initial}
+      symbols={symbols}
+      canDeactivate={canManage}
+    />
   )
 }

@@ -58,6 +58,7 @@ import {
   ServerCog,
   ArrowRightLeft,
   UserMinus,
+  Shapes,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -90,6 +91,7 @@ const teknikMenuItems = [
   { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"] },
   { name: "Ölçüm Şablonları", icon: ClipboardList, href: "/kalite/sablonlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Ölçüm Raporları", icon: ClipboardCheck, href: "/kalite/raporlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
+  { name: "Semboller", icon: Shapes, href: "/kalite/semboller", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Yangın Güvenliği", icon: Flame, href: "/fire-safety", roles: ["QUALITY_MANAGER", "ADMIN"] },
   { name: "Tezgah Bakım", icon: Factory, href: "/maintenance", roles: ["*"] },
   { name: "Arşiv", icon: Archive, href: "/arsiv/koli", roles: ["*"] },

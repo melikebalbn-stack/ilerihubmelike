@@ -106,23 +106,30 @@ export async function POST(request: NextRequest) {
         },
       })
       await tx.measurementTemplateChar.createMany({
-        data: body.characteristics.map((c) => ({
-          templateId: tpl.id,
-          orderIndex: c.orderIndex,
-          department: c.department ?? null,
-          inspectionTool: c.inspectionTool ?? null,
-          sampleFreq: c.sampleFreq ?? null,
-          critical: c.critical ?? false,
-          symbolId: c.symbolId ?? null,
-          charName: c.charName,
-          nominal: c.nominal ? c.nominal.replace(',', '.') : null,
-          maxValue: c.maxValue ? c.maxValue.replace(',', '.') : null,
-          minValue: c.minValue ? c.minValue.replace(',', '.') : null,
-          hasNumericRange: c.hasNumericRange ?? true,
-          datum1: c.datum1 ?? null,
-          datum2: c.datum2 ?? null,
-          datum3: c.datum3 ?? null,
-        })),
+        data: body.characteristics.map((c) => {
+          const nominal = c.nominal ? c.nominal.replace(',', '.') : null
+          const maxValue = c.maxValue ? c.maxValue.replace(',', '.') : null
+          const minValue = c.minValue ? c.minValue.replace(',', '.') : null
+          // KALITE-7A.1 — TİP toggle kaldırıldı; range auto-derive
+          const hasNumericRange = !!(nominal || maxValue || minValue)
+          return {
+            templateId: tpl.id,
+            orderIndex: c.orderIndex,
+            department: c.department ?? null,
+            inspectionTool: c.inspectionTool ?? null,
+            sampleFreq: c.sampleFreq ?? null,
+            critical: c.critical ?? false,
+            symbolId: c.symbolId ?? null,
+            charName: c.charName,
+            nominal,
+            maxValue,
+            minValue,
+            hasNumericRange,
+            datum1: c.datum1 ?? null,
+            datum2: c.datum2 ?? null,
+            datum3: c.datum3 ?? null,
+          }
+        }),
       })
       return tx.measurementTemplate.findUnique({
         where: { id: tpl.id },

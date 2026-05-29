@@ -22,7 +22,6 @@ import { GripVertical, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { type SymbolOption } from './SymbolPicker'
 import { CharacterCell } from './CharacterCell'
@@ -104,8 +103,6 @@ function SortableRow({
     position: isDragging ? 'relative' : undefined,
     zIndex: isDragging ? 10 : undefined,
   }
-
-  const disabledRange = !row.hasNumericRange
 
   return (
     <tr
@@ -194,11 +191,7 @@ function SortableRow({
           onBlur={(e) => onPatch({ nominal: normalizeDecimal(e.target.value) })}
           placeholder="—"
           inputMode="decimal"
-          disabled={disabledRange}
-          className={cn(
-            'h-9 text-xs font-quality-mono text-center',
-            disabledRange && 'bg-slate-50 text-slate-400',
-          )}
+          className="h-9 text-xs font-quality-mono text-center"
         />
       </td>
 
@@ -210,11 +203,7 @@ function SortableRow({
           onBlur={(e) => onPatch({ maxValue: normalizeDecimal(e.target.value) })}
           placeholder="—"
           inputMode="decimal"
-          disabled={disabledRange}
-          className={cn(
-            'h-9 text-xs font-quality-mono text-center',
-            disabledRange && 'bg-slate-50 text-slate-400',
-          )}
+          className="h-9 text-xs font-quality-mono text-center"
         />
       </td>
 
@@ -226,26 +215,8 @@ function SortableRow({
           onBlur={(e) => onPatch({ minValue: normalizeDecimal(e.target.value) })}
           placeholder="—"
           inputMode="decimal"
-          disabled={disabledRange}
-          className={cn(
-            'h-9 text-xs font-quality-mono text-center',
-            disabledRange && 'bg-slate-50 text-slate-400',
-          )}
+          className="h-9 text-xs font-quality-mono text-center"
         />
-      </td>
-
-      {/* Tip (Sayısal/Görsel) */}
-      <td className="px-2 py-2 align-middle">
-        <div className="flex items-center gap-1.5">
-          <Switch
-            checked={row.hasNumericRange}
-            onCheckedChange={(v) => onPatch({ hasNumericRange: v })}
-            aria-label="Sayısal aralık"
-          />
-          <span className="text-[10px] uppercase tracking-wide text-slate-500 w-12 font-quality">
-            {row.hasNumericRange ? 'Sayısal' : 'Görsel'}
-          </span>
-        </div>
       </td>
 
       {/* Sil */}
@@ -350,9 +321,6 @@ export function CharacteristicsBuilder({ value, onChange, symbols }: BuilderProp
                     className="px-2 py-1.5 text-center text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
                   >
                     Karakter Özellikleri
-                  </th>
-                  <th rowSpan={2} className="px-2 py-2 w-28 text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
-                    Tip
                   </th>
                   <th rowSpan={2} className="w-10"></th>
                 </tr>

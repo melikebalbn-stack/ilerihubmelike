@@ -135,22 +135,30 @@ export function TemplateFormClient({
         revision: meta.revision.trim(),
         department: meta.department,
         notes: meta.notes,
-        characteristics: chars.map((c) => ({
-          orderIndex: c.orderIndex,
-          department: c.department,
-          inspectionTool: c.inspectionTool,
-          sampleFreq: c.sampleFreq,
-          critical: c.critical,
-          symbolId: c.symbolId,
-          charName: c.charName.trim(),
-          nominal: c.nominal ? c.nominal.replace(',', '.') : null,
-          maxValue: c.maxValue ? c.maxValue.replace(',', '.') : null,
-          minValue: c.minValue ? c.minValue.replace(',', '.') : null,
-          hasNumericRange: c.hasNumericRange,
-          datum1: c.datum1?.trim() || null,
-          datum2: c.datum2?.trim() || null,
-          datum3: c.datum3?.trim() || null,
-        })),
+        characteristics: chars.map((c) => {
+          const nominal = c.nominal ? c.nominal.replace(',', '.') : null
+          const maxValue = c.maxValue ? c.maxValue.replace(',', '.') : null
+          const minValue = c.minValue ? c.minValue.replace(',', '.') : null
+          // hasNumericRange auto-derive: nominal/maks/min'den biri doluysa sayısal,
+          // hepsi boşsa görsel. (KALITE-7A.1 — TİP toggle kaldırıldı)
+          const hasNumericRange = !!(nominal || maxValue || minValue)
+          return {
+            orderIndex: c.orderIndex,
+            department: c.department,
+            inspectionTool: c.inspectionTool,
+            sampleFreq: c.sampleFreq,
+            critical: c.critical,
+            symbolId: c.symbolId,
+            charName: c.charName.trim(),
+            nominal,
+            maxValue,
+            minValue,
+            hasNumericRange,
+            datum1: c.datum1?.trim() || null,
+            datum2: c.datum2?.trim() || null,
+            datum3: c.datum3?.trim() || null,
+          }
+        }),
       }
 
       const url = isEdit

@@ -99,6 +99,9 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
             maxValue: c.maxValue ? c.maxValue.replace(',', '.') : null,
             minValue: c.minValue ? c.minValue.replace(',', '.') : null,
             hasNumericRange: c.hasNumericRange ?? true,
+            datum1: c.datum1 ?? null,
+            datum2: c.datum2 ?? null,
+            datum3: c.datum3 ?? null,
           })),
         })
       }

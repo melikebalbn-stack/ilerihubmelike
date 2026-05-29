@@ -32,6 +32,10 @@ export const TemplateCharSchema = z.object({
   maxValue: DecimalString.nullable().optional(),
   minValue: DecimalString.nullable().optional(),
   hasNumericRange: z.boolean().optional().default(true),
+  // GD&T datum referansları — kısa etiket (örn. "A", "B", "Ø9.9")
+  datum1: z.string().trim().max(32).nullable().optional(),
+  datum2: z.string().trim().max(32).nullable().optional(),
+  datum3: z.string().trim().max(32).nullable().optional(),
 })
 
 export const TemplateUpsertSchema = z.object({

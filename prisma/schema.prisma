@@ -9625,6 +9625,7 @@ model QualitySymbol {
   svgContent   String   @db.Text
   displayOrder Int      @default(0)
   active       Boolean  @default(true)
+  isSystem     Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   createdById  String?

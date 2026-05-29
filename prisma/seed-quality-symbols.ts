@@ -108,6 +108,7 @@ async function main() {
             svgContent: s.svg,
             displayOrder: s.order,
             active: true,
+            isSystem: true,
           },
         })
         updated++
@@ -120,6 +121,7 @@ async function main() {
             svgContent: s.svg,
             displayOrder: s.order,
             active: true,
+            isSystem: true,
           },
         })
         inserted++

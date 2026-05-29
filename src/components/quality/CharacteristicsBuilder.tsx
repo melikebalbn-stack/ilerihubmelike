@@ -40,6 +40,9 @@ export interface TemplateCharRow {
   maxValue: string | null
   minValue: string | null
   hasNumericRange: boolean
+  datum1: string | null
+  datum2: string | null
+  datum3: string | null
 }
 
 interface BuilderProps {
@@ -68,6 +71,9 @@ export function makeEmptyChar(orderIndex: number): TemplateCharRow {
     maxValue: null,
     minValue: null,
     hasNumericRange: true,
+    datum1: null,
+    datum2: null,
+    datum3: null,
   }
 }
 
@@ -170,6 +176,13 @@ function SortableRow({
           symbols={symbols}
           charName={row.charName}
           onCharNameChange={(v) => onPatch({ charName: v })}
+          datum1={row.datum1}
+          datum2={row.datum2}
+          datum3={row.datum3}
+          onDatumChange={(slot, next) => {
+            const key = slot === 1 ? 'datum1' : slot === 2 ? 'datum2' : 'datum3'
+            onPatch({ [key]: next } as Partial<TemplateCharRow>)
+          }}
         />
       </td>
 

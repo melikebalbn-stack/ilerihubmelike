@@ -22,6 +22,10 @@ export interface CharRow {
   maxValue: string | null
   minValue: string | null
   hasNumericRange: boolean
+  /** GD&T datum referansları snapshot (KALITE-7A) */
+  datum1: string | null
+  datum2: string | null
+  datum3: string | null
   measurements: ReadonlyArray<string | null>
   result: ReportResult
 }
@@ -294,6 +298,9 @@ export function MeasurementGrid({
                     mode="readonly"
                     critical={row.critical}
                     charName={row.charName}
+                    datum1={row.datum1}
+                    datum2={row.datum2}
+                    datum3={row.datum3}
                     symbol={
                       row.symbol
                         ? {

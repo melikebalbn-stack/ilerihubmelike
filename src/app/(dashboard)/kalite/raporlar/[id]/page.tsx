@@ -91,6 +91,9 @@ export default async function ReportDetailPage({ params }: Props) {
       maxValue: c.maxValue !== null ? c.maxValue.toString() : null,
       minValue: c.minValue !== null ? c.minValue.toString() : null,
       hasNumericRange: c.hasNumericRange,
+      datum1: c.datum1,
+      datum2: c.datum2,
+      datum3: c.datum3,
       measurements,
       result: c.result as ReportResult,
     }

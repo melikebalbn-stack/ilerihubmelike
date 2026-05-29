@@ -52,6 +52,9 @@ export interface InitialTemplate {
     maxValue: string | null
     minValue: string | null
     hasNumericRange: boolean
+    datum1: string | null
+    datum2: string | null
+    datum3: string | null
   }>
 }
 
@@ -144,6 +147,9 @@ export function TemplateFormClient({
           maxValue: c.maxValue ? c.maxValue.replace(',', '.') : null,
           minValue: c.minValue ? c.minValue.replace(',', '.') : null,
           hasNumericRange: c.hasNumericRange,
+          datum1: c.datum1?.trim() || null,
+          datum2: c.datum2?.trim() || null,
+          datum3: c.datum3?.trim() || null,
         })),
       }
 

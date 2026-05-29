@@ -26,6 +26,33 @@ interface Props {
   initialCharacteristics: ReadonlyArray<CharRow>
   /** Finalize edilmişse tüm grid read-only */
   locked?: boolean
+  /** Parent (ReportDetailClient) live aggregator için */
+  onCharsChange?: (rows: CharRow[]) => void
+}
+
+/**
+ * Bir hücrenin tolerans durumunu döndürür.
+ *   - hasNumericRange=false → 'na' (görsel kontrol, kırmızı vurgu yok)
+ *   - boş input → 'empty'
+ *   - max/min tanımsız ya da parse-fail → 'unknown'
+ *   - range içi → 'in', dışı → 'out'
+ */
+function cellTolerance(
+  value: string | null,
+  maxValue: string | null,
+  minValue: string | null,
+  hasNumericRange: boolean,
+): 'na' | 'empty' | 'unknown' | 'in' | 'out' {
+  if (!hasNumericRange) return 'na'
+  if (value === null || value === '') return 'empty'
+  if (maxValue === null || minValue === null) return 'unknown'
+  const v = parseFloat(String(value).replace(',', '.'))
+  const max = parseFloat(maxValue.replace(',', '.'))
+  const min = parseFloat(minValue.replace(',', '.'))
+  if (!Number.isFinite(v) || !Number.isFinite(max) || !Number.isFinite(min)) {
+    return 'unknown'
+  }
+  return v < min || v > max ? 'out' : 'in'
 }
 
 const MEASUREMENT_COUNT = 10
@@ -54,10 +81,23 @@ export function MeasurementGrid({
   reportId,
   initialCharacteristics,
   locked = false,
+  onCharsChange,
 }: Props) {
   const [rows, setRows] = useState<CharRow[]>(() => [...initialCharacteristics])
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({})
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
+  // Parent live update (aggregator için)
+  const setRowsAndNotify = useCallback(
+    (updater: (prev: CharRow[]) => CharRow[]) => {
+      setRows((prev) => {
+        const next = updater(prev)
+        if (onCharsChange) onCharsChange(next)
+        return next
+      })
+    },
+    [onCharsChange],
+  )
 
   const setRowSave = useCallback((charId: string, s: SaveState) => {
     setSaveState((prev) => ({ ...prev, [charId]: s }))
@@ -84,7 +124,7 @@ export function MeasurementGrid({
         // Server response: { characteristic: { measurements, result, ... } }
         const updated = json.characteristic
         if (updated) {
-          setRows((prev) =>
+          setRowsAndNotify((prev) =>
             prev.map((r) =>
               r.id === charId
                 ? {
@@ -126,7 +166,7 @@ export function MeasurementGrid({
 
   const handleCellChange = useCallback(
     (charId: string, slotIndex: number, raw: string) => {
-      setRows((prev) =>
+      setRowsAndNotify((prev) =>
         prev.map((r) => {
           if (r.id !== charId) return r
           const next: (string | null)[] = [...r.measurements]
@@ -138,7 +178,7 @@ export function MeasurementGrid({
         }),
       )
     },
-    [scheduleSave],
+    [scheduleSave, setRowsAndNotify],
   )
 
   return (
@@ -265,6 +305,12 @@ export function MeasurementGrid({
 
                 {Array.from({ length: MEASUREMENT_COUNT }, (_, i) => {
                   const val = row.measurements[i] ?? ''
+                  const tolerance = cellTolerance(
+                    val === '' ? null : val,
+                    row.maxValue,
+                    row.minValue,
+                    row.hasNumericRange,
+                  )
                   return (
                     <td key={i} className="px-1 py-2 align-middle">
                       <Input
@@ -273,9 +319,16 @@ export function MeasurementGrid({
                         placeholder="—"
                         inputMode="decimal"
                         disabled={disabled}
+                        title={
+                          tolerance === 'out'
+                            ? `Tolerans dışı (Min ${row.minValue} / Maks ${row.maxValue})`
+                            : undefined
+                        }
                         className={cn(
-                          'h-8 w-full text-center text-xs font-mono tabular-nums px-1',
+                          'h-8 w-full text-center text-xs font-mono tabular-nums px-1 transition-colors',
                           disabled && 'bg-slate-50 text-slate-400',
+                          tolerance === 'out' &&
+                            'bg-red-50 border-red-300 text-red-700 focus-visible:ring-red-300',
                         )}
                       />
                     </td>

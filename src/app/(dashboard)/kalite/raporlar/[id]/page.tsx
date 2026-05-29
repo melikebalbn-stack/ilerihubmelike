@@ -6,11 +6,9 @@ import { hasPermission } from '@/lib/auth/has-permission'
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ReportResultBadge, type ReportResult } from '@/components/quality/ReportResultBadge'
-import {
-  MeasurementGrid,
-  type CharRow,
-} from '@/components/quality/MeasurementGrid'
+import { type ReportResult } from '@/components/quality/ReportResultBadge'
+import { type CharRow } from '@/components/quality/MeasurementGrid'
+import { ReportDetailClient } from '@/components/quality/ReportDetailClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,14 +80,20 @@ export default async function ReportDetailPage({ params }: Props) {
             <ArrowLeft className="h-4 w-4 mr-1" /> Raporlar
           </Link>
         </Button>
-        <div className="flex items-center gap-3 mt-1">
-          <h1 className="text-2xl font-bold text-[#1B4F72]">{report.reportNo}</h1>
-          <ReportResultBadge result={report.result as ReportResult} />
-        </div>
-        <p className="text-sm text-slate-500 mt-1">
-          {report.partName} ({report.drawingNo}-{report.revision})
-        </p>
       </div>
+
+      <ReportDetailClient
+        report={{
+          id: report.id,
+          reportNo: report.reportNo,
+          partName: report.partName,
+          drawingNo: report.drawingNo,
+          revision: report.revision,
+          result: report.result as ReportResult,
+          finalizedAt: report.finalizedAt ? report.finalizedAt.toISOString() : null,
+        }}
+        initialCharacteristics={chars}
+      />
 
       <Card>
         <CardHeader className="pb-3">
@@ -130,24 +134,6 @@ export default async function ReportDetailPage({ params }: Props) {
               <dd className="mt-0.5">{fmt(report.finalizedAt)}</dd>
             </div>
           </dl>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center justify-between">
-            <span>Ölçüm Karakteristikleri</span>
-            <span className="text-xs font-normal text-slate-500">
-              {chars.length} satır · her satır 10 ölçüm
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <MeasurementGrid
-            reportId={report.id}
-            initialCharacteristics={chars}
-            locked={isLocked}
-          />
         </CardContent>
       </Card>
 

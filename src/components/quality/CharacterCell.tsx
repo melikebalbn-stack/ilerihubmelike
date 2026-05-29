@@ -124,21 +124,23 @@ function CharacterCellEdit({
           )}
         />
       </div>
-      <div className="flex items-center gap-1 pl-[26px]">
-        <DatumLabel />
-        <DatumInput
+      <div className="flex items-center gap-2 pl-[26px]">
+        <DatumField
+          label="Datum 1"
           value={datum1}
           onChange={(v) => onDatumChange(1, v)}
           disabled={disabled}
           placeholder="A"
         />
-        <DatumInput
+        <DatumField
+          label="Datum 2"
           value={datum2}
           onChange={(v) => onDatumChange(2, v)}
           disabled={disabled}
           placeholder="B"
         />
-        <DatumInput
+        <DatumField
+          label="Datum 3"
           value={datum3}
           onChange={(v) => onDatumChange(3, v)}
           disabled={disabled}
@@ -149,46 +151,42 @@ function CharacterCellEdit({
   )
 }
 
-function DatumLabel() {
-  return (
-    <span
-      className="font-quality text-[9.5px] uppercase tracking-[0.06em] text-slate-400 select-none"
-      title="Datum referansları"
-    >
-      ▷
-    </span>
-  )
-}
-
-function DatumInput({
+function DatumField({
+  label,
   value,
   onChange,
   disabled,
   placeholder,
 }: {
+  label: string
   value: string | null
   onChange: (next: string | null) => void
   disabled?: boolean
   placeholder?: string
 }) {
   return (
-    <input
-      type="text"
-      value={value ?? ''}
-      onChange={(e) => {
-        const trimmed = e.target.value
-        onChange(trimmed === '' ? null : trimmed)
-      }}
-      disabled={disabled}
-      placeholder={placeholder}
-      maxLength={32}
-      className={cn(
-        'w-8 h-6 px-1 rounded border border-slate-200 bg-white text-center',
-        'font-quality-mono text-[11px] text-slate-700 placeholder:text-slate-300',
-        'focus:outline-none focus:border-[#1B4F72] focus:ring-1 focus:ring-[#1B4F72]/20',
-        'disabled:bg-slate-50 disabled:text-slate-400',
-      )}
-    />
+    <label className="flex items-center gap-1 select-none">
+      <span className="font-quality text-[9.5px] uppercase tracking-[0.06em] text-slate-500">
+        {label}
+      </span>
+      <input
+        type="text"
+        value={value ?? ''}
+        onChange={(e) => {
+          const v = e.target.value
+          onChange(v === '' ? null : v)
+        }}
+        disabled={disabled}
+        placeholder={placeholder}
+        maxLength={32}
+        className={cn(
+          'w-9 h-6 px-1 rounded border border-slate-200 bg-white text-center',
+          'font-quality-mono text-[11px] text-slate-700 placeholder:text-slate-300',
+          'focus:outline-none focus:border-[#1B4F72] focus:ring-1 focus:ring-[#1B4F72]/20',
+          'disabled:bg-slate-50 disabled:text-slate-400',
+        )}
+      />
+    </label>
   )
 }
 

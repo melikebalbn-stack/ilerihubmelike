@@ -86,6 +86,39 @@ export const CharUpdateSchema = z.object({
 })
 
 // ════════════════════════════════════════════════════════════
+// SYMBOL (KALITE-6)
+// ════════════════════════════════════════════════════════════
+
+// key: lowercase, alfanümerik + '-' / '_'; 1–48 karakter
+const SymbolKey = z
+  .string()
+  .trim()
+  .min(1)
+  .max(48)
+  .regex(/^[a-z0-9_-]+$/, { message: 'Yalnızca küçük harf, rakam, _ ve - kullanılabilir' })
+
+const SymbolName = z.string().trim().min(1).max(120)
+const SymbolSvg = z.string().trim().min(1).max(8000)
+const SymbolOrder = z.number().int().min(0).max(9999)
+
+export const SymbolCreateSchema = z.object({
+  key: SymbolKey,
+  nameTr: SymbolName,
+  nameEn: SymbolName,
+  svgContent: SymbolSvg,
+  displayOrder: SymbolOrder.optional(),
+})
+
+/** PATCH — tüm alanlar opsiyonel. System sembol koruması route'ta enforce edilir. */
+export const SymbolPatchSchema = z.object({
+  nameTr: SymbolName.optional(),
+  nameEn: SymbolName.optional(),
+  svgContent: SymbolSvg.optional(),
+  displayOrder: SymbolOrder.optional(),
+  active: z.boolean().optional(),
+})
+
+// ════════════════════════════════════════════════════════════
 // Type exports
 // ════════════════════════════════════════════════════════════
 
@@ -95,3 +128,5 @@ export type TemplatePatchInput = z.infer<typeof TemplatePatchSchema>
 export type ReportCreateInput = z.infer<typeof ReportCreateSchema>
 export type ReportPatchInput = z.infer<typeof ReportPatchSchema>
 export type CharUpdateInput = z.infer<typeof CharUpdateSchema>
+export type SymbolCreateInput = z.infer<typeof SymbolCreateSchema>
+export type SymbolPatchInput = z.infer<typeof SymbolPatchSchema>

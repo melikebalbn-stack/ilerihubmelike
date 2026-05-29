@@ -10,9 +10,12 @@ import {
   Download,
   ExternalLink,
   Loader2,
+  Mail,
   Save,
+  Send,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   AlertDialog,
@@ -25,6 +28,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { computeReportResult } from '@/lib/quality/quality-result'
 import { type ReportResult } from './ReportResultBadge'
@@ -492,6 +503,7 @@ export function ReportDetailClient({
                       <ExternalLink className="h-4 w-4 mr-2" /> Doğrulama Sayfası
                     </Link>
                   </Button>
+                  <EmailSendButton reportId={report.id} reportNo={report.reportNo} />
                 </div>
                 <div className="text-xs text-slate-500 font-quality-mono break-all">
                   {verifyUrl}
@@ -548,5 +560,169 @@ function MetaField({
         {value || '—'}
       </div>
     </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════
+// EMAIL SEND DIALOG — Card 4 buton + Dialog (KALITE-8 c3)
+// ════════════════════════════════════════════════════════════
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function parseRecipients(raw: string): {
+  valid: string[]
+  invalid: string[]
+} {
+  const tokens = raw
+    .split(/[,;\n]/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+  const valid: string[] = []
+  const invalid: string[] = []
+  for (const t of tokens) {
+    if (EMAIL_REGEX.test(t)) valid.push(t)
+    else invalid.push(t)
+  }
+  return { valid, invalid }
+}
+
+function EmailSendButton({
+  reportId,
+  reportNo,
+}: {
+  reportId: string
+  reportNo: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [recipientsInput, setRecipientsInput] = useState('')
+  const [note, setNote] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const { valid, invalid } = parseRecipients(recipientsInput)
+  const canSend = valid.length > 0 && invalid.length === 0 && !sending
+
+  async function handleSend() {
+    if (valid.length === 0) {
+      toast.error('En az 1 geçerli e-posta gerekli')
+      return
+    }
+    if (valid.length > 20) {
+      toast.error('En fazla 20 alıcı')
+      return
+    }
+    setSending(true)
+    try {
+      const res = await fetch(`/api/quality/reports/${reportId}/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipients: valid,
+          note: note.trim() || undefined,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || 'Mail gönderilemedi')
+      toast.success(`Mail gönderildi (${valid.length} alıcı)`)
+      setOpen(false)
+      setRecipientsInput('')
+      setNote('')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Mail gönderilemedi')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button
+        variant="outline"
+        onClick={() => setOpen(true)}
+        className="border-[#1B4F72]/30 text-[#1B4F72] hover:bg-[#1B4F72]/[0.06]"
+      >
+        <Mail className="h-4 w-4 mr-2" /> Mail Gönder
+      </Button>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Raporu Mail ile Gönder</DialogTitle>
+          <DialogDescription>
+            {reportNo} numaralı rapor PDF eki ile aşağıdaki alıcılara
+            gönderilecek.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="email-recipients" className="text-xs font-semibold">
+              Alıcı(lar) <span className="text-slate-400 font-normal">(virgül veya satırbaşı ile ayır)</span>
+            </Label>
+            <Textarea
+              id="email-recipients"
+              value={recipientsInput}
+              onChange={(e) => setRecipientsInput(e.target.value)}
+              placeholder="ornek@ilerigroup.com, baska@ilerigroup.com"
+              rows={3}
+              className="font-quality-mono text-[12.5px]"
+              disabled={sending}
+            />
+            <div className="flex items-center gap-2 text-[11px]">
+              {valid.length > 0 && (
+                <span className="text-emerald-700">
+                  {valid.length} geçerli
+                </span>
+              )}
+              {invalid.length > 0 && (
+                <span className="text-red-700">
+                  {invalid.length} geçersiz: {invalid.slice(0, 2).join(', ')}
+                  {invalid.length > 2 ? '...' : ''}
+                </span>
+              )}
+              {recipientsInput.trim() === '' && (
+                <span className="text-slate-400">En az 1 alıcı zorunlu</span>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="email-note" className="text-xs font-semibold">
+              Not <span className="text-slate-400 font-normal">(opsiyonel, mail gövdesine eklenir)</span>
+            </Label>
+            <Textarea
+              id="email-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Sapma açıklaması, ek bilgi..."
+              rows={3}
+              maxLength={2000}
+              disabled={sending}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setOpen(false)}
+            disabled={sending}
+          >
+            İptal
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSend}
+            disabled={!canSend}
+            className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
+          >
+            {sending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4 mr-2" />
+            )}
+            Gönder
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

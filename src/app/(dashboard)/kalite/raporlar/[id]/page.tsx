@@ -21,6 +21,8 @@ export default async function ReportDetailPage({ params }: Props) {
   if (error) redirect('/login')
   if (!(await hasPermission('quality.report.read'))) redirect('/dashboard')
 
+  const canFinalize = await hasPermission('quality.report.fill')
+
   const { id } = await params
   const report = await prisma.measurementReport.findUnique({
     where: { id },
@@ -93,6 +95,7 @@ export default async function ReportDetailPage({ params }: Props) {
           finalizedAt: report.finalizedAt ? report.finalizedAt.toISOString() : null,
         }}
         initialCharacteristics={chars}
+        canFinalize={canFinalize}
       />
 
       <Card>

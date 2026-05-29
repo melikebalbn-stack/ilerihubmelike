@@ -24,8 +24,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { SymbolPicker, type SymbolOption } from './SymbolPicker'
-import { CritToggle } from './CritToggle'
+import { type SymbolOption } from './SymbolPicker'
+import { CharacterCell } from './CharacterCell'
 
 export interface TemplateCharRow {
   _key: string
@@ -123,7 +123,7 @@ function SortableRow({
           >
             <GripVertical className="h-4 w-4" />
           </button>
-          <span className="text-xs font-semibold text-slate-500 tabular-nums w-4 text-center">
+          <span className="font-quality-mono text-[11px] font-semibold text-slate-500 tabular-nums w-4 text-center">
             {row.orderIndex}
           </span>
         </div>
@@ -135,7 +135,7 @@ function SortableRow({
           value={row.department ?? ''}
           onChange={(e) => onPatch({ department: e.target.value || null })}
           placeholder="K3"
-          className="h-9 text-xs"
+          className="h-9 text-xs font-quality-mono"
         />
       </td>
 
@@ -145,39 +145,32 @@ function SortableRow({
           value={row.inspectionTool ?? ''}
           onChange={(e) => onPatch({ inspectionTool: e.target.value || null })}
           placeholder="Kumpas"
-          className="h-9 text-xs"
+          className="h-9 text-xs font-quality-mono"
         />
       </td>
 
-      {/* Sıklık */}
+      {/* Numune / Sıklık */}
       <td className="px-1 py-2 align-middle">
         <Input
           value={row.sampleFreq ?? ''}
           onChange={(e) => onPatch({ sampleFreq: e.target.value || null })}
           placeholder="Ürt. Başl."
-          className="h-9 text-xs"
+          className="h-9 text-xs font-quality-mono"
         />
       </td>
 
-      {/* ===== Karakter (KOMBİNE: krit + sembol + ad) ===== */}
+      {/* ===== KRİTİK KARAKTER (CharacterCell mode=edit) ===== */}
       <td className="px-1 py-2 align-middle">
-        <div className="flex items-center gap-1.5">
-          <CritToggle
-            value={row.critical}
-            onChange={(v) => onPatch({ critical: v })}
-          />
-          <SymbolPicker
-            value={row.symbolId}
-            onChange={(id) => onPatch({ symbolId: id })}
-            symbols={symbols}
-          />
-          <Input
-            value={row.charName}
-            onChange={(e) => onPatch({ charName: e.target.value })}
-            placeholder="34, Ø9,9, Yüzey Kontrol..."
-            className="h-9 text-sm flex-1 min-w-[140px]"
-          />
-        </div>
+        <CharacterCell
+          mode="edit"
+          critical={row.critical}
+          onCriticalChange={(v) => onPatch({ critical: v })}
+          symbolId={row.symbolId}
+          onSymbolChange={(id) => onPatch({ symbolId: id })}
+          symbols={symbols}
+          charName={row.charName}
+          onCharNameChange={(v) => onPatch({ charName: v })}
+        />
       </td>
 
       {/* Nominal */}
@@ -190,13 +183,13 @@ function SortableRow({
           inputMode="decimal"
           disabled={disabledRange}
           className={cn(
-            'h-9 text-xs font-mono text-center',
+            'h-9 text-xs font-quality-mono text-center',
             disabledRange && 'bg-slate-50 text-slate-400',
           )}
         />
       </td>
 
-      {/* Maks */}
+      {/* Maksimum */}
       <td className="px-1 py-2 align-middle">
         <Input
           value={row.maxValue ?? ''}
@@ -206,13 +199,13 @@ function SortableRow({
           inputMode="decimal"
           disabled={disabledRange}
           className={cn(
-            'h-9 text-xs font-mono text-center',
+            'h-9 text-xs font-quality-mono text-center',
             disabledRange && 'bg-slate-50 text-slate-400',
           )}
         />
       </td>
 
-      {/* Min */}
+      {/* Minimum */}
       <td className="px-1 py-2 align-middle">
         <Input
           value={row.minValue ?? ''}
@@ -222,7 +215,7 @@ function SortableRow({
           inputMode="decimal"
           disabled={disabledRange}
           className={cn(
-            'h-9 text-xs font-mono text-center',
+            'h-9 text-xs font-quality-mono text-center',
             disabledRange && 'bg-slate-50 text-slate-400',
           )}
         />
@@ -236,7 +229,7 @@ function SortableRow({
             onCheckedChange={(v) => onPatch({ hasNumericRange: v })}
             aria-label="Sayısal aralık"
           />
-          <span className="text-[10px] uppercase tracking-wide text-slate-500 w-12">
+          <span className="text-[10px] uppercase tracking-wide text-slate-500 w-12 font-quality">
             {row.hasNumericRange ? 'Sayısal' : 'Görsel'}
           </span>
         </div>
@@ -317,45 +310,48 @@ export function CharacteristicsBuilder({ value, onChange, symbols }: BuilderProp
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            <table className="w-full text-sm border-collapse min-w-[1180px]">
+            <table className="w-full font-quality text-sm border-collapse min-w-[1180px]">
               <thead>
-                {/* Section header satırı */}
+                {/* 1. satır — gruplar (KRİTİK KARAKTER standalone; KARAKTER ÖZELLİKLERİ = Nom/Maks/Min) */}
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th rowSpan={2} className="px-2 py-2 w-16 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th rowSpan={2} className="px-2 py-2 w-16 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
                     #
                   </th>
-                  <th rowSpan={2} className="px-2 py-2 w-24 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th rowSpan={2} className="px-2 py-2 w-24 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
                     Bölüm
                   </th>
-                  <th rowSpan={2} className="px-2 py-2 w-36 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th rowSpan={2} className="px-2 py-2 w-36 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
                     Muayene Aracı
                   </th>
-                  <th rowSpan={2} className="px-2 py-2 w-28 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
-                    Sıklık
+                  <th rowSpan={2} className="px-2 py-2 w-28 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
+                    Numune / Sıklık
                   </th>
                   <th
-                    colSpan={4}
-                    className="px-2 py-1.5 text-center text-[10px] font-bold text-[#1B4F72] uppercase tracking-wider bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15"
+                    rowSpan={2}
+                    className="bg-[#1B4F72]/[0.06] px-2 py-2 text-left text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] min-w-[280px] border-r border-slate-200"
+                  >
+                    Kritik Karakter
+                  </th>
+                  <th
+                    colSpan={3}
+                    className="px-2 py-1.5 text-center text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
                   >
                     Karakter Özellikleri
                   </th>
-                  <th rowSpan={2} className="px-2 py-2 w-28 text-center text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th rowSpan={2} className="px-2 py-2 w-28 text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
                     Tip
                   </th>
                   <th rowSpan={2} className="w-10"></th>
                 </tr>
-                {/* Sub-header satırı (Karakter Özellikleri altı) */}
+                {/* 2. satır — KARAKTER ÖZELLİKLERİ alt başlıkları */}
                 <tr className="bg-[#1B4F72]/[0.04] border-b border-slate-200">
-                  <th className="px-2 py-2 text-left text-[10px] font-semibold text-[#1B4F72] uppercase tracking-wide min-w-[280px]">
-                    Karakter
-                  </th>
-                  <th className="px-2 py-2 w-24 text-center text-[10px] font-semibold text-[#1B4F72] uppercase tracking-wide">
+                  <th className="px-2 py-2 w-24 text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
                     Nominal
                   </th>
-                  <th className="px-2 py-2 w-24 text-center text-[10px] font-semibold text-[#1B4F72] uppercase tracking-wide">
+                  <th className="px-2 py-2 w-24 text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
                     Maksimum
                   </th>
-                  <th className="px-2 py-2 w-24 text-center text-[10px] font-semibold text-[#1B4F72] uppercase tracking-wide">
+                  <th className="px-2 py-2 w-24 text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em] border-r border-slate-200">
                     Minimum
                   </th>
                 </tr>

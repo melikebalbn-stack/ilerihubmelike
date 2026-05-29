@@ -1200,3 +1200,148 @@ Acme.sh otomatik yenileme cron'da çalışıyor (15:21 UTC). Yenileme başarıs�
     return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// KALITE — Ölçüm Raporu mail gönderimi (KALITE-8)
+// ═══════════════════════════════════════════════════════════════════
+
+export interface MeasurementReportEmailData {
+  reportNo: string
+  partName: string
+  drawingNo: string
+  revision: string
+  lotNo: string | null
+  result: 'PENDING' | 'OK' | 'RED'
+  finalizedAt: Date
+  verifyUrl?: string | null
+  /** Operatörün serbest girdiği opsiyonel açıklama */
+  note?: string | null
+}
+
+function resultLabel(r: 'PENDING' | 'OK' | 'RED'): string {
+  return r === 'OK' ? 'OK' : r === 'RED' ? 'RED' : 'Bekliyor'
+}
+
+function fmtTr(d: Date): string {
+  return new Date(d).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })
+}
+
+export function generateMeasurementReportEmailContent(
+  data: MeasurementReportEmailData,
+): { subject: string; body: string; html: string } {
+  const subject = `📋 Ölçüm Raporu: ${data.partName} ${data.drawingNo}-${data.revision} (${data.reportNo}) — ${resultLabel(data.result)}`
+
+  const lines: string[] = [
+    `Ölçüm Raporu — ${data.reportNo}`,
+    '',
+    `Parça        : ${data.partName}`,
+    `Resim / Rev. : ${data.drawingNo}-${data.revision}`,
+    `Lot No       : ${data.lotNo ?? '—'}`,
+    `Sonuç        : ${resultLabel(data.result)}`,
+    `Finalize     : ${fmtTr(data.finalizedAt)}`,
+  ]
+  if (data.note && data.note.trim()) {
+    lines.push('', 'Not:', data.note.trim())
+  }
+  if (data.verifyUrl) {
+    lines.push('', `Doğrulama: ${data.verifyUrl}`)
+  }
+  lines.push('', 'PDF raporu ek olarak iletilmiştir.')
+
+  const body = lines.join('\n')
+
+  const tone = data.result === 'OK' ? '#047857' : data.result === 'RED' ? '#B91C1C' : '#64748B'
+  const html = `<!DOCTYPE html>
+<html lang="tr"><body style="font-family: Inter, system-ui, sans-serif; color: #1E293B; line-height: 1.6;">
+  <div style="max-width: 560px; margin: 0 auto; padding: 24px;">
+    <h2 style="color: #1B4F72; margin: 0 0 16px;">Ölçüm Raporu — ${data.reportNo}</h2>
+    <table style="border-collapse: collapse; font-size: 13px;">
+      <tr><td style="padding:4px 12px 4px 0; color:#64748B;">Parça</td><td><strong>${data.partName}</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0; color:#64748B;">Resim / Rev.</td><td style="font-family: ui-monospace, monospace;">${data.drawingNo}-${data.revision}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0; color:#64748B;">Lot No</td><td style="font-family: ui-monospace, monospace;">${data.lotNo ?? '—'}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0; color:#64748B;">Sonuç</td><td><strong style="color:${tone};">${resultLabel(data.result)}</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0; color:#64748B;">Finalize</td><td>${fmtTr(data.finalizedAt)}</td></tr>
+    </table>
+    ${
+      data.note && data.note.trim()
+        ? `<div style="margin-top:16px; padding:12px; background:#F8FAFC; border-left:3px solid #1B4F72;"><strong style="display:block;color:#1B4F72;font-size:11px;text-transform:uppercase;margin-bottom:4px;">Not</strong>${escapeHtml(data.note.trim()).replace(/\n/g, '<br>')}</div>`
+        : ''
+    }
+    ${
+      data.verifyUrl
+        ? `<p style="margin-top:16px; font-size:12px; color:#64748B;">Doğrulama: <a href="${data.verifyUrl}" style="color:#1B4F72;">${data.verifyUrl}</a></p>`
+        : ''
+    }
+    <p style="margin-top:16px; font-size:12px; color:#64748B;">PDF raporu ek olarak iletilmiştir.</p>
+  </div>
+</body></html>`
+
+  return { subject, body, html }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
+ * Ölçüm raporunu PDF eki ile gönderir. SMTP_HOST yoksa simulation mode'a düşer
+ * (sendVisitReportEmail pattern paralel).
+ */
+export async function sendMeasurementReportEmail(
+  data: MeasurementReportEmailData,
+  recipients: EmailRecipient[],
+  pdfBuffer?: Buffer,
+): Promise<{ success: boolean; error?: string }> {
+  const { subject, body, html } = generateMeasurementReportEmailContent(data)
+  const smtp = getTransporter()
+
+  if (!smtp) {
+    console.log('📧 [MEASUREMENT REPORT EMAIL SIMULATION] ========================')
+    console.log('To:', recipients.map((r) => `${r.name} <${r.email}>`).join(', '))
+    console.log('Subject:', subject)
+    console.log('PDF Attachment:', pdfBuffer ? `${data.reportNo}.pdf (${pdfBuffer.length} bytes)` : 'None')
+    console.log('Body (text):')
+    console.log(body)
+    console.log('============================================')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    return { success: true }
+  }
+
+  try {
+    const toAddresses = recipients.map((r) => `${r.name} <${r.email}>`).join(', ')
+    const mailOptions: nodemailer.SendMailOptions = {
+      from: process.env.SMTP_FROM || `ILERIHub <${process.env.SMTP_USER}>`,
+      to: toAddresses,
+      subject,
+      text: body,
+      html,
+    }
+    if (pdfBuffer) {
+      mailOptions.attachments = [
+        {
+          filename: `${data.reportNo.replace(/[/\\?%*:|"<>]/g, '-')}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ]
+    }
+    const info = await smtp.sendMail(mailOptions)
+    console.log(
+      '✅ Ölçüm raporu e-postası gönderildi:',
+      info.messageId,
+      pdfBuffer ? '(PDF ekli)' : '(eksiz)',
+    )
+    return { success: true }
+  } catch (error) {
+    console.error('❌ Ölçüm raporu e-posta gönderme hatası:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}

@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import QRCode from "qrcode"
 import { PoppinsRegular, PoppinsBold, PoppinsSemiBold } from "./fonts/poppins"
 import { IleriGroupLogo } from "./fonts/logo"
 
@@ -54,9 +55,18 @@ const resultColors: Record<MeasurementResult, [number, number, number]> = {
   RED: [185, 28, 28],
 }
 
-export function generateMeasurementReportPdfBuffer(
+/** Site URL — QR'de gömülecek verify linki için. */
+function resolveSiteUrl(): string {
+  const raw =
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://172.16.16.33"
+  return raw.replace(/\/+$/, "")
+}
+
+export async function generateMeasurementReportPdfBuffer(
   report: MeasurementReportForPDF,
-): Buffer {
+): Promise<Buffer> {
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -257,6 +267,49 @@ export function generateMeasurementReportPdfBuffer(
       doc.text(line, margin, yPos)
       yPos += 4
     }
+  }
+
+  // ========== VERIFY / QR ==========
+  const verifyUrl = `${resolveSiteUrl()}/kalite/verify/${report.qrKey}`
+  if (yPos + 30 > pageHeight - 14) {
+    doc.addPage()
+    yPos = margin
+  }
+  try {
+    const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: "M",
+    })
+    const qrSize = 24
+    doc.addImage(qrDataUrl, "PNG", margin, yPos, qrSize, qrSize)
+    const textX = margin + qrSize + 5
+    doc.setFont("Poppins", "semibold")
+    doc.setFontSize(9)
+    doc.setTextColor(...primaryColor)
+    doc.text("DOĞRULAMA", textX, yPos + 5)
+    doc.setFont("Poppins", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(...darkGray)
+    doc.text(
+      "Raporun gerçekliğini doğrulamak için QR kodu tarayın",
+      textX,
+      yPos + 11,
+    )
+    doc.text("veya aşağıdaki adresi ziyaret edin:", textX, yPos + 15)
+    doc.setFont("Poppins", "semibold")
+    doc.setFontSize(7.5)
+    doc.setTextColor(...accentColor)
+    doc.text(verifyUrl, textX, yPos + 22)
+    yPos += qrSize + 4
+  } catch (e) {
+    console.error("[measurement-report-pdf] QR generation failed:", e)
+    // QR olmadan da PDF üretmeye devam et — verify URL'i text olarak yaz
+    doc.setFont("Poppins", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(...darkGray)
+    doc.text(`Doğrulama: ${verifyUrl}`, margin, yPos + 5)
+    yPos += 10
   }
 
   // ========== FOOTER (every page) ==========

@@ -101,7 +101,7 @@ export async function GET(
       }),
     }
 
-    buffer = generateMeasurementReportPdfBuffer(pdfData)
+    buffer = await generateMeasurementReportPdfBuffer(pdfData)
 
     // Persist (best-effort; stream her durumda devam eder)
     const fileName = `${safeFileName(report.reportNo)}.pdf`

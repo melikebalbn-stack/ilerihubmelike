@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import QRCode from 'qrcode'
+import { ArrowLeft, Download, ExternalLink } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { prisma } from '@/lib/prisma'
@@ -9,6 +10,14 @@ import { Button } from '@/components/ui/button'
 import { type ReportResult } from '@/components/quality/ReportResultBadge'
 import { type CharRow } from '@/components/quality/MeasurementGrid'
 import { ReportDetailClient } from '@/components/quality/ReportDetailClient'
+
+function resolveSiteUrl(): string {
+  const raw =
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    'http://172.16.16.33'
+  return raw.replace(/\/+$/, '')
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +52,22 @@ export default async function ReportDetailPage({ params }: Props) {
     d ? new Date(d).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' }) : '—'
 
   const isLocked = report.finalizedAt !== null
+
+  // QR + verify URL (yalnızca finalize sonrası)
+  let verifyUrl: string | null = null
+  let qrDataUrl: string | null = null
+  if (isLocked) {
+    verifyUrl = `${resolveSiteUrl()}/kalite/verify/${report.qrKey}`
+    try {
+      qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+        width: 256,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+      })
+    } catch (e) {
+      console.error('[report-detail] QR render failed:', e)
+    }
+  }
 
   // Decimal → string normalize (client'a hep string)
   const chars: CharRow[] = report.characteristics.map((c) => {
@@ -97,6 +122,57 @@ export default async function ReportDetailPage({ params }: Props) {
         initialCharacteristics={chars}
         canFinalize={canFinalize}
       />
+
+      {isLocked && verifyUrl && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Belge & Doğrulama</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row items-start gap-5">
+            {qrDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={qrDataUrl}
+                alt="Rapor doğrulama QR kodu"
+                className="h-32 w-32 rounded border border-slate-200 bg-white p-1"
+              />
+            ) : (
+              <div className="h-32 w-32 rounded border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-xs text-slate-400">
+                QR oluşturulamadı
+              </div>
+            )}
+            <div className="flex-1 space-y-3">
+              <p className="text-sm text-slate-600">
+                Bu rapor finalize edilmiştir. PDF'i indirip basabilir veya QR kodu paylaşabilirsiniz.
+                Doğrulama sayfası raporun gerçekliğini ve sonucunu kamuya açık olarak gösterir.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button asChild className="bg-[#1B4F72] hover:bg-[#1B4F72]/90">
+                  <a
+                    href={`/api/quality/reports/${report.id}/pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="h-4 w-4 mr-2" /> PDF İndir
+                  </a>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link
+                    href={`/kalite/verify/${report.qrKey}`}
+                    target="_blank"
+                    prefetch={false}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" /> Doğrulama Sayfası
+                  </Link>
+                </Button>
+              </div>
+              <div className="text-xs text-slate-500 font-mono break-all">
+                {verifyUrl}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">

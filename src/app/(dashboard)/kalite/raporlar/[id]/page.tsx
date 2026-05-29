@@ -143,7 +143,11 @@ export default async function ReportDetailPage({ params }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <MeasurementGrid characteristics={chars} locked={isLocked} />
+          <MeasurementGrid
+            reportId={report.id}
+            initialCharacteristics={chars}
+            locked={isLocked}
+          />
         </CardContent>
       </Card>
 

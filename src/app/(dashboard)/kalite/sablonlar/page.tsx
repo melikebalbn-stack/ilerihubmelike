@@ -37,6 +37,7 @@ export default async function TemplatesListPage() {
       partName: true,
       drawingNo: true,
       revision: true,
+      operation: true,
       department: true,
       active: true,
       createdAt: true,
@@ -93,6 +94,7 @@ export default async function TemplatesListPage() {
                   <TableHead>Parça Adı</TableHead>
                   <TableHead>Resim No</TableHead>
                   <TableHead>Rev.</TableHead>
+                  <TableHead>Operasyon</TableHead>
                   <TableHead className="text-right">Karakter</TableHead>
                   <TableHead className="text-right">Rapor</TableHead>
                   <TableHead>Durum</TableHead>
@@ -107,6 +109,13 @@ export default async function TemplatesListPage() {
                     <TableCell className="font-medium">{t.partName}</TableCell>
                     <TableCell className="font-mono text-xs">{t.drawingNo}</TableCell>
                     <TableCell className="font-mono text-xs">{t.revision}</TableCell>
+                    <TableCell className="text-sm">
+                      {t.operation ? (
+                        t.operation
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {t._count.characteristics}
                     </TableCell>

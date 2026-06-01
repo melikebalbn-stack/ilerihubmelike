@@ -9,6 +9,7 @@ export interface TemplateMetaValue {
   partName: string
   drawingNo: string
   revision: string
+  operation: string
   department: string | null
   notes: string | null
 }
@@ -72,6 +73,24 @@ export function TemplateMetaForm({ value, onChange, errors }: MetaFormProps) {
           className="mt-1"
         />
         {errors?.revision && <p className="text-xs text-destructive mt-1">{errors.revision}</p>}
+      </div>
+
+      <div>
+        <Label htmlFor="operation">
+          Operasyon{' '}
+          <span className="text-slate-400 font-normal">(opsiyonel)</span>
+        </Label>
+        <Input
+          id="operation"
+          value={value.operation}
+          onChange={(e) => set('operation', e.target.value)}
+          placeholder="Kesme, 1.Büküm, 2.Büküm..."
+          maxLength={64}
+          className="mt-1"
+        />
+        <p className="text-[11px] text-slate-500 mt-1">
+          Aynı parçanın farklı operasyon şablonlarını ayırt etmek için.
+        </p>
       </div>
 
       <div>

@@ -46,6 +46,7 @@ export default async function TemplateDetailPage({ params }: Props) {
     partName: tpl.partName,
     drawingNo: tpl.drawingNo,
     revision: tpl.revision,
+    operation: tpl.operation ?? '',
     department: tpl.department,
     notes: tpl.notes,
     active: tpl.active,

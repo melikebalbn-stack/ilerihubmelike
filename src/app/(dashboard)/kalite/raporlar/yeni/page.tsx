@@ -20,6 +20,7 @@ export default async function NewReportPage() {
       partName: true,
       drawingNo: true,
       revision: true,
+      operation: true,
       department: true,
       _count: { select: { characteristics: true } },
     },
@@ -31,6 +32,7 @@ export default async function NewReportPage() {
     partName: t.partName,
     drawingNo: t.drawingNo,
     revision: t.revision,
+    operation: t.operation,
     department: t.department,
     characteristicsCount: t._count.characteristics,
   }))

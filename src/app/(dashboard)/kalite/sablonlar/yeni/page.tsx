@@ -23,6 +23,7 @@ export default async function NewTemplatePage() {
     partName: '',
     drawingNo: '',
     revision: 'A',
+    operation: '',
     department: null,
     notes: null,
     active: true,

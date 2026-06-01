@@ -35,6 +35,7 @@ export interface InitialTemplate {
   partName: string
   drawingNo: string
   revision: string
+  operation: string
   department: string | null
   notes: string | null
   active: boolean
@@ -77,6 +78,7 @@ export function TemplateFormClient({
     partName: initial.partName,
     drawingNo: initial.drawingNo,
     revision: initial.revision || 'A',
+    operation: initial.operation || '',
     department: initial.department,
     notes: initial.notes,
   })
@@ -133,6 +135,7 @@ export function TemplateFormClient({
         partName: meta.partName.trim(),
         drawingNo: meta.drawingNo.trim(),
         revision: meta.revision.trim(),
+        operation: meta.operation.trim(),
         department: meta.department,
         notes: meta.notes,
         characteristics: chars.map((c) => {

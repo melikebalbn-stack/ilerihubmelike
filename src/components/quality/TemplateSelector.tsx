@@ -12,6 +12,7 @@ export interface TemplateChoice {
   partName: string
   drawingNo: string
   revision: string
+  operation: string
   department: string | null
   characteristicsCount: number
 }
@@ -41,7 +42,7 @@ export function TemplateSelector({ templates, value, onChange }: Props) {
     if (!query) return templates
     return templates.filter((t) => {
       const haystack = normalizeTr(
-        `${t.partName} ${t.drawingNo} ${t.revision} ${t.formNo} ${t.department ?? ''}`,
+        `${t.partName} ${t.drawingNo} ${t.revision} ${t.formNo} ${t.operation} ${t.department ?? ''}`,
       )
       return haystack.includes(query)
     })
@@ -106,6 +107,11 @@ export function TemplateSelector({ templates, value, onChange }: Props) {
                       <span className="text-slate-400 mx-1">•</span>
                       {t.formNo}
                     </div>
+                    {t.operation && (
+                      <div className="text-[11px] text-[#1B4F72] font-medium mt-0.5">
+                        {t.operation}
+                      </div>
+                    )}
                     {t.department && (
                       <div className="text-[11px] text-slate-500 mt-0.5">{t.department}</div>
                     )}

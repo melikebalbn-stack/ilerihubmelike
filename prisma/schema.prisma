@@ -9645,6 +9645,7 @@ model MeasurementTemplate {
   partName    String
   drawingNo   String
   revision    String
+  operation   String   @default("")
   department  String?
   notes       String?  @db.Text
   active      Boolean  @default(true)
@@ -9656,7 +9657,7 @@ model MeasurementTemplate {
   characteristics MeasurementTemplateChar[]
   reports         MeasurementReport[]
 
-  @@unique([formNo, drawingNo, revision], map: "uq_template_form_drawing_rev")
+  @@unique([formNo, drawingNo, revision, operation], map: "uq_template_form_drawing_rev_op")
   @@index([active])
   @@index([partName])
   @@map("MeasurementTemplate")

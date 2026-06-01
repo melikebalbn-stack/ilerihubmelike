@@ -77,6 +77,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
           partName: body.partName ?? undefined,
           drawingNo: body.drawingNo ?? undefined,
           revision: body.revision ?? undefined,
+          operation: body.operation ?? undefined,
           department: body.department !== undefined ? body.department : undefined,
           notes: body.notes !== undefined ? body.notes : undefined,
         },

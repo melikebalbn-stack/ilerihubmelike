@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
           partName: body.partName,
           drawingNo: body.drawingNo,
           revision: body.revision,
+          operation: body.operation ?? '',
           department: body.department ?? null,
           notes: body.notes ?? null,
           active: true,

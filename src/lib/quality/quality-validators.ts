@@ -43,6 +43,7 @@ export const TemplateUpsertSchema = z.object({
   partName: z.string().min(1).max(200),
   drawingNo: z.string().min(1).max(50),
   revision: z.string().min(1).max(20),
+  operation: z.string().trim().max(64).optional(),
   department: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   characteristics: z.array(TemplateCharSchema).min(1).max(50),

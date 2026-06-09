@@ -17,6 +17,8 @@ interface Props {
   index: number;
   onOpen: (content: ContentItem) => void;
   onMarkComplete: (contentId: string) => Promise<void>;
+  // IFS-4: GOREV görevleri için "Örnek Yaptım" / geri al.
+  onGorevDone?: (contentId: string, done: boolean) => Promise<void>;
   isMarking: boolean;
 }
 
@@ -41,11 +43,13 @@ export function ContentRow({
   index,
   onOpen,
   onMarkComplete,
+  onGorevDone,
   isMarking,
 }: Props) {
   const Icon = ICONS[content.type];
   const colorKey = COLORS[content.type];
   const isCompleted = content.completedByCurrentUser;
+  const isGorev = content.type === "GOREV";
   const canView = Boolean(content.filePath || content.fileUrl);
 
   return (
@@ -84,11 +88,28 @@ export function ContentRow({
           {index + 1}. {content.title}
         </div>
         <div
-          className="text-xs flex items-center gap-2"
+          className="text-xs flex items-center gap-2 flex-wrap"
           style={{ color: "var(--ak-text-tertiary)" }}
         >
           <span>{getContentTypeLabel(content.type)}</span>
-          {content.duration && (
+          {isGorev && content.ifsMeta?.modul && (
+            <>
+              <span>•</span>
+              <span>
+                {content.ifsMeta.modul}
+                {content.ifsMeta.altModul
+                  ? ` / ${content.ifsMeta.altModul}`
+                  : ""}
+              </span>
+            </>
+          )}
+          {isGorev && content.ifsMeta?.ifsEkran && (
+            <>
+              <span>•</span>
+              <span>{content.ifsMeta.ifsEkran}</span>
+            </>
+          )}
+          {!isGorev && content.duration && (
             <>
               <span>•</span>
               <span>{formatDuration(content.duration)}</span>
@@ -98,35 +119,94 @@ export function ContentRow({
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
-        {canView ? (
-          <button
-            onClick={() => onOpen(content)}
-            className="px-3 py-1.5 text-xs font-semibold rounded-[10px] flex items-center gap-1 transition-colors"
-            style={{
-              background: "var(--ak-accent-glow)",
-              color: "var(--ak-accent)",
-            }}
-          >
-            <Eye className="w-3.5 h-3.5" />
-            Görüntüle
-          </button>
+        {isGorev ? (
+          <>
+            {content.ifsMeta?.refDocUrl && (
+              <a
+                href={content.ifsMeta.refDocUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 text-xs font-semibold rounded-[10px] flex items-center gap-1 transition-colors"
+                style={{
+                  background: "var(--ak-teal-glow)",
+                  color: "var(--ak-teal)",
+                }}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Doküman
+              </a>
+            )}
+            {content.ifsMeta?.refVideoUrl && (
+              <a
+                href={content.ifsMeta.refVideoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 text-xs font-semibold rounded-[10px] flex items-center gap-1 transition-colors"
+                style={{
+                  background: "var(--ak-purple-glow)",
+                  color: "var(--ak-purple)",
+                }}
+              >
+                <Play className="w-3.5 h-3.5" />
+                Video
+              </a>
+            )}
+            {isCompleted ? (
+              <button
+                onClick={() => onGorevDone?.(content.id, false)}
+                disabled={isMarking}
+                className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
+                style={{
+                  background: "var(--ak-surface-secondary)",
+                  color: "var(--ak-text-secondary)",
+                }}
+              >
+                {isMarking ? "..." : "Geri Al"}
+              </button>
+            ) : (
+              <button
+                onClick={() => onGorevDone?.(content.id, true)}
+                disabled={isMarking}
+                className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
+                style={{ background: "var(--ak-green)", color: "#fff" }}
+              >
+                {isMarking ? "..." : "Örnek Yaptım"}
+              </button>
+            )}
+          </>
         ) : (
-          <div
-            className="text-xs italic"
-            style={{ color: "var(--ak-text-tertiary)" }}
-          >
-            Dosya yüklenmedi
-          </div>
-        )}
-        {!isCompleted && (
-          <button
-            onClick={() => onMarkComplete(content.id)}
-            disabled={isMarking}
-            className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
-            style={{ background: "var(--ak-green)", color: "#fff" }}
-          >
-            {isMarking ? "..." : "Tamamla"}
-          </button>
+          <>
+            {canView ? (
+              <button
+                onClick={() => onOpen(content)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-[10px] flex items-center gap-1 transition-colors"
+                style={{
+                  background: "var(--ak-accent-glow)",
+                  color: "var(--ak-accent)",
+                }}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Görüntüle
+              </button>
+            ) : (
+              <div
+                className="text-xs italic"
+                style={{ color: "var(--ak-text-tertiary)" }}
+              >
+                Dosya yüklenmedi
+              </div>
+            )}
+            {!isCompleted && (
+              <button
+                onClick={() => onMarkComplete(content.id)}
+                disabled={isMarking}
+                className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
+                style={{ background: "var(--ak-green)", color: "#fff" }}
+              >
+                {isMarking ? "..." : "Tamamla"}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

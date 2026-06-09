@@ -27,6 +27,7 @@ export async function GET(
             where: { userId },
             take: 1,
           },
+          ifsMeta: true,
         },
       },
       progress: {
@@ -75,6 +76,15 @@ export async function GET(
         duration: c.duration,
         order: c.order,
         completedByCurrentUser: Boolean(contentProg?.completed),
+        ifsMeta: c.ifsMeta
+          ? {
+              modul: c.ifsMeta.modul,
+              altModul: c.ifsMeta.altModul,
+              ifsEkran: c.ifsMeta.ifsEkran,
+              refDocUrl: c.ifsMeta.refDocUrl,
+              refVideoUrl: c.ifsMeta.refVideoUrl,
+            }
+          : null,
       };
     }),
   };

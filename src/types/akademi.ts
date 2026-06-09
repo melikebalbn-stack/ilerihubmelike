@@ -27,7 +27,16 @@ export interface CourseDetail extends CourseListItem {
   contents: ContentItem[];
 }
 
-/** Kurs içeriği — video / PDF / document / quiz. */
+/** IFS-4: GOREV içeriklerinde dolu olan görev meta verisi (kullanıcı görünümü). */
+export interface IfsTaskMetaView {
+  modul: string | null;
+  altModul: string | null;
+  ifsEkran: string | null;
+  refDocUrl: string | null;
+  refVideoUrl: string | null;
+}
+
+/** Kurs içeriği — video / PDF / document / quiz / görev. */
 export interface ContentItem {
   id: string;
   courseId: string;
@@ -39,6 +48,8 @@ export interface ContentItem {
   duration: number | null;
   order: number;
   completedByCurrentUser: boolean;
+  // IFS-4: yalnız type=GOREV içeriklerde dolu.
+  ifsMeta?: IfsTaskMetaView | null;
 }
 
 /** Leaderboard satırı. */

@@ -59,6 +59,33 @@ export default function AkademiCourseDetailPage() {
     }
   };
 
+  // IFS-4: GOREV "Örnek Yaptım" / geri al — ayrı endpoint (atama guard + evaluation).
+  const handleGorevDone = async (contentId: string, done: boolean) => {
+    if (markingId) return;
+    setMarkingId(contentId);
+    try {
+      const res = await fetch(
+        `/api/akademi/contents/${contentId}/ifs-complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ done }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "İşlem başarısız oldu. Lütfen tekrar deneyin.");
+        return;
+      }
+      await res.json();
+      loadCourse();
+    } catch {
+      alert("Bir hata oluştu. Lütfen tekrar deneyin.");
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="px-8 py-7 max-w-5xl mx-auto">
@@ -133,6 +160,7 @@ export default function AkademiCourseDetailPage() {
               index={i}
               onOpen={setViewerContent}
               onMarkComplete={handleMarkComplete}
+              onGorevDone={handleGorevDone}
               isMarking={markingId === c.id}
             />
           ))}

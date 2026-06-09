@@ -54,11 +54,17 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
   }
 
   // PR-JOBAPP-CAMERA-AND-SUCCESS: Modal'dan gelen base64 dataURL → File.
-  const handleCameraCapture = async (dataUrl: string) => {
+  // NOT: fetch(dataUrl) KULLANMA — CSP connect-src 'data:' içermediği için
+  // tarayıcı data: URL fetch'ini engeller ("Fotoğraf işlenemedi"). Base64'ü
+  // doğrudan decode ediyoruz; ağ/CSP'ye hiç dokunmaz.
+  const handleCameraCapture = (dataUrl: string) => {
     try {
-      const res = await fetch(dataUrl)
-      const blob = await res.blob()
-      const file = new File([blob], `kamera-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      const [header, base64] = dataUrl.split(',')
+      const mime = header.match(/data:(.*?);/)?.[1] ?? 'image/jpeg'
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      const file = new File([bytes], `kamera-${Date.now()}.jpg`, { type: mime })
       handleSelect(file)
     } catch {
       setError('Fotoğraf işlenemedi.')

@@ -28,9 +28,14 @@ export async function issueCertificateIfEligible(
   });
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    select: { id: true, title: true },
+    select: { id: true, title: true, isIfs: true },
   });
   if (!user || !course) return null;
+
+  // IFS-4.1: IFS Eğitimleri kursları otomatik sertifika/bildirim/e-posta ÜRETMEZ.
+  // İlerleme hesabı ve Departman Panosu yine çalışır; yalnız bu yan etki bastırılır.
+  // Normal (isIfs=false) kursların sertifika davranışı aynen korunur.
+  if (course.isIfs) return null;
 
   let template = await prisma.akademiCertificateTemplate.findFirst({
     where: { isDefault: true },

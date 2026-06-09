@@ -5,7 +5,7 @@
  */
 
 export type CourseDifficulty = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
-export type ContentType = "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ";
+export type ContentType = "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ" | "GOREV";
 
 /** Kurs liste görünümü (dashboard + /akademi/courses). */
 export interface CourseListItem {

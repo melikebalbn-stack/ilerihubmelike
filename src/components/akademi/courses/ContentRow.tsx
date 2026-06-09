@@ -5,6 +5,7 @@ import {
   FileText,
   FileCode,
   HelpCircle,
+  ListChecks,
   Eye,
   CheckCircle2,
 } from "lucide-react";
@@ -24,6 +25,7 @@ const ICONS = {
   PDF: FileText,
   DOCUMENT: FileCode,
   QUIZ: HelpCircle,
+  GOREV: ListChecks,
 };
 
 const COLORS = {
@@ -31,6 +33,7 @@ const COLORS = {
   PDF: "red",
   DOCUMENT: "teal",
   QUIZ: "orange",
+  GOREV: "accent",
 } as const;
 
 export function ContentRow({

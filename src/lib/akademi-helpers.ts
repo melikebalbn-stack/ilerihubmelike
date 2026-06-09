@@ -33,6 +33,7 @@ export function getContentTypeLabel(type: ContentItem["type"]): string {
     case "PDF": return "PDF";
     case "DOCUMENT": return "Doküman";
     case "QUIZ": return "Sınav";
+    case "GOREV": return "Görev";
   }
 }
 

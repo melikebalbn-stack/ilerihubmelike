@@ -9,6 +9,7 @@ export interface AdminCourseListItem {
   difficulty: CourseDifficulty;
   duration: number | null;
   isActive: boolean;
+  isIfs: boolean;
   contentCount: number;
   assignmentCount: number;
   createdAt: string;

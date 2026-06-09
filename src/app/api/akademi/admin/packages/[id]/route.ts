@@ -51,6 +51,7 @@ export async function GET(
     description: pkg.description,
     iconColor: pkg.iconColor,
     isActive: pkg.isActive,
+    isIfs: pkg.isIfs,
     courseCount: pkg._count.packageCourses,
     bolumCount: pkg._count.departmentPackages,
     userAssignmentCount: pkg._count.userAssignments,

@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
       difficulty: c.difficulty,
       duration: c.duration,
       isActive: c.isActive,
+      isIfs: c.isIfs,
       contentCount: c._count.contents,
       assignmentCount: c._count.directAssignments,
       createdAt: c.createdAt.toISOString(),

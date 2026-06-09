@@ -4,6 +4,7 @@ export interface AdminPackageListItem {
   description: string | null;
   iconColor: string | null;
   isActive: boolean;
+  isIfs: boolean;
   courseCount: number;
   bolumCount: number;
   userAssignmentCount: number;

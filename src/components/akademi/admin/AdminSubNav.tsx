@@ -13,6 +13,7 @@ import {
   Award,
   Palette,
   BarChart3,
+  GraduationCap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,6 +26,7 @@ const TABS: {
   { href: "/akademi/admin", label: "Genel Bakış", icon: LayoutDashboard, exact: true },
   { href: "/akademi/admin/courses", label: "Kurslar", icon: BookOpen },
   { href: "/akademi/admin/packages", label: "Paketler", icon: Package },
+  { href: "/akademi/admin/ifs-training", label: "IFS Eğitimleri", icon: GraduationCap },
   { href: "/akademi/admin/exams", label: "Sınavlar", icon: FileQuestion },
   { href: "/akademi/admin/grading", label: "Değerlendirme", icon: ClipboardCheck },
   { href: "/akademi/admin/certificates", label: "Sertifikalar", icon: Award },

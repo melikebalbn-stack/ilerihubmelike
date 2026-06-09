@@ -173,6 +173,7 @@ export default function AkademiAdminPackageDetailPage({
           description: pkg.description,
           iconColor: pkg.iconColor,
           isActive: pkg.isActive,
+          isIfs: pkg.isIfs,
           courseCount: pkg.courseCount,
           bolumCount: pkg.bolumCount,
           userAssignmentCount: pkg.userAssignmentCount,

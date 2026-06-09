@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
     description: p.description,
     iconColor: p.iconColor,
     isActive: p.isActive,
+    isIfs: p.isIfs,
     courseCount: p._count.packageCourses,
     bolumCount: p._count.departmentPackages,
     userAssignmentCount: p._count.userAssignments,

@@ -5,31 +5,41 @@ import { toast } from "sonner";
 import { Save, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { BolumWithCount } from "@/types/akademi-package";
+
+// ISO datetime → <input type="date"> değeri (YYYY-MM-DD).
+const toDateInput = (iso: string | null) => (iso ? iso.split("T")[0] : "");
 
 interface Props {
   packageId: string;
   initialBolums: string[];
+  initialDueDate: string | null;
   onSaved: () => void;
 }
 
 export function AdminPackageBolumPicker({
   packageId,
   initialBolums,
+  initialDueDate,
   onSaved,
 }: Props) {
   const [allBolums, setAllBolums] = useState<BolumWithCount[]>([]);
   const [selected, setSelected] = useState<Set<string>>(
     new Set(initialBolums)
   );
+  // Seçili tüm bölümlere uygulanan tek son tarih (opsiyonel).
+  const [dueDate, setDueDate] = useState<string>(toDateInput(initialDueDate));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     setSelected(new Set(initialBolums));
+    setDueDate(toDateInput(initialDueDate));
     setDirty(false);
-  }, [initialBolums]);
+  }, [initialBolums, initialDueDate]);
 
   const loadBolums = useCallback(() => {
     setLoading(true);
@@ -60,7 +70,10 @@ export function AdminPackageBolumPicker({
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bolums: Array.from(selected) }),
+          body: JSON.stringify({
+            bolums: Array.from(selected),
+            dueDate: dueDate || null,
+          }),
         }
       );
       if (!res.ok) throw new Error("save failed");
@@ -101,6 +114,25 @@ export function AdminPackageBolumPicker({
             {saving ? "Kaydediliyor..." : `Kaydet (${selected.size})`}
           </Button>
         )}
+      </div>
+
+      <div className="ak-card-static p-3 mb-3">
+        <div className="space-y-2 max-w-xs">
+          <Label htmlFor="bolumDueDate">Son Tarih (opsiyonel)</Label>
+          <Input
+            id="bolumDueDate"
+            type="date"
+            value={dueDate}
+            onChange={(e) => {
+              setDueDate(e.target.value);
+              setDirty(true);
+            }}
+            min={new Date().toISOString().split("T")[0]}
+          />
+          <p className="text-xs" style={{ color: "var(--ak-text-tertiary)" }}>
+            Seçili tüm bölümlere uygulanır. Boş bırakılırsa süresiz atanır.
+          </p>
+        </div>
       </div>
 
       <div className="ak-card-static p-3">

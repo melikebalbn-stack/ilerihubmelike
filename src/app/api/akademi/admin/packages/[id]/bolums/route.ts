@@ -36,18 +36,32 @@ export async function PUT(
     new Set(body.bolums.map((b) => b.trim()).filter((b) => b.length > 0))
   );
 
+  // Seçili tüm bölümlere uygulanan tek son tarih (opsiyonel). Boş/null = süresiz.
+  // Parse pattern'i assignments POST ile aynı (manuel validasyon, Zod yok).
+  let dueDate: Date | null = null;
+  if (body.dueDate) {
+    const parsed = new Date(body.dueDate);
+    if (isNaN(parsed.getTime())) {
+      return NextResponse.json({ error: "Geçersiz tarih" }, { status: 400 });
+    }
+    dueDate = parsed;
+  }
+
   await prisma.$transaction([
     prisma.departmentPackage.deleteMany({ where: { packageId: id } }),
     prisma.departmentPackage.createMany({
-      data: cleanBolums.map((bolum) => ({ packageId: id, bolum })),
+      data: cleanBolums.map((bolum) => ({ packageId: id, bolum, dueDate })),
     }),
   ]);
 
+  // dueDate, materialize sırasında UserCourseAssignment'lara propagate olur
+  // (PR-1 kuralı: yeni atama → dueDate; mevcut → yalnız sıkılaştırma).
   const materializeResult = await materializePackage(id);
 
   return NextResponse.json({
     success: true,
     count: cleanBolums.length,
+    dueDate: dueDate?.toISOString() ?? null,
     materialize: {
       courseCount: materializeResult.courseCount,
       targetUserCount: materializeResult.targetUserCount,

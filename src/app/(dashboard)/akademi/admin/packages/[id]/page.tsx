@@ -149,6 +149,7 @@ export default function AkademiAdminPackageDetailPage({
           <AdminPackageBolumPicker
             packageId={pkg.id}
             initialBolums={pkg.bolums.map((b) => b.bolum)}
+            initialDueDate={pkg.bolums.find((b) => b.dueDate)?.dueDate ?? null}
             onSaved={loadPackage}
           />
         </TabsContent>

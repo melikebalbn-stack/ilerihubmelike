@@ -68,6 +68,7 @@ export async function GET(
       id: dp.id,
       bolum: dp.bolum,
       createdAt: dp.createdAt.toISOString(),
+      dueDate: dp.dueDate?.toISOString() ?? null,
     })),
     userAssignments: pkg.userAssignments.map((ua) => ({
       id: ua.id,

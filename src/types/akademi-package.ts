@@ -24,6 +24,7 @@ export interface AdminPackageDetail extends AdminPackageListItem {
     id: string;
     bolum: string;
     createdAt: string;
+    dueDate: string | null;
   }>;
   userAssignments: Array<{
     id: string;
@@ -58,6 +59,8 @@ export interface AdminPackageCoursesUpdateInput {
 
 export interface AdminPackageBolumsUpdateInput {
   bolums: string[];
+  // Seçili tüm bölümlere uygulanan tek son tarih (opsiyonel). Boş/null = süresiz.
+  dueDate?: string | null;
 }
 
 export interface AdminPackageUsersAddInput {

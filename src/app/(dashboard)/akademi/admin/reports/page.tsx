@@ -9,6 +9,7 @@ import { ExamsReportTab } from "./_tabs/exams-report";
 import { CertificatesReportTab } from "./_tabs/certificates-report";
 import { DepartmentsReportTab } from "./_tabs/departments-report";
 import { DepartmentBoardTab } from "./_tabs/department-board";
+import { IfsEvaluationsTab } from "./_tabs/ifs-evaluations";
 
 const TABS = [
   { id: "users", label: "Kullanıcılar" },
@@ -17,7 +18,11 @@ const TABS = [
   { id: "certificates", label: "Sertifikalar" },
   { id: "departments", label: "Bölümler" },
   { id: "department-board", label: "Departman Panosu" },
+  { id: "ifs-evaluations", label: "Görev Değerlendirme" },
 ] as const;
+
+// Excel export'u olmayan (özel) sekmeler
+const NO_EXPORT_TABS = ["department-board", "ifs-evaluations"];
 
 type TabId = (typeof TABS)[number]["id"];
 
@@ -27,7 +32,7 @@ export default function ReportsPage() {
 
   return (
     <div className="ak-animate-in space-y-4">
-      {activeTab !== "department-board" && (
+      {!NO_EXPORT_TABS.includes(activeTab) && (
         <div className="flex items-center justify-end">
           <a
             href={`/api/akademi/admin/reports/export?type=${activeTab}`}
@@ -67,6 +72,7 @@ export default function ReportsPage() {
         {activeTab === "certificates" && <CertificatesReportTab />}
         {activeTab === "departments" && <DepartmentsReportTab />}
         {activeTab === "department-board" && <DepartmentBoardTab />}
+        {activeTab === "ifs-evaluations" && <IfsEvaluationsTab />}
       </div>
     </div>
   );

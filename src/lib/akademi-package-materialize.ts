@@ -6,6 +6,7 @@ export interface MaterializeResult {
   targetUserCount: number;
   newAssignments: number;
   skippedExisting: number;
+  dueDateUpdated: number;
   errors: string[];
 }
 
@@ -19,6 +20,7 @@ export async function materializePackage(
     targetUserCount: 0,
     newAssignments: 0,
     skippedExisting: 0,
+    dueDateUpdated: 0,
     errors: [],
   };
 
@@ -51,21 +53,37 @@ export async function materializePackage(
   }
 
   const targetUserIds = new Set<string>();
+  // PR-1: kullanıcı → departman ödev son tarihi (DepartmentPackage.dueDate).
+  // Direct paket atamalarında (UserPackageAssignment) departman son tarihi
+  // olmadığından null kalır.
+  const userIdToDueDate = new Map<string, Date | null>();
 
   if (pkg.departmentPackages.length > 0) {
+    const bolumToDueDate = new Map<string, Date | null>();
+    for (const dp of pkg.departmentPackages) {
+      bolumToDueDate.set(dp.bolum, dp.dueDate);
+    }
     const bolums = pkg.departmentPackages.map((dp) => dp.bolum);
     const bolumUsers = await prisma.user.findMany({
       where: {
         personnel: { bolum: { in: bolums } },
         isActive: true,
       },
-      select: { id: true },
+      select: { id: true, personnel: { select: { bolum: true } } },
     });
-    bolumUsers.forEach((u) => targetUserIds.add(u.id));
+    bolumUsers.forEach((u) => {
+      targetUserIds.add(u.id);
+      const b = u.personnel?.bolum;
+      userIdToDueDate.set(u.id, b ? (bolumToDueDate.get(b) ?? null) : null);
+    });
   }
 
   pkg.userAssignments.forEach((ua) => targetUserIds.add(ua.userId));
   result.targetUserCount = targetUserIds.size;
+
+  // PR-1: bir kullanıcı için hedef son tarih (departman dueDate'i; yoksa null).
+  const dueFor = (userId: string): Date | null =>
+    userIdToDueDate.get(userId) ?? null;
 
   if (targetUserIds.size === 0) {
     return result;
@@ -109,7 +127,7 @@ export async function materializePackage(
       userId: { in: Array.from(targetUserIds) },
       assignmentId: { in: assignmentIds },
     },
-    select: { userId: true, assignmentId: true },
+    select: { id: true, userId: true, assignmentId: true, dueDate: true },
   });
   const existingSet = new Set(
     existing.map((e) => `${e.userId}:${e.assignmentId}`)
@@ -119,6 +137,7 @@ export async function materializePackage(
     userId: string;
     assignmentId: string;
     assignedAt: Date;
+    dueDate: Date | null;
   }> = [];
 
   for (const userId of targetUserIds) {
@@ -127,7 +146,13 @@ export async function materializePackage(
       if (existingSet.has(key)) {
         result.skippedExisting++;
       } else {
-        toCreate.push({ userId, assignmentId, assignedAt: new Date() });
+        // PR-1: yeni atamaya departman son tarihini taşı (yoksa null).
+        toCreate.push({
+          userId,
+          assignmentId,
+          assignedAt: new Date(),
+          dueDate: dueFor(userId),
+        });
       }
     }
   }
@@ -138,6 +163,20 @@ export async function materializePackage(
       skipDuplicates: true,
     });
     result.newAssignments = created.count;
+  }
+
+  // PR-1: Mevcut atamalarda son tarihi yalnız SIKILAŞTIR — earliest kazanır,
+  // gevşetme yok. Departman dueDate'i null ise mevcut satıra dokunma.
+  for (const row of existing) {
+    const target = dueFor(row.userId);
+    if (target == null) continue;
+    if (row.dueDate == null || target < row.dueDate) {
+      await prisma.userCourseAssignment.update({
+        where: { id: row.id },
+        data: { dueDate: target },
+      });
+      result.dueDateUpdated++;
+    }
   }
 
   return result;

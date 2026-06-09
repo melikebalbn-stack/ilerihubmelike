@@ -8802,10 +8802,11 @@ model CourseAssignment {
 }
 
 model DepartmentPackage {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   packageId String
   bolum     String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  dueDate   DateTime? // IFS Geçiş ödev altyapısı (PR-1): departman ödev son tarihi
 
   package CoursePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
 

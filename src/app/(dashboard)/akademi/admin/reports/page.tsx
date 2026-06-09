@@ -8,6 +8,7 @@ import { CoursesReportTab } from "./_tabs/courses-report";
 import { ExamsReportTab } from "./_tabs/exams-report";
 import { CertificatesReportTab } from "./_tabs/certificates-report";
 import { DepartmentsReportTab } from "./_tabs/departments-report";
+import { DepartmentBoardTab } from "./_tabs/department-board";
 
 const TABS = [
   { id: "users", label: "Kullanıcılar" },
@@ -15,6 +16,7 @@ const TABS = [
   { id: "exams", label: "Sınavlar" },
   { id: "certificates", label: "Sertifikalar" },
   { id: "departments", label: "Bölümler" },
+  { id: "department-board", label: "Departman Panosu" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -25,15 +27,17 @@ export default function ReportsPage() {
 
   return (
     <div className="ak-animate-in space-y-4">
-      <div className="flex items-center justify-end">
-        <a
-          href={`/api/akademi/admin/reports/export?type=${activeTab}`}
-          className="bg-slate-900 text-white px-4 py-2 rounded-md hover:bg-slate-800 inline-flex items-center gap-2 text-sm font-medium"
-        >
-          <FileSpreadsheet size={14} />
-          Bu Sekmeyi Excel İndir
-        </a>
-      </div>
+      {activeTab !== "department-board" && (
+        <div className="flex items-center justify-end">
+          <a
+            href={`/api/akademi/admin/reports/export?type=${activeTab}`}
+            className="bg-slate-900 text-white px-4 py-2 rounded-md hover:bg-slate-800 inline-flex items-center gap-2 text-sm font-medium"
+          >
+            <FileSpreadsheet size={14} />
+            Bu Sekmeyi Excel İndir
+          </a>
+        </div>
+      )}
 
       <div
         className="border-b"
@@ -62,6 +66,7 @@ export default function ReportsPage() {
         {activeTab === "exams" && <ExamsReportTab />}
         {activeTab === "certificates" && <CertificatesReportTab />}
         {activeTab === "departments" && <DepartmentsReportTab />}
+        {activeTab === "department-board" && <DepartmentBoardTab />}
       </div>
     </div>
   );

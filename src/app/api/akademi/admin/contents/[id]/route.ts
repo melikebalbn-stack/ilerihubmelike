@@ -17,12 +17,20 @@ export async function PATCH(
   let body: {
     title?: string;
     description?: string;
-    type?: "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ";
+    type?: "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ" | "GOREV";
     duration?: number | null;
     order?: number;
     isActive?: boolean;
     filePath?: string | null;
     fileSize?: number | null;
+    // IFS-3b: yalnız type=GOREV'de gelir (IfsTaskMeta upsert).
+    ifsMeta?: {
+      modul?: string | null;
+      altModul?: string | null;
+      ifsEkran?: string | null;
+      refDocUrl?: string | null;
+      refVideoUrl?: string | null;
+    };
   };
   try {
     body = await req.json();
@@ -53,7 +61,7 @@ export async function PATCH(
   }
 
   if (body.type !== undefined) {
-    if (!["VIDEO", "PDF", "DOCUMENT", "QUIZ"].includes(body.type)) {
+    if (!["VIDEO", "PDF", "DOCUMENT", "QUIZ", "GOREV"].includes(body.type)) {
       return NextResponse.json({ error: "Geçersiz tip" }, { status: 400 });
     }
     data.type = body.type;
@@ -85,17 +93,39 @@ export async function PATCH(
         : null;
   }
 
-  if (Object.keys(data).length === 0) {
+  const resultType = body.type ?? existing.type;
+  const hasIfsMeta = resultType === "GOREV" && body.ifsMeta != null;
+  const hasContentChanges = Object.keys(data).length > 0;
+
+  if (!hasContentChanges && !hasIfsMeta) {
     return NextResponse.json(
       { error: "Güncellenecek alan yok" },
       { status: 400 }
     );
   }
 
-  const updated = await prisma.content.update({
-    where: { id },
-    data,
-  });
+  const updated = hasContentChanges
+    ? await prisma.content.update({ where: { id }, data })
+    : existing;
+
+  // IFS-3b: GOREV içeriklerde IfsTaskMeta upsert (contentId @unique). Diğer
+  // tiplerde dokunulmaz (additive — mevcut akış bozulmaz).
+  if (hasIfsMeta) {
+    const m = body.ifsMeta!;
+    const clean = (v: string | null | undefined) => v?.trim() || null;
+    const metaData = {
+      modul: clean(m.modul),
+      altModul: clean(m.altModul),
+      ifsEkran: clean(m.ifsEkran),
+      refDocUrl: clean(m.refDocUrl),
+      refVideoUrl: clean(m.refVideoUrl),
+    };
+    await prisma.ifsTaskMeta.upsert({
+      where: { contentId: id },
+      create: { contentId: id, ...metaData },
+      update: metaData,
+    });
+  }
 
   return NextResponse.json({
     id: updated.id,

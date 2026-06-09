@@ -10,6 +10,7 @@ import {
   FileText,
   FileCode,
   HelpCircle,
+  ListChecks,
   CheckCircle2,
 } from "lucide-react";
 import type { AdminContentItem } from "@/types/akademi-admin";
@@ -19,6 +20,7 @@ const TYPE_ICONS = {
   PDF: FileText,
   DOCUMENT: FileCode,
   QUIZ: HelpCircle,
+  GOREV: ListChecks,
 };
 
 const TYPE_GLOW: Record<string, string> = {
@@ -26,6 +28,7 @@ const TYPE_GLOW: Record<string, string> = {
   PDF: "var(--ak-red-glow)",
   DOCUMENT: "var(--ak-teal-glow)",
   QUIZ: "var(--ak-orange-glow)",
+  GOREV: "var(--ak-accent-glow)",
 };
 
 const TYPE_COLOR: Record<string, string> = {
@@ -33,6 +36,7 @@ const TYPE_COLOR: Record<string, string> = {
   PDF: "var(--ak-red)",
   DOCUMENT: "var(--ak-teal)",
   QUIZ: "var(--ak-orange)",
+  GOREV: "var(--ak-accent)",
 };
 
 interface Props {
@@ -98,7 +102,13 @@ export function AdminContentRow({ content, onEdit, onDelete }: Props) {
           )}
         </div>
         <div className="text-xs text-gray-500 flex items-center gap-2">
-          <span>{content.type}</span>
+          <span>{content.type === "GOREV" ? "Görev" : content.type}</span>
+          {content.type === "GOREV" && content.ifsMeta?.ifsEkran && (
+            <>
+              <span>·</span>
+              <span>{content.ifsMeta.ifsEkran}</span>
+            </>
+          )}
           {content.duration && (
             <>
               <span>·</span>
@@ -111,7 +121,9 @@ export function AdminContentRow({ content, onEdit, onDelete }: Props) {
               <span>{(content.fileSize / 1024 / 1024).toFixed(1)} MB</span>
             </>
           )}
-          {!content.filePath && content.type !== "QUIZ" && (
+          {!content.filePath &&
+            content.type !== "QUIZ" &&
+            content.type !== "GOREV" && (
             <>
               <span>·</span>
               <span className="text-orange-500">Dosya yüklenmedi</span>

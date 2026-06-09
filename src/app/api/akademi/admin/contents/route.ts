@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const contents = await prisma.content.findMany({
     where: { courseId },
     orderBy: [{ isActive: "desc" }, { order: "asc" }],
+    include: { ifsMeta: true },
   });
 
   return NextResponse.json({
@@ -29,6 +30,15 @@ export async function GET(req: NextRequest) {
       fileSize: c.fileSize,
       order: c.order,
       isActive: c.isActive,
+      ifsMeta: c.ifsMeta
+        ? {
+            modul: c.ifsMeta.modul,
+            altModul: c.ifsMeta.altModul,
+            ifsEkran: c.ifsMeta.ifsEkran,
+            refDocUrl: c.ifsMeta.refDocUrl,
+            refVideoUrl: c.ifsMeta.refVideoUrl,
+          }
+        : null,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
     })),
@@ -43,10 +53,18 @@ export async function POST(req: NextRequest) {
     courseId: string;
     title: string;
     description?: string;
-    type: "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ";
+    type: "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ" | "GOREV";
     duration?: number | null;
     filePath?: string | null;
     fileSize?: number | null;
+    // IFS-3b: yalnız type=GOREV'de gelir (IfsTaskMeta).
+    ifsMeta?: {
+      modul?: string | null;
+      altModul?: string | null;
+      ifsEkran?: string | null;
+      refDocUrl?: string | null;
+      refVideoUrl?: string | null;
+    };
   };
   try {
     body = await req.json();
@@ -73,7 +91,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!["VIDEO", "PDF", "DOCUMENT", "QUIZ"].includes(body.type)) {
+  if (!["VIDEO", "PDF", "DOCUMENT", "QUIZ", "GOREV"].includes(body.type)) {
     return NextResponse.json({ error: "Geçersiz içerik tipi" }, { status: 400 });
   }
 
@@ -97,17 +115,35 @@ export async function POST(req: NextRequest) {
   const fileSize =
     body.fileSize != null && body.fileSize > 0 ? Math.floor(body.fileSize) : null;
 
+  const isGorev = body.type === "GOREV";
+  const m = body.ifsMeta ?? {};
+  const clean = (v: string | null | undefined) => v?.trim() || null;
+
   const content = await prisma.content.create({
     data: {
       courseId,
       title,
       description: body.description?.trim() || null,
       type: body.type,
-      filePath: body.filePath?.trim() || null,
-      duration,
-      fileSize,
+      // GOREV görevinin kendi dosyası yoktur; filePath/fileSize null.
+      filePath: isGorev ? null : body.filePath?.trim() || null,
+      duration: isGorev ? null : duration,
+      fileSize: isGorev ? null : fileSize,
       order: nextOrder,
       isActive: true,
+      ...(isGorev
+        ? {
+            ifsMeta: {
+              create: {
+                modul: clean(m.modul),
+                altModul: clean(m.altModul),
+                ifsEkran: clean(m.ifsEkran),
+                refDocUrl: clean(m.refDocUrl),
+                refVideoUrl: clean(m.refVideoUrl),
+              },
+            },
+          }
+        : {}),
     },
   });
 

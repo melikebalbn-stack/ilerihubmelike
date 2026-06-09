@@ -44,6 +44,12 @@ export function AdminContentFormModal({
   const [duration, setDuration] = useState<string>("");
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  // IFS-3b: GOREV alanları (IfsTaskMeta)
+  const [modul, setModul] = useState("");
+  const [altModul, setAltModul] = useState("");
+  const [ifsEkran, setIfsEkran] = useState("");
+  const [refDocUrl, setRefDocUrl] = useState("");
+  const [refVideoUrl, setRefVideoUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -55,6 +61,11 @@ export function AdminContentFormModal({
       setDuration(content.duration?.toString() ?? "");
       setFilePath(content.filePath);
       setFileSize(content.fileSize);
+      setModul(content.ifsMeta?.modul ?? "");
+      setAltModul(content.ifsMeta?.altModul ?? "");
+      setIfsEkran(content.ifsMeta?.ifsEkran ?? "");
+      setRefDocUrl(content.ifsMeta?.refDocUrl ?? "");
+      setRefVideoUrl(content.ifsMeta?.refVideoUrl ?? "");
     } else {
       setTitle("");
       setDescription("");
@@ -62,6 +73,11 @@ export function AdminContentFormModal({
       setDuration("");
       setFilePath(null);
       setFileSize(null);
+      setModul("");
+      setAltModul("");
+      setIfsEkran("");
+      setRefDocUrl("");
+      setRefVideoUrl("");
     }
   }, [open, mode, content]);
 
@@ -92,25 +108,29 @@ export function AdminContentFormModal({
           : "/api/akademi/admin/contents";
       const method = mode === "edit" ? "PATCH" : "POST";
 
-      const payload: Record<string, unknown> =
-        mode === "edit"
+      const isGorev = type === "GOREV";
+      const base: Record<string, unknown> = {
+        title: t,
+        description: description.trim() || null,
+        type,
+        // GOREV görevinin kendi dosyası/süresi yok.
+        duration: isGorev ? null : durationNum,
+        filePath: isGorev ? null : filePath || null,
+        fileSize: isGorev ? null : fileSize || null,
+        ...(isGorev
           ? {
-              title: t,
-              description: description.trim() || null,
-              type,
-              duration: durationNum,
-              filePath: filePath || null,
-              fileSize: fileSize || null,
+              ifsMeta: {
+                modul: modul.trim() || null,
+                altModul: altModul.trim() || null,
+                ifsEkran: ifsEkran.trim() || null,
+                refDocUrl: refDocUrl.trim() || null,
+                refVideoUrl: refVideoUrl.trim() || null,
+              },
             }
-          : {
-              courseId,
-              title: t,
-              description: description.trim() || null,
-              type,
-              duration: durationNum,
-              filePath: filePath || null,
-              fileSize: fileSize || null,
-            };
+          : {}),
+      };
+      const payload: Record<string, unknown> =
+        mode === "edit" ? base : { courseId, ...base };
 
       const res = await fetch(url, {
         method,
@@ -178,7 +198,7 @@ export function AdminContentFormModal({
 
           <AdminContentTypeSelect value={type} onChange={setType} />
 
-          {type !== "QUIZ" && (
+          {type !== "QUIZ" && type !== "GOREV" && (
             <div className="space-y-2">
               <Label>Dosya</Label>
               <AdminContentFileUpload
@@ -189,6 +209,78 @@ export function AdminContentFormModal({
                   setFileSize(data.fileSize || null);
                 }}
               />
+            </div>
+          )}
+
+          {type === "GOREV" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="modul">Modül</Label>
+                  <Input
+                    id="modul"
+                    value={modul}
+                    onChange={(e) => setModul(e.target.value)}
+                    placeholder="Örn. DEPO YÖNETİMİ"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="altModul">Alt Modül</Label>
+                  <Input
+                    id="altModul"
+                    value={altModul}
+                    onChange={(e) => setAltModul(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ifsEkran">IFS Ekranı</Label>
+                  <Input
+                    id="ifsEkran"
+                    value={ifsEkran}
+                    onChange={(e) => setIfsEkran(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="refDoc">
+                  Referans Eğitim Dokümanı (link veya yükle)
+                </Label>
+                <Input
+                  id="refDoc"
+                  value={refDocUrl}
+                  onChange={(e) => setRefDocUrl(e.target.value)}
+                  placeholder="https://... veya aşağıdan dosya yükleyin"
+                />
+                <AdminContentFileUpload
+                  contentType="DOCUMENT"
+                  currentFilePath={null}
+                  onUploaded={(data) =>
+                    data.filePath &&
+                    setRefDocUrl(`/api/akademi/files/documents/${data.filePath}`)
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="refVideo">
+                  Referans Eğitim Videosu (link veya yükle)
+                </Label>
+                <Input
+                  id="refVideo"
+                  value={refVideoUrl}
+                  onChange={(e) => setRefVideoUrl(e.target.value)}
+                  placeholder="https://... veya aşağıdan dosya yükleyin"
+                />
+                <AdminContentFileUpload
+                  contentType="VIDEO"
+                  currentFilePath={null}
+                  onUploaded={(data) =>
+                    data.filePath &&
+                    setRefVideoUrl(`/api/akademi/files/videos/${data.filePath}`)
+                  }
+                />
+              </div>
             </div>
           )}
 
@@ -205,17 +297,19 @@ export function AdminContentFormModal({
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label htmlFor="duration">Süre (dakika, opsiyonel)</Label>
-            <Input
-              id="duration"
-              type="number"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              placeholder="10"
-              min={1}
-            />
-          </div>
+          {type !== "GOREV" && (
+            <div className="space-y-2">
+              <Label htmlFor="duration">Süre (dakika, opsiyonel)</Label>
+              <Input
+                id="duration"
+                type="number"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="10"
+                min={1}
+              />
+            </div>
+          )}
         </div>
 
         <DialogFooter>

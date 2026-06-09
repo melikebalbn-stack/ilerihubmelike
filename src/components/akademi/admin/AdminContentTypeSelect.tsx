@@ -15,6 +15,7 @@ const LABELS: Record<AdminContentType, string> = {
   PDF: "📄 PDF",
   DOCUMENT: "📎 Doküman",
   QUIZ: "❓ Sınav (Sprint 3)",
+  GOREV: "✅ Görev (IFS)",
 };
 
 interface Props {
@@ -50,6 +51,7 @@ export function AdminContentTypeSelect({
           <SelectItem value="QUIZ" disabled={disableQuiz}>
             {LABELS.QUIZ}
           </SelectItem>
+          <SelectItem value="GOREV">{LABELS.GOREV}</SelectItem>
         </SelectContent>
       </Select>
     </div>

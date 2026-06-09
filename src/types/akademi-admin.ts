@@ -135,7 +135,15 @@ export interface AdminUserProgressResponse {
 // Content types (admin side)
 // =========================================================
 
-export type AdminContentType = "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ";
+export type AdminContentType = "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ" | "GOREV";
+
+export interface AdminIfsTaskMeta {
+  modul: string | null;
+  altModul: string | null;
+  ifsEkran: string | null;
+  refDocUrl: string | null;
+  refVideoUrl: string | null;
+}
 
 export interface AdminContentItem {
   id: string;
@@ -149,6 +157,8 @@ export interface AdminContentItem {
   fileSize: number | null;
   order: number;
   isActive: boolean;
+  // IFS-3b: yalnız type=GOREV içeriklerde dolu (1:1 IfsTaskMeta).
+  ifsMeta: AdminIfsTaskMeta | null;
   createdAt: string;
   updatedAt: string;
 }

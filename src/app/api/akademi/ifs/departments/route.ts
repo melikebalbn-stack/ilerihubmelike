@@ -2,14 +2,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
+import { stripDeptPrefix } from "@/lib/akademi-ifs";
 import { NextResponse } from "next/server";
 
 // IFS-6 Sv1: Departman = aktif isIfs CoursePackage'lar. Katalog davranışı —
 // atanma şartı yok, herkes görebilir. Görünen ad = paket adından "IFS Geçiş · "
 // prefix'i DISPLAY'de kırpılmış (veriye dokunulmaz).
-export function stripDeptPrefix(name: string): string {
-  return name.replace(/^IFS\s*Geçiş\s*·\s*/u, "").trim() || name;
-}
 
 export async function GET() {
   const session = await getServerSession(authOptions);

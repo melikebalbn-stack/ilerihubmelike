@@ -4,16 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { NextRequest, NextResponse } from "next/server";
 import type { CourseListItem } from "@/types/akademi";
-import { stripDeptPrefix } from "../departments/route";
+import { stripDeptPrefix, stripAreaPrefix } from "@/lib/akademi-ifs";
 
 // IFS-6 Sv2: Alan = seçilen isIfs paketteki Course'lar. Görünen ad = kurs adından
 // "<Departman> · " prefix'i DISPLAY'de kırpılmış. Katalog davranışı (atanmamış da
 // görünür, %0). CourseCard reuse için CourseListItem şeklinde döner; kart Sv3'e
 // (mevcut courses/[id] GOREV görünümü) linkler.
-function stripAreaPrefix(title: string, dept: string): string {
-  const prefix = `${dept} · `;
-  return title.startsWith(prefix) ? title.slice(prefix.length) : title;
-}
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);

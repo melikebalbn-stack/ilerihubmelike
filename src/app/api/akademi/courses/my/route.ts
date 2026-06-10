@@ -15,6 +15,8 @@ export async function GET() {
   const courses = await prisma.course.findMany({
     where: {
       isActive: true,
+      // IFS-6: IFS kursları genel katalogdan ayrı — "IFS Eğitimleri" başlığında.
+      isIfs: false,
       directAssignments: {
         some: {
           userAssignments: {

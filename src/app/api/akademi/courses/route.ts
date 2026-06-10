@@ -8,7 +8,8 @@ export async function GET() {
   if (error) return error;
 
   const courses = await prisma.course.findMany({
-    where: { isActive: true },
+    // IFS-6: IFS kursları genel katalogdan ayrı ("IFS Eğitimleri" başlığında).
+    where: { isActive: true, isIfs: false },
     include: {
       _count: { select: { contents: { where: { isActive: true } } } },
     },

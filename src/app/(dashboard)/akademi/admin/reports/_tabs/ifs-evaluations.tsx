@@ -6,6 +6,9 @@
 // Eğitmen düzenleme + inline kaydet IFS-5b'de. Departman özeti PR-3'te (burada değil).
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { ProgressBar } from "@/components/akademi/shared/ProgressBar";
 
 interface BoardMeta {
@@ -44,6 +47,7 @@ interface MatrixData {
   users: UserRow[];
   evaluations: Record<string, EvalCell> | null;
   userId: string | null;
+  canEdit: boolean;
 }
 
 function Flag({ on }: { on: boolean }) {
@@ -115,6 +119,51 @@ export function IfsEvaluationsTab() {
   useEffect(() => {
     setSelectedUser("");
   }, [bolum, courseId]);
+
+  // IFS-5b: düzenlenebilir hücreler (canEdit ise) — local + inline PATCH.
+  const [cells, setCells] = useState<Record<string, EvalCell>>({});
+  useEffect(() => {
+    setCells(data?.evaluations ?? {});
+  }, [data]);
+
+  const setLocal = (contentId: string, patch: Partial<EvalCell>) =>
+    setCells((prev) => {
+      const base: EvalCell = prev[contentId] ?? {
+        egitimVerildi: false,
+        uygulamaliYapildi: false,
+        ornekYapildi: false,
+        projeEkibiYorum: null,
+        danismanYorum: null,
+      };
+      return { ...prev, [contentId]: { ...base, ...patch } };
+    });
+
+  const patchCell = async (contentId: string, patch: Partial<EvalCell>) => {
+    if (!selectedUser) return;
+    try {
+      const res = await fetch(
+        "/api/akademi/admin/reports/ifs-evaluations",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: selectedUser, contentId, ...patch }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Kaydedilemedi");
+        load();
+      }
+    } catch {
+      toast.error("Kaydedilemedi");
+      load();
+    }
+  };
+
+  const toggleCell = (contentId: string, patch: Partial<EvalCell>) => {
+    setLocal(contentId, patch);
+    patchCell(contentId, patch);
+  };
 
   const selectCls = "px-3 py-2 text-sm rounded-md border bg-white min-w-[200px]";
   const selectedUserRow = data?.users.find((u) => u.userId === selectedUser);
@@ -274,7 +323,8 @@ export function IfsEvaluationsTab() {
               </thead>
               <tbody>
                 {data.tasks.map((t) => {
-                  const e = data.evaluations?.[t.contentId];
+                  const e = cells[t.contentId];
+                  const canEdit = data.canEdit;
                   return (
                     <tr
                       key={t.contentId}
@@ -290,25 +340,83 @@ export function IfsEvaluationsTab() {
                           "—"}
                       </td>
                       <td className="px-2 py-2 text-center">
-                        <Flag on={Boolean(e?.egitimVerildi)} />
+                        {canEdit ? (
+                          <Switch
+                            checked={Boolean(e?.egitimVerildi)}
+                            onCheckedChange={(v) =>
+                              toggleCell(t.contentId, { egitimVerildi: v })
+                            }
+                          />
+                        ) : (
+                          <Flag on={Boolean(e?.egitimVerildi)} />
+                        )}
                       </td>
                       <td className="px-2 py-2 text-center">
-                        <Flag on={Boolean(e?.uygulamaliYapildi)} />
+                        {canEdit ? (
+                          <Switch
+                            checked={Boolean(e?.uygulamaliYapildi)}
+                            onCheckedChange={(v) =>
+                              toggleCell(t.contentId, { uygulamaliYapildi: v })
+                            }
+                          />
+                        ) : (
+                          <Flag on={Boolean(e?.uygulamaliYapildi)} />
+                        )}
                       </td>
                       <td className="px-2 py-2 text-center">
                         <Flag on={Boolean(e?.ornekYapildi)} />
                       </td>
-                      <td
-                        className="px-3 py-2 text-xs"
-                        style={{ color: "var(--ak-text-secondary)" }}
-                      >
-                        {e?.projeEkibiYorum || "—"}
+                      <td className="px-3 py-2">
+                        {canEdit ? (
+                          <Textarea
+                            rows={1}
+                            className="text-xs min-h-[34px]"
+                            value={e?.projeEkibiYorum ?? ""}
+                            onChange={(ev) =>
+                              setLocal(t.contentId, {
+                                projeEkibiYorum: ev.target.value,
+                              })
+                            }
+                            onBlur={(ev) =>
+                              patchCell(t.contentId, {
+                                projeEkibiYorum: ev.target.value.trim() || null,
+                              })
+                            }
+                          />
+                        ) : (
+                          <span
+                            className="text-xs"
+                            style={{ color: "var(--ak-text-secondary)" }}
+                          >
+                            {e?.projeEkibiYorum || "—"}
+                          </span>
+                        )}
                       </td>
-                      <td
-                        className="px-3 py-2 text-xs"
-                        style={{ color: "var(--ak-text-secondary)" }}
-                      >
-                        {e?.danismanYorum || "—"}
+                      <td className="px-3 py-2">
+                        {canEdit ? (
+                          <Textarea
+                            rows={1}
+                            className="text-xs min-h-[34px]"
+                            value={e?.danismanYorum ?? ""}
+                            onChange={(ev) =>
+                              setLocal(t.contentId, {
+                                danismanYorum: ev.target.value,
+                              })
+                            }
+                            onBlur={(ev) =>
+                              patchCell(t.contentId, {
+                                danismanYorum: ev.target.value.trim() || null,
+                              })
+                            }
+                          />
+                        ) : (
+                          <span
+                            className="text-xs"
+                            style={{ color: "var(--ak-text-secondary)" }}
+                          >
+                            {e?.danismanYorum || "—"}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
   // Scope: müdür yalnız kendi bölümünü görebilir.
   const perms = await getUserPermissions(callerId);
   const fullScope = perms.has("akademi.admin");
+  // IFS-5b: eğitmen düzenleme yetkisi (UI editable vs read-only).
+  const canEdit = perms.has("akademi.grade.manual");
   if (!fullScope) {
     const ownBolum = await resolveUserBolum(callerId);
     if (!ownBolum || ownBolum !== bolum) {
@@ -153,9 +155,91 @@ export async function GET(req: NextRequest) {
     bolum,
     courseId,
     scope: fullScope ? "full" : "own",
+    canEdit,
     tasks: tasksOut,
     users: usersOut,
     userId,
     evaluations,
   });
+}
+
+// IFS-5b: Eğitmen/danışman değerlendirmesi kaydet (upsert).
+// requirePermission(akademi.grade.manual). YALNIZ egitimVerildi/uygulamaliYapildi/
+// projeEkibiYorum/danismanYorum. ornekYapildi'ya ve ContentProgress'e DOKUNMAZ
+// (kullanıcı-driven tamamlanma etkilenmez).
+export async function PATCH(req: NextRequest) {
+  const { error } = await requirePermission("akademi.grade.manual");
+  if (error) return error;
+
+  let body: {
+    userId?: string;
+    contentId?: string;
+    egitimVerildi?: unknown;
+    uygulamaliYapildi?: unknown;
+    projeEkibiYorum?: unknown;
+    danismanYorum?: unknown;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Geçersiz JSON" }, { status: 400 });
+  }
+
+  const userId = body.userId?.trim();
+  const contentId = body.contentId?.trim();
+  if (!userId || !contentId) {
+    return NextResponse.json(
+      { error: "userId ve contentId gerekli" },
+      { status: 400 }
+    );
+  }
+
+  // İçerik gerçekten bir GOREV mi?
+  const content = await prisma.content.findFirst({
+    where: { id: contentId, type: "GOREV" },
+    select: { id: true },
+  });
+  if (!content) {
+    return NextResponse.json(
+      { error: "Görev (GOREV) bulunamadı" },
+      { status: 404 }
+    );
+  }
+
+  const data: {
+    egitimVerildi?: boolean;
+    uygulamaliYapildi?: boolean;
+    projeEkibiYorum?: string | null;
+    danismanYorum?: string | null;
+  } = {};
+  if (typeof body.egitimVerildi === "boolean")
+    data.egitimVerildi = body.egitimVerildi;
+  if (typeof body.uygulamaliYapildi === "boolean")
+    data.uygulamaliYapildi = body.uygulamaliYapildi;
+  if (body.projeEkibiYorum !== undefined)
+    data.projeEkibiYorum =
+      typeof body.projeEkibiYorum === "string"
+        ? body.projeEkibiYorum.trim() || null
+        : null;
+  if (body.danismanYorum !== undefined)
+    data.danismanYorum =
+      typeof body.danismanYorum === "string"
+        ? body.danismanYorum.trim() || null
+        : null;
+
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json(
+      { error: "Güncellenecek alan yok" },
+      { status: 400 }
+    );
+  }
+
+  // ornekYapildi create'te default false; hiçbir yerde set edilmez.
+  await prisma.ifsTaskEvaluation.upsert({
+    where: { userId_contentId: { userId, contentId } },
+    create: { userId, contentId, ...data },
+    update: data,
+  });
+
+  return NextResponse.json({ success: true });
 }

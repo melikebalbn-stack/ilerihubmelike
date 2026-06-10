@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { recalculateCosts } from '@/lib/cost-analysis/calculations'
 
 // GET - Tek maliyet analizi detayı
 export async function GET(
@@ -154,6 +155,22 @@ export async function PUT(
         customer: true,
       },
     })
+
+    // BUGFIX: kar oranı/işletme gideri/bitmiş ağırlık değişince türetilen toplamlar
+    // (profitAmount, salesPrice, totalCost, pricePerKg) yeniden hesaplanmalı —
+    // aksi halde DB'de eski değerler kalır ve "toplam değişmiyor".
+    const needsRecalc =
+      overheadRate !== undefined ||
+      profitRate !== undefined ||
+      finishedWeight !== undefined
+    if (needsRecalc) {
+      await recalculateCosts(id)
+      const fresh = await prisma.costAnalysis.findUnique({
+        where: { id },
+        include: { category: true, customer: true },
+      })
+      return NextResponse.json(fresh ?? analysis)
+    }
 
     return NextResponse.json(analysis)
   } catch (error) {

@@ -21,7 +21,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX, ArrowRightLeft } from "lucide-react"
+import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX, ArrowRightLeft, History, CalendarClock } from "lucide-react"
+import { periodDuration, formatDuration } from "@/lib/personnel-tenure"
 import { PersonnelAutocomplete } from "@/components/ui/personnel-autocomplete"
 import { PersonnelExitModal, type ExitData } from "@/components/personnel/PersonnelExitModal"
 import { PersonnelTransferModal } from "@/components/personnel/department-transfer/PersonnelTransferModal"
@@ -34,6 +35,21 @@ import {
   DIREKT_ENDIREKT_LABELS,
   ASANSOR_MEKANIK_LABELS,
 } from "@/lib/personnel-constants"
+
+// PR-C: İstihdam dönemi (salt görüntüleme)
+type EmploymentPeriodItem = {
+  id: string
+  girisTarihi: string
+  cikisTarihi: string | null
+  exitParty: string | null
+  exitCode: string | null
+  exitReason: string | null
+  exitRootCause: string | null
+  exitTurnoverType: string | null
+  exitGeneralNote: string | null
+  entryRecordedAt: string | null
+  exitRecordedAt: string | null
+}
 
 type PersonnelData = {
   id: string
@@ -89,6 +105,15 @@ type PersonnelData = {
   exitRecordedAt: string | null
   exitRecordedBy: { id: string; name: string | null; email: string } | null
   workingPeriod: { years: number; months: number; totalMonths: number } | null
+  // PR-C
+  employmentPeriods: EmploymentPeriodItem[]
+  employmentSummary: {
+    years: number
+    months: number
+    totalMonths: number
+    firstEntryDate: string | null
+    periodCount: number
+  } | null
 }
 
 const ADMIN_ROLES = ["ADMIN", "HR_MANAGER", "SUPER_ADMIN"]
@@ -252,8 +277,8 @@ export default function PersonnelDetailPage() {
       Object.entries(json).forEach(([k, v]) => {
         if (k === "iseGirisTarihi" && v) {
           formData[k] = new Date(v as string).toISOString().slice(0, 10)
-        } else if (k === "exitRecordedBy" || k === "workingPeriod") {
-          // Bu alanlar form'a girmez
+        } else if (k === "exitRecordedBy" || k === "workingPeriod" || k === "employmentPeriods" || k === "employmentSummary") {
+          // Bu alanlar form'a girmez (salt görüntüleme / hesaplanmış)
         } else {
           formData[k] = v ?? ""
         }
@@ -893,6 +918,93 @@ export default function PersonnelDetailPage() {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* PR-C: İstihdam Geçmişi (salt görüntüleme) — dönem-tabanlı kıdem */}
+      {data.employmentPeriods && data.employmentPeriods.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <History className="h-5 w-5" style={{ color: "#1B4F72" }} />
+              İstihdam Geçmişi
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Özet */}
+            {data.employmentSummary && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <CalendarClock className="h-3.5 w-3.5" /> Toplam Çalışma Süresi
+                  </p>
+                  <p className="font-semibold text-base mt-1" style={{ color: "#1B4F72" }}>
+                    {formatDuration(data.employmentSummary)}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">İlk Giriş Tarihi</p>
+                  <p className="font-semibold text-base mt-1">{formatDate(data.employmentSummary.firstEntryDate)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Dönem Sayısı</p>
+                  <p className="font-semibold text-base mt-1">{data.employmentSummary.periodCount}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Kronolojik dönem listesi */}
+            <div className="space-y-2">
+              {data.employmentPeriods.map((p, i) => {
+                const open = !p.cikisTarihi
+                const dur = periodDuration(p.girisTarihi, p.cikisTarihi)
+                return (
+                  <div
+                    key={p.id}
+                    className="rounded-lg border p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+                        style={{ background: "#1B4F72" }}
+                      >
+                        {i + 1}
+                      </span>
+                      <div>
+                        <p className="font-medium flex items-center gap-1.5 flex-wrap">
+                          <span>{formatDate(p.girisTarihi)}</span>
+                          <span className="text-muted-foreground">→</span>
+                          {open ? (
+                            <Badge variant="outline" className="border-emerald-500/50 text-emerald-600">
+                              Devam ediyor
+                            </Badge>
+                          ) : (
+                            <span>{formatDate(p.cikisTarihi)}</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Süre: {formatDuration(dur)}
+                          {open ? " (bugüne dek)" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    {!open && (p.exitParty || p.exitTurnoverType || p.exitReason) && (
+                      <div className="text-xs text-muted-foreground sm:text-right sm:max-w-[45%]">
+                        {(p.exitParty || p.exitTurnoverType) && (
+                          <p>
+                            {p.exitParty}
+                            {p.exitParty && p.exitTurnoverType ? " · " : ""}
+                            {p.exitTurnoverType}
+                          </p>
+                        )}
+                        {p.exitReason && <p className="mt-0.5">{p.exitReason}</p>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </CardContent>
         </Card>
       )}

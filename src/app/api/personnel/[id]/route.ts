@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { logAuditEvent } from '@/lib/audit-log'
+import { computeTenure } from '@/lib/personnel-tenure'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,6 +94,23 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         createdBy: true,
+        // PR-C: İstihdam Geçmişi (salt görüntüleme) — kronolojik dönemler
+        employmentPeriods: {
+          select: {
+            id: true,
+            girisTarihi: true,
+            cikisTarihi: true,
+            exitParty: true,
+            exitCode: true,
+            exitReason: true,
+            exitRootCause: true,
+            exitTurnoverType: true,
+            exitGeneralNote: true,
+            entryRecordedAt: true,
+            exitRecordedAt: true,
+          },
+          orderBy: { girisTarihi: 'asc' },
+        },
       },
     })
 
@@ -111,6 +129,13 @@ export async function GET(
       workingPeriod = { years: Math.floor(totalMonths / 12), months: totalMonths % 12, totalMonths }
     }
 
+    // PR-C: dönem-tabanlı toplam kıdem özeti (boşluklar sayılmaz). Backfill ile her
+    // personelin ≥1 dönemi var; dönem yoksa null → UI eski workingPeriod'a düşer.
+    const employmentSummary =
+      personnel.employmentPeriods.length > 0
+        ? computeTenure(personnel.employmentPeriods)
+        : null
+
     // PR-AUDIT-LOG-EXPANSION (KVKK): kişisel veriye erişim audit
     // Hassas alan KAYDEDİLMEZ — sadece referans id + sicilNo
     await logAuditEvent({
@@ -124,7 +149,7 @@ export async function GET(
       },
     })
 
-    return NextResponse.json({ ...personnel, workingPeriod })
+    return NextResponse.json({ ...personnel, workingPeriod, employmentSummary })
   } catch (error) {
     console.error('Personel detayı alınırken hata:', error)
     return NextResponse.json({ error: 'Personel detayı alınırken bir hata oluştu' }, { status: 500 })
@@ -170,6 +195,9 @@ export async function PUT(
     delete body.exitRecordedById
     delete body.exitRecordedBy
     delete body.workingPeriod
+    // PR-C: salt-görüntüleme alanları — update body'sine girmez
+    delete body.employmentPeriods
+    delete body.employmentSummary
     delete body.aktif // toggle artık PATCH ile yapılıyor
 
     // Boş stringleri null'a çevir (Prisma enum/date/int hataları için)

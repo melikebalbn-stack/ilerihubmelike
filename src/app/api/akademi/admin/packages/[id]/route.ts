@@ -50,6 +50,7 @@ export async function GET(
     name: pkg.name,
     description: pkg.description,
     iconColor: pkg.iconColor,
+    coverImageUrl: pkg.coverImageUrl,
     isActive: pkg.isActive,
     isIfs: pkg.isIfs,
     courseCount: pkg._count.packageCourses,
@@ -126,6 +127,9 @@ export async function PATCH(
   }
   if (body.iconColor !== undefined) {
     data.iconColor = body.iconColor?.trim() || null;
+  }
+  if (body.coverImageUrl !== undefined) {
+    data.coverImageUrl = body.coverImageUrl?.trim() || null;
   }
   if (body.isActive !== undefined) data.isActive = body.isActive;
 

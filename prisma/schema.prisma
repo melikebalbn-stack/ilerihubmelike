@@ -8841,6 +8841,7 @@ model CoursePackage {
   iconColor   String?
   isActive    Boolean  @default(true)
   isIfs       Boolean  @default(false) // IFS Eğitimleri işareti (IFS-1)
+  coverImageUrl String? // IFS kart kapak görseli (opsiyonel; null = gradient+ikon fallback)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

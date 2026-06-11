@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
     name: p.name,
     description: p.description,
     iconColor: p.iconColor,
+    coverImageUrl: p.coverImageUrl,
     isActive: p.isActive,
     isIfs: p.isIfs,
     courseCount: p._count.packageCourses,
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
       name: body.name.trim(),
       description: body.description?.trim() || null,
       iconColor: body.iconColor?.trim() || null,
+      coverImageUrl: body.coverImageUrl?.trim() || null,
       isActive: body.isActive ?? true,
     },
   });

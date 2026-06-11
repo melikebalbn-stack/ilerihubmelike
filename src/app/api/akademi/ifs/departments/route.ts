@@ -27,6 +27,7 @@ export async function GET() {
     name: p.name,
     displayName: stripDeptPrefix(p.name),
     courseCount: p._count.packageCourses,
+    coverImageUrl: p.coverImageUrl,
   }));
 
   return NextResponse.json({ departments });

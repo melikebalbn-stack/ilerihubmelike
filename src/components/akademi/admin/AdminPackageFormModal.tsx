@@ -48,9 +48,11 @@ export function AdminPackageFormModal({
     name: "",
     description: "",
     iconColor: "",
+    coverImageUrl: null,
     isActive: true,
   });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -59,13 +61,40 @@ export function AdminPackageFormModal({
           name: existing.name,
           description: existing.description ?? "",
           iconColor: existing.iconColor ?? "",
+          coverImageUrl: existing.coverImageUrl ?? null,
           isActive: existing.isActive,
         });
       } else {
-        setForm({ name: "", description: "", iconColor: "", isActive: true });
+        setForm({
+          name: "",
+          description: "",
+          iconColor: "",
+          coverImageUrl: null,
+          isActive: true,
+        });
       }
     }
   }, [open, mode, existing]);
+
+  const handleCoverUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/akademi/admin/packages/upload-cover", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Görsel yüklenemedi");
+      setForm((f) => ({ ...f, coverImageUrl: json.coverImageUrl }));
+      toast.success("Kapak görseli yüklendi");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Görsel yüklenemedi");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!form.name.trim()) {
@@ -88,6 +117,7 @@ export function AdminPackageFormModal({
           name: form.name.trim(),
           description: form.description.trim() || null,
           iconColor: form.iconColor || null,
+          coverImageUrl: form.coverImageUrl,
           isActive: form.isActive,
         }),
       });
@@ -161,6 +191,66 @@ export function AdminPackageFormModal({
                   aria-label={c.label}
                 />
               ))}
+            </div>
+          </div>
+
+          <div>
+            <Label>Kapak Görseli</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              IFS kartında gösterilir. Boşsa gradient + ikon kullanılır. PNG/JPG/WEBP, max 4MB.
+            </p>
+            <div className="flex items-center gap-3 mt-2">
+              <div
+                className="relative h-16 w-28 shrink-0 overflow-hidden rounded-md border bg-muted"
+                style={{ background: form.coverImageUrl ? undefined : "var(--ak-surface-2)" }}
+              >
+                {form.coverImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={form.coverImageUrl}
+                    alt="Kapak önizleme"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground">
+                    Görsel yok
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <input
+                  id="pkg-cover"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleCoverUpload(f);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={uploading}
+                  onClick={() => document.getElementById("pkg-cover")?.click()}
+                >
+                  {uploading ? "Yükleniyor..." : form.coverImageUrl ? "Değiştir" : "Görsel Yükle"}
+                </Button>
+                {form.coverImageUrl && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive"
+                    disabled={uploading}
+                    onClick={() => setForm((f) => ({ ...f, coverImageUrl: null }))}
+                  >
+                    Kaldır
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 

@@ -29,6 +29,7 @@ interface Department {
   name: string;
   displayName: string;
   courseCount: number;
+  coverImageUrl: string | null;
 }
 
 // Departman adına göre tematik ikon (bilinen anahtarlar + deterministik fallback —
@@ -158,12 +159,22 @@ export default function AkademiIfsPage() {
                   onClick={() => openDept(d)}
                   className="ak-card block overflow-hidden h-full flex flex-col text-left transition-transform hover:-translate-y-1"
                 >
-                  {/* Gradient header + tematik ikon (CourseCard diliyle aynı) */}
+                  {/* Header: kapak görseli varsa onu, yoksa gradient + tematik ikon.
+                      "X alan" badge her iki durumda da overlay kalır. */}
                   <div
-                    className="relative h-32 flex items-center justify-center"
+                    className="relative h-32 flex items-center justify-center overflow-hidden"
                     style={{ background: getGradientForId(d.displayName) }}
                   >
-                    <Icon className="w-12 h-12 text-white opacity-90" />
+                    {d.coverImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={d.coverImageUrl}
+                        alt={d.displayName}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Icon className="w-12 h-12 text-white opacity-90" />
+                    )}
                     <div
                       className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-xs font-semibold"
                       style={{

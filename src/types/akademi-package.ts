@@ -3,6 +3,7 @@ export interface AdminPackageListItem {
   name: string;
   description: string | null;
   iconColor: string | null;
+  coverImageUrl: string | null;
   isActive: boolean;
   isIfs: boolean;
   courseCount: number;
@@ -40,6 +41,7 @@ export interface AdminPackageCreateInput {
   name: string;
   description?: string;
   iconColor?: string;
+  coverImageUrl?: string | null;
   isActive?: boolean;
 }
 
@@ -47,6 +49,7 @@ export interface AdminPackageUpdateInput {
   name?: string;
   description?: string | null;
   iconColor?: string | null;
+  coverImageUrl?: string | null;
   isActive?: boolean;
 }
 
@@ -77,6 +80,7 @@ export interface PackageFormState {
   name: string;
   description: string;
   iconColor: string;
+  coverImageUrl: string | null;
   isActive: boolean;
 }
 

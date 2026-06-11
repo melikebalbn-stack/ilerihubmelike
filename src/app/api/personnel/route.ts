@@ -145,8 +145,20 @@ export async function POST(request: NextRequest) {
 
     personnelData.createdBy = user.id
 
-    const newPersonnel = await prisma.personnel.create({
-      data: personnelData,
+    // PR-B: Personnel create + ilk AÇIK EmploymentPeriod = TEK transaction (dual-write).
+    // Eski Personnel.iseGirisTarihi/exitDate alanları AYNEN yazılır (paralel korunur).
+    const newPersonnel = await prisma.$transaction(async (tx) => {
+      const created = await tx.personnel.create({ data: personnelData })
+      await tx.employmentPeriod.create({
+        data: {
+          personnelId: created.id,
+          girisTarihi: created.iseGirisTarihi,
+          cikisTarihi: null, // açık dönem
+          entryRecordedById: user.id,
+          entryRecordedAt: new Date(),
+        },
+      })
+      return created
     })
 
     // Create sensitive record if provided

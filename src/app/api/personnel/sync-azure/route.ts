@@ -92,20 +92,33 @@ export async function POST(request: NextRequest) {
               : 0
             const newSicilNo = `AZ-${String(lastNum + 1).padStart(4, '0')}`
 
-            await prisma.personnel.create({
-              data: {
-                sicilNo: newSicilNo,
-                adSoyad: adUser.displayName,
-                cinsiyet: 'MALE', // Default, to be updated manually
-                yakaRengi: 'BEYAZ',
-                iseGirisTarihi: new Date(),
-                gorev: adUser.jobTitle || 'Belirtilmemiş',
-                bolum: adUser.department || 'Belirtilmemiş',
-                telefon: adUser.mobilePhone || null,
-                azureAdId: adUser.id,
-                azureAdEmail: email,
-                createdBy: user.id,
-              },
+            // PR-B: yeni Personnel + ilk AÇIK EmploymentPeriod = TEK transaction.
+            const entryDate = new Date()
+            await prisma.$transaction(async (tx) => {
+              const createdP = await tx.personnel.create({
+                data: {
+                  sicilNo: newSicilNo,
+                  adSoyad: adUser.displayName,
+                  cinsiyet: 'MALE', // Default, to be updated manually
+                  yakaRengi: 'BEYAZ',
+                  iseGirisTarihi: entryDate,
+                  gorev: adUser.jobTitle || 'Belirtilmemiş',
+                  bolum: adUser.department || 'Belirtilmemiş',
+                  telefon: adUser.mobilePhone || null,
+                  azureAdId: adUser.id,
+                  azureAdEmail: email,
+                  createdBy: user.id,
+                },
+              })
+              await tx.employmentPeriod.create({
+                data: {
+                  personnelId: createdP.id,
+                  girisTarihi: entryDate,
+                  cikisTarihi: null,
+                  entryRecordedById: user.id,
+                  entryRecordedAt: new Date(),
+                },
+              })
             })
             created++
           }

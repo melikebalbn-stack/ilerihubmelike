@@ -8537,10 +8537,44 @@ model Personnel {
   evaluationEmails    PersonnelEvaluationEmailLog[]
   user                User?                          @relation("UserPersonnel")
   departmentTransfers PersonnelDepartmentTransfer[]
+  // PR-A: çok-dönem istihdam geçmişi (additive; mevcut iseGirisTarihi/exitDate paralel kalır)
+  employmentPeriods   EmploymentPeriod[]
 
   @@index([bolum])
   @@index([yakaRengi])
   @@index([aktif])
+}
+
+// PR-A: İstihdam Dönemi — her giriş-çıkış döngüsü = 1 satır. Additive; Personnel'in
+// mevcut tek-dönem alanları (iseGirisTarihi/exitDate/exit*) AYNEN korunur (paralel yedek).
+// Tek "açık dönem" (cikisTarihi IS NULL) invariant'ı migration'da RAW partial unique
+// index ile sağlanır (Prisma @@unique ifade edemez). Tablo adı: EmploymentPeriod (@@map yok).
+model EmploymentPeriod {
+  id          String    @id @default(cuid())
+  personnelId String
+  girisTarihi DateTime  @db.Date
+  cikisTarihi DateTime? @db.Date // null = açık/aktif dönem
+
+  // Çıkış bilgileri (Personnel'dekiyle birebir, hepsi nullable)
+  exitParty        String?
+  exitCode         String?
+  exitReason       String?
+  exitRootCause    String?
+  exitTurnoverType String?
+  exitGeneralNote  String? @db.Text
+
+  // Kayıt eden alanları — DÜZ String? (User'a relation YOK, User modeline dokunulmaz)
+  exitRecordedById  String?
+  exitRecordedAt    DateTime?
+  entryRecordedById String?
+  entryRecordedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  personnel Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+
+  @@index([personnelId])
 }
 
 // PR-PERSONNEL-DEPARTMENT-TRANSFER: Bölüm değişikliği audit kaydı.

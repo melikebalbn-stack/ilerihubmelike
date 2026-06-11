@@ -55,7 +55,9 @@ export async function POST(req: NextRequest) {
   const arrayBuffer = await file.arrayBuffer();
   await fs.writeFile(fullPath, Buffer.from(arrayBuffer));
 
+  // Bu projede /uploads/... doğrudan servis EDİLMEZ; dosyalar auth'lu
+  // /api/akademi/files/[...path] route'undan (public/uploads/akademi kökü) servis edilir.
   return NextResponse.json({
-    coverImageUrl: `/uploads/akademi/packages/covers/${fileName}`,
+    coverImageUrl: `/api/akademi/files/packages/covers/${fileName}`,
   });
 }

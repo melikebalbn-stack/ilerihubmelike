@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import Link from "next/link";
+import { GraduationCap, ChevronRight } from "lucide-react";
 import { useAkademiAuth } from "@/lib/akademi-auth";
 import { CourseCard } from "@/components/akademi/courses/CourseCard";
 import {
@@ -98,6 +100,42 @@ export default function AkademiCoursesPage() {
         onSearchChange={setSearch}
         counts={counts}
       />
+
+      {/* IFS-6.1: IFS Eğitimleri giriş kartı (nav'dan buraya taşındı) —
+          katalogun üstünde, normal kurs kartlarından ayrı "bölüm girişi". */}
+      <Link
+        href="/akademi/ifs"
+        className="ak-card flex items-center gap-4 p-5 mb-5"
+        style={{
+          background: "var(--ak-accent-glow)",
+          border: "1px solid var(--ak-accent)",
+        }}
+      >
+        <div
+          className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: "var(--ak-accent)" }}
+        >
+          <GraduationCap className="w-6 h-6 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="text-base font-bold"
+            style={{ color: "var(--ak-text-primary)" }}
+          >
+            🎓 IFS Eğitimleri
+          </div>
+          <div
+            className="text-sm"
+            style={{ color: "var(--ak-text-secondary)" }}
+          >
+            Departmanına göre IFS geçiş görevleri — referans doküman & videolarla
+          </div>
+        </div>
+        <ChevronRight
+          className="w-5 h-5 shrink-0"
+          style={{ color: "var(--ak-accent)" }}
+        />
+      </Link>
 
       {loading ? (
         <div

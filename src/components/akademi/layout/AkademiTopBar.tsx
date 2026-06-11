@@ -6,7 +6,6 @@ import { motion } from "framer-motion";
 import {
   Home,
   BookOpen,
-  GraduationCap,
   ClipboardList,
   Award,
   User,
@@ -25,7 +24,6 @@ interface TabItem {
 const tabs: TabItem[] = [
   { label: "Ana Sayfa", href: "/akademi", icon: Home },
   { label: "Eğitimler", href: "/akademi/courses", icon: BookOpen },
-  { label: "IFS Eğitimleri", href: "/akademi/ifs", icon: GraduationCap },
   { label: "Sınavlar", href: "/akademi/exams", icon: ClipboardList },
   { label: "Sertifikalarım", href: "/akademi/certificates", icon: Award },
   { label: "Profilim", href: "/akademi/profile", icon: User },

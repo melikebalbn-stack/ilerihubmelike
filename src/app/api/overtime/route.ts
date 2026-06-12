@@ -54,7 +54,11 @@ export async function GET(request: NextRequest) {
       where.OR = [
         { createdById: user.id },
         { approvals: { some: { approverId: user.id } } },
-        { personnel: { some: { userId: user.id } } },
+        // OvertimePersonnel.userId YOK; bağ personnelId (Personnel FK). User↔Personnel
+        // linki yoksa bu dalı ekleme ([id] route'undaki erişim mantığıyla aynı).
+        ...(user.personnelId
+          ? [{ personnel: { some: { personnelId: user.personnelId } } }]
+          : []),
       ]
     }
 

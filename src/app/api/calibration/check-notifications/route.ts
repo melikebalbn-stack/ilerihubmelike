@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { CalibrationStatus, CalibrationEmailType, NotificationRuleType } from '@/generated/prisma'
 import { sendEmail } from '@/lib/email'
 import { requireUser } from '@/lib/auth/require-user'
+import { buildKalibrasyonMailHtml, KalibrasyonDevice } from '@/lib/mail/kalibrasyon-mail-template'
 
 type DeviceAlert = {
   deviceId: string
@@ -12,6 +13,12 @@ type DeviceAlert = {
   responsiblePersonEmail?: string | null
   daysRemaining: number
   alertType: 'calibration' | 'verification' // Kalibrasyon mu doğrulama mı
+  // ERP-stili HTML tablo kolonları (gövde için; alıcı/zamanlama/tetiklemeyi etkilemez)
+  department?: string | null
+  location?: string | null
+  serialNumber?: string | null
+  deviceModel?: string | null
+  deviceCondition?: string | null
 }
 
 /**
@@ -136,6 +143,11 @@ export async function POST(request: NextRequest) {
                 responsiblePersonEmail: device.responsiblePersonEmail,
                 daysRemaining,
                 alertType: 'calibration',
+                department: device.department,
+                location: device.location,
+                serialNumber: device.serialNumber,
+                deviceModel: device.model,
+                deviceCondition: device.deviceCondition,
               })
             }
           }
@@ -159,6 +171,11 @@ export async function POST(request: NextRequest) {
                 responsiblePersonEmail: device.responsiblePersonEmail,
                 daysRemaining,
                 alertType: 'verification',
+                department: device.department,
+                location: device.location,
+                serialNumber: device.serialNumber,
+                deviceModel: device.model,
+                deviceCondition: device.deviceCondition,
               })
             }
           }
@@ -187,9 +204,13 @@ export async function POST(request: NextRequest) {
       if (calAlerts.length > 0) {
         const subject = generateBatchEmailSubject(emailType, calAlerts.length, 'Kalibrasyon')
         const body = generateBatchEmailBody(emailType, calAlerts, rule, 'Kalibrasyon')
+        const html = buildKalibrasyonMailHtml(calAlerts.map(toMailDevice), {
+          baslik: mailBaslik(emailType, 'Kalibrasyon'),
+          tarihBaslik: 'Gelecek Kal. Tarihi',
+        })
 
         try {
-          const result = await sendEmail(ruleRecipients, subject, body)
+          const result = await sendEmail(ruleRecipients, subject, body, html)
           if (result.success) {
             notificationsSent++
             console.log(`✅ Sent calibration ${emailType} notification for ${calAlerts.length} devices`)
@@ -208,9 +229,13 @@ export async function POST(request: NextRequest) {
       if (verAlerts.length > 0) {
         const subject = generateBatchEmailSubject(emailType, verAlerts.length, 'Doğrulama')
         const body = generateBatchEmailBody(emailType, verAlerts, rule, 'Doğrulama')
+        const html = buildKalibrasyonMailHtml(verAlerts.map(toMailDevice), {
+          baslik: mailBaslik(emailType, 'Doğrulama'),
+          tarihBaslik: 'Gelecek Doğ. Tarihi',
+        })
 
         try {
-          const result = await sendEmail(ruleRecipients, subject, body)
+          const result = await sendEmail(ruleRecipients, subject, body, html)
           if (result.success) {
             notificationsSent++
             console.log(`✅ Sent verification ${emailType} notification for ${verAlerts.length} devices`)
@@ -375,6 +400,41 @@ Herhangi bir sorunuz varsa lütfen Kalite Departmanı ile iletişime geçiniz.
 Bu e-posta otomatik olarak ILERIHub Kalibrasyon Yönetim Sistemi tarafından gönderilmiştir.
 © 2025 İleri Group - System Development Team
   `.trim()
+}
+
+/**
+ * DeviceAlert → HTML tablo satırı modeli (ERP-stili gövde için).
+ * Alıcı listesi / zamanlama / tetikleme kurallarını ETKİLEMEZ.
+ */
+function toMailDevice(d: DeviceAlert): KalibrasyonDevice {
+  return {
+    cihazId: d.deviceId,
+    departman: d.department,
+    uretimBolumu: d.location,
+    seriNo: d.serialNumber,
+    model: d.deviceModel || d.deviceName,
+    sorumluKisi: d.responsiblePerson,
+    planlananKalibrasyonTarihi: d.alertDate,
+    kalanGun: d.daysRemaining,
+    // deviceCondition boşsa app konvansiyonu gereği "Şirkette" (stats/route.ts: null=Şirkette)
+    cihazDurumu: d.deviceCondition || 'Şirkette',
+  }
+}
+
+/**
+ * HTML tablonun başlığı (email tipi + Kalibrasyon/Doğrulama).
+ */
+function mailBaslik(type: CalibrationEmailType, label: string): string {
+  switch (type) {
+    case 'EXPIRING_SOON':
+      return `${label} Süresi Yaklaşan Cihazlar`
+    case 'EXPIRED':
+      return `${label} Süresi Dolan Cihazlar`
+    case 'REMINDER':
+      return `Haftalık ${label} Hatırlatması`
+    default:
+      return `${label} Bildirimi`
+  }
 }
 
 /**

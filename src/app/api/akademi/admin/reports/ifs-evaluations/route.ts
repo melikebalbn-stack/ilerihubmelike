@@ -117,16 +117,24 @@ export async function GET(req: NextRequest) {
   }));
 
   // Seçili kullanıcı varsa onun değerlendirme hücreleri (tek sorgu).
+  // PR-3: UI mevcut değerleri gösterebilsin diye ornekStatus + degerlendirildiAt
+  // de okunur (yalnız READ; yazma/şema değişmez).
   let evaluations: Record<
     string,
     {
       egitimVerildi: boolean;
       uygulamaliYapildi: boolean;
       ornekYapildi: boolean;
+      ornekStatus: string;
+      degerlendirildiAt: string | null;
       projeEkibiYorum: string | null;
       danismanYorum: string | null;
     }
   > | null = null;
+
+  // PR-3: per-ders eğitmen değerlendirmesi (seviye + not) — READ.
+  let courseEvaluation: { seviye: string | null; not: string | null } | null =
+    null;
 
   if (userId) {
     // Seçilen kullanıcı bu bölümde mi? (scope tutarlılığı)
@@ -144,6 +152,8 @@ export async function GET(req: NextRequest) {
             egitimVerildi: true,
             uygulamaliYapildi: true,
             ornekYapildi: true,
+            ornekStatus: true,
+            degerlendirildiAt: true,
             projeEkibiYorum: true,
             danismanYorum: true,
           },
@@ -157,10 +167,18 @@ export async function GET(req: NextRequest) {
         egitimVerildi: e?.egitimVerildi ?? false,
         uygulamaliYapildi: e?.uygulamaliYapildi ?? false,
         ornekYapildi: e?.ornekYapildi ?? false,
+        ornekStatus: e?.ornekStatus ?? "PENDING",
+        degerlendirildiAt: e?.degerlendirildiAt?.toISOString() ?? null,
         projeEkibiYorum: e?.projeEkibiYorum ?? null,
         danismanYorum: e?.danismanYorum ?? null,
       };
     }
+
+    const ce = await prisma.ifsCourseEvaluation.findUnique({
+      where: { userId_courseId: { userId, courseId } },
+      select: { seviye: true, not: true },
+    });
+    courseEvaluation = { seviye: ce?.seviye ?? null, not: ce?.not ?? null };
   }
 
   return NextResponse.json({
@@ -172,6 +190,7 @@ export async function GET(req: NextRequest) {
     users: usersOut,
     userId,
     evaluations,
+    courseEvaluation,
   });
 }
 

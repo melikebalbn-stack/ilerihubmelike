@@ -59,6 +59,32 @@ export function AdminCourseFormModal({
   const [duration, setDuration] = useState<string>("");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  // PR-2: kapak görseli yükleme — IFS ile aynı shared storage. Başarılı yükleme
+  // dönen served URL'i thumbnail alanına yazar (URL yapıştırma yolu korunur).
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/akademi/admin/courses/upload-cover", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || "Görsel yüklenemedi");
+        return;
+      }
+      setThumbnail(data.url);
+      toast.success("Kapak görseli yüklendi");
+    } catch {
+      toast.error("Görsel yüklenemedi");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -227,13 +253,80 @@ export function AdminCourseFormModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="thumbnail">Kapak Görseli (URL)</Label>
-            <Input
-              id="thumbnail"
-              value={thumbnail}
-              onChange={(e) => setThumbnail(e.target.value)}
-              placeholder="https://... (opsiyonel)"
-            />
+            <Label htmlFor="thumbnail">Kapak Görseli</Label>
+            <div className="flex items-start gap-3">
+              {/* Önizleme: mevcut/yüklenen kapak */}
+              <div
+                className="relative h-16 w-24 shrink-0 overflow-hidden rounded-md border bg-muted"
+                style={{ background: thumbnail ? undefined : "var(--ak-surface-2)" }}
+              >
+                {thumbnail ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={thumbnail}
+                    alt="Kapak önizleme"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground">
+                    Görsel yok
+                  </span>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-2">
+                {/* URL yapıştırma yolu KORUNUR */}
+                <Input
+                  id="thumbnail"
+                  value={thumbnail}
+                  onChange={(e) => setThumbnail(e.target.value)}
+                  placeholder="https://... veya Yükle ile ekleyin"
+                />
+                <div className="flex items-center gap-2">
+                  <input
+                    id="course-cover-file"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleUpload(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={uploading}
+                    onClick={() =>
+                      document.getElementById("course-cover-file")?.click()
+                    }
+                  >
+                    {uploading
+                      ? "Yükleniyor..."
+                      : thumbnail
+                      ? "Değiştir"
+                      : "Yükle"}
+                  </Button>
+                  {thumbnail && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      disabled={uploading}
+                      onClick={() => setThumbnail("")}
+                    >
+                      Kaldır
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  PNG/JPG/WEBP/GIF, max 5MB. URL de yapıştırabilirsiniz.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center justify-between py-2 border-t">
@@ -262,7 +355,7 @@ export function AdminCourseFormModal({
           >
             İptal
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={saving}>
+          <Button type="button" onClick={handleSubmit} disabled={saving || uploading}>
             {saving
               ? "Kaydediliyor..."
               : mode === "edit"

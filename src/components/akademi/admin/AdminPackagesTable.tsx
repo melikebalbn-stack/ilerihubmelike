@@ -1,14 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, Package } from "lucide-react";
+import { Pencil, Trash2, Package, ChevronUp, ChevronDown } from "lucide-react";
 import type { AdminPackageListItem } from "@/types/akademi-package";
+
+export type PackageSortKey = "name" | "courseCount" | "status";
 
 interface Props {
   packages: AdminPackageListItem[];
   onEdit: (pkg: AdminPackageListItem) => void;
   onDelete: (pkg: AdminPackageListItem) => void;
   onToggleActive: (pkg: AdminPackageListItem) => void;
+  // PR-3: opsiyonel sıralama. Verilmezse başlıklar düz metin (ör. IFS eğitim
+  // sekmesi bu prop'u geçmez → davranış değişmez).
+  sort?: {
+    sortBy: PackageSortKey;
+    order: "asc" | "desc";
+    onSort: (key: PackageSortKey) => void;
+  };
 }
 
 export function AdminPackagesTable({
@@ -16,8 +25,54 @@ export function AdminPackagesTable({
   onEdit,
   onDelete,
   onToggleActive,
+  sort,
 }: Props) {
   const router = useRouter();
+
+  function Th({
+    label,
+    sortKey,
+    align = "left",
+  }: {
+    label: string;
+    sortKey?: PackageSortKey;
+    align?: "left" | "center" | "right";
+  }) {
+    const alignCls =
+      align === "right"
+        ? "text-right"
+        : align === "center"
+        ? "text-center"
+        : "text-left";
+    const base = `px-4 py-3 ${alignCls}`;
+    if (!sort || !sortKey) {
+      return <th className={base}>{label}</th>;
+    }
+    const active = sort.sortBy === sortKey;
+    const justify =
+      align === "right"
+        ? "justify-end"
+        : align === "center"
+        ? "justify-center"
+        : "justify-start";
+    return (
+      <th className={base}>
+        <button
+          type="button"
+          onClick={() => sort.onSort(sortKey)}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:opacity-80 w-full ${justify}`}
+        >
+          {label}
+          {active &&
+            (sort.order === "asc" ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ))}
+        </button>
+      </th>
+    );
+  }
 
   if (packages.length === 0) {
     return (
@@ -42,12 +97,12 @@ export function AdminPackagesTable({
                 color: "var(--ak-text-tertiary)",
               }}
             >
-              <th className="text-left px-4 py-3">Paket</th>
-              <th className="text-center px-4 py-3">Kurs</th>
-              <th className="text-center px-4 py-3">Bölüm</th>
-              <th className="text-center px-4 py-3">Bireysel</th>
-              <th className="text-center px-4 py-3">Durum</th>
-              <th className="text-right px-4 py-3">İşlem</th>
+              <Th label="Paket" sortKey="name" align="left" />
+              <Th label="Kurs" sortKey="courseCount" align="center" />
+              <Th label="Bölüm" align="center" />
+              <Th label="Bireysel" align="center" />
+              <Th label="Durum" sortKey="status" align="center" />
+              <Th label="İşlem" align="right" />
             </tr>
           </thead>
           <tbody>

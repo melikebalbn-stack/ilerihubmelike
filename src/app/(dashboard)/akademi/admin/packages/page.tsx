@@ -1,20 +1,46 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AdminPackagesTable } from "@/components/akademi/admin/AdminPackagesTable";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AdminPackagesTable,
+  type PackageSortKey,
+} from "@/components/akademi/admin/AdminPackagesTable";
 import { AdminPackageFormModal } from "@/components/akademi/admin/AdminPackageFormModal";
 import { AdminDeleteConfirm } from "@/components/akademi/admin/AdminDeleteConfirm";
 import type { AdminPackageListItem } from "@/types/akademi-package";
 
+const PAGE_SIZE = 25;
+
+type TypeFilter = "normal" | "ifs" | "all";
+
 export default function AkademiAdminPackagesPage() {
-  const [packages, setPackages] = useState<AdminPackageListItem[]>([]);
+  const [items, setItems] = useState<AdminPackageListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [includeInactive, setIncludeInactive] = useState(false);
+
+  // Filtre / arama / sıralama / sayfalama
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [type, setType] = useState<TypeFilter>("normal"); // default: IFS gizli
+  const [includeInactive, setIncludeInactive] = useState(false); // → status
+  const [sortBy, setSortBy] = useState<PackageSortKey>("name");
+  const [order, setOrder] = useState<"asc" | "desc">("asc");
+  const [page, setPage] = useState(1);
+  const [reloadTick, setReloadTick] = useState(0);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
@@ -25,20 +51,64 @@ export default function AkademiAdminPackagesPage() {
     useState<AdminPackageListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Arama debounce (~300ms) → sayfayı sıfırla
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const loadPackages = useCallback(() => {
     setLoading(true);
-    fetch(
-      `/api/akademi/admin/packages${includeInactive ? "?includeInactive=true" : ""}`
-    )
-      .then((r) => (r.ok ? r.json() : { packages: [] }))
-      .then((data) => setPackages(data.packages ?? []))
-      .catch(() => setPackages([]))
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(PAGE_SIZE));
+    params.set("sortBy", sortBy);
+    params.set("order", order);
+    params.set("status", includeInactive ? "all" : "active");
+    params.set("type", type);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+
+    fetch(`/api/akademi/admin/packages?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : { items: [], total: 0, pageCount: 1 }))
+      .then((data) => {
+        setItems(data.items ?? []);
+        setTotal(data.total ?? 0);
+        setPageCount(data.pageCount ?? 1);
+      })
+      .catch(() => {
+        setItems([]);
+        setTotal(0);
+        setPageCount(1);
+      })
       .finally(() => setLoading(false));
-  }, [includeInactive]);
+  }, [page, sortBy, order, includeInactive, type, debouncedSearch, reloadTick]);
 
   useEffect(() => {
     loadPackages();
   }, [loadPackages]);
+
+  const reload = () => setReloadTick((t) => t + 1);
+
+  const onType = (v: TypeFilter) => {
+    setType(v);
+    setPage(1);
+  };
+  const onToggleInactive = (v: boolean) => {
+    setIncludeInactive(v);
+    setPage(1);
+  };
+  const onSort = (key: PackageSortKey) => {
+    if (sortBy === key) {
+      setOrder((o) => (o === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(key);
+      setOrder("asc");
+    }
+    setPage(1);
+  };
 
   const openCreate = () => {
     setModalMode("create");
@@ -54,7 +124,7 @@ export default function AkademiAdminPackagesPage() {
 
   const handleSaved = () => {
     setModalOpen(false);
-    loadPackages();
+    reload();
     toast.success(
       modalMode === "create" ? "Paket oluşturuldu" : "Paket güncellendi"
     );
@@ -68,7 +138,7 @@ export default function AkademiAdminPackagesPage() {
         body: JSON.stringify({ isActive: !pkg.isActive }),
       });
       if (!res.ok) throw new Error("update failed");
-      loadPackages();
+      reload();
       toast.success(
         pkg.isActive ? "Paket pasifleştirildi" : "Paket aktifleştirildi"
       );
@@ -81,13 +151,12 @@ export default function AkademiAdminPackagesPage() {
     if (!deletePackage) return;
     setDeleting(true);
     try {
-      const res = await fetch(
-        `/api/akademi/admin/packages/${deletePackage.id}`,
-        { method: "DELETE" }
-      );
+      const res = await fetch(`/api/akademi/admin/packages/${deletePackage.id}`, {
+        method: "DELETE",
+      });
       if (!res.ok) throw new Error("delete failed");
       setDeletePackage(null);
-      loadPackages();
+      reload();
       toast.success("Paket silindi");
     } catch {
       toast.error("Silinemedi");
@@ -96,19 +165,53 @@ export default function AkademiAdminPackagesPage() {
     }
   };
 
+  const fromN = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const toN = Math.min(page * PAGE_SIZE, total);
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <Switch
-            id="include-inactive"
-            checked={includeInactive}
-            onCheckedChange={setIncludeInactive}
-          />
-          <Label htmlFor="include-inactive" className="text-sm cursor-pointer">
-            Pasifleri de göster
-          </Label>
+      {/* Üst satır: arama + Tür + Pasifleri göster + Yeni Paket */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full sm:w-72">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Paket adı ara..."
+              className="pl-9"
+            />
+          </div>
+
+          <Select value={type} onValueChange={(v) => onType(v as TypeFilter)}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Tür" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="ifs">IFS</SelectItem>
+              <SelectItem value="all">Hepsi</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center gap-2">
+            <Switch
+              id="include-inactive"
+              checked={includeInactive}
+              onCheckedChange={onToggleInactive}
+            />
+            <Label
+              htmlFor="include-inactive"
+              className="text-sm cursor-pointer"
+            >
+              Pasifleri de göster
+            </Label>
+          </div>
         </div>
+
         <Button onClick={openCreate} size="sm">
           <Plus className="w-4 h-4 mr-1.5" />
           Yeni Paket
@@ -123,12 +226,48 @@ export default function AkademiAdminPackagesPage() {
           Yükleniyor...
         </div>
       ) : (
-        <AdminPackagesTable
-          packages={packages}
-          onEdit={openEdit}
-          onDelete={setDeletePackage}
-          onToggleActive={handleToggleActive}
-        />
+        <>
+          <AdminPackagesTable
+            packages={items}
+            onEdit={openEdit}
+            onDelete={setDeletePackage}
+            onToggleActive={handleToggleActive}
+            sort={{ sortBy, order, onSort }}
+          />
+
+          {total > 0 && (
+            <div className="flex items-center justify-between mt-4 text-sm">
+              <div style={{ color: "var(--ak-text-tertiary)" }}>
+                {fromN}–{toN} / toplam {total}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Önceki
+                </Button>
+                <span style={{ color: "var(--ak-text-secondary)" }}>
+                  Sayfa {page} / {pageCount}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  disabled={page >= pageCount}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                >
+                  Sonraki
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <AdminPackageFormModal

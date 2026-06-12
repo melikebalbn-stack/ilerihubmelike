@@ -178,6 +178,7 @@ export default function AkademiAdminPackageDetailPage({
           courseCount: pkg.courseCount,
           bolumCount: pkg.bolumCount,
           userAssignmentCount: pkg.userAssignmentCount,
+          referenceDocs: pkg.referenceDocs,
           createdAt: pkg.createdAt,
           updatedAt: pkg.updatedAt,
         }}

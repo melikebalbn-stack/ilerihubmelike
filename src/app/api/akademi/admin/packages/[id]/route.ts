@@ -5,6 +5,7 @@ import type {
   AdminPackageDetail,
   AdminPackageUpdateInput,
 } from "@/types/akademi-package";
+import { normalizeReferenceDocs } from "@/lib/akademi-package-docs";
 
 export async function GET(
   _req: NextRequest,
@@ -18,6 +19,7 @@ export async function GET(
   const pkg = await prisma.coursePackage.findUnique({
     where: { id },
     include: {
+      referenceDocs: { orderBy: { sortOrder: "asc" } },
       packageCourses: {
         orderBy: { order: "asc" },
         include: {
@@ -56,6 +58,12 @@ export async function GET(
     courseCount: pkg._count.packageCourses,
     bolumCount: pkg._count.departmentPackages,
     userAssignmentCount: pkg._count.userAssignments,
+    referenceDocs: pkg.referenceDocs.map((d) => ({
+      id: d.id,
+      title: d.title,
+      fileUrl: d.fileUrl,
+      sortOrder: d.sortOrder,
+    })),
     createdAt: pkg.createdAt.toISOString(),
     updatedAt: pkg.updatedAt.toISOString(),
     courses: pkg.packageCourses.map((pc) => ({
@@ -132,6 +140,16 @@ export async function PATCH(
     data.coverImageUrl = body.coverImageUrl?.trim() || null;
   }
   if (body.isActive !== undefined) data.isActive = body.isActive;
+
+  // referenceDocs verildiyse replace-all: eskileri sil, yeni listeyi sırayla ekle.
+  // undefined ise (örn. yalnız isActive toggle) dokümanlara dokunma.
+  if (body.referenceDocs !== undefined) {
+    const refDocs = normalizeReferenceDocs(body.referenceDocs);
+    data.referenceDocs = {
+      deleteMany: {},
+      create: refDocs,
+    };
+  }
 
   const updated = await prisma.coursePackage.update({ where: { id }, data });
 

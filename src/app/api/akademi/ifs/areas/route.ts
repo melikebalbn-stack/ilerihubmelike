@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   const pkg = await prisma.coursePackage.findFirst({
     where: { id: packageId, isActive: true, isIfs: true },
     include: {
+      referenceDocs: { orderBy: { sortOrder: "asc" } },
       packageCourses: {
         orderBy: { order: "asc" },
         include: {
@@ -68,5 +69,12 @@ export async function GET(req: NextRequest) {
       };
     });
 
-  return NextResponse.json({ departmentName, courses });
+  const referenceDocs = pkg.referenceDocs.map((d) => ({
+    id: d.id,
+    title: d.title,
+    fileUrl: d.fileUrl,
+    sortOrder: d.sortOrder,
+  }));
+
+  return NextResponse.json({ departmentName, courses, referenceDocs });
 }

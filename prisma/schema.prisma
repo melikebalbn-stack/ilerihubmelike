@@ -8848,8 +8848,25 @@ model CoursePackage {
   packageCourses     PackageCourse[]
   departmentPackages DepartmentPackage[]
   userAssignments    UserPackageAssignment[]
+  referenceDocs      PackageReferenceDoc[]
 
   @@map("course_packages")
+}
+
+// IFS paket detayında (Sv2 alan kartlarının üstünde) gösterilen paket-seviyesi
+// referans PDF'leri. sortOrder asc → 1. sıra en üstte. Yalnız PDF yüklenir.
+model PackageReferenceDoc {
+  id        String   @id @default(cuid())
+  packageId String
+  title     String
+  fileUrl   String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  package CoursePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId, sortOrder])
+  @@map("package_reference_docs")
 }
 
 model PackageCourse {

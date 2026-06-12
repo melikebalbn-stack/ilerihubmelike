@@ -1,3 +1,18 @@
+// Paket-seviyesi referans PDF (IFS paket detayında alan kartlarının üstünde gösterilir).
+export interface PackageReferenceDocItem {
+  id: string;
+  title: string;
+  fileUrl: string;
+  sortOrder: number;
+}
+
+// Form/payload'da gönderilen referans doküman (id yok — replace-all reconcile).
+export interface PackageReferenceDocInput {
+  title: string;
+  fileUrl: string;
+  sortOrder: number;
+}
+
 export interface AdminPackageListItem {
   id: string;
   name: string;
@@ -9,6 +24,7 @@ export interface AdminPackageListItem {
   courseCount: number;
   bolumCount: number;
   userAssignmentCount: number;
+  referenceDocs: PackageReferenceDocItem[];
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +59,7 @@ export interface AdminPackageCreateInput {
   iconColor?: string;
   coverImageUrl?: string | null;
   isActive?: boolean;
+  referenceDocs?: PackageReferenceDocInput[];
 }
 
 export interface AdminPackageUpdateInput {
@@ -51,6 +68,9 @@ export interface AdminPackageUpdateInput {
   iconColor?: string | null;
   coverImageUrl?: string | null;
   isActive?: boolean;
+  // Verildiğinde tüm referans dokümanlar bu liste ile değiştirilir (replace-all).
+  // undefined ise dokümanlara dokunulmaz (örn. yalnız isActive toggle).
+  referenceDocs?: PackageReferenceDocInput[];
 }
 
 export interface AdminPackageCoursesUpdateInput {
@@ -82,6 +102,7 @@ export interface PackageFormState {
   iconColor: string;
   coverImageUrl: string | null;
   isActive: boolean;
+  referenceDocs: PackageReferenceDocInput[];
 }
 
 export interface PackageCourseFormItem {

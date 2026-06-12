@@ -5,6 +5,7 @@ import type {
   AdminPackageCreateInput,
   AdminPackageListItem,
 } from "@/types/akademi-package";
+import { normalizeReferenceDocs } from "@/lib/akademi-package-docs";
 
 export async function GET(req: NextRequest) {
   const { error } = await requirePermission('akademi.kurs.edit');
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
   const packages = await prisma.coursePackage.findMany({
     where: includeInactive ? {} : { isActive: true },
     include: {
+      referenceDocs: { orderBy: { sortOrder: "asc" } },
       _count: {
         select: {
           packageCourses: true,
@@ -38,6 +40,12 @@ export async function GET(req: NextRequest) {
     courseCount: p._count.packageCourses,
     bolumCount: p._count.departmentPackages,
     userAssignmentCount: p._count.userAssignments,
+    referenceDocs: p.referenceDocs.map((d) => ({
+      id: d.id,
+      title: d.title,
+      fileUrl: d.fileUrl,
+      sortOrder: d.sortOrder,
+    })),
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   }));
@@ -67,6 +75,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const refDocs = normalizeReferenceDocs(body.referenceDocs);
+
   const created = await prisma.coursePackage.create({
     data: {
       name: body.name.trim(),
@@ -74,6 +84,7 @@ export async function POST(req: NextRequest) {
       iconColor: body.iconColor?.trim() || null,
       coverImageUrl: body.coverImageUrl?.trim() || null,
       isActive: body.isActive ?? true,
+      referenceDocs: refDocs.length ? { create: refDocs } : undefined,
     },
   });
 

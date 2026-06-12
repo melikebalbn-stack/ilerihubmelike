@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Users,
   Settings2,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { CourseCard } from "@/components/akademi/courses/CourseCard";
@@ -30,6 +31,14 @@ interface Department {
   displayName: string;
   courseCount: number;
   coverImageUrl: string | null;
+}
+
+// Paket-seviyesi referans PDF (alan kartlarının üstünde gösterilir).
+interface ReferenceDoc {
+  id: string;
+  title: string;
+  fileUrl: string;
+  sortOrder: number;
 }
 
 // Departman adına göre tematik ikon (bilinen anahtarlar + deterministik fallback —
@@ -62,6 +71,7 @@ export default function AkademiIfsPage() {
   const [loadingDepts, setLoadingDepts] = useState(true);
   const [selected, setSelected] = useState<Department | null>(null);
   const [areas, setAreas] = useState<CourseListItem[]>([]);
+  const [refDocs, setRefDocs] = useState<ReferenceDoc[]>([]);
   const [loadingAreas, setLoadingAreas] = useState(false);
 
   useEffect(() => {
@@ -75,15 +85,22 @@ export default function AkademiIfsPage() {
   const loadAreas = useCallback((pkgId: string) => {
     setLoadingAreas(true);
     fetch(`/api/akademi/ifs/areas?packageId=${encodeURIComponent(pkgId)}`)
-      .then((r) => (r.ok ? r.json() : { courses: [] }))
-      .then((d) => setAreas(d.courses ?? []))
-      .catch(() => setAreas([]))
+      .then((r) => (r.ok ? r.json() : { courses: [], referenceDocs: [] }))
+      .then((d) => {
+        setAreas(d.courses ?? []);
+        setRefDocs(d.referenceDocs ?? []);
+      })
+      .catch(() => {
+        setAreas([]);
+        setRefDocs([]);
+      })
       .finally(() => setLoadingAreas(false));
   }, []);
 
   const openDept = (d: Department) => {
     setSelected(d);
     setAreas([]);
+    setRefDocs([]);
     loadAreas(d.packageId);
   };
 
@@ -214,6 +231,52 @@ export default function AkademiIfsPage() {
       ) : (
         // ── Sv2: Alanlar (CourseCard reuse → Sv3 courses/[id]) ──
         <>
+          {/* Referans doküman bloğu — alan kartlarının ÜSTÜNDE (sortOrder asc).
+              Doküman yoksa hiç render edilmez (boş kutu çıkmaz). */}
+          {refDocs.length > 0 && (
+            <div className="mb-6">
+              <div
+                className="flex items-center gap-2 mb-3 text-sm font-semibold"
+                style={{ color: "var(--ak-text-secondary)" }}
+              >
+                <FileText className="w-4 h-4" style={{ color: "#1B4F72" }} />
+                Referans Dokümanlar
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {refDocs.map((doc) => (
+                  <a
+                    key={doc.id}
+                    href={doc.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ak-card flex items-center gap-3 p-4 transition-transform hover:-translate-y-0.5"
+                  >
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: "rgba(27,79,114,0.10)" }}
+                    >
+                      <FileText className="w-5 h-5" style={{ color: "#1B4F72" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <div
+                        className="text-sm font-semibold line-clamp-2"
+                        style={{ color: "var(--ak-text-primary)" }}
+                      >
+                        {doc.title}
+                      </div>
+                      <div
+                        className="text-xs mt-0.5"
+                        style={{ color: "var(--ak-text-secondary)" }}
+                      >
+                        PDF · Yeni sekmede aç
+                      </div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {loadingAreas ? (
             <div
               className="text-center py-12 text-sm"

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { FileText, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -50,9 +51,11 @@ export function AdminPackageFormModal({
     iconColor: "",
     coverImageUrl: null,
     isActive: true,
+    referenceDocs: [],
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -63,6 +66,14 @@ export function AdminPackageFormModal({
           iconColor: existing.iconColor ?? "",
           coverImageUrl: existing.coverImageUrl ?? null,
           isActive: existing.isActive,
+          referenceDocs: (existing.referenceDocs ?? [])
+            .slice()
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((d, i) => ({
+              title: d.title,
+              fileUrl: d.fileUrl,
+              sortOrder: i,
+            })),
         });
       } else {
         setForm({
@@ -71,10 +82,73 @@ export function AdminPackageFormModal({
           iconColor: "",
           coverImageUrl: null,
           isActive: true,
+          referenceDocs: [],
         });
       }
     }
   }, [open, mode, existing]);
+
+  const handleRefDocUpload = async (file: File) => {
+    setUploadingDoc(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/akademi/admin/packages/upload-ref-doc", {
+        method: "POST",
+        body: fd,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "PDF yüklenemedi");
+      const defaultTitle = file.name.replace(/\.pdf$/i, "");
+      setForm((f) => ({
+        ...f,
+        referenceDocs: [
+          ...f.referenceDocs,
+          {
+            title: defaultTitle || "Referans Doküman",
+            fileUrl: json.fileUrl,
+            sortOrder: f.referenceDocs.length,
+          },
+        ],
+      }));
+      toast.success("PDF yüklendi");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "PDF yüklenemedi");
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const updateDocTitle = (index: number, title: string) => {
+    setForm((f) => ({
+      ...f,
+      referenceDocs: f.referenceDocs.map((d, i) =>
+        i === index ? { ...d, title } : d
+      ),
+    }));
+  };
+
+  const removeDoc = (index: number) => {
+    setForm((f) => ({
+      ...f,
+      referenceDocs: f.referenceDocs
+        .filter((_, i) => i !== index)
+        .map((d, i) => ({ ...d, sortOrder: i })),
+    }));
+  };
+
+  const moveDoc = (index: number, dir: -1 | 1) => {
+    setForm((f) => {
+      const next = f.referenceDocs.slice();
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return f;
+      [next[index], next[target]] = [next[target], next[index]];
+      return {
+        ...f,
+        referenceDocs: next.map((d, i) => ({ ...d, sortOrder: i })),
+      };
+    });
+  };
 
   const handleCoverUpload = async (file: File) => {
     setUploading(true);
@@ -119,6 +193,13 @@ export function AdminPackageFormModal({
           iconColor: form.iconColor || null,
           coverImageUrl: form.coverImageUrl,
           isActive: form.isActive,
+          referenceDocs: form.referenceDocs
+            .map((d, i) => ({
+              title: d.title.trim(),
+              fileUrl: d.fileUrl,
+              sortOrder: i,
+            }))
+            .filter((d) => d.title.length > 0),
         }),
       });
 
@@ -252,6 +333,94 @@ export function AdminPackageFormModal({
                 )}
               </div>
             </div>
+          </div>
+
+          <div>
+            <Label>Referans Dokümanlar (PDF)</Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              IFS paket detayında, alan kartlarının üstünde gösterilir. Sıra
+              yukarıdan aşağıya. Yalnız PDF, max 20MB.
+            </p>
+
+            {form.referenceDocs.length > 0 && (
+              <div className="mt-2 space-y-2">
+                {form.referenceDocs.map((doc, i) => (
+                  <div
+                    key={doc.fileUrl}
+                    className="flex items-center gap-2 rounded-md border p-2"
+                    style={{ background: "var(--ak-surface-2)" }}
+                  >
+                    <div className="flex flex-col">
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-30 leading-none"
+                        disabled={i === 0}
+                        onClick={() => moveDoc(i, -1)}
+                        aria-label="Yukarı taşı"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-30 leading-none"
+                        disabled={i === form.referenceDocs.length - 1}
+                        onClick={() => moveDoc(i, 1)}
+                        aria-label="Aşağı taşı"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
+                    <Input
+                      value={doc.title}
+                      onChange={(e) => updateDocTitle(i, e.target.value)}
+                      placeholder="Doküman başlığı"
+                      className="h-8 flex-1"
+                    />
+                    <a
+                      href={doc.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs underline text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      Önizle
+                    </a>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-destructive shrink-0"
+                      onClick={() => removeDoc(i)}
+                      aria-label="Kaldır"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <input
+              id="pkg-ref-doc"
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleRefDocUpload(f);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              disabled={uploadingDoc}
+              onClick={() => document.getElementById("pkg-ref-doc")?.click()}
+            >
+              {uploadingDoc ? "Yükleniyor..." : "PDF Ekle"}
+            </Button>
           </div>
 
           <div className="flex items-center gap-2">

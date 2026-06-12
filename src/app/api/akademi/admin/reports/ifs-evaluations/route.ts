@@ -4,6 +4,17 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { getUsersByBolum, resolveUserBolum } from "@/lib/user-personnel";
+import { recomputeCourseProgress } from "@/lib/akademi/course-progress";
+import { logAuditEvent } from "@/lib/audit-log";
+
+// IFS canlı değerlendirme yazma yetkisi (PR-2): OR — yeni izin, mevcut
+// grade.manual (geri uyum) veya tam admin. grade.manual ileride OR'dan çıkarılıp
+// daraltılabilir.
+const IFS_EVAL_WRITE = [
+  "akademi.ifs.evaluate",
+  "akademi.grade.manual",
+  "akademi.admin",
+];
 
 // IFS-5a: Görev değerlendirme matrisi — READ (read-only).
 // Param: bolum (zorunlu) + courseId (IFS kursu/alanı) [+ opsiyonel userId].
@@ -38,7 +49,8 @@ export async function GET(req: NextRequest) {
   const perms = await getUserPermissions(callerId);
   const fullScope = perms.has("akademi.admin");
   // IFS-5b: eğitmen düzenleme yetkisi (UI editable vs read-only).
-  const canEdit = perms.has("akademi.grade.manual");
+  // PR-2: yazma OR setiyle hizalı (yeni izin / grade.manual / admin).
+  const canEdit = IFS_EVAL_WRITE.some((p) => perms.has(p));
   if (!fullScope) {
     const ownBolum = await resolveUserBolum(callerId);
     if (!ownBolum || ownBolum !== bolum) {
@@ -163,13 +175,25 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// IFS-5b: Eğitmen/danışman değerlendirmesi kaydet (upsert).
-// requirePermission(akademi.grade.manual). YALNIZ egitimVerildi/uygulamaliYapildi/
-// projeEkibiYorum/danismanYorum. ornekYapildi'ya ve ContentProgress'e DOKUNMAZ
-// (kullanıcı-driven tamamlanma etkilenmez).
+// IFS-5b + PR-2: Eğitmen/danışman değerlendirmesi kaydet (upsert).
+// Yetki: OR(akademi.ifs.evaluate, akademi.grade.manual, akademi.admin).
+// egitimVerildi/uygulamaliYapildi/projeEkibiYorum/danismanYorum (IFS-5b) +
+// PR-2: ornekStatus (BASARILI|TEKRAR_GEREKLI|PENDING) + degerlendiren iz.
+// ornekYapildi'ya ve ContentProgress'e DOKUNMAZ (kursiyer self-mark'ı ayrı).
+// Yazımdan sonra recomputeCourseProgress → IFS % (BASARILI oranı) güncellenir.
+const ORNEK_STATUS_VALUES = ["PENDING", "BASARILI", "TEKRAR_GEREKLI"] as const;
+type OrnekStatusValue = (typeof ORNEK_STATUS_VALUES)[number];
+
 export async function PATCH(req: NextRequest) {
-  const { error } = await requirePermission("akademi.grade.manual");
+  const { session, error } = await requirePermission(IFS_EVAL_WRITE);
   if (error) return error;
+  const actorId = await resolveAkademiUserId(session);
+  if (!actorId) {
+    return NextResponse.json(
+      { error: "Kullanıcı çözümlenemedi" },
+      { status: 401 }
+    );
+  }
 
   let body: {
     userId?: string;
@@ -178,6 +202,7 @@ export async function PATCH(req: NextRequest) {
     uygulamaliYapildi?: unknown;
     projeEkibiYorum?: unknown;
     danismanYorum?: unknown;
+    ornekStatus?: unknown;
   };
   try {
     body = await req.json();
@@ -194,10 +219,10 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  // İçerik gerçekten bir GOREV mi?
+  // İçerik gerçekten bir GOREV mi? courseId recompute için gerekli.
   const content = await prisma.content.findFirst({
     where: { id: contentId, type: "GOREV" },
-    select: { id: true },
+    select: { id: true, courseId: true },
   });
   if (!content) {
     return NextResponse.json(
@@ -211,6 +236,9 @@ export async function PATCH(req: NextRequest) {
     uygulamaliYapildi?: boolean;
     projeEkibiYorum?: string | null;
     danismanYorum?: string | null;
+    ornekStatus?: OrnekStatusValue;
+    degerlendirenId?: string;
+    degerlendirildiAt?: Date;
   } = {};
   if (typeof body.egitimVerildi === "boolean")
     data.egitimVerildi = body.egitimVerildi;
@@ -227,6 +255,22 @@ export async function PATCH(req: NextRequest) {
         ? body.danismanYorum.trim() || null
         : null;
 
+  // PR-2: eğitmen statüsü + iz. Yalnız geçerli enum kabul edilir.
+  if (body.ornekStatus !== undefined) {
+    if (
+      typeof body.ornekStatus !== "string" ||
+      !ORNEK_STATUS_VALUES.includes(body.ornekStatus as OrnekStatusValue)
+    ) {
+      return NextResponse.json(
+        { error: "Geçersiz ornekStatus" },
+        { status: 400 }
+      );
+    }
+    data.ornekStatus = body.ornekStatus as OrnekStatusValue;
+    data.degerlendirenId = actorId;
+    data.degerlendirildiAt = new Date();
+  }
+
   if (Object.keys(data).length === 0) {
     return NextResponse.json(
       { error: "Güncellenecek alan yok" },
@@ -234,12 +278,32 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  // ornekYapildi create'te default false; hiçbir yerde set edilmez.
-  await prisma.ifsTaskEvaluation.upsert({
-    where: { userId_contentId: { userId, contentId } },
-    create: { userId, contentId, ...data },
-    update: data,
+  // Yazma + audit atomik (tx). ornekYapildi create'te default false; set edilmez.
+  await prisma.$transaction(async (tx) => {
+    await tx.ifsTaskEvaluation.upsert({
+      where: { userId_contentId: { userId, contentId } },
+      create: { userId, contentId, ...data },
+      update: data,
+    });
+    await logAuditEvent({
+      action: "IFS_TASK_EVALUATION_UPSERTED",
+      actorId,
+      targetType: "IFS_TASK_EVALUATION",
+      targetId: contentId,
+      details: {
+        userId,
+        contentId,
+        courseId: content.courseId,
+        ...data,
+        degerlendirildiAt: data.degerlendirildiAt?.toISOString(),
+      },
+      tx,
+    });
   });
+
+  // Yazımdan sonra ilerleme yeniden hesaplanır (IFS'te % = BASARILI oranı; normal
+  // kursta mevcut değeri korur).
+  await recomputeCourseProgress(userId, content.courseId);
 
   return NextResponse.json({ success: true });
 }

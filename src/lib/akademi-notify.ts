@@ -235,3 +235,77 @@ export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
     );
   }
 }
+
+/**
+ * Paket ataması bildirimi — ALICI YALNIZ KULLANICI (müdür/İK fan-out YOK).
+ * Paket seviyesinde TEK in-app + TEK mail. Best-effort: in-app/mail hatası
+ * yutulur (atama ve diğer kullanıcılar etkilenmez).
+ */
+export async function notifyPackageAssigned(
+  userId: string,
+  pkg: { packageName: string; courseCount: number; link?: string }
+): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true },
+  });
+  if (!user) return;
+  const name = nn(user.name, user.email);
+  const link = pkg.link ?? "/akademi";
+
+  // 1) In-app (yalnız kullanıcı)
+  try {
+    await prisma.akademiNotification.create({
+      data: {
+        userId,
+        type: "PACKAGE_ASSIGNED",
+        title: "Yeni eğitim paketi atandı",
+        message: `${pkg.packageName} (${pkg.courseCount} kurs) eğitim paketi size atandı.`,
+        link,
+      },
+    });
+  } catch (err) {
+    console.error(`[akademi-notify] package in-app failed for ${userId}:`, err);
+  }
+
+  // 2) Mail — yalnız kullanıcı
+  if (user.email) {
+    const content = templates.packageAssignedEmail({
+      userName: name,
+      packageName: pkg.packageName,
+      courseCount: pkg.courseCount,
+      link,
+    });
+    try {
+      await sendEmail(
+        [{ email: user.email, name }],
+        content.subject,
+        content.text,
+        content.html
+      );
+    } catch (err) {
+      console.error(
+        `[akademi-notify] package mail to ${user.email} failed:`,
+        err
+      );
+    }
+  }
+}
+
+/**
+ * Paket ataması bildirimini kullanıcı kümesine küçük eşzamanlılıkla (5'erli)
+ * best-effort gönderir. Endpoint bunu AWAIT ETMEMELİ (fire-and-forget) — büyük
+ * bölümlerde HTTP yanıtını kilitlememek için. Promise.allSettled ile asla
+ * reject etmez.
+ */
+export async function notifyPackageAssignedBatch(
+  userIds: string[],
+  pkg: { packageName: string; courseCount: number; link?: string }
+): Promise<void> {
+  const BATCH = 5;
+  for (let i = 0; i < userIds.length; i += BATCH) {
+    await Promise.allSettled(
+      userIds.slice(i, i + BATCH).map((uid) => notifyPackageAssigned(uid, pkg))
+    );
+  }
+}

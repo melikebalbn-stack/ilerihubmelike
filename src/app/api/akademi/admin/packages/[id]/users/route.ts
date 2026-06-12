@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import { materializePackage } from "@/lib/akademi-package-materialize";
+import { notifyPackageAssignedBatch } from "@/lib/akademi-notify";
 import type { AdminPackageUsersAddInput } from "@/types/akademi-package";
 
 export async function POST(
@@ -35,14 +36,33 @@ export async function POST(
   });
   const validIds = new Set(validUsers.map((u) => u.id));
 
+  const requested = body.userIds.filter((uid) => validIds.has(uid));
+
+  // İstek ÖNCESİ zaten direct atanmış kullanıcılar (idempotency: yalnız bu
+  // istekte gerçekten yeni atananlara bildirim gider).
+  const priorDirect = await prisma.userPackageAssignment.findMany({
+    where: { packageId: id, userId: { in: requested } },
+    select: { userId: true },
+  });
+  const priorSet = new Set(priorDirect.map((p) => p.userId));
+
   const created = await prisma.userPackageAssignment.createMany({
-    data: body.userIds
-      .filter((uid) => validIds.has(uid))
-      .map((userId) => ({ userId, packageId: id })),
+    data: requested.map((userId) => ({ userId, packageId: id })),
     skipDuplicates: true,
   });
 
   const materializeResult = await materializePackage(id);
+
+  // Bildirim — yalnız bu istekte YENİ atanan kullanıcılar (alıcı=user, batch,
+  // fire-and-forget: HTTP yanıtını kilitleme).
+  const newUserIds = requested.filter((uid) => !priorSet.has(uid));
+  if (newUserIds.length > 0) {
+    void notifyPackageAssignedBatch(newUserIds, {
+      packageName: pkg.name,
+      courseCount: materializeResult.courseCount,
+      link: "/akademi",
+    }).catch(() => {});
+  }
 
   return NextResponse.json({
     success: true,

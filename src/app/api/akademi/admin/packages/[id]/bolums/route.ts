@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import { materializePackage } from "@/lib/akademi-package-materialize";
+import { notifyPackageAssignedBatch } from "@/lib/akademi-notify";
 import type { AdminPackageBolumsUpdateInput } from "@/types/akademi-package";
 
 export async function PUT(
@@ -47,6 +48,14 @@ export async function PUT(
     dueDate = parsed;
   }
 
+  // Değişiklik ÖNCESİ atanmış bölümler (idempotency: yalnız YENİ eklenen
+  // bölümlerin kullanıcılarına bildirim gider; aynı set tekrar yazılırsa hiç).
+  const oldBolumRows = await prisma.departmentPackage.findMany({
+    where: { packageId: id },
+    select: { bolum: true },
+  });
+  const oldBolums = new Set(oldBolumRows.map((r) => r.bolum));
+
   await prisma.$transaction([
     prisma.departmentPackage.deleteMany({ where: { packageId: id } }),
     prisma.departmentPackage.createMany({
@@ -57,6 +66,31 @@ export async function PUT(
   // dueDate, materialize sırasında UserCourseAssignment'lara propagate olur
   // (PR-1 kuralı: yeni atama → dueDate; mevcut → yalnız sıkılaştırma).
   const materializeResult = await materializePackage(id);
+
+  // Bildirim — pakete YENİ kavuşan bölüm kullanıcıları (yeni eklenen bölümler;
+  // direct atanmışlar hariç → mükerrer bildirim yok). Alıcı=user, batch, F&F.
+  const newBolums = cleanBolums.filter((b) => !oldBolums.has(b));
+  if (newBolums.length > 0) {
+    const bolumUsers = await prisma.user.findMany({
+      where: { isActive: true, personnel: { bolum: { in: newBolums } } },
+      select: { id: true },
+    });
+    const directRows = await prisma.userPackageAssignment.findMany({
+      where: { packageId: id },
+      select: { userId: true },
+    });
+    const directSet = new Set(directRows.map((d) => d.userId));
+    const newUserIds = bolumUsers
+      .map((u) => u.id)
+      .filter((uid) => !directSet.has(uid));
+    if (newUserIds.length > 0) {
+      void notifyPackageAssignedBatch(newUserIds, {
+        packageName: pkg.name,
+        courseCount: materializeResult.courseCount,
+        link: "/akademi",
+      }).catch(() => {});
+    }
+  }
 
   return NextResponse.json({
     success: true,

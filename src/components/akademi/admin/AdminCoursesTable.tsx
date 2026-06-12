@@ -1,15 +1,31 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, BookOpen } from "lucide-react";
+import { Pencil, Trash2, BookOpen, ChevronUp, ChevronDown } from "lucide-react";
 import type { AdminCourseListItem } from "@/types/akademi-admin";
 import { getDifficultyLabel, formatDuration } from "@/lib/akademi-helpers";
+
+export type CourseSortKey =
+  | "title"
+  | "category"
+  | "difficulty"
+  | "duration"
+  | "content"
+  | "assignment"
+  | "status";
 
 interface Props {
   courses: AdminCourseListItem[];
   onEdit: (course: AdminCourseListItem) => void;
   onDelete: (course: AdminCourseListItem) => void;
   onToggleActive: (course: AdminCourseListItem) => void;
+  // PR-1: opsiyonel sıralama. Verilmezse başlıklar düz metin (ör. IFS eğitim
+  // sekmesi bu prop'u geçmez → davranış değişmez).
+  sort?: {
+    sortBy: CourseSortKey;
+    order: "asc" | "desc";
+    onSort: (key: CourseSortKey) => void;
+  };
 }
 
 export function AdminCoursesTable({
@@ -17,8 +33,47 @@ export function AdminCoursesTable({
   onEdit,
   onDelete,
   onToggleActive,
+  sort,
 }: Props) {
   const router = useRouter();
+
+  function Th({
+    label,
+    sortKey,
+    className = "",
+    align = "left",
+  }: {
+    label: string;
+    sortKey?: CourseSortKey;
+    className?: string;
+    align?: "left" | "right";
+  }) {
+    const base = `px-4 py-3 font-semibold ${
+      align === "right" ? "text-right" : "text-left"
+    } ${className}`;
+    if (!sort || !sortKey) {
+      return <th className={base}>{label}</th>;
+    }
+    const active = sort.sortBy === sortKey;
+    return (
+      <th className={base}>
+        <button
+          type="button"
+          onClick={() => sort.onSort(sortKey)}
+          className="inline-flex items-center gap-1 uppercase tracking-wide hover:opacity-80"
+          style={active ? { color: "var(--ak-text-secondary)" } : undefined}
+        >
+          {label}
+          {active &&
+            (sort.order === "asc" ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ))}
+        </button>
+      </th>
+    );
+  }
 
   if (courses.length === 0) {
     return (
@@ -43,24 +98,34 @@ export function AdminCoursesTable({
                 borderBottom: "1px solid var(--ak-border-divider)",
               }}
             >
-              <th className="text-left px-4 py-3 font-semibold">Kurs</th>
-              <th className="text-left px-4 py-3 font-semibold hidden md:table-cell">
-                Kategori
-              </th>
-              <th className="text-left px-4 py-3 font-semibold hidden lg:table-cell">
-                Zorluk
-              </th>
-              <th className="text-left px-4 py-3 font-semibold hidden lg:table-cell">
-                Süre
-              </th>
-              <th className="text-left px-4 py-3 font-semibold hidden md:table-cell">
-                İçerik
-              </th>
-              <th className="text-left px-4 py-3 font-semibold hidden md:table-cell">
-                Atama
-              </th>
-              <th className="text-left px-4 py-3 font-semibold">Durum</th>
-              <th className="text-right px-4 py-3 font-semibold">İşlem</th>
+              <Th label="Kurs" sortKey="title" />
+              <Th
+                label="Kategori"
+                sortKey="category"
+                className="hidden md:table-cell"
+              />
+              <Th
+                label="Zorluk"
+                sortKey="difficulty"
+                className="hidden lg:table-cell"
+              />
+              <Th
+                label="Süre"
+                sortKey="duration"
+                className="hidden lg:table-cell"
+              />
+              <Th
+                label="İçerik"
+                sortKey="content"
+                className="hidden md:table-cell"
+              />
+              <Th
+                label="Atama"
+                sortKey="assignment"
+                className="hidden md:table-cell"
+              />
+              <Th label="Durum" sortKey="status" />
+              <Th label="İşlem" align="right" />
             </tr>
           </thead>
           <tbody>

@@ -21,6 +21,7 @@ export const PERMISSION_KEYS = {
   AKADEMI_REPORT_VIEW: 'akademi.report.view',
   AKADEMI_CERT_MANAGE: 'akademi.cert.manage',
   AKADEMI_GRADE_MANUAL: 'akademi.grade.manual',
+  AKADEMI_IFS_EVALUATE: 'akademi.ifs.evaluate',
 
   // === ARŞİV ===
   // Y14: Arşiv modülü RBAC kapsam dışı — departman-bazlı resource-level
@@ -131,6 +132,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'akademi.report.view': 'Akademi raporları',
   'akademi.cert.manage': 'Sertifika yönetimi',
   'akademi.grade.manual': 'Manuel notlandırma (açık uçlu sorular)',
+  'akademi.ifs.evaluate': 'IFS canlı değerlendirme',
 
   'arsiv.view': 'Arşiv görüntüleme',
 

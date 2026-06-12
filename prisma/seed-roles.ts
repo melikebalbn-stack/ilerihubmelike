@@ -129,7 +129,17 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
       P.AKADEMI_ADMIN, P.AKADEMI_VIEW,
       P.AKADEMI_KURS_CREATE, P.AKADEMI_KURS_EDIT, P.AKADEMI_KURS_DELETE,
       P.AKADEMI_REPORT_VIEW, P.AKADEMI_CERT_MANAGE, P.AKADEMI_GRADE_MANUAL,
+      P.AKADEMI_IFS_EVALUATE,
       P.CALISAN_REHBERI_VIEW,
+    ],
+  },
+  {
+    slug: 'ifs-egitmeni',
+    name: 'IFS Eğitmeni',
+    description: 'IFS canlı değerlendirme: görev/ders değerlendirmesi (read raporu + değerlendirme).',
+    isProtected: false,
+    permissions: [
+      P.AKADEMI_VIEW, P.AKADEMI_REPORT_VIEW, P.AKADEMI_IFS_EVALUATE,
     ],
   },
   {

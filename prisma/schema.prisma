@@ -172,6 +172,7 @@ model User {
   examAnswersGraded    UserExamAnswer[]     @relation("UserExamAnswerGradedBy")
   akademiCertificates  AkademiCertificate[]
   ifsTaskEvaluations   IfsTaskEvaluation[]
+  ifsCourseEvaluations IfsCourseEvaluation[]
   userAchievements     UserAchievement[]
   userBadges           UserBadge[]
   userXp               UserXp[]
@@ -8755,6 +8756,7 @@ model Course {
   progress          CourseProgress[]
   exams             Exam[]
   certificates      AkademiCertificate[]
+  ifsCourseEvaluations IfsCourseEvaluation[]
 
   @@map("courses")
 }
@@ -8815,16 +8817,27 @@ model IfsTaskMeta {
 // IFS-1: Kullanıcı başına görev değerlendirmesi (3 durum + 2 yorum). Tamamlanma
 // doğruluk kaynağı ContentProgress'tir; ornekYapildi onu sürmek için davranış
 // katmanında (IFS-4) kullanılacak — bu PR yalnız şema.
+// IFS canlı değerlendirme (PR-1): eğitmenin per-örnek kararı.
+enum OrnekStatus {
+  PENDING
+  BASARILI
+  TEKRAR_GEREKLI
+}
+
 model IfsTaskEvaluation {
-  id                String   @id @default(cuid())
+  id                String      @id @default(cuid())
   contentId         String
   userId            String
-  egitimVerildi     Boolean  @default(false)
-  uygulamaliYapildi Boolean  @default(false)
-  ornekYapildi      Boolean  @default(false)
-  projeEkibiYorum   String?  @db.Text
-  danismanYorum     String?  @db.Text
-  updatedAt         DateTime @updatedAt
+  egitimVerildi     Boolean     @default(false)
+  uygulamaliYapildi Boolean     @default(false)
+  ornekYapildi      Boolean     @default(false)
+  projeEkibiYorum   String?     @db.Text
+  danismanYorum     String?     @db.Text
+  // IFS canlı değerlendirme (PR-1): eğitmen kararı + iz. Davranış sonraki PR'da.
+  ornekStatus       OrnekStatus @default(PENDING)
+  degerlendirenId   String?
+  degerlendirildiAt DateTime?
+  updatedAt         DateTime    @updatedAt
 
   content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id])
@@ -8832,6 +8845,30 @@ model IfsTaskEvaluation {
   @@unique([userId, contentId])
   @@index([contentId])
   @@map("ifs_task_evaluations")
+}
+
+// IFS canlı değerlendirme (PR-1): eğitmenin per-ders (userId × courseId) seviye+notu.
+enum IfsCourseSeviye {
+  BASARILI
+  EGITIM_GEREKLI
+  BASARISIZ
+}
+
+model IfsCourseEvaluation {
+  id              String           @id @default(cuid())
+  userId          String
+  courseId        String
+  seviye          IfsCourseSeviye?
+  not             String?          @db.Text
+  degerlendirenId String?
+  updatedAt       DateTime         @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+  @@map("ifs_course_evaluations")
 }
 
 model CoursePackage {

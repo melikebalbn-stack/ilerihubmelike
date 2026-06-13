@@ -10,6 +10,7 @@ import { CertificatesReportTab } from "./_tabs/certificates-report";
 import { DepartmentsReportTab } from "./_tabs/departments-report";
 import { DepartmentBoardTab } from "./_tabs/department-board";
 import { IfsEvaluationsTab } from "./_tabs/ifs-evaluations";
+import { IfsEvaluationReportTab } from "./_tabs/ifs-evaluation-report";
 
 const TABS = [
   { id: "users", label: "Kullanıcılar" },
@@ -19,10 +20,11 @@ const TABS = [
   { id: "departments", label: "Bölümler" },
   { id: "department-board", label: "Departman Panosu" },
   { id: "ifs-evaluations", label: "Görev Değerlendirme" },
+  { id: "ifs-report", label: "IFS Değerlendirme Raporu" },
 ] as const;
 
 // Excel export'u olmayan (özel) sekmeler
-const NO_EXPORT_TABS = ["department-board", "ifs-evaluations"];
+const NO_EXPORT_TABS = ["department-board", "ifs-evaluations", "ifs-report"];
 
 type TabId = (typeof TABS)[number]["id"];
 
@@ -73,6 +75,7 @@ export default function ReportsPage() {
         {activeTab === "departments" && <DepartmentsReportTab />}
         {activeTab === "department-board" && <DepartmentBoardTab />}
         {activeTab === "ifs-evaluations" && <IfsEvaluationsTab />}
+        {activeTab === "ifs-report" && <IfsEvaluationReportTab />}
       </div>
     </div>
   );

@@ -9,7 +9,33 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { ProgressBar } from "@/components/akademi/shared/ProgressBar";
+
+const ILERI_NAVY = "#1B4F72";
+
+type OrnekStatus = "PENDING" | "BASARILI" | "TEKRAR_GEREKLI";
+type CourseSeviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ";
+
+const ORNEK_STATUS_LABEL: Record<OrnekStatus, string> = {
+  PENDING: "Bekliyor",
+  BASARILI: "Başarılı",
+  TEKRAR_GEREKLI: "Tekrar Gerekli",
+};
+const SEVIYE_LABEL: Record<CourseSeviye, string> = {
+  BASARILI: "Başarılı",
+  EGITIM_GEREKLI: "Eğitime İhtiyacı Var",
+  BASARISIZ: "Başarısız",
+};
 
 interface BoardMeta {
   scope: "full" | "own";
@@ -39,13 +65,19 @@ interface EvalCell {
   egitimVerildi: boolean;
   uygulamaliYapildi: boolean;
   ornekYapildi: boolean;
+  ornekStatus: OrnekStatus;
   projeEkibiYorum: string | null;
   danismanYorum: string | null;
+}
+interface CourseEvaluation {
+  seviye: CourseSeviye | null;
+  not: string | null;
 }
 interface MatrixData {
   tasks: TaskRow[];
   users: UserRow[];
   evaluations: Record<string, EvalCell> | null;
+  courseEvaluation: CourseEvaluation | null;
   userId: string | null;
   canEdit: boolean;
 }
@@ -132,28 +164,35 @@ export function IfsEvaluationsTab() {
         egitimVerildi: false,
         uygulamaliYapildi: false,
         ornekYapildi: false,
+        ornekStatus: "PENDING",
         projeEkibiYorum: null,
         danismanYorum: null,
       };
       return { ...prev, [contentId]: { ...base, ...patch } };
     });
 
-  const patchCell = async (contentId: string, patch: Partial<EvalCell>) => {
+  // refetch=true → yazma sonrası matrisi yeniden çek (ör. ornekStatus değişince
+  // kullanıcının ilerleme %'si recompute ile güncellenir).
+  const patchCell = async (
+    contentId: string,
+    patch: Partial<EvalCell>,
+    opts?: { refetch?: boolean; successMsg?: string }
+  ) => {
     if (!selectedUser) return;
     try {
-      const res = await fetch(
-        "/api/akademi/admin/reports/ifs-evaluations",
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: selectedUser, contentId, ...patch }),
-        }
-      );
+      const res = await fetch("/api/akademi/admin/reports/ifs-evaluations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: selectedUser, contentId, ...patch }),
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         toast.error(err.error || "Kaydedilemedi");
         load();
+        return;
       }
+      if (opts?.successMsg) toast.success(opts.successMsg);
+      if (opts?.refetch) load();
     } catch {
       toast.error("Kaydedilemedi");
       load();
@@ -165,8 +204,63 @@ export function IfsEvaluationsTab() {
     patchCell(contentId, patch);
   };
 
+  // PR-3: per-örnek eğitmen statüsü (Başarılı / Tekrar Gerekli / Bekliyor).
+  // Yazımdan sonra ilerleme değişir → refetch.
+  const setStatus = (contentId: string, status: OrnekStatus) => {
+    setLocal(contentId, { ornekStatus: status });
+    patchCell(
+      contentId,
+      { ornekStatus: status },
+      { refetch: true, successMsg: "Statü kaydedildi" }
+    );
+  };
+
+  // PR-3: per-ders eğitmen değerlendirmesi (seviye + not).
+  const [courseEval, setCourseEval] = useState<CourseEvaluation>({
+    seviye: null,
+    not: null,
+  });
+  useEffect(() => {
+    setCourseEval(
+      data?.courseEvaluation ?? { seviye: null, not: null }
+    );
+  }, [data]);
+
+  const saveCourseEval = async (patch: Partial<CourseEvaluation>) => {
+    if (!selectedUser || !courseId) return;
+    const next = { ...courseEval, ...patch };
+    setCourseEval(next);
+    try {
+      const res = await fetch(
+        "/api/akademi/admin/reports/ifs-course-evaluation",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: selectedUser,
+            courseId,
+            seviye: next.seviye,
+            not: next.not,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Kaydedilemedi");
+        load();
+        return;
+      }
+      toast.success("Ders değerlendirmesi kaydedildi");
+      load(); // isCompleted / % recompute sonrası güncellensin
+    } catch {
+      toast.error("Kaydedilemedi");
+      load();
+    }
+  };
+
   const selectCls = "px-3 py-2 text-sm rounded-md border bg-white min-w-[200px]";
   const selectedUserRow = data?.users.find((u) => u.userId === selectedUser);
+  const canEdit = data?.canEdit ?? false;
 
   return (
     <div className="space-y-4">
@@ -291,6 +385,86 @@ export function IfsEvaluationsTab() {
             </div>
           )}
 
+          {/* PR-3: Per-ders eğitmen değerlendirmesi — seviye + not. Tamamlanma
+              (isCompleted) yalnız seviye=Başarılı ile olur. */}
+          <div
+            className="ak-card-static p-4 space-y-3"
+            style={{ borderTop: `3px solid ${ILERI_NAVY}` }}
+          >
+            <div
+              className="text-sm font-semibold"
+              style={{ color: ILERI_NAVY }}
+            >
+              Ders Değerlendirmesi (Eğitmen)
+            </div>
+            {canEdit ? (
+              <>
+                <RadioGroup
+                  className="flex flex-wrap gap-4"
+                  value={courseEval.seviye ?? ""}
+                  onValueChange={(v) =>
+                    saveCourseEval({ seviye: v as CourseSeviye })
+                  }
+                >
+                  {(
+                    ["BASARILI", "EGITIM_GEREKLI", "BASARISIZ"] as CourseSeviye[]
+                  ).map((s) => (
+                    <label
+                      key={s}
+                      htmlFor={`seviye-${s}`}
+                      className="flex items-center gap-2 cursor-pointer text-sm"
+                    >
+                      <RadioGroupItem id={`seviye-${s}`} value={s} />
+                      {SEVIYE_LABEL[s]}
+                    </label>
+                  ))}
+                </RadioGroup>
+                <div className="space-y-1">
+                  <Label className="text-xs" style={{ color: "var(--ak-text-secondary)" }}>
+                    Not
+                  </Label>
+                  <Textarea
+                    rows={2}
+                    className="text-sm"
+                    placeholder="Ders geneli değerlendirme notu..."
+                    value={courseEval.not ?? ""}
+                    onChange={(ev) =>
+                      setCourseEval((c) => ({ ...c, not: ev.target.value }))
+                    }
+                    onBlur={(ev) =>
+                      saveCourseEval({ not: ev.target.value.trim() || null })
+                    }
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-3 text-sm">
+                {courseEval.seviye ? (
+                  <Badge
+                    variant={
+                      courseEval.seviye === "BASARILI"
+                        ? "default"
+                        : courseEval.seviye === "BASARISIZ"
+                          ? "destructive"
+                          : "secondary"
+                    }
+                  >
+                    {SEVIYE_LABEL[courseEval.seviye]}
+                  </Badge>
+                ) : (
+                  <span style={{ color: "var(--ak-text-tertiary)" }}>
+                    Henüz değerlendirilmedi
+                  </span>
+                )}
+                {courseEval.not && (
+                  <span style={{ color: "var(--ak-text-secondary)" }}>
+                    {courseEval.not}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
           <div
             className="rounded-lg overflow-hidden border bg-white"
             style={{ borderColor: "var(--ak-border-default)" }}
@@ -313,6 +487,9 @@ export function IfsEvaluationsTab() {
                   <th className="text-center px-2 py-2 text-xs font-semibold uppercase">
                     Örnek Yaptı
                   </th>
+                  <th className="text-center px-2 py-2 text-xs font-semibold uppercase">
+                    Eğitmen Statüsü
+                  </th>
                   <th className="text-left px-3 py-2 text-xs font-semibold uppercase">
                     Proje Ekibi
                   </th>
@@ -324,7 +501,7 @@ export function IfsEvaluationsTab() {
               <tbody>
                 {data.tasks.map((t) => {
                   const e = cells[t.contentId];
-                  const canEdit = data.canEdit;
+                  const status: OrnekStatus = e?.ornekStatus ?? "PENDING";
                   return (
                     <tr
                       key={t.contentId}
@@ -363,8 +540,54 @@ export function IfsEvaluationsTab() {
                           <Flag on={Boolean(e?.uygulamaliYapildi)} />
                         )}
                       </td>
+                      {/* Kursiyer "Örnek Yaptım" — SALT-OKUNUR bilgi rozeti. */}
                       <td className="px-2 py-2 text-center">
-                        <Flag on={Boolean(e?.ornekYapildi)} />
+                        {e?.ornekYapildi ? (
+                          <Badge variant="secondary" title="Kursiyer denedi olarak işaretledi">
+                            Denedi
+                          </Badge>
+                        ) : (
+                          <span
+                            className="text-xs"
+                            style={{ color: "var(--ak-text-tertiary)" }}
+                          >
+                            —
+                          </span>
+                        )}
+                      </td>
+                      {/* Eğitmen statüsü — Başarılı / Tekrar Gerekli (kontrol). */}
+                      <td className="px-2 py-2 text-center">
+                        {canEdit ? (
+                          <Select
+                            value={status}
+                            onValueChange={(v) =>
+                              setStatus(t.contentId, v as OrnekStatus)
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-[150px] mx-auto text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="PENDING">Bekliyor</SelectItem>
+                              <SelectItem value="BASARILI">Başarılı</SelectItem>
+                              <SelectItem value="TEKRAR_GEREKLI">
+                                Tekrar Gerekli
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge
+                            variant={
+                              status === "BASARILI"
+                                ? "default"
+                                : status === "TEKRAR_GEREKLI"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                          >
+                            {ORNEK_STATUS_LABEL[status]}
+                          </Badge>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         {canEdit ? (

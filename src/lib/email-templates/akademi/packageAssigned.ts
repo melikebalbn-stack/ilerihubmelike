@@ -57,8 +57,8 @@ export function packageAssignedEmail(input: {
               <!-- Buton (padding renkli td'de → lacivert kutu yazıyı tam sarar) -->
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px;">
                 <tr>
-                  <td bgcolor="${NAVY}" align="center" style="background:${NAVY};border-radius:6px;padding:13px 34px;">
-                    <a href="${url}" style="color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;font-family:Arial,Helvetica,sans-serif;">Eğitime git</a>
+                  <td bgcolor="${NAVY}" align="center" style="background:${NAVY};border-radius:6px;padding:12px 28px;">
+                    <a href="${url}" style="color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;font-family:Arial,Helvetica,sans-serif;line-height:1;">Eğitime git</a>
                   </td>
                 </tr>
               </table>

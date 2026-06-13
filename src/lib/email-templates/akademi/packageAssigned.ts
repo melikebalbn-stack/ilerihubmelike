@@ -54,13 +54,11 @@ export function packageAssignedEmail(input: {
                 </tr>
               </table>
 
-              <!-- Buton (bulletproof: padding + display:inline-block A'DA, td'de padding YOK
-                   → yazı ortalı, kutu içerik boyutunda, taşma/aşağı kayma giderildi) -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px;">
-                <tr>
-                  <td align="center" bgcolor="${NAVY}" style="border-radius:6px;"><a href="${url}" target="_blank" style="display:inline-block;padding:12px 28px;color:#ffffff;font-size:14px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;line-height:1;text-decoration:none;border-radius:6px;">Eğitime git</a></td>
-                </tr>
-              </table>
+              <!-- Buton: TEK <a> (tablo/td YOK). Arka plan + padding + boyut hepsi
+                   a üzerinde → tek katman, çift padding yok, dark-mode'da td inversiyonu yok. -->
+              <div style="margin:22px 0 6px;">
+                <a href="${url}" style="display:inline-block;background-color:${NAVY};color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;text-decoration:none;padding:12px 28px;border-radius:6px;line-height:1.2;">Eğitime git</a>
+              </div>
             </td>
           </tr>
           <!-- Footer -->

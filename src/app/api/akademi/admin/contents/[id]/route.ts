@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
+import { hardDeleteContent } from "@/lib/akademi/hard-delete";
+import { logAuditEvent } from "@/lib/audit-log";
 
 export async function PATCH(
   req: NextRequest,
@@ -134,11 +136,13 @@ export async function PATCH(
   });
 }
 
+// HARD DELETE — içerik ve bağımlıları (ContentProgress/IfsTaskEvaluation/
+// IfsTaskMeta) kalıcı silinir. Pasifleştirme ayrı PATCH ile.
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requirePermission('akademi.kurs.edit');
+  const { session, error } = await requirePermission('akademi.kurs.edit');
   if (error) return error;
 
   const { id } = await params;
@@ -146,18 +150,27 @@ export async function DELETE(
     return NextResponse.json({ error: "ID gerekli" }, { status: 400 });
   }
 
-  const existing = await prisma.content.findUnique({ where: { id } });
+  const existing = await prisma.content.findUnique({
+    where: { id },
+    select: { id: true, title: true, courseId: true },
+  });
   if (!existing) {
     return NextResponse.json({ error: "İçerik bulunamadı" }, { status: 404 });
   }
 
-  await prisma.content.update({
-    where: { id },
-    data: { isActive: false },
+  const counts = await prisma.$transaction((tx) => hardDeleteContent(tx, id));
+
+  await logAuditEvent({
+    action: "AKADEMI_CONTENT_HARD_DELETED",
+    actorId: session.user.id,
+    targetType: "AKADEMI_CONTENT",
+    targetId: id,
+    details: { title: existing.title, courseId: existing.courseId, ...counts },
   });
 
   return NextResponse.json({
     id,
-    message: "İçerik pasif duruma alındı",
+    message: "İçerik kalıcı silindi",
+    deleted: counts,
   });
 }

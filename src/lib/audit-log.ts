@@ -36,6 +36,9 @@ export type AuditTargetType =
   // IFS canlı değerlendirme (PR-2)
   | 'IFS_TASK_EVALUATION'
   | 'IFS_COURSE_EVALUATION'
+  // Akademi hard-delete
+  | 'AKADEMI_COURSE'
+  | 'AKADEMI_CONTENT'
 
 export interface AuditLogParams {
   action: string

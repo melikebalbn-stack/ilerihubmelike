@@ -192,7 +192,7 @@ export default function AkademiAdminCoursesPage() {
         toast.error(err.error || "Silinemedi");
         return;
       }
-      toast.success("Kurs pasif duruma alındı");
+      toast.success("Kurs kalıcı olarak silindi");
       setDeleteCourse(null);
       reload();
     } catch {
@@ -345,13 +345,13 @@ export default function AkademiAdminCoursesPage() {
       <AdminDeleteConfirm
         open={deleteCourse !== null}
         onOpenChange={(o) => !o && setDeleteCourse(null)}
-        title="Kursu pasifleştirmek istediğinize emin misiniz?"
+        title="Kursu KALICI olarak sil?"
         description={
           deleteCourse
-            ? `"${deleteCourse.title}" pasif duruma alınacak. Kullanıcılara artık görünmeyecek ancak verileri silinmez. "Pasifleri göster" ile geri alabilirsiniz.`
+            ? `"${deleteCourse.title}" kursu ve TÜM içerikleri (${deleteCourse.contentCount}) ile atamaları (${deleteCourse.assignmentCount}) — ilerleme, değerlendirme ve sertifikalar dahil — kalıcı olarak silinecek. Bu işlem GERİ ALINAMAZ. (Yalnızca gizlemek için "Aktif" anahtarını kapatın.)`
             : ""
         }
-        confirmLabel="Pasifleştir"
+        confirmLabel="Kalıcı Sil"
         onConfirm={handleDeleteConfirm}
         loading={deleting}
       />

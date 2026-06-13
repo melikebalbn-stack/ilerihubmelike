@@ -109,7 +109,7 @@ export default function AkademiAdminCourseDetailPage() {
         toast.error(err.error || "Silinemedi");
         return;
       }
-      toast.success("İçerik pasif duruma alındı");
+      toast.success("İçerik kalıcı olarak silindi");
       setDeleteContent(null);
       loadContents();
     } catch {
@@ -203,13 +203,13 @@ export default function AkademiAdminCourseDetailPage() {
       <AdminDeleteConfirm
         open={deleteContent !== null}
         onOpenChange={(o) => !o && setDeleteContent(null)}
-        title="İçeriği pasifleştirmek istediğinize emin misiniz?"
+        title="İçeriği KALICI olarak sil?"
         description={
           deleteContent
-            ? `"${deleteContent.title}" içeriği pasif duruma alınacak. Dosya silinmez, geri alınabilir.`
+            ? `"${deleteContent.title}" içeriği ve ilerleme/değerlendirme kayıtları kalıcı olarak silinecek. Bu işlem GERİ ALINAMAZ.`
             : ""
         }
-        confirmLabel="Pasifleştir"
+        confirmLabel="Kalıcı Sil"
         onConfirm={handleDeleteConfirm}
         loading={deleting}
       />

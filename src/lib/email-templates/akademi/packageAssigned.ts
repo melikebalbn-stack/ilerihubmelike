@@ -26,10 +26,16 @@ export function packageAssignedEmail(input: {
     <tr>
       <td align="center" style="padding:24px 12px;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
-          <!-- Başlık şeridi -->
+          <!-- Beyaz logo şeridi (renkli logo lacivert üzerinde görünmez → beyaz zemin) -->
           <tr>
-            <td bgcolor="${NAVY}" style="background:${NAVY};padding:18px 28px;">
-              <span style="color:#ffffff;font-size:16px;font-weight:700;letter-spacing:.3px;">ILERIHub Akademi</span>
+            <td align="left" style="background:#ffffff;padding:18px 28px 12px;">
+              <img src="cid:ilerihub-logo" alt="ILERIHub Akademi" height="30" style="display:block;border:0;height:30px;width:auto;">
+            </td>
+          </tr>
+          <!-- Lacivert başlık şeridi -->
+          <tr>
+            <td bgcolor="${NAVY}" style="background:${NAVY};padding:12px 28px;">
+              <span style="color:#ffffff;font-size:14px;font-weight:700;letter-spacing:.4px;">Akademi</span>
             </td>
           </tr>
           <!-- Gövde -->
@@ -48,11 +54,11 @@ export function packageAssignedEmail(input: {
                 </tr>
               </table>
 
-              <!-- Buton -->
-              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 6px;">
+              <!-- Buton (padding renkli td'de → lacivert kutu yazıyı tam sarar) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px;">
                 <tr>
-                  <td bgcolor="${NAVY}" style="background:${NAVY};border-radius:6px;">
-                    <a href="${url}" style="display:inline-block;padding:11px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">Eğitime git</a>
+                  <td bgcolor="${NAVY}" align="center" style="background:${NAVY};border-radius:6px;padding:13px 34px;">
+                    <a href="${url}" style="color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;font-family:Arial,Helvetica,sans-serif;">Eğitime git</a>
                   </td>
                 </tr>
               </table>

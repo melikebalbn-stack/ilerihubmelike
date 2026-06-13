@@ -7,6 +7,15 @@ export interface EmailRecipient {
   name: string
 }
 
+// Inline (CID) veya dosya eki. CID gömme için { path|content, cid } verilir.
+export interface EmailAttachment {
+  filename: string
+  path?: string
+  content?: Buffer | string
+  cid?: string
+  contentType?: string
+}
+
 export interface CalibrationEmailData {
   deviceId: string
   deviceName: string
@@ -140,7 +149,8 @@ export async function sendEmail(
   to: EmailRecipient[],
   subject: string,
   body: string,
-  html?: string
+  html?: string,
+  attachments?: EmailAttachment[]
 ): Promise<{ success: boolean; error?: string }> {
   const smtp = getTransporter()
 
@@ -167,6 +177,7 @@ export async function sendEmail(
       subject,
       text: body,
       html: html ?? body.replace(/\n/g, '<br>'),
+      ...(attachments && attachments.length ? { attachments } : {}),
     })
 
     console.log('✅ E-posta gönderildi:', info.messageId)

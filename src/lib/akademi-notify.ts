@@ -1,6 +1,17 @@
+import fs from "fs";
+import path from "path";
 import { prisma } from "@/lib/prisma";
-import { sendEmail } from "@/lib/email";
+import { sendEmail, type EmailAttachment } from "@/lib/email";
 import * as templates from "@/lib/email-templates/akademi";
+
+// ILERIHub logosu — maile CID gömme (dış URL değil; her istemcide çalışır,
+// image-blocking sorunu olmaz). Dosya yoksa attachment atlanır (alt text kalır).
+function logoAttachments(): EmailAttachment[] | undefined {
+  const p = path.join(process.cwd(), "public", "ilerihublogo.png");
+  return fs.existsSync(p)
+    ? [{ filename: "ilerihublogo.png", path: p, cid: "ilerihub-logo" }]
+    : undefined;
+}
 
 export type RecipientUser = { id: string; email: string | null; name: string };
 
@@ -281,7 +292,8 @@ export async function notifyPackageAssigned(
         [{ email: user.email, name }],
         content.subject,
         content.text,
-        content.html
+        content.html,
+        logoAttachments()
       );
     } catch (err) {
       console.error(

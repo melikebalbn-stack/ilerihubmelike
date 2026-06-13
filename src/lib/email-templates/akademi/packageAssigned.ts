@@ -1,8 +1,11 @@
-import { wrapHtml, escapeHtml, ileriHubUrl } from "./_base";
+import { escapeHtml, ileriHubUrl } from "./_base";
+
+const NAVY = "#1B4F72";
 
 /**
  * Paket ataması maili — ALICI YALNIZ KULLANICI (müdür/İK fan-out YOK).
- * COURSE_ASSIGNED'dan farklı: paket seviyesinde tek mail (paket adı + kurs sayısı).
+ * ILERI markalı, email-safe (tablo tabanlı + inline style, gradient YOK).
+ * İmza değişmez (packageName/courseCount/link); text fallback korunur.
  */
 export function packageAssignedEmail(input: {
   userName: string;
@@ -15,18 +18,60 @@ export function packageAssignedEmail(input: {
   const url = ileriHubUrl(input.link);
   const subject = `Yeni Eğitim Paketi: ${input.packageName}`;
 
-  const body = `
-    <p>Merhaba ${userName},</p>
-    <p>Size yeni bir eğitim paketi atandı.</p>
-    <div class="info-box">
-      <strong>Paket:</strong> ${pkg}<br>
-      <strong>Kurs sayısı:</strong> ${input.courseCount}
-    </div>
-    <a href="${url}" class="button">Eğitimlerime Git</a>
-    <div class="meta">Paketteki eğitimleri İleriHub Akademi üzerinden görüntüleyip başlayabilirsiniz.</div>
-  `;
+  const html = `<!doctype html>
+<html lang="tr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+          <!-- Başlık şeridi -->
+          <tr>
+            <td bgcolor="${NAVY}" style="background:${NAVY};padding:18px 28px;">
+              <span style="color:#ffffff;font-size:16px;font-weight:700;letter-spacing:.3px;">ILERIHub Akademi</span>
+            </td>
+          </tr>
+          <!-- Gövde -->
+          <tr>
+            <td style="padding:28px;">
+              <h1 style="margin:0 0 14px;font-size:20px;font-weight:700;color:#1f2733;">Yeni eğitim paketi atandı</h1>
+              <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#475569;">Merhaba ${userName},<br>Size yeni bir eğitim paketi atandı.</p>
+
+              <!-- Paket kartı (sol kenar lacivert) -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid ${NAVY};border-radius:6px;">
+                <tr>
+                  <td style="padding:16px 18px;">
+                    <div style="font-size:16px;font-weight:700;color:#1f2733;">${pkg}</div>
+                    <div style="margin-top:4px;font-size:13px;color:#64748b;">${input.courseCount} kurs</div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Buton -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 6px;">
+                <tr>
+                  <td bgcolor="${NAVY}" style="background:${NAVY};border-radius:6px;">
+                    <a href="${url}" style="display:inline-block;padding:11px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">Eğitime git</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="border-top:1px solid #e2e8f0;padding:16px 28px;background:#fbfcfd;">
+              <p style="margin:0;font-size:11px;line-height:1.5;color:#94a3b8;">Bu e-posta İleriHub Akademi tarafından otomatik gönderilmiştir; lütfen yanıtlamayınız.<br>© İleri Group · Akademi</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
   const text = `Merhaba ${input.userName},\n\nSize yeni bir eğitim paketi atandı.\n\nPaket: ${input.packageName}\nKurs sayısı: ${input.courseCount}\n\nBağlantı: ${url}\n\nİleri Group · Akademi`;
 
-  return { subject, html: wrapHtml("Yeni Eğitim Paketi Atandı", body), text };
+  return { subject, html, text };
 }

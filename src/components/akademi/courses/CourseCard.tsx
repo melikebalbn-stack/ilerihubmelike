@@ -14,13 +14,18 @@ import type { CourseListItem } from "@/types/akademi";
 
 interface Props {
   course: CourseListItem;
+  // IFS Sv2'den gelindiğinde: kurs detayına bölüm origin'i taşı (geri-link bölüme dönsün).
+  ifsDept?: string;
 }
 
-export function CourseCard({ course }: Props) {
+export function CourseCard({ course, ifsDept }: Props) {
+  const href = ifsDept
+    ? `/akademi/courses/${course.id}?ifsDept=${encodeURIComponent(ifsDept)}`
+    : `/akademi/courses/${course.id}`;
   return (
     <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
       <Link
-        href={`/akademi/courses/${course.id}`}
+        href={href}
         className="ak-card block overflow-hidden h-full flex flex-col"
       >
         <div

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { CourseHero } from "@/components/akademi/courses/CourseHero";
@@ -13,6 +13,12 @@ import type { CourseDetail, ContentItem } from "@/types/akademi";
 export default function AkademiCourseDetailPage() {
   const params = useParams();
   const id = params?.id as string;
+  // IFS Sv2'den gelindiyse geri-link o bölüme dönsün; yoksa eski davranış (Eğitimler).
+  const searchParams = useSearchParams();
+  const ifsDept = searchParams.get("ifsDept");
+  const backHref = ifsDept
+    ? `/akademi/ifs?dept=${encodeURIComponent(ifsDept)}`
+    : "/akademi/courses";
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewerContent, setViewerContent] = useState<ContentItem | null>(null);
@@ -110,7 +116,7 @@ export default function AkademiCourseDetailPage() {
             Eğitim bulunamadı
           </div>
           <Link
-            href="/akademi/courses"
+            href={backHref}
             className="inline-flex items-center gap-2 text-sm font-semibold"
             style={{ color: "var(--ak-accent)" }}
           >
@@ -125,7 +131,7 @@ export default function AkademiCourseDetailPage() {
   return (
     <div className="px-8 py-7 max-w-5xl mx-auto">
       <Link
-        href="/akademi/courses"
+        href={backHref}
         className="inline-flex items-center gap-2 text-sm font-medium mb-5"
         style={{ color: "var(--ak-text-secondary)" }}
       >

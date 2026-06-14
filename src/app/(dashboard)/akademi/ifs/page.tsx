@@ -6,6 +6,7 @@
 // IFS-6 SÜSLEME (dev): kapak banner + görsel departman kartları (gradient + ikon).
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   GraduationCap,
   ChevronRight,
@@ -67,6 +68,8 @@ function deptIcon(name: string): LucideIcon {
 }
 
 export default function AkademiIfsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loadingDepts, setLoadingDepts] = useState(true);
   const [selected, setSelected] = useState<Department | null>(null);
@@ -97,11 +100,32 @@ export default function AkademiIfsPage() {
       .finally(() => setLoadingAreas(false));
   }, []);
 
-  const openDept = (d: Department) => {
-    setSelected(d);
-    setAreas([]);
-    setRefDocs([]);
-    loadAreas(d.packageId);
+  const openDept = useCallback(
+    (d: Department) => {
+      setSelected(d);
+      setAreas([]);
+      setRefDocs([]);
+      loadAreas(d.packageId);
+      // Seçim URL'e yansısın (deep-link / geri-link hedefi).
+      router.replace(`/akademi/ifs?dept=${encodeURIComponent(d.packageId)}`);
+    },
+    [loadAreas, router]
+  );
+
+  // Departman listesi yüklendikten SONRA ?dept=<packageId> varsa ve henüz seçim
+  // yoksa eşleşen departmanı otomatik aç (deep-link / geri-link ile Sv2'ye gel).
+  useEffect(() => {
+    if (loadingDepts || selected || departments.length === 0) return;
+    const dept = searchParams.get("dept");
+    if (!dept) return;
+    const match = departments.find((d) => d.packageId === dept);
+    if (match) openDept(match);
+  }, [loadingDepts, selected, departments, searchParams, openDept]);
+
+  // Sv2 → Sv1 (tüm departmanlar): seçimi temizle + URL param'ı temizle.
+  const backToDepartments = () => {
+    setSelected(null);
+    router.replace("/akademi/ifs");
   };
 
   return (
@@ -136,7 +160,7 @@ export default function AkademiIfsPage() {
       {selected && (
         <button
           type="button"
-          onClick={() => setSelected(null)}
+          onClick={backToDepartments}
           className="inline-flex items-center gap-2 text-sm font-medium mb-4"
           style={{ color: "var(--ak-text-secondary)" }}
         >
@@ -294,7 +318,7 @@ export default function AkademiIfsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {areas.map((c) => (
-                <CourseCard key={c.id} course={c} />
+                <CourseCard key={c.id} course={c} ifsDept={selected?.packageId} />
               ))}
             </div>
           )}

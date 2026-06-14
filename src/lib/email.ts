@@ -152,13 +152,26 @@ export async function sendEmail(
   html?: string,
   attachments?: EmailAttachment[]
 ): Promise<{ success: boolean; error?: string }> {
+  // GUARD: test/staging mail koruması (env-gated). MAIL_RECIPIENT_OVERRIDE
+  // doluysa TÜM alıcıları o adrese yönlendir + konuya "[STAGING]" ön-eki ekle.
+  // Prod'da env boş → hiçbir değişiklik (normal gönderim).
+  let effectiveTo = to
+  let effectiveSubject = subject
+  const override = process.env.MAIL_RECIPIENT_OVERRIDE?.trim()
+  if (override) {
+    const original = to.map((r) => r.email).join(', ') || '(boş)'
+    console.log(`✉️  mail override → gerçek:${original} yerine ${override}`)
+    effectiveTo = [{ email: override, name: to[0]?.name ?? 'STAGING' }]
+    effectiveSubject = subject.startsWith('[STAGING]') ? subject : `[STAGING] ${subject}`
+  }
+
   const smtp = getTransporter()
 
   // If SMTP is not configured, use simulation mode
   if (!smtp) {
     console.log('📧 [EMAIL SIMULATION] ========================')
-    console.log('To:', to.map((r) => `${r.name} <${r.email}>`).join(', '))
-    console.log('Subject:', subject)
+    console.log('To:', effectiveTo.map((r) => `${r.name} <${r.email}>`).join(', '))
+    console.log('Subject:', effectiveSubject)
     console.log('Body:')
     console.log(body)
     console.log('============================================')
@@ -169,12 +182,12 @@ export async function sendEmail(
 
   // Real SMTP sending
   try {
-    const toAddresses = to.map((r) => `${r.name} <${r.email}>`).join(', ')
+    const toAddresses = effectiveTo.map((r) => `${r.name} <${r.email}>`).join(', ')
 
     const info = await smtp.sendMail({
       from: process.env.SMTP_FROM || `ILERIHub <${process.env.SMTP_USER}>`,
       to: toAddresses,
-      subject,
+      subject: effectiveSubject,
       text: body,
       html: html ?? body.replace(/\n/g, '<br>'),
       ...(attachments && attachments.length ? { attachments } : {}),

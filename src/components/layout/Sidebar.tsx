@@ -181,6 +181,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { data: session } = useSession()
   const [teknikOpen, setTeknikOpen] = useState(false)
   const [qdmsOpen, setQdmsOpen] = useState(false)
+  const [kaliteYonetimOpen, setKaliteYonetimOpen] = useState(false)
   const [ikOpen, setIkOpen] = useState(false)
   const [strategicHrOpen, setStrategicHrOpen] = useState(false)
   const [auditsOpen, setAuditsOpen] = useState(false)
@@ -193,11 +194,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   useEffect(() => {
     if (pathname.startsWith('/iso27001')) {
       setQdmsOpen(true)
+      setKaliteYonetimOpen(true)
       setAuditsOpen(true)
       setIso27001Open(true)
     }
     if (pathname.startsWith('/qdms')) {
       setQdmsOpen(true)
+      setKaliteYonetimOpen(true)
     }
     if (pathname.startsWith('/strategic-hr') || pathname.startsWith('/talent-management') || pathname.startsWith('/organization') || pathname.startsWith('/personnel')) {
       setIkOpen(true)
@@ -521,7 +524,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               )}
             >
               <Shield className="h-5 w-5" />
-              <span className="flex-1 text-left">Kalite Yönetim</span>
+              <span className="flex-1 text-left">Kalite</span>
               {qdmsOpen ? (
                 <ChevronDown className="h-4 w-4" />
               ) : (
@@ -530,6 +533,26 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </button>
             {qdmsOpen && (
               <div className="space-y-1 ml-4">
+                {/* Kalite Yönetim alt-grubu */}
+                <button
+                  onClick={() => setKaliteYonetimOpen(!kaliteYonetimOpen)}
+                  className={cn(
+                    "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                    isQdmsActive
+                      ? "text-teal-300"
+                      : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+                  )}
+                >
+                  <ClipboardCheck className="h-5 w-5" />
+                  <span className="flex-1 text-left">Kalite Yönetim</span>
+                  {kaliteYonetimOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+                {kaliteYonetimOpen && (
+                  <div className="space-y-1 ml-4">
                 {filteredQdmsItems.map(item => renderMenuItem(item))}
 
                 {/* Denetimler Alt Menüsü */}
@@ -584,6 +607,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                       </div>
                     )}
                   </>
+                )}
+                  </div>
                 )}
               </div>
             )}

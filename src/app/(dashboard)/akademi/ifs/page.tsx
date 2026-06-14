@@ -5,7 +5,7 @@
 // Sv3 İçerik (mevcut courses/[id] GOREV görünümü). Ad temizleme yalnız DISPLAY'de.
 // IFS-6 SÜSLEME (dev): kapak banner + görsel departman kartları (gradient + ikon).
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   GraduationCap,
@@ -76,6 +76,9 @@ export default function AkademiIfsPage() {
   const [areas, setAreas] = useState<CourseListItem[]>([]);
   const [refDocs, setRefDocs] = useState<ReferenceDoc[]>([]);
   const [loadingAreas, setLoadingAreas] = useState(false);
+  // Deep-link auto-open YALNIZ ilk yükte bir kez; "Departmanlara Dön" sonrası
+  // (URL ?dept henüz temizlenmeden) effect'in yeniden açmasını engeller.
+  const didAutoOpenRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/akademi/ifs/departments")
@@ -115,15 +118,22 @@ export default function AkademiIfsPage() {
   // Departman listesi yüklendikten SONRA ?dept=<packageId> varsa ve henüz seçim
   // yoksa eşleşen departmanı otomatik aç (deep-link / geri-link ile Sv2'ye gel).
   useEffect(() => {
-    if (loadingDepts || selected || departments.length === 0) return;
+    if (didAutoOpenRef.current || loadingDepts || selected || departments.length === 0)
+      return;
     const dept = searchParams.get("dept");
     if (!dept) return;
     const match = departments.find((d) => d.packageId === dept);
-    if (match) openDept(match);
+    if (match) {
+      didAutoOpenRef.current = true;
+      openDept(match);
+    }
   }, [loadingDepts, selected, departments, searchParams, openDept]);
 
   // Sv2 → Sv1 (tüm departmanlar): seçimi temizle + URL param'ı temizle.
   const backToDepartments = () => {
+    // Auto-open'ı kalıcı kapat: paramsız akışta (ref henüz false) "?dept" bir tık
+    // geç temizlendiğinden stale param'la effect'in yeniden açmasını engeller.
+    didAutoOpenRef.current = true;
     setSelected(null);
     router.replace("/akademi/ifs");
   };

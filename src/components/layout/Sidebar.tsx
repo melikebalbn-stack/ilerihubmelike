@@ -88,10 +88,6 @@ const formsMenuItems = [
 
 // ILERI Teknik alt menüsü
 const teknikMenuItems = [
-  { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"] },
-  { name: "Ölçüm Şablonları", icon: ClipboardList, href: "/kalite/sablonlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
-  { name: "Ölçüm Raporları", icon: ClipboardCheck, href: "/kalite/raporlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
-  { name: "Semboller", icon: Shapes, href: "/kalite/semboller", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Yangın Güvenliği", icon: Flame, href: "/fire-safety", roles: ["QUALITY_MANAGER", "ADMIN"] },
   { name: "Tezgah Bakım", icon: Factory, href: "/maintenance", roles: ["*"] },
   { name: "Arşiv", icon: Archive, href: "/arsiv/koli", roles: ["*"] },
@@ -119,6 +115,14 @@ const qdmsMenuItems = [
   { name: "Değişiklik Yönetimi", icon: GitBranch, href: "/qdms/changes", roles: ["*"] },
   { name: "Uygunsuzluk", icon: FileWarning, href: "/qdms/ncr", roles: ["*"] },
   { name: "Müşteri Şikayetleri", icon: MessageCircle, href: "/qdms/complaints", roles: ["*"] },
+]
+
+// Kalite — ölçüm/kalibrasyon modülleri (İleri Teknik'ten taşındı, "Kalite" üst grubunun doğrudan altında)
+const kaliteMenuItems = [
+  { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"] },
+  { name: "Ölçüm Şablonları", icon: ClipboardList, href: "/kalite/sablonlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
+  { name: "Ölçüm Raporları", icon: ClipboardCheck, href: "/kalite/raporlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
+  { name: "Semboller", icon: Shapes, href: "/kalite/semboller", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
 ]
 
 // Denetimler alt menüsü (ISO 27001 dahil)
@@ -202,15 +206,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       setQdmsOpen(true)
       setKaliteYonetimOpen(true)
     }
+    if (pathname.startsWith('/calibration') || pathname.startsWith('/kalite')) {
+      setQdmsOpen(true)
+    }
     if (pathname.startsWith('/strategic-hr') || pathname.startsWith('/talent-management') || pathname.startsWith('/organization') || pathname.startsWith('/personnel')) {
       setIkOpen(true)
       if (pathname.startsWith('/strategic-hr') || pathname.startsWith('/talent-management') || pathname.startsWith('/organization')) {
         setStrategicHrOpen(true)
       }
     }
-    if (pathname.startsWith('/calibration') || pathname.startsWith('/fire-safety') ||
+    if (pathname.startsWith('/fire-safety') ||
         pathname.startsWith('/maintenance') || pathname.startsWith('/it-reports') ||
-        pathname.startsWith('/arsiv') || pathname.startsWith('/kalite')) {
+        pathname.startsWith('/arsiv')) {
       setTeknikOpen(true)
     }
     if (pathname.startsWith('/forms') || pathname.startsWith('/meetings')) {
@@ -295,6 +302,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredMainItems = filterItems(mainMenuItems)
   const filteredTeknikItems = filterItems(teknikMenuItems)
   const filteredQdmsItems = filterItems(qdmsMenuItems)
+  const filteredKaliteItems = filterItems(kaliteMenuItems)
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   const filteredStrategicHrItems = filterStrategicHrItems(strategicHrMenuItems)
@@ -314,10 +322,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname === '/it-reports' || pathname.startsWith('/it-reports/')
 
-  // QDMS menüsünde aktif sayfa var mı kontrol et (ISO 27001 dahil)
-  const isQdmsActive = qdmsMenuItems.some(item =>
+  // "Kalite Yönetim" alt-grubu (KYS + Denetimler/ISO 27001) aktif mi
+  const isKaliteYonetimActive = qdmsMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname.startsWith('/qdms/') || pathname.startsWith('/iso27001/')
+  // "Kalite" üst grubu: alt-grup + ölçüm/kalibrasyon modülleri
+  const isQdmsActive = isKaliteYonetimActive ||
+    pathname.startsWith('/calibration') || pathname.startsWith('/kalite')
 
   // Denetimler menüsünde aktif sayfa var mı kontrol et
   const isAuditsActive = pathname.startsWith('/iso27001/')
@@ -533,12 +544,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </button>
             {qdmsOpen && (
               <div className="space-y-1 ml-4">
+                {/* Ölçüm/kalibrasyon modülleri (İleri Teknik'ten taşındı) */}
+                {filteredKaliteItems.map(item => renderMenuItem(item))}
+
                 {/* Kalite Yönetim alt-grubu */}
                 <button
                   onClick={() => setKaliteYonetimOpen(!kaliteYonetimOpen)}
                   className={cn(
                     "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
-                    isQdmsActive
+                    isKaliteYonetimActive
                       ? "text-teal-300"
                       : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
                   )}

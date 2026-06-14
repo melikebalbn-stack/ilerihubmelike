@@ -57,7 +57,7 @@ export function packageAssignedEmail(input: {
               <!-- Buton: TEK <a> (tablo/td YOK). Yükseklik line-height:44px ile
                    (dikey padding YOK), genişlik padding:0 28px ile. -->
               <div style="margin:22px 0 6px;">
-                <a href="${url}" style="display:inline-block;background-color:${NAVY};color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;line-height:44px;text-decoration:none;border-radius:6px;padding:0 28px;">Eğitime git</a>
+                <a href="${url}" style="display:inline-block;background-color:${NAVY};color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;line-height:44px;text-decoration:none;border-radius:6px;padding:0 28px;">&nbsp;Eğitime Git&nbsp;</a>
               </div>
             </td>
           </tr>

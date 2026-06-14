@@ -54,13 +54,11 @@ export function packageAssignedEmail(input: {
                 </tr>
               </table>
 
-              <!-- Buton: boşluk/padding td HÜCRESİNDE (her istemcide çalışır).
-                   a sade — padding/display YOK, line-height:1. -->
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px;"><tr>
-                <td bgcolor="${NAVY}" style="background-color:${NAVY};border-radius:6px;padding:12px 28px;">
-                  <a href="${url}" style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;text-decoration:none;line-height:1;">Eğitime git</a>
-                </td>
-              </tr></table>
+              <!-- Buton: TEK <a> (tablo/td YOK). Yükseklik line-height:44px ile
+                   (dikey padding YOK), genişlik padding:0 28px ile. -->
+              <div style="margin:22px 0 6px;">
+                <a href="${url}" style="display:inline-block;background-color:${NAVY};color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;line-height:44px;text-decoration:none;border-radius:6px;padding:0 28px;">Eğitime git</a>
+              </div>
             </td>
           </tr>
           <!-- Footer -->

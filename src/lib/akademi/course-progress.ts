@@ -47,27 +47,28 @@ export async function recomputeCourseProgress(
   let isComplete = false;
 
   if (course.isIfs) {
-    // IFS canlı değerlendirme (PR-2): ilerleme = eğitmen onaylı (ornekStatus=
-    // BASARILI) örnek oranı; tamamlanma = ders seviyesi (IfsCourseEvaluation)
-    // BASARILI. Kursiyerin ornekYapildi / ContentProgress.completed'ı bara ETKİ
-    // ETMEZ — o yalnız "denedim" sinyali. %100 otomatiğine BAĞLANMAZ.
+    // IFS: BAR = kursiyer SELF-MARK (ContentProgress.completed=true olan GOREV
+    // oranı) → kursiyer eğitmen onayını beklemeden ilerlemesini görür.
+    // TAMAMLANMA/sertifika = eğitmen ders seviyesi (IfsCourseEvaluation.seviye=
+    // BASARILI); isComplete buna bağlı → self-mark %100 sertifika TETİKLEMEZ.
+    // RAPORLAR ayrı kalır: hâlâ eğitmen ornekStatus/seviye===BASARILI sayar.
     const gorevIds = course.contents
       .filter((c) => c.type === "GOREV")
       .map((c) => c.id);
     const totalGorev = gorevIds.length;
 
-    let basariliCount = 0;
+    let selfMarkedCount = 0;
     if (totalGorev > 0) {
-      basariliCount = await prisma.ifsTaskEvaluation.count({
+      selfMarkedCount = await prisma.contentProgress.count({
         where: {
           userId,
           contentId: { in: gorevIds },
-          ornekStatus: "BASARILI",
+          completed: true,
         },
       });
     }
     percentage =
-      totalGorev > 0 ? Math.round((basariliCount / totalGorev) * 100) : 0;
+      totalGorev > 0 ? Math.round((selfMarkedCount / totalGorev) * 100) : 0;
 
     const courseEval = await prisma.ifsCourseEvaluation.findUnique({
       where: { userId_courseId: { userId, courseId } },

@@ -20,6 +20,7 @@ import {
   Users,
   Settings2,
   FileText,
+  ExternalLink,
   type LucideIcon,
 } from "lucide-react";
 import { CourseCard } from "@/components/akademi/courses/CourseCard";
@@ -276,36 +277,46 @@ export default function AkademiIfsPage() {
                 <FileText className="w-4 h-4" style={{ color: "#1B4F72" }} />
                 Referans Dokümanlar
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              <div className="space-y-3">
                 {refDocs.map((doc) => (
-                  <a
+                  // Seçenek-3: markalı gradient banner + filigran. Yalnız SUNUM —
+                  // veri/href/target/rel değişmez; tıklanan öğe sağ beyaz pill <a>.
+                  <div
                     key={doc.id}
-                    href={doc.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ak-card flex items-center gap-3 p-4 transition-transform hover:-translate-y-0.5"
+                    className="relative overflow-hidden rounded-xl p-4 bg-gradient-to-br from-[#173A57] to-[#235E9C]"
                   >
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: "rgba(27,79,114,0.10)" }}
-                    >
-                      <FileText className="w-5 h-5" style={{ color: "#1B4F72" }} />
-                    </div>
-                    <div className="min-w-0">
-                      <div
-                        className="text-sm font-semibold line-clamp-2"
-                        style={{ color: "var(--ak-text-primary)" }}
-                      >
-                        {doc.title}
+                    {/* Filigran */}
+                    <FileText className="pointer-events-none absolute -right-3 -bottom-6 w-[130px] h-[130px] text-white/10" />
+                    {/* İçerik */}
+                    <div className="relative flex items-center gap-3.5">
+                      {/* Sol tile */}
+                      <div className="w-11 h-11 rounded-[11px] bg-white/15 flex items-center justify-center shrink-0">
+                        <FileText className="w-6 h-6 text-white" />
                       </div>
-                      <div
-                        className="text-xs mt-0.5"
-                        style={{ color: "var(--ak-text-secondary)" }}
-                      >
-                        PDF · Yeni sekmede aç
+                      {/* Orta */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] text-[#bcd2ec]">
+                          Başlamadan önce · referans doküman
+                        </div>
+                        <div className="text-[15px] font-semibold text-white truncate">
+                          {doc.title}
+                        </div>
+                        <div className="text-xs text-[#cdddf3]">
+                          PDF · eğitim notları
+                        </div>
                       </div>
+                      {/* Sağ buton = MEVCUT <a> (href/target/rel aynı) */}
+                      <a
+                        href={doc.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#173A57] bg-white px-3.5 py-2 rounded-lg whitespace-nowrap shrink-0"
+                      >
+                        <ExternalLink className="w-[15px] h-[15px]" />
+                        Dökümanı aç
+                      </a>
                     </div>
-                  </a>
+                  </div>
                 ))}
               </div>
             </div>

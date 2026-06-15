@@ -104,6 +104,19 @@ const strategicHrMenuItems = [
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
 ]
 
+// OFFB-3: İlişik Kesme / Zimmet İade — İK grubu girişi.
+// Görünür rol kümesi == offboarding.view izninin rol kümesi (OFFB-1 seed:
+// super-admin, hr-yoneticisi, it-admin, departman-muduru). UserRoleEnum
+// eşlemesi migrate-user-roles.ts'ten: super-admin→SUPER_ADMIN,
+// hr-yoneticisi→HR_MANAGER, it-admin→IT_MANAGER, departman-muduru→DEPT_HEAD
+// VE SUPERVISOR (ikisi de departman-muduru'ya maplenir → view erişimi var).
+// ADMIN dahil DEĞİL (admin slug'ı offboarding.view'a sahip değil).
+// departments[] clause'u YOK: filterItems OR değerlendirir; İK-dept'teki
+// view-yetkisiz roller (EMPLOYEE vb.) görmesin diye salt rol-bazlı gating.
+const offboardingMenuItems = [
+  { name: "İlişik Kesme", icon: LogOut, href: "/offboarding", roles: ["SUPER_ADMIN", "HR_MANAGER", "IT_MANAGER", "DEPT_HEAD", "SUPERVISOR"] },
+]
+
 // Kalite Yönetim Sistemi (KYS) alt menüsü
 const qdmsMenuItems = [
   { name: "Doküman Kontrolü", icon: FileCheck, href: "/qdms/documents", roles: ["*"] },
@@ -306,6 +319,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   const filteredStrategicHrItems = filterStrategicHrItems(strategicHrMenuItems)
+  const filteredOffboardingItems = filterItems(offboardingMenuItems)
   const filteredFormsItems = filterItems(formsMenuItems)
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
@@ -653,6 +667,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {renderMenuItem({ name: "İK Raporları", icon: BarChart3, href: "/personnel/reports", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
             {renderMenuItem({ name: "Bölüm Değişiklikleri", icon: ArrowRightLeft, href: "/personnel/department-transfers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
             {renderMenuItem({ name: "Ayrılan Personel", icon: UserMinus, href: "/personnel/leavers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {filteredOffboardingItems.map(item => renderMenuItem(item))}
             {/* {renderMenuItem({ name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"] })} */}
 
             {/* Stratejik IK */}

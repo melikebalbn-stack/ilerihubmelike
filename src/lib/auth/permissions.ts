@@ -59,6 +59,13 @@ export const PERMISSION_KEYS = {
   QUALITY_REPORT_FILL: 'quality.report.fill',
   QUALITY_REPORT_READ: 'quality.report.read',
 
+  // === ZİMMET İADE / İLİŞİK KESME (OFFB-1) ===
+  OFFBOARDING_VIEW: 'offboarding.view',
+  OFFBOARDING_CREATE: 'offboarding.create',
+  OFFBOARDING_EDIT: 'offboarding.edit',
+  OFFBOARDING_APPROVE: 'offboarding.approve',
+  OFFBOARDING_DELETE: 'offboarding.delete',
+
   // === YANGIN TÜPÜ ===
   YANGIN_VIEW: 'yangin.view',
   YANGIN_QR_SCAN: 'yangin.qr.scan',
@@ -106,6 +113,7 @@ export const MODULE_LABELS: Record<string, string> = {
   calisanrehberi: 'Çalışan Rehberi',
   izin: 'İzin Yönetimi',
   kalibrasyon: 'Kalibrasyon',
+  offboarding: 'Zimmet İade / İlişik Kesme',
   yangin: 'Yangın Tüpü',
   helpdesk: 'IT Destek',
   costanalysis: 'Maliyet Analizi',
@@ -158,6 +166,12 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'quality.report.create': 'Ölçüm raporu açma',
   'quality.report.fill': 'Ölçüm raporu doldurma',
   'quality.report.read': 'Ölçüm raporu görüntüleme',
+
+  'offboarding.view': 'Zimmet iade / ilişik kesme formlarını görüntüleme',
+  'offboarding.create': 'Zimmet iade / ilişik kesme formu oluşturma',
+  'offboarding.edit': 'Zimmet iade / ilişik kesme formu düzenleme',
+  'offboarding.approve': 'Zimmet iade / ilişik kesme formu onaylama',
+  'offboarding.delete': 'Zimmet iade / ilişik kesme formu silme',
 
   'yangin.view': 'Yangın tüpü görüntüleme',
   'yangin.qr.scan': 'QR ile periyodik kontrol kaydı',

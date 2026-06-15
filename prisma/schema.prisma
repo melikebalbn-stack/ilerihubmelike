@@ -212,6 +212,10 @@ model User {
   measurementReportsCreated   MeasurementReport[]   @relation("MeasurementReportCreatedBy")
   measurementReportsFinalized MeasurementReport[]   @relation("MeasurementReportFinalizedBy")
 
+  // OFFB-1: Zimmet İade / İlişik Kesme (back-relations)
+  offboardingFormsReceived OffboardingForm[] @relation("OffboardingReceiver")
+  offboardingFormsCreated  OffboardingForm[] @relation("OffboardingCreator")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -8544,6 +8548,8 @@ model Personnel {
   departmentTransfers PersonnelDepartmentTransfer[]
   // PR-A: çok-dönem istihdam geçmişi (additive; mevcut iseGirisTarihi/exitDate paralel kalır)
   employmentPeriods   EmploymentPeriod[]
+  // OFFB-1: Zimmet İade / İlişik Kesme formları
+  offboardingForms    OffboardingForm[]
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -9921,4 +9927,89 @@ model MeasurementReportChar {
   @@unique([reportId, orderIndex], map: "uq_report_char_order")
   @@index([reportId])
   @@map("MeasurementReportChar")
+}
+
+// ====================================================================
+// OFFB-1: Zimmet İade / İlişik Kesme (Offboarding)
+// İş sözleşmesi sona eren personel ve yüklenici/taşeron için varlık ve
+// yetki iadesi süreci. ISO 27001:2022 A.5.11 / A.6.5 / A.5.18 + Siber
+// Hijyen md. 1.5. API ve UI sonraki PR'larda (OFFB-2+) gelecek.
+// ====================================================================
+
+enum OffboardingPersonnelType {
+  ILERI_MEKANIK
+  CONTRACTOR
+}
+
+enum OffboardingSeparationType {
+  RESIGNATION
+  TERMINATION
+  RETIREMENT
+  CONTRACT_END
+  OTHER
+}
+
+enum OffboardingStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+}
+
+model OffboardingForm {
+  id             String     @id @default(cuid())
+  formNo         String     @unique // ZI-YYYY-NNNNN (numara OFFB-2'de atanır)
+  personnelId    String?
+  personnel      Personnel? @relation(fields: [personnelId], references: [id])
+  adSoyad        String
+  sicilNo        String?
+  departman      String?
+  gorev          String?
+  iseGirisTarihi DateTime?  @db.Date
+  ayrilisTarihi  DateTime   @db.Date
+  personelTuru   OffboardingPersonnelType
+  ayrilisTuru    OffboardingSeparationType
+  beyanOnay      Boolean    @default(false)
+  teslimEdenAd   String?
+  teslimAlanId   String?
+  teslimAlan     User?      @relation("OffboardingReceiver", fields: [teslimAlanId], references: [id])
+  status         OffboardingStatus @default(DRAFT)
+  hazirlayanId   String?
+  onaylayan1Id   String?
+  onaylayan2Id   String?
+  notes          String?    @db.Text
+  createdById    String
+  createdBy      User       @relation("OffboardingCreator", fields: [createdById], references: [id])
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  assetItems     OffboardingAssetItem[]
+  accessItems    OffboardingAccessItem[]
+
+  @@index([status])
+  @@index([personnelId])
+}
+
+model OffboardingAssetItem {
+  id            String          @id @default(cuid())
+  formId        String
+  form          OffboardingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  sira          Int
+  label         String
+  returned      Boolean         @default(false)
+  notApplicable Boolean         @default(false)
+  note          String?
+
+  @@index([formId])
+}
+
+model OffboardingAccessItem {
+  id        String          @id @default(cuid())
+  formId    String
+  form      OffboardingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  sira      Int
+  label     String
+  revoked   Boolean         @default(false)
+  revokedAt DateTime?       @db.Date
+  appliedBy String?
+
+  @@index([formId])
 }

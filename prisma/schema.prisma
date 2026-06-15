@@ -8096,6 +8096,10 @@ model OvertimeApproval {
 
   createdAt DateTime @default(now())
 
+  // PR-2 süre-aşımı hatırlatması: bu adım için hatırlatma maili gönderildi mi
+  // (1 kez). null = henüz gönderilmedi. Sonraki adım kendi null'ı ile başlar.
+  reminderSentAt DateTime?
+
   @@index([overtimeFormId])
   @@index([approverId])
 }

@@ -26,6 +26,8 @@ interface Props {
   mode: "create" | "edit";
   existing?: AdminPackageListItem | null;
   onSaved: () => void;
+  // contextual: "Yeni IFS Paketi" akışı true geçer → create body'sine isIfs:true.
+  isIfs?: boolean;
 }
 
 const COLOR_OPTIONS = [
@@ -44,6 +46,7 @@ export function AdminPackageFormModal({
   mode,
   existing,
   onSaved,
+  isIfs = false,
 }: Props) {
   const [form, setForm] = useState<PackageFormState>({
     name: "",
@@ -193,6 +196,8 @@ export function AdminPackageFormModal({
           iconColor: form.iconColor || null,
           coverImageUrl: form.coverImageUrl,
           isActive: form.isActive,
+          // create modunda contextual IFS bayrağı; edit'te değiştirilmez (gönderilmez).
+          ...(mode === "create" && isIfs ? { isIfs: true } : {}),
           referenceDocs: form.referenceDocs
             .map((d, i) => ({
               title: d.title.trim(),
@@ -220,8 +225,13 @@ export function AdminPackageFormModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
             {mode === "edit" ? "Paketi Düzenle" : "Yeni Paket"}
+            {isIfs && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#3D0068] text-white">
+                IFS
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 

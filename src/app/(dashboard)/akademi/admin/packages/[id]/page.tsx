@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Edit2 } from "lucide-react";
+import { ArrowLeft, Edit2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -10,6 +10,7 @@ import { AdminPackageCoursesPicker } from "@/components/akademi/admin/AdminPacka
 import { AdminPackageBolumPicker } from "@/components/akademi/admin/AdminPackageBolumPicker";
 import { AdminPackageUserPicker } from "@/components/akademi/admin/AdminPackageUserPicker";
 import { AdminPackageFormModal } from "@/components/akademi/admin/AdminPackageFormModal";
+import { AdminCourseFormModal } from "@/components/akademi/admin/AdminCourseFormModal";
 import type { AdminPackageDetail } from "@/types/akademi-package";
 
 export default function AkademiAdminPackageDetailPage({
@@ -23,6 +24,7 @@ export default function AkademiAdminPackageDetailPage({
   const [pkg, setPkg] = useState<AdminPackageDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [ifsCourseModalOpen, setIfsCourseModalOpen] = useState(false);
 
   const loadPackage = useCallback(() => {
     setLoading(true);
@@ -32,6 +34,48 @@ export default function AkademiAdminPackageDetailPage({
       .catch(() => setPkg(null))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // "Yeni IFS Kursu" → oluştur + bu pakete BAĞLA (PackageCourse PUT set-replace:
+  // mevcut kurslar + yeni kurs). Bağlama başarısızsa orphan uyarısı (kurs oluştu
+  // ama bağlanmadı → aşağıdaki picker'dan elle eklenebilir).
+  const linkNewIfsCourse = useCallback(
+    async (created: { id: string }) => {
+      if (!pkg) return;
+      const courses = [
+        ...pkg.courses.map((c) => ({
+          courseId: c.courseId,
+          order: c.order,
+          isRequired: c.isRequired,
+        })),
+        { courseId: created.id, order: pkg.courses.length, isRequired: true },
+      ];
+      try {
+        const res = await fetch(
+          `/api/akademi/admin/packages/${id}/courses`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ courses }),
+          }
+        );
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          toast.error(
+            `Kurs oluştu ama pakete bağlanamadı: ${err.error || "bilinmeyen hata"}. Aşağıdaki "Kurs Ekle" ile elle ekleyebilirsiniz.`
+          );
+          return;
+        }
+        toast.success("IFS kursu oluşturuldu ve pakete bağlandı");
+      } catch {
+        toast.error(
+          "Kurs oluştu ama bağlama sırasında hata oluştu. Aşağıdaki picker'dan elle ekleyin."
+        );
+      } finally {
+        loadPackage();
+      }
+    },
+    [pkg, id, loadPackage]
+  );
 
   useEffect(() => {
     loadPackage();
@@ -138,10 +182,19 @@ export default function AkademiAdminPackageDetailPage({
         </TabsList>
 
         <TabsContent value="courses" className="mt-4">
+          {pkg.isIfs && (
+            <div className="flex justify-end mb-3">
+              <Button size="sm" onClick={() => setIfsCourseModalOpen(true)}>
+                <Plus className="w-4 h-4 mr-1.5" />
+                Yeni IFS Kursu
+              </Button>
+            </div>
+          )}
           <AdminPackageCoursesPicker
             packageId={pkg.id}
             initialCourses={pkg.courses}
             onSaved={loadPackage}
+            isIfs={pkg.isIfs}
           />
         </TabsContent>
 
@@ -188,6 +241,19 @@ export default function AkademiAdminPackageDetailPage({
           toast.success("Paket güncellendi");
         }}
       />
+
+      {/* IFS pakette "Yeni IFS Kursu": oluştur (isIfs=true) + onCreated ile pakete bağla. */}
+      {pkg.isIfs && (
+        <AdminCourseFormModal
+          open={ifsCourseModalOpen}
+          onOpenChange={setIfsCourseModalOpen}
+          mode="create"
+          categories={[]}
+          isIfs
+          onCreated={linkNewIfsCourse}
+          onSaved={() => setIfsCourseModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

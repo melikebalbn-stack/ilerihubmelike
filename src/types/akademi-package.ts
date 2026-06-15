@@ -60,6 +60,8 @@ export interface AdminPackageCreateInput {
   coverImageUrl?: string | null;
   isActive?: boolean;
   referenceDocs?: PackageReferenceDocInput[];
+  // IFS-create: contextual — yalnız "Yeni IFS Paketi" akışı true gönderir; normal create false.
+  isIfs?: boolean;
 }
 
 export interface AdminPackageUpdateInput {

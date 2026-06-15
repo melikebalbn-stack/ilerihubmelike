@@ -52,6 +52,9 @@ interface Props {
   packageId: string;
   initialCourses: PackageCourseItem[];
   onSaved: () => void;
+  // Paket IFS ise kurs kaynağını isIfs=true kurslarla listele (tip karışmaz);
+  // normal pakette default (type=normal) korunur.
+  isIfs?: boolean;
 }
 
 function SortableRow({
@@ -127,6 +130,7 @@ export function AdminPackageCoursesPicker({
   packageId,
   initialCourses,
   onSaved,
+  isIfs = false,
 }: Props) {
   const [items, setItems] = useState<PackageCourseItem[]>(initialCourses);
   const [allCourses, setAllCourses] = useState<CourseListItem[]>([]);
@@ -146,11 +150,15 @@ export function AdminPackageCoursesPicker({
   }, [initialCourses]);
 
   const loadAllCourses = useCallback(() => {
-    fetch("/api/akademi/admin/courses")
+    // IFS pakette IFS kursları (type=ifs); normal pakette default (type=normal).
+    const url = isIfs
+      ? "/api/akademi/admin/courses?type=ifs"
+      : "/api/akademi/admin/courses";
+    fetch(url)
       .then((r) => (r.ok ? r.json() : { courses: [] }))
       .then((data) => setAllCourses(data.courses ?? []))
       .catch(() => setAllCourses([]));
-  }, []);
+  }, [isIfs]);
 
   useEffect(() => {
     if (pickerOpen && allCourses.length === 0) loadAllCourses();

@@ -160,6 +160,8 @@ export async function POST(req: NextRequest) {
       iconColor: body.iconColor?.trim() || null,
       coverImageUrl: body.coverImageUrl?.trim() || null,
       isActive: body.isActive ?? true,
+      // contextual: yalnız "Yeni IFS Paketi" akışı true → yeni IFS bölümü olur.
+      isIfs: body.isIfs ?? false,
       referenceDocs: refDocs.length ? { create: refDocs } : undefined,
     },
   });

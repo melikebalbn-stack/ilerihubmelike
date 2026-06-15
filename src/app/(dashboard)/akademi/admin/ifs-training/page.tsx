@@ -7,8 +7,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { AdminCoursesTable } from "@/components/akademi/admin/AdminCoursesTable";
 import { AdminPackagesTable } from "@/components/akademi/admin/AdminPackagesTable";
+import { AdminPackageFormModal } from "@/components/akademi/admin/AdminPackageFormModal";
 import type { AdminCourseListItem } from "@/types/akademi-admin";
 import type { AdminPackageListItem } from "@/types/akademi-package";
 
@@ -17,6 +20,7 @@ export default function AkademiAdminIfsTrainingPage() {
   const [courses, setCourses] = useState<AdminCourseListItem[]>([]);
   const [packages, setPackages] = useState<AdminPackageListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pkgModalOpen, setPkgModalOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -66,17 +70,24 @@ export default function AkademiAdminIfsTrainingPage() {
 
   return (
     <div className="ak-animate-in space-y-6">
-      <div>
-        <h2
-          className="text-xl font-bold"
-          style={{ color: "var(--ak-text-primary)" }}
-        >
-          IFS Eğitimleri
-        </h2>
-        <p className="text-sm mt-1" style={{ color: "var(--ak-text-secondary)" }}>
-          İçe aktarılan IFS geçiş eğitim alanları ve paketleri. Görev içeriklerini
-          düzenlemek için bir kursa veya pakete tıklayın.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2
+            className="text-xl font-bold"
+            style={{ color: "var(--ak-text-primary)" }}
+          >
+            IFS Eğitimleri
+          </h2>
+          <p className="text-sm mt-1" style={{ color: "var(--ak-text-secondary)" }}>
+            IFS geçiş eğitim alanları ve paketleri. Görev içeriklerini düzenlemek
+            için bir kursa veya pakete tıklayın. Yeni bölüm için &ldquo;Yeni IFS
+            Paketi&rdquo;, kurs eklemek için paket detayını kullanın.
+          </p>
+        </div>
+        <Button className="shrink-0" onClick={() => setPkgModalOpen(true)}>
+          <Plus className="w-4 h-4 mr-1.5" />
+          Yeni IFS Paketi
+        </Button>
       </div>
 
       {loading ? (
@@ -127,6 +138,19 @@ export default function AkademiAdminIfsTrainingPage() {
           </section>
         </>
       )}
+
+      {/* Yeni IFS Paketi = yeni IFS bölümü (isIfs=true). Başarıda liste yenilenir;
+          /akademi/ifs'te bölüm otomatik görünür. */}
+      <AdminPackageFormModal
+        open={pkgModalOpen}
+        onOpenChange={setPkgModalOpen}
+        mode="create"
+        isIfs
+        onSaved={() => {
+          setPkgModalOpen(false);
+          load();
+        }}
+      />
     </div>
   );
 }

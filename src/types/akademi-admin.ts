@@ -24,6 +24,8 @@ export interface AdminCourseCreateInput {
   difficulty: CourseDifficulty;
   duration?: number | null;
   isActive?: boolean;
+  // IFS-create: contextual — yalnız "Yeni IFS Kursu" akışı true gönderir; normal create false.
+  isIfs?: boolean;
 }
 
 export type AdminCourseUpdateInput = Partial<AdminCourseCreateInput>;

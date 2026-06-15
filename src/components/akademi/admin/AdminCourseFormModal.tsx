@@ -35,6 +35,10 @@ interface Props {
   course?: AdminCourseListItem | null;
   categories: string[];
   onSaved: () => void;
+  // contextual: "Yeni IFS Kursu" akışı true geçer → create body'sine isIfs:true.
+  isIfs?: boolean;
+  // create modunda POST yanıtındaki kurs id'sini geri verir (oluştur+bağla akışı için).
+  onCreated?: (created: { id: string }) => void;
 }
 
 const DIFFICULTY_LABELS: Record<CourseDifficulty, string> = {
@@ -50,6 +54,8 @@ export function AdminCourseFormModal({
   course,
   categories,
   onSaved,
+  isIfs = false,
+  onCreated,
 }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -141,6 +147,8 @@ export function AdminCourseFormModal({
         difficulty,
         duration: durationNum,
         isActive,
+        // create modunda contextual IFS bayrağı; edit'te gönderilmez.
+        ...(mode === "create" && isIfs ? { isIfs: true } : {}),
       };
 
       const url =
@@ -164,6 +172,11 @@ export function AdminCourseFormModal({
       toast.success(
         mode === "edit" ? "Kurs güncellendi" : "Kurs oluşturuldu"
       );
+      // create akışında oluşan kurs id'sini geri ver (oluştur+bağla için).
+      if (mode === "create" && onCreated) {
+        const created = await res.json().catch(() => null);
+        if (created?.id) onCreated({ id: created.id });
+      }
       onSaved();
       onOpenChange(false);
     } catch {
@@ -177,8 +190,13 @@ export function AdminCourseFormModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
             {mode === "edit" ? "Kursu Düzenle" : "Yeni Kurs"}
+            {isIfs && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#3D0068] text-white">
+                IFS
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
             {mode === "edit"

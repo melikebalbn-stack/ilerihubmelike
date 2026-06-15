@@ -182,6 +182,8 @@ export async function POST(req: NextRequest) {
       difficulty,
       duration,
       isActive: body.isActive ?? true,
+      // contextual: yalnız "Yeni IFS Kursu" akışı true → IFS Eğitimleri'ne düşer.
+      isIfs: body.isIfs ?? false,
     },
   });
 

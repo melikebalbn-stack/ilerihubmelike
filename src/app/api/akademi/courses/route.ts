@@ -4,7 +4,9 @@ import { NextResponse } from "next/server";
 import type { CourseListItem } from "@/types/akademi";
 
 export async function GET() {
-  const { error } = await requirePermission('akademi.kurs.edit');
+  // Katalog OKUMA: kurs.edit YA DA akademi.admin yeterli (OR). Yazma handler'ları
+  // ayrı admin route'larında ve kurs.edit'te kalır — bu gevşeme YALNIZ GET.
+  const { error } = await requirePermission(['akademi.kurs.edit', 'akademi.admin']);
   if (error) return error;
 
   const courses = await prisma.course.findMany({

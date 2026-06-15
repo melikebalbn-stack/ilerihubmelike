@@ -17,8 +17,10 @@ export async function resolveAkademiUserId(
   const email = session?.user?.email;
   if (!email) return null;
 
-  const user = await prisma.user.findUnique({
-    where: { email },
+  // Case-insensitive: LDAP session email casing'i DB casing'inden farklı olabilir
+  // (Postgres karşılaştırması case-sensitive) → insensitive eşleşme ile blok önlenir.
+  const user = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
     select: { id: true },
   });
 

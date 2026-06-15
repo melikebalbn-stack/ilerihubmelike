@@ -69,12 +69,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Departman bazlı filtreleme:
     // - departments boş → ortak pozisyon, her zaman dahil
     // - departments dolu → sadece formda o departmandan personel varsa dahil
-    const maxStep = form.sendToGM ? 7 : 6
+    // İV-FINAL: sortOrder CUTOFF KALDIRILDI (eski maxStep=6 İV'yi en-sonda dışlıyordu).
+    // GM yalnız sendToGM ise dahil; diğer tüm eligible (İV/GMY dahil) HER ZAMAN
+    // zincirde. Sıra = sortOrder → İV (en büyük sortOrder) doğal olarak SON adım.
     const assignedPositions = positions.filter((p) => {
       if (!p.userId) return false
-      if (p.sortOrder > maxStep) return false
+      if (p.code === 'GM' && !form.sendToGM) return false
 
-      // Ortak pozisyon (departments boş)
+      // Ortak pozisyon (departments boş) → her zaman dahil (İV, GMY dahil)
       if (!p.departments || p.departments.length === 0) return true
 
       // Koşullu pozisyon: formda eşleşen departman var mı?

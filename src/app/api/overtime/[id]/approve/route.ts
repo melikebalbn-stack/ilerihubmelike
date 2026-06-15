@@ -72,6 +72,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // İV-FINAL: bekleyen adımın pozisyon CODE'unu çöz (hard-coded step-no yerine).
+    // Önce approverId→ApprovalPosition, sonra title snapshot fallback → in-flight
+    // (eski sıralı) formlarda da çalışır; OvertimeApproval'da code kolonu YOK.
+    let pendingCode: string | null = null
+    if (pendingApproval.approverId) {
+      const byUser = await prisma.approvalPosition.findFirst({
+        where: { userId: pendingApproval.approverId },
+        select: { code: true },
+      })
+      pendingCode = byUser?.code ?? null
+    }
+    if (!pendingCode) {
+      const byTitle = await prisma.approvalPosition.findFirst({
+        where: { title: pendingApproval.role },
+        select: { code: true },
+      })
+      pendingCode = byTitle?.code ?? null
+    }
+
     // Transaction ile onay işlemini gerçekleştir
     const updatedForm = await prisma.$transaction(async (tx) => {
       if (decision === 'APPROVED') {
@@ -87,29 +106,34 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           },
         })
 
-        // GMY adımı (step 6) ve forwardToGM seçildiyse
-        if (pendingApproval.step === 6 && forwardToGM === true) {
+        // GMY adımı (CODE='DEPUTY_GM') ve forwardToGM seçildiyse → GM'i GMY ile
+        // İV ARASINA ekle (GM.sortOrder İV'den küçük). step-no hard-code YOK.
+        if (pendingCode === 'DEPUTY_GM' && forwardToGM === true) {
           // sendToGM'i true yap
           await tx.overtimeForm.update({
             where: { id },
             data: { sendToGM: true },
           })
 
-          // 7. adım kaydı yoksa oluştur
-          const existingGmApproval = form.approvals.find((a) => a.step === 7)
+          // GM pozisyonunu DB'den çek (step = GM.sortOrder → İV'den ÖNCE)
+          const gmPosition = await tx.approvalPosition.findUnique({
+            where: { code: 'GM' },
+          })
 
-          if (!existingGmApproval) {
-            // GM pozisyonunu DB'den çek
-            const gmPosition = await tx.approvalPosition.findUnique({
-              where: { code: 'GM' },
-            })
+          // GM zaten zincirde mi? (approverId ya da title snapshot ile — step-no'ya bağlı değil)
+          const existingGmApproval = form.approvals.find(
+            (a) =>
+              (gmPosition?.userId != null && a.approverId === gmPosition.userId) ||
+              a.role === (gmPosition?.title ?? 'Genel Müdür')
+          )
 
+          if (gmPosition && !existingGmApproval) {
             await tx.overtimeApproval.create({
               data: {
                 overtimeFormId: id,
-                step: 7,
-                role: 'Genel Müdür',
-                approverId: gmPosition?.userId || null,
+                step: gmPosition.sortOrder,
+                role: gmPosition.title || 'Genel Müdür',
+                approverId: gmPosition.userId || null,
                 decision: null,
                 comment: null,
                 decidedAt: null,

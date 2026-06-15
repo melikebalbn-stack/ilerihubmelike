@@ -37,12 +37,11 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const maxStep = sendToGM ? 7 : 6
-
-    // Departman bazlı filtreleme
+    // İV-FINAL: cutoff kaldırıldı (submit ile aynı mantık). GM yalnız sendToGM ise;
+    // diğer eligible (İV/GMY dahil) her zaman. İV en büyük sortOrder → son.
     const chain = positions
       .filter((p) => {
-        if (p.sortOrder > maxStep) return false
+        if (p.code === 'GM' && !sendToGM) return false
 
         // Ortak pozisyon
         if (!p.departments || p.departments.length === 0) return true

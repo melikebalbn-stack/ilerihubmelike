@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2, Save, Trash2, CheckCircle2, PlayCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, Save, Trash2, CheckCircle2, PlayCircle, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -395,7 +395,15 @@ export function OffboardingFormClient({ mode, id, canEdit, canApprove, canDelete
             </div>
           )}
         </div>
-        {isEdit && canDelete && (
+        {isEdit && (
+        <div className="flex items-center gap-2">
+          {/* PDF İndir — offboarding.view yeterli (sayfaya erişim zaten view gerektirir) */}
+          <Button asChild variant="outline" size="sm">
+            <a href={`/api/offboarding/${id}/pdf`} target="_blank" rel="noopener noreferrer">
+              <FileDown className="h-4 w-4 mr-1" /> PDF İndir
+            </a>
+          </Button>
+          {canDelete && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" disabled={acting} className="text-destructive border-destructive/30">
@@ -418,6 +426,8 @@ export function OffboardingFormClient({ mode, id, canEdit, canApprove, canDelete
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          )}
+        </div>
         )}
       </div>
 

@@ -8,6 +8,9 @@ on:
 
 env:
   NODE_VERSION: '20.x'
+  # tsc + next build (SWC) OOM fix — TÜM job'lar miras alır (build/e2e dahil).
+  # Runner ~7GB RAM; gerekirse 6144'e çıkar, daha yükseğe ÇIKMA (sistem OOM).
+  NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
   lint:

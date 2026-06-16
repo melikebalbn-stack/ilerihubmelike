@@ -14,6 +14,8 @@ const nextConfig = {
       allowedOrigins: ['172.16.16.33:3000', 'localhost:3000', 'hub.ilerigroup.com'],
       bodySizeLimit: '50mb',
     },
+    // Build belleğini düşür (Next 15) — CI OOM hafifletme
+    webpackMemoryOptimizations: true,
   },
   // Eski Arşiv URL'lerini yeni route group konumuna yönlendir
   // /dashboard/arsiv/* → /arsiv/*  (PR-ArsivHotfix-Sidebar, 28 Nis 2026)
@@ -101,4 +103,11 @@ const sentryWebpackPluginOptions = {
   silent: !process.env.SENTRY_AUTH_TOKEN,
 }
 
-module.exports = withSentryConfig(nextConfig, sentryWebpackPluginOptions)
+// Sentry webpack plugin (source-map üretimi/upload) build'de bellek canavarıdır.
+// SENTRY_AUTH_TOKEN yoksa (CI'da ve mevcut prod .env'de yok) source-map upload
+// zaten yapılmıyordu → plugin'i TAMAMEN atla; CI + prod build belleğini düşürür.
+// Runtime Sentry SDK (instrumentation/sentry.*.config) bundan etkilenmez.
+module.exports = process.env.SENTRY_AUTH_TOKEN
+  ? withSentryConfig(nextConfig, sentryWebpackPluginOptions)
+  : nextConfig
+

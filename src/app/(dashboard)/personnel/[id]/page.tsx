@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams, useParams } from "next/navigation"
 import Link from "next/link"
+import { canAccessPersonnel } from "@/lib/auth/personnel-access"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -116,17 +117,8 @@ type PersonnelData = {
   } | null
 }
 
-const ADMIN_ROLES = ["ADMIN", "HR_MANAGER", "SUPER_ADMIN"]
-
-// Backend (PUT/PATCH/DELETE) hasEditAccess(role, department) kullanıyor —
-// İK departmanındaki herkesi role'den bağımsız HR sayar. Frontend isAdmin
-// kontrolü de aynı pattern'i kullanmalı, yoksa İK çalışanı butonları
-// göremez ama backend isteği kabul eder.
-function isHRDepartment(dept: string | undefined | null): boolean {
-  if (!dept) return false
-  const d = dept.toLowerCase()
-  return d.includes("insan") || d.includes("human") || d.includes("hr") || d.includes("ik")
-}
+// Erişim: src/lib/auth/personnel-access.ts (canAccessPersonnel) — tek kaynak.
+// Backend hasEditAccess ile aynı sözleşme (rol || İnsan Varlıkları departmanı).
 
 export default function PersonnelDetailPage() {
   const { data: session } = useSession()
@@ -136,7 +128,7 @@ export default function PersonnelDetailPage() {
   const id = params.id as string
   const userRole = session?.user?.role as string
   const userDepartment = (session?.user as { department?: string | null } | undefined)?.department
-  const isAdmin = ADMIN_ROLES.includes(userRole) || isHRDepartment(userDepartment)
+  const isAdmin = canAccessPersonnel(userRole, userDepartment)
 
   const [data, setData] = useState<PersonnelData | null>(null)
   const [form, setForm] = useState<Record<string, any>>({})

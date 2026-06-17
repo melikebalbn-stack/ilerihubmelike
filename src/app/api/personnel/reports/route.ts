@@ -1,15 +1,14 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 
 export const dynamic = 'force-dynamic'
 
 const REPORT_ROLES = ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN']
 
 function isHRDepartment(dept: string | undefined | null): boolean {
-  if (!dept) return false
-  const d = dept.toLowerCase()
-  return d.includes('insan') || d.includes('human') || d.includes('hr') || d.includes('ik')
+  return isInsanVarliklari(dept)
 }
 
 export async function GET() {

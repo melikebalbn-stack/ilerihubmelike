@@ -1,5 +1,6 @@
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse } from 'next/server';
+import { isInsanVarliklari } from '@/lib/auth/personnel-access';
 
 export default withAuth(
   function middleware(req) {
@@ -34,9 +35,7 @@ export default withAuth(
 
         // /personnel için İK departmanı da erişebilir
         if (!hasRole && protectedPath === '/personnel') {
-          const dept = ((token?.department as string) || '').toLowerCase();
-          const isHR = dept.includes('insan') || dept.includes('human') || dept.includes('hr') || dept.includes('ik');
-          if (isHR) {
+          if (isInsanVarliklari((token?.department as string) || '')) {
             continue;
           }
         }

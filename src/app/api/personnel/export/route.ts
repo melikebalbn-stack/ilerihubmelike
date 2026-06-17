@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { requireUser } from '@/lib/auth/require-user'
+import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { logAuditEvent } from '@/lib/audit-log'
 import {
   KAN_GRUBU_LABELS,
@@ -17,9 +18,7 @@ const ALLOWED_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
 const FULL_SENSITIVE_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
 function isHRDepartment(dept: string | undefined | null): boolean {
-  if (!dept) return false
-  const d = dept.toLowerCase()
-  return d.includes('insan') || d.includes('human') || d.includes('hr') || d.includes('ik')
+  return isInsanVarliklari(dept)
 }
 
 function hasPersonnelAccess(role: string, department?: string | null): boolean {

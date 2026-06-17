@@ -3,15 +3,14 @@ import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { EXCEL_COLUMN_MAP } from '@/lib/personnel-constants'
 import { requireUser } from '@/lib/auth/require-user'
+import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 
 export const dynamic = 'force-dynamic'
 
 const ALLOWED_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
 
 function isHRDepartment(dept: string | undefined | null): boolean {
-  if (!dept) return false
-  const d = dept.toLowerCase()
-  return d.includes('insan') || d.includes('human') || d.includes('hr') || d.includes('ik')
+  return isInsanVarliklari(dept)
 }
 
 // Hassas alan isimleri - PersonnelSensitive tablosuna gidecekler

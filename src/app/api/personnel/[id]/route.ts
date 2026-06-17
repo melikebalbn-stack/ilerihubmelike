@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { logAuditEvent } from '@/lib/audit-log'
 import { computeTenure } from '@/lib/personnel-tenure'
+import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,9 +12,7 @@ const EDIT_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
 const DELETE_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
 function isHRDepartment(dept: string | undefined | null): boolean {
-  if (!dept) return false
-  const d = dept.toLowerCase()
-  return d.includes('insan') || d.includes('human') || d.includes('hr') || d.includes('ik')
+  return isInsanVarliklari(dept)
 }
 
 function hasEditAccess(role: string, department?: string | null): boolean {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,9 +10,7 @@ const ALLOWED_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
 
 function hasAccess(role: string, department?: string | null): boolean {
   if (ALLOWED_ROLES.includes(role)) return true
-  if (!department) return false
-  const d = department.toLowerCase()
-  return d.includes('insan') || d.includes('human') || d.includes('hr') || d.includes('ik')
+  return isInsanVarliklari(department)
 }
 
 export async function GET(request: NextRequest) {

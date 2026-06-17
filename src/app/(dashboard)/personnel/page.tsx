@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { canAccessPersonnel } from "@/lib/auth/personnel-access"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -96,13 +97,7 @@ type PaginationInfo = {
   totalPages: number
 }
 
-const ADMIN_ROLES = ["ADMIN", "HR_MANAGER", "SUPER_ADMIN"]
-
-function isHRDepartment(dept: string | undefined | null): boolean {
-  if (!dept) return false
-  const d = dept.toLowerCase()
-  return d.includes('insan') || d.includes('human') || d.includes('hr') || d.includes('ik')
-}
+// Erişim: src/lib/auth/personnel-access.ts (canAccessPersonnel) — tek kaynak.
 
 const formatDate = (dateStr: string | null) => {
   if (!dateStr) return "-"
@@ -669,7 +664,7 @@ export default function PersonnelPage() {
   const searchParams = useSearchParams()
   const userRole = session?.user?.role as string
   const userDept = (session?.user as any)?.department as string | undefined
-  const isAdmin = ADMIN_ROLES.includes(userRole) || isHRDepartment(userDept)
+  const isAdmin = canAccessPersonnel(userRole, userDept)
 
   const initialTab = searchParams.get("tab") || "personel"
   const [activeTab, setActiveTab] = useState(initialTab)

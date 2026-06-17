@@ -782,7 +782,7 @@ export default function EditOvertimeFormPage() {
                   <th className="px-4 py-3">Personel Adı</th>
                   <th className="px-4 py-3">Telefon</th>
                   <th className="px-4 py-3">Departman</th>
-                  <th className="px-4 py-3">Ünvan</th>
+                  <th className="px-4 py-3">Mesai Nedeni</th>
                   <th className="px-4 py-3">Servis Güzergahı</th>
                   <th className="px-4 py-3">Hedef Üretim</th>
                 </tr>
@@ -803,7 +803,7 @@ export default function EditOvertimeFormPage() {
                       <td className="px-4 py-3 text-gray-900">{person.adSoyad}</td>
                       <td className="px-4 py-3 text-xs text-gray-600">{person.telefon || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{person.bolum}</td>
-                      <td className="px-4 py-3 text-gray-600">{person.gorev || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{detail?.mesaiNedeni || person.gorev || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.serviceRoute || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.targetProduction || "-"}</td>
                     </tr>

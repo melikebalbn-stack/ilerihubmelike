@@ -8071,6 +8071,7 @@ model OvertimePersonnel {
   serviceRoute     String? // Servis güzergahı (mavi yaka için)
   targetProduction String? // Hedef üretim
   actualProduction String? // Gerçekleşen üretim
+  mesaiNedeni      String? // Mesai nedeni (nullable: eski formlar boş; onay görünümünde ünvana fallback)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
+import { ileriHubUrl } from "@/lib/email-templates/akademi/_base";
 
 export const dynamic = "force-dynamic";
 
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
         ownerName: form.createdBy?.name ?? form.createdBy?.email ?? "—",
         dateStr: form.date.toLocaleDateString("tr-TR"),
         role: pending.role || "Onay",
-        link: `/forms/overtime/${form.id}`,
+        link: ileriHubUrl(`/forms/overtime/${form.id}`),
       });
       const res = await sendEmail(
         [{ email: approver.email, name: approver.name ?? approver.email }],

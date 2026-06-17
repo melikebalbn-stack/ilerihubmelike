@@ -62,7 +62,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!access.allowed) return apiError(access.reason!, 403)
 
     const body = await request.json()
-    const { personnelId: targetPersonnelId, workDepartment, serviceRoute, targetProduction } = body
+    const { personnelId: targetPersonnelId, workDepartment, serviceRoute, targetProduction, mesaiNedeni } = body
 
     if (!targetPersonnelId || !workDepartment) {
       return apiBadRequest('personnelId ve workDepartment alanları zorunludur')
@@ -82,6 +82,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         workDepartment,
         serviceRoute: serviceRoute || null,
         targetProduction: targetProduction || null,
+        mesaiNedeni: mesaiNedeni?.trim() || null,
       },
     })
 

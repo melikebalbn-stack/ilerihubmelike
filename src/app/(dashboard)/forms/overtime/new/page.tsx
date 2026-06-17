@@ -29,6 +29,7 @@ interface PersonnelDetail {
   serviceRoute: string
   targetProduction: string
   actualProduction: string
+  mesaiNedeni: string
 }
 
 type OvertimeType = "SATURDAY" | "SUNDAY" | "WEEKDAY_EXTRA" | "HOLIDAY"
@@ -142,6 +143,7 @@ export default function NewOvertimeFormPage() {
             serviceRoute: person.serviceRoute || "",
             targetProduction: "",
             actualProduction: "",
+            mesaiNedeni: "",
           },
         }))
       }
@@ -177,7 +179,11 @@ export default function NewOvertimeFormPage() {
 
   // Helpers
   const canProceedStep1 = overtimeType !== "" && date !== ""
-  const canProceedStep2 = selectedIds.size > 0
+  // Mesai Nedeni her seçili personel için ZORUNLU
+  const allMesaiNedeniFilled = selectedPersonnel.every(
+    (p) => (personnelDetails[p.id]?.mesaiNedeni ?? "").trim() !== ""
+  )
+  const canProceedStep2 = selectedIds.size > 0 && allMesaiNedeniFilled
 
   // Fetch dynamic approval chain when moving to step 3
   async function fetchApprovalChain(toGM: boolean = sendToGM) {
@@ -212,6 +218,11 @@ export default function NewOvertimeFormPage() {
   // ---------------------------------------------------------------------------
 
   async function handleSave(submit: boolean) {
+    // Mesai Nedeni zorunlu — eksikse engelle
+    if (!allMesaiNedeniFilled) {
+      toast.error("Her seçili personel için Mesai Nedeni girilmelidir.")
+      return
+    }
     setSaving(true)
     try {
       const body = {
@@ -229,6 +240,7 @@ export default function NewOvertimeFormPage() {
             resolveDefaultDepartment(p.bolum, departments),
           serviceRoute: personnelDetails[p.id]?.serviceRoute || null,
           targetProduction: personnelDetails[p.id]?.targetProduction || null,
+          mesaiNedeni: personnelDetails[p.id]?.mesaiNedeni?.trim() || null,
         })),
       }
 
@@ -643,6 +655,21 @@ export default function NewOvertimeFormPage() {
                             onChange={(e) => updateDetail(person.id, "actualProduction", e.target.value)}
                           />
                         </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Mesai Nedeni <span className="text-red-500">*</span>
+                        </label>
+                        <Input
+                          placeholder="Mesai nedenini girin (zorunlu)"
+                          value={detail.mesaiNedeni}
+                          onChange={(e) => updateDetail(person.id, "mesaiNedeni", e.target.value)}
+                          className={!detail.mesaiNedeni.trim() ? "border-red-300 focus-visible:ring-red-400" : ""}
+                        />
+                        {!detail.mesaiNedeni.trim() && (
+                          <p className="text-xs text-red-500 mt-1">Mesai nedeni zorunludur</p>
+                        )}
                       </div>
                     </div>
                   )

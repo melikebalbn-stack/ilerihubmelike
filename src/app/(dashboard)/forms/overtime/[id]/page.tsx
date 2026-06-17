@@ -21,6 +21,7 @@ interface Personnel {
   serviceRoute: string | null
   targetProduction: string | null
   actualProduction: string | null
+  mesaiNedeni: string | null
   personnel: {
     id: string
     sicilNo: string
@@ -619,7 +620,7 @@ export default function OvertimeDetailPage() {
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Personel Adı</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Telefon</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Departman</th>
-                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Ünvan</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Mesai Nedeni</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Mesai Yapacak Bölüm</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Servis Güzergahı</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Üretim</th>
@@ -669,7 +670,7 @@ export default function OvertimeDetailPage() {
                   <td className="py-3 px-2 font-medium">{pName(p)}</td>
                   <td className="py-3 px-2 text-xs">{pTelefon(p)}</td>
                   <td className="py-3 px-2">{pBolum(p)}</td>
-                  <td className="py-3 px-2">{pGorev(p)}</td>
+                  <td className="py-3 px-2">{p.mesaiNedeni || pGorev(p)}</td>
                   <td className="py-3 px-2">{p.workDepartment}</td>
                   <td className="py-3 px-2">{p.serviceRoute || "—"}</td>
                   <td className="py-3 px-2">{p.targetProduction || "—"}</td>

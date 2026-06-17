@@ -216,6 +216,9 @@ export async function POST(request: NextRequest) {
       if (!p.personnelId || !p.workDepartment) {
         return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
       }
+      if (!p.mesaiNedeni || !String(p.mesaiNedeni).trim()) {
+        return apiBadRequest('Her personel için Mesai Nedeni zorunludur')
+      }
     }
 
     // Saat aralığı kontrolü (tam gün değilse)
@@ -246,11 +249,13 @@ export async function POST(request: NextRequest) {
             workDepartment: string
             serviceRoute?: string
             targetProduction?: string
+            mesaiNedeni?: string
           }) => ({
             personnelId: p.personnelId,
             workDepartment: p.workDepartment,
             serviceRoute: p.serviceRoute || null,
             targetProduction: p.targetProduction || null,
+            mesaiNedeni: p.mesaiNedeni?.trim() || null,
           })),
         },
       },

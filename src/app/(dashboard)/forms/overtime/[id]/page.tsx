@@ -12,7 +12,6 @@ import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
 import { useDepartments } from "@/lib/use-departments"
-import { APPROVAL_CHAIN } from "@/lib/overtime-approval-chain"
 import { useSession } from "next-auth/react"
 
 interface Personnel {
@@ -721,30 +720,31 @@ export default function OvertimeDetailPage() {
       <div className="rounded-lg border bg-card p-6">
         <h2 className="text-lg font-semibold mb-6">Onay Süreci</h2>
         <div className="relative">
-          {APPROVAL_CHAIN.map((chainStep, index) => {
-            const approval = form.approvals.find((a) => a.step === chainStep.step)
-            const isGMStep = chainStep.step === 7
-            const isSkipped = isGMStep && !form.sendToGM
-            // Dinamik: approval kayıtlarından ilk bekleyen adımı bul
-            const firstPendingApproval = form.approvals.find((a) => a.decision === null)
-            const isCurrentStep = firstPendingApproval ? firstPendingApproval.step === chainStep.step : false
+          {[...form.approvals]
+            .sort((a, b) => a.step - b.step)
+            .map((approval, index, sortedApprovals) => {
+            // Timeline GERÇEK onay zincirinden çizilir: etiket = approval.role (stored),
+            // sıra = approval.step. Statik APPROVAL_CHAIN step→başlık template'i KULLANILMAZ
+            // (eski sıra ile etiket kaymasına yol açıyordu).
+            const firstPendingApproval = sortedApprovals.find((a) => a.decision === null)
+            const isCurrentStep = firstPendingApproval ? firstPendingApproval.id === approval.id : false
             const isPending =
               (form.status === "PENDING" || form.status === "IN_PROGRESS") && isCurrentStep
-            const isDecided = approval?.decision !== null && approval?.decision !== undefined
-            const isApproved = approval?.decision === "APPROVED"
-            const isRejected = approval?.decision === "REJECTED"
+            const isDecided = approval.decision !== null && approval.decision !== undefined
+            const isApproved = approval.decision === "APPROVED"
+            const isRejected = approval.decision === "REJECTED"
 
             let circleColor = "bg-gray-200 text-gray-500"
             if (isApproved) circleColor = "bg-green-500 text-white"
             else if (isRejected) circleColor = "bg-red-500 text-white"
-            else if (isPending && !isSkipped) circleColor = "bg-blue-500 text-white"
+            else if (isPending) circleColor = "bg-blue-500 text-white"
 
-            if (isSkipped) circleColor = "bg-gray-200 text-gray-400"
-
-            const isLast = index === APPROVAL_CHAIN.length - 1
+            // Görsel sıra: ardışık 1..N (gerçek step boşlukları 1,2,5,7 gösterilmez)
+            const displayNo = index + 1
+            const isLast = index === sortedApprovals.length - 1
 
             return (
-              <div key={chainStep.step} className="relative flex gap-4">
+              <div key={approval.id} className="relative flex gap-4">
                 {/* Vertical line */}
                 {!isLast && (
                   <div
@@ -763,19 +763,16 @@ export default function OvertimeDetailPage() {
                   ) : isRejected ? (
                     <X className="h-5 w-5" />
                   ) : (
-                    chainStep.step
+                    displayNo
                   )}
                 </div>
 
                 {/* Step content */}
                 <div className="pb-8 flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className={`font-medium ${isSkipped ? "text-gray-400" : ""}`}>
-                      {chainStep.role}
+                    <p className="font-medium">
+                      {approval.role}
                     </p>
-                    {isSkipped && (
-                      <span className="text-xs text-gray-400">(Atlandı)</span>
-                    )}
                     {isDecided && approval && (
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -792,7 +789,7 @@ export default function OvertimeDetailPage() {
                         {approval.decision === "FORWARDED" && "Yönlendirildi"}
                       </span>
                     )}
-                    {isPending && !isSkipped && (
+                    {isPending && (
                       <span className="inline-flex items-center gap-1.5 text-xs text-blue-600">
                         <span className="relative flex h-2 w-2">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />

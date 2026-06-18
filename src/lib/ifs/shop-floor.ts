@@ -66,14 +66,20 @@ function employeeFields(emp?: TeamEmployee): Record<string, unknown> {
 export async function getOperationSummary(
   ref: OperationRef & { contract: string },
 ): Promise<OperationSummary> {
+  // OData function import'ları parametre adı kümesiyle BİREBİR eşleşir → metadata
+  // imzasındaki 6 parametrenin 6'sı da HER ZAMAN gönderilmeli, aksi halde
+  // FUNCTION_NOT_FOUND (400). Sıra metadata ile aynı:
+  // Contract, OperationId, OrderNo, ReleaseNo, SequenceNo, OperationNo.
+  // Verilmeyen Decimal/string'ler için literal (tırnaksız) `null`; Release/Sequence
+  // default '*' korunur (daha önce çalışan combo).
   const params: string[] = [
     `Contract=${odataString(ref.contract)}`,
     `OperationId=${ref.operationId != null ? ref.operationId : 'null'}`,
+    `OrderNo=${ref.orderNo != null ? odataString(ref.orderNo) : 'null'}`,
+    `ReleaseNo=${odataString(ref.releaseNo ?? '*')}`,
+    `SequenceNo=${odataString(ref.sequenceNo ?? '*')}`,
+    `OperationNo=${ref.operationNo != null ? ref.operationNo : 'null'}`,
   ]
-  if (ref.orderNo != null) params.push(`OrderNo=${odataString(ref.orderNo)}`)
-  params.push(`ReleaseNo=${odataString(ref.releaseNo ?? '*')}`)
-  params.push(`SequenceNo=${odataString(ref.sequenceNo ?? '*')}`)
-  if (ref.operationNo != null) params.push(`OperationNo=${ref.operationNo}`)
 
   const funcCall = `GetOperationSummary(${params.join(',')})`
   return ifsGetFunction<OperationSummary>(funcCall)

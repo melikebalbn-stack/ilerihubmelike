@@ -171,8 +171,14 @@ export default function NewOvertimeFormPage() {
     }))
   }
 
-  // Selected personnel objects in selection order
-  const selectedPersonnel = personnelList.filter((p) => selectedIds.has(p.id))
+  // Selected personnel objects in SELECTION (ekleme) order — TEK sıralı kaynak.
+  // selectedIds bir Set: JS ekleme sırasını korur → onun üzerinden map'liyoruz.
+  // (personnelList.filter fetch/alfabetik sıraya kaydırırdı; Object.keys(personnelDetails)
+  //  sayısal-string id'leri artan sıraya kaydırırdı = "karışık" sebebi.)
+  // step-2 sağ panel + step-3 önizleme + submit payload ÜÇÜ DE bu diziden türüyor.
+  const selectedPersonnel = Array.from(selectedIds)
+    .map((id) => personnelList.find((p) => p.id === id))
+    .filter((p): p is PersonnelItem => Boolean(p))
 
   // Current overtime type meta
   const currentTypeMeta = MESAI_TURLERI.find((t) => t.value === overtimeType)

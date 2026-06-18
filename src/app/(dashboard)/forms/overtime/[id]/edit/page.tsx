@@ -219,8 +219,13 @@ export default function EditOvertimeFormPage() {
     }))
   }
 
-  // Selected personnel objects in selection order
-  const selectedPersonnel = personnelList.filter((p) => selectedIds.has(p.id))
+  // Selected personnel objects in SELECTION/KAYIT order — TEK sıralı kaynak.
+  // selectedIds bir Set: edit'te form.personnel sırasıyla dolduruluyor, JS Set
+  // ekleme sırasını korur → onun üzerinden map'liyoruz (personnelList.filter
+  // fetch/alfabetik sıraya kaydırırdı). step-2 panel + step-3 önizleme + submit aynı.
+  const selectedPersonnel = Array.from(selectedIds)
+    .map((id) => personnelList.find((p) => p.id === id))
+    .filter((p): p is PersonnelItem => Boolean(p))
 
   // Current overtime type meta
   const currentTypeMeta = MESAI_TURLERI.find((t) => t.value === overtimeType)

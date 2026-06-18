@@ -176,7 +176,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           where: { overtimeFormId: id },
         })
 
-        // Yeni personel listesini ekle
+        // Yeni personel listesini ekle — seçim/kayıt sırasını DETERMİNİSTİK koru:
+        // index ile monoton createdAt damgalıyoruz (aksi halde tümü aynı ms = TIE →
+        // orderBy createdAt asc kararsız). Onay görünümü = kayıt sırası.
+        const orderBase = Date.now()
         await tx.overtimePersonnel.createMany({
           data: personnel.map((p: {
             personnelId: string
@@ -184,13 +187,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             serviceRoute?: string
             targetProduction?: string
             mesaiNedeni?: string
-          }) => ({
+          }, index: number) => ({
             overtimeFormId: id,
             personnelId: p.personnelId,
             workDepartment: p.workDepartment,
             serviceRoute: p.serviceRoute || null,
             targetProduction: p.targetProduction || null,
             mesaiNedeni: p.mesaiNedeni?.trim() || null,
+            createdAt: new Date(orderBase + index),
           })),
         })
       }
@@ -205,6 +209,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
               },
             },
+            orderBy: { createdAt: 'asc' },
           },
           approvals: {
             include: {

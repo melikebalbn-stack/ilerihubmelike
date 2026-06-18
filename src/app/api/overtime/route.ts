@@ -230,6 +230,11 @@ export async function POST(request: NextRequest) {
     const formNo = await generateFormNo()
 
     // Formu ve personelleri tek transaction ile oluştur
+    // Seçim sırasını DETERMİNİSTİK koru: createMany/nested-create aynı ms'te
+    // createdAt yazıyor (TIE) → orderBy createdAt asc kararsız kalıyor. index ile
+    // monoton createdAt damgalıyoruz; onay görünümü (orderBy createdAt asc) =
+    // seçim/oluşturma sırası. (cuid id sıralanabilir DEĞİL — tiebreaker olamaz.)
+    const orderBase = Date.now()
     const form = await prisma.overtimeForm.create({
       data: {
         formNo,
@@ -250,12 +255,13 @@ export async function POST(request: NextRequest) {
             serviceRoute?: string
             targetProduction?: string
             mesaiNedeni?: string
-          }) => ({
+          }, index: number) => ({
             personnelId: p.personnelId,
             workDepartment: p.workDepartment,
             serviceRoute: p.serviceRoute || null,
             targetProduction: p.targetProduction || null,
             mesaiNedeni: p.mesaiNedeni?.trim() || null,
+            createdAt: new Date(orderBase + index),
           })),
         },
       },

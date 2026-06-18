@@ -65,6 +65,7 @@ interface EvalCell {
   egitimVerildi: boolean;
   uygulamaliYapildi: boolean;
   ornekYapildi: boolean;
+  ornekAciklama: string | null;
   ornekStatus: OrnekStatus;
   projeEkibiYorum: string | null;
   danismanYorum: string | null;
@@ -164,6 +165,7 @@ export function IfsEvaluationsTab() {
         egitimVerildi: false,
         uygulamaliYapildi: false,
         ornekYapildi: false,
+        ornekAciklama: null,
         ornekStatus: "PENDING",
         projeEkibiYorum: null,
         danismanYorum: null,
@@ -487,6 +489,9 @@ export function IfsEvaluationsTab() {
                   <th className="text-center px-2 py-2 text-xs font-semibold uppercase">
                     Örnek Yaptı
                   </th>
+                  <th className="text-left px-3 py-2 text-xs font-semibold uppercase">
+                    Kursiyer Açıklaması
+                  </th>
                   <th className="text-center px-2 py-2 text-xs font-semibold uppercase">
                     Eğitmen Statüsü
                   </th>
@@ -546,6 +551,24 @@ export function IfsEvaluationsTab() {
                           <Badge variant="secondary" title="Kursiyer denedi olarak işaretledi">
                             Denedi
                           </Badge>
+                        ) : (
+                          <span
+                            className="text-xs"
+                            style={{ color: "var(--ak-text-tertiary)" }}
+                          >
+                            —
+                          </span>
+                        )}
+                      </td>
+                      {/* Kursiyer açıklaması — SALT-OKUNUR; ekip okuyup statü verir. */}
+                      <td className="px-3 py-2 align-top">
+                        {e?.ornekAciklama ? (
+                          <span
+                            className="text-xs whitespace-pre-wrap break-words"
+                            style={{ color: "var(--ak-text-secondary)" }}
+                          >
+                            {e.ornekAciklama}
+                          </span>
                         ) : (
                           <span
                             className="text-xs"

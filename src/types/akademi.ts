@@ -48,6 +48,8 @@ export interface ContentItem {
   duration: number | null;
   order: number;
   completedByCurrentUser: boolean;
+  // IFS: kursiyerin "Örnek Yaptım" açıklaması (varsa) — modal prefill için.
+  ornekAciklama?: string | null;
   // IFS-4: yalnız type=GOREV içeriklerde dolu.
   ifsMeta?: IfsTaskMetaView | null;
 }

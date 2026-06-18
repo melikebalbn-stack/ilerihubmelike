@@ -21,8 +21,20 @@ export async function POST(
   }
   const { id } = await params;
 
-  const body = (await req.json().catch(() => ({}))) as { done?: unknown };
+  const body = (await req.json().catch(() => ({}))) as {
+    done?: unknown;
+    aciklama?: unknown;
+  };
   const done = body.done === undefined ? true : Boolean(body.done);
+  // Kursiyer açıklaması yalnız done=true akışında anlamlı; done=true ise ZORUNLU.
+  const aciklama =
+    typeof body.aciklama === "string" ? body.aciklama.trim() : "";
+  if (done && !aciklama) {
+    return NextResponse.json(
+      { error: "Lütfen ne yaptığınızı kısaca açıklayın." },
+      { status: 400 }
+    );
+  }
 
   const content = await prisma.content.findFirst({
     where: { id, isActive: true },
@@ -58,10 +70,20 @@ export async function POST(
 
   await prisma.$transaction(async (tx) => {
     // IFS-özel değerlendirme: ornekYapildi (diğer alanlar IFS-5'te eğitmence).
+    // done=true → ornekAciklama'yı da yaz. done=false (Geri Al) → açıklamaya
+    // DOKUNMA (sakla; yeniden işaretlemede modal eski metni önceler).
     await tx.ifsTaskEvaluation.upsert({
       where: { userId_contentId: { userId, contentId: content.id } },
-      create: { userId, contentId: content.id, ornekYapildi: done },
-      update: { ornekYapildi: done },
+      create: {
+        userId,
+        contentId: content.id,
+        ornekYapildi: done,
+        ...(done ? { ornekAciklama: aciklama } : {}),
+      },
+      update: {
+        ornekYapildi: done,
+        ...(done ? { ornekAciklama: aciklama } : {}),
+      },
     });
 
     // Tek doğruluk kaynağı: ContentProgress.

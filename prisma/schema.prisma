@@ -8842,6 +8842,9 @@ model IfsTaskEvaluation {
   egitimVerildi     Boolean     @default(false)
   uygulamaliYapildi Boolean     @default(false)
   ornekYapildi      Boolean     @default(false)
+  // Kursiyer-tarafı: "Örnek Yaptım" derken NE yaptığını yazdığı açıklama
+  // (değerlendiren ekip okuyup ornekStatus verir). Nullable → eski kayıtlar null.
+  ornekAciklama     String?     @db.Text
   projeEkibiYorum   String?     @db.Text
   danismanYorum     String?     @db.Text
   // IFS canlı değerlendirme (PR-1): eğitmen kararı + iz. Davranış sonraki PR'da.

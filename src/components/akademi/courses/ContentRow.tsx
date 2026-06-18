@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Play,
   FileText,
@@ -11,6 +12,16 @@ import {
 } from "lucide-react";
 import { getContentTypeLabel, formatDuration } from "@/lib/akademi-helpers";
 import type { ContentItem } from "@/types/akademi";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   content: ContentItem;
@@ -18,7 +29,12 @@ interface Props {
   onOpen: (content: ContentItem) => void;
   onMarkComplete: (contentId: string) => Promise<void>;
   // IFS-4: GOREV görevleri için "Örnek Yaptım" / geri al.
-  onGorevDone?: (contentId: string, done: boolean) => Promise<void>;
+  // "Örnek Yaptım" (done=true) artık zorunlu açıklama taşır.
+  onGorevDone?: (
+    contentId: string,
+    done: boolean,
+    aciklama?: string
+  ) => Promise<void>;
   isMarking: boolean;
 }
 
@@ -52,7 +68,25 @@ export function ContentRow({
   const isGorev = content.type === "GOREV";
   const canView = Boolean(content.filePath || content.fileUrl);
 
+  // "Örnek Yaptım" zorunlu-açıklama modal'ı.
+  const [modalOpen, setModalOpen] = useState(false);
+  const [aciklama, setAciklama] = useState("");
+
+  const openOrnekModal = () => {
+    // Yeniden işaretlemede mevcut açıklamayı önele (düzenlenebilir).
+    setAciklama(content.ornekAciklama ?? "");
+    setModalOpen(true);
+  };
+
+  const confirmOrnek = async () => {
+    const text = aciklama.trim();
+    if (!text) return;
+    await onGorevDone?.(content.id, true, text);
+    setModalOpen(false);
+  };
+
   return (
+    <>
     <div
       className={`ak-card-static p-4 flex items-center gap-4 ak-animate-in ak-delay-${Math.min(
         index + 1,
@@ -165,7 +199,7 @@ export function ContentRow({
               </button>
             ) : (
               <button
-                onClick={() => onGorevDone?.(content.id, true)}
+                onClick={openOrnekModal}
                 disabled={isMarking}
                 className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
                 style={{ background: "var(--ak-green)", color: "#fff" }}
@@ -210,5 +244,41 @@ export function ContentRow({
         )}
       </div>
     </div>
+
+      {/* "Örnek Yaptım" — zorunlu kursiyer açıklaması (done=true). */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ne yaptınız? (kısa açıklama)</DialogTitle>
+            <DialogDescription>
+              {content.title} görevinde örnek olarak ne yaptığınızı kısaca
+              yazın. Değerlendiren ekip bu açıklamayı okuyacak.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={aciklama}
+            onChange={(e) => setAciklama(e.target.value)}
+            placeholder="Örn. IFS ekranında ... kaydını oluşturdum / ... işlemini uyguladım."
+            rows={4}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+              disabled={isMarking}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              onClick={confirmOrnek}
+              disabled={isMarking || aciklama.trim() === ""}
+            >
+              {isMarking ? "Kaydediliyor..." : "Örnek Yaptım"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

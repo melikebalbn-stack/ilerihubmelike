@@ -376,6 +376,19 @@ export async function PATCH(
         reentryDate = parsed.data
       }
 
+      // Yeniden giriş, son KAPALI dönemin çıkış tarihinden ÖNCE olamaz
+      const lastClosed = await prisma.employmentPeriod.findFirst({
+        where: { personnelId: id, cikisTarihi: { not: null } },
+        orderBy: { cikisTarihi: 'desc' },
+        select: { cikisTarihi: true },
+      })
+      if (lastClosed?.cikisTarihi && reentryDate < lastClosed.cikisTarihi) {
+        return NextResponse.json(
+          { error: 'Yeniden giriş tarihi son çıkış tarihinden önce olamaz' },
+          { status: 400 }
+        )
+      }
+
       try {
         // PR-B: Personnel güncelle (AYNEN, exit alanları null) + YENİ açık dönem aç = TEK tx.
         // iseGirisTarihi'ye DOKUNULMAZ (ilk giriş korunur).

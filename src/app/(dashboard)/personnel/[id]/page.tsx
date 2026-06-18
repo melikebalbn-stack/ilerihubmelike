@@ -143,6 +143,7 @@ export default function PersonnelDetailPage() {
   const [exitModalMode, setExitModalMode] = useState<"create" | "edit">("create")
   const [showReactivateConfirm, setShowReactivateConfirm] = useState(false)
   const [reactivating, setReactivating] = useState(false)
+  const [reentryDate, setReentryDate] = useState(() => new Date().toISOString().slice(0, 10))
   // PR-PERSONNEL-DEPARTMENT-TRANSFER
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [transferRefreshKey, setTransferRefreshKey] = useState(0)
@@ -295,12 +296,16 @@ export default function PersonnelDetailPage() {
   }
 
   const reactivate = async () => {
+    if (!reentryDate) {
+      toast.error("Yeniden giriş tarihi zorunludur")
+      return
+    }
     setReactivating(true)
     try {
       const res = await fetch(`/api/personnel/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aktif: true }),
+        body: JSON.stringify({ aktif: true, reentryDate }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -1046,13 +1051,25 @@ export default function PersonnelDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Personeli aktife geri al?</AlertDialogTitle>
             <AlertDialogDescription>
-              {data.adSoyad} personelinin çıkış bilgileri silinecek. Bu işlem geri alınabilir
-              ancak tekrar pasife almak için çıkış bilgilerini yeniden girmeniz gerekecek.
+              {data.adSoyad} personelinin güncel çıkış bilgileri temizlenecek ve yeni bir
+              istihdam dönemi başlatılacak. Önceki dönem (giriş–çıkış) İstihdam Geçmişi&apos;nde
+              saklanmaya devam edecek.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="py-2">
+            <label className="block text-sm font-medium mb-1">
+              Yeniden Giriş Tarihi <span className="text-red-500">*</span>
+            </label>
+            <Input
+              type="date"
+              value={reentryDate}
+              onChange={(e) => setReentryDate(e.target.value)}
+              disabled={reactivating}
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={reactivating}>Vazgeç</AlertDialogCancel>
-            <AlertDialogAction onClick={reactivate} disabled={reactivating}>
+            <AlertDialogAction onClick={reactivate} disabled={reactivating || !reentryDate}>
               {reactivating ? "İşleniyor..." : "Evet, aktife al"}
             </AlertDialogAction>
           </AlertDialogFooter>

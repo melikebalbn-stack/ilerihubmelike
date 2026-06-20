@@ -98,6 +98,9 @@ export const PERMISSION_KEYS = {
   RECRUITMENT_VIEW: 'recruitment.view',
   RECRUITMENT_CREATE: 'recruitment.create',
   RECRUITMENT_CANDIDATE_VIEW: 'recruitment.candidate.view',
+
+  // === ÜRETİM (IFS shop-floor terminali) ===
+  URETIM_BILDIRIM: 'uretim.bildirim',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -120,6 +123,7 @@ export const MODULE_LABELS: Record<string, string> = {
   duyuru: 'Duyuru',
   forms: 'Form Modülleri',
   recruitment: 'İşe Alım',
+  uretim: 'Üretim',
 };
 
 /**
@@ -199,4 +203,6 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'recruitment.view': 'İşe alım kendi departmanı görünürlük',
   'recruitment.create': 'Pozisyon/personel talebi oluşturma',
   'recruitment.candidate.view': 'Aday detay görme (CV ve değerlendirme)',
+
+  'uretim.bildirim': 'Üretim terminali — iş emri operasyonu bildirimi (IFS shop-floor)',
 };

@@ -174,6 +174,15 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
       P.KALIBRASYON_VIEW,
     ],
   },
+  {
+    slug: 'uretim-operator',
+    name: 'Üretim Operatörü',
+    description: 'Üretim istasyonu (terminal) hesabı.',
+    isProtected: false,
+    permissions: [
+      P.URETIM_BILDIRIM,
+    ],
+  },
 ]
 
 async function main() {

@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
  * için ayrı bir `uretim.bildirim` izni gerekiyor — ayrı PR (bkz. PR raporu).
  */
 export async function GET(request: NextRequest) {
-  const { error } = await requirePermission('admin.system.manage')
+  const { error } = await requirePermission('uretim.bildirim')
   if (error) return error
 
   const { searchParams } = new URL(request.url)

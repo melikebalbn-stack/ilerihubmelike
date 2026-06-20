@@ -10,6 +10,7 @@ import {
   Loader2,
   AlertCircle,
   PackageSearch,
+  Printer,
 } from "lucide-react"
 import {
   Card,
@@ -126,6 +127,49 @@ export function OperationReportClient() {
     toast.info("IFS gönderimi PR-B'de bağlanacak", {
       description: `Sağlam ${good} · Hurda ${scrap} · Toplam ${total} (önizleme — kaydedilmedi)`,
     })
+  }
+
+  // Malzeme etiketi yazdırma — sağlam miktar + lot zorunlu.
+  const [printing, setPrinting] = useState(false)
+  const canPrint =
+    !!summary && good > 0 && lotNo.trim().length > 0 && summary.operationNo != null
+
+  const handlePrintLabel = async () => {
+    if (!summary) return
+    setPrinting(true)
+    try {
+      const res = await fetch("/api/uretim/etiket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderNo: summary.orderNo,
+          operationNo: summary.operationNo,
+          operationDescription: summary.description,
+          partNo: summary.partNo,
+          lot: lotNo.trim(),
+          quantity: good,
+          location: location || null,
+        }),
+      })
+      if (!res.ok) {
+        let msg = "Etiket üretilemedi"
+        try {
+          const j = await res.json()
+          msg = j?.error || msg
+        } catch {
+          /* gövde JSON değilse genel mesaj */
+        }
+        throw new Error(msg)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      window.open(url, "_blank")
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Etiket yazdırılamadı")
+    } finally {
+      setPrinting(false)
+    }
   }
 
   return (
@@ -367,14 +411,34 @@ export function OperationReportClient() {
                   aşamaz.
                 </p>
               )}
-              <Button
-                onClick={handleReport}
-                disabled={!canReport}
-                className="text-white hover:opacity-90"
-                style={{ background: PANEL }}
-              >
-                Bildir
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handlePrintLabel}
+                  disabled={!canPrint || printing}
+                  title={
+                    !canPrint
+                      ? "Sağlam miktar ve lot girin"
+                      : "Malzeme etiketi PDF'i yazdır"
+                  }
+                >
+                  {printing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Printer className="h-4 w-4" />
+                  )}
+                  Etiket Yazdır
+                </Button>
+                <Button
+                  onClick={handleReport}
+                  disabled={!canReport}
+                  className="flex-1 text-white hover:opacity-90"
+                  style={{ background: PANEL }}
+                >
+                  Bildir
+                </Button>
+              </div>
             </CardFooter>
           </Card>
         </div>

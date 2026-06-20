@@ -75,6 +75,39 @@ export async function getOperationSummary(
   return ifsGetFunction<OperationSummary>(funcCall)
 }
 
+/** GetPlannedOperations argümanları (Selection zorunlu; gerisi opsiyonel filtre). */
+export interface IfsPlannedOperationsArgs {
+  selection: 'EXECUTABLE' | 'RELEASED'
+  workCenter?: string | null
+  resource?: string | null
+  laborClass?: string | null
+  partNo?: string | null
+}
+
+/**
+ * GetPlannedOperations(Contract, Selection, WorkCenter, Resource, LaborClass, PartNo)
+ * → value = Collection<String> = OperationId listesi. getOperationSummary ile aynı
+ * desen: 6 parametre de gönderilir; verilmeyen string'ler literal (tırnaksız) null.
+ * Selection zorunlu enum'dur (null → IFS INVALIDSELECTION 500).
+ */
+export async function getPlannedOperations(
+  args: IfsPlannedOperationsArgs & { contract: string },
+): Promise<string[]> {
+  const lit = (v: string | null | undefined): string =>
+    v != null ? odataString(v) : 'null'
+  const params: string[] = [
+    `Contract=${odataString(args.contract)}`,
+    `Selection=${odataString(args.selection)}`,
+    `WorkCenter=${lit(args.workCenter)}`,
+    `Resource=${lit(args.resource)}`,
+    `LaborClass=${lit(args.laborClass)}`,
+    `PartNo=${lit(args.partNo)}`,
+  ]
+  const funcCall = `GetPlannedOperations(${params.join(',')})`
+  const res = await ifsGetFunction<{ value?: unknown }>(funcCall)
+  return Array.isArray(res?.value) ? res.value.map((v) => String(v)) : []
+}
+
 /**
  * ReportQuantityComplete action'ı — operasyonda tamamlanan miktarı raporla.
  * Gövde NESTED (metadata: OperationInformation + TeamEmployeeInformation).

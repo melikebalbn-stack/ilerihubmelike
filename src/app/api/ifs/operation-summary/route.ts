@@ -21,13 +21,18 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const orderNo = searchParams.get('orderNo')
   const operationNoRaw = searchParams.get('operationNo')
+  const operationIdRaw = searchParams.get('operationId')
   const contractParam = searchParams.get('contract')
 
-  if (!orderNo) {
-    return NextResponse.json(
-      { ok: false, error: 'orderNo zorunlu' },
-      { status: 400 },
-    )
+  let operationId: number | undefined
+  if (operationIdRaw != null && operationIdRaw !== '') {
+    operationId = Number(operationIdRaw)
+    if (Number.isNaN(operationId)) {
+      return NextResponse.json(
+        { ok: false, error: 'operationId sayı olmalı' },
+        { status: 400 },
+      )
+    }
   }
 
   let operationNo: number | undefined
@@ -41,22 +46,34 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // operationId VEYA orderNo(+operationNo) gerekli — mevcut orderNo yolu korunur.
+  if (operationId == null && !orderNo) {
+    return NextResponse.json(
+      { ok: false, error: 'operationId veya orderNo+operationNo gerekli' },
+      { status: 400 },
+    )
+  }
+
   try {
     const config = getIfsConfig()
-    const raw = (await getOperationSummary({
-      contract: contractParam || config.contract,
-      orderNo,
-      operationNo,
-    })) as Record<string, unknown>
+    const contract = contractParam || config.contract
+    // operationId verildiyse OperationId ile çöz (OrderNo/OperationNo null);
+    // yoksa mevcut orderNo+operationNo yolu aynen kalır.
+    const raw = (await getOperationSummary(
+      operationId != null
+        ? { contract, operationId }
+        : { contract, orderNo: orderNo!, operationNo },
+    )) as Record<string, unknown>
 
     const num = (v: unknown): number | null => (v == null || v === '' ? null : Number(v))
     const str = (v: unknown): string | null => (v == null ? null : String(v))
 
     const summary = {
-      // IFS başarı durumunda bile OrderNo/OperationNo'yu NULL döndürür → bunları
-      // cevaptan DEĞİL, İSTEK parametrelerinden dolduruyoruz.
-      orderNo,
+      // IFS başarı durumunda bile OrderNo/OperationNo/OperationId'yi NULL döndürür →
+      // bunları cevaptan DEĞİL, İSTEK parametrelerinden dolduruyoruz.
+      orderNo: orderNo ?? null,
       operationNo: operationNo ?? null,
+      operationId: operationId ?? null,
       description: str(raw.Description),
       status: str(raw.Status),
       partNo: str(raw.PartNo),

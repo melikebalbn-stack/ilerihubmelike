@@ -21,11 +21,23 @@ export interface OperationRef {
   operationNo?: number
 }
 
-/** Raporlamayı yapan ekip çalışanı. */
-export interface TeamEmployee {
-  company: string
-  employeeId: string
-  teamId?: string
+/**
+ * IFS ShopFloorService action gövdesi tipleri — alan adları metadata ile BİREBİR
+ * (PascalCase, nested). Wrapper'lar bunları OLDUĞU GİBİ forward eder; '*' veya
+ * başka default ENJEKTE ETMEZ.
+ */
+export interface IfsOperationRef {
+  OperationId?: number | null
+  OrderNo?: string | null
+  ReleaseNo?: string | null
+  SequenceNo?: string | null
+  OperationNo?: number | null
+}
+
+export interface IfsTeamEmployee {
+  Company: string
+  EmployeeId: string
+  TeamId?: string | null
 }
 
 /** GetOperationSummary cevabı — şema IFS'e bağlı; ham döndürülür. */
@@ -34,28 +46,6 @@ export type OperationSummary = Record<string, unknown>
 /** OData single-quote string literal (içteki tek tırnak '' ile escape edilir). */
 function odataString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
-}
-
-/** OperationRef → action gövdesi için yalnız TANIMLI alanlar. */
-function operationFields(op: OperationRef): Record<string, unknown> {
-  const f: Record<string, unknown> = {}
-  if (op.operationId != null) f.OperationId = op.operationId
-  if (op.orderNo != null) f.OrderNo = op.orderNo
-  if (op.releaseNo != null) f.ReleaseNo = op.releaseNo
-  if (op.sequenceNo != null) f.SequenceNo = op.sequenceNo
-  if (op.operationNo != null) f.OperationNo = op.operationNo
-  return f
-}
-
-/** TeamEmployee → action gövdesi için yalnız TANIMLI alanlar. */
-function employeeFields(emp?: TeamEmployee): Record<string, unknown> {
-  if (!emp) return {}
-  const f: Record<string, unknown> = {
-    Company: emp.company,
-    EmployeeId: emp.employeeId,
-  }
-  if (emp.teamId != null) f.TeamId = emp.teamId
-  return f
 }
 
 /**
@@ -86,52 +76,23 @@ export async function getOperationSummary(
 }
 
 /**
- * ReceiveOrder action'ı — tamamlanan operasyon miktarını stoğa al.
- */
-export async function receiveOrder(input: {
-  qtyReceived: number
-  locationNo: string
-  operation: OperationRef
-  lotBatchNo?: string
-  serialNo?: string
-  handlingUnitId?: number
-}): Promise<IfsExecutedResponse> {
-  const ReceiveInformation: Record<string, unknown> = {
-    ...operationFields(input.operation),
-    QtyReceived: input.qtyReceived,
-    LocationNo: input.locationNo,
-  }
-  if (input.lotBatchNo != null) ReceiveInformation.LotBatchNo = input.lotBatchNo
-  if (input.serialNo != null) ReceiveInformation.SerialNo = input.serialNo
-  if (input.handlingUnitId != null) {
-    ReceiveInformation.HandlingUnitId = input.handlingUnitId
-  }
-
-  const resp = await ifsInvokeAction<IfsExecutedResponse>('ReceiveOrder', {
-    ReceiveInformation,
-  })
-  assertExecuted(resp)
-  return resp
-}
-
-/**
  * ReportQuantityComplete action'ı — operasyonda tamamlanan miktarı raporla.
+ * Gövde NESTED (metadata: OperationInformation + TeamEmployeeInformation).
+ * TeamEmployee ZORUNLU (yoksa IFS "Executed: FALSE" / NO_SHOP_FLOOR_EMP döner).
  */
-export async function reportQuantityComplete(input: {
+export async function reportQuantityComplete(args: {
+  operation: IfsOperationRef
   qtyComplete: number
-  closeOperation: boolean
-  operation: OperationRef
-  employee?: TeamEmployee
+  closeOperation?: boolean
+  employee: IfsTeamEmployee
 }): Promise<IfsExecutedResponse> {
-  const ReportQuantity: Record<string, unknown> = {
-    ...operationFields(input.operation),
-    ...employeeFields(input.employee),
-    QtyComplete: input.qtyComplete,
-    CloseOperation: input.closeOperation,
-  }
-
   const resp = await ifsInvokeAction<IfsExecutedResponse>('ReportQuantityComplete', {
-    ReportQuantity,
+    ReportQuantity: {
+      QtyComplete: args.qtyComplete,
+      CloseOperation: args.closeOperation ?? false,
+      OperationInformation: args.operation,
+      TeamEmployeeInformation: args.employee,
+    },
   })
   assertExecuted(resp)
   return resp
@@ -139,24 +100,49 @@ export async function reportQuantityComplete(input: {
 
 /**
  * ReportQuantityScrap action'ı — operasyonda hurda miktarını raporla.
+ * Gövde NESTED; TeamEmployee ZORUNLU.
  */
-export async function reportQuantityScrap(input: {
+export async function reportQuantityScrap(args: {
+  operation: IfsOperationRef
   qtyScrapped: number
   scrapReason: string
-  closeOperation: boolean
-  operation: OperationRef
-  employee?: TeamEmployee
+  closeOperation?: boolean
+  employee: IfsTeamEmployee
 }): Promise<IfsExecutedResponse> {
-  const ReportQuantity: Record<string, unknown> = {
-    ...operationFields(input.operation),
-    ...employeeFields(input.employee),
-    QtyScrapped: input.qtyScrapped,
-    ScrapReason: input.scrapReason,
-    CloseOperation: input.closeOperation,
-  }
-
   const resp = await ifsInvokeAction<IfsExecutedResponse>('ReportQuantityScrap', {
-    ReportQuantity,
+    ReportQuantity: {
+      QtyScrapped: args.qtyScrapped,
+      ScrapReason: args.scrapReason,
+      CloseOperation: args.closeOperation ?? false,
+      OperationInformation: args.operation,
+      TeamEmployeeInformation: args.employee,
+    },
+  })
+  assertExecuted(resp)
+  return resp
+}
+
+/**
+ * ReceiveOrder action'ı — tamamlanan operasyon miktarını stoğa al.
+ * Gövde NESTED (OperationInformation). DİKKAT: TeamEmployeeInformation YOK.
+ */
+export async function receiveOrder(args: {
+  operation: IfsOperationRef
+  qtyReceived: number
+  lotBatchNo?: string | null
+  serialNo?: string | null
+  locationNo?: string | null
+  handlingUnitId?: number | null
+}): Promise<IfsExecutedResponse> {
+  const resp = await ifsInvokeAction<IfsExecutedResponse>('ReceiveOrder', {
+    ReceiveInformation: {
+      QtyReceived: args.qtyReceived,
+      LotBatchNo: args.lotBatchNo ?? null,
+      SerialNo: args.serialNo ?? null,
+      LocationNo: args.locationNo ?? null,
+      HandlingUnitId: args.handlingUnitId ?? null,
+      OperationInformation: args.operation,
+    },
   })
   assertExecuted(resp)
   return resp

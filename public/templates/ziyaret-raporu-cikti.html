@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ziyaret Raporu - ZR-2025-001</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 15mm;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #333;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .report-container {
+            max-width: 210mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        .report-page {
+            padding: 20mm;
+            min-height: 297mm;
+        }
+
+        /* Header */
+        .report-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 3px solid #1e3a5f;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .company-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .company-logo {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .company-name h1 {
+            font-size: 18pt;
+            color: #1e3a5f;
+            font-weight: 700;
+        }
+        .company-name p {
+            font-size: 9pt;
+            color: #666;
+        }
+        .report-meta {
+            text-align: right;
+        }
+        .report-number {
+            font-size: 12pt;
+            font-weight: 600;
+            color: #1e3a5f;
+            background: #f0f4f8;
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+        .report-date {
+            font-size: 10pt;
+            color: #666;
+        }
+
+        /* Title */
+        .report-title {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        .report-title h2 {
+            font-size: 16pt;
+            color: #1e3a5f;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            padding: 12px 0;
+            border-top: 1px solid #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        /* Info Grid */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .info-box {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 12px 16px;
+        }
+        .info-box.full-width {
+            grid-column: span 2;
+        }
+        .info-label {
+            font-size: 9pt;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .info-value {
+            font-size: 11pt;
+            color: #1f2937;
+            font-weight: 500;
+        }
+
+        /* Section */
+        .section {
+            margin-bottom: 25px;
+        }
+        .section-title {
+            font-size: 12pt;
+            font-weight: 600;
+            color: #1e3a5f;
+            padding: 8px 12px;
+            background: linear-gradient(90deg, #f0f4f8 0%, transparent 100%);
+            border-left: 4px solid #1e3a5f;
+            margin-bottom: 15px;
+        }
+
+        /* Participants */
+        .participants-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .participant-group h4 {
+            font-size: 10pt;
+            color: #4b5563;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px dashed #d1d5db;
+        }
+        .participant-list {
+            list-style: none;
+        }
+        .participant-list li {
+            padding: 6px 0;
+            font-size: 10pt;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .participant-list li::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: #2d5a87;
+            border-radius: 50%;
+        }
+        .participant-title {
+            color: #6b7280;
+            font-size: 9pt;
+        }
+
+        /* Content Box */
+        .content-box {
+            background: #fafafa;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 10pt;
+            line-height: 1.7;
+        }
+        .content-box p {
+            margin-bottom: 10px;
+        }
+        .content-box p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Action Items */
+        .action-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10pt;
+        }
+        .action-table th {
+            background: #1e3a5f;
+            color: white;
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 500;
+        }
+        .action-table th:first-child {
+            border-radius: 6px 0 0 0;
+        }
+        .action-table th:last-child {
+            border-radius: 0 6px 0 0;
+        }
+        .action-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .action-table tr:nth-child(even) {
+            background: #f9fafb;
+        }
+        .action-table tr:last-child td:first-child {
+            border-radius: 0 0 0 6px;
+        }
+        .action-table tr:last-child td:last-child {
+            border-radius: 0 0 6px 0;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 9pt;
+            font-weight: 500;
+        }
+        .status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .status-progress {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .status-done {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        /* Footer */
+        .report-footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+        .signature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 40px;
+            margin-top: 20px;
+        }
+        .signature-box {
+            text-align: center;
+        }
+        .signature-line {
+            border-bottom: 1px solid #333;
+            height: 50px;
+            margin-bottom: 8px;
+        }
+        .signature-name {
+            font-weight: 600;
+            font-size: 10pt;
+        }
+        .signature-title {
+            font-size: 9pt;
+            color: #6b7280;
+        }
+        .signature-date {
+            font-size: 9pt;
+            color: #9ca3af;
+            margin-top: 4px;
+        }
+
+        /* Document Info */
+        .document-info {
+            margin-top: 30px;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border-radius: 6px;
+            font-size: 9pt;
+            color: #6b7280;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Print Styles */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .report-container {
+                box-shadow: none;
+            }
+            .report-page {
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <div class="report-page">
+            <!-- Header -->
+            <div class="report-header">
+                <div class="company-info">
+                    <div class="company-logo">ILERI</div>
+                    <div class="company-name">
+                        <h1>ILERI GRUP</h1>
+                        <p>Savunma Sanayi Cozumleri</p>
+                    </div>
+                </div>
+                <div class="report-meta">
+                    <div class="report-number">ZR-2025-001</div>
+                    <div class="report-date">Olusturma: 24.01.2025</div>
+                </div>
+            </div>
+
+            <!-- Title -->
+            <div class="report-title">
+                <h2>Musteri Ziyaret Raporu</h2>
+            </div>
+
+            <!-- Basic Info -->
+            <div class="info-grid">
+                <div class="info-box">
+                    <div class="info-label">Ziyaret Tarihi</div>
+                    <div class="info-value">24 Ocak 2025, Cuma</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Ziyaret Saati</div>
+                    <div class="info-value">10:00 - 12:30</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Ziyaret Edilen Firma</div>
+                    <div class="info-value">ROKETSAN A.S.</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Ziyaret Turu</div>
+                    <div class="info-value">Musteri Ziyareti - Teknik Gorusme</div>
+                </div>
+                <div class="info-box full-width">
+                    <div class="info-label">Ziyaret Yeri</div>
+                    <div class="info-value">Roketsan Elmadag Tesisleri - Elmadag / Ankara</div>
+                </div>
+                <div class="info-box full-width">
+                    <div class="info-label">Ilgili Proje / Konu</div>
+                    <div class="info-value">Tasiyici Grup Mekanik Parcalar Projesi</div>
+                </div>
+            </div>
+
+            <!-- Participants -->
+            <div class="section">
+                <div class="section-title">Katilimcilar</div>
+                <div class="participants-grid">
+                    <div class="participant-group">
+                        <h4>Ileri Grup'tan</h4>
+                        <ul class="participant-list">
+                            <li>Gurhan Horbay <span class="participant-title">- Genel Mudur</span></li>
+                            <li>Ahmet Yilmaz <span class="participant-title">- Satis Muduru</span></li>
+                            <li>Mehmet Kaya <span class="participant-title">- Uretim Muhendisi</span></li>
+                        </ul>
+                    </div>
+                    <div class="participant-group">
+                        <h4>Roketsan'dan</h4>
+                        <ul class="participant-list">
+                            <li>Ali Veli <span class="participant-title">- Satinalma Muduru</span></li>
+                            <li>Fatma Demir <span class="participant-title">- Kalite Muhendisi</span></li>
+                            <li>Can Ozturk <span class="participant-title">- Proje Yoneticisi</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Meeting Summary -->
+            <div class="section">
+                <div class="section-title">Gorusme Ozeti</div>
+                <div class="content-box">
+                    <p>Roketsan yetkilileri ile Tasiyici Grup Mekanik Parcalar projesi kapsaminda teknik gorusme gerceklestirildi. Gorusmede asagidaki konular ele alindi:</p>
+                    <p><strong>1. Teknik Gereksinimler:</strong> Yeni siparis kapsamindaki parcalarin teknik cizimleri ve tolerans degerleri detayli olarak incelendi. Ozellikle CNC isleme hassasiyeti ve yuzey kalitesi gereksinimleri uzerinde duruldu.</p>
+                    <p><strong>2. Uretim Takvimi:</strong> Ilk parti 500 adet parcanin Mart 2025 sonuna kadar teslim edilmesi talep edildi. Uretim kapasitemiz ve mevcut is yukumuz degerlendirildiginde bu tarihin uygun oldugu teyit edildi.</p>
+                    <p><strong>3. Kalite Standartlari:</strong> AS9100 ve NADCAP sertifikasyonlarimiz hakkinda bilgi verildi. Roketsan'in ozel kalite gereksinimleri not edildi.</p>
+                    <p><strong>4. Fiyatlandirma:</strong> Birim fiyatlar ve toplam siparis bedeli uzerinde mutabik kalinarak protokol imzalandi.</p>
+                </div>
+            </div>
+
+            <!-- Action Items -->
+            <div class="section">
+                <div class="section-title">Aksiyon Maddeleri</div>
+                <table class="action-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%">#</th>
+                            <th style="width: 45%">Aksiyon</th>
+                            <th style="width: 20%">Sorumlu</th>
+                            <th style="width: 15%">Termin</th>
+                            <th style="width: 15%">Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>Teknik cizimler incelenip uretim plani hazirlanacak</td>
+                            <td>Mehmet Kaya</td>
+                            <td>31.01.2025</td>
+                            <td><span class="status-badge status-progress">Devam Ediyor</span></td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>Hammadde tedarikcileri ile gorusulup teslimat tarihleri teyit edilecek</td>
+                            <td>Ahmet Yilmaz</td>
+                            <td>28.01.2025</td>
+                            <td><span class="status-badge status-done">Tamamlandi</span></td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>Kalite kontrol proseduru dokumani Roketsan'a gonderilecek</td>
+                            <td>Kalite Departmani</td>
+                            <td>03.02.2025</td>
+                            <td><span class="status-badge status-pending">Bekliyor</span></td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>Prototip uretimi icin is emri olusturulacak</td>
+                            <td>Uretim Planlama</td>
+                            <td>05.02.2025</td>
+                            <td><span class="status-badge status-pending">Bekliyor</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Next Steps -->
+            <div class="section">
+                <div class="section-title">Sonraki Adimlar</div>
+                <div class="content-box">
+                    <p>• Prototip parcalar uretildikten sonra Roketsan kalite ekibi ile birlikte ilk madde muayenesi (FAI) gerceklestirilecek.</p>
+                    <p>• Subat ayi icinde Roketsan uretim tesislerimizi ziyaret edecek ve sureclerimizi yerinde inceleyecek.</p>
+                    <p>• Seri uretime gecis oncesi son teknik toplanti 15 Subat 2025'te planlanmaktadir.</p>
+                </div>
+            </div>
+
+            <!-- Signatures -->
+            <div class="report-footer">
+                <div class="section-title">Onay</div>
+                <div class="signature-grid">
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-name">Gurhan Horbay</div>
+                        <div class="signature-title">Genel Mudur</div>
+                        <div class="signature-date">Tarih: ___/___/2025</div>
+                    </div>
+                    <div class="signature-box">
+                        <div class="signature-line"></div>
+                        <div class="signature-name">Ahmet Yilmaz</div>
+                        <div class="signature-title">Satis Muduru</div>
+                        <div class="signature-date">Tarih: ___/___/2025</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Document Info -->
+            <div class="document-info">
+                <span>Dokuman No: ZR-2025-001 | Revizyon: 0</span>
+                <span>Olusturan: gurhan.horbay@ilerigroup.com</span>
+                <span>ILERIHub v0.39.7</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

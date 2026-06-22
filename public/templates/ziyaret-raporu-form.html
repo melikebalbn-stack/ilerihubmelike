@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ziyaret Raporu Formu - ILERIHub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+            color: #333;
+        }
+        .form-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .form-header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            color: white;
+            padding: 24px 32px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .form-header img {
+            height: 50px;
+        }
+        .form-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .form-header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .form-body {
+            padding: 32px;
+        }
+        .form-section {
+            margin-bottom: 28px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .form-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e3a5f;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: #2d5a87;
+            border-radius: 2px;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 16px;
+        }
+        .form-row.three-col {
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .form-row.full {
+            grid-template-columns: 1fr;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #4b5563;
+            margin-bottom: 6px;
+        }
+        .form-group label.required::after {
+            content: ' *';
+            color: #dc2626;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 10px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+            background: #fafafa;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #2d5a87;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(45, 90, 135, 0.1);
+        }
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        .people-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+        .people-list {
+            background: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .people-list h4 {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .person-entry {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .person-entry input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .btn-add {
+            background: none;
+            border: 1px dashed #9ca3af;
+            color: #6b7280;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        .btn-add:hover {
+            border-color: #2d5a87;
+            color: #2d5a87;
+        }
+        .action-items {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .action-item {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #fde68a;
+        }
+        .action-item:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        .action-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-top: 2px;
+        }
+        .action-item-content {
+            flex: 1;
+        }
+        .action-item-content input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .action-item-meta {
+            display: flex;
+            gap: 12px;
+        }
+        .action-item-meta input,
+        .action-item-meta select {
+            padding: 6px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .form-footer {
+            background: #f9fafb;
+            padding: 20px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #e5e7eb;
+        }
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+        .btn-secondary {
+            background: white;
+            border: 1px solid #d1d5db;
+            color: #4b5563;
+        }
+        .btn-secondary:hover {
+            background: #f3f4f6;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            box-shadow: 0 4px 12px rgba(30, 58, 95, 0.3);
+            transform: translateY(-1px);
+        }
+        .file-upload {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .file-upload:hover {
+            border-color: #2d5a87;
+            background: #f0f7ff;
+        }
+        .file-upload-icon {
+            font-size: 32px;
+            color: #9ca3af;
+            margin-bottom: 8px;
+        }
+        .file-upload-text {
+            font-size: 14px;
+            color: #6b7280;
+        }
+        .file-upload-text span {
+            color: #2d5a87;
+            font-weight: 500;
+        }
+        @media (max-width: 768px) {
+            .form-row,
+            .form-row.three-col,
+            .people-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <div class="form-header">
+            <div>
+                <h1>Ziyaret Raporu</h1>
+                <p>Musteri/Tedarikci Ziyaret Kayit Formu</p>
+            </div>
+        </div>
+
+        <form class="form-body">
+            <!-- Temel Bilgiler -->
+            <div class="form-section">
+                <h3 class="section-title">Temel Bilgiler</h3>
+                <div class="form-row three-col">
+                    <div class="form-group">
+                        <label class="required">Ziyaret Tarihi</label>
+                        <input type="date" name="visitDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Bitis Tarihi</label>
+                        <input type="date" name="endDate">
+                    </div>
+                    <div class="form-group">
+                        <label class="required">Ziyaret Saati</label>
+                        <input type="time" name="visitTime" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="required">Ziyaret Edilen Firma</label>
+                        <input type="text" name="companyName" placeholder="Ornek: Roketsan A.S." required>
+                    </div>
+                    <div class="form-group">
+                        <label class="required">Ziyaret Turu</label>
+                        <select name="visitType" required>
+                            <option value="">Seciniz...</option>
+                            <option value="musteri">Musteri Ziyareti</option>
+                            <option value="tedarikci">Tedarikci Ziyareti</option>
+                            <option value="fuar">Fuar/Etkinlik</option>
+                            <option value="teknik">Teknik Gorusme</option>
+                            <option value="denetim">Denetim/Audit</option>
+                            <option value="egitim">Egitim</option>
+                            <option value="diger">Diger</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Ziyaret Yeri/Adres</label>
+                        <input type="text" name="location" placeholder="Ornek: Roketsan Elmadag Tesisleri">
+                    </div>
+                    <div class="form-group">
+                        <label>Ilgili Proje/Konu</label>
+                        <input type="text" name="project" placeholder="Ornek: Tasiyici Grup Projesi">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Katilimcilar -->
+            <div class="form-section">
+                <h3 class="section-title">Katilimcilar</h3>
+                <div class="people-grid">
+                    <div class="people-list">
+                        <h4>Ileri Grup'tan Gidenler</h4>
+                        <div class="person-entry">
+                            <input type="text" name="ourPeople[]" placeholder="Ad Soyad">
+                        </div>
+                        <div class="person-entry">
+                            <input type="text" name="ourPeople[]" placeholder="Ad Soyad">
+                        </div>
+                        <button type="button" class="btn-add">+ Kisi Ekle</button>
+                    </div>
+                    <div class="people-list">
+                        <h4>Gorusulen Kisiler</h4>
+                        <div class="person-entry">
+                            <input type="text" name="theirPeople[]" placeholder="Ad Soyad - Unvan">
+                        </div>
+                        <div class="person-entry">
+                            <input type="text" name="theirPeople[]" placeholder="Ad Soyad - Unvan">
+                        </div>
+                        <button type="button" class="btn-add">+ Kisi Ekle</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gorusme Ozeti -->
+            <div class="form-section">
+                <h3 class="section-title">Gorusme Ozeti</h3>
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label class="required">Gorusme Konulari ve Detaylari</label>
+                        <textarea name="meetingSummary" placeholder="Gorusme sirasinda ele alinan konulari, tartisilan hususlari ve alinan kararlari yaziniz..." required></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aksiyon Maddeleri -->
+            <div class="form-section">
+                <h3 class="section-title">Aksiyon Maddeleri / Yapilacaklar</h3>
+                <div class="action-items">
+                    <div class="action-item">
+                        <input type="checkbox">
+                        <div class="action-item-content">
+                            <input type="text" name="actions[]" placeholder="Aksiyon maddesi...">
+                            <div class="action-item-meta">
+                                <input type="text" name="actionOwner[]" placeholder="Sorumlu">
+                                <input type="date" name="actionDue[]">
+                                <select name="actionStatus[]">
+                                    <option value="bekliyor">Bekliyor</option>
+                                    <option value="devam">Devam Ediyor</option>
+                                    <option value="tamamlandi">Tamamlandi</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="action-item">
+                        <input type="checkbox">
+                        <div class="action-item-content">
+                            <input type="text" name="actions[]" placeholder="Aksiyon maddesi...">
+                            <div class="action-item-meta">
+                                <input type="text" name="actionOwner[]" placeholder="Sorumlu">
+                                <input type="date" name="actionDue[]">
+                                <select name="actionStatus[]">
+                                    <option value="bekliyor">Bekliyor</option>
+                                    <option value="devam">Devam Ediyor</option>
+                                    <option value="tamamlandi">Tamamlandi</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-add">+ Aksiyon Ekle</button>
+                </div>
+            </div>
+
+            <!-- Ek Notlar -->
+            <div class="form-section">
+                <h3 class="section-title">Ek Notlar ve Sonuc</h3>
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label>Toplanti Notlari / Onemli Hususlar</label>
+                        <textarea name="additionalNotes" placeholder="Ek notlarinizi buraya yazabilirsiniz..."></textarea>
+                    </div>
+                </div>
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label>Sonraki Adimlar</label>
+                        <textarea name="nextSteps" placeholder="Bir sonraki gorusme/ziyaret plani, takip edilecek konular..." style="min-height: 80px;"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dosya Ekleri -->
+            <div class="form-section">
+                <h3 class="section-title">Ekler</h3>
+                <div class="file-upload">
+                    <div class="file-upload-icon">📎</div>
+                    <div class="file-upload-text">
+                        Dosyalari buraya surukleyin veya <span>dosya secin</span>
+                    </div>
+                    <input type="file" name="attachments" multiple style="display: none;">
+                </div>
+            </div>
+        </form>
+
+        <div class="form-footer">
+            <button type="button" class="btn btn-secondary">Taslak Kaydet</button>
+            <div>
+                <button type="button" class="btn btn-secondary" style="margin-right: 12px;">Onizleme</button>
+                <button type="submit" class="btn btn-primary">Raporu Kaydet</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

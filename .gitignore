@@ -1,0 +1,32 @@
+node_modules/
+.next/
+out/
+dist/
+.env
+.env.local
+.env.production
+.env.production.local
+.env.development.local
+.env.test.local
+npm-debug.log*
+yarn-debug.log*
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+Thumbs.db
+public/uploads/*
+!public/uploads/.gitkeep
+uploads/
+public/sw.js.backup-*
+prisma/*.xlsx
+.claude/
+src/generated/
+prisma/scripts/output/
+
+# KVKK Madde 12 + ISO 27001 A.8.10 — hassas personel verileri repo'ya alınmaz
+# Audit kopyalar /home/rokunet/audit/ altında 600 permission ile saklanır
+data/*.xlsx
+data/*.xls
+data/*.csv
+public/uploads

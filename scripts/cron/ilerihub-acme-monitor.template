@@ -1,0 +1,15 @@
+# ILERIHub ACME Cert Expire Monitor (PR-ACME-MONITOR)
+# Günde 1 kez 11:30 UTC — TLS handshake ile cert expire kontrol
+# Threshold: ACME_ALERT_THRESHOLDS env (default 30,14,7,1)
+# Idempotency: acme_alert_log unique(domain, threshold, certExpiryDate)
+#
+# Deploy:
+#   sudo cp scripts/cron/ilerihub-acme-monitor.template /etc/cron.d/ilerihub-acme-monitor
+#   sudo chown root:root /etc/cron.d/ilerihub-acme-monitor
+#   sudo chmod 644 /etc/cron.d/ilerihub-acme-monitor
+#   sudo service cron reload
+SHELL=/bin/bash
+PATH=/usr/bin:/bin
+MAILTO=""
+
+30 11 * * * rokunet curl -fsS -X POST -H "x-cron-secret: 5a33f10568fc064976151f6a8b5804ed" https://hub.ilerigroup.com/api/acme/check-expiry >> /var/log/ilerihub-cron.log 2>&1

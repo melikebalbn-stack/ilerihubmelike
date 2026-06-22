@@ -1,0 +1,178 @@
+import { NextRequest } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
+import { sendPushToUser } from '@/lib/push-notifications'
+import { requireUser } from '@/lib/auth/require-user'
+
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
+
+/**
+ * POST: Mesai formunu onaya gönder (DRAFT -> PENDING)
+ * Onay pozisyonlarını DB'den çeker, kayıtlarını oluşturur ve ilk onaylayıcıya bildirim gönderir
+ */
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  try {
+    // PR-Y2.5-overtime: requireUser — ownership/role check
+    const { session, user, error } = await requireUser()
+    if (error) return error
+
+    const { id } = await params
+
+    // Formu kontrol et
+    const form = await prisma.overtimeForm.findUnique({
+      where: { id },
+      include: {
+        personnel: true,
+        approvals: true,
+      },
+    })
+
+    if (!form) {
+      return apiNotFound('Mesai formu bulunamadı')
+    }
+
+    // Sadece form sahibi veya admin gönderebilir
+    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    if (form.createdById !== user.id && !isAdmin) {
+      return apiError('Bu formu onaya gönderme yetkiniz yok', 403)
+    }
+
+    // Sadece taslak formlar onaya gönderilebilir
+    if (form.status !== 'DRAFT') {
+      return apiBadRequest('Sadece taslak durumundaki formlar onaya gönderilebilir')
+    }
+
+    // Personel kontrolü
+    if (form.personnel.length === 0) {
+      return apiBadRequest('Form onaya gönderilebilmesi için en az bir personel eklenmelidir')
+    }
+
+    // Formdaki personel departmanlarını topla (Personnel tablosundan)
+    const personnelIds = form.personnel.map((p) => p.personnelId).filter(Boolean) as string[]
+    const personnelRecords = personnelIds.length > 0
+      ? await prisma.personnel.findMany({
+          where: { id: { in: personnelIds } },
+          select: { bolum: true },
+        })
+      : []
+    const formDepartments = new Set(personnelRecords.map((p) => p.bolum))
+
+    // Onay pozisyonlarını veritabanından çek
+    const positions = await prisma.approvalPosition.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      include: { user: true },
+    })
+
+    // Departman bazlı filtreleme:
+    // - departments boş → ortak pozisyon, her zaman dahil
+    // - departments dolu → sadece formda o departmandan personel varsa dahil
+    // İV-FINAL: sortOrder CUTOFF KALDIRILDI (eski maxStep=6 İV'yi en-sonda dışlıyordu).
+    // GM yalnız sendToGM ise dahil; diğer tüm eligible (İV/GMY dahil) HER ZAMAN
+    // zincirde. Sıra = sortOrder → İV (en büyük sortOrder) doğal olarak SON adım.
+    const assignedPositions = positions.filter((p) => {
+      if (!p.userId) return false
+      if (p.code === 'GM' && !form.sendToGM) return false
+
+      // Ortak pozisyon (departments boş) → her zaman dahil (İV, GMY dahil)
+      if (!p.departments || p.departments.length === 0) return true
+
+      // Koşullu pozisyon: formda eşleşen departman var mı?
+      return p.departments.some((dept) => formDepartments.has(dept))
+    })
+
+    // En az 1 atanmış pozisyon olmalı
+    if (assignedPositions.length === 0) {
+      return apiBadRequest(
+        'Hiçbir onay pozisyonuna kullanıcı atanmamış. Ayarlar > Onay Pozisyonları sayfasından en az bir atama yapın.'
+      )
+    }
+
+    // Mevcut onay kayıtlarını temizle (varsa)
+    if (form.approvals.length > 0) {
+      await prisma.overtimeApproval.deleteMany({
+        where: { overtimeFormId: id },
+      })
+    }
+
+    // Transaction ile onay kayıtlarını oluştur ve formu güncelle
+    const updatedForm = await prisma.$transaction(async (tx) => {
+      // Onay kayıtlarını oluştur
+      await tx.overtimeApproval.createMany({
+        data: assignedPositions.map((pos) => ({
+          overtimeFormId: id,
+          step: pos.sortOrder,
+          role: pos.title,
+          approverId: pos.userId,
+          decision: null,
+          comment: null,
+          decidedAt: null,
+          forwardToGM: false,
+        })),
+      })
+
+      // Form durumunu güncelle
+      const updated = await tx.overtimeForm.update({
+        where: { id },
+        data: {
+          status: 'PENDING',
+          currentStep: 0,
+        },
+        include: {
+          personnel: {
+            include: {
+              personnel: {
+                select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true },
+              },
+            },
+          },
+          approvals: {
+            orderBy: { step: 'asc' },
+          },
+          createdBy: {
+            select: { id: true, name: true, email: true, department: true },
+          },
+        },
+      })
+
+      // İlk onaylayıcıya bildirim gönder
+      const firstStep = assignedPositions[0]
+      if (firstStep?.userId) {
+        try {
+          await tx.notification.create({
+            data: {
+              userId: firstStep.userId,
+              title: 'Yeni Mesai Formu Onayı',
+              message: `${updated.formNo} numaralı mesai formu onayınızı bekliyor.`,
+              type: 'REMINDER',
+              link: `/forms/overtime/${id}`,
+            },
+          })
+        } catch {
+          // Bildirim oluşturulamazsa devam et
+        }
+      }
+
+      return { updated, pushUserId: firstStep?.userId || null }
+    })
+
+    // Transaction sonrası push bildirim gönder
+    if (updatedForm.pushUserId) {
+      sendPushToUser(prisma, updatedForm.pushUserId, {
+        title: 'Yeni Mesai Formu Onayı',
+        body: `${updatedForm.updated.formNo} numaralı mesai formu onayınızı bekliyor.`,
+        url: `/forms/overtime/${id}`,
+        tag: `overtime-submit-${id}`,
+      }).catch(() => {})
+    }
+
+    return apiSuccess(updatedForm.updated)
+  } catch (error) {
+    return apiError('Mesai formu onaya gönderilirken bir hata oluştu', 500, {
+      endpoint: 'POST /api/overtime/[id]/submit',
+      error,
+    })
+  }
+}

@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İleriHub - Maliyet Analizi Modülü v2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'pastel-blue': '#E8F4FD',
+                        'pastel-green': '#E8F5E9',
+                        'pastel-yellow': '#FFF8E1',
+                        'pastel-orange': '#FFF3E0',
+                        'pastel-purple': '#F3E5F5',
+                        'pastel-red': '#FFEBEE',
+                        'pastel-teal': '#E0F2F1',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-active { border-bottom: 2px solid #0d9488; color: #0d9488; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .guide-box { border-left: 4px solid; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    
+    <!-- Sidebar -->
+    <aside class="fixed left-0 top-0 h-full w-56 bg-white border-r shadow-sm z-50">
+        <div class="p-4 border-b">
+            <h1 class="text-xl font-bold">
+                <span class="text-teal-600">ILERI</span><span class="text-gray-700">Hub</span>
+            </h1>
+        </div>
+        <nav class="p-2 space-y-1">
+            <a href="#" class="flex items-center px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                Dashboard
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                Mesajlar
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                Duyurular
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 bg-teal-50 text-teal-700 rounded-lg font-medium">
+                Maliyet Analizi
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                Öneri Sistemi
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                Kalibrasyon
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                Formlar
+            </a>
+            <a href="#" class="flex items-center px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                Ayarlar
+            </a>
+        </nav>
+        <div class="absolute bottom-0 left-0 right-0 p-4 border-t">
+            <div class="text-sm">
+                <div class="font-medium text-gray-700">Melih Dilben</div>
+                <div class="text-gray-500 text-xs">Sistem Geliştirme</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="ml-56">
+        <!-- Header -->
+        <header class="bg-white border-b px-6 py-3 flex items-center justify-between sticky top-0 z-40">
+            <div class="flex items-center space-x-4">
+                <input type="text" placeholder="Ara..." class="px-4 py-2 bg-gray-100 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-teal-500">
+            </div>
+            <div class="flex items-center space-x-4">
+                <button class="p-2 hover:bg-gray-100 rounded-lg relative">
+                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                    </svg>
+                </button>
+                <div class="w-8 h-8 bg-teal-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                    MD
+                </div>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <main class="p-6">
+            
+            <!-- Navigation Tabs -->
+            <div class="bg-white rounded-t-lg border-b mb-0">
+                <nav class="flex">
+                    <button onclick="showSection('liste')" id="tab-liste" class="px-6 py-4 text-sm font-medium tab-active">
+                        Tümü
+                    </button>
+                    <button onclick="showSection('detay')" id="tab-detay" class="px-6 py-4 text-sm font-medium text-gray-500 hover:text-gray-700">
+                        Analiz Detay
+                    </button>
+                    <button onclick="showSection('malzeme')" id="tab-malzeme" class="px-6 py-4 text-sm font-medium text-gray-500 hover:text-gray-700">
+                        Malzemeler
+                    </button>
+                    <button onclick="showSection('iscilik')" id="tab-iscilik" class="px-6 py-4 text-sm font-medium text-gray-500 hover:text-gray-700">
+                        İşçilik
+                    </button>
+                    <button onclick="showSection('ozet')" id="tab-ozet" class="px-6 py-4 text-sm font-medium text-gray-500 hover:text-gray-700">
+                        Maliyet Özeti
+                    </button>
+                    <button onclick="showSection('ayarlar')" id="tab-ayarlar" class="px-6 py-4 text-sm font-medium text-gray-500 hover:text-gray-700">
+                        Ayarlar
+                    </button>
+                    <div class="flex-1"></div>
+                    <button onclick="openGuide('liste')" class="px-4 py-4 text-sm text-teal-600 hover:text-teal-700 font-medium">
+                        Maliyet Kılavuzu
+                    </button>
+                    <button class="px-4 py-2 my-2 mr-4 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium">
+                        + Yeni Analiz
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Section: Ana Liste -->
+            <section id="section-liste" class="fade-in">
+                <div class="bg-white rounded-b-lg shadow-sm">
+                    
+                    <!-- Filters -->
+                    <div class="p-4 border-b flex items-center space-x-4">
+                        <select class="px-3 py-2 border rounded-lg bg-white text-sm">
+                            <option>Tüm Kategoriler</option>
+                            <option>Platform</option>
+                            <option>Yapısal Parça</option>
+                            <option>Mekanik Aksam</option>
+                        </select>
+                        <select class="px-3 py-2 border rounded-lg bg-white text-sm">
+                            <option>Tüm Durumlar</option>
+                            <option>Onaylı</option>
+                            <option>Taslak</option>
+                            <option>İncelemede</option>
+                        </select>
+                        <select class="px-3 py-2 border rounded-lg bg-white text-sm">
+                            <option>Tüm Müşteriler</option>
+                            <option>Roketsan</option>
+                            <option>ASELSAN</option>
+                            <option>TAI</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50 text-left">
+                                <tr>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Kod</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Ürün Adı</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Müşteri</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Kategori</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase text-right">Maliyet</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase text-right">Satış Fiyatı</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase text-center">Kar %</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase text-center">Durum</th>
+                                    <th class="px-6 py-3 text-xs font-medium text-gray-500 uppercase text-right">Detay</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr class="hover:bg-gray-50 cursor-pointer" onclick="showSection('detay')">
+                                    <td class="px-6 py-4">
+                                        <span class="font-mono font-medium text-teal-600">2910</span>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="font-medium text-gray-900">2'li TG</div>
+                                        <div class="text-sm text-gray-500">Rev. A · 800 kg</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-600">Roketsan</td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">Platform</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right font-medium">28,882.50 €</td>
+                                    <td class="px-6 py-4 text-right font-medium text-teal-600">49,620.14 €</td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="font-medium text-teal-600">71.8%</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Onaylı</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button class="text-gray-400 hover:text-gray-600">Detay →</button>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-gray-50 cursor-pointer">
+                                    <td class="px-6 py-4">
+                                        <span class="font-mono font-medium text-teal-600">2911</span>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="font-medium text-gray-900">4'lü TG</div>
+                                        <div class="text-sm text-gray-500">Rev. B · 1,450 kg</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-600">Roketsan</td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">Platform</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right font-medium">52,340.00 €</td>
+                                    <td class="px-6 py-4 text-right font-medium text-teal-600">89,000.00 €</td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="font-medium text-teal-600">70.1%</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">Taslak</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button class="text-gray-400 hover:text-gray-600">Detay →</button>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-gray-50 cursor-pointer">
+                                    <td class="px-6 py-4">
+                                        <span class="font-mono font-medium text-teal-600">3001</span>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="font-medium text-gray-900">Platform A</div>
+                                        <div class="text-sm text-gray-500">Rev. A · 320 kg</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-600">ASELSAN</td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Yapısal</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right font-medium">15,200.00 €</td>
+                                    <td class="px-6 py-4 text-right font-medium text-teal-600">25,840.00 €</td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="font-medium text-teal-600">70.0%</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">İnceleme</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button class="text-gray-400 hover:text-gray-600">Detay →</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    <div class="px-6 py-4 border-t flex items-center justify-between">
+                        <div class="text-sm text-gray-500">
+                            Toplam <strong>45</strong> analiz
+                        </div>
+                        <div class="flex space-x-1">
+                            <button class="px-3 py-1 border rounded hover:bg-gray-50 text-sm">←</button>
+                            <button class="px-3 py-1 border rounded bg-teal-600 text-white text-sm">1</button>
+                            <button class="px-3 py-1 border rounded hover:bg-gray-50 text-sm">2</button>
+                            <button class="px-3 py-1 border rounded hover:bg-gray-50 text-sm">3</button>
+                            <button class="px-3 py-1 border rounded hover:bg-gray-50 text-sm">→</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Analiz Detay -->
+            <section id="section-detay" class="hidden fade-in">
+                <div class="space-y-6">
+                    <!-- Breadcrumb -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2 text-sm">
+                            <a href="#" onclick="showSection('liste')" class="text-teal-600 hover:underline">Maliyet Analizleri</a>
+                            <span class="text-gray-400">/</span>
+                            <span class="text-gray-600">2910 - 2'li TG</span>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button class="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm">PDF</button>
+                            <button class="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm">Excel</button>
+                            <button class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm">Düzenle</button>
+                        </div>
+                    </div>
+
+                    <!-- Product Info -->
+                    <div class="bg-white rounded-lg shadow-sm p-6">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <div class="flex items-center space-x-3">
+                                    <h2 class="text-2xl font-bold text-gray-900">2'li TG</h2>
+                                    <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">Onaylı</span>
+                                </div>
+                                <p class="text-gray-500 mt-1">Ürün Kodu: <span class="font-mono font-medium">2910</span> · Revizyon: A</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-sm text-gray-500">Müşteri</div>
+                                <div class="font-medium">Roketsan</div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-4 gap-6 mt-6 pt-6 border-t">
+                            <div>
+                                <div class="text-sm text-gray-500">Bitmiş Ağırlık</div>
+                                <div class="text-xl font-semibold">800 kg</div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-gray-500">Para Birimi</div>
+                                <div class="text-xl font-semibold">EUR (€)</div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-gray-500">Oluşturma</div>
+                                <div class="text-xl font-semibold">15.01.2026</div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-gray-500">Güncelleme</div>
+                                <div class="text-xl font-semibold">01.02.2026</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cost Summary Cards - Pastel Colors -->
+                    <div class="grid grid-cols-4 gap-4">
+                        <div class="bg-pastel-blue rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow" onclick="showSection('malzeme')">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-blue-700 font-medium">Malzeme</span>
+                                <span class="text-xs text-blue-600">12 kalem</span>
+                            </div>
+                            <div class="text-2xl font-bold text-blue-800">6,866 €</div>
+                            <div class="mt-2 h-1.5 bg-blue-200 rounded">
+                                <div class="h-1.5 bg-blue-500 rounded" style="width: 12%"></div>
+                            </div>
+                            <div class="text-xs text-blue-600 mt-1">%12</div>
+                        </div>
+                        
+                        <div class="bg-pastel-green rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow" onclick="showSection('iscilik')">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-green-700 font-medium">İşçilik</span>
+                                <span class="text-xs text-green-600">8 operasyon</span>
+                            </div>
+                            <div class="text-2xl font-bold text-green-800">11,890 €</div>
+                            <div class="mt-2 h-1.5 bg-green-200 rounded">
+                                <div class="h-1.5 bg-green-500 rounded" style="width: 21%"></div>
+                            </div>
+                            <div class="text-xs text-green-600 mt-1">%21</div>
+                        </div>
+                        
+                        <div class="bg-pastel-orange rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-orange-700 font-medium">Dış Hizmet</span>
+                                <span class="text-xs text-orange-600">3 hizmet</span>
+                            </div>
+                            <div class="text-2xl font-bold text-orange-800">34,000 €</div>
+                            <div class="mt-2 h-1.5 bg-orange-200 rounded">
+                                <div class="h-1.5 bg-orange-500 rounded" style="width: 59%"></div>
+                            </div>
+                            <div class="text-xs text-orange-600 mt-1">%59</div>
+                        </div>
+                        
+                        <div class="bg-pastel-purple rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-purple-700 font-medium">Diğer</span>
+                                <span class="text-xs text-purple-600">6 kalem</span>
+                            </div>
+                            <div class="text-2xl font-bold text-purple-800">4,350 €</div>
+                            <div class="mt-2 h-1.5 bg-purple-200 rounded">
+                                <div class="h-1.5 bg-purple-500 rounded" style="width: 8%"></div>
+                            </div>
+                            <div class="text-xs text-purple-600 mt-1">%8</div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Summary -->
+                    <div class="bg-white rounded-lg shadow-sm p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <span class="text-gray-500">Toplam Maliyet</span>
+                                <div class="text-3xl font-bold text-gray-900">28,882.50 €</div>
+                            </div>
+                            <div class="text-center px-8 border-l border-r">
+                                <span class="text-gray-500">Kar Oranı</span>
+                                <div class="text-3xl font-bold text-teal-600">%71.8</div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-gray-500">Satış Fiyatı</span>
+                                <div class="text-3xl font-bold text-teal-600">49,620.14 €</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Malzemeler -->
+            <section id="section-malzeme" class="hidden fade-in">
+                <div class="space-y-6">
+                    <!-- Guide Box - Kaizen Style -->
+                    <div class="bg-pastel-blue rounded-lg p-5 guide-box border-blue-500">
+                        <h3 class="font-semibold text-blue-800 mb-2">Malzeme Yönetimi Kılavuzu</h3>
+                        <p class="text-blue-700 text-sm mb-4">Ürün maliyetinin temelini oluşturan hammadde ve yarı mamullerin takibi.</p>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-white bg-opacity-60 rounded-lg p-3">
+                                <h4 class="font-medium text-blue-800 mb-2">Malzeme Türleri</h4>
+                                <ul class="text-sm text-blue-700 space-y-1">
+                                    <li>• <strong>Hammadde:</strong> İşlenmemiş malzeme (çelik, alüminyum)</li>
+                                    <li>• <strong>Yarı Mamul:</strong> Önceden işlenmiş parçalar</li>
+                                    <li>• <strong>Satın Alınan:</strong> Hazır parçalar</li>
+                                    <li>• <strong>Standart:</strong> Cıvata, somun, pul vb.</li>
+                                </ul>
+                            </div>
+                            <div class="bg-white bg-opacity-60 rounded-lg p-3">
+                                <h4 class="font-medium text-blue-800 mb-2">Fire Oranı Hesaplama</h4>
+                                <ul class="text-sm text-blue-700 space-y-1">
+                                    <li>• Lazer kesim: %5-10 fire</li>
+                                    <li>• CNC işleme: %8-15 fire</li>
+                                    <li>• Sac kesim: %10-20 fire</li>
+                                    <li>• Profil: %3-5 fire</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="bg-white rounded-lg shadow-sm">
+                        <div class="p-4 border-b flex items-center justify-between">
+                            <div>
+                                <h2 class="text-lg font-semibold text-gray-900">Malzeme Listesi</h2>
+                                <p class="text-sm text-gray-500">2910 - 2'li TG · 12 kalem</p>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button class="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm">Excel Import</button>
+                                <button class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm">+ Malzeme Ekle</button>
+                            </div>
+                        </div>
+                        
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-gray-50 text-left">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">#</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Malzeme Kodu</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Malzeme Adı</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Spesifikasyon</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-center">Birim</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">Miktar</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">Fire %</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">Birim Fiyat</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">Toplam</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-center">İşlem</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">1</td>
+                                        <td class="px-4 py-3 font-mono text-sm text-gray-600">MAL-001</td>
+                                        <td class="px-4 py-3 font-medium">ST 52 Profil</td>
+                                        <td class="px-4 py-3 text-gray-600">120x80x6 mm</td>
+                                        <td class="px-4 py-3 text-center">kg</td>
+                                        <td class="px-4 py-3 text-right">150.00</td>
+                                        <td class="px-4 py-3 text-right text-gray-500">5%</td>
+                                        <td class="px-4 py-3 text-right">2.50 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">375.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 mr-2 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">2</td>
+                                        <td class="px-4 py-3 font-mono text-sm text-gray-600">MAL-002</td>
+                                        <td class="px-4 py-3 font-medium">ST 52 Sac</td>
+                                        <td class="px-4 py-3 text-gray-600">8 mm kalınlık</td>
+                                        <td class="px-4 py-3 text-center">kg</td>
+                                        <td class="px-4 py-3 text-right">200.00</td>
+                                        <td class="px-4 py-3 text-right text-gray-500">8%</td>
+                                        <td class="px-4 py-3 text-right">2.30 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">460.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 mr-2 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">3</td>
+                                        <td class="px-4 py-3 font-mono text-sm text-gray-600">MAL-003</td>
+                                        <td class="px-4 py-3 font-medium">ST 52 Sac</td>
+                                        <td class="px-4 py-3 text-gray-600">10 mm kalınlık</td>
+                                        <td class="px-4 py-3 text-center">kg</td>
+                                        <td class="px-4 py-3 text-right">180.00</td>
+                                        <td class="px-4 py-3 text-right text-gray-500">8%</td>
+                                        <td class="px-4 py-3 text-right">2.30 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">414.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 mr-2 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">4</td>
+                                        <td class="px-4 py-3 font-mono text-sm text-gray-600">MAL-010</td>
+                                        <td class="px-4 py-3 font-medium">Takoz Parçaları</td>
+                                        <td class="px-4 py-3 text-gray-600">Komple set</td>
+                                        <td class="px-4 py-3 text-center">set</td>
+                                        <td class="px-4 py-3 text-right">4.00</td>
+                                        <td class="px-4 py-3 text-right text-gray-500">-</td>
+                                        <td class="px-4 py-3 text-right">250.00 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">1,000.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 mr-2 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">5</td>
+                                        <td class="px-4 py-3 font-mono text-sm text-gray-600">MAL-011</td>
+                                        <td class="px-4 py-3 font-medium">Ayak Parçaları</td>
+                                        <td class="px-4 py-3 text-gray-600">Komple set</td>
+                                        <td class="px-4 py-3 text-center">set</td>
+                                        <td class="px-4 py-3 text-right">8.00</td>
+                                        <td class="px-4 py-3 text-right text-gray-500">-</td>
+                                        <td class="px-4 py-3 text-right">120.00 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">960.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 mr-2 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="bg-pastel-blue">
+                                    <tr>
+                                        <td colspan="8" class="px-4 py-3 text-right font-semibold text-blue-800">MALZEME TOPLAMI:</td>
+                                        <td class="px-4 py-3 text-right font-bold text-lg text-blue-800">6,866.00 €</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: İşçilik -->
+            <section id="section-iscilik" class="hidden fade-in">
+                <div class="space-y-6">
+                    <!-- Guide Box - Kaizen Style -->
+                    <div class="bg-pastel-green rounded-lg p-5 guide-box border-green-500">
+                        <h3 class="font-semibold text-green-800 mb-2">İşçilik Yönetimi Kılavuzu</h3>
+                        <p class="text-green-700 text-sm mb-4">Üretim operasyonlarının süre ve maliyet takibi.</p>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-white bg-opacity-60 rounded-lg p-3">
+                                <h4 class="font-medium text-green-800 mb-2">İşçilik Türleri</h4>
+                                <ul class="text-sm text-green-700 space-y-1">
+                                    <li>• <strong>Dahili:</strong> Kendi tesisinde yapılan işler</li>
+                                    <li>• <strong>Dış Hizmet:</strong> Tedarikçide yapılan işler</li>
+                                    <li>• <strong>Montaj:</strong> Son montaj işçiliği</li>
+                                </ul>
+                            </div>
+                            <div class="bg-white bg-opacity-60 rounded-lg p-3">
+                                <h4 class="font-medium text-green-800 mb-2">Süre Hesaplama</h4>
+                                <ul class="text-sm text-green-700 space-y-1">
+                                    <li>• <strong>Hazırlık:</strong> Setup, kalıp değişimi</li>
+                                    <li>• <strong>İşlem:</strong> Aktif üretim süresi</li>
+                                    <li>• <strong>Toplam:</strong> Hazırlık + İşlem</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="bg-white rounded-lg shadow-sm">
+                        <div class="p-4 border-b flex items-center justify-between">
+                            <div>
+                                <h2 class="text-lg font-semibold text-gray-900">İşçilik Listesi</h2>
+                                <p class="text-sm text-gray-500">2910 - 2'li TG · 8 operasyon</p>
+                            </div>
+                            <button class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm">+ İşçilik Ekle</button>
+                        </div>
+                        
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-gray-50 text-left">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">#</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">Operasyon</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase">İş Merkezi</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-center">Tip</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">Hazırlık</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">İşlem</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">Toplam</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">Saat Ücreti</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-right">Toplam</th>
+                                        <th class="px-4 py-3 text-xs font-medium text-gray-500 uppercase text-center">İşlem</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">1</td>
+                                        <td class="px-4 py-3 font-medium">CNC İşleme</td>
+                                        <td class="px-4 py-3 text-gray-600">CNC-01</td>
+                                        <td class="px-4 py-3 text-center"><span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Dahili</span></td>
+                                        <td class="px-4 py-3 text-right">0.5 sa</td>
+                                        <td class="px-4 py-3 text-right">7.5 sa</td>
+                                        <td class="px-4 py-3 text-right font-medium">8.0 sa</td>
+                                        <td class="px-4 py-3 text-right">45.00 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">360.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">2</td>
+                                        <td class="px-4 py-3 font-medium">Lazer Kesim</td>
+                                        <td class="px-4 py-3 text-gray-600">LAZER-01</td>
+                                        <td class="px-4 py-3 text-center"><span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Dahili</span></td>
+                                        <td class="px-4 py-3 text-right">0.25 sa</td>
+                                        <td class="px-4 py-3 text-right">3.75 sa</td>
+                                        <td class="px-4 py-3 text-right font-medium">4.0 sa</td>
+                                        <td class="px-4 py-3 text-right">55.00 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">220.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">3</td>
+                                        <td class="px-4 py-3 font-medium">Kaynak</td>
+                                        <td class="px-4 py-3 text-gray-600">KAYNAK-01</td>
+                                        <td class="px-4 py-3 text-center"><span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Dahili</span></td>
+                                        <td class="px-4 py-3 text-right">1.0 sa</td>
+                                        <td class="px-4 py-3 text-right">15.0 sa</td>
+                                        <td class="px-4 py-3 text-right font-medium">16.0 sa</td>
+                                        <td class="px-4 py-3 text-right">40.00 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">640.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-gray-500">4</td>
+                                        <td class="px-4 py-3 font-medium">Borwerk</td>
+                                        <td class="px-4 py-3 text-gray-600">BORWERK-01</td>
+                                        <td class="px-4 py-3 text-center"><span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Dahili</span></td>
+                                        <td class="px-4 py-3 text-right">0.5 sa</td>
+                                        <td class="px-4 py-3 text-right">5.5 sa</td>
+                                        <td class="px-4 py-3 text-right font-medium">6.0 sa</td>
+                                        <td class="px-4 py-3 text-right">50.00 €</td>
+                                        <td class="px-4 py-3 text-right font-medium">300.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                    <tr class="hover:bg-pastel-orange">
+                                        <td class="px-4 py-3 text-gray-500">5</td>
+                                        <td class="px-4 py-3 font-medium">Gerilim Giderme + NDT</td>
+                                        <td class="px-4 py-3 text-gray-600">-</td>
+                                        <td class="px-4 py-3 text-center"><span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">Dış Hizmet</span></td>
+                                        <td class="px-4 py-3 text-right">-</td>
+                                        <td class="px-4 py-3 text-right">-</td>
+                                        <td class="px-4 py-3 text-right font-medium">-</td>
+                                        <td class="px-4 py-3 text-right">-</td>
+                                        <td class="px-4 py-3 text-right font-medium text-orange-700">34,000.00 €</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <button class="text-teal-600 hover:text-teal-800 text-sm">Düzenle</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="bg-pastel-green">
+                                    <tr>
+                                        <td colspan="8" class="px-4 py-3 text-right font-semibold text-green-800">DAHİLİ İŞÇİLİK TOPLAMI:</td>
+                                        <td class="px-4 py-3 text-right font-bold text-lg text-green-800">11,890.00 €</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Maliyet Özeti -->
+            <section id="section-ozet" class="hidden fade-in">
+                <div class="space-y-6">
+                    <!-- Guide Box - Kaizen Style -->
+                    <div class="bg-pastel-teal rounded-lg p-5 guide-box border-teal-500">
+                        <h3 class="font-semibold text-teal-800 mb-2">Maliyet Hesaplama Kılavuzu</h3>
+                        <p class="text-teal-700 text-sm mb-4">Should-Cost analizi ve fiyatlandırma metodolojisi hakkında bilgi.</p>
+                        
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="bg-white bg-opacity-60 rounded-lg p-3">
+                                <h4 class="font-medium text-teal-800 mb-2">Maliyet Bileşenleri</h4>
+                                <ul class="text-sm text-teal-700 space-y-1">
+                                    <li>• Direkt Malzeme</li>
+                                    <li>• Direkt İşçilik</li>
+                                    <li>• Dış Hizmetler</li>
+                                    <li>• Genel Giderler</li>
+                                </ul>
+                            </div>
+                            <div class="bg-white bg-opacity-60 rounded-lg p-3">
+                                <h4 class="font-medium text-teal-800 mb-2">İşletme Gideri</h4>
+                                <ul class="text-sm text-teal-700 space-y-1">
+                                    <li>• Standart oran: %20-30</li>
+                                    <li>• Kira, enerji, sigorta</li>
+                                    <li>• Yönetim giderleri</li>
+                                    <li>• Amortisman</li>
+                                </ul>
+                            </div>
+                            <div class="bg-white bg-opacity-60 rounded-lg p-3">
+                                <h4 class="font-medium text-teal-800 mb-2">Kar Marjı</h4>
+                                <ul class="text-sm text-teal-700 space-y-1">
+                                    <li>• Savunma sanayi: %15-25</li>
+                                    <li>• Özel projeler: %20-40</li>
+                                    <li>• Risk faktörü dahil</li>
+                                    <li>• Pazar koşullarına göre</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-6">
+                        <!-- Sol: Maliyet Dağılımı -->
+                        <div class="col-span-2 space-y-6">
+                            <!-- Bar Chart -->
+                            <div class="bg-white rounded-lg shadow-sm p-6">
+                                <h3 class="font-semibold text-gray-900 mb-4">Maliyet Dağılımı</h3>
+                                
+                                <div class="space-y-4">
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-1">
+                                            <span class="text-gray-600">Malzeme</span>
+                                            <span class="font-medium">6,866 € (12%)</span>
+                                        </div>
+                                        <div class="h-4 bg-blue-100 rounded-full overflow-hidden">
+                                            <div class="h-full bg-blue-500 rounded-full" style="width: 12%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-1">
+                                            <span class="text-gray-600">İşçilik</span>
+                                            <span class="font-medium">11,890 € (21%)</span>
+                                        </div>
+                                        <div class="h-4 bg-green-100 rounded-full overflow-hidden">
+                                            <div class="h-full bg-green-500 rounded-full" style="width: 21%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-1">
+                                            <span class="text-gray-600">Dış Hizmet</span>
+                                            <span class="font-medium">34,000 € (59%)</span>
+                                        </div>
+                                        <div class="h-4 bg-orange-100 rounded-full overflow-hidden">
+                                            <div class="h-full bg-orange-500 rounded-full" style="width: 59%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-1">
+                                            <span class="text-gray-600">Diğer</span>
+                                            <span class="font-medium">4,350 € (8%)</span>
+                                        </div>
+                                        <div class="h-4 bg-purple-100 rounded-full overflow-hidden">
+                                            <div class="h-full bg-purple-500 rounded-full" style="width: 8%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Detaylı Liste -->
+                            <div class="bg-white rounded-lg shadow-sm p-6">
+                                <h3 class="font-semibold text-gray-900 mb-4">Maliyet Detayı</h3>
+                                <table class="w-full">
+                                    <tbody class="divide-y">
+                                        <tr>
+                                            <td class="py-2 text-gray-600">Malzeme Toplamı</td>
+                                            <td class="py-2 text-right font-medium">6,866.00 €</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 text-gray-600">Dahili İşçilik Toplamı</td>
+                                            <td class="py-2 text-right font-medium">11,890.00 €</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 text-gray-600">Dış Hizmetler</td>
+                                            <td class="py-2 text-right font-medium">34,000.00 €</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 pl-4 text-gray-500 text-sm">Montaj İşçiliği</td>
+                                            <td class="py-2 text-right text-gray-600">300.00 €</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 pl-4 text-gray-500 text-sm">Bağlantı Elemanları</td>
+                                            <td class="py-2 text-right text-gray-600">1,100.00 €</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 pl-4 text-gray-500 text-sm">Kalite Kontrol</td>
+                                            <td class="py-2 text-right text-gray-600">1,000.00 €</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 pl-4 text-gray-500 text-sm">Nakliye</td>
+                                            <td class="py-2 text-right text-gray-600">750.00 €</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 pl-4 text-gray-500 text-sm">Paketleme</td>
+                                            <td class="py-2 text-right text-gray-600">200.00 €</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-2 pl-4 text-gray-500 text-sm">Mühendislik</td>
+                                            <td class="py-2 text-right text-gray-600">1,000.00 €</td>
+                                        </tr>
+                                        <tr class="border-t-2 border-gray-300">
+                                            <td class="py-3 font-semibold">ARA TOPLAM</td>
+                                            <td class="py-3 text-right font-bold text-lg">57,106.00 €</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Sağ: Fiyat Hesaplama -->
+                        <div class="space-y-6">
+                            <div class="bg-gradient-to-br from-teal-600 to-teal-800 rounded-lg shadow-lg p-6 text-white">
+                                <h3 class="font-semibold mb-4 opacity-90">Fiyat Hesaplama</h3>
+                                
+                                <div class="space-y-4">
+                                    <div class="flex justify-between">
+                                        <span class="opacity-80">Ara Toplam</span>
+                                        <span class="font-medium">57,106.00 €</span>
+                                    </div>
+                                    
+                                    <div class="border-t border-teal-400 pt-4">
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="opacity-80">İşletme Gideri</span>
+                                            <div class="flex items-center space-x-2">
+                                                <input type="number" value="25" class="w-16 px-2 py-1 rounded bg-teal-700 text-white text-right text-sm" />
+                                                <span>%</span>
+                                            </div>
+                                        </div>
+                                        <div class="text-right font-medium">14,276.50 €</div>
+                                    </div>
+                                    
+                                    <div class="border-t border-teal-400 pt-4">
+                                        <div class="flex justify-between">
+                                            <span class="font-semibold">TOPLAM MALİYET</span>
+                                            <span class="font-bold text-xl">71,382.50 €</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="border-t border-teal-400 pt-4">
+                                        <div class="flex justify-between items-center mb-2">
+                                            <span class="opacity-80">Kar Oranı</span>
+                                            <div class="flex items-center space-x-2">
+                                                <input type="number" value="71.8" class="w-20 px-2 py-1 rounded bg-teal-700 text-white text-right text-sm" />
+                                                <span>%</span>
+                                            </div>
+                                        </div>
+                                        <div class="text-right font-medium">51,253.04 €</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-6 pt-4 border-t-2 border-white">
+                                    <div class="flex justify-between items-center">
+                                        <span class="font-semibold">SATIŞ FİYATI</span>
+                                        <span class="text-3xl font-bold">122,635.54 €</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white rounded-lg shadow-sm p-6">
+                                <h3 class="font-semibold text-gray-900 mb-4">Birim Fiyatlar</h3>
+                                <div class="space-y-3">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600">Bitmiş Ağırlık</span>
+                                        <span class="font-medium">800 kg</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-600">kg Başına Maliyet</span>
+                                        <span class="font-medium">89.23 €/kg</span>
+                                    </div>
+                                    <div class="flex justify-between pt-2 border-t">
+                                        <span class="text-gray-600">kg Başına Fiyat</span>
+                                        <span class="font-bold text-teal-600 text-lg">153.29 €/kg</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white rounded-lg shadow-sm p-6">
+                                <h3 class="font-semibold text-gray-900 mb-4">İşlemler</h3>
+                                <div class="space-y-2">
+                                    <button class="w-full px-4 py-2 border rounded-lg hover:bg-gray-50 text-left text-sm">
+                                        PDF Rapor İndir
+                                    </button>
+                                    <button class="w-full px-4 py-2 border rounded-lg hover:bg-gray-50 text-left text-sm">
+                                        Excel'e Aktar
+                                    </button>
+                                    <button class="w-full px-4 py-2 border rounded-lg hover:bg-gray-50 text-left text-sm">
+                                        Kopyala
+                                    </button>
+                                    <button class="w-full px-4 py-2 border rounded-lg hover:bg-gray-50 text-left text-sm">
+                                        Karşılaştır
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Ayarlar -->
+            <section id="section-ayarlar" class="hidden fade-in">
+                <div class="space-y-6">
+                    <!-- Guide Box -->
+                    <div class="bg-pastel-purple rounded-lg p-5 guide-box border-purple-500">
+                        <h3 class="font-semibold text-purple-800 mb-2">Ayarlar Kılavuzu</h3>
+                        <p class="text-purple-700 text-sm">Maliyet analizi modülünün temel tanımlamaları. Kategoriler, müşteriler, tedarikçiler ve makine/iş merkezi bilgilerini buradan yönetebilirsiniz.</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-6">
+                        <!-- Kategoriler -->
+                        <div class="bg-white rounded-lg shadow-sm">
+                            <div class="p-4 border-b flex items-center justify-between">
+                                <h3 class="font-semibold text-gray-900">Kategoriler</h3>
+                                <button class="text-teal-600 hover:text-teal-800 text-sm">+ Ekle</button>
+                            </div>
+                            <div class="p-4 space-y-2">
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <div class="flex items-center space-x-3">
+                                        <span class="w-3 h-3 bg-purple-500 rounded-full"></span>
+                                        <span>Platform</span>
+                                    </div>
+                                    <span class="text-gray-400 text-sm">12 ürün</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <div class="flex items-center space-x-3">
+                                        <span class="w-3 h-3 bg-blue-500 rounded-full"></span>
+                                        <span>Yapısal Parça</span>
+                                    </div>
+                                    <span class="text-gray-400 text-sm">8 ürün</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <div class="flex items-center space-x-3">
+                                        <span class="w-3 h-3 bg-orange-500 rounded-full"></span>
+                                        <span>Mekanik Aksam</span>
+                                    </div>
+                                    <span class="text-gray-400 text-sm">15 ürün</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Müşteriler -->
+                        <div class="bg-white rounded-lg shadow-sm">
+                            <div class="p-4 border-b flex items-center justify-between">
+                                <h3 class="font-semibold text-gray-900">Müşteriler</h3>
+                                <button class="text-teal-600 hover:text-teal-800 text-sm">+ Ekle</button>
+                            </div>
+                            <div class="p-4 space-y-2">
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <span>Roketsan</span>
+                                    <span class="text-gray-400 text-sm">25 analiz</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <span>ASELSAN</span>
+                                    <span class="text-gray-400 text-sm">12 analiz</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <span>TAI</span>
+                                    <span class="text-gray-400 text-sm">8 analiz</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Tedarikçiler -->
+                        <div class="bg-white rounded-lg shadow-sm">
+                            <div class="p-4 border-b flex items-center justify-between">
+                                <h3 class="font-semibold text-gray-900">Tedarikçiler</h3>
+                                <button class="text-teal-600 hover:text-teal-800 text-sm">+ Ekle</button>
+                            </div>
+                            <div class="p-4 space-y-2">
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <span>Çelik A.Ş.</span>
+                                    <span class="text-gray-400 text-sm">Hammadde</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <span>Isıl İşlem Ltd.</span>
+                                    <span class="text-gray-400 text-sm">Dış Hizmet</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <span>NDT Kontrol</span>
+                                    <span class="text-gray-400 text-sm">Dış Hizmet</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Makineler -->
+                        <div class="bg-white rounded-lg shadow-sm">
+                            <div class="p-4 border-b flex items-center justify-between">
+                                <h3 class="font-semibold text-gray-900">Makineler / İş Merkezleri</h3>
+                                <button class="text-teal-600 hover:text-teal-800 text-sm">+ Ekle</button>
+                            </div>
+                            <div class="p-4 space-y-2">
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <div>
+                                        <div class="font-medium">CNC-01</div>
+                                        <div class="text-xs text-gray-400">CNC İşleme Merkezi</div>
+                                    </div>
+                                    <span class="font-medium text-teal-600">45 €/sa</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <div>
+                                        <div class="font-medium">LAZER-01</div>
+                                        <div class="text-xs text-gray-400">Lazer Kesim</div>
+                                    </div>
+                                    <span class="font-medium text-teal-600">55 €/sa</span>
+                                </div>
+                                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+                                    <div>
+                                        <div class="font-medium">KAYNAK-01</div>
+                                        <div class="text-xs text-gray-400">Kaynak İstasyonu</div>
+                                    </div>
+                                    <span class="font-medium text-teal-600">40 €/sa</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Döviz Kurları -->
+                        <div class="bg-white rounded-lg shadow-sm col-span-2">
+                            <div class="p-4 border-b flex items-center justify-between">
+                                <h3 class="font-semibold text-gray-900">Döviz Kurları</h3>
+                                <button class="text-teal-600 hover:text-teal-800 text-sm">Güncelle</button>
+                            </div>
+                            <div class="p-4 grid grid-cols-3 gap-4">
+                                <div class="p-4 bg-pastel-blue rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-blue-700">1.00</div>
+                                    <div class="text-sm text-blue-600">EUR</div>
+                                </div>
+                                <div class="p-4 bg-pastel-green rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-green-700">1.08</div>
+                                    <div class="text-sm text-green-600">USD</div>
+                                </div>
+                                <div class="p-4 bg-pastel-orange rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-orange-700">34.50</div>
+                                    <div class="text-sm text-orange-600">TRY</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Guide Modal -->
+    <div id="guide-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div class="p-6 border-b flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-gray-900">Maliyet Kılavuzu - Should-Cost Analizi</h2>
+                <button onclick="closeGuide()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-600 mb-6">Should-Cost analizi ve maliyet hesaplama metodolojisi hakkında kapsamlı bilgi.</p>
+                
+                <div class="space-y-6">
+                    <div class="bg-pastel-blue rounded-lg p-4">
+                        <h3 class="font-semibold text-blue-800 mb-2">Should-Cost Nedir?</h3>
+                        <p class="text-blue-700 text-sm">Should-Cost analizi, bir ürünün "olması gereken" maliyetini belirlemek için kullanılan sistematik bir yaklaşımdır. ABD Savunma Bakanlığı tarafından geliştirilmiş olup, tedarikçi fiyatlarını değerlendirmek ve müzakere etmek için kullanılır.</p>
+                    </div>
+                    
+                    <div class="bg-pastel-green rounded-lg p-4">
+                        <h3 class="font-semibold text-green-800 mb-2">Temel Prensipler</h3>
+                        <ul class="text-green-700 text-sm space-y-1">
+                            <li>• Malzeme maliyetlerini pazar fiyatlarıyla karşılaştır</li>
+                            <li>• İşçilik sürelerini standartlarla doğrula</li>
+                            <li>• Genel gider oranlarını sektör ortalamasıyla kıyasla</li>
+                            <li>• Kar marjını makul seviyede tut</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="bg-pastel-orange rounded-lg p-4">
+                        <h3 class="font-semibold text-orange-800 mb-2">7 Muda (İsraf Türleri)</h3>
+                        <div class="grid grid-cols-2 gap-2 text-sm text-orange-700">
+                            <div>1. Aşırı Üretim</div>
+                            <div>2. Bekleme</div>
+                            <div>3. Taşıma</div>
+                            <div>4. İşleme</div>
+                            <div>5. Stok</div>
+                            <div>6. Hareket</div>
+                            <div>7. Hata</div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-pastel-purple rounded-lg p-4">
+                        <h3 class="font-semibold text-purple-800 mb-2">PDCA Döngüsü</h3>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div class="bg-white bg-opacity-60 p-2 rounded">
+                                <span class="font-medium text-purple-800">Plan:</span>
+                                <span class="text-purple-700"> Hedef belirle</span>
+                            </div>
+                            <div class="bg-white bg-opacity-60 p-2 rounded">
+                                <span class="font-medium text-purple-800">Do:</span>
+                                <span class="text-purple-700"> Uygula</span>
+                            </div>
+                            <div class="bg-white bg-opacity-60 p-2 rounded">
+                                <span class="font-medium text-purple-800">Check:</span>
+                                <span class="text-purple-700"> Kontrol et</span>
+                            </div>
+                            <div class="bg-white bg-opacity-60 p-2 rounded">
+                                <span class="font-medium text-purple-800">Act:</span>
+                                <span class="text-purple-700"> Önlem al</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+            
+            // Show selected section
+            document.getElementById('section-' + sectionId).classList.remove('hidden');
+            
+            // Update tabs
+            document.querySelectorAll('nav button[id^="tab-"]').forEach(btn => {
+                btn.classList.remove('tab-active');
+                btn.classList.add('text-gray-500');
+            });
+            
+            const activeTab = document.getElementById('tab-' + sectionId);
+            if (activeTab) {
+                activeTab.classList.add('tab-active');
+                activeTab.classList.remove('text-gray-500');
+            }
+        }
+        
+        function openGuide() {
+            document.getElementById('guide-modal').classList.remove('hidden');
+        }
+        
+        function closeGuide() {
+            document.getElementById('guide-modal').classList.add('hidden');
+        }
+    </script>
+
+</body>
+</html>

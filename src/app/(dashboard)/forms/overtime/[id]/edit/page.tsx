@@ -8,6 +8,7 @@ import { Clock, ChevronRight, ChevronLeft, Search, X, Users, Check, Save, Send, 
 import { useRouter, useParams } from "next/navigation"
 import { toast } from "sonner"
 import { MESAI_TURLERI } from "@/lib/overtime-constants"
+import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments, resolveDefaultDepartment } from "@/lib/use-departments"
 
 // ---------------------------------------------------------------------------
@@ -96,7 +97,7 @@ export default function EditOvertimeFormPage() {
   const fetchPersonnel = useCallback(async () => {
     setPersonnelLoading(true)
     try {
-      const res = await fetch("/api/overtime/personnel-list")
+      const res = await apiFetch("/api/overtime/personnel-list")
       if (!res.ok) throw new Error("Personel listesi yüklenemedi")
       const data: PersonnelItem[] = await res.json()
       setPersonnelList(data)
@@ -111,7 +112,7 @@ export default function EditOvertimeFormPage() {
   useEffect(() => {
     async function loadForm() {
       try {
-        const res = await fetch(`/api/overtime/${id}`)
+        const res = await apiFetch(`/api/overtime/${id}`)
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
           throw new Error(err.error || "Form yüklenemedi")
@@ -241,7 +242,7 @@ export default function EditOvertimeFormPage() {
   async function fetchApprovalChain(toGM: boolean = sendToGM) {
     setChainLoading(true)
     try {
-      const res = await fetch("/api/overtime/approval-chain", {
+      const res = await apiFetch("/api/overtime/approval-chain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -296,7 +297,7 @@ export default function EditOvertimeFormPage() {
         })),
       }
 
-      const res = await fetch(`/api/overtime/${id}`, {
+      const res = await apiFetch(`/api/overtime/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -308,7 +309,7 @@ export default function EditOvertimeFormPage() {
       }
 
       if (submit) {
-        const submitRes = await fetch(`/api/overtime/${id}/submit`, { method: "POST" })
+        const submitRes = await apiFetch(`/api/overtime/${id}/submit`, { method: "POST" })
         if (!submitRes.ok) {
           const submitErr = await submitRes.json().catch(() => null)
           throw new Error(submitErr?.error || "Onaya gönderme başarısız")

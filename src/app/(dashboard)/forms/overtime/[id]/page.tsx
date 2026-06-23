@@ -11,6 +11,7 @@ import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
+import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments } from "@/lib/use-departments"
 import { useSession } from "next-auth/react"
 
@@ -134,7 +135,7 @@ export default function OvertimeDetailPage() {
     if (allPersonnelItems.length > 0) return
     setPersonnelItemsLoading(true)
     try {
-      const res = await fetch("/api/overtime/personnel-list")
+      const res = await apiFetch("/api/overtime/personnel-list")
       if (!res.ok) throw new Error()
       const data = await res.json()
       setAllPersonnelItems(Array.isArray(data) ? data : [])
@@ -149,7 +150,7 @@ export default function OvertimeDetailPage() {
     setAddingId(personnelItemId)
     try {
       const targetPerson = allPersonnelItems.find((p) => p.id === personnelItemId)
-      const res = await fetch(`/api/overtime/${id}/personnel`, {
+      const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ personnelId: personnelItemId, workDepartment: addWorkDept, serviceRoute: targetPerson?.serviceRoute || null }),
@@ -172,7 +173,7 @@ export default function OvertimeDetailPage() {
     if (!window.confirm("Bu personeli formdan çıkarmak istediğinize emin misiniz?")) return
     setRemovingId(personnelId)
     try {
-      const res = await fetch(`/api/overtime/${id}/personnel`, {
+      const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ personnelId }),
@@ -209,7 +210,7 @@ export default function OvertimeDetailPage() {
         overtimePersonnelId,
         actualProduction,
       }))
-      const res = await fetch(`/api/overtime/${id}/personnel`, {
+      const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ personnel: personnelData }),
@@ -232,7 +233,7 @@ export default function OvertimeDetailPage() {
   async function fetchForm() {
     try {
       setLoading(true)
-      const res = await fetch(`/api/overtime/${id}`)
+      const res = await apiFetch(`/api/overtime/${id}`)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Form yüklenemedi")
@@ -255,7 +256,7 @@ export default function OvertimeDetailPage() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const res = await fetch("/api/overtime/authorized-users?check=me")
+        const res = await apiFetch("/api/overtime/authorized-users?check=me")
         if (res.ok) {
           const data = await res.json()
           setIsAuthorizedUser(data.authorized === true)
@@ -271,7 +272,7 @@ export default function OvertimeDetailPage() {
     if (!window.confirm("Formu onaya göndermek istediğinize emin misiniz?")) return
     try {
       setSubmitting(true)
-      const res = await fetch(`/api/overtime/${id}/submit`, { method: "POST" })
+      const res = await apiFetch(`/api/overtime/${id}/submit`, { method: "POST" })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Form gönderilemedi")
@@ -295,7 +296,7 @@ export default function OvertimeDetailPage() {
       if (comment.trim()) body.comment = comment.trim()
       if (forwardToGM) body.forwardToGM = true
 
-      const res = await fetch(`/api/overtime/${id}/approve`, {
+      const res = await apiFetch(`/api/overtime/${id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -324,7 +325,7 @@ export default function OvertimeDetailPage() {
 
     try {
       setActionLoading("test")
-      const res = await fetch(`/api/overtime/${id}/test-approve-all`, {
+      const res = await apiFetch(`/api/overtime/${id}/test-approve-all`, {
         method: "POST",
       })
 

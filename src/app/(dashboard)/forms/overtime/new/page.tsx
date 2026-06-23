@@ -8,6 +8,7 @@ import { Clock, ChevronRight, ChevronLeft, Search, X, Users, Check, Save, Send, 
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { MESAI_TURLERI } from "@/lib/overtime-constants"
+import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments, resolveDefaultDepartment } from "@/lib/use-departments"
 
 // ---------------------------------------------------------------------------
@@ -99,7 +100,7 @@ export default function NewOvertimeFormPage() {
   const fetchPersonnel = useCallback(async () => {
     setPersonnelLoading(true)
     try {
-      const res = await fetch("/api/overtime/personnel-list")
+      const res = await apiFetch("/api/overtime/personnel-list")
       if (!res.ok) throw new Error("Personel listesi yüklenemedi")
       const data: PersonnelItem[] = await res.json()
       setPersonnelList(data)
@@ -195,7 +196,7 @@ export default function NewOvertimeFormPage() {
   async function fetchApprovalChain(toGM: boolean = sendToGM) {
     setChainLoading(true)
     try {
-      const res = await fetch("/api/overtime/approval-chain", {
+      const res = await apiFetch("/api/overtime/approval-chain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -250,7 +251,7 @@ export default function NewOvertimeFormPage() {
         })),
       }
 
-      const res = await fetch("/api/overtime", {
+      const res = await apiFetch("/api/overtime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -264,7 +265,7 @@ export default function NewOvertimeFormPage() {
       const created = await res.json()
 
       if (submit) {
-        const submitRes = await fetch(`/api/overtime/${created.id}/submit`, { method: "POST" })
+        const submitRes = await apiFetch(`/api/overtime/${created.id}/submit`, { method: "POST" })
         if (!submitRes.ok) {
           const submitErr = await submitRes.json().catch(() => null)
           throw new Error(submitErr?.error || "Onaya gönderme başarısız")

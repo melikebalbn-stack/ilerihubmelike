@@ -11,6 +11,7 @@ import Link from "next/link"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
+import { apiFetch } from "@/lib/api-fetch"
 import { toast } from "sonner"
 
 interface OvertimeForm {
@@ -83,7 +84,7 @@ export default function OvertimeListPage() {
       if (typeFilter !== "all") params.append("overtimeType", typeFilter)
       if (debouncedSearch) params.append("search", debouncedSearch)
 
-      const res = await fetch(`/api/overtime?${params}`)
+      const res = await apiFetch(`/api/overtime?${params}`)
       if (!res.ok) throw new Error("Veriler yüklenemedi")
 
       const response = await res.json()
@@ -103,7 +104,7 @@ export default function OvertimeListPage() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch("/api/overtime/stats")
+        const res = await apiFetch("/api/overtime/stats")
         if (res.ok) {
           const data = await res.json()
           setStats(data)
@@ -118,7 +119,7 @@ export default function OvertimeListPage() {
   async function handleDelete(id: string) {
     if (!window.confirm("Bu mesai formunu silmek istediğinize emin misiniz?")) return
     try {
-      const res = await fetch(`/api/overtime/${id}`, { method: "DELETE" })
+      const res = await apiFetch(`/api/overtime/${id}`, { method: "DELETE" })
       if (!res.ok) {
         const data = await res.json()
         toast.error(data.error || "Silme işlemi başarısız")

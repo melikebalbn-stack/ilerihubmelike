@@ -136,6 +136,7 @@ export default function OvertimeDetailPage() {
     setPersonnelItemsLoading(true)
     try {
       const res = await apiFetch("/api/overtime/personnel-list")
+      if (res.__authHandled) return
       if (!res.ok) throw new Error()
       const data = await res.json()
       setAllPersonnelItems(Array.isArray(data) ? data : [])
@@ -155,6 +156,7 @@ export default function OvertimeDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ personnelId: personnelItemId, workDepartment: addWorkDept, serviceRoute: targetPerson?.serviceRoute || null }),
       })
+      if (res.__authHandled) return
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || "Personel eklenemedi")
@@ -178,6 +180,7 @@ export default function OvertimeDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ personnelId }),
       })
+      if (res.__authHandled) return
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || "Personel çıkarılamadı")
@@ -215,6 +218,7 @@ export default function OvertimeDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ personnel: personnelData }),
       })
+      if (res.__authHandled) return
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || "Güncelleme başarısız")
@@ -234,6 +238,7 @@ export default function OvertimeDetailPage() {
     try {
       setLoading(true)
       const res = await apiFetch(`/api/overtime/${id}`)
+      if (res.__authHandled) return
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Form yüklenemedi")
@@ -257,6 +262,7 @@ export default function OvertimeDetailPage() {
     async function checkAuth() {
       try {
         const res = await apiFetch("/api/overtime/authorized-users?check=me")
+        if (res.__authHandled) return
         if (res.ok) {
           const data = await res.json()
           setIsAuthorizedUser(data.authorized === true)
@@ -273,6 +279,7 @@ export default function OvertimeDetailPage() {
     try {
       setSubmitting(true)
       const res = await apiFetch(`/api/overtime/${id}/submit`, { method: "POST" })
+      if (res.__authHandled) return
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Form gönderilemedi")
@@ -301,6 +308,7 @@ export default function OvertimeDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
+      if (res.__authHandled) return
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -328,6 +336,7 @@ export default function OvertimeDetailPage() {
       const res = await apiFetch(`/api/overtime/${id}/test-approve-all`, {
         method: "POST",
       })
+      if (res.__authHandled) return
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))

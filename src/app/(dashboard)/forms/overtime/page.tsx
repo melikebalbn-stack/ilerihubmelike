@@ -85,6 +85,7 @@ export default function OvertimeListPage() {
       if (debouncedSearch) params.append("search", debouncedSearch)
 
       const res = await apiFetch(`/api/overtime?${params}`)
+      if (res.__authHandled) return
       if (!res.ok) throw new Error("Veriler yüklenemedi")
 
       const response = await res.json()
@@ -105,6 +106,7 @@ export default function OvertimeListPage() {
     async function fetchStats() {
       try {
         const res = await apiFetch("/api/overtime/stats")
+        if (res.__authHandled) return
         if (res.ok) {
           const data = await res.json()
           setStats(data)
@@ -120,6 +122,7 @@ export default function OvertimeListPage() {
     if (!window.confirm("Bu mesai formunu silmek istediğinize emin misiniz?")) return
     try {
       const res = await apiFetch(`/api/overtime/${id}`, { method: "DELETE" })
+      if (res.__authHandled) return
       if (!res.ok) {
         const data = await res.json()
         toast.error(data.error || "Silme işlemi başarısız")

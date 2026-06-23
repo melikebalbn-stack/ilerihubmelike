@@ -16,7 +16,16 @@ import { toast } from 'sonner';
  *
  * Kullanım: `fetch(...)` çağrılarını `apiFetch(...)` ile değiştir. Dönüş tipi aynı (Response),
  * çağıranın mevcut res.ok / res.json() mantığı korunur.
+ *
+ * Çift toast önleme: 401'de dönen Response'a non-enumerable `__authHandled = true` işareti
+ * konur. Çağıran bu işareti görünce KENDİ generic hata toast'ını atlamalı:
+ *   const res = await apiFetch(...)
+ *   if (res.__authHandled) return   // 401 zaten ele alındı (toast + login yönlendirmesi)
+ * 400/403/500 gibi diğer durumlar işaretlenmez → çağıranın mevcut toast davranışı aynen kalır.
  */
+
+/** apiFetch dönüş tipi — 401'de işaretlenen non-enumerable bayrak. */
+export type ApiFetchResponse = Response & { __authHandled?: boolean };
 
 let handling401 = false;
 
@@ -38,10 +47,12 @@ function handleUnauthenticated(): void {
 export async function apiFetch(
   input: RequestInfo | URL,
   init?: RequestInit
-): Promise<Response> {
+): Promise<ApiFetchResponse> {
   const res = await fetch(input, init);
   if (res.status === 401) {
     handleUnauthenticated();
+    // Çağıran çift toast atmasın diye işaretle (non-enumerable → res.json()/spread'i bozmaz).
+    Object.defineProperty(res, '__authHandled', { value: true, enumerable: false });
   }
-  return res;
+  return res as ApiFetchResponse;
 }

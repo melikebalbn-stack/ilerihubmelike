@@ -101,6 +101,7 @@ export default function NewOvertimeFormPage() {
     setPersonnelLoading(true)
     try {
       const res = await apiFetch("/api/overtime/personnel-list")
+      if (res.__authHandled) return
       if (!res.ok) throw new Error("Personel listesi yüklenemedi")
       const data: PersonnelItem[] = await res.json()
       setPersonnelList(data)
@@ -204,6 +205,7 @@ export default function NewOvertimeFormPage() {
           sendToGM: toGM,
         }),
       })
+      if (res.__authHandled) return
       if (res.ok) {
         const data = await res.json()
         setApprovalChain(data.chain || [])
@@ -256,6 +258,7 @@ export default function NewOvertimeFormPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
+      if (res.__authHandled) return
 
       if (!res.ok) {
         const err = await res.json().catch(() => null)
@@ -266,6 +269,7 @@ export default function NewOvertimeFormPage() {
 
       if (submit) {
         const submitRes = await apiFetch(`/api/overtime/${created.id}/submit`, { method: "POST" })
+        if (submitRes.__authHandled) return
         if (!submitRes.ok) {
           const submitErr = await submitRes.json().catch(() => null)
           throw new Error(submitErr?.error || "Onaya gönderme başarısız")

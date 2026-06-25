@@ -302,6 +302,13 @@ async function upsertUser(
   const prismaRole = inferRoleFromJobTitle(ldapUser.title, baseRole)
   const userId = `ad_${ldapUser.username}`
 
+  // Güvenlik kemeri: sync YALNIZCA ad_ kaynaklı (LDAP) kullanıcıları işler.
+  // Mavi yaka id'leri cuid'dir (ad_ değil) ve LDAP'ta yoktur → bu fonksiyona hiç gelmez.
+  if (!ldapUser.username || !userId.startsWith('ad_')) {
+    console.warn(`[LDAP-SYNC] Geçersiz/eksik sAMAccountName, kayıt atlandı: ${ldapUser.email}`)
+    return
+  }
+
   // Manager email'ini çöz
   let managerEmail: string | null = null
   if (ldapUser.managerDN) {
@@ -348,6 +355,15 @@ async function upsertUser(
     })
 
     if (existingByEmail) {
+      // GÜVENLİK KEMERİ: email eşleşmesi ad_ OLMAYAN bir kayda (mavi yaka cuid id)
+      // denk gelirse DOKUNMA — sync yalnız LDAP-kaynaklı (ad_) kullanıcıları yazar.
+      // Mavi yaka isActive'i SADECE bluecollar route'undan değişmeli.
+      if (!existingByEmail.id.startsWith('ad_')) {
+        console.warn(
+          `[LDAP-SYNC] ad_ olmayan kayda update atlandı (mavi yaka korundu): ${existingByEmail.email} (id=${existingByEmail.id})`,
+        )
+        return
+      }
       await prisma.user.update({
         where: { id: existingByEmail.id },
         data: { ...adFields, ...managerData },

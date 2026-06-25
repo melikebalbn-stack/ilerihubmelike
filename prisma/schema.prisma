@@ -8542,6 +8542,8 @@ model Personnel {
 
   // İlişkiler
   sensitive           PersonnelSensitive?
+  // PR-1: çoklu banka hesabı (1-çok). Eski sensitive.banka* alanları PR-2'de düşürülecek.
+  bankAccounts        PersonnelBankAccount[]
   accessLogs          PersonnelAccessLog[]
   overtimeRecords     OvertimePersonnel[]
   evaluationEmails    PersonnelEvaluationEmailLog[]
@@ -8669,6 +8671,27 @@ model PersonnelSensitive {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   updatedBy String?
+}
+
+// PR-1: Çoklu banka hesabı (1-çok). Hassas veri — maskeleme + PersonnelAccessLog
+// koruması PersonnelSensitive ile AYNI yoldan uygulanır (bkz. [id]/sensitive/route.ts).
+model PersonnelBankAccount {
+  id          String    @id @default(cuid())
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  bankaAdi    String?
+  bankaSube   String?
+  hesapNo     String?
+  ibanNo      String?
+  isPrimary   Boolean   @default(false)
+  aktif       Boolean   @default(true)
+  aciklama    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  updatedBy   String?
+
+  @@unique([personnelId, ibanNo])
+  @@index([personnelId])
 }
 
 // ERİŞİM LOG — ISO 27001 A.8.15

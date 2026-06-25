@@ -184,9 +184,13 @@ export default function NewPersonnelPage() {
       if (tcKimlikNo) sensitive.tcKimlikNo = tcKimlikNo
       if (sgkNo) sensitive.sgkNo = sgkNo
       if (dogumTarihi) sensitive.dogumTarihi = dogumTarihi
-      if (bankaSube) sensitive.bankaSube = bankaSube
-      if (bankaHesapNo) sensitive.bankaHesapNo = bankaHesapNo
-      if (ibanNo) sensitive.ibanNo = ibanNo
+
+      // PR-1: banka bilgisi tek primary PersonnelBankAccount olarak gönderilir (sensitive.banka* yerine).
+      // Çoklu hesap, personel oluşturulduktan sonra Hassas Bilgiler sayfasından eklenir.
+      const bankAccounts =
+        bankaSube || bankaHesapNo || ibanNo
+          ? [{ bankaSube: bankaSube || null, hesapNo: bankaHesapNo || null, ibanNo: ibanNo || null, isPrimary: true, aktif: true }]
+          : undefined
 
       const res = await fetch("/api/personnel", {
         method: "POST",
@@ -194,6 +198,7 @@ export default function NewPersonnelPage() {
         body: JSON.stringify({
           ...personnelFields,
           sensitive: Object.keys(sensitive).length > 0 ? sensitive : undefined,
+          bankAccounts,
         }),
       })
 

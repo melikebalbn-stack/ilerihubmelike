@@ -104,7 +104,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { sensitive, ...personnelData } = body
+    // PR-1: bankAccounts ayrı tabloya (PersonnelBankAccount) yazılır.
+    const { sensitive, bankAccounts, ...personnelData } = body
 
     // Parse date fields
     if (personnelData.iseGirisTarihi) {
@@ -183,6 +184,34 @@ export async function POST(request: NextRequest) {
           ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
         },
       })
+    }
+
+    // PR-1: Banka hesapları (varsa) — PersonnelBankAccount'a yaz. Tek primary normalize edilir.
+    if (Array.isArray(bankAccounts) && bankAccounts.length > 0) {
+      const emptyToNull = (v: unknown) => {
+        if (v === null || v === undefined) return null
+        const s = String(v).trim()
+        return s === '' ? null : s
+      }
+      const primaryIdx = bankAccounts.findIndex((a: any) => a.isPrimary)
+      // En az bir hesap varsa ve hiçbiri primary değilse ilkini primary yap.
+      const effectivePrimary = primaryIdx >= 0 ? primaryIdx : 0
+      for (let i = 0; i < bankAccounts.length; i++) {
+        const a = bankAccounts[i]
+        await prisma.personnelBankAccount.create({
+          data: {
+            personnelId: newPersonnel.id,
+            bankaAdi: emptyToNull(a.bankaAdi),
+            bankaSube: emptyToNull(a.bankaSube),
+            hesapNo: emptyToNull(a.hesapNo),
+            ibanNo: emptyToNull(a.ibanNo),
+            isPrimary: i === effectivePrimary,
+            aktif: a.aktif === undefined ? true : !!a.aktif,
+            aciklama: emptyToNull(a.aciklama),
+            updatedBy: user.id,
+          },
+        })
+      }
     }
 
     return NextResponse.json(newPersonnel, { status: 201 })

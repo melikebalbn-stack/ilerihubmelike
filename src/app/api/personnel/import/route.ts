@@ -314,18 +314,7 @@ export async function POST(request: NextRequest) {
           sensitiveData.sgkNo = mapped.sgkNo.toString().trim()
           hasSensitive = true
         }
-        if (mapped.bankaSube) {
-          sensitiveData.bankaSube = mapped.bankaSube.toString().trim()
-          hasSensitive = true
-        }
-        if (mapped.bankaHesapNo) {
-          sensitiveData.bankaHesapNo = mapped.bankaHesapNo.toString().trim()
-          hasSensitive = true
-        }
-        if (mapped.ibanNo) {
-          sensitiveData.ibanNo = mapped.ibanNo.toString().trim()
-          hasSensitive = true
-        }
+        // PR-1: banka alanları artık PersonnelBankAccount'a yazılır (aşağıda), sensitive'e DEĞİL.
         if (mapped.dogumTarihi) {
           const dogumTarihi = parseDate(mapped.dogumTarihi)
           if (dogumTarihi) {
@@ -344,6 +333,25 @@ export async function POST(request: NextRequest) {
               ...sensitiveData,
             },
           })
+        }
+
+        // PR-1: banka bilgisi → PersonnelBankAccount (primary). IDEMPOTENT: hesabı olan kişiyi atla.
+        const hasBankData = !!(mapped.bankaSube || mapped.bankaHesapNo || mapped.ibanNo)
+        if (hasBankData) {
+          const accountCount = await prisma.personnelBankAccount.count({ where: { personnelId } })
+          if (accountCount === 0) {
+            await prisma.personnelBankAccount.create({
+              data: {
+                personnelId,
+                bankaSube: mapped.bankaSube ? mapped.bankaSube.toString().trim() : null,
+                hesapNo: mapped.bankaHesapNo ? mapped.bankaHesapNo.toString().trim() : null,
+                ibanNo: mapped.ibanNo ? mapped.ibanNo.toString().trim() : null,
+                isPrimary: true,
+                aktif: true,
+                updatedBy: user.id,
+              },
+            })
+          }
         }
       } catch (rowError: any) {
         errors.push({ row: rowNum, message: rowError.message || 'Bilinmeyen hata' })

@@ -241,50 +241,22 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
       }))
     }
 
-    // 5. LDAP'da olmayan DB kullanıcılarını devre dışı bırak
-    // (Sadece ad_ prefix'li kullanıcılar - LDAP'dan gelenler. Bluecollar ve manuel eklenenler hariç)
-    //
-    // SAFETY THRESHOLD (PR-LDAP-SYNC-SAFETY, 27 May 2026):
-    // 26 May 2026'da partial LDAP response sonucu 68 user (tüm SUPER_ADMIN dahil)
-    // toplu pasifleşti. Bu blok artık ldapEmailSet boyutunu DB'deki aktif AD
-    // user sayısı ile karşılaştırır — eğer LDAP %50'sinden az user döndüyse
-    // partial response varsayar ve pasifleştirme adımını ABORT eder.
-    const activeAdDbCount = dbUsers.filter(
-      u => u.isActive && u.id.startsWith('ad_') && !isSystemAccount(u.email),
-    ).length
-    const SAFETY_RATIO = 0.5
-    const minimumExpected = Math.floor(activeAdDbCount * SAFETY_RATIO)
-
-    if (ldapEmailSet.size < minimumExpected) {
-      logger.error('LDAP-SYNC', 'PARTIAL RESPONSE — deactivation aborted', {
-        ldapEmailCount: ldapEmailSet.size,
-        activeAdDbCount,
-        minimumExpected,
-        threshold: `${SAFETY_RATIO * 100}%`,
-      })
-      lastSyncStatus.errors++
-      lastSyncStatus.errorDetails.push(
-        `Deactivation aborted: LDAP returned ${ldapEmailSet.size} users, expected >= ${minimumExpected} (${SAFETY_RATIO * 100}% of ${activeAdDbCount} active AD users)`,
-      )
-    } else {
-      for (const dbUser of dbUsers) {
-        if (
-          dbUser.isActive &&
-          dbUser.id.startsWith('ad_') &&
-          !ldapEmailSet.has(dbUser.email.toLowerCase()) &&
-          !isSystemAccount(dbUser.email)
-        ) {
-          try {
-            await prisma.user.update({
-              where: { id: dbUser.id },
-              data: { isActive: false },
-            })
-            lastSyncStatus.deactivated++
-            logger.info('LDAP-SYNC', 'Kullanıcı devre dışı bırakıldı', { email: dbUser.email })
-          } catch (error) {
-            lastSyncStatus.errors++
-          }
-        }
+    // 5. PR-A: "AD sonuç listesinde YOK" (missing) ARTIK pasifleştirmez.
+    // Pasifleştirme yalnızca upsert'teki isActive: !ldapUser.disabled (AD-disabled,
+    // userAccountControl & 2) üzerinden gerçekleşir. Eskiden ldapEmailSet'te email'i
+    // bulunmayan ad_ kullanıcıları isActive:false yapılıyordu; bu, partial LDAP
+    // response'ta (26 May 2026'daki gibi tüm SUPER_ADMIN dahil 68 user) toplu
+    // yanlış-pasifleşmeye yol açıyordu. Artık yalnızca BİLGİ amaçlı loglanır.
+    for (const dbUser of dbUsers) {
+      if (
+        dbUser.isActive &&
+        dbUser.id.startsWith('ad_') &&
+        !ldapEmailSet.has(dbUser.email.toLowerCase()) &&
+        !isSystemAccount(dbUser.email)
+      ) {
+        console.warn(
+          `[LDAP-SYNC] AD sonuç listesinde görünmüyor (pasifleştirilmedi): ${dbUser.email}`,
+        )
       }
     }
 
@@ -347,7 +319,8 @@ async function upsertUser(
     officeLocation: ldapUser.ou,
     ...(ldapUser.ipPhone ? { extension3cx: ldapUser.ipPhone } : {}),
     role: prismaRole,
-    isActive: true,
+    // PR-A: pasiflik AD-disabled (userAccountControl & 2) sinyaline bağlı.
+    isActive: !ldapUser.disabled,
     groups, // PR-Y4-PRE
   }
 

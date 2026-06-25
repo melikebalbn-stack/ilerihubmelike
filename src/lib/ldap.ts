@@ -39,6 +39,7 @@ export interface LDAPUser {
   ou: string | null; // Organizational Unit
   managerDN: string | null; // Yöneticinin DN'i
   ipPhone: string | null; // 3CX dahili numarası
+  disabled: boolean; // AD userAccountControl & 2 (ACCOUNTDISABLE) → hesap devre dışı mı
 }
 
 // Rol eşleme - OU veya grup bazlı
@@ -142,6 +143,8 @@ export async function authenticateUser(username: string, password: string): Prom
       ou,
       managerDN: getStringValue(userEntry.manager),
       ipPhone: getStringValue(userEntry.ipPhone),
+      // Bind başarılı = hesap AD'de aktif (disabled hesap bind edemez).
+      disabled: false,
     };
 
   } catch (error) {
@@ -229,8 +232,8 @@ export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
 
     const { searchEntries } = await client.search(LDAP_CONFIG.usersDN, {
       scope: 'sub',
-      filter: '(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))',
-      attributes: ['cn', 'sAMAccountName', 'mail', 'department', 'title', 'distinguishedName', 'memberOf', 'manager', 'ipPhone'],
+      filter: '(&(objectClass=user)(objectCategory=person))',
+      attributes: ['cn', 'sAMAccountName', 'mail', 'department', 'title', 'distinguishedName', 'memberOf', 'manager', 'ipPhone', 'userAccountControl'],
     });
 
     const users = searchEntries.map(entry => {
@@ -261,6 +264,7 @@ export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
         ou: ouMatch ? ouMatch[1] : null,
         managerDN: getStringValue(entry.manager),
         ipPhone: getStringValue(entry.ipPhone),
+        disabled: ((Number(entry.userAccountControl) || 0) & 2) === 2,
       };
     }).filter(user => {
       // Sistem hesaplarını filtrele

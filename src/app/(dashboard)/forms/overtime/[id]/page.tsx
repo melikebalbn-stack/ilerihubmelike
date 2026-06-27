@@ -22,6 +22,9 @@ interface Personnel {
   serviceRoute: string | null
   targetProduction: string | null
   actualProduction: string | null
+  hedefAdet: number | null
+  gerceklesenAdet: number | null
+  gerceklesenNote: string | null
   mesaiNedeni: string | null
   personnel: {
     id: string
@@ -128,7 +131,9 @@ export default function OvertimeDetailPage() {
   // Actual production editing state
   const [isAuthorizedUser, setIsAuthorizedUser] = useState(false)
   const [editingActual, setEditingActual] = useState(false)
-  const [actualValues, setActualValues] = useState<Record<string, string>>({})
+  const [actualValues, setActualValues] = useState<
+    Record<string, { actualProduction: string; gerceklesenAdet: string; gerceklesenNote: string }>
+  >({})
   const [savingActual, setSavingActual] = useState(false)
 
   const fetchAllPersonnelItems = useCallback(async () => {
@@ -197,9 +202,16 @@ export default function OvertimeDetailPage() {
 
   function startEditingActual() {
     if (!form) return
-    const values: Record<string, string> = {}
+    const values: Record<
+      string,
+      { actualProduction: string; gerceklesenAdet: string; gerceklesenNote: string }
+    > = {}
     form.personnel.forEach((p) => {
-      values[p.id] = p.actualProduction || ""
+      values[p.id] = {
+        actualProduction: p.actualProduction || "",
+        gerceklesenAdet: p.gerceklesenAdet != null ? String(p.gerceklesenAdet) : "",
+        gerceklesenNote: p.gerceklesenNote || "",
+      }
     })
     setActualValues(values)
     setEditingActual(true)
@@ -209,9 +221,11 @@ export default function OvertimeDetailPage() {
     if (!form) return
     setSavingActual(true)
     try {
-      const personnelData = Object.entries(actualValues).map(([overtimePersonnelId, actualProduction]) => ({
+      const personnelData = Object.entries(actualValues).map(([overtimePersonnelId, v]) => ({
         overtimePersonnelId,
-        actualProduction,
+        actualProduction: v.actualProduction,
+        gerceklesenAdet: v.gerceklesenAdet,
+        gerceklesenNote: v.gerceklesenNote,
       }))
       const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "PUT",
@@ -634,6 +648,7 @@ export default function OvertimeDetailPage() {
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Mesai Yapacak Bölüm</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Servis Güzergahı</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Üretim</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Adet</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">
                   <div className="flex items-center gap-2">
                     Gerçekleşen Üretim
@@ -667,6 +682,8 @@ export default function OvertimeDetailPage() {
                     )}
                   </div>
                 </th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Gerçekleşen Adet</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Açıklama</th>
                 {canEditPersonnel && (
                   <th className="text-right py-3 px-2 font-medium text-muted-foreground w-16"></th>
                 )}
@@ -684,12 +701,16 @@ export default function OvertimeDetailPage() {
                   <td className="py-3 px-2">{p.workDepartment}</td>
                   <td className="py-3 px-2">{p.serviceRoute || "—"}</td>
                   <td className="py-3 px-2">{p.targetProduction || "—"}</td>
+                  <td className="py-3 px-2">{p.hedefAdet != null ? p.hedefAdet : "—"}</td>
                   <td className="py-3 px-2">
                     {editingActual ? (
                       <Input
-                        value={actualValues[p.id] || ""}
+                        value={actualValues[p.id]?.actualProduction || ""}
                         onChange={(e) =>
-                          setActualValues((prev) => ({ ...prev, [p.id]: e.target.value }))
+                          setActualValues((prev) => ({
+                            ...prev,
+                            [p.id]: { ...prev[p.id], actualProduction: e.target.value },
+                          }))
                         }
                         placeholder="Üretim girin..."
                         className="h-8 w-32 text-sm"
@@ -700,6 +721,47 @@ export default function OvertimeDetailPage() {
                       </span>
                     ) : (
                       p.actualProduction || "—"
+                    )}
+                  </td>
+                  <td className="py-3 px-2">
+                    {editingActual ? (
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        value={actualValues[p.id]?.gerceklesenAdet || ""}
+                        onChange={(e) =>
+                          setActualValues((prev) => ({
+                            ...prev,
+                            [p.id]: { ...prev[p.id], gerceklesenAdet: e.target.value },
+                          }))
+                        }
+                        placeholder="Ör: 42"
+                        className="h-8 w-24 text-sm"
+                      />
+                    ) : p.gerceklesenAdet != null ? (
+                      p.gerceklesenAdet
+                    ) : form.status === "APPROVED" ? (
+                      <span className="text-muted-foreground italic">Henüz girilmedi</span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="py-3 px-2">
+                    {editingActual ? (
+                      <Input
+                        value={actualValues[p.id]?.gerceklesenNote || ""}
+                        onChange={(e) =>
+                          setActualValues((prev) => ({
+                            ...prev,
+                            [p.id]: { ...prev[p.id], gerceklesenNote: e.target.value },
+                          }))
+                        }
+                        placeholder="Açıklama (ör. tezgah arızası)"
+                        className="h-8 w-40 text-sm"
+                      />
+                    ) : (
+                      p.gerceklesenNote || "—"
                     )}
                   </td>
                   {canEditPersonnel && (

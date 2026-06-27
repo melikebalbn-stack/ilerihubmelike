@@ -30,6 +30,7 @@ interface PersonnelDetail {
   serviceRoute: string
   targetProduction: string
   actualProduction: string
+  hedefAdet: string // sayısal performans hedefi (string state; gönderirken Number'a çevrilir)
   mesaiNedeni: string
 }
 
@@ -145,6 +146,7 @@ export default function NewOvertimeFormPage() {
             serviceRoute: person.serviceRoute || "",
             targetProduction: "",
             actualProduction: "",
+            hedefAdet: "",
             mesaiNedeni: "",
           },
         }))
@@ -249,6 +251,9 @@ export default function NewOvertimeFormPage() {
             resolveDefaultDepartment(p.bolum, departments),
           serviceRoute: personnelDetails[p.id]?.serviceRoute || null,
           targetProduction: personnelDetails[p.id]?.targetProduction || null,
+          hedefAdet: personnelDetails[p.id]?.hedefAdet
+            ? Number(personnelDetails[p.id].hedefAdet)
+            : null,
           mesaiNedeni: personnelDetails[p.id]?.mesaiNedeni?.trim() || null,
         })),
       }
@@ -654,6 +659,19 @@ export default function NewOvertimeFormPage() {
                             placeholder="Ör: KR09-8041-8042"
                             value={detail.targetProduction}
                             onChange={(e) => updateDetail(person.id, "targetProduction", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Hedef Adet
+                          </label>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min="0"
+                            placeholder="Ör: 50"
+                            value={detail.hedefAdet}
+                            onChange={(e) => updateDetail(person.id, "hedefAdet", e.target.value)}
                           />
                         </div>
                         <div>

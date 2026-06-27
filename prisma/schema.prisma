@@ -8069,8 +8069,12 @@ model OvertimePersonnel {
   // Mesai detayları
   workDepartment   String // Mesai yapacak bölüm
   serviceRoute     String? // Servis güzergahı (mavi yaka için)
-  targetProduction String? // Hedef üretim
-  actualProduction String? // Gerçekleşen üretim
+  targetProduction String? // Hedef üretim (parça/iş-emri kodu — serbest metin)
+  actualProduction String? // Gerçekleşen üretim (parça/iş-emri kodu — serbest metin)
+  // PR-PERF: sayısal performans alanları (parça-kodu alanlarından AYRI)
+  hedefAdet        Int? // performans: hedeflenen üretim adedi (formu oluşturan girer)
+  gerceklesenAdet  Int? // performans: gerçekleşen üretim adedi (onay sonrası girilir)
+  gerceklesenNote  String? // gerçekleşen girilirken açıklama (ör. tezgah arızası)
   mesaiNedeni      String? // Mesai nedeni (nullable: eski formlar boş; onay görünümünde ünvana fallback)
 
   createdAt DateTime @default(now())

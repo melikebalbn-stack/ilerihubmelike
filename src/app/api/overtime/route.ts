@@ -254,12 +254,20 @@ export async function POST(request: NextRequest) {
             workDepartment: string
             serviceRoute?: string
             targetProduction?: string
+            hedefAdet?: number
             mesaiNedeni?: string
           }, index: number) => ({
             personnelId: p.personnelId,
             workDepartment: p.workDepartment,
             serviceRoute: p.serviceRoute || null,
             targetProduction: p.targetProduction || null,
+            // PR-PERF: sayısal hedef adet — boş/geçersiz/negatif ise null
+            hedefAdet:
+              p.hedefAdet != null &&
+              Number.isFinite(Number(p.hedefAdet)) &&
+              Number(p.hedefAdet) >= 0
+                ? Math.trunc(Number(p.hedefAdet))
+                : null,
             mesaiNedeni: p.mesaiNedeni?.trim() || null,
             createdAt: new Date(orderBase + index),
           })),

@@ -254,8 +254,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Personel listesi zorunludur')
     }
 
-    // Her personel için actualProduction güncelle
-    const updatePromises = personnel.map(async (p: { overtimePersonnelId: string; actualProduction: string }) => {
+    // Her personel için actualProduction + (PR-PERF) gerceklesenAdet/gerceklesenNote güncelle
+    const updatePromises = personnel.map(async (p: {
+      overtimePersonnelId: string
+      actualProduction: string
+      gerceklesenAdet?: string | number
+      gerceklesenNote?: string
+    }) => {
       if (!p.overtimePersonnelId) {
         return null
       }
@@ -269,10 +274,21 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         return null
       }
 
+      // PR-PERF: sayısal gerçekleşen adet — boş/geçersiz/negatif ise null
+      const adet =
+        p.gerceklesenAdet != null &&
+        String(p.gerceklesenAdet).trim() !== '' &&
+        Number.isFinite(Number(p.gerceklesenAdet)) &&
+        Number(p.gerceklesenAdet) >= 0
+          ? Math.trunc(Number(p.gerceklesenAdet))
+          : null
+
       return prisma.overtimePersonnel.update({
         where: { id: existingPersonnel.id },
         data: {
           actualProduction: p.actualProduction || null,
+          gerceklesenAdet: adet,
+          gerceklesenNote: p.gerceklesenNote?.trim() || null,
         },
       })
     })

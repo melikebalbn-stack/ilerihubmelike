@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { requireUser } from '@/lib/auth/require-user'
+import { sendEmail } from '@/lib/email'
+import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -26,8 +28,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { decision, comment, forwardToGM } = body
 
     // Karar doğrulama
-    if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) {
-      return apiBadRequest('Geçerli bir karar belirtilmelidir (APPROVED veya REJECTED)')
+    if (!decision || !['APPROVED', 'REJECTED', 'RETURNED'].includes(decision)) {
+      return apiBadRequest('Geçerli bir karar belirtilmelidir (APPROVED, REJECTED veya RETURNED)')
+    }
+
+    // RETURNED (düzeltmeye iade) için açıklama zorunlu
+    if (decision === 'RETURNED' && !comment?.trim()) {
+      return apiBadRequest('İade için açıklama zorunludur')
     }
 
     // Formu kontrol et
@@ -188,6 +195,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               title: 'Mesai Formu Onaylandı',
               body: `${form.formNo} numaralı mesai formunuz tamamen onaylandı.`,
             },
+            mail: null,
           }
         } else {
           // Sonraki adıma geç
@@ -228,7 +236,64 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               title: 'Mesai Formu Onayı Bekliyor',
               body: `${form.formNo} numaralı mesai formu onayınızı bekliyor.`,
             } : null,
+            mail: null,
           }
+        }
+      } else if (decision === 'RETURNED') {
+        // RETURNED — düzeltmeye iade: form DRAFT'a döner, sahibi düzeltip yeniden gönderir.
+        // Diğer (decision=null) approval kayıtlarına DOKUNMA — resubmit (submit) hepsini
+        // silip zinciri 1. adımdan yeniden kurar (deleteMany + createMany).
+        await tx.overtimeApproval.update({
+          where: { id: pendingApproval.id },
+          data: {
+            decision: 'RETURNED',
+            approverId: user.id,
+            comment: comment || null,
+            decidedAt: new Date(),
+          },
+        })
+
+        const result = await tx.overtimeForm.update({
+          where: { id },
+          data: { status: 'DRAFT', currentStep: 0 },
+          include: {
+            approvals: { orderBy: { step: 'asc' } },
+            createdBy: { select: { id: true, name: true, email: true } },
+          },
+        })
+
+        const returnMsg = `${form.formNo} numaralı mesai formunuz ${pendingApproval.role || 'onaylayıcı'} tarafından düzeltme için iade edildi. Açıklama: ${comment}`
+
+        try {
+          await tx.notification.create({
+            data: {
+              userId: form.createdById,
+              title: 'Mesai Formu Düzeltme İçin İade Edildi',
+              message: returnMsg,
+              type: 'REMINDER',
+              link: `/forms/overtime/${id}`,
+            },
+          })
+        } catch {
+          // Bildirim oluşturulamazsa devam et
+        }
+
+        return {
+          result,
+          pushTarget: {
+            userId: form.createdById,
+            title: 'Mesai Formu Düzeltme İçin İade Edildi',
+            body: returnMsg,
+          },
+          mail: form.createdBy?.email
+            ? {
+                to: { email: form.createdBy.email, name: form.createdBy.name ?? form.createdBy.email },
+                subject: `Mesai Formu Düzeltmeye İade — ${form.formNo}`,
+                role: pendingApproval.role || 'Onaylayıcı',
+                comment: String(comment),
+                kind: 'RETURNED' as const,
+              }
+            : null,
         }
       } else {
         // REJECTED
@@ -279,6 +344,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             title: 'Mesai Formu Reddedildi',
             body: rejectMsg,
           },
+          mail: form.createdBy?.email
+            ? {
+                to: { email: form.createdBy.email, name: form.createdBy.name ?? form.createdBy.email },
+                subject: `Mesai Formu Reddedildi — ${form.formNo}`,
+                role: pendingApproval.role || 'Onaylayıcı',
+                comment: comment ? String(comment) : '',
+                kind: 'REJECTED' as const,
+              }
+            : null,
         }
       }
     })
@@ -291,6 +365,37 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         url: `/forms/overtime/${id}`,
         tag: `overtime-approve-${id}`,
       }).catch(() => {})
+    }
+
+    // Transaction sonrası mail (iade/red) — SMTP yan-etki tx DIŞINDA; hata akışı BOZMAZ.
+    if (updatedForm.mail) {
+      try {
+        const m = updatedForm.mail
+        const link = ileriHubUrl(`/forms/overtime/${id}`)
+        const iade = m.kind === 'RETURNED'
+        const baslik = iade ? 'Mesai Formu Düzeltme İçin İade Edildi' : 'Mesai Formu Reddedildi'
+        const aksiyon = iade
+          ? 'Formu düzenleyip yeniden onaya gönderebilirsiniz.'
+          : 'Form reddedilmiştir. Gerekirse yeni bir form oluşturabilirsiniz.'
+        const navy = '#1B4F72'
+        const text = `${baslik}\n\n${m.role} tarafından${m.comment ? `: ${m.comment}` : ''}\n\n${aksiyon}\n${link}`
+        const html = `<!DOCTYPE html><html><body style="margin:0;background:#f4f6f8;font-family:Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;max-width:560px;overflow:hidden;">
+      <tr><td style="background:${iade ? '#c98500' : '#d03b3b'};padding:16px 24px;color:#fff;font-size:17px;font-weight:bold;">${baslik}</td></tr>
+      <tr><td style="padding:20px 24px;color:#333;font-size:14px;line-height:1.6;">
+        <p style="margin:0 0 8px;"><b>${m.role}</b> tarafından${iade ? ' düzeltme için iade edildi' : ' reddedildi'}.</p>
+        ${m.comment ? `<div style="background:#f7f9fb;border-left:4px solid ${iade ? '#c98500' : '#d03b3b'};padding:10px 14px;margin:12px 0;color:#444;"><b>Açıklama:</b> ${m.comment}</div>` : ''}
+        <p style="margin:8px 0 18px;">${aksiyon}</p>
+        <a href="${link}" style="display:inline-block;background:${navy};color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;">Formu Görüntüle</a>
+      </td></tr>
+      <tr><td style="padding:12px 24px;background:#f7f9fb;color:#999;font-size:11px;">Otomatik ILERIHub mesai onay bildirimi.</td></tr>
+    </table>
+  </td></tr></table></body></html>`
+        await sendEmail([m.to], m.subject, text, html)
+      } catch (e) {
+        console.error('[overtime-approve] iade/red maili gönderilemedi (akış etkilenmedi):', e)
+      }
     }
 
     return apiSuccess(updatedForm.result)

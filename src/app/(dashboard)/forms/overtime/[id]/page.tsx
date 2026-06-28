@@ -110,7 +110,7 @@ export default function OvertimeDetailPage() {
   const [submitting, setSubmitting] = useState(false)
   const [comment, setComment] = useState("")
   const [forwardToGM, setForwardToGM] = useState(false)
-  const [actionLoading, setActionLoading] = useState<"approve" | "reject" | "test" | null>(null)
+  const [actionLoading, setActionLoading] = useState<"approve" | "reject" | "return" | "test" | null>(null)
 
   // Personnel editing state
   const [showAddPanel, setShowAddPanel] = useState(false)
@@ -307,12 +307,18 @@ export default function OvertimeDetailPage() {
     }
   }
 
-  async function handleApprovalAction(decision: "APPROVED" | "REJECTED") {
-    const label = decision === "APPROVED" ? "onaylamak" : "reddetmek"
+  async function handleApprovalAction(decision: "APPROVED" | "REJECTED" | "RETURNED") {
+    // RETURNED (düzeltmeye iade) için açıklama zorunlu
+    if (decision === "RETURNED" && !comment.trim()) {
+      toast.error("Düzeltme göndermek için açıklama girin")
+      return
+    }
+    const label =
+      decision === "APPROVED" ? "onaylamak" : decision === "REJECTED" ? "reddetmek" : "düzeltmeye göndermek"
     if (!window.confirm(`Bu formu ${label} istediğinize emin misiniz?`)) return
 
     try {
-      setActionLoading(decision === "APPROVED" ? "approve" : "reject")
+      setActionLoading(decision === "APPROVED" ? "approve" : decision === "REJECTED" ? "reject" : "return")
       const body: Record<string, unknown> = { decision }
       if (comment.trim()) body.comment = comment.trim()
       if (forwardToGM) body.forwardToGM = true
@@ -330,7 +336,11 @@ export default function OvertimeDetailPage() {
       }
 
       toast.success(
-        decision === "APPROVED" ? "Form onaylandı" : "Form reddedildi"
+        decision === "APPROVED"
+          ? "Form onaylandı"
+          : decision === "REJECTED"
+          ? "Form reddedildi"
+          : "Form düzeltmeye gönderildi"
       )
       setComment("")
       setForwardToGM(false)
@@ -858,7 +868,7 @@ export default function OvertimeDetailPage() {
                       >
                         {approval.decision === "APPROVED" && "Onaylandı"}
                         {approval.decision === "REJECTED" && "Reddedildi"}
-                        {approval.decision === "RETURNED" && "İade Edildi"}
+                        {approval.decision === "RETURNED" && "Düzeltmeye Gönderildi"}
                         {approval.decision === "FORWARDED" && "Yönlendirildi"}
                       </span>
                     )}
@@ -918,7 +928,7 @@ export default function OvertimeDetailPage() {
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Yorum ekleyin (opsiyonel)..."
+              placeholder="Yorum ekleyin (düzeltme göndermek için zorunlu)..."
               rows={3}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
@@ -948,6 +958,18 @@ export default function OvertimeDetailPage() {
                 <X className="h-4 w-4 mr-2" />
               )}
               Reddet
+            </Button>
+            <Button
+              onClick={() => handleApprovalAction("RETURNED")}
+              disabled={actionLoading !== null}
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              {actionLoading === "return" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Pencil className="h-4 w-4 mr-2" />
+              )}
+              Düzeltme Gönder
             </Button>
           </div>
         </div>

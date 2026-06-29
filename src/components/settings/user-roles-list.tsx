@@ -42,6 +42,7 @@ export interface UserRow {
   jobTitle: string | null
   department: string | null
   groups: string[] // PR-Y4-PRE: AD grup CN listesi
+  gorunurBolumler: string[] // PR-FAZ2A: mesai performans görünür bölümler
   roles: Array<{
     id: string
     slug: string

@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
         jobTitle: true,
         department: true,
         groups: true, // PR-Y4-PRE
+        gorunurBolumler: true, // PR-FAZ2A
         userRoles: {
           select: {
             source: true,
@@ -84,6 +85,7 @@ export async function GET(req: NextRequest) {
       jobTitle: u.jobTitle,
       department: u.department,
       groups: u.groups, // PR-Y4-PRE
+      gorunurBolumler: u.gorunurBolumler, // PR-FAZ2A
       roles: u.userRoles.map((ur) => ({
         id: ur.role.id,
         slug: ur.role.slug,

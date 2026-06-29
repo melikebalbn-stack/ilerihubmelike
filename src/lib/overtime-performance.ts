@@ -4,6 +4,7 @@
  * Yalnız status=APPROVED + hedefAdet/gerceklesenAdet DOLU kayıtlar; workDepartment grupla; % artan sırala.
  */
 import { prisma } from '@/lib/prisma'
+import { getUserPermissions } from '@/lib/auth/get-user-permissions'
 
 export type PerfKisi = { ad: string; sicil: string; hedef: number; gerceklesen: number; yuzde: number; not: string | null }
 export type PerfBolum = { ad: string; hedef: number; gerceklesen: number; yuzde: number; kisiler: PerfKisi[] }
@@ -14,7 +15,9 @@ const pct = (g: number, h: number): number => (h > 0 ? Math.round((g / h) * 1000
 
 type FormWhere = { status: 'APPROVED'; date: Date | { gte: Date; lte: Date } }
 
-async function aggregate(where: FormWhere): Promise<PerfResult> {
+async function aggregate(where: FormWhere, allowedDepts?: string[]): Promise<PerfResult> {
+  // PR-FAZ2A: allowedDepts verilirse SADECE o bölümler; undefined/boş → tümü (geriye-uyum).
+  const deptFilter = allowedDepts && allowedDepts.length > 0 ? new Set(allowedDepts) : null
   const forms = await prisma.overtimeForm.findMany({
     where,
     include: {
@@ -27,6 +30,7 @@ async function aggregate(where: FormWhere): Promise<PerfResult> {
     for (const op of f.personnel) {
       if (op.hedefAdet == null || op.gerceklesenAdet == null) continue
       const dept = op.workDepartment || '—'
+      if (deptFilter && !deptFilter.has(dept)) continue // izin verilen bölüm değil → ele
       if (!byDept.has(dept)) byDept.set(dept, [])
       byDept.get(dept)!.push({
         ad: op.personnel?.adSoyad ?? '—',
@@ -50,19 +54,33 @@ async function aggregate(where: FormWhere): Promise<PerfResult> {
   return { genel: { hedef, gerceklesen, yuzde: hedef > 0 ? pct(gerceklesen, hedef) : null }, bolumler }
 }
 
-/** Tek güne ait performans (mesai günü = date). */
-export async function getDailyPerformance(date: Date): Promise<PerfResult & { date: string }> {
-  const res = await aggregate({ status: 'APPROVED', date })
+/** Tek güne ait performans (mesai günü = date). allowedDepts boş/undefined = tümü. */
+export async function getDailyPerformance(date: Date, allowedDepts?: string[]): Promise<PerfResult & { date: string }> {
+  const res = await aggregate({ status: 'APPROVED', date }, allowedDepts)
   return { date: date.toISOString().slice(0, 10), ...res }
 }
 
-/** Tarih aralığına ait performans (weekStart..weekEnd dahil). */
+/** Tarih aralığına ait performans (weekStart..weekEnd dahil). allowedDepts boş/undefined = tümü. */
 export async function getWeeklyPerformance(
   weekStart: Date,
   weekEnd: Date,
+  allowedDepts?: string[],
 ): Promise<PerfResult & { weekStart: string; weekEnd: string }> {
-  const res = await aggregate({ status: 'APPROVED', date: { gte: weekStart, lte: weekEnd } })
+  const res = await aggregate({ status: 'APPROVED', date: { gte: weekStart, lte: weekEnd } }, allowedDepts)
   return { weekStart: weekStart.toISOString().slice(0, 10), weekEnd: weekEnd.toISOString().slice(0, 10), ...res }
+}
+
+/**
+ * PR-FAZ2A: kullanıcının görebileceği bölümler.
+ * forms.admin (admin/super-admin dahil) VEYA gorunurBolumler boş → undefined (TÜM bölümler).
+ * Aksi halde kullanıcının seçili bölüm listesi.
+ */
+export async function resolveAllowedDepts(userId: string): Promise<string[] | undefined> {
+  const perms = await getUserPermissions(userId)
+  if (perms.has('forms.admin')) return undefined // admin/super-admin → tümü
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { gorunurBolumler: true } })
+  const list = u?.gorunurBolumler ?? []
+  return list.length > 0 ? list : undefined // boş = tümü (geriye-uyum)
 }
 
 /** En son APPROVED mesai tarihi (sayfa "tarih verilmedi" durumunda kullanır). */

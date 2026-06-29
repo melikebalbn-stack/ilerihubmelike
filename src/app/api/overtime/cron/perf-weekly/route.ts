@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
-import { getWeeklyPerformance } from '@/lib/overtime-performance'
+import { getWeeklyPerformance, resolveAllowedDepts } from '@/lib/overtime-performance'
 import { buildPerfEmailHtml, buildPerfEmailText } from '@/lib/email-templates/overtime-performance'
 
 export const dynamic = 'force-dynamic'
@@ -32,35 +32,41 @@ export async function POST(req: NextRequest) {
   const fmt = (d: Date) => d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })
   const tarihMetni = `${fmt(weekStart)} – ${fmt(weekEndDay)}`
 
-  const data = await getWeeklyPerformance(weekStart, weekEnd)
-  if (data.bolumler.length === 0) {
-    console.log(`[perf-weekly] ${data.weekStart}..${data.weekEnd}: veri yok — mail atlandı`)
-    return NextResponse.json({ ok: true, weekStart: data.weekStart, weekEnd: data.weekEnd, sent: false, reason: 'veri yok' })
-  }
+  const wsStr = weekStart.toISOString().slice(0, 10)
+  const weStr = weekEndDay.toISOString().slice(0, 10)
 
+  // PR-FAZ2A: alıcı = rol (yonetim-raporu); içerik = HER alıcının görünür bölümleri (boş/admin → tümü).
   const recipients = await prisma.user.findMany({
     where: { isActive: true, userRoles: { some: { role: { slug: 'yonetim-raporu' } } } },
-    select: { email: true, name: true },
+    select: { id: true, email: true, name: true },
   })
-  const to = recipients.filter((r) => r.email).map((r) => ({ email: r.email!, name: r.name ?? r.email! }))
-  if (to.length === 0) {
+  const valid = recipients.filter((r) => r.email)
+  if (valid.length === 0) {
     console.log('[perf-weekly] yonetim-raporu rolünde aktif alıcı yok — mail atlandı')
-    return NextResponse.json({ ok: true, weekStart: data.weekStart, weekEnd: data.weekEnd, sent: false, reason: 'alıcı yok' })
+    return NextResponse.json({ ok: true, weekStart: wsStr, weekEnd: weStr, sent: 0, reason: 'alıcı yok' })
   }
 
-  const opts = {
-    baslik: 'Haftalık Mesai Performansı',
-    tarihMetni,
-    sayfaUrl: ileriHubUrl(`/forms/overtime/performans?date=${data.weekEnd}`),
-    haftalikMi: true,
+  let sent = 0
+  let bosVeri = 0
+  for (const r of valid) {
+    const allowedDepts = await resolveAllowedDepts(r.id)
+    const data = await getWeeklyPerformance(weekStart, weekEnd, allowedDepts)
+    if (data.bolumler.length === 0) { bosVeri++; continue } // bu kişinin bölümlerinde veri yok → gönderme
+    const opts = {
+      baslik: 'Haftalık Mesai Performansı',
+      tarihMetni,
+      sayfaUrl: ileriHubUrl(`/forms/overtime/performans?date=${data.weekEnd}`),
+      haftalikMi: true,
+    }
+    const res = await sendEmail(
+      [{ email: r.email!, name: r.name ?? r.email! }],
+      `Haftalık Mesai Performansı — ${tarihMetni}`,
+      buildPerfEmailText(data, opts),
+      buildPerfEmailHtml(data, opts),
+    )
+    if (res.success) sent++
   }
-  const res = await sendEmail(
-    to,
-    `Haftalık Mesai Performansı — ${tarihMetni}`,
-    buildPerfEmailText(data, opts),
-    buildPerfEmailHtml(data, opts),
-  )
 
-  console.log(`[perf-weekly] ${data.weekStart}..${data.weekEnd}: ${data.bolumler.length} bölüm, ${to.length} alıcı, gönderildi=${res.success}`)
-  return NextResponse.json({ ok: true, weekStart: data.weekStart, weekEnd: data.weekEnd, bolumler: data.bolumler.length, alici: to.length, sent: res.success, error: res.error })
+  console.log(`[perf-weekly] ${wsStr}..${weStr}: alıcı=${valid.length}, gönderildi=${sent}, veri-yok=${bosVeri}`)
+  return NextResponse.json({ ok: true, weekStart: wsStr, weekEnd: weStr, alici: valid.length, sent, bosVeri })
 }

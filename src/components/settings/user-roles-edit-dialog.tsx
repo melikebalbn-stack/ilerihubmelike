@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -56,12 +56,28 @@ export function UserRolesEditDialog({
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
+  // PR-FAZ2A: görünür bölümler (mesai performans). Boş = tüm bölümler.
+  const initialDepts = useMemo(() => [...(user.gorunurBolumler ?? [])].sort(), [user.gorunurBolumler])
+  const [allDepts, setAllDepts] = useState<string[]>([])
+  const [selectedDepts, setSelectedDepts] = useState<string[]>(initialDepts)
+
+  useEffect(() => {
+    fetch('/api/settings/hr-departments')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: { name: string }[]) => setAllDepts(Array.isArray(data) ? data.map((d) => d.name) : []))
+      .catch(() => setAllDepts([]))
+  }, [])
+
   const sortedSelected = useMemo(
     () => [...selectedRoleIds].sort(),
     [selectedRoleIds]
   )
+  const deptsChanged = useMemo(
+    () => JSON.stringify([...selectedDepts].sort()) !== JSON.stringify(initialDepts),
+    [selectedDepts, initialDepts]
+  )
   const hasChanges =
-    JSON.stringify(sortedSelected) !== JSON.stringify(initialManualIds)
+    JSON.stringify(sortedSelected) !== JSON.stringify(initialManualIds) || deptsChanged
   const overLimit = selectedRoleIds.length > 9
 
   function toggle(roleId: string) {
@@ -72,33 +88,61 @@ export function UserRolesEditDialog({
     )
   }
 
+  function toggleDept(name: string) {
+    setSelectedDepts((prev) =>
+      prev.includes(name) ? prev.filter((d) => d !== name) : [...prev, name]
+    )
+  }
+
   async function handleSave() {
     if (!hasChanges || overLimit) return
     setSaving(true)
     setErrorMsg(null)
     try {
-      const res = await fetch(`/api/users/${user.id}/roles`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roleIds: selectedRoleIds }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setErrorMsg(data.error ?? 'Kaydetme başarısız')
-        return
+      const rolesChanged =
+        JSON.stringify(sortedSelected) !== JSON.stringify(initialManualIds)
+      let added = 0
+      let removed = 0
+
+      if (rolesChanged) {
+        const res = await fetch(`/api/users/${user.id}/roles`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roleIds: selectedRoleIds }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setErrorMsg(data.error ?? 'Rol kaydetme başarısız')
+          return
+        }
+        ;({ added = 0, removed = 0 } = data.changes ?? {})
       }
-      const { added = 0, removed = 0 } = data.changes ?? {}
-      if (added + removed === 0) {
-        toast.info('Değişiklik yok')
-      } else {
-        toast.success(
-          `${user.name ?? user.email}: ${
-            added ? `${added} eklendi` : ''
-          }${added && removed ? ', ' : ''}${
-            removed ? `${removed} kaldırıldı` : ''
-          }`
+
+      // PR-FAZ2A: görünür bölümler
+      if (deptsChanged) {
+        const res2 = await fetch(`/api/users/${user.id}/departments`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gorunurBolumler: selectedDepts }),
+        })
+        const d2 = await res2.json().catch(() => ({}))
+        if (!res2.ok) {
+          setErrorMsg(d2.error ?? 'Görünür bölüm kaydı başarısız')
+          return
+        }
+      }
+
+      const parts: string[] = []
+      if (rolesChanged && added + removed > 0) {
+        parts.push(
+          `${added ? `${added} rol eklendi` : ''}${added && removed ? ', ' : ''}${removed ? `${removed} rol kaldırıldı` : ''}`,
         )
       }
+      if (deptsChanged) {
+        parts.push(selectedDepts.length ? `görünür bölümler: ${selectedDepts.length}` : 'görünür bölümler: tümü')
+      }
+      if (parts.length === 0) toast.info('Değişiklik yok')
+      else toast.success(`${user.name ?? user.email}: ${parts.join(' · ')}`)
       onSaved()
     } catch {
       setErrorMsg('Sunucuya ulaşılamadı')
@@ -184,6 +228,36 @@ export function UserRolesEditDialog({
                 )
               })}
             </div>
+          </div>
+
+          {/* PR-FAZ2A: Görünür Bölümler (Mesai Performansı) */}
+          <div className="space-y-1">
+            <div className="text-xs font-semibold text-foreground">
+              Görünür Bölümler (Mesai Performansı){' '}
+              <span className="text-muted-foreground font-normal">
+                {selectedDepts.length === 0 ? '(boş = tüm bölümler)' : `(${selectedDepts.length} seçili)`}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {allDepts.map((d) => {
+                const checked = selectedDepts.includes(d)
+                return (
+                  <label
+                    key={d}
+                    className={[
+                      'flex items-center gap-2 rounded-md p-1.5 cursor-pointer transition-colors text-sm',
+                      checked ? 'bg-teal-50' : 'hover:bg-muted',
+                    ].join(' ')}
+                  >
+                    <Checkbox checked={checked} onCheckedChange={() => toggleDept(d)} />
+                    <span className="truncate">{d}</span>
+                  </label>
+                )
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Boş = tüm bölümler. Yalnız mesai performans raporunu (overtime.report) etkiler.
+            </p>
           </div>
 
           {overLimit && (

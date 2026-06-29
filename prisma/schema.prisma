@@ -66,6 +66,8 @@ model User {
 
   // PR-Y4-PRE: AD grup CN listesi (LDAP memberOf'tan parse). Y4a'da → Role mapping.
   groups String[] @default([])
+  // PR-FAZ2A: mesai performans görünür bölümler (DepartmentDefinition.name). Boş = TÜM bölümler.
+  gorunurBolumler String[] @default([])
   manager   User?   @relation("ManagerEmployees", fields: [managerId], references: [id])
   employees User[]  @relation("ManagerEmployees")
 
@@ -8561,6 +8563,12 @@ model Personnel {
   employmentPeriods   EmploymentPeriod[]
   // OFFB-1: Zimmet İade / İlişik Kesme formları
   offboardingForms    OffboardingForm[]
+  // PR-FAZ-B1: bu personelin sorumlu/müdür olduğu bölümler (DepartmentDefinition FK ters yönü)
+  sorumlusuOlduguBolumler1      DepartmentDefinition[] @relation("Dept_S1")
+  sorumlusuOlduguBolumler2      DepartmentDefinition[] @relation("Dept_S2")
+  sorumlusuOlduguBolumler3      DepartmentDefinition[] @relation("Dept_S3")
+  mudurYardimcisiOlduguBolumler DepartmentDefinition[] @relation("Dept_MY")
+  muduruOlduguBolumler          DepartmentDefinition[] @relation("Dept_M")
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -8728,6 +8736,7 @@ model JobTitle {
 }
 
 // İV Ayarları: Bölüm Tanımları
+// PR-FAZ-B1: org omurgası — hiyerarşi (parent) + sorumlular/müdür (Personnel FK). Yetki türetme Faz-B2.
 model DepartmentDefinition {
   id        String   @id @default(cuid())
   name      String   @unique
@@ -8735,6 +8744,25 @@ model DepartmentDefinition {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Hiyerarşi
+  parentId  String?
+  parent    DepartmentDefinition?  @relation("DeptTree", fields: [parentId], references: [id])
+  children  DepartmentDefinition[] @relation("DeptTree")
+  sortOrder Int @default(0)
+
+  // Sorumlular / müdür — Personnel FK (string ad DEĞİL)
+  sorumlu1Id        String?
+  sorumlu2Id        String?
+  sorumlu3Id        String?
+  mudurYardimcisiId String?
+  mudurId           String?
+  sorumlu1        Personnel? @relation("Dept_S1", fields: [sorumlu1Id], references: [id])
+  sorumlu2        Personnel? @relation("Dept_S2", fields: [sorumlu2Id], references: [id])
+  sorumlu3        Personnel? @relation("Dept_S3", fields: [sorumlu3Id], references: [id])
+  mudurYardimcisi Personnel? @relation("Dept_MY", fields: [mudurYardimcisiId], references: [id])
+  mudur           Personnel? @relation("Dept_M", fields: [mudurId], references: [id])
+
+  @@index([parentId])
   @@index([isActive])
 }
 

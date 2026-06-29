@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
-import { getDailyPerformance } from '@/lib/overtime-performance'
+import { getDailyPerformance, resolveAllowedDepts } from '@/lib/overtime-performance'
 import { buildPerfEmailHtml, buildPerfEmailText } from '@/lib/email-templates/overtime-performance'
 
 export const dynamic = 'force-dynamic'
@@ -29,35 +29,38 @@ export async function POST(req: NextRequest) {
   const dateStr = date.toISOString().slice(0, 10)
   const tarihMetni = date.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })
 
-  const data = await getDailyPerformance(date)
-  if (data.bolumler.length === 0) {
-    console.log(`[perf-daily] ${dateStr}: onaylı mesai performans verisi yok — mail atlandı`)
-    return NextResponse.json({ ok: true, date: dateStr, sent: false, reason: 'veri yok' })
-  }
-
+  // PR-FAZ2A: alıcı = rol (uretim-planlama); içerik = HER alıcının görünür bölümleri (boş/admin → tümü).
   const recipients = await prisma.user.findMany({
     where: { isActive: true, userRoles: { some: { role: { slug: 'uretim-planlama' } } } },
-    select: { email: true, name: true },
+    select: { id: true, email: true, name: true },
   })
-  const to = recipients.filter((r) => r.email).map((r) => ({ email: r.email!, name: r.name ?? r.email! }))
-  if (to.length === 0) {
+  const valid = recipients.filter((r) => r.email)
+  if (valid.length === 0) {
     console.log('[perf-daily] uretim-planlama rolünde aktif alıcı yok — mail atlandı')
-    return NextResponse.json({ ok: true, date: dateStr, sent: false, reason: 'alıcı yok' })
+    return NextResponse.json({ ok: true, date: dateStr, sent: 0, reason: 'alıcı yok' })
   }
 
-  const opts = {
-    baslik: 'Günlük Mesai Performansı',
-    tarihMetni,
-    sayfaUrl: ileriHubUrl(`/forms/overtime/performans?date=${dateStr}`),
-    haftalikMi: false,
+  let sent = 0
+  let bosVeri = 0
+  for (const r of valid) {
+    const allowedDepts = await resolveAllowedDepts(r.id)
+    const data = await getDailyPerformance(date, allowedDepts)
+    if (data.bolumler.length === 0) { bosVeri++; continue } // bu kişinin bölümlerinde veri yok → gönderme
+    const opts = {
+      baslik: 'Günlük Mesai Performansı',
+      tarihMetni,
+      sayfaUrl: ileriHubUrl(`/forms/overtime/performans?date=${dateStr}`),
+      haftalikMi: false,
+    }
+    const res = await sendEmail(
+      [{ email: r.email!, name: r.name ?? r.email! }],
+      `Günlük Mesai Performansı — ${tarihMetni}`,
+      buildPerfEmailText(data, opts),
+      buildPerfEmailHtml(data, opts),
+    )
+    if (res.success) sent++
   }
-  const res = await sendEmail(
-    to,
-    `Günlük Mesai Performansı — ${tarihMetni}`,
-    buildPerfEmailText(data, opts),
-    buildPerfEmailHtml(data, opts),
-  )
 
-  console.log(`[perf-daily] ${dateStr}: ${data.bolumler.length} bölüm, ${to.length} alıcı, gönderildi=${res.success}`)
-  return NextResponse.json({ ok: true, date: dateStr, bolumler: data.bolumler.length, alici: to.length, sent: res.success, error: res.error })
+  console.log(`[perf-daily] ${dateStr}: alıcı=${valid.length}, gönderildi=${sent}, veri-yok=${bosVeri}`)
+  return NextResponse.json({ ok: true, date: dateStr, alici: valid.length, sent, bosVeri })
 }

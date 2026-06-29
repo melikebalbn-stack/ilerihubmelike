@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
-import { getDailyPerformance, getLatestApprovedDate } from '@/lib/overtime-performance'
+import { getDailyPerformance, getLatestApprovedDate, resolveAllowedDepts } from '@/lib/overtime-performance'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
  * Veri katmanı: src/lib/overtime-performance.ts (sayfa + mail cron ile ORTAK).
  */
 export async function GET(request: NextRequest) {
-  const { error } = await requirePermission('overtime.report')
+  const { userId, error } = await requirePermission('overtime.report')
   if (error) return error
 
   const { searchParams } = new URL(request.url)
@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ date: null, genel: { hedef: 0, gerceklesen: 0, yuzde: null }, bolumler: [] })
   }
 
-  const data = await getDailyPerformance(date)
+  // PR-FAZ2A: kullanıcı yalnız görünür bölümlerini görür (boş/admin → tümü)
+  const allowedDepts = await resolveAllowedDepts(userId)
+  const data = await getDailyPerformance(date, allowedDepts)
   return NextResponse.json(data)
 }

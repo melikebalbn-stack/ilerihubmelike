@@ -58,6 +58,10 @@ model User {
   // ILERIHub fields
   role      UserRoleEnum @default(EMPLOYEE)
   isActive  Boolean @default(true)
+  // PR-LDAP-DEBOUNCE: AD-disabled sinyali debounce — bayat uac okumasıyla tek turda
+  // yanlış-pasifleştirmeyi önler. disabled N=3 ardışık turda görülmeden isActive=false yazılmaz.
+  disabledStreak     Int       @default(0) // ardışık "AD disabled görüldü" tur sayısı
+  lastDisabledSeenAt DateTime?             // son disabled gözlemi (audit)
   managerId String?
 
   // PR-Y4-PRE: AD grup CN listesi (LDAP memberOf'tan parse). Y4a'da → Role mapping.

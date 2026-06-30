@@ -52,6 +52,12 @@ interface Approval {
     department: string | null
     jobTitle: string | null
   } | null
+  // Çift-onaycı: adım eskale olduysa yedek onaycı (asıl onaycıyla birlikte onaylayabilir).
+  escalatedTo: {
+    id: string
+    name: string
+    email: string
+  } | null
 }
 
 interface OvertimeFormDetail {
@@ -395,6 +401,8 @@ export default function OvertimeDetailPage() {
     if (!currentApproval) return false
 
     if (currentApproval.approver?.email === session.user.email) return true
+    // Çift-onaycı: adım eskale olduysa yedek onaycı da onaylayabilir.
+    if (currentApproval.escalatedTo?.email === session.user.email) return true
 
     const userRole = (session.user as Record<string, unknown>).role as string | undefined
     if (userRole === "ADMIN" || userRole === "SUPER_ADMIN") return true

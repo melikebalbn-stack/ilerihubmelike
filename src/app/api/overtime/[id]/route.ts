@@ -42,6 +42,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
                 jobTitle: true,
               },
             },
+            // Çift-onaycı: eskale olmuş adımda yedek onaycı da "Onayla" görebilsin diye email lazım.
+            escalatedTo: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
           },
           orderBy: { step: 'asc' },
         },

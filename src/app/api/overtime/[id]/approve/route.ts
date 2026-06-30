@@ -69,8 +69,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Yetki kontrolü: Atanmış kişi mi veya admin mi?
+    // Çift-onaycı: adım eskale olmuşsa ASIL onaycı (approverId) VE yedek (escalatedToId)
+    // ikisi de onaylayabilir. Eskale olmamışsa escalatedToId boş → yalnız asıl.
     const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
-    const isAssignedApprover = pendingApproval.approverId === user.id
+    const isAssignedApprover =
+      pendingApproval.approverId === user.id ||
+      pendingApproval.escalatedToId === user.id
 
     if (!isAdmin && !isAssignedApprover) {
       return apiError(

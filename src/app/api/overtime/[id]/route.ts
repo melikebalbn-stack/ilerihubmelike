@@ -186,6 +186,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             workDepartment: string
             serviceRoute?: string
             targetProduction?: string
+            hedefAdet?: number
             mesaiNedeni?: string
           }, index: number) => ({
             overtimeFormId: id,
@@ -193,6 +194,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             workDepartment: p.workDepartment,
             serviceRoute: p.serviceRoute || null,
             targetProduction: p.targetProduction || null,
+            // FIX: düzenleme kaydında hedefAdet korunsun (CREATE ile aynı validasyon).
+            hedefAdet:
+              p.hedefAdet != null &&
+              Number.isFinite(Number(p.hedefAdet)) &&
+              Number(p.hedefAdet) >= 0
+                ? Math.trunc(Number(p.hedefAdet))
+                : null,
             mesaiNedeni: p.mesaiNedeni?.trim() || null,
             createdAt: new Date(orderBase + index),
           })),

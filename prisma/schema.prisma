@@ -168,6 +168,9 @@ model User {
   overtimeApprovals    OvertimeApproval[]      @relation("OvertimeApprover")
   approvalPositions    ApprovalPosition[]      @relation("ApprovalPositionUser")
   overtimeAuthorized   OvertimeAuthorizedUser? @relation("OvertimeAuthorizedUser")
+  // PR-3 eskalasyon back-relation'ları (named relation ZORUNLU)
+  approvalPositionBackups ApprovalPosition[]   @relation("ApprovalPositionBackup")
+  overtimeEscalations     OvertimeApproval[]   @relation("OvertimeApprovalEscalatedTo")
 
   // Akademi Relations
   courseAssignments    UserCourseAssignment[]
@@ -8115,6 +8118,12 @@ model OvertimeApproval {
   // (1 kez). null = henüz gönderilmedi. Sonraki adım kendi null'ı ile başlar.
   reminderSentAt DateTime?
 
+  // PR-3 eskalasyon: 15 dk içinde onaylanmayan adım yedek onaycıya devredildiğinde
+  // set edilir (tek seviye — escalatedAt doluysa tekrar eskale edilmez).
+  escalatedAt   DateTime?
+  escalatedToId String?
+  escalatedTo   User?     @relation("OvertimeApprovalEscalatedTo", fields: [escalatedToId], references: [id])
+
   @@index([overtimeFormId])
   @@index([approverId])
 }
@@ -8127,6 +8136,10 @@ model ApprovalPosition {
   title     String // Üretim Müdür Yardımcısı, Fabrika Müdürü, vb.
   userId    String? // Atanmış kullanıcı (null = henüz atanmamış)
   user      User?   @relation("ApprovalPositionUser", fields: [userId], references: [id])
+  // PR-3 eskalasyon: bu adım 15 dk içinde onaylanmazsa devredilecek yedek onaycı.
+  // null = eskalasyon devre dışı (adım-bazlı opt-in).
+  backupUserId String?
+  backupUser   User?  @relation("ApprovalPositionBackup", fields: [backupUserId], references: [id])
   sortOrder Int     @default(0)
   isActive  Boolean @default(true)
 

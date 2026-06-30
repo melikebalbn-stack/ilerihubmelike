@@ -443,6 +443,18 @@ export default function OvertimeDetailPage() {
   const typeInfo = getOvertimeTypeInfo(form.overtimeType)
   const isCreator = session?.user?.email === form.createdBy.email
   const showApprovalActions = canUserApprove()
+  // Özellik B: kullanıcı bu adımı zaten karara bağladıysa (artık buton görünmez)
+  // butonun yerine bilgi kartı göster. canUserApprove ile AYNI email-eşleşme deseni
+  // (id/email karışımı yok); session email yoksa hesaplanmaz.
+  const sessionEmail = session?.user?.email
+  const myDecided = sessionEmail
+    ? form.approvals.find(
+        (a) =>
+          a.approver?.email === sessionEmail &&
+          a.decision !== null &&
+          a.decidedAt
+      )
+    : undefined
   const showTestMode = isSuperAdmin() && ["PENDING", "IN_PROGRESS"].includes(form.status)
   const canEditPersonnel = showApprovalActions || (form.status === "DRAFT" && isCreator)
   const userRole = (session?.user as Record<string, unknown>)?.role as string | undefined
@@ -974,6 +986,44 @@ export default function OvertimeDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Özellik B: kendi kararını vermiş kullanıcıya buton yerine bilgi kartı.
+          showApprovalActions FALSE (artık sıradaki onaycı değil) + kendi kararı varsa. */}
+      {!showApprovalActions &&
+        myDecided &&
+        (myDecided.decision === "APPROVED" || myDecided.decision === "REJECTED") && (
+          <div
+            className={`rounded-lg border p-4 ${
+              myDecided.decision === "APPROVED"
+                ? "border-green-200 bg-green-50"
+                : "border-red-200 bg-red-50"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {myDecided.decision === "APPROVED" ? (
+                <Check className="h-5 w-5 text-green-600" />
+              ) : (
+                <X className="h-5 w-5 text-red-600" />
+              )}
+              <p
+                className={`text-sm font-medium ${
+                  myDecided.decision === "APPROVED"
+                    ? "text-green-800"
+                    : "text-red-800"
+                }`}
+              >
+                {myDecided.decision === "APPROVED"
+                  ? `Bu formu ${format(new Date(myDecided.decidedAt!), "dd MMM yyyy HH:mm", { locale: tr })} tarihinde onayladınız.`
+                  : `Bu formu ${format(new Date(myDecided.decidedAt!), "dd MMM yyyy HH:mm", { locale: tr })} tarihinde reddettiniz.`}
+              </p>
+            </div>
+            {myDecided.comment && (
+              <p className="text-xs text-muted-foreground mt-2 ml-7">
+                Notunuz: {myDecided.comment}
+              </p>
+            )}
+          </div>
+        )}
 
       {/* Test Mode Card - Only for SUPER_ADMIN */}
       {showTestMode && (

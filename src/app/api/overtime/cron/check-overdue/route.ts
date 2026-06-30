@@ -141,6 +141,7 @@ export async function POST(req: NextRequest) {
           createdAt: true,
           reminderSentAt: true,
           escalatedAt: true,
+          escalatedToId: true,
         },
       },
     },
@@ -177,11 +178,12 @@ export async function POST(req: NextRequest) {
       });
       const backupId = pos?.backupUserId ?? null;
       if (backupId && backupId !== pending.approverId) {
-        // Devret + işaretle (reminderSentAt=null → yedek için hatırlatma penceresi sıfırla).
+        // Çift-onaycı: approverId'yi EZME (asıl onaycı korunur). Yedek escalatedToId'ye
+        // yazılır → adım eskale olduktan sonra ASIL + YEDEK ikisi de onaylayabilir.
+        // reminderSentAt=null → yedek dahil hatırlatma penceresi sıfırlanır.
         await prisma.overtimeApproval.update({
           where: { id: pending.id },
           data: {
-            approverId: backupId,
             escalatedAt: now,
             escalatedToId: backupId,
             reminderSentAt: null,
@@ -255,13 +257,22 @@ export async function POST(req: NextRequest) {
       skipped++;
       continue;
     }
-    const approver = await prisma.user.findUnique({
-      where: { id: pending.approverId },
+    // Çift-onaycı: adım eskale olmuşsa hatırlatma ASIL + YEDEK ikisine gider.
+    // Eskale olmamışsa (escalatedToId boş) yalnız asıl onaycı (mevcut davranış).
+    const reminderIds = [pending.approverId];
+    if (pending.escalatedToId && pending.escalatedToId !== pending.approverId) {
+      reminderIds.push(pending.escalatedToId);
+    }
+    const reminderUsers = await prisma.user.findMany({
+      where: { id: { in: reminderIds } },
       select: { name: true, email: true },
     });
-    if (!approver?.email) {
+    const recipients = reminderUsers
+      .filter((u) => u.email)
+      .map((u) => ({ email: u.email!, name: u.name ?? u.email! }));
+    if (recipients.length === 0) {
       console.warn(
-        `[overtime-overdue] ${form.formNo} step ${pending.step}: approver email yok (approverId=${pending.approverId})`
+        `[overtime-overdue] ${form.formNo} step ${pending.step}: alıcı email yok (ids=${reminderIds.join(",")})`
       );
       skipped++;
       continue;
@@ -278,12 +289,7 @@ export async function POST(req: NextRequest) {
         role: pending.role || "Onay",
         link: ileriHubUrl(`/forms/overtime/${form.id}`),
       });
-      const res = await sendEmail(
-        [{ email: approver.email, name: approver.name ?? approver.email }],
-        subject,
-        text,
-        html
-      );
+      const res = await sendEmail(recipients, subject, text, html);
       if (!res.success) {
         console.error(
           `[overtime-overdue] ${form.formNo}: mail başarısız (${res.error ?? "?"}) — reminderSentAt yazılmadı`

@@ -16,8 +16,9 @@ const pct = (g: number, h: number): number => (h > 0 ? Math.round((g / h) * 1000
 type FormWhere = { status: 'APPROVED'; date: Date | { gte: Date; lte: Date } }
 
 async function aggregate(where: FormWhere, allowedDepts?: string[]): Promise<PerfResult> {
-  // PR-FAZ2A: allowedDepts verilirse SADECE o bölümler; undefined/boş → tümü (geriye-uyum).
-  const deptFilter = allowedDepts && allowedDepts.length > 0 ? new Set(allowedDepts) : null
+  // FAZ-B2b: undefined → TÜMÜ (admin/geriye-uyum). [] → HİÇBİRİ (yetkili bölüm yok).
+  //          [adlar] → SADECE o bölümler. (undefined ile [] artık FARKLI anlamda.)
+  const deptFilter = allowedDepts === undefined ? null : new Set(allowedDepts)
   const forms = await prisma.overtimeForm.findMany({
     where,
     include: {
@@ -71,16 +72,74 @@ export async function getWeeklyPerformance(
 }
 
 /**
- * PR-FAZ2A: kullanıcının görebileceği bölümler.
- * forms.admin (admin/super-admin dahil) VEYA gorunurBolumler boş → undefined (TÜM bölümler).
- * Aksi halde kullanıcının seçili bölüm listesi.
+ * Verilen bölüm id'lerinin KENDİSİ + tüm alt (children) bölümlerinin name listesi.
+ * parent/children @relation("DeptTree"). 26 satır → hepsini bir kez çek, bellekte BFS.
+ * Döngü guard: visited (B1'de parentId!==id engellendi ama yine de koru).
+ */
+async function getDeptSubtreeNames(seedIds: string[]): Promise<string[]> {
+  if (seedIds.length === 0) return []
+  const all = await prisma.departmentDefinition.findMany({ select: { id: true, name: true, parentId: true } })
+  const byId = new Map(all.map((d) => [d.id, d]))
+  const childrenByParent = new Map<string, string[]>()
+  for (const d of all) {
+    if (d.parentId) {
+      if (!childrenByParent.has(d.parentId)) childrenByParent.set(d.parentId, [])
+      childrenByParent.get(d.parentId)!.push(d.id)
+    }
+  }
+  const visited = new Set<string>()
+  const names = new Set<string>()
+  const stack = [...seedIds]
+  while (stack.length) {
+    const id = stack.pop()!
+    if (visited.has(id)) continue // döngü guard
+    visited.add(id)
+    const node = byId.get(id)
+    if (node) names.add(node.name)
+    for (const childId of childrenByParent.get(id) ?? []) stack.push(childId)
+  }
+  return [...names]
+}
+
+/**
+ * FAZ-B2b: kullanıcının görebileceği mesai-rapor bölümleri.
+ *   a) forms.admin (admin/super-admin) → undefined (TÜM bölümler) — DEĞİŞMEZ
+ *   b) gorunurBolumler dolu           → o liste (manuel override korunur)
+ *   c) boş → OMURGADAN TÜRET: kişinin görevli (müdür/müd.yrd./sorumlu1-3) olduğu
+ *            bölümler + ALT AĞAÇLARI (müdür → kendi + tüm alt shop-floor).
+ *   d) personele bağlı değil / omurgada görevi yok → [] (HİÇBİRİ — "tümü" DEĞİL)
+ * Dönüş: undefined = tümü, [] = hiçbiri, [adlar] = sadece o bölümler.
  */
 export async function resolveAllowedDepts(userId: string): Promise<string[] | undefined> {
   const perms = await getUserPermissions(userId)
-  if (perms.has('forms.admin')) return undefined // admin/super-admin → tümü
-  const u = await prisma.user.findUnique({ where: { id: userId }, select: { gorunurBolumler: true } })
-  const list = u?.gorunurBolumler ?? []
-  return list.length > 0 ? list : undefined // boş = tümü (geriye-uyum)
+  if (perms.has('forms.admin')) return undefined // (a) admin → tümü
+
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { gorunurBolumler: true, personnelId: true },
+  })
+  const manual = u?.gorunurBolumler ?? []
+  if (manual.length > 0) return manual // (b) manuel override
+
+  // (c) omurgadan türet
+  const personnelId = u?.personnelId
+  if (!personnelId) return [] // (d) personele bağlı değil → hiçbiri
+
+  const gorevli = await prisma.departmentDefinition.findMany({
+    where: {
+      OR: [
+        { mudurId: personnelId },
+        { mudurYardimcisiId: personnelId },
+        { sorumlu1Id: personnelId },
+        { sorumlu2Id: personnelId },
+        { sorumlu3Id: personnelId },
+      ],
+    },
+    select: { id: true },
+  })
+  if (gorevli.length === 0) return [] // (d) omurgada görev yok → hiçbiri
+
+  return getDeptSubtreeNames(gorevli.map((d) => d.id)) // kendi + alt ağaç
 }
 
 /** En son APPROVED mesai tarihi (sayfa "tarih verilmedi" durumunda kullanır). */

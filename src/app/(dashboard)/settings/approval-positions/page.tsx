@@ -21,6 +21,8 @@ interface Position {
   isActive: boolean
   userId: string | null
   user: UserOption | null
+  backupUserId: string | null
+  backupUser: UserOption | null
   departments: string[]
 }
 
@@ -28,6 +30,7 @@ export default function ApprovalPositionsPage() {
   const [positions, setPositions] = useState<Position[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
   const [assignments, setAssignments] = useState<Record<string, string>>({})
+  const [backupAssignments, setBackupAssignments] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -43,10 +46,13 @@ export default function ApprovalPositionsPage() {
       const data = await res.json()
       setPositions(data)
       const initial: Record<string, string> = {}
+      const backupInitial: Record<string, string> = {}
       for (const pos of data) {
         initial[pos.code] = pos.userId || ""
+        backupInitial[pos.code] = pos.backupUserId || ""
       }
       setAssignments(initial)
+      setBackupAssignments(backupInitial)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bir hata oluştu")
     }
@@ -79,6 +85,12 @@ export default function ApprovalPositionsPage() {
       const updates = Object.entries(assignments).map(([code, userId]) => ({
         code,
         userId: userId || null,
+        // Yedek onaycı: boş VEYA asıl onaycıyla aynı → null (eskalasyonsuz).
+        // (Select'te asıl onaycı zaten filtreli; server da reddediyor — çift güvence.)
+        backupUserId:
+          backupAssignments[code] && backupAssignments[code] !== userId
+            ? backupAssignments[code]
+            : null,
       }))
 
       const res = await fetch("/api/approval-positions", {
@@ -153,6 +165,11 @@ export default function ApprovalPositionsPage() {
               <strong> Departman ataması olan pozisyonlar koşulludur</strong> — sadece o departmandan personel varsa onay sürecine dahil edilir.
               Departmanı boş olan pozisyonlar (İV, GMY, GM) tüm formlara dahil edilir.
             </p>
+            <p className="mt-1">
+              <strong>Yedek Onaycı:</strong> Bir adım 15 dakika içinde onaylanmazsa onay
+              otomatik olarak yedek onaycıya devredilir. &quot;Yok&quot; seçilirse o adım
+              eskalasyonsuzdur. Değişiklik anında etkilidir.
+            </p>
           </div>
         </div>
       </div>
@@ -180,6 +197,7 @@ export default function ApprovalPositionsPage() {
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground">Pozisyon</th>
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground">Kod</th>
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground min-w-[300px]">Atanmış Kişi</th>
+                <th className="text-left py-3 px-4 font-medium text-muted-foreground min-w-[280px]">Yedek Onaycı</th>
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground">Departmanlar</th>
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground w-24">Durum</th>
               </tr>
@@ -249,6 +267,34 @@ export default function ApprovalPositionsPage() {
                           </Button>
                         )}
                       </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {/* Yedek onaycı: 15dk'da onaylanmazsa adım buna devredilir.
+                          Asıl onaycı option'lardan filtrelenir (kendine eskalasyon yok). */}
+                      <Select
+                        value={
+                          backupAssignments[pos.code] &&
+                          backupAssignments[pos.code] !== assignments[pos.code]
+                            ? backupAssignments[pos.code]
+                            : ""
+                        }
+                        onChange={(e) =>
+                          setBackupAssignments((prev) => ({
+                            ...prev,
+                            [pos.code]: e.target.value,
+                          }))
+                        }
+                        className="w-full"
+                      >
+                        <option value="">-- Yok (eskalasyonsuz) --</option>
+                        {users
+                          .filter((u) => u.id !== assignments[pos.code])
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name} ({u.email})
+                            </option>
+                          ))}
+                      </Select>
                     </td>
                     <td className="py-3 px-4">
                       {pos.departments && pos.departments.length > 0 ? (

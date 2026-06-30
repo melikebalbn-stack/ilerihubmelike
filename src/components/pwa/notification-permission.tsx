@@ -73,6 +73,12 @@ async function silentSubscribe(): Promise<boolean> {
     const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
     if (!vapidPublicKey) return false
 
+    // PR-SW-DEV-GUARD: SW kaydı YALNIZ production'da (sw-register.tsx ile aynı NODE_ENV guard'ı).
+    // Dev/sandbox (HTTP, NODE_ENV=development) register("/sw.js") yaparsa → cert hatası +
+    // bayat /_next/static cache → client-side 404. Erken çıkış: register'a giden tek yol
+    // (ensureServiceWorkerReady) hiç çağrılmaz. SW-dışı izin/banner mantığı + prod etkilenmez.
+    if (process.env.NODE_ENV !== "production") return false
+
     const registration = await ensureServiceWorkerReady(10000)
 
     // Mevcut subscription varsa zaten OK

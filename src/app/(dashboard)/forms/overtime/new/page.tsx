@@ -770,6 +770,8 @@ export default function NewOvertimeFormPage() {
                   <th className="px-4 py-3">Mesai Nedeni</th>
                   <th className="px-4 py-3">Servis Güzergahı</th>
                   <th className="px-4 py-3">Hedef Üretim</th>
+                  <th className="px-4 py-3">Hedef Adet</th>
+                  <th className="px-4 py-3">Gerçekleşen Üretim</th>
                 </tr>
               </thead>
               <tbody>
@@ -791,6 +793,8 @@ export default function NewOvertimeFormPage() {
                       <td className="px-4 py-3 text-gray-600">{detail?.mesaiNedeni || person.gorev || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.serviceRoute || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.targetProduction || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{detail?.hedefAdet || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{detail?.actualProduction || "-"}</td>
                     </tr>
                   )
                 })}

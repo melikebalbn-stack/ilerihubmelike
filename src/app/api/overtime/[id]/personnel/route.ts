@@ -62,7 +62,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!access.allowed) return apiError(access.reason!, 403)
 
     const body = await request.json()
-    const { personnelId: targetPersonnelId, workDepartment, serviceRoute, targetProduction, mesaiNedeni } = body
+    const { personnelId: targetPersonnelId, workDepartment, serviceRoute, targetProduction, hedefAdet, mesaiNedeni } = body
 
     if (!targetPersonnelId || !workDepartment) {
       return apiBadRequest('personnelId ve workDepartment alanları zorunludur')
@@ -82,6 +82,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         workDepartment,
         serviceRoute: serviceRoute || null,
         targetProduction: targetProduction || null,
+        // FIX: sonradan eklenen personel de hedefAdet taşıyabilsin (CREATE ile aynı
+        // validasyon; boş/geçersiz → null).
+        hedefAdet:
+          hedefAdet != null &&
+          Number.isFinite(Number(hedefAdet)) &&
+          Number(hedefAdet) >= 0
+            ? Math.trunc(Number(hedefAdet))
+            : null,
         mesaiNedeni: mesaiNedeni?.trim() || null,
       },
     })

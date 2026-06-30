@@ -118,6 +118,7 @@ export default function OvertimeDetailPage() {
   const [personnelItemsLoading, setPersonnelItemsLoading] = useState(false)
   const [personnelSearch, setPersonnelSearch] = useState("")
   const [addWorkDept, setAddWorkDept] = useState("")
+  const [addHedefAdet, setAddHedefAdet] = useState("")
 
   // Bölümler yüklenince varsayılan workDept seç
   useEffect(() => {
@@ -159,7 +160,13 @@ export default function OvertimeDetailPage() {
       const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personnelId: personnelItemId, workDepartment: addWorkDept, serviceRoute: targetPerson?.serviceRoute || null }),
+        body: JSON.stringify({
+          personnelId: personnelItemId,
+          workDepartment: addWorkDept,
+          serviceRoute: targetPerson?.serviceRoute || null,
+          // FIX: sonradan eklenen personel için hedef adet (boşsa null).
+          hedefAdet: addHedefAdet ? Number(addHedefAdet) : null,
+        }),
       })
       if (res.__authHandled) return
       if (!res.ok) {
@@ -168,6 +175,7 @@ export default function OvertimeDetailPage() {
       }
       const updated = await res.json()
       setForm(updated)
+      setAddHedefAdet("")
       toast.success("Personel eklendi")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bir hata oluştu")
@@ -606,6 +614,15 @@ export default function OvertimeDetailPage() {
                   <option key={b} value={b}>{b}</option>
                 ))}
               </Select>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                placeholder="Hedef Adet"
+                value={addHedefAdet}
+                onChange={(e) => setAddHedefAdet(e.target.value)}
+                className="w-32"
+              />
               <Button
                 variant="ghost"
                 size="sm"

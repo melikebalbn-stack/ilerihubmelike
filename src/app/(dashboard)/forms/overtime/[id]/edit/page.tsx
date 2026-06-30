@@ -29,6 +29,7 @@ interface PersonnelDetail {
   workDepartment: string
   serviceRoute: string
   targetProduction: string
+  hedefAdet: string // sayısal performans hedefi (string state; gönderirken Number'a çevrilir)
   actualProduction: string
   mesaiNedeni: string
 }
@@ -147,6 +148,8 @@ export default function EditOvertimeFormPage() {
             workDepartment: p.workDepartment || departments[0] || "",
             serviceRoute: p.serviceRoute || "",
             targetProduction: p.targetProduction || "",
+            // FIX: mevcut hedefAdet'i state'e doldur (null ise ""), düzenlemede görünsün.
+            hedefAdet: p.hedefAdet != null ? String(p.hedefAdet) : "",
             actualProduction: p.actualProduction || "",
             mesaiNedeni: p.mesaiNedeni || "",
           }
@@ -193,6 +196,7 @@ export default function EditOvertimeFormPage() {
             workDepartment: resolveDefaultDepartment(person.bolum, departments),
             serviceRoute: person.serviceRoute || "",
             targetProduction: "",
+            hedefAdet: "",
             actualProduction: "",
             mesaiNedeni: "",
           },
@@ -296,6 +300,10 @@ export default function EditOvertimeFormPage() {
             resolveDefaultDepartment(p.bolum, departments),
           serviceRoute: personnelDetails[p.id]?.serviceRoute || null,
           targetProduction: personnelDetails[p.id]?.targetProduction || null,
+          // FIX: hedefAdet'i de gönder (boşsa null) — düzenlemede korunsun.
+          hedefAdet: personnelDetails[p.id]?.hedefAdet
+            ? Number(personnelDetails[p.id]!.hedefAdet)
+            : null,
           mesaiNedeni: personnelDetails[p.id]?.mesaiNedeni?.trim() || null,
         })),
       }
@@ -702,6 +710,19 @@ export default function EditOvertimeFormPage() {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Hedef Adet
+                          </label>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min="0"
+                            placeholder="Ör: 50"
+                            value={detail.hedefAdet}
+                            onChange={(e) => updateDetail(person.id, "hedefAdet", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
                             Gerçekleşen Üretim
                           </label>
                           <Input
@@ -796,6 +817,7 @@ export default function EditOvertimeFormPage() {
                   <th className="px-4 py-3">Mesai Nedeni</th>
                   <th className="px-4 py-3">Servis Güzergahı</th>
                   <th className="px-4 py-3">Hedef Üretim</th>
+                  <th className="px-4 py-3">Hedef Adet</th>
                 </tr>
               </thead>
               <tbody>
@@ -817,6 +839,7 @@ export default function EditOvertimeFormPage() {
                       <td className="px-4 py-3 text-gray-600">{detail?.mesaiNedeni || person.gorev || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.serviceRoute || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.targetProduction || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{detail?.hedefAdet || "-"}</td>
                     </tr>
                   )
                 })}

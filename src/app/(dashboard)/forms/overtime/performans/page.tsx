@@ -24,6 +24,7 @@ type PerfData = {
   date: string | null
   genel: { hedef: number; gerceklesen: number; yuzde: number | null }
   bolumler: Bolum[]
+  noAccess?: boolean // FAZ-B2b: yetkili olduğu bölüm yok (boş kapsam)
 }
 
 // Performans eşiği renkleri: <70 kırmızı, 70-89 sarı, >=90 yeşil
@@ -89,6 +90,12 @@ export default function OvertimePerformancePage() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
+      ) : data?.noAccess ? (
+        <Card>
+          <CardContent className="py-16 text-center text-muted-foreground">
+            Bu rapor için yetkili olduğunuz bir bölüm bulunmuyor.
+          </CardContent>
+        </Card>
       ) : !data || data.bolumler.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">

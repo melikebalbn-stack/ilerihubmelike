@@ -27,8 +27,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ date: null, genel: { hedef: 0, gerceklesen: 0, yuzde: null }, bolumler: [] })
   }
 
-  // PR-FAZ2A: kullanıcı yalnız görünür bölümlerini görür (boş/admin → tümü)
+  // FAZ-B2b: undefined → tümü; [] → yetkili bölüm yok (noAccess); [adlar] → kapsam.
   const allowedDepts = await resolveAllowedDepts(userId)
+  if (Array.isArray(allowedDepts) && allowedDepts.length === 0) {
+    return NextResponse.json({
+      date: date.toISOString().slice(0, 10),
+      genel: { hedef: 0, gerceklesen: 0, yuzde: null },
+      bolumler: [],
+      noAccess: true,
+    })
+  }
   const data = await getDailyPerformance(date, allowedDepts)
   return NextResponse.json(data)
 }

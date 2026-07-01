@@ -93,6 +93,7 @@ export const PERMISSION_KEYS = {
   FORMS_ADMIN: 'forms.admin',
   FORMS_APPROVE: 'forms.approve',
   OVERTIME_REPORT: 'overtime.report',
+  OVERTIME_REPORT_ALL: 'overtime.report.all',
 
   // === RECRUITMENT (strategic-hr/recruitment) ===
   RECRUITMENT_ADMIN: 'recruitment.admin',
@@ -196,6 +197,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'forms.admin': 'Form modüllerini yönet (visit-reports, overtime, project-bar)',
   'forms.approve': 'Form başvurularını onayla (departman müdürü dahil)',
   'overtime.report': 'Mesai üretim performans raporunu görüntüle',
+  'overtime.report.all': 'Mesai performans raporunda TÜM bölümleri gör (kapsam sınırsız)',
 
   'recruitment.admin': 'İşe alım tam yönetim (pozisyon/aday/talep)',
   'recruitment.view': 'İşe alım kendi departmanı görünürlük',

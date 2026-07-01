@@ -113,6 +113,7 @@ async function getDeptSubtreeNames(seedIds: string[]): Promise<string[]> {
 export async function resolveAllowedDepts(userId: string): Promise<string[] | undefined> {
   const perms = await getUserPermissions(userId)
   if (perms.has('forms.admin')) return undefined // (a) admin → tümü
+  if (perms.has('overtime.report.all')) return undefined // (a2) yönetim raporu → tümü (kapsam sınırsız)
 
   const u = await prisma.user.findUnique({
     where: { id: userId },

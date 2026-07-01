@@ -19,7 +19,10 @@ import { Pool } from 'pg'
 import { PrismaClient } from '../src/generated/prisma'
 
 const MAPPING: Record<string, string[]> = {
-  'overtime.report': ['super-admin', 'admin', 'departman-muduru', 'kalite-yoneticisi', 'uretim-planlama'],
+  // Sayfa erişimi + rapor içeriği. uretim-planlama omurgadan kapsanır; yonetim-raporu tümünü görür (.all ile).
+  'overtime.report': ['super-admin', 'admin', 'departman-muduru', 'kalite-yoneticisi', 'uretim-planlama', 'yonetim-raporu'],
+  // Kapsam sınırsız (TÜM bölümler) — yönetim haftalık raporu. super-admin zaten seed-roles ile tüm izinleri alır.
+  'overtime.report.all': ['yonetim-raporu'],
 }
 
 async function main() {

@@ -213,7 +213,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 /**
  * PUT: Personel gerçekleşen üretim bilgilerini güncelle
  * Sadece onaylanmış (APPROVED) formlarda güncellenebilir
- * Body: { personnel: [{ userId, actualProduction }] }
+ * Body: { personnel: [{ overtimePersonnelId, gerceklesenAdet, gerceklesenNote }] }
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
@@ -262,10 +262,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Personel listesi zorunludur')
     }
 
-    // Her personel için actualProduction + (PR-PERF) gerceklesenAdet/gerceklesenNote güncelle
+    // Her personel için (PR-PERF) gerceklesenAdet/gerceklesenNote güncelle
     const updatePromises = personnel.map(async (p: {
       overtimePersonnelId: string
-      actualProduction: string
       gerceklesenAdet?: string | number
       gerceklesenNote?: string
     }) => {
@@ -294,7 +293,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return prisma.overtimePersonnel.update({
         where: { id: existingPersonnel.id },
         data: {
-          actualProduction: p.actualProduction || null,
           gerceklesenAdet: adet,
           gerceklesenNote: p.gerceklesenNote?.trim() || null,
         },

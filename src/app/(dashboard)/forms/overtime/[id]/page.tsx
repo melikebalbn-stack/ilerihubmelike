@@ -21,7 +21,6 @@ interface Personnel {
   workDepartment: string
   serviceRoute: string | null
   targetProduction: string | null
-  actualProduction: string | null
   hedefAdet: number | null
   gerceklesenAdet: number | null
   gerceklesenNote: string | null
@@ -139,7 +138,7 @@ export default function OvertimeDetailPage() {
   const [isAuthorizedUser, setIsAuthorizedUser] = useState(false)
   const [editingActual, setEditingActual] = useState(false)
   const [actualValues, setActualValues] = useState<
-    Record<string, { actualProduction: string; gerceklesenAdet: string; gerceklesenNote: string }>
+    Record<string, { gerceklesenAdet: string; gerceklesenNote: string }>
   >({})
   const [savingActual, setSavingActual] = useState(false)
 
@@ -218,11 +217,10 @@ export default function OvertimeDetailPage() {
     if (!form) return
     const values: Record<
       string,
-      { actualProduction: string; gerceklesenAdet: string; gerceklesenNote: string }
+      { gerceklesenAdet: string; gerceklesenNote: string }
     > = {}
     form.personnel.forEach((p) => {
       values[p.id] = {
-        actualProduction: p.actualProduction || "",
         gerceklesenAdet: p.gerceklesenAdet != null ? String(p.gerceklesenAdet) : "",
         gerceklesenNote: p.gerceklesenNote || "",
       }
@@ -237,7 +235,6 @@ export default function OvertimeDetailPage() {
     try {
       const personnelData = Object.entries(actualValues).map(([overtimePersonnelId, v]) => ({
         overtimePersonnelId,
-        actualProduction: v.actualProduction,
         gerceklesenAdet: v.gerceklesenAdet,
         gerceklesenNote: v.gerceklesenNote,
       }))
@@ -698,7 +695,7 @@ export default function OvertimeDetailPage() {
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Adet</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    Gerçekleşen Üretim
+                    Gerçekleşen Adet
                     {canEditActual && !editingActual && (
                       <button
                         onClick={startEditingActual}
@@ -729,7 +726,6 @@ export default function OvertimeDetailPage() {
                     )}
                   </div>
                 </th>
-                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Gerçekleşen Adet</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Açıklama</th>
                 {canEditPersonnel && (
                   <th className="text-right py-3 px-2 font-medium text-muted-foreground w-16"></th>
@@ -749,27 +745,6 @@ export default function OvertimeDetailPage() {
                   <td className="py-3 px-2">{p.serviceRoute || "—"}</td>
                   <td className="py-3 px-2">{p.targetProduction || "—"}</td>
                   <td className="py-3 px-2">{p.hedefAdet != null ? p.hedefAdet : "—"}</td>
-                  <td className="py-3 px-2">
-                    {editingActual ? (
-                      <Input
-                        value={actualValues[p.id]?.actualProduction || ""}
-                        onChange={(e) =>
-                          setActualValues((prev) => ({
-                            ...prev,
-                            [p.id]: { ...prev[p.id], actualProduction: e.target.value },
-                          }))
-                        }
-                        placeholder="Üretim girin..."
-                        className="h-8 w-32 text-sm"
-                      />
-                    ) : form.status === "APPROVED" ? (
-                      <span className={!p.actualProduction ? "text-muted-foreground italic" : ""}>
-                        {p.actualProduction || "Henüz girilmedi"}
-                      </span>
-                    ) : (
-                      p.actualProduction || "—"
-                    )}
-                  </td>
                   <td className="py-3 px-2">
                     {editingActual ? (
                       <Input

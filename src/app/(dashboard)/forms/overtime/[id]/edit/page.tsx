@@ -30,7 +30,6 @@ interface PersonnelDetail {
   serviceRoute: string
   targetProduction: string
   hedefAdet: string // sayısal performans hedefi (string state; gönderirken Number'a çevrilir)
-  actualProduction: string
   mesaiNedeni: string
 }
 
@@ -150,7 +149,6 @@ export default function EditOvertimeFormPage() {
             targetProduction: p.targetProduction || "",
             // FIX: mevcut hedefAdet'i state'e doldur (null ise ""), düzenlemede görünsün.
             hedefAdet: p.hedefAdet != null ? String(p.hedefAdet) : "",
-            actualProduction: p.actualProduction || "",
             mesaiNedeni: p.mesaiNedeni || "",
           }
         }
@@ -197,7 +195,6 @@ export default function EditOvertimeFormPage() {
             serviceRoute: person.serviceRoute || "",
             targetProduction: "",
             hedefAdet: "",
-            actualProduction: "",
             mesaiNedeni: "",
           },
         }))
@@ -719,16 +716,6 @@ export default function EditOvertimeFormPage() {
                             placeholder="Ör: 50"
                             value={detail.hedefAdet}
                             onChange={(e) => updateDetail(person.id, "hedefAdet", e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Gerçekleşen Üretim
-                          </label>
-                          <Input
-                            placeholder="Mesai sonrası girilecek"
-                            value={detail.actualProduction}
-                            onChange={(e) => updateDetail(person.id, "actualProduction", e.target.value)}
                           />
                         </div>
                       </div>

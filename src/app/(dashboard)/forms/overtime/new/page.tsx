@@ -29,7 +29,6 @@ interface PersonnelDetail {
   workDepartment: string
   serviceRoute: string
   targetProduction: string
-  actualProduction: string
   hedefAdet: string // sayısal performans hedefi (string state; gönderirken Number'a çevrilir)
   mesaiNedeni: string
 }
@@ -145,7 +144,6 @@ export default function NewOvertimeFormPage() {
             workDepartment: resolveDefaultDepartment(person.bolum, departments),
             serviceRoute: person.serviceRoute || "",
             targetProduction: "",
-            actualProduction: "",
             hedefAdet: "",
             mesaiNedeni: "",
           },
@@ -674,16 +672,6 @@ export default function NewOvertimeFormPage() {
                             onChange={(e) => updateDetail(person.id, "hedefAdet", e.target.value)}
                           />
                         </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Gerçekleşen Üretim
-                          </label>
-                          <Input
-                            placeholder="Mesai sonrası girilecek"
-                            value={detail.actualProduction}
-                            onChange={(e) => updateDetail(person.id, "actualProduction", e.target.value)}
-                          />
-                        </div>
                       </div>
 
                       <div>
@@ -771,7 +759,6 @@ export default function NewOvertimeFormPage() {
                   <th className="px-4 py-3">Servis Güzergahı</th>
                   <th className="px-4 py-3">Hedef Üretim</th>
                   <th className="px-4 py-3">Hedef Adet</th>
-                  <th className="px-4 py-3">Gerçekleşen Üretim</th>
                 </tr>
               </thead>
               <tbody>
@@ -794,7 +781,6 @@ export default function NewOvertimeFormPage() {
                       <td className="px-4 py-3 text-gray-600">{detail?.serviceRoute || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.targetProduction || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{detail?.hedefAdet || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{detail?.actualProduction || "-"}</td>
                     </tr>
                   )
                 })}

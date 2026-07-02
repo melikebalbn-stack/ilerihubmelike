@@ -62,6 +62,8 @@ export const YAKA_LABELS: Record<string, string> = {
 export const DIREKT_ENDIREKT_LABELS: Record<string, string> = {
   DIREKT: "Direkt",
   ENDIREKT: "Endirekt",
+  A_DIREKT: "A-Direkt",
+  B_ENDIREKT: "B-Endirekt",
 }
 
 export const ASANSOR_MEKANIK_LABELS: Record<string, string> = {

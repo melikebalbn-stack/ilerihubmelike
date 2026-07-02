@@ -300,28 +300,24 @@ export async function PATCH(
       const exitTurnoverType = String(body.exitTurnoverType).trim()
       const exitGeneralNote = body.exitGeneralNote ? String(body.exitGeneralNote) : null
 
-      // PR-B: Personnel güncelle (AYNEN) + AÇIK dönemi KAPAT = TEK transaction (dual-write)
-      const updated = await prisma.$transaction(async (tx) => {
-        const u = await tx.personnel.update({
-          where: { id },
-          data: {
-            aktif: false,
-            exitDate: exitDateVal,
-            exitParty,
-            exitCode,
-            exitReason,
-            exitRootCause,
-            exitTurnoverType,
-            exitGeneralNote,
-            exitRecordedById: user.id,
-            exitRecordedAt: recordedAt,
-          },
-        })
-        const openPeriod = await tx.employmentPeriod.findFirst({
-          where: { personnelId: id, cikisTarihi: null },
-          select: { id: true },
-        })
-        if (openPeriod) {
+      // PR-3 (tek-kaynak): Çıkış = SADECE açık dönemi kapat. Personnel.exit* YAZILMAZ,
+      // Personnel'de yalnız aktif:false. Açık dönem yoksa dönemsiz çıkış (leavers'da
+      // görünmez kayıt) yasak → hiçbir şey yazma, 409 dön.
+      try {
+        const updated = await prisma.$transaction(async (tx) => {
+          const openPeriod = await tx.employmentPeriod.findFirst({
+            where: { personnelId: id, cikisTarihi: null },
+            select: { id: true },
+          })
+          if (!openPeriod) {
+            const e = new Error('NO_OPEN_PERIOD') as Error & { code?: string }
+            e.code = 'NO_OPEN_PERIOD'
+            throw e
+          }
+          const u = await tx.personnel.update({
+            where: { id },
+            data: { aktif: false },
+          })
           await tx.employmentPeriod.update({
             where: { id: openPeriod.id },
             data: {
@@ -336,29 +332,35 @@ export async function PATCH(
               exitRecordedAt: recordedAt,
             },
           })
-        } else {
-          // Anomali: açık dönem yok → Personnel yine güncellendi; dönem UYDURULMAZ, sadece uyarı.
-          console.warn(`[PR-B] Personnel ${id} çıkış: açık EmploymentPeriod yok — dönem kapatılmadı (anomali)`)
+          return u
+        })
+
+        // KVKK: kayıt anahtarları + tarih saklanır, açıklama metni saklanmaz
+        await logAuditEvent({
+          action: 'PERSONNEL_DEACTIVATED',
+          actorId: user.id,
+          targetType: 'PERSONNEL',
+          targetId: id,
+          details: {
+            actorEmail: user.email,
+            sicilNo: personnel.sicilNo,
+            exitDate: body.exitDate,
+            exitCode: String(body.exitCode).trim(),
+            exitTurnoverType: String(body.exitTurnoverType).trim(),
+          },
+        })
+
+        return NextResponse.json({ ok: true, personnel: updated })
+      } catch (e) {
+        const code = (e as { code?: string })?.code
+        if (code === 'NO_OPEN_PERIOD') {
+          return NextResponse.json(
+            { error: 'Bu personelin açık istihdam dönemi yok — çıkış işlenemez. Önce istihdam geçmişini kontrol edin.' },
+            { status: 409 }
+          )
         }
-        return u
-      })
-
-      // KVKK: kayıt anahtarları + tarih saklanır, açıklama metni saklanmaz
-      await logAuditEvent({
-        action: 'PERSONNEL_DEACTIVATED',
-        actorId: user.id,
-        targetType: 'PERSONNEL',
-        targetId: id,
-        details: {
-          actorEmail: user.email,
-          sicilNo: personnel.sicilNo,
-          exitDate: body.exitDate,
-          exitCode: String(body.exitCode).trim(),
-          exitTurnoverType: String(body.exitTurnoverType).trim(),
-        },
-      })
-
-      return NextResponse.json({ ok: true, personnel: updated })
+        throw e
+      }
     }
 
     // SENARYO 2: Aktife geri alma (aktif: false → true)
@@ -390,7 +392,8 @@ export async function PATCH(
       }
 
       try {
-        // PR-B: Personnel güncelle (AYNEN, exit alanları null) + YENİ açık dönem aç = TEK tx.
+        // PR-3 (tek-kaynak): Reentry = YENİ açık dönem aç. Personnel'de yalnız aktif:true.
+        // exit* null'lama YOK (alanlar artık ne okunuyor ne yazılıyor; PR-4'te düşecek).
         // iseGirisTarihi'ye DOKUNULMAZ (ilk giriş korunur).
         const { updated, newPeriodId } = await prisma.$transaction(async (tx) => {
           // Guard: zaten açık dönem var mı? (raw constraint hatası yerine temiz 409)
@@ -407,15 +410,6 @@ export async function PATCH(
             where: { id },
             data: {
               aktif: true,
-              exitDate: null,
-              exitParty: null,
-              exitCode: null,
-              exitReason: null,
-              exitRootCause: null,
-              exitTurnoverType: null,
-              exitGeneralNote: null,
-              exitRecordedById: null,
-              exitRecordedAt: null,
             },
           })
           const np = await tx.employmentPeriod.create({
@@ -438,8 +432,6 @@ export async function PATCH(
           details: {
             actorEmail: user.email,
             sicilNo: personnel.sicilNo,
-            previousExitDate: personnel.exitDate,
-            previousExitCode: personnel.exitCode,
             newPeriodId,
           },
         })
@@ -474,9 +466,31 @@ export async function PATCH(
         return NextResponse.json({ error: 'Güncellenecek alan yok' }, { status: 400 })
       }
 
-      const updated = await prisma.personnel.update({
-        where: { id },
-        data,
+      // PR-3 (tek-kaynak): en son KAPALI dönemi güncelle. Personnel.exit* YAZILMAZ.
+      const lastClosed = await prisma.employmentPeriod.findFirst({
+        where: { personnelId: id, cikisTarihi: { not: null } },
+        orderBy: { cikisTarihi: 'desc' },
+        select: { id: true },
+      })
+      if (!lastClosed) {
+        return NextResponse.json(
+          { error: 'Düzenlenecek çıkış kaydı (kapalı dönem) bulunamadı' },
+          { status: 400 }
+        )
+      }
+
+      // Personnel exit alan adları → dönem alanları: exitDate → cikisTarihi, diğerleri aynı ad.
+      const periodData: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(data)) {
+        if (k === 'exitDate') periodData.cikisTarihi = v
+        else periodData[k] = v
+      }
+      periodData.exitRecordedById = user.id
+      periodData.exitRecordedAt = new Date()
+
+      await prisma.employmentPeriod.update({
+        where: { id: lastClosed.id },
+        data: periodData,
       })
 
       await logAuditEvent({
@@ -491,7 +505,7 @@ export async function PATCH(
         },
       })
 
-      return NextResponse.json({ ok: true, personnel: updated })
+      return NextResponse.json({ ok: true })
     }
 
     // SENARYO 4: Aktif personel için PATCH — bu endpoint sadece toggle akışı

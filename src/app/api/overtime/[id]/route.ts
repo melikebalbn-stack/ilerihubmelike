@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { OvertimeType } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { resolveAllowedDepts } from '@/lib/overtime-performance'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -69,17 +70,33 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return apiNotFound('Mesai formu bulunamadı')
     }
 
-    // Erişim kontrolü: admin, form sahibi, personel veya onaylayıcı olmalı
+    // Erişim kontrolü: admin, form sahibi, personel, onaylayıcı VEYA omurga birim
+    // sorumlusu (formda kendi bölümünün personeli varsa). Sorumlu, gerçekleşen adet
+    // girebilmek için formu açabilmeli.
     const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     const isCreator = form.createdById === user.id
     const isPersonnel = !!user.personnelId && form.personnel.some((p) => p.personnelId === user.personnelId)
     const isApprover = form.approvals.some((a) => a.approverId === user.id)
 
-    if (!isAdmin && !isCreator && !isPersonnel && !isApprover) {
+    // Omurga kapsamı (gerçekleşen adet satır-bazlı yetki + read erişimi):
+    // undefined = tümü (admin/report.all); [adlar] = o bölümler; [] = hiçbiri.
+    const allowed = await resolveAllowedDepts(user.id)
+    const currentUserAllowedDepts = allowed === undefined ? null : allowed
+    const normDept = (s?: string | null) => (s ?? '').trim().toLocaleUpperCase('tr-TR')
+    const isDeptResponsible =
+      allowed === undefined
+        ? true
+        : allowed.length > 0 &&
+          (() => {
+            const set = new Set(allowed.map(normDept))
+            return form.personnel.some((op) => set.has(normDept(op.workDepartment)))
+          })()
+
+    if (!isAdmin && !isCreator && !isPersonnel && !isApprover && !isDeptResponsible) {
       return apiError('Bu forma erişim yetkiniz yok', 403)
     }
 
-    return apiSuccess(form)
+    return apiSuccess({ ...form, currentUserAllowedDepts })
   } catch (error) {
     return apiError('Mesai formu detayı alınırken bir hata oluştu', 500, {
       endpoint: 'GET /api/overtime/[id]',

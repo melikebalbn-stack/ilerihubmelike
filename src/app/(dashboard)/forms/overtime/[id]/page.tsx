@@ -81,6 +81,9 @@ interface OvertimeFormDetail {
   }
   personnel: Personnel[]
   approvals: Approval[]
+  // Gerçekleşen adet satır-bazlı yetki: kullanıcının omurga bölümleri.
+  // null = tüm bölümler (admin/report.all); [adlar] = sadece o bölümler; [] = hiçbiri.
+  currentUserAllowedDepts: string[] | null
 }
 
 function getOvertimeTypeInfo(type: string) {
@@ -136,6 +139,10 @@ export default function OvertimeDetailPage() {
 
   // Actual production editing state
   const [isAuthorizedUser, setIsAuthorizedUser] = useState(false)
+  // Gerçekleşen adet satır-bazlı yetki — yalnız GET'ten set edilir; form mutasyonları
+  // (add/remove/actual PUT yanıtları bu alanı taşımaz) bunu bozmasın diye ayrı state.
+  // null = tüm bölümler (admin/report.all); [adlar] = sadece o bölümler; [] = hiçbiri.
+  const [allowedDepts, setAllowedDepts] = useState<string[] | null>(null)
   const [editingActual, setEditingActual] = useState(false)
   const [actualValues, setActualValues] = useState<
     Record<string, { gerceklesenAdet: string; gerceklesenNote: string }>
@@ -270,6 +277,7 @@ export default function OvertimeDetailPage() {
       }
       const data = await res.json()
       setForm(data)
+      setAllowedDepts(data.currentUserAllowedDepts ?? null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Form yüklenirken bir hata oluştu")
     } finally {
@@ -472,7 +480,16 @@ export default function OvertimeDetailPage() {
   const canEditPersonnel = showApprovalActions || (form.status === "DRAFT" && isCreator)
   const userRole = (session?.user as Record<string, unknown>)?.role as string | undefined
   const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN"
-  const canEditActual = form.status === "APPROVED" && (isCreator || isAdmin || isAuthorizedUser)
+  // Gerçekleşen adet yetkisi (backend PUT ile BİREBİR aynı mantık):
+  // fullAccess = admin/creator/global-authorized/omurga-tümü (currentUserAllowedDepts===null).
+  // Kısıtlı sorumlu → sadece kendi bölümü (allowedDeptSet) satırları.
+  const normDept = (s?: string | null) => (s ?? "").trim().toLocaleUpperCase("tr-TR")
+  const fullActualAccess = isCreator || isAdmin || isAuthorizedUser || allowedDepts === null
+  const allowedDeptSet = new Set((allowedDepts ?? []).map(normDept))
+  const canEditActualRow = (p: Personnel): boolean =>
+    fullActualAccess || allowedDeptSet.has(normDept(p.workDepartment))
+  const canEditActual =
+    form.status === "APPROVED" && (fullActualAccess || form.personnel.some(canEditActualRow))
   const existingPersonnelIds = new Set(form.personnel.map((p) => p.personnelId).filter(Boolean))
   const filteredAddPersonnel = allPersonnelItems.filter((pi) => {
     if (existingPersonnelIds.has(pi.id)) return false
@@ -746,7 +763,7 @@ export default function OvertimeDetailPage() {
                   <td className="py-3 px-2">{p.targetProduction || "—"}</td>
                   <td className="py-3 px-2">{p.hedefAdet != null ? p.hedefAdet : "—"}</td>
                   <td className="py-3 px-2">
-                    {editingActual ? (
+                    {editingActual && canEditActualRow(p) ? (
                       <Input
                         type="number"
                         inputMode="numeric"
@@ -770,7 +787,7 @@ export default function OvertimeDetailPage() {
                     )}
                   </td>
                   <td className="py-3 px-2">
-                    {editingActual ? (
+                    {editingActual && canEditActualRow(p) ? (
                       <Input
                         value={actualValues[p.id]?.gerceklesenNote || ""}
                         onChange={(e) =>

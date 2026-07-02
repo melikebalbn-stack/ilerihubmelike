@@ -2,6 +2,13 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
+import { resolveAllowedDepts } from '@/lib/overtime-performance'
+
+// Bölüm adı normalize: workDepartment ↔ omurga (getDeptSubtreeNames) adları güvenli
+// kıyas (Türkçe upper + trim). Exact-match'in süperseti; geçerli eşleşmeyi bozmaz.
+function normDept(s?: string | null): string {
+  return (s ?? '').trim().toLocaleUpperCase('tr-TR')
+}
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -241,7 +248,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Gerçekleşen üretim bilgisi sadece onaylanmış formlarda güncellenebilir')
     }
 
-    // Yetki kontrolü: form sahibi, admin veya mesai formu yetkili kullanıcısı
+    // Yetki kontrolü: form sahibi, admin, mesai formu yetkili kullanıcısı VEYA
+    // omurga birim sorumlusu (kendi bölümü satırları — satır-bazlı).
     const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
     const isCreator = form.createdById === user.id
     let isAuthorizedOvertimeUser = false
@@ -251,8 +259,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       })
       isAuthorizedOvertimeUser = !!authEntry
     }
-    if (!isCreator && !isAdmin && !isAuthorizedOvertimeUser) {
-      return apiError('Bu formu güncelleme yetkiniz yok', 403)
+
+    // Omurga kapsamı: undefined = tümü (admin/report.all), [] = hiçbiri, [adlar] = bölümler.
+    const allowed = await resolveAllowedDepts(user.id)
+    // fullAccess: tüm satırları yazabilir (mevcut davranış korunur).
+    const fullAccess = isAdmin || isCreator || isAuthorizedOvertimeUser || allowed === undefined
+    // Kısıtlı (omurga sorumlusu): sadece kendi bölümü satırları.
+    const allowedSet: Set<string> | null = fullAccess ? null : new Set((allowed ?? []).map(normDept))
+
+    if (!fullAccess) {
+      // Yetki VAR mı: form satırlarından en az biri sorumlunun bölümünde olmalı.
+      const hasAnyAllowedRow = form.personnel.some((op) => allowedSet!.has(normDept(op.workDepartment)))
+      if (!hasAnyAllowedRow) {
+        return apiError('Bu formu güncelleme yetkiniz yok', 403)
+      }
     }
 
     const body = await request.json()
@@ -278,6 +298,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       )
 
       if (!existingPersonnel) {
+        return null
+      }
+
+      // GÜVENLİK (satır-bazlı): kısıtlı sorumlu, allowed DIŞI satırı ASLA yazamaz → ATLA.
+      if (!fullAccess && !allowedSet!.has(normDept(existingPersonnel.workDepartment))) {
+        console.warn(
+          `[gerceklesen-omurga-yetki] user=${user.id} yetkisiz bölüm satırı atlandı: ` +
+            `overtimePersonnelId=${existingPersonnel.id} workDepartment=${existingPersonnel.workDepartment}`
+        )
         return null
       }
 

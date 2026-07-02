@@ -115,6 +115,20 @@ type PersonnelData = {
     firstEntryDate: string | null
     periodCount: number
   } | null
+  // PR-EXIT-READ-FROM-PERIODS: Çıkış Bilgileri kartı bu son kapalı dönemden beslenir.
+  lastClosedPeriod: {
+    girisTarihi: string | null
+    cikisTarihi: string | null
+    exitParty: string | null
+    exitCode: string | null
+    exitReason: string | null
+    exitRootCause: string | null
+    exitTurnoverType: string | null
+    exitGeneralNote: string | null
+    exitRecordedAt: string | null
+    exitRecordedBy: { name: string | null; email: string } | null
+    workingPeriod: { years: number; months: number; totalMonths: number } | null
+  } | null
 }
 
 // Erişim: src/lib/auth/personnel-access.ts (canAccessPersonnel) — tek kaynak.
@@ -840,13 +854,25 @@ export default function PersonnelDetailPage() {
       </Card>
 
       {/* PR-PERSONEL-CIKIS-FORMU: Pasif personel için çıkış bilgileri kartı */}
-      {!data.aktif && data.exitDate && (
+      {/* PR-EXIT-READ-FROM-PERIODS: kart en son KAPALI dönemden beslenir.
+          Kişi aktifse (çıkış-giriş yapmış) kart yine görünür, "Çıkış-Giriş (aktif)"
+          rozetiyle; pasifse "Ayrıldı". */}
+      {data.lastClosedPeriod && (
         <Card className="border-amber-500/40 bg-amber-50/40 dark:bg-amber-950/10">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <UserX className="h-5 w-5 text-amber-600" />
                 Çıkış Bilgileri
+                {data.aktif ? (
+                  <Badge variant="outline" className="border-sky-300 text-sky-700 font-normal">
+                    Çıkış-Giriş (aktif)
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="border-slate-300 text-slate-600 font-normal">
+                    Ayrıldı
+                  </Badge>
+                )}
               </span>
               {isAdmin && (
                 <Button
@@ -866,49 +892,49 @@ export default function PersonnelDetailPage() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Çıkış Tarihi</p>
-              <p className="font-medium">{formatDate(data.exitDate)}</p>
+              <p className="font-medium">{formatDate(data.lastClosedPeriod.cikisTarihi)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Çalışma Süresi</p>
               <p className="font-medium">
-                {data.workingPeriod
-                  ? `${data.workingPeriod.years} yıl ${data.workingPeriod.months} ay`
+                {data.lastClosedPeriod.workingPeriod
+                  ? `${data.lastClosedPeriod.workingPeriod.years} yıl ${data.lastClosedPeriod.workingPeriod.months} ay`
                   : "-"}
               </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Taraf</p>
-              <p className="font-medium">{data.exitParty || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitParty || "-"}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Çıkış Kodu</p>
-              <p className="font-medium">{data.exitCode || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitCode || "-"}</p>
             </div>
             <div className="md:col-span-2">
               <p className="text-sm text-muted-foreground">Çıkış Nedeni</p>
-              <p className="font-medium">{data.exitReason || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitReason || "-"}</p>
             </div>
             <div className="md:col-span-2">
               <p className="text-sm text-muted-foreground">Kök Neden</p>
-              <p className="font-medium">{data.exitRootCause || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitRootCause || "-"}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">İstenen / İstenmeyen</p>
-              <p className="font-medium">{data.exitTurnoverType || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitTurnoverType || "-"}</p>
             </div>
-            {data.exitGeneralNote && (
+            {data.lastClosedPeriod.exitGeneralNote && (
               <div className="md:col-span-2">
                 <p className="text-sm text-muted-foreground">Açıklama</p>
-                <p className="font-medium whitespace-pre-wrap">{data.exitGeneralNote}</p>
+                <p className="font-medium whitespace-pre-wrap">{data.lastClosedPeriod.exitGeneralNote}</p>
               </div>
             )}
             <div className="md:col-span-2 pt-2 border-t text-xs text-muted-foreground">
-              Kayıt eden: <strong>{data.exitRecordedBy?.name ?? data.exitRecordedBy?.email ?? "-"}</strong>
-              {data.exitRecordedAt && (
-                <> · {new Date(data.exitRecordedAt).toLocaleString("tr-TR")}</>
+              Kayıt eden: <strong>{data.lastClosedPeriod.exitRecordedBy?.name ?? data.lastClosedPeriod.exitRecordedBy?.email ?? "-"}</strong>
+              {data.lastClosedPeriod.exitRecordedAt && (
+                <> · {new Date(data.lastClosedPeriod.exitRecordedAt).toLocaleString("tr-TR")}</>
               )}
             </div>
-            {isAdmin && (
+            {!data.aktif && isAdmin && (
               <div className="md:col-span-2 pt-2">
                 <Button size="sm" variant="outline" onClick={() => setShowReactivateConfirm(true)}>
                   Aktife geri al

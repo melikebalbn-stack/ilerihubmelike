@@ -107,6 +107,7 @@ export async function GET(
             exitGeneralNote: true,
             entryRecordedAt: true,
             exitRecordedAt: true,
+            exitRecordedById: true,
           },
           orderBy: { girisTarihi: 'asc' },
         },
@@ -135,6 +136,65 @@ export async function GET(
         ? computeTenure(personnel.employmentPeriods)
         : null
 
+    // PR-EXIT-READ-FROM-PERIODS: Çıkış Bilgileri kartı artık en son KAPALI dönemden
+    // beslenir (Personnel.exit* PR-4'te düşecek). Çıkış-giriş yapmış aktif kişide de
+    // kapalı dönem kalır → kart görünür, "Çıkış-Giriş (aktif)" olarak işaretlenir.
+    const closedPeriods = personnel.employmentPeriods.filter((p) => p.cikisTarihi != null)
+    const lastClosed = closedPeriods.length
+      ? closedPeriods.reduce((a, b) =>
+          new Date(a.cikisTarihi as Date).getTime() >= new Date(b.cikisTarihi as Date).getTime() ? a : b
+        )
+      : null
+
+    let lastClosedPeriod: {
+      girisTarihi: Date
+      cikisTarihi: Date | null
+      exitParty: string | null
+      exitCode: string | null
+      exitReason: string | null
+      exitRootCause: string | null
+      exitTurnoverType: string | null
+      exitGeneralNote: string | null
+      exitRecordedAt: Date | null
+      exitRecordedBy: { name: string | null; email: string } | null
+      workingPeriod: { years: number; months: number; totalMonths: number } | null
+    } | null = null
+
+    if (lastClosed) {
+      let recordedBy: { name: string | null; email: string } | null = null
+      if (lastClosed.exitRecordedById) {
+        const u = await prisma.user.findUnique({
+          where: { id: lastClosed.exitRecordedById },
+          select: { name: true, email: true },
+        })
+        recordedBy = u ? { name: u.name, email: u.email } : null
+      }
+
+      let wp: { years: number; months: number; totalMonths: number } | null = null
+      if (lastClosed.girisTarihi && lastClosed.cikisTarihi) {
+        const s = new Date(lastClosed.girisTarihi)
+        const e = new Date(lastClosed.cikisTarihi)
+        let m = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
+        if (e.getDate() < s.getDate()) m -= 1
+        if (m < 0) m = 0
+        wp = { years: Math.floor(m / 12), months: m % 12, totalMonths: m }
+      }
+
+      lastClosedPeriod = {
+        girisTarihi: lastClosed.girisTarihi,
+        cikisTarihi: lastClosed.cikisTarihi,
+        exitParty: lastClosed.exitParty,
+        exitCode: lastClosed.exitCode,
+        exitReason: lastClosed.exitReason,
+        exitRootCause: lastClosed.exitRootCause,
+        exitTurnoverType: lastClosed.exitTurnoverType,
+        exitGeneralNote: lastClosed.exitGeneralNote,
+        exitRecordedAt: lastClosed.exitRecordedAt,
+        exitRecordedBy: recordedBy,
+        workingPeriod: wp,
+      }
+    }
+
     // PR-AUDIT-LOG-EXPANSION (KVKK): kişisel veriye erişim audit
     // Hassas alan KAYDEDİLMEZ — sadece referans id + sicilNo
     await logAuditEvent({
@@ -148,7 +208,7 @@ export async function GET(
       },
     })
 
-    return NextResponse.json({ ...personnel, workingPeriod, employmentSummary })
+    return NextResponse.json({ ...personnel, workingPeriod, employmentSummary, lastClosedPeriod })
   } catch (error) {
     console.error('Personel detayı alınırken hata:', error)
     return NextResponse.json({ error: 'Personel detayı alınırken bir hata oluştu' }, { status: 500 })

@@ -13,14 +13,17 @@ import { Button } from '@/components/ui/button'
 import { NativeSelect as Select } from '@/components/ui/select'
 import { UserMinus, Loader2, RefreshCcw, Search } from 'lucide-react'
 
+// PR-EXIT-READ-FROM-PERIODS: her satır = bir kapalı EmploymentPeriod (dönem).
 interface Leaver {
-  id: string
+  periodId: string
+  personnelId: string
   sicilNo: string
   adSoyad: string
   bolum: string | null
   gorev: string | null
-  iseGirisTarihi: string | null
-  exitDate: string | null
+  aktif: boolean
+  girisTarihi: string | null
+  cikisTarihi: string | null
   exitParty: string | null
   exitCode: string | null
   exitReason: string | null
@@ -28,8 +31,9 @@ interface Leaver {
   exitTurnoverType: string | null
   exitGeneralNote: string | null
   exitRecordedAt: string | null
-  exitRecordedBy: { id: string; name: string | null; email: string } | null
+  exitRecordedBy: { name: string | null; email: string } | null
   workingPeriod: { years: number; months: number; totalMonths: number } | null
+  status: 'LEFT' | 'REENTRY'
 }
 
 interface Department {
@@ -103,7 +107,7 @@ export default function LeaversListPage() {
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const total = leavers.length
     const thisMonth = leavers.filter(
-      (l) => l.exitDate && new Date(l.exitDate) >= thisMonthStart
+      (l) => l.cikisTarihi && new Date(l.cikisTarihi) >= thisMonthStart
     ).length
     const istenmeyen = leavers.filter((l) => l.exitTurnoverType === 'İSTENMEYEN').length
     const isverenCikarma = leavers.filter((l) => l.exitParty === 'İŞVEREN').length
@@ -129,7 +133,7 @@ export default function LeaversListPage() {
           Ayrılan Personel
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Aktifte olmayan + çıkış bilgisi kayıtlı personel (son 500 kayıt).
+          Kapanmış istihdam dönemleri — her çıkış ayrı satır (çıkış-giriş geçmişi dahil).
         </p>
       </div>
 
@@ -234,6 +238,7 @@ export default function LeaversListPage() {
                     <th className="px-2 py-2 text-left">Görev</th>
                     <th className="px-2 py-2 text-left">Çıkış</th>
                     <th className="px-2 py-2 text-left">Süre</th>
+                    <th className="px-2 py-2 text-left">Durum</th>
                     <th className="px-2 py-2 text-left">Taraf</th>
                     <th className="px-2 py-2 text-left">Kod</th>
                     <th className="px-2 py-2 text-left">Tip</th>
@@ -244,16 +249,27 @@ export default function LeaversListPage() {
                 <tbody>
                   {leavers.map((l) => (
                     <tr
-                      key={l.id}
-                      onClick={() => router.push(`/personnel/${l.id}`)}
+                      key={l.periodId}
+                      onClick={() => router.push(`/personnel/${l.personnelId}`)}
                       className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
                     >
                       <td className="px-2 py-2 font-mono text-[11px] text-slate-500">{l.sicilNo}</td>
                       <td className="px-2 py-2 font-medium text-slate-900">{l.adSoyad}</td>
                       <td className="px-2 py-2">{l.bolum ?? '-'}</td>
                       <td className="px-2 py-2 text-slate-600">{l.gorev ?? '-'}</td>
-                      <td className="px-2 py-2 tabular-nums">{formatTrDate(l.exitDate)}</td>
+                      <td className="px-2 py-2 tabular-nums">{formatTrDate(l.cikisTarihi)}</td>
                       <td className="px-2 py-2 text-slate-600">{workingPeriodText(l.workingPeriod)}</td>
+                      <td className="px-2 py-2">
+                        {l.status === 'REENTRY' ? (
+                          <Badge variant="outline" className="border-sky-300 text-sky-700 text-[10px] font-normal">
+                            Çıkış-Giriş
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-slate-300 text-slate-600 text-[10px] font-normal">
+                            Ayrıldı
+                          </Badge>
+                        )}
+                      </td>
                       <td className="px-2 py-2">
                         {l.exitParty && (
                           <Badge variant="outline" className="text-[10px] font-normal">

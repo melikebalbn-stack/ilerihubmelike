@@ -25,6 +25,7 @@ import {
   Eraser,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import {
@@ -94,12 +95,16 @@ interface LdapUser {
 }
 
 export default function MessagesPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
+  const router = useRouter()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [loading, setLoading] = useState(true)
+  // Sonsuz-loading sigortası: session gelmezse / hata olursa spinner kesilip bu ekran gösterilir.
+  const [loadError, setLoadError] = useState(false)
+  const initialLoadedRef = useRef(false)
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showNewConversation, setShowNewConversation] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -132,6 +137,7 @@ export default function MessagesPage() {
       if (response.ok) {
         const data = await response.json()
         setConversations(data)
+        setLoadError(false)
 
         // Seçili konuşmayı da güncelle (unread count vs için)
         if (selectedConversation) {
@@ -146,6 +152,7 @@ export default function MessagesPage() {
     } finally {
       if (!isPolling) {
         setLoading(false)
+        initialLoadedRef.current = true
       }
     }
   }
@@ -454,11 +461,35 @@ export default function MessagesPage() {
       .slice(0, 2)
   }
 
+  // İlk yükleme — session STATUS'una göre (sonsuz spinner fix):
+  //   loading → bekle; unauthenticated → login'e; authenticated+email → çek;
+  //   authenticated ama email yok → spinner'ı kes + hata ekranı.
   useEffect(() => {
-    if (session?.user?.email) {
-      fetchConversations()
+    if (status === "loading") return
+    if (status === "unauthenticated") {
+      router.push("/login")
+      return
     }
-  }, [session?.user?.email])
+    if (status === "authenticated" && session?.user?.email) {
+      fetchConversations()
+    } else {
+      setLoading(false)
+      setLoadError(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session?.user?.email])
+
+  // Güvenlik timeout'u: 10sn içinde ilk yükleme tamamlanmazsa spinner'ı kes,
+  // "yeniden dene" ekranı göster (session hiç gelmese bile sonsuz dönmesin).
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!initialLoadedRef.current) {
+        setLoading(false)
+        setLoadError(true)
+      }
+    }, 10000)
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (selectedConversation) {
@@ -714,6 +745,19 @@ export default function MessagesPage() {
               {loading ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+              ) : loadError ? (
+                <div className="text-center py-8 px-4">
+                  <MessageSquare className="h-12 w-12 mx-auto mb-2 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">Konuşmalar yüklenemedi. Oturumunuz sonlanmış olabilir.</p>
+                  <div className="flex items-center justify-center gap-2 mt-4">
+                    <Button variant="outline" size="sm" onClick={() => { setLoadError(false); setLoading(true); initialLoadedRef.current = false; fetchConversations() }}>
+                      Yeniden dene
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => router.push("/login")}>
+                      Giriş yap
+                    </Button>
+                  </div>
                 </div>
               ) : conversations.length === 0 ? (
                 <div className="text-center py-8 px-4">

@@ -8470,6 +8470,8 @@ enum YakaRengi {
 enum DirektEndirekt {
   DIREKT
   ENDIREKT
+  A_DIREKT
+  B_ENDIREKT
 }
 
 enum AsansorMekanik {

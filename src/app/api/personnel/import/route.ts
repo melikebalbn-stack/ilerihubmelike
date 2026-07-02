@@ -47,8 +47,25 @@ function normalizeDirektEndirekt(value: string | null | undefined): string | nul
     .replace(/Ş/g, 'S')
     .replace(/Ö/g, 'O')
     .replace(/Ç/g, 'C')
-  if (v.includes('DIREKT') && !v.includes('ENDIREKT')) return 'DIREKT'
-  if (v.includes('ENDIREKT') || v.includes('INDIREKT')) return 'ENDIREKT'
+  // Ayraçları (boşluk/tire/altçizgi) temizle: "A-DIREK" → "ADIREK", "EN DIREK" → "ENDIREK".
+  const t = v.replace(/[\s\-_]/g, '')
+  // NOT: "DIREK" alt-dizesi "ENDIREK" içinde de bulunur → DIREKT ayrımı hep !hasEndirek ile.
+  const hasDirek = t.includes('DIREK')
+  const hasEndirek = t.includes('ENDIREK') || t.includes('INDIREK')
+  const isA = t.startsWith('A')
+  const isB = t.startsWith('B')
+
+  // A/B ÖNCE (sıralama kritik). Excel: A hep direkt, B hep endirekt.
+  if (isA && hasDirek && !hasEndirek) return 'A_DIREKT'
+  if (isB && hasEndirek) return 'B_ENDIREKT'
+
+  // Beklenmedik kombinasyonlar (Excel'de görülmez) — güvenlik için logla, baz kurala düş.
+  if (isA && hasEndirek) console.warn(`[normalizeDirektEndirekt] beklenmedik A+ENDIREK: "${value}" → ENDIREKT`)
+  if (isB && hasDirek && !hasEndirek) console.warn(`[normalizeDirektEndirekt] beklenmedik B+DIREK: "${value}" → DIREKT`)
+
+  // Baz kurallar (A/B yok veya beklenmedik kombinasyon fallback'i)
+  if (hasDirek && !hasEndirek) return 'DIREKT'
+  if (hasEndirek) return 'ENDIREKT'
   return null
 }
 

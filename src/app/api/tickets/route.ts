@@ -117,25 +117,32 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    const tickets = await prisma.ticket.findMany({
-      where,
-      include: {
-        category: {
-          select: { id: true, name: true, color: true, icon: true }
-        },
-        assignedTeam: {
-          select: { id: true, name: true }
-        },
-        _count: {
-          select: { comments: true }
-        }
-      },
-      orderBy: [
-        { priority: 'desc' },
-        { createdAt: 'desc' }
-      ],
-      take: limit,
-    })
+    // B3 sıralama: AÇIK ticket'lar önce, sonra öncelik (desc), sonra en yeni.
+    // Prisma enum tek alanla "açık önce" sıralayamaz → açık/kapalı iki partition,
+    // her biri [priority desc, createdAt desc]; birleştir. Skip yok → top-N güvenli
+    // (limit açık grubu doldurmazsa kalanı kapalıdan al). Mevcut where.status'u
+    // ezmemek için AND ile kesişim.
+    const OPEN_STATUSES = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED']
+    const CLOSED_STATUSES = ['RESOLVED', 'CLOSED', 'CANCELLED']
+    const include = {
+      category: { select: { id: true, name: true, color: true, icon: true } },
+      assignedTeam: { select: { id: true, name: true } },
+      _count: { select: { comments: true } },
+    }
+    const orderBy = [{ priority: 'desc' as const }, { createdAt: 'desc' as const }]
+    const fetchPartition = (statuses: string[], take: number) =>
+      take <= 0
+        ? Promise.resolve([])
+        : prisma.ticket.findMany({
+            where: { AND: [where, { status: { in: statuses } }] },
+            include,
+            orderBy,
+            take,
+          })
+
+    const openTickets = await fetchPartition(OPEN_STATUSES, limit)
+    const closedTickets = await fetchPartition(CLOSED_STATUSES, limit - openTickets.length)
+    const tickets = [...openTickets, ...closedTickets]
 
     return NextResponse.json(tickets)
   } catch (error) {

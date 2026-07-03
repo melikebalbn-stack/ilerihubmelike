@@ -38,6 +38,7 @@ import {
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { TicketDetail } from "./_components/ticket-detail"
@@ -98,15 +99,11 @@ interface TicketStats {
 }
 
 export default function ITSupportPage() {
-  const { data: session, status } = useSession()
+  const { data: session } = useSession()
   const router = useRouter()
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [categories, setCategories] = useState<TicketCategory[]>([])
   const [stats, setStats] = useState<TicketStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  // Sonsuz-loading sigortası: session gelmezse / hata olursa spinner kesilip bu ekran gösterilir.
-  const [loadError, setLoadError] = useState(false)
-  const initialLoadedRef = useRef(false)
   // Detay modal: seçili ticket id (URL değişmez — sayfa yerine overlay).
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("my")
@@ -132,9 +129,8 @@ export default function ITSupportPage() {
   // PR-Y9c: saf RBAC, helpdesk.admin permission. Eski legacy (role/dept/ou fallback) kaldırıldı.
   const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
 
-  // Verileri yukle
+  // Verileri yukle (loading/error/timeout artık useAuthenticatedData'da)
   const fetchData = async () => {
-    setLoading(true)
     try {
       const [ticketsRes, categoriesRes, statsRes] = await Promise.all([
         fetch(`/api/tickets?viewMode=${activeTab}`),
@@ -144,7 +140,6 @@ export default function ITSupportPage() {
 
       if (ticketsRes.ok) {
         setTickets(await ticketsRes.json())
-        setLoadError(false)
       }
       if (categoriesRes.ok) {
         setCategories(await categoriesRes.json())
@@ -154,41 +149,23 @@ export default function ITSupportPage() {
       }
     } catch (error) {
       console.error("Veri yuklenemedi:", error)
-    } finally {
-      setLoading(false)
-      initialLoadedRef.current = true
     }
   }
 
-  // İlk yükleme — session STATUS'una göre (sonsuz spinner fix, messages ile aynı desen):
-  //   loading → bekle; unauthenticated → login'e; authenticated+email → çek;
-  //   authenticated ama email yok → spinner'ı kes + hata ekranı.
+  // İlk yükleme + auth-gate + timeout: ortak hook.
+  const { loading, loadError, retry } = useAuthenticatedData(fetchData)
+
+  // Sekme (activeTab) değişince veriyi yeniden çek (ilk mount hariç — onu hook yükler).
+  // retry() spinner gösterip fetchData'yı güncel activeTab ile yeniden çalıştırır (eski davranış).
+  const tabInitRef = useRef(true)
   useEffect(() => {
-    if (status === "loading") return
-    if (status === "unauthenticated") {
-      router.push("/login")
+    if (tabInitRef.current) {
+      tabInitRef.current = false
       return
     }
-    if (status === "authenticated" && session?.user?.email) {
-      fetchData()
-    } else {
-      setLoading(false)
-      setLoadError(true)
-    }
+    retry()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, session?.user?.email, activeTab])
-
-  // Güvenlik timeout'u: 10sn içinde ilk yükleme tamamlanmazsa spinner'ı kes + hata ekranı
-  // (session hiç gelmese bile sonsuz dönmesin).
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!initialLoadedRef.current) {
-        setLoading(false)
-        setLoadError(true)
-      }
-    }, 10000)
-    return () => clearTimeout(timer)
-  }, [])
+  }, [activeTab])
 
   // Modal açıkken Esc ile kapat + arka plan kaydırmayı kilitle.
   useEffect(() => {
@@ -225,7 +202,7 @@ export default function ITSupportPage() {
           location: "",
           assetInfo: "",
         })
-        fetchData()
+        retry()
       }
     } catch (error) {
       console.error("Ticket olusturulamadi:", error)
@@ -297,7 +274,7 @@ export default function ITSupportPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={retry} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Yenile
           </Button>
@@ -517,7 +494,7 @@ export default function ITSupportPage() {
                   <Headphones className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <p className="text-muted-foreground">Talepler yüklenemedi. Oturumunuz sonlanmış olabilir.</p>
                   <div className="flex items-center justify-center gap-2 mt-4">
-                    <Button variant="outline" onClick={() => { setLoadError(false); setLoading(true); initialLoadedRef.current = false; fetchData() }}>
+                    <Button variant="outline" onClick={retry}>
                       Yeniden dene
                     </Button>
                     <Button variant="outline" onClick={() => router.push("/login")}>

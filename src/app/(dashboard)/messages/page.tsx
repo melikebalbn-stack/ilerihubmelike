@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import {
@@ -95,16 +96,12 @@ interface LdapUser {
 }
 
 export default function MessagesPage() {
-  const { data: session, status } = useSession()
+  const { data: session } = useSession()
   const router = useRouter()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
-  const [loading, setLoading] = useState(true)
-  // Sonsuz-loading sigortası: session gelmezse / hata olursa spinner kesilip bu ekran gösterilir.
-  const [loadError, setLoadError] = useState(false)
-  const initialLoadedRef = useRef(false)
   const [sendingMessage, setSendingMessage] = useState(false)
   const [showNewConversation, setShowNewConversation] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -130,14 +127,13 @@ export default function MessagesPage() {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const lastMessageCountRef = useRef(0)
 
-  // Konusmalari yukle
-  const fetchConversations = async (isPolling = false) => {
+  // Konusmalari yukle (loading/error/timeout artık useAuthenticatedData'da)
+  const fetchConversations = async () => {
     try {
       const response = await fetch("/api/messages/conversations")
       if (response.ok) {
         const data = await response.json()
         setConversations(data)
-        setLoadError(false)
 
         // Seçili konuşmayı da güncelle (unread count vs için)
         if (selectedConversation) {
@@ -149,11 +145,6 @@ export default function MessagesPage() {
       }
     } catch (error) {
       console.error("Konusmalar yuklenemedi:", error)
-    } finally {
-      if (!isPolling) {
-        setLoading(false)
-        initialLoadedRef.current = true
-      }
     }
   }
 
@@ -461,35 +452,9 @@ export default function MessagesPage() {
       .slice(0, 2)
   }
 
-  // İlk yükleme — session STATUS'una göre (sonsuz spinner fix):
-  //   loading → bekle; unauthenticated → login'e; authenticated+email → çek;
-  //   authenticated ama email yok → spinner'ı kes + hata ekranı.
-  useEffect(() => {
-    if (status === "loading") return
-    if (status === "unauthenticated") {
-      router.push("/login")
-      return
-    }
-    if (status === "authenticated" && session?.user?.email) {
-      fetchConversations()
-    } else {
-      setLoading(false)
-      setLoadError(true)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, session?.user?.email])
-
-  // Güvenlik timeout'u: 10sn içinde ilk yükleme tamamlanmazsa spinner'ı kes,
-  // "yeniden dene" ekranı göster (session hiç gelmese bile sonsuz dönmesin).
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!initialLoadedRef.current) {
-        setLoading(false)
-        setLoadError(true)
-      }
-    }, 10000)
-    return () => clearTimeout(timer)
-  }, [])
+  // İlk yükleme + auth-gate + timeout + konuşma polling: ortak hook.
+  // (loading/loadError/timeout/polling deseni artık useAuthenticatedData'da.)
+  const { loading, loadError, retry } = useAuthenticatedData(fetchConversations, { pollMs: 3000 })
 
   useEffect(() => {
     if (selectedConversation) {
@@ -497,18 +462,6 @@ export default function MessagesPage() {
       fetchMessages(selectedConversation.id)
     }
   }, [selectedConversation?.id])
-
-  // Polling - her 3 saniyede mesajlari ve konuşmaları kontrol et
-  useEffect(() => {
-    if (!session?.user?.email) return
-
-    // Konuşma listesi polling (her 3 saniye)
-    const conversationsInterval = setInterval(() => {
-      fetchConversations(true)
-    }, 3000)
-
-    return () => clearInterval(conversationsInterval)
-  }, [session?.user?.email, selectedConversation?.id])
 
   // Seçili konuşma için mesaj polling (her 3 saniye)
   useEffect(() => {
@@ -751,7 +704,7 @@ export default function MessagesPage() {
                   <MessageSquare className="h-12 w-12 mx-auto mb-2 text-muted-foreground opacity-50" />
                   <p className="text-muted-foreground">Konuşmalar yüklenemedi. Oturumunuz sonlanmış olabilir.</p>
                   <div className="flex items-center justify-center gap-2 mt-4">
-                    <Button variant="outline" size="sm" onClick={() => { setLoadError(false); setLoading(true); initialLoadedRef.current = false; fetchConversations() }}>
+                    <Button variant="outline" size="sm" onClick={retry}>
                       Yeniden dene
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => router.push("/login")}>

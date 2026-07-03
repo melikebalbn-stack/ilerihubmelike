@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
+import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -94,13 +95,10 @@ function getTicketTypeLabel(type: string) {
  */
 export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?: () => void }) {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { data: session } = useSession()
 
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [comments, setComments] = useState<TicketComment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
-  const initialLoadedRef = useRef(false)
   const [updatingTicket, setUpdatingTicket] = useState(false)
   const [newComment, setNewComment] = useState("")
   const [sendingComment, setSendingComment] = useState(false)
@@ -108,23 +106,14 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
 
   const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
 
+  // loading/error/timeout artık useAuthenticatedData'da. Hata durumunda throw eder →
+  // hook loadError'ı set eder (eski !ok / catch → setLoadError(true) davranışı korunur).
   const fetchTicket = async () => {
-    try {
-      const res = await fetch(`/api/tickets/${ticketId}`)
-      if (res.ok) {
-        const data: Ticket = await res.json()
-        setTicket(data)
-        setComments(data.comments ?? [])
-        setLoadError(false)
-      } else {
-        setLoadError(true)
-      }
-    } catch {
-      setLoadError(true)
-    } finally {
-      setLoading(false)
-      initialLoadedRef.current = true
-    }
+    const res = await fetch(`/api/tickets/${ticketId}`)
+    if (!res.ok) throw new Error("Talep yüklenemedi")
+    const data: Ticket = await res.json()
+    setTicket(data)
+    setComments(data.comments ?? [])
   }
 
   const fetchAssignableUsers = async () => {
@@ -136,31 +125,24 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
     }
   }
 
+  // İlk yükleme + auth-gate + timeout: ortak hook.
+  // fetchAssignableUsers eski koddaki gibi bağımsız (fetchTicket başarısız olsa da çalışır);
+  // loading/error'ı fetchTicket (throw ederek) belirler.
+  const { loading, loadError, retry } = useAuthenticatedData(async () => {
+    if (isITStaff) fetchAssignableUsers()
+    await fetchTicket()
+  })
+
+  // ticketId değişince (aynı instance yeniden kullanılırsa) veriyi yeniden çek.
+  const ticketIdInitRef = useRef(true)
   useEffect(() => {
-    if (status === "loading") return
-    if (status === "unauthenticated") {
-      router.push("/login")
+    if (ticketIdInitRef.current) {
+      ticketIdInitRef.current = false
       return
     }
-    if (status === "authenticated" && session?.user?.email) {
-      fetchTicket()
-      if (isITStaff) fetchAssignableUsers()
-    } else {
-      setLoading(false)
-      setLoadError(true)
-    }
+    retry()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, session?.user?.email, ticketId])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!initialLoadedRef.current) {
-        setLoading(false)
-        setLoadError(true)
-      }
-    }, 10000)
-    return () => clearTimeout(timer)
-  }, [])
+  }, [ticketId])
 
   const handleUpdateTicket = async (updates: Partial<Ticket>) => {
     if (!ticket) return
@@ -228,7 +210,7 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
         <Headphones className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
         <p className="text-muted-foreground">Talep yüklenemedi. Bulunamadı ya da oturumunuz sonlanmış olabilir.</p>
         <div className="flex items-center justify-center gap-2 mt-4">
-          <Button variant="outline" onClick={() => { setLoadError(false); setLoading(true); initialLoadedRef.current = false; fetchTicket() }}>
+          <Button variant="outline" onClick={retry}>
             Yeniden dene
           </Button>
           <Button variant="outline" onClick={() => (onClose ? onClose() : router.push("/it-support"))}>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useSession } from "next-auth/react"
+import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { useEffect, useState } from "react"
 import { redirect } from "next/navigation"
 import {
@@ -153,7 +154,6 @@ export default function BackupsPage() {
   const [backups, setBackups] = useState<BackupLog[]>([])
   const [schedules, setSchedules] = useState<BackupSchedule[]>([])
   const [stats, setStats] = useState<BackupStats | null>(null)
-  const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
@@ -181,7 +181,7 @@ export default function BackupsPage() {
       .catch(() => setRestoreEnabled(false))
   }, [session?.user?.email])
 
-  // Verileri yükle
+  // Verileri yükle (loading/auth-gate/timeout + 10sn polling artık useAuthenticatedData'da)
   const fetchData = async () => {
     try {
       const [backupsRes, schedulesRes, statsRes] = await Promise.all([
@@ -206,19 +206,11 @@ export default function BackupsPage() {
       }
     } catch (error) {
       console.error("Veri yükleme hatası:", error)
-    } finally {
-      setLoading(false)
     }
   }
 
-  useEffect(() => {
-    if (session?.user?.email) {
-      fetchData()
-      // Her 10 saniyede bir güncelle (devam eden yedekler için)
-      const interval = setInterval(fetchData, 10000)
-      return () => clearInterval(interval)
-    }
-  }, [session?.user?.email])
+  // Her 10 saniyede bir güncelle (devam eden yedekler için) — polling hook'ta.
+  const { loading } = useAuthenticatedData(fetchData, { pollMs: 10000 })
 
   // Yedek oluştur
   const createBackup = async () => {

@@ -8020,6 +8020,10 @@ model OvertimeForm {
   id     String @id @default(cuid())
   formNo String @unique // OT-2026-001
 
+  // Vardiya Faz 1: form tipi ayrımı (MESAI çekirdeği paylaşımlı). Default MESAI →
+  // mevcut tüm kayıtlar otomatik MESAI, mesai davranışı bozulmaz.
+  formTipi     FormTipi     @default(MESAI)
+
   // Mesai bilgileri
   overtimeType OvertimeType
   date         DateTime     @db.Date
@@ -8048,6 +8052,11 @@ model OvertimeForm {
   @@index([status])
   @@index([createdById])
   @@index([date])
+}
+
+enum FormTipi {
+  MESAI
+  VARDIYA
 }
 
 enum OvertimeType {

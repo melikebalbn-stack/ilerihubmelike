@@ -1,15 +1,19 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
-import { OvertimeType, OvertimeStatus } from '@/generated/prisma'
+import { OvertimeType, OvertimeStatus, FormTipi } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 
+// Vardiya Faz 1: gece vardiyası sabit penceresi (Pzt-Cuma 21:00 → ertesi 07:00).
+const VARDIYA_START = '21:00'
+const VARDIYA_END = '07:00'
+
 /**
- * Form numarası oluştur: OT-YYYY-NNN
+ * Form numarası oluştur: MESAI → OT-YYYY-NNN, VARDIYA → VRD-YYYY-NNN
  */
-async function generateFormNo(): Promise<string> {
+async function generateFormNo(formTipi: FormTipi): Promise<string> {
   const year = new Date().getFullYear()
-  const prefix = `OT-${year}-`
+  const prefix = `${formTipi === 'VARDIYA' ? 'VRD' : 'OT'}-${year}-`
 
   const lastForm = await prisma.overtimeForm.findFirst({
     where: { formNo: { startsWith: prefix } },
@@ -46,8 +50,14 @@ export async function GET(request: NextRequest) {
 
     const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
 
+    // Vardiya Faz 1: formTipi ile mesai/vardiya ayrımı. Verilmezse MESAI (geriye
+    // uyum — mevcut mesai listesi vardiya kayıtlarını GÖRMESİN).
+    const formTipiParam = searchParams.get('formTipi')
+    const formTipi: FormTipi =
+      formTipiParam === 'VARDIYA' ? 'VARDIYA' : 'MESAI'
+
     // Filtre koşulları
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { formTipi }
 
     // Admin değilse sadece kendi formlarını veya onaylayıcı olduğu formları göster
     if (!isAdmin) {
@@ -196,6 +206,10 @@ export async function POST(request: NextRequest) {
       personnel,
     } = body
 
+    // Vardiya Faz 1: form tipi (default MESAI → mesai davranışı değişmez).
+    const formTipi: FormTipi = body.formTipi === 'VARDIYA' ? 'VARDIYA' : 'MESAI'
+    const isVardiya = formTipi === 'VARDIYA'
+
     // Zorunlu alan kontrolleri
     if (!overtimeType || !date) {
       return apiBadRequest('Mesai türü ve tarih alanları zorunludur')
@@ -204,6 +218,15 @@ export async function POST(request: NextRequest) {
     // Mesai türü doğrulama
     if (!Object.values(OvertimeType).includes(overtimeType as OvertimeType)) {
       return apiBadRequest('Geçersiz mesai türü')
+    }
+
+    // Vardiya: tarih Pzt-Cuma olmalı (gece vardiyası hafta içi). getUTCDay 1-5.
+    if (isVardiya) {
+      const d = new Date(date)
+      const dow = d.getUTCDay() // 0=Paz .. 6=Cmt
+      if (dow === 0 || dow === 6) {
+        return apiBadRequest('Vardiya yalnızca Pazartesi-Cuma günleri için oluşturulabilir')
+      }
     }
 
     // Personel kontrolü
@@ -221,13 +244,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Saat aralığı kontrolü (tam gün değilse)
-    if (!isFullDay && (!startTime || !endTime)) {
+    // Vardiya: gece penceresi sabit (21:00→07:00); MESAI: mevcut saat-aralığı kuralı.
+    const effIsFullDay = isVardiya ? false : isFullDay
+    const effStartTime = isVardiya ? VARDIYA_START : startTime
+    const effEndTime = isVardiya ? VARDIYA_END : endTime
+
+    // Vardiya Faz 2: 10 kişiyi geçen VARDIYA'da GM onayı ZORUNLU (client bypass'a karşı
+    // sunucuda enforce). MESAI'de dokunulmaz — sendToGM body'den gelir.
+    const effSendToGM = isVardiya && personnel.length > 10 ? true : sendToGM
+
+    // Saat aralığı kontrolü (tam gün değilse) — vardiyada sabit olduğu için atlanır.
+    if (!isVardiya && !isFullDay && (!startTime || !endTime)) {
       return apiBadRequest('Saat aralığı seçildiğinde başlangıç ve bitiş saati zorunludur')
     }
 
-    // Form numarası oluştur
-    const formNo = await generateFormNo()
+    // Form numarası oluştur (tip bazlı prefix)
+    const formNo = await generateFormNo(formTipi)
 
     // Formu ve personelleri tek transaction ile oluştur
     // Seçim sırasını DETERMİNİSTİK koru: createMany/nested-create aynı ms'te
@@ -238,13 +270,14 @@ export async function POST(request: NextRequest) {
     const form = await prisma.overtimeForm.create({
       data: {
         formNo,
+        formTipi,
         overtimeType: overtimeType as OvertimeType,
         date: new Date(date),
-        isFullDay,
-        startTime: isFullDay ? null : startTime,
-        endTime: isFullDay ? null : endTime,
+        isFullDay: effIsFullDay,
+        startTime: effIsFullDay ? null : effStartTime,
+        endTime: effIsFullDay ? null : effEndTime,
         description: description || null,
-        sendToGM,
+        sendToGM: effSendToGM,
         createdById: user.id,
         status: 'DRAFT',
         currentStep: 0,

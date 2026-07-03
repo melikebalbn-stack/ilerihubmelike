@@ -5,6 +5,10 @@ import { sendPushToUser } from '@/lib/push-notifications'
 import { requireUser } from '@/lib/auth/require-user'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { buildVardiyaServiceMailHtml, buildVardiyaServiceMailText } from '@/lib/email-templates/vardiya-service'
+
+// Vardiya Faz 3: son onayda servis listesi maili alıcısı (İnsan Varlıkları).
+const VARDIYA_SERVICE_MAIL_TO = { email: 'insanvarliklari@ilerigroup.com', name: 'İnsan Varlıkları' }
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -46,6 +50,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         },
         createdBy: {
           select: { id: true, name: true, email: true },
+        },
+        // Vardiya Faz 3: final onayda servis listesi maili için personel + güzergah/durak.
+        personnel: {
+          include: {
+            personnel: { select: { adSoyad: true, serviceRoute: true, serviceStop: true } },
+          },
         },
       },
     })
@@ -192,6 +202,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             // Bildirim oluşturulamazsa devam et
           }
 
+          // Vardiya Faz 3: YALNIZ VARDIYA final onayında İnsan Varlıkları'na servis
+          // güzergahı listesi maili. Güzergah önceliği: form satırı (OvertimePersonnel.
+          // serviceRoute) → Personnel.serviceRoute → '-'. Durak: Personnel.serviceStop.
+          // MESAI'de mail: null (mevcut davranış birebir korunur).
+          const vardiyaMail =
+            form.formTipi === 'VARDIYA'
+              ? {
+                  kind: 'VARDIYA_SERVICE' as const,
+                  to: VARDIYA_SERVICE_MAIL_TO,
+                  subject: `Vardiya Servis Listesi — ${form.formNo}`,
+                  formNo: form.formNo,
+                  rows: form.personnel.map((op) => ({
+                    ad: op.personnel?.adSoyad ?? '-',
+                    guzergah: op.serviceRoute ?? op.personnel?.serviceRoute ?? '-',
+                    durak: op.personnel?.serviceStop ?? '-',
+                  })),
+                }
+              : null
+
           return {
             result,
             pushTarget: {
@@ -199,7 +228,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               title: 'Mesai Formu Onaylandı',
               body: `${form.formNo} numaralı mesai formunuz tamamen onaylandı.`,
             },
-            mail: null,
+            mail: vardiyaMail,
           }
         } else {
           // Sonraki adıma geç
@@ -373,8 +402,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Transaction sonrası mail (iade/red) — SMTP yan-etki tx DIŞINDA; hata akışı BOZMAZ.
     if (updatedForm.mail) {
+      const m = updatedForm.mail
       try {
-        const m = updatedForm.mail
+        // Vardiya Faz 3: final onay → İnsan Varlıkları'na servis güzergahı tablosu.
+        if (m.kind === 'VARDIYA_SERVICE') {
+          const text = buildVardiyaServiceMailText(m.formNo, m.rows)
+          const html = buildVardiyaServiceMailHtml(m.formNo, m.rows)
+          await sendEmail([m.to], m.subject, text, html)
+          return apiSuccess(updatedForm.result)
+        }
+
+        // Mevcut RETURNED/REJECTED maili (davranış aynen korunur).
         const link = ileriHubUrl(`/forms/overtime/${id}`)
         const iade = m.kind === 'RETURNED'
         const baslik = iade ? 'Mesai Formu Düzeltme İçin İade Edildi' : 'Mesai Formu Reddedildi'
@@ -398,7 +436,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   </td></tr></table></body></html>`
         await sendEmail([m.to], m.subject, text, html)
       } catch (e) {
-        console.error('[overtime-approve] iade/red maili gönderilemedi (akış etkilenmedi):', e)
+        console.error('[overtime-approve] onay bildirim maili gönderilemedi (akış etkilenmedi):', e)
       }
     }
 

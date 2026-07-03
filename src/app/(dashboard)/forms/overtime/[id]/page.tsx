@@ -11,6 +11,7 @@ import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments } from "@/lib/use-departments"
 import { useSession } from "next-auth/react"
@@ -62,6 +63,7 @@ interface Approval {
 interface OvertimeFormDetail {
   id: string
   formNo: string
+  formTipi?: "MESAI" | "VARDIYA"
   overtimeType: "SATURDAY" | "SUNDAY" | "WEEKDAY_EXTRA" | "HOLIDAY"
   date: string
   isFullDay: boolean
@@ -453,7 +455,7 @@ export default function OvertimeDetailPage() {
           <Link href="/forms/overtime">
             <Button variant="outline">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Mesai Formlarına Dön
+              Formlara Dön
             </Button>
           </Link>
         </div>
@@ -502,10 +504,10 @@ export default function OvertimeDetailPage() {
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/forms/overtime">
+          <Link href={form?.formTipi === "VARDIYA" ? "/forms/vardiya" : "/forms/overtime"}>
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Mesai Formları
+              {form?.formTipi === "VARDIYA" ? "Vardiya" : "Mesai"} Formları
             </Button>
           </Link>
           <div className="flex items-center gap-3">
@@ -522,7 +524,7 @@ export default function OvertimeDetailPage() {
         </div>
         {form.status === "DRAFT" && isCreator && (
           <div className="flex items-center gap-2">
-            <Link href={`/forms/overtime/${form.id}/edit`}>
+            <Link href={`${form?.formTipi === "VARDIYA" ? "/forms/vardiya" : "/forms/overtime"}/${form.id}/edit`}>
               <Button variant="outline" size="sm">
                 Düzenle
               </Button>
@@ -940,6 +942,18 @@ export default function OvertimeDetailPage() {
       {showApprovalActions && (
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold mb-4">Onay İşlemi</h2>
+
+          {/* Vardiya Faz 2: GM adımı + VARDIYA + 10+ kişi → dinamik servis notu (N güncel) */}
+          {form.formTipi === "VARDIYA" &&
+            form.personnel.length > 10 &&
+            form.approvals.find((a) => a.decision === null)?.role?.trim() === "Genel Müdür" && (
+              <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-900">
+                <AlertTitle>Servis Bilgisi</AlertTitle>
+                <AlertDescription className="text-amber-800">
+                  Vardiya 10 kişiyi geçtiği için servis ayarlanacaktır. Vardiya&apos;da {form.personnel.length} kişi olacaktır.
+                </AlertDescription>
+              </Alert>
+            )}
 
           {isGMYStep() && (
             <label className="flex items-center gap-2 mb-4 cursor-pointer">

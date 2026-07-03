@@ -1,11 +1,21 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect as Select } from "@/components/ui/select"
 import { Clock, ChevronRight, ChevronLeft, Search, X, Users, Check, Save, Send, Loader2 } from "lucide-react"
-import { useRouter, useParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { MESAI_TURLERI } from "@/lib/overtime-constants"
 import { apiFetch } from "@/lib/api-fetch"
@@ -58,29 +68,28 @@ const TYPE_CARD_COLORS: Record<OvertimeType, { idle: string; active: string }> =
 // Component
 // ---------------------------------------------------------------------------
 
-export default function EditOvertimeFormPage() {
-  const router = useRouter()
-  const params = useParams()
-  const id = params.id as string
-  const { departments, loading: depsLoading } = useDepartments()
+// Vardiya Faz 1: mesai çekirdeği paylaşımlı. Bu bir client component; formTipi düz
+// string prop (server→client boundary sorunu yok). MESAI davranışı aynen korunur.
+export type OvertimeFormTipi = "MESAI" | "VARDIYA"
+const VARDIYA_START = "21:00"
+const VARDIYA_END = "07:00"
 
-  // Page loading
-  const [pageLoading, setPageLoading] = useState(true)
-  const [formNo, setFormNo] = useState("")
-  // Vardiya Faz 1: yüklenen formun tipi (redirect/başlık için).
-  const [detailFormTipi, setDetailFormTipi] = useState<"MESAI" | "VARDIYA">("MESAI")
-  const basePath = detailFormTipi === "VARDIYA" ? "/forms/vardiya" : "/forms/overtime"
-  const kind = detailFormTipi === "VARDIYA" ? "Vardiya" : "Mesai"
+export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: OvertimeFormTipi }) {
+  const isVardiya = formTipi === "VARDIYA"
+  const basePath = isVardiya ? "/forms/vardiya" : "/forms/overtime"
+  const formBaslik = isVardiya ? "VARDIYA FORMU" : "MESAİ FORMU"
+  const router = useRouter()
+  const { departments, loading: depsLoading } = useDepartments()
 
   // Wizard step
   const [step, setStep] = useState(1)
 
   // Step 1 state
-  const [overtimeType, setOvertimeType] = useState<OvertimeType | "">("")
+  const [overtimeType, setOvertimeType] = useState<OvertimeType | "">(isVardiya ? "WEEKDAY_EXTRA" : "")
   const [date, setDate] = useState("")
-  const [isFullDay, setIsFullDay] = useState(true)
-  const [startTime, setStartTime] = useState("")
-  const [endTime, setEndTime] = useState("")
+  const [isFullDay, setIsFullDay] = useState(!isVardiya)
+  const [startTime, setStartTime] = useState(isVardiya ? VARDIYA_START : "")
+  const [endTime, setEndTime] = useState(isVardiya ? VARDIYA_END : "")
   const [description, setDescription] = useState("")
 
   // Step 2 state
@@ -93,9 +102,22 @@ export default function EditOvertimeFormPage() {
 
   // Step 3 state
   const [sendToGM, setSendToGM] = useState(false)
+  // Vardiya Faz 2: 10-kişi limiti. 11. eklenirken uyarı modalı; >10 iken GM kilitli.
+  const [showLimitModal, setShowLimitModal] = useState(false)
+  const [pendingPerson, setPendingPerson] = useState<PersonnelItem | null>(null)
   const [saving, setSaving] = useState(false)
   const [approvalChain, setApprovalChain] = useState<{ step: number; role: string; position: string; approver: { id: string; name: string } | null; isCommon: boolean }[]>([])
   const [chainLoading, setChainLoading] = useState(false)
+
+  // Auto-switch to time range for weekday extra (Vardiya'da sabit 21:00-07:00, atla)
+  useEffect(() => {
+    if (isVardiya) return
+    if (overtimeType === "WEEKDAY_EXTRA") {
+      setIsFullDay(false)
+      setStartTime("17:00")
+      setEndTime("20:30")
+    }
+  }, [overtimeType, isVardiya])
 
   // Fetch personnel from IV module
   const fetchPersonnel = useCallback(async () => {
@@ -113,63 +135,9 @@ export default function EditOvertimeFormPage() {
     }
   }, [])
 
-  // Fetch existing form data
   useEffect(() => {
-    async function loadForm() {
-      try {
-        const res = await apiFetch(`/api/overtime/${id}`)
-        if (res.__authHandled) return
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err.error || "Form yüklenemedi")
-        }
-        const form = await res.json()
-
-        if (form.status !== "DRAFT") {
-          toast.error("Sadece taslak durumundaki formlar düzenlenebilir")
-          router.push(`${basePath}/${id}`)
-          return
-        }
-
-        setFormNo(form.formNo)
-        setDetailFormTipi(form.formTipi === "VARDIYA" ? "VARDIYA" : "MESAI")
-        setOvertimeType(form.overtimeType)
-        setDate(form.date ? form.date.split("T")[0] : "")
-        setIsFullDay(form.isFullDay)
-        setStartTime(form.startTime || "")
-        setEndTime(form.endTime || "")
-        setDescription(form.description || "")
-        setSendToGM(form.sendToGM)
-
-        // Personnel - personnelId bazlı
-        const ids = new Set<string>()
-        const details: Record<string, PersonnelDetail> = {}
-        for (const p of form.personnel || []) {
-          const key = p.personnelId
-          if (!key) continue
-          ids.add(key)
-          details[key] = {
-            workDepartment: p.workDepartment || departments[0] || "",
-            serviceRoute: p.serviceRoute || "",
-            targetProduction: p.targetProduction || "",
-            // FIX: mevcut hedefAdet'i state'e doldur (null ise ""), düzenlemede görünsün.
-            hedefAdet: p.hedefAdet != null ? String(p.hedefAdet) : "",
-            mesaiNedeni: p.mesaiNedeni || "",
-          }
-        }
-        setSelectedIds(ids)
-        setPersonnelDetails(details)
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Form yüklenemedi")
-        router.push(basePath)
-      } finally {
-        setPageLoading(false)
-      }
-    }
-
-    loadForm()
     fetchPersonnel()
-  }, [id, router, fetchPersonnel])
+  }, [fetchPersonnel])
 
   // Filtered personnel list
   const filteredPersonnel = personnelList.filter((p) => {
@@ -181,31 +149,44 @@ export default function EditOvertimeFormPage() {
   })
 
   // Toggle personnel selection
+  function addPersonnel(person: PersonnelItem) {
+    setSelectedIds((prev) => { const next = new Set(prev); next.add(person.id); return next })
+    setPersonnelDetails((pd) => ({
+      ...pd,
+      [person.id]: {
+        workDepartment: resolveDefaultDepartment(person.bolum, departments),
+        serviceRoute: person.serviceRoute || "",
+        targetProduction: "",
+        hedefAdet: "",
+        mesaiNedeni: "",
+      },
+    }))
+  }
+
+  function removePersonnelSel(personnelId: string) {
+    setSelectedIds((prev) => { const next = new Set(prev); next.delete(personnelId); return next })
+    setPersonnelDetails((pd) => { const copy = { ...pd }; delete copy[personnelId]; return copy })
+  }
+
   function togglePersonnel(person: PersonnelItem) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(person.id)) {
-        next.delete(person.id)
-        setPersonnelDetails((pd) => {
-          const copy = { ...pd }
-          delete copy[person.id]
-          return copy
-        })
-      } else {
-        next.add(person.id)
-        setPersonnelDetails((pd) => ({
-          ...pd,
-          [person.id]: {
-            workDepartment: resolveDefaultDepartment(person.bolum, departments),
-            serviceRoute: person.serviceRoute || "",
-            targetProduction: "",
-            hedefAdet: "",
-            mesaiNedeni: "",
-          },
-        }))
-      }
-      return next
-    })
+    if (selectedIds.has(person.id)) { removePersonnelSel(person.id); return }
+    // Vardiya Faz 2: 10→11 geçişinde uyarı modalı (yalnız VARDIYA). Onaylanınca ekle.
+    if (isVardiya && selectedIds.size === 10) {
+      setPendingPerson(person)
+      setShowLimitModal(true)
+      return
+    }
+    addPersonnel(person)
+  }
+
+  // Modal "Devam Et": 11. personeli ekle + GM onayını oto-true (kilitlenecek).
+  function confirmLimitAdd() {
+    if (pendingPerson) {
+      addPersonnel(pendingPerson)
+      setSendToGM(true)
+    }
+    setPendingPerson(null)
+    setShowLimitModal(false)
   }
 
   function removePerson(personnelId: string) {
@@ -228,10 +209,11 @@ export default function EditOvertimeFormPage() {
     }))
   }
 
-  // Selected personnel objects in SELECTION/KAYIT order — TEK sıralı kaynak.
-  // selectedIds bir Set: edit'te form.personnel sırasıyla dolduruluyor, JS Set
-  // ekleme sırasını korur → onun üzerinden map'liyoruz (personnelList.filter
-  // fetch/alfabetik sıraya kaydırırdı). step-2 panel + step-3 önizleme + submit aynı.
+  // Selected personnel objects in SELECTION (ekleme) order — TEK sıralı kaynak.
+  // selectedIds bir Set: JS ekleme sırasını korur → onun üzerinden map'liyoruz.
+  // (personnelList.filter fetch/alfabetik sıraya kaydırırdı; Object.keys(personnelDetails)
+  //  sayısal-string id'leri artan sıraya kaydırırdı = "karışık" sebebi.)
+  // step-2 sağ panel + step-3 önizleme + submit payload ÜÇÜ DE bu diziden türüyor.
   const selectedPersonnel = Array.from(selectedIds)
     .map((id) => personnelList.find((p) => p.id === id))
     .filter((p): p is PersonnelItem => Boolean(p))
@@ -247,6 +229,18 @@ export default function EditOvertimeFormPage() {
   )
   const canProceedStep2 = selectedIds.size > 0 && allMesaiNedeniFilled
 
+  // Vardiya Faz 2: 10 kişiyi geçince GM onayı zorunlu → checkbox kilitli (oto-true).
+  const gmLocked = isVardiya && selectedIds.size > 10
+  useEffect(() => {
+    if (gmLocked && !sendToGM) {
+      setSendToGM(true)
+      fetchApprovalChain(true)
+    }
+    // ≤10'a inince kilit kalkar (gmLocked=false); sendToGM manuel değeri korunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmLocked])
+
+  // Fetch dynamic approval chain when moving to step 3
   async function fetchApprovalChain(toGM: boolean = sendToGM) {
     setChainLoading(true)
     try {
@@ -264,7 +258,7 @@ export default function EditOvertimeFormPage() {
         setApprovalChain(data.chain || [])
       }
     } catch {
-      // fallback
+      // fallback: chain boş kalır
     } finally {
       setChainLoading(false)
     }
@@ -288,6 +282,7 @@ export default function EditOvertimeFormPage() {
     setSaving(true)
     try {
       const body = {
+        formTipi,
         overtimeType,
         date,
         isFullDay,
@@ -302,16 +297,15 @@ export default function EditOvertimeFormPage() {
             resolveDefaultDepartment(p.bolum, departments),
           serviceRoute: personnelDetails[p.id]?.serviceRoute || null,
           targetProduction: personnelDetails[p.id]?.targetProduction || null,
-          // FIX: hedefAdet'i de gönder (boşsa null) — düzenlemede korunsun.
           hedefAdet: personnelDetails[p.id]?.hedefAdet
-            ? Number(personnelDetails[p.id]!.hedefAdet)
+            ? Number(personnelDetails[p.id].hedefAdet)
             : null,
           mesaiNedeni: personnelDetails[p.id]?.mesaiNedeni?.trim() || null,
         })),
       }
 
-      const res = await apiFetch(`/api/overtime/${id}`, {
-        method: "PUT",
+      const res = await apiFetch("/api/overtime", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
@@ -322,16 +316,18 @@ export default function EditOvertimeFormPage() {
         throw new Error(err?.error || "Kaydetme başarısız")
       }
 
+      const created = await res.json()
+
       if (submit) {
-        const submitRes = await apiFetch(`/api/overtime/${id}/submit`, { method: "POST" })
+        const submitRes = await apiFetch(`/api/overtime/${created.id}/submit`, { method: "POST" })
         if (submitRes.__authHandled) return
         if (!submitRes.ok) {
           const submitErr = await submitRes.json().catch(() => null)
           throw new Error(submitErr?.error || "Onaya gönderme başarısız")
         }
-        toast.success(`${kind} formu güncellendi ve onaya gönderildi`)
+        toast.success("Mesai formu onaya gönderildi")
       } else {
-        toast.success(`${kind} formu güncellendi`)
+        toast.success("Mesai formu taslak olarak kaydedildi")
       }
 
       router.push(basePath)
@@ -361,8 +357,8 @@ export default function EditOvertimeFormPage() {
             <Clock className="h-6 w-6 text-teal-700" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900">{kind.toUpperCase() === "VARDIYA" ? "VARDİYA" : "MESAİ"} FORMU DÜZENLE</h1>
-            <p className="text-sm text-gray-500">{formNo}</p>
+            <h1 className="text-lg font-bold text-gray-900">{formBaslik}</h1>
+            <p className="text-sm text-gray-500">Fazla Mesai Talep Sistemi</p>
           </div>
         </div>
 
@@ -408,6 +404,7 @@ export default function EditOvertimeFormPage() {
   function Step1() {
     return (
       <div className="bg-white rounded-xl shadow-sm border p-6 space-y-6">
+        {/* Info box */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
           Mesai formunu doldurmadan önce mesai türünü, tarihini ve saatlerini belirleyin.
         </div>
@@ -444,55 +441,70 @@ export default function EditOvertimeFormPage() {
             onChange={(e) => setDate(e.target.value)}
             className="max-w-xs"
           />
-        </div>
-
-        {/* Work mode toggle */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Çalışma Modu</label>
-          <div className="flex gap-2 mb-3">
-            <Button
-              type="button"
-              variant={isFullDay ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIsFullDay(true)}
-              className={isFullDay ? "bg-teal-600 hover:bg-teal-700" : ""}
-            >
-              Tam Gün
-            </Button>
-            <Button
-              type="button"
-              variant={!isFullDay ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIsFullDay(false)}
-              className={!isFullDay ? "bg-teal-600 hover:bg-teal-700" : ""}
-            >
-              Saat Aralığı
-            </Button>
-          </div>
-          {!isFullDay && (
-            <div className="flex items-center gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Başlangıç</label>
-                <Input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-32"
-                />
-              </div>
-              <span className="mt-5 text-gray-400">-</span>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Bitiş</label>
-                <Input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-32"
-                />
-              </div>
-            </div>
+          {isVardiya && (
+            <p className="mt-1 text-xs text-gray-500">Vardiya yalnızca Pazartesi-Cuma günleri için oluşturulur.</p>
           )}
         </div>
+
+        {isVardiya ? (
+          /* Vardiya: gece penceresi SABİT (Pzt-Cuma 21:00 → ertesi 07:00) — salt görünür */
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vardiya Saati</label>
+            <div className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              <Clock className="h-4 w-4 text-teal-600" />
+              <span className="font-medium">{VARDIYA_START} → {VARDIYA_END}</span>
+              <span className="text-gray-400">(ertesi sabah • Gece Vardiyası)</span>
+            </div>
+          </div>
+        ) : (
+          /* Work mode toggle (mesai — mevcut davranış aynen) */
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Çalışma Modu</label>
+            <div className="flex gap-2 mb-3">
+              <Button
+                type="button"
+                variant={isFullDay ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsFullDay(true)}
+                className={isFullDay ? "bg-teal-600 hover:bg-teal-700" : ""}
+              >
+                Tam Gün
+              </Button>
+              <Button
+                type="button"
+                variant={!isFullDay ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsFullDay(false)}
+                className={!isFullDay ? "bg-teal-600 hover:bg-teal-700" : ""}
+              >
+                Saat Aralığı
+              </Button>
+            </div>
+            {!isFullDay && (
+              <div className="flex items-center gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Başlangıç</label>
+                  <Input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="w-32"
+                  />
+                </div>
+                <span className="mt-5 text-gray-400">-</span>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Bitiş</label>
+                  <Input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-32"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Description */}
         <div>
@@ -876,18 +888,25 @@ export default function EditOvertimeFormPage() {
             </div>
           )}
 
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label className={`flex items-center gap-2 ${gmLocked ? "cursor-not-allowed opacity-90" : "cursor-pointer"}`}>
             <input
               type="checkbox"
-              checked={sendToGM}
+              checked={gmLocked ? true : sendToGM}
+              disabled={gmLocked}
               onChange={(e) => {
+                if (gmLocked) return
                 setSendToGM(e.target.checked)
                 fetchApprovalChain(e.target.checked)
               }}
-              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-60"
             />
             <span className="text-sm text-gray-700">Genel Müdür onayına da gönder</span>
           </label>
+          {gmLocked && (
+            <p className="text-xs text-amber-700">
+              Vardiya 10 kişiyi aştığı için Genel Müdür onayı otomatik eklendi (kaldırılamaz).
+            </p>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -908,7 +927,7 @@ export default function EditOvertimeFormPage() {
               ) : (
                 <Save className="mr-1 h-4 w-4" />
               )}
-              Kaydet
+              Taslak Kaydet
             </Button>
             <Button
               onClick={() => handleSave(true)}
@@ -920,7 +939,7 @@ export default function EditOvertimeFormPage() {
               ) : (
                 <Send className="mr-1 h-4 w-4" />
               )}
-              Kaydet ve Onaya Gönder
+              Onaya Gönder
             </Button>
           </div>
         </div>
@@ -932,17 +951,6 @@ export default function EditOvertimeFormPage() {
   // Render
   // ---------------------------------------------------------------------------
 
-  if (pageLoading) {
-    return (
-      <div className="py-6">
-        <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <span className="ml-3 text-muted-foreground">Form yükleniyor...</span>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="py-6">
       {StepIndicator()}
@@ -950,6 +958,22 @@ export default function EditOvertimeFormPage() {
       {step === 1 && Step1()}
       {step === 2 && Step2()}
       {step === 3 && Step3()}
+
+      {/* Vardiya Faz 2: 10-kişi aşım uyarısı (yalnız VARDIYA) */}
+      <AlertDialog open={showLimitModal} onOpenChange={(o) => { if (!o) { setShowLimitModal(false); setPendingPerson(null) } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dikkat!</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vardiya sayısını aştınız. Eğer devam ederseniz bu form otomatik olarak üst yönetime onaya gönderilecektir.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setPendingPerson(null) }}>İptal</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmLimitAdd} className="bg-teal-600 hover:bg-teal-700">Devam Et</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

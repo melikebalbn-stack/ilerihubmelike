@@ -95,17 +95,8 @@ type PersonnelData = {
   aktif: boolean
   denemeDegerlendirme: string | null
   altiAyDegerlendirme: string | null
-  // PR-PERSONEL-CIKIS-FORMU
-  exitDate: string | null
-  exitParty: string | null
-  exitCode: string | null
-  exitReason: string | null
-  exitRootCause: string | null
-  exitTurnoverType: string | null
-  exitGeneralNote: string | null
-  exitRecordedAt: string | null
-  exitRecordedBy: { id: string; name: string | null; email: string } | null
-  workingPeriod: { years: number; months: number; totalMonths: number } | null
+  // PR-4a: Personnel.exit* + workingPeriod artık API'den dönmüyor — çıkış verisi
+  // lastClosedPeriod'dan (aşağıda). Alanlar 4b'de DROP edilecek.
   // PR-C
   employmentPeriods: EmploymentPeriodItem[]
   employmentSummary: {
@@ -1057,15 +1048,17 @@ export default function PersonnelDetailPage() {
         hireDate={data.iseGirisTarihi}
         mode={exitModalMode}
         initialData={
-          exitModalMode === "edit" && data.exitDate
+          exitModalMode === "edit" && data.lastClosedPeriod
             ? {
-                exitDate: data.exitDate.split("T")[0],
-                exitParty: data.exitParty ?? "",
-                exitCode: data.exitCode ?? "",
-                exitReason: data.exitReason ?? "",
-                exitRootCause: data.exitRootCause ?? "",
-                exitTurnoverType: data.exitTurnoverType ?? "",
-                exitGeneralNote: data.exitGeneralNote ?? "",
+                exitDate: data.lastClosedPeriod.cikisTarihi
+                  ? data.lastClosedPeriod.cikisTarihi.split("T")[0]
+                  : "",
+                exitParty: data.lastClosedPeriod.exitParty ?? "",
+                exitCode: data.lastClosedPeriod.exitCode ?? "",
+                exitReason: data.lastClosedPeriod.exitReason ?? "",
+                exitRootCause: data.lastClosedPeriod.exitRootCause ?? "",
+                exitTurnoverType: data.lastClosedPeriod.exitTurnoverType ?? "",
+                exitGeneralNote: data.lastClosedPeriod.exitGeneralNote ?? "",
               }
             : undefined
         }

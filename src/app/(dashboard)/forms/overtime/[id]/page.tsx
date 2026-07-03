@@ -62,6 +62,7 @@ interface Approval {
 interface OvertimeFormDetail {
   id: string
   formNo: string
+  formTipi?: "MESAI" | "VARDIYA"
   overtimeType: "SATURDAY" | "SUNDAY" | "WEEKDAY_EXTRA" | "HOLIDAY"
   date: string
   isFullDay: boolean
@@ -453,7 +454,7 @@ export default function OvertimeDetailPage() {
           <Link href="/forms/overtime">
             <Button variant="outline">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Mesai Formlarına Dön
+              Formlara Dön
             </Button>
           </Link>
         </div>
@@ -502,10 +503,10 @@ export default function OvertimeDetailPage() {
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/forms/overtime">
+          <Link href={form?.formTipi === "VARDIYA" ? "/forms/vardiya" : "/forms/overtime"}>
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Mesai Formları
+              {form?.formTipi === "VARDIYA" ? "Vardiya" : "Mesai"} Formları
             </Button>
           </Link>
           <div className="flex items-center gap-3">
@@ -522,7 +523,7 @@ export default function OvertimeDetailPage() {
         </div>
         {form.status === "DRAFT" && isCreator && (
           <div className="flex items-center gap-2">
-            <Link href={`/forms/overtime/${form.id}/edit`}>
+            <Link href={`${form?.formTipi === "VARDIYA" ? "/forms/vardiya" : "/forms/overtime"}/${form.id}/edit`}>
               <Button variant="outline" size="sm">
                 Düzenle
               </Button>

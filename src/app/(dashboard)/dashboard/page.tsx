@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight, FolderSync, GraduationCap, Settings2, RefreshCw, Eye, EyeOff, GripVertical, X, Check, LayoutDashboard, Users, FileText, Shield, Briefcase, Wrench, Activity, TrendingUp, Ticket } from "lucide-react"
 import { useSession } from "next-auth/react"
+import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -240,7 +241,6 @@ export default function DashboardPage() {
   const [calendarError, setCalendarError] = useState<string | null>(null)
   const [ticketStats, setTicketStats] = useState<TicketStats | null>(null)
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
-  const [loading, setLoading] = useState(true)
 
   // Dashboard özelleştirme state'leri
   const [settings, setSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS)
@@ -490,85 +490,79 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Görevleri, bekleyen önerileri, kendi önerilerimin güncellemelerini, sistem notunu, duyuruları, takvimi, ticket ve dashboard istatistiklerini paralel olarak yükle
-        const [tasksRes, suggestionsRes, myUpdatesRes, systemRes, announcementsRes, calendarRes, ticketsRes, dashboardStatsRes] = await Promise.all([
-          fetch('/api/tasks?viewMode=my&limit=5'),
-          fetch('/api/suggestions?viewMode=awaiting_my_approval&limit=5'),
-          fetch('/api/suggestions/my-updates?limit=5'),
-          fetch('/api/system/settings?category=dashboard'),
-          fetch('/api/announcements?limit=5'),
-          fetch('/api/calendar/events?range=today'),
-          fetch('/api/tickets/stats'),
-          fetch('/api/dashboard/stats')
-        ])
+  // Dashboard verilerini yükle (loading/auth-gate/timeout artık useAuthenticatedData'da —
+  // önceden status beklemesi ve timeout sigortası yoktu, hook kazandırır).
+  const fetchData = async () => {
+    try {
+      // Görevleri, bekleyen önerileri, kendi önerilerimin güncellemelerini, sistem notunu, duyuruları, takvimi, ticket ve dashboard istatistiklerini paralel olarak yükle
+      const [tasksRes, suggestionsRes, myUpdatesRes, systemRes, announcementsRes, calendarRes, ticketsRes, dashboardStatsRes] = await Promise.all([
+        fetch('/api/tasks?viewMode=my&limit=5'),
+        fetch('/api/suggestions?viewMode=awaiting_my_approval&limit=5'),
+        fetch('/api/suggestions/my-updates?limit=5'),
+        fetch('/api/system/settings?category=dashboard'),
+        fetch('/api/announcements?limit=5'),
+        fetch('/api/calendar/events?range=today'),
+        fetch('/api/tickets/stats'),
+        fetch('/api/dashboard/stats')
+      ])
 
-        if (tasksRes.ok) {
-          const data = await tasksRes.json()
-          setMyTasks(data)
-        }
-
-        if (suggestionsRes.ok) {
-          const data = await suggestionsRes.json()
-          setPendingSuggestions(data)
-        }
-
-        if (myUpdatesRes.ok) {
-          const data = await myUpdatesRes.json()
-          setMySuggestionUpdates(data)
-        }
-
-        if (systemRes.ok) {
-          const settings = await systemRes.json()
-          if (settings['system_notice_enabled'] === 'true') {
-            setSystemNotice({
-              enabled: true,
-              title: settings['system_notice_title'] || '',
-              message: settings['system_notice_message'] || ''
-            })
-          }
-        }
-
-        if (announcementsRes.ok) {
-          const data = await announcementsRes.json()
-          setLatestAnnouncements(data.announcements || [])
-        }
-
-        if (calendarRes.ok) {
-          const data = await calendarRes.json()
-          if (data.error) {
-            setCalendarError(data.message || 'Takvim yuklenemedi')
-          } else {
-            setCalendarEvents(data.events || [])
-          }
-        }
-
-        if (ticketsRes.ok) {
-          const data = await ticketsRes.json()
-          setTicketStats(data)
-        }
-
-        if (dashboardStatsRes.ok) {
-          const data = await dashboardStatsRes.json()
-          if (data.success) {
-            setDashboardStats(data.data)
-          }
-        }
-      } catch (error) {
-        console.error('Veriler yüklenirken hata:', error)
-      } finally {
-        setLoading(false)
+      if (tasksRes.ok) {
+        const data = await tasksRes.json()
+        setMyTasks(data)
       }
-    }
 
-    if (session?.user?.email) {
-      fetchData()
-    } else {
-      setLoading(false)
+      if (suggestionsRes.ok) {
+        const data = await suggestionsRes.json()
+        setPendingSuggestions(data)
+      }
+
+      if (myUpdatesRes.ok) {
+        const data = await myUpdatesRes.json()
+        setMySuggestionUpdates(data)
+      }
+
+      if (systemRes.ok) {
+        const settings = await systemRes.json()
+        if (settings['system_notice_enabled'] === 'true') {
+          setSystemNotice({
+            enabled: true,
+            title: settings['system_notice_title'] || '',
+            message: settings['system_notice_message'] || ''
+          })
+        }
+      }
+
+      if (announcementsRes.ok) {
+        const data = await announcementsRes.json()
+        setLatestAnnouncements(data.announcements || [])
+      }
+
+      if (calendarRes.ok) {
+        const data = await calendarRes.json()
+        if (data.error) {
+          setCalendarError(data.message || 'Takvim yuklenemedi')
+        } else {
+          setCalendarEvents(data.events || [])
+        }
+      }
+
+      if (ticketsRes.ok) {
+        const data = await ticketsRes.json()
+        setTicketStats(data)
+      }
+
+      if (dashboardStatsRes.ok) {
+        const data = await dashboardStatsRes.json()
+        if (data.success) {
+          setDashboardStats(data.data)
+        }
+      }
+    } catch (error) {
+      console.error('Veriler yüklenirken hata:', error)
     }
-  }, [session?.user?.email])
+  }
+
+  const { loading } = useAuthenticatedData(fetchData)
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {

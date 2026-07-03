@@ -78,16 +78,8 @@ export async function GET(
         emekli: true,
         engelli: true,
         aktif: true,
-        // PR-PERSONEL-CIKIS-FORMU: çıkış bilgileri
-        exitDate: true,
-        exitParty: true,
-        exitCode: true,
-        exitReason: true,
-        exitRootCause: true,
-        exitTurnoverType: true,
-        exitGeneralNote: true,
-        exitRecordedAt: true,
-        exitRecordedBy: { select: { id: true, name: true, email: true } },
+        // PR-4a: Personnel.exit* artık okunmuyor — çıkış verisi EmploymentPeriod'dan
+        // (lastClosedPeriod). Alanlar 4b'de DROP edilecek.
         azureAdId: true,
         azureAdEmail: true,
         createdAt: true,
@@ -116,17 +108,6 @@ export async function GET(
 
     if (!personnel) {
       return NextResponse.json({ error: 'Personel bulunamadı' }, { status: 404 })
-    }
-
-    // PR-PERSONEL-CIKIS-FORMU: workingPeriod runtime hesap (drift önler)
-    let workingPeriod: { years: number; months: number; totalMonths: number } | null = null
-    if (personnel.exitDate && personnel.iseGirisTarihi) {
-      const start = new Date(personnel.iseGirisTarihi)
-      const end = new Date(personnel.exitDate)
-      let totalMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
-      if (end.getDate() < start.getDate()) totalMonths -= 1
-      if (totalMonths < 0) totalMonths = 0
-      workingPeriod = { years: Math.floor(totalMonths / 12), months: totalMonths % 12, totalMonths }
     }
 
     // PR-C: dönem-tabanlı toplam kıdem özeti (boşluklar sayılmaz). Backfill ile her
@@ -208,7 +189,7 @@ export async function GET(
       },
     })
 
-    return NextResponse.json({ ...personnel, workingPeriod, employmentSummary, lastClosedPeriod })
+    return NextResponse.json({ ...personnel, employmentSummary, lastClosedPeriod })
   } catch (error) {
     console.error('Personel detayı alınırken hata:', error)
     return NextResponse.json({ error: 'Personel detayı alınırken bir hata oluştu' }, { status: 500 })

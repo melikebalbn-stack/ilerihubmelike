@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,26 +28,21 @@ import {
   Headphones,
   Plus,
   Search,
-  Clock,
-  AlertTriangle,
   CheckCircle2,
   Loader2,
   User,
-  Calendar,
-  Tag,
-  MessageSquare,
   Filter,
   RefreshCw,
   Send,
-  Paperclip,
-  X,
-  ArrowLeft,
-  UserPlus,
-  Settings2,
+  Clock,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
+import { TicketDetail } from "./_components/ticket-detail"
+import { CategoryBadge } from "./_components/category-badge"
+import { ticketAge, resolutionTime, isOpenStatus } from "./_lib/ticket-age"
 
 interface TicketCategory {
   id: string
@@ -76,6 +71,8 @@ interface Ticket {
   slaResponseBreached: boolean
   slaResolutionBreached: boolean
   createdAt: string
+  closedAt: string | null
+  resolvedAt: string | null
   category: TicketCategory | null
   _count?: { comments: number }
 }
@@ -101,11 +98,17 @@ interface TicketStats {
 }
 
 export default function ITSupportPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
+  const router = useRouter()
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [categories, setCategories] = useState<TicketCategory[]>([])
   const [stats, setStats] = useState<TicketStats | null>(null)
   const [loading, setLoading] = useState(true)
+  // Sonsuz-loading sigortası: session gelmezse / hata olursa spinner kesilip bu ekran gösterilir.
+  const [loadError, setLoadError] = useState(false)
+  const initialLoadedRef = useRef(false)
+  // Detay modal: seçili ticket id (URL değişmez — sayfa yerine overlay).
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("my")
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -123,11 +126,6 @@ export default function ITSupportPage() {
   const [submitting, setSubmitting] = useState(false)
 
   // Ticket detay
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
-  const [ticketComments, setTicketComments] = useState<TicketComment[]>([])
-  const [newComment, setNewComment] = useState("")
-  const [sendingComment, setSendingComment] = useState(false)
-  const [updatingTicket, setUpdatingTicket] = useState(false)
 
   const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN"
 
@@ -146,6 +144,7 @@ export default function ITSupportPage() {
 
       if (ticketsRes.ok) {
         setTickets(await ticketsRes.json())
+        setLoadError(false)
       }
       if (categoriesRes.ok) {
         setCategories(await categoriesRes.json())
@@ -157,14 +156,51 @@ export default function ITSupportPage() {
       console.error("Veri yuklenemedi:", error)
     } finally {
       setLoading(false)
+      initialLoadedRef.current = true
     }
   }
 
+  // İlk yükleme — session STATUS'una göre (sonsuz spinner fix, messages ile aynı desen):
+  //   loading → bekle; unauthenticated → login'e; authenticated+email → çek;
+  //   authenticated ama email yok → spinner'ı kes + hata ekranı.
   useEffect(() => {
-    if (session?.user?.email) {
-      fetchData()
+    if (status === "loading") return
+    if (status === "unauthenticated") {
+      router.push("/login")
+      return
     }
-  }, [session?.user?.email, activeTab])
+    if (status === "authenticated" && session?.user?.email) {
+      fetchData()
+    } else {
+      setLoading(false)
+      setLoadError(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session?.user?.email, activeTab])
+
+  // Güvenlik timeout'u: 10sn içinde ilk yükleme tamamlanmazsa spinner'ı kes + hata ekranı
+  // (session hiç gelmese bile sonsuz dönmesin).
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!initialLoadedRef.current) {
+        setLoading(false)
+        setLoadError(true)
+      }
+    }, 10000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Modal açıkken Esc ile kapat + arka plan kaydırmayı kilitle.
+  useEffect(() => {
+    if (!selectedTicketId) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSelectedTicketId(null) }
+    window.addEventListener("keydown", onKey)
+    document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.body.style.overflow = ""
+    }
+  }, [selectedTicketId])
 
   // Yeni ticket olustur
   const handleCreateTicket = async () => {
@@ -199,79 +235,6 @@ export default function ITSupportPage() {
   }
 
   // Ticket detay yukle
-  const loadTicketDetail = async (ticket: Ticket) => {
-    setSelectedTicket(ticket)
-    try {
-      const response = await fetch(`/api/tickets/${ticket.id}/comments`)
-      if (response.ok) {
-        setTicketComments(await response.json())
-      }
-    } catch (error) {
-      console.error("Yorumlar yuklenemedi:", error)
-    }
-  }
-
-  // Yorum gonder
-  const handleSendComment = async () => {
-    if (!newComment.trim() || !selectedTicket) return
-
-    setSendingComment(true)
-    try {
-      const response = await fetch(`/api/tickets/${selectedTicket.id}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: newComment }),
-      })
-
-      if (response.ok) {
-        const comment = await response.json()
-        setTicketComments([...ticketComments, comment])
-        setNewComment("")
-      }
-    } catch (error) {
-      console.error("Yorum gonderilemedi:", error)
-    } finally {
-      setSendingComment(false)
-    }
-  }
-
-  // Ticket guncelle (IT ekibi icin)
-  const handleUpdateTicket = async (updates: Partial<Ticket>) => {
-    if (!selectedTicket) return
-
-    setUpdatingTicket(true)
-    try {
-      const response = await fetch(`/api/tickets/${selectedTicket.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      })
-
-      if (response.ok) {
-        const updatedTicket = await response.json()
-        setSelectedTicket({ ...selectedTicket, ...updatedTicket })
-        // Liste de guncelle
-        setTickets(tickets.map(t =>
-          t.id === selectedTicket.id ? { ...t, ...updatedTicket } : t
-        ))
-        fetchData() // Istatistikleri yenile
-      }
-    } catch (error) {
-      console.error("Ticket guncellenemedi:", error)
-    } finally {
-      setUpdatingTicket(false)
-    }
-  }
-
-  // Kendine ata
-  const handleAssignToMe = () => {
-    if (!session?.user?.email || !session?.user?.name) return
-    handleUpdateTicket({
-      assignedTo: session.user.email,
-      assignedToName: session.user.name,
-    } as Partial<Ticket>)
-  }
-
   // Durum badge
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -302,16 +265,6 @@ export default function ITSupportPage() {
   }
 
   // Ticket tipi label
-  const getTicketTypeLabel = (type: string) => {
-    const types: Record<string, string> = {
-      INCIDENT: "Olay",
-      SERVICE_REQUEST: "Hizmet Talebi",
-      PROBLEM: "Problem",
-      CHANGE_REQUEST: "Degisiklik Talebi",
-    }
-    return types[type] || type
-  }
-
   // Filtrelenmis ticket'lar
   const filteredTickets = tickets.filter((ticket) => {
     if (statusFilter !== "all" && ticket.status !== statusFilter) return false
@@ -493,10 +446,10 @@ export default function ITSupportPage() {
         </div>
       )}
 
-      {/* Main Content */}
-      <div className={`grid gap-6 ${selectedTicket ? "lg:grid-cols-5" : "lg:grid-cols-1"}`}>
+      {/* Main Content — liste tam genişlik (detay ayrı sayfada) */}
+      <div>
         {/* Ticket List */}
-        <div className={selectedTicket ? "lg:col-span-2" : ""}>
+        <div>
           <Card>
             <CardHeader className="pb-3">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -559,6 +512,19 @@ export default function ITSupportPage() {
                 <div className="flex justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
+              ) : loadError ? (
+                <div className="text-center py-12">
+                  <Headphones className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">Talepler yüklenemedi. Oturumunuz sonlanmış olabilir.</p>
+                  <div className="flex items-center justify-center gap-2 mt-4">
+                    <Button variant="outline" onClick={() => { setLoadError(false); setLoading(true); initialLoadedRef.current = false; fetchData() }}>
+                      Yeniden dene
+                    </Button>
+                    <Button variant="outline" onClick={() => router.push("/login")}>
+                      Giriş yap
+                    </Button>
+                  </div>
+                </div>
               ) : filteredTickets.length === 0 ? (
                 <div className="text-center py-12">
                   <Headphones className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
@@ -570,307 +536,113 @@ export default function ITSupportPage() {
                 </div>
               ) : (
                 <ScrollArea className="h-[600px]">
-                  <div className="space-y-2">
-                    {filteredTickets.map((ticket) => (
-                      <div
-                        key={ticket.id}
-                        onClick={() => loadTicketDetail(ticket)}
-                        className={`p-4 rounded-lg border cursor-pointer transition-colors hover:bg-muted/50 ${
-                          selectedTicket?.id === ticket.id ? "border-primary bg-muted/30" : ""
-                        } ${ticket.slaResolutionBreached ? "border-l-4 border-l-red-500" : ""}`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-sm font-mono text-muted-foreground">
-                                {ticket.ticketNumber}
-                              </span>
-                              {getPriorityBadge(ticket.priority)}
-                              {getStatusBadge(ticket.status)}
-                            </div>
-                            <h4 className="font-medium truncate">{ticket.subject}</h4>
-                            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <User className="h-3 w-3" />
-                                {ticket.requesterName}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {formatDistanceToNow(new Date(ticket.createdAt), {
-                                  addSuffix: true,
-                                  locale: tr,
-                                })}
-                              </span>
-                              {ticket._count && ticket._count.comments > 0 && (
-                                <span className="flex items-center gap-1">
-                                  <MessageSquare className="h-3 w-3" />
-                                  {ticket._count.comments}
-                                </span>
-                              )}
-                            </div>
+                  {(() => {
+                    // Client-side gruplama (sıra B3 korunur — API'den geliyor). Açık üstte, kapalı altta soluk.
+                    const acikSet = new Set(["NEW", "ASSIGNED", "IN_PROGRESS", "PENDING", "ON_HOLD", "REOPENED"])
+                    const acik = filteredTickets.filter((t) => acikSet.has(t.status))
+                    const kapali = filteredTickets.filter((t) => !acikSet.has(t.status))
+
+                    const row = (ticket: Ticket, faded: boolean) => {
+                      const open = isOpenStatus(ticket.status)
+                      const age = open ? ticketAge(ticket.createdAt) : null
+                      const resolved = !open ? resolutionTime(ticket.createdAt, ticket.closedAt, ticket.resolvedAt) : null
+                      return (
+                        <div
+                          key={ticket.id}
+                          onClick={() => setSelectedTicketId(ticket.id)}
+                          className={`grid items-center gap-3 px-3 py-2 border-b cursor-pointer transition-colors hover:bg-muted/50 grid-cols-[80px_minmax(0,1fr)_auto] md:grid-cols-[96px_minmax(0,1fr)_150px_140px_90px_80px_90px] ${
+                            ticket.slaResolutionBreached ? "border-l-2 border-l-red-500" : ""
+                          } ${faded ? "opacity-60" : ""}`}
+                        >
+                          {/* no */}
+                          <span className="text-xs font-mono text-muted-foreground truncate">
+                            {ticket.ticketNumber}
+                          </span>
+                          {/* başlık + kişi */}
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium truncate">{ticket.subject}</p>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <User className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{ticket.requesterName}</span>
+                            </span>
                           </div>
+                          {/* kategori */}
+                          <div className="hidden md:flex items-center min-w-0">
+                            <CategoryBadge category={ticket.category} />
+                          </div>
+                          {/* sayaç: bekliyor / çözüldü */}
+                          <div className="hidden md:flex items-center min-w-0">
+                            {age && (
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${age.className}`}>
+                                <Clock className="h-3 w-3" />
+                                {age.label}
+                              </span>
+                            )}
+                            {resolved && (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {resolved.label}
+                              </span>
+                            )}
+                          </div>
+                          {/* durum (mobilde de görünür) */}
+                          <div className="flex items-center">
+                            {getStatusBadge(ticket.status)}
+                          </div>
+                          {/* öncelik */}
+                          <div className="hidden md:flex items-center">
+                            {getPriorityBadge(ticket.priority)}
+                          </div>
+                          {/* tarih */}
+                          <span className="hidden md:block text-xs text-muted-foreground truncate">
+                            {formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true, locale: tr })}
+                          </span>
                         </div>
+                      )
+                    }
+
+                    return (
+                      <div className="space-y-4">
+                        {acik.length > 0 && (
+                          <div className="rounded-lg border overflow-hidden">
+                            <div className="px-3 py-2 text-xs font-semibold text-muted-foreground bg-muted/40 border-b">
+                              Açık talepler ({acik.length})
+                            </div>
+                            <div>{acik.map((t) => row(t, false))}</div>
+                          </div>
+                        )}
+                        {kapali.length > 0 && (
+                          <div className="rounded-lg border overflow-hidden opacity-60">
+                            <div className="px-3 py-2 text-xs font-semibold text-muted-foreground bg-muted/40 border-b">
+                              Çözülmüş / kapalı ({kapali.length})
+                            </div>
+                            <div>{kapali.map((t) => row(t, false))}</div>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })()}
                 </ScrollArea>
               )}
             </CardContent>
           </Card>
         </div>
-
-        {/* Ticket Detail */}
-        {selectedTicket && (
-          <div className="lg:col-span-3">
-            <Card className="h-full">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="lg:hidden"
-                      onClick={() => setSelectedTicket(null)}
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    <div>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        {selectedTicket.ticketNumber}
-                        {getStatusBadge(selectedTicket.status)}
-                      </CardTitle>
-                      <CardDescription>{selectedTicket.subject}</CardDescription>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => setSelectedTicket(null)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                {/* Ticket Info */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg bg-muted/30">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Talep Eden</p>
-                    <p className="font-medium">{selectedTicket.requesterName}</p>
-                    <p className="text-sm text-muted-foreground">{selectedTicket.requesterDept}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Atanan</p>
-                    <p className="font-medium">{selectedTicket.assignedToName || "Atanmadi"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Tip</p>
-                    <p className="font-medium">{getTicketTypeLabel(selectedTicket.ticketType)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Oncelik</p>
-                    {getPriorityBadge(selectedTicket.priority)}
-                  </div>
-                  {selectedTicket.location && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Lokasyon</p>
-                      <p className="font-medium">{selectedTicket.location}</p>
-                    </div>
-                  )}
-                  {selectedTicket.assetInfo && (
-                    <div>
-                      <p className="text-sm text-muted-foreground">Ilgili Cihaz</p>
-                      <p className="font-medium">{selectedTicket.assetInfo}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Description */}
-                <div>
-                  <h4 className="font-medium mb-2">Aciklama</h4>
-                  <p className="text-sm whitespace-pre-wrap bg-muted/30 p-4 rounded-lg">
-                    {selectedTicket.description}
-                  </p>
-                </div>
-
-                {/* IT Ekibi Kontrolleri */}
-                {isITStaff && (
-                  <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-                    <h4 className="font-medium mb-3 flex items-center gap-2">
-                      <Settings2 className="h-4 w-4" />
-                      IT Ekibi Kontrolleri
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {/* Durum Degistir */}
-                      <div>
-                        <Label className="text-xs">Durum</Label>
-                        <Select
-                          value={selectedTicket.status}
-                          onValueChange={(value) => handleUpdateTicket({ status: value } as Partial<Ticket>)}
-                          disabled={updatingTicket}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="NEW">Yeni</SelectItem>
-                            <SelectItem value="ASSIGNED">Atandi</SelectItem>
-                            <SelectItem value="IN_PROGRESS">Islemde</SelectItem>
-                            <SelectItem value="PENDING">Beklemede</SelectItem>
-                            <SelectItem value="ON_HOLD">Askida</SelectItem>
-                            <SelectItem value="RESOLVED">Cozuldu</SelectItem>
-                            <SelectItem value="CLOSED">Kapatildi</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Oncelik Degistir */}
-                      <div>
-                        <Label className="text-xs">Oncelik</Label>
-                        <Select
-                          value={selectedTicket.priority}
-                          onValueChange={(value) => handleUpdateTicket({ priority: value } as Partial<Ticket>)}
-                          disabled={updatingTicket}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="TICKET_LOW">Dusuk</SelectItem>
-                            <SelectItem value="NORMAL">Normal</SelectItem>
-                            <SelectItem value="TICKET_HIGH">Yuksek</SelectItem>
-                            <SelectItem value="TICKET_CRITICAL">Kritik</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Talep Tipi Degistir */}
-                      <div>
-                        <Label className="text-xs">Talep Tipi</Label>
-                        <Select
-                          value={selectedTicket.ticketType}
-                          onValueChange={(value) => handleUpdateTicket({ ticketType: value } as Partial<Ticket>)}
-                          disabled={updatingTicket}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="INCIDENT">Olay</SelectItem>
-                            <SelectItem value="SERVICE_REQUEST">Hizmet Talebi</SelectItem>
-                            <SelectItem value="PROBLEM">Problem</SelectItem>
-                            <SelectItem value="CHANGE_REQUEST">Degisiklik</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Kendine Ata Butonu */}
-                    {!selectedTicket.assignedTo && (
-                      <Button
-                        className="w-full mt-3"
-                        variant="outline"
-                        onClick={handleAssignToMe}
-                        disabled={updatingTicket}
-                      >
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Kendime Ata
-                      </Button>
-                    )}
-
-                    {selectedTicket.assignedTo && selectedTicket.assignedTo !== session?.user?.email && (
-                      <Button
-                        className="w-full mt-3"
-                        variant="outline"
-                        onClick={handleAssignToMe}
-                        disabled={updatingTicket}
-                      >
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Devral
-                      </Button>
-                    )}
-                  </div>
-                )}
-
-                {/* SLA Info */}
-                {(selectedTicket.slaResponseBreached || selectedTicket.slaResolutionBreached) && (
-                  <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
-                    <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                      <AlertTriangle className="h-4 w-4" />
-                      <span className="font-medium">SLA Ihlali</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Comments */}
-                <div>
-                  <h4 className="font-medium mb-3">Yorumlar & Aktivite</h4>
-                  <ScrollArea className="h-[200px] mb-4">
-                    {ticketComments.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        Henuz yorum yok
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {ticketComments.map((comment) => (
-                          <div
-                            key={comment.id}
-                            className={`p-3 rounded-lg ${
-                              comment.isInternal
-                                ? "bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800"
-                                : comment.isResolution
-                                ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800"
-                                : "bg-muted/30"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-medium text-sm">{comment.authorName}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {formatDistanceToNow(new Date(comment.createdAt), {
-                                  addSuffix: true,
-                                  locale: tr,
-                                })}
-                              </span>
-                            </div>
-                            <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
-                            {comment.isInternal && (
-                              <Badge variant="outline" className="mt-2 text-yellow-600">
-                                Dahili Not
-                              </Badge>
-                            )}
-                            {comment.isResolution && (
-                              <Badge variant="outline" className="mt-2 text-green-600">
-                                Cozum
-                              </Badge>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
-
-                  {/* Add Comment */}
-                  <div className="flex gap-2">
-                    <Textarea
-                      placeholder="Yorum yazin..."
-                      rows={2}
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                    />
-                    <Button
-                      onClick={handleSendComment}
-                      disabled={!newComment.trim() || sendingComment}
-                    >
-                      {sendingComment ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
       </div>
+
+      {/* Detay modal — inline overlay div (portal/Dialog değil). URL değişmez. */}
+      {selectedTicketId && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-4 sm:p-6"
+          onClick={() => setSelectedTicketId(null)}
+        >
+          <div
+            className="w-full max-w-4xl my-4 rounded-lg bg-background shadow-xl border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <TicketDetail ticketId={selectedTicketId} onClose={() => setSelectedTicketId(null)} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -112,7 +112,8 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await apiFetch("/api/overtime/stats")
+        // Vardiya Faz 2: KPI'lar formTipi'ne göre ayrılır (mesai listesi mesai, vardiya vardiya).
+        const res = await apiFetch(`/api/overtime/stats?formTipi=${formTipi}`)
         if (res.__authHandled) return
         if (res.ok) {
           const data = await res.json()
@@ -123,7 +124,7 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
       }
     }
     fetchStats()
-  }, [])
+  }, [formTipi])
 
   async function handleDelete(id: string) {
     if (!window.confirm("Bu mesai formunu silmek istediğinize emin misiniz?")) return

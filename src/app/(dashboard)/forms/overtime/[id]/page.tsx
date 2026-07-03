@@ -11,6 +11,7 @@ import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
 import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments } from "@/lib/use-departments"
 import { useSession } from "next-auth/react"
@@ -941,6 +942,18 @@ export default function OvertimeDetailPage() {
       {showApprovalActions && (
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold mb-4">Onay İşlemi</h2>
+
+          {/* Vardiya Faz 2: GM adımı + VARDIYA + 10+ kişi → dinamik servis notu (N güncel) */}
+          {form.formTipi === "VARDIYA" &&
+            form.personnel.length > 10 &&
+            form.approvals.find((a) => a.decision === null)?.role?.trim() === "Genel Müdür" && (
+              <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-900">
+                <AlertTitle>Servis Bilgisi</AlertTitle>
+                <AlertDescription className="text-amber-800">
+                  Vardiya 10 kişiyi geçtiği için servis ayarlanacaktır. Vardiya&apos;da {form.personnel.length} kişi olacaktır.
+                </AlertDescription>
+              </Alert>
+            )}
 
           {isGMYStep() && (
             <label className="flex items-center gap-2 mb-4 cursor-pointer">

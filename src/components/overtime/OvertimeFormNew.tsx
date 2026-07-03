@@ -1,6 +1,16 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect as Select } from "@/components/ui/select"
@@ -92,6 +102,9 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
 
   // Step 3 state
   const [sendToGM, setSendToGM] = useState(false)
+  // Vardiya Faz 2: 10-kişi limiti. 11. eklenirken uyarı modalı; >10 iken GM kilitli.
+  const [showLimitModal, setShowLimitModal] = useState(false)
+  const [pendingPerson, setPendingPerson] = useState<PersonnelItem | null>(null)
   const [saving, setSaving] = useState(false)
   const [approvalChain, setApprovalChain] = useState<{ step: number; role: string; position: string; approver: { id: string; name: string } | null; isCommon: boolean }[]>([])
   const [chainLoading, setChainLoading] = useState(false)
@@ -136,31 +149,44 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
   })
 
   // Toggle personnel selection
+  function addPersonnel(person: PersonnelItem) {
+    setSelectedIds((prev) => { const next = new Set(prev); next.add(person.id); return next })
+    setPersonnelDetails((pd) => ({
+      ...pd,
+      [person.id]: {
+        workDepartment: resolveDefaultDepartment(person.bolum, departments),
+        serviceRoute: person.serviceRoute || "",
+        targetProduction: "",
+        hedefAdet: "",
+        mesaiNedeni: "",
+      },
+    }))
+  }
+
+  function removePersonnelSel(personnelId: string) {
+    setSelectedIds((prev) => { const next = new Set(prev); next.delete(personnelId); return next })
+    setPersonnelDetails((pd) => { const copy = { ...pd }; delete copy[personnelId]; return copy })
+  }
+
   function togglePersonnel(person: PersonnelItem) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(person.id)) {
-        next.delete(person.id)
-        setPersonnelDetails((pd) => {
-          const copy = { ...pd }
-          delete copy[person.id]
-          return copy
-        })
-      } else {
-        next.add(person.id)
-        setPersonnelDetails((pd) => ({
-          ...pd,
-          [person.id]: {
-            workDepartment: resolveDefaultDepartment(person.bolum, departments),
-            serviceRoute: person.serviceRoute || "",
-            targetProduction: "",
-            hedefAdet: "",
-            mesaiNedeni: "",
-          },
-        }))
-      }
-      return next
-    })
+    if (selectedIds.has(person.id)) { removePersonnelSel(person.id); return }
+    // Vardiya Faz 2: 10→11 geçişinde uyarı modalı (yalnız VARDIYA). Onaylanınca ekle.
+    if (isVardiya && selectedIds.size === 10) {
+      setPendingPerson(person)
+      setShowLimitModal(true)
+      return
+    }
+    addPersonnel(person)
+  }
+
+  // Modal "Devam Et": 11. personeli ekle + GM onayını oto-true (kilitlenecek).
+  function confirmLimitAdd() {
+    if (pendingPerson) {
+      addPersonnel(pendingPerson)
+      setSendToGM(true)
+    }
+    setPendingPerson(null)
+    setShowLimitModal(false)
   }
 
   function removePerson(personnelId: string) {
@@ -202,6 +228,17 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
     (p) => (personnelDetails[p.id]?.mesaiNedeni ?? "").trim() !== ""
   )
   const canProceedStep2 = selectedIds.size > 0 && allMesaiNedeniFilled
+
+  // Vardiya Faz 2: 10 kişiyi geçince GM onayı zorunlu → checkbox kilitli (oto-true).
+  const gmLocked = isVardiya && selectedIds.size > 10
+  useEffect(() => {
+    if (gmLocked && !sendToGM) {
+      setSendToGM(true)
+      fetchApprovalChain(true)
+    }
+    // ≤10'a inince kilit kalkar (gmLocked=false); sendToGM manuel değeri korunur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmLocked])
 
   // Fetch dynamic approval chain when moving to step 3
   async function fetchApprovalChain(toGM: boolean = sendToGM) {
@@ -851,18 +888,25 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
             </div>
           )}
 
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label className={`flex items-center gap-2 ${gmLocked ? "cursor-not-allowed opacity-90" : "cursor-pointer"}`}>
             <input
               type="checkbox"
-              checked={sendToGM}
+              checked={gmLocked ? true : sendToGM}
+              disabled={gmLocked}
               onChange={(e) => {
+                if (gmLocked) return
                 setSendToGM(e.target.checked)
                 fetchApprovalChain(e.target.checked)
               }}
-              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-60"
             />
             <span className="text-sm text-gray-700">Genel Müdür onayına da gönder</span>
           </label>
+          {gmLocked && (
+            <p className="text-xs text-amber-700">
+              Vardiya 10 kişiyi aştığı için Genel Müdür onayı otomatik eklendi (kaldırılamaz).
+            </p>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -914,6 +958,22 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
       {step === 1 && Step1()}
       {step === 2 && Step2()}
       {step === 3 && Step3()}
+
+      {/* Vardiya Faz 2: 10-kişi aşım uyarısı (yalnız VARDIYA) */}
+      <AlertDialog open={showLimitModal} onOpenChange={(o) => { if (!o) { setShowLimitModal(false); setPendingPerson(null) } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dikkat!</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vardiya sayısını aştınız. Eğer devam ederseniz bu form otomatik olarak üst yönetime onaya gönderilecektir.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setPendingPerson(null) }}>İptal</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmLimitAdd} className="bg-teal-600 hover:bg-teal-700">Devam Et</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

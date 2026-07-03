@@ -249,6 +249,10 @@ export async function POST(request: NextRequest) {
     const effStartTime = isVardiya ? VARDIYA_START : startTime
     const effEndTime = isVardiya ? VARDIYA_END : endTime
 
+    // Vardiya Faz 2: 10 kişiyi geçen VARDIYA'da GM onayı ZORUNLU (client bypass'a karşı
+    // sunucuda enforce). MESAI'de dokunulmaz — sendToGM body'den gelir.
+    const effSendToGM = isVardiya && personnel.length > 10 ? true : sendToGM
+
     // Saat aralığı kontrolü (tam gün değilse) — vardiyada sabit olduğu için atlanır.
     if (!isVardiya && !isFullDay && (!startTime || !endTime)) {
       return apiBadRequest('Saat aralığı seçildiğinde başlangıç ve bitiş saati zorunludur')
@@ -273,7 +277,7 @@ export async function POST(request: NextRequest) {
         startTime: effIsFullDay ? null : effStartTime,
         endTime: effIsFullDay ? null : effEndTime,
         description: description || null,
-        sendToGM,
+        sendToGM: effSendToGM,
         createdById: user.id,
         status: 'DRAFT',
         currentStep: 0,

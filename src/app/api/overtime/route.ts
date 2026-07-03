@@ -210,13 +210,18 @@ export async function POST(request: NextRequest) {
     const formTipi: FormTipi = body.formTipi === 'VARDIYA' ? 'VARDIYA' : 'MESAI'
     const isVardiya = formTipi === 'VARDIYA'
 
+    // Vardiya sadeleştirme: UI'da mesai-türü kartları kaldırıldı. Savunmacı default —
+    // VARDIYA'da tür gelmese bile sabit WEEKDAY_EXTRA. MESAI'de overtimeType client'tan
+    // gelir, zorunlu (davranış değişmez).
+    const effOvertimeType = isVardiya && !overtimeType ? 'WEEKDAY_EXTRA' : overtimeType
+
     // Zorunlu alan kontrolleri
-    if (!overtimeType || !date) {
+    if (!effOvertimeType || !date) {
       return apiBadRequest('Mesai türü ve tarih alanları zorunludur')
     }
 
     // Mesai türü doğrulama
-    if (!Object.values(OvertimeType).includes(overtimeType as OvertimeType)) {
+    if (!Object.values(OvertimeType).includes(effOvertimeType as OvertimeType)) {
       return apiBadRequest('Geçersiz mesai türü')
     }
 
@@ -271,7 +276,7 @@ export async function POST(request: NextRequest) {
       data: {
         formNo,
         formTipi,
-        overtimeType: overtimeType as OvertimeType,
+        overtimeType: effOvertimeType as OvertimeType,
         date: new Date(date),
         isFullDay: effIsFullDay,
         startTime: effIsFullDay ? null : effStartTime,

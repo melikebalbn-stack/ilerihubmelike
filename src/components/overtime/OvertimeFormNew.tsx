@@ -358,7 +358,7 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
           </div>
           <div>
             <h1 className="text-lg font-bold text-gray-900">{formBaslik}</h1>
-            <p className="text-sm text-gray-500">Fazla Mesai Talep Sistemi</p>
+            <p className="text-sm text-gray-500">{isVardiya ? "Gece Vardiyası Talep Sistemi" : "Fazla Mesai Talep Sistemi"}</p>
           </div>
         </div>
 
@@ -404,33 +404,37 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
   function Step1() {
     return (
       <div className="bg-white rounded-xl shadow-sm border p-6 space-y-6">
-        {/* Info box */}
+        {/* Info box (metin formTipi'ne göre) */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-          Mesai formunu doldurmadan önce mesai türünü, tarihini ve saatlerini belirleyin.
+          {isVardiya
+            ? "Vardiya tarihini seçin ve personeli ekleyin. (Gece vardiyası: Pzt-Cuma 21:00-07:00, sabit.)"
+            : "Mesai formunu doldurmadan önce mesai türünü, tarihini ve saatlerini belirleyin."}
         </div>
 
-        {/* Overtime type cards */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Mesai Türü</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {MESAI_TURLERI.map((t) => {
-              const colors = TYPE_CARD_COLORS[t.value]
-              const isActive = overtimeType === t.value
-              return (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => setOvertimeType(t.value)}
-                  className={`rounded-lg border-2 p-4 text-left transition-all ${
-                    isActive ? colors.active : colors.idle
-                  }`}
-                >
-                  <span className="text-sm font-medium">{t.label}</span>
-                </button>
-              )
-            })}
+        {/* Overtime type cards — yalnız MESAI (VARDIYA sabit WEEKDAY_EXTRA) */}
+        {!isVardiya && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Mesai Türü</label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {MESAI_TURLERI.map((t) => {
+                const colors = TYPE_CARD_COLORS[t.value]
+                const isActive = overtimeType === t.value
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setOvertimeType(t.value)}
+                    className={`rounded-lg border-2 p-4 text-left transition-all ${
+                      isActive ? colors.active : colors.idle
+                    }`}
+                  >
+                    <span className="text-sm font-medium">{t.label}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Date */}
         <div>
@@ -515,7 +519,7 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
             rows={2}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Mesai sebebi veya ek bilgi..."
+            placeholder={isVardiya ? "Vardiya ile ilgili ek bilgi..." : "Mesai sebebi veya ek bilgi..."}
             className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
         </div>
@@ -544,7 +548,11 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
       <div className="space-y-4">
         {/* Summary bar */}
         <div className="bg-white rounded-xl shadow-sm border p-4 flex flex-wrap items-center gap-3 text-sm">
-          {currentTypeMeta && (
+          {isVardiya ? (
+            <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+              Gece Vardiyası (21:00-07:00)
+            </span>
+          ) : currentTypeMeta && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${currentTypeMeta.color}`}>
               {currentTypeMeta.label}
             </span>
@@ -791,7 +799,11 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
           <div className="bg-gradient-to-r from-teal-600 to-teal-700 p-5 text-white">
             <div className="flex flex-wrap items-center gap-3">
-              {currentTypeMeta && (
+              {isVardiya ? (
+                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-white/20">
+                  Gece Vardiyası (21:00-07:00)
+                </span>
+              ) : currentTypeMeta && (
                 <span className="px-3 py-1 rounded-full text-xs font-semibold bg-white/20">
                   {currentTypeMeta.label}
                 </span>

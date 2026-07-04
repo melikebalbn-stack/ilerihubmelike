@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
+import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -141,6 +142,15 @@ export async function POST(request: NextRequest) {
     // Boş stringleri temizle (Prisma enum hataları için)
     for (const key of Object.keys(personnelData)) {
       if (personnelData[key] === '') personnelData[key] = null
+    }
+
+    // Yaka Aşama 1: yeni personel aktif → Yaka Rengi + Yaka Detayı zorunlu + tutarlı.
+    if (!personnelData.yakaRengi || !personnelData.yakaDetayi) {
+      return NextResponse.json({ error: 'Yaka Rengi ve Yaka Detayı zorunludur' }, { status: 400 })
+    }
+    const izinliDetay = YAKA_DETAY_MAP[personnelData.yakaRengi as string] ?? []
+    if (!izinliDetay.includes(personnelData.yakaDetayi as string)) {
+      return NextResponse.json({ error: 'Yaka Detayı, seçilen Yaka Rengi ile uyumsuz' }, { status: 400 })
     }
 
     personnelData.createdBy = user.id

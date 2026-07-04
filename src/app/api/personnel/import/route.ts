@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
-import { EXCEL_COLUMN_MAP } from '@/lib/personnel-constants'
+import { EXCEL_COLUMN_MAP, YAKA_DETAY_MAP } from '@/lib/personnel-constants'
 import { requireUser } from '@/lib/auth/require-user'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 
@@ -33,9 +33,47 @@ function normalizeYaka(value: string | null | undefined): string | null {
     .replace(/Ş/g, 'S')
     .replace(/Ö/g, 'O')
     .replace(/Ç/g, 'C')
+  if (v === 'GRI' || v.includes('GRI')) return 'GRI'
   if (v === 'MAVI' || v.includes('MAVI')) return 'MAVI'
   if (v === 'BEYAZ' || v.includes('BEYAZ')) return 'BEYAZ'
   return null
+}
+
+// Yaka Aşama 1: "YAKA DETAYI" sütunundaki Türkçe metni YakaDetayi enum'una çevir.
+// Sütun yoksa/eşleşmezse yakaRengi'nin taban değerine düşer (MAVI/BEYAZ/GRI). Sonuç her
+// zaman YAKA_DETAY_MAP[yakaRengi] içinde tutulur (tutarlılık garantisi).
+function normalizeYakaDetayi(value: string | null | undefined, yakaRengi: string | null): string | null {
+  const izinli = yakaRengi ? (YAKA_DETAY_MAP[yakaRengi] ?? []) : []
+  const base = izinli[0] ?? null // MAVI→'MAVI', BEYAZ→'BEYAZ', GRI→'GRI'
+  if (!value) return base
+  const v = value.toString().toUpperCase().trim()
+    .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
+    .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+    .replace(/[\s.]+/g, ' ').trim()
+  const patterns: [RegExp, string][] = [
+    [/GENEL MUDUR YRD|G MUDUR YRD/, 'BEYAZ_GMUDUR_YRD'],
+    [/GENEL MUDUR/, 'BEYAZ_GENEL_MDR'],
+    [/MUHENDIS.*(MDR YRD|MUDUR YRD)/, 'BEYAZ_MUHENDIS_MDRYRD'],
+    [/MUHENDIS.*MUDUR/, 'BEYAZ_MUHENDIS_MUDUR'],
+    [/MUHENDIS/, 'BEYAZ_MUHENDIS'],
+    [/SORUMLU TEKNIKER/, 'BEYAZ_SORUMLU_TEKNIKER'],
+    [/TEKNIKER/, 'BEYAZ_TEKNIKER'],
+    [/MUDUR YRD/, 'BEYAZ_MUDUR_YRD'],
+    [/MUDUR/, 'BEYAZ_MUDUR'],
+    [/VEKALET/, 'GRI_VEKALET'],
+  ]
+  let match: string | null = null
+  for (const [re, enumVal] of patterns) {
+    if (re.test(v)) { match = enumVal; break }
+  }
+  if (!match) {
+    if (v.includes('GRI')) match = 'GRI'
+    else if (v.includes('MAVI')) match = 'MAVI'
+    else if (v.includes('BEYAZ')) match = 'BEYAZ'
+  }
+  // Tutarlılık: bulunan değer seçili yaka'nın altında değilse taban değere düş.
+  if (match && izinli.includes(match)) return match
+  return base
 }
 
 function normalizeDirektEndirekt(value: string | null | undefined): string | null {
@@ -204,6 +242,8 @@ export async function POST(request: NextRequest) {
           errors.push({ row: rowNum, message: `Geçersiz yaka rengi: ${mapped.yakaRengi}` })
           continue
         }
+        // Yaka Aşama 1: yakaDetayi (sütun varsa metinden, yoksa yaka tabanı — hep tutarlı).
+        const yakaDetayi = normalizeYakaDetayi(mapped.yakaDetayi, yakaRengi)
 
         const iseGirisTarihi = parseDate(mapped.iseGirisTarihi)
         if (!iseGirisTarihi) {
@@ -227,6 +267,7 @@ export async function POST(request: NextRequest) {
           adSoyad: mapped.adSoyad.toString().trim(),
           cinsiyet,
           yakaRengi,
+          yakaDetayi,
           iseGirisTarihi,
           gorev: mapped.gorev.toString().trim(),
           bolum: mapped.bolum.toString().trim(),

@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { logAuditEvent } from '@/lib/audit-log'
 import { computeTenure } from '@/lib/personnel-tenure'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
+import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,7 @@ export async function GET(
         cinsiyet: true,
         adSoyad: true,
         yakaRengi: true,
+        yakaDetayi: true,
         direktEndirekt: true,
         asansorMekanik: true,
         iseGirisTarihi: true,
@@ -259,6 +261,20 @@ export async function PUT(
     // Parse int fields
     if (body.mezuniyetYili) {
       body.mezuniyetYili = parseInt(body.mezuniyetYili) || null
+    }
+
+    // Yaka Aşama 1: efektif yaka/detay (body vermiyorsa mevcut değer). Aktif personelde
+    // ikisi de zorunlu; her durumda yaka-detay tutarlı olmalı (YAKA_DETAY_MAP).
+    const effYaka = body.yakaRengi !== undefined ? body.yakaRengi : existing.yakaRengi
+    const effDetay = body.yakaDetayi !== undefined ? body.yakaDetayi : existing.yakaDetayi
+    if (existing.aktif && (!effYaka || !effDetay)) {
+      return NextResponse.json({ error: 'Aktif personel için Yaka Rengi ve Yaka Detayı zorunludur' }, { status: 400 })
+    }
+    if (effYaka && effDetay) {
+      const izinliDetay = YAKA_DETAY_MAP[effYaka as string] ?? []
+      if (!izinliDetay.includes(effDetay as string)) {
+        return NextResponse.json({ error: 'Yaka Detayı, seçilen Yaka Rengi ile uyumsuz' }, { status: 400 })
+      }
     }
 
     const updatedPersonnel = await prisma.personnel.update({

@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
       if (!p.personnelId || !p.workDepartment) {
         return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
       }
-      if (!p.mesaiNedeni || !String(p.mesaiNedeni).trim()) {
+      if (!isVardiya && (!p.mesaiNedeni || !String(p.mesaiNedeni).trim())) {
         return apiBadRequest('Her personel için Mesai Nedeni zorunludur')
       }
     }

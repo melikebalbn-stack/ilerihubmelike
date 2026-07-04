@@ -36,6 +36,8 @@ export async function GET() {
     const toplamCalisan = personnel.length
     const beyazYaka = personnel.filter(p => p.yakaRengi === 'BEYAZ').length
     const maviYaka = personnel.filter(p => p.yakaRengi === 'MAVI').length
+    // Yaka Aşama 1: GRI yaka kategorisi (üretim birim sorumluları).
+    const griYaka = personnel.filter(p => p.yakaRengi === 'GRI').length
     const direkt = personnel.filter(p => p.direktEndirekt === 'DIREKT').length
     const endirekt = personnel.filter(p => p.direktEndirekt === 'ENDIREKT').length
 
@@ -172,7 +174,7 @@ export async function GET() {
     const asansorBeyaz = asansorPersonel.filter(p => p.yakaRengi === 'BEYAZ').length
 
     return NextResponse.json({
-      ozet: { toplamCalisan, beyazYaka, maviYaka, direkt, endirekt },
+      ozet: { toplamCalisan, beyazYaka, maviYaka, griYaka, direkt, endirekt },
       cinsiyetDagilimi: { erkek, kadin },
       yakaCinsiyetTablosu,
       beyazYakaBolumler,

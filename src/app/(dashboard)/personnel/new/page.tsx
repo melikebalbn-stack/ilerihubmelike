@@ -17,6 +17,8 @@ import {
   KAN_GRUBU_LABELS,
   CINSIYET_LABELS,
   YAKA_LABELS,
+  YAKA_DETAYI_LABELS,
+  YAKA_DETAY_MAP,
   DIREKT_ENDIREKT_LABELS,
   ASANSOR_MEKANIK_LABELS,
 } from "@/lib/personnel-constants"
@@ -27,6 +29,7 @@ type FormData = {
   cinsiyet: string
   sinif: string
   yakaRengi: string
+  yakaDetayi: string
   kanGrubu: string
   gorev: string
   bolum: string
@@ -78,6 +81,7 @@ const initialForm: FormData = {
   cinsiyet: "",
   sinif: "",
   yakaRengi: "",
+  yakaDetayi: "",
   kanGrubu: "",
   gorev: "",
   bolum: "",
@@ -164,6 +168,10 @@ export default function NewPersonnelPage() {
         next.denemeDegerlendirme = addMonths(value, 2)
         next.altiAyDegerlendirme = addMonths(value, 6)
       }
+      // Yaka değişince yakaDetayi'yi sıfırla (yaka=BEYAZ iken MAVI detay kalmasın — tutarlılık).
+      if (field === "yakaRengi") {
+        next.yakaDetayi = ""
+      }
       return next
     })
   }
@@ -173,6 +181,12 @@ export default function NewPersonnelPage() {
 
     if (!form.sicilNo || !form.adSoyad || !form.gorev || !form.bolum || !form.iseGirisTarihi) {
       toast.error("Zorunlu alanları doldurun: Sicil No, Ad Soyad, Görev, Bölüm, İşe Giriş Tarihi")
+      return
+    }
+
+    // Yaka Aşama 1: yeni personel her zaman aktif → Yaka Rengi + Yaka Detayı zorunlu.
+    if (!form.yakaRengi || !form.yakaDetayi) {
+      toast.error("Yaka Rengi ve Yaka Detayı zorunludur")
       return
     }
 
@@ -259,11 +273,25 @@ export default function NewPersonnelPage() {
                 <Input id="sinif" value={form.sinif} onChange={(e) => set("sinif", e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="yakaRengi">Yaka Rengi</Label>
+                <Label htmlFor="yakaRengi">Yaka Rengi *</Label>
                 <Select id="yakaRengi" value={form.yakaRengi} onChange={(e) => set("yakaRengi", e.target.value)}>
                   <option value="">Seçiniz</option>
                   {Object.entries(YAKA_LABELS).map(([k, v]) => (
                     <option key={k} value={k}>{v}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="yakaDetayi">Yaka Detayı *</Label>
+                <Select
+                  id="yakaDetayi"
+                  value={form.yakaDetayi}
+                  onChange={(e) => set("yakaDetayi", e.target.value)}
+                  disabled={!form.yakaRengi}
+                >
+                  <option value="">{form.yakaRengi ? "Seçiniz" : "Önce yaka seçin"}</option>
+                  {(YAKA_DETAY_MAP[form.yakaRengi] ?? []).map((k) => (
+                    <option key={k} value={k}>{YAKA_DETAYI_LABELS[k] ?? k}</option>
                   ))}
                 </Select>
               </div>

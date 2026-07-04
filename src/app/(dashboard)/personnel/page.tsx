@@ -259,7 +259,7 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="text-[10px] [&_td]:py-1">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10 sticky left-0 bg-background z-10">#</TableHead>
@@ -321,18 +321,18 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
                       <TableCell className="font-medium whitespace-nowrap">{p.adSoyad}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         <span className="flex items-center gap-1.5">
-                          {p.yakaRengi === "MAVI" && <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Mavi</Badge>}
-                          {p.yakaRengi === "BEYAZ" && <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Beyaz</Badge>}
-                          {p.yakaRengi === "GRI" && <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Gri</Badge>}
+                          {p.yakaRengi === "MAVI" && <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 text-[10px]">Mavi</Badge>}
+                          {p.yakaRengi === "BEYAZ" && <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100 text-[10px]">Beyaz</Badge>}
+                          {p.yakaRengi === "GRI" && <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100 text-[10px]">Gri</Badge>}
                           {!p.yakaRengi && "-"}
                           {p.yakaDetayi && p.yakaDetayi !== p.yakaRengi && (
-                            <span className="text-xs text-muted-foreground">{YAKA_DETAYI_LABELS[p.yakaDetayi] ?? p.yakaDetayi}</span>
+                            <span className="text-[10px] text-muted-foreground">{YAKA_DETAYI_LABELS[p.yakaDetayi] ?? p.yakaDetayi}</span>
                           )}
                         </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {p.direktEndirekt === "DIREKT" && <Badge variant="outline">D</Badge>}
-                        {p.direktEndirekt === "ENDIREKT" && <Badge variant="secondary">E</Badge>}
+                        {p.direktEndirekt === "DIREKT" && <Badge variant="outline" className="text-[10px]">D</Badge>}
+                        {p.direktEndirekt === "ENDIREKT" && <Badge variant="secondary" className="text-[10px]">E</Badge>}
                         {!p.direktEndirekt && "-"}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{p.asansorMekanik || "-"}</TableCell>

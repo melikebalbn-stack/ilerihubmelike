@@ -5,7 +5,7 @@
 // tamamlanma = seviye===BASARILI. Matris self-mark'ı (completionPct) KULLANILMAZ.
 
 import { useEffect, useState, useCallback } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FileText } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -48,6 +48,11 @@ interface CourseOpt {
   id: string;
   title: string;
   isIfs: boolean;
+}
+interface PackageOpt {
+  packageId: string;
+  displayName: string;
+  courseCount: number;
 }
 type SeviyeDist = {
   BASARILI: number;
@@ -122,8 +127,10 @@ function SeviyeBadge({ seviye }: { seviye: string | null }) {
 export function IfsEvaluationReportTab() {
   const [courses, setCourses] = useState<CourseOpt[]>([]);
   const [bolums, setBolums] = useState<string[]>([]);
+  const [packages, setPackages] = useState<PackageOpt[]>([]);
   const [courseId, setCourseId] = useState("");
   const [bolum, setBolum] = useState<string>(""); // "" = bölüm bazında
+  const [packageId, setPackageId] = useState("");
   const [data, setData] = useState<BolumData | KisiData | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -142,6 +149,15 @@ export function IfsEvaluationReportTab() {
       .then((r) => (r.ok ? r.json() : null))
       .then((m) => setBolums(m?.bolums ?? []))
       .catch(() => setBolums([]));
+    // Rapor indirme için IFS paket listesi (paket bazlı yönetim raporu).
+    fetch("/api/akademi/ifs/departments")
+      .then((r) => (r.ok ? r.json() : { departments: [] }))
+      .then((d) => {
+        const pkgs: PackageOpt[] = d.departments ?? [];
+        setPackages(pkgs);
+        if (pkgs.length) setPackageId(pkgs[0].packageId);
+      })
+      .catch(() => setPackages([]));
   }, []);
 
   const load = useCallback(() => {
@@ -210,6 +226,67 @@ export function IfsEvaluationReportTab() {
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Paket bazlı yönetim raporu indirme (Excel + PDF) */}
+      <div className="ml-auto flex items-end gap-2">
+        <div className="space-y-1">
+          <label
+            className="text-xs font-medium block"
+            style={{ color: "var(--ak-text-secondary)" }}
+          >
+            Rapor Paketi (indirme)
+          </label>
+          <Select value={packageId} onValueChange={setPackageId}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Paket seçin" />
+            </SelectTrigger>
+            <SelectContent>
+              {packages.length === 0 && (
+                <SelectItem value="__none" disabled>
+                  IFS paketi yok
+                </SelectItem>
+              )}
+              {packages.map((p) => (
+                <SelectItem key={p.packageId} value={p.packageId}>
+                  {p.displayName} ({p.courseCount} kurs)
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <a
+          href={
+            packageId
+              ? `/api/akademi/admin/reports/ifs-aggregate/export?format=xlsx&packageId=${encodeURIComponent(packageId)}`
+              : undefined
+          }
+          aria-disabled={!packageId}
+          className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-white ${
+            packageId
+              ? "bg-emerald-600 hover:bg-emerald-700"
+              : "bg-slate-300 pointer-events-none"
+          }`}
+        >
+          <FileSpreadsheet size={14} />
+          Excel İndir
+        </a>
+        <a
+          href={
+            packageId
+              ? `/api/akademi/admin/reports/ifs-aggregate/export?format=pdf&packageId=${encodeURIComponent(packageId)}`
+              : undefined
+          }
+          aria-disabled={!packageId}
+          className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-white ${
+            packageId
+              ? "bg-slate-900 hover:bg-slate-800"
+              : "bg-slate-300 pointer-events-none"
+          }`}
+        >
+          <FileText size={14} />
+          PDF İndir
+        </a>
       </div>
     </div>
   );

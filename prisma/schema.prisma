@@ -8593,6 +8593,8 @@ model Personnel {
   sorumlusuOlduguBolumler3      DepartmentDefinition[] @relation("Dept_S3")
   mudurYardimcisiOlduguBolumler DepartmentDefinition[] @relation("Dept_MY")
   muduruOlduguBolumler          DepartmentDefinition[] @relation("Dept_M")
+  // Kiosk/Workstation Faz 1: bu personelin atandığı tezgahlar (join)
+  workstations                  PersonnelWorkstation[]
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -8785,6 +8787,9 @@ model DepartmentDefinition {
   sorumlu3        Personnel? @relation("Dept_S3", fields: [sorumlu3Id], references: [id])
   mudurYardimcisi Personnel? @relation("Dept_MY", fields: [mudurYardimcisiId], references: [id])
   mudur           Personnel? @relation("Dept_M", fields: [mudurId], references: [id])
+
+  // Kiosk/Workstation Faz 1: bu bölüme bağlı tezgahlar
+  workstations Workstation[]
 
   @@index([parentId])
   @@index([isActive])
@@ -10099,4 +10104,39 @@ model OffboardingAccessItem {
   appliedBy String?
 
   @@index([formId])
+}
+
+// Kiosk/Workstation Faz 1 — ILERIHub'ın kendi tezgah/iş istasyonu verisi (IFS'e bağımlı değil).
+// ifsWorkCenterKod IFS iş merkezini kod olarak taşır (UNIQUE değil; çok tezgah aynı merkeze bağlanabilir).
+model Workstation {
+  id               String   @id @default(cuid())
+  kod              String   @unique // fiziksel tezgah, örn PH50
+  ad               String // örn "100 ton pres"
+  ifsWorkCenterKod String // IFS iş merkezi, örn PH — UNIQUE DEĞİL
+  departmentId     String // DepartmentDefinition FK (org/İK domaini)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  department DepartmentDefinition   @relation(fields: [departmentId], references: [id])
+  personnel  PersonnelWorkstation[]
+
+  @@index([ifsWorkCenterKod])
+  @@index([departmentId])
+  @@map("workstations")
+}
+
+// Personel ↔ Tezgah çoktan-çoğa eşlemesi (explicit join, DepartmentPackage deseni).
+model PersonnelWorkstation {
+  id            String   @id @default(cuid())
+  personnelId   String
+  workstationId String
+  createdAt     DateTime @default(now())
+
+  personnel   Personnel   @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  workstation Workstation @relation(fields: [workstationId], references: [id], onDelete: Cascade)
+
+  @@unique([personnelId, workstationId])
+  @@index([workstationId])
+  @@map("personnel_workstations")
 }

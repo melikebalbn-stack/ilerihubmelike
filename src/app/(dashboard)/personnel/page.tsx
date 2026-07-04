@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/table"
 import { Search, Plus, Download, Upload, Users, ChevronLeft, ChevronRight, Loader2, GraduationCap, Briefcase, ArrowUpDown, ArrowUp, ArrowDown, BarChart3 } from "lucide-react"
 import { toast } from "sonner"
-import { BOLUMLER } from "@/lib/personnel-constants"
+import { BOLUMLER, YAKA_DETAYI_LABELS } from "@/lib/personnel-constants"
 
 type Personnel = {
   id: string
@@ -30,6 +30,7 @@ type Personnel = {
   cinsiyet: string | null
   adSoyad: string
   yakaRengi: string | null
+  yakaDetayi: string | null
   direktEndirekt: string | null
   asansorMekanik: string | null
   iseGirisTarihi: string | null
@@ -217,6 +218,7 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
               <option value="">Tümü (Yaka)</option>
               <option value="MAVI">Mavi Yaka</option>
               <option value="BEYAZ">Beyaz Yaka</option>
+              <option value="GRI">Gri Yaka</option>
             </Select>
             <Select value={durum} onChange={(e) => { setDurum(e.target.value); setPagination(prev => ({ ...prev, page: 1 })) }}>
               <option value="AKTIF">Aktif</option>
@@ -318,9 +320,15 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
                       <TableCell className="whitespace-nowrap">{p.cinsiyet === "MALE" ? "Erkek" : p.cinsiyet === "FEMALE" ? "Kadın" : "-"}</TableCell>
                       <TableCell className="font-medium whitespace-nowrap">{p.adSoyad}</TableCell>
                       <TableCell className="whitespace-nowrap">
-                        {p.yakaRengi === "MAVI" && <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Mavi</Badge>}
-                        {p.yakaRengi === "BEYAZ" && <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Beyaz</Badge>}
-                        {!p.yakaRengi && "-"}
+                        <span className="flex items-center gap-1.5">
+                          {p.yakaRengi === "MAVI" && <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Mavi</Badge>}
+                          {p.yakaRengi === "BEYAZ" && <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Beyaz</Badge>}
+                          {p.yakaRengi === "GRI" && <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Gri</Badge>}
+                          {!p.yakaRengi && "-"}
+                          {p.yakaDetayi && p.yakaDetayi !== p.yakaRengi && (
+                            <span className="text-xs text-muted-foreground">{YAKA_DETAYI_LABELS[p.yakaDetayi] ?? p.yakaDetayi}</span>
+                          )}
+                        </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {p.direktEndirekt === "DIREKT" && <Badge variant="outline">D</Badge>}

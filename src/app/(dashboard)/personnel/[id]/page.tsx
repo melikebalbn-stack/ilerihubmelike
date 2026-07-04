@@ -33,6 +33,8 @@ import {
   KAN_GRUBU_LABELS,
   CINSIYET_LABELS,
   YAKA_LABELS,
+  YAKA_DETAYI_LABELS,
+  YAKA_DETAY_MAP,
   DIREKT_ENDIREKT_LABELS,
   ASANSOR_MEKANIK_LABELS,
 } from "@/lib/personnel-constants"
@@ -59,6 +61,7 @@ type PersonnelData = {
   cinsiyet: string | null
   sinif: string | null
   yakaRengi: string | null
+  yakaDetayi: string | null
   kanGrubu: string | null
   gorev: string | null
   bolum: string | null
@@ -213,6 +216,10 @@ export default function PersonnelDetailPage() {
         next.denemeDegerlendirme = addMonths(value, 2) || null
         next.altiAyDegerlendirme = addMonths(value, 6) || null
       }
+      // Yaka değişince yakaDetayi'yi sıfırla (tutarsız yaka-detay kombinasyonu kalmasın).
+      if (field === "yakaRengi") {
+        next.yakaDetayi = ""
+      }
       return next as typeof prev
     })
   }
@@ -220,6 +227,11 @@ export default function PersonnelDetailPage() {
   const handleSave = async () => {
     if (!form.sicilNo || !form.adSoyad) {
       toast.error("Sicil No ve Ad Soyad zorunludur")
+      return
+    }
+    // Yaka Aşama 1: aktif personelde Yaka Rengi + Yaka Detayı zorunlu (pasifte opsiyonel).
+    if (data?.aktif && (!form.yakaRengi || !form.yakaDetayi)) {
+      toast.error("Aktif personel için Yaka Rengi ve Yaka Detayı zorunludur")
       return
     }
     try {
@@ -455,11 +467,24 @@ export default function PersonnelDetailPage() {
                 <Input value={form.sinif || ""} onChange={(e) => set("sinif", e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Yaka Rengi</Label>
+                <Label>Yaka Rengi{data.aktif ? " *" : ""}</Label>
                 <Select value={form.yakaRengi || ""} onChange={(e) => set("yakaRengi", e.target.value)}>
                   <option value="">Seçiniz</option>
                   {Object.entries(YAKA_LABELS).map(([k, v]) => (
                     <option key={k} value={k}>{v}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Yaka Detayı{data.aktif ? " *" : ""}</Label>
+                <Select
+                  value={form.yakaDetayi || ""}
+                  onChange={(e) => set("yakaDetayi", e.target.value)}
+                  disabled={!form.yakaRengi}
+                >
+                  <option value="">{form.yakaRengi ? "Seçiniz" : "Önce yaka seçin"}</option>
+                  {(YAKA_DETAY_MAP[form.yakaRengi as string] ?? []).map((k) => (
+                    <option key={k} value={k}>{YAKA_DETAYI_LABELS[k] ?? k}</option>
                   ))}
                 </Select>
               </div>
@@ -481,10 +506,16 @@ export default function PersonnelDetailPage() {
               <div><p className="text-sm text-muted-foreground">Sınıf</p><p className="font-medium">{data.sinif || "-"}</p></div>
               <div>
                 <p className="text-sm text-muted-foreground">Yaka Rengi</p>
-                <div>
+                <div className="flex items-center gap-2 flex-wrap">
                   {data.yakaRengi === "MAVI" && <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Mavi Yaka</Badge>}
                   {data.yakaRengi === "BEYAZ" && <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Beyaz Yaka</Badge>}
+                  {data.yakaRengi === "GRI" && <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Gri Yaka</Badge>}
                   {!data.yakaRengi && <p className="font-medium">-</p>}
+                  {data.yakaDetayi && (
+                    <span className="text-xs text-muted-foreground">
+                      {YAKA_DETAYI_LABELS[data.yakaDetayi] ?? data.yakaDetayi}
+                    </span>
+                  )}
                 </div>
               </div>
               <div><p className="text-sm text-muted-foreground">Kan Grubu</p><p className="font-medium">{displayValue(data.kanGrubu, KAN_GRUBU_LABELS)}</p></div>

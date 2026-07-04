@@ -223,8 +223,8 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
 
   // Helpers
   const canProceedStep1 = overtimeType !== "" && date !== ""
-  // Mesai Nedeni her seçili personel için ZORUNLU
-  const allMesaiNedeniFilled = selectedPersonnel.every(
+  // Mesai Nedeni her seçili personel için ZORUNLU (VARDIYA'da opsiyonel → bypass).
+  const allMesaiNedeniFilled = isVardiya || selectedPersonnel.every(
     (p) => (personnelDetails[p.id]?.mesaiNedeni ?? "").trim() !== ""
   )
   const canProceedStep2 = selectedIds.size > 0 && allMesaiNedeniFilled
@@ -747,15 +747,16 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
 
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">
-                          Mesai Nedeni <span className="text-red-500">*</span>
+                          {isVardiya ? "Vardiya Sebebi" : "Mesai Nedeni"}
+                          {!isVardiya && <span className="text-red-500"> *</span>}
                         </label>
                         <Input
-                          placeholder="Mesai nedenini girin (zorunlu)"
+                          placeholder={isVardiya ? "Vardiya sebebi (opsiyonel)" : "Mesai nedenini girin (zorunlu)"}
                           value={detail.mesaiNedeni}
                           onChange={(e) => updateDetail(person.id, "mesaiNedeni", e.target.value)}
-                          className={!detail.mesaiNedeni.trim() ? "border-red-300 focus-visible:ring-red-400" : ""}
+                          className={!isVardiya && !detail.mesaiNedeni.trim() ? "border-red-300 focus-visible:ring-red-400" : ""}
                         />
-                        {!detail.mesaiNedeni.trim() && (
+                        {!isVardiya && !detail.mesaiNedeni.trim() && (
                           <p className="text-xs text-red-500 mt-1">Mesai nedeni zorunludur</p>
                         )}
                       </div>
@@ -830,7 +831,7 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
                   <th className="px-4 py-3">Personel Adı</th>
                   <th className="px-4 py-3">Telefon</th>
                   <th className="px-4 py-3">Departman</th>
-                  <th className="px-4 py-3">Mesai Nedeni</th>
+                  <th className="px-4 py-3">{isVardiya ? "Vardiya Sebebi" : "Mesai Nedeni"}</th>
                   <th className="px-4 py-3">Servis Güzergahı</th>
                   <th className="px-4 py-3">Hedef Üretim</th>
                   <th className="px-4 py-3">Hedef Adet</th>

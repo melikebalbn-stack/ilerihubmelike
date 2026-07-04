@@ -155,8 +155,9 @@ export async function POST(request: NextRequest) {
 
     personnelData.createdBy = user.id
 
-    // PR-B: Personnel create + ilk AÇIK EmploymentPeriod = TEK transaction (dual-write).
-    // Eski Personnel.iseGirisTarihi/exitDate alanları AYNEN yazılır (paralel korunur).
+    // PR-B: Personnel create + ilk AÇIK EmploymentPeriod = TEK transaction.
+    // PR-4b: Personnel.exit* DROP edildi; çıkış verisi tek kaynak EmploymentPeriod'da.
+    // Personnel.iseGirisTarihi yazılmaya devam (giriş tarihi paralel korunur).
     const newPersonnel = await prisma.$transaction(async (tx) => {
       const created = await tx.personnel.create({ data: personnelData })
       await tx.employmentPeriod.create({

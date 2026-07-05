@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect as Select } from "@/components/ui/select"
+import { getVardiyaHaftaOptions, formatVardiyaHafta } from "@/lib/vardiya-hafta"
 import { Clock, ChevronRight, ChevronLeft, Search, X, Users, Check, Save, Send, Loader2 } from "lucide-react"
 import { useRouter, useParams } from "next/navigation"
 import { toast } from "sonner"
@@ -79,6 +80,8 @@ export default function EditOvertimeFormPage() {
   // Step 1 state
   const [overtimeType, setOvertimeType] = useState<OvertimeType | "">("")
   const [date, setDate] = useState("")
+  // Vardiya Hafta Modu (form.vardiyaHaftaMi'den yüklenir).
+  const [vardiyaHaftaMi, setVardiyaHaftaMi] = useState(false)
   const [isFullDay, setIsFullDay] = useState(true)
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
@@ -136,6 +139,7 @@ export default function EditOvertimeFormPage() {
         setDetailFormTipi(form.formTipi === "VARDIYA" ? "VARDIYA" : "MESAI")
         setOvertimeType(form.overtimeType)
         setDate(form.date ? form.date.split("T")[0] : "")
+        setVardiyaHaftaMi(!!form.vardiyaHaftaMi)
         setIsFullDay(form.isFullDay)
         setStartTime(form.startTime || "")
         setEndTime(form.endTime || "")
@@ -291,6 +295,7 @@ export default function EditOvertimeFormPage() {
       const body = {
         overtimeType,
         date,
+        vardiyaHaftaMi: isVardiya && vardiyaHaftaMi,
         isFullDay,
         startTime: isFullDay ? null : startTime,
         endTime: isFullDay ? null : endTime,
@@ -436,15 +441,31 @@ export default function EditOvertimeFormPage() {
           </div>
         </div>
 
-        {/* Date */}
+        {/* Date / Week (vardiya hafta modu form.vardiyaHaftaMi'den sabit; mod değiştirilmez) */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tarih</label>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="max-w-xs"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {isVardiya && vardiyaHaftaMi ? "Vardiya Haftası" : "Tarih"}
+          </label>
+          {isVardiya && vardiyaHaftaMi ? (
+            <Select value={date} onChange={(e) => setDate(e.target.value)} className="max-w-md">
+              <option value="">Hafta seçiniz</option>
+              {(() => {
+                const opts = getVardiyaHaftaOptions(5)
+                // Kayıtlı hafta (bu hafta öncesi olabilir) listede yoksa başa ekle.
+                if (date && !opts.some((o) => o.value === date)) {
+                  opts.unshift({ value: date, label: formatVardiyaHafta(date) })
+                }
+                return opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)
+              })()}
+            </Select>
+          ) : (
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="max-w-xs"
+            />
+          )}
         </div>
 
         {/* Work mode toggle */}

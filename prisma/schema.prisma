@@ -8029,6 +8029,10 @@ model OvertimeForm {
   endTime      String? // "20:30"
   description  String? // Genel açıklama
 
+  // Vardiya Hafta Modu: true ise date = haftanın Pazartesi'si ve form Pzt-Cuma 5 gece
+  // (aynı ekip, tek form) anlamına gelir. false = tek gün (mevcut davranış). MESAI'de her zaman false.
+  vardiyaHaftaMi Boolean @default(false)
+
   // Oluşturan
   createdById String
   createdBy   User   @relation("OvertimeCreator", fields: [createdById], references: [id])

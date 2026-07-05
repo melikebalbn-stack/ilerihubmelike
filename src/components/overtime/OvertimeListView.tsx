@@ -10,6 +10,7 @@ import { Plus, Search, Clock, Eye, Pencil, Trash2, ChevronLeft, ChevronRight, Lo
 import Link from "next/link"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { formatVardiyaHafta } from "@/lib/vardiya-hafta"
 import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
 import { apiFetch } from "@/lib/api-fetch"
 import { toast } from "sonner"
@@ -19,6 +20,7 @@ interface OvertimeForm {
   formNo: string
   overtimeType: string
   date: string
+  vardiyaHaftaMi?: boolean
   isFullDay: boolean
   startTime: string | null
   endTime: string | null
@@ -309,7 +311,9 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
                       </span>
                     </TableCell>
                     <TableCell>
-                      {format(new Date(form.date), "dd MMM yyyy", { locale: tr })}
+                      {form.vardiyaHaftaMi
+                        ? formatVardiyaHafta(form.date, { withYear: false })
+                        : format(new Date(form.date), "dd MMM yyyy", { locale: tr })}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">

@@ -9,6 +9,7 @@ import { Clock, ArrowLeft, Check, X, MessageSquare, Loader2, Users, Send, FlaskC
 import Link from "next/link"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { formatVardiyaHafta } from "@/lib/vardiya-hafta"
 import { toast } from "sonner"
 import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
@@ -66,6 +67,7 @@ interface OvertimeFormDetail {
   formTipi?: "MESAI" | "VARDIYA"
   overtimeType: "SATURDAY" | "SUNDAY" | "WEEKDAY_EXTRA" | "HOLIDAY"
   date: string
+  vardiyaHaftaMi?: boolean
   isFullDay: boolean
   startTime: string | null
   endTime: string | null
@@ -556,9 +558,11 @@ export default function OvertimeDetailPage() {
             </span>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Tarih</p>
+            <p className="text-sm text-muted-foreground">{form.vardiyaHaftaMi ? "Vardiya Haftası" : "Tarih"}</p>
             <p className="font-medium mt-1">
-              {format(new Date(form.date), "dd MMMM yyyy EEEE", { locale: tr })}
+              {form.vardiyaHaftaMi
+                ? formatVardiyaHafta(form.date)
+                : format(new Date(form.date), "dd MMMM yyyy EEEE", { locale: tr })}
             </p>
           </div>
           <div>

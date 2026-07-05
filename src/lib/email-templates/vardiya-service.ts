@@ -2,19 +2,35 @@
 // gönderilen servis güzergahı listesi maili. Perf maili (overtime-performance.ts)
 // Outlook-uyumlu <table> desenini referans alır. Yalnız VARDIYA formları için.
 
+import { format } from 'date-fns'
+import { tr } from 'date-fns/locale'
+import { formatVardiyaHafta } from '@/lib/vardiya-hafta'
+
 const NAVY = '#1B4F72'
 
 export type VardiyaServiceRow = { ad: string; guzergah: string; durak: string }
+// Vardiya Hafta Modu: mail'de hafta/tarih bilgisi. date = "YYYY-MM-DD".
+export type VardiyaServiceMeta = { date?: string; vardiyaHaftaMi?: boolean }
 
 /** Onay tarihi metni (UTC → tr-TR gün ay yıl). */
 function bugunMetni(): string {
   return new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
 }
 
+/** Vardiya tarih/hafta metni: hafta modu → "38. Hafta (14-18 Temmuz)", gün modu → tam tarih. */
+function vardiyaTarihMetni(meta?: VardiyaServiceMeta): string {
+  if (!meta?.date) return ''
+  if (meta.vardiyaHaftaMi) return formatVardiyaHafta(meta.date)
+  const [y, m, d] = meta.date.slice(0, 10).split('-').map(Number)
+  return format(new Date(y, (m ?? 1) - 1, d ?? 1), 'dd MMMM yyyy EEEE', { locale: tr })
+}
+
 /** Plain-text fallback (sendEmail text parametresi). */
-export function buildVardiyaServiceMailText(formNo: string, rows: VardiyaServiceRow[]): string {
+export function buildVardiyaServiceMailText(formNo: string, rows: VardiyaServiceRow[], meta?: VardiyaServiceMeta): string {
+  const tarih = vardiyaTarihMetni(meta)
   const lines = [
     `Vardiya Servis Listesi — ${formNo}`,
+    ...(tarih ? [`${meta?.vardiyaHaftaMi ? 'Vardiya Haftası' : 'Vardiya Tarihi'}: ${tarih}`] : []),
     `Onay tarihi: ${bugunMetni()}`,
     '',
     'Personel | Güzergah | Durak',
@@ -23,12 +39,17 @@ export function buildVardiyaServiceMailText(formNo: string, rows: VardiyaService
   return lines.join('\n')
 }
 
-export function buildVardiyaServiceMailHtml(formNo: string, rows: VardiyaServiceRow[]): string {
+export function buildVardiyaServiceMailHtml(formNo: string, rows: VardiyaServiceRow[], meta?: VardiyaServiceMeta): string {
   const esc = (s: string) =>
     String(s ?? '-')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
+
+  const tarih = vardiyaTarihMetni(meta)
+  const tarihSatiri = tarih
+    ? `<br><span style="color:#e8eef4;font-size:14px;font-weight:600;">${meta?.vardiyaHaftaMi ? 'Vardiya Haftası' : 'Vardiya Tarihi'}: ${esc(tarih)}</span>`
+    : ''
 
   const bodyRows =
     rows.length > 0
@@ -49,7 +70,7 @@ export function buildVardiyaServiceMailHtml(formNo: string, rows: VardiyaService
     <tr><td align="center">
       <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;max-width:640px;">
         <tr><td style="background:${NAVY};padding:18px 24px;">
-          <span style="color:#fff;font-size:18px;font-weight:bold;">Vardiya Servis Listesi</span><br>
+          <span style="color:#fff;font-size:18px;font-weight:bold;">Vardiya Servis Listesi</span>${tarihSatiri}<br>
           <span style="color:#cdd9e5;font-size:13px;">${esc(formNo)} • Onay tarihi: ${bugunMetni()}</span>
         </td></tr>
         <tr><td style="padding:20px 24px;">

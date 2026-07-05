@@ -142,6 +142,7 @@ export async function GET(request: NextRequest) {
       formNo: form.formNo,
       overtimeType: form.overtimeType,
       date: form.date,
+      vardiyaHaftaMi: form.vardiyaHaftaMi,
       isFullDay: form.isFullDay,
       startTime: form.startTime,
       endTime: form.endTime,
@@ -209,6 +210,8 @@ export async function POST(request: NextRequest) {
     // Vardiya Faz 1: form tipi (default MESAI → mesai davranışı değişmez).
     const formTipi: FormTipi = body.formTipi === 'VARDIYA' ? 'VARDIYA' : 'MESAI'
     const isVardiya = formTipi === 'VARDIYA'
+    // Vardiya Hafta Modu: yalnız VARDIYA'da anlamlı. MESAI'de her zaman false.
+    const vardiyaHaftaMi = isVardiya && body.vardiyaHaftaMi === true
 
     // Vardiya sadeleştirme: UI'da mesai-türü kartları kaldırıldı. Savunmacı default —
     // VARDIYA'da tür gelmese bile sabit WEEKDAY_EXTRA. MESAI'de overtimeType client'tan
@@ -225,11 +228,15 @@ export async function POST(request: NextRequest) {
       return apiBadRequest('Geçersiz mesai türü')
     }
 
-    // Vardiya: tarih Pzt-Cuma olmalı (gece vardiyası hafta içi). getUTCDay 1-5.
+    // Vardiya tarih kuralı. Hafta modu: date = haftanın PAZARTESİ'si (dow===1). Gün modu:
+    // Pzt-Cuma (dow 1-5). getUTCDay 0=Paz..6=Cmt.
     if (isVardiya) {
-      const d = new Date(date)
-      const dow = d.getUTCDay() // 0=Paz .. 6=Cmt
-      if (dow === 0 || dow === 6) {
+      const dow = new Date(date).getUTCDay()
+      if (vardiyaHaftaMi) {
+        if (dow !== 1) {
+          return apiBadRequest('Hafta modunda tarih haftanın Pazartesi günü olmalıdır')
+        }
+      } else if (dow === 0 || dow === 6) {
         return apiBadRequest('Vardiya yalnızca Pazartesi-Cuma günleri için oluşturulabilir')
       }
     }
@@ -278,6 +285,7 @@ export async function POST(request: NextRequest) {
         formTipi,
         overtimeType: effOvertimeType as OvertimeType,
         date: new Date(date),
+        vardiyaHaftaMi,
         isFullDay: effIsFullDay,
         startTime: effIsFullDay ? null : effStartTime,
         endTime: effIsFullDay ? null : effEndTime,

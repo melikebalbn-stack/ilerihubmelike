@@ -7,8 +7,12 @@ import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
 import { buildVardiyaServiceMailHtml, buildVardiyaServiceMailText } from '@/lib/email-templates/vardiya-service'
 
-// Vardiya Faz 3: son onayda servis listesi maili alıcısı (İnsan Varlıkları).
-const VARDIYA_SERVICE_MAIL_TO = { email: 'insanvarliklari@ilerigroup.com', name: 'İnsan Varlıkları' }
+// Vardiya Faz 3: son onayda servis listesi maili alıcıları. İKİ alıcı: Üretim Planlama +
+// İnsan Varlıkları (NOKTALI adres — insan.varliklari@, eski noktasız insanvarliklari@ düzeltildi).
+const VARDIYA_SERVICE_MAIL_TO = [
+  { email: 'uretimplanlama@ilerigroup.com', name: 'Üretim Planlama' },
+  { email: 'insan.varliklari@ilerigroup.com', name: 'İnsan Varlıkları' },
+]
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -213,6 +217,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                   to: VARDIYA_SERVICE_MAIL_TO,
                   subject: `Vardiya Servis Listesi — ${form.formNo}`,
                   formNo: form.formNo,
+                  // Mail'de hafta/tarih bilgisi için (hafta modu → "38. Hafta (14-18 Temmuz)").
+                  date: form.date.toISOString().slice(0, 10),
+                  vardiyaHaftaMi: form.vardiyaHaftaMi,
                   rows: form.personnel.map((op) => ({
                     ad: op.personnel?.adSoyad ?? '-',
                     guzergah: op.serviceRoute ?? op.personnel?.serviceRoute ?? '-',
@@ -406,9 +413,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       try {
         // Vardiya Faz 3: final onay → İnsan Varlıkları'na servis güzergahı tablosu.
         if (m.kind === 'VARDIYA_SERVICE') {
-          const text = buildVardiyaServiceMailText(m.formNo, m.rows)
-          const html = buildVardiyaServiceMailHtml(m.formNo, m.rows)
-          await sendEmail([m.to], m.subject, text, html)
+          const meta = { date: m.date, vardiyaHaftaMi: m.vardiyaHaftaMi }
+          const text = buildVardiyaServiceMailText(m.formNo, m.rows, meta)
+          const html = buildVardiyaServiceMailHtml(m.formNo, m.rows, meta)
+          // İKİ alıcıya (Üretim Planlama + İnsan Varlıkları). m.to zaten dizi.
+          await sendEmail(m.to, m.subject, text, html)
           return apiSuccess(updatedForm.result)
         }
 

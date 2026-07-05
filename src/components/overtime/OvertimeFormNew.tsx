@@ -20,6 +20,7 @@ import { toast } from "sonner"
 import { MESAI_TURLERI } from "@/lib/overtime-constants"
 import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments, resolveDefaultDepartment } from "@/lib/use-departments"
+import { getVardiyaHaftaOptions } from "@/lib/vardiya-hafta"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,6 +88,8 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
   // Step 1 state
   const [overtimeType, setOvertimeType] = useState<OvertimeType | "">(isVardiya ? "WEEKDAY_EXTRA" : "")
   const [date, setDate] = useState("")
+  // Vardiya Hafta Modu: false = tek gün (mevcut), true = haftanın Pzt-Cuma'sı (date = o Pazartesi). MESAI'de kullanılmaz.
+  const [vardiyaHaftaMi, setVardiyaHaftaMi] = useState(false)
   const [isFullDay, setIsFullDay] = useState(!isVardiya)
   const [startTime, setStartTime] = useState(isVardiya ? VARDIYA_START : "")
   const [endTime, setEndTime] = useState(isVardiya ? VARDIYA_END : "")
@@ -285,6 +288,8 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
         formTipi,
         overtimeType,
         date,
+        // Vardiya Hafta Modu: yalnız VARDIYA + hafta modunda true (date = haftanın Pazartesi'si).
+        vardiyaHaftaMi: isVardiya && vardiyaHaftaMi,
         isFullDay,
         startTime: isFullDay ? null : startTime,
         endTime: isFullDay ? null : endTime,
@@ -436,17 +441,61 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
           </div>
         )}
 
-        {/* Date */}
+        {/* Vardiya Hafta Modu: Gün/Hafta toggle (SADECE VARDIYA) */}
+        {isVardiya && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vardiya Modu</label>
+            <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
+              <Button
+                type="button"
+                variant={!vardiyaHaftaMi ? "default" : "outline"}
+                onClick={() => { setVardiyaHaftaMi(false); setDate("") }}
+                className={`rounded-none border-0 ${!vardiyaHaftaMi ? "bg-teal-600 hover:bg-teal-700" : ""}`}
+              >
+                Gün
+              </Button>
+              <Button
+                type="button"
+                variant={vardiyaHaftaMi ? "default" : "outline"}
+                onClick={() => { setVardiyaHaftaMi(true); setDate("") }}
+                className={`rounded-none border-0 ${vardiyaHaftaMi ? "bg-teal-600 hover:bg-teal-700" : ""}`}
+              >
+                Hafta
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Date / Week */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tarih</label>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="max-w-xs"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {isVardiya && vardiyaHaftaMi ? "Vardiya Haftası" : "Tarih"}
+          </label>
+          {isVardiya && vardiyaHaftaMi ? (
+            <Select
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="max-w-md"
+            >
+              <option value="">Hafta seçiniz</option>
+              {getVardiyaHaftaOptions(5).map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          ) : (
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="max-w-xs"
+            />
+          )}
           {isVardiya && (
-            <p className="mt-1 text-xs text-gray-500">Vardiya yalnızca Pazartesi-Cuma günleri için oluşturulur.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              {vardiyaHaftaMi
+                ? "Seçilen hafta boyunca Pazartesi-Cuma her gece 21:00-07:00, aynı ekip (tek form)."
+                : "Vardiya yalnızca Pazartesi-Cuma günleri için oluşturulur."}
+            </p>
           )}
         </div>
 

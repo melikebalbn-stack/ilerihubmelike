@@ -155,6 +155,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Geçersiz mesai türü')
     }
 
+    // Vardiya tarih kuralı (create ile birebir). Hafta modu → Pazartesi (dow 1);
+    // gün modu → Pzt-Cuma (1-5). effHaftaMi: body verdiyse ondan, yoksa mevcut kayıttan.
+    const isVardiyaForm = existingForm.formTipi === 'VARDIYA'
+    const effHaftaMi = isVardiyaForm && (body.vardiyaHaftaMi !== undefined ? body.vardiyaHaftaMi === true : existingForm.vardiyaHaftaMi)
+    if (isVardiyaForm && date !== undefined) {
+      const dow = new Date(date).getUTCDay()
+      if (effHaftaMi) {
+        if (dow !== 1) return apiBadRequest('Hafta modunda tarih haftanın Pazartesi günü olmalıdır')
+      } else if (dow === 0 || dow === 6) {
+        return apiBadRequest('Vardiya yalnızca Pazartesi-Cuma günleri için oluşturulabilir')
+      }
+    }
+
     // Personel doğrulama
     if (personnel !== undefined) {
       if (!Array.isArray(personnel) || personnel.length === 0) {
@@ -188,6 +201,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (endTime !== undefined) formData.endTime = endTime
       if (description !== undefined) formData.description = description || null
       if (sendToGM !== undefined) formData.sendToGM = sendToGM
+      // Vardiya Hafta Modu: yalnız VARDIYA formunda güncellenir (MESAI'de dokunulmaz).
+      if (isVardiyaForm && body.vardiyaHaftaMi !== undefined) formData.vardiyaHaftaMi = body.vardiyaHaftaMi === true
 
       const form = await tx.overtimeForm.update({
         where: { id },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import { resolveUserDisplayName } from "@/lib/akademi-helpers";
+import { parseDueDateEndOfDay } from "@/lib/akademi/due-date";
 import { notifyAkademiEvent } from "@/lib/akademi-notify";
 import type { AdminAssignmentCreateInput } from "@/types/akademi-admin";
 
@@ -121,13 +122,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let dueDate: Date | null = null;
-  if (body.dueDate) {
-    const parsed = new Date(body.dueDate);
-    if (isNaN(parsed.getTime())) {
-      return NextResponse.json({ error: "Geçersiz tarih" }, { status: 400 });
-    }
-    dueDate = parsed;
+  // PR-IFS-RAPOR-2a: gün SONUNA normalize (parseDueDateEndOfDay) — overdue ile uyum.
+  const { dueDate, error: dueErr } = parseDueDateEndOfDay(body.dueDate);
+  if (dueErr) {
+    return NextResponse.json({ error: dueErr }, { status: 400 });
   }
 
   const course = await prisma.course.findUnique({

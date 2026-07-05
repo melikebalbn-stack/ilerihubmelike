@@ -91,6 +91,8 @@ export interface AdminPackageBolumsUpdateInput {
 
 export interface AdminPackageUsersAddInput {
   userIds: string[];
+  // PR-IFS-RAPOR-2a: opsiyonel paket son tarihi (gün sonuna normalize edilir).
+  dueDate?: string | null;
 }
 
 export interface BolumWithCount {

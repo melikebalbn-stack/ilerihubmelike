@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
+import { buildSingles, buildUretimRows, coerceIntNonNeg, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 
 // Bölüm adı normalize: workDepartment ↔ omurga (getDeptSubtreeNames) adları güvenli
 // kıyas (Türkçe upper + trim). Exact-match'in süperseti; geçerli eşleşmeyi bozmaz.
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!access.allowed) return apiError(access.reason!, 403)
 
     const body = await request.json()
-    const { personnelId: targetPersonnelId, workDepartment, serviceRoute, targetProduction, hedefAdet, mesaiNedeni } = body
+    const { personnelId: targetPersonnelId, workDepartment } = body
 
     if (!targetPersonnelId || !workDepartment) {
       return apiBadRequest('personnelId ve workDepartment alanları zorunludur')
@@ -81,23 +82,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Bu personel zaten formda mevcut')
     }
 
+    // Faz 1 çift yazma: tekil alanlar (buildSingles) + çoklu üretim satırları.
+    const pInput = body as OvertimePersonnelInput
+    const singles = buildSingles(pInput)
+
     // Personeli ekle
     await prisma.overtimePersonnel.create({
       data: {
         overtimeFormId: id,
         personnelId: targetPersonnelId,
         workDepartment,
-        serviceRoute: serviceRoute || null,
-        targetProduction: targetProduction || null,
-        // FIX: sonradan eklenen personel de hedefAdet taşıyabilsin (CREATE ile aynı
-        // validasyon; boş/geçersiz → null).
-        hedefAdet:
-          hedefAdet != null &&
-          Number.isFinite(Number(hedefAdet)) &&
-          Number(hedefAdet) >= 0
-            ? Math.trunc(Number(hedefAdet))
-            : null,
-        mesaiNedeni: mesaiNedeni?.trim() || null,
+        serviceRoute: body.serviceRoute || null,
+        targetProduction: singles.targetProduction,
+        hedefAdet: singles.hedefAdet,
+        mesaiNedeni: singles.mesaiNedeni,
+        uretimSatirlari: { create: buildUretimRows(pInput) },
       },
     })
 
@@ -231,11 +230,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params
 
-    // Formu kontrol et
+    // Formu kontrol et — çift yazma için üretim satırları da yüklenir (sira asc).
     const form = await prisma.overtimeForm.findUnique({
       where: { id },
       include: {
-        personnel: true,
+        personnel: {
+          include: { uretimSatirlari: { orderBy: { sira: 'asc' } } },
+        },
       },
     })
 
@@ -282,24 +283,29 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Personel listesi zorunludur')
     }
 
-    // Her personel için (PR-PERF) gerceklesenAdet/gerceklesenNote güncelle
-    const updatePromises = personnel.map(async (p: {
+    // Her personel için (PR-PERF) gerceklesenAdet/gerceklesenNote güncelle.
+    // Faz 1 çift yazma: tekil alanlar + üretim satırları senkron.
+    //   - Legacy payload (tek gerceklesenAdet): tekil alan güncellenir, 1. üretim
+    //     satırı (min sira) aynı değerle senkronlanır.
+    //   - Satır-bazlı payload (uretimSatirlari[]): her satır id ile güncellenir,
+    //     1. satır tekil alana yansıtılır.
+    const ops: Promise<unknown>[] = []
+    for (const p of personnel as {
       overtimePersonnelId: string
       gerceklesenAdet?: string | number
       gerceklesenNote?: string
-    }) => {
-      if (!p.overtimePersonnelId) {
-        return null
-      }
+      uretimSatirlari?: {
+        id?: string
+        gerceklesenAdet?: string | number
+        gerceklesenNote?: string
+        hurdaAdet?: string | number
+      }[]
+    }[]) {
+      if (!p.overtimePersonnelId) continue
 
       // Bu formda bu personel var mı kontrol et
-      const existingPersonnel = form.personnel.find(
-        (ep) => ep.id === p.overtimePersonnelId
-      )
-
-      if (!existingPersonnel) {
-        return null
-      }
+      const existingPersonnel = form.personnel.find((ep) => ep.id === p.overtimePersonnelId)
+      if (!existingPersonnel) continue
 
       // GÜVENLİK (satır-bazlı): kısıtlı sorumlu, allowed DIŞI satırı ASLA yazamaz → ATLA.
       if (!fullAccess && !allowedSet!.has(normDept(existingPersonnel.workDepartment))) {
@@ -307,28 +313,81 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           `[gerceklesen-omurga-yetki] user=${user.id} yetkisiz bölüm satırı atlandı: ` +
             `overtimePersonnelId=${existingPersonnel.id} workDepartment=${existingPersonnel.workDepartment}`
         )
-        return null
+        continue
       }
 
-      // PR-PERF: sayısal gerçekleşen adet — boş/geçersiz/negatif ise null
-      const adet =
-        p.gerceklesenAdet != null &&
-        String(p.gerceklesenAdet).trim() !== '' &&
-        Number.isFinite(Number(p.gerceklesenAdet)) &&
-        Number(p.gerceklesenAdet) >= 0
-          ? Math.trunc(Number(p.gerceklesenAdet))
-          : null
+      const uretimRows = existingPersonnel.uretimSatirlari
+      const firstRow = uretimRows[0] // min sira
 
-      return prisma.overtimePersonnel.update({
-        where: { id: existingPersonnel.id },
-        data: {
-          gerceklesenAdet: adet,
-          gerceklesenNote: p.gerceklesenNote?.trim() || null,
-        },
-      })
-    })
+      if (Array.isArray(p.uretimSatirlari) && p.uretimSatirlari.length > 0) {
+        // Satır-bazlı: yalnız bu personele ait satırları id ile güncelle.
+        const ownRowIds = new Set(uretimRows.map((r) => r.id))
+        for (const r of p.uretimSatirlari) {
+          if (!r.id || !ownRowIds.has(r.id)) continue
+          ops.push(
+            prisma.overtimePersonnelUretim.update({
+              where: { id: r.id },
+              data: {
+                gerceklesenAdet: coerceIntNonNeg(r.gerceklesenAdet),
+                gerceklesenNote: r.gerceklesenNote?.trim() || null,
+                hurdaAdet: coerceIntNonNeg(r.hurdaAdet),
+              },
+            })
+          )
+        }
+        // 1. satır → tekil alan senkronu
+        const firstInput = firstRow ? p.uretimSatirlari.find((r) => r.id === firstRow.id) : undefined
+        ops.push(
+          prisma.overtimePersonnel.update({
+            where: { id: existingPersonnel.id },
+            data: {
+              gerceklesenAdet: coerceIntNonNeg(firstInput?.gerceklesenAdet),
+              gerceklesenNote: firstInput?.gerceklesenNote?.trim() || null,
+            },
+          })
+        )
+      } else {
+        // Legacy: tekil alan güncelle + 1. üretim satırını senkronla.
+        const adet = coerceIntNonNeg(p.gerceklesenAdet)
+        const note = p.gerceklesenNote?.trim() || null
+        ops.push(
+          prisma.overtimePersonnel.update({
+            where: { id: existingPersonnel.id },
+            data: { gerceklesenAdet: adet, gerceklesenNote: note },
+          })
+        )
+        if (firstRow) {
+          ops.push(
+            prisma.overtimePersonnelUretim.update({
+              where: { id: firstRow.id },
+              data: { gerceklesenAdet: adet, gerceklesenNote: note },
+            })
+          )
+        } else {
+          // UPSERT: dual-write öncesi oluşmuş eski kayıt henüz satırsız. Mevcut tekil
+          // alanlardan (parcaKodu + hedefAdet geçerliyse) 1. satırı türetip gerceklesen
+          // değerleriyle oluştur — böylece Faz 3 drop'ta veri kaybı olmaz. Türetilemezse
+          // (ör. targetProduction boş) yalnız tekil alan güncellenir, patlamaz.
+          const seedRows = buildUretimRows({
+            targetProduction: existingPersonnel.targetProduction,
+            mesaiNedeni: existingPersonnel.mesaiNedeni,
+            hedefAdet: existingPersonnel.hedefAdet,
+            gerceklesenAdet: adet,
+            gerceklesenNote: note,
+          })
+          const seed = seedRows[0]
+          if (seed) {
+            ops.push(
+              prisma.overtimePersonnelUretim.create({
+                data: { overtimePersonnelId: existingPersonnel.id, ...seed },
+              })
+            )
+          }
+        }
+      }
+    }
 
-    await Promise.all(updatePromises.filter(Boolean))
+    await Promise.all(ops)
 
     // Güncellenmiş formu döndür
     const updatedForm = await prisma.overtimeForm.findUnique({

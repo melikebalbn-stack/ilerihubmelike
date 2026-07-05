@@ -4,6 +4,7 @@ import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-resp
 import { OvertimeType } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
+import { buildSingles, buildUretimRows, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -219,32 +220,29 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         // Yeni personel listesini ekle — seçim/kayıt sırasını DETERMİNİSTİK koru:
         // index ile monoton createdAt damgalıyoruz (aksi halde tümü aynı ms = TIE →
         // orderBy createdAt asc kararsız). Onay görünümü = kayıt sırası.
+        // Faz 1 çift yazma: createMany nested-relation desteklemediği için nested
+        // create döngüsü. Deterministik createdAt (orderBase + index) korunur.
         const orderBase = Date.now()
-        await tx.overtimePersonnel.createMany({
-          data: personnel.map((p: {
-            personnelId: string
-            workDepartment: string
-            serviceRoute?: string
-            targetProduction?: string
-            hedefAdet?: number
-            mesaiNedeni?: string
-          }, index: number) => ({
-            overtimeFormId: id,
-            personnelId: p.personnelId,
-            workDepartment: p.workDepartment,
-            serviceRoute: p.serviceRoute || null,
-            targetProduction: p.targetProduction || null,
-            // FIX: düzenleme kaydında hedefAdet korunsun (CREATE ile aynı validasyon).
-            hedefAdet:
-              p.hedefAdet != null &&
-              Number.isFinite(Number(p.hedefAdet)) &&
-              Number(p.hedefAdet) >= 0
-                ? Math.trunc(Number(p.hedefAdet))
-                : null,
-            mesaiNedeni: p.mesaiNedeni?.trim() || null,
-            createdAt: new Date(orderBase + index),
-          })),
-        })
+        for (const [index, p] of (personnel as (OvertimePersonnelInput & {
+          personnelId: string
+          workDepartment: string
+          serviceRoute?: string | null
+        })[]).entries()) {
+          const singles = buildSingles(p)
+          await tx.overtimePersonnel.create({
+            data: {
+              overtimeFormId: id,
+              personnelId: p.personnelId,
+              workDepartment: p.workDepartment,
+              serviceRoute: p.serviceRoute || null,
+              targetProduction: singles.targetProduction,
+              hedefAdet: singles.hedefAdet,
+              mesaiNedeni: singles.mesaiNedeni,
+              createdAt: new Date(orderBase + index),
+              uretimSatirlari: { create: buildUretimRows(p) },
+            },
+          })
+        }
       }
 
       // Güncellenmiş formu ilişkileri ile döndür

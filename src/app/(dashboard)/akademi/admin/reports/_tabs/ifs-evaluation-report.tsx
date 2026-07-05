@@ -5,7 +5,8 @@
 // tamamlanma = seviye===BASARILI. Matris self-mark'ı (completionPct) KULLANILMAZ.
 
 import { useEffect, useState, useCallback } from "react";
-import { ArrowLeft, FileSpreadsheet, FileText } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   BarChart,
   Bar,
@@ -133,6 +134,7 @@ export function IfsEvaluationReportTab() {
   const [packageId, setPackageId] = useState("");
   const [data, setData] = useState<BolumData | KisiData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
 
   useEffect(() => {
     fetch("/api/akademi/admin/courses?includeInactive=true")
@@ -175,6 +177,54 @@ export function IfsEvaluationReportTab() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // İndirme sayfa navigasyonundan KOPUK: fetch + blob + geçici <a download>.
+  // (Düz <a href> API'ye navigasyon başlatıp global yükleme göstergesini
+  // asılı bırakıyordu.) Hata → toast, buton loading state ile.
+  const download = useCallback(
+    async (format: "xlsx" | "pdf") => {
+      if (!packageId || downloading) return;
+      setDownloading(format);
+      try {
+        const res = await fetch(
+          `/api/akademi/admin/reports/ifs-aggregate/export?format=${format}&packageId=${encodeURIComponent(packageId)}`
+        );
+        if (!res.ok) {
+          const msg = await res
+            .json()
+            .then((j) => j?.error)
+            .catch(() => null);
+          toast.error(
+            msg ??
+              (res.status === 401 || res.status === 403
+                ? "Bu raporu indirme yetkiniz yok"
+                : "Rapor indirilemedi")
+          );
+          return;
+        }
+        const blob = await res.blob();
+        // Dosya adını Content-Disposition'dan al (sunucu Türkçe-sanitize ediyor).
+        const cd = res.headers.get("content-disposition") ?? "";
+        const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+        const fallback = `IFS-Egitim-Raporu.${format === "pdf" ? "pdf" : "xlsx"}`;
+        const filename = match ? decodeURIComponent(match[1]) : fallback;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch {
+        toast.error("Rapor indirilemedi");
+      } finally {
+        setDownloading(null);
+      }
+    },
+    [packageId, downloading]
+  );
 
   const filters = (
     <div className="flex flex-wrap items-end gap-3 mb-5">
@@ -255,38 +305,40 @@ export function IfsEvaluationReportTab() {
             </SelectContent>
           </Select>
         </div>
-        <a
-          href={
-            packageId
-              ? `/api/akademi/admin/reports/ifs-aggregate/export?format=xlsx&packageId=${encodeURIComponent(packageId)}`
-              : undefined
-          }
-          aria-disabled={!packageId}
-          className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-white ${
-            packageId
+        <button
+          type="button"
+          onClick={() => download("xlsx")}
+          disabled={!packageId || downloading !== null}
+          className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-white transition ${
+            packageId && downloading === null
               ? "bg-emerald-600 hover:bg-emerald-700"
-              : "bg-slate-300 pointer-events-none"
+              : "bg-slate-300 cursor-not-allowed"
           }`}
         >
-          <FileSpreadsheet size={14} />
+          {downloading === "xlsx" ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <FileSpreadsheet size={14} />
+          )}
           Excel İndir
-        </a>
-        <a
-          href={
-            packageId
-              ? `/api/akademi/admin/reports/ifs-aggregate/export?format=pdf&packageId=${encodeURIComponent(packageId)}`
-              : undefined
-          }
-          aria-disabled={!packageId}
-          className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-white ${
-            packageId
+        </button>
+        <button
+          type="button"
+          onClick={() => download("pdf")}
+          disabled={!packageId || downloading !== null}
+          className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-white transition ${
+            packageId && downloading === null
               ? "bg-slate-900 hover:bg-slate-800"
-              : "bg-slate-300 pointer-events-none"
+              : "bg-slate-300 cursor-not-allowed"
           }`}
         >
-          <FileText size={14} />
+          {downloading === "pdf" ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <FileText size={14} />
+          )}
           PDF İndir
-        </a>
+        </button>
       </div>
     </div>
   );

@@ -228,6 +228,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           workDepartment: string
           serviceRoute?: string | null
         })[]).entries()) {
+          // targetProduction retired — yazılmıyor.
           const singles = buildSingles(p)
           await tx.overtimePersonnel.create({
             data: {
@@ -235,7 +236,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
               personnelId: p.personnelId,
               workDepartment: p.workDepartment,
               serviceRoute: p.serviceRoute || null,
-              targetProduction: singles.targetProduction,
               hedefAdet: singles.hedefAdet,
               mesaiNedeni: singles.mesaiNedeni,
               createdAt: new Date(orderBase + index),

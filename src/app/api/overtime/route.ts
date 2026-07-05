@@ -302,12 +302,12 @@ export async function POST(request: NextRequest) {
             serviceRoute?: string | null
           }, index: number) => {
             // Faz 1 çift yazma: tekil alanlar (buildSingles) + çoklu üretim satırları.
+            // targetProduction retired — yazılmıyor.
             const singles = buildSingles(p)
             return {
               personnelId: p.personnelId,
               workDepartment: p.workDepartment,
               serviceRoute: p.serviceRoute || null,
-              targetProduction: singles.targetProduction,
               hedefAdet: singles.hedefAdet,
               mesaiNedeni: singles.mesaiNedeni,
               createdAt: new Date(orderBase + index),

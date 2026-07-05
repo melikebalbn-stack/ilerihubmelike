@@ -1,18 +1,16 @@
 /**
  * Backfill: OvertimePersonnel tekil alanlarından OvertimePersonnelUretim satırları.
  *
- * Faz 1 — her mevcut mesai personeli için 1 üretim satırı (sira=1) oluşturur.
- * Kaynak eşlemesi (tekil alan → yeni satır):
- *   targetProduction  → parcaKodu        (NOT NULL — boşsa satır oluşturulamaz)
- *   hedefAdet         → hedefAdet        (NOT NULL — null ise satır oluşturulamaz)
- *   mesaiNedeni       → mesaiNedeni      (nullable)
- *   gerceklesenAdet   → gerceklesenAdet  (nullable)
- *   gerceklesenNote   → gerceklesenNote  (nullable)
- *   (yok)             → hurdaAdet = null
- *   sabit             → sira = 1
+ * Faz 1 — her mevcut mesai personeli için 1 üretim satırı (sira=1).
+ * PROD GERÇEĞİ: parça kodu `mesaiNedeni` alanına girilmiş; `targetProduction` %100 boş.
+ * Kaynak eşlemesi (buildBackfillRow):
+ *   mesaiNedeni       → parcaKodu        (boşsa satır oluşmaz — kayıt atlanır)
+ *   (yok)             → mesaiNedeni=null (tarihsel gerekçe yok; kod parcaKodu'na taşındı)
+ *   hedefAdet         → hedefAdet        (nullable — null ise NULL taşınır, satır yine oluşur)
+ *   gerceklesenAdet   → gerceklesenAdet ; gerceklesenNote → gerceklesenNote
+ *   (yok)             → hurdaAdet=null   ; sabit → sira=1
  *
  * Idempotent: zaten en az 1 uretimSatirlari olan personel atlanır.
- * Kaynak Int (hedefAdet/gerceklesenAdet) zaten sayısal — String→Int parse GEREKMEZ.
  *
  * Kullanım:
  *   npx tsx scripts/backfill-uretim-satirlari.ts            # DRY-RUN (yazma yok, rapor)
@@ -22,6 +20,7 @@ import { PrismaClient } from '../src/generated/prisma'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import * as dotenv from 'dotenv'
+import { buildBackfillRow } from '../src/lib/overtime-uretim'
 
 dotenv.config()
 
@@ -38,9 +37,7 @@ async function main() {
   const records = await prisma.overtimePersonnel.findMany({
     select: {
       id: true,
-      overtimeFormId: true,
       personnelId: true,
-      targetProduction: true,
       mesaiNedeni: true,
       hedefAdet: true,
       gerceklesenAdet: true,
@@ -51,69 +48,38 @@ async function main() {
   })
 
   const total = records.length
-  const toCreate: { rec: (typeof records)[number]; parcaKodu: string; hedefAdet: number }[] = []
+  const toCreate: { rec: (typeof records)[number]; row: NonNullable<ReturnType<typeof buildBackfillRow>> }[] = []
   const alreadyHas: string[] = []
-  // Eksik veri: geçerli satır (parcaKodu + hedefAdet zorunlu) kurulamayanlar
-  const skippedIncomplete: {
-    id: string
-    personnelId: string
-    targetProduction: string | null
-    hedefAdet: number | null
-    mesaiNedeni: string | null
-    reason: string
-  }[] = []
+  const skippedNoParca: { id: string; personnelId: string }[] = []
 
   for (const rec of records) {
     if (rec.uretimSatirlari.length > 0) {
       alreadyHas.push(rec.id)
       continue
     }
-
-    const parcaKodu = (rec.targetProduction ?? '').trim()
-    const hasParca = parcaKodu !== ''
-    const hasHedef = rec.hedefAdet != null
-
-    if (!hasParca || !hasHedef) {
-      const missing: string[] = []
-      if (!hasParca) missing.push('targetProduction boş')
-      if (!hasHedef) missing.push('hedefAdet null')
-      skippedIncomplete.push({
-        id: rec.id,
-        personnelId: rec.personnelId,
-        targetProduction: rec.targetProduction,
-        hedefAdet: rec.hedefAdet,
-        mesaiNedeni: rec.mesaiNedeni,
-        reason: missing.join(' + '),
-      })
+    const row = buildBackfillRow(rec)
+    if (!row) {
+      // parcaKodu (mesaiNedeni) boş → satır kurulamaz
+      skippedNoParca.push({ id: rec.id, personnelId: rec.personnelId })
       continue
     }
-
-    toCreate.push({ rec, parcaKodu, hedefAdet: rec.hedefAdet as number })
+    toCreate.push({ rec, row })
   }
 
-  // --- Rapor ---
+  const hedefAdetNull = toCreate.filter((t) => t.row.hedefAdet == null)
+
+  // --- Rapor / dağılım ---
   console.log(`Toplam OvertimePersonnel kaydı        : ${total}`)
   console.log(`Oluşturulacak üretim satırı           : ${toCreate.length}`)
+  console.log(`  ├─ hedefAdet dolu                    : ${toCreate.length - hedefAdetNull.length}`)
+  console.log(`  └─ hedefAdet NULL taşınacak          : ${hedefAdetNull.length}`)
   console.log(`Atlanan (zaten satırı var, idempotent): ${alreadyHas.length}`)
-  console.log(`Atlanan (eksik veri, satır kurulamaz) : ${skippedIncomplete.length}`)
+  console.log(`Atlanan (parcaKodu/mesaiNedeni boş)   : ${skippedNoParca.length}`)
 
-  if (skippedIncomplete.length > 0) {
-    console.log('\n--- Eksik veri nedeniyle ATLANANLAR (karar sizde) ---')
-    for (const s of skippedIncomplete) {
-      console.log(
-        `  OP:${s.id} personnel:${s.personnelId} | ${s.reason} | ` +
-          `targetProduction=${JSON.stringify(s.targetProduction)} hedefAdet=${s.hedefAdet} ` +
-          `mesaiNedeni=${JSON.stringify(s.mesaiNedeni)}`,
-      )
-    }
-  }
-
-  // hedefAdet <= 0 uyarısı (oluşturulacaklar içinde) — veri korunur, yalnız işaretlenir
-  const nonPositive = toCreate.filter((t) => t.hedefAdet <= 0)
-  if (nonPositive.length > 0) {
-    console.log(`\n--- UYARI: hedefAdet <= 0 olan ${nonPositive.length} satır (oluşturulacak ama gözden geçirin) ---`)
-    for (const t of nonPositive) {
-      console.log(`  OP:${t.rec.id} hedefAdet=${t.hedefAdet} parcaKodu=${JSON.stringify(t.parcaKodu)}`)
+  if (skippedNoParca.length > 0) {
+    console.log('\n--- parcaKodu boş nedeniyle ATLANANLAR ---')
+    for (const s of skippedNoParca) {
+      console.log(`  OP:${s.id} personnel:${s.personnelId}`)
     }
   }
 
@@ -124,18 +90,9 @@ async function main() {
 
   console.log('\n[APPLY] Satırlar oluşturuluyor...')
   let created = 0
-  for (const { rec, parcaKodu } of toCreate) {
+  for (const { rec, row } of toCreate) {
     await prisma.overtimePersonnelUretim.create({
-      data: {
-        overtimePersonnelId: rec.id,
-        parcaKodu,
-        mesaiNedeni: rec.mesaiNedeni,
-        hedefAdet: rec.hedefAdet as number,
-        gerceklesenAdet: rec.gerceklesenAdet,
-        gerceklesenNote: rec.gerceklesenNote,
-        hurdaAdet: null,
-        sira: 1,
-      },
+      data: { overtimePersonnelId: rec.id, ...row },
     })
     created++
   }

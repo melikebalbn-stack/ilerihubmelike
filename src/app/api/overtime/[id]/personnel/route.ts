@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
-import { buildSingles, buildUretimRows, coerceIntNonNeg, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { buildSingles, buildUretimRows, buildBackfillRow, coerceIntNonNeg, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 
 // Bölüm adı normalize: workDepartment ↔ omurga (getDeptSubtreeNames) adları güvenli
 // kıyas (Türkçe upper + trim). Exact-match'in süperseti; geçerli eşleşmeyi bozmaz.
@@ -44,7 +44,7 @@ async function checkPersonnelEditAccess(
 
 /**
  * POST: Forma personel ekle (DRAFT, PENDING veya IN_PROGRESS durumlarında)
- * Body: { userId, workDepartment, serviceRoute?, targetProduction? }
+ * Body: { personnelId, workDepartment, serviceRoute?, mesaiNedeni? (parça kodu), hedefAdet? }
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
@@ -83,6 +83,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Faz 1 çift yazma: tekil alanlar (buildSingles) + çoklu üretim satırları.
+    // targetProduction retired — yazılmıyor.
     const pInput = body as OvertimePersonnelInput
     const singles = buildSingles(pInput)
 
@@ -93,7 +94,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         personnelId: targetPersonnelId,
         workDepartment,
         serviceRoute: body.serviceRoute || null,
-        targetProduction: singles.targetProduction,
         hedefAdet: singles.hedefAdet,
         mesaiNedeni: singles.mesaiNedeni,
         uretimSatirlari: { create: buildUretimRows(pInput) },
@@ -364,18 +364,16 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             })
           )
         } else {
-          // UPSERT: dual-write öncesi oluşmuş eski kayıt henüz satırsız. Mevcut tekil
-          // alanlardan (parcaKodu + hedefAdet geçerliyse) 1. satırı türetip gerceklesen
-          // değerleriyle oluştur — böylece Faz 3 drop'ta veri kaybı olmaz. Türetilemezse
-          // (ör. targetProduction boş) yalnız tekil alan güncellenir, patlamaz.
-          const seedRows = buildUretimRows({
-            targetProduction: existingPersonnel.targetProduction,
+          // UPSERT: dual-write/backfill öncesi oluşmuş eski kayıt henüz satırsız. Backfill
+          // semantiğiyle (parcaKodu <- mesaiNedeni, hedefAdet nullable taşınır) 1. satırı
+          // türetip bu gerceklesen değerleriyle oluştur — Faz 3 drop'ta veri kaybı olmaz.
+          // parcaKodu (mesaiNedeni) boşsa türetilemez → yalnız tekil alan güncellenir, patlamaz.
+          const seed = buildBackfillRow({
             mesaiNedeni: existingPersonnel.mesaiNedeni,
             hedefAdet: existingPersonnel.hedefAdet,
             gerceklesenAdet: adet,
             gerceklesenNote: note,
           })
-          const seed = seedRows[0]
           if (seed) {
             ops.push(
               prisma.overtimePersonnelUretim.create({

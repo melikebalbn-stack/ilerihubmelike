@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildUretimRows,
   buildSingles,
+  buildBackfillRow,
   coerceIntNonNeg,
   coerceHedefPozitif,
 } from './overtime-uretim'
@@ -33,7 +34,7 @@ describe('coerceIntNonNeg', () => {
 })
 
 describe('coerceHedefPozitif', () => {
-  it('0/negatif/null → null (satır hedefAdet > 0 zorunlu)', () => {
+  it('0/negatif/null → null (API satır hedefAdet > 0 zorunlu)', () => {
     expect(coerceHedefPozitif(0)).toBeNull()
     expect(coerceHedefPozitif('0')).toBeNull()
     expect(coerceHedefPozitif(-3)).toBeNull()
@@ -48,42 +49,44 @@ describe('coerceHedefPozitif', () => {
   })
 })
 
-describe('buildUretimRows', () => {
+// ── API BAĞLAMI (buildUretimRows / buildSingles) ──
+// parcaKodu <- mesaiNedeni (prod'da parça kodu buraya girilmiş; targetProduction retired).
+// hedefAdet > 0 ZORUNLU — sağlanamayan satır oluşmaz.
+describe('buildUretimRows (API bağlamı)', () => {
   describe('geçersiz satır oluşmaz', () => {
-    it('parcaKodu boş → satır yok', () => {
-      expect(buildUretimRows({ targetProduction: '', hedefAdet: 10 })).toEqual([])
+    it('parcaKodu (mesaiNedeni) boş → satır yok', () => {
+      expect(buildUretimRows({ mesaiNedeni: '', hedefAdet: 10 })).toEqual([])
     })
 
-    it('parcaKodu whitespace → satır yok', () => {
-      expect(buildUretimRows({ targetProduction: '   ', hedefAdet: 10 })).toEqual([])
+    it('mesaiNedeni whitespace → satır yok', () => {
+      expect(buildUretimRows({ mesaiNedeni: '   ', hedefAdet: 10 })).toEqual([])
     })
 
-    it('hedefAdet null → satır yok', () => {
-      expect(buildUretimRows({ targetProduction: 'KR09', hedefAdet: null })).toEqual([])
+    it('hedefAdet null → satır yok (API zorunlu)', () => {
+      expect(buildUretimRows({ mesaiNedeni: '8048', hedefAdet: null })).toEqual([])
     })
 
     it('hedefAdet 0 → satır yok', () => {
-      expect(buildUretimRows({ targetProduction: 'KR09', hedefAdet: 0 })).toEqual([])
+      expect(buildUretimRows({ mesaiNedeni: '8048', hedefAdet: 0 })).toEqual([])
     })
 
     it('hedefAdet negatif → satır yok', () => {
-      expect(buildUretimRows({ targetProduction: 'KR09', hedefAdet: -5 })).toEqual([])
+      expect(buildUretimRows({ mesaiNedeni: '8048', hedefAdet: -5 })).toEqual([])
     })
   })
 
-  describe('legacy payload (uretimSatirlari yok) → 1 satır türetilir', () => {
-    it('tekil alanlar birebir yansır, sira=1, hurdaAdet null', () => {
+  describe('legacy payload (uretimSatirlari yok) → 1 satır', () => {
+    it('parcaKodu mesaiNedeni’den gelir; satır mesaiNedeni (gerekçe) null', () => {
       const rows = buildUretimRows({
-        targetProduction: 'KR09-8041',
-        mesaiNedeni: 'Acil sevkiyat',
+        mesaiNedeni: '80050016',
         hedefAdet: 180,
         gerceklesenAdet: 150,
         gerceklesenNote: 'Tezgah arızası',
       })
       expect(rows).toEqual([
         {
-          parcaKodu: 'KR09-8041',
-          mesaiNedeni: 'Acil sevkiyat',
+          parcaKodu: '80050016',
+          mesaiNedeni: null,
           hedefAdet: 180,
           gerceklesenAdet: 150,
           gerceklesenNote: 'Tezgah arızası',
@@ -93,25 +96,20 @@ describe('buildUretimRows', () => {
       ])
     })
 
-    it('parcaKodu trim edilir, boş gerekçe → null', () => {
-      const rows = buildUretimRows({
-        targetProduction: '  28780010  ',
-        mesaiNedeni: '   ',
-        hedefAdet: 5,
-      })
+    it('parcaKodu trim edilir', () => {
+      const rows = buildUretimRows({ mesaiNedeni: '  8011-2  ', hedefAdet: 5 })
       expect(rows).toHaveLength(1)
-      expect(rows[0].parcaKodu).toBe('28780010')
-      expect(rows[0].mesaiNedeni).toBeNull()
+      expect(rows[0].parcaKodu).toBe('8011-2')
       expect(rows[0].gerceklesenAdet).toBeNull()
     })
 
     it('gerceklesenAdet negatif → null (reddedilir)', () => {
-      const rows = buildUretimRows({ targetProduction: 'X', hedefAdet: 3, gerceklesenAdet: -2 })
+      const rows = buildUretimRows({ mesaiNedeni: '8048', hedefAdet: 3, gerceklesenAdet: -2 })
       expect(rows[0].gerceklesenAdet).toBeNull()
     })
   })
 
-  describe('uretimSatirlari payload → satırlar esas', () => {
+  describe('uretimSatirlari payload (Faz 2) → satırlar esas', () => {
     it('birden fazla geçerli satır, sira korunur/atanır', () => {
       const rows = buildUretimRows({
         uretimSatirlari: [
@@ -121,7 +119,6 @@ describe('buildUretimRows', () => {
       })
       expect(rows).toHaveLength(2)
       expect(rows[0]).toMatchObject({ parcaKodu: 'A', hedefAdet: 10, sira: 2 })
-      // sira verilmeyen 2. satır index+1 = 2
       expect(rows[1]).toMatchObject({ parcaKodu: 'B', hedefAdet: 20, sira: 2 })
     })
 
@@ -130,11 +127,17 @@ describe('buildUretimRows', () => {
         uretimSatirlari: [
           { parcaKodu: '', hedefAdet: 10 }, // parcaKodu boş → atla
           { parcaKodu: 'B', hedefAdet: 0 }, // hedefAdet 0 → atla
-          { parcaKodu: 'C', hedefAdet: 5, hurdaAdet: 3, gerceklesenAdet: 4 },
+          { parcaKodu: 'C', hedefAdet: 5, hurdaAdet: 3, gerceklesenAdet: 4, mesaiNedeni: 'acil' },
         ],
       })
       expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ parcaKodu: 'C', hedefAdet: 5, hurdaAdet: 3, gerceklesenAdet: 4 })
+      expect(rows[0]).toMatchObject({
+        parcaKodu: 'C',
+        mesaiNedeni: 'acil',
+        hedefAdet: 5,
+        hurdaAdet: 3,
+        gerceklesenAdet: 4,
+      })
     })
 
     it('hurdaAdet negatif → null', () => {
@@ -142,54 +145,31 @@ describe('buildUretimRows', () => {
       expect(rows[0].hurdaAdet).toBeNull()
     })
   })
-
-  describe('UPSERT senaryosu (satırsız eski kayıt → tekil alanlardan seed)', () => {
-    it('geçerli tekil alanlar + gerceklesen → seed satır üretir', () => {
-      const seed = buildUretimRows({
-        targetProduction: 'KR09',
-        mesaiNedeni: null,
-        hedefAdet: 100,
-        gerceklesenAdet: 90,
-        gerceklesenNote: null,
-      })
-      expect(seed).toHaveLength(1)
-      expect(seed[0]).toMatchObject({ parcaKodu: 'KR09', hedefAdet: 100, gerceklesenAdet: 90, sira: 1 })
-    })
-
-    it('parcaKodu yoksa seed üretilmez (yalnız tekil güncellenir)', () => {
-      const seed = buildUretimRows({
-        targetProduction: null,
-        hedefAdet: 100,
-        gerceklesenAdet: 90,
-      })
-      expect(seed).toEqual([])
-    })
-  })
 })
 
-describe('buildSingles', () => {
+describe('buildSingles (API bağlamı)', () => {
   describe('legacy payload → mevcut davranışla birebir', () => {
-    it('tekil alanlar geçirilir (targetProduction trim edilmez)', () => {
-      expect(
-        buildSingles({ targetProduction: 'KR09-8041', mesaiNedeni: ' Acil ', hedefAdet: 12 })
-      ).toEqual({ targetProduction: 'KR09-8041', mesaiNedeni: 'Acil', hedefAdet: 12 })
+    it('mesaiNedeni + hedefAdet (targetProduction ARTIK yok)', () => {
+      expect(buildSingles({ mesaiNedeni: ' 80050016 ', hedefAdet: 12 })).toEqual({
+        mesaiNedeni: '80050016',
+        hedefAdet: 12,
+      })
     })
 
-    it('boş targetProduction → null, hedefAdet 0 korunur (tekil >= 0 kuralı)', () => {
-      expect(buildSingles({ targetProduction: '', mesaiNedeni: '', hedefAdet: 0 })).toEqual({
-        targetProduction: null,
+    it('boş mesaiNedeni → null, hedefAdet 0 korunur (tekil >= 0 kuralı)', () => {
+      expect(buildSingles({ mesaiNedeni: '', hedefAdet: 0 })).toEqual({
         mesaiNedeni: null,
         hedefAdet: 0,
       })
     })
 
     it('hedefAdet negatif → null', () => {
-      expect(buildSingles({ targetProduction: 'X', hedefAdet: -1 }).hedefAdet).toBeNull()
+      expect(buildSingles({ mesaiNedeni: '8048', hedefAdet: -1 }).hedefAdet).toBeNull()
     })
   })
 
-  describe('uretimSatirlari payload → 1. (min-index) satır tekil alanlara yansır', () => {
-    it('ilk geçerli satırın değerleri tekil alanlara kopyalanır', () => {
+  describe('uretimSatirlari payload → 1. satır tekil alanlara yansır', () => {
+    it('tekil mesaiNedeni = 1. satırın parça kodu', () => {
       expect(
         buildSingles({
           uretimSatirlari: [
@@ -197,7 +177,7 @@ describe('buildSingles', () => {
             { parcaKodu: 'B', hedefAdet: 20 },
           ],
         })
-      ).toEqual({ targetProduction: 'A', mesaiNedeni: 'gerekce', hedefAdet: 10 })
+      ).toEqual({ mesaiNedeni: 'A', hedefAdet: 10 })
     })
 
     it('ilk satır geçersizse ilk GEÇERLİ satır esas alınır', () => {
@@ -208,15 +188,62 @@ describe('buildSingles', () => {
             { parcaKodu: 'B', hedefAdet: 20 },
           ],
         })
-      ).toEqual({ targetProduction: 'B', mesaiNedeni: null, hedefAdet: 20 })
+      ).toEqual({ mesaiNedeni: 'B', hedefAdet: 20 })
     })
 
     it('hiç geçerli satır yoksa tekil alanlar boşalır', () => {
       expect(buildSingles({ uretimSatirlari: [{ parcaKodu: '', hedefAdet: 0 }] })).toEqual({
-        targetProduction: null,
         mesaiNedeni: null,
         hedefAdet: null,
       })
     })
+  })
+})
+
+// ── BACKFILL BAĞLAMI (buildBackfillRow) ──
+// parcaKodu <- mesaiNedeni; hedefAdet null ise NULL TAŞINIR (satır yine oluşur).
+// API'nin hedefAdet > 0 kuralından KASITLI olarak farklı.
+describe('buildBackfillRow (backfill bağlamı)', () => {
+  it('parcaKodu (mesaiNedeni) boş/whitespace → null (kayıt atlanır)', () => {
+    expect(buildBackfillRow({ mesaiNedeni: null })).toBeNull()
+    expect(buildBackfillRow({ mesaiNedeni: '' })).toBeNull()
+    expect(buildBackfillRow({ mesaiNedeni: '   ' })).toBeNull()
+  })
+
+  it('hedefAdet null → satır OLUŞUR, hedefAdet NULL taşınır (API’den farklı)', () => {
+    const row = buildBackfillRow({ mesaiNedeni: '8048', hedefAdet: null })
+    expect(row).not.toBeNull()
+    expect(row).toEqual({
+      parcaKodu: '8048',
+      mesaiNedeni: null,
+      hedefAdet: null,
+      gerceklesenAdet: null,
+      gerceklesenNote: null,
+      hurdaAdet: null,
+      sira: 1,
+    })
+  })
+
+  it('hedefAdet dolu → taşınır; gerceklesen alanları kopyalanır', () => {
+    const row = buildBackfillRow({
+      mesaiNedeni: '  80340002  ',
+      hedefAdet: 370,
+      gerceklesenAdet: 350,
+      gerceklesenNote: 'ok',
+    })
+    expect(row).toEqual({
+      parcaKodu: '80340002',
+      mesaiNedeni: null,
+      hedefAdet: 370,
+      gerceklesenAdet: 350,
+      gerceklesenNote: 'ok',
+      hurdaAdet: null,
+      sira: 1,
+    })
+  })
+
+  it('gerceklesenAdet negatif → null', () => {
+    const row = buildBackfillRow({ mesaiNedeni: '8048', hedefAdet: 5, gerceklesenAdet: -9 })
+    expect(row?.gerceklesenAdet).toBeNull()
   })
 })

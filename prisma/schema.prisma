@@ -8096,9 +8096,11 @@ model OvertimePersonnel {
   gerceklesenNote  String? // gerçekleşen girilirken açıklama (ör. tezgah arızası)
   mesaiNedeni      String? // Mesai nedeni (nullable: eski formlar boş; onay görünümünde ünvana fallback)
 
-  // Faz 1: personel başına çoklu üretim satırı. Yukarıdaki tekil parça-kodu/adet
-  // alanları (targetProduction, mesaiNedeni, hedefAdet, gerceklesenAdet,
-  // gerceklesenNote) geri uyumluluk için 1. satırla senkron tutulur; Faz 3'te drop.
+  // Faz 1: personel başına çoklu üretim satırı. Tekil alanlar 1. satırla senkron
+  // tutulur; Faz 3'te DROP edilecek: targetProduction (kullanılmıyor, %100 boş),
+  // mesaiNedeni (prod'da parça kodu buraya girilmiş → parcaKodu'na taşınır),
+  // hedefAdet, gerceklesenAdet, gerceklesenNote.
+  // NOT: targetProduction artık hiçbir yerden okunmaz/yazılmaz (retired).
   uretimSatirlari OvertimePersonnelUretim[]
 
   createdAt DateTime @default(now())
@@ -8109,16 +8111,19 @@ model OvertimePersonnel {
 }
 
 // Faz 1: Bir mesai personelinin birden fazla üretim satırı olabilir.
-// Backfill kaynak eşlemesi: parcaKodu←targetProduction, mesaiNedeni←mesaiNedeni,
-// hedefAdet←hedefAdet, gerceklesenAdet←gerceklesenAdet, gerceklesenNote←gerceklesenNote.
+// Backfill kaynak eşlemesi (prod gerçeği): parcaKodu←mesaiNedeni (parça kodu prod'da
+// bu alana girilmiş; targetProduction %100 boş), mesaiNedeni(yeni)←null (tarihsel
+// gerekçe yok), hedefAdet←hedefAdet (çoğu null → taşınır), gerceklesenAdet/Note←aynı.
 model OvertimePersonnelUretim {
   id                  String            @id @default(cuid())
   overtimePersonnelId String
   overtimePersonnel   OvertimePersonnel @relation(fields: [overtimePersonnelId], references: [id], onDelete: Cascade)
 
-  parcaKodu       String // Üretilecek parça kodu (satırın ana alanı; eski targetProduction)
-  mesaiNedeni     String? // Gerekçe (nullable; eski mesaiNedeni)
-  hedefAdet       Int // Hedeflenen üretim adedi (> 0)
+  parcaKodu       String // Üretilecek parça kodu (satırın ana alanı; eski mesaiNedeni)
+  mesaiNedeni     String? // Gerekçe (nullable; ayrı gerekçe alanı — backfill'de null)
+  // hedefAdet DB'de nullable: tarihsel kayıtların çoğunda yok. Zorunluluk API/form
+  // seviyesinde (yeni giriş/update'te > 0). Backfill hedefAdet null ise null taşır.
+  hedefAdet       Int? // Hedeflenen üretim adedi
   gerceklesenAdet Int? // Gerçekleşen üretim adedi (onay sonrası girilir)
   gerceklesenNote String? // Gerçekleşen girilirken açıklama (ör. tezgah arızası)
   hurdaAdet       Int? // Hurda adedi (>= 0)

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -20,6 +20,8 @@ interface Props {
   operatorName: string
   isMerkezi: string
   isEmirleri: TerminalIsEmri[]
+  /** IFS okuma hatası (varsa) — tablo yerine hata kutusu gösterilir. */
+  error?: string | null
 }
 
 // Teslim tarihi 'yyyy-MM-dd' → 'dd.MM.yyyy' (tz-güvenli, elle).
@@ -55,7 +57,12 @@ const COLUMNS: ColumnDef[] = [
 
 const trLower = (s: string) => s.toLocaleLowerCase('tr')
 
-export function IsEmirleriClient({ operatorName, isMerkezi, isEmirleri }: Props) {
+export function IsEmirleriClient({
+  operatorName,
+  isMerkezi,
+  isEmirleri,
+  error,
+}: Props) {
   const router = useRouter()
   const [filters, setFilters] = useState<Record<string, string>>({})
 
@@ -93,14 +100,33 @@ export function IsEmirleriClient({ operatorName, isMerkezi, isEmirleri }: Props)
           <div className="flex flex-col leading-tight">
             <span className="text-base font-semibold">İş Emirleri</span>
             <span className="text-xs text-muted-foreground">
-              {isMerkezi} · {filtered.length} kayıt
+              {isMerkezi}
+              {error ? '' : ` · ${filtered.length} kayıt`}
             </span>
           </div>
         </div>
         <OperatorBadge name={operatorName} />
       </div>
 
-      {/* Tablo — geniş, yatay scroll */}
+      {error ? (
+        /* IFS hatası — tablo yerine hata kutusu + yeniden dene */
+        <div className="flex flex-col items-start gap-3 rounded-xl border border-red-300 bg-red-50 p-6 text-red-700">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertCircle className="h-5 w-5" />
+            İş emirleri IFS&apos;ten alınamadı
+          </div>
+          <p className="max-w-full break-all text-sm text-red-700/90">{error}</p>
+          <button
+            type="button"
+            onClick={() => router.refresh()}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 active:translate-y-px"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Yeniden Dene
+          </button>
+        </div>
+      ) : (
+      /* Tablo — geniş, yatay scroll */
       <div className="overflow-x-auto rounded-lg border">
         <Table className="min-w-[1100px]">
           <TableHeader>
@@ -167,6 +193,7 @@ export function IsEmirleriClient({ operatorName, isMerkezi, isEmirleri }: Props)
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   )
 }

@@ -2,13 +2,15 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Package, Play } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Package, Play, RefreshCw } from 'lucide-react'
 import type { TerminalIsEmri } from '@/lib/uretim/terminal-mock'
 import { OperatorBadge, TERMINAL_ACCENT } from '../../_shared'
 
 interface Props {
   operatorName: string
   isEmri: TerminalIsEmri | null
+  /** IFS okuma hatası (varsa). */
+  error?: string | null
 }
 
 function formatTeslim(iso: string): string {
@@ -16,8 +18,38 @@ function formatTeslim(iso: string): string {
   return y && m && d ? `${d}.${m}.${y}` : iso
 }
 
-export function IsEmriDetayClient({ operatorName, isEmri }: Props) {
+export function IsEmriDetayClient({ operatorName, isEmri, error }: Props) {
   const router = useRouter()
+
+  // IFS hatası — kırmızı hata kutusu + yeniden dene.
+  if (error) {
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-col items-start gap-3 p-6">
+        <Link
+          href="/uretim/terminal/is-emirleri"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          İş emri listesine dön
+        </Link>
+        <div className="flex w-full flex-col items-start gap-3 rounded-xl border border-red-300 bg-red-50 p-6 text-red-700">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertCircle className="h-5 w-5" />
+            İş emri IFS&apos;ten alınamadı
+          </div>
+          <p className="max-w-full break-all text-sm text-red-700/90">{error}</p>
+          <button
+            type="button"
+            onClick={() => router.refresh()}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 active:translate-y-px"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Yeniden Dene
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // Kayıt yoksa — bulunamadı ekranı + geri butonu.
   if (!isEmri) {

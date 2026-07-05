@@ -113,6 +113,7 @@ export const HURDA_SEBEPLERI: { kod: string; ad: string }[] = [
   { kod: 'OLCU', ad: 'Ölçü/Tolerans Dışı' },
 ]
 
+// E1: liste/detay artık IFS'ten geliyor, bu mock sadece referans
 export const MOCK_IS_EMIRLERI: TerminalIsEmri[] = [
   {
     id: 'wo-1',

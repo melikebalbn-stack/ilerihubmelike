@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
 import { OvertimeType, OvertimeStatus, FormTipi } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { buildSingles, buildUretimRows, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 
 // Vardiya Faz 1: gece vardiyası sabit penceresi (Pzt-Cuma 21:00 → ertesi 07:00).
 const VARDIYA_START = '21:00'
@@ -295,28 +296,24 @@ export async function POST(request: NextRequest) {
         status: 'DRAFT',
         currentStep: 0,
         personnel: {
-          create: personnel.map((p: {
+          create: personnel.map((p: OvertimePersonnelInput & {
             personnelId: string
             workDepartment: string
-            serviceRoute?: string
-            targetProduction?: string
-            hedefAdet?: number
-            mesaiNedeni?: string
-          }, index: number) => ({
-            personnelId: p.personnelId,
-            workDepartment: p.workDepartment,
-            serviceRoute: p.serviceRoute || null,
-            targetProduction: p.targetProduction || null,
-            // PR-PERF: sayısal hedef adet — boş/geçersiz/negatif ise null
-            hedefAdet:
-              p.hedefAdet != null &&
-              Number.isFinite(Number(p.hedefAdet)) &&
-              Number(p.hedefAdet) >= 0
-                ? Math.trunc(Number(p.hedefAdet))
-                : null,
-            mesaiNedeni: p.mesaiNedeni?.trim() || null,
-            createdAt: new Date(orderBase + index),
-          })),
+            serviceRoute?: string | null
+          }, index: number) => {
+            // Faz 1 çift yazma: tekil alanlar (buildSingles) + çoklu üretim satırları.
+            const singles = buildSingles(p)
+            return {
+              personnelId: p.personnelId,
+              workDepartment: p.workDepartment,
+              serviceRoute: p.serviceRoute || null,
+              targetProduction: singles.targetProduction,
+              hedefAdet: singles.hedefAdet,
+              mesaiNedeni: singles.mesaiNedeni,
+              createdAt: new Date(orderBase + index),
+              uretimSatirlari: { create: buildUretimRows(p) },
+            }
+          }),
         },
       },
       include: {

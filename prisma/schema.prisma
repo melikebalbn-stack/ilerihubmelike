@@ -8096,11 +8096,35 @@ model OvertimePersonnel {
   gerceklesenNote  String? // gerçekleşen girilirken açıklama (ör. tezgah arızası)
   mesaiNedeni      String? // Mesai nedeni (nullable: eski formlar boş; onay görünümünde ünvana fallback)
 
+  // Faz 1: personel başına çoklu üretim satırı. Yukarıdaki tekil parça-kodu/adet
+  // alanları (targetProduction, mesaiNedeni, hedefAdet, gerceklesenAdet,
+  // gerceklesenNote) geri uyumluluk için 1. satırla senkron tutulur; Faz 3'te drop.
+  uretimSatirlari OvertimePersonnelUretim[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([overtimeFormId, personnelId])
   @@index([overtimeFormId])
+}
+
+// Faz 1: Bir mesai personelinin birden fazla üretim satırı olabilir.
+// Backfill kaynak eşlemesi: parcaKodu←targetProduction, mesaiNedeni←mesaiNedeni,
+// hedefAdet←hedefAdet, gerceklesenAdet←gerceklesenAdet, gerceklesenNote←gerceklesenNote.
+model OvertimePersonnelUretim {
+  id                  String            @id @default(cuid())
+  overtimePersonnelId String
+  overtimePersonnel   OvertimePersonnel @relation(fields: [overtimePersonnelId], references: [id], onDelete: Cascade)
+
+  parcaKodu       String // Üretilecek parça kodu (satırın ana alanı; eski targetProduction)
+  mesaiNedeni     String? // Gerekçe (nullable; eski mesaiNedeni)
+  hedefAdet       Int // Hedeflenen üretim adedi (> 0)
+  gerceklesenAdet Int? // Gerçekleşen üretim adedi (onay sonrası girilir)
+  gerceklesenNote String? // Gerçekleşen girilirken açıklama (ör. tezgah arızası)
+  hurdaAdet       Int? // Hurda adedi (>= 0)
+  sira            Int     @default(1) // Satır sırası
+
+  @@index([overtimePersonnelId])
 }
 
 model OvertimeApproval {

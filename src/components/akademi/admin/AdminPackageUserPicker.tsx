@@ -4,6 +4,8 @@ import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +51,7 @@ export function AdminPackageUserPicker({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [adding, setAdding] = useState(false);
 
   const searchUsers = useCallback(async (q: string) => {
@@ -77,7 +80,7 @@ export function AdminPackageUserPicker({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userIds: [user.id] }),
+          body: JSON.stringify({ userIds: [user.id], dueDate: dueDate || null }),
         }
       );
       if (!res.ok) throw new Error("add failed");
@@ -85,6 +88,7 @@ export function AdminPackageUserPicker({
       setPickerOpen(false);
       setSearchQuery("");
       setSearchResults([]);
+      setDueDate("");
       onSaved();
     } catch {
       toast.error("Eklenemedi");
@@ -178,6 +182,20 @@ export function AdminPackageUserPicker({
           <DialogHeader>
             <DialogTitle>Kullanıcı Seç</DialogTitle>
           </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="pkg-user-due">Son Tarih (opsiyonel)</Label>
+            <Input
+              id="pkg-user-due"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+            />
+            <p className="text-xs" style={{ color: "var(--ak-text-tertiary)" }}>
+              Boş = süresiz. Seçili tarih, eklenen kullanıcının paket
+              atamalarına uygulanır (yalnızca öne çeker, uzatmaz).
+            </p>
+          </div>
           <Command shouldFilter={false}>
             <CommandInput
               placeholder="İsim veya email ile ara (en az 2 karakter)..."

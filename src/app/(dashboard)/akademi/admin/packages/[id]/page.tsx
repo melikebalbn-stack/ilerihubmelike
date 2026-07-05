@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AdminPackageCoursesPicker } from "@/components/akademi/admin/AdminPackageCoursesPicker";
 import { AdminPackageBolumPicker } from "@/components/akademi/admin/AdminPackageBolumPicker";
 import { AdminPackageUserPicker } from "@/components/akademi/admin/AdminPackageUserPicker";
+import { AdminPackageDueDateCard } from "@/components/akademi/admin/AdminPackageDueDateCard";
 import { AdminPackageFormModal } from "@/components/akademi/admin/AdminPackageFormModal";
 import { AdminCourseFormModal } from "@/components/akademi/admin/AdminCourseFormModal";
 import type { AdminPackageDetail } from "@/types/akademi-package";
@@ -207,7 +208,8 @@ export default function AkademiAdminPackageDetailPage({
           />
         </TabsContent>
 
-        <TabsContent value="users" className="mt-4">
+        <TabsContent value="users" className="mt-4 space-y-4">
+          <AdminPackageDueDateCard packageId={pkg.id} onApplied={loadPackage} />
           <AdminPackageUserPicker
             packageId={pkg.id}
             assignments={pkg.userAssignments}

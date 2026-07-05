@@ -10,9 +10,29 @@ export interface MaterializeResult {
   errors: string[];
 }
 
+export interface MaterializeOptions {
+  // PR-IFS-RAPOR-2a: bireysel (direct) atamada verilen paket son tarihi.
+  // Yalnız overrideUserIds için uygulanır; departman son tarihiyle birlikte
+  // tighten-only birleşir (erken olan kazanır).
+  overrideDueDate?: Date | null;
+  overrideUserIds?: string[];
+}
+
+/**
+ * Tighten-only kuralı (TEK KAYNAK): son tarih yalnız SIKILAŞIR.
+ * null → doldur; hedef mevcuttan ERKEN ise öne çek; asla uzatma/silme.
+ */
+export function shouldTightenDue(
+  current: Date | null,
+  target: Date
+): boolean {
+  return current == null || target < current;
+}
+
 export async function materializePackage(
   packageId: string,
-  _assignedById?: string
+  _assignedById?: string,
+  opts?: MaterializeOptions
 ): Promise<MaterializeResult> {
   const result: MaterializeResult = {
     packageId,
@@ -80,6 +100,16 @@ export async function materializePackage(
 
   pkg.userAssignments.forEach((ua) => targetUserIds.add(ua.userId));
   result.targetUserCount = targetUserIds.size;
+
+  // PR-IFS-RAPOR-2a: bireysel atamada verilen paket son tarihini overrideUserIds
+  // için birleştir — departman son tarihiyle tighten-only (erken kazanır).
+  if (opts?.overrideDueDate != null && opts.overrideUserIds?.length) {
+    const ov = opts.overrideDueDate;
+    for (const uid of opts.overrideUserIds) {
+      const cur = userIdToDueDate.get(uid) ?? null;
+      userIdToDueDate.set(uid, shouldTightenDue(cur, ov) ? ov : cur);
+    }
+  }
 
   // PR-1: bir kullanıcı için hedef son tarih (departman dueDate'i; yoksa null).
   const dueFor = (userId: string): Date | null =>
@@ -166,11 +196,11 @@ export async function materializePackage(
   }
 
   // PR-1: Mevcut atamalarda son tarihi yalnız SIKILAŞTIR — earliest kazanır,
-  // gevşetme yok. Departman dueDate'i null ise mevcut satıra dokunma.
+  // gevşetme yok. Departman/override dueDate'i null ise mevcut satıra dokunma.
   for (const row of existing) {
     const target = dueFor(row.userId);
     if (target == null) continue;
-    if (row.dueDate == null || target < row.dueDate) {
+    if (shouldTightenDue(row.dueDate, target)) {
       await prisma.userCourseAssignment.update({
         where: { id: row.id },
         data: { dueDate: target },
@@ -180,6 +210,52 @@ export async function materializePackage(
   }
 
   return result;
+}
+
+/**
+ * PR-IFS-RAPOR-2a: TOPLU son tarih aracı — paketin kurslarındaki TÜM mevcut
+ * UserCourseAssignment satırlarına tighten-only uygular (null→doldur, erken→öne
+ * çek, asla uzatma). Yeni atama OLUŞTURMAZ. { updated, skipped } döner.
+ */
+export async function applyPackageDueDate(
+  packageId: string,
+  dueDate: Date
+): Promise<{ updated: number; skipped: number }> {
+  const pkg = await prisma.coursePackage.findUnique({
+    where: { id: packageId },
+    include: { packageCourses: { select: { courseId: true } } },
+  });
+  if (!pkg) return { updated: 0, skipped: 0 };
+
+  const courseIds = pkg.packageCourses.map((pc) => pc.courseId);
+  if (courseIds.length === 0) return { updated: 0, skipped: 0 };
+
+  const assignments = await prisma.courseAssignment.findMany({
+    where: { courseId: { in: courseIds } },
+    select: { id: true },
+  });
+  const assignmentIds = assignments.map((a) => a.id);
+  if (assignmentIds.length === 0) return { updated: 0, skipped: 0 };
+
+  const rows = await prisma.userCourseAssignment.findMany({
+    where: { assignmentId: { in: assignmentIds } },
+    select: { id: true, dueDate: true },
+  });
+
+  let updated = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    if (shouldTightenDue(row.dueDate, dueDate)) {
+      await prisma.userCourseAssignment.update({
+        where: { id: row.id },
+        data: { dueDate },
+      });
+      updated++;
+    } else {
+      skipped++;
+    }
+  }
+  return { updated, skipped };
 }
 
 export async function getUserPackages(userId: string) {

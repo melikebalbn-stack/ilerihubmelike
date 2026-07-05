@@ -209,9 +209,6 @@ model User {
   grantedRolePermissions RolePermission[]     @relation("RolePermissionGrantedBy")
   permissionAuditLogs    PermissionAuditLog[] @relation("PermissionAuditLogActor")
 
-  // PR-PERSONEL-CIKIS-FORMU: Bu user'ın kaydettiği personel çıkışları
-  recordedExits Personnel[] @relation("PersonnelExitRecorder")
-
   // PR-PERSONNEL-DEPARTMENT-TRANSFER
   recordedDepartmentTransfers PersonnelDepartmentTransfer[] @relation("DepartmentTransferRecorder")
 
@@ -8573,19 +8570,8 @@ model Personnel {
   engelli Boolean @default(false)
   aktif   Boolean @default(true)
 
-  // PR-PERSONEL-CIKIS-FORMU: Çıkış bilgileri (aktif=false olduğunda doldurulur)
-  // ÇALIŞMA SÜRESİ runtime'da hesaplanır (iseGirisTarihi + exitDate), saklanmaz.
-  exitDate         DateTime? @db.Date
-  exitParty        String? // TARAF: İŞÇİ / İŞVEREN / KARŞILIKLI
-  exitCode         String? // ÇIKIŞ KODU
-  exitReason       String? // ÇIKIŞ NEDENİ AÇIKLAMA
-  exitRootCause    String? // KÖK NEDEN
-  exitTurnoverType String? // İSTENEN / İSTENMEYEN
-  exitGeneralNote  String? @db.Text
-
-  exitRecordedById String?
-  exitRecordedAt   DateTime?
-  exitRecordedBy   User?     @relation("PersonnelExitRecorder", fields: [exitRecordedById], references: [id], onDelete: SetNull)
+  // PR-4b: Personnel.exit* alanları DROP edildi — çıkış verisi tek kaynak olarak
+  // EmploymentPeriod'da (kapalı dönem). Detay/leavers/HR denetimi oradan besleniyor.
 
   // Azure AD bağlantısı
   azureAdId    String? @unique

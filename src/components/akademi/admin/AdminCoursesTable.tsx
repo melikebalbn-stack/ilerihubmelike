@@ -17,7 +17,9 @@ export type CourseSortKey =
 interface Props {
   courses: AdminCourseListItem[];
   onEdit: (course: AdminCourseListItem) => void;
-  onDelete: (course: AdminCourseListItem) => void;
+  // Opsiyonel: verilmezse "Sil" (çöp) ikonu render EDİLMEZ (IFS Eğitimleri
+  // listesi kurs silmeye izin vermez — yalnız detaya gidilir).
+  onDelete?: (course: AdminCourseListItem) => void;
   onToggleActive: (course: AdminCourseListItem) => void;
   // PR-1: opsiyonel sıralama. Verilmezse başlıklar düz metin (ör. IFS eğitim
   // sekmesi bu prop'u geçmez → davranış değişmez).
@@ -228,17 +230,19 @@ export function AdminCoursesTable({
                         style={{ color: "var(--ak-text-secondary)" }}
                       />
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(c);
-                      }}
-                      className="p-2 rounded-md transition-colors hover:bg-red-50"
-                      title="Sil"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    </button>
+                    {onDelete && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(c);
+                        }}
+                        className="p-2 rounded-md transition-colors hover:bg-red-50"
+                        title="Sil"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

@@ -11,6 +11,12 @@ import { toast } from "sonner"
 import { MESAI_TURLERI } from "@/lib/overtime-constants"
 import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments, resolveDefaultDepartment } from "@/lib/use-departments"
+import UretimSatirlariEditor, {
+  type UretimSatirInput,
+  emptyUretimSatir,
+  personelSatirlariGecerli,
+  toApiUretimSatirlari,
+} from "@/components/overtime/UretimSatirlariEditor"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,9 +35,8 @@ interface PersonnelItem {
 interface PersonnelDetail {
   workDepartment: string
   serviceRoute: string
-  targetProduction: string
-  hedefAdet: string // sayısal performans hedefi (string state; gönderirken Number'a çevrilir)
-  mesaiNedeni: string
+  // Faz 2: çoklu üretim satırı (parça kodu + hedef adet)
+  uretimSatirlari: UretimSatirInput[]
 }
 
 type OvertimeType = "SATURDAY" | "SUNDAY" | "WEEKDAY_EXTRA" | "HOLIDAY"
@@ -156,10 +161,14 @@ export default function EditOvertimeFormPage() {
           details[key] = {
             workDepartment: p.workDepartment || departments[0] || "",
             serviceRoute: p.serviceRoute || "",
-            targetProduction: p.targetProduction || "",
-            // FIX: mevcut hedefAdet'i state'e doldur (null ise ""), düzenlemede görünsün.
-            hedefAdet: p.hedefAdet != null ? String(p.hedefAdet) : "",
-            mesaiNedeni: p.mesaiNedeni || "",
+            // Faz 2: mevcut üretim satırlarını yükle; yoksa (satırsız kayıt) 1 boş satır.
+            uretimSatirlari:
+              Array.isArray(p.uretimSatirlari) && p.uretimSatirlari.length > 0
+                ? p.uretimSatirlari.map((u: { parcaKodu?: string | null; hedefAdet?: number | null }) => ({
+                    parcaKodu: u.parcaKodu ?? "",
+                    hedefAdet: u.hedefAdet != null ? String(u.hedefAdet) : "",
+                  }))
+                : [emptyUretimSatir()],
           }
         }
         setSelectedIds(ids)
@@ -203,9 +212,7 @@ export default function EditOvertimeFormPage() {
           [person.id]: {
             workDepartment: resolveDefaultDepartment(person.bolum, departments),
             serviceRoute: person.serviceRoute || "",
-            targetProduction: "",
-            hedefAdet: "",
-            mesaiNedeni: "",
+            uretimSatirlari: [emptyUretimSatir()],
           },
         }))
       }
@@ -226,10 +233,17 @@ export default function EditOvertimeFormPage() {
     })
   }
 
-  function updateDetail(personnelId: string, field: keyof PersonnelDetail, value: string) {
+  function updateDetail(personnelId: string, field: "workDepartment" | "serviceRoute", value: string) {
     setPersonnelDetails((pd) => ({
       ...pd,
       [personnelId]: { ...pd[personnelId], [field]: value },
+    }))
+  }
+
+  function updateRows(personnelId: string, rows: UretimSatirInput[]) {
+    setPersonnelDetails((pd) => ({
+      ...pd,
+      [personnelId]: { ...pd[personnelId], uretimSatirlari: rows },
     }))
   }
 
@@ -246,9 +260,10 @@ export default function EditOvertimeFormPage() {
 
   // Helpers
   const canProceedStep1 = overtimeType !== "" && date !== ""
-  // Mesai Nedeni her seçili personel için ZORUNLU (VARDIYA'da opsiyonel → bypass).
-  const allMesaiNedeniFilled = isVardiya || selectedPersonnel.every(
-    (p) => (personnelDetails[p.id]?.mesaiNedeni ?? "").trim() !== ""
+  // Faz 2: her seçili personel için üretim satırları geçerli olmalı (MESAI: en az 1
+  // geçerli parça satırı; VARDIYA: opsiyonel, doldurulmuş satır geçerli olmalı).
+  const allMesaiNedeniFilled = selectedPersonnel.every((p) =>
+    personelSatirlariGecerli(personnelDetails[p.id]?.uretimSatirlari ?? [], isVardiya)
   )
   const canProceedStep2 = selectedIds.size > 0 && allMesaiNedeniFilled
 
@@ -285,9 +300,13 @@ export default function EditOvertimeFormPage() {
   // ---------------------------------------------------------------------------
 
   async function handleSave(submit: boolean) {
-    // Mesai Nedeni zorunlu — eksikse engelle
+    // Üretim satırları geçerli değilse engelle (MESAI: en az 1 geçerli parça satırı).
     if (!allMesaiNedeniFilled) {
-      toast.error("Her seçili personel için Mesai Nedeni girilmelidir.")
+      toast.error(
+        isVardiya
+          ? "Doldurulan üretim satırlarında parça kodu ve geçerli hedef adet girilmelidir."
+          : "Her seçili personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir."
+      )
       return
     }
     setSaving(true)
@@ -307,12 +326,9 @@ export default function EditOvertimeFormPage() {
             personnelDetails[p.id]?.workDepartment ||
             resolveDefaultDepartment(p.bolum, departments),
           serviceRoute: personnelDetails[p.id]?.serviceRoute || null,
-          targetProduction: personnelDetails[p.id]?.targetProduction || null,
-          // FIX: hedefAdet'i de gönder (boşsa null) — düzenlemede korunsun.
-          hedefAdet: personnelDetails[p.id]?.hedefAdet
-            ? Number(personnelDetails[p.id]!.hedefAdet)
-            : null,
-          mesaiNedeni: personnelDetails[p.id]?.mesaiNedeni?.trim() || null,
+          // Faz 2: çoklu üretim satırı (Faz 1 API sözleşmesi). API tekil alanları 1.
+          // satırdan türetir; PUT deleteMany+recreate ile satırlar da yeniden yazılır.
+          uretimSatirlari: toApiUretimSatirlari(personnelDetails[p.id]?.uretimSatirlari ?? []),
         })),
       }
 
@@ -722,46 +738,14 @@ export default function EditOvertimeFormPage() {
                             {detail.serviceRoute || <span className="text-gray-400">Tanımlı değil</span>}
                           </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Hedef Üretim
-                          </label>
-                          <Input
-                            placeholder="Ör: KR09-8041-8042"
-                            value={detail.targetProduction}
-                            onChange={(e) => updateDetail(person.id, "targetProduction", e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Hedef Adet
-                          </label>
-                          <Input
-                            type="number"
-                            inputMode="numeric"
-                            min="0"
-                            placeholder="Ör: 50"
-                            value={detail.hedefAdet}
-                            onChange={(e) => updateDetail(person.id, "hedefAdet", e.target.value)}
-                          />
-                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">
-                          {isVardiya ? "Vardiya Sebebi" : "Mesai Nedeni"}
-                          {!isVardiya && <span className="text-red-500"> *</span>}
-                        </label>
-                        <Input
-                          placeholder={isVardiya ? "Vardiya sebebi (opsiyonel)" : "Mesai nedenini girin (zorunlu)"}
-                          value={detail.mesaiNedeni}
-                          onChange={(e) => updateDetail(person.id, "mesaiNedeni", e.target.value)}
-                          className={!isVardiya && !detail.mesaiNedeni.trim() ? "border-red-300 focus-visible:ring-red-400" : ""}
-                        />
-                        {!isVardiya && !detail.mesaiNedeni.trim() && (
-                          <p className="text-xs text-red-500 mt-1">Mesai nedeni zorunludur</p>
-                        )}
-                      </div>
+                      {/* Faz 2: çoklu üretim satırı (parça kodu + hedef adet) */}
+                      <UretimSatirlariEditor
+                        rows={detail.uretimSatirlari}
+                        onChange={(rows) => updateRows(person.id, rows)}
+                        isVardiya={isVardiya}
+                      />
                     </div>
                   )
                 })
@@ -831,13 +815,15 @@ export default function EditOvertimeFormPage() {
                   <th className="px-4 py-3">Departman</th>
                   <th className="px-4 py-3">{isVardiya ? "Vardiya Sebebi" : "Mesai Nedeni"}</th>
                   <th className="px-4 py-3">Servis Güzergahı</th>
-                  <th className="px-4 py-3">Hedef Üretim</th>
                   <th className="px-4 py-3">Hedef Adet</th>
                 </tr>
               </thead>
               <tbody>
                 {selectedPersonnel.map((person, idx) => {
                   const detail = personnelDetails[person.id]
+                  const apiRows = toApiUretimSatirlari(detail?.uretimSatirlari ?? [])
+                  const ilk = apiRows[0]
+                  const ekN = apiRows.length > 1 ? ` +${apiRows.length - 1}` : ""
                   return (
                     <tr
                       key={person.id}
@@ -851,10 +837,11 @@ export default function EditOvertimeFormPage() {
                       <td className="px-4 py-3 text-gray-900">{person.adSoyad}</td>
                       <td className="px-4 py-3 text-xs text-gray-600">{person.telefon || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{person.bolum}</td>
-                      <td className="px-4 py-3 text-gray-600">{detail?.mesaiNedeni || person.gorev || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {ilk ? `${ilk.parcaKodu}${ekN}` : person.gorev || "-"}
+                      </td>
                       <td className="px-4 py-3 text-gray-600">{detail?.serviceRoute || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{detail?.targetProduction || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{detail?.hedefAdet || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{ilk ? `${ilk.hedefAdet}${ekN}` : "-"}</td>
                     </tr>
                   )
                 })}

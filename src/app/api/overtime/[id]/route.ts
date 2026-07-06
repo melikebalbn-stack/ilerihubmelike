@@ -30,6 +30,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
+            // Faz 2: çoklu üretim satırları (detay expand + edit yükleme)
+            uretimSatirlari: { orderBy: { sira: 'asc' } },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -178,8 +180,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         if (!p.personnelId || !p.workDepartment) {
           return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
         }
-        if (!p.mesaiNedeni || !String(p.mesaiNedeni).trim()) {
-          return apiBadRequest('Her personel için Mesai Nedeni zorunludur')
+        // Faz 2: MESAI'de en az 1 geçerli üretim satırı (parça kodu + hedefAdet > 0) zorunlu.
+        // VARDIYA formunda opsiyonel. buildUretimRows uretimSatirlari[] veya legacy'den türetir.
+        if (!isVardiyaForm && buildUretimRows(p).length === 0) {
+          return apiBadRequest('Her personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir')
         }
       }
     }
@@ -254,6 +258,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
               personnel: {
                 select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
               },
+              uretimSatirlari: { orderBy: { sira: 'asc' } },
             },
             orderBy: { createdAt: 'asc' },
           },

@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect as Select } from "@/components/ui/select"
-import { Clock, ArrowLeft, Check, X, MessageSquare, Loader2, Users, Send, FlaskConical, Plus, Trash2, Search, Pencil, Save } from "lucide-react"
+import { Clock, ArrowLeft, Check, X, MessageSquare, Loader2, Users, Send, FlaskConical, Plus, Trash2, Search, Pencil, Save, ChevronRight, ChevronDown } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -17,6 +17,17 @@ import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments } from "@/lib/use-departments"
 import { useSession } from "next-auth/react"
 
+interface UretimSatir {
+  id: string
+  parcaKodu: string
+  mesaiNedeni: string | null
+  hedefAdet: number | null
+  gerceklesenAdet: number | null
+  gerceklesenNote: string | null
+  hurdaAdet: number | null
+  sira: number
+}
+
 interface Personnel {
   id: string
   personnelId: string | null
@@ -27,6 +38,8 @@ interface Personnel {
   gerceklesenAdet: number | null
   gerceklesenNote: string | null
   mesaiNedeni: string | null
+  // Faz 2: çoklu üretim satırı (sira asc). Backfill tam → 26 boş-neden kayıt hariç dolu.
+  uretimSatirlari: UretimSatir[]
   personnel: {
     id: string
     sicilNo: string
@@ -131,6 +144,7 @@ export default function OvertimeDetailPage() {
   const [personnelSearch, setPersonnelSearch] = useState("")
   const [addWorkDept, setAddWorkDept] = useState("")
   const [addHedefAdet, setAddHedefAdet] = useState("")
+  const [addParcaKodu, setAddParcaKodu] = useState("") // Faz 2: eklenen personelin parça kodu
 
   // Bölümler yüklenince varsayılan workDept seç
   useEffect(() => {
@@ -148,9 +162,12 @@ export default function OvertimeDetailPage() {
   // null = tüm bölümler (admin/report.all); [adlar] = sadece o bölümler; [] = hiçbiri.
   const [allowedDepts, setAllowedDepts] = useState<string[] | null>(null)
   const [editingActual, setEditingActual] = useState(false)
-  const [actualValues, setActualValues] = useState<
-    Record<string, { gerceklesenAdet: string; gerceklesenNote: string }>
+  // Faz 2: satır-bazlı düzenleme — üretim satırı ID'si ile anahtarlanır.
+  const [rowValues, setRowValues] = useState<
+    Record<string, { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string }>
   >({})
+  // Çoklu satırı olan personelde alt-satır expand durumu (overtimePersonnel id).
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [savingActual, setSavingActual] = useState(false)
 
   const fetchAllPersonnelItems = useCallback(async () => {
@@ -182,6 +199,8 @@ export default function OvertimeDetailPage() {
           serviceRoute: targetPerson?.serviceRoute || null,
           // FIX: sonradan eklenen personel için hedef adet (boşsa null).
           hedefAdet: addHedefAdet ? Number(addHedefAdet) : null,
+          // Faz 2: parça kodu (mesaiNedeni) → API buradan 1. üretim satırını türetir.
+          mesaiNedeni: addParcaKodu.trim() || null,
         }),
       })
       if (res.__authHandled) return
@@ -192,6 +211,7 @@ export default function OvertimeDetailPage() {
       const updated = await res.json()
       setForm(updated)
       setAddHedefAdet("")
+      setAddParcaKodu("")
       toast.success("Personel eklendi")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bir hata oluştu")
@@ -228,27 +248,67 @@ export default function OvertimeDetailPage() {
     if (!form) return
     const values: Record<
       string,
-      { gerceklesenAdet: string; gerceklesenNote: string }
+      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string }
     > = {}
     form.personnel.forEach((p) => {
-      values[p.id] = {
-        gerceklesenAdet: p.gerceklesenAdet != null ? String(p.gerceklesenAdet) : "",
-        gerceklesenNote: p.gerceklesenNote || "",
-      }
+      p.uretimSatirlari.forEach((r) => {
+        values[r.id] = {
+          gerceklesenAdet: r.gerceklesenAdet != null ? String(r.gerceklesenAdet) : "",
+          gerceklesenNote: r.gerceklesenNote || "",
+          hurdaAdet: r.hurdaAdet != null ? String(r.hurdaAdet) : "",
+          hedefAdet: r.hedefAdet != null ? String(r.hedefAdet) : "",
+        }
+      })
     })
-    setActualValues(values)
+    setRowValues(values)
     setEditingActual(true)
+  }
+
+  function updateRowValue(
+    rowId: string,
+    field: "gerceklesenAdet" | "gerceklesenNote" | "hurdaAdet" | "hedefAdet",
+    value: string
+  ) {
+    setRowValues((prev) => ({
+      ...prev,
+      [rowId]: {
+        gerceklesenAdet: prev[rowId]?.gerceklesenAdet ?? "",
+        gerceklesenNote: prev[rowId]?.gerceklesenNote ?? "",
+        hurdaAdet: prev[rowId]?.hurdaAdet ?? "",
+        hedefAdet: prev[rowId]?.hedefAdet ?? "",
+        [field]: value,
+      },
+    }))
+  }
+
+  function toggleExpanded(personnelId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(personnelId)) next.delete(personnelId)
+      else next.add(personnelId)
+      return next
+    })
   }
 
   async function saveActualProduction() {
     if (!form) return
     setSavingActual(true)
     try {
-      const personnelData = Object.entries(actualValues).map(([overtimePersonnelId, v]) => ({
-        overtimePersonnelId,
-        gerceklesenAdet: v.gerceklesenAdet,
-        gerceklesenNote: v.gerceklesenNote,
-      }))
+      // Satır-bazlı: yalnız yetkili + satırı olan personeli, satır ID'leriyle gönder.
+      // hedefAdet API'de yalnız > 0 ise yazılır (tarihsel null doldurma). Boş hedefAdet
+      // mevcut değeri korur. Satırsız (26 boş-neden) kayıt gönderilmez (upsert türetilemez).
+      const personnelData = form.personnel
+        .filter((p) => canEditActualRow(p) && p.uretimSatirlari.length > 0)
+        .map((p) => ({
+          overtimePersonnelId: p.id,
+          uretimSatirlari: p.uretimSatirlari.map((r) => ({
+            id: r.id,
+            gerceklesenAdet: rowValues[r.id]?.gerceklesenAdet ?? "",
+            gerceklesenNote: rowValues[r.id]?.gerceklesenNote ?? "",
+            hurdaAdet: rowValues[r.id]?.hurdaAdet ?? "",
+            hedefAdet: rowValues[r.id]?.hedefAdet ?? "",
+          })),
+        }))
       const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -643,9 +703,15 @@ export default function OvertimeDetailPage() {
                 ))}
               </Select>
               <Input
+                placeholder="Parça kodu (Mesai Nedeni)"
+                value={addParcaKodu}
+                onChange={(e) => setAddParcaKodu(e.target.value)}
+                className="w-44"
+              />
+              <Input
                 type="number"
                 inputMode="numeric"
-                min="0"
+                min="1"
                 placeholder="Hedef Adet"
                 value={addHedefAdet}
                 onChange={(e) => setAddHedefAdet(e.target.value)}
@@ -714,8 +780,8 @@ export default function OvertimeDetailPage() {
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Mesai Nedeni</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Mesai Yapacak Bölüm</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Servis Güzergahı</th>
-                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Üretim</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Adet</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hurda Adet</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">
                   <div className="flex items-center gap-2">
                     Gerçekleşen Adet
@@ -756,79 +822,143 @@ export default function OvertimeDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {form.personnel.map((p, index) => (
-                <tr key={p.id} className="border-b last:border-0 hover:bg-muted/50">
-                  <td className="py-3 px-2 text-muted-foreground">{index + 1}</td>
-                  <td className="py-3 px-2 font-mono text-xs">{pSicilNo(p)}</td>
-                  <td className="py-3 px-2 font-medium">{pName(p)}</td>
-                  <td className="py-3 px-2 text-xs">{pTelefon(p)}</td>
-                  <td className="py-3 px-2">{pBolum(p)}</td>
-                  <td className="py-3 px-2">{p.mesaiNedeni || pGorev(p)}</td>
-                  <td className="py-3 px-2">{p.workDepartment}</td>
-                  <td className="py-3 px-2">{p.serviceRoute || "—"}</td>
-                  <td className="py-3 px-2">{p.targetProduction || "—"}</td>
-                  <td className="py-3 px-2">{p.hedefAdet != null ? p.hedefAdet : "—"}</td>
-                  <td className="py-3 px-2">
-                    {editingActual && canEditActualRow(p) ? (
-                      <Input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        value={actualValues[p.id]?.gerceklesenAdet || ""}
-                        onChange={(e) =>
-                          setActualValues((prev) => ({
-                            ...prev,
-                            [p.id]: { ...prev[p.id], gerceklesenAdet: e.target.value },
-                          }))
-                        }
-                        placeholder="Ör: 42"
-                        className="h-8 w-24 text-sm"
-                      />
-                    ) : p.gerceklesenAdet != null ? (
-                      p.gerceklesenAdet
-                    ) : form.status === "APPROVED" ? (
-                      <span className="text-muted-foreground italic">Henüz girilmedi</span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="py-3 px-2">
-                    {editingActual && canEditActualRow(p) ? (
-                      <Input
-                        value={actualValues[p.id]?.gerceklesenNote || ""}
-                        onChange={(e) =>
-                          setActualValues((prev) => ({
-                            ...prev,
-                            [p.id]: { ...prev[p.id], gerceklesenNote: e.target.value },
-                          }))
-                        }
-                        placeholder="Açıklama (ör. tezgah arızası)"
-                        className="h-8 w-40 text-sm"
-                      />
-                    ) : (
-                      p.gerceklesenNote || "—"
-                    )}
-                  </td>
-                  {canEditPersonnel && (
-                    <td className="py-3 px-2 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                        onClick={() => handleRemovePersonnel(p.id)}
-                        disabled={removingId !== null}
-                        title="Personeli çıkar"
-                      >
-                        {removingId === p.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {form.personnel.map((p, index) => {
+                const rows = p.uretimSatirlari ?? []
+                const row0: UretimSatir | undefined = rows[0]
+                const rowCount = rows.length
+                const isExpanded = expanded.has(p.id)
+                const rowEditable = editingActual && canEditActualRow(p)
+
+                // Bir üretim satırının 4 düzenlenebilir hücresi (Hedef/Hurda/Gerçekleşen/Açıklama).
+                // r yoksa (satırsız kayıt) düzenleme kapalı → "—".
+                const cellFor = (r: UretimSatir | undefined) => {
+                  const editable = rowEditable && !!r
+                  const rv = r ? rowValues[r.id] : undefined
+                  return (
+                    <>
+                      {/* Hedef Adet — null (tarihsel) ise inline doldurulabilir (>0) */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            type="number" inputMode="numeric" min="1"
+                            value={rv?.hedefAdet || ""}
+                            onChange={(e) => updateRowValue(r!.id, "hedefAdet", e.target.value)}
+                            placeholder="—"
+                            className="h-8 w-20 text-sm"
+                          />
+                        ) : r?.hedefAdet != null ? r.hedefAdet : "—"}
+                      </td>
+                      {/* Hurda Adet — satır bazlı (>=0) */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            type="number" inputMode="numeric" min="0"
+                            value={rv?.hurdaAdet || ""}
+                            onChange={(e) => updateRowValue(r!.id, "hurdaAdet", e.target.value)}
+                            placeholder="Ör: 3"
+                            className="h-8 w-20 text-sm"
+                          />
+                        ) : r?.hurdaAdet != null ? r.hurdaAdet : "—"}
+                      </td>
+                      {/* Gerçekleşen Adet */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            type="number" inputMode="numeric" min="0"
+                            value={rv?.gerceklesenAdet || ""}
+                            onChange={(e) => updateRowValue(r!.id, "gerceklesenAdet", e.target.value)}
+                            placeholder="Ör: 42"
+                            className="h-8 w-24 text-sm"
+                          />
+                        ) : r?.gerceklesenAdet != null ? (
+                          r.gerceklesenAdet
+                        ) : form.status === "APPROVED" ? (
+                          <span className="text-muted-foreground italic">Henüz girilmedi</span>
                         ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
+                          "—"
                         )}
-                      </Button>
-                    </td>
-                  )}
-                </tr>
-              ))}
+                      </td>
+                      {/* Açıklama */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            value={rv?.gerceklesenNote || ""}
+                            onChange={(e) => updateRowValue(r!.id, "gerceklesenNote", e.target.value)}
+                            placeholder="Açıklama (ör. tezgah arızası)"
+                            className="h-8 w-40 text-sm"
+                          />
+                        ) : (
+                          r?.gerceklesenNote || "—"
+                        )}
+                      </td>
+                    </>
+                  )
+                }
+
+                return (
+                  <Fragment key={p.id}>
+                    <tr className="border-b last:border-0 hover:bg-muted/50">
+                      <td className="py-3 px-2 text-muted-foreground">{index + 1}</td>
+                      <td className="py-3 px-2 font-mono text-xs">{pSicilNo(p)}</td>
+                      <td className="py-3 px-2 font-medium">{pName(p)}</td>
+                      <td className="py-3 px-2 text-xs">{pTelefon(p)}</td>
+                      <td className="py-3 px-2">{pBolum(p)}</td>
+                      {/* Mesai Nedeni = 1. üretim satırının parça kodu (+ çoklu satır expand) */}
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-1.5">
+                          {rowCount > 1 && (
+                            <button
+                              onClick={() => toggleExpanded(p.id)}
+                              className="text-muted-foreground hover:text-foreground shrink-0"
+                              title={isExpanded ? "Satırları gizle" : "Satırları göster"}
+                            >
+                              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                          )}
+                          <span>{row0?.parcaKodu || p.mesaiNedeni || pGorev(p)}</span>
+                          {rowCount > 1 && (
+                            <span className="text-xs rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 shrink-0">
+                              {rowCount} parça
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">{p.workDepartment}</td>
+                      <td className="py-3 px-2">{p.serviceRoute || "—"}</td>
+                      {cellFor(row0)}
+                      {canEditPersonnel && (
+                        <td className="py-3 px-2 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                            onClick={() => handleRemovePersonnel(p.id)}
+                            disabled={removingId !== null}
+                            title="Personeli çıkar"
+                          >
+                            {removingId === p.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </td>
+                      )}
+                    </tr>
+
+                    {/* Alt üretim satırları (2+) — expand açıkken */}
+                    {isExpanded && rowCount > 1 && rows.slice(1).map((r) => (
+                      <tr key={r.id} className="border-b last:border-0 bg-muted/30">
+                        <td className="py-2 px-2" colSpan={5} />
+                        <td className="py-2 px-2 pl-6 text-muted-foreground">↳ {r.parcaKodu}</td>
+                        <td className="py-2 px-2" colSpan={2} />
+                        {cellFor(r)}
+                        {canEditPersonnel && <td className="py-2 px-2" />}
+                      </tr>
+                    ))}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

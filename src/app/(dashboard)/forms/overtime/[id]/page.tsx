@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect as Select } from "@/components/ui/select"
-import { Clock, ArrowLeft, Check, X, MessageSquare, Loader2, Users, Send, FlaskConical, Plus, Trash2, Search, Pencil, Save, ChevronRight, ChevronDown } from "lucide-react"
+import { Clock, ArrowLeft, Check, X, MessageSquare, Loader2, Users, Send, FlaskConical, Plus, Trash2, Search, Pencil, Save, ChevronRight, ChevronDown, Info } from "lucide-react"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import Link from "next/link"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -26,6 +27,11 @@ interface UretimSatir {
   gerceklesenNote: string | null
   hurdaAdet: number | null
   sira: number
+  // Parça kodu sonradan düzeltme audit'i
+  eskiParcaKodu: string | null
+  parcaKoduDuzeltmeNote: string | null
+  duzeltmeTarihi: string | null
+  duzelten: { id: string; name: string | null } | null
 }
 
 interface Personnel {
@@ -163,8 +169,12 @@ export default function OvertimeDetailPage() {
   const [allowedDepts, setAllowedDepts] = useState<string[] | null>(null)
   const [editingActual, setEditingActual] = useState(false)
   // Faz 2: satır-bazlı düzenleme — üretim satırı ID'si ile anahtarlanır.
+  // parcaKodu + parcaKoduNote: parça kodu (Mesai Nedeni) sonradan düzeltme.
   const [rowValues, setRowValues] = useState<
-    Record<string, { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string }>
+    Record<
+      string,
+      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string; parcaKodu: string; parcaKoduNote: string }
+    >
   >({})
   // Çoklu satırı olan personelde alt-satır expand durumu (overtimePersonnel id).
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -248,7 +258,7 @@ export default function OvertimeDetailPage() {
     if (!form) return
     const values: Record<
       string,
-      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string }
+      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string; parcaKodu: string; parcaKoduNote: string }
     > = {}
     form.personnel.forEach((p) => {
       p.uretimSatirlari.forEach((r) => {
@@ -257,6 +267,8 @@ export default function OvertimeDetailPage() {
           gerceklesenNote: r.gerceklesenNote || "",
           hurdaAdet: r.hurdaAdet != null ? String(r.hurdaAdet) : "",
           hedefAdet: r.hedefAdet != null ? String(r.hedefAdet) : "",
+          parcaKodu: r.parcaKodu ?? "",
+          parcaKoduNote: "", // gerekçe her düzenlemede boş başlar
         }
       })
     })
@@ -266,7 +278,7 @@ export default function OvertimeDetailPage() {
 
   function updateRowValue(
     rowId: string,
-    field: "gerceklesenAdet" | "gerceklesenNote" | "hurdaAdet" | "hedefAdet",
+    field: "gerceklesenAdet" | "gerceklesenNote" | "hurdaAdet" | "hedefAdet" | "parcaKodu" | "parcaKoduNote",
     value: string
   ) {
     setRowValues((prev) => ({
@@ -276,6 +288,8 @@ export default function OvertimeDetailPage() {
         gerceklesenNote: prev[rowId]?.gerceklesenNote ?? "",
         hurdaAdet: prev[rowId]?.hurdaAdet ?? "",
         hedefAdet: prev[rowId]?.hedefAdet ?? "",
+        parcaKodu: prev[rowId]?.parcaKodu ?? "",
+        parcaKoduNote: prev[rowId]?.parcaKoduNote ?? "",
         [field]: value,
       },
     }))
@@ -307,6 +321,9 @@ export default function OvertimeDetailPage() {
             gerceklesenNote: rowValues[r.id]?.gerceklesenNote ?? "",
             hurdaAdet: rowValues[r.id]?.hurdaAdet ?? "",
             hedefAdet: rowValues[r.id]?.hedefAdet ?? "",
+            // Parça kodu düzeltme: backend yalnız değişince audit yazar; boş → 400.
+            parcaKodu: rowValues[r.id]?.parcaKodu ?? "",
+            parcaKoduDuzeltmeNote: rowValues[r.id]?.parcaKoduNote ?? "",
           })),
         }))
       const res = await apiFetch(`/api/overtime/${id}/personnel`, {
@@ -895,6 +912,56 @@ export default function OvertimeDetailPage() {
                   )
                 }
 
+                // Parça kodu (Mesai Nedeni) içeriği: yetkiliyken inline-edit + "düzeltildi"
+                // tooltip (eski kod / düzelten / tarih) + değişince opsiyonel gerekçe input.
+                const parcaContent = (r: UretimSatir | undefined, fallbackText: string) => {
+                  const editable = rowEditable && !!r
+                  const rv = r ? rowValues[r.id] : undefined
+                  const duzeltildi = !!r?.eskiParcaKodu
+                  const changed = !!(editable && rv && rv.parcaKodu.trim() !== (r?.parcaKodu ?? ""))
+                  return (
+                    <>
+                      {editable ? (
+                        <Input
+                          value={rv?.parcaKodu ?? ""}
+                          onChange={(e) => updateRowValue(r!.id, "parcaKodu", e.target.value)}
+                          placeholder="Parça kodu"
+                          className="h-8 w-32 text-sm"
+                        />
+                      ) : (
+                        <span>{r?.parcaKodu || fallbackText}</span>
+                      )}
+                      {duzeltildi && r && (
+                        <TooltipProvider delayDuration={150}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-amber-500 shrink-0 cursor-help" aria-label="Düzeltildi">
+                                <Info className="h-3.5 w-3.5" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <div className="text-xs space-y-0.5">
+                                <div>Eski kod: <span className="font-mono">{r.eskiParcaKodu}</span></div>
+                                <div>Düzelten: {r.duzelten?.name || "—"}</div>
+                                <div>Tarih: {r.duzeltmeTarihi ? new Date(r.duzeltmeTarihi).toLocaleString("tr-TR") : "—"}</div>
+                                {r.parcaKoduDuzeltmeNote && <div>Gerekçe: {r.parcaKoduDuzeltmeNote}</div>}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      {changed && (
+                        <Input
+                          value={rv?.parcaKoduNote ?? ""}
+                          onChange={(e) => updateRowValue(r!.id, "parcaKoduNote", e.target.value)}
+                          placeholder="düzeltme gerekçesi (ops.)"
+                          className="h-8 w-40 text-sm"
+                        />
+                      )}
+                    </>
+                  )
+                }
+
                 return (
                   <Fragment key={p.id}>
                     <tr className="border-b last:border-0 hover:bg-muted/50">
@@ -903,9 +970,9 @@ export default function OvertimeDetailPage() {
                       <td className="py-3 px-2 font-medium">{pName(p)}</td>
                       <td className="py-3 px-2 text-xs">{pTelefon(p)}</td>
                       <td className="py-3 px-2">{pBolum(p)}</td>
-                      {/* Mesai Nedeni = 1. üretim satırının parça kodu (+ çoklu satır expand) */}
+                      {/* Mesai Nedeni = 1. üretim satırının parça kodu (+ çoklu satır expand + düzelt) */}
                       <td className="py-3 px-2">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {rowCount > 1 && (
                             <button
                               onClick={() => toggleExpanded(p.id)}
@@ -915,7 +982,7 @@ export default function OvertimeDetailPage() {
                               {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                             </button>
                           )}
-                          <span>{row0?.parcaKodu || p.mesaiNedeni || pGorev(p)}</span>
+                          {parcaContent(row0, p.mesaiNedeni || pGorev(p))}
                           {rowCount > 1 && (
                             <span className="text-xs rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 shrink-0">
                               {rowCount} parça
@@ -950,7 +1017,12 @@ export default function OvertimeDetailPage() {
                     {isExpanded && rowCount > 1 && rows.slice(1).map((r) => (
                       <tr key={r.id} className="border-b last:border-0 bg-muted/30">
                         <td className="py-2 px-2" colSpan={5} />
-                        <td className="py-2 px-2 pl-6 text-muted-foreground">↳ {r.parcaKodu}</td>
+                        <td className="py-2 px-2 pl-6">
+                          <div className="flex items-center gap-1.5 flex-wrap text-muted-foreground">
+                            <span className="shrink-0">↳</span>
+                            {parcaContent(r, "—")}
+                          </div>
+                        </td>
                         <td className="py-2 px-2" colSpan={2} />
                         {cellFor(r)}
                         {canEditPersonnel && <td className="py-2 px-2" />}

@@ -3,6 +3,7 @@ import {
   buildUretimRows,
   buildSingles,
   buildBackfillRow,
+  buildParcaKoduDuzeltme,
   coerceIntNonNeg,
   coerceHedefPozitif,
 } from './overtime-uretim'
@@ -245,5 +246,55 @@ describe('buildBackfillRow (backfill bağlamı)', () => {
   it('gerceklesenAdet negatif → null', () => {
     const row = buildBackfillRow({ mesaiNedeni: '8048', hedefAdet: 5, gerceklesenAdet: -9 })
     expect(row?.gerceklesenAdet).toBeNull()
+  })
+})
+
+// ── Parça kodu (Mesai Nedeni) sonradan düzeltme ──
+describe('buildParcaKoduDuzeltme', () => {
+  const NOW = new Date('2026-07-06T05:00:00.000Z')
+  const U = 'user-123'
+
+  it('boş/whitespace yeni parça kodu → error "bos", data null', () => {
+    expect(buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '', U, undefined, NOW)).toEqual({
+      data: null,
+      error: 'bos',
+    })
+    expect(buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '   ', U, undefined, NOW).error).toBe('bos')
+    expect(buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, null, U, undefined, NOW).error).toBe('bos')
+  })
+
+  it('değişmeyen parça kodu → no-op (data null, error yok)', () => {
+    expect(buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '8048', U, undefined, NOW)).toEqual({
+      data: null,
+    })
+    // trim sonrası eşit → yine no-op
+    expect(buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '  8048  ', U, undefined, NOW).data).toBeNull()
+  })
+
+  it('İLK düzeltme: eskiParcaKodu=orijinal, duzeltenById + duzeltmeTarihi set', () => {
+    const res = buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '8049', U, undefined, NOW)
+    expect(res.error).toBeUndefined()
+    expect(res.data).toEqual({
+      parcaKodu: '8049',
+      eskiParcaKodu: '8048', // orijinal korunur
+      duzeltenById: U,
+      duzeltmeTarihi: NOW,
+    })
+  })
+
+  it('İKİNCİ düzeltme (eskiParcaKodu zaten dolu): orijinal EZİLMEZ — eskiParcaKodu data’ya EKLENMEZ', () => {
+    const res = buildParcaKoduDuzeltme({ parcaKodu: '8049', eskiParcaKodu: '8048' }, '8050', U, undefined, NOW)
+    expect(res.data).not.toBeNull()
+    expect('eskiParcaKodu' in res.data!).toBe(false) // bir-kez-yazılır: orijinal 8048 korunur
+    expect(res.data).toEqual({ parcaKodu: '8050', duzeltenById: U, duzeltmeTarihi: NOW })
+  })
+
+  it('gerekçe verildiğinde parcaKoduDuzeltmeNote yazılır (trim||null); verilmezse eklenmez', () => {
+    const ile = buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '8049', U, '  eksik malzeme  ', NOW)
+    expect(ile.data?.parcaKoduDuzeltmeNote).toBe('eksik malzeme')
+    const bosNote = buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '8049', U, '   ', NOW)
+    expect(bosNote.data?.parcaKoduDuzeltmeNote).toBeNull() // verildi ama boş → null
+    const yokNote = buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '8049', U, undefined, NOW)
+    expect('parcaKoduDuzeltmeNote' in yokNote.data!).toBe(false) // hiç verilmedi → eklenmez
   })
 })

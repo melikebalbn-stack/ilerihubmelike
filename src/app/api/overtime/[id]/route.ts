@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
             // Faz 2: çoklu üretim satırları (detay expand + edit yükleme)
-            uretimSatirlari: { orderBy: { sira: 'asc' } },
+            uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -258,7 +258,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
               personnel: {
                 select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
               },
-              uretimSatirlari: { orderBy: { sira: 'asc' } },
+              uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
             },
             orderBy: { createdAt: 'asc' },
           },

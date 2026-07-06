@@ -324,7 +324,7 @@ export async function POST(request: NextRequest) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
-            uretimSatirlari: { orderBy: { sira: 'asc' } },
+            uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
           },
         },
         createdBy: {

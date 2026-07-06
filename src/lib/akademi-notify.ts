@@ -3,6 +3,7 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { sendEmail, type EmailAttachment } from "@/lib/email";
 import * as templates from "@/lib/email-templates/akademi";
+import { dueDateSetEmail } from "@/lib/email-templates/akademi/dueDateSet";
 
 // ILERIHub logosu — maile CID gömme (dış URL değil; her istemcide çalışır,
 // image-blocking sorunu olmaz). Dosya yoksa attachment atlanır (alt text kalır).
@@ -318,6 +319,56 @@ export async function notifyPackageAssignedBatch(
   for (let i = 0; i < userIds.length; i += BATCH) {
     await Promise.allSettled(
       userIds.slice(i, i + BATCH).map((uid) => notifyPackageAssigned(uid, pkg))
+    );
+  }
+}
+
+// PR-IFS-RAPOR-2b: son tarih atanan/öne çekilen kullanıcılara tek mail (kurs
+// başına değil, kişi başına TEK). Fire-and-forget; mail patlarsa DB yazımı
+// GERİ ALINMAZ — yalnız log'lanır (sendEmail zaten throw etmez, yine de guard).
+export async function notifyDueDateSetBatch(
+  affected: { userId: string; dueDate: Date }[],
+  pkg: { packageName: string }
+): Promise<void> {
+  if (affected.length === 0) return;
+  // Aynı kullanıcı birden çok kez gelirse en erken tarihle tekilleştir.
+  const byUser = new Map<string, Date>();
+  for (const a of affected) {
+    const cur = byUser.get(a.userId);
+    if (!cur || a.dueDate < cur) byUser.set(a.userId, a.dueDate);
+  }
+  const ids = [...byUser.keys()];
+  const rows = await prisma.user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, email: true, name: true },
+  });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+
+  const items = [...byUser.entries()];
+  const BATCH = 5;
+  for (let i = 0; i < items.length; i += BATCH) {
+    await Promise.allSettled(
+      items.slice(i, i + BATCH).map(async ([userId, dueDate]) => {
+        const rec = byId.get(userId);
+        if (!rec?.email) return;
+        const adSoyad = nn(rec.name, rec.email);
+        const { subject, html, text } = dueDateSetEmail({
+          adSoyad,
+          packageName: pkg.packageName,
+          dueDate,
+        });
+        await sendEmail(
+          [{ email: rec.email, name: adSoyad }],
+          subject,
+          text,
+          html
+        ).catch((err) =>
+          console.error(
+            `[akademi-notify] dueDate mail to ${rec.email} failed:`,
+            err
+          )
+        );
+      })
     );
   }
 }

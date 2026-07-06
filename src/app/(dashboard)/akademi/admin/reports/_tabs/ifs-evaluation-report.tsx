@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { IfsBolumReportView } from "./ifs-bolum-report";
 
 const ILERI = "#1B4F72";
 const COLOR = {
@@ -135,6 +136,8 @@ export function IfsEvaluationReportTab() {
   const [data, setData] = useState<BolumData | KisiData | null>(null);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
+  // PR-IFS-RAPOR-2b: Bölüm Görünümü varsayılan; Paket Görünümü ikincil.
+  const [view, setView] = useState<"bolum" | "paket">("bolum");
 
   useEffect(() => {
     fetch("/api/akademi/admin/courses?includeInactive=true")
@@ -343,23 +346,55 @@ export function IfsEvaluationReportTab() {
     </div>
   );
 
+  const viewToggle = (
+    <div className="flex gap-1 mb-4">
+      {(
+        [
+          ["bolum", "Bölüm Görünümü"],
+          ["paket", "Paket Görünümü"],
+        ] as const
+      ).map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => setView(v)}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition ${
+            view === v
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="ak-animate-in">
-      {filters}
+      {viewToggle}
 
-      {loading ? (
-        <div
-          className="text-center py-12 text-sm"
-          style={{ color: "var(--ak-text-tertiary)" }}
-        >
-          Yükleniyor...
-        </div>
-      ) : !data ? (
-        <Empty />
-      ) : data.mode === "bolum" ? (
-        <BolumView data={data} onDrill={(b) => setBolum(b)} />
+      {view === "bolum" ? (
+        <IfsBolumReportView />
       ) : (
-        <KisiView data={data} onBack={() => setBolum("")} />
+        <>
+          {filters}
+
+          {loading ? (
+            <div
+              className="text-center py-12 text-sm"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              Yükleniyor...
+            </div>
+          ) : !data ? (
+            <Empty />
+          ) : data.mode === "bolum" ? (
+            <BolumView data={data} onDrill={(b) => setBolum(b)} />
+          ) : (
+            <KisiView data={data} onBack={() => setBolum("")} />
+          )}
+        </>
       )}
     </div>
   );

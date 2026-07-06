@@ -7,6 +7,9 @@ export interface MaterializeResult {
   newAssignments: number;
   skippedExisting: number;
   dueDateUpdated: number;
+  // PR-IFS-RAPOR-2b: override (bireysel atama) kullanıcılarından son tarihi
+  // gerçekten yazılan/öne çekilenler — mail için (kişi başına tek).
+  affectedDueDates: { userId: string; dueDate: Date }[];
   errors: string[];
 }
 
@@ -41,8 +44,12 @@ export async function materializePackage(
     newAssignments: 0,
     skippedExisting: 0,
     dueDateUpdated: 0,
+    affectedDueDates: [],
     errors: [],
   };
+
+  const overrideSet = new Set(opts?.overrideUserIds ?? []);
+  const affectedOverride = new Set<string>();
 
   const pkg = await prisma.coursePackage.findUnique({
     where: { id: packageId },
@@ -177,12 +184,15 @@ export async function materializePackage(
         result.skippedExisting++;
       } else {
         // PR-1: yeni atamaya departman son tarihini taşı (yoksa null).
+        const due = dueFor(userId);
         toCreate.push({
           userId,
           assignmentId,
           assignedAt: new Date(),
-          dueDate: dueFor(userId),
+          dueDate: due,
         });
+        // PR-IFS-RAPOR-2b: override kullanıcısına tarih yazıldıysa mail adayı.
+        if (due != null && overrideSet.has(userId)) affectedOverride.add(userId);
       }
     }
   }
@@ -206,8 +216,14 @@ export async function materializePackage(
         data: { dueDate: target },
       });
       result.dueDateUpdated++;
+      if (overrideSet.has(row.userId)) affectedOverride.add(row.userId);
     }
   }
+
+  // PR-IFS-RAPOR-2b: etkilenen override kullanıcıları + (tighten sonrası) tarihi.
+  result.affectedDueDates = [...affectedOverride]
+    .map((uid) => ({ userId: uid, dueDate: dueFor(uid) }))
+    .filter((x): x is { userId: string; dueDate: Date } => x.dueDate != null);
 
   return result;
 }
@@ -217,33 +233,50 @@ export async function materializePackage(
  * UserCourseAssignment satırlarına tighten-only uygular (null→doldur, erken→öne
  * çek, asla uzatma). Yeni atama OLUŞTURMAZ. { updated, skipped } döner.
  */
+export interface ApplyDueDateResult {
+  updated: number;
+  skipped: number;
+  packageName: string;
+  // PR-IFS-RAPOR-2b: son tarihi gerçekten yazılan/öne çekilen kullanıcılar
+  // (kişi başına tek satır — mail için).
+  affectedUserIds: string[];
+}
+
 export async function applyPackageDueDate(
   packageId: string,
   dueDate: Date
-): Promise<{ updated: number; skipped: number }> {
+): Promise<ApplyDueDateResult> {
+  const empty = (name = ""): ApplyDueDateResult => ({
+    updated: 0,
+    skipped: 0,
+    packageName: name,
+    affectedUserIds: [],
+  });
+
   const pkg = await prisma.coursePackage.findUnique({
     where: { id: packageId },
     include: { packageCourses: { select: { courseId: true } } },
   });
-  if (!pkg) return { updated: 0, skipped: 0 };
+  if (!pkg) return empty();
 
   const courseIds = pkg.packageCourses.map((pc) => pc.courseId);
-  if (courseIds.length === 0) return { updated: 0, skipped: 0 };
+  if (courseIds.length === 0) return empty(pkg.name);
 
   const assignments = await prisma.courseAssignment.findMany({
     where: { courseId: { in: courseIds } },
     select: { id: true },
   });
   const assignmentIds = assignments.map((a) => a.id);
-  if (assignmentIds.length === 0) return { updated: 0, skipped: 0 };
+  if (assignmentIds.length === 0) return empty(pkg.name);
 
   const rows = await prisma.userCourseAssignment.findMany({
     where: { assignmentId: { in: assignmentIds } },
-    select: { id: true, dueDate: true },
+    select: { id: true, userId: true, dueDate: true },
   });
 
   let updated = 0;
   let skipped = 0;
+  const affected = new Set<string>();
   for (const row of rows) {
     if (shouldTightenDue(row.dueDate, dueDate)) {
       await prisma.userCourseAssignment.update({
@@ -251,11 +284,17 @@ export async function applyPackageDueDate(
         data: { dueDate },
       });
       updated++;
+      affected.add(row.userId);
     } else {
       skipped++;
     }
   }
-  return { updated, skipped };
+  return {
+    updated,
+    skipped,
+    packageName: pkg.name,
+    affectedUserIds: [...affected],
+  };
 }
 
 export async function getUserPackages(userId: string) {

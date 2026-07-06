@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
-import { buildSingles, buildUretimRows, buildBackfillRow, coerceIntNonNeg, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { buildSingles, buildUretimRows, buildBackfillRow, coerceIntNonNeg, coerceHedefPozitif, buildParcaKoduDuzeltme, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 
 // Bölüm adı normalize: workDepartment ↔ omurga (getDeptSubtreeNames) adları güvenli
 // kıyas (Türkçe upper + trim). Exact-match'in süperseti; geçerli eşleşmeyi bozmaz.
@@ -109,6 +109,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
+            uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -192,6 +193,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
+            uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -235,7 +237,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       where: { id },
       include: {
         personnel: {
-          include: { uretimSatirlari: { orderBy: { sira: 'asc' } } },
+          include: { uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } } },
         },
       },
     })
@@ -299,6 +301,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         gerceklesenAdet?: string | number
         gerceklesenNote?: string
         hurdaAdet?: string | number
+        hedefAdet?: string | number
+        parcaKodu?: string
+        parcaKoduDuzeltmeNote?: string
       }[]
     }[]) {
       if (!p.overtimePersonnelId) continue
@@ -320,32 +325,53 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       const firstRow = uretimRows[0] // min sira
 
       if (Array.isArray(p.uretimSatirlari) && p.uretimSatirlari.length > 0) {
-        // Satır-bazlı: yalnız bu personele ait satırları id ile güncelle.
-        const ownRowIds = new Set(uretimRows.map((r) => r.id))
+        // Satır-bazlı: yalnız bu personele ait satırları id ile güncelle. KISMİ güncelleme
+        // — sadece payload'da GELEN alanlar yazılır (hedefAdet-only doldurma gerceklesen'i
+        // silmez). hedefAdet API kuralı: yalnız > 0 ise yazılır (geçersiz → yok say).
+        const ownRows = new Map(uretimRows.map((r) => [r.id, r]))
+        // Tekil (OvertimePersonnel) senkron alanları — 1. satırdan biriktirilir, sonda 1 update.
+        const singleData: Record<string, unknown> = {}
         for (const r of p.uretimSatirlari) {
-          if (!r.id || !ownRowIds.has(r.id)) continue
-          ops.push(
-            prisma.overtimePersonnelUretim.update({
-              where: { id: r.id },
-              data: {
-                gerceklesenAdet: coerceIntNonNeg(r.gerceklesenAdet),
-                gerceklesenNote: r.gerceklesenNote?.trim() || null,
-                hurdaAdet: coerceIntNonNeg(r.hurdaAdet),
-              },
-            })
-          )
+          if (!r.id) continue
+          const existingRow = ownRows.get(r.id)
+          if (!existingRow) continue
+          const data: Record<string, unknown> = {}
+          if ('gerceklesenAdet' in r) data.gerceklesenAdet = coerceIntNonNeg(r.gerceklesenAdet)
+          if ('gerceklesenNote' in r) data.gerceklesenNote = r.gerceklesenNote?.trim() || null
+          if ('hurdaAdet' in r) data.hurdaAdet = coerceIntNonNeg(r.hurdaAdet)
+          if ('hedefAdet' in r) {
+            const h = coerceHedefPozitif(r.hedefAdet)
+            if (h != null) data.hedefAdet = h
+          }
+          // Parça kodu (Mesai Nedeni) sonradan düzeltme — yetki bu satır için yukarıda geçti.
+          // Saf mantık helper'da (eskiParcaKodu bir-kez, audit): buildParcaKoduDuzeltme.
+          if ('parcaKodu' in r) {
+            const res = buildParcaKoduDuzeltme(
+              { parcaKodu: existingRow.parcaKodu, eskiParcaKodu: existingRow.eskiParcaKodu },
+              r.parcaKodu,
+              user.id,
+              'parcaKoduDuzeltmeNote' in r ? (r.parcaKoduDuzeltmeNote ?? '') : undefined,
+              new Date()
+            )
+            if (res.error === 'bos') return apiBadRequest('Parça kodu boş olamaz')
+            if (res.data) {
+              Object.assign(data, res.data)
+              // min-sira satırıysa tekil mesaiNedeni senkron (Faz 3'e kadar tutarlılık).
+              if (firstRow && r.id === firstRow.id) singleData.mesaiNedeni = res.data.parcaKodu
+            }
+          }
+          if (Object.keys(data).length === 0) continue
+          ops.push(prisma.overtimePersonnelUretim.update({ where: { id: r.id }, data }))
         }
-        // 1. satır → tekil alan senkronu
+        // 1. satır → tekil gerceklesen senkronu (yalnız gelen alanlar) + parça senkronu (yukarıda).
         const firstInput = firstRow ? p.uretimSatirlari.find((r) => r.id === firstRow.id) : undefined
-        ops.push(
-          prisma.overtimePersonnel.update({
-            where: { id: existingPersonnel.id },
-            data: {
-              gerceklesenAdet: coerceIntNonNeg(firstInput?.gerceklesenAdet),
-              gerceklesenNote: firstInput?.gerceklesenNote?.trim() || null,
-            },
-          })
-        )
+        if (firstInput) {
+          if ('gerceklesenAdet' in firstInput) singleData.gerceklesenAdet = coerceIntNonNeg(firstInput.gerceklesenAdet)
+          if ('gerceklesenNote' in firstInput) singleData.gerceklesenNote = firstInput.gerceklesenNote?.trim() || null
+        }
+        if (Object.keys(singleData).length > 0) {
+          ops.push(prisma.overtimePersonnel.update({ where: { id: existingPersonnel.id }, data: singleData }))
+        }
       } else {
         // Legacy: tekil alan güncelle + 1. üretim satırını senkronla.
         const adet = coerceIntNonNeg(p.gerceklesenAdet)
@@ -396,6 +422,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
+            uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
           },
           orderBy: { createdAt: 'asc' },
         },

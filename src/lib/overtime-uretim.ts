@@ -166,3 +166,47 @@ export function buildBackfillRow(rec: BackfillSource): NormalizedUretimRow | nul
     sira: 1,
   }
 }
+
+// ── Parça kodu (Mesai Nedeni) sonradan düzeltme ────────────────────────────
+export interface ParcaKoduDuzeltmeData {
+  parcaKodu: string
+  eskiParcaKodu?: string
+  duzeltenById: string
+  duzeltmeTarihi: Date
+  parcaKoduDuzeltmeNote?: string | null
+}
+
+export interface ParcaKoduDuzeltmeResult {
+  data: ParcaKoduDuzeltmeData | null // null = değişiklik yok (no-op)
+  error?: 'bos' // parça kodu boş/whitespace → 400
+}
+
+/**
+ * Parça kodu düzeltme update-verisini üretir (saf mantık; test edilebilir olsun diye now
+ * parametre). KURALLAR:
+ *  - yeni boş/whitespace → error 'bos' (çağıran 400 döner)
+ *  - yeni === mevcut → no-op (data null)
+ *  - değişiklikte: eskiParcaKodu BİR KEZ yazılır (mevcut.eskiParcaKodu null ise orijinali
+ *    koru; doluysa ELLEME — orijinal korunur), duzeltenById + duzeltmeTarihi set.
+ *  - note undefined → parcaKoduDuzeltmeNote data'ya EKLENMEZ; verildiyse trim||null.
+ */
+export function buildParcaKoduDuzeltme(
+  existing: { parcaKodu: string; eskiParcaKodu: string | null },
+  yeniRaw: string | null | undefined,
+  userId: string,
+  note: string | null | undefined,
+  now: Date
+): ParcaKoduDuzeltmeResult {
+  const yeni = String(yeniRaw ?? '').trim()
+  if (yeni === '') return { data: null, error: 'bos' }
+  if (yeni === existing.parcaKodu) return { data: null }
+  const data: ParcaKoduDuzeltmeData = {
+    parcaKodu: yeni,
+    duzeltenById: userId,
+    duzeltmeTarihi: now,
+  }
+  // BİR KEZ: yalnız ilk düzeltmede orijinali sakla; sonraki düzeltmeler orijinali EZMEZ.
+  if (existing.eskiParcaKodu == null) data.eskiParcaKodu = existing.parcaKodu
+  if (note !== undefined) data.parcaKoduDuzeltmeNote = trimOrNull(note)
+  return { data }
+}

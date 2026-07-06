@@ -168,6 +168,8 @@ model User {
   overtimeApprovals    OvertimeApproval[]      @relation("OvertimeApprover")
   approvalPositions    ApprovalPosition[]      @relation("ApprovalPositionUser")
   overtimeAuthorized   OvertimeAuthorizedUser? @relation("OvertimeAuthorizedUser")
+  // Faz 2+: parça kodu (Mesai Nedeni) sonradan düzeltmeleri
+  uretimParcaDuzeltmeleri OvertimePersonnelUretim[] @relation("UretimParcaDuzelten")
   // PR-3 eskalasyon back-relation'ları (named relation ZORUNLU)
   approvalPositionBackups ApprovalPosition[]   @relation("ApprovalPositionBackup")
   overtimeEscalations     OvertimeApproval[]   @relation("OvertimeApprovalEscalatedTo")
@@ -8129,7 +8131,15 @@ model OvertimePersonnelUretim {
   hurdaAdet       Int? // Hurda adedi (>= 0)
   sira            Int     @default(1) // Satır sırası
 
+  // Parça kodu sonradan düzeltme audit'i (APPROVED formda eksik malzeme vb. → başka parça).
+  parcaKoduDuzeltmeNote String? // Opsiyonel düzeltme gerekçesi
+  duzeltenById          String? // Düzelten kullanıcı (User FK)
+  duzelten              User?     @relation("UretimParcaDuzelten", fields: [duzeltenById], references: [id])
+  duzeltmeTarihi        DateTime? // Son düzeltme zamanı
+  eskiParcaKodu         String? // İlk düzeltmede orijinal parça kodu (BİR KEZ yazılır, sonrakiler ezmez)
+
   @@index([overtimePersonnelId])
+  @@index([duzeltenById])
 }
 
 model OvertimeApproval {

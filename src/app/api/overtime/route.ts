@@ -252,8 +252,10 @@ export async function POST(request: NextRequest) {
       if (!p.personnelId || !p.workDepartment) {
         return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
       }
-      if (!isVardiya && (!p.mesaiNedeni || !String(p.mesaiNedeni).trim())) {
-        return apiBadRequest('Her personel için Mesai Nedeni zorunludur')
+      // Faz 2: MESAI'de en az 1 geçerli üretim satırı (parça kodu + hedefAdet > 0) zorunlu.
+      // buildUretimRows uretimSatirlari[] veya legacy tekil alanlardan türetir. VARDIYA: opsiyonel.
+      if (!isVardiya && buildUretimRows(p).length === 0) {
+        return apiBadRequest('Her personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir')
       }
     }
 
@@ -322,6 +324,7 @@ export async function POST(request: NextRequest) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
+            uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
           },
         },
         createdBy: {

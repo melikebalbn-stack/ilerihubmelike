@@ -4,7 +4,10 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import { materializePackage } from "@/lib/akademi-package-materialize";
 import { parseDueDateEndOfDay } from "@/lib/akademi/due-date";
-import { notifyPackageAssignedBatch } from "@/lib/akademi-notify";
+import {
+  notifyPackageAssignedBatch,
+  notifyDueDateSetBatch,
+} from "@/lib/akademi-notify";
 
 const bodySchema = z.object({
   userIds: z.array(z.string().trim().min(1)).min(1, "userIds boş olamaz"),
@@ -74,6 +77,14 @@ export async function POST(
     overrideDueDate: dueDate,
     overrideUserIds: requested,
   });
+
+  // PR-IFS-RAPOR-2b: son tarihi yazılan/öne çekilen kullanıcılara son tarih maili
+  // (fire-and-forget; tarih yazımını kilitlemez / geri almaz).
+  if (materializeResult.affectedDueDates.length > 0) {
+    void notifyDueDateSetBatch(materializeResult.affectedDueDates, {
+      packageName: pkg.name,
+    }).catch(() => {});
+  }
 
   // Bildirim — yalnız bu istekte YENİ atanan kullanıcılar (alıcı=user, batch,
   // fire-and-forget: HTTP yanıtını kilitleme).

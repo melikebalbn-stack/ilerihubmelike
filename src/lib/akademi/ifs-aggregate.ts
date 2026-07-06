@@ -465,3 +465,194 @@ export async function buildIfsRaporData(
     },
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PR-IFS-RAPOR-2b: BÖLÜM-ÖNCELİKLİ rapor — bir bölümün kullanıcılarının ATANDIĞI
+// TÜM isIfs kurslar üzerinden birleşik durum + son tarih. Görev metriği yine
+// ornekStatus==='BASARILI' / aktif GOREV. Kişi×kurs satırlı.
+// "Bölümü Belirsiz" = personnelId bağı olmayan IFS-atamalı kullanıcılar
+// (sessiz düşme YASAK — bu grup ayrı bir "bölüm" olarak raporlanır).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const BOLUM_BELIRSIZ = "Bölümü Belirsiz";
+
+export type IfsDurum = "YOLUNDA" | "GECIKTI" | "TARIHSIZ";
+
+export interface IfsBolumKursRow {
+  courseId: string;
+  kursAd: string;
+  gorevCount: number;
+  basarili: number;
+  pct: number;
+  dueDate: string | null; // ISO
+  durum: IfsDurum;
+}
+export interface IfsBolumKisi {
+  userId: string;
+  adSoyad: string;
+  kurslar: IfsBolumKursRow[];
+}
+export interface IfsBolumReport {
+  bolum: string;
+  summary: {
+    kisiSayisi: number;
+    toplamGorev: number;
+    basariliGorev: number;
+    ortalamaPct: number;
+    gecikenKisi: number;
+  };
+  kisiler: IfsBolumKisi[];
+}
+
+function durumOf(dueDate: Date | null, pct: number, now: Date): IfsDurum {
+  if (dueDate == null) return "TARIHSIZ";
+  if (dueDate < now && pct < 100) return "GECIKTI";
+  return "YOLUNDA";
+}
+
+/**
+ * Bir bölümün (veya "Bölümü Belirsiz" grubunun) IFS eğitim durumu.
+ * now: gecikme eşiği (route new Date() geçer). Kurs bulunmasa boş rapor döner.
+ */
+export async function computeIfsBolumReport(args: {
+  bolum: string;
+  now: Date;
+}): Promise<IfsBolumReport> {
+  const { bolum, now } = args;
+  const belirsiz = bolum === BOLUM_BELIRSIZ;
+
+  // Kapsamdaki kullanıcıların IFS kurs atamaları (tek sorgu, kurs+dueDate dahil).
+  const rows = await prisma.userCourseAssignment.findMany({
+    where: {
+      assignment: { course: { isIfs: true } },
+      user: belirsiz ? { personnelId: null } : { personnel: { bolum } },
+    },
+    select: {
+      userId: true,
+      dueDate: true,
+      user: { select: { name: true, email: true } },
+      assignment: {
+        select: { courseId: true, course: { select: { title: true } } },
+      },
+    },
+  });
+
+  // (userId, courseId) benzersizle — bir kurs için birden çok atama satırı olabilir;
+  // dueDate en erken (tighten anlamı) alınır.
+  type Acc = {
+    userId: string;
+    adSoyad: string;
+    courseId: string;
+    kursAd: string;
+    dueDate: Date | null;
+  };
+  const key = (u: string, c: string) => `${u}::${c}`;
+  const ucMap = new Map<string, Acc>();
+  const userName = new Map<string, string>();
+  for (const r of rows) {
+    const ad = r.user.name ?? r.user.email ?? r.userId;
+    userName.set(r.userId, ad);
+    const k = key(r.userId, r.assignment.courseId);
+    const cur = ucMap.get(k);
+    const due = r.dueDate ?? null;
+    if (!cur) {
+      ucMap.set(k, {
+        userId: r.userId,
+        adSoyad: ad,
+        courseId: r.assignment.courseId,
+        kursAd: r.assignment.course.title,
+        dueDate: due,
+      });
+    } else if (due != null && (cur.dueDate == null || due < cur.dueDate)) {
+      cur.dueDate = due; // en erken tarih kazanır
+    }
+  }
+
+  const accs = [...ucMap.values()];
+  const courseIds = [...new Set(accs.map((a) => a.courseId))];
+  const userIds = [...new Set(accs.map((a) => a.userId))];
+
+  // Kurs başına aktif GOREV içerikleri + BASARILI değerlendirmeler.
+  const [contents, evals] = await Promise.all([
+    courseIds.length
+      ? prisma.content.findMany({
+          where: { courseId: { in: courseIds }, isActive: true, type: "GOREV" },
+          select: { id: true, courseId: true },
+        })
+      : [],
+    courseIds.length && userIds.length
+      ? prisma.ifsTaskEvaluation.findMany({
+          where: {
+            userId: { in: userIds },
+            ornekStatus: "BASARILI",
+            content: { courseId: { in: courseIds } },
+          },
+          select: { userId: true, content: { select: { courseId: true } } },
+        })
+      : [],
+  ]);
+
+  const gorevByCourse = new Map<string, number>();
+  for (const c of contents)
+    gorevByCourse.set(c.courseId, (gorevByCourse.get(c.courseId) ?? 0) + 1);
+  const basariliByUC = new Map<string, number>();
+  for (const e of evals) {
+    const k = key(e.userId, e.content.courseId);
+    basariliByUC.set(k, (basariliByUC.get(k) ?? 0) + 1);
+  }
+
+  // Kişi×kurs satırları
+  const kisiMap = new Map<string, IfsBolumKisi>();
+  let toplamGorev = 0;
+  let basariliGorev = 0;
+  const gecikenUsers = new Set<string>();
+  for (const a of accs) {
+    const gorevCount = gorevByCourse.get(a.courseId) ?? 0;
+    const basarili = basariliByUC.get(key(a.userId, a.courseId)) ?? 0;
+    const pct = gorevCount > 0 ? Math.round((basarili / gorevCount) * 100) : 0;
+    const durum = durumOf(a.dueDate, pct, now);
+    toplamGorev += gorevCount;
+    basariliGorev += basarili;
+    if (durum === "GECIKTI") gecikenUsers.add(a.userId);
+
+    let kisi = kisiMap.get(a.userId);
+    if (!kisi) {
+      kisi = { userId: a.userId, adSoyad: a.adSoyad, kurslar: [] };
+      kisiMap.set(a.userId, kisi);
+    }
+    kisi.kurslar.push({
+      courseId: a.courseId,
+      kursAd: a.kursAd,
+      gorevCount,
+      basarili,
+      pct,
+      dueDate: a.dueDate ? a.dueDate.toISOString() : null,
+      durum,
+    });
+  }
+
+  const kisiler = [...kisiMap.values()]
+    .map((k) => ({
+      ...k,
+      kurslar: k.kurslar.sort((a, b) => a.kursAd.localeCompare(b.kursAd, "tr")),
+    }))
+    // Geciken kişiler üstte (yönetim önceliği), sonra ad(tr).
+    .sort((a, b) => {
+      const ga = gecikenUsers.has(a.userId) ? 0 : 1;
+      const gb = gecikenUsers.has(b.userId) ? 0 : 1;
+      return ga - gb || a.adSoyad.localeCompare(b.adSoyad, "tr");
+    });
+
+  return {
+    bolum,
+    summary: {
+      kisiSayisi: kisiMap.size,
+      toplamGorev,
+      basariliGorev,
+      ortalamaPct:
+        toplamGorev > 0 ? Math.round((basariliGorev / toplamGorev) * 100) : 0,
+      gecikenKisi: gecikenUsers.size,
+    },
+    kisiler,
+  };
+}

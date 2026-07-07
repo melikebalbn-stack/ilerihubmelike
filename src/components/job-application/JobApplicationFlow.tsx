@@ -6,8 +6,8 @@
 
 import { useState } from "react";
 import { KvkkStep } from "./steps/KvkkStep";
+import { HealthStep } from "./steps/HealthStep";
 import { JobApplicationRenderer } from "./JobApplicationRenderer";
-import { Button } from "@/components/ui/button";
 
 const NAVY = "#1B4F72";
 type Step = 1 | 2 | 3;
@@ -63,27 +63,7 @@ export function JobApplicationFlow() {
 
       <div className="rounded-xl border bg-white shadow-sm p-4 sm:p-6">
         {step === 1 && <KvkkStep onDone={() => setStep(2)} />}
-
-        {step === 2 && (
-          <div className="space-y-5 text-center py-6">
-            <h2 className="text-lg font-semibold" style={{ color: NAVY }}>
-              Sağlık Beyanı
-            </h2>
-            <p className="text-sm text-gray-600">
-              KVKK onayınız alındı. Sağlık beyan formu bir sonraki aşamada
-              (Faz 2) eklenecektir.
-            </p>
-            <Button
-              type="button"
-              onClick={() => setStep(3)}
-              className="text-white"
-              style={{ background: NAVY }}
-            >
-              Başvuru Formuna Geç
-            </Button>
-          </div>
-        )}
-
+        {step === 2 && <HealthStep onDone={() => setStep(3)} />}
         {step === 3 && <JobApplicationRenderer />}
       </div>
     </div>

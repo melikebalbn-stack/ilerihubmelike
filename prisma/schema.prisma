@@ -5686,12 +5686,88 @@ model PublicJobApplication {
   status    JobApplicationStatus @default(PENDING)
   notes     String?              @db.Text // İK Notları
 
+  // Faz 1: KVKK onayı (dijital imza) + sağlık beyanı (özel nitelikli). 1:1, FK karşı
+  // tablolarda (applicationId @unique) → mevcut kayıtlarda null (nullable ilişki).
+  // "kvkkConsentId/healthFormId" yerine bu desen (circular FK'dan kaçınır).
+  consent JobApplicationConsent?
+  health  JobApplicationHealth?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([createdAt])
   @@index([applicationNumber])
+}
+
+// ── KVKK aydınlatma onayı (IK-T-866, dijital imzalı) ──
+model JobApplicationConsent {
+  id            String               @id @default(cuid())
+  applicationId String               @unique
+  application   PublicJobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  adSoyad      String
+  tcKimlikNo   String
+  documentCode String  @default("IK-T-866") // belge kodu
+  documentRev  String  @default("00") // revizyon
+  consentTextHash String? // gösterilen metnin SHA-256'sı (tamper-evidence)
+
+  signatureImage String @db.Text // canvas imzası — base64 PNG (consent ile atomik)
+  signedAt       DateTime @default(now())
+
+  ipAddress String?
+  userAgent String? @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([tcKimlikNo])
+}
+
+// ── Sağlık beyanı (ÖZEL NİTELİKLİ — ayrı tablo, İK-only erişim Faz 3) ──
+model JobApplicationHealth {
+  id            String               @id @default(cuid())
+  applicationId String               @unique
+  application   PublicJobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Kronik hastalık — 26 madde ayrı satır tablosunda (JobApplicationHealthItem).
+  gecmisHastalikNotu String?  @db.Text
+  ameliyatOlduMu     Boolean?
+  ameliyatNotu       String?  @db.Text
+
+  // Astım anketi — 7 soru + koşullu 1_1/1_2 (soru1 HAYIR ise null).
+  astimSoru1   Boolean?
+  astimSoru1_1 Boolean?
+  astimSoru1_2 Boolean?
+  astimSoru2   Boolean?
+  astimSoru3   Boolean?
+  astimSoru4   Boolean?
+  astimSoru5   Boolean?
+  astimSoru6   Boolean?
+  astimSoru7   Boolean?
+
+  dogumTarihi   DateTime? @db.Date
+  testTarihi    DateTime? @db.Date
+  cinsiyet      String?
+  telefonGunduz String?
+  telefonGece   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items JobApplicationHealthItem[]
+}
+
+// Kronik hastalık maddesi (VAR/YOK) — raporlama kolaylığı için satır tablosu.
+model JobApplicationHealthItem {
+  id       String               @id @default(cuid())
+  healthId String
+  health   JobApplicationHealth @relation(fields: [healthId], references: [id], onDelete: Cascade)
+
+  itemNo    Int
+  itemLabel String
+  deger     Boolean // VAR=true / YOK=false
+
+  @@unique([healthId, itemNo])
+  @@index([healthId])
 }
 
 enum Gender {
@@ -5733,7 +5809,10 @@ enum ReferralSource {
 }
 
 enum JobApplicationStatus {
-  PENDING // Beklemede
+  // Akış-öncesi taslak durumları (KVKK → sağlık → tam başvuru). Tam submit'te PENDING.
+  CONSENT_PENDING // KVKK onayı verildi, sağlık bekliyor
+  HEALTH_PENDING // Sağlık beyanı verildi, başvuru formu bekliyor
+  PENDING // Beklemede (İK inceleme kuyruğu)
   REVIEWED // İncelendi
   REVIEWING // İnceleniyor
   SHORTLISTED // Ön Eleme

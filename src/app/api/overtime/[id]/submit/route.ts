@@ -3,6 +3,14 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { requireUser } from '@/lib/auth/require-user'
+import { sendEmail } from '@/lib/email'
+import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import {
+  approvalPendingSubject,
+  buildApprovalPendingMailText,
+  buildApprovalPendingMailHtml,
+  pickApprovalNotifyRecipient,
+} from '@/lib/email-templates/overtime-approval-pending'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -166,6 +174,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         url: `/forms/overtime/${id}`,
         tag: `overtime-submit-${id}`,
       }).catch(() => {})
+    }
+
+    // ANINDA onay-bekliyor maili — ilk onaycıya (atanmışsa). SMTP yan-etki akışı KIRMAZ.
+    const first = assignedPositions[0]
+    const recipient = pickApprovalNotifyRecipient(first?.user)
+    if (recipient) {
+      const u = updatedForm.updated
+      const isVardiya = u.formTipi === 'VARDIYA'
+      const mailInput = {
+        formNo: u.formNo,
+        olusturan: u.createdBy?.name ?? u.createdBy?.email ?? '—',
+        tarihStr: u.date.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' }),
+        personelSayisi: u.personnel.length,
+        link: ileriHubUrl(`/forms/overtime/${id}`),
+        isVardiya,
+        role: first?.title || undefined,
+      }
+      try {
+        await sendEmail(
+          [recipient],
+          approvalPendingSubject(u.formNo, isVardiya),
+          buildApprovalPendingMailText(mailInput),
+          buildApprovalPendingMailHtml(mailInput)
+        )
+      } catch (e) {
+        console.error('[overtime-submit] ilk onaycı bildirim maili gönderilemedi (akış etkilenmedi):', e)
+      }
     }
 
     return apiSuccess(updatedForm.updated)

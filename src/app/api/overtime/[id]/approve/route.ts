@@ -6,6 +6,12 @@ import { requireUser } from '@/lib/auth/require-user'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
 import { buildVardiyaServiceMailHtml, buildVardiyaServiceMailText } from '@/lib/email-templates/vardiya-service'
+import {
+  approvalPendingSubject,
+  buildApprovalPendingMailText,
+  buildApprovalPendingMailHtml,
+  pickApprovalNotifyRecipient,
+} from '@/lib/email-templates/overtime-approval-pending'
 
 // Vardiya Faz 3: son onayda servis listesi maili alıcıları. İKİ alıcı: Üretim Planlama +
 // İnsan Varlıkları (NOKTALI adres — insan.varliklari@, eski noktasız insanvarliklari@ düzeltildi).
@@ -276,7 +282,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               title: 'Mesai Formu Onayı Bekliyor',
               body: `${form.formNo} numaralı mesai formu onayınızı bekliyor.`,
             } : null,
-            mail: null,
+            // ANINDA onay-bekliyor maili: sonraki onaycıya (atanmışsa). Eskalasyon/hatırlatma
+            // AYRI (check-overdue cron) — burada yalnız normal adım geçişi.
+            mail: nextPending.approverId
+              ? {
+                  kind: 'NEXT_APPROVER' as const,
+                  approverId: nextPending.approverId,
+                  role: nextPending.role,
+                  formNo: form.formNo,
+                  isVardiya: form.formTipi === 'VARDIYA',
+                  olusturan: form.createdBy?.name ?? form.createdBy?.email ?? '—',
+                  tarihStr: form.date.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' }),
+                  personelSayisi: form.personnel.length,
+                }
+              : null,
           }
         }
       } else if (decision === 'RETURNED') {
@@ -418,6 +437,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           const html = buildVardiyaServiceMailHtml(m.formNo, m.rows, meta)
           // İKİ alıcıya (Üretim Planlama + İnsan Varlıkları). m.to zaten dizi.
           await sendEmail(m.to, m.subject, text, html)
+          return apiSuccess(updatedForm.result)
+        }
+
+        // ANINDA onay-bekliyor maili — sonraki onaycı (approverId ile user fetch).
+        if (m.kind === 'NEXT_APPROVER') {
+          const approver = await prisma.user.findUnique({
+            where: { id: m.approverId },
+            select: { email: true, name: true },
+          })
+          const recipient = pickApprovalNotifyRecipient(approver)
+          if (recipient) {
+            const mailInput = {
+              formNo: m.formNo,
+              olusturan: m.olusturan,
+              tarihStr: m.tarihStr,
+              personelSayisi: m.personelSayisi,
+              link: ileriHubUrl(`/forms/overtime/${id}`),
+              isVardiya: m.isVardiya,
+              role: m.role || undefined,
+            }
+            await sendEmail(
+              [recipient],
+              approvalPendingSubject(m.formNo, m.isVardiya),
+              buildApprovalPendingMailText(mailInput),
+              buildApprovalPendingMailHtml(mailInput)
+            )
+          }
           return apiSuccess(updatedForm.result)
         }
 

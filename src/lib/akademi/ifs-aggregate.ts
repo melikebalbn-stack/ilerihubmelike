@@ -105,9 +105,34 @@ export async function computeIfsAggregate(
   const gorevIds = course.contents.map((c) => c.id);
   const gorevCount = gorevIds.length;
 
+  // "Bölümü Belirsiz" kapsamda mı? Öyleyse: personnel-bağsız (personnelId null) VEYA
+  // personnel.bolum null/boş olan, AMA bu IFS kursuna ATANMIŞ kullanıcıları da kat.
+  // Normal bölüm seçiminde davranış DEĞİŞMEZ (yalnız o bölümün personel-bağlı kullanıcıları).
+  const includeBelirsiz = bolums.includes(BOLUM_BELIRSIZ);
+  const realBolums = bolums.filter((b) => b !== BOLUM_BELIRSIZ);
+
   const allUsers = bolums.length
     ? await prisma.user.findMany({
-        where: { personnel: { bolum: { in: bolums } } },
+        where: {
+          OR: [
+            ...(realBolums.length ? [{ personnel: { bolum: { in: realBolums } } }] : []),
+            ...(includeBelirsiz
+              ? [
+                  {
+                    AND: [
+                      {
+                        // Personnel.bolum non-null String → "bölümsüz" = personnelId null
+                        // VEYA bolum boş string. (null temsil edilemez.)
+                        OR: [{ personnelId: null }, { personnel: { bolum: "" } }],
+                      },
+                      // Yalnız bu IFS kursuna atanmış bağsız kullanıcılar (materialize edilmiş).
+                      { courseAssignments: { some: { assignment: { courseId } } } },
+                    ],
+                  },
+                ]
+              : []),
+          ],
+        },
         select: {
           id: true,
           name: true,
@@ -120,7 +145,10 @@ export async function computeIfsAggregate(
   const userBolum = new Map<string, string>();
   const bolumUsers = new Map<string, string[]>();
   for (const u of allUsers) {
-    const b = u.personnel?.bolum;
+    const raw = u.personnel?.bolum;
+    // Normal: raw bolum (untrimmed → bolums ile birebir eşleşir, davranış değişmez).
+    // Bağsız/boş + belirsiz kapsam → BOLUM_BELIRSIZ; kapsam yoksa eski gibi ATLA.
+    const b = raw && raw.trim() !== "" ? raw : includeBelirsiz ? BOLUM_BELIRSIZ : undefined;
     if (!b) continue;
     userBolum.set(u.id, b);
     const arr = bolumUsers.get(b) ?? [];
@@ -476,6 +504,22 @@ export async function buildIfsRaporData(
 
 export const BOLUM_BELIRSIZ = "Bölümü Belirsiz";
 
+/**
+ * Bölümsüz/bağsız (personnelId null VEYA personnel.bolum null/boş) + IFS-atamalı
+ * EN AZ BİR kullanıcı var mı? Meta (dropdown) yalnız varsa "Bölümü Belirsiz" gösterir
+ * (boş grup gösterme). Yalnız admin scope'ta çağrılır.
+ */
+export async function hasBelirsizIfsUsers(): Promise<boolean> {
+  const row = await prisma.userCourseAssignment.findFirst({
+    where: {
+      assignment: { course: { isIfs: true } },
+      user: { OR: [{ personnelId: null }, { personnel: { bolum: "" } }] },
+    },
+    select: { id: true },
+  });
+  return row != null;
+}
+
 export type IfsDurum = "YOLUNDA" | "GECIKTI" | "TARIHSIZ";
 
 export interface IfsBolumKursRow {
@@ -525,7 +569,11 @@ export async function computeIfsBolumReport(args: {
   const rows = await prisma.userCourseAssignment.findMany({
     where: {
       assignment: { course: { isIfs: true } },
-      user: belirsiz ? { personnelId: null } : { personnel: { bolum } },
+      // Belirsiz: personnelId null VEYA personnel.bolum null/boş (personnelId dolu ama
+      // bölümü olmayan kullanıcı da dahil). Normal bölüm: aynen o bölümün bağlı kullanıcıları.
+      user: belirsiz
+        ? { OR: [{ personnelId: null }, { personnel: { bolum: "" } }] }
+        : { personnel: { bolum } },
     },
     select: {
       userId: true,

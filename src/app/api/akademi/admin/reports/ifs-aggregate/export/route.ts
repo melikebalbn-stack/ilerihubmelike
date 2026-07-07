@@ -8,6 +8,7 @@ import { resolveUserBolum, getLinkedBolums } from "@/lib/user-personnel";
 import {
   buildIfsRaporData,
   computeIfsBolumReport,
+  hasBelirsizIfsUsers,
   BOLUM_BELIRSIZ,
   type IfsRaporData,
   type IfsBolumReport,
@@ -167,8 +168,13 @@ export async function GET(req: NextRequest) {
   if (!packageId) {
     return NextResponse.json({ error: "packageId gerekli" }, { status: 400 });
   }
+  // mode=paket: admin scope'ta bağsız/bolumsüz IFS-atamalı kullanıcı varsa "Bölümü Belirsiz"
+  // grubunu da kat (computeIfsAggregate belirsiz dalıyla işlenir). Non-admin değişmez.
   const bolums = fullScope
-    ? await getLinkedBolums()
+    ? [
+        ...(await getLinkedBolums()),
+        ...((await hasBelirsizIfsUsers()) ? [BOLUM_BELIRSIZ] : []),
+      ]
     : ownBolum
       ? [ownBolum]
       : [];

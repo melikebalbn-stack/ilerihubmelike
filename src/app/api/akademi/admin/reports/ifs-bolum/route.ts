@@ -6,6 +6,7 @@ import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { resolveUserBolum, getLinkedBolums } from "@/lib/user-personnel";
 import {
   computeIfsBolumReport,
+  hasBelirsizIfsUsers,
   BOLUM_BELIRSIZ,
 } from "@/lib/akademi/ifs-aggregate";
 
@@ -45,8 +46,13 @@ export async function GET(req: NextRequest) {
 
   // ── META (bolum yok) ──
   if (!bolum) {
+    // "Bölümü Belirsiz" YALNIZ admin scope'ta ve gerçekten bağsız/bolumsüz IFS-atamalı
+    // kullanıcı varsa listelenir (boş grup gösterme). Admin-olmayan scope hiç görmez.
     const bolums = fullScope
-      ? [...(await getLinkedBolums()), BOLUM_BELIRSIZ] // "Belirsiz" her zaman listede
+      ? [
+          ...(await getLinkedBolums()),
+          ...((await hasBelirsizIfsUsers()) ? [BOLUM_BELIRSIZ] : []),
+        ]
       : ownBolum
         ? [ownBolum]
         : [];

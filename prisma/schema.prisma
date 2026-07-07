@@ -5689,8 +5689,9 @@ model PublicJobApplication {
   // Faz 1: KVKK onayı (dijital imza) + sağlık beyanı (özel nitelikli). 1:1, FK karşı
   // tablolarda (applicationId @unique) → mevcut kayıtlarda null (nullable ilişki).
   // "kvkkConsentId/healthFormId" yerine bu desen (circular FK'dan kaçınır).
-  consent JobApplicationConsent?
-  health  JobApplicationHealth?
+  consent    JobApplicationConsent?
+  health     JobApplicationHealth?
+  accessLogs JobApplicationAccessLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -5768,6 +5769,22 @@ model JobApplicationHealthItem {
 
   @@unique([healthId, itemNo])
   @@index([healthId])
+}
+
+// Faz 3: İK'nın sağlık/KVKK özel-nitelikli verisine erişim logu (PersonnelAccessLog
+// deseni; personnelId FK'ye bağlı o tablo başvuruya uymadığı için ayrı tablo).
+model JobApplicationAccessLog {
+  id            String               @id @default(cuid())
+  applicationId String
+  application   PublicJobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  accessedBy String // erişen kullanıcı id
+  accessType String // "VIEW_HEALTH" | "VIEW_CONSENT" | "UNMASK_CONSENT"
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([applicationId])
+  @@index([accessedBy])
 }
 
 enum Gender {

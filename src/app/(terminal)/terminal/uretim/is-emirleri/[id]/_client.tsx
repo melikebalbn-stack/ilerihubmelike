@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AlertCircle, ArrowLeft, Package, Play, RefreshCw } from 'lucide-react'
 import type { TerminalIsEmri } from '@/lib/uretim/terminal-mock'
-import { OperatorBadge, TERMINAL_ACCENT } from '../../_shared'
+import { OperatorBadge, TERMINAL_ACCENT } from '../../../_shared'
 
 interface Props {
   operatorName: string
@@ -26,7 +26,7 @@ export function IsEmriDetayClient({ operatorName, isEmri, error }: Props) {
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-col items-start gap-3 p-6">
         <Link
-          href="/uretim/terminal/is-emirleri"
+          href="/terminal/uretim/is-emirleri"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -57,7 +57,7 @@ export function IsEmriDetayClient({ operatorName, isEmri, error }: Props) {
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 p-10 text-center">
         <p className="text-base font-medium">İş emri bulunamadı</p>
         <Link
-          href="/uretim/terminal/is-emirleri"
+          href="/terminal/uretim/is-emirleri"
           className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition-colors hover:bg-muted active:bg-muted/70"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -73,7 +73,7 @@ export function IsEmriDetayClient({ operatorName, isEmri, error }: Props) {
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link
-            href="/uretim/terminal/is-emirleri"
+            href="/terminal/uretim/is-emirleri"
             aria-label="İş emri listesine dön"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors hover:bg-muted active:bg-muted/70"
           >
@@ -139,7 +139,7 @@ export function IsEmriDetayClient({ operatorName, isEmri, error }: Props) {
         <button
           type="button"
           onClick={() =>
-            router.push(`/uretim/terminal/is-emirleri/${isEmri.id}/canli`)
+            router.push(`/terminal/uretim/is-emirleri/${isEmri.id}/canli`)
           }
           className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 text-lg font-semibold text-white shadow-sm transition-all hover:bg-emerald-700 active:translate-y-px"
         >

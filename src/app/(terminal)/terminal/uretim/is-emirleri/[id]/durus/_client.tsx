@@ -20,7 +20,7 @@ import {
   DURUS_SEBEPLERI,
   type TerminalIsEmri,
 } from '@/lib/uretim/terminal-mock'
-import { OperatorBadge, TERMINAL_ACCENT } from '../../../_shared'
+import { OperatorBadge, TERMINAL_ACCENT } from '../../../../_shared'
 
 interface Props {
   operatorName: string
@@ -47,7 +47,7 @@ export function DurusBildirClient({ operatorName, isEmri }: Props) {
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 p-10 text-center">
         <p className="text-base font-medium">İş emri bulunamadı</p>
         <Link
-          href="/uretim/terminal/is-emirleri"
+          href="/terminal/uretim/is-emirleri"
           className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition-colors hover:bg-muted active:bg-muted/70"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -57,7 +57,7 @@ export function DurusBildirClient({ operatorName, isEmri }: Props) {
     )
   }
 
-  const canliHref = `/uretim/terminal/is-emirleri/${isEmri.id}/canli`
+  const canliHref = `/terminal/uretim/is-emirleri/${isEmri.id}/canli`
   const secilen = DURUS_SEBEPLERI.find((s) => s.kod === selected) ?? null
   const planli = DURUS_SEBEPLERI.filter((s) => s.tur === 'PLANLI')
   const plansiz = DURUS_SEBEPLERI.filter((s) => s.tur === 'PLANSIZ')

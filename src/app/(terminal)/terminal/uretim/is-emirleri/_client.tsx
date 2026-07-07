@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import type { TerminalIsEmri } from '@/lib/uretim/terminal-mock'
-import { OperatorBadge } from '../_shared'
+import { OperatorBadge } from '../../_shared'
 
 interface Props {
   operatorName: string
@@ -82,7 +82,7 @@ export function IsEmirleriClient({
     setFilters((prev) => ({ ...prev, [key]: value }))
 
   const handleRowClick = (row: TerminalIsEmri) => {
-    router.push(`/uretim/terminal/is-emirleri/${row.id}`)
+    router.push(`/terminal/uretim/is-emirleri/${row.id}`)
   }
 
   return (
@@ -91,7 +91,7 @@ export function IsEmirleriClient({
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link
-            href="/uretim/terminal"
+            href="/terminal/uretim"
             aria-label="Ana menüye dön"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors hover:bg-muted active:bg-muted/70"
           >

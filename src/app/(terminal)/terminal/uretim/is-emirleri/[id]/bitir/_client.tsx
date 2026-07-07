@@ -7,7 +7,7 @@ import type {
   TerminalCanliDurum,
   TerminalIsEmri,
 } from '@/lib/uretim/terminal-mock'
-import { OperatorBadge } from '../../../_shared'
+import { OperatorBadge } from '../../../../_shared'
 
 interface Props {
   operatorName: string
@@ -23,7 +23,7 @@ export function IsiBitirClient({ operatorName, isEmri, canli }: Props) {
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 p-10 text-center">
         <p className="text-base font-medium">İş emri bulunamadı</p>
         <Link
-          href="/uretim/terminal/is-emirleri"
+          href="/terminal/uretim/is-emirleri"
           className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition-colors hover:bg-muted active:bg-muted/70"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -33,7 +33,7 @@ export function IsiBitirClient({ operatorName, isEmri, canli }: Props) {
     )
   }
 
-  const canliHref = `/uretim/terminal/is-emirleri/${isEmri.id}/canli`
+  const canliHref = `/terminal/uretim/is-emirleri/${isEmri.id}/canli`
   const toplamDurus =
     canli.planliDurusDk + canli.plansizDurusDk + canli.belirsizDurusDk
   const toplamSure = canli.netSureDk + toplamDurus
@@ -120,7 +120,7 @@ export function IsiBitirClient({ operatorName, isEmri, canli }: Props) {
         <button
           type="button"
           onClick={() =>
-            router.push(`/uretim/terminal/is-emirleri/${isEmri.id}/hurda`)
+            router.push(`/terminal/uretim/is-emirleri/${isEmri.id}/hurda`)
           }
           className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border bg-card text-base font-medium transition-colors hover:bg-muted active:bg-muted/70"
         >
@@ -131,7 +131,7 @@ export function IsiBitirClient({ operatorName, isEmri, canli }: Props) {
           type="button"
           onClick={() => {
             // TODO: ReportQuantityComplete entegrasyonu (nested payload) — T3 sonrası
-            router.push('/uretim/terminal')
+            router.push('/terminal/uretim')
           }}
           className="flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-base font-semibold text-white transition-colors hover:bg-emerald-700 active:translate-y-px"
         >

@@ -19,7 +19,7 @@ import {
   HURDA_SEBEPLERI,
   type TerminalIsEmri,
 } from '@/lib/uretim/terminal-mock'
-import { OperatorBadge } from '../../../_shared'
+import { OperatorBadge } from '../../../../_shared'
 
 interface Props {
   operatorName: string
@@ -43,7 +43,7 @@ export function HurdaBildirClient({ operatorName, isEmri }: Props) {
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 p-10 text-center">
         <p className="text-base font-medium">İş emri bulunamadı</p>
         <Link
-          href="/uretim/terminal/is-emirleri"
+          href="/terminal/uretim/is-emirleri"
           className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition-colors hover:bg-muted active:bg-muted/70"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -53,7 +53,7 @@ export function HurdaBildirClient({ operatorName, isEmri }: Props) {
     )
   }
 
-  const canliHref = `/uretim/terminal/is-emirleri/${isEmri.id}/canli`
+  const canliHref = `/terminal/uretim/is-emirleri/${isEmri.id}/canli`
   const maxAdet = Math.max(1, isEmri.kalanMiktar)
   const secilen = HURDA_SEBEPLERI.find((s) => s.kod === selected) ?? null
   const step = (delta: number) =>

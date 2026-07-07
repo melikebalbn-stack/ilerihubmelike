@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ClipboardList, Factory, Plus } from 'lucide-react'
 import type { TerminalIsMerkezi } from '@/lib/uretim/terminal-mock'
-import { OperatorBadge, TERMINAL_ACCENT } from './_shared'
+import { OperatorBadge, TERMINAL_ACCENT } from '../_shared'
 
 interface Props {
   operatorName: string
@@ -36,7 +36,7 @@ export function TerminalMenuClient({ operatorName, isMerkezi }: Props) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* Aktif: İş Emirleri */}
         <Link
-          href="/uretim/terminal/is-emirleri"
+          href="/terminal/uretim/is-emirleri"
           className="group flex min-h-[160px] flex-col justify-between rounded-2xl border bg-card p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
           style={{ borderColor: TERMINAL_ACCENT }}
         >

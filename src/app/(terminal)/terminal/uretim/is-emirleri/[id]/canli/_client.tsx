@@ -9,7 +9,7 @@ import type {
   TerminalIsEmri,
 } from '@/lib/uretim/terminal-mock'
 import { cn } from '@/lib/utils'
-import { OperatorBadge, TERMINAL_ACCENT } from '../../../_shared'
+import { OperatorBadge, TERMINAL_ACCENT } from '../../../../_shared'
 
 interface Props {
   operatorName: string
@@ -79,7 +79,7 @@ export function CanliTakipClient({ operatorName, isEmri, canli }: Props) {
       <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 p-10 text-center">
         <p className="text-base font-medium">İş emri bulunamadı</p>
         <Link
-          href="/uretim/terminal/is-emirleri"
+          href="/terminal/uretim/is-emirleri"
           className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition-colors hover:bg-muted active:bg-muted/70"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -252,7 +252,7 @@ export function CanliTakipClient({ operatorName, isEmri, canli }: Props) {
         <button
           type="button"
           onClick={() =>
-            router.push(`/uretim/terminal/is-emirleri/${isEmri.id}/durus`)
+            router.push(`/terminal/uretim/is-emirleri/${isEmri.id}/durus`)
           }
           className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border bg-card text-base font-medium transition-colors hover:bg-muted active:bg-muted/70"
         >
@@ -262,7 +262,7 @@ export function CanliTakipClient({ operatorName, isEmri, canli }: Props) {
         <button
           type="button"
           onClick={() =>
-            router.push(`/uretim/terminal/is-emirleri/${isEmri.id}/hurda`)
+            router.push(`/terminal/uretim/is-emirleri/${isEmri.id}/hurda`)
           }
           className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-red-300 text-base font-medium text-red-700 transition-colors hover:bg-red-50 active:bg-red-100"
         >
@@ -272,7 +272,7 @@ export function CanliTakipClient({ operatorName, isEmri, canli }: Props) {
         <button
           type="button"
           onClick={() =>
-            router.push(`/uretim/terminal/is-emirleri/${isEmri.id}/bitir`)
+            router.push(`/terminal/uretim/is-emirleri/${isEmri.id}/bitir`)
           }
           className="flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-base font-semibold text-white transition-colors hover:bg-emerald-700 active:translate-y-px"
         >

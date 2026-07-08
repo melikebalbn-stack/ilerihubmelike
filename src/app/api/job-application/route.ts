@@ -6,10 +6,34 @@ import path from 'path'
 import { existsSync } from 'fs'
 import { sendEmail } from '@/lib/email'
 import { resolveHRRecipients } from '@/lib/hr-notifications'
+import { verifyConsentedDraft } from '@/lib/job-application/consent-guard'
+import { DRAFT_COOKIE_NAME } from '@/lib/job-application/draft-cookie'
+import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
 
 // POST - İş başvurusu kaydet
 export async function POST(request: NextRequest) {
   try {
+    // AKIŞ GUARD: KVKK onayı + sağlık beyanı tamamlanmadan başvuru gönderilemez.
+    // (Adım atlanamaz — consent/health yoksa 403. Mevcut form davranışı korunur.)
+    const draftToken = request.cookies.get(DRAFT_COOKIE_NAME)?.value
+    const consentedApplicationId = await verifyConsentedDraft(draftToken)
+    if (!consentedApplicationId) {
+      return NextResponse.json(
+        { error: 'Önce KVKK onayını tamamlamalısınız.' },
+        { status: 403 }
+      )
+    }
+    const healthDone = await prisma.jobApplicationHealth.findUnique({
+      where: { applicationId: consentedApplicationId },
+      select: { id: true },
+    })
+    if (!healthDone) {
+      return NextResponse.json(
+        { error: 'Önce sağlık beyan formunu tamamlamalısınız.' },
+        { status: 403 }
+      )
+    }
+
     const formData = await request.formData()
 
     // Zorunlu alan kontrolü
@@ -79,7 +103,7 @@ export async function POST(request: NextRequest) {
       bloodType: formData.get('bloodType') as string || null,
       militaryStatus: formData.get('militaryStatus') as string || null,
       militaryPostponeDate: formData.get('militaryPostponeDate') ? new Date(formData.get('militaryPostponeDate') as string) : null,
-      maritalStatus: formData.get('maritalStatus') as string || null,
+      maritalStatus: normalizeMaritalStatus(formData.get('maritalStatus')),
       numberOfChildren: formData.get('numberOfChildren') ? parseInt(formData.get('numberOfChildren') as string) : null,
       spouseWorking: formData.get('spouseWorking') === 'true' ? true : formData.get('spouseWorking') === 'false' ? false : null,
       spouseOccupation: (formData.get('spouseOccupation') as string)?.trim() || null,
@@ -150,9 +174,14 @@ export async function POST(request: NextRequest) {
       userAgent,
     }
 
-    // Veritabanına kaydet
-    const application = await prisma.publicJobApplication.create({
-      data: applicationData as Parameters<typeof prisma.publicJobApplication.create>[0]['data'],
+    // Taslak birleştirme: KVKK adımında oluşan taslağı (cookie'deki applicationId) tam form
+    // alanlarıyla GÜNCELLE + status PENDING (İK inceleme kuyruğu). Yeni kayıt açılmaz —
+    // consent+health bu final başvuruyla ilişkili kalır.
+    const application = await prisma.publicJobApplication.update({
+      where: { id: consentedApplicationId },
+      data: { ...applicationData, status: 'PENDING' } as Parameters<
+        typeof prisma.publicJobApplication.update
+      >[0]['data'],
     })
 
     // E-posta bildirimi gönder

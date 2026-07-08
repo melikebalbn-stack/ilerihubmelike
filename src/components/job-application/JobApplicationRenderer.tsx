@@ -160,7 +160,8 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
     if (form.photo) fd.append('photo', form.photo)
 
     try {
-      const res = await fetch('/api/job-application', { method: 'POST', body: fd })
+      // credentials: taslak cookie'si (jobapp_draft) gönderilsin — akış guard'ı buna bakar.
+      const res = await fetch('/api/job-application', { method: 'POST', body: fd, credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error || 'Başvuru gönderilemedi.')

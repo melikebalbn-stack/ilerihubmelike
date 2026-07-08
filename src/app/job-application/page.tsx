@@ -1,10 +1,10 @@
 'use client'
 
-// PR-JOBAPP-RENDERER: Public iş başvuru sayfası — thin wrapper.
-// Form mantığı tamamen JobApplicationRenderer'da.
+// Public iş başvuru sayfası — thin wrapper.
+// Faz 1 (KVKK): akış KVKK → sağlık → başvuru; JobApplicationFlow yönetir.
 
-import { JobApplicationRenderer } from '@/components/job-application/JobApplicationRenderer'
+import { JobApplicationFlow } from '@/components/job-application/JobApplicationFlow'
 
 export default function JobApplicationPage() {
-  return <JobApplicationRenderer />
+  return <JobApplicationFlow />
 }

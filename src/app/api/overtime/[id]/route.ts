@@ -76,7 +76,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Erişim kontrolü: admin, form sahibi, personel, onaylayıcı VEYA omurga birim
     // sorumlusu (formda kendi bölümünün personeli varsa). Sorumlu, gerçekleşen adet
     // girebilmek için formu açabilmeli.
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    const perms = session.user.permissions ?? []
+    const isAdmin = perms.includes('forms.admin')
+    // Salt-okuma görüntüleme: view.all → herhangi bir form; view.dept → resolveAllowedDepts
+    // kapsamı (aşağıdaki isDeptResponsible ile AYNI mekanizma, ayrı dal gerekmez).
+    // Bu permission'lar YAZMA açmaz — PUT/approve/personnel route'ları değişmedi.
+    const canViewAll = perms.includes('overtime.view.all')
     const isCreator = form.createdById === user.id
     const isPersonnel = !!user.personnelId && form.personnel.some((p) => p.personnelId === user.personnelId)
     const isApprover = form.approvals.some((a) => a.approverId === user.id)
@@ -95,7 +100,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             return form.personnel.some((op) => set.has(normDept(op.workDepartment)))
           })()
 
-    if (!isAdmin && !isCreator && !isPersonnel && !isApprover && !isDeptResponsible) {
+    if (!isAdmin && !canViewAll && !isCreator && !isPersonnel && !isApprover && !isDeptResponsible) {
       return apiError('Bu forma erişim yetkiniz yok', 403)
     }
 

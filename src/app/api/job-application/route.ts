@@ -8,6 +8,7 @@ import { sendEmail } from '@/lib/email'
 import { resolveHRRecipients } from '@/lib/hr-notifications'
 import { verifyConsentedDraft } from '@/lib/job-application/consent-guard'
 import { DRAFT_COOKIE_NAME } from '@/lib/job-application/draft-cookie'
+import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
 
 // POST - İş başvurusu kaydet
 export async function POST(request: NextRequest) {
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
       bloodType: formData.get('bloodType') as string || null,
       militaryStatus: formData.get('militaryStatus') as string || null,
       militaryPostponeDate: formData.get('militaryPostponeDate') ? new Date(formData.get('militaryPostponeDate') as string) : null,
-      maritalStatus: formData.get('maritalStatus') as string || null,
+      maritalStatus: normalizeMaritalStatus(formData.get('maritalStatus')),
       numberOfChildren: formData.get('numberOfChildren') ? parseInt(formData.get('numberOfChildren') as string) : null,
       spouseWorking: formData.get('spouseWorking') === 'true' ? true : formData.get('spouseWorking') === 'false' ? false : null,
       spouseOccupation: (formData.get('spouseOccupation') as string)?.trim() || null,

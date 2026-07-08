@@ -1,5 +1,10 @@
-// EL-3c: moveStok'un ilk gerçek çağrısı kontrollü testle yapılacak; Destination alanı
-// (hedef LocationNo mu, sabit hedef-tipi kodu mu) canlı çağrıyla henüz DOĞRULANMADI.
+// EL-3c: taşıma desenleri IFS test ortamında DOĞRULANDI (08.07.2026, HTTP 204):
+//  - Hedefte parça+lot(+tüm anahtar) YOKSA → CreateInventoryPartInStockDelivery
+//    (düz POST; LocationNo=HEDEF, ParentLocationNo=KAYNAK). Test: 40→64 = 204.
+//  - Hedefte VARSA → bound Update, navigasyon yoluyla:
+//    InventoryPartInStockSet(<kaynak>)/NewPartLocArray(<hedef>)/...Update... . Test: 40→61 = 204.
+// Ortak: Destination='MoveToInventory' (sabit), ConsumeStock='N', SessionId/Note yok,
+// sayısal alanlar (ActivitySeq/HandlingUnitId/QuantityMoved) Edm.Decimal → HAM SAYI (string 400 verir).
 import 'server-only'
 import { getIfsConfig } from './config'
 import { getIfsAccessToken } from './token'
@@ -165,49 +170,106 @@ export async function getRaftakiStok(locationNo: string): Promise<DepoStokKaydi[
  * çağrı, izole/tek-kayıt kontrollü testle yapılacak; özellikle `Destination` alanının
  * hedef LocationNo mu yoksa sabit bir hedef-tipi kodu mu beklediği doğrulanacak.
  */
+/** InventoryPartInStock(Delivery) named-key predicate; LocationNo dışında tüm anahtarlar aynı. */
+function keyPred(k: StokKimlik, locationNo: string): string {
+  return [
+    `Contract='${esc(k.contract)}'`,
+    `PartNo='${esc(k.partNo)}'`,
+    `ConfigurationId='${esc(k.configurationId)}'`,
+    `LocationNo='${esc(locationNo)}'`,
+    `LotBatchNo='${esc(k.lotBatchNo)}'`,
+    `SerialNo='${esc(k.serialNo)}'`,
+    `EngChgLevel='${esc(k.engChgLevel)}'`,
+    `WaivDevRejNo='${esc(k.waivDevRejNo)}'`,
+    `ActivitySeq=${k.activitySeq}`,
+    `HandlingUnitId=${k.handlingUnitId}`,
+  ].join(',')
+}
+
+async function mainPost(pathAndQuery: string, body: unknown): Promise<{ status: number; text: string }> {
+  const token = await getIfsAccessToken()
+  const res = await fetch(`${mainRoot()}${pathAndQuery}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Prefer: 'wait=99999',
+    },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  })
+  return { status: res.status, text: await res.text() }
+}
+
+/**
+ * Stok taşıma. Hedefte AYNI kimlik (LocationNo dışındaki 9 anahtarın tamamı: PartNo,
+ * ConfigurationId, SerialNo, EngChgLevel, WaivDevRejNo, LotBatchNo, ActivitySeq,
+ * HandlingUnitId) zaten varsa bound Update; yoksa Create. `yol` hangi dalın çalıştığını verir.
+ */
 export async function moveStok(
   kimlik: StokKimlik,
   hedefLocationNo: string,
   miktar: number,
-  not?: string,
-  sessionId?: number,
-): Promise<{ ok: boolean; error?: string }> {
-  const body: Record<string, unknown> = {
-    Contract: kimlik.contract,
-    PartNo: kimlik.partNo,
-    ConfigurationId: kimlik.configurationId,
-    LocationNo: kimlik.locationNo,
-    LotBatchNo: kimlik.lotBatchNo,
-    SerialNo: kimlik.serialNo,
-    EngChgLevel: kimlik.engChgLevel,
-    WaivDevRejNo: kimlik.waivDevRejNo,
-    ActivitySeq: kimlik.activitySeq,
-    HandlingUnitId: kimlik.handlingUnitId,
-    Destination: hedefLocationNo, // TODO EL-3c: doğrulanmadı
-    QuantityMoved: miktar,
-    Note: not ?? 'terminal',
-  }
-  if (sessionId != null) body.SessionId = sessionId
+): Promise<{ ok: boolean; yol: 'CREATE' | 'UPDATE'; error?: string }> {
+  // Hedefte tam-anahtar eşleşen satır var mı? (LocationNo=hedef, diğer 9 anahtar = kaynakla aynı)
+  const destFilter =
+    `Contract eq '${esc(kimlik.contract)}' and LocationNo eq '${esc(hedefLocationNo)}'` +
+    ` and PartNo eq '${esc(kimlik.partNo)}' and ConfigurationId eq '${esc(kimlik.configurationId)}'` +
+    ` and SerialNo eq '${esc(kimlik.serialNo)}' and LotBatchNo eq '${esc(kimlik.lotBatchNo)}'` +
+    ` and EngChgLevel eq '${esc(kimlik.engChgLevel)}' and WaivDevRejNo eq '${esc(kimlik.waivDevRejNo)}'` +
+    ` and ActivitySeq eq ${kimlik.activitySeq} and HandlingUnitId eq ${kimlik.handlingUnitId}`
 
+  let yol: 'CREATE' | 'UPDATE' = 'CREATE'
   try {
-    const token = await getIfsAccessToken()
-    const res = await fetch(`${mainRoot()}MoveInventoryPart.svc/CreateInventoryPartInStockDelivery`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Prefer: 'wait=99999',
-      },
-      body: JSON.stringify(body),
-      cache: 'no-store',
-    })
-    if (!res.ok) {
-      const t = await res.text().catch(() => '')
-      return { ok: false, error: `IFS taşıma HTTP ${res.status}: ${t.slice(0, 300)}` }
+    const { status, body } = await mainGet<{ value?: unknown[] }>(
+      `MoveInventoryPart.svc/InventoryPartInStockSet?$filter=${encodeURIComponent(destFilter)}&$top=1`,
+    )
+    if (status !== 200) return { ok: false, yol, error: `Hedef sorgu HTTP ${status}` }
+    yol = Array.isArray(body?.value) && body.value.length > 0 ? 'UPDATE' : 'CREATE'
+
+    let res: { status: number; text: string }
+    if (yol === 'CREATE') {
+      // Düz POST — hedefte yeni satır aç.
+      res = await mainPost('MoveInventoryPart.svc/CreateInventoryPartInStockDelivery', {
+        Contract: kimlik.contract,
+        PartNo: kimlik.partNo,
+        ConfigurationId: kimlik.configurationId,
+        LocationNo: hedefLocationNo, // HEDEF
+        LotBatchNo: kimlik.lotBatchNo,
+        SerialNo: kimlik.serialNo,
+        EngChgLevel: kimlik.engChgLevel,
+        WaivDevRejNo: kimlik.waivDevRejNo,
+        ActivitySeq: kimlik.activitySeq,
+        HandlingUnitId: kimlik.handlingUnitId,
+        Destination: 'MoveToInventory',
+        QuantityMoved: miktar,
+        ParentLocationNo: kimlik.locationNo, // KAYNAK
+        ParentContract: kimlik.contract,
+        ParentWaivDevRejNo: kimlik.waivDevRejNo,
+        ConsumeStock: 'N',
+      })
+    } else {
+      // Bound Update — mevcut hedef satırına navigasyonla ekle.
+      const path =
+        `MoveInventoryPart.svc/InventoryPartInStockSet(${encodeURI(keyPred(kimlik, kimlik.locationNo))})` +
+        `/NewPartLocArray(${encodeURI(keyPred(kimlik, hedefLocationNo))})` +
+        `/IfsApp.MoveInventoryPart.InventoryPartInStockDelivery_UpdateInventoryPartInStockDelivery`
+      res = await mainPost(path, {
+        ParentLocationNo: kimlik.locationNo, // KAYNAK
+        ParentContract: kimlik.contract,
+        ParentWaivDevRejNo: kimlik.waivDevRejNo,
+        Destination: 'MoveToInventory',
+        QuantityMoved: miktar,
+        ConsumeStock: 'N',
+      })
     }
-    return { ok: true }
+
+    if (res.status < 200 || res.status >= 300) {
+      return { ok: false, yol, error: `IFS taşıma (${yol}) HTTP ${res.status}: ${res.text.slice(0, 300)}` }
+    }
+    return { ok: true, yol }
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Taşıma hatası' }
+    return { ok: false, yol, error: e instanceof Error ? e.message : 'Taşıma hatası' }
   }
 }

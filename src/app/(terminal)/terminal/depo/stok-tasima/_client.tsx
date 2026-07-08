@@ -33,6 +33,8 @@ export function StokTasimaClient() {
   const [miktar, setMiktar] = useState('')
   const [hedefRaf, setHedefRaf] = useState<DepoRafBilgisi | null>(null)
   const [loading, setLoading] = useState(false)
+  const [tasiniyor, setTasiniyor] = useState(false)
+  const [sonucYol, setSonucYol] = useState<'CREATE' | 'UPDATE' | null>(null)
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [errorKey, setErrorKey] = useState(0)
@@ -179,6 +181,8 @@ export function StokTasimaClient() {
     setErrorMsg(null)
     setManualOpen(false)
     setScanBuf('')
+    setSonucYol(null)
+    setTasiniyor(false)
   }
 
   const maxMiktar = secilenStok?.miktar ?? 0
@@ -194,9 +198,33 @@ export function StokTasimaClient() {
     })
   }
 
-  const stoguTasi = () => {
-    // TODO EL-3c: moveStok(secilenStok.kimlik, hedefRaf.locationNo, miktarNum) bağlanacak.
-    setStep('TAMAM')
+  const stoguTasi = async () => {
+    // Çifte-dokunma koruması: istek uçuştaysa yok say.
+    if (tasiniyor || !secilenStok || !hedefRaf || !kaynakRaf) return
+    setTasiniyor(true)
+    try {
+      const res = await fetch('/api/depo/stok-tasima', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kimlik: secilenStok.kimlik,
+          hedefLocationNo: hedefRaf.locationNo,
+          miktar: miktarNum,
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        // 409'un güncel-miktar mesajı dahil sunucudan geleni göster; adım HEDEF_RAF'ta kalır.
+        showError(data?.error ?? 'Taşıma başarısız — tekrar deneyin')
+        return
+      }
+      setSonucYol((data.yol as 'CREATE' | 'UPDATE') ?? null)
+      setStep('TAMAM')
+    } catch {
+      showError('Bağlantı hatası — tekrar deneyin')
+    } finally {
+      setTasiniyor(false)
+    }
   }
 
   return (
@@ -412,11 +440,11 @@ export function StokTasimaClient() {
           <button
             type="button"
             onClick={stoguTasi}
-            disabled={!hedefRaf}
+            disabled={!hedefRaf || tasiniyor}
             className="mt-auto flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-semibold text-white transition-all hover:bg-emerald-700 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <PackageCheck className="h-6 w-6" />
-            Stoğu Taşı
+            {tasiniyor ? <Loader2 className="h-6 w-6 animate-spin" /> : <PackageCheck className="h-6 w-6" />}
+            {tasiniyor ? 'Taşınıyor…' : 'Stoğu Taşı'}
           </button>
         </div>
       )}
@@ -438,8 +466,13 @@ export function StokTasimaClient() {
             </div>
           </div>
 
-          <div className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            TEST MODU — IFS&apos;e yazılmadı (EL-3c bekleniyor)
+          <div className="w-full rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-800">
+            {miktar} {secilenStok.birim} taşındı ·{' '}
+            {kaynakRaf?.aciklama || kaynakRaf?.locationNo} →{' '}
+            {hedefRaf?.aciklama || hedefRaf?.locationNo}
+          </div>
+          <div className="-mt-2 text-xs text-muted-foreground">
+            IFS kaydı: {sonucYol === 'UPDATE' ? 'mevcut satıra eklendi' : 'yeni satır açıldı'}
           </div>
 
           <div className="mt-1 flex w-full flex-col gap-2">

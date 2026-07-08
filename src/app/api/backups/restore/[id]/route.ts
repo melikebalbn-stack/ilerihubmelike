@@ -27,6 +27,7 @@ import {
   swapDbAtomic,
   rollbackFiles,
   rollbackDb,
+  describeRestoreTarget,
 } from '@/lib/backup-restore-swap'
 import { pm2RestartIlerihub, healthCheck } from '@/lib/backup-restore-health'
 import { backupILERIHub, generateBackupName } from '@/lib/backup-service'
@@ -99,7 +100,9 @@ export async function POST(
     return NextResponse.json({ error: 'Yedek dosyası bulunamadı' }, { status: 404 })
   }
 
-  // AUDIT: STARTED
+  // AUDIT: STARTED — PR-RESTORE-PARAM: "neyi hedefledi" kanıtı (hedef dizin +
+  // hedef DB host/adı). Tatbikatta hangi ortama restore edildiği okunabilir.
+  const restoreTarget = describeRestoreTarget()
   await logAuditEvent({
     action: dryRun ? 'BACKUP_RESTORE_DRY_RUN_STARTED' : 'BACKUP_RESTORE_STARTED',
     actorId: user.id,
@@ -110,6 +113,9 @@ export async function POST(
       backupName: backup.backupName,
       projectName: backup.projectName,
       dryRun,
+      restoreTargetDir: restoreTarget.targetDir,
+      restoreDbHost: restoreTarget.dbHost,
+      restoreDbName: restoreTarget.dbName,
     },
   })
 

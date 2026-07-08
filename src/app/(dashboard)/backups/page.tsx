@@ -161,6 +161,11 @@ export default function BackupsPage() {
   const [includeDatabase, setIncludeDatabase] = useState(false)
   // Restore kill switch — fail-closed default (PR-3a)
   const [restoreEnabled, setRestoreEnabled] = useState(false)
+  // PR-3b: iki aşamalı geri-yükleme onayı — yedek adını yazarak teyit (yanlışlıkla
+  // tıklama imkânsız). restoreConfirm=null → modal kapalı.
+  const [restoreConfirm, setRestoreConfirm] = useState<{ id: string; name: string } | null>(null)
+  const [restoreConfirmText, setRestoreConfirmText] = useState("")
+  const [restoring, setRestoring] = useState(false)
 
   // PR-Y13: enum check yerine RBAC permission.
   // admin.backup.manage → it-admin, super-admin
@@ -280,19 +285,24 @@ export default function BackupsPage() {
     }
   }
 
-  // Geri yükle
-  const restoreBackup = async (id: string, name: string) => {
+  // Geri yükle — 1. aşama: onay modalını aç (yedek adı yazılarak teyit edilecek).
+  const restoreBackup = (id: string, name: string) => {
     // Defense-in-depth: client-side kill switch check (PR-3a)
     if (!restoreEnabled) {
       alert("Geri yükleme geçici olarak devre dışı. Sistem yöneticisi ile iletişime geçin.")
       return
     }
+    setRestoreConfirmText("")
+    setRestoreConfirm({ id, name })
+  }
 
-    if (!confirm(`${name} yedeğini geri yüklemek istediğinizden emin misiniz?\n\nBu işlem mevcut verilerin üzerine yazacaktır!`)) return
-    if (!confirm("Bu işlem geri alınamaz. Devam etmek istediğinizden EMİN misiniz?")) return
-
+  // Geri yükle — 2. aşama: yalnız yazılan ad birebir eşleşirse çalışır.
+  const performRestore = async () => {
+    if (!restoreConfirm) return
+    if (restoreConfirmText !== restoreConfirm.name) return
+    setRestoring(true)
     try {
-      const res = await fetch(`/api/backups/restore/${id}`, {
+      const res = await fetch(`/api/backups/restore/${restoreConfirm.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirmRestore: true })
@@ -300,6 +310,7 @@ export default function BackupsPage() {
 
       if (res.ok) {
         const data = await res.json()
+        setRestoreConfirm(null)
         alert(`Geri yükleme başarılı!\n\nPre-restore yedek: ${data.preRestoreBackup}`)
         fetchData()
       } else {
@@ -309,6 +320,8 @@ export default function BackupsPage() {
     } catch (error) {
       console.error("Geri yükleme hatası:", error)
       alert("Geri yükleme başarısız")
+    } finally {
+      setRestoring(false)
     }
   }
 
@@ -707,6 +720,52 @@ export default function BackupsPage() {
                     Yedeklemeyi Başlat
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PR-3b: Geri-yükleme iki aşamalı onayı — yedek adını yazarak teyit */}
+      {restoreConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 p-6">
+            <h3 className="text-lg font-bold text-red-700 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Geri Yükleme — Kalıcı ve Geri Alınamaz
+            </h3>
+            <p className="mt-3 text-sm text-gray-700">
+              <strong>{restoreConfirm.name}</strong> yedeği mevcut sürümün
+              üzerine yazılacak. Bu işlem <strong>geri alınamaz</strong>.
+              Devam etmek için aşağıya yedeğin adını <strong>birebir</strong> yazın:
+            </p>
+            <code className="block mt-2 text-xs bg-gray-100 rounded px-2 py-1 break-all">
+              {restoreConfirm.name}
+            </code>
+            <input
+              type="text"
+              autoFocus
+              value={restoreConfirmText}
+              onChange={(e) => setRestoreConfirmText(e.target.value)}
+              placeholder="Yedek adını buraya yazın"
+              className="mt-3 w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRestoreConfirm(null)}
+                disabled={restoring}
+                className="px-4 py-2 rounded-md text-sm font-medium border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+              >
+                İptal
+              </button>
+              <button
+                type="button"
+                onClick={performRestore}
+                disabled={restoring || restoreConfirmText !== restoreConfirm.name}
+                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                {restoring ? "Geri Yükleniyor…" : "Geri Yükle"}
               </button>
             </div>
           </div>

@@ -6,6 +6,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
 import { buildVardiyaServiceMailHtml, buildVardiyaServiceMailText } from '@/lib/email-templates/vardiya-service'
+import { notifyDeptResponsiblesOnApproval } from '@/lib/overtime-dept-responsible-notify'
 
 // Vardiya Faz 3: son onayda servis listesi maili alıcıları. İKİ alıcı: Üretim Planlama +
 // İnsan Varlıkları (NOKTALI adres — insan.varliklari@, eski noktasız insanvarliklari@ düzeltildi).
@@ -405,6 +406,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         url: `/forms/overtime/${id}`,
         tag: `overtime-approve-${id}`,
       }).catch(() => {})
+    }
+
+    // Son onay (APPROVED): formdaki personellerin birim sorumlularına bilgi maili — MESAI
+    // ve VARDIYA. tx DIŞINDA, non-blocking; resolve edilemeyen sorumlu loglanır+atlanır.
+    // VARDIYA'nın mevcut servis güzergahı maili (aşağıdaki updatedForm.mail) AYRICA aynen gider.
+    if (updatedForm.result?.status === 'APPROVED') {
+      try {
+        await notifyDeptResponsiblesOnApproval(form)
+      } catch (e) {
+        console.error('[overtime-approve] birim sorumlusu bilgi maili gönderilemedi (akış etkilenmedi):', e)
+      }
     }
 
     // Transaction sonrası mail (iade/red) — SMTP yan-etki tx DIŞINDA; hata akışı BOZMAZ.

@@ -4,6 +4,7 @@ import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
 import { OvertimeType, OvertimeStatus, FormTipi } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { buildSingles, buildUretimRows, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { resolveAllowedDepts } from '@/lib/overtime-performance'
 
 // Vardiya Faz 1: gece vardiyası sabit penceresi (Pzt-Cuma 21:00 → ertesi 07:00).
 const VARDIYA_START = '21:00'
@@ -49,7 +50,10 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
 
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    const perms = session.user.permissions ?? []
+    const isAdmin = perms.includes('forms.admin')
+    const canViewAll = perms.includes('overtime.view.all') // salt-okuma, TÜM formlar
+    const canViewDept = perms.includes('overtime.view.dept') // salt-okuma, kendi bölüm(ler)i
 
     // Vardiya Faz 1: formTipi ile mesai/vardiya ayrımı. Verilmezse MESAI (geriye
     // uyum — mevcut mesai listesi vardiya kayıtlarını GÖRMESİN).
@@ -60,8 +64,24 @@ export async function GET(request: NextRequest) {
     // Filtre koşulları
     const where: Record<string, unknown> = { formTipi }
 
-    // Admin değilse sadece kendi formlarını veya onaylayıcı olduğu formları göster
-    if (!isAdmin) {
+    // Görünürlük önceliği (ilk eşleşen kazanır):
+    //   forms.admin > overtime.view.all > overtime.view.dept > self-scope
+    // view.* salt-okuma: liste/detay görünür, yazma yolları (POST/PUT/approve/
+    // gerçekleşen-giriş) ayrıca korunur — burada değişmez.
+    if (isAdmin || canViewAll) {
+      // Tüm formlar (formTipi'ye göre). Kapsam filtresi yok.
+    } else if (canViewDept) {
+      // Departman scope — performans raporuyla AYNI resolveAllowedDepts semantiği:
+      //   undefined = kapsam sınırsız (ör. report.all da varsa) → filtre yok
+      //   [] = hiçbiri → in:[] hiçbir personel satırıyla eşleşmez → boş liste (doğru)
+      //   [adlar] = o bölümler
+      // "Formun bölümü" = OvertimePersonnel.workDepartment (raporun süzdüğü alanla tutarlı).
+      const allowedDepts = await resolveAllowedDepts(user.id)
+      if (allowedDepts !== undefined) {
+        where.personnel = { some: { workDepartment: { in: allowedDepts } } }
+      }
+    } else {
+      // Self-scope: kendi oluşturduğu / onaycı olduğu / personel olduğu formlar
       where.OR = [
         { createdById: user.id },
         { approvals: { some: { approverId: user.id } } },

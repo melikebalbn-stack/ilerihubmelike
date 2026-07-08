@@ -5,6 +5,8 @@ import { IsEmirleriClient } from './_client'
 
 export const dynamic = 'force-dynamic'
 
+export const metadata = { title: 'IPRO — İş Emirleri' }
+
 // Üretim Terminali — iş emri listesi (E1). Guard geçici (admin.system.manage).
 // Veri GERÇEK IFS'ten (ShopOrderOperations). İş merkezi şimdilik sabit
 // (MOCK_IS_MERKEZI); ileride Workstation modeline bağlanacak.

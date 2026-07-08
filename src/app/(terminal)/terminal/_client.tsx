@@ -9,8 +9,8 @@ interface Props {
 }
 
 const KARTLAR = [
-  { href: '/terminal/uretim', label: 'Üretim', Icon: Factory },
-  { href: '/terminal/depo', label: 'Depo', Icon: Warehouse },
+  { href: '/terminal/uretim', label: 'IPRO — Üretim Takip', Icon: Factory },
+  { href: '/terminal/depo', label: 'Depo El Terminali', Icon: Warehouse },
 ]
 
 export function TerminalRootClient({ operatorName }: Props) {
@@ -18,7 +18,10 @@ export function TerminalRootClient({ operatorName }: Props) {
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-2">
       {/* Başlık + operatör */}
       <div className="flex flex-col items-center gap-2 pt-2">
-        <h1 className="text-lg font-semibold tracking-tight">İLERİ Terminal</h1>
+        <div className="flex flex-col items-center leading-tight">
+          <h1 className="text-lg font-semibold tracking-tight">Terminal Yönlendirici</h1>
+          <span className="text-xs text-muted-foreground">Yönetici görünümü</span>
+        </div>
         <OperatorBadge name={operatorName} />
       </div>
 

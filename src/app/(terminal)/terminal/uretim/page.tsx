@@ -4,6 +4,8 @@ import { TerminalMenuClient } from './_client'
 
 export const dynamic = 'force-dynamic'
 
+export const metadata = { title: 'IPRO' }
+
 // Üretim Terminali — ana menü (T1). Guard geçici: /uretim/bildirim ile aynı
 // admin.system.manage kontrolü. IFS çağrısı YOK, iş merkezi mock.
 export default async function UretimTerminalPage() {

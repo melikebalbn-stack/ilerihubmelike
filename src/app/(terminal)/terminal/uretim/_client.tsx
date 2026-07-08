@@ -12,7 +12,18 @@ interface Props {
 
 export function TerminalMenuClient({ operatorName, isMerkezi }: Props) {
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-8 p-6">
+    <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 p-6">
+      {/* Ürün kimliği */}
+      <div className="flex flex-col leading-tight">
+        <span
+          className="text-2xl font-bold tracking-tight"
+          style={{ color: TERMINAL_ACCENT }}
+        >
+          IPRO
+        </span>
+        <span className="text-xs text-muted-foreground">Üretim Takip</span>
+      </div>
+
       {/* Üst bar — iş merkezi (sol) + operatör (sağ) */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">

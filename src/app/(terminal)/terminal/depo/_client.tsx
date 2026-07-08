@@ -43,7 +43,7 @@ export function DepoMenuClient({ operatorName }: Props) {
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <h1 className="text-lg font-semibold">Depo</h1>
+          <h1 className="text-base font-semibold leading-tight">Depo El Terminali</h1>
         </div>
         <OperatorBadge name={operatorName} />
       </div>

@@ -17,11 +17,10 @@ export default function TerminalLayout({
 }: {
   children: React.ReactNode
 }) {
+  // Genişlik kuralı YOK — bölüm layout'ları belirler (depo/menü dar, üretim tam ekran).
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col p-2">
-        {children}
-      </div>
+    <div className="flex min-h-screen w-full flex-col bg-neutral-50 dark:bg-neutral-950">
+      {children}
     </div>
   )
 }

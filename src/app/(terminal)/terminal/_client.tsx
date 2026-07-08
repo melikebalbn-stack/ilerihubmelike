@@ -15,7 +15,7 @@ const KARTLAR = [
 
 export function TerminalRootClient({ operatorName }: Props) {
   return (
-    <div className="flex flex-1 flex-col gap-4 py-2">
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-2">
       {/* Başlık + operatör */}
       <div className="flex flex-col items-center gap-2 pt-2">
         <h1 className="text-lg font-semibold tracking-tight">İLERİ Terminal</h1>

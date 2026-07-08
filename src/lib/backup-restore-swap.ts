@@ -5,8 +5,53 @@ import path from 'path'
 
 const execAsync = promisify(exec)
 
-const ILERIHUB_LIVE = '/home/rokunet/projects/ilerihub'
+// PR-RESTORE-PARAM: restore hedefi artık prod'a ÇİVİLİ değil — çalışan ortamdan
+// türetilir. Beklenen kök altında olmalı (path traversal / yanlış env koruması).
+const ALLOWED_ROOT = '/home/rokunet/projects'
 const PRE_RESTORE_BASE = '/home/rokunet/pre-restore-backups'
+
+/**
+ * Restore hedef dizinini güvenli biçimde türet:
+ *   1) ENV ILERIHUB_RESTORE_TARGET (açık override) — varsa
+ *   2) yoksa process.cwd() (çalışan slotun kendi dizini)
+ * GÜVENLİK: sonuç /home/rokunet/projects/<slot> altında olmalı; değilse REDDET.
+ * Böylece staging'den çalıştırınca staging'i, blue'dan çalıştırınca blue'yu
+ * hedefler; asla başka bir yol (ör. /, /etc) restore edilemez.
+ */
+export function resolveRestoreTarget(): string {
+  const raw = process.env.ILERIHUB_RESTORE_TARGET?.trim() || process.cwd()
+  const target = path.resolve(raw)
+  const rel = path.relative(ALLOWED_ROOT, target)
+  const underRoot =
+    target !== ALLOWED_ROOT && rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+  // Ayrıca kök'ün doğrudan bir alt dizini olmalı (nested değil): tek segment.
+  const singleSegment = underRoot && !rel.includes(path.sep)
+  if (!singleSegment) {
+    throw new Error(
+      `Restore hedef dizini güvenlik kontrolünden geçemedi: "${target}" — ` +
+        `beklenen ${ALLOWED_ROOT}/<slot> (tek segment) olmalı`
+    )
+  }
+  return target
+}
+
+/** Tatbikat/log kanıtı için hedef dizin + hedef DB host/adı. */
+export function describeRestoreTarget(): {
+  targetDir: string
+  dbHost: string
+  dbName: string
+} {
+  const db = parseDbConn()
+  const url = process.env.DATABASE_URL ?? ''
+  const dbName = url.match(/@[^/]+\/([^?]+)/)?.[1] ?? 'bilinmiyor'
+  let targetDir: string
+  try {
+    targetDir = resolveRestoreTarget()
+  } catch (err) {
+    targetDir = `GEÇERSİZ (${(err as Error).message})`
+  }
+  return { targetDir, dbHost: db.host, dbName }
+}
 
 // Live'da kalması gereken dosyalar (staging tarball'ında olabilir veya
 // olmayabilir; mevcut hali korumak için pre-restore'dan geri taşınır).
@@ -54,6 +99,14 @@ export async function swapFilesAtomic(
 ): Promise<SwapResult> {
   const safeId = options.backupId.replace(/[^a-z0-9_-]/gi, '_')
   const preRestoreDir = path.join(PRE_RESTORE_BASE, safeId)
+
+  // Hedef dizini türet — güvenlik kontrolünden geçemezse restore REDDET.
+  let ILERIHUB_LIVE: string
+  try {
+    ILERIHUB_LIVE = resolveRestoreTarget()
+  } catch (err) {
+    return { success: false, preRestoreDir, errors: [(err as Error).message] }
+  }
 
   await fs.mkdir(PRE_RESTORE_BASE, { recursive: true })
 
@@ -107,6 +160,8 @@ export async function swapFilesAtomic(
  */
 export async function rollbackFiles(preRestoreDir: string): Promise<void> {
   if (!preRestoreDir.startsWith(PRE_RESTORE_BASE)) return
+  // Swap ile AYNI hedefi türet (aynı env/cwd) — tutarlı geri yükleme.
+  const ILERIHUB_LIVE = resolveRestoreTarget()
   try {
     await fs.access(preRestoreDir)
   } catch {

@@ -128,7 +128,11 @@ export async function swapFilesAtomic(
       { maxBuffer: 100 * 1024 * 1024 }
     )
 
-    // 4. PRESERVE'lerini pre-restore'dan live'a geri taşı
+    // 4. PRESERVE'leri pre-restore'dan live'a KOPYALA (mv DEĞİL).
+    // RESTORE-PARAM-2 (rollback veri kaybı fix'i): orijinaller pre-restore'da
+    // KALIR → pre-restore her an EKSİKSİZ geri dönüş noktası; rollback'in özel
+    // PRESERVE mantığına gerek kalmaz, yıkıcı rollback riski ortadan kalkar.
+    // Disk maliyeti (node_modules kopyası) kabul — güvenlik > disk.
     for (const item of PRESERVE) {
       const src = path.join(preRestoreDir, item)
       const dest = path.join(ILERIHUB_LIVE, item)
@@ -136,7 +140,10 @@ export async function swapFilesAtomic(
         await fs.access(src)
         // Live tarafında varsa önce kaldır (rsync'ten gelen versiyonu)
         await execAsync(`rm -rf ${JSON.stringify(dest)}`).catch(() => {})
-        await execAsync(`mv ${JSON.stringify(src)} ${JSON.stringify(dest)}`)
+        // cp -a: attribute + symlink korunur; kaynak pre-restore'da DURUR.
+        await execAsync(`cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`, {
+          maxBuffer: 100 * 1024 * 1024,
+        })
       } catch {
         // PRESERVE itemı pre-restore'da yoksa sorun değil (ilk kurulum vb.)
       }
@@ -162,11 +169,20 @@ export async function rollbackFiles(preRestoreDir: string): Promise<void> {
   if (!preRestoreDir.startsWith(PRE_RESTORE_BASE)) return
   // Swap ile AYNI hedefi türet (aynı env/cwd) — tutarlı geri yükleme.
   const ILERIHUB_LIVE = resolveRestoreTarget()
+
+  // RESTORE-PARAM-2: live'ı SİLMEDEN ÖNCE pre-restore'un EKSİKSİZ olduğunu
+  // doğrula (dir + kritik snapshot kanıtı package.json). Eksikse rollback YAPMA
+  // — eldeki live'ı KORU. "Yarım rollback > yıkıcı rollback": asla veri kaybı.
   try {
     await fs.access(preRestoreDir)
+    await fs.access(path.join(preRestoreDir, 'package.json'))
   } catch {
-    return // pre-restore yok, rollback imkansız
+    throw new Error(
+      `Rollback İPTAL: pre-restore snapshot eksik/bulunamadı (${preRestoreDir}) — ` +
+        `live korunuyor (yıkıcı rollback engellendi)`
+    )
   }
+
   await execAsync(`rm -rf ${JSON.stringify(ILERIHUB_LIVE)}`)
   await execAsync(`mv ${JSON.stringify(preRestoreDir)} ${JSON.stringify(ILERIHUB_LIVE)}`)
 }

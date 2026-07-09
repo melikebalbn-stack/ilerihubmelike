@@ -134,6 +134,7 @@ export async function resolveAllowedDepts(userId: string): Promise<string[] | un
         { sorumlu1Id: personnelId },
         { sorumlu2Id: personnelId },
         { sorumlu3Id: personnelId },
+        { sorumlu4Id: personnelId },
       ],
     },
     select: { id: true },

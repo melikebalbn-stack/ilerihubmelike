@@ -1,6 +1,6 @@
 // Mesai formu son onayı (APPROVED) sonrası birim sorumlularına bilgi maili.
 // Sorumlu = formdaki personellerin workDepartment'larının DOĞRUDAN sorumluları
-// (DepartmentDefinition.mudur/mudurYardimcisi/sorumlu1-3 — Personnel FK).
+// (DepartmentDefinition.mudur/mudurYardimcisi/sorumlu1-4 — Personnel FK).
 // Personnel → User.personnelId → email. Kişi bazında tekilleştirilir; her sorumlu
 // YALNIZ kendi sorumlu olduğu bölüm(ler)in personelini görür. Non-blocking.
 import { prisma } from '@/lib/prisma'
@@ -44,14 +44,15 @@ export async function resolveDeptResponsibleRecipients(
       sorumlu1Id: true,
       sorumlu2Id: true,
       sorumlu3Id: true,
+      sorumlu4Id: true,
     },
   })
 
-  // bölüm → sorumlu personnelId'leri (doğrudan, 5 slot)
+  // bölüm → sorumlu personnelId'leri (doğrudan, 6 slot)
   const respByDept = new Map<string, string[]>()
   const allPersonnelIds = new Set<string>()
   for (const d of depts) {
-    const ids = [d.mudurId, d.mudurYardimcisiId, d.sorumlu1Id, d.sorumlu2Id, d.sorumlu3Id].filter(
+    const ids = [d.mudurId, d.mudurYardimcisiId, d.sorumlu1Id, d.sorumlu2Id, d.sorumlu3Id, d.sorumlu4Id].filter(
       (x): x is string => !!x
     )
     respByDept.set(d.name, ids)

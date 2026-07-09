@@ -53,11 +53,11 @@ export async function POST(req: NextRequest) {
 
   // Omurga: bölüm adı(normalize) → sorumlu/müdür personnelId (öncelik: s1→s2→s3→müd.yrd.→müdür)
   const depts = await prisma.departmentDefinition.findMany({
-    select: { name: true, sorumlu1Id: true, sorumlu2Id: true, sorumlu3Id: true, mudurYardimcisiId: true, mudurId: true },
+    select: { name: true, sorumlu1Id: true, sorumlu2Id: true, sorumlu3Id: true, sorumlu4Id: true, mudurYardimcisiId: true, mudurId: true },
   })
   const pidByDept = new Map<string, string>()
   for (const d of depts) {
-    const pid = d.sorumlu1Id ?? d.sorumlu2Id ?? d.sorumlu3Id ?? d.mudurYardimcisiId ?? d.mudurId
+    const pid = d.sorumlu1Id ?? d.sorumlu2Id ?? d.sorumlu3Id ?? d.sorumlu4Id ?? d.mudurYardimcisiId ?? d.mudurId
     if (pid) pidByDept.set(normDept(d.name), pid)
   }
 

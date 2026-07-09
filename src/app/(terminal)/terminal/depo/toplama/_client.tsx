@@ -106,16 +106,20 @@ export function MalzemeToplamaClient() {
   const scanAktif = (step === 'IS_EMRI' || (step === 'TEYIT' && !teyitEslesti)) && !manualOpen && !loading && !tamamlaniyor && !ozet
   const { inputProps } = useScanner(scanAktif, handleScan)
 
+  // Elle giriş — aktif adıma göre (IS_EMRI → iş emri, TEYIT → malzeme) aynı yoldan.
   const submitManual = () => {
-    isEmriOkut(manualVal)
+    const v = manualVal
     setManualVal('')
     setManualOpen(false)
+    handleScan(v)
   }
 
   const kalemAc = (s: ToplamaSatirDetay) => {
     setSecilen(s)
     setTeyitEslesti(false)
     setTeyitMiktar(String(s.kalan).replace('.', ','))
+    setManualOpen(false)
+    setManualVal('')
     setStep('TEYIT')
   }
   const teyitKapat = () => {
@@ -326,6 +330,25 @@ export function MalzemeToplamaClient() {
                 <div className="text-base font-semibold">Kutudaki malzeme etiketini okut</div>
                 <div className="text-xs text-muted-foreground">{secilen.partNo}{secilen.partAdi ? ` · ${secilen.partAdi}` : ''}</div>
               </div>
+              {manualOpen ? (
+                <div className="flex w-full gap-2">
+                  <input
+                    autoFocus
+                    value={manualVal}
+                    onChange={(e) => setManualVal(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && submitManual()}
+                    placeholder="Stok kodu (| lot)"
+                    className="h-11 flex-1 rounded-xl border bg-background px-3 text-base outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <button type="button" onClick={submitManual} className="h-11 rounded-xl px-4 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
+                    Onayla
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setManualOpen(true)} className="text-sm text-muted-foreground underline underline-offset-2">
+                  veya elle gir
+                </button>
+              )}
             </div>
           ) : (
             <>

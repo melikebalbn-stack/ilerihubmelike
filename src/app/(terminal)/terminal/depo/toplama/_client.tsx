@@ -8,11 +8,15 @@ import {
   ArrowRight,
   Check,
   ClipboardList,
+  Delete,
   Loader2,
   MapPin,
+  PackageCheck,
+  ScanLine,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
+import { parseEtiket } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { FifoKaynak, IsEmriBaslik, ToplamaSatiri } from '@/lib/ifs/tuketim'
 
@@ -25,10 +29,17 @@ function fmtDate(iso: string): string {
 
 export function MalzemeToplamaClient() {
   const router = useRouter()
-  const [step, setStep] = useState<'IS_EMRI' | 'LISTE'>('IS_EMRI')
+  const [step, setStep] = useState<'IS_EMRI' | 'LISTE' | 'TEYIT'>('IS_EMRI')
   const [baslik, setBaslik] = useState<IsEmriBaslik | null>(null)
   const [satirlar, setSatirlar] = useState<ToplamaSatirDetay[]>([])
   const [loading, setLoading] = useState(false)
+
+  // TEYIT durumu
+  const [secilen, setSecilen] = useState<ToplamaSatirDetay | null>(null)
+  const [teyitEslesti, setTeyitEslesti] = useState(false)
+  const [teyitMiktar, setTeyitMiktar] = useState('')
+  const [tamamlaniyor, setTamamlaniyor] = useState(false)
+  const [ozet, setOzet] = useState<{ miktar: string; birim: string; loc: string } | null>(null)
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [errorKey, setErrorKey] = useState(0)
@@ -70,7 +81,30 @@ export function MalzemeToplamaClient() {
     [showError],
   )
 
-  const { inputProps } = useScanner(step === 'IS_EMRI' && !manualOpen && !loading, isEmriOkut)
+  // Malzeme okutma (TEYIT) — beklenen parça ile eşleşme.
+  const malzemeOkut = useCallback(
+    (ham: string) => {
+      if (!secilen) return
+      const p = parseEtiket(ham)
+      if (p.tip === 'MALZEME' && p.stokKodu === secilen.partNo) {
+        setTeyitEslesti(true)
+      } else {
+        showError(`Bu değil — ${secilen.partNo} olmalı`)
+      }
+    },
+    [secilen, showError],
+  )
+
+  const handleScan = useCallback(
+    (v: string) => {
+      if (step === 'IS_EMRI') return void isEmriOkut(v)
+      if (step === 'TEYIT') return malzemeOkut(v)
+    },
+    [step, isEmriOkut, malzemeOkut],
+  )
+
+  const scanAktif = (step === 'IS_EMRI' || (step === 'TEYIT' && !teyitEslesti)) && !manualOpen && !loading && !tamamlaniyor && !ozet
+  const { inputProps } = useScanner(scanAktif, handleScan)
 
   const submitManual = () => {
     isEmriOkut(manualVal)
@@ -78,20 +112,93 @@ export function MalzemeToplamaClient() {
     setManualOpen(false)
   }
 
-  const reset = () => {
-    setStep('IS_EMRI')
-    setBaslik(null)
-    setSatirlar([])
+  const kalemAc = (s: ToplamaSatirDetay) => {
+    setSecilen(s)
+    setTeyitEslesti(false)
+    setTeyitMiktar(String(s.kalan).replace('.', ','))
+    setStep('TEYIT')
+  }
+  const teyitKapat = () => {
+    setStep('LISTE')
+    setSecilen(null)
+    setTeyitEslesti(false)
+    setTeyitMiktar('')
     setErrorMsg(null)
     setManualOpen(false)
-    setManualVal('')
+  }
+  const geri = () => {
+    if (step === 'TEYIT') return teyitKapat()
+    if (step === 'LISTE') {
+      setStep('IS_EMRI')
+      setBaslik(null)
+      setSatirlar([])
+      setErrorMsg(null)
+      setManualOpen(false)
+      return
+    }
+    router.push('/terminal/depo')
   }
 
+  // Miktar tuş takımı (ondalık)
+  const miktarNum = Number((teyitMiktar || '0').replace(',', '.'))
+  const kalan = secilen?.kalan ?? 0
+  const tamMiktar = Math.abs(miktarNum - kalan) < 1e-9 && miktarNum > 0
+  const kismi = miktarNum > 0 && !tamMiktar
+  const pressKey = (k: string) => {
+    if (k === '⌫') return setTeyitMiktar((m) => m.slice(0, -1))
+    if (k === ',') return setTeyitMiktar((m) => (m.includes(',') ? m : (m || '0') + ','))
+    setTeyitMiktar((m) => {
+      const next = m === '0' ? k : m + k
+      return next.length > 9 ? m : next
+    })
+  }
+
+  const tuketimTopla = async () => {
+    if (tamamlaniyor || !secilen || !baslik || !teyitEslesti || !tamMiktar) return
+    setTamamlaniyor(true)
+    try {
+      const res = await fetch(`/api/depo/toplama/${encodeURIComponent(baslik.orderNo)}/topla`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          releaseNo: baslik.releaseNo,
+          sequenceNo: baslik.sequenceNo,
+          lineItemNo: secilen.lineItemNo,
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        showError(data?.error ?? 'Çıkış başarısız')
+        return
+      }
+      const loc = data.kirilim?.[0]?.locationNo ?? secilen.fifo[0]?.locationNo ?? '—'
+      setOzet({ miktar: teyitMiktar, birim: secilen.birim, loc })
+    } catch {
+      showError('Bağlantı hatası — tekrar deneyin')
+    } finally {
+      setTamamlaniyor(false)
+    }
+  }
+
+  // Özet ekranı → 1.6sn sonra listeyi tazele.
+  useEffect(() => {
+    if (!ozet || !baslik) return
+    const t = setTimeout(() => {
+      setOzet(null)
+      setSecilen(null)
+      setTeyitEslesti(false)
+      setTeyitMiktar('')
+      isEmriOkut(baslik.orderNo)
+    }, 1600)
+    return () => clearTimeout(t)
+  }, [ozet, baslik, isEmriOkut])
+
   const tamamlanan = satirlar.filter((s) => s.kalan === 0).length
+  const ilkKaynak = secilen?.fifo[0]
 
   return (
     <div className="relative flex flex-1 flex-col gap-3 py-2">
-      {step === 'IS_EMRI' && <input {...inputProps} />}
+      {scanAktif && <input {...inputProps} />}
 
       {errorMsg && (
         <div className="absolute inset-x-0 top-0 z-20 mx-2 flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-base font-semibold text-white shadow-lg">
@@ -104,21 +211,30 @@ export function MalzemeToplamaClient() {
       <div className="flex items-center gap-2 pt-1">
         <button
           type="button"
-          onClick={() => (step === 'LISTE' ? reset() : router.push('/terminal/depo'))}
+          onClick={geri}
           aria-label="Geri"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors active:bg-muted/70"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        {step === 'IS_EMRI' ? (
-          <h1 className="text-base font-semibold">Malzeme Toplama</h1>
-        ) : (
+        {step === 'IS_EMRI' && <h1 className="text-base font-semibold">Malzeme Toplama</h1>}
+        {step === 'LISTE' && (
           <div className="flex min-w-0 flex-col leading-tight">
             <h1 className="truncate text-base font-semibold">
               İE {baslik?.orderNo} · {baslik?.urunAdi || baslik?.urunKodu}
             </h1>
             <span className="text-xs text-muted-foreground">
               {satirlar.length} kalem · {tamamlanan} toplandı
+            </span>
+          </div>
+        )}
+        {step === 'TEYIT' && secilen && (
+          <div className="flex min-w-0 flex-col leading-tight">
+            <h1 className="truncate text-base font-semibold">
+              {secilen.partNo} · {secilen.kalan} {secilen.birim}
+            </h1>
+            <span className="truncate text-xs text-muted-foreground">
+              GİT → {ilkKaynak?.lokasyonAdi ?? '—'}
             </span>
           </div>
         )}
@@ -140,9 +256,7 @@ export function MalzemeToplamaClient() {
           >
             <ClipboardList className="h-12 w-12" />
             <div className="text-lg font-semibold">İş emrini okut</div>
-            <div className="text-sm text-muted-foreground">
-              Kağıttaki barkodu okut veya no gir
-            </div>
+            <div className="text-sm text-muted-foreground">Kağıttaki barkodu okut veya no gir</div>
           </div>
           {manualOpen ? (
             <div className="flex w-full gap-2">
@@ -154,28 +268,19 @@ export function MalzemeToplamaClient() {
                 placeholder="İş emri no (ör. 147)"
                 className="h-11 flex-1 rounded-xl border bg-background px-3 text-base outline-none focus:ring-1 focus:ring-ring"
               />
-              <button
-                type="button"
-                onClick={submitManual}
-                className="h-11 rounded-xl px-4 text-sm font-semibold text-white"
-                style={{ background: TERMINAL_ACCENT }}
-              >
+              <button type="button" onClick={submitManual} className="h-11 rounded-xl px-4 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
                 Getir
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setManualOpen(true)}
-              className="text-sm text-muted-foreground underline underline-offset-2"
-            >
+            <button type="button" onClick={() => setManualOpen(true)} className="text-sm text-muted-foreground underline underline-offset-2">
               veya elle gir
             </button>
           )}
         </div>
       )}
 
-      {/* AŞAMA 2 — toplama listesi */}
+      {/* AŞAMA 2 — liste */}
       {step === 'LISTE' && !loading && (
         <div className="flex flex-col gap-3">
           {satirlar.length === 0 && (
@@ -184,16 +289,113 @@ export function MalzemeToplamaClient() {
             </div>
           )}
           {satirlar.map((s) => (
-            <KalemKart key={s.lineItemNo} s={s} />
+            <KalemKart key={s.lineItemNo} s={s} onSelect={() => kalemAc(s)} />
           ))}
+        </div>
+      )}
+
+      {/* AŞAMA 3 — TEYIT */}
+      {step === 'TEYIT' && secilen && !ozet && (
+        <div className="flex flex-1 flex-col gap-3">
+          {/* Büyük GİT bloğu */}
+          {ilkKaynak && (
+            <div className="rounded-2xl border p-4" style={{ borderColor: TERMINAL_ACCENT }}>
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">GİT →</span>
+              <div className="mt-1 flex items-baseline gap-2">
+                <MapPin className="h-6 w-6 self-center" style={{ color: TERMINAL_ACCENT }} />
+                <span className="text-3xl font-bold leading-none" style={{ color: TERMINAL_ACCENT }}>
+                  {ilkKaynak.lokasyonAdi}
+                </span>
+                <span className="text-sm text-muted-foreground">({ilkKaynak.locationNo})</span>
+              </div>
+              <div className="mt-1 text-sm">
+                {ilkKaynak.alinacak} {secilen.birim}
+                {ilkKaynak.lotBatchNo ? ` · lot ${ilkKaynak.lotBatchNo}` : ''}
+              </div>
+            </div>
+          )}
+
+          {/* Malzeme okutma / teyit */}
+          {!teyitEslesti ? (
+            <div className="flex flex-col items-center gap-3">
+              <div
+                className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-6 text-center"
+                style={{ borderColor: TERMINAL_ACCENT, color: TERMINAL_ACCENT }}
+              >
+                <ScanLine className="h-10 w-10" />
+                <div className="text-base font-semibold">Kutudaki malzeme etiketini okut</div>
+                <div className="text-xs text-muted-foreground">{secilen.partNo}{secilen.partAdi ? ` · ${secilen.partAdi}` : ''}</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex w-fit items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                <Check className="h-4 w-4" />
+                Doğru malzeme · {secilen.partNo}
+              </div>
+
+              {/* Miktar bloğu */}
+              <div
+                className={cn(
+                  'rounded-2xl border bg-card py-4 text-center text-5xl font-semibold tabular-nums',
+                  kismi && 'border-amber-400',
+                )}
+              >
+                {teyitMiktar || '0'}
+                <span className="ml-2 text-2xl text-muted-foreground">{secilen.birim}</span>
+              </div>
+              {kismi && (
+                <p className="text-center text-xs text-amber-700">
+                  Kısmi çıkış EL-6c&apos;de — şimdilik tam miktar ({kalan} {secilen.birim})
+                </p>
+              )}
+
+              <div className="grid grid-cols-3 gap-2">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫'].map((k) => (
+                  <button key={k} type="button" onClick={() => pressKey(k)} className="flex min-h-12 items-center justify-center rounded-xl border bg-card text-2xl font-semibold transition-colors active:bg-muted">
+                    {k === '⌫' ? <Delete className="h-6 w-6" /> : k}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={tuketimTopla}
+                disabled={!tamMiktar || tamamlaniyor}
+                className="mt-1 flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-semibold text-white transition-all hover:bg-emerald-700 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {tamamlaniyor ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-6 w-6" />}
+                {tamamlaniyor ? 'IFS’e işleniyor…' : 'Topla ve Çık (IFS)'}
+              </button>
+
+              <div className="flex items-center justify-center gap-2 pt-1">
+                <button type="button" disabled aria-disabled className="cursor-not-allowed text-sm text-muted-foreground underline underline-offset-2 opacity-50">
+                  Farklı yerden alacağım
+                </button>
+                <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">Yakında (EL-6c)</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Özet ekranı */}
+      {ozet && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <Check className="h-11 w-11" />
+          </div>
+          <div className="text-2xl font-semibold">
+            {ozet.miktar} {ozet.birim} çıkıldı
+          </div>
+          <div className="text-sm text-muted-foreground">Lokasyon: {ozet.loc}</div>
         </div>
       )}
     </div>
   )
 }
 
-function KalemKart({ s }: { s: ToplamaSatirDetay }) {
-  // Toplandı
+function KalemKart({ s, onSelect }: { s: ToplamaSatirDetay; onSelect: () => void }) {
   if (s.kalan === 0) {
     return (
       <div className="flex min-h-16 items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-800">
@@ -205,7 +407,6 @@ function KalemKart({ s }: { s: ToplamaSatirDetay }) {
       </div>
     )
   }
-  // Stokta yok
   if (s.stokYok) {
     return (
       <div className="flex flex-col gap-1 rounded-2xl border border-red-300 bg-red-50 p-4 text-red-800">
@@ -221,13 +422,10 @@ function KalemKart({ s }: { s: ToplamaSatirDetay }) {
       </div>
     )
   }
-  // Açık — FIFO kaynakları
   return (
     <button
       type="button"
-      onClick={() => {
-        // TODO EL-6b: satır teyit ekranı (raf okut → miktar → reserve+issue)
-      }}
+      onClick={onSelect}
       className="flex w-full flex-col gap-2 rounded-2xl border bg-card p-4 text-left transition-opacity active:opacity-70"
       style={{ borderColor: TERMINAL_ACCENT }}
     >
@@ -238,27 +436,20 @@ function KalemKart({ s }: { s: ToplamaSatirDetay }) {
         </span>
       </div>
       {s.partAdi && <div className="truncate text-xs text-muted-foreground">{s.partAdi}</div>}
-
       <div className="mt-1 flex flex-col gap-2">
         {s.fifo.map((k, i) => (
           <div key={`${k.locationNo}-${k.lotBatchNo ?? '_'}-${i}`} className="rounded-xl bg-muted/50 p-3">
             <div className="flex items-baseline gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                GİT →
-              </span>
+              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">GİT →</span>
               <span className="flex items-baseline gap-1">
                 <MapPin className="h-4 w-4 self-center" style={{ color: TERMINAL_ACCENT }} />
-                <span className="text-lg font-semibold" style={{ color: TERMINAL_ACCENT }}>
-                  {k.lokasyonAdi}
-                </span>
+                <span className="text-lg font-semibold" style={{ color: TERMINAL_ACCENT }}>{k.lokasyonAdi}</span>
                 <span className="text-xs text-muted-foreground">({k.locationNo})</span>
               </span>
             </div>
             <div className="mt-0.5 flex items-center gap-1 text-sm">
               <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="font-medium">
-                {k.alinacak} {s.birim}
-              </span>
+              <span className="font-medium">{k.alinacak} {s.birim}</span>
               {k.lotBatchNo && <span className="text-muted-foreground"> · lot {k.lotBatchNo}</span>}
               <span className="text-muted-foreground"> · giriş {fmtDate(k.receiptDate)}</span>
             </div>

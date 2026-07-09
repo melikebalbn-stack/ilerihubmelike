@@ -65,6 +65,33 @@ async function mainGet<T = unknown>(pathAndQuery: string): Promise<{ status: num
   return { status: res.status, body: body as T }
 }
 
+/** Entity'nin güncel ETag'ini GET ile çeker (bound yazma öncesi taze — EL-5e deseni). */
+async function etagOf(pathAndQuery: string): Promise<string | null> {
+  const token = await getIfsAccessToken()
+  const res = await fetch(`${mainRoot()}${pathAndQuery}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    cache: 'no-store',
+  })
+  const et = res.headers.get('etag')
+  if (et) return et
+  const j = await res.json().catch(() => null)
+  return (j && (j as Record<string, unknown>)['@odata.etag']) as string | null
+}
+
+async function mainPost(pathAndQuery: string, body: unknown, ifMatch?: string): Promise<{ status: number; text: string }> {
+  const token = await getIfsAccessToken()
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Prefer: 'wait=99999',
+  }
+  if (ifMatch) headers['If-Match'] = ifMatch
+  const res = await fetch(`${mainRoot()}${pathAndQuery}`, { method: 'POST', headers, body: JSON.stringify(body), cache: 'no-store' })
+  return { status: res.status, text: await res.text() }
+}
+
 /**
  * İş emri barkodunu normalize eder. TODO: IFS iş emri barkod formatı netleşince
  * kesinleşecek. Şimdilik: 'M' + uzun sayısal (eski format M002232828) → baştaki
@@ -224,4 +251,80 @@ export async function getFifoKirilim(partNo: string, ihtiyac: number): Promise<F
     kaynaklar.forEach((k) => { k.lokasyonAdi = adMap.get(k.locationNo) || k.locationNo })
   }
   return kaynaklar
+}
+
+// ── Yazma (EL-6b) — reserve → issue. EL-5e'de 147/8001 ile HTTP 204 kanıtlandı.
+export interface SatirAnahtar {
+  orderNo: string
+  releaseNo: string
+  sequenceNo: string
+  lineItemNo: number
+}
+export interface RezervKirilim {
+  locationNo: string
+  lotBatchNo?: string
+  qtyAssigned: number
+}
+
+function soKeyOf(s: SatirAnahtar): string {
+  return `OrderNo='${esc(s.orderNo)}',ReleaseNo='${esc(s.releaseNo)}',SequenceNo='${esc(s.sequenceNo)}'`
+}
+function allocKeyOf(s: SatirAnahtar): string {
+  return `OrderNo='${esc(s.orderNo)}',ReleaseNo='${esc(s.releaseNo)}',SequenceNo='${esc(s.sequenceNo)}',LineItemNo=${s.lineItemNo}`
+}
+function allocEntityOf(s: SatirAnahtar): string {
+  return `ShopOrderHandling.svc/ShopOrds(${encodeURI(soKeyOf(s))})/MaterialArray(${encodeURI(allocKeyOf(s))})`
+}
+
+/** Bound ShopMaterialAlloc_Reserve — taze ETag + If-Match zorunlu (EL-5e). */
+export async function reserveSatir(s: SatirAnahtar): Promise<{ ok: boolean; error?: string }> {
+  const entity = allocEntityOf(s)
+  const etag = await etagOf(entity)
+  if (!etag) return { ok: false, error: 'Satır ETag alınamadı (satır bulunamadı?)' }
+  const res = await mainPost(`${entity}/IfsApp.ShopOrderHandling.ShopMaterialAlloc_Reserve`, {}, etag)
+  if (res.status < 200 || res.status >= 300) {
+    return { ok: false, error: `Rezervasyon HTTP ${res.status}: ${res.text.slice(0, 300)}` }
+  }
+  return { ok: true }
+}
+
+/** Unbound IssueMaterial — Selection=UPPER_SNAKE keyref, IssueOnlyReserved=1 (If-Match gerekmez). */
+export async function issueSatir(s: SatirAnahtar): Promise<{ ok: boolean; error?: string }> {
+  const selection = `LINE_ITEM_NO=${s.lineItemNo}^ORDER_NO=${s.orderNo}^RELEASE_NO=${s.releaseNo}^SEQUENCE_NO=${s.sequenceNo}^;`
+  const res = await mainPost('ShopOrderHandling.svc/IssueMaterial', { Selection: selection, IssueOnlyReserved: 1 })
+  if (res.status < 200 || res.status >= 300) {
+    return { ok: false, error: `Çıkış HTTP ${res.status}: ${res.text.slice(0, 300)}` }
+  }
+  return { ok: true }
+}
+
+/**
+ * Rezerve sonrası kırılım: PartNo için QtyReserved>0 stok satırları.
+ * TODO: kesin iş-emri-bazlı kırılım için ShopMaterialAssign'a girilecek (şimdilik
+ * QtyReserved yeterli — tek kullanıcı akışı).
+ */
+export async function getRezervKirilim(s: SatirAnahtar): Promise<RezervKirilim[]> {
+  const { contract } = getIfsConfig()
+  // partNo'yu satırdan al (tekil entity → body doğrudan kayıt)
+  const line = await mainGet<{ PartNo?: string }>(`${allocEntityOf(s)}?$select=PartNo`)
+  const partNo = str(line.body?.PartNo)
+  if (line.status !== 200 || !partNo) return []
+  const filter = `Contract eq '${esc(contract)}' and PartNo eq '${esc(partNo)}' and QtyReserved gt 0`
+  const r = await mainGet<{ value?: { LocationNo?: string; LotBatchNo?: string; QtyReserved?: number }[] }>(
+    `InventoryPartInStockHandling.svc/InventoryPartInStockSet?$filter=${encodeURIComponent(filter)}&$select=LocationNo,LotBatchNo,QtyReserved&$top=50`,
+  )
+  if (r.status !== 200 || !Array.isArray(r.body?.value)) return []
+  return r.body.value.map((x) => {
+    const lot = str(x.LotBatchNo)
+    return { locationNo: str(x.LocationNo), lotBatchNo: lot && lot !== '*' ? lot : undefined, qtyAssigned: num(x.QtyReserved) }
+  })
+}
+
+/** Satırın taze durumu (çıkış sonrası liste tazeleme için). */
+export async function getSatirDurum(s: SatirAnahtar): Promise<{ qtyIssued: number; kalan: number } | null> {
+  const r = await mainGet<{ QtyIssued?: number; QtyRemainToIssue?: number }>(
+    `${allocEntityOf(s)}?$select=QtyIssued,QtyRemainToIssue`,
+  )
+  if (r.status !== 200) return null
+  return { qtyIssued: num(r.body?.QtyIssued), kalan: num(r.body?.QtyRemainToIssue) }
 }

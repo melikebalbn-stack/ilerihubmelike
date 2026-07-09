@@ -80,6 +80,17 @@ describe('resolveDeptResponsibleRecipients', () => {
     expect(unresolved).toEqual([{ dept: 'A', personnelId: 'r2' }])
   })
 
+  it('sorumlu4 slotu da resolve’a dahil (yeni 6. slot)', async () => {
+    deptFindMany.mockResolvedValue([
+      { name: 'D', mudurId: null, mudurYardimcisiId: null, sorumlu1Id: null, sorumlu2Id: null, sorumlu3Id: null, sorumlu4Id: 'r4' },
+    ])
+    userFindMany.mockResolvedValue([{ id: 'u4', email: 'u4@x.com', name: 'U4', personnelId: 'r4' }])
+    const { recipients } = await resolveDeptResponsibleRecipients(new Map([['D', ['P1']]]))
+    expect(recipients).toHaveLength(1)
+    expect(recipients[0].userId).toBe('u4')
+    expect(recipients[0].departments).toEqual([{ name: 'D', personel: ['P1'] }])
+  })
+
   it('email null olan sorumlu → unresolved’a düşer', async () => {
     deptFindMany.mockResolvedValue([
       { name: 'A', mudurId: 'r1', mudurYardimcisiId: null, sorumlu1Id: null, sorumlu2Id: null, sorumlu3Id: null },

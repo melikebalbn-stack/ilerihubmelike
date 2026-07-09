@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
         sorumlu1: personSel,
         sorumlu2: personSel,
         sorumlu3: personSel,
+        sorumlu4: personSel,
         mudurYardimcisi: personSel,
         mudur: personSel,
       },
@@ -87,7 +88,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // PR-FAZ-B1: sorumlu/müdür Personnel FK'leri — verilenleri aktif Personnel ile doğrula
-    const personFields = ['sorumlu1Id', 'sorumlu2Id', 'sorumlu3Id', 'mudurYardimcisiId', 'mudurId'] as const
+    const personFields = ['sorumlu1Id', 'sorumlu2Id', 'sorumlu3Id', 'sorumlu4Id', 'mudurYardimcisiId', 'mudurId'] as const
     const idsToCheck = personFields
       .filter((f) => body[f] !== undefined && body[f])
       .map((f) => body[f] as string)

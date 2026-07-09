@@ -8738,6 +8738,7 @@ model Personnel {
   sorumlusuOlduguBolumler1      DepartmentDefinition[] @relation("Dept_S1")
   sorumlusuOlduguBolumler2      DepartmentDefinition[] @relation("Dept_S2")
   sorumlusuOlduguBolumler3      DepartmentDefinition[] @relation("Dept_S3")
+  sorumlusuOlduguBolumler4      DepartmentDefinition[] @relation("Dept_S4")
   mudurYardimcisiOlduguBolumler DepartmentDefinition[] @relation("Dept_MY")
   muduruOlduguBolumler          DepartmentDefinition[] @relation("Dept_M")
   // Kiosk/Workstation Faz 1: bu personelin atandığı tezgahlar (join)
@@ -8927,11 +8928,13 @@ model DepartmentDefinition {
   sorumlu1Id        String?
   sorumlu2Id        String?
   sorumlu3Id        String?
+  sorumlu4Id        String?
   mudurYardimcisiId String?
   mudurId           String?
   sorumlu1        Personnel? @relation("Dept_S1", fields: [sorumlu1Id], references: [id])
   sorumlu2        Personnel? @relation("Dept_S2", fields: [sorumlu2Id], references: [id])
   sorumlu3        Personnel? @relation("Dept_S3", fields: [sorumlu3Id], references: [id])
+  sorumlu4        Personnel? @relation("Dept_S4", fields: [sorumlu4Id], references: [id])
   mudurYardimcisi Personnel? @relation("Dept_MY", fields: [mudurYardimcisiId], references: [id])
   mudur           Personnel? @relation("Dept_M", fields: [mudurId], references: [id])
 

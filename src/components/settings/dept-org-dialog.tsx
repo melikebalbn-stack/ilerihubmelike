@@ -23,6 +23,7 @@ export interface DeptOrgItem {
   sorumlu1?: DeptPerson
   sorumlu2?: DeptPerson
   sorumlu3?: DeptPerson
+  sorumlu4?: DeptPerson
   mudurYardimcisi?: DeptPerson
   mudur?: DeptPerson
 }
@@ -99,13 +100,14 @@ export function DeptOrgDialog({
   const [saving, setSaving] = useState(false)
   const [parentId, setParentId] = useState<string>(dept.parent?.id ?? "")
   // her sorumlu/müdür: {id, name}
-  const slots = ["sorumlu1", "sorumlu2", "sorumlu3", "mudurYardimcisi", "mudur"] as const
+  const slots = ["sorumlu1", "sorumlu2", "sorumlu3", "sorumlu4", "mudurYardimcisi", "mudur"] as const
   type Slot = typeof slots[number]
   const initFor = (s: Slot): DeptPerson => (dept[s] ?? null)
   const [sel, setSel] = useState<Record<Slot, { id: string | null; name: string }>>({
     sorumlu1: { id: initFor("sorumlu1")?.id ?? null, name: initFor("sorumlu1")?.adSoyad ?? "" },
     sorumlu2: { id: initFor("sorumlu2")?.id ?? null, name: initFor("sorumlu2")?.adSoyad ?? "" },
     sorumlu3: { id: initFor("sorumlu3")?.id ?? null, name: initFor("sorumlu3")?.adSoyad ?? "" },
+    sorumlu4: { id: initFor("sorumlu4")?.id ?? null, name: initFor("sorumlu4")?.adSoyad ?? "" },
     mudurYardimcisi: { id: initFor("mudurYardimcisi")?.id ?? null, name: initFor("mudurYardimcisi")?.adSoyad ?? "" },
     mudur: { id: initFor("mudur")?.id ?? null, name: initFor("mudur")?.adSoyad ?? "" },
   })
@@ -118,7 +120,7 @@ export function DeptOrgDialog({
   }, [])
 
   const labels: Record<Slot, string> = {
-    sorumlu1: "1. Sorumlu", sorumlu2: "2. Sorumlu", sorumlu3: "3. Sorumlu",
+    sorumlu1: "1. Sorumlu", sorumlu2: "2. Sorumlu", sorumlu3: "3. Sorumlu", sorumlu4: "4. Sorumlu",
     mudurYardimcisi: "Müdür Yardımcısı", mudur: "Müdür",
   }
 
@@ -134,6 +136,7 @@ export function DeptOrgDialog({
           sorumlu1Id: sel.sorumlu1.id,
           sorumlu2Id: sel.sorumlu2.id,
           sorumlu3Id: sel.sorumlu3.id,
+          sorumlu4Id: sel.sorumlu4.id,
           mudurYardimcisiId: sel.mudurYardimcisi.id,
           mudurId: sel.mudur.id,
         }),

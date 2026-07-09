@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
+import { getPartAdi } from '@/lib/ifs/depo-stok'
 import { generateMalzemeEtiketi, genEtiketNo } from '@/lib/depo/etiket-pdf'
 
 export const runtime = 'nodejs'
@@ -37,9 +38,17 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Stok adı boş/'-' ise IFS'ten tamamla (bloklamaz — null ise '-' kalır).
+    const d = parsed.data
+    let stokAdi = d.stokAdi
+    if (!stokAdi || stokAdi.trim() === '' || stokAdi.trim() === '-') {
+      stokAdi = (await getPartAdi(d.stokKodu)) ?? d.stokAdi
+    }
+
     const etiketNo = genEtiketNo()
     const pdf = await generateMalzemeEtiketi({
-      ...parsed.data,
+      ...d,
+      stokAdi,
       etiketNo,
       basanKullanici: session.user.name ?? 'Operatör',
     })

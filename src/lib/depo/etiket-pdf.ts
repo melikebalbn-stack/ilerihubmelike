@@ -72,6 +72,28 @@ function nowStamp(): string {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
+/**
+ * Metni maxW'ye sığdırır: base'ten min'e 0.5 adımlarla punto düşer; min'de de
+ * sığmıyorsa allowTruncate ise sondan '…' ile kısaltır, değilse min puntoda tam basar
+ * (kritik alanlar — ETIKET NO / LOT — asla kısaltılmaz).
+ */
+function fitText(
+  text: string,
+  font: PDFFont,
+  maxW: number,
+  base: number,
+  min: number,
+  allowTruncate: boolean,
+): { text: string; size: number } {
+  let size = base
+  while (size > min && font.widthOfTextAtSize(text, size) > maxW) size = Math.max(min, size - 0.5)
+  if (font.widthOfTextAtSize(text, size) <= maxW) return { text, size }
+  if (!allowTruncate) return { text, size } // kritik alan: tam bas
+  let t = text
+  while (t.length > 1 && font.widthOfTextAtSize(t + '…', size) > maxW) t = t.slice(0, -1)
+  return { text: t + '…', size }
+}
+
 export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<Uint8Array> {
   const pdf = await PDFDocument.create()
   pdf.registerFontkit(fontkit)
@@ -81,12 +103,6 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   const page = pdf.addPage([PAGE_W, PAGE_H])
 
   const margin = 4 * MM
-  const fit = (text: string, size: number, maxW: number, font: PDFFont): string => {
-    if (font.widthOfTextAtSize(text, size) <= maxW) return text
-    let t = text
-    while (t.length > 1 && font.widthOfTextAtSize(t + '…', size) > maxW) t = t.slice(0, -1)
-    return t + '…'
-  }
 
   // ── Üst siyah şerit ──
   const stripH = 8.5 * MM
@@ -137,13 +153,26 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   const leftW = dmX - 8 - leftX
 
   page.drawText('(P) MALZEME NO', { x: leftX, y: contentTop - 8, size: 6.5, font: reg, color: GRAY })
-  page.drawText(fit(veri.stokKodu, 18, leftW, bold), { x: leftX, y: contentTop - 28, size: 18, font: bold, color: BLACK })
-  page.drawText(fit(veri.stokAdi || '-', 8, leftW, reg), { x: leftX, y: contentTop - 40, size: 8, font: reg, color: BLACK })
+  // Stok kodu — punto düşer, gerekirse kısaltılır (min 11).
+  const kod = fitText(veri.stokKodu, bold, leftW, 18, 11, true)
+  page.drawText(kod.text, { x: leftX, y: contentTop - 28, size: kod.size, font: bold, color: BLACK })
+  // Stok adı — punto düşer (min 8), hâlâ sığmazsa '…' (bilgilendirici, kritik değil).
+  const ad = fitText(veri.stokAdi || '-', reg, leftW, 9, 8, true)
+  page.drawText(ad.text, { x: leftX, y: contentTop - 40, size: ad.size, font: reg, color: BLACK })
 
   const cellW = leftW / 3
-  const cell = (x: number, topY: number, label: string, value: string) => {
+  // allowTruncate=false → kritik alan (LOT / ETIKET NO): asla kısaltma, sadece punto düş.
+  const cell = (
+    x: number,
+    topY: number,
+    label: string,
+    value: string,
+    allowTruncate = true,
+    min = 7,
+  ) => {
     page.drawText(label, { x, y: topY, size: 6, font: reg, color: GRAY })
-    page.drawText(fit(value, 9, cellW - 3, bold), { x, y: topY - 11, size: 9, font: bold, color: BLACK })
+    const s = fitText(value, bold, cellW - 3, 9, min, allowTruncate)
+    page.drawText(s.text, { x, y: topY - 11, size: s.size, font: bold, color: BLACK })
   }
 
   // Orta ızgara
@@ -151,24 +180,26 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   page.drawLine({ start: { x: leftX, y: midSep }, end: { x: dmX - 8, y: midSep }, thickness: 0.6, color: GRAY })
   const midY = midSep - 9
   cell(leftX, midY, '(Q) MIKTAR', `${veri.miktar} ${veri.birim}`)
-  cell(leftX + cellW, midY, '(1T) LOT', veri.lot ?? '-')
+  cell(leftX + cellW, midY, '(1T) LOT', veri.lot ?? '-', false) // LOT: kısaltma yasak
   cell(leftX + 2 * cellW, midY, 'GIRIS TARIHI', fmtDate(veri.girisTarihi))
 
   // Alt ızgara
   const botSep = midY - 20
   page.drawLine({ start: { x: leftX, y: botSep }, end: { x: dmX - 8, y: botSep }, thickness: 0.6, color: GRAY })
   const botY = botSep - 9
-  cell(leftX, botY, '(V) KAYNAK', veri.kaynakBilgi)
+  cell(leftX, botY, '(V) KAYNAK', veri.kaynakBilgi) // KAYNAK: kısaltılabilir
   cell(leftX + cellW, botY, 'LOKASYON', veri.lokasyon)
-  cell(leftX + 2 * cellW, botY, '(S) ETIKET NO', veri.etiketNo)
+  cell(leftX + 2 * cellW, botY, '(S) ETIKET NO', veri.etiketNo, false) // ETIKET NO: tam bas (min 7)
 
   // ── Alt bilgi şeridi ──
   const footLineY = margin + 4 * MM
   page.drawLine({ start: { x: margin, y: footLineY }, end: { x: PAGE_W - margin, y: footLineY }, thickness: 0.6, color: GRAY })
-  const info = `Basan: ${veri.basanKullanici} · ${nowStamp()} · ${veri.kaynakModul}`
+  const modulKisa = veri.kaynakModul.replace('Depo El Terminali / Stok Tasima', 'Depo Terminali/Tasima')
+  const info = `Basan: ${veri.basanKullanici} · ${nowStamp()} · ${modulKisa}`
   const rightTxt = 'ILERIHub · IFS ILER2'
   const rightW = reg.widthOfTextAtSize(rightTxt, 6)
-  page.drawText(fit(info, 6, PAGE_W - 2 * margin - rightW - 8, reg), { x: margin, y: footLineY - 9, size: 6, font: reg, color: GRAY })
+  const infoFit = fitText(info, reg, PAGE_W - 2 * margin - rightW - 8, 6, 5, true)
+  page.drawText(infoFit.text, { x: margin, y: footLineY - 9, size: infoFit.size, font: reg, color: GRAY })
   page.drawText(rightTxt, { x: PAGE_W - margin - rightW, y: footLineY - 9, size: 6, font: reg, color: GRAY })
 
   return pdf.save()

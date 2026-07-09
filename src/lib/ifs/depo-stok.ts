@@ -117,6 +117,25 @@ export async function getRafBilgisi(kod: string): Promise<DepoRafBilgisi | null>
   return null
 }
 
+/**
+ * Parça adını (Description) InventoryPartHandling'den getirir. Etiket üretimi parça
+ * adı yüzünden ASLA bloklanmasın diye hata/yoksa null döner (throw etmez).
+ */
+export async function getPartAdi(partNo: string): Promise<string | null> {
+  try {
+    const { contract } = getIfsConfig()
+    const filter = `Contract eq '${esc(contract)}' and PartNo eq '${esc(partNo)}'`
+    const { status, body } = await mainGet<{ value?: { Description?: string | null }[] }>(
+      `InventoryPartHandling.svc/InventoryPartSet?$filter=${encodeURIComponent(filter)}&$select=PartNo,Description&$top=1`,
+    )
+    if (status !== 200) return null
+    const desc = body?.value?.[0]?.Description
+    return desc ? String(desc) : null
+  } catch {
+    return null
+  }
+}
+
 interface RawStock {
   PartNo?: string | null
   LocationNo?: string | null

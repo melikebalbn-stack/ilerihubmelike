@@ -1,6 +1,5 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { promises as fs } from 'fs'
 import path from 'path'
 import { resolveRestoreTarget } from './backup-restore-swap'
 
@@ -119,41 +118,12 @@ export async function pm2DeleteStart(): Promise<Pm2RestartResult> {
   }
 }
 
-export interface BuildResult {
-  success: boolean
-  error?: string
-  buildId?: string
-}
-
 /**
- * RESTORE-ORCHESTRATOR (Faz 1): restore edilen hedef dizinde `npm run build`.
- * PRESERVE artık eski .next'i taşımadığı için restore edilen kod KENDİ build'ini
- * üretir (yeni kod ↔ eski build uyumsuzluğu biter). node_modules PRESERVE'den
- * korunduğu için build'e hazır. Hedef dizin resolveRestoreTarget()'ten türetilir.
+ * RESTORE-ORCHESTRATOR Faz 1.1: build artık burada DEĞİL — SWAP'tan ÖNCE staging
+ * dizininde koşuyor (src/lib/backup-restore-build.ts, buildStagingArtifact). buildTarget
+ * (canlı dizinde swap sonrası build) kaldırıldı: DRILL-4'te cold+ağır build canlıyı
+ * yarım bırakıyordu.
  */
-export async function buildTarget(): Promise<BuildResult> {
-  let dir: string
-  try {
-    dir = resolveRestoreTarget()
-  } catch (err) {
-    return { success: false, error: (err as Error).message }
-  }
-  try {
-    await execAsync('NODE_ENV=production npm run build', {
-      cwd: dir,
-      timeout: 15 * 60_000, // build uzun sürebilir
-      maxBuffer: 200 * 1024 * 1024,
-    })
-  } catch (err) {
-    return { success: false, error: `Build başarısız: ${(err as Error).message}` }
-  }
-  try {
-    const buildId = (await fs.readFile(path.join(dir, '.next/BUILD_ID'), 'utf8')).trim()
-    return { success: true, buildId }
-  } catch {
-    return { success: false, error: '.next/BUILD_ID bulunamadı — build eksik/başarısız' }
-  }
-}
 
 /**
  * /api/health endpoint'ini polleyerek server'ın hazır olduğunu doğrular.

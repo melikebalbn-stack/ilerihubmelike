@@ -4113,6 +4113,7 @@ enum BackupType {
   SCHEDULED // Zamanlanmış yedek
   PRE_UPDATE // Güncelleme öncesi
   PRE_RESTORE // Geri yükleme öncesi
+  RESTORE // RESTORE-ORCHESTRATOR: restore-job satırı (ilerleme taşıyıcısı)
 }
 
 // Yedekleme Durumu
@@ -4121,6 +4122,11 @@ enum BackupStatus {
   IN_PROGRESS // Devam ediyor
   COMPLETED // Tamamlandı
   FAILED // Başarısız
+  // RESTORE-ORCHESTRATOR (Faz 1): restore-job yaşam döngüsü durumları
+  RESTORING // Restore başladı (pre-restore backup)
+  BUILDING // Restore edilen kod derleniyor
+  SWAPPING // Dosya/DB swap + restart
+  ROLLED_BACK // Başarısız → rollback ile geri alındı (veri kaybı yok)
 }
 
 // Yedekleme Sıklığı

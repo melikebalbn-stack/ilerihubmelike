@@ -55,7 +55,11 @@ export function describeRestoreTarget(): {
 
 // Live'da kalması gereken dosyalar (staging tarball'ında olabilir veya
 // olmayabilir; mevcut hali korumak için pre-restore'dan geri taşınır).
-const PRESERVE = ['.env', '.env.local', 'node_modules', '.next', 'logs']
+// RESTORE-ORCHESTRATOR (Faz 1): '.next' PRESERVE'den ÇIKARILDI — restore edilen
+// kod artık orchestrator'da KENDİ .next'ini `npm run build` ile üretiyor. Eski
+// .next'i korumak, yeni kod + eski build uyumsuzluğu yaratıyordu. node_modules
+// hâlâ korunur (build için gerekli); .next taze üretilir.
+const PRESERVE = ['.env', '.env.local', 'node_modules', 'logs']
 
 interface DbConn {
   user: string

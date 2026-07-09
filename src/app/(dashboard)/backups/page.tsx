@@ -100,7 +100,12 @@ function StatusBadge({ status }: { status: string }) {
     PENDING: { color: "bg-yellow-100 text-yellow-800", icon: <Clock className="h-3 w-3" />, label: "Bekliyor" },
     IN_PROGRESS: { color: "bg-blue-100 text-blue-800", icon: <Loader2 className="h-3 w-3 animate-spin" />, label: "Devam Ediyor" },
     COMPLETED: { color: "bg-green-100 text-green-800", icon: <CheckCircle className="h-3 w-3" />, label: "Tamamlandı" },
-    FAILED: { color: "bg-red-100 text-red-800", icon: <XCircle className="h-3 w-3" />, label: "Başarısız" }
+    FAILED: { color: "bg-red-100 text-red-800", icon: <XCircle className="h-3 w-3" />, label: "Başarısız" },
+    // RESTORE-ORCHESTRATOR (Faz 1): restore-job durumları (detached orchestrator yazar, 10sn polling okur)
+    RESTORING: { color: "bg-indigo-100 text-indigo-800", icon: <Loader2 className="h-3 w-3 animate-spin" />, label: "Restore ediliyor" },
+    BUILDING: { color: "bg-indigo-100 text-indigo-800", icon: <Loader2 className="h-3 w-3 animate-spin" />, label: "Derleniyor" },
+    SWAPPING: { color: "bg-indigo-100 text-indigo-800", icon: <Loader2 className="h-3 w-3 animate-spin" />, label: "Değiştiriliyor" },
+    ROLLED_BACK: { color: "bg-amber-100 text-amber-800", icon: <RotateCcw className="h-3 w-3" />, label: "Geri Alındı" }
   }
 
   const { color, icon, label } = config[status] || config.PENDING
@@ -493,6 +498,16 @@ export default function BackupsPage() {
           </button>
         </div>
       </div>
+
+      {/* RESTORE-ORCHESTRATOR (Faz 1): aktif restore banner'ı — detached orchestrator
+          BackupLog.status'u günceller, mevcut 10sn polling ile burada görünür. */}
+      {activeTab === "backups" &&
+        backups.some((b) => ["RESTORING", "BUILDING", "SWAPPING"].includes(b.status)) && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Restore sürüyor — işlem arka planda tamamlanıyor, durum otomatik güncellenir.</span>
+          </div>
+        )}
 
       {/* Yedekler Tablosu */}
       {activeTab === "backups" && (

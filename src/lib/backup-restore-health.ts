@@ -1,9 +1,14 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { promises as fs } from 'fs'
 import path from 'path'
 import { resolveRestoreTarget } from './backup-restore-swap'
 
 const execAsync = promisify(exec)
+
+// RESTORE-ORCHESTRATOR: pm2 delete+start için ecosystem yolu (env override'lı).
+const ECOSYSTEM_PATH =
+  process.env.ILERIHUB_ECOSYSTEM?.trim() || '/home/rokunet/projects/ecosystem.config.js'
 
 /**
  * PR-RESTORE-3 / RESTORE-PARAM-2: PM2 + health check helper'ları.
@@ -85,6 +90,68 @@ export async function pm2RestartIlerihub(): Promise<Pm2RestartResult> {
     return { success: true, name: t.name, port: t.port }
   } catch (err) {
     return { success: false, error: (err as Error).message, name: t.name, port: t.port }
+  }
+}
+
+/**
+ * RESTORE-ORCHESTRATOR (Faz 1): pm2 restart yerine DELETE + START (ecosystem'den).
+ * DRILL-3 dersi: crash-loop / değişmiş .env durumunda `restart --update-env` env'i
+ * tam yeniden yüklemedi (401→503 ancak delete+start ile düzeldi). delete+start
+ * temiz process + güncel env garanti eder. Ad/port türetmeyi (fix-1) korur.
+ */
+export async function pm2DeleteStart(): Promise<Pm2RestartResult> {
+  let t: Pm2Target
+  try {
+    t = await resolveRestorePm2()
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+  try {
+    // delete idempotent (process yoksa hata yutulur), sonra ecosystem'den start.
+    await execAsync(`pm2 delete ${JSON.stringify(t.name)}`, { timeout: 30_000 }).catch(() => {})
+    await execAsync(
+      `pm2 start ${JSON.stringify(ECOSYSTEM_PATH)} --only ${JSON.stringify(t.name)}`,
+      { timeout: 60_000 }
+    )
+    return { success: true, name: t.name, port: t.port }
+  } catch (err) {
+    return { success: false, error: (err as Error).message, name: t.name, port: t.port }
+  }
+}
+
+export interface BuildResult {
+  success: boolean
+  error?: string
+  buildId?: string
+}
+
+/**
+ * RESTORE-ORCHESTRATOR (Faz 1): restore edilen hedef dizinde `npm run build`.
+ * PRESERVE artık eski .next'i taşımadığı için restore edilen kod KENDİ build'ini
+ * üretir (yeni kod ↔ eski build uyumsuzluğu biter). node_modules PRESERVE'den
+ * korunduğu için build'e hazır. Hedef dizin resolveRestoreTarget()'ten türetilir.
+ */
+export async function buildTarget(): Promise<BuildResult> {
+  let dir: string
+  try {
+    dir = resolveRestoreTarget()
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+  try {
+    await execAsync('NODE_ENV=production npm run build', {
+      cwd: dir,
+      timeout: 15 * 60_000, // build uzun sürebilir
+      maxBuffer: 200 * 1024 * 1024,
+    })
+  } catch (err) {
+    return { success: false, error: `Build başarısız: ${(err as Error).message}` }
+  }
+  try {
+    const buildId = (await fs.readFile(path.join(dir, '.next/BUILD_ID'), 'utf8')).trim()
+    return { success: true, buildId }
+  } catch {
+    return { success: false, error: '.next/BUILD_ID bulunamadı — build eksik/başarısız' }
   }
 }
 

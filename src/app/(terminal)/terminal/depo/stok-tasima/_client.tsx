@@ -13,6 +13,7 @@ import {
   MapPin,
   Package,
   PackageCheck,
+  Printer,
   ScanLine,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -35,6 +36,7 @@ export function StokTasimaClient() {
   const [loading, setLoading] = useState(false)
   const [tasiniyor, setTasiniyor] = useState(false)
   const [sonucYol, setSonucYol] = useState<'CREATE' | 'UPDATE' | null>(null)
+  const [etiketYukleniyor, setEtiketYukleniyor] = useState(false)
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [errorKey, setErrorKey] = useState(0)
@@ -224,6 +226,41 @@ export function StokTasimaClient() {
       showError('Bağlantı hatası — tekrar deneyin')
     } finally {
       setTasiniyor(false)
+    }
+  }
+
+  const etiketYazdir = async () => {
+    if (etiketYukleniyor || !secilenStok || !kaynakRaf || !hedefRaf) return
+    setEtiketYukleniyor(true)
+    try {
+      const kaynakAd = kaynakRaf.aciklama || kaynakRaf.locationNo
+      const hedefAd = hedefRaf.aciklama || hedefRaf.locationNo
+      const res = await fetch('/api/depo/etiket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stokKodu: secilenStok.stokKodu,
+          stokAdi: secilenStok.stokAdi,
+          miktar: miktarNum,
+          birim: secilenStok.birim,
+          lot: secilenStok.lot,
+          girisTarihi: new Date().toISOString().slice(0, 10),
+          kaynakBilgi: `Stok Tasima · ${kaynakAd} → ${hedefAd}`,
+          lokasyon: hedefAd,
+          kaynakModul: 'Depo El Terminali / Stok Tasima',
+        }),
+      })
+      if (!res.ok) {
+        showError('Etiket üretilemedi')
+        return
+      }
+      const url = URL.createObjectURL(await res.blob())
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      showError('Etiket üretilemedi')
+    } finally {
+      setEtiketYukleniyor(false)
     }
   }
 
@@ -476,6 +513,19 @@ export function StokTasimaClient() {
           </div>
 
           <div className="mt-1 flex w-full flex-col gap-2">
+            <button
+              type="button"
+              onClick={etiketYazdir}
+              disabled={etiketYukleniyor}
+              className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border bg-card text-base font-medium transition-colors active:bg-muted/70 disabled:opacity-50"
+            >
+              {etiketYukleniyor ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Printer className="h-5 w-5" />
+              )}
+              {etiketYukleniyor ? 'Hazırlanıyor…' : 'Etiket Yazdır'}
+            </button>
             <button
               type="button"
               onClick={resetAll}

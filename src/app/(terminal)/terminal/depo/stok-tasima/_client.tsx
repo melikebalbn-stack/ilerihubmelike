@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { parseEtiket } from '@/lib/depo/etiket-parse'
+import { useScanner } from '@/lib/depo/use-scanner'
 import type { DepoRafBilgisi, DepoStokKaydi } from '@/lib/ifs/depo-stok'
 import { TERMINAL_ACCENT } from '../../_shared'
 
@@ -43,8 +44,6 @@ export function StokTasimaClient() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualVal, setManualVal] = useState('')
 
-  const scanRef = useRef<HTMLInputElement>(null)
-  const [scanBuf, setScanBuf] = useState('')
   const isScanStep = step === 'KAYNAK_RAF' || step === 'MALZEME' || step === 'HEDEF_RAF'
 
   const showError = useCallback((msg: string) => {
@@ -58,14 +57,6 @@ export function StokTasimaClient() {
     const t = setTimeout(() => setErrorMsg(null), 2500)
     return () => clearTimeout(t)
   }, [errorKey, errorMsg])
-
-  useEffect(() => {
-    if (isScanStep && !manualOpen && !loading) scanRef.current?.focus()
-  }, [step, isScanStep, manualOpen, loading])
-
-  const refocus = () => {
-    if (!manualOpen) setTimeout(() => scanRef.current?.focus(), 50)
-  }
 
   // ── Raf çözümleme (API) ──────────────────────────────────────────
   const cozRafKaynak = useCallback(
@@ -141,6 +132,8 @@ export function StokTasimaClient() {
     [step, cozRafKaynak, cozRafHedef, rafStok, showError],
   )
 
+  const { inputProps } = useScanner(isScanStep && !manualOpen && !loading, handleValue)
+
   const submitManual = () => {
     handleValue(manualVal)
     setManualVal('')
@@ -182,7 +175,6 @@ export function StokTasimaClient() {
     setHedefRaf(null)
     setErrorMsg(null)
     setManualOpen(false)
-    setScanBuf('')
     setSonucYol(null)
     setTasiniyor(false)
   }
@@ -266,26 +258,7 @@ export function StokTasimaClient() {
 
   return (
     <div className="relative flex flex-1 flex-col gap-3 py-2">
-      {isScanStep && (
-        <input
-          ref={scanRef}
-          value={scanBuf}
-          onChange={(e) => setScanBuf(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              const v = scanBuf
-              setScanBuf('')
-              handleValue(v)
-            }
-          }}
-          onBlur={refocus}
-          autoFocus
-          aria-hidden
-          inputMode="none"
-          className="pointer-events-none absolute left-0 top-0 h-0 w-0 opacity-0"
-        />
-      )}
+      {isScanStep && <input {...inputProps} />}
 
       {errorMsg && (
         <div className="absolute inset-x-0 top-0 z-20 mx-2 flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-base font-semibold text-white shadow-lg">

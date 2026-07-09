@@ -18,6 +18,7 @@ interface Props {
 
 interface DepoKart {
   label: string
+  alt?: string
   Icon: LucideIcon
   href?: string
   yakinda?: boolean
@@ -25,9 +26,9 @@ interface DepoKart {
 
 const KARTLAR: DepoKart[] = [
   { label: 'Stok Taşıma', Icon: ArrowDownUp, href: '/terminal/depo/stok-tasima' },
+  { label: 'Malzeme Toplama', alt: 'İş emri okut, FIFO ile topla', Icon: ClipboardList, href: '/terminal/depo/toplama' },
   { label: 'Transfer Talebi', Icon: Send, yakinda: true },
-  { label: 'Malzeme Talebi', Icon: ClipboardList, yakinda: true },
-  { label: 'Tüketim', Icon: PackageMinus, yakinda: true },
+  { label: 'Malzeme Talebi', Icon: PackageMinus, yakinda: true },
 ]
 
 export function DepoMenuClient({ operatorName }: Props) {
@@ -50,7 +51,7 @@ export function DepoMenuClient({ operatorName }: Props) {
 
       {/* Kartlar */}
       <div className="flex flex-col gap-3">
-        {KARTLAR.map(({ label, Icon, href, yakinda }) =>
+        {KARTLAR.map(({ label, alt, Icon, href, yakinda }) =>
           yakinda ? (
             <div
               key={label}
@@ -82,11 +83,11 @@ export function DepoMenuClient({ operatorName }: Props) {
               >
                 <Icon className="h-6 w-6" />
               </span>
-              <span
-                className="flex-1 text-lg font-semibold"
-                style={{ color: TERMINAL_ACCENT }}
-              >
-                {label}
+              <span className="flex flex-1 flex-col leading-tight">
+                <span className="text-lg font-semibold" style={{ color: TERMINAL_ACCENT }}>
+                  {label}
+                </span>
+                {alt && <span className="text-xs text-muted-foreground">{alt}</span>}
               </span>
             </Link>
           ),

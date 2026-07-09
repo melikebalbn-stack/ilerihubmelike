@@ -29,7 +29,11 @@ import {
   rollbackDb,
   describeRestoreTarget,
 } from '@/lib/backup-restore-swap'
-import { pm2RestartIlerihub, healthCheck } from '@/lib/backup-restore-health'
+import {
+  pm2RestartIlerihub,
+  healthCheck,
+  resolveRestorePm2,
+} from '@/lib/backup-restore-health'
 import { backupILERIHub, generateBackupName } from '@/lib/backup-service'
 
 export async function POST(
@@ -103,6 +107,14 @@ export async function POST(
   // AUDIT: STARTED — PR-RESTORE-PARAM: "neyi hedefledi" kanıtı (hedef dizin +
   // hedef DB host/adı). Tatbikatta hangi ortama restore edildiği okunabilir.
   const restoreTarget = describeRestoreTarget()
+  // RESTORE-PARAM-2: hedef PM2 process adını da kanıt setine yaz (türetme
+  // başarısızsa sebebi görünür olsun; restore ilerideki adımda zaten reddedilir).
+  let restorePm2Name: string
+  try {
+    restorePm2Name = (await resolveRestorePm2()).name
+  } catch (err) {
+    restorePm2Name = `ÇÖZÜLEMEDİ (${(err as Error).message})`
+  }
   await logAuditEvent({
     action: dryRun ? 'BACKUP_RESTORE_DRY_RUN_STARTED' : 'BACKUP_RESTORE_STARTED',
     actorId: user.id,
@@ -116,6 +128,7 @@ export async function POST(
       restoreTargetDir: restoreTarget.targetDir,
       restoreDbHost: restoreTarget.dbHost,
       restoreDbName: restoreTarget.dbName,
+      restorePm2Name,
     },
   })
 
@@ -307,8 +320,8 @@ export async function POST(
     )
   }
 
-  // 12. Health check (max 30sn)
-  const health = await healthCheck(30)
+  // 12. Health check (max 30sn) — türetilen slot portunda (prod:3000'e çivili değil)
+  const health = await healthCheck(pm2.port ?? 3000, 30)
   if (!health.healthy) {
     if (dbSwap) await rollbackDb(dbSwap.oldDbName, liveDbName).catch(() => {})
     await rollbackFiles(filesSwap.preRestoreDir).catch(() => {})

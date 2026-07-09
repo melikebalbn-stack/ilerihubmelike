@@ -50,6 +50,13 @@ export default withAuth(
     return NextResponse.next();
   },
   {
+    // Oturumsuz kullanıcıyı NextAuth default '/api/auth/signin' yerine göreli
+    // '/login' sayfasına yönlendir (authOptions.pages ile hizalı). Böylece
+    // withAuth iç bind adresine (localhost:PORT) '/api/auth/signin' redirect'i
+    // üretmez; nginx proxy_redirect workaround'u da çift emniyet olarak durur.
+    pages: {
+      signIn: '/login',
+    },
     callbacks: {
       authorized: ({ token }) => !!token,
     },

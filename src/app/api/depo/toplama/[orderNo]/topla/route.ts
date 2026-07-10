@@ -147,12 +147,25 @@ export async function POST(
       }
     } else if (tam) {
       yol = 'TAM'
-      const rez = await reserveSatir(satir)
-      if (!rez.ok) {
-        return NextResponse.json({ ok: false, yol, error: dostaneIfsHata(rez.error ?? '', 'Rezervasyon başarısız') }, { status: 502 })
+      // Planlama rezervi varsa (QtyAssigned>0) rezervasyonu ATLA — IssueOnlyReserved
+      // doğrudan mevcut rezervden düşer. Yoksa mevcut FIFO reserve→issue yolu.
+      const atanan = durum0?.atanan ?? 0
+      if (atanan <= 0) {
+        const rez = await reserveSatir(satir)
+        if (!rez.ok) {
+          return NextResponse.json({ ok: false, yol, error: dostaneIfsHata(rez.error ?? '', 'Rezervasyon başarısız') }, { status: 502 })
+        }
       }
     } else {
       yol = 'KISMI'
+      // Rezervli kalemde kısmi toplama mevcut rezervi bozabilir → şimdilik kilitli.
+      // TODO (EL-7+): rezervli kalemde kısmi çıkış (rezervi kısmi tüketen) desteği.
+      if ((durum0?.atanan ?? 0) > 0) {
+        return NextResponse.json(
+          { ok: false, yol, error: 'Rezervli kalemde kısmi toplama yakında' },
+          { status: 409 },
+        )
+      }
       const partNo = await getSatirPartNo(satir)
       const fifo = await getFifoKirilim(partNo, miktar)
       if (!fifo.length) {

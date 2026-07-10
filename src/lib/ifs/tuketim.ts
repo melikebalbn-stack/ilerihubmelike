@@ -30,6 +30,8 @@ export interface ToplamaSatiri {
   gerekli: number
   cikilan: number
   kalan: number
+  /** Planlamada rezerve edilmiş (QtyAssigned) — >0 ise GİT rezervden gösterilir. */
+  atanan: number
   birim: string
   lotOrigin: boolean
 }
@@ -42,6 +44,8 @@ export interface FifoKaynak {
   alinacak: number
   mevcutMiktar: number
   receiptDate: string
+  /** Kaynak tipi: FIFO önerisi mi yoksa planlama rezervi mi. Varsayılan FIFO. */
+  kaynak?: 'FIFO' | 'REZERV'
 }
 
 function mainRoot(): string {
@@ -151,6 +155,7 @@ interface RawMat {
   PartNo?: string | null
   PartDescription?: string | null
   QtyRequired?: number | null
+  QtyAssigned?: number | null
   QtyIssued?: number | null
   QtyRemainToIssue?: number | null
   UnitMeas?: string | null
@@ -165,7 +170,7 @@ export async function getToplamaListesi(
   // ShopOrd anahtarı Contract İÇERMEZ.
   const key = `OrderNo='${esc(orderNo)}',ReleaseNo='${esc(releaseNo)}',SequenceNo='${esc(sequenceNo)}'`
   const { status, body } = await mainGet<{ value?: RawMat[] }>(
-    `ShopOrderHandling.svc/ShopOrds(${encodeURI(key)})/MaterialArray?$select=LineItemNo,PartNo,PartDescription,QtyRequired,QtyIssued,QtyRemainToIssue,UnitMeas,LotBatchOrigin&$top=100`,
+    `ShopOrderHandling.svc/ShopOrds(${encodeURI(key)})/MaterialArray?$select=LineItemNo,PartNo,PartDescription,QtyRequired,QtyAssigned,QtyIssued,QtyRemainToIssue,UnitMeas,LotBatchOrigin&$top=100`,
   )
   if (status !== 200 || !Array.isArray(body?.value)) return []
 
@@ -176,6 +181,7 @@ export async function getToplamaListesi(
     gerekli: num(r.QtyRequired),
     cikilan: num(r.QtyIssued),
     kalan: num(r.QtyRemainToIssue),
+    atanan: num(r.QtyAssigned),
     // TODO: UoM projeksiyonda yoksa 'ad' fallback.
     birim: str(r.UnitMeas) || 'ad',
     lotOrigin: r.LotBatchOrigin === true || String(r.LotBatchOrigin) === 'true',
@@ -240,9 +246,14 @@ async function fetchStokKaynaklari(partNo: string): Promise<FifoKaynak[]> {
       receiptDate: r.ReceiptDate ? String(r.ReceiptDate).slice(0, 10) : '',
     })
   }
-  if (!kaynaklar.length) return []
+  await lokasyonAdlariDoldur(kaynaklar)
+  return kaynaklar
+}
 
-  // Benzersiz lokasyon adlarını TEK sorguda çek.
+/** FifoKaynak[] içindeki lokasyonAdi'larını WarehouseBayBin Description'larıyla TEK sorguda doldurur. */
+async function lokasyonAdlariDoldur(kaynaklar: FifoKaynak[]): Promise<void> {
+  if (!kaynaklar.length) return
+  const { contract } = getIfsConfig()
   const uniqLoc = [...new Set(kaynaklar.map((k) => k.locationNo))]
   const locFilter =
     `Contract eq '${esc(contract)}' and (` +
@@ -255,7 +266,6 @@ async function fetchStokKaynaklari(partNo: string): Promise<FifoKaynak[]> {
     const adMap = new Map(loc.body.value.map((x) => [str(x.LocationNo), str(x.Description)]))
     kaynaklar.forEach((k) => { k.lokasyonAdi = adMap.get(k.locationNo) || k.locationNo })
   }
-  return kaynaklar
 }
 
 /** FIFO kırılımı — `ihtiyac` miktarını sırayla karşılar (kesilmiş liste, her satırda `alinacak`). */
@@ -278,6 +288,67 @@ export async function getFifoKirilim(partNo: string, ihtiyac: number): Promise<F
  */
 export async function getStokSatirlari(partNo: string): Promise<FifoKaynak[]> {
   return fetchStokKaynaklari(partNo)
+}
+
+interface RawReservedStock {
+  PartNo?: string | null
+  ConfigurationId?: string | null
+  LocationNo?: string | null
+  LotBatchNo?: string | null
+  SerialNo?: string | null
+  EngChgLevel?: string | null
+  WaivDevRejNo?: string | null
+  ActivitySeq?: number | null
+  HandlingUnitId?: number | null
+  QtyReserved?: number | null
+}
+
+/**
+ * Planlama rezervi kırılımı — GİT kutusunda rezervli konumları göstermek için.
+ * Dönüş FifoKaynak[] şekliyle uyumlu, `kaynak: 'REZERV'` işaretli.
+ *
+ * NOT (EL-7 keşfi): İş-emri-satırı bazlı kesin kırılım için `ShopMaterialAssign`
+ * gerekir; ancak bu projeksiyonda (ShopOrderHandling) EntitySet olarak da
+ * NavigationProperty olarak da AÇIK DEĞİL → nav yolu okunamıyor. Bu yüzden
+ * fallback: parça bazında `InventoryPartInStock.QtyReserved > 0`.
+ * TODO (EL-7+): ShopMaterialAssign'ı açık bir projeksiyonda bulup satır-bazlı
+ * (OrderNo/LineItemNo süzgeçli) kesin kırılıma geç — parça çoklu emirde rezervliyse
+ * bu fallback diğer emirlerin rezervlerini de gösterebilir (tek-kullanıcı test için kabul).
+ */
+export async function getRezervKirilimSatir(s: SatirAnahtar): Promise<FifoKaynak[]> {
+  const { contract } = getIfsConfig()
+  const partNo = await getSatirPartNo(s)
+  if (!partNo) return []
+  const filter = `Contract eq '${esc(contract)}' and PartNo eq '${esc(partNo)}' and QtyReserved gt 0`
+  const { status, body } = await mainGet<{ value?: RawReservedStock[] }>(
+    `InventoryPartInStockHandling.svc/InventoryPartInStockSet?$filter=${encodeURIComponent(filter)}` +
+      `&$select=PartNo,ConfigurationId,LocationNo,LotBatchNo,SerialNo,EngChgLevel,WaivDevRejNo,ActivitySeq,HandlingUnitId,QtyReserved&$top=100`,
+  )
+  if (status !== 200 || !Array.isArray(body?.value)) return []
+
+  const kaynaklar: FifoKaynak[] = []
+  for (const r of body.value) {
+    const rez = num(r.QtyReserved)
+    if (rez <= 0) continue
+    const lot = str(r.LotBatchNo)
+    kaynaklar.push({
+      kimlik: {
+        contract, partNo: str(r.PartNo), configurationId: str(r.ConfigurationId) || '*',
+        locationNo: str(r.LocationNo), lotBatchNo: str(r.LotBatchNo) || '*', serialNo: str(r.SerialNo) || '*',
+        engChgLevel: str(r.EngChgLevel) || '*', waivDevRejNo: str(r.WaivDevRejNo) || '*',
+        activitySeq: num(r.ActivitySeq), handlingUnitId: num(r.HandlingUnitId),
+      },
+      locationNo: str(r.LocationNo),
+      lokasyonAdi: str(r.LocationNo),
+      lotBatchNo: lot && lot !== '*' ? lot : undefined,
+      alinacak: rez,
+      mevcutMiktar: rez,
+      receiptDate: '',
+      kaynak: 'REZERV',
+    })
+  }
+  await lokasyonAdlariDoldur(kaynaklar)
+  return kaynaklar
 }
 
 // ── Yazma (EL-6b) — reserve → issue. EL-5e'de 147/8001 ile HTTP 204 kanıtlandı.
@@ -432,11 +503,13 @@ export async function getRezervKirilim(s: SatirAnahtar): Promise<RezervKirilim[]
   })
 }
 
-/** Satırın taze durumu (çıkış sonrası liste tazeleme için). */
-export async function getSatirDurum(s: SatirAnahtar): Promise<{ qtyIssued: number; kalan: number } | null> {
-  const r = await mainGet<{ QtyIssued?: number; QtyRemainToIssue?: number }>(
-    `${allocEntityOf(s)}?$select=QtyIssued,QtyRemainToIssue`,
+/** Satırın taze durumu (çıkış sonrası liste tazeleme + rezerv-önceliği kararı için). */
+export async function getSatirDurum(
+  s: SatirAnahtar,
+): Promise<{ qtyIssued: number; kalan: number; atanan: number } | null> {
+  const r = await mainGet<{ QtyIssued?: number; QtyRemainToIssue?: number; QtyAssigned?: number }>(
+    `${allocEntityOf(s)}?$select=QtyIssued,QtyRemainToIssue,QtyAssigned`,
   )
   if (r.status !== 200) return null
-  return { qtyIssued: num(r.body?.QtyIssued), kalan: num(r.body?.QtyRemainToIssue) }
+  return { qtyIssued: num(r.body?.QtyIssued), kalan: num(r.body?.QtyRemainToIssue), atanan: num(r.body?.QtyAssigned) }
 }

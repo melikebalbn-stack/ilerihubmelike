@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
   MapPin,
   PackageCheck,
   PackageX,
+  RotateCcw,
   Scale,
   ScanLine,
 } from 'lucide-react'
@@ -24,7 +25,9 @@ import { parseEtiket } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { FifoKaynak, IsEmriBaslik, ToplamaSatiri } from '@/lib/ifs/tuketim'
 
-type ToplamaSatirDetay = ToplamaSatiri & { fifo: FifoKaynak[]; stokYok: boolean }
+type KaynakTipi = 'FIFO' | 'REZERV'
+type ToplamaSatirDetay = ToplamaSatiri & { fifo: FifoKaynak[]; stokYok: boolean; kaynakTipi: KaynakTipi }
+type KartDurum = 'isleniyor' | 'ok' | 'hata'
 
 // Sapma sebepleri — zorunlu seçim. `key` hem ID hem log/özet metnidir.
 const SEBEPLER = [
@@ -70,6 +73,21 @@ export function MalzemeToplamaClient() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualVal, setManualVal] = useState('')
 
+  // Okut-doldur (LISTE) — sıralı yazma kuyruğu + kart durumları + geri bildirim.
+  const [kuyruk, setKuyruk] = useState<string[]>([])
+  const [isleniyor, setIsleniyor] = useState(false)
+  const [kartDurum, setKartDurum] = useState<Record<number, KartDurum>>({})
+  const [info, setInfo] = useState<string | null>(null)
+  const [infoKey, setInfoKey] = useState(0)
+  const [toast, setToast] = useState<string | null>(null)
+  const [toastKey, setToastKey] = useState(0)
+  const satirlarRef = useRef<ToplamaSatirDetay[]>([])
+  const baslikRef = useRef<IsEmriBaslik | null>(null)
+  const kuyrukRef = useRef<string[]>([])
+  const isleniyorRef = useRef(false)
+  useEffect(() => { satirlarRef.current = satirlar }, [satirlar])
+  useEffect(() => { baslikRef.current = baslik }, [baslik])
+
   const showError = useCallback((msg: string) => {
     setErrorMsg(msg)
     setErrorKey((k) => k + 1)
@@ -80,6 +98,27 @@ export function MalzemeToplamaClient() {
     const t = setTimeout(() => setErrorMsg(null), 2500)
     return () => clearTimeout(t)
   }, [errorKey, errorMsg])
+
+  const showInfo = useCallback((msg: string) => {
+    setInfo(msg)
+    setInfoKey((k) => k + 1)
+    if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(80)
+  }, [])
+  useEffect(() => {
+    if (!info) return
+    const t = setTimeout(() => setInfo(null), 2500)
+    return () => clearTimeout(t)
+  }, [infoKey, info])
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg)
+    setToastKey((k) => k + 1)
+  }, [])
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 2000)
+    return () => clearTimeout(t)
+  }, [toastKey, toast])
 
   const isEmriOkut = useCallback(
     async (ham: string) => {
@@ -95,6 +134,12 @@ export function MalzemeToplamaClient() {
         }
         setBaslik(data.baslik as IsEmriBaslik)
         setSatirlar((data.satirlar ?? []) as ToplamaSatirDetay[])
+        // Okut-doldur durumunu sıfırla.
+        setKartDurum({})
+        kuyrukRef.current = []
+        setKuyruk([])
+        isleniyorRef.current = false
+        setIsleniyor(false)
         setStep('LISTE')
       } catch {
         showError('Bağlantı hatası — tekrar deneyin')
@@ -166,17 +211,102 @@ export function MalzemeToplamaClient() {
     [sapmaListe, showError],
   )
 
+  // Okut-doldur: tek kodu işle (parse → eşleştir → tam miktar otomatik topla).
+  // satirlar/baslik ref'ten okunur (kuyruk döngüsünde taze kalsın diye).
+  const islem = useCallback(
+    async (kod: string) => {
+      const p = parseEtiket(kod)
+      if (p.tip !== 'MALZEME' || !p.stokKodu) {
+        showError(`Bu iş emrinde yok: ${kod}`)
+        return
+      }
+      const sat = satirlarRef.current
+      const acik = sat.find((s) => s.kalan > 0 && s.partNo === p.stokKodu)
+      if (!acik) {
+        const bitmis = sat.find((s) => s.kalan === 0 && s.partNo === p.stokKodu)
+        if (bitmis) showInfo(`Zaten toplandı: ${p.stokKodu}`)
+        else showError(`Bu iş emrinde yok: ${p.stokKodu}`)
+        return
+      }
+      const b = baslikRef.current
+      if (!b) return
+      setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'isleniyor' }))
+      try {
+        const res = await fetch(`/api/depo/toplama/${encodeURIComponent(b.orderNo)}/topla`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            releaseNo: b.releaseNo,
+            sequenceNo: b.sequenceNo,
+            lineItemNo: acik.lineItemNo,
+            miktar: acik.kalan,
+          }),
+        })
+        const data = await res.json().catch(() => null)
+        if (!res.ok || !data?.ok) {
+          setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'hata' }))
+          showError(data?.error ?? 'Çıkış başarısız')
+          return
+        }
+        const loc = data.kirilim?.[0]?.locationNo ?? acik.fifo[0]?.locationNo ?? '—'
+        const yeniKalan = data.satir?.kalan ?? 0
+        const yeniCikilan = data.satir?.qtyIssued ?? acik.gerekli
+        // Ref'i de senkron güncelle → döngüdeki sonraki okuma taze görsün.
+        const guncel = satirlarRef.current.map((s) =>
+          s.lineItemNo === acik.lineItemNo ? { ...s, kalan: yeniKalan, cikilan: yeniCikilan } : s,
+        )
+        satirlarRef.current = guncel
+        setSatirlar(guncel)
+        setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'ok' }))
+        showToast(`✓ ${acik.partNo} · ${acik.kalan} ${acik.birim} · ${loc}`)
+      } catch {
+        setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'hata' }))
+        showError('Bağlantı hatası — tekrar deneyin')
+      }
+    },
+    [showError, showInfo, showToast],
+  )
+
+  // Kuyruğu SIRAYLA boşalt (paralel değil — aynı emirde ETag/yarış riski).
+  const drain = useCallback(async () => {
+    if (isleniyorRef.current) return
+    isleniyorRef.current = true
+    setIsleniyor(true)
+    while (kuyrukRef.current.length > 0) {
+      const kod = kuyrukRef.current[0]
+      await islem(kod)
+      kuyrukRef.current = kuyrukRef.current.slice(1)
+      setKuyruk([...kuyrukRef.current])
+    }
+    isleniyorRef.current = false
+    setIsleniyor(false)
+  }, [islem])
+
+  const listeScanEkle = useCallback(
+    (kod: string) => {
+      const v = kod.trim()
+      if (!v) return
+      kuyrukRef.current = [...kuyrukRef.current, v]
+      setKuyruk([...kuyrukRef.current])
+      void drain()
+    },
+    [drain],
+  )
+
   const handleScan = useCallback(
     (v: string) => {
       if (step === 'IS_EMRI') return void isEmriOkut(v)
+      if (step === 'LISTE') return listeScanEkle(v)
       if (step === 'TEYIT' && sapmaAcik && !sapmaSecili) return void rafOkut(v)
       if (step === 'TEYIT') return malzemeOkut(v)
     },
-    [step, sapmaAcik, sapmaSecili, isEmriOkut, malzemeOkut, rafOkut],
+    [step, sapmaAcik, sapmaSecili, isEmriOkut, listeScanEkle, malzemeOkut, rafOkut],
   )
 
+  const tumBitti = step === 'LISTE' && satirlar.length > 0 && satirlar.every((s) => s.kalan === 0)
   const scanAktif =
     (step === 'IS_EMRI' ||
+      (step === 'LISTE' && !tumBitti) ||
       (step === 'TEYIT' && !teyitEslesti) ||
       (step === 'TEYIT' && sapmaAcik && !sapmaSecili)) &&
     !manualOpen &&
@@ -241,6 +371,9 @@ export function MalzemeToplamaClient() {
   const miktarGecerli = miktarNum > EPS && miktarNum <= kalan + EPS
   const tamMiktar = Math.abs(miktarNum - kalan) < EPS && miktarNum > 0
   const kismi = miktarGecerli && !tamMiktar
+  // Rezervli kalemde kısmi toplama şimdilik kilitli (mevcut rezervi bozmamak için).
+  const rezervli = secilen?.kaynakTipi === 'REZERV'
+  const kismiKilit = rezervli && kismi
   // Sapma: seçilen kaynağın güncel mevcudu miktarı karşılıyor mu?
   const sapmaMevcut = sapmaSecili?.mevcutMiktar ?? 0
   const sapmaMiktarAsim = !!sapmaSecili && miktarNum > sapmaMevcut + EPS
@@ -327,6 +460,18 @@ export function MalzemeToplamaClient() {
           {errorMsg}
         </div>
       )}
+      {!errorMsg && info && (
+        <div className="absolute inset-x-0 top-0 z-20 mx-2 flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-base font-semibold text-white shadow-lg">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          {info}
+        </div>
+      )}
+      {!errorMsg && !info && toast && (
+        <div className="absolute inset-x-0 top-0 z-20 mx-2 flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-base font-semibold text-white shadow-lg">
+          <Check className="h-5 w-5 shrink-0" />
+          {toast}
+        </div>
+      )}
 
       {/* Üst bar */}
       <div className="flex items-center gap-2 pt-1">
@@ -401,17 +546,85 @@ export function MalzemeToplamaClient() {
         </div>
       )}
 
-      {/* AŞAMA 2 — liste */}
-      {step === 'LISTE' && !loading && (
+      {/* AŞAMA 2 — liste (okut-doldur) */}
+      {step === 'LISTE' && !loading && !tumBitti && (
         <div className="flex flex-col gap-3">
+          {/* Sürekli okutma şeridi */}
+          <div
+            className="sticky top-0 z-10 flex items-center gap-3 rounded-2xl border p-3"
+            style={{ borderColor: TERMINAL_ACCENT, background: `${TERMINAL_ACCENT}0D` }}
+          >
+            <ScanLine className="h-6 w-6 shrink-0" style={{ color: TERMINAL_ACCENT }} />
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
+                Malzeme etiketini okut
+              </div>
+              <div className="truncate text-xs text-muted-foreground">kalem otomatik toplanır</div>
+            </div>
+            {(isleniyor || kuyruk.length > 0) && (
+              <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium" style={{ color: TERMINAL_ACCENT }}>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                işleniyor: {Math.max(kuyruk.length, isleniyor ? 1 : 0)}
+              </span>
+            )}
+          </div>
+          {manualOpen ? (
+            <div className="flex w-full gap-2">
+              <input
+                autoFocus
+                value={manualVal}
+                onChange={(e) => setManualVal(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submitManual()}
+                placeholder="Stok kodu (| lot)"
+                className="h-11 flex-1 rounded-xl border bg-background px-3 text-base outline-none focus:ring-1 focus:ring-ring"
+              />
+              <button type="button" onClick={submitManual} className="h-11 rounded-xl px-4 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
+                Ekle
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setManualOpen(true)} className="self-center text-sm text-muted-foreground underline underline-offset-2">
+              veya elle gir
+            </button>
+          )}
+
           {satirlar.length === 0 && (
             <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
               Bu iş emrinde malzeme kalemi yok
             </div>
           )}
           {satirlar.map((s) => (
-            <KalemKart key={s.lineItemNo} s={s} onSelect={() => kalemAc(s)} />
+            <KalemKart key={s.lineItemNo} s={s} durum={kartDurum[s.lineItemNo]} onSelect={() => kalemAc(s)} />
           ))}
+        </div>
+      )}
+
+      {/* Tüm kalemler toplandı — tam-ekran özet */}
+      {step === 'LISTE' && !loading && tumBitti && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <Check className="h-14 w-14" />
+          </div>
+          <div className="text-2xl font-semibold">İş emri toplandı</div>
+          <div className="text-sm text-muted-foreground">
+            İE {baslik?.orderNo} · {satirlar.length} kalem
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setStep('IS_EMRI')
+              setBaslik(null)
+              setSatirlar([])
+              setKartDurum({})
+              setErrorMsg(null)
+              setManualOpen(false)
+            }}
+            className="mt-2 flex min-h-14 items-center justify-center gap-2 rounded-2xl px-6 text-lg font-semibold text-white"
+            style={{ background: TERMINAL_ACCENT }}
+          >
+            <RotateCcw className="h-5 w-5" />
+            Yeni İş Emri
+          </button>
         </div>
       )}
 
@@ -421,7 +634,14 @@ export function MalzemeToplamaClient() {
           {/* Büyük GİT bloğu */}
           {ilkKaynak && (
             <div className="rounded-2xl border p-4" style={{ borderColor: TERMINAL_ACCENT }}>
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">GİT →</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">GİT →</span>
+                {rezervli && (
+                  <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
+                    REZERVLİ
+                  </span>
+                )}
+              </div>
               <div className="mt-1 flex items-baseline gap-2">
                 <MapPin className="h-6 w-6 self-center" style={{ color: TERMINAL_ACCENT }} />
                 <span className="text-3xl font-bold leading-none" style={{ color: TERMINAL_ACCENT }}>
@@ -496,17 +716,19 @@ export function MalzemeToplamaClient() {
               <button
                 type="button"
                 onClick={() => void gonder()}
-                disabled={!miktarGecerli || tamamlaniyor}
+                disabled={!miktarGecerli || kismiKilit || tamamlaniyor}
                 className="mt-1 flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-semibold text-white transition-all hover:bg-emerald-700 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {tamamlaniyor ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-6 w-6" />}
                 {tamamlaniyor ? 'IFS’e işleniyor…' : 'Topla ve Çık (IFS)'}
               </button>
-              {kismi && (
+              {kismiKilit ? (
+                <p className="text-center text-xs text-amber-700">Rezervli kalemde kısmi toplama yakında</p>
+              ) : kismi ? (
                 <p className="text-center text-xs text-muted-foreground">
                   Kısmi toplama: {teyitMiktar} / {kalan} {secilen.birim}
                 </p>
-              )}
+              ) : null}
 
               <div className="flex items-center justify-center pt-1">
                 <button
@@ -670,7 +892,7 @@ export function MalzemeToplamaClient() {
   )
 }
 
-function KalemKart({ s, onSelect }: { s: ToplamaSatirDetay; onSelect: () => void }) {
+function KalemKart({ s, durum, onSelect }: { s: ToplamaSatirDetay; durum?: KartDurum; onSelect: () => void }) {
   if (s.kalan === 0) {
     return (
       <div className="flex min-h-16 items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-800">
@@ -697,20 +919,43 @@ function KalemKart({ s, onSelect }: { s: ToplamaSatirDetay; onSelect: () => void
       </div>
     )
   }
+  const hata = durum === 'hata'
+  const isleniyor = durum === 'isleniyor'
   return (
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full flex-col gap-2 rounded-2xl border bg-card p-4 text-left transition-opacity active:opacity-70"
-      style={{ borderColor: TERMINAL_ACCENT }}
+      aria-busy={isleniyor}
+      className={cn(
+        'flex w-full flex-col gap-2 rounded-2xl border bg-card p-4 text-left transition-opacity active:opacity-70',
+        hata && 'border-red-400 bg-red-50',
+      )}
+      style={hata ? undefined : { borderColor: TERMINAL_ACCENT }}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 font-semibold">{s.partNo}</span>
-        <span className="shrink-0 text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
-          {s.kalan} {s.birim}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 font-semibold">{s.partNo}</span>
+          {s.kaynakTipi === 'REZERV' && (
+            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
+              REZERVLİ
+            </span>
+          )}
         </span>
+        {isleniyor ? (
+          <Loader2 className="h-5 w-5 shrink-0 animate-spin" style={{ color: TERMINAL_ACCENT }} />
+        ) : (
+          <span className="shrink-0 text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
+            {s.kalan} {s.birim}
+          </span>
+        )}
       </div>
       {s.partAdi && <div className="truncate text-xs text-muted-foreground">{s.partAdi}</div>}
+      {s.cikilan > 0 && s.kalan > 0 && (
+        <div className="text-xs font-medium text-amber-700">
+          {s.cikilan}/{s.gerekli} {s.birim} çıkıldı
+        </div>
+      )}
+      {hata && <div className="text-xs font-semibold text-red-700">Hata — dokun ve çöz</div>}
       <div className="mt-1 flex flex-col gap-2">
         {s.fifo.map((k, i) => (
           <div key={`${k.locationNo}-${k.lotBatchNo ?? '_'}-${i}`} className="rounded-xl bg-muted/50 p-3">

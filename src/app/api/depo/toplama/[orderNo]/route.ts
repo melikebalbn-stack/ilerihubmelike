@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import {
   getFifoKirilim,
   getIsEmriBaslik,
+  getRezervKirilimSatir,
   getToplamaListesi,
   normalizeIsEmriNo,
 } from '@/lib/ifs/tuketim'
@@ -35,8 +36,20 @@ export async function GET(
 
     const satirlar = await Promise.all(
       liste.map(async (s) => {
-        const fifo = s.kalan > 0 ? await getFifoKirilim(s.partNo, s.kalan) : []
-        return { ...s, fifo, stokYok: s.kalan > 0 && fifo.length === 0 }
+        if (s.kalan <= 0) return { ...s, fifo: [], stokYok: false, kaynakTipi: 'FIFO' as const }
+        // Planlama rezervi varsa (QtyAssigned>0) GİT rezerv kırılımından; yoksa FIFO.
+        if (s.atanan > 0) {
+          const rezerv = await getRezervKirilimSatir({
+            orderNo: baslik.orderNo,
+            releaseNo: baslik.releaseNo,
+            sequenceNo: baslik.sequenceNo,
+            lineItemNo: s.lineItemNo,
+          })
+          if (rezerv.length) return { ...s, fifo: rezerv, stokYok: false, kaynakTipi: 'REZERV' as const }
+          // Rezerv okunamadıysa FIFO'ya düş.
+        }
+        const fifo = await getFifoKirilim(s.partNo, s.kalan)
+        return { ...s, fifo, stokYok: fifo.length === 0, kaynakTipi: 'FIFO' as const }
       }),
     )
 

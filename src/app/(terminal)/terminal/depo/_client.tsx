@@ -25,7 +25,7 @@ interface DepoKart {
 }
 
 const KARTLAR: DepoKart[] = [
-  { label: 'Stok Taşıma', Icon: ArrowDownUp, href: '/terminal/depo/stok-tasima' },
+  { label: 'Stok Taşıma', alt: 'Raf okut, taşı, etiketle', Icon: ArrowDownUp, href: '/terminal/depo/stok-tasima' },
   { label: 'Malzeme Toplama', alt: 'İş emri okut, FIFO ile topla', Icon: ClipboardList, href: '/terminal/depo/toplama' },
   { label: 'Transfer Talebi', Icon: Send, yakinda: true },
   { label: 'Malzeme Talebi', Icon: PackageMinus, yakinda: true },

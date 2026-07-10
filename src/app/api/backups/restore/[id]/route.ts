@@ -279,20 +279,39 @@ export async function POST(
       testDbName: staging.staging?.testDbName ?? null,
       liveDbName,
       actorId: user.id,
+      // Faz 1.2 (iş-kaydı görünürlüğü): DB swap sonrası restore-job satırı canlı
+      // (restore edilen) DB'de bulunmaz; orchestrator bu alanlarla satırı jobId
+      // sabit UPSERT eder → COMPLETED canlı DB'de görünür.
+      jobRow: {
+        backupName: `restore_${backup.backupName}`,
+        backupType: BackupType.RESTORE,
+        projectName: backup.projectName,
+        filePath: backup.filePath,
+        includeDatabase: !!staging.staging?.testDbName,
+        createdBy: user.id,
+        createdByName: user.email ?? 'system',
+      },
     }),
     'utf8'
   )
 
-  // Detached spawn: detached:true (setsid → yeni oturum) + unref → app process'i
-  // ölse bile orchestrator yaşar ve commit'i tamamlar.
+  // Faz 1.2 REPARENT: orchestrator'ı `setsid --fork` ile başlat. setsid --fork
+  // fork eder ve setsid ANA process'i hemen çıkar → orchestrator init'e (ppid=1)
+  // reparent olur, app'in process-tree'sinden ÇIKAR. Böylece orchestrator kendi
+  // `pm2 delete <app>` komutunu çalıştırınca pm2'nin tree-kill'i ona ULAŞAMAZ
+  // (DRILL-5 self-death fix'i). detached+unref korunur; stdio log dosyasına.
   const logPath = path.join(jobsDir, `${job.id}.log`)
   const logFd = fs.openSync(logPath, 'a')
-  const child = spawn(tsxBin, ['scripts/restore-orchestrator.ts', paramsPath], {
-    cwd: process.cwd(),
-    env: process.env,
-    detached: true,
-    stdio: ['ignore', logFd, logFd],
-  })
+  const child = spawn(
+    'setsid',
+    ['--fork', tsxBin, 'scripts/restore-orchestrator.ts', paramsPath],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+    }
+  )
   child.unref()
 
   await logAuditEvent({

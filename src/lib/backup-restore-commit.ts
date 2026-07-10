@@ -25,9 +25,20 @@ import { buildStagingArtifact } from './backup-restore-build'
 import { backupILERIHub, generateBackupName } from './backup-service'
 import { prisma } from './prisma'
 import { logAuditEvent } from './audit-log'
-import { BackupStatus } from '@/generated/prisma'
+import { BackupStatus, BackupType } from '@/generated/prisma'
 
 const JOBS_DIR = '/tmp/ilerihub-restore-jobs'
+
+/** Faz 1.2: DB swap sonrası restore-job satırını canlı DB'ye UPSERT için gereken alanlar. */
+export interface JobRow {
+  backupName: string
+  backupType: string // BackupType ('RESTORE') — JSON'dan string gelir, upsert'te cast edilir
+  projectName: string
+  filePath: string
+  includeDatabase: boolean
+  createdBy: string
+  createdByName: string
+}
 
 export interface RestoreCommitParams {
   jobId: string
@@ -38,6 +49,8 @@ export interface RestoreCommitParams {
   testDbName: string | null
   liveDbName: string
   actorId: string
+  /** DB swap sonrası satır canlı DB'de yok → jobId sabit upsert için satır verisi. */
+  jobRow: JobRow
 }
 
 export interface RestoreCommitResult {
@@ -88,10 +101,39 @@ async function clearCheckpoint(jobId: string): Promise<void> {
   await fs.rm(checkpointPath(jobId), { force: true }).catch(() => {})
 }
 
-async function setStatus(jobId: string, status: BackupStatus, note?: string): Promise<void> {
-  await prisma.backupLog
-    .update({ where: { id: jobId }, data: { status, ...(note ? { notes: note } : {}) } })
-    .catch(() => {})
+// Faz 1.2: jobRow verilirse UPSERT — DB swap sonrası satır canlı DB'de yoksa
+// (jobId sabit) yeniden oluşturur → COMPLETED canlı DB'de görünür. Verilmezse
+// (recovery: rollbackDb sonrası satır zaten canlıda) update yeterli.
+async function setStatus(
+  jobId: string,
+  status: BackupStatus,
+  note?: string,
+  jobRow?: JobRow
+): Promise<void> {
+  if (jobRow) {
+    await prisma.backupLog
+      .upsert({
+        where: { id: jobId },
+        update: { status, ...(note ? { notes: note } : {}) },
+        create: {
+          id: jobId,
+          status,
+          notes: note ?? null,
+          backupName: jobRow.backupName,
+          backupType: jobRow.backupType as BackupType,
+          projectName: jobRow.projectName,
+          filePath: jobRow.filePath,
+          includeDatabase: jobRow.includeDatabase,
+          createdBy: jobRow.createdBy,
+          createdByName: jobRow.createdByName,
+        },
+      })
+      .catch(() => {})
+  } else {
+    await prisma.backupLog
+      .update({ where: { id: jobId }, data: { status, ...(note ? { notes: note } : {}) } })
+      .catch(() => {})
+  }
 }
 
 function pidAlive(pid: number): boolean {
@@ -169,9 +211,12 @@ export async function recoverOrphanedRestores(): Promise<
 
 /** Restore commit — detached orchestrator'dan; app ölse de bağımsız tamamlanır. */
 export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreCommitResult> {
-  const { jobId, sourceBackupId, backupName, projectName, stagingDir, testDbName, liveDbName, actorId } = p
+  const { jobId, sourceBackupId, backupName, projectName, stagingDir, testDbName, liveDbName, actorId, jobRow } = p
   const audit = (action: string, details: Record<string, unknown>) =>
     logAuditEvent({ action, actorId, targetType: 'BACKUP', targetId: sourceBackupId, details }).catch(() => {})
+  // Faz 1.2: her status yazımı jobRow ile UPSERT — DB swap sonrası satır canlı DB'de
+  // yeniden oluşur (COMPLETED görünür); swap öncesi satır varsa update branch'i çalışır.
+  const st = (status: BackupStatus, note?: string) => setStatus(jobId, status, note, jobRow)
 
   const cpBase = { jobId, sourceBackupId, liveDbName, actorId, pid: process.pid }
   const cp = (stage: CheckpointStage, preRestoreDir: string | null, oldDbName: string | null) =>
@@ -181,20 +226,20 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
   try {
     liveDir = resolveRestoreTarget()
   } catch (err) {
-    await setStatus(jobId, BackupStatus.FAILED, `Hedef dizin çözülemedi: ${(err as Error).message}`)
+    await st(BackupStatus.FAILED, `Hedef dizin çözülemedi: ${(err as Error).message}`)
     return { ok: false, stage: 'resolve_target', error: (err as Error).message }
   }
 
   // 1. Pre-restore güvenlik yedeği (canlı el değmemiş)
   await cp('PREPARING', null, null)
-  await setStatus(jobId, BackupStatus.RESTORING, 'Pre-restore güvenlik yedeği alınıyor')
+  await st(BackupStatus.RESTORING, 'Pre-restore güvenlik yedeği alınıyor')
   let preRestoreBackupName: string | null = null
   let preRestoreFilePath: string | null = null
   if (projectName === 'ILERIHub' || projectName === 'All') {
     preRestoreBackupName = generateBackupName('ilerihub_prerestore')
     const r = await backupILERIHub(preRestoreBackupName)
     if (!r.success) {
-      await setStatus(jobId, BackupStatus.FAILED, `Pre-restore backup başarısız: ${r.error}`)
+      await st(BackupStatus.FAILED, `Pre-restore backup başarısız: ${r.error}`)
       await audit('BACKUP_RESTORE_FAILED', { stage: 'pre_restore_backup', error: r.error })
       await clearCheckpoint(jobId)
       return { ok: false, stage: 'pre_restore_backup', error: r.error }
@@ -206,10 +251,10 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
   // 2. (1)(2)(3) BUILD — SWAP'tan ÖNCE, staging dizininde (warm + grup-kill timeout).
   //    Fail → HİÇBİR SWAP YOK, canlı el değmemiş.
   await cp('BUILDING', null, null)
-  await setStatus(jobId, BackupStatus.BUILDING, 'Restore edilen kod derleniyor (staging, swap öncesi)')
+  await st(BackupStatus.BUILDING, 'Restore edilen kod derleniyor (staging, swap öncesi)')
   const build = await buildStagingArtifact(stagingDir, liveDir)
   if (!build.success) {
-    await setStatus(jobId, BackupStatus.FAILED, `Build başarısız (swap yapılmadı, canlı el değmemiş): ${build.error}`)
+    await st(BackupStatus.FAILED, `Build başarısız (swap yapılmadı, canlı el değmemiş): ${build.error}`)
     await audit('BACKUP_RESTORE_FAILED', { stage: 'build', error: build.error, timedOut: build.timedOut ?? false, swapped: false })
     await clearCheckpoint(jobId)
     return { ok: false, stage: 'build', error: build.error }
@@ -218,11 +263,11 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
 
   // 3. File swap — staging (pre-built + doğrulanmış) → canlı. BURADAN İTİBAREN canlı değişiyor.
   await cp('SWAPPING_FILES', null, null)
-  await setStatus(jobId, BackupStatus.SWAPPING, 'Dosyalar değiştiriliyor (pre-built artifact)')
+  await st(BackupStatus.SWAPPING, 'Dosyalar değiştiriliyor (pre-built artifact)')
   const filesSwap = await swapFilesAtomic(stagingDir, { backupId: sourceBackupId })
   if (!filesSwap.success) {
     // swapFilesAtomic başarısızlıkta kendi içinde rollback dener; canlı korunur.
-    await setStatus(jobId, BackupStatus.FAILED, `Dosya swap başarısız: ${filesSwap.errors.join('; ')}`)
+    await st(BackupStatus.FAILED, `Dosya swap başarısız: ${filesSwap.errors.join('; ')}`)
     await audit('BACKUP_RESTORE_FAILED', { stage: 'files_swap', errors: filesSwap.errors })
     await clearCheckpoint(jobId)
     return { ok: false, stage: 'files_swap', error: filesSwap.errors.join('; '), preRestoreBackupName }
@@ -240,13 +285,13 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
 
   // 4. DB swap
   await cp('SWAPPING_DB', filesSwap.preRestoreDir, null)
-  await setStatus(jobId, BackupStatus.SWAPPING, 'Veritabanı değiştiriliyor')
+  await st(BackupStatus.SWAPPING, 'Veritabanı değiştiriliyor')
   let oldDbName: string | null = null
   if (testDbName) {
     const dbSwap = await swapDbAtomic(testDbName, liveDbName)
     if (!dbSwap.success) {
       const rb = await rollback('db_swap_failed', null)
-      await setStatus(jobId, rb ? BackupStatus.ROLLED_BACK : BackupStatus.FAILED, `DB swap başarısız: ${dbSwap.errors.join('; ')}`)
+      await st(rb ? BackupStatus.ROLLED_BACK : BackupStatus.FAILED, `DB swap başarısız: ${dbSwap.errors.join('; ')}`)
       await clearCheckpoint(jobId)
       return { ok: false, stage: 'db_swap', error: dbSwap.errors.join('; '), rolledBack: rb, preRestoreBackupName }
     }
@@ -256,11 +301,11 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
   await audit('BACKUP_RESTORE_SWAPPED', { preRestoreDir: filesSwap.preRestoreDir, oldDbName, buildId: build.buildId })
 
   // 5. PM2 delete+start
-  await setStatus(jobId, BackupStatus.SWAPPING, 'Uygulama yeniden başlatılıyor')
+  await st(BackupStatus.SWAPPING, 'Uygulama yeniden başlatılıyor')
   const pm2 = await pm2DeleteStart()
   if (!pm2.success) {
     const rb = await rollback('pm2_restart_failed', oldDbName)
-    await setStatus(jobId, rb ? BackupStatus.ROLLED_BACK : BackupStatus.FAILED, `PM2 restart başarısız: ${pm2.error}`)
+    await st(rb ? BackupStatus.ROLLED_BACK : BackupStatus.FAILED, `PM2 restart başarısız: ${pm2.error}`)
     await clearCheckpoint(jobId)
     return { ok: false, stage: 'pm2_restart', error: pm2.error, rolledBack: rb, preRestoreBackupName }
   }
@@ -269,14 +314,14 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
   const health = await healthCheck(pm2.port ?? 3000, 30)
   if (!health.healthy) {
     const rb = await rollback('health_check_failed', oldDbName)
-    await setStatus(jobId, rb ? BackupStatus.ROLLED_BACK : BackupStatus.FAILED, `Health check başarısız (${health.attempts} deneme)`)
+    await st(rb ? BackupStatus.ROLLED_BACK : BackupStatus.FAILED, `Health check başarısız (${health.attempts} deneme)`)
     await clearCheckpoint(jobId)
     return { ok: false, stage: 'health_check', rolledBack: rb, preRestoreBackupName }
   }
 
   // 7. COMPLETED
   await cp('DONE', filesSwap.preRestoreDir, oldDbName)
-  await setStatus(jobId, BackupStatus.COMPLETED, `Restore tamam (build ${build.buildId}, ${health.attempts} health denemesi)`)
+  await st(BackupStatus.COMPLETED, `Restore tamam (build ${build.buildId}, ${health.attempts} health denemesi)`)
   await audit('BACKUP_RESTORE_COMPLETED', {
     backupName,
     preRestoreBackupName,

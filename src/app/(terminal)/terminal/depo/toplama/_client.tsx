@@ -6,12 +6,16 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Ban,
   Check,
   ClipboardList,
   Delete,
+  HelpCircle,
   Loader2,
   MapPin,
   PackageCheck,
+  PackageX,
+  Scale,
   ScanLine,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -22,10 +26,21 @@ import type { FifoKaynak, IsEmriBaslik, ToplamaSatiri } from '@/lib/ifs/tuketim'
 
 type ToplamaSatirDetay = ToplamaSatiri & { fifo: FifoKaynak[]; stokYok: boolean }
 
+// Sapma sebepleri — zorunlu seçim. `key` hem ID hem log/özet metnidir.
+const SEBEPLER = [
+  { key: 'Kutu hasarlı', Icon: PackageX },
+  { key: 'Rafa erişilemiyor', Icon: Ban },
+  { key: 'Kutuda miktar yetersiz', Icon: Scale },
+  { key: 'Diğer', Icon: HelpCircle },
+] as const
+
+const EPS = 1e-9
+
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-')
   return y && m && d ? `${d}.${m}.${y}` : iso
 }
+const normLoc = (x: string) => x.trim().toLocaleLowerCase('tr')
 
 export function MalzemeToplamaClient() {
   const router = useRouter()
@@ -39,7 +54,16 @@ export function MalzemeToplamaClient() {
   const [teyitEslesti, setTeyitEslesti] = useState(false)
   const [teyitMiktar, setTeyitMiktar] = useState('')
   const [tamamlaniyor, setTamamlaniyor] = useState(false)
-  const [ozet, setOzet] = useState<{ miktar: string; birim: string; loc: string } | null>(null)
+  const [ozet, setOzet] = useState<
+    { miktar: string; birim: string; loc: string; sapma?: { lokasyon: string; sebep: string } } | null
+  >(null)
+
+  // SAPMA (FIFO dışı) alt-aşaması
+  const [sapmaAcik, setSapmaAcik] = useState(false)
+  const [sapmaListe, setSapmaListe] = useState<FifoKaynak[]>([])
+  const [sapmaLoading, setSapmaLoading] = useState(false)
+  const [sapmaSecili, setSapmaSecili] = useState<FifoKaynak | null>(null)
+  const [sapmaSebep, setSapmaSebep] = useState<string | null>(null)
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [errorKey, setErrorKey] = useState(0)
@@ -95,15 +119,70 @@ export function MalzemeToplamaClient() {
     [secilen, showError],
   )
 
+  // Sapma alternatif listesini getir.
+  const sapmaAc = useCallback(async () => {
+    if (!secilen) return
+    setSapmaAcik(true)
+    setSapmaSecili(null)
+    setSapmaSebep(null)
+    setSapmaLoading(true)
+    try {
+      const res = await fetch(`/api/depo/parca/${encodeURIComponent(secilen.partNo)}/stok`)
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.ok) {
+        setSapmaListe((data.satirlar ?? []) as FifoKaynak[])
+      } else {
+        showError(data?.error ?? 'Stok listesi alınamadı')
+        setSapmaListe([])
+      }
+    } catch {
+      showError('Bağlantı hatası — tekrar deneyin')
+      setSapmaListe([])
+    } finally {
+      setSapmaLoading(false)
+    }
+  }, [secilen, showError])
+
+  // Sapma: raf etiketi okut → getRafBilgisi ile çöz, listede eşleşen satırı seç.
+  const rafOkut = useCallback(
+    async (ham: string) => {
+      const v = ham.trim()
+      if (!v) return
+      const bul = (loc: string) =>
+        sapmaListe.find((k) => normLoc(k.locationNo) === normLoc(loc) || normLoc(k.lokasyonAdi) === normLoc(loc))
+      let hit = bul(v)
+      if (!hit) {
+        try {
+          const res = await fetch(`/api/depo/raf/${encodeURIComponent(v)}`)
+          const data = await res.json().catch(() => null)
+          if (res.ok && data?.ok && data.raf) hit = bul(data.raf.locationNo) ?? bul(data.raf.aciklama)
+        } catch {
+          /* çözülemedi → aşağıda hata */
+        }
+      }
+      if (hit) setSapmaSecili(hit)
+      else showError('Bu rafta bu malzeme yok')
+    },
+    [sapmaListe, showError],
+  )
+
   const handleScan = useCallback(
     (v: string) => {
       if (step === 'IS_EMRI') return void isEmriOkut(v)
+      if (step === 'TEYIT' && sapmaAcik && !sapmaSecili) return void rafOkut(v)
       if (step === 'TEYIT') return malzemeOkut(v)
     },
-    [step, isEmriOkut, malzemeOkut],
+    [step, sapmaAcik, sapmaSecili, isEmriOkut, malzemeOkut, rafOkut],
   )
 
-  const scanAktif = (step === 'IS_EMRI' || (step === 'TEYIT' && !teyitEslesti)) && !manualOpen && !loading && !tamamlaniyor && !ozet
+  const scanAktif =
+    (step === 'IS_EMRI' ||
+      (step === 'TEYIT' && !teyitEslesti) ||
+      (step === 'TEYIT' && sapmaAcik && !sapmaSecili)) &&
+    !manualOpen &&
+    !loading &&
+    !tamamlaniyor &&
+    !ozet
   const { inputProps } = useScanner(scanAktif, handleScan)
 
   // Elle giriş — aktif adıma göre (IS_EMRI → iş emri, TEYIT → malzeme) aynı yoldan.
@@ -120,7 +199,16 @@ export function MalzemeToplamaClient() {
     setTeyitMiktar(String(s.kalan).replace('.', ','))
     setManualOpen(false)
     setManualVal('')
+    setSapmaAcik(false)
+    setSapmaSecili(null)
+    setSapmaSebep(null)
     setStep('TEYIT')
+  }
+  const sapmaKapat = () => {
+    setSapmaAcik(false)
+    setSapmaSecili(null)
+    setSapmaSebep(null)
+    setErrorMsg(null)
   }
   const teyitKapat = () => {
     setStep('LISTE')
@@ -129,8 +217,12 @@ export function MalzemeToplamaClient() {
     setTeyitMiktar('')
     setErrorMsg(null)
     setManualOpen(false)
+    setSapmaAcik(false)
+    setSapmaSecili(null)
+    setSapmaSebep(null)
   }
   const geri = () => {
+    if (step === 'TEYIT' && sapmaAcik) return sapmaKapat()
     if (step === 'TEYIT') return teyitKapat()
     if (step === 'LISTE') {
       setStep('IS_EMRI')
@@ -146,8 +238,9 @@ export function MalzemeToplamaClient() {
   // Miktar tuş takımı (ondalık)
   const miktarNum = Number((teyitMiktar || '0').replace(',', '.'))
   const kalan = secilen?.kalan ?? 0
-  const tamMiktar = Math.abs(miktarNum - kalan) < 1e-9 && miktarNum > 0
-  const kismi = miktarNum > 0 && !tamMiktar
+  const miktarGecerli = miktarNum > EPS && miktarNum <= kalan + EPS
+  const tamMiktar = Math.abs(miktarNum - kalan) < EPS && miktarNum > 0
+  const kismi = miktarGecerli && !tamMiktar
   const pressKey = (k: string) => {
     if (k === '⌫') return setTeyitMiktar((m) => m.slice(0, -1))
     if (k === ',') return setTeyitMiktar((m) => (m.includes(',') ? m : (m || '0') + ','))
@@ -157,8 +250,9 @@ export function MalzemeToplamaClient() {
     })
   }
 
-  const tuketimTopla = async () => {
-    if (tamamlaniyor || !secilen || !baslik || !teyitEslesti || !tamMiktar) return
+  // Ortak gönderim — TAM/KISMI (sapma yok) veya SAPMA (kimlik+sebep).
+  const gonder = async (sapmaOpt?: { stokKimlik: FifoKaynak['kimlik']; sebep: string }) => {
+    if (tamamlaniyor || !secilen || !baslik || !teyitEslesti || !miktarGecerli) return
     setTamamlaniyor(true)
     try {
       const res = await fetch(`/api/depo/toplama/${encodeURIComponent(baslik.orderNo)}/topla`, {
@@ -168,6 +262,8 @@ export function MalzemeToplamaClient() {
           releaseNo: baslik.releaseNo,
           sequenceNo: baslik.sequenceNo,
           lineItemNo: secilen.lineItemNo,
+          miktar: miktarNum,
+          ...(sapmaOpt ? { sapma: sapmaOpt } : {}),
         }),
       })
       const data = await res.json().catch(() => null)
@@ -175,13 +271,27 @@ export function MalzemeToplamaClient() {
         showError(data?.error ?? 'Çıkış başarısız')
         return
       }
-      const loc = data.kirilim?.[0]?.locationNo ?? secilen.fifo[0]?.locationNo ?? '—'
-      setOzet({ miktar: teyitMiktar, birim: secilen.birim, loc })
+      const loc = sapmaOpt
+        ? sapmaSecili?.lokasyonAdi ?? sapmaSecili?.locationNo ?? '—'
+        : data.kirilim?.[0]?.locationNo ?? secilen.fifo[0]?.locationNo ?? '—'
+      setOzet({
+        miktar: teyitMiktar,
+        birim: secilen.birim,
+        loc,
+        sapma: sapmaOpt
+          ? { lokasyon: sapmaSecili?.lokasyonAdi ?? sapmaSecili?.locationNo ?? '—', sebep: sapmaOpt.sebep }
+          : undefined,
+      })
     } catch {
       showError('Bağlantı hatası — tekrar deneyin')
     } finally {
       setTamamlaniyor(false)
     }
+  }
+
+  const sapmaGonder = () => {
+    if (!sapmaSecili || !sapmaSebep) return
+    void gonder({ stokKimlik: sapmaSecili.kimlik, sebep: sapmaSebep })
   }
 
   // Özet ekranı → 1.6sn sonra listeyi tazele.
@@ -192,6 +302,9 @@ export function MalzemeToplamaClient() {
       setSecilen(null)
       setTeyitEslesti(false)
       setTeyitMiktar('')
+      setSapmaAcik(false)
+      setSapmaSecili(null)
+      setSapmaSebep(null)
       isEmriOkut(baslik.orderNo)
     }, 1600)
     return () => clearTimeout(t)
@@ -199,6 +312,7 @@ export function MalzemeToplamaClient() {
 
   const tamamlanan = satirlar.filter((s) => s.kalan === 0).length
   const ilkKaynak = secilen?.fifo[0]
+  const kalemIndex = secilen ? satirlar.findIndex((s) => s.lineItemNo === secilen.lineItemNo) : -1
 
   return (
     <div className="relative flex flex-1 flex-col gap-3 py-2">
@@ -238,7 +352,7 @@ export function MalzemeToplamaClient() {
               {secilen.partNo} · {secilen.kalan} {secilen.birim}
             </h1>
             <span className="truncate text-xs text-muted-foreground">
-              GİT → {ilkKaynak?.lokasyonAdi ?? '—'}
+              İE {baslik?.orderNo} · kalem {kalemIndex + 1}/{satirlar.length}
             </span>
           </div>
         )}
@@ -298,8 +412,8 @@ export function MalzemeToplamaClient() {
         </div>
       )}
 
-      {/* AŞAMA 3 — TEYIT */}
-      {step === 'TEYIT' && secilen && !ozet && (
+      {/* AŞAMA 3 — TEYIT (normal) */}
+      {step === 'TEYIT' && secilen && !ozet && !sapmaAcik && (
         <div className="flex flex-1 flex-col gap-3">
           {/* Büyük GİT bloğu */}
           {ilkKaynak && (
@@ -367,11 +481,6 @@ export function MalzemeToplamaClient() {
                 {teyitMiktar || '0'}
                 <span className="ml-2 text-2xl text-muted-foreground">{secilen.birim}</span>
               </div>
-              {kismi && (
-                <p className="text-center text-xs text-amber-700">
-                  Kısmi çıkış EL-6c&apos;de — şimdilik tam miktar ({kalan} {secilen.birim})
-                </p>
-              )}
 
               <div className="grid grid-cols-3 gap-2">
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫'].map((k) => (
@@ -383,22 +492,145 @@ export function MalzemeToplamaClient() {
 
               <button
                 type="button"
-                onClick={tuketimTopla}
-                disabled={!tamMiktar || tamamlaniyor}
+                onClick={() => void gonder()}
+                disabled={!miktarGecerli || tamamlaniyor}
                 className="mt-1 flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-semibold text-white transition-all hover:bg-emerald-700 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {tamamlaniyor ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-6 w-6" />}
                 {tamamlaniyor ? 'IFS’e işleniyor…' : 'Topla ve Çık (IFS)'}
               </button>
+              {kismi && (
+                <p className="text-center text-xs text-muted-foreground">
+                  Kısmi toplama: {teyitMiktar} / {kalan} {secilen.birim}
+                </p>
+              )}
 
-              <div className="flex items-center justify-center gap-2 pt-1">
-                <button type="button" disabled aria-disabled className="cursor-not-allowed text-sm text-muted-foreground underline underline-offset-2 opacity-50">
+              <div className="flex items-center justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={sapmaAc}
+                  className="text-sm underline underline-offset-2"
+                  style={{ color: TERMINAL_ACCENT }}
+                >
                   Farklı yerden alacağım
                 </button>
-                <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">Yakında (EL-6c)</span>
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* AŞAMA 3b — SAPMA (FIFO dışı) */}
+      {step === 'TEYIT' && secilen && !ozet && sapmaAcik && (
+        <div className="flex flex-1 flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-base font-semibold">Farklı yerden al</div>
+              <div className="text-xs text-muted-foreground">
+                {secilen.partNo} · {teyitMiktar || '0'} {secilen.birim}
+              </div>
+            </div>
+          </div>
+
+          {/* a) Alternatif raf listesi */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <ScanLine className="h-4 w-4" /> Rafı seç veya raf etiketini okut
+            </div>
+            {sapmaLoading ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" /> Stok listesi alınıyor…
+              </div>
+            ) : sapmaListe.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                Bu parça için taşınabilir stok bulunamadı
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {sapmaListe.map((k, i) => {
+                  const secili =
+                    !!sapmaSecili &&
+                    sapmaSecili.locationNo === k.locationNo &&
+                    (sapmaSecili.lotBatchNo ?? '') === (k.lotBatchNo ?? '')
+                  return (
+                    <button
+                      key={`${k.locationNo}-${k.lotBatchNo ?? '_'}-${i}`}
+                      type="button"
+                      onClick={() => setSapmaSecili(k)}
+                      className={cn(
+                        'flex flex-col gap-1 rounded-2xl border p-3 text-left transition-all active:opacity-70',
+                        secili ? 'bg-[#1B4F72]/5 ring-2 ring-[#1B4F72]' : 'bg-card',
+                      )}
+                      style={{ borderColor: TERMINAL_ACCENT }}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="flex items-baseline gap-1">
+                          <MapPin className="h-5 w-5 self-center" style={{ color: TERMINAL_ACCENT }} />
+                          <span className="text-xl font-bold" style={{ color: TERMINAL_ACCENT }}>{k.lokasyonAdi}</span>
+                          <span className="text-xs text-muted-foreground">({k.locationNo})</span>
+                        </span>
+                        {i === 0 && (
+                          <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                            FIFO önerisi
+                          </span>
+                        )}
+                        {secili && <Check className="h-5 w-5 shrink-0" style={{ color: TERMINAL_ACCENT }} />}
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">{k.mevcutMiktar} {secilen.birim}</span>
+                        {k.lotBatchNo && <span> · lot {k.lotBatchNo}</span>}
+                        {k.receiptDate && <span> · giriş {fmtDate(k.receiptDate)}</span>}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* b) Zorunlu sebep */}
+          <div className="flex flex-col gap-1">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sebep (zorunlu)</div>
+            <div className="grid grid-cols-2 gap-2">
+              {SEBEPLER.map(({ key, Icon }) => {
+                const secili = sapmaSebep === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSapmaSebep(key)}
+                    className={cn(
+                      'flex min-h-14 items-center gap-2 rounded-xl border bg-card px-3 py-2 text-left text-sm font-medium transition-colors active:bg-muted',
+                      secili ? 'border-transparent text-white' : '',
+                    )}
+                    style={secili ? { background: TERMINAL_ACCENT } : undefined}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" />
+                    {key}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* c) Onay */}
+          <button
+            type="button"
+            onClick={sapmaGonder}
+            disabled={!sapmaSecili || !sapmaSebep || !miktarGecerli || tamamlaniyor}
+            className="mt-1 flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-semibold text-white transition-all hover:bg-emerald-700 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {tamamlaniyor ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-6 w-6" />}
+            {tamamlaniyor ? 'IFS’e işleniyor…' : 'Buradan Topla ve Çık'}
+          </button>
+          {kismi && (
+            <p className="text-center text-xs text-muted-foreground">
+              Kısmi toplama: {teyitMiktar} / {kalan} {secilen.birim}
+            </p>
+          )}
+          <button type="button" onClick={sapmaKapat} className="text-center text-sm text-muted-foreground underline underline-offset-2">
+            Vazgeç — FIFO önerisine dön
+          </button>
         </div>
       )}
 
@@ -412,6 +644,11 @@ export function MalzemeToplamaClient() {
             {ozet.miktar} {ozet.birim} çıkıldı
           </div>
           <div className="text-sm text-muted-foreground">Lokasyon: {ozet.loc}</div>
+          {ozet.sapma && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-800">
+              FIFO dışı: {ozet.sapma.lokasyon} · sebep: {ozet.sapma.sebep}
+            </div>
+          )}
         </div>
       )}
     </div>

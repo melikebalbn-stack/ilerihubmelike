@@ -79,12 +79,17 @@ async function etagOf(pathAndQuery: string): Promise<string | null> {
   return (j && (j as Record<string, unknown>)['@odata.etag']) as string | null
 }
 
-async function mainPost(pathAndQuery: string, body: unknown, ifMatch?: string): Promise<{ status: number; text: string }> {
+async function mainPost(
+  pathAndQuery: string,
+  body: unknown,
+  ifMatch?: string,
+  contentType = 'application/json',
+): Promise<{ status: number; text: string }> {
   const token = await getIfsAccessToken()
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
+    'Content-Type': contentType,
+    Accept: contentType,
     Prefer: 'wait=99999',
   }
   if (ifMatch) headers['If-Match'] = ifMatch
@@ -201,7 +206,12 @@ interface RawStock {
   ReceiptDate?: string | null
 }
 
-export async function getFifoKirilim(partNo: string, ihtiyac: number): Promise<FifoKaynak[]> {
+/**
+ * Ortak: PartNo için FIFO sıralı (ReceiptDate,LocationNo artan) TÜM taşınabilir stok
+ * satırları, lokasyon adları doldurulmuş. Kesme YOK — `alinacak` = tüm mevcut miktar.
+ * getFifoKirilim (ihtiyaca kadar keser) ve getStokSatirlari (alternatif liste) bunu paylaşır.
+ */
+async function fetchStokKaynaklari(partNo: string): Promise<FifoKaynak[]> {
   const { contract } = getIfsConfig()
   const filter = `Contract eq '${esc(contract)}' and PartNo eq '${esc(partNo)}' and AvailableQtyToMove gt 0`
   const { status, body } = await mainGet<{ value?: RawStock[] }>(
@@ -210,15 +220,10 @@ export async function getFifoKirilim(partNo: string, ihtiyac: number): Promise<F
   )
   if (status !== 200 || !Array.isArray(body?.value)) return []
 
-  // İhtiyacı sırayla (FIFO) karşıla.
   const kaynaklar: FifoKaynak[] = []
-  let kalan = ihtiyac
   for (const r of body.value) {
-    if (kalan <= 0) break
     const mevcut = num(r.AvailableQtyToMove)
     if (mevcut <= 0) continue
-    const alinacak = Math.min(kalan, mevcut)
-    kalan -= alinacak
     const lot = str(r.LotBatchNo)
     kaynaklar.push({
       kimlik: {
@@ -230,7 +235,7 @@ export async function getFifoKirilim(partNo: string, ihtiyac: number): Promise<F
       locationNo: str(r.LocationNo),
       lokasyonAdi: str(r.LocationNo), // aşağıda WarehouseBayBin ile doldurulur
       lotBatchNo: lot && lot !== '*' ? lot : undefined,
-      alinacak,
+      alinacak: mevcut,
       mevcutMiktar: mevcut,
       receiptDate: r.ReceiptDate ? String(r.ReceiptDate).slice(0, 10) : '',
     })
@@ -251,6 +256,28 @@ export async function getFifoKirilim(partNo: string, ihtiyac: number): Promise<F
     kaynaklar.forEach((k) => { k.lokasyonAdi = adMap.get(k.locationNo) || k.locationNo })
   }
   return kaynaklar
+}
+
+/** FIFO kırılımı — `ihtiyac` miktarını sırayla karşılar (kesilmiş liste, her satırda `alinacak`). */
+export async function getFifoKirilim(partNo: string, ihtiyac: number): Promise<FifoKaynak[]> {
+  const tumu = await fetchStokKaynaklari(partNo)
+  const kaynaklar: FifoKaynak[] = []
+  let kalan = ihtiyac
+  for (const k of tumu) {
+    if (kalan <= 0) break
+    const alinacak = Math.min(kalan, k.mevcutMiktar)
+    kalan -= alinacak
+    kaynaklar.push({ ...k, alinacak })
+  }
+  return kaynaklar
+}
+
+/**
+ * PartNo için FIFO sıralı TÜM stok satırları (kesme yok) — sapma yolu alternatif liste.
+ * getFifoKirilim'in ihtiyaca-kadar-kesmeyen hali; ilk satır FIFO önerisi.
+ */
+export async function getStokSatirlari(partNo: string): Promise<FifoKaynak[]> {
+  return fetchStokKaynaklari(partNo)
 }
 
 // ── Yazma (EL-6b) — reserve → issue. EL-5e'de 147/8001 ile HTTP 204 kanıtlandı.
@@ -296,6 +323,89 @@ export async function issueSatir(s: SatirAnahtar): Promise<{ ok: boolean; error?
     return { ok: false, error: `Çıkış HTTP ${res.status}: ${res.text.slice(0, 300)}` }
   }
   return { ok: true }
+}
+
+// ── Manuel/sapma rezervasyon (EL-6c). Aurena deseni EL-6c-test v2'de HTTP 204 kanıtlandı.
+const MRS_SVC = 'ManualReservationShopOrderHandling.svc'
+const MODIFY_ACTION = 'IfsApp.ManualReservationShopOrderHandling.ShopMaterialAllocSingleUtil_DataRecordExecuteModifySingle'
+const IEEE_JSON = 'application/json;IEEE754Compatible=true'
+
+/**
+ * ShopMaterialAllocSingleUtilArray içinde verilen stok kimliğine (LocationNo + lot)
+ * karşılık gelen üyeyi bulur → { relPath, etag }.
+ *
+ * PROTOKOL NOTU (EL-6c-test v2): üyenin @odata.id / @odata.etag alanları YALNIZCA
+ * `Accept: application/json;odata.metadata=full` ile döner. Varsayılan (minimal)
+ * metadata bu alanları vermez → taze ETag alınamaz → bound ModifySingle 428 olur.
+ */
+async function getSingleUtilUye(
+  s: SatirAnahtar,
+  k: StokKimlik,
+): Promise<{ relPath: string; etag: string } | null> {
+  const token = await getIfsAccessToken()
+  const url = `${mainRoot()}${MRS_SVC}/ShopMaterialAllocSet(${encodeURI(allocKeyOf(s))})/ShopMaterialAllocSingleUtilArray?$top=100`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata.metadata=full' },
+    cache: 'no-store',
+  })
+  if (res.status !== 200) return null
+  const j = (await res.json().catch(() => null)) as { value?: Record<string, unknown>[] } | null
+  const rows = j?.value ?? []
+  const lot = k.lotBatchNo || '*'
+  const uye =
+    rows.find((r) => str(r.LocationNo) === k.locationNo && (str(r.LotBatchNo) || '*') === lot) ??
+    rows.find((r) => str(r.LocationNo) === k.locationNo)
+  if (!uye) return null
+  const id = str(uye['@odata.id'])
+  const etag = str(uye['@odata.etag'])
+  if (!id || !etag) return null
+  return { relPath: id.replace(mainRoot(), ''), etag }
+}
+
+/**
+ * Manuel/sapma rezervasyonu — belirli stok satırına (kimlik) `qtyReserved` kadar rezerve.
+ * Bound ModifySingle action'ı (EL-6c-test v2, HTTP 204 kanıtlı):
+ *  1) SingleUtil üyesini full-metadata ile GET → taze ETag (getSingleUtilUye).
+ *  2) POST <üye>/…ShopMaterialAllocSingleUtil_DataRecordExecuteModifySingle,
+ *     If-Match=ETag, Content-Type=application/json;IEEE754Compatible=true.
+ *  3) Gövde: Parent* = iş emri satır ref, QtyReserved=String(qty), Input*=null.
+ *
+ * `qtyReserved=0` → UNRESERVE (aynı action): hem stok rezervini hem QtyAssigned'ı
+ * sıfırlar — telafi/geri-alma bu yolla yapılır (EL-6c-test v2'de doğrulandı).
+ */
+export async function modifyManuelRezerv(
+  s: SatirAnahtar,
+  k: StokKimlik,
+  qtyReserved: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const uye = await getSingleUtilUye(s, k)
+  if (!uye) {
+    return { ok: false, error: `Rezerv üyesi bulunamadı (Loc ${k.locationNo}) veya ETag alınamadı` }
+  }
+  const body = {
+    ParentOrderNo: s.orderNo,
+    ParentReleaseNo: s.releaseNo,
+    ParentSequenceNo: s.sequenceNo,
+    ParentLineItemNo: String(s.lineItemNo),
+    QtyReserved: String(qtyReserved),
+    InputQty: null,
+    InputUnitMeas: null,
+    InputConvFactor: null,
+    InputVariableValues: null,
+    BlockedForPickByChoice: false,
+  }
+  const res = await mainPost(`${uye.relPath}/${MODIFY_ACTION}`, body, uye.etag, IEEE_JSON)
+  if (res.status < 200 || res.status >= 300) {
+    return { ok: false, error: `Manuel rezerv HTTP ${res.status}: ${res.text.slice(0, 300)}` }
+  }
+  return { ok: true }
+}
+
+/** Satırın PartNo'su (kısmi yolda FIFO ilk kaynağı bulmak için). */
+export async function getSatirPartNo(s: SatirAnahtar): Promise<string> {
+  const r = await mainGet<{ PartNo?: string }>(`${allocEntityOf(s)}?$select=PartNo`)
+  return r.status === 200 ? str(r.body?.PartNo) : ''
 }
 
 /**

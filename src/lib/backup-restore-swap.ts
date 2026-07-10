@@ -97,12 +97,22 @@ export interface SwapResult {
  * değiştirmediği için pm2 restart sonrasına kadar process eski cwd'de
  * çalışmaya devam eder. Endpoint akışı: swap → pm2 restart → health check.
  */
+/**
+ * RESTORE-ORCHESTRATOR Faz 1.3: pre-restore dizininin DETERMINISTIK yolu —
+ * yalnız backupId'den türetilir (swap'tan bağımsız). Checkpoint bu yolu swap'tan
+ * ÖNCE yazabilsin ki mid-swap kill'de "adressiz pencere" kalmasın; recovery de
+ * checkpoint'te yoksa buradan türetsin. swapFilesAtomic ile TEK doğruluk kaynağı.
+ */
+export function resolvePreRestoreDir(backupId: string): string {
+  const safeId = backupId.replace(/[^a-z0-9_-]/gi, '_')
+  return path.join(PRE_RESTORE_BASE, safeId)
+}
+
 export async function swapFilesAtomic(
   stagingDir: string,
   options: { backupId: string }
 ): Promise<SwapResult> {
-  const safeId = options.backupId.replace(/[^a-z0-9_-]/gi, '_')
-  const preRestoreDir = path.join(PRE_RESTORE_BASE, safeId)
+  const preRestoreDir = resolvePreRestoreDir(options.backupId)
 
   // Hedef dizini türet — güvenlik kontrolünden geçemezse restore REDDET.
   let ILERIHUB_LIVE: string

@@ -19,7 +19,9 @@ import {
   rollbackFiles,
   rollbackDb,
   resolveRestoreTarget,
+  resolvePreRestoreDir,
 } from './backup-restore-swap'
+import { existsSync } from 'fs'
 import { pm2DeleteStart, healthCheck } from './backup-restore-health'
 import { buildStagingArtifact } from './backup-restore-build'
 import { backupILERIHub, generateBackupName } from './backup-service'
@@ -146,6 +148,17 @@ function pidAlive(pid: number): boolean {
 }
 
 /**
+ * Faz 1.3: rollback sonrası canlı dizin BÜTÜNLÜĞÜ — kritik varlıklar mevcut mu.
+ * Recovery yalnız bunlar tamsa ROLLED_BACK der; yoksa FAILED + manuel müdahale.
+ * (package.json = kod kökü, .git = pristine repo, .next/BUILD_ID = çalışır build.)
+ */
+function verifyLiveIntegrity(liveDir: string): { ok: boolean; missing: string[] } {
+  const required = ['package.json', '.git', '.next/BUILD_ID']
+  const missing = required.filter((r) => !existsSync(path.join(liveDir, r)))
+  return { ok: missing.length === 0, missing }
+}
+
+/**
  * (4) SELF-DEATH RECOVERY — orchestrator başlangıcında (ve istenirse app-boot'ta)
  * çağrılır. Yarım-kalmış (pid ölü, DONE değil) restore checkpoint'lerini GÜVENLİ
  * tarafa çözer:
@@ -196,15 +209,35 @@ export async function recoverOrphanedRestores(): Promise<
     }
 
     // SWAPPING_FILES / SWAPPING_DB / RESTARTING → ROLLBACK-FIRST
-    let rolledBack = true
-    if (cp.oldDbName) await rollbackDb(cp.oldDbName, cp.liveDbName).catch(() => { rolledBack = false })
-    if (cp.preRestoreDir) await rollbackFiles(cp.preRestoreDir).catch(() => { rolledBack = false })
+    // Faz 1.3: preRestoreDir checkpoint'te yoksa sourceBackupId'den TÜRET — mid-swap
+    // kill'de post-swap checkpoint yazılmamış olabilir; "adressiz" kalmasın.
+    const preRestoreDir = cp.preRestoreDir ?? resolvePreRestoreDir(cp.sourceBackupId)
+    let rbErr: string | null = null
+    if (cp.oldDbName) await rollbackDb(cp.oldDbName, cp.liveDbName).catch((e) => { rbErr = `db: ${(e as Error).message}` })
+    await rollbackFiles(preRestoreDir).catch((e) => { rbErr = `files: ${(e as Error).message}` })
     await pm2DeleteStart().catch(() => {})
-    await setStatus(cp.jobId, rolledBack ? BackupStatus.ROLLED_BACK : BackupStatus.FAILED,
-      `Yarım kaldı (${cp.stage}) — startup recovery rollback (rolledBack=${rolledBack})`)
-    await audit('BACKUP_RESTORE_RECOVERED', { jobId: cp.jobId, stage: cp.stage, rolledBack })
-    await clearCheckpoint(cp.jobId)
-    results.push({ jobId: cp.jobId, stage: cp.stage, action: rolledBack ? 'rolled_back' : 'rollback_incomplete' })
+
+    // Faz 1.3: rollback'i DOĞRULA — canlı dizin bütünlüğü. Doğrulandıysa ROLLED_BACK;
+    // doğrulanamadıysa FAILED + "manuel müdahale gerekli". Yanlış ROLLED_BACK imkânsız.
+    let liveDir = ''
+    try { liveDir = resolveRestoreTarget() } catch { /* hedef çözülemedi */ }
+    const integ = liveDir ? verifyLiveIntegrity(liveDir) : { ok: false, missing: ['hedef-cozulemedi'] }
+    if (integ.ok) {
+      await setStatus(cp.jobId, BackupStatus.ROLLED_BACK,
+        `Yarım kaldı (${cp.stage}) — recovery rollback OK (bütünlük doğrulandı)`)
+      await audit('BACKUP_RESTORE_RECOVERED', { jobId: cp.jobId, stage: cp.stage, rolledBack: true, preRestoreDir })
+      await clearCheckpoint(cp.jobId)
+      results.push({ jobId: cp.jobId, stage: cp.stage, action: 'rolled_back' })
+    } else {
+      await setStatus(cp.jobId, BackupStatus.FAILED,
+        `Yarım kaldı (${cp.stage}) — ROLLBACK DOĞRULANAMADI, MANUEL MÜDAHALE GEREKLİ (eksik: ${integ.missing.join(',')}${rbErr ? '; ' + rbErr : ''})`)
+      await audit('BACKUP_RESTORE_RECOVERY_FAILED', {
+        jobId: cp.jobId, stage: cp.stage, missing: integ.missing, rollbackError: rbErr,
+        manualIntervention: true, preRestoreDir,
+      })
+      // Checkpoint KORUNUR — sonraki startup yeniden denesin / operatör görsün.
+      results.push({ jobId: cp.jobId, stage: cp.stage, action: 'manual_intervention_required' })
+    }
   }
   return results
 }
@@ -262,7 +295,11 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
   await audit('BACKUP_RESTORE_BUILT', { buildId: build.buildId })
 
   // 3. File swap — staging (pre-built + doğrulanmış) → canlı. BURADAN İTİBAREN canlı değişiyor.
-  await cp('SWAPPING_FILES', null, null)
+  // Faz 1.3: preRestoreDir DETERMINISTIK (backupId'den) — swap'tan ÖNCE checkpoint'e
+  // yazılır. Böylece swapFilesAtomic ortasında (mv sonrası) kill olsa bile recovery
+  // dizinin adresini bilir → "adressiz pencere" YOK, dosya rollback garanti.
+  const preRestoreDir = resolvePreRestoreDir(sourceBackupId)
+  await cp('SWAPPING_FILES', preRestoreDir, null)
   await st(BackupStatus.SWAPPING, 'Dosyalar değiştiriliyor (pre-built artifact)')
   const filesSwap = await swapFilesAtomic(stagingDir, { backupId: sourceBackupId })
   if (!filesSwap.success) {

@@ -241,6 +241,9 @@ export function MalzemeToplamaClient() {
   const miktarGecerli = miktarNum > EPS && miktarNum <= kalan + EPS
   const tamMiktar = Math.abs(miktarNum - kalan) < EPS && miktarNum > 0
   const kismi = miktarGecerli && !tamMiktar
+  // Sapma: seçilen kaynağın güncel mevcudu miktarı karşılıyor mu?
+  const sapmaMevcut = sapmaSecili?.mevcutMiktar ?? 0
+  const sapmaMiktarAsim = !!sapmaSecili && miktarNum > sapmaMevcut + EPS
   const pressKey = (k: string) => {
     if (k === '⌫') return setTeyitMiktar((m) => m.slice(0, -1))
     if (k === ',') return setTeyitMiktar((m) => (m.includes(',') ? m : (m || '0') + ','))
@@ -525,9 +528,13 @@ export function MalzemeToplamaClient() {
         <div className="flex flex-1 flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-base font-semibold">Farklı yerden al</div>
-              <div className="text-xs text-muted-foreground">
-                {secilen.partNo} · {teyitMiktar || '0'} {secilen.birim}
+              <div className="truncate text-base font-semibold">
+                {teyitMiktar || '0'} {secilen.birim} ·{' '}
+                <span className="font-normal text-muted-foreground">farklı yerden</span>
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                {secilen.partNo}
+                {secilen.partAdi ? ` · ${secilen.partAdi}` : ''}
               </div>
             </div>
           </div>
@@ -613,17 +620,25 @@ export function MalzemeToplamaClient() {
             </div>
           </div>
 
+          {/* Raf-mevcut aşımı uyarısı */}
+          {sapmaMiktarAsim && (
+            <div className="flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              Bu rafta yalnız {sapmaMevcut} {secilen.birim} var — miktarı düşür ya da başka raf seç
+            </div>
+          )}
+
           {/* c) Onay */}
           <button
             type="button"
             onClick={sapmaGonder}
-            disabled={!sapmaSecili || !sapmaSebep || !miktarGecerli || tamamlaniyor}
+            disabled={!sapmaSecili || !sapmaSebep || !miktarGecerli || sapmaMiktarAsim || tamamlaniyor}
             className="mt-1 flex min-h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-semibold text-white transition-all hover:bg-emerald-700 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
           >
             {tamamlaniyor ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-6 w-6" />}
             {tamamlaniyor ? 'IFS’e işleniyor…' : 'Buradan Topla ve Çık'}
           </button>
-          {kismi && (
+          {kismi && !sapmaMiktarAsim && (
             <p className="text-center text-xs text-muted-foreground">
               Kısmi toplama: {teyitMiktar} / {kalan} {secilen.birim}
             </p>

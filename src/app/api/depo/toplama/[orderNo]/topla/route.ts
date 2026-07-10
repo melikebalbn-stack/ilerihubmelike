@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
 import type { StokKimlik } from '@/lib/ifs/depo-stok'
+import { dostaneIfsHata } from '@/lib/ifs/ifs-hata'
 import {
   getFifoKirilim,
   getRezervKirilim,
   getSatirDurum,
   getSatirPartNo,
+  getStokSatirlari,
   issueSatir,
   modifyManuelRezerv,
   normalizeIsEmriNo,
@@ -103,10 +105,25 @@ export async function POST(
       yol = 'SAPMA'
       rezervKimlik = sapma.stokKimlik
 
+      const partNo = sapma.stokKimlik.partNo || (await getSatirPartNo(satir))
+
+      // Raf-mevcut sınırı: seçilen kaynağın güncel AvailableQtyToMove'unu doğrula
+      // (IFS'e HİÇ yazma yapmadan). Aşımda 409 + dostane mesaj.
+      const tumStok = await getStokSatirlari(partNo)
+      const lot = sapma.stokKimlik.lotBatchNo || '*'
+      const kaynak =
+        tumStok.find((k) => k.locationNo === sapma.stokKimlik.locationNo && (k.lotBatchNo ?? '*') === lot) ??
+        tumStok.find((k) => k.locationNo === sapma.stokKimlik.locationNo)
+      const mevcut = kaynak?.mevcutMiktar ?? 0
+      if (miktar > mevcut + EPS) {
+        return NextResponse.json(
+          { ok: false, yol, error: `Bu rafta yalnız ${mevcut} var — miktarı düşür ya da başka raf seç` },
+          { status: 409 },
+        )
+      }
+
       // İzli sapma kaydı (yapılandırılmış). TODO (EL-6c+): kalıcı sapma tablosu kararı
       // ayrı alınacak (schema değişikliği) — schema.prisma'ya bu fazda DOKUNULMUYOR.
-      const partNo = sapma.stokKimlik.partNo || (await getSatirPartNo(satir))
-      const fifo = await getFifoKirilim(partNo, miktar)
       console.log(
         JSON.stringify({
           olay: 'depo.toplama.sapma',
@@ -117,7 +134,7 @@ export async function POST(
           sequenceNo: satir.sequenceNo,
           lineItemNo: satir.lineItemNo,
           partNo,
-          fifoOnerisi: fifo[0]?.locationNo ?? '—',
+          fifoOnerisi: tumStok[0]?.locationNo ?? '—',
           secilen: sapma.stokKimlik.locationNo,
           sebep: sapma.sebep,
           miktar,
@@ -126,13 +143,13 @@ export async function POST(
 
       const rez = await modifyManuelRezerv(satir, rezervKimlik, miktar)
       if (!rez.ok) {
-        return NextResponse.json({ ok: false, yol, error: rez.error ?? 'Sapma rezervasyonu başarısız' }, { status: 502 })
+        return NextResponse.json({ ok: false, yol, error: dostaneIfsHata(rez.error ?? '', 'Sapma rezervasyonu başarısız') }, { status: 502 })
       }
     } else if (tam) {
       yol = 'TAM'
       const rez = await reserveSatir(satir)
       if (!rez.ok) {
-        return NextResponse.json({ ok: false, yol, error: rez.error ?? 'Rezervasyon başarısız' }, { status: 502 })
+        return NextResponse.json({ ok: false, yol, error: dostaneIfsHata(rez.error ?? '', 'Rezervasyon başarısız') }, { status: 502 })
       }
     } else {
       yol = 'KISMI'
@@ -144,7 +161,7 @@ export async function POST(
       rezervKimlik = fifo[0].kimlik
       const rez = await modifyManuelRezerv(satir, rezervKimlik, miktar)
       if (!rez.ok) {
-        return NextResponse.json({ ok: false, yol, error: rez.error ?? 'Kısmi rezervasyon başarısız' }, { status: 502 })
+        return NextResponse.json({ ok: false, yol, error: dostaneIfsHata(rez.error ?? '', 'Kısmi rezervasyon başarısız') }, { status: 502 })
       }
     }
 
@@ -155,19 +172,20 @@ export async function POST(
     const iss = await issueSatir(satir)
     if (!iss.ok) {
       // Telafi
+      const cikisHata = dostaneIfsHata(iss.error ?? '', 'Çıkış başarısız')
       if (yol === 'TAM') {
         // Alloc-level unreserve ayrı bir action → şimdilik otomatikleştirilmedi.
         // TODO (EL-6c+): ShopMaterialAlloc unreserve action'ı bulunup telafi otomatikleştirilecek.
         return NextResponse.json(
-          { ok: false, yol, error: `Çıkış başarısız — rezerv açık kalmış olabilir, yöneticiye bildirin: ${iss.error ?? ''}`, kirilim },
+          { ok: false, yol, error: `Çıkış başarısız (${cikisHata}) — rezerv açık kalmış olabilir, yöneticiye bildirin`, kirilim },
           { status: 502 },
         )
       }
       // KISMI/SAPMA → aynı kimlikle ModifySingle(0) ile otomatik geri al.
       const geri = rezervKimlik ? await modifyManuelRezerv(satir, rezervKimlik, 0) : { ok: false }
       const mesaj = geri.ok
-        ? `Çıkış başarısız, rezerv geri alındı: ${iss.error ?? ''}`
-        : `Çıkış başarısız, rezerv geri ALINAMADI — yöneticiye bildirin: ${iss.error ?? ''}`
+        ? `Çıkış başarısız (${cikisHata}), rezerv geri alındı`
+        : `Çıkış başarısız (${cikisHata}), rezerv geri ALINAMADI — yöneticiye bildirin`
       return NextResponse.json({ ok: false, yol, error: mesaj, kirilim }, { status: 502 })
     }
 

@@ -397,7 +397,9 @@ export async function modifyManuelRezerv(
   }
   const res = await mainPost(`${uye.relPath}/${MODIFY_ACTION}`, body, uye.etag, IEEE_JSON)
   if (res.status < 200 || res.status >= 300) {
-    return { ok: false, error: `Manuel rezerv HTTP ${res.status}: ${res.text.slice(0, 300)}` }
+    // Ham gövde sadeleştirme route'ta (dostaneIfsHata) yapılır → details[0].message
+    // kesilmesin diye burada geniş tutuluyor.
+    return { ok: false, error: `Manuel rezerv HTTP ${res.status}: ${res.text.slice(0, 1200)}` }
   }
   return { ok: true }
 }

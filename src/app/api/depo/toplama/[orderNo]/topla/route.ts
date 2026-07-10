@@ -86,16 +86,25 @@ export async function POST(
   const sapma = parsed.data.sapma
 
   try {
-    // Taze durum → miktar üst sınırını (kalan) doğrula.
+    // Taze durum → miktar üst sınırını doğrula.
+    // REZERV kaleminde (QtyAssigned>0) 'tam' = rezerv miktarı (min(atanan, kalan)), kalan değil.
     const durum0 = await getSatirDurum(satir)
     const kalan = durum0?.kalan ?? 0
-    if (miktar > kalan + EPS) {
+    const atanan = durum0?.atanan ?? 0
+    const rezervli = atanan > 0
+    const ustSinir = rezervli ? Math.min(atanan, kalan) : kalan
+    if (miktar > ustSinir + EPS) {
       return NextResponse.json(
-        { ok: false, error: `İstenen miktar (${miktar}) kalandan (${kalan}) büyük` },
-        { status: 400 },
+        {
+          ok: false,
+          error: rezervli
+            ? `Rezerv miktarı ${ustSinir} — fazlası için önce rezerv artırılmalı`
+            : `İstenen miktar (${miktar}) kalandan (${kalan}) büyük`,
+        },
+        { status: rezervli ? 409 : 400 },
       )
     }
-    const tam = Math.abs(miktar - kalan) < EPS
+    const tam = Math.abs(miktar - ustSinir) < EPS
 
     let yol: 'TAM' | 'KISMI' | 'SAPMA'
     let rezervKimlik: StokKimlik | null = null
@@ -147,10 +156,9 @@ export async function POST(
       }
     } else if (tam) {
       yol = 'TAM'
-      // Planlama rezervi varsa (QtyAssigned>0) rezervasyonu ATLA — IssueOnlyReserved
-      // doğrudan mevcut rezervden düşer. Yoksa mevcut FIFO reserve→issue yolu.
-      const atanan = durum0?.atanan ?? 0
-      if (atanan <= 0) {
+      // Planlama rezervi varsa (rezervli) rezervasyonu ATLA — IssueOnlyReserved doğrudan
+      // mevcut rezervden düşer (miktar === min(atanan,kalan) burada). Yoksa FIFO reserve→issue.
+      if (!rezervli) {
         const rez = await reserveSatir(satir)
         if (!rez.ok) {
           return NextResponse.json({ ok: false, yol, error: dostaneIfsHata(rez.error ?? '', 'Rezervasyon başarısız') }, { status: 502 })
@@ -158,9 +166,9 @@ export async function POST(
       }
     } else {
       yol = 'KISMI'
-      // Rezervli kalemde kısmi toplama mevcut rezervi bozabilir → şimdilik kilitli.
+      // Rezervli kalemde GERÇEK kısmi (miktar < rezerv) mevcut rezervi bozabilir → kilitli.
       // TODO (EL-7+): rezervli kalemde kısmi çıkış (rezervi kısmi tüketen) desteği.
-      if ((durum0?.atanan ?? 0) > 0) {
+      if (rezervli) {
         return NextResponse.json(
           { ok: false, yol, error: 'Rezervli kalemde kısmi toplama yakında' },
           { status: 409 },

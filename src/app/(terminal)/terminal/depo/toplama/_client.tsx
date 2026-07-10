@@ -230,6 +230,8 @@ export function MalzemeToplamaClient() {
       }
       const b = baslikRef.current
       if (!b) return
+      // REZERV kaleminde otomatik miktar = rezerv miktarı (min(atanan,kalan)); değilse kalan.
+      const otoMiktar = acik.kaynakTipi === 'REZERV' ? Math.min(acik.atanan, acik.kalan) : acik.kalan
       setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'isleniyor' }))
       try {
         const res = await fetch(`/api/depo/toplama/${encodeURIComponent(b.orderNo)}/topla`, {
@@ -239,7 +241,7 @@ export function MalzemeToplamaClient() {
             releaseNo: b.releaseNo,
             sequenceNo: b.sequenceNo,
             lineItemNo: acik.lineItemNo,
-            miktar: acik.kalan,
+            miktar: otoMiktar,
           }),
         })
         const data = await res.json().catch(() => null)
@@ -251,14 +253,18 @@ export function MalzemeToplamaClient() {
         const loc = data.kirilim?.[0]?.locationNo ?? acik.fifo[0]?.locationNo ?? '—'
         const yeniKalan = data.satir?.kalan ?? 0
         const yeniCikilan = data.satir?.qtyIssued ?? acik.gerekli
+        const yeniAtanan = data.satir?.atanan ?? 0
         // Ref'i de senkron güncelle → döngüdeki sonraki okuma taze görsün.
+        // Rezerv tükendiyse kaynakTipi FIFO'ya döner; kalem AÇIK kalır (kısmi ilerleme).
         const guncel = satirlarRef.current.map((s) =>
-          s.lineItemNo === acik.lineItemNo ? { ...s, kalan: yeniKalan, cikilan: yeniCikilan } : s,
+          s.lineItemNo === acik.lineItemNo
+            ? { ...s, kalan: yeniKalan, cikilan: yeniCikilan, atanan: yeniAtanan, kaynakTipi: (yeniAtanan > 0 ? 'REZERV' : 'FIFO') as KaynakTipi }
+            : s,
         )
         satirlarRef.current = guncel
         setSatirlar(guncel)
         setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'ok' }))
-        showToast(`✓ ${acik.partNo} · ${acik.kalan} ${acik.birim} · ${loc}`)
+        showToast(`✓ ${acik.partNo} · ${otoMiktar} ${acik.birim} · ${loc}`)
       } catch {
         setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'hata' }))
         showError('Bağlantı hatası — tekrar deneyin')
@@ -326,7 +332,9 @@ export function MalzemeToplamaClient() {
   const kalemAc = (s: ToplamaSatirDetay) => {
     setSecilen(s)
     setTeyitEslesti(false)
-    setTeyitMiktar(String(s.kalan).replace('.', ','))
+    // REZERV kaleminde varsayılan = rezerv miktarı (min(atanan,kalan)); değilse kalan.
+    const varsayilan = s.kaynakTipi === 'REZERV' ? Math.min(s.atanan, s.kalan) : s.kalan
+    setTeyitMiktar(String(varsayilan).replace('.', ','))
     setManualOpen(false)
     setManualVal('')
     setSapmaAcik(false)
@@ -368,12 +376,16 @@ export function MalzemeToplamaClient() {
   // Miktar tuş takımı (ondalık)
   const miktarNum = Number((teyitMiktar || '0').replace(',', '.'))
   const kalan = secilen?.kalan ?? 0
-  const miktarGecerli = miktarNum > EPS && miktarNum <= kalan + EPS
-  const tamMiktar = Math.abs(miktarNum - kalan) < EPS && miktarNum > 0
-  const kismi = miktarGecerli && !tamMiktar
-  // Rezervli kalemde kısmi toplama şimdilik kilitli (mevcut rezervi bozmamak için).
+  const atanan = secilen?.atanan ?? 0
+  // REZERV kaleminde 'tam' = rezerv miktarı (min(atanan, kalan)); üst sınır da budur.
   const rezervli = secilen?.kaynakTipi === 'REZERV'
+  const ustSinir = rezervli ? Math.min(atanan, kalan) : kalan
+  const miktarGecerli = miktarNum > EPS && miktarNum <= ustSinir + EPS
+  const tamMiktar = Math.abs(miktarNum - ustSinir) < EPS && miktarNum > 0
+  const kismi = miktarGecerli && !tamMiktar
+  // Rezervli kalemde GERÇEK kısmi (miktar < rezerv) kilitli; miktar === rezerv ise TAM sayılır.
   const kismiKilit = rezervli && kismi
+  const rezervAsim = rezervli && miktarNum > ustSinir + EPS
   // Sapma: seçilen kaynağın güncel mevcudu miktarı karşılıyor mu?
   const sapmaMevcut = sapmaSecili?.mevcutMiktar ?? 0
   const sapmaMiktarAsim = !!sapmaSecili && miktarNum > sapmaMevcut + EPS
@@ -497,7 +509,9 @@ export function MalzemeToplamaClient() {
         {step === 'TEYIT' && secilen && (
           <div className="flex min-w-0 flex-col leading-tight">
             <h1 className="truncate text-base font-semibold">
-              {secilen.partNo} · {secilen.kalan} {secilen.birim}
+              {rezervli
+                ? `${secilen.partNo} · ${secilen.kalan} ${secilen.birim} kalan · ${atanan} rezervli`
+                : `${secilen.partNo} · ${secilen.kalan} ${secilen.birim}`}
             </h1>
             <span className="truncate text-xs text-muted-foreground">
               İE {baslik?.orderNo} · kalem {kalemIndex + 1}/{satirlar.length}
@@ -698,6 +712,7 @@ export function MalzemeToplamaClient() {
               <div
                 className={cn(
                   'rounded-2xl border bg-card py-4 text-center text-5xl font-semibold tabular-nums',
+                  rezervAsim && 'border-red-400',
                   kismi && 'border-amber-400',
                 )}
               >
@@ -722,7 +737,11 @@ export function MalzemeToplamaClient() {
                 {tamamlaniyor ? <Loader2 className="h-5 w-5 animate-spin" /> : <PackageCheck className="h-6 w-6" />}
                 {tamamlaniyor ? 'IFS’e işleniyor…' : 'Topla ve Çık (IFS)'}
               </button>
-              {kismiKilit ? (
+              {rezervAsim ? (
+                <p className="text-center text-xs font-medium text-red-600">
+                  Rezervin {ustSinir} {secilen.birim} — fazlası için önce rezerv artırılmalı
+                </p>
+              ) : kismiKilit ? (
                 <p className="text-center text-xs text-amber-700">Rezervli kalemde kısmi toplama yakında</p>
               ) : kismi ? (
                 <p className="text-center text-xs text-muted-foreground">
@@ -950,6 +969,11 @@ function KalemKart({ s, durum, onSelect }: { s: ToplamaSatirDetay; durum?: KartD
         )}
       </div>
       {s.partAdi && <div className="truncate text-xs text-muted-foreground">{s.partAdi}</div>}
+      {s.kaynakTipi === 'REZERV' && (
+        <div className="text-xs text-muted-foreground">
+          {s.kalan} {s.birim} kalan · {s.atanan} {s.birim} rezervli
+        </div>
+      )}
       {s.cikilan > 0 && s.kalan > 0 && (
         <div className="text-xs font-medium text-amber-700">
           {s.cikilan}/{s.gerekli} {s.birim} çıkıldı

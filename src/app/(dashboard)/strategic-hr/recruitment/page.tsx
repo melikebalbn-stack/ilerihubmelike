@@ -83,6 +83,7 @@ import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import TimeToHirePanel from "./_components/TimeToHirePanel"
+import SourceBreakdownPanel from "./_components/SourceBreakdownPanel"
 
 interface JobOpening {
   id: string
@@ -2522,7 +2523,10 @@ export default function RecruitmentPage() {
         </TabsContent>
 
         <TabsContent value="analiz">
-          <TimeToHirePanel />
+          <div className="space-y-4">
+            <TimeToHirePanel />
+            <SourceBreakdownPanel />
+          </div>
         </TabsContent>
       </Tabs>
 

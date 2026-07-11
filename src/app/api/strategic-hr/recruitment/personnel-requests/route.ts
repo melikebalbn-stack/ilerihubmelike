@@ -78,6 +78,11 @@ export async function GET(request: NextRequest) {
             code: true,
             status: true
           }
+        },
+        // Onay zinciri (liste + detay dialog için) — onaycı adı/karar/tarih.
+        approvals: {
+          orderBy: { step: "asc" },
+          include: { approver: { select: { id: true, name: true, email: true } } }
         }
       }
     });

@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { resolveApprovers } from "@/lib/personnel-request-chain";
+import { sendPushToUser } from "@/lib/push-notifications";
+import { sendEmail } from "@/lib/email";
+
+type BildirimTuru = "SIRA" | "ONAYLANDI" | "REDDEDILDI";
+
+// Onay zinciri bildirimi (best-effort — bildirim hatası ana akışı bozmaz). Mesai deseni.
+async function notifyApprover(
+  userId: string,
+  requestNumber: string,
+  title: string,
+  tur: BildirimTuru,
+) {
+  try {
+    const mesaj =
+      tur === "SIRA"
+        ? `${requestNumber} numaralı "${title}" eleman talebi onayınızı bekliyor.`
+        : tur === "ONAYLANDI"
+          ? `${requestNumber} numaralı "${title}" eleman talebiniz onaylandı.`
+          : `${requestNumber} numaralı "${title}" eleman talebiniz reddedildi.`;
+    await sendPushToUser(prisma, userId, {
+      title: "Eleman Talebi Onayı",
+      body: mesaj,
+      url: "/strategic-hr/recruitment",
+      tag: `personnel-request-${requestNumber}`,
+    });
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+    if (u?.email) {
+      await sendEmail([{ email: u.email, name: u.name || "" }], "Eleman Talebi Onayı", mesaj, `<p>${mesaj}</p>`);
+    }
+  } catch {
+    // bildirim best-effort
+  }
+}
 
 // GET - Tek talep detayı
 export async function GET(
@@ -30,6 +64,11 @@ export async function GET(
             status: true,
             _count: { select: { applications: true } },
           },
+        },
+        // Onay zinciri (görünüm) — onaycı adı, karar, tarih.
+        approvals: {
+          orderBy: { step: "asc" },
+          include: { approver: { select: { id: true, name: true, email: true } } },
         },
       },
     });
@@ -83,62 +122,120 @@ export async function PUT(
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
     }
 
-    // İşlem türüne göre yetki kontrolü
-    if (action === "approve" || action === "reject") {
-      // Onay/red: sadece admin
-      if (!hasFullAccess) {
-        return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
-      }
-    } else if (action === "update" || action === "submit" || action === "cancel") {
-      // Sadece talep sahibi güncelleyebilir (DRAFT durumundayken) veya admin
+    // İşlem türüne göre yetki kontrolü.
+    // approve/reject: ARTIK admin değil — sıradaki adımın onaycısı (aşağıda per-step guard).
+    if (action === "update" || action === "submit" || action === "cancel") {
       if (existingRequest.requesterEmail.toLowerCase() !== userEmail && !hasFullAccess) {
         return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
       }
     }
 
+    // ---- SUBMIT: zincir kur (çözülemezse ENGELLE) ----
+    if (action === "submit") {
+      if (existingRequest.status !== "DRAFT") {
+        return NextResponse.json({ error: "Sadece taslak talepler gönderilebilir" }, { status: 400 });
+      }
+      // Departman kaynağı: talep sahibinin Personnel.bolum'u (LDAP department DEĞİL).
+      const cozum = await resolveApprovers(prisma, existingRequest.requesterId);
+      if (!cozum.ok) {
+        // Sessiz boşta kalma YOK — talep PENDING'e geçmez, net hata döner.
+        return NextResponse.json({ error: cozum.error }, { status: 400 });
+      }
+      await prisma.$transaction([
+        prisma.personnelRequestApproval.deleteMany({ where: { personnelRequestId: id } }),
+        prisma.personnelRequestApproval.createMany({
+          data: cozum.adimlar.map((a) => ({
+            personnelRequestId: id,
+            step: a.step,
+            kademe: a.kademe,
+            role: a.role,
+            approverId: a.approverId,
+          })),
+        }),
+        prisma.personnelRequest.update({ where: { id }, data: { status: "PENDING" as PersonnelRequestStatus } }),
+      ]);
+      await notifyApprover(cozum.adimlar[0].approverId, existingRequest.requestNumber, existingRequest.title, "SIRA");
+      return NextResponse.json({ ok: true, message: "Talep onaya gönderildi." });
+    }
+
+    // ---- APPROVE / REJECT: zincir ilerlet (per-step guard) ----
+    if (action === "approve" || action === "reject") {
+      if (existingRequest.status !== "PENDING") {
+        return NextResponse.json({ error: "Sadece bekleyen talepler için onay işlemi yapılabilir" }, { status: 400 });
+      }
+      const approvals = await prisma.personnelRequestApproval.findMany({
+        where: { personnelRequestId: id },
+        orderBy: { step: "asc" },
+      });
+      const pending = approvals.find((a) => a.decision === null);
+      if (!pending) {
+        return NextResponse.json({ error: "Bu talebin onay zinciri yok (eski kayıt olabilir)." }, { status: 400 });
+      }
+      // PER-STEP GUARD: yalnız sıradaki adımın onaycısı karar verebilir (admin bile başkası adına onaylayamaz).
+      if (pending.approverId !== userId) {
+        return NextResponse.json({ error: "Bu adımın onayı sizde değil." }, { status: 403 });
+      }
+
+      if (action === "approve") {
+        const isLast = pending.step === approvals.length;
+        await prisma.$transaction(async (tx) => {
+          await tx.personnelRequestApproval.update({
+            where: { id: pending.id },
+            data: { decision: "APPROVED", decidedAt: new Date(), comment: body.approvalNotes ?? null },
+          });
+          if (isLast) {
+            await tx.personnelRequest.update({
+              where: { id },
+              data: {
+                status: "APPROVED" as PersonnelRequestStatus,
+                approvedById: userId,
+                approvedByEmail: userEmail,
+                approvedByName: session.user.name || "",
+                approvedAt: new Date(),
+                approvalNotes: body.approvalNotes ?? null,
+              },
+            });
+          }
+        });
+        if (isLast) {
+          await notifyApprover(existingRequest.requesterId, existingRequest.requestNumber, existingRequest.title, "ONAYLANDI");
+        } else {
+          const next = approvals.find((a) => a.step === pending.step + 1);
+          if (next?.approverId) {
+            await notifyApprover(next.approverId, existingRequest.requestNumber, existingRequest.title, "SIRA");
+          }
+        }
+        return NextResponse.json({ ok: true, tamamlandi: isLast });
+      }
+
+      // reject
+      if (!body.rejectionReason) {
+        return NextResponse.json({ error: "Red gerekçesi zorunludur" }, { status: 400 });
+      }
+      await prisma.$transaction(async (tx) => {
+        await tx.personnelRequestApproval.update({
+          where: { id: pending.id },
+          data: { decision: "REJECTED", decidedAt: new Date(), comment: body.rejectionReason },
+        });
+        await tx.personnelRequest.update({
+          where: { id },
+          data: {
+            status: "REJECTED" as PersonnelRequestStatus,
+            rejectedById: userId,
+            rejectedByEmail: userEmail,
+            rejectedByName: session.user.name || "",
+            rejectedAt: new Date(),
+            rejectionReason: body.rejectionReason,
+          },
+        });
+      });
+      await notifyApprover(existingRequest.requesterId, existingRequest.requestNumber, existingRequest.title, "REDDEDILDI");
+      return NextResponse.json({ ok: true });
+    }
+
     let updateData: any = {};
 
     switch (action) {
-      case "approve":
-        if (existingRequest.status !== "PENDING") {
-          return NextResponse.json({ error: "Sadece bekleyen talepler onaylanabilir" }, { status: 400 });
-        }
-        updateData = {
-          status: "APPROVED" as PersonnelRequestStatus,
-          approvedById: userId,
-          approvedByEmail: userEmail,
-          approvedByName: session.user.name || "",
-          approvedAt: new Date(),
-          approvalNotes: body.approvalNotes
-        };
-        break;
-
-      case "reject":
-        if (existingRequest.status !== "PENDING") {
-          return NextResponse.json({ error: "Sadece bekleyen talepler reddedilebilir" }, { status: 400 });
-        }
-        if (!body.rejectionReason) {
-          return NextResponse.json({ error: "Red gerekçesi zorunludur" }, { status: 400 });
-        }
-        updateData = {
-          status: "REJECTED" as PersonnelRequestStatus,
-          rejectedById: userId,
-          rejectedByEmail: userEmail,
-          rejectedByName: session.user.name || "",
-          rejectedAt: new Date(),
-          rejectionReason: body.rejectionReason
-        };
-        break;
-
-      case "submit":
-        if (existingRequest.status !== "DRAFT") {
-          return NextResponse.json({ error: "Sadece taslak talepler gönderilebilir" }, { status: 400 });
-        }
-        updateData = {
-          status: "PENDING" as PersonnelRequestStatus
-        };
-        break;
-
       case "cancel":
         if (!["DRAFT", "PENDING"].includes(existingRequest.status)) {
           return NextResponse.json({ error: "Bu talep iptal edilemez" }, { status: 400 });

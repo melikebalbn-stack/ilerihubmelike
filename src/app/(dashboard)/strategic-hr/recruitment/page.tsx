@@ -179,6 +179,16 @@ interface PersonnelRequest {
   rejectedByName: string | null
   rejectedAt: string | null
   rejectionReason: string | null
+  approvals?: {
+    id: string
+    step: number
+    kademe: string
+    role: string
+    decision: "APPROVED" | "REJECTED" | "RETURNED" | "FORWARDED" | null
+    comment: string | null
+    decidedAt: string | null
+    approver: { id: string; name: string | null; email: string | null } | null
+  }[]
   jobOpening: {
     id: string
     title: string
@@ -1483,8 +1493,47 @@ export default function RecruitmentPage() {
                   </div>
                 )}
 
-                {/* Red gerekce alani */}
-                {selectedRequest.status === "PENDING" && hasFullAccess && (
+                {/* Onay zinciri (3 kademe: Müdür → GMY → GM) */}
+                {selectedRequest.approvals && selectedRequest.approvals.length > 0 && (
+                  <div className="border rounded-lg p-3">
+                    <p className="text-sm font-medium mb-2">Onay Zinciri</p>
+                    <div className="space-y-2">
+                      {selectedRequest.approvals.map((a) => {
+                        const isCurrent =
+                          a.decision === null &&
+                          selectedRequest.approvals?.find((x) => x.decision === null)?.id === a.id
+                        return (
+                          <div key={a.id} className="flex items-center justify-between text-sm">
+                            <div>
+                              <span className="font-medium">{a.step}. {a.role}</span>
+                              {a.approver?.name && <span className="text-slate-500"> — {a.approver.name}</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {a.decision === "APPROVED" ? (
+                                <Badge className="bg-green-100 text-green-700">Onayladı</Badge>
+                              ) : a.decision === "REJECTED" ? (
+                                <Badge className="bg-red-100 text-red-700">Reddetti</Badge>
+                              ) : isCurrent ? (
+                                <Badge className="bg-amber-100 text-amber-700">Sırada</Badge>
+                              ) : (
+                                <Badge variant="secondary">Bekliyor</Badge>
+                              )}
+                              {a.decidedAt && (
+                                <span className="text-xs text-slate-400">
+                                  {format(new Date(a.decidedAt), "d MMM HH:mm", { locale: tr })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Red gerekce alani — yalnız sıradaki adımın onaycısına */}
+                {selectedRequest.status === "PENDING" &&
+                  selectedRequest.approvals?.find((a) => a.decision === null)?.approver?.email === session?.user?.email && (
                   <div>
                     <Label>Red Gerekcesi (red icin zorunlu)</Label>
                     <Textarea
@@ -1516,8 +1565,9 @@ export default function RecruitmentPage() {
                   </Button>
                 )}
 
-                {/* IK islemleri */}
-                {selectedRequest.status === "PENDING" && hasFullAccess && (
+                {/* Onay/red: YALNIZ sıradaki adımın onaycısı (admin bile başkası adına onaylayamaz) */}
+                {selectedRequest.status === "PENDING" &&
+                  selectedRequest.approvals?.find((a) => a.decision === null)?.approver?.email === session?.user?.email && (
                   <>
                     <Button
                       variant="destructive"

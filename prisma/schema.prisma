@@ -166,6 +166,7 @@ model User {
   // Overtime (Mesai) Relations
   overtimeFormsCreated OvertimeForm[]          @relation("OvertimeCreator")
   overtimeApprovals    OvertimeApproval[]      @relation("OvertimeApprover")
+  personnelRequestApprovals PersonnelRequestApproval[] @relation("PersonnelRequestApprover")
   approvalPositions    ApprovalPosition[]      @relation("ApprovalPositionUser")
   overtimeAuthorized   OvertimeAuthorizedUser? @relation("OvertimeAuthorizedUser")
   // Faz 2+: parça kodu (Mesai Nedeni) sonradan düzeltmeleri
@@ -5010,9 +5011,35 @@ model PersonnelRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Kademe bazlı onay zinciri (Müdür → GMY → GM). Yalnız back-relation, DB kolonu değil.
+  approvals PersonnelRequestApproval[]
+
   @@index([requesterId])
   @@index([department])
   @@index([status])
+}
+
+// Eleman talebi onay adımı — OvertimeApproval deseninin karşılığı.
+// Submit anında 3 satır kurulur (MUDUR→DEPUTY_GM→GM), sıralı ilerler.
+model PersonnelRequestApproval {
+  id                String          @id @default(cuid())
+  personnelRequestId String
+  personnelRequest  PersonnelRequest @relation(fields: [personnelRequestId], references: [id], onDelete: Cascade)
+
+  step       Int // 1..3 (sıra)
+  kademe     String // "MUDUR" | "DEPUTY_GM" | "GM"
+  role       String // ünvan snapshot (görünüm)
+  approverId String? // çözülen onaycı (User). null olamaz normalde; guard submit'te
+  approver   User?   @relation("PersonnelRequestApprover", fields: [approverId], references: [id])
+
+  decision  ApprovalDecision? // null = beklemede
+  comment   String?
+  decidedAt DateTime?
+  createdAt DateTime          @default(now())
+
+  @@unique([personnelRequestId, step])
+  @@index([personnelRequestId])
+  @@index([approverId])
 }
 
 // Açık Pozisyon (İş İlanı)

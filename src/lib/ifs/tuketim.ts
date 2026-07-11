@@ -173,20 +173,34 @@ interface RawShopOrdList extends RawShopOrd {
  * ShopOrds (Objstate Released|Started, tarih artan) → her emrin MaterialArray kalem sayıları.
  * N+1 kaçınılmaz; emirler çekildikten sonra MaterialArray'ler chunk'lı (max 10 eşzamanlı) paralel.
  * acikKalem === 0 olan emirler ELENİR (toplanacak şeyi kalmamış).
+ *
+ * Sayfalama: $top/$skip + $count (toplam). `toplam` = ShopOrds filtresine uyan emir sayısı
+ * (eleme ÖNCESİ); eleme yüzünden bir sayfa `boyut`'tan az gösterebilir — UI toplamı gösterir.
+ * Arama (q): iş emri no (OrderNo eq) VEYA ürün kodu (startswith PartNo). N+1 yalnız görünen sayfa.
  * TODO (b/c senaryoları): kişiye atama + aciliyet alanları — veri modeli hazır olunca rozet.
  */
-export async function getBekleyenToplamaIsleri(): Promise<BekleyenIs[]> {
+export async function getBekleyenToplamaIsleri(
+  sayfa = 0,
+  boyut = 25,
+  q?: string,
+): Promise<{ isler: BekleyenIs[]; toplam: number }> {
   const { contract } = getIfsConfig()
   // Objstate bir enum tipi (ShopOrdState) → string literal değil, qualified enum literal.
   const ST = 'IfsApp.ShopOrderHandling.ShopOrdState'
-  const filter =
+  let filter =
     `Contract eq '${esc(contract)}' and (Objstate eq ${ST}'Released' or Objstate eq ${ST}'Started')`
-  const { status, body } = await mainGet<{ value?: RawShopOrdList[] }>(
+  const aranan = (q ?? '').trim()
+  if (aranan) {
+    const e = esc(aranan)
+    filter += ` and (OrderNo eq '${e}' or startswith(PartNo,'${e}'))`
+  }
+  const { status, body } = await mainGet<{ value?: RawShopOrdList[]; '@odata.count'?: number }>(
     `ShopOrderHandling.svc/ShopOrds?$filter=${encodeURIComponent(filter)}` +
       `&$select=OrderNo,ReleaseNo,SequenceNo,PartNo,PartDescription,RevisedQtyDue,Objstate,NeedDate,RevisedDueDate` +
-      `&$orderby=NeedDate&$top=50`,
+      `&$orderby=NeedDate&$count=true&$top=${boyut}&$skip=${sayfa * boyut}`,
   )
-  if (status !== 200 || !Array.isArray(body?.value)) return []
+  if (status !== 200 || !Array.isArray(body?.value)) return { isler: [], toplam: 0 }
+  const toplam = Number(body['@odata.count'] ?? body.value.length) || 0
   const emirler = body.value
 
   const CHUNK = 10
@@ -222,7 +236,7 @@ export async function getBekleyenToplamaIsleri(): Promise<BekleyenIs[]> {
       })
     }
   }
-  return sonuc
+  return { isler: sonuc, toplam }
 }
 
 interface RawMat {

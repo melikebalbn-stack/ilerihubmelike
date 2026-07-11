@@ -18,6 +18,8 @@ import {
   RotateCcw,
   Scale,
   ScanLine,
+  Search,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
@@ -39,6 +41,7 @@ const SEBEPLER = [
 ] as const
 
 const EPS = 1e-9
+const BEKLEYEN_BOYUT = 25
 
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-')
@@ -66,9 +69,13 @@ export function MalzemeToplamaClient() {
   const [satirlar, setSatirlar] = useState<ToplamaSatirDetay[]>([])
   const [loading, setLoading] = useState(false)
 
-  // Bekleyen işler listesi (IS_EMRI) + kalıcı 'nereden çıktı' kırılımı (B1).
+  // Bekleyen işler listesi (IS_EMRI) — sayfalı + aramalı + kalıcı 'nereden çıktı' (B1).
   const [bekleyen, setBekleyen] = useState<BekleyenIs[] | null>(null)
   const [bekleyenLoading, setBekleyenLoading] = useState(false)
+  const [bekleyenToplam, setBekleyenToplam] = useState(0)
+  const [bekleyenSayfa, setBekleyenSayfa] = useState(0)
+  const [dahaYukleniyor, setDahaYukleniyor] = useState(false)
+  const [arama, setArama] = useState('')
   const [sonCikis, setSonCikis] = useState<Record<number, SonCikisSatir[]>>({})
 
   // TEYIT durumu
@@ -172,24 +179,44 @@ export function MalzemeToplamaClient() {
     [showError],
   )
 
-  // Bekleyen işler listesini yükle (IS_EMRI açılışta + yenile ikonu).
-  const bekleyenYukle = useCallback(async () => {
-    setBekleyenLoading(true)
-    try {
-      const res = await fetch('/api/depo/toplama-bekleyen')
-      const data = await res.json().catch(() => null)
-      if (res.ok && data?.ok) setBekleyen((data.isler ?? []) as BekleyenIs[])
-      else { setBekleyen([]); showError(data?.error ?? 'Bekleyen işler alınamadı') }
-    } catch {
-      setBekleyen([])
-      showError('Bağlantı hatası — tekrar deneyin')
-    } finally {
-      setBekleyenLoading(false)
-    }
-  }, [showError])
+  // Bekleyen işler — sayfalı + aramalı yükleme. ekle=true → sonraki sayfayı ekler.
+  const bekleyenYukle = useCallback(
+    async (sayfa = 0, q = '', ekle = false) => {
+      if (ekle) setDahaYukleniyor(true)
+      else setBekleyenLoading(true)
+      try {
+        const params = new URLSearchParams({ sayfa: String(sayfa), boyut: String(BEKLEYEN_BOYUT) })
+        if (q) params.set('q', q)
+        const res = await fetch(`/api/depo/toplama-bekleyen?${params.toString()}`)
+        const data = await res.json().catch(() => null)
+        if (res.ok && data?.ok) {
+          const yeni = (data.isler ?? []) as BekleyenIs[]
+          setBekleyen((prev) => (ekle && prev ? [...prev, ...yeni] : yeni))
+          setBekleyenToplam(Number(data.toplam) || 0)
+          setBekleyenSayfa(sayfa)
+        } else {
+          if (!ekle) setBekleyen([])
+          showError(data?.error ?? 'Bekleyen işler alınamadı')
+        }
+      } catch {
+        if (!ekle) setBekleyen([])
+        showError('Bağlantı hatası — tekrar deneyin')
+      } finally {
+        if (ekle) setDahaYukleniyor(false)
+        else setBekleyenLoading(false)
+      }
+    },
+    [showError],
+  )
+  // IS_EMRI'de sayfa 0'ı yükle; arama 400ms debounce (2 karakterden kısa → arama yok).
   useEffect(() => {
-    if (step === 'IS_EMRI' && bekleyen === null && !bekleyenLoading) void bekleyenYukle()
-  }, [step, bekleyen, bekleyenLoading, bekleyenYukle])
+    if (step !== 'IS_EMRI') return
+    const q = arama.trim()
+    if (q.length === 1) return // <2 karakter → arama yapma, mevcut liste kalsın
+    const gecikme = q ? 400 : 0
+    const t = setTimeout(() => void bekleyenYukle(0, q, false), gecikme)
+    return () => clearTimeout(t)
+  }, [step, arama, bekleyenYukle])
 
   // Malzeme okutma (TEYIT) — beklenen parça ile eşleşme.
   const malzemeOkut = useCallback(
@@ -414,6 +441,7 @@ export function MalzemeToplamaClient() {
       setErrorMsg(null)
       setManualOpen(false)
       setBekleyen(null) // dönüşte tazele
+      setArama('')
       setSonCikis({})
       return
     }
@@ -616,18 +644,39 @@ export function MalzemeToplamaClient() {
             </button>
           )}
 
-          {/* Bekleyen İşler başlığı + yenile */}
+          {/* Bekleyen İşler başlığı + sayaç + yenile */}
           <div className="mt-1 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-muted-foreground">Bekleyen İşler</h2>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h2 className="text-sm font-semibold text-muted-foreground">Bekleyen İşler</h2>
+              {bekleyen && bekleyen.length > 0 && (
+                <span className="text-xs text-muted-foreground">{bekleyen.length} / {bekleyenToplam} iş gösteriliyor</span>
+              )}
+            </div>
             <button
               type="button"
-              onClick={() => void bekleyenYukle()}
+              onClick={() => void bekleyenYukle(0, arama.trim(), false)}
               disabled={bekleyenLoading}
               aria-label="Yenile"
               className="flex h-8 w-8 items-center justify-center rounded-lg border transition-colors active:bg-muted/70 disabled:opacity-40"
             >
               <RefreshCw className={cn('h-4 w-4', bekleyenLoading && 'animate-spin')} />
             </button>
+          </div>
+
+          {/* Arama — İE no veya ürün kodu (sunucu tarafı) */}
+          <div className="flex items-center gap-2 rounded-xl border bg-background px-3">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              value={arama}
+              onChange={(e) => setArama(e.target.value)}
+              placeholder="İE no veya ürün kodu ara"
+              className="h-10 flex-1 bg-transparent text-base outline-none"
+            />
+            {arama && (
+              <button type="button" onClick={() => setArama('')} aria-label="Temizle" className="shrink-0 text-muted-foreground active:opacity-60">
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
           {bekleyen === null || bekleyenLoading ? (
@@ -638,8 +687,8 @@ export function MalzemeToplamaClient() {
             </div>
           ) : bekleyen.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              Bekleyen toplama işi yok
-              <button type="button" onClick={() => void bekleyenYukle()} className="flex items-center gap-1.5 text-sm underline underline-offset-2" style={{ color: TERMINAL_ACCENT }}>
+              {arama.trim() ? `Eşleşen iş yok: ${arama.trim()}` : 'Bekleyen toplama işi yok'}
+              <button type="button" onClick={() => void bekleyenYukle(0, arama.trim(), false)} className="flex items-center gap-1.5 text-sm underline underline-offset-2" style={{ color: TERMINAL_ACCENT }}>
                 <RefreshCw className="h-4 w-4" /> Yenile
               </button>
             </div>
@@ -648,6 +697,18 @@ export function MalzemeToplamaClient() {
               {bekleyen.map((is) => (
                 <BekleyenKart key={`${is.orderNo}-${is.releaseNo}-${is.sequenceNo}`} is={is} onSelect={() => void isEmriOkut(is.orderNo)} />
               ))}
+              {(bekleyenSayfa + 1) * BEKLEYEN_BOYUT < bekleyenToplam && (
+                <button
+                  type="button"
+                  onClick={() => void bekleyenYukle(bekleyenSayfa + 1, arama.trim(), true)}
+                  disabled={dahaYukleniyor}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition-colors active:bg-muted/70 disabled:opacity-50"
+                  style={{ color: TERMINAL_ACCENT, borderColor: TERMINAL_ACCENT }}
+                >
+                  {dahaYukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Daha fazla göster ({bekleyenToplam - (bekleyenSayfa + 1) * BEKLEYEN_BOYUT})
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -726,6 +787,7 @@ export function MalzemeToplamaClient() {
               setErrorMsg(null)
               setManualOpen(false)
               setBekleyen(null) // tazele
+              setArama('')
               setSonCikis({})
             }}
             className="mt-2 flex min-h-14 items-center justify-center gap-2 rounded-2xl px-6 text-lg font-semibold text-white"

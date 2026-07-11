@@ -4216,6 +4216,7 @@ model Position {
 
   isCritical Boolean @default(false) // Kritik pozisyon mu?
   isActive   Boolean @default(true)
+  hedefTimeToHire Int? // hedef işe alım süresi - gün (Time-to-Hire analitiği)
 
   // İlişkiler
   requiredCompetencies PositionCompetency[]

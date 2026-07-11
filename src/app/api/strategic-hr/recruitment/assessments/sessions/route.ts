@@ -10,13 +10,19 @@ const GECERLILIK_MS = 72 * 60 * 60 * 1000;
 // taslak (CONSENT_PENDING/HEALTH_PENDING) hariç.
 const ATANABILIR_STATUS = new Set(["PENDING", "REVIEWING", "SHORTLISTED", "INTERVIEW"]);
 
-// Faz-1 kuralı: token üretilir ve oturumda saklanır ama HİÇBİR yanıtta dışa açılmaz.
-// (Public /sinav/[token] akışı Faz 2.) Bu select token içermez.
+// Aktif (adayın hâlâ çözebileceği) oturum statüleri — link YALNIZ bunlarda gösterilir.
+// Terminal (TAMAMLANDI/SURESI_DOLDU/IPTAL) → link işe yaramaz, dönülmez.
+const AKTIF_STATUS = new Set(["ATANDI", "BASLADI"]);
+
+// İK görünümü için oturum select'i. token DAHİL EDİLİR ama dışa HAM olarak açılmaz —
+// yalnız aktif oturumda tam sinavLink'e çevrilir, terminal oturumda null.
+// (Public endpoint'ler ayrı ve token'ı asla döndürmez; burası recruitAccess guard'ı arkasında.)
 const OTURUM_SELECT = {
   id: true,
   publicJobApplicationId: true,
   assessmentId: true,
   status: true,
+  token: true,
   assignedAt: true,
   expiresAt: true,
   startedAt: true,
@@ -25,6 +31,18 @@ const OTURUM_SELECT = {
   result: true,
   assessment: { select: { id: true, name: true, type: true, passingScore: true } },
 } as const;
+
+// Base URL ortamdan (staging→staging, prod→prod). Hardcode YOK. env yoksa relative path.
+function sinavUrl(token: string): string {
+  const base = process.env.ILERIHUB_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "";
+  return base ? `${base}/sinav/${token}` : `/sinav/${token}`;
+}
+
+// Oturum → İK DTO: aktifse sinavLink, terminalde null. Ham token asla çıktıda değil.
+function toOturumDto(o: { token: string; status: string } & Record<string, unknown>) {
+  const { token, ...rest } = o;
+  return { ...rest, sinavLink: AKTIF_STATUS.has(o.status) ? sinavUrl(token) : null };
+}
 
 // GET — bir başvurunun oturumları  (?publicJobApplicationId=...)
 export async function GET(req: NextRequest) {
@@ -38,7 +56,7 @@ export async function GET(req: NextRequest) {
     orderBy: { assignedAt: "desc" },
     select: OTURUM_SELECT,
   });
-  return NextResponse.json(oturumlar);
+  return NextResponse.json(oturumlar.map(toOturumDto));
 }
 
 // POST — sınav ata (admin). Idempotent: (publicJobApplicationId, assessmentId) tekildir.
@@ -87,5 +105,6 @@ export async function POST(req: NextRequest) {
     update: {},
     select: OTURUM_SELECT,
   });
-  return NextResponse.json(oturum, { status: 201 });
+  // Atama hemen ATANDI (aktif) → sinavLink döner; İK linki kopyalayıp adaya iletir.
+  return NextResponse.json(toOturumDto(oturum), { status: 201 });
 }

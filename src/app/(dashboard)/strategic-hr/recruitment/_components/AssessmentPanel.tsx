@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { ClipboardList, Plus, Trash2, Send, ChevronLeft } from "lucide-react"
+import { ClipboardList, Plus, Trash2, Send, ChevronLeft, Copy } from "lucide-react"
 
 // ---- Tipler (API yanıtlarıyla uyumlu) ----
 type Assessment = {
@@ -43,6 +43,7 @@ type Session = {
   expiresAt: string
   score: number | null
   result: "GECTI" | "KALDI" | null
+  sinavLink: string | null // yalnız aktif oturumda dolu (ATANDI/BASLADI); terminalde null
   assessment: { name: string }
 }
 
@@ -495,6 +496,16 @@ function AtamaVeSonuc({ assessmentId }: { assessmentId: string }) {
     oturumlariYukle()
   }
 
+  // Aday sınav linkini panoya kopyala (yalnız İK görür; link zaten aktif oturumda dolu).
+  const linkKopyala = async (link: string) => {
+    try {
+      await navigator.clipboard.writeText(link)
+      setMesaj("Aday sınav linki panoya kopyalandı.")
+    } catch {
+      setMesaj("Kopyalanamadı — linki elle seçip kopyalayın: " + link)
+    }
+  }
+
   const buSinavOturumlari = oturumlar // sessions endpoint tümünü döndürür; İK burada hepsini görebilir
 
   return (
@@ -533,8 +544,8 @@ function AtamaVeSonuc({ assessmentId }: { assessmentId: string }) {
               <tr className="text-left text-slate-500 border-b">
                 <th className="px-3 py-2">Sınav</th>
                 <th className="px-3 py-2">Durum</th>
-                <th className="px-3 py-2">Puan</th>
-                <th className="px-3 py-2">Sonuç</th>
+                <th className="px-3 py-2">Son Geçerlilik</th>
+                <th className="px-3 py-2">Aday Linki / Sonuç</th>
               </tr>
             </thead>
             <tbody>
@@ -547,14 +558,23 @@ function AtamaVeSonuc({ assessmentId }: { assessmentId: string }) {
                   <tr key={o.id} className="border-b last:border-0">
                     <td className="px-3 py-2">{o.assessment.name}</td>
                     <td className="px-3 py-2">{STATUS_ETIKET[o.status] ?? o.status}</td>
-                    <td className="px-3 py-2">{o.score != null ? `%${o.score}` : "—"}</td>
+                    <td className="px-3 py-2 text-slate-600">
+                      {new Date(o.expiresAt).toLocaleString("tr-TR", {
+                        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+                      })}
+                    </td>
                     <td className="px-3 py-2">
-                      {o.result === "GECTI" ? (
-                        <Badge className="bg-green-100 text-green-700">Geçti</Badge>
+                      {o.sinavLink ? (
+                        // Aktif oturum: adaya iletilecek link (kopyala). Ekranda tam URL basılmaz (omuz sızıntısı).
+                        <Button size="sm" variant="outline" onClick={() => linkKopyala(o.sinavLink!)}>
+                          <Copy className="h-3 w-3 mr-1" /> Linki Kopyala
+                        </Button>
+                      ) : o.result === "GECTI" ? (
+                        <Badge className="bg-green-100 text-green-700">Geçti (%{o.score})</Badge>
                       ) : o.result === "KALDI" ? (
-                        <Badge className="bg-red-100 text-red-700">Kaldı</Badge>
+                        <Badge className="bg-red-100 text-red-700">Kaldı (%{o.score})</Badge>
                       ) : (
-                        "—"
+                        <span className="text-slate-400">{STATUS_ETIKET[o.status] ?? "—"}</span>
                       )}
                     </td>
                   </tr>

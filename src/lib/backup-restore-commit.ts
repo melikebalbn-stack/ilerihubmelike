@@ -24,6 +24,12 @@ import {
 import { existsSync } from 'fs'
 import { pm2DeleteStart, healthCheck } from './backup-restore-health'
 import { buildStagingArtifact } from './backup-restore-build'
+import {
+  resolveRestoreModeInfo,
+  runNginxSwap,
+  postSwapHealthCheck,
+  type RestoreTargetInfo,
+} from './backup-restore-mode'
 import { backupILERIHub, generateBackupName } from './backup-service'
 import { prisma } from './prisma'
 import { logAuditEvent } from './audit-log'
@@ -70,9 +76,10 @@ export interface RestoreCommitResult {
 type CheckpointStage =
   | 'PREPARING' // pre-restore backup (canlı el değmemiş)
   | 'BUILDING' // staging build (canlı el değmemiş)
-  | 'SWAPPING_FILES' // file swap BAŞLADI (canlı değişiyor)
+  | 'SWAPPING_FILES' // file swap BAŞLADI (hedef dizin değişiyor)
   | 'SWAPPING_DB' // db swap
   | 'RESTARTING' // pm2 restart + health
+  | 'NGINX_SWAP' // Faz 2 passive: nginx aktif slot değişiyor
   | 'DONE'
 
 interface Checkpoint {
@@ -85,6 +92,10 @@ interface Checkpoint {
   actorId: string
   pid: number
   ts: number
+  // Faz 2: recovery hedefi doğru bulsun (passive-slot orphan'da hedef aktif slot DEĞİL).
+  targetDir: string
+  mode: RestoreTargetInfo['mode']
+  pm2Name: string | null
 }
 
 function checkpointPath(jobId: string): string {
@@ -171,6 +182,16 @@ export async function recoverOrphanedRestores(): Promise<
   Array<{ jobId: string; stage: string; action: string }>
 > {
   const results: Array<{ jobId: string; stage: string; action: string }> = []
+  // Faz 2: recovery downstream helper'ları checkpoint hedefine yöneltmek için env
+  // override'ı geçici değiştirir; SONUNDA orijinaline geri yükle (kendi restore'unu bozmasın).
+  const origTarget = process.env.ILERIHUB_RESTORE_TARGET
+  const origPm2 = process.env.ILERIHUB_PM2_NAME
+  const restoreEnv = () => {
+    if (origTarget === undefined) delete process.env.ILERIHUB_RESTORE_TARGET
+    else process.env.ILERIHUB_RESTORE_TARGET = origTarget
+    if (origPm2 === undefined) delete process.env.ILERIHUB_PM2_NAME
+    else process.env.ILERIHUB_PM2_NAME = origPm2
+  }
   let files: string[]
   try {
     files = (await fs.readdir(JOBS_DIR)).filter((f) => f.endsWith('.checkpoint.json'))
@@ -208,6 +229,21 @@ export async function recoverOrphanedRestores(): Promise<
       continue
     }
 
+    // Faz 2: recovery HEDEFİNİ checkpoint'ten al — passive orphan'da hedef AKTİF slot
+    // DEĞİL (pasif). Downstream rollbackFiles/pm2/integrity doğru slota yönelsin.
+    if (cp.targetDir) process.env.ILERIHUB_RESTORE_TARGET = cp.targetDir
+    if (cp.pm2Name) process.env.ILERIHUB_PM2_NAME = cp.pm2Name
+    else delete process.env.ILERIHUB_PM2_NAME
+    // Passive NGINX_SWAP orphan: nginx aktif-slot + DB durumu belirsiz → otomatik toggle
+    // YAPMA (yanlış swap felaket). MANUEL MÜDAHALE iste.
+    if (cp.mode === 'passive-slot' && cp.stage === 'NGINX_SWAP') {
+      await setStatus(cp.jobId, BackupStatus.FAILED,
+        `Yarım kaldı (NGINX_SWAP, passive) — MANUEL MÜDAHALE: nginx aktif slot + DB tutarlılığı elle doğrulanmalı`)
+      await audit('BACKUP_RESTORE_RECOVERY_FAILED', { jobId: cp.jobId, stage: cp.stage, mode: cp.mode, manualIntervention: true, reason: 'nginx_state_ambiguous' })
+      results.push({ jobId: cp.jobId, stage: cp.stage, action: 'manual_intervention_required' })
+      continue
+    }
+
     // SWAPPING_FILES / SWAPPING_DB / RESTARTING → ROLLBACK-FIRST
     // Faz 1.3: preRestoreDir checkpoint'te yoksa sourceBackupId'den TÜRET — mid-swap
     // kill'de post-swap checkpoint yazılmamış olabilir; "adressiz" kalmasın.
@@ -239,6 +275,7 @@ export async function recoverOrphanedRestores(): Promise<
       results.push({ jobId: cp.jobId, stage: cp.stage, action: 'manual_intervention_required' })
     }
   }
+  restoreEnv() // Faz 2: env-override'ları orijinaline geri yükle.
   return results
 }
 
@@ -251,17 +288,36 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
   // yeniden oluşur (COMPLETED görünür); swap öncesi satır varsa update branch'i çalışır.
   const st = (status: BackupStatus, note?: string) => setStatus(jobId, status, note, jobRow)
 
-  const cpBase = { jobId, sourceBackupId, liveDbName, actorId, pid: process.pid }
+  // Faz 2: HEDEF ÇÖZÜMÜ — in-place (staging) vs passive-slot (prod). Guard içeride
+  // (hedef=aktif veya çalışan-slot≠CURRENT_ACTIVE → REDDET).
+  let modeInfo: RestoreTargetInfo
+  try {
+    modeInfo = resolveRestoreModeInfo()
+  } catch (err) {
+    await st(BackupStatus.FAILED, `Hedef çözülemedi/reddedildi: ${(err as Error).message}`)
+    await audit('BACKUP_RESTORE_FAILED', { stage: 'resolve_mode', error: (err as Error).message })
+    return { ok: false, stage: 'resolve_mode', error: (err as Error).message }
+  }
+  // Downstream yardımcılar (swap/pm2/build) HEDEFE yönelsin: env-override en üstte.
+  process.env.ILERIHUB_RESTORE_TARGET = modeInfo.targetDir
+  if (modeInfo.pm2Name) process.env.ILERIHUB_PM2_NAME = modeInfo.pm2Name
+  const liveDir = modeInfo.targetDir
+  await audit('BACKUP_RESTORE_MODE', {
+    mode: modeInfo.mode,
+    targetDir: modeInfo.targetDir,
+    pm2Name: modeInfo.pm2Name,
+    port: modeInfo.port,
+    nginxSwap: modeInfo.nginxSwap,
+    activeColor: modeInfo.activeColor ?? null,
+    passiveColor: modeInfo.passiveColor ?? null,
+  })
+
+  const cpBase = {
+    jobId, sourceBackupId, liveDbName, actorId, pid: process.pid,
+    targetDir: modeInfo.targetDir, mode: modeInfo.mode, pm2Name: modeInfo.pm2Name,
+  }
   const cp = (stage: CheckpointStage, preRestoreDir: string | null, oldDbName: string | null) =>
     writeCheckpoint({ ...cpBase, stage, preRestoreDir, oldDbName, ts: Date.now() })
-
-  let liveDir: string
-  try {
-    liveDir = resolveRestoreTarget()
-  } catch (err) {
-    await st(BackupStatus.FAILED, `Hedef dizin çözülemedi: ${(err as Error).message}`)
-    return { ok: false, stage: 'resolve_target', error: (err as Error).message }
-  }
 
   // 1. Pre-restore güvenlik yedeği (canlı el değmemiş)
   await cp('PREPARING', null, null)
@@ -320,6 +376,97 @@ export async function runRestoreCommit(p: RestoreCommitParams): Promise<RestoreC
     return rolledBack
   }
 
+  // ===== PROD PASSIVE-SLOT: aktif+DB'ye dokunmadan pasifi hazırla → DB swap+nginx swap =====
+  // GERİ ALMA MATRİSİ (paylaşılan-DB gerçeği; DB swap nginx swap'a EN YAKIN an):
+  //  A. Pasif restart/health FAIL (DB swap ÖNCESİ): aktif+DB EL DEĞMEMİŞ → pasif dosya rollback + FAILED.
+  //  B. DB swap FAIL: swapDbAtomic kendi içinde geri alır (aktif eski DB'de) → pasif dosya rollback + FAILED.
+  //  C. nginx swap FAIL (DB swap SONRASI): DB rollback (rename geri) → aktif eski kod + ESKİ DB (tutarlı),
+  //     nginx swap YAPILMADI → pasif dosya rollback + FAILED.
+  //  D. post-swap health FAIL (nginx swap SONRASI): nginx swap GERİ (aktif'e) + DB rollback → aktif eski
+  //     kod+DB'ye döner → pasif dosya rollback + FAILED.
+  //  BAŞARI: pasif health OK → DB swap → nginx swap → post-swap health → COMPLETED (aktif artık yeni slot).
+  if (modeInfo.mode === 'passive-slot') {
+    // 5p. Pasif slot restart + health — DB swap YOK, aktif slot dokunulmadı.
+    await cp('RESTARTING', filesSwap.preRestoreDir, null)
+    await st(BackupStatus.SWAPPING, 'Pasif slot yeniden başlatılıyor')
+    const ppm2 = await pm2DeleteStart()
+    const pport = ppm2.port ?? modeInfo.port ?? 3000
+    const failPassivePrewap = async (stage: string, note: string, extra: Record<string, unknown>) => {
+      await rollbackFiles(filesSwap.preRestoreDir).catch(() => {})
+      await pm2DeleteStart().catch(() => {})
+      await st(BackupStatus.FAILED, note)
+      await audit('BACKUP_RESTORE_FAILED', { stage, matrixCase: 'A', activeUntouched: true, ...extra })
+      await clearCheckpoint(jobId)
+    }
+    if (!ppm2.success) {
+      await failPassivePrewap('passive_pm2', `Pasif PM2 restart başarısız (matris A): ${ppm2.error}`, { error: ppm2.error })
+      return { ok: false, stage: 'passive_pm2', error: ppm2.error, preRestoreBackupName }
+    }
+    const phealth = await healthCheck(pport, 30)
+    if (!phealth.healthy) {
+      await failPassivePrewap('passive_health', `Pasif health başarısız (matris A, ${phealth.attempts} deneme) — aktif el değmemiş`, { attempts: phealth.attempts })
+      return { ok: false, stage: 'passive_health', preRestoreBackupName }
+    }
+
+    // 6p. DB swap (paylaşılan DB — nginx swap'a en yakın an)
+    await cp('SWAPPING_DB', filesSwap.preRestoreDir, null)
+    await st(BackupStatus.SWAPPING, 'Veritabanı değiştiriliyor (nginx swap öncesi)')
+    let oldDbNameP: string | null = null
+    if (testDbName) {
+      const dbSwap = await swapDbAtomic(testDbName, liveDbName)
+      if (!dbSwap.success) {
+        // B: swapDbAtomic kendi geri aldı → pasif dosya rollback
+        await rollbackFiles(filesSwap.preRestoreDir).catch(() => {})
+        await pm2DeleteStart().catch(() => {})
+        await st(BackupStatus.FAILED, `DB swap başarısız (matris B): ${dbSwap.errors.join('; ')}`)
+        await audit('BACKUP_RESTORE_FAILED', { stage: 'db_swap', matrixCase: 'B', errors: dbSwap.errors })
+        await clearCheckpoint(jobId)
+        return { ok: false, stage: 'db_swap', error: dbSwap.errors.join('; '), preRestoreBackupName }
+      }
+      oldDbNameP = dbSwap.oldDbName
+    }
+
+    // 7p. nginx swap (rollback.sh yeniden kullanılır) — aktif artık pasif slot
+    await cp('NGINX_SWAP', filesSwap.preRestoreDir, oldDbNameP)
+    await st(BackupStatus.SWAPPING, 'nginx aktif slot değiştiriliyor')
+    const nginx = await runNginxSwap()
+    if (!nginx.success) {
+      // C: DB geri al; nginx swap YAPILMADI → aktif eski kod + ESKİ DB (tutarlı)
+      if (oldDbNameP) await rollbackDb(oldDbNameP, liveDbName).catch(() => {})
+      await rollbackFiles(filesSwap.preRestoreDir).catch(() => {})
+      await pm2DeleteStart().catch(() => {})
+      await st(BackupStatus.FAILED, `nginx swap başarısız (matris C): ${nginx.error}`)
+      await audit('BACKUP_RESTORE_FAILED', { stage: 'nginx_swap', matrixCase: 'C', error: nginx.error, dbRolledBack: !!oldDbNameP })
+      await clearCheckpoint(jobId)
+      return { ok: false, stage: 'nginx_swap', error: nginx.error, preRestoreBackupName }
+    }
+
+    // 8p. post-swap health (prod, nginx üzerinden)
+    const post = await postSwapHealthCheck(15)
+    if (!post.healthy) {
+      // D: nginx swap GERİ + DB rollback → aktif eski kod+DB'ye döner
+      await runNginxSwap().catch(() => {})
+      if (oldDbNameP) await rollbackDb(oldDbNameP, liveDbName).catch(() => {})
+      await rollbackFiles(filesSwap.preRestoreDir).catch(() => {})
+      await pm2DeleteStart().catch(() => {})
+      await st(BackupStatus.FAILED, `Post-swap health başarısız (matris D, ${post.attempts}) — nginx+DB geri alındı`)
+      await audit('BACKUP_RESTORE_FAILED', { stage: 'post_swap_health', matrixCase: 'D', attempts: post.attempts })
+      await clearCheckpoint(jobId)
+      return { ok: false, stage: 'post_swap_health', preRestoreBackupName }
+    }
+
+    await cp('DONE', filesSwap.preRestoreDir, oldDbNameP)
+    await st(BackupStatus.COMPLETED, `Restore tamam — passive-slot (aktif→${nginx.activeAfter}, build ${build.buildId})`)
+    await audit('BACKUP_RESTORE_COMPLETED', {
+      mode: 'passive-slot', backupName, preRestoreBackupName, preRestoreFilePath,
+      preRestoreDir: filesSwap.preRestoreDir, oldDbName: oldDbNameP, buildId: build.buildId,
+      activeAfter: nginx.activeAfter, postSwapAttempts: post.attempts,
+    })
+    await clearCheckpoint(jobId)
+    return { ok: true, stage: 'completed', preRestoreBackupName, preRestoreDir: filesSwap.preRestoreDir, oldDbName: oldDbNameP, buildId: build.buildId }
+  }
+
+  // ===== IN-PLACE (staging): mevcut akış AYNEN (drill parity) =====
   // 4. DB swap
   await cp('SWAPPING_DB', filesSwap.preRestoreDir, null)
   await st(BackupStatus.SWAPPING, 'Veritabanı değiştiriliyor')

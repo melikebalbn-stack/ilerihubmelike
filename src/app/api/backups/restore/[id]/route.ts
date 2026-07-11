@@ -33,6 +33,7 @@ import {
 // hedef-kanıt helper'ları (describeRestoreTarget / resolveRestorePm2) gerekir.
 import { describeRestoreTarget } from '@/lib/backup-restore-swap'
 import { resolveRestorePm2 } from '@/lib/backup-restore-health'
+import { resolveRestoreModeInfo } from '@/lib/backup-restore-mode'
 import { BackupStatus, BackupType } from '@/generated/prisma'
 
 export async function POST(
@@ -114,6 +115,15 @@ export async function POST(
   } catch (err) {
     restorePm2Name = `ÇÖZÜLEMEDİ (${(err as Error).message})`
   }
+  // Faz 2: mode + gerçek hedef (in-place: cwd | passive-slot: pasif slot). Guard hatası
+  // burada da görünür (ör. çalışan slot CURRENT_ACTIVE ile uyuşmuyor).
+  let restoreModeInfo: string
+  try {
+    const mi = resolveRestoreModeInfo()
+    restoreModeInfo = `${mi.mode} → ${mi.targetDir}${mi.nginxSwap ? ` (aktif=${mi.activeColor}→pasif=${mi.passiveColor}, nginx swap)` : ''}`
+  } catch (err) {
+    restoreModeInfo = `ÇÖZÜLEMEDİ/REDDEDİLDİ (${(err as Error).message})`
+  }
   await logAuditEvent({
     action: dryRun ? 'BACKUP_RESTORE_DRY_RUN_STARTED' : 'BACKUP_RESTORE_STARTED',
     actorId: user.id,
@@ -128,6 +138,7 @@ export async function POST(
       restoreDbHost: restoreTarget.dbHost,
       restoreDbName: restoreTarget.dbName,
       restorePm2Name,
+      restoreMode: restoreModeInfo,
     },
   })
 

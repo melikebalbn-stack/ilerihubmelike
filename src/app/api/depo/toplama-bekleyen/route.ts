@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
-import { getBekleyenToplamaIsleri } from '@/lib/ifs/tuketim'
+import { getBekleyenToplamaIsleri, getMalzemeninBekleyenIsleri } from '@/lib/ifs/tuketim'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,11 +12,17 @@ export async function GET(request: Request) {
   if (error) return error
 
   const sp = new URL(request.url).searchParams
-  const sayfa = Math.max(0, Number(sp.get('sayfa')) || 0)
-  const boyut = Math.min(50, Math.max(1, Number(sp.get('boyut')) || 25))
-  const q = sp.get('q') ?? undefined
+  const part = sp.get('part')?.trim()
 
   try {
+    // Malzeme modu: part varsa o malzemeyi bekleyen açık işler (q/sayfa yok sayılır).
+    if (part) {
+      const isler = await getMalzemeninBekleyenIsleri(part)
+      return NextResponse.json({ ok: true, isler, toplam: isler.length })
+    }
+    const sayfa = Math.max(0, Number(sp.get('sayfa')) || 0)
+    const boyut = Math.min(50, Math.max(1, Number(sp.get('boyut')) || 25))
+    const q = sp.get('q') ?? undefined
     const { isler, toplam } = await getBekleyenToplamaIsleri(sayfa, boyut, q)
     return NextResponse.json({ ok: true, isler, toplam })
   } catch (e) {

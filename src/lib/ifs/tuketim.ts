@@ -34,6 +34,9 @@ export interface BekleyenIs {
   kalemSayisi: number
   acikKalem: number
   toplananKalem: number
+  /** Malzeme modunda (getMalzemeninBekleyenIsleri): aranan parçanın bu emirdeki kalanı. */
+  kalemKalan?: number
+  kalemBirim?: string
 }
 
 export interface ToplamaSatiri {
@@ -237,6 +240,65 @@ export async function getBekleyenToplamaIsleri(
     }
   }
   return { isler: sonuc, toplam }
+}
+
+/**
+ * Bir malzemeyi (partNo) bekleyen açık işler — "elimde kutu var, hangi işe lazım?" senaryosu.
+ * Released/Started emirlerin MaterialArray'lerinde partNo eşleşen + kalan>0 satırı olanları döner.
+ * kalemKalan/kalemBirim = o emirdeki bu malzemenin kalanı. NeedDate artan (sorgu sırası korunur).
+ */
+export async function getMalzemeninBekleyenIsleri(partNo: string): Promise<BekleyenIs[]> {
+  const { contract } = getIfsConfig()
+  const p = (partNo ?? '').trim()
+  if (!p) return []
+  const ST = 'IfsApp.ShopOrderHandling.ShopOrdState'
+  const filter =
+    `Contract eq '${esc(contract)}' and (Objstate eq ${ST}'Released' or Objstate eq ${ST}'Started')`
+  const { status, body } = await mainGet<{ value?: RawShopOrdList[] }>(
+    `ShopOrderHandling.svc/ShopOrds?$filter=${encodeURIComponent(filter)}` +
+      `&$select=OrderNo,ReleaseNo,SequenceNo,PartNo,PartDescription,RevisedQtyDue,Objstate,NeedDate,RevisedDueDate` +
+      `&$orderby=NeedDate&$top=50`,
+  )
+  if (status !== 200 || !Array.isArray(body?.value)) return []
+  const emirler = body.value
+
+  const CHUNK = 10
+  const sonuc: BekleyenIs[] = []
+  for (let i = 0; i < emirler.length; i += CHUNK) {
+    const dilim = emirler.slice(i, i + CHUNK)
+    const taramalar = await Promise.all(
+      dilim.map(async (o) => {
+        const key = `OrderNo='${esc(str(o.OrderNo))}',ReleaseNo='${esc(str(o.ReleaseNo))}',SequenceNo='${esc(str(o.SequenceNo))}'`
+        const r = await mainGet<{ value?: RawMat[] }>(
+          `ShopOrderHandling.svc/ShopOrds(${encodeURI(key)})/MaterialArray?$select=LineItemNo,PartNo,QtyRemainToIssue,UnitMeas&$top=200`,
+        )
+        const lines = r.status === 200 && Array.isArray(r.body?.value) ? r.body.value : []
+        const kalemSayisi = lines.length
+        const acikKalem = lines.filter((l) => num(l.QtyRemainToIssue) > 0).length
+        const eslesen = lines.find((l) => str(l.PartNo) === p && num(l.QtyRemainToIssue) > 0)
+        return { o, kalemSayisi, acikKalem, eslesen }
+      }),
+    )
+    for (const { o, kalemSayisi, acikKalem, eslesen } of taramalar) {
+      if (!eslesen) continue // bu emir bu malzemeyi (açık olarak) istemiyor
+      const tarih = o.NeedDate ?? o.RevisedDueDate
+      sonuc.push({
+        orderNo: str(o.OrderNo),
+        releaseNo: str(o.ReleaseNo),
+        sequenceNo: str(o.SequenceNo),
+        urunKodu: str(o.PartNo),
+        urunAdi: str(o.PartDescription) || str(o.PartNo),
+        miktar: num(o.RevisedQtyDue),
+        ihtiyacTarihi: tarih ? String(tarih).slice(0, 10) : undefined,
+        kalemSayisi,
+        acikKalem,
+        toplananKalem: kalemSayisi - acikKalem,
+        kalemKalan: num(eslesen.QtyRemainToIssue),
+        kalemBirim: str(eslesen.UnitMeas) || 'ad',
+      })
+    }
+  }
+  return sonuc
 }
 
 interface RawMat {

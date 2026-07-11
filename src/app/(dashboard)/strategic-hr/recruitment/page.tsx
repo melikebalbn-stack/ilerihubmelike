@@ -84,6 +84,7 @@ import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import TimeToHirePanel from "./_components/TimeToHirePanel"
 import SourceBreakdownPanel from "./_components/SourceBreakdownPanel"
+import AssessmentPanel from "./_components/AssessmentPanel"
 
 interface JobOpening {
   id: string
@@ -2062,6 +2063,7 @@ export default function RecruitmentPage() {
           <TabsTrigger value="openings">Acik Pozisyonlar ({filteredOpenings.length})</TabsTrigger>
           <TabsTrigger value="candidates">Aday Havuzu ({filteredCandidates.length})</TabsTrigger>
           <TabsTrigger value="analiz">Analiz</TabsTrigger>
+          <TabsTrigger value="sinavlar">Sınavlar</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests">
@@ -2527,6 +2529,10 @@ export default function RecruitmentPage() {
             <TimeToHirePanel />
             <SourceBreakdownPanel />
           </div>
+        </TabsContent>
+
+        <TabsContent value="sinavlar">
+          <AssessmentPanel />
         </TabsContent>
       </Tabs>
 

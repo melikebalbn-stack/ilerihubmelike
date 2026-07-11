@@ -5704,6 +5704,9 @@ model PublicJobApplication {
   // Yalnız back-relation — DB kolonu doğurmaz.
   stageLogs PublicJobApplicationStageLog[]
 
+  // İşe alım aday sınav oturumları (Faz 1) — yalnız ilişki, DB kolonu değil.
+  assessmentSessions AssessmentSession[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -10319,4 +10322,123 @@ model PersonnelWorkstation {
   @@unique([personnelId, workstationId])
   @@index([workstationId])
   @@map("personnel_workstations")
+}
+
+// ============================================================
+// İŞE ALIM ADAY SINAV MOTORU (Assessment Faz 1)
+// Akademi Exam*/UserExamAttempt'ten AYRI. Aday kuyruğu = PublicJobApplication.
+// ============================================================
+
+enum AssessmentType {
+  YETKINLIK   // Yetkinlik sınavı
+  YABANCI_DIL // Yabancı dil
+  GENEL       // Genel
+}
+
+enum AssessmentQuestionType {
+  TEK_SECIM    // Tek doğru şık
+  COKLU_SECIM  // Birden çok doğru şık
+  DOGRU_YANLIS // Doğru / Yanlış
+}
+
+enum AssessmentSessionStatus {
+  ATANDI
+  BASLADI
+  TAMAMLANDI
+  SURESI_DOLDU
+  IPTAL
+}
+
+enum AssessmentResult {
+  GECTI
+  KALDI
+}
+
+// Sınav tanımı (İK oluşturur)
+model CandidateAssessment {
+  id           String         @id @default(cuid())
+  name         String
+  type         AssessmentType @default(GENEL)
+  durationMin  Int            // süre (dakika)
+  passingScore Int            // geçme puanı
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  questions AssessmentQuestion[]
+  sessions  AssessmentSession[]
+
+  @@index([isActive])
+}
+
+model AssessmentQuestion {
+  id           String                 @id @default(cuid())
+  assessmentId String
+  type         AssessmentQuestionType @default(TEK_SECIM)
+  text         String                 @db.Text
+  points       Int                    @default(1)
+  order        Int                    @default(0)
+  isActive     Boolean                @default(true)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  assessment CandidateAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  options    AssessmentOption[]
+  answers    AssessmentAnswer[]
+
+  @@index([assessmentId])
+}
+
+model AssessmentOption {
+  id         String  @id @default(cuid())
+  questionId String
+  text       String
+  isCorrect  Boolean @default(false)
+  order      Int     @default(0)
+
+  question AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+// Adaya atanan sınav oturumu (token Faz 2'de kullanılacak, şimdi dışa açılmaz).
+// Bağ: PublicJobApplication (gerçek başvuru kuyruğu). JobApplication DEĞİL.
+model AssessmentSession {
+  id                    String                  @id @default(cuid())
+  publicJobApplicationId String
+  assessmentId          String
+  token                 String                  @unique @default(cuid())
+  status                AssessmentSessionStatus @default(ATANDI)
+  assignedAt            DateTime                @default(now())
+  expiresAt             DateTime                // atanma + geçerlilik (72 saat)
+  startedAt             DateTime?
+  finishedAt            DateTime?
+  score                 Int?
+  result                AssessmentResult?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  publicJobApplication PublicJobApplication @relation(fields: [publicJobApplicationId], references: [id], onDelete: Cascade)
+  assessment           CandidateAssessment  @relation(fields: [assessmentId], references: [id])
+  answers              AssessmentAnswer[]
+
+  @@unique([publicJobApplicationId, assessmentId])
+  @@index([publicJobApplicationId])
+  @@index([token])
+}
+
+model AssessmentAnswer {
+  id                String   @id @default(cuid())
+  sessionId         String
+  questionId        String
+  selectedOptionIds Json     // seçilen şık id'leri
+  isCorrect         Boolean  @default(false)
+  points            Int      @default(0)
+  createdAt         DateTime @default(now())
+
+  session  AssessmentSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question AssessmentQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
 }

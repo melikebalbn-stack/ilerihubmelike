@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assessmentGuard } from "@/lib/assessment/guard";
+import { generateAssessmentToken } from "@/lib/assessment/token";
 
 // Token geçerlilik süresi: 72 saat.
 const GECERLILIK_MS = 72 * 60 * 60 * 1000;
@@ -78,10 +79,11 @@ export async function POST(req: NextRequest) {
 
   const expiresAt = new Date(Date.now() + GECERLILIK_MS);
 
-  // Idempotent atama: varsa dokunma, yoksa token'lı oluştur (token @default(cuid())).
+  // Idempotent atama: varsa dokunma, yoksa crypto-random token ile oluştur.
+  // Token koddan üretilir (cuid DEĞİL) — public bearer token için tahmin-dirençli.
   const oturum = await prisma.assessmentSession.upsert({
     where: { publicJobApplicationId_assessmentId: { publicJobApplicationId, assessmentId } },
-    create: { publicJobApplicationId, assessmentId, expiresAt },
+    create: { publicJobApplicationId, assessmentId, expiresAt, token: generateAssessmentToken() },
     update: {},
     select: OTURUM_SELECT,
   });

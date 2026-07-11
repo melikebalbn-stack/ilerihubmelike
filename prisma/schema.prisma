@@ -10407,7 +10407,7 @@ model AssessmentSession {
   id                    String                  @id @default(cuid())
   publicJobApplicationId String
   assessmentId          String
-  token                 String                  @unique @default(cuid())
+  token                 String                  @unique // crypto-random (32B base64url), koddan üretilir
   status                AssessmentSessionStatus @default(ATANDI)
   assignedAt            DateTime                @default(now())
   expiresAt             DateTime                // atanma + geçerlilik (72 saat)
@@ -10421,10 +10421,27 @@ model AssessmentSession {
   publicJobApplication PublicJobApplication @relation(fields: [publicJobApplicationId], references: [id], onDelete: Cascade)
   assessment           CandidateAssessment  @relation(fields: [assessmentId], references: [id])
   answers              AssessmentAnswer[]
+  attemptLogs          AssessmentAttemptLog[]
 
   @@unique([publicJobApplicationId, assessmentId])
   @@index([publicJobApplicationId])
   @@index([token])
+}
+
+// Public sınav erişim/denetim izi (Faz 2). Public akış → accessedBy YOK.
+// Geçersiz token denemeleri de loglanır (sessionId null) → brute-force tespiti.
+// Ham token SAKLANMAZ (yalnız sonuç + IP).
+model AssessmentAttemptLog {
+  id        String   @id @default(cuid())
+  sessionId String? // geçerli token ise oturum; geçersiz denemede null
+  action    String // "OPEN" | "SUBMIT" | "INVALID_TOKEN" | "EXPIRED" | "ALREADY_DONE" | "TIMEOUT"
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  session AssessmentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([createdAt])
 }
 
 model AssessmentAnswer {

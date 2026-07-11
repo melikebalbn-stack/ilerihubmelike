@@ -4,19 +4,18 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Radar } from "lucide-react"
 
-// CandidateSource enum → okunabilir Türkçe etiket.
+// ReferralSource enum (PublicJobApplication) → okunabilir Türkçe etiket.
+// null/boş referralSource API tarafında "BELIRTILMEMIS" grubuna düşer.
 const KAYNAK_ETIKET: Record<string, string> = {
-  DIRECT: "Doğrudan Başvuru",
-  REFERRAL: "Referans",
-  LINKEDIN: "LinkedIn",
-  JOB_BOARD: "İş İlanı Sitesi",
-  AGENCY: "İK Ajansı",
-  CAREER_FAIR: "Kariyer Fuarı",
-  INTERNAL: "İç Kaynak",
+  AGENCY: "Aracı Kurum",
+  ISKUR: "İŞKUR",
+  WEBSITE: "Web Sitesi",
+  REFERENCE: "Referans",
   OTHER: "Diğer",
+  BELIRTILMEMIS: "Belirtilmemiş",
 }
 
-type Kaynak = { source: string; basvuru: number; iseBaslayan: number; donusumOrani: number }
+type Kaynak = { source: string; basvuru: number; iseAlinan: number; donusumOrani: number }
 
 export default function SourceBreakdownPanel() {
   const [kaynaklar, setKaynaklar] = useState<Kaynak[] | null>(null)
@@ -58,16 +57,19 @@ export default function SourceBreakdownPanel() {
                 <tr className="text-left text-slate-500 border-b">
                   <th className="px-3 py-2">Kaynak</th>
                   <th className="px-3 py-2">Başvuru</th>
-                  <th className="px-3 py-2">İşe Başlayan</th>
+                  <th className="px-3 py-2">İşe Alınan</th>
                   <th className="px-3 py-2">Dönüşüm</th>
                 </tr>
               </thead>
               <tbody>
                 {kaynaklar.map((k) => (
-                  <tr key={k.source} className="border-b last:border-0">
+                  <tr
+                    key={k.source}
+                    className={`border-b last:border-0 ${k.source === "BELIRTILMEMIS" ? "text-slate-400" : ""}`}
+                  >
                     <td className="px-3 py-2 font-medium">{KAYNAK_ETIKET[k.source] ?? k.source}</td>
                     <td className="px-3 py-2">{k.basvuru}</td>
-                    <td className="px-3 py-2">{k.iseBaslayan}</td>
+                    <td className="px-3 py-2">{k.iseAlinan}</td>
                     <td className="px-3 py-2 font-semibold text-[#1B4F72]">%{k.donusumOrani}</td>
                   </tr>
                 ))}

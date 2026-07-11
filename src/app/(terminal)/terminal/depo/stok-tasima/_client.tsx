@@ -8,8 +8,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronDown,
-  ChevronRight,
   Delete,
   Loader2,
   MapPin,
@@ -75,7 +73,9 @@ export function StokTasimaClient() {
 
   // ── BÖLÜM 3: Hızlı Taşıma paneli (üstte, tek ekran) + sihirbaz accordion ─────
   // Sihirbaz artık ikincil: kapalıyken scanner Hızlı panelin; açıkken sihirbazın.
-  const [sihirbazAcik, setSihirbazAcik] = useState(false)
+  // Hızlı panel ve sihirbaz aynı ekranda; okutma odağı hangisinde? Varsayılan hızlı panel,
+  // sihirbaz alanına dokununca ona geçer (tek aktif scanner).
+  const [okutHedefi, setOkutHedefi] = useState<'hizli' | 'sihirbaz'>('hizli')
   const [hAdaylar, setHAdaylar] = useState<FifoKaynak[]>([]) // çoklu lokasyon seçim adayları
   const [hKaynak, setHKaynak] = useState<FifoKaynak | null>(null) // seçili kaynak stok satırı
   const [hPartCip, setHPartCip] = useState<string | null>(null) // '{partNo}{ · lot}'
@@ -462,14 +462,12 @@ export function StokTasimaClient() {
     }
   }
 
-  // ── Tek aktif scanner: sihirbaz kapalıyken Hızlı panelin, açıkken sihirbazın ──
+  // ── Tek aktif scanner: odak hangisindeyse onun input'u DOM'da → çakışma yok ──
   const hizliScanAktif =
-    !sihirbazAcik && !hOkutManual && !hHedefManual && !hLoading && !hTasiniyor
+    okutHedefi === 'hizli' && !hOkutManual && !hHedefManual && !hLoading && !hTasiniyor
+  const sihirbazScanAktif = okutHedefi === 'sihirbaz' && isScanStep && !manualOpen && !loading
   const { inputProps: hizliInputProps } = useScanner(hizliScanAktif, hizliHandle)
-  const { inputProps } = useScanner(
-    sihirbazAcik && isScanStep && !manualOpen && !loading,
-    handleValue,
-  )
+  const { inputProps } = useScanner(sihirbazScanAktif, handleValue)
 
   const submitManual = () => {
     handleValue(manualVal)
@@ -627,7 +625,7 @@ export function StokTasimaClient() {
     <div className="relative flex flex-1 flex-col gap-3 py-2">
       {/* Tek aktif scanner: yalnız aktif olan input DOM'da → odak çakışması yok. */}
       {hizliScanAktif && <input {...hizliInputProps} />}
-      {sihirbazAcik && isScanStep && <input {...inputProps} />}
+      {sihirbazScanAktif && <input {...inputProps} />}
 
       {errorMsg && (
         <div className="absolute inset-x-0 top-0 z-20 mx-2 flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-base font-semibold text-white shadow-lg">
@@ -638,6 +636,7 @@ export function StokTasimaClient() {
 
       {/* ═══ BÖLÜM 3: HIZLI TAŞIMA paneli (üstte, tek ekran) ═══ */}
       <section
+        onPointerDownCapture={() => setOkutHedefi('hizli')}
         className="flex flex-col gap-2.5 rounded-2xl border-2 p-3"
         style={{ borderColor: TERMINAL_ACCENT }}
       >
@@ -818,22 +817,12 @@ export function StokTasimaClient() {
         )}
       </section>
 
-      {/* ═══ Adım adım taşıma (sihirbaz, ikincil — accordion) ═══ */}
-      <button
-        type="button"
-        onClick={() => setSihirbazAcik((v) => !v)}
-        className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors active:bg-muted/70"
+      {/* ═══ Adım adım taşıma (sihirbaz — hep görünür, ikincil) ═══ */}
+      <div
+        onPointerDownCapture={() => setOkutHedefi('sihirbaz')}
+        className="flex flex-col gap-3 border-t pt-3"
       >
-        {sihirbazAcik ? (
-          <ChevronDown className="h-4 w-4" />
-        ) : (
-          <ChevronRight className="h-4 w-4" />
-        )}
-        Adım adım taşıma
-      </button>
-
-      {sihirbazAcik && (
-      <>
+        <div className="text-sm font-medium text-muted-foreground">Adım adım taşıma</div>
       {/* Üst bar */}
       <div className="flex items-center gap-2 pt-1">
         <button
@@ -1130,8 +1119,7 @@ export function StokTasimaClient() {
           </div>
         </div>
       )}
-      </>
-      )}
+      </div>
     </div>
   )
 }

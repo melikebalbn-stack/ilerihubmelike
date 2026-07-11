@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma, JobApplicationStatus } from '@/generated/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { updateApplicationStatus } from '@/lib/recruitment/stage-log'
 
 // PR-RECRUIT-RBAC: PublicJobApplication HR-only (recruitment.admin)
 
@@ -51,13 +53,21 @@ export async function PATCH(
     const body = await request.json()
     const { status, notes } = body
 
-    const updateData: any = {}
-    if (status) updateData.status = status
-    if (notes !== undefined) updateData.notes = notes
-
-    const application = await prisma.publicJobApplication.update({
-      where: { id },
-      data: updateData
+    // Tek geçit: status değişimi helper'dan geçer (status + aşama logu aynı tx'te,
+    // changedBy = İK kullanıcısı). status YOKSA yalnız diğer alanlar (notes) güncellenir
+    // → log yazılmaz (davranış korunur). fromStatus == toStatus ise de log yazılmaz.
+    const application = await prisma.$transaction(async (tx) => {
+      if (status) {
+        return updateApplicationStatus(tx, {
+          applicationId: id,
+          toStatus: status as JobApplicationStatus,
+          changedBy: session.user.id,
+          data: notes !== undefined ? { notes } : undefined,
+        })
+      }
+      const updateData: Prisma.PublicJobApplicationUpdateInput = {}
+      if (notes !== undefined) updateData.notes = notes
+      return tx.publicJobApplication.update({ where: { id }, data: updateData })
     })
 
     return NextResponse.json(application)

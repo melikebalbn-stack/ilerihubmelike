@@ -5700,6 +5700,10 @@ model PublicJobApplication {
   health     JobApplicationHealth?
   accessLogs JobApplicationAccessLog[]
 
+  // Aşama/durum geçiş logu (Time-to-Hire + aşama süresi + darboğaz analizi).
+  // Yalnız back-relation — DB kolonu doğurmaz.
+  stageLogs PublicJobApplicationStageLog[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -5792,6 +5796,25 @@ model JobApplicationAccessLog {
 
   @@index([applicationId])
   @@index([accessedBy])
+}
+
+// Başvuru aşama/durum geçiş logu — her status değişiminde otomatik yazılır.
+// Time-to-Hire, aşama-bazlı süre, darboğaz ve kök-neden analizi için.
+// JobApplicationAccessLog desenini taklit eder (applicationId FK, Cascade).
+model PublicJobApplicationStageLog {
+  id            String               @id @default(cuid())
+  applicationId String
+  application   PublicJobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  fromStatus JobApplicationStatus? // önceki durum (ilk/başlangıç satırında null)
+  toStatus   JobApplicationStatus // geçilen yeni durum
+  changedBy  String? // değiştiren kullanıcı id (public geçişlerde null)
+  note       String?               @db.Text // opsiyonel açıklama
+
+  createdAt DateTime @default(now())
+
+  @@index([applicationId])
+  @@index([createdAt])
 }
 
 enum Gender {

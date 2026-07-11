@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@/generated/prisma'
+import { updateApplicationStatus } from '@/lib/recruitment/stage-log'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
@@ -177,12 +179,15 @@ export async function POST(request: NextRequest) {
     // Taslak birleştirme: KVKK adımında oluşan taslağı (cookie'deki applicationId) tam form
     // alanlarıyla GÜNCELLE + status PENDING (İK inceleme kuyruğu). Yeni kayıt açılmaz —
     // consent+health bu final başvuruyla ilişkili kalır.
-    const application = await prisma.publicJobApplication.update({
-      where: { id: consentedApplicationId },
-      data: { ...applicationData, status: 'PENDING' } as Parameters<
-        typeof prisma.publicJobApplication.update
-      >[0]['data'],
-    })
+    // Tek geçit: status + aşama logu aynı transaction'da (from=HEALTH_PENDING → PENDING).
+    // Public form → changedBy null. Diğer form alanları helper'ın data'sında güncellenir.
+    const application = await prisma.$transaction((tx) =>
+      updateApplicationStatus(tx, {
+        applicationId: consentedApplicationId,
+        toStatus: 'PENDING',
+        data: applicationData as Prisma.PublicJobApplicationUpdateInput,
+      }),
+    )
 
     // E-posta bildirimi gönder
     try {

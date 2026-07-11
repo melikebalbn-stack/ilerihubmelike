@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { logInitialStage } from "@/lib/recruitment/stage-log";
 import { validateConsentInput } from "@/lib/job-application/consent-validation";
 import { IK_T_866, ikT866FullText } from "@/content/ik-t-866";
 import {
@@ -85,6 +86,8 @@ export async function POST(request: NextRequest) {
           userAgent,
         },
       });
+      // Aşama logu: başlangıç satırı (from=null → CONSENT_PENDING). Public → changedBy null.
+      await logInitialStage(tx, { applicationId: app.id, toStatus: "CONSENT_PENDING" });
       return app;
     });
 

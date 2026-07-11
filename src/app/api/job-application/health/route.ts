@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { updateApplicationStatus } from "@/lib/recruitment/stage-log";
 import { verifyConsentedDraft } from "@/lib/job-application/consent-guard";
 import { DRAFT_COOKIE_NAME } from "@/lib/job-application/draft-cookie";
 import { validateHealthInput } from "@/lib/job-application/health-validation";
@@ -89,11 +90,8 @@ export async function POST(request: NextRequest) {
           deger: it.deger,
         })),
       });
-      // Sonraki aşama: başvuru formu.
-      await tx.publicJobApplication.update({
-        where: { id: applicationId },
-        data: { status: "HEALTH_PENDING" },
-      });
+      // Sonraki aşama: başvuru formu. Tek geçit — status + log aynı tx'te. Public → changedBy null.
+      await updateApplicationStatus(tx, { applicationId, toStatus: "HEALTH_PENDING" });
     });
 
     return NextResponse.json({ ok: true });

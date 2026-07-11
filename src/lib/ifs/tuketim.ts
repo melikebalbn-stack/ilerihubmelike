@@ -23,6 +23,19 @@ export interface IsEmriBaslik {
   durum: string
 }
 
+export interface BekleyenIs {
+  orderNo: string
+  releaseNo: string
+  sequenceNo: string
+  urunKodu: string
+  urunAdi: string
+  miktar: number
+  ihtiyacTarihi?: string
+  kalemSayisi: number
+  acikKalem: number
+  toplananKalem: number
+}
+
 export interface ToplamaSatiri {
   lineItemNo: number
   partNo: string
@@ -148,6 +161,68 @@ export async function getIsEmriBaslik(orderNo: string): Promise<IsEmriBaslik | n
     miktar: num(r.RevisedQtyDue),
     durum: str(r.Objstate),
   }
+}
+
+interface RawShopOrdList extends RawShopOrd {
+  NeedDate?: string | null
+  RevisedDueDate?: string | null
+}
+
+/**
+ * Bekleyen toplama işleri — açık kalemli Released/Started iş emirleri (kağıtsız senaryo).
+ * ShopOrds (Objstate Released|Started, tarih artan) → her emrin MaterialArray kalem sayıları.
+ * N+1 kaçınılmaz; emirler çekildikten sonra MaterialArray'ler chunk'lı (max 10 eşzamanlı) paralel.
+ * acikKalem === 0 olan emirler ELENİR (toplanacak şeyi kalmamış).
+ * TODO (b/c senaryoları): kişiye atama + aciliyet alanları — veri modeli hazır olunca rozet.
+ */
+export async function getBekleyenToplamaIsleri(): Promise<BekleyenIs[]> {
+  const { contract } = getIfsConfig()
+  // Objstate bir enum tipi (ShopOrdState) → string literal değil, qualified enum literal.
+  const ST = 'IfsApp.ShopOrderHandling.ShopOrdState'
+  const filter =
+    `Contract eq '${esc(contract)}' and (Objstate eq ${ST}'Released' or Objstate eq ${ST}'Started')`
+  const { status, body } = await mainGet<{ value?: RawShopOrdList[] }>(
+    `ShopOrderHandling.svc/ShopOrds?$filter=${encodeURIComponent(filter)}` +
+      `&$select=OrderNo,ReleaseNo,SequenceNo,PartNo,PartDescription,RevisedQtyDue,Objstate,NeedDate,RevisedDueDate` +
+      `&$orderby=NeedDate&$top=50`,
+  )
+  if (status !== 200 || !Array.isArray(body?.value)) return []
+  const emirler = body.value
+
+  const CHUNK = 10
+  const sonuc: BekleyenIs[] = []
+  for (let i = 0; i < emirler.length; i += CHUNK) {
+    const dilim = emirler.slice(i, i + CHUNK)
+    const sayimlar = await Promise.all(
+      dilim.map(async (o) => {
+        const key = `OrderNo='${esc(str(o.OrderNo))}',ReleaseNo='${esc(str(o.ReleaseNo))}',SequenceNo='${esc(str(o.SequenceNo))}'`
+        const r = await mainGet<{ value?: { QtyRemainToIssue?: number | null }[] }>(
+          `ShopOrderHandling.svc/ShopOrds(${encodeURI(key)})/MaterialArray?$select=LineItemNo,QtyRemainToIssue&$top=200`,
+        )
+        const lines = r.status === 200 && Array.isArray(r.body?.value) ? r.body.value : []
+        const kalemSayisi = lines.length
+        const acikKalem = lines.filter((l) => num(l.QtyRemainToIssue) > 0).length
+        return { o, kalemSayisi, acikKalem, toplananKalem: kalemSayisi - acikKalem }
+      }),
+    )
+    for (const { o, kalemSayisi, acikKalem, toplananKalem } of sayimlar) {
+      if (acikKalem === 0) continue // toplanacak şeyi kalmamış → ELE
+      const tarih = o.NeedDate ?? o.RevisedDueDate
+      sonuc.push({
+        orderNo: str(o.OrderNo),
+        releaseNo: str(o.ReleaseNo),
+        sequenceNo: str(o.SequenceNo),
+        urunKodu: str(o.PartNo),
+        urunAdi: str(o.PartDescription) || str(o.PartNo),
+        miktar: num(o.RevisedQtyDue),
+        ihtiyacTarihi: tarih ? String(tarih).slice(0, 10) : undefined,
+        kalemSayisi,
+        acikKalem,
+        toplananKalem,
+      })
+    }
+  }
+  return sonuc
 }
 
 interface RawMat {

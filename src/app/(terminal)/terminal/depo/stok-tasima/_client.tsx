@@ -20,10 +20,19 @@ import { cn } from '@/lib/utils'
 import { parseEtiket } from '@/lib/depo/etiket-parse'
 import { useScanner } from '@/lib/depo/use-scanner'
 import type { DepoRafBilgisi, DepoStokKaydi } from '@/lib/ifs/depo-stok'
+import type { FifoKaynak } from '@/lib/ifs/tuketim'
 import { TERMINAL_ACCENT } from '../../_shared'
 
-type Step = 'KAYNAK_RAF' | 'MALZEME' | 'MIKTAR' | 'HEDEF_RAF' | 'TAMAM'
-const STEP_INDEX: Record<Step, number> = { KAYNAK_RAF: 1, MALZEME: 2, MIKTAR: 3, HEDEF_RAF: 4, TAMAM: 4 }
+// KAYNAK_SECIM: malzeme birden çok rafta bulunduğunda kaynak raf seçimi (hâlâ 1. adım).
+type Step = 'KAYNAK_RAF' | 'KAYNAK_SECIM' | 'MALZEME' | 'MIKTAR' | 'HEDEF_RAF' | 'TAMAM'
+const STEP_INDEX: Record<Step, number> = {
+  KAYNAK_RAF: 1,
+  KAYNAK_SECIM: 1,
+  MALZEME: 2,
+  MIKTAR: 3,
+  HEDEF_RAF: 4,
+  TAMAM: 4,
+}
 
 export function StokTasimaClient() {
   const router = useRouter()
@@ -39,12 +48,17 @@ export function StokTasimaClient() {
   const [sonucYol, setSonucYol] = useState<'CREATE' | 'UPDATE' | null>(null)
   const [etiketYukleniyor, setEtiketYukleniyor] = useState(false)
 
+  // Malzeme-öncelikli giriş: çoklu raf seçim listesi + otomatik seçim teyidi.
+  const [malzemeKaynaklar, setMalzemeKaynaklar] = useState<FifoKaynak[]>([])
+  const [malzemeTeyit, setMalzemeTeyit] = useState<string | null>(null)
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [errorKey, setErrorKey] = useState(0)
   const [manualOpen, setManualOpen] = useState(false)
   const [manualVal, setManualVal] = useState('')
 
-  const isScanStep = step === 'KAYNAK_RAF' || step === 'MALZEME' || step === 'HEDEF_RAF'
+  const isScanStep =
+    step === 'KAYNAK_RAF' || step === 'KAYNAK_SECIM' || step === 'MALZEME' || step === 'HEDEF_RAF'
 
   const showError = useCallback((msg: string) => {
     setErrorMsg(msg)
@@ -58,27 +72,66 @@ export function StokTasimaClient() {
     return () => clearTimeout(t)
   }, [errorKey, errorMsg])
 
-  // ── Raf çözümleme (API) ──────────────────────────────────────────
-  const cozRafKaynak = useCallback(
+  // ── Malzeme kaynağını (FifoKaynak) seç → DepoStokKaydi + kaynakRaf kur, MIKTAR'a geç ─
+  const secKaynakStok = useCallback((k: FifoKaynak) => {
+    const kaydi: DepoStokKaydi = {
+      stokKodu: k.kimlik.partNo,
+      stokAdi: '',
+      lot: k.lotBatchNo,
+      miktar: k.mevcutMiktar,
+      birim: 'ad',
+      kimlik: k.kimlik,
+    }
+    setKaynakRaf({ locationNo: k.locationNo, aciklama: k.lokasyonAdi, grup: '' })
+    setSecilenStok(kaydi)
+    setMiktar('')
+    setMalzemeTeyit(`${k.kimlik.partNo} · ${k.lokasyonAdi || k.locationNo}`)
+    setStep('MIKTAR')
+  }, [])
+
+  // ── İlk okutma: RAF veya MALZEME çözümleme (API) ─────────────────
+  const cozKaynak = useCallback(
     async (kod: string) => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/depo/raf/${encodeURIComponent(kod)}/stok`)
-        const data = await res.json().catch(() => null)
-        if (!res.ok || !data?.ok) {
-          showError(`Raf bulunamadı: ${kod}`)
+        // TODO: çakışan kod politikası — şimdilik raf öncelikli
+        const rafRes = await fetch(`/api/depo/raf/${encodeURIComponent(kod)}/stok`)
+        const rafData = await rafRes.json().catch(() => null)
+        if (rafRes.ok && rafData?.ok) {
+          // MEVCUT davranış: kaynakRaf + rafStok set, MALZEME adımına geç.
+          setKaynakRaf(rafData.raf as DepoRafBilgisi)
+          setRafStok((rafData.stok ?? []) as DepoStokKaydi[])
+          setStep('MALZEME')
           return
         }
-        setKaynakRaf(data.raf as DepoRafBilgisi)
-        setRafStok((data.stok ?? []) as DepoStokKaydi[])
-        setStep('MALZEME')
+
+        // Raf değil → malzeme dene.
+        const p = parseEtiket(kod)
+        const stokKodu = p.tip === 'MALZEME' && p.stokKodu ? p.stokKodu : kod
+        const res = await fetch(`/api/depo/parca/${encodeURIComponent(stokKodu)}/stok`)
+        const data = await res.json().catch(() => null)
+        const satirlar = res.ok && data?.ok ? ((data.satirlar ?? []) as FifoKaynak[]) : []
+        if (satirlar.length === 0) {
+          showError(`Ne raf ne malzeme bulundu: ${kod}`)
+          return
+        }
+
+        const rafSayisi = new Set(satirlar.map((s) => s.locationNo)).size
+        if (rafSayisi === 1) {
+          // Tek raf → otomatik seç (FIFO ilk satır), MALZEME adımını atla.
+          secKaynakStok(satirlar[0])
+          return
+        }
+        // Çoklu raf → seçim listesi (gelen sıra = FIFO).
+        setMalzemeKaynaklar(satirlar)
+        setStep('KAYNAK_SECIM')
       } catch {
         showError('Bağlantı hatası — tekrar deneyin')
       } finally {
         setLoading(false)
       }
     },
-    [showError],
+    [showError, secKaynakStok],
   )
 
   const cozRafHedef = useCallback(
@@ -117,7 +170,16 @@ export function StokTasimaClient() {
     (raw: string) => {
       const val = raw.trim()
       if (!val) return
-      if (step === 'KAYNAK_RAF') return void cozRafKaynak(val)
+      if (step === 'KAYNAK_RAF') return void cozKaynak(val)
+      if (step === 'KAYNAK_SECIM') {
+        // Okunan kodu listedeki locationNo / lokasyonAdi ile eşleştir.
+        const low = val.toLowerCase()
+        const k = malzemeKaynaklar.find(
+          (m) => m.locationNo.toLowerCase() === low || (m.lokasyonAdi ?? '').toLowerCase() === low,
+        )
+        if (!k) return showError('Bu rafta bu malzeme yok')
+        return secKaynakStok(k)
+      }
       if (step === 'HEDEF_RAF') return void cozRafHedef(val)
       if (step === 'MALZEME') {
         const p = parseEtiket(val)
@@ -129,7 +191,7 @@ export function StokTasimaClient() {
         secStok(eslesme)
       }
     },
-    [step, cozRafKaynak, cozRafHedef, rafStok, showError],
+    [step, cozKaynak, cozRafHedef, rafStok, showError, malzemeKaynaklar, secKaynakStok],
   )
 
   const { inputProps } = useScanner(isScanStep && !manualOpen && !loading, handleValue)
@@ -147,6 +209,10 @@ export function StokTasimaClient() {
       case 'KAYNAK_RAF':
         router.push('/terminal/depo')
         break
+      case 'KAYNAK_SECIM':
+        setMalzemeKaynaklar([])
+        setStep('KAYNAK_RAF')
+        break
       case 'MALZEME':
         setKaynakRaf(null)
         setRafStok([])
@@ -155,7 +221,19 @@ export function StokTasimaClient() {
       case 'MIKTAR':
         setSecilenStok(null)
         setMiktar('')
-        setStep('MALZEME')
+        if (malzemeKaynaklar.length > 0) {
+          // Çoklu-raf seçiminden gelindi → seçim listesine dön.
+          setKaynakRaf(null)
+          setMalzemeTeyit(null)
+          setStep('KAYNAK_SECIM')
+        } else if (malzemeTeyit) {
+          // Otomatik-seçilen kaynaktan gelindi → ilk okutmaya dön.
+          setKaynakRaf(null)
+          setMalzemeTeyit(null)
+          setStep('KAYNAK_RAF')
+        } else {
+          setStep('MALZEME')
+        }
         break
       case 'HEDEF_RAF':
         setHedefRaf(null)
@@ -177,6 +255,8 @@ export function StokTasimaClient() {
     setManualOpen(false)
     setSonucYol(null)
     setTasiniyor(false)
+    setMalzemeKaynaklar([])
+    setMalzemeTeyit(null)
   }
 
   const maxMiktar = secilenStok?.miktar ?? 0
@@ -292,6 +372,13 @@ export function StokTasimaClient() {
         </div>
       )}
 
+      {malzemeTeyit && step !== 'TAMAM' && (
+        <div className="flex w-fit items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+          <Package className="h-4 w-4" />
+          Malzeme {malzemeTeyit}
+        </div>
+      )}
+
       {loading && (
         <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
@@ -303,15 +390,55 @@ export function StokTasimaClient() {
       {step === 'KAYNAK_RAF' && !loading && (
         <ScanPrompt
           icon={<ScanLine className="h-12 w-12" />}
-          title="Kaynak rafı okut"
-          hint="Rafın etiketini okutun (LocationNo ya da Y1A01 gibi kod)"
+          title="Rafı veya malzemeyi okut"
+          hint="Raf etiketi ya da malzeme etiketi okut"
           manualOpen={manualOpen}
           manualVal={manualVal}
           setManualVal={setManualVal}
           onManualOpen={() => setManualOpen(true)}
           onManualSubmit={submitManual}
-          manualPlaceholder="Raf kodu (ör. 40 veya Y1A01)"
+          manualPlaceholder="Raf kodu veya stok kodu"
         />
+      )}
+
+      {/* KAYNAK_SECIM — malzeme birden çok rafta: kaynak raf seçim listesi (FIFO sıralı) */}
+      {step === 'KAYNAK_SECIM' && !loading && (
+        <div className="flex flex-1 flex-col gap-3">
+          <ScanPrompt
+            icon={<MapPin className="h-12 w-12" />}
+            title="Kaynak rafı seç"
+            hint="Malzemenin bulunduğu rafı seç ya da raf etiketi okut"
+            manualOpen={manualOpen}
+            manualVal={manualVal}
+            setManualVal={setManualVal}
+            onManualOpen={() => setManualOpen(true)}
+            onManualSubmit={submitManual}
+            manualPlaceholder="Raf kodu"
+            compact
+          />
+          <div className="flex flex-col gap-2">
+            {malzemeKaynaklar.map((k, i) => (
+              <button
+                key={`${k.locationNo}-${k.lotBatchNo ?? '_'}-${i}`}
+                type="button"
+                onClick={() => secKaynakStok(k)}
+                className="flex min-h-14 items-center justify-between gap-3 rounded-xl border bg-card p-3 text-left transition-colors active:bg-muted"
+              >
+                <div className="min-w-0">
+                  <div className="text-lg font-semibold">{k.lokasyonAdi || k.locationNo}</div>
+                  <div className="text-xs text-muted-foreground">
+                    ({k.locationNo})
+                    {k.lotBatchNo ? ` · Lot: ${k.lotBatchNo}` : ''}
+                    {k.receiptDate ? ` · ${k.receiptDate.slice(0, 10)}` : ''}
+                  </div>
+                </div>
+                <div className="shrink-0 text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
+                  {k.mevcutMiktar} ad
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* MALZEME — raf stok listesi (kart) + okutma */}

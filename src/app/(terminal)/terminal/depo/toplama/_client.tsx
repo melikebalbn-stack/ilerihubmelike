@@ -8,13 +8,13 @@ import {
   ArrowRight,
   Ban,
   Check,
-  ClipboardList,
   Delete,
   HelpCircle,
   Loader2,
   MapPin,
   PackageCheck,
   PackageX,
+  RefreshCw,
   RotateCcw,
   Scale,
   ScanLine,
@@ -23,11 +23,12 @@ import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
 import { parseEtiket } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
-import type { FifoKaynak, IsEmriBaslik, ToplamaSatiri } from '@/lib/ifs/tuketim'
+import type { BekleyenIs, FifoKaynak, IsEmriBaslik, ToplamaSatiri } from '@/lib/ifs/tuketim'
 
 type KaynakTipi = 'FIFO' | 'REZERV'
 type ToplamaSatirDetay = ToplamaSatiri & { fifo: FifoKaynak[]; stokYok: boolean; kaynakTipi: KaynakTipi }
 type KartDurum = 'isleniyor' | 'ok' | 'hata'
+type SonCikisSatir = { miktar: number; birim: string; lokasyonAdi: string }
 
 // Sapma sebepleri — zorunlu seçim. `key` hem ID hem log/özet metnidir.
 const SEBEPLER = [
@@ -45,12 +46,30 @@ function fmtDate(iso: string): string {
 }
 const normLoc = (x: string) => x.trim().toLocaleLowerCase('tr')
 
+// /topla response kirilim'ini kalıcı 'nereden çıktı' satırlarına çevirir (loc→ad, fifo'dan).
+function kirilimToSon(
+  kirilim: { locationNo?: string; qtyAssigned?: number }[] | undefined,
+  fifo: FifoKaynak[],
+  birim: string,
+  yedek: { miktar: number; lokasyonAdi: string },
+): SonCikisSatir[] {
+  const ad = (loc: string) => fifo.find((f) => f.locationNo === loc)?.lokasyonAdi ?? loc
+  const kir = kirilim ?? []
+  if (kir.length) return kir.map((k) => ({ miktar: Number(k.qtyAssigned) || 0, birim, lokasyonAdi: ad(String(k.locationNo ?? '')) }))
+  return [{ miktar: yedek.miktar, birim, lokasyonAdi: yedek.lokasyonAdi }]
+}
+
 export function MalzemeToplamaClient() {
   const router = useRouter()
   const [step, setStep] = useState<'IS_EMRI' | 'LISTE' | 'TEYIT'>('IS_EMRI')
   const [baslik, setBaslik] = useState<IsEmriBaslik | null>(null)
   const [satirlar, setSatirlar] = useState<ToplamaSatirDetay[]>([])
   const [loading, setLoading] = useState(false)
+
+  // Bekleyen işler listesi (IS_EMRI) + kalıcı 'nereden çıktı' kırılımı (B1).
+  const [bekleyen, setBekleyen] = useState<BekleyenIs[] | null>(null)
+  const [bekleyenLoading, setBekleyenLoading] = useState(false)
+  const [sonCikis, setSonCikis] = useState<Record<number, SonCikisSatir[]>>({})
 
   // TEYIT durumu
   const [secilen, setSecilen] = useState<ToplamaSatirDetay | null>(null)
@@ -132,7 +151,10 @@ export function MalzemeToplamaClient() {
           showError(data?.error ?? `İş emri bulunamadı: ${v}`)
           return
         }
-        setBaslik(data.baslik as IsEmriBaslik)
+        const yeniBaslik = data.baslik as IsEmriBaslik
+        // Farklı emre geçiliyorsa 'nereden çıktı' kırılımını temizle (aynı emirde koru).
+        if (yeniBaslik.orderNo !== baslikRef.current?.orderNo) setSonCikis({})
+        setBaslik(yeniBaslik)
         setSatirlar((data.satirlar ?? []) as ToplamaSatirDetay[])
         // Okut-doldur durumunu sıfırla.
         setKartDurum({})
@@ -149,6 +171,25 @@ export function MalzemeToplamaClient() {
     },
     [showError],
   )
+
+  // Bekleyen işler listesini yükle (IS_EMRI açılışta + yenile ikonu).
+  const bekleyenYukle = useCallback(async () => {
+    setBekleyenLoading(true)
+    try {
+      const res = await fetch('/api/depo/toplama-bekleyen')
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.ok) setBekleyen((data.isler ?? []) as BekleyenIs[])
+      else { setBekleyen([]); showError(data?.error ?? 'Bekleyen işler alınamadı') }
+    } catch {
+      setBekleyen([])
+      showError('Bağlantı hatası — tekrar deneyin')
+    } finally {
+      setBekleyenLoading(false)
+    }
+  }, [showError])
+  useEffect(() => {
+    if (step === 'IS_EMRI' && bekleyen === null && !bekleyenLoading) void bekleyenYukle()
+  }, [step, bekleyen, bekleyenLoading, bekleyenYukle])
 
   // Malzeme okutma (TEYIT) — beklenen parça ile eşleşme.
   const malzemeOkut = useCallback(
@@ -263,8 +304,12 @@ export function MalzemeToplamaClient() {
         )
         satirlarRef.current = guncel
         setSatirlar(guncel)
+        // Kalıcı 'nereden çıktı' kırılımı (B1).
+        const locAd = acik.fifo.find((f) => f.locationNo === loc)?.lokasyonAdi ?? loc
+        const son = kirilimToSon(data.kirilim, acik.fifo, acik.birim, { miktar: otoMiktar, lokasyonAdi: locAd })
+        setSonCikis((m) => ({ ...m, [acik.lineItemNo]: son }))
         setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'ok' }))
-        showToast(`✓ ${acik.partNo} · ${otoMiktar} ${acik.birim} · ${loc}`)
+        showToast(`✓ ${acik.partNo} · ${otoMiktar} ${acik.birim} · ${locAd}`)
       } catch {
         setKartDurum((m) => ({ ...m, [acik.lineItemNo]: 'hata' }))
         showError('Bağlantı hatası — tekrar deneyin')
@@ -368,6 +413,8 @@ export function MalzemeToplamaClient() {
       setSatirlar([])
       setErrorMsg(null)
       setManualOpen(false)
+      setBekleyen(null) // dönüşte tazele
+      setSonCikis({})
       return
     }
     router.push('/terminal/depo')
@@ -422,6 +469,14 @@ export function MalzemeToplamaClient() {
       const loc = sapmaOpt
         ? sapmaSecili?.lokasyonAdi ?? sapmaSecili?.locationNo ?? '—'
         : data.kirilim?.[0]?.locationNo ?? secilen.fifo[0]?.locationNo ?? '—'
+      // Kalıcı 'nereden çıktı' kırılımı (B1) — sapmada tek konum, aksi halde kirilim'den.
+      const son: SonCikisSatir[] = sapmaOpt
+        ? [{ miktar: miktarNum, birim: secilen.birim, lokasyonAdi: sapmaSecili?.lokasyonAdi ?? sapmaSecili?.locationNo ?? loc }]
+        : kirilimToSon(data.kirilim, secilen.fifo, secilen.birim, {
+            miktar: miktarNum,
+            lokasyonAdi: secilen.fifo.find((f) => f.locationNo === loc)?.lokasyonAdi ?? loc,
+          })
+      setSonCikis((m) => ({ ...m, [secilen.lineItemNo]: son }))
       setOzet({
         miktar: teyitMiktar,
         birim: secilen.birim,
@@ -527,16 +582,19 @@ export function MalzemeToplamaClient() {
         </div>
       )}
 
-      {/* AŞAMA 1 — iş emri okut */}
+      {/* AŞAMA 1 — okutma şeridi (kısayol) + Bekleyen İşler listesi */}
       {step === 'IS_EMRI' && !loading && (
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col gap-3">
+          {/* Okutma şeridi (kısayol) */}
           <div
-            className="flex w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 text-center"
-            style={{ borderColor: TERMINAL_ACCENT, color: TERMINAL_ACCENT }}
+            className="flex items-center gap-3 rounded-2xl border p-3"
+            style={{ borderColor: TERMINAL_ACCENT, background: `${TERMINAL_ACCENT}0D` }}
           >
-            <ClipboardList className="h-12 w-12" />
-            <div className="text-lg font-semibold">İş emrini okut</div>
-            <div className="text-sm text-muted-foreground">Kağıttaki barkodu okut veya no gir</div>
+            <ScanLine className="h-6 w-6 shrink-0" style={{ color: TERMINAL_ACCENT }} />
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>İş emri barkodunu okut</div>
+              <div className="truncate text-xs text-muted-foreground">kalem listesine geç</div>
+            </div>
           </div>
           {manualOpen ? (
             <div className="flex w-full gap-2">
@@ -553,9 +611,44 @@ export function MalzemeToplamaClient() {
               </button>
             </div>
           ) : (
-            <button type="button" onClick={() => setManualOpen(true)} className="text-sm text-muted-foreground underline underline-offset-2">
+            <button type="button" onClick={() => setManualOpen(true)} className="self-center text-sm text-muted-foreground underline underline-offset-2">
               veya elle gir
             </button>
+          )}
+
+          {/* Bekleyen İşler başlığı + yenile */}
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-muted-foreground">Bekleyen İşler</h2>
+            <button
+              type="button"
+              onClick={() => void bekleyenYukle()}
+              disabled={bekleyenLoading}
+              aria-label="Yenile"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border transition-colors active:bg-muted/70 disabled:opacity-40"
+            >
+              <RefreshCw className={cn('h-4 w-4', bekleyenLoading && 'animate-spin')} />
+            </button>
+          </div>
+
+          {bekleyen === null || bekleyenLoading ? (
+            <div className="flex flex-col gap-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-20 animate-pulse rounded-2xl border bg-muted/40" />
+              ))}
+            </div>
+          ) : bekleyen.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              Bekleyen toplama işi yok
+              <button type="button" onClick={() => void bekleyenYukle()} className="flex items-center gap-1.5 text-sm underline underline-offset-2" style={{ color: TERMINAL_ACCENT }}>
+                <RefreshCw className="h-4 w-4" /> Yenile
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {bekleyen.map((is) => (
+                <BekleyenKart key={`${is.orderNo}-${is.releaseNo}-${is.sequenceNo}`} is={is} onSelect={() => void isEmriOkut(is.orderNo)} />
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -608,7 +701,7 @@ export function MalzemeToplamaClient() {
             </div>
           )}
           {satirlar.map((s) => (
-            <KalemKart key={s.lineItemNo} s={s} durum={kartDurum[s.lineItemNo]} onSelect={() => kalemAc(s)} />
+            <KalemKart key={s.lineItemNo} s={s} durum={kartDurum[s.lineItemNo]} sonCikis={sonCikis[s.lineItemNo]} onSelect={() => kalemAc(s)} />
           ))}
         </div>
       )}
@@ -632,6 +725,8 @@ export function MalzemeToplamaClient() {
               setKartDurum({})
               setErrorMsg(null)
               setManualOpen(false)
+              setBekleyen(null) // tazele
+              setSonCikis({})
             }}
             className="mt-2 flex min-h-14 items-center justify-center gap-2 rounded-2xl px-6 text-lg font-semibold text-white"
             style={{ background: TERMINAL_ACCENT }}
@@ -911,14 +1006,29 @@ export function MalzemeToplamaClient() {
   )
 }
 
-function KalemKart({ s, durum, onSelect }: { s: ToplamaSatirDetay; durum?: KartDurum; onSelect: () => void }) {
+function SonCikisSatirlari({ sonCikis }: { sonCikis?: SonCikisSatir[] }) {
+  if (!sonCikis?.length) return null
+  return (
+    <div className="mt-1 flex flex-col gap-0.5">
+      {sonCikis.map((c, i) => (
+        <div key={i} className="flex items-center gap-1 text-xs text-emerald-700">
+          <Check className="h-3.5 w-3.5 shrink-0" />
+          {c.miktar} {c.birim} · {c.lokasyonAdi}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function KalemKart({ s, durum, sonCikis, onSelect }: { s: ToplamaSatirDetay; durum?: KartDurum; sonCikis?: SonCikisSatir[]; onSelect: () => void }) {
   if (s.kalan === 0) {
     return (
-      <div className="flex min-h-16 items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-800">
+      <div className="flex min-h-16 items-start gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-800">
         <Check className="h-6 w-6 shrink-0 text-emerald-600" />
         <div className="min-w-0">
           <div className="font-semibold">{s.partNo}</div>
           <div className="text-sm">{s.gerekli} {s.birim} · toplandı</div>
+          <SonCikisSatirlari sonCikis={sonCikis} />
         </div>
       </div>
     )
@@ -979,6 +1089,7 @@ function KalemKart({ s, durum, onSelect }: { s: ToplamaSatirDetay; durum?: KartD
           {s.cikilan}/{s.gerekli} {s.birim} çıkıldı
         </div>
       )}
+      <SonCikisSatirlari sonCikis={sonCikis} />
       {hata && <div className="text-xs font-semibold text-red-700">Hata — dokun ve çöz</div>}
       <div className="mt-1 flex flex-col gap-2">
         {s.fifo.map((k, i) => (
@@ -999,6 +1110,33 @@ function KalemKart({ s, durum, onSelect }: { s: ToplamaSatirDetay; durum?: KartD
             </div>
           </div>
         ))}
+      </div>
+    </button>
+  )
+}
+
+function BekleyenKart({ is, onSelect }: { is: BekleyenIs; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex w-full flex-col gap-1 rounded-2xl border bg-card p-4 text-left transition-opacity active:opacity-70"
+      style={{ borderColor: TERMINAL_ACCENT }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-semibold">İE {is.orderNo}</div>
+          <div className="truncate text-xs text-muted-foreground">{is.urunAdi}</div>
+        </div>
+        <span className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
+          {is.acikKalem} açık kalem
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+        {is.ihtiyacTarihi && <span className="text-muted-foreground">termin {fmtDate(is.ihtiyacTarihi)}</span>}
+        {is.toplananKalem > 0 && (
+          <span className="font-medium text-amber-700">{is.toplananKalem}/{is.kalemSayisi} kalem toplandı</span>
+        )}
       </div>
     </button>
   )

@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
-import { parseEtiket } from '@/lib/depo/etiket-parse'
+import { barkodIdAday, parseEtiket } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { BekleyenIs, FifoKaynak, IsEmriBaslik, ToplamaSatiri } from '@/lib/ifs/tuketim'
 
@@ -193,6 +193,21 @@ export function MalzemeToplamaClient() {
     [showError],
   )
 
+  // Salt-sayısal okuma → IFS barkod_id çöz (partNo + varsa lot). Çözülemezse null.
+  const barkodKimligiGetir = useCallback(async (id: number): Promise<{ partNo: string; lot?: string } | null> => {
+    try {
+      const res = await fetch(`/api/depo/barkod/${id}`)
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.ok && data.kimlik?.partNo) {
+        const k = data.kimlik
+        return { partNo: String(k.partNo), lot: k.lotBatchNo && k.lotBatchNo !== '*' ? String(k.lotBatchNo) : undefined }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }, [])
+
   // Bir kodu giriş ekranında çöz: önce iş emri, olmazsa MALZEME → bekleyen işler.
   const malzemeIsleriGetir = useCallback(
     async (partNo: string): Promise<BekleyenIs[] | null> => {
@@ -213,12 +228,14 @@ export function MalzemeToplamaClient() {
     async (ham: string) => {
       const v = ham.trim()
       if (!v) return
-      // 1) İş emri olarak dene (sessiz).
+      // 1) İş emri olarak dene (sessiz — iş emri no da sayısal, öncelik iş emrinde).
       if (await isEmriOkut(v, { sessiz: true })) return
-      // 2) Malzeme olarak çöz → bekleyen işler.
+      // 2) Malzeme olarak çöz → bekleyen işler. Sayısalsa önce barkod_id.
       setLoading(true)
+      const bid = barkodIdAday(v)
+      const bk = bid ? await barkodKimligiGetir(bid) : null
       const p = parseEtiket(v)
-      const partNo = p.tip === 'MALZEME' && p.stokKodu ? p.stokKodu : v
+      const partNo = bk ? bk.partNo : p.tip === 'MALZEME' && p.stokKodu ? p.stokKodu : v
       const isler = await malzemeIsleriGetir(partNo)
       setLoading(false)
       if (!isler) return
@@ -235,7 +252,7 @@ export function MalzemeToplamaClient() {
       setArananPart(partNo)
       setMalzemeIsler(isler)
     },
-    [isEmriOkut, malzemeIsleriGetir, showError, showToast],
+    [isEmriOkut, malzemeIsleriGetir, barkodKimligiGetir, showError, showToast],
   )
 
   // Bekleyen işler — sayfalı + aramalı yükleme. ekle=true → sonraki sayfayı ekler.
@@ -279,8 +296,27 @@ export function MalzemeToplamaClient() {
 
   // Malzeme okutma (TEYIT) — beklenen parça ile eşleşme.
   const malzemeOkut = useCallback(
-    (ham: string) => {
+    async (ham: string) => {
       if (!secilen) return
+      // Sayısal → önce barkod_id çöz (partNo eşleşmesi; lot teyidi 'doğru yer' katmanının ilk taşı).
+      const bid = barkodIdAday(ham)
+      if (bid) {
+        const k = await barkodKimligiGetir(bid)
+        if (k) {
+          if (k.partNo === secilen.partNo) {
+            setTeyitEslesti(true)
+            // BONUS: barkodun lot'u beklenen FIFO lot(lar)ından farklıysa uyar (bloklamaz).
+            // TODO (EL-9c): tam 'doğru yer' teyidi (lokasyon + lot) katmanı.
+            if (k.lot && secilen.fifo.length && !secilen.fifo.some((f) => f.lotBatchNo === k.lot)) {
+              showInfo(`Lot ${k.lot} — beklenen FIFO lotundan farklı`)
+            }
+          } else {
+            showError(`Bu değil — ${secilen.partNo} olmalı`)
+          }
+          return
+        }
+        // barkod çözülemedi → aşağıda etiket/partNo denemesine düş.
+      }
       const p = parseEtiket(ham)
       if (p.tip === 'MALZEME' && p.stokKodu === secilen.partNo) {
         setTeyitEslesti(true)
@@ -288,7 +324,7 @@ export function MalzemeToplamaClient() {
         showError(`Bu değil — ${secilen.partNo} olmalı`)
       }
     },
-    [secilen, showError],
+    [secilen, showError, showInfo, barkodKimligiGetir],
   )
 
   // Sapma alternatif listesini getir.
@@ -435,7 +471,7 @@ export function MalzemeToplamaClient() {
       if (step === 'IS_EMRI') return void girisOkut(v)
       if (step === 'LISTE') return listeScanEkle(v)
       if (step === 'TEYIT' && sapmaAcik && !sapmaSecili) return void rafOkut(v)
-      if (step === 'TEYIT') return malzemeOkut(v)
+      if (step === 'TEYIT') return void malzemeOkut(v)
     },
     [step, sapmaAcik, sapmaSecili, girisOkut, listeScanEkle, malzemeOkut, rafOkut],
   )

@@ -33,3 +33,15 @@ export function parseEtiket(ham: string): EtiketParse {
   // Lotsuz — tüm metin stok kodu (geçerlilik raf stoğuyla eşleştirilir).
   return { tip: 'MALZEME', stokKodu: s }
 }
+
+/**
+ * Salt-sayısal okuma → IFS barkod_id adayı (pozitif tamsayı). Değilse null.
+ * Kural (EL-9b): sayısal değer önce barkod_id olarak çözülmeye çalışılır; çözülmezse
+ * çağıran mevcut davranışa düşer (raf/partNo yorumu). 'STOKKODU|LOT' iç formatı korunur.
+ */
+export function barkodIdAday(ham: string): number | null {
+  const s = (ham ?? '').trim()
+  if (!/^\d+$/.test(s)) return null
+  const n = Number(s)
+  return Number.isSafeInteger(n) && n > 0 ? n : null
+}

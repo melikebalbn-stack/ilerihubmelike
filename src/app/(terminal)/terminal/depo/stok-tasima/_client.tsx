@@ -8,6 +8,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
+  ChevronRight,
   Delete,
   Loader2,
   MapPin,
@@ -15,9 +17,10 @@ import {
   PackageCheck,
   Printer,
   ScanLine,
+  Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { parseEtiket } from '@/lib/depo/etiket-parse'
+import { barkodIdAday, parseEtiket } from '@/lib/depo/etiket-parse'
 import { useScanner } from '@/lib/depo/use-scanner'
 import type { DepoRafBilgisi, DepoStokKaydi } from '@/lib/ifs/depo-stok'
 import type { FifoKaynak } from '@/lib/ifs/tuketim'
@@ -32,6 +35,19 @@ const STEP_INDEX: Record<Step, number> = {
   MIKTAR: 3,
   HEDEF_RAF: 4,
   TAMAM: 4,
+}
+
+// FifoKaynak'ta birim alanı yok → terminal genelinde 'ad' fallback (bkz. DepoStokKaydi.birim).
+const HIZLI_BIRIM = 'ad'
+
+// Hızlı Taşıma başarı özeti — panel sıfırlansa da yeşil çip + etiket bu snapshot'tan çalışır.
+interface HizliSonuc {
+  miktar: number
+  birim: string
+  partNo: string
+  lot?: string
+  kaynakAdi: string
+  hedefAdi: string
 }
 
 export function StokTasimaClient() {
@@ -56,6 +72,23 @@ export function StokTasimaClient() {
   const [errorKey, setErrorKey] = useState(0)
   const [manualOpen, setManualOpen] = useState(false)
   const [manualVal, setManualVal] = useState('')
+
+  // ── BÖLÜM 3: Hızlı Taşıma paneli (üstte, tek ekran) + sihirbaz accordion ─────
+  // Sihirbaz artık ikincil: kapalıyken scanner Hızlı panelin; açıkken sihirbazın.
+  const [sihirbazAcik, setSihirbazAcik] = useState(false)
+  const [hAdaylar, setHAdaylar] = useState<FifoKaynak[]>([]) // çoklu lokasyon seçim adayları
+  const [hKaynak, setHKaynak] = useState<FifoKaynak | null>(null) // seçili kaynak stok satırı
+  const [hPartCip, setHPartCip] = useState<string | null>(null) // '{partNo}{ · lot}'
+  const [hMiktar, setHMiktar] = useState('')
+  const [hHedef, setHHedef] = useState<DepoRafBilgisi | null>(null)
+  const [hLoading, setHLoading] = useState(false)
+  const [hTasiniyor, setHTasiniyor] = useState(false)
+  const [hSonuc, setHSonuc] = useState<HizliSonuc | null>(null)
+  const [hOkutManual, setHOkutManual] = useState(false)
+  const [hOkutVal, setHOkutVal] = useState('')
+  const [hHedefManual, setHHedefManual] = useState(false)
+  const [hHedefVal, setHHedefVal] = useState('')
+  const [hEtiketYuk, setHEtiketYuk] = useState(false)
 
   const isScanStep =
     step === 'KAYNAK_RAF' || step === 'KAYNAK_SECIM' || step === 'MALZEME' || step === 'HEDEF_RAF'
@@ -85,7 +118,9 @@ export function StokTasimaClient() {
     setKaynakRaf({ locationNo: k.locationNo, aciklama: k.lokasyonAdi, grup: '' })
     setSecilenStok(kaydi)
     setMiktar('')
-    setMalzemeTeyit(`${k.kimlik.partNo} · ${k.lokasyonAdi || k.locationNo}`)
+    setMalzemeTeyit(
+      `${k.kimlik.partNo}${k.lotBatchNo ? ` · ${k.lotBatchNo}` : ''} · ${k.lokasyonAdi || k.locationNo}`,
+    )
     setStep('MIKTAR')
   }, [])
 
@@ -94,6 +129,28 @@ export function StokTasimaClient() {
     async (kod: string) => {
       setLoading(true)
       try {
+        // EL-9b (BÖLÜM 2): salt-sayısal okuma → ÖNCE barkod_id dene. Çözülürse `stoklar`
+        // kaynak adayı (tek satır → otomatik kaynak+MIKTAR; çok satır → KAYNAK_SECIM).
+        const bId = barkodIdAday(kod)
+        if (bId !== null) {
+          const bRes = await fetch(`/api/depo/barkod/${bId}`)
+          if (bRes.ok) {
+            const bData = await bRes.json().catch(() => null)
+            const stoklar = bData?.ok ? ((bData.stoklar ?? []) as FifoKaynak[]) : []
+            if (stoklar.length > 0) {
+              const rafSayisi = new Set(stoklar.map((s) => s.locationNo)).size
+              if (rafSayisi === 1) {
+                secKaynakStok(stoklar[0])
+                return
+              }
+              setMalzemeKaynaklar(stoklar)
+              setStep('KAYNAK_SECIM')
+              return
+            }
+          }
+          // 404 / boş → aşağıdaki mevcut raf→malzeme davranışına düş.
+        }
+
         // TODO: çakışan kod politikası — şimdilik raf öncelikli
         const rafRes = await fetch(`/api/depo/raf/${encodeURIComponent(kod)}/stok`)
         const rafData = await rafRes.json().catch(() => null)
@@ -194,12 +251,242 @@ export function StokTasimaClient() {
     [step, cozKaynak, cozRafHedef, rafStok, showError, malzemeKaynaklar, secKaynakStok],
   )
 
-  const { inputProps } = useScanner(isScanStep && !manualOpen && !loading, handleValue)
+  // ═══ BÖLÜM 3: Hızlı Taşıma akışı ═══════════════════════════════════
+  const hizliOkutSifirla = () => {
+    setHAdaylar([])
+    setHKaynak(null)
+    setHPartCip(null)
+    setHMiktar('')
+    setHHedef(null)
+    setHSonuc(null)
+    setHOkutManual(false)
+    setHOkutVal('')
+    setHHedefManual(false)
+    setHHedefVal('')
+  }
+
+  // Kaynak stok satırını seç → çip + adet/hedef alanlarını aç.
+  const secHizliKaynak = (k: FifoKaynak) => {
+    setHKaynak(k)
+    setHAdaylar((a) => (a.length ? a : [k]))
+    setHMiktar('')
+    setHHedef(null)
+    setHHedefManual(false)
+    setHHedefVal('')
+  }
+
+  // a) Okut çözümle: sayısalsa barkod→(404)parça; değilse parseEtiket→parça.
+  const cozHizliKaynak = async (kod: string) => {
+    setHLoading(true)
+    setHSonuc(null)
+    try {
+      let satirlar: FifoKaynak[] = []
+      const bId = barkodIdAday(kod)
+      if (bId !== null) {
+        const bRes = await fetch(`/api/depo/barkod/${bId}`)
+        if (bRes.ok) {
+          const bData = await bRes.json().catch(() => null)
+          if (bData?.ok) satirlar = (bData.stoklar ?? []) as FifoKaynak[]
+        }
+        if (satirlar.length === 0) {
+          // 404/boş → sayısal değeri malzeme (partNo) olarak dene.
+          const pRes = await fetch(`/api/depo/parca/${encodeURIComponent(kod)}/stok`)
+          if (pRes.ok) {
+            const pData = await pRes.json().catch(() => null)
+            if (pData?.ok) satirlar = (pData.satirlar ?? []) as FifoKaynak[]
+          }
+        }
+      } else {
+        const p = parseEtiket(kod)
+        const stokKodu = p.tip === 'MALZEME' && p.stokKodu ? p.stokKodu : kod
+        const pRes = await fetch(`/api/depo/parca/${encodeURIComponent(stokKodu)}/stok`)
+        if (pRes.ok) {
+          const pData = await pRes.json().catch(() => null)
+          if (pData?.ok) satirlar = (pData.satirlar ?? []) as FifoKaynak[]
+        }
+      }
+
+      if (satirlar.length === 0) {
+        showError(`Çözülemedi: ${kod}`)
+        return
+      }
+
+      const partNo = satirlar[0].kimlik.partNo
+      const lotlar = new Set(satirlar.map((s) => s.lotBatchNo ?? ''))
+      const tekLot = lotlar.size === 1 ? satirlar[0].lotBatchNo : undefined
+      setHPartCip(`${partNo}${tekLot ? ` · ${tekLot}` : ''}`)
+
+      const rafSayisi = new Set(satirlar.map((s) => s.locationNo)).size
+      if (rafSayisi === 1) {
+        setHAdaylar(satirlar)
+        secHizliKaynak(satirlar[0])
+      } else {
+        // Çok lokasyon → mini kaynak seçim (FIFO sıralı).
+        setHAdaylar(satirlar)
+        setHKaynak(null)
+      }
+    } catch {
+      showError('Bağlantı hatası — tekrar deneyin')
+    } finally {
+      setHLoading(false)
+    }
+  }
+
+  // c) Hedef raf çözümle.
+  const cozHizliHedef = async (kod: string) => {
+    setHLoading(true)
+    try {
+      const res = await fetch(`/api/depo/raf/${encodeURIComponent(kod)}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        showError(`Raf bulunamadı: ${kod}`)
+        return
+      }
+      const raf = data.raf as DepoRafBilgisi
+      if (raf.locationNo === hKaynak?.locationNo) {
+        showError('Hedef kaynakla aynı olamaz')
+        return
+      }
+      setHHedef(raf)
+    } catch {
+      showError('Bağlantı hatası — tekrar deneyin')
+    } finally {
+      setHLoading(false)
+    }
+  }
+
+  const hMax = hKaynak?.mevcutMiktar ?? 0
+  const hMiktarNum = Number(hMiktar || '0')
+  const hMiktarExceed = hMiktarNum > hMax
+  const hMiktarValid = hMiktarNum > 0 && hMiktarNum <= hMax
+
+  const hPressKey = (k: string) => {
+    if (k === '⌫') return setHMiktar((m) => m.slice(0, -1))
+    if (k === '.') return setHMiktar((m) => (m.includes('.') ? m : m === '' ? '0.' : `${m}.`))
+    setHMiktar((m) => {
+      const next = m === '0' ? k : m + k
+      return next.length > 8 ? m : next
+    })
+  }
+
+  // Okutma dağıtımı (Hızlı panel): kaynak yoksa okut; adaylar varsa raf seç; kaynak varsa hedef.
+  const hizliHandle = (raw: string) => {
+    const val = raw.trim()
+    if (!val || hLoading || hTasiniyor) return
+    if (!hKaynak && hAdaylar.length === 0) return void cozHizliKaynak(val)
+    if (!hKaynak) {
+      const low = val.toLowerCase()
+      const k = hAdaylar.find(
+        (m) => m.locationNo.toLowerCase() === low || (m.lokasyonAdi ?? '').toLowerCase() === low,
+      )
+      if (!k) return showError('Bu rafta bu malzeme yok')
+      return secHizliKaynak(k)
+    }
+    return void cozHizliHedef(val)
+  }
+
+  // d) Taşı → başarıda snapshot (yeşil çip + etiket) + panel sıfırla.
+  const hizliTasi = async () => {
+    if (hTasiniyor || !hKaynak || !hHedef || !hMiktarValid) return
+    setHTasiniyor(true)
+    try {
+      const res = await fetch('/api/depo/stok-tasima', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kimlik: hKaynak.kimlik,
+          hedefLocationNo: hHedef.locationNo,
+          miktar: hMiktarNum,
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        showError(data?.error ?? 'Taşıma başarısız — tekrar deneyin')
+        return
+      }
+      setHSonuc({
+        miktar: hMiktarNum,
+        birim: HIZLI_BIRIM,
+        partNo: hKaynak.kimlik.partNo,
+        lot: hKaynak.lotBatchNo,
+        kaynakAdi: hKaynak.lokasyonAdi || hKaynak.locationNo,
+        hedefAdi: hHedef.aciklama || hHedef.locationNo,
+      })
+      // Panel sıfırla (hSonuc hariç) → arka arkaya taşıma.
+      setHAdaylar([])
+      setHKaynak(null)
+      setHPartCip(null)
+      setHMiktar('')
+      setHHedef(null)
+      setHOkutManual(false)
+      setHOkutVal('')
+      setHHedefManual(false)
+      setHHedefVal('')
+    } catch {
+      showError('Bağlantı hatası — tekrar deneyin')
+    } finally {
+      setHTasiniyor(false)
+    }
+  }
+
+  const hizliEtiketYazdir = async () => {
+    if (hEtiketYuk || !hSonuc) return
+    setHEtiketYuk(true)
+    try {
+      const res = await fetch('/api/depo/etiket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stokKodu: hSonuc.partNo,
+          stokAdi: '',
+          miktar: hSonuc.miktar,
+          birim: hSonuc.birim,
+          lot: hSonuc.lot,
+          girisTarihi: new Date().toISOString().slice(0, 10),
+          kaynakBilgi: `Stok Tasima · ${hSonuc.kaynakAdi} → ${hSonuc.hedefAdi}`,
+          lokasyon: hSonuc.hedefAdi,
+          kaynakModul: 'Depo El Terminali / Hizli Tasima',
+        }),
+      })
+      if (!res.ok) {
+        showError('Etiket üretilemedi')
+        return
+      }
+      const url = URL.createObjectURL(await res.blob())
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      showError('Etiket üretilemedi')
+    } finally {
+      setHEtiketYuk(false)
+    }
+  }
+
+  // ── Tek aktif scanner: sihirbaz kapalıyken Hızlı panelin, açıkken sihirbazın ──
+  const hizliScanAktif =
+    !sihirbazAcik && !hOkutManual && !hHedefManual && !hLoading && !hTasiniyor
+  const { inputProps: hizliInputProps } = useScanner(hizliScanAktif, hizliHandle)
+  const { inputProps } = useScanner(
+    sihirbazAcik && isScanStep && !manualOpen && !loading,
+    handleValue,
+  )
 
   const submitManual = () => {
     handleValue(manualVal)
     setManualVal('')
     setManualOpen(false)
+  }
+
+  const submitHizliOkut = () => {
+    hizliHandle(hOkutVal)
+    setHOkutVal('')
+    setHOkutManual(false)
+  }
+
+  const submitHizliHedef = () => {
+    hizliHandle(hHedefVal)
+    setHHedefVal('')
+    setHHedefManual(false)
   }
 
   const goBack = () => {
@@ -338,7 +625,9 @@ export function StokTasimaClient() {
 
   return (
     <div className="relative flex flex-1 flex-col gap-3 py-2">
-      {isScanStep && <input {...inputProps} />}
+      {/* Tek aktif scanner: yalnız aktif olan input DOM'da → odak çakışması yok. */}
+      {hizliScanAktif && <input {...hizliInputProps} />}
+      {sihirbazAcik && isScanStep && <input {...inputProps} />}
 
       {errorMsg && (
         <div className="absolute inset-x-0 top-0 z-20 mx-2 flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-base font-semibold text-white shadow-lg">
@@ -347,6 +636,204 @@ export function StokTasimaClient() {
         </div>
       )}
 
+      {/* ═══ BÖLÜM 3: HIZLI TAŞIMA paneli (üstte, tek ekran) ═══ */}
+      <section
+        className="flex flex-col gap-2.5 rounded-2xl border-2 p-3"
+        style={{ borderColor: TERMINAL_ACCENT }}
+      >
+        <div className="flex items-center gap-2">
+          <Zap className="h-5 w-5" style={{ color: TERMINAL_ACCENT }} />
+          <h2 className="text-base font-semibold" style={{ color: TERMINAL_ACCENT }}>
+            Hızlı Taşıma
+          </h2>
+          {hLoading && (
+            <Loader2 className="ml-auto h-4 w-4 animate-spin text-muted-foreground" />
+          )}
+        </div>
+
+        {/* a) Okut / kaynak */}
+        {!hKaynak && hAdaylar.length === 0 ? (
+          <HizliOkutAlani
+            label="Barkod ya da malzeme okut"
+            placeholder="Barkod veya stok kodu"
+            manualOpen={hOkutManual}
+            val={hOkutVal}
+            setVal={setHOkutVal}
+            onOpen={() => setHOkutManual(true)}
+            onSubmit={submitHizliOkut}
+          />
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            {hPartCip && (
+              <span className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-sm font-medium text-emerald-700">
+                <Package className="h-4 w-4" />
+                {hPartCip}
+              </span>
+            )}
+            {hKaynak ? (
+              <span className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-sm font-medium text-emerald-700">
+                <MapPin className="h-4 w-4" />
+                {hKaynak.lokasyonAdi || hKaynak.locationNo} · {hKaynak.mevcutMiktar} {HIZLI_BIRIM}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">Kaynak rafını seç ↓</span>
+            )}
+            <button
+              type="button"
+              onClick={hizliOkutSifirla}
+              className="ml-auto text-xs text-muted-foreground underline underline-offset-2"
+            >
+              değiştir
+            </button>
+          </div>
+        )}
+
+        {/* çok lokasyon → mini kaynak seçim (FIFO sıralı) */}
+        {!hKaynak && hAdaylar.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {hAdaylar.map((k, i) => (
+              <button
+                key={`${k.locationNo}-${k.lotBatchNo ?? '_'}-${i}`}
+                type="button"
+                onClick={() => secHizliKaynak(k)}
+                className="flex min-h-11 items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2 text-left transition-colors active:bg-muted"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">{k.lokasyonAdi || k.locationNo}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    ({k.locationNo})
+                    {k.lotBatchNo ? ` · Lot ${k.lotBatchNo}` : ''}
+                    {k.receiptDate ? ` · ${k.receiptDate.slice(0, 10)}` : ''}
+                  </div>
+                </div>
+                <div className="shrink-0 text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
+                  {k.mevcutMiktar} {HIZLI_BIRIM}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* b) Adet + c) Hedef + d) Taşı — kaynak seçilince */}
+        {hKaynak && (
+          <>
+            <div
+              className={cn(
+                'rounded-xl border bg-card py-2 text-center text-3xl font-semibold tabular-nums',
+                hMiktarExceed && 'border-red-400 text-red-600',
+              )}
+            >
+              {hMiktar || '0'}
+              <span className="ml-1.5 text-lg text-muted-foreground">{HIZLI_BIRIM}</span>
+            </div>
+            {hMiktarExceed && (
+              <p className="text-center text-xs font-medium text-red-600">
+                En fazla {hMax} {HIZLI_BIRIM} taşınabilir
+              </p>
+            )}
+            <div className="grid grid-cols-3 gap-1.5">
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => hPressKey(key)}
+                  className="flex min-h-11 items-center justify-center rounded-xl border bg-card text-xl font-semibold transition-colors active:bg-muted"
+                >
+                  {key === '⌫' ? <Delete className="h-5 w-5" /> : key}
+                </button>
+              ))}
+            </div>
+
+            {!hHedef ? (
+              <HizliOkutAlani
+                label="Hedef rafını okut"
+                placeholder="Hedef raf kodu"
+                manualOpen={hHedefManual}
+                val={hHedefVal}
+                setVal={setHHedefVal}
+                onOpen={() => setHHedefManual(true)}
+                onSubmit={submitHizliHedef}
+                icon={<MapPin className="h-5 w-5" />}
+              />
+            ) : (
+              <div className="flex items-center gap-2">
+                <span
+                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-medium text-white"
+                  style={{ background: TERMINAL_ACCENT }}
+                >
+                  <MapPin className="h-4 w-4" />
+                  {hHedef.aciklama || hHedef.locationNo} ({hHedef.locationNo})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHHedef(null)
+                    setHHedefManual(false)
+                    setHHedefVal('')
+                  }}
+                  className="ml-auto text-xs text-muted-foreground underline underline-offset-2"
+                >
+                  değiştir
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={hizliTasi}
+              disabled={!hHedef || !hMiktarValid || hTasiniyor}
+              className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-base font-semibold text-white transition-all hover:bg-emerald-700 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {hTasiniyor ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <PackageCheck className="h-5 w-5" />
+              )}
+              {hTasiniyor ? 'Taşınıyor…' : 'Taşı'}
+            </button>
+          </>
+        )}
+
+        {/* başarı çipi + etiket (panel sıfırlansa da snapshot'tan) */}
+        {hSonuc && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+              <Check className="h-4 w-4 shrink-0" />
+              {hSonuc.miktar} {hSonuc.birim} · {hSonuc.kaynakAdi} → {hSonuc.hedefAdi}
+            </div>
+            <button
+              type="button"
+              onClick={hizliEtiketYazdir}
+              disabled={hEtiketYuk}
+              className="flex min-h-10 items-center justify-center gap-2 rounded-xl border bg-card text-sm font-medium transition-colors active:bg-muted/70 disabled:opacity-50"
+            >
+              {hEtiketYuk ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Printer className="h-4 w-4" />
+              )}
+              Etiket Yazdır
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* ═══ Adım adım taşıma (sihirbaz, ikincil — accordion) ═══ */}
+      <button
+        type="button"
+        onClick={() => setSihirbazAcik((v) => !v)}
+        className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors active:bg-muted/70"
+      >
+        {sihirbazAcik ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+        Adım adım taşıma
+      </button>
+
+      {sihirbazAcik && (
+      <>
       {/* Üst bar */}
       <div className="flex items-center gap-2 pt-1">
         <button
@@ -643,7 +1130,68 @@ export function StokTasimaClient() {
           </div>
         </div>
       )}
+      </>
+      )}
     </div>
+  )
+}
+
+// Hızlı panel kompakt okutma alanı: scanner her zaman aktif (görünmez input); dokun →
+// elle giriş açılır. Aynı desen hem kaynak-okut hem hedef-okut için kullanılır.
+interface HizliOkutAlaniProps {
+  label: string
+  placeholder: string
+  manualOpen: boolean
+  val: string
+  setVal: (v: string) => void
+  onOpen: () => void
+  onSubmit: () => void
+  icon?: React.ReactNode
+}
+
+function HizliOkutAlani({
+  label,
+  placeholder,
+  manualOpen,
+  val,
+  setVal,
+  onOpen,
+  onSubmit,
+  icon,
+}: HizliOkutAlaniProps) {
+  if (manualOpen) {
+    return (
+      <div className="flex gap-2">
+        <input
+          autoFocus
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
+          placeholder={placeholder}
+          className="h-10 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+        <button
+          type="button"
+          onClick={onSubmit}
+          className="h-10 rounded-xl px-3 text-sm font-semibold text-white"
+          style={{ background: TERMINAL_ACCENT }}
+        >
+          Onayla
+        </button>
+      </div>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed py-2 text-sm font-medium"
+      style={{ borderColor: TERMINAL_ACCENT, color: TERMINAL_ACCENT }}
+    >
+      {icon ?? <ScanLine className="h-5 w-5" />}
+      {label}
+      <span className="text-xs text-muted-foreground">/ elle</span>
+    </button>
   )
 }
 

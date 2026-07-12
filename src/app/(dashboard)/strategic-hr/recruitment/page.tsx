@@ -84,6 +84,7 @@ import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import TimeToHirePanel from "./_components/TimeToHirePanel"
 import SourceBreakdownPanel from "./_components/SourceBreakdownPanel"
+import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
 import AssessmentPanel from "./_components/AssessmentPanel"
 
 interface JobOpening {
@@ -338,6 +339,13 @@ const jobAppStatusLabels: Record<string, string> = {
   WITHDRAWN: "Geri Cekildi"
 }
 
+// Ret (kök-neden) kategori etiketleri
+const RET_KATEGORI_ETIKET: Record<string, string> = {
+  TEKLIF_REDDI: "Teklif Reddi (aday kaynaklı)",
+  ISE_ALMAMA: "İşe Almama (şirket kaynaklı)",
+  SUREC_KAYBI: "Süreç Kaybı",
+}
+
 const jobAppStatusColors: Record<string, string> = {
   PENDING: "bg-yellow-100 text-yellow-800",
   REVIEWING: "bg-blue-100 text-blue-800",
@@ -392,6 +400,12 @@ export default function RecruitmentPage() {
   const [selectedJobApp, setSelectedJobApp] = useState<PublicJobApplication | null>(null)
   const [isJobAppDetailOpen, setIsJobAppDetailOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("requests")
+  // Ret nedeni (kök-neden) modalı
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null)
+  const [rejectReasonId, setRejectReasonId] = useState("")
+  const [rejectNotes, setRejectNotes] = useState("")
+  const [rejectReasons, setRejectReasons] = useState<{ id: string; category: string; name: string }[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [rejectionReason, setRejectionReason] = useState("")
@@ -530,6 +544,15 @@ export default function RecruitmentPage() {
   }
 
   const handleJobAppStatusChange = async (id: string, newStatus: string) => {
+    // REJECTED → ret nedeni ZORUNLU: doğrudan PATCH etme, önce ret modalını aç.
+    if (newStatus === "REJECTED") {
+      if (rejectReasons.length === 0) await fetchRejectReasons()
+      setRejectTargetId(id)
+      setRejectReasonId("")
+      setRejectNotes("")
+      setRejectDialogOpen(true)
+      return
+    }
     try {
       const res = await fetch(`/api/strategic-hr/recruitment/job-applications/${id}`, {
         method: "PATCH",
@@ -546,6 +569,34 @@ export default function RecruitmentPage() {
     } catch (error) {
       console.error("Durum guncellenirken hata:", error)
       toast.error("Bir hata olustu")
+    }
+  }
+
+  // Ret nedeni sözlüğü + ret modalı onayı
+  const fetchRejectReasons = async () => {
+    try {
+      const res = await fetch("/api/strategic-hr/recruitment/rejection-reasons?activeOnly=1")
+      if (res.ok) setRejectReasons(await res.json())
+    } catch (e) { console.error("Ret nedenleri yuklenemedi:", e) }
+  }
+  const confirmReject = async () => {
+    if (!rejectTargetId || !rejectReasonId) return
+    try {
+      const res = await fetch(`/api/strategic-hr/recruitment/job-applications/${rejectTargetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "REJECTED", rejectionReasonId: rejectReasonId, ...(rejectNotes ? { notes: rejectNotes } : {}) })
+      })
+      if (res.ok) {
+        setRejectDialogOpen(false)
+        fetchJobApplications()
+        toast.success("Basvuru ret nedeniyle reddedildi")
+      } else {
+        const error = await res.json()
+        toast.error(error.error || "Reddedilemedi")
+      }
+    } catch (e) {
+      console.error("Ret hatasi:", e); toast.error("Bir hata olustu")
     }
   }
 
@@ -2578,6 +2629,7 @@ export default function RecruitmentPage() {
           <div className="space-y-4">
             <TimeToHirePanel />
             <SourceBreakdownPanel />
+            <RejectionReasonsPanel />
           </div>
         </TabsContent>
 
@@ -2755,6 +2807,47 @@ export default function RecruitmentPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ret nedeni (kök-neden) modalı — REJECTED'da zorunlu */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ret Nedeni</DialogTitle>
+            <DialogDescription>Başvuruyu reddetmek için bir kök-neden seçin (zorunlu).</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Ret Nedeni</Label>
+              <Select value={rejectReasonId} onValueChange={setRejectReasonId}>
+                <SelectTrigger><SelectValue placeholder="Neden seçin…" /></SelectTrigger>
+                <SelectContent>
+                  {(["TEKLIF_REDDI", "ISE_ALMAMA", "SUREC_KAYBI"] as const).map((kat) => {
+                    const grup = rejectReasons.filter((r) => r.category === kat)
+                    if (grup.length === 0) return null
+                    return (
+                      <div key={kat}>
+                        <div className="px-2 py-1 text-xs font-semibold text-slate-400">{RET_KATEGORI_ETIKET[kat]}</div>
+                        {grup.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                      </div>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+              {rejectReasons.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">Tanımlı ret nedeni yok — "Analiz → Ret Nedenleri" bölümünden ekleyin.</p>
+              )}
+            </div>
+            <div>
+              <Label>Detay Not (opsiyonel)</Label>
+              <Textarea value={rejectNotes} onChange={(e) => setRejectNotes(e.target.value)} placeholder="Serbest metin açıklama…" rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Vazgeç</Button>
+            <Button variant="destructive" disabled={!rejectReasonId} onClick={confirmReject}>Reddet</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

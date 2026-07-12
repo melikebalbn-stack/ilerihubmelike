@@ -5734,12 +5734,18 @@ model PublicJobApplication {
   // İşe alım aday sınav oturumları (Faz 1) — yalnız ilişki, DB kolonu değil.
   assessmentSessions AssessmentSession[]
 
+  // Ret (kök-neden) sözlüğüne bağ — REJECTED'da zorunlu, diğer durumlarda null.
+  // Serbest metin detay `notes`'ta kalır; bu FK yapılandırılmış analiz için.
+  rejectionReasonId String?
+  rejectionReason   RejectionReason? @relation(fields: [rejectionReasonId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([createdAt])
   @@index([applicationNumber])
+  @@index([rejectionReasonId])
 }
 
 // ── KVKK aydınlatma onayı (IK-T-866, dijital imzalı) ──
@@ -5896,6 +5902,29 @@ enum JobApplicationStatus {
   INTERVIEW // Mülakata Çağrıldı
   ACCEPTED // Kabul Edildi
   REJECTED // Reddedildi
+}
+
+// Ret (kök-neden) kategorileri — sabit 3 kategori (İK yalnız ad'ları yönetir).
+enum RejectionReasonCategory {
+  TEKLIF_REDDI // Aday kaynaklı: ücret, lokasyon, vardiya, rakip teklif
+  ISE_ALMAMA // Şirket kaynaklı: teknik yeterlilik, sınav, yönetici kararı
+  SUREC_KAYBI // Ulaşılamadı, karar süresi, işe başlamadı, deneme olumsuz
+}
+
+// Ret nedeni SÖZLÜĞÜ — İK ekler/pasifleştirir (sabit enum'a düşürülmez).
+model RejectionReason {
+  id        String                  @id @default(cuid())
+  category  RejectionReasonCategory
+  name      String
+  isActive  Boolean                 @default(true)
+  order     Int                     @default(0)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  applications PublicJobApplication[]
+
+  @@unique([category, name])
+  @@index([isActive])
 }
 
 enum EducationLevel {

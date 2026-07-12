@@ -67,6 +67,13 @@ export async function sendPushToUser(
   userId: string,
   payload: PushPayload
 ): Promise<number> {
+  // GUARD (opt-IN): bildirim test-modu. NOTIFY_TEST_MODE === "true" ise push TAMAMEN KAPALI —
+  // abonelik sorgusu/gönderim YAPILMAZ, yalnız log. Prod'da bayrak set edilmez → normal akış.
+  if (process.env.NOTIFY_TEST_MODE === 'true') {
+    console.warn(`🧪 NOTIFY_TEST_MODE AKTİF — push GÖNDERİLMEDİ (kapalı). userId=${userId}, başlık="${payload.title}"`)
+    return 0
+  }
+
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { userId },
   })

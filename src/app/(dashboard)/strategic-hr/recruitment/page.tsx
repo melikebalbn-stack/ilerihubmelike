@@ -85,6 +85,7 @@ import { toast } from "sonner"
 import TimeToHirePanel from "./_components/TimeToHirePanel"
 import SourceBreakdownPanel from "./_components/SourceBreakdownPanel"
 import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
+import CostPerHirePanel from "./_components/CostPerHirePanel"
 import AssessmentPanel from "./_components/AssessmentPanel"
 
 interface JobOpening {
@@ -2630,6 +2631,7 @@ export default function RecruitmentPage() {
             <TimeToHirePanel />
             <SourceBreakdownPanel />
             <RejectionReasonsPanel />
+            <CostPerHirePanel />
           </div>
         </TabsContent>
 

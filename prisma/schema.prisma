@@ -5739,6 +5739,10 @@ model PublicJobApplication {
   rejectionReasonId String?
   rejectionReason   RejectionReason? @relation(fields: [rejectionReasonId], references: [id])
 
+  // İşe alım maliyet kayıtları (başvuru bazlı: mülakat/sınav masrafı).
+  // Yalnız back-relation — DB kolonu doğurmaz. Genel maliyetlerde bağ null'dır.
+  recruitmentCosts RecruitmentCost[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -5925,6 +5929,50 @@ model RejectionReason {
 
   @@unique([category, name])
   @@index([isActive])
+}
+
+// İşe alım maliyet kalemi tipi (Elif deseni). Para birimi TL sabit.
+enum RecruitmentCostType {
+  SABIT // tek tutar girilir (miktar = 1)
+  SAATLIK // saat girilir; tutar = saat × birim ücret (kayıt anında snapshot)
+}
+
+// Maliyet kalemi KATALOĞU — İK yönetir (İlan Maliyeti, Saatlik İK, Ajans...).
+model RecruitmentCostItem {
+  id        String              @id @default(cuid())
+  name      String              @unique
+  type      RecruitmentCostType @default(SABIT)
+  unitRate  Float? // SAATLIK kalemlerde saat ücreti (TL). SABIT'te null.
+  isActive  Boolean             @default(true)
+  order     Int                 @default(0)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  costs RecruitmentCost[]
+
+  @@index([isActive])
+}
+
+// Maliyet KAYDI. Tutar giriş anında hesaplanıp SNAPSHOT yazılır (kalem ücreti
+// sonradan değişse geçmiş bozulmaz). Başvuru bağı NULLABLE: doluysa başvuru-bazlı
+// (mülakat/sınav), null'sa genel maliyet (ilan/ajans).
+model RecruitmentCost {
+  id     String @id @default(cuid())
+  itemId String
+  item   RecruitmentCostItem @relation(fields: [itemId], references: [id])
+
+  publicJobApplicationId String?
+  publicJobApplication   PublicJobApplication? @relation(fields: [publicJobApplicationId], references: [id], onDelete: SetNull)
+
+  quantity      Float   @default(1) // SAATLIK: saat; SABIT: 1
+  amount        Float // TL — kayıt anında hesaplanan snapshot
+  note          String?
+  enteredByEmail String? // giren İK kullanıcısı (session)
+  createdAt     DateTime @default(now())
+
+  @@index([itemId])
+  @@index([publicJobApplicationId])
+  @@index([createdAt])
 }
 
 enum EducationLevel {

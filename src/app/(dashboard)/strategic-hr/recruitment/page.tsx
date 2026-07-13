@@ -82,8 +82,7 @@ import {
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
-import TimeToHirePanel from "./_components/TimeToHirePanel"
-import SourceBreakdownPanel from "./_components/SourceBreakdownPanel"
+import RecruitmentDashboard from "./_components/RecruitmentDashboard"
 import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
 import CostPerHirePanel from "./_components/CostPerHirePanel"
 import AssessmentPanel from "./_components/AssessmentPanel"
@@ -334,11 +333,21 @@ const jobAppStatusLabels: Record<string, string> = {
   PENDING: "Beklemede",
   REVIEWING: "Inceleniyor",
   SHORTLISTED: "On Eleme",
+  SINAV: "Sinav",
+  TELEFON_MULAKATI: "Telefon Mulakati",
+  IK_MULAKATI: "IK Mulakati",
+  TEKNIK_MULAKAT: "Teknik Mulakat",
   INTERVIEW: "Mulakat",
+  TEKLIF: "Teklif",
+  TEKLIF_KABUL: "Teklif Kabul",
+  ISE_BASLADI: "Ise Basladi",
   ACCEPTED: "Kabul Edildi",
   REJECTED: "Reddedildi",
   WITHDRAWN: "Geri Cekildi"
 }
+
+// İşe alım hunisi / dropdown sırası (mantıklı aşama sırası). Form-öncesi + terminal hariç.
+const ASAMA_SIRA = ["PENDING", "REVIEWING", "SHORTLISTED", "SINAV", "TELEFON_MULAKATI", "IK_MULAKATI", "TEKNIK_MULAKAT", "INTERVIEW", "TEKLIF", "TEKLIF_KABUL", "ISE_BASLADI"] as const
 
 // Ret (kök-neden) kategori etiketleri
 const RET_KATEGORI_ETIKET: Record<string, string> = {
@@ -2641,11 +2650,19 @@ export default function RecruitmentPage() {
         </TabsContent>
 
         <TabsContent value="analiz">
-          <div className="space-y-4">
-            <TimeToHirePanel />
-            <SourceBreakdownPanel />
-            <RejectionReasonsPanel />
-            <CostPerHirePanel />
+          <div className="space-y-6">
+            {/* Tek sayfa KPI dashboard (Elif düzeni): 8 kart + huni/pareto + pozisyon + kaynak */}
+            <RecruitmentDashboard />
+
+            {/* Veri yönetimi (İK): ret nedeni tanımları + maliyet kalemi/girişi.
+                Analitik dashboard'da; bu paneller yalnızca Tanımlar/giriş için korunur. */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 mb-2">Veri Yönetimi (İK)</h3>
+              <div className="space-y-4">
+                <RejectionReasonsPanel />
+                <CostPerHirePanel />
+              </div>
+            </div>
           </div>
         </TabsContent>
 
@@ -2793,13 +2810,11 @@ export default function RecruitmentPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="PENDING">Beklemede</SelectItem>
-                      <SelectItem value="REVIEWING">Inceleniyor</SelectItem>
-                      <SelectItem value="SHORTLISTED">On Eleme</SelectItem>
-                      <SelectItem value="INTERVIEW">Mulakat</SelectItem>
+                      {ASAMA_SIRA.map((s) => (
+                        <SelectItem key={s} value={s}>{jobAppStatusLabels[s]}</SelectItem>
+                      ))}
                       <SelectItem value="ACCEPTED">Kabul Edildi</SelectItem>
                       <SelectItem value="REJECTED">Reddedildi</SelectItem>
-                      <SelectItem value="WITHDRAWN">Geri Cekildi</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

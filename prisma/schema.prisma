@@ -5903,7 +5903,15 @@ enum JobApplicationStatus {
   REVIEWED // İncelendi
   REVIEWING // İnceleniyor
   SHORTLISTED // Ön Eleme
-  INTERVIEW // Mülakata Çağrıldı
+  INTERVIEW // Mülakata Çağrıldı (genel)
+  // Elif aşama modeli — additive. Mevcut değerler dokunulmadı, 20 başvuru etkilenmez.
+  SINAV // Sınav aşaması
+  TELEFON_MULAKATI // Telefon mülakatı
+  IK_MULAKATI // İK mülakatı
+  TEKNIK_MULAKAT // Teknik mülakat
+  TEKLIF // Teklif aşaması
+  TEKLIF_KABUL // Teklif kabul edildi
+  ISE_BASLADI // İşe başladı
   ACCEPTED // Kabul Edildi
   REJECTED // Reddedildi
 }

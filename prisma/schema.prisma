@@ -10621,3 +10621,215 @@ model AssessmentAnswer {
   @@unique([sessionId, questionId])
   @@index([sessionId])
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// IPRO — MAS Üretim Takip Modülü (şema + import katmanı)
+// Kimlik hizalaması:
+//   IproTezgah.kod    = IFS ResourceId = MAS iş merkezi kodu (CN01, KH01, PH19)
+//   Personnel.sicilNo = IFS EmployeeId
+//   PLC pin kimliği    = (plcId, sayacAdresi) — offset tek başına anlamsız
+// ══════════════════════════════════════════════════════════════════════════
+
+model IproPlc {
+  id    String  @id @default(cuid())
+  kod   String  @unique
+  ad    String
+  ip    String
+  rack  Int     @default(0)
+  slot  Int     @default(1)
+  aktif Boolean @default(true)
+
+  pinler IproPlcPin[]
+
+  @@map("ipro_plc")
+}
+
+model IproPlcPin {
+  id          String  @id @default(cuid())
+  kod         Int     @unique
+  plcId       String
+  plc         IproPlc @relation(fields: [plcId], references: [id])
+  inputPin    String
+  sayacAdresi Int
+  resetAdresi Int
+  durusAdresi Int
+  sayacTipi   String  @default("CTCounter")
+  aktif       Boolean @default(true)
+
+  tezgahId String?
+  tezgah   IproTezgah? @relation(fields: [tezgahId], references: [id])
+
+  @@unique([plcId, sayacAdresi])
+  @@index([tezgahId])
+  @@map("ipro_plc_pin")
+}
+
+model IproTezgah {
+  id              String      @id @default(cuid())
+  kod             String      @unique
+  ad              String
+  ifsWorkCenterNo String?
+  masGrupKodu     String?
+  masGrupAdi      String?
+  aktif           Boolean @default(true)
+
+  plcPinler   IproPlcPin[]
+  operatorler IproOperatorTezgah[]
+  sessionlar  IproOperatorSession[]
+  uretimKayit IproProductionLog[]
+  durusKayit  IproMachineDowntime[]
+  durusEsleme IproDurusTezgah[]
+  hurdaEsleme IproHurdaTezgah[]
+
+  @@index([ifsWorkCenterNo])
+  @@map("ipro_tezgah")
+}
+
+model IproDurusTipi {
+  id        String  @id @default(cuid())
+  kod       String  @unique
+  ad        String
+  teepOrder Int?
+  aktif     Boolean @default(true)
+
+  sebepler IproDurusSebebi[]
+
+  @@map("ipro_durus_tipi")
+}
+
+model IproDurusSebebi {
+  id         String         @id @default(cuid())
+  kod        String         @unique
+  ad         String
+  erpKodu    String?
+  tipId      String?
+  tip        IproDurusTipi? @relation(fields: [tipId], references: [id])
+  bitisTipi  String
+  renkKodu   String?
+  temelSebep String?
+
+  planli                     Boolean @default(false)
+  uretimDisi                 Boolean @default(false)
+  setupDurusu                Boolean @default(false)
+  plcKilitle                 Boolean @default(false)
+  askiyaAl                   Boolean @default(false)
+  makineKaynakli             Boolean @default(false)
+  operatorKaynakli           Boolean @default(false)
+  yetkiliOnayGerekli         Boolean @default(false)
+  durusAktifkenIsBitirilemez Boolean @default(false)
+  uretimdeGosterilsin        Boolean @default(true)
+  aktif                      Boolean @default(true)
+
+  tezgahlar IproDurusTezgah[]
+  kayitlar  IproMachineDowntime[]
+
+  @@map("ipro_durus_sebebi")
+}
+
+model IproDurusTezgah {
+  id            String          @id @default(cuid())
+  durusSebebiId String
+  durusSebebi   IproDurusSebebi @relation(fields: [durusSebebiId], references: [id], onDelete: Cascade)
+  tezgahId      String
+  tezgah        IproTezgah      @relation(fields: [tezgahId], references: [id], onDelete: Cascade)
+  sikKullanilan Boolean         @default(false)
+
+  @@unique([durusSebebiId, tezgahId])
+  @@index([tezgahId, sikKullanilan])
+  @@map("ipro_durus_tezgah")
+}
+
+model IproHurdaSebebi {
+  id                 String  @id @default(cuid())
+  kod                String  @unique
+  ad                 String
+  erpKodu            String?
+  grupKodu           String?
+  grubu              String?
+  uretimHurdaRework  Boolean @default(false)
+  rework             Boolean @default(false)
+  hurda              Boolean @default(true)
+  bilesenHurdaRework Boolean @default(false)
+  oeeEtkiler         Boolean @default(true)
+  yorumZorunlu       Boolean @default(false)
+  sinyalsizGiris     Boolean @default(false)
+  aktif              Boolean @default(true)
+
+  tezgahlar IproHurdaTezgah[]
+
+  @@map("ipro_hurda_sebebi")
+}
+
+model IproHurdaTezgah {
+  id            String          @id @default(cuid())
+  hurdaSebebiId String
+  hurdaSebebi   IproHurdaSebebi @relation(fields: [hurdaSebebiId], references: [id], onDelete: Cascade)
+  tezgahId      String
+  tezgah        IproTezgah      @relation(fields: [tezgahId], references: [id], onDelete: Cascade)
+
+  @@unique([hurdaSebebiId, tezgahId])
+  @@map("ipro_hurda_tezgah")
+}
+
+model IproOperatorTezgah {
+  id          String     @id @default(cuid())
+  personnelId String
+  tezgahId    String
+  tezgah      IproTezgah @relation(fields: [tezgahId], references: [id])
+  kaynak      String     @default("MAS_IMPORT")
+  aktif       Boolean    @default(true)
+
+  @@unique([personnelId, tezgahId])
+  @@index([personnelId])
+  @@map("ipro_operator_tezgah")
+}
+
+model IproOperatorSession {
+  id          String     @id @default(cuid())
+  personnelId String
+  tezgahId    String
+  tezgah      IproTezgah @relation(fields: [tezgahId], references: [id])
+  girisAt     DateTime   @default(now())
+  cikisAt     DateTime?
+
+  @@index([tezgahId, cikisAt])
+  @@map("ipro_operator_session")
+}
+
+model IproProductionLog {
+  id                String     @id @default(cuid())
+  tezgahId          String
+  tezgah            IproTezgah @relation(fields: [tezgahId], references: [id])
+  personnelId       String
+  ifsOperationId    String?
+  ifsOrderNo        String?
+  ifsOperationNo    Int?
+  qtyComplete       Int        @default(0)
+  qtyScrap          Int        @default(0)
+  hurdaSebebiKod    String?
+  plcSayacBaslangic Int?
+  plcSayacBitis     Int?
+  ifsYazildi        Boolean    @default(false)
+  ifsHata           String?
+  createdAt         DateTime   @default(now())
+
+  @@index([tezgahId, createdAt])
+  @@index([ifsYazildi])
+  @@map("ipro_production_log")
+}
+
+model IproMachineDowntime {
+  id            String           @id @default(cuid())
+  tezgahId      String
+  tezgah        IproTezgah       @relation(fields: [tezgahId], references: [id])
+  durusSebebiId String?
+  durusSebebi   IproDurusSebebi? @relation(fields: [durusSebebiId], references: [id])
+  personnelId   String?
+  baslangic     DateTime
+  bitis         DateTime?
+  kaynak        String           @default("PLC")
+  yorum         String?
+
+  @@index([tezgahId, bitis])
+  @@map("ipro_machine_downtime")
+}

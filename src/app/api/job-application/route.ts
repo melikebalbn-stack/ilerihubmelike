@@ -115,7 +115,9 @@ export async function POST(request: NextRequest) {
       workPhone: (formData.get('workPhone') as string)?.trim() || null,
       homePhone: (formData.get('homePhone') as string)?.trim() || null,
       email: (formData.get('email') as string)?.trim() || null,
-      referralSource: formData.get('referralSource') as string || null,
+      // Kaynak artık sözlükten (ReferralSourceDef). Form 'referralSource' alanında kaynak
+      // ADINI gönderir; aşağıda ada göre referralSourceId çözülür. Eski enum kolonu yeni
+      // kayıtlarda null bırakılır (geriye dönük 20 başvuruda duruyor).
       referralSourceOther: (formData.get('referralSourceOther') as string)?.trim() || null,
       memberships: (formData.get('memberships') as string)?.trim() || null,
       hasDriverLicense: formData.get('hasDriverLicense') === 'true' ? true : formData.get('hasDriverLicense') === 'false' ? false : null,
@@ -174,6 +176,14 @@ export async function POST(request: NextRequest) {
       photoUrl,
       ipAddress,
       userAgent,
+    }
+
+    // Kaynak sözlüğü: form 'referralSource' alanında kaynak ADI gönderir → aktif
+    // ReferralSourceDef'e göre referralSourceId çözülür (bulunamazsa null; form bozulmaz).
+    const kaynakAdi = (formData.get('referralSource') as string)?.trim()
+    if (kaynakAdi) {
+      const def = await prisma.referralSourceDef.findFirst({ where: { name: kaynakAdi, isActive: true }, select: { id: true } })
+      if (def) (applicationData as Record<string, unknown>).referralSourceId = def.id
     }
 
     // Taslak birleştirme: KVKK adımında oluşan taslağı (cookie'deki applicationId) tam form

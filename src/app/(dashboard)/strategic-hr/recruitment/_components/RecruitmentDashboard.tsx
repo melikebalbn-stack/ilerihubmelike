@@ -132,7 +132,7 @@ export default function RecruitmentDashboard() {
               <table className="w-full text-sm">
                 <thead><tr className="text-left text-slate-500 border-b"><th className="px-3 py-2">Kaynak</th><th className="px-3 py-2">Başvuru</th><th className="px-3 py-2">İşe Alınan</th><th className="px-3 py-2">Dönüşüm</th></tr></thead>
                 <tbody>{d.kaynaklar.map((k) => (
-                  <tr key={k.source} className={`border-b last:border-0 ${k.source === "BELIRTILMEMIS" ? "text-slate-400" : ""}`}>
+                  <tr key={k.source} className={`border-b last:border-0 ${k.source === "Belirtilmemiş" ? "text-slate-400" : ""}`}>
                     <td className="px-3 py-2 font-medium">{KAYNAK_ETIKET[k.source] ?? k.source}</td><td className="px-3 py-2">{k.basvuru}</td><td className="px-3 py-2">{k.iseAlinan}</td><td className="px-3 py-2 font-semibold text-[#1B4F72]">%{k.donusum}</td>
                   </tr>
                 ))}</tbody>

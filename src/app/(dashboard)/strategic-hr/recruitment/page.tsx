@@ -85,6 +85,7 @@ import { toast } from "sonner"
 import RecruitmentDashboard from "./_components/RecruitmentDashboard"
 import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
 import CostPerHirePanel from "./_components/CostPerHirePanel"
+import TanimlarPanel from "./_components/TanimlarPanel"
 import AssessmentPanel from "./_components/AssessmentPanel"
 
 interface JobOpening {
@@ -418,6 +419,8 @@ export default function RecruitmentPage() {
   const [rejectReasons, setRejectReasons] = useState<{ id: string; category: string; name: string }[]>([])
   // İK maaş/bütçe düzenleme (talep detayı — yalnız recruitment.admin)
   const [salaryForm, setSalaryForm] = useState<{ salaryMin: string; salaryMax: string; hasBudget: boolean }>({ salaryMin: "", salaryMax: "", hasBudget: false })
+  // "Onaya Gönder" gerekçe uyarısı (Elif 2. tur)
+  const [submitConfirmId, setSubmitConfirmId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [rejectionReason, setRejectionReason] = useState("")
@@ -1624,7 +1627,7 @@ export default function RecruitmentPage() {
                 {/* Talep sahibi islemleri */}
                 {selectedRequest.status === "DRAFT" && selectedRequest.requesterEmail === session?.user?.email && (
                   <>
-                    <Button variant="outline" onClick={() => handleRequestAction(selectedRequest.id, "submit")}>
+                    <Button variant="outline" onClick={() => setSubmitConfirmId(selectedRequest.id)}>
                       Onaya Gonder
                     </Button>
                     <Button variant="destructive" onClick={() => handleDeleteRequest(selectedRequest.id)}>
@@ -2188,6 +2191,7 @@ export default function RecruitmentPage() {
           <TabsTrigger value="candidates">Aday Havuzu ({filteredCandidates.length})</TabsTrigger>
           <TabsTrigger value="analiz">Analiz</TabsTrigger>
           <TabsTrigger value="sinavlar">Sınavlar</TabsTrigger>
+          <TabsTrigger value="tanimlar">Tanımlar</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests">
@@ -2262,7 +2266,7 @@ export default function RecruitmentPage() {
                               {req.status === "DRAFT" && req.requesterEmail === session?.user?.email && (
                                 <>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => handleRequestAction(req.id, "submit")}>
+                                  <DropdownMenuItem onClick={() => setSubmitConfirmId(req.id)}>
                                     <Play className="h-4 w-4 mr-2" />
                                     Onaya Gonder
                                   </DropdownMenuItem>
@@ -2669,6 +2673,10 @@ export default function RecruitmentPage() {
         <TabsContent value="sinavlar">
           <AssessmentPanel />
         </TabsContent>
+
+        <TabsContent value="tanimlar">
+          <TanimlarPanel />
+        </TabsContent>
       </Tabs>
 
       {/* Is Basvurusu Detay Modal */}
@@ -2842,6 +2850,23 @@ export default function RecruitmentPage() {
       </Dialog>
 
       {/* Ret nedeni (kök-neden) modalı — REJECTED'da zorunlu */}
+      {/* Onaya Gönder gerekçe uyarısı (Elif 2. tur) */}
+      <Dialog open={!!submitConfirmId} onOpenChange={(o) => !o && setSubmitConfirmId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Onaya Göndermeden Önce</DialogTitle>
+            <DialogDescription>
+              Gerekçe alanını detaylı doldurduğunuzdan emin olun. Yetersiz görülen talepler
+              reddedilir ve yeniden talep açmanız gerekir.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSubmitConfirmId(null)}>Vazgeç</Button>
+            <Button onClick={() => { const id = submitConfirmId; setSubmitConfirmId(null); if (id) handleRequestAction(id, "submit") }}>Onaya Gönder</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>

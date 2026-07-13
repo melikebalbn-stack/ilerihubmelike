@@ -5,8 +5,30 @@ import { requireSession } from "@/lib/auth/require-session";
 import { resolveApprovers } from "@/lib/personnel-request-chain";
 import { sendPushToUser } from "@/lib/push-notifications";
 import { sendEmail } from "@/lib/email";
+import { resolveHRRecipients } from "@/lib/hr-notifications";
 
 type BildirimTuru = "SIRA" | "ONAYLANDI" | "REDDEDILDI";
+
+// İK ekibine (İnsan Varlıkları departmanı) bilgi bildirimi — final onayda (İK Müdürü onayı).
+// resolveHRRecipients mevcut İK alıcı çözümleme deseni. Best-effort.
+async function notifyHrTeam(requestNumber: string, title: string) {
+  try {
+    const alicilar = await resolveHRRecipients();
+    if (!alicilar.length) return;
+    const mesaj = `${requestNumber} numaralı "${title}" eleman talebi tüm onaylardan geçti (İK Müdürü onayı) ve APPROVED oldu.`;
+    await sendEmail(
+      alicilar.map((a) => ({ email: a.email ?? "", name: a.name ?? a.email ?? "" })).filter((a) => a.email),
+      "Eleman Talebi Onaylandı",
+      mesaj,
+      `<p>${mesaj}</p>`,
+    );
+    for (const a of alicilar) {
+      if (a.id) await sendPushToUser(prisma, a.id, { title: "Eleman Talebi Onaylandı", body: mesaj, url: "/strategic-hr/recruitment", tag: `pr-approved-${requestNumber}` });
+    }
+  } catch {
+    // İK bildirimi best-effort
+  }
+}
 
 // Onay zinciri bildirimi (best-effort — bildirim hatası ana akışı bozmaz). Mesai deseni.
 async function notifyApprover(
@@ -137,7 +159,8 @@ export async function PUT(
       }
       // Zincir: İK Müdürü → GMY → GM (hepsi ApprovalPosition kodundan; talep sahibinin
       // departmanı/personnelId'si GEREKMEZ → personnelId'siz kullanıcı da talep açabilir).
-      const cozum = await resolveApprovers(prisma);
+      // Zincir: Bölüm Müdürü → GMY → GM → İK Müdürü (Bölüm Müdürü için requesterId gerekli).
+      const cozum = await resolveApprovers(prisma, existingRequest.requesterId);
       if (!cozum.ok) {
         // Sessiz boşta kalma YOK — talep PENDING'e geçmez, net hata döner.
         return NextResponse.json({ error: cozum.error }, { status: 400 });
@@ -199,7 +222,9 @@ export async function PUT(
           }
         });
         if (isLast) {
+          // Son onay = İK Müdürü → talep APPROVED. Talep sahibine + İK EKİBİNE bilgi.
           await notifyApprover(existingRequest.requesterId, existingRequest.requestNumber, existingRequest.title, "ONAYLANDI");
+          await notifyHrTeam(existingRequest.requestNumber, existingRequest.title);
         } else {
           const next = approvals.find((a) => a.step === pending.step + 1);
           if (next?.approverId) {

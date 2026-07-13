@@ -34,7 +34,8 @@ export async function GET() {
   const basvurular = await prisma.publicJobApplication.findMany({
     select: {
       status: true,
-      referralSource: true,
+      // Kaynak artık sözlükten (referralSourceId → ReferralSourceDef.name). Bağı olmayan → "Belirtilmemiş".
+      referralSourceDef: { select: { name: true } },
       requestedPosition: true,
       createdAt: true,
       rejectionReason: { select: { name: true, category: true } },
@@ -114,17 +115,17 @@ export async function GET() {
     .map(([position, v]) => ({ position, basvuru: v.basvuru, ortTimeToHire: ortala(v.tthGun), costPerHire: null as number | null }))
     .sort((a, b) => b.basvuru - a.basvuru);
 
-  // ---- Kaynak Kırılımı (korunuyor) ----
+  // ---- Kaynak Kırılımı (sözlükten: referralSourceDef.name; bağı yok → "Belirtilmemiş") ----
   const kaynakMap = new Map<string, { basvuru: number; iseAlinan: number }>();
   for (const b of tamam) {
-    const k = b.referralSource ?? "BELIRTILMEMIS";
+    const k = b.referralSourceDef?.name ?? "Belirtilmemiş";
     const e = kaynakMap.get(k) ?? { basvuru: 0, iseAlinan: 0 };
     e.basvuru++; if (ISE_ALINDI.has(b.status)) e.iseAlinan++;
     kaynakMap.set(k, e);
   }
   const kaynaklar = [...kaynakMap.entries()]
     .map(([source, v]) => ({ source, basvuru: v.basvuru, iseAlinan: v.iseAlinan, donusum: v.basvuru ? Math.round((v.iseAlinan / v.basvuru) * 1000) / 10 : 0 }))
-    .sort((a, b) => (a.source === "BELIRTILMEMIS" ? 1 : b.source === "BELIRTILMEMIS" ? -1 : b.basvuru - a.basvuru));
+    .sort((a, b) => (a.source === "Belirtilmemiş" ? 1 : b.source === "Belirtilmemiş" ? -1 : b.basvuru - a.basvuru));
 
   return NextResponse.json({
     kpi,

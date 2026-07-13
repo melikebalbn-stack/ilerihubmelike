@@ -4218,6 +4218,8 @@ model Position {
   isCritical Boolean @default(false) // Kritik pozisyon mu?
   isActive   Boolean @default(true)
   hedefTimeToHire Int? // hedef işe alım süresi - gün (Time-to-Hire analitiği)
+  yaka            String?  // MAVI | BEYAZ (Elif Tanımlar ekranı — İK yönetir)
+  ingilizceZorunlu Boolean @default(false) // İngilizce zorunlu mu (Tanımlar)
 
   // İlişkiler
   requiredCompetencies PositionCompetency[]
@@ -5633,8 +5635,11 @@ model PublicJobApplication {
   email       String? // E-mail
 
   // Bize Nasıl Ulaştınız
-  referralSource      ReferralSource? // Bize Nasıl Ulaştınız
+  referralSource      ReferralSource? // ESKİ sabit enum — geriye dönük güvence (DROP edilmedi)
   referralSourceOther String? // Diğer (açıklama)
+  // Yeni: yönetilebilir kaynak sözlüğüne bağ (İK Tanımlar'dan yönetir). Göç: eski enum → bu FK.
+  referralSourceId    String?
+  referralSourceDef   ReferralSourceDef? @relation(fields: [referralSourceId], references: [id])
 
   // Üyelikler
   memberships String? @db.Text // Dernek/Kulüp/Sendika Üyelikleri
@@ -5750,6 +5755,22 @@ model PublicJobApplication {
   @@index([createdAt])
   @@index([applicationNumber])
   @@index([rejectionReasonId])
+  @@index([referralSourceId])
+}
+
+// Başvuru kaynağı SÖZLÜĞÜ — İK yönetir (Tanımlar). Eski ReferralSource enum'unun
+// yönetilebilir karşılığı. Silme YOK → pasifleştirme.
+model ReferralSourceDef {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applications PublicJobApplication[]
+
+  @@index([isActive])
 }
 
 // ── KVKK aydınlatma onayı (IK-T-866, dijital imzalı) ──

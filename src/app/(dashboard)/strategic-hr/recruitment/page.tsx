@@ -407,6 +407,8 @@ export default function RecruitmentPage() {
   const [rejectReasonId, setRejectReasonId] = useState("")
   const [rejectNotes, setRejectNotes] = useState("")
   const [rejectReasons, setRejectReasons] = useState<{ id: string; category: string; name: string }[]>([])
+  // İK maaş/bütçe düzenleme (talep detayı — yalnız recruitment.admin)
+  const [salaryForm, setSalaryForm] = useState<{ salaryMin: string; salaryMax: string; hasBudget: boolean }>({ salaryMin: "", salaryMax: "", hasBudget: false })
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [rejectionReason, setRejectionReason] = useState("")
@@ -834,6 +836,24 @@ export default function RecruitmentPage() {
       console.error("Talep olusturulurken hata:", error)
       toast.error("Bir hata olustu")
     }
+  }
+
+  // İK maaş/bütçe kaydet (recruitment.admin). update action → API yalnız admin'de yazar.
+  const handleSalarySave = async (requestId: string) => {
+    try {
+      const res = await fetch(`/api/strategic-hr/recruitment/personnel-requests/${requestId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          salaryMin: salaryForm.salaryMin ? parseInt(salaryForm.salaryMin) : null,
+          salaryMax: salaryForm.salaryMax ? parseInt(salaryForm.salaryMax) : null,
+          hasBudget: salaryForm.hasBudget,
+        }),
+      })
+      if (res.ok) { fetchRequests(); toast.success("Maas/butce bilgileri kaydedildi") }
+      else { const e = await res.json(); toast.error(e.error || "Kaydedilemedi") }
+    } catch { toast.error("Bir hata olustu") }
   }
 
   const handleRequestAction = async (requestId: string, action: string, data?: any) => {
@@ -1332,25 +1352,8 @@ export default function RecruitmentPage() {
                 </Select>
               </div>
 
-              <div>
-                <Label>Min Maas (TL)</Label>
-                <Input
-                  type="number"
-                  value={requestForm.salaryMin}
-                  onChange={(e) => setRequestForm({ ...requestForm, salaryMin: e.target.value })}
-                  placeholder="50000"
-                />
-              </div>
-
-              <div>
-                <Label>Max Maas (TL)</Label>
-                <Input
-                  type="number"
-                  value={requestForm.salaryMax}
-                  onChange={(e) => setRequestForm({ ...requestForm, salaryMax: e.target.value })}
-                  placeholder="80000"
-                />
-              </div>
+              {/* Maaş/bütçe TALEP FORMUNDAN çıkarıldı (Elif geri bildirimi) — birim müdürü
+                  girmez; İK talep detayında girer. Alanlar şemada + İK görünümünde durur. */}
 
               <div className="col-span-2">
                 <Label>Gerekce / Neden Ihtiyac Var? *</Label>
@@ -1383,18 +1386,6 @@ export default function RecruitmentPage() {
                 />
               </div>
 
-              <div className="col-span-2 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="hasBudget"
-                  checked={requestForm.hasBudget}
-                  onChange={(e) => setRequestForm({ ...requestForm, hasBudget: e.target.checked })}
-                  className="rounded border-gray-300"
-                />
-                <Label htmlFor="hasBudget" className="cursor-pointer">
-                  Butce onayi mevcut
-                </Label>
-              </div>
             </div>
 
             <div className="flex justify-end gap-2">
@@ -1483,6 +1474,28 @@ export default function RecruitmentPage() {
                     </div>
                   )}
                 </div>
+
+                {/* İK maaş/bütçe — YALNIZ recruitment.admin görür + düzenler (birim müdürü görmez) */}
+                {hasFullAccess && (
+                  <div className="border rounded-md p-3 bg-slate-50">
+                    <h4 className="font-medium mb-2 text-sm">İK: Maaş / Bütçe (yalnız İK)</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                      <div>
+                        <Label className="text-xs">Min Maaş (TL)</Label>
+                        <Input type="number" value={salaryForm.salaryMin} onChange={(e) => setSalaryForm({ ...salaryForm, salaryMin: e.target.value })} placeholder="—" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Max Maaş (TL)</Label>
+                        <Input type="number" value={salaryForm.salaryMax} onChange={(e) => setSalaryForm({ ...salaryForm, salaryMax: e.target.value })} placeholder="—" />
+                      </div>
+                      <div className="flex items-center gap-2 h-9">
+                        <input type="checkbox" id="ikHasBudget" checked={salaryForm.hasBudget} onChange={(e) => setSalaryForm({ ...salaryForm, hasBudget: e.target.checked })} className="rounded border-gray-300" />
+                        <Label htmlFor="ikHasBudget" className="cursor-pointer text-xs">Bütçe onayı mevcut</Label>
+                      </div>
+                    </div>
+                    <Button size="sm" className="mt-2 bg-[#1B4F72]" onClick={() => handleSalarySave(selectedRequest.id)}>Maaş/Bütçe Kaydet</Button>
+                  </div>
+                )}
 
                 <div>
                   <h4 className="font-medium mb-1">Gerekce</h4>
@@ -2231,6 +2244,7 @@ export default function RecruitmentPage() {
                               <DropdownMenuLabel>Islemler</DropdownMenuLabel>
                               <DropdownMenuItem onClick={() => {
                                 setSelectedRequest(req)
+                                setSalaryForm({ salaryMin: req.salaryMin != null ? String(req.salaryMin) : "", salaryMax: req.salaryMax != null ? String(req.salaryMax) : "", hasBudget: req.hasBudget })
                                 setIsRequestDetailOpen(true)
                               }}>
                                 <Eye className="h-4 w-4 mr-2" />

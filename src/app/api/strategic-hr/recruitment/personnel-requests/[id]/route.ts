@@ -135,8 +135,9 @@ export async function PUT(
       if (existingRequest.status !== "DRAFT") {
         return NextResponse.json({ error: "Sadece taslak talepler gönderilebilir" }, { status: 400 });
       }
-      // Departman kaynağı: talep sahibinin Personnel.bolum'u (LDAP department DEĞİL).
-      const cozum = await resolveApprovers(prisma, existingRequest.requesterId);
+      // Zincir: İK Müdürü → GMY → GM (hepsi ApprovalPosition kodundan; talep sahibinin
+      // departmanı/personnelId'si GEREKMEZ → personnelId'siz kullanıcı da talep açabilir).
+      const cozum = await resolveApprovers(prisma);
       if (!cozum.ok) {
         // Sessiz boşta kalma YOK — talep PENDING'e geçmez, net hata döner.
         return NextResponse.json({ error: cozum.error }, { status: 400 });
@@ -263,9 +264,11 @@ export async function PUT(
             : existingRequest.preferredStartDate,
           location: body.location !== undefined ? body.location : existingRequest.location,
           workModel: body.workModel !== undefined ? body.workModel : existingRequest.workModel,
-          salaryMin: body.salaryMin !== undefined ? body.salaryMin : existingRequest.salaryMin,
-          salaryMax: body.salaryMax !== undefined ? body.salaryMax : existingRequest.salaryMax,
-          hasBudget: body.hasBudget !== undefined ? body.hasBudget : existingRequest.hasBudget,
+          // Maaş/bütçe YALNIZ recruitment.admin (İK) tarafından güncellenir. Talep sahibi
+          // (birim müdürü) body'de gönderse bile YOKSAYILIR (mevcut değer korunur).
+          salaryMin: hasFullAccess && body.salaryMin !== undefined ? body.salaryMin : existingRequest.salaryMin,
+          salaryMax: hasFullAccess && body.salaryMax !== undefined ? body.salaryMax : existingRequest.salaryMax,
+          hasBudget: hasFullAccess && body.hasBudget !== undefined ? body.hasBudget : existingRequest.hasBudget,
           priority: body.priority ?? existingRequest.priority
         };
         break;

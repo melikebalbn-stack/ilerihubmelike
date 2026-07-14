@@ -127,6 +127,44 @@ export function applyDuplicateOverrides<T extends { kod: string; ad: string }>(
 }
 
 /**
+ * GEÇİCİ — MAS'ta pin 53 (PANO-1/I6.6) hem KR10 hem CN16'ya eşlenmiş, ikisi de aktif (veri hatası).
+ * KARAR: pin 53 → CN16 (ROVELVER TORNA). Gerekçe: CN kümesinin 12 tezgahı PANO-1'de, pin 53 de
+ * PANO-1'de. KR10 (Nachi-Geka) tipçe farklı, KR kümesi dağınık — PANO-1'e ait yapısal gerekçe yok.
+ * KR10 PİNSİZ KALIR (sayacı yok, uydurulmuyor). MAS düzeltilince bu blok SİLİNECEK.
+ */
+export const RELATION_OVERRIDES = {
+  plcPinTezgah: [
+    { pinKod: 53, atlananTezgah: 'KR10', kalanTezgah: 'CN16' },
+  ],
+} as const
+
+type RelationOverrideRule = { readonly pinKod: number; readonly atlananTezgah: string; readonly kalanTezgah: string }
+
+/**
+ * pin↔tezgah çift-eşlemesini çözer: 'atlananTezgah' eşlemesini listeden düşürür, 'kalanTezgah'ı korur.
+ * Eşleme satırları okunduktan SONRA, assertUniqueRelation'dan ÖNCE çağrılır.
+ * Beklenen çift-eşleme bulunamazsa DUR (MAS düzelmiş olabilir — override güncellenmeli; sessiz atlama YOK).
+ */
+export function applyRelationOverrides<T extends { pinKod: number; tezgahKod: string }>(
+  rows: T[],
+  overrides: ReadonlyArray<RelationOverrideRule>,
+  label: string,
+): T[] {
+  let result = rows
+  for (const ov of overrides) {
+    const atlanan = result.filter((r) => r.pinKod === ov.pinKod && r.tezgahKod === ov.atlananTezgah)
+    const kalan = result.filter((r) => r.pinKod === ov.pinKod && r.tezgahKod === ov.kalanTezgah)
+    if (atlanan.length === 0 || kalan.length === 0) {
+      throw new Error(`RELATION OVERRIDE eşleşmedi: ${label} pin ${ov.pinKod} için ${ov.atlananTezgah}/${ov.kalanTezgah} çift-eşlemesi bulunamadı — MAS düzelmiş olabilir, override güncellenmeli`)
+    }
+    result = result.filter((r) => !(r.pinKod === ov.pinKod && r.tezgahKod === ov.atlananTezgah))
+    console.warn(`  ⚠️ OVERRIDE: pin ${ov.pinKod} → ${ov.atlananTezgah} eşlemesi atlandı (MAS'ta çift-eşleme). ${ov.kalanTezgah} korundu.`)
+    console.warn(`  ⚠️ ${ov.atlananTezgah} PİNSİZ — sayacı yok. Otomasyon teyidi bekliyor.`)
+  }
+  return result
+}
+
+/**
  * @unique alana yazmadan ÖNCE mükerrer anahtar denetimi. Excel'de aynı kod birden çok
  * satırda geçerse upsert son-kazanır ile SESSİZCE birleştirir → gerçek kayıt kaybolur.
  * Tekrar varsa çakışan kayıtları TAM basar ve throw eder (runCli → exit 1, zincir DURUR).
@@ -152,6 +190,33 @@ export function assertUniqueKeys<T>(
     for (const r of recs) console.error(`      - ${describe(r)}`)
   }
   throw new Error(`${label}: ${dups.length} mükerrer kod bulundu — kaynak düzeltilmeli (report-duplicates.ts'e bak)`)
+}
+
+/**
+ * İLİŞKİ tekilliği: bir key (ör. pin kodu) BİRDEN FAZLA farklı value'ya (ör. tezgah) bağlanamaz.
+ * assertUniqueKeys kod tekilliğini korur; bu ise eşleme (relation) tekilliğini korur.
+ *
+ * DİKKAT — TERS YÖN MEŞRU: bir tezgahın birden fazla pini olabilir (KH01: pin 212 + pin 9).
+ * Bu fonksiyon YALNIZ key→çok-value yönünü denetler (pin→çok-tezgah YASAK); value→çok-key serbest.
+ * Bu yüzden key=pin, value=tezgah ile çağır → KH01 (tezgah→2 pin) DUR'a düşmez.
+ */
+export function assertUniqueRelation<T>(
+  rows: T[],
+  keyFn: (r: T) => string,
+  valueFn: (r: T) => string,
+  label: string,
+): void {
+  const byKey = new Map<string, Set<string>>()
+  for (const r of rows) {
+    const k = keyFn(r)
+    if (!byKey.has(k)) byKey.set(k, new Set())
+    byKey.get(k)!.add(valueFn(r))
+  }
+  const conflicts = [...byKey.entries()].filter(([, vs]) => vs.size > 1)
+  if (conflicts.length === 0) return
+  console.error(`\n⛔ ${label}: ÇİFT-EŞLEME (${conflicts.length}) — bir key birden çok value'ya bağlı:`)
+  for (const [k, vs] of conflicts) console.error(`   ${k} → ${[...vs].join(', ')}`)
+  throw new Error(`${label}: ${conflicts.length} çift-eşleme bulundu — kaynak düzeltilmeli`)
 }
 /** Bu dosya doğrudan mı çalıştırıldı? (CJS-güvenli: import.meta yok, argv[1] basename'i karşılaştır) */
 export function isEntry(scriptBaseName: string): boolean {

@@ -13,7 +13,10 @@
  *
  * DRY-RUN tablo-bağımsız: geçitler Excel'den doğrulanır; ipro tablolarına yalnız yazma modunda erişilir.
  */
-import { runCli, findFile, readRows, isEvet, clean, asInt, banner, summary, assertUniqueKeys, type Prisma } from './_lib'
+import {
+  runCli, findFile, readRows, isEvet, clean, asInt, banner, summary, assertUniqueKeys,
+  assertUniqueRelation, applyRelationOverrides, RELATION_OVERRIDES, type Prisma,
+} from './_lib'
 
 export async function importPlcPin(prisma: Prisma, dryRun: boolean) {
   banner('(b) IproPlcPin — pin kayıtları + tezgah bağlama', dryRun)
@@ -74,9 +77,13 @@ export async function importPlcPin(prisma: Prisma, dryRun: boolean) {
       tezgahKod: String(clean(r['İş merkezi kodu'])),
       sayacTipi: clean(r['Sayaç tipi kodu']) ?? 'CTCounter',
     }))
-  const distinctTezgah = new Set(linkRaw.map((l) => l.tezgahKod)).size
-  if (linkRaw.length !== 101 || distinctTezgah !== 100) {
-    throw new Error(`Beklenen 101 eşleme / 100 tezgah, bulunan ${linkRaw.length} eşleme / ${distinctTezgah} tezgah`)
+  // çift-eşleme override (MAS veri hatası): pin 53 → KR10 düşürülür, CN16 korunur
+  const links = applyRelationOverrides(linkRaw, RELATION_OVERRIDES.plcPinTezgah, 'IproPlcPin↔Tezgah')
+  // çift-eşleme fail-fast (YALNIZ pin→çok-tezgah yönü; tezgah→çok-pin [KH01] serbest): kalan varsa DUR
+  assertUniqueRelation(links, (r) => String(r.pinKod), (r) => r.tezgahKod, 'IproPlcPin↔Tezgah')
+  const distinctTezgah = new Set(links.map((l) => l.tezgahKod)).size
+  if (links.length !== 100 || distinctTezgah !== 99) {
+    throw new Error(`Beklenen 100 eşleme / 99 tezgah (override sonrası; ham ${linkRaw.length}), bulunan ${links.length} / ${distinctTezgah}`)
   }
 
   let linkWritten = 0
@@ -85,7 +92,7 @@ export async function importPlcPin(prisma: Prisma, dryRun: boolean) {
     const tezgahIdByKod = new Map(
       (await prisma.iproTezgah.findMany({ select: { id: true, kod: true } })).map((t) => [t.kod, t.id] as const),
     )
-    for (const l of linkRaw) {
+    for (const l of links) {
       if (!pinKods.has(l.pinKod)) throw new Error(`Eşleme: pin kod=${l.pinKod} pin listesinde yok`)
       const tezgahId = tezgahIdByKod.get(l.tezgahKod)
       if (!tezgahId) throw new Error(`Eşleme: tezgah "${l.tezgahKod}" IproTezgah'ta yok (önce import-tezgah)`)
@@ -95,17 +102,18 @@ export async function importPlcPin(prisma: Prisma, dryRun: boolean) {
     }
   }
 
-  const kh01 = linkRaw.filter((l) => l.tezgahKod === 'KH01').map((l) => l.pinKod)
+  const kh01 = links.filter((l) => l.tezgahKod === 'KH01').map((l) => l.pinKod)
   summary([
     ['pin kaynak dosya', pinFile.split('/').pop()],
     ['eşleme kaynak dosya', linkFile.split('/').pop()],
     ['beklenen / bulunan pin', `214 / ${pinRaw.length}`],
     ['pin yazılan', dryRun ? '0 (dry-run)' : pinWritten],
-    ['beklenen / bulunan eşleme', `101/100 / ${linkRaw.length}/${distinctTezgah}`],
-    ['KH01 pinleri (1:N)', kh01.join(', ')],
+    ['ham → override sonrası eşleme', `${linkRaw.length} → ${links.length} eşleme / ${distinctTezgah} tezgah (beklenen 100/99)`],
+    ['KH01 pinleri (1:N, korunur)', kh01.join(', ')],
+    ['KR10', 'PİNSİZ (pin 53 override ile CN16\'da; MAS teyidi bekliyor)'],
     ['eşleme yazılan', dryRun ? '0 (dry-run)' : linkWritten],
   ])
-  return { pins: pinRaw.length, links: linkRaw.length, distinctTezgah }
+  return { pins: pinRaw.length, links: links.length, distinctTezgah }
 }
 
 runCli('import-plc-pin', importPlcPin)

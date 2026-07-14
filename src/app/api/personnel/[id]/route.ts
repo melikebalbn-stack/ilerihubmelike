@@ -20,6 +20,34 @@ function hasEditAccess(role: string, department?: string | null): boolean {
   return EDIT_ROLES.includes(role) || isHRDepartment(department)
 }
 
+// Beden profili girdisini normalize eder: boş string'ler null'a, olcuTarihi Date'e çevrilir.
+// Hiçbir alan dolu değilse null döner → boş profil satırı OLUŞTURULMAZ/UPSERT edilmez.
+function normalizeBeden(beden: unknown): {
+  ustBeden: string | null
+  altBeden: string | null
+  ayakkabiNo: string | null
+  eldivenNo: string | null
+  olcuTarihi: Date | null
+  not: string | null
+} | null {
+  if (!beden || typeof beden !== 'object') return null
+  const b = beden as Record<string, unknown>
+  const str = (v: unknown) => {
+    if (v === null || v === undefined) return null
+    const s = String(v).trim()
+    return s === '' ? null : s
+  }
+  const ustBeden = str(b.ustBeden)
+  const altBeden = str(b.altBeden)
+  const ayakkabiNo = str(b.ayakkabiNo)
+  const eldivenNo = str(b.eldivenNo)
+  const not = str(b.not)
+  const olcuRaw = str(b.olcuTarihi)
+  const olcuTarihi = olcuRaw ? new Date(olcuRaw) : null
+  if (!ustBeden && !altBeden && !ayakkabiNo && !eldivenNo && !not && !olcuTarihi) return null
+  return { ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, not }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -87,6 +115,17 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         createdBy: true,
+        // Envanter: personel beden profili (1-1, opsiyonel)
+        bedenProfili: {
+          select: {
+            ustBeden: true,
+            altBeden: true,
+            ayakkabiNo: true,
+            eldivenNo: true,
+            olcuTarihi: true,
+            not: true,
+          },
+        },
         // PR-C: İstihdam Geçmişi (salt görüntüleme) — kronolojik dönemler
         employmentPeriods: {
           select: {
@@ -241,6 +280,11 @@ export async function PUT(
     delete body.employmentPeriods
     delete body.employmentSummary
     delete body.aktif // toggle artık PATCH ile yapılıyor
+    // Beden: nested obje ayrı upsert edilir; personnel.update data'sına girmemeli.
+    // bedenProfili = GET'ten dönen salt-okuma nested obje (varsa) — silinir.
+    const bedenInput = body.beden
+    delete body.beden
+    delete body.bedenProfili
 
     // Boş stringleri null'a çevir (Prisma enum/date/int hataları için)
     for (const key of Object.keys(body)) {
@@ -277,9 +321,22 @@ export async function PUT(
       }
     }
 
-    const updatedPersonnel = await prisma.personnel.update({
-      where: { id: personnelId },
-      data: body,
+    // Personnel update + beden profili upsert = TEK transaction.
+    // Beden: yalnız en az bir alan doluysa upsert edilir (boş kayıt yaratma).
+    const bedenData = normalizeBeden(bedenInput)
+    const updatedPersonnel = await prisma.$transaction(async (tx) => {
+      const updated = await tx.personnel.update({
+        where: { id: personnelId },
+        data: body,
+      })
+      if (bedenData) {
+        await tx.envanterPersonelBedenProfili.upsert({
+          where: { personnelId },
+          create: { personnelId, ...bedenData, updatedById: user.id },
+          update: { ...bedenData, updatedById: user.id },
+        })
+      }
+      return updated
     })
 
     // PR-AUDIT-LOG-EXPANSION (KVKK)

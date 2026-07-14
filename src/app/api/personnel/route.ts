@@ -16,6 +16,35 @@ function hasPersonnelAccess(role: string, department?: string | null): boolean {
   return ALLOWED_ROLES.includes(role) || isHRDepartment(department)
 }
 
+// Beden profili girdisini normalize eder: boş string'ler null'a, olcuTarihi Date'e çevrilir.
+// Hiçbir alan dolu değilse null döner → çağıran taraf boş profil satırı OLUŞTURMAZ.
+function normalizeBeden(beden: unknown): {
+  ustBeden: string | null
+  altBeden: string | null
+  ayakkabiNo: string | null
+  eldivenNo: string | null
+  olcuTarihi: Date | null
+  not: string | null
+} | null {
+  if (!beden || typeof beden !== 'object') return null
+  const b = beden as Record<string, unknown>
+  const str = (v: unknown) => {
+    if (v === null || v === undefined) return null
+    const s = String(v).trim()
+    return s === '' ? null : s
+  }
+  const ustBeden = str(b.ustBeden)
+  const altBeden = str(b.altBeden)
+  const ayakkabiNo = str(b.ayakkabiNo)
+  const eldivenNo = str(b.eldivenNo)
+  const not = str(b.not)
+  const olcuRaw = str(b.olcuTarihi)
+  const olcuTarihi = olcuRaw ? new Date(olcuRaw) : null
+  // Hiçbiri yoksa profil yaratma.
+  if (!ustBeden && !altBeden && !ayakkabiNo && !eldivenNo && !not && !olcuTarihi) return null
+  return { ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, not }
+}
+
 export async function GET(request: NextRequest) {
   try {
     // PR-PERSONNEL-SECURITY: HR-only role check (PII expose kapatıldı; caller'lar sadece (dashboard)/personnel/*)
@@ -106,7 +135,8 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     // PR-1: bankAccounts ayrı tabloya (PersonnelBankAccount) yazılır.
-    const { sensitive, bankAccounts, ...personnelData } = body
+    // beden: EnvanterPersonelBedenProfili'ne ayrı yazılır (personnelData'ya sızmamalı).
+    const { sensitive, bankAccounts, beden, ...personnelData } = body
 
     // Parse date fields
     if (personnelData.iseGirisTarihi) {
@@ -155,6 +185,9 @@ export async function POST(request: NextRequest) {
 
     personnelData.createdBy = user.id
 
+    // Beden profili: yalnız en az bir alan doluysa oluşturulur (boş kayıt yaratma).
+    const bedenData = normalizeBeden(beden)
+
     // PR-B: Personnel create + ilk AÇIK EmploymentPeriod = TEK transaction.
     // PR-4b: Personnel.exit* DROP edildi; çıkış verisi tek kaynak EmploymentPeriod'da.
     // Personnel.iseGirisTarihi yazılmaya devam (giriş tarihi paralel korunur).
@@ -169,6 +202,12 @@ export async function POST(request: NextRequest) {
           entryRecordedAt: new Date(),
         },
       })
+      // Beden profili (varsa) — aynı transaction içinde.
+      if (bedenData) {
+        await tx.envanterPersonelBedenProfili.create({
+          data: { personnelId: created.id, ...bedenData, updatedById: user.id },
+        })
+      }
       return created
     })
 

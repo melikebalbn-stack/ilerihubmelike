@@ -8909,10 +8909,39 @@ model Personnel {
   muduruOlduguBolumler          DepartmentDefinition[] @relation("Dept_M")
   // Kiosk/Workstation Faz 1: bu personelin atandığı tezgahlar (join)
   workstations                  PersonnelWorkstation[]
+  // Envanter: personel beden profili (1-1, opsiyonel). onDelete Restrict → personel
+  // silinmeden profil silinmez (zimmet/beden geçmişi korunur).
+  bedenProfili                  EnvanterPersonelBedenProfili?
 
   @@index([bolum])
   @@index([yakaRengi])
   @@index([aktif])
+}
+
+// Envanter — Personel Beden Profili. Personel başına en fazla 1 satır (personnelId @unique).
+// PPE/kıyafet zimmeti için üst/alt beden, ayakkabı, eldiven ölçüleri. Elif envanter modülünün
+// alt bileşeni; burada yalnız beden profili additive olarak eklenir (zimmet/stok modelleri değil).
+// onDelete: Restrict (Elif branch'indeki Cascade'ten FARKLI) — personel silinmeden profil düşmez.
+model EnvanterPersonelBedenProfili {
+  id String @id @default(cuid())
+
+  personnelId String    @unique
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+
+  ustBeden   String?
+  altBeden   String?
+  ayakkabiNo String?
+  eldivenNo  String?
+  olcuTarihi DateTime?
+  not        String?
+
+  updatedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([personnelId])
+  @@map("envanter_personel_beden_profili")
 }
 
 // PR-A: İstihdam Dönemi — her giriş-çıkış döngüsü = 1 satır. Additive; Personnel'in

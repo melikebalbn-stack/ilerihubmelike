@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
 import { NativeSelect as Select } from "@/components/ui/select"
 import {
   AlertDialog,
@@ -38,6 +39,8 @@ import {
   DIREKT_ENDIREKT_LABELS,
   ASANSOR_MEKANIK_LABELS,
 } from "@/lib/personnel-constants"
+import { UST_BEDENLER, AYAKKABI_NOLARI, AYAK_UZUNLUK_CM, oneriAltBeden } from "@/lib/envanter/beden-referans"
+import type { Gender } from "@/generated/prisma"
 
 // PR-C: İstihdam dönemi (salt görüntüleme)
 type EmploymentPeriodItem = {
@@ -123,6 +126,15 @@ type PersonnelData = {
     exitRecordedBy: { name: string | null; email: string } | null
     workingPeriod: { years: number; months: number; totalMonths: number } | null
   } | null
+  // Envanter: personel beden profili (1-1, opsiyonel)
+  bedenProfili: {
+    ustBeden: string | null
+    altBeden: string | null
+    ayakkabiNo: string | null
+    eldivenNo: string | null
+    olcuTarihi: string | null
+    not: string | null
+  } | null
 }
 
 // Erişim: src/lib/auth/personnel-access.ts (canAccessPersonnel) — tek kaynak.
@@ -188,6 +200,7 @@ export default function PersonnelDetailPage() {
             formData[k] = v ?? ""
           }
         })
+        applyBedenToForm(formData, json)
         setForm(formData)
       } catch (err: any) {
         toast.error(err.message || "Veriler yüklenemedi")
@@ -206,6 +219,19 @@ export default function PersonnelDetailPage() {
     d.setMonth(d.getMonth() + months)
     if (d.getDate() !== day) d.setDate(0)
     return d.toISOString().split("T")[0]
+  }
+
+  // Beden profilini (nested obje) flat form alanlarına aç. bedenProfili nested obje
+  // input'lara bağlanmaz; PUT'ta da geri gönderilmez (handleSave strip eder).
+  const applyBedenToForm = (fd: Record<string, any>, json: any) => {
+    const bp = json?.bedenProfili
+    fd.ustBeden = bp?.ustBeden ?? ""
+    fd.altBeden = bp?.altBeden ?? ""
+    fd.ayakkabiNo = bp?.ayakkabiNo ?? ""
+    fd.eldivenNo = bp?.eldivenNo ?? ""
+    fd.olcuTarihi = bp?.olcuTarihi ? new Date(bp.olcuTarihi).toISOString().slice(0, 10) : ""
+    fd.bedenNot = bp?.not ?? ""
+    delete fd.bedenProfili
   }
 
   const set = (field: string, value: string | boolean) => {
@@ -236,10 +262,14 @@ export default function PersonnelDetailPage() {
     }
     try {
       setSaving(true)
+      // Beden alanlarını nested `beden` objesine topla; flat alanlar ve salt-okuma
+      // bedenProfili payload'a girmez (API beden'i ayrı upsert eder).
+      const { ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, bedenNot, bedenProfili, ...rest } = form
+      const beden = { ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, not: bedenNot }
       const res = await fetch(`/api/personnel/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...rest, beden }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -293,6 +323,7 @@ export default function PersonnelDetailPage() {
           formData[k] = v ?? ""
         }
       })
+      applyBedenToForm(formData, json)
       setForm(formData)
     } catch {}
   }
@@ -870,6 +901,70 @@ export default function PersonnelDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><p className="text-sm text-muted-foreground">Deneme Süresi (2 Ay) Değerlendirme</p><p className="font-medium">{formatDate(data.denemeDegerlendirme)}</p></div>
               <div><p className="text-sm text-muted-foreground">İlk 6 Ay Değerlendirme</p><p className="font-medium">{formatDate(data.altiAyDegerlendirme)}</p></div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Beden Bilgileri (envanter/zimmet) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Beden Bilgileri</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {editMode ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Üst Beden</Label>
+                <Select value={form.ustBeden || ""} onChange={(e) => set("ustBeden", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  {UST_BEDENLER.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Alt Beden</Label>
+                <Input
+                  value={form.altBeden || ""}
+                  onChange={(e) => set("altBeden", e.target.value)}
+                  placeholder={
+                    form.ustBeden && form.cinsiyet && oneriAltBeden(form.ustBeden, form.cinsiyet as Gender)
+                      ? `Öneri: ${oneriAltBeden(form.ustBeden, form.cinsiyet as Gender)}`
+                      : "Alt beden"
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ayakkabı No</Label>
+                <Select value={form.ayakkabiNo || ""} onChange={(e) => set("ayakkabiNo", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  {AYAKKABI_NOLARI.map((n) => (
+                    <option key={n} value={n}>{`${n} (${AYAK_UZUNLUK_CM[n]} cm)`}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Eldiven No</Label>
+                <Input value={form.eldivenNo || ""} onChange={(e) => set("eldivenNo", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Ölçü Tarihi</Label>
+                <Input type="date" value={form.olcuTarihi || ""} onChange={(e) => set("olcuTarihi", e.target.value)} />
+              </div>
+              <div className="space-y-2 md:col-span-3">
+                <Label>Açıklama</Label>
+                <Textarea value={form.bedenNot || ""} onChange={(e) => set("bedenNot", e.target.value)} rows={2} />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div><p className="text-sm text-muted-foreground">Üst Beden</p><p className="font-medium">{data.bedenProfili?.ustBeden || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Alt Beden</p><p className="font-medium">{data.bedenProfili?.altBeden || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Ayakkabı No</p><p className="font-medium">{data.bedenProfili?.ayakkabiNo ? `${data.bedenProfili.ayakkabiNo}${AYAK_UZUNLUK_CM[data.bedenProfili.ayakkabiNo] ? ` (${AYAK_UZUNLUK_CM[data.bedenProfili.ayakkabiNo]} cm)` : ""}` : "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Eldiven No</p><p className="font-medium">{data.bedenProfili?.eldivenNo || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Ölçü Tarihi</p><p className="font-medium">{formatDate(data.bedenProfili?.olcuTarihi ?? null)}</p></div>
+              <div className="md:col-span-3"><p className="text-sm text-muted-foreground">Açıklama</p><p className="font-medium whitespace-pre-wrap">{data.bedenProfili?.not || "-"}</p></div>
             </div>
           )}
         </CardContent>

@@ -8297,6 +8297,12 @@ model OvertimeForm {
   // (aynı ekip, tek form) anlamına gelir. false = tek gün (mevcut davranış). MESAI'de her zaman false.
   vardiyaHaftaMi Boolean @default(false)
 
+  // Mesai performans FAZ 1: proration için gerçek dönem sınırları. Backfill (ayrı script)
+  // ile doldurulur: vardiyaHaftaMi=false → periodStart=periodEnd=date; true → periodStart=date(Pzt),
+  // periodEnd=date+4gün(Cum). Nullable (backfill öncesi eski kayıtlar boş); yeni kayıtlarda kod doldurur.
+  periodStart DateTime? @db.Date
+  periodEnd   DateTime? @db.Date
+
   // Oluşturan
   createdById String
   createdBy   User   @relation("OvertimeCreator", fields: [createdById], references: [id])
@@ -9081,6 +9087,11 @@ model DepartmentDefinition {
   id        String   @id @default(cuid())
   name      String   @unique
   isActive  Boolean  @default(true)
+  // Mesai performans FAZ 1: eksik-veri raporunun ayracı. Üretim yapan bölümde
+  // hedef/parça beklenir; false olan bölüm (ör. Bakımhane) rapordan dışlanır.
+  // @default(true): mevcut TÜM bölümler üretim-yapar varsayılır; istisnalar veri
+  // güncellemesiyle (ayrı adım) false yapılır. Nullable değil ama default'lu → additive.
+  uretimYapar Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

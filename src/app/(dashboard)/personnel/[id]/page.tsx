@@ -39,7 +39,7 @@ import {
   DIREKT_ENDIREKT_LABELS,
   ASANSOR_MEKANIK_LABELS,
 } from "@/lib/personnel-constants"
-import { UST_BEDENLER, AYAKKABI_NOLARI, AYAK_UZUNLUK_CM, oneriAltBeden } from "@/lib/envanter/beden-referans"
+import { UST_BEDENLER, AYAKKABI_NOLARI, AYAK_UZUNLUK_CM, oneriAltBeden, altBedenSecenekleri } from "@/lib/envanter/beden-referans"
 import type { Gender } from "@/generated/prisma"
 
 // PR-C: İstihdam dönemi (salt görüntüleme)
@@ -158,6 +158,8 @@ export default function PersonnelDetailPage() {
   const [jobTitles, setJobTitles] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
+  // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer yüklenince/seçilince açılır.
+  const [altBedenDiger, setAltBedenDiger] = useState(false)
   // PR-PERSONEL-CIKIS-FORMU
   const [showExitModal, setShowExitModal] = useState(false)
   const [exitModalMode, setExitModalMode] = useState<"create" | "edit">("create")
@@ -232,6 +234,9 @@ export default function PersonnelDetailPage() {
     fd.olcuTarihi = bp?.olcuTarihi ? new Date(bp.olcuTarihi).toISOString().slice(0, 10) : ""
     fd.bedenNot = bp?.not ?? ""
     delete fd.bedenProfili
+    // Yüklenen alt beden, cinsiyetin liste seçeneklerinde yoksa "Diğer..." moduna geç.
+    const opts = json?.cinsiyet ? altBedenSecenekleri(json.cinsiyet as Gender) : []
+    setAltBedenDiger(!!fd.altBeden && !opts.includes(fd.altBeden))
   }
 
   const set = (field: string, value: string | boolean) => {
@@ -245,6 +250,14 @@ export default function PersonnelDetailPage() {
       // Yaka değişince yakaDetayi'yi sıfırla (tutarsız yaka-detay kombinasyonu kalmasın).
       if (field === "yakaRengi") {
         next.yakaDetayi = ""
+      }
+      // Cinsiyet değişince: seçili alt beden (liste değeri) yeni listede yoksa temizle.
+      // "Diğer..." (serbest) modundaki değer korunur.
+      if (field === "cinsiyet" && !altBedenDiger) {
+        const opts = value ? altBedenSecenekleri(value as Gender) : []
+        if (next.altBeden && !opts.includes(next.altBeden as string)) {
+          next.altBeden = ""
+        }
       }
       return next as typeof prev
     })
@@ -925,15 +938,29 @@ export default function PersonnelDetailPage() {
               </div>
               <div className="space-y-2">
                 <Label>Alt Beden</Label>
-                <Input
-                  value={form.altBeden || ""}
-                  onChange={(e) => set("altBeden", e.target.value)}
-                  placeholder={
-                    form.ustBeden && form.cinsiyet && oneriAltBeden(form.ustBeden, form.cinsiyet as Gender)
-                      ? `Öneri: ${oneriAltBeden(form.ustBeden, form.cinsiyet as Gender)}`
-                      : "Alt beden"
-                  }
-                />
+                <Select
+                  value={altBedenDiger ? "__OTHER__" : (form.altBeden || "")}
+                  disabled={!form.cinsiyet}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === "__OTHER__") { setAltBedenDiger(true); set("altBeden", "") }
+                    else { setAltBedenDiger(false); set("altBeden", v) }
+                  }}
+                >
+                  <option value="">{form.cinsiyet ? "Seçiniz" : "Önce cinsiyet seçin"}</option>
+                  {(form.cinsiyet ? altBedenSecenekleri(form.cinsiyet as Gender) : []).map((o) => {
+                    const oneri = form.ustBeden ? oneriAltBeden(form.ustBeden, form.cinsiyet as Gender) : null
+                    return <option key={o} value={o}>{o === oneri ? `${o} (öneri)` : o}</option>
+                  })}
+                  {form.cinsiyet && <option value="__OTHER__">Diğer...</option>}
+                </Select>
+                {altBedenDiger && (
+                  <Input
+                    value={form.altBeden || ""}
+                    onChange={(e) => set("altBeden", e.target.value)}
+                    placeholder="Alt beden (serbest)"
+                  />
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Ayakkabı No</Label>

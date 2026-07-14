@@ -23,8 +23,17 @@ import {
   DIREKT_ENDIREKT_LABELS,
   ASANSOR_MEKANIK_LABELS,
 } from "@/lib/personnel-constants"
-import { UST_BEDENLER, AYAKKABI_NOLARI, AYAK_UZUNLUK_CM, oneriAltBeden } from "@/lib/envanter/beden-referans"
+import { UST_BEDENLER, AYAKKABI_NOLARI, AYAK_UZUNLUK_CM, oneriAltBeden, altBedenSecenekleri } from "@/lib/envanter/beden-referans"
 import type { Gender } from "@/generated/prisma"
+
+// Bugünün tarihi (yerel/TR), YYYY-MM-DD — date input için.
+const bugunTR = (): string => {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const g = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${g}`
+}
 
 type FormData = {
   sicilNo: string
@@ -144,8 +153,11 @@ const initialForm: FormData = {
 export default function NewPersonnelPage() {
   const { data: session } = useSession()
   const router = useRouter()
-  const [form, setForm] = useState<FormData>(initialForm)
+  // Ölçü Tarihi yeni personelde bugünle dolu gelir (kullanıcı değiştirebilir/silebilir).
+  const [form, setForm] = useState<FormData>(() => ({ ...initialForm, olcuTarihi: bugunTR() }))
   const [saving, setSaving] = useState(false)
+  // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer girildiğinde açılır.
+  const [altBedenDiger, setAltBedenDiger] = useState(false)
   const [jobTitles, setJobTitles] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
@@ -187,6 +199,14 @@ export default function NewPersonnelPage() {
       // Yaka değişince yakaDetayi'yi sıfırla (yaka=BEYAZ iken MAVI detay kalmasın — tutarlılık).
       if (field === "yakaRengi") {
         next.yakaDetayi = ""
+      }
+      // Cinsiyet değişince: seçili alt beden (liste değeri) yeni listede yoksa temizle.
+      // "Diğer..." (serbest) modundaki değer korunur — kullanıcı bilerek girmiştir.
+      if (field === "cinsiyet" && !altBedenDiger) {
+        const opts = value ? altBedenSecenekleri(value as Gender) : []
+        if (next.altBeden && !opts.includes(next.altBeden as string)) {
+          next.altBeden = ""
+        }
       }
       return next
     })
@@ -672,16 +692,30 @@ export default function NewPersonnelPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="altBeden">Alt Beden</Label>
-                <Input
+                <Select
                   id="altBeden"
-                  value={form.altBeden}
-                  onChange={(e) => set("altBeden", e.target.value)}
-                  placeholder={
-                    form.ustBeden && form.cinsiyet && oneriAltBeden(form.ustBeden, form.cinsiyet as Gender)
-                      ? `Öneri: ${oneriAltBeden(form.ustBeden, form.cinsiyet as Gender)}`
-                      : "Alt beden"
-                  }
-                />
+                  value={altBedenDiger ? "__OTHER__" : form.altBeden}
+                  disabled={!form.cinsiyet}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === "__OTHER__") { setAltBedenDiger(true); set("altBeden", "") }
+                    else { setAltBedenDiger(false); set("altBeden", v) }
+                  }}
+                >
+                  <option value="">{form.cinsiyet ? "Seçiniz" : "Önce cinsiyet seçin"}</option>
+                  {(form.cinsiyet ? altBedenSecenekleri(form.cinsiyet as Gender) : []).map((o) => {
+                    const oneri = form.ustBeden ? oneriAltBeden(form.ustBeden, form.cinsiyet as Gender) : null
+                    return <option key={o} value={o}>{o === oneri ? `${o} (öneri)` : o}</option>
+                  })}
+                  {form.cinsiyet && <option value="__OTHER__">Diğer...</option>}
+                </Select>
+                {altBedenDiger && (
+                  <Input
+                    value={form.altBeden}
+                    onChange={(e) => set("altBeden", e.target.value)}
+                    placeholder="Alt beden (serbest)"
+                  />
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ayakkabiNo">Ayakkabı No</Label>

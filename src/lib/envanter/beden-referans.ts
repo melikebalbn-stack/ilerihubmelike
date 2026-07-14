@@ -38,6 +38,37 @@ export const AYAKKABI_NOLARI = [
   "48",
 ] as const;
 
+// Alt beden seçenek listeleri (cinsiyete göre). ALT_BEDEN_REFERANS'taki değerlerle
+// hizalı — üst bedene karşılık gelen öneri bu listede yer alır. Select bu listeden beslenir.
+export const ALT_BEDENLER_MALE = [
+  "44",
+  "46",
+  "48",
+  "50",
+  "52",
+  "54",
+  "56",
+  "58",
+  "60",
+] as const;
+
+export const ALT_BEDENLER_FEMALE = [
+  "34",
+  "36",
+  "38-40",
+  "42",
+  "44",
+  "46",
+  "48",
+  "50-52",
+  "54-56",
+] as const;
+
+// Cinsiyete göre alt beden seçenek listesi. Cinsiyet yoksa boş liste.
+export function altBedenSecenekleri(cinsiyet: Gender): readonly string[] {
+  return cinsiyet === "MALE" ? ALT_BEDENLER_MALE : ALT_BEDENLER_FEMALE;
+}
+
 // Üst beden → cinsiyete göre alt beden ÖNERİSİ (MALE=Erkek, FEMALE=Kadın).
 // Aralıklar ("38-40") kaynak tablosundaki gibi korunur.
 export const ALT_BEDEN_REFERANS: Record<string, { MALE: string; FEMALE: string }> = {

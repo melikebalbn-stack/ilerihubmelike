@@ -10669,6 +10669,7 @@ model IproTezgah {
   kod             String      @unique
   ad              String
   ifsWorkCenterNo String?
+  ifsResourceId   String? // IFS Resource; cogu kod=kod, 30 override farkli (KR kapilari, numerik, mukerrer markalama)
   masGrupKodu     String?
   masGrupAdi      String?
   aktif           Boolean @default(true)
@@ -10682,6 +10683,7 @@ model IproTezgah {
   hurdaEsleme IproHurdaTezgah[]
 
   @@index([ifsWorkCenterNo])
+  @@index([ifsResourceId])
   @@map("ipro_tezgah")
 }
 

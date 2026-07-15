@@ -30,3 +30,4 @@ data/*.xlsx
 data/*.xls
 data/*.csv
 public/uploads
+.venv-ipro/

@@ -1,3 +1,6 @@
+# [KISMEN EMEKLI — 2026-07-14] IS_MERKEZI + RESOURCE sheet'leri IFS'e YAZILMAMALI
+# (IFS kendi taksonomisini tutuyor: 401/40401 vb.). IPRO_ESLEME + KAPSAM_DISI hala gecerli.
+# ifsResourceId backfill icin backfill-from-ifs.ts kullan.
 # /home/rokunet/projects/ilerihub-ipro/scripts/ipro/gen-ifs-master.py
 # çalıştırma:  python3 scripts/ipro/gen-ifs-master.py ~/ipro-mas-export/TEZGAH.xlsx
 # gereksinim:  pip install openpyxl --break-system-packages

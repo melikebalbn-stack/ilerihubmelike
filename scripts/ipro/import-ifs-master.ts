@@ -1,3 +1,5 @@
+// [EMEKLI — 2026-07-14] Excel-master (IPRO_ESLEME.ifsResourceId) icat-taksonomiye dayaniyordu.
+// Gercek kaynak IFS oldu: backfill-from-ifs.ts kullan. Bu dosya tarihsel referans, calistirmayin.
 /**
  * IproTezgah IFS backfill — IPRO_IFS_Master.xlsx / IPRO_ESLEME sheet.
  *

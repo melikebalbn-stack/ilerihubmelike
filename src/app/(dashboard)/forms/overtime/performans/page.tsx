@@ -41,6 +41,10 @@ type ScrapData = {
 }
 type TrendPoint = { label: string; yuzde: number | null }
 type Mode = "day" | "week" | "month"
+/** Bullet satırı: bar YÜZDE çizer (hedefRef=sabit 100 gri), adetler tooltip için taşınır.
+ *  ⚠ Alan adı 'ref' OLAMAZ: recharts entry'yi şekle prop olarak yayar (Bar.js: {...entry}),
+ *  'ref' React'te rezerve → ref={100} → "Expected ref to be a function..." çökmesi. */
+type BulletDatum = { ad: string; hedefRef: number; yuzde: number; hedefAdet: number; gerceklesenAdet: number }
 
 // ── Mesai performans eşiği (KORUNDU): <70 kırmızı, 70-89 sarı, ≥90 yeşil ──
 function perfColor(yuzde: number): string {
@@ -226,9 +230,16 @@ export default function OvertimePerformancePage() {
 
   const noAccess = perf?.noAccess
   const bolumler = perf?.bolumler ?? []
-  // Bullet: EN KÖTÜ ÜSTTE → recharts vertical'da data[0] ALTTA olduğundan yüzde AZALAN sırala.
-  const bulletData = [...bolumler].sort((a, b) => b.yuzde - a.yuzde)
-  const maxHedef = Math.max(1, ...bolumler.map((b) => b.hedef))
+  // Bullet: EN KÖTÜ ÜSTTE. recharts vertical layout data[0]'ı EN ÜSTE basar (ekranda
+  // doğrulandı) → yüzde ARTAN sırala: en düşük yüzde data[0] = en üstte (aksiyon önce).
+  // BAR = YÜZDE (adet DEĞİL): gri sabit %100 referans, renkli = gerçekleşme yüzdesi.
+  // Böylece bar uzunluğu sıralamayla TAM UYUMLU (küçük atölye ≠ kısa bar çelişkisi biter).
+  // Mutlak adetler tooltip'te korunur.
+  const bulletData: BulletDatum[] = [...bolumler]
+    .sort((a, b) => a.yuzde - b.yuzde)
+    .map((b) => ({ ad: b.ad, hedefRef: 100, yuzde: b.yuzde, hedefAdet: b.hedef, gerceklesenAdet: b.gerceklesen }))
+  // Domain max: en yüksek yüzde (min 100) — %100'ü aşan bar KIRPILMAZ, griyi geçip taşar.
+  const maxYuzde = Math.max(100, ...bolumler.map((b) => b.yuzde))
   // Accordion: worst-first liste (aksiyon önceliği)
   const accordionData = [...bolumler].sort((a, b) => a.yuzde - b.yuzde)
 
@@ -343,13 +354,13 @@ export default function OvertimePerformancePage() {
               ) : (
                 <ResponsiveContainer width="100%" height={Math.max(220, bulletData.length * 46)}>
                   <BarChart data={bulletData} layout="vertical" barGap={-14} barCategoryGap="28%" margin={{ left: 16, right: 68, top: 8, bottom: 8 }}>
-                    <XAxis type="number" domain={[0, maxHedef * 1.1]} hide />
+                    <XAxis type="number" domain={[0, maxYuzde * 1.1]} hide />
                     <YAxis type="category" dataKey="ad" width={150} tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(v: number, n: string) => [v, n === "hedef" ? "Hedef" : "Gerçekleşen"]} />
-                    {/* Kalın gri = HEDEF (track) */}
-                    <Bar dataKey="hedef" barSize={18} fill="#cbd5e1" radius={[0, 3, 3, 0]} isAnimationActive={false} />
-                    {/* İnce renkli = GERÇEKLEŞEN (eşik rengi) + % ve ok işareti (renk körlüğü yedeği) */}
-                    <Bar dataKey="gerceklesen" barSize={9} radius={[0, 3, 3, 0]} isAnimationActive={false}>
+                    <Tooltip content={<BulletTooltip />} />
+                    {/* Kalın gri = sabit %100 HEDEF referansı (her bölümde aynı uzunluk) */}
+                    <Bar dataKey="hedefRef" barSize={18} fill="#cbd5e1" radius={[0, 3, 3, 0]} isAnimationActive={false} />
+                    {/* İnce renkli = GERÇEKLEŞME YÜZDESİ (eşik rengi). %100'ü aşan griyi geçer. */}
+                    <Bar dataKey="yuzde" barSize={9} radius={[0, 3, 3, 0]} isAnimationActive={false}>
                       {bulletData.map((d, i) => <Cell key={i} fill={perfColor(d.yuzde)} />)}
                       <LabelList dataKey="yuzde" position="right" formatter={(v: number) => `%${v} ${perfArrow(v)}`} fontSize={12} />
                     </Bar>
@@ -459,6 +470,22 @@ export default function OvertimePerformancePage() {
           </Card>
         </>
       )}
+    </div>
+  )
+}
+
+/** Bullet tooltip: bar yüzde çizse de MUTLAK ADET detayı burada korunur. */
+function BulletTooltip({ active, payload }: { active?: boolean; payload?: { payload: BulletDatum }[] }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  return (
+    <div className="rounded-md border bg-white px-3 py-2 text-xs shadow-md">
+      <p className="font-medium mb-1">{d.ad}</p>
+      <p className="text-muted-foreground">Hedef: <span className="font-medium text-foreground">{d.hedefAdet}</span></p>
+      <p className="text-muted-foreground">
+        Gerçekleşen: <span className="font-medium text-foreground">{d.gerceklesenAdet}</span>{" "}
+        <span className="font-semibold" style={{ color: perfColor(d.yuzde) }}>(%{d.yuzde} {perfArrow(d.yuzde)})</span>
+      </p>
     </div>
   )
 }

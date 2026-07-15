@@ -44,12 +44,17 @@ export async function GET(request: NextRequest) {
     firstMonday = new Date(lastMonday.getTime() - 7 * 7 * DAY) // 8 hafta (7 geri + bu)
   }
 
-  const haftalar: { weekStart: string; weekEnd: string; genel: unknown }[] = []
+  // Her hafta için genel (trend) + bolumler (seçili haftanın bullet/accordion detayı) +
+  // vardiyaHaftaAyri. Tek geniş çağrı hem trend hem seçili-hafta detayını besler.
+  const haftalar: {
+    weekStart: string; weekEnd: string
+    genel: unknown; bolumler: unknown; vardiyaHaftaAyri: unknown
+  }[] = []
   for (let ms = firstMonday.getTime(); ms <= lastMonday.getTime(); ms += 7 * DAY) {
     const weekStart = new Date(ms)
     const weekEnd = new Date(ms + 6 * DAY)
     const r = await getWeeklyPerformance(weekStart, weekEnd, allowedDepts)
-    haftalar.push({ weekStart: r.weekStart, weekEnd: r.weekEnd, genel: r.genel })
+    haftalar.push({ weekStart: r.weekStart, weekEnd: r.weekEnd, genel: r.genel, bolumler: r.bolumler, vardiyaHaftaAyri: r.vardiyaHaftaAyri })
   }
   return NextResponse.json(empty ? { haftalar, noAccess: true } : { haftalar })
 }

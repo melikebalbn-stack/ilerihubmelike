@@ -57,6 +57,9 @@ export async function GET(request: NextRequest) {
       // Manuel override edilen cihazları atla (IN_PROCESS, OUT_OF_ORDER)
       if (device.statusManualOverride) continue
 
+      // Hurda cihazları atla — geleceği yok, "Süresi Doldu"ya çevirme
+      if (device.deviceCondition === 'Hurda') continue
+
       let newStatus = device.status
 
       // Doğrulama tipinde doğrulama tarihine göre, diğerlerinde kalibrasyon tarihine göre durum belirle

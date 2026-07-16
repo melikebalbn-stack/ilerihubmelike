@@ -46,6 +46,7 @@ type CalibrationDevice = {
   serialNumber?: string | null
   location?: string | null
   department?: string | null
+  productionSection?: string | null
   responsiblePerson?: string | null
   responsiblePersonEmail?: string | null
   calibrationInterval: number
@@ -120,6 +121,7 @@ export default function CalibrationPage() {
     serialNumber: "",
     location: "",
     department: "",
+    productionSection: "",
     responsiblePerson: "",
     responsiblePersonEmail: "",
     calibrationInterval: "365",
@@ -492,6 +494,7 @@ export default function CalibrationPage() {
       serialNumber: "",
       location: "",
       department: "",
+      productionSection: "",
       responsiblePerson: "",
       responsiblePersonEmail: "",
       calibrationInterval: "365",
@@ -717,6 +720,7 @@ export default function CalibrationPage() {
       serialNumber: device.serialNumber || "",
       location: device.location || "",
       department: device.department || "",
+      productionSection: device.productionSection || "",
       responsiblePerson: device.responsiblePerson || "",
       responsiblePersonEmail: device.responsiblePersonEmail || "",
       calibrationInterval: device.calibrationInterval?.toString() || "",
@@ -880,6 +884,7 @@ export default function CalibrationPage() {
       'Seri No': device.serialNumber || '',
       'Lokasyon': device.location || '',
       'Departman': device.department || '',
+      'Üretim Bölümü': device.productionSection || '',
       'Sorumlu Kişi': device.responsiblePerson || '',
       'Kalibrasyon Periyodu (Gün)': device.calibrationInterval || '',
       'Son Kalibrasyon': device.lastCalibrationDate
@@ -1001,6 +1006,7 @@ export default function CalibrationPage() {
             const serialNumber = row['Seri No'] || row['SeriNo'] || row['Seri Numarası'] || row['SERI NO'] || ''
             const location = row['Lokasyon'] || row['LOKASYON'] || row['Konum'] || row['Yer'] || ''
             const department = row['Departman'] || row['DEPARTMAN'] || row['Bölüm'] || ''
+            const productionSection = row['Üretim Bölümü'] || row['ÜRETİM BÖLÜMÜ'] || row['Uretim Bolumu'] || ''
             const responsiblePerson = row['Sorumlu Kişi'] || row['Sorumlu Kisi'] || row['Sorumlu'] || row['SORUMLU'] || ''
             const calibrationIntervalRaw = row['Kalibrasyon Periyodu (Gün)'] || row['Kalibrasyon Periyodu'] ||
                                           row['Periyot'] || row['Süre'] || '365'
@@ -1114,6 +1120,7 @@ export default function CalibrationPage() {
                 serialNumber: serialNumber.toString().trim(),
                 location: location.toString().trim(),
                 department: department.toString().trim(),
+                productionSection: productionSection.toString().trim() || null,
                 responsiblePerson: responsiblePerson.toString().trim(),
                 calibrationInterval: parseInt(calibrationIntervalRaw.toString()) || 365,
                 lastCalibrationDate,
@@ -1389,7 +1396,7 @@ export default function CalibrationPage() {
                     <Select
                       id="department"
                       value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value, ...(e.target.value !== "Üretim" ? { location: formData.location } : {}) })}
+                      onChange={(e) => setFormData({ ...formData, department: e.target.value, ...(e.target.value !== "Üretim" ? { productionSection: "" } : {}) })}
                     >
                       <option value="">Seçiniz</option>
                       {departments.map((dept) => (
@@ -1404,8 +1411,8 @@ export default function CalibrationPage() {
                     <Label htmlFor="productionSection">Üretim Bölümü</Label>
                     <Select
                       id="productionSection"
-                      value={formData.location}
-                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                      value={formData.productionSection}
+                      onChange={(e) => setFormData({ ...formData, productionSection: e.target.value })}
                     >
                       <option value="">Bölüm Seçiniz</option>
                       {productionSections.map((section) => (
@@ -2354,8 +2361,8 @@ export default function CalibrationPage() {
                   <Label htmlFor="edit-productionSection">Üretim Bölümü</Label>
                   <Select
                     id="edit-productionSection"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    value={formData.productionSection}
+                    onChange={(e) => setFormData({ ...formData, productionSection: e.target.value })}
                   >
                     <option value="">Bölüm Seçiniz</option>
                     {productionSections.map((section) => (

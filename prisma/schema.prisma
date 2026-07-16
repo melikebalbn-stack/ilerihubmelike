@@ -414,6 +414,7 @@ model CalibrationDevice {
   serialNumber           String?
   location               String?
   department             String?
+  productionSection      String? // Üretim Bölümü (departman=Üretim iken; location'dan bağımsız)
   responsiblePerson      String?
   responsiblePersonEmail String? // AD'den seçilen kişinin email adresi
 

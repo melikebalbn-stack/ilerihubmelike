@@ -1,6 +1,7 @@
 'use client'
 
 // PR-JOBAPP-INPUT-FOCUS: Bölüm 6 — İş Deneyimi, Akraba, İletişim Tercihi, Referans.
+// S1-S5 zorunlu (merkezi şema). İş Tecrübeleri girişine İK yönergesi eklendi.
 
 import { FormQuestionCard } from '@/components/forms/multi-step/FormQuestionCard'
 import { FormShortText } from '@/components/forms/multi-step/question-types/FormShortText'
@@ -9,12 +10,18 @@ import { FormCheckboxGroup } from '@/components/forms/multi-step/FormCheckboxGro
 import { FormRepeatableSection } from '@/components/forms/multi-step/FormRepeatableSection'
 import { FormConditionalField } from '@/components/forms/multi-step/FormConditionalField'
 import { YES_NO_OPTIONS } from '../constants'
+import { isRequiredField } from '../required-fields'
 import type { SectionProps, WorkExpRow, ReferenceRow } from '../types'
 
 export function SectionDeneyimReferans({ form, onChange }: SectionProps) {
   return (
     <>
-      <FormQuestionCard number={1} title="İş Tecrübeleriniz">
+      <FormQuestionCard
+        number={1}
+        title="İş Tecrübeleriniz"
+        isRequired={isRequiredField('workExperience')}
+        helperText="Lütfen en son çalıştığınız işi en üste yazınız."
+      >
         <FormRepeatableSection<WorkExpRow>
           value={form.workExperience}
           onChange={(v) => onChange({ workExperience: v })}
@@ -31,7 +38,7 @@ export function SectionDeneyimReferans({ form, onChange }: SectionProps) {
           )}
         />
       </FormQuestionCard>
-      <FormQuestionCard number={2} title="Firma bünyesinde akraba/tanıdığınız var mı?">
+      <FormQuestionCard number={2} title="Firma bünyesinde akraba/tanıdığınız var mı?" isRequired={isRequiredField('hasRelativesInCompany')}>
         <FormSegmentControl options={YES_NO_OPTIONS as unknown as { value: string; label: string }[]} value={form.hasRelativesInCompany} onChange={(v) => onChange({ hasRelativesInCompany: v })} />
         <FormConditionalField when={form.hasRelativesInCompany === 'true'}>
           <div className="mt-3">
@@ -40,7 +47,7 @@ export function SectionDeneyimReferans({ form, onChange }: SectionProps) {
           </div>
         </FormConditionalField>
       </FormQuestionCard>
-      <FormQuestionCard number={3} title="Size nasıl ulaşabiliriz?">
+      <FormQuestionCard number={3} title="Size nasıl ulaşabiliriz?" isRequired={isRequiredField('preferredContact')}>
         <FormCheckboxGroup
           items={[
             { key: 'preferredContactGsm', label: 'Cep telefonundan arayın' },
@@ -62,10 +69,10 @@ export function SectionDeneyimReferans({ form, onChange }: SectionProps) {
           <FormShortText value={form.preferredContactOther} onChange={(v) => onChange({ preferredContactOther: v })} />
         </div>
       </FormQuestionCard>
-      <FormQuestionCard number={4} title="Son işvereninizle iletişime geçebilir miyiz?">
+      <FormQuestionCard number={4} title="Son işvereninizle iletişime geçebilir miyiz?" isRequired={isRequiredField('canContactLastEmployer')}>
         <FormSegmentControl options={YES_NO_OPTIONS as unknown as { value: string; label: string }[]} value={form.canContactLastEmployer} onChange={(v) => onChange({ canContactLastEmployer: v })} />
       </FormQuestionCard>
-      <FormQuestionCard number={5} title="Aradığımızda referans verebilecek kişiler">
+      <FormQuestionCard number={5} title="Aradığımızda referans verebilecek kişiler" isRequired={isRequiredField('references')}>
         <FormRepeatableSection<ReferenceRow>
           value={form.references}
           onChange={(v) => onChange({ references: v })}

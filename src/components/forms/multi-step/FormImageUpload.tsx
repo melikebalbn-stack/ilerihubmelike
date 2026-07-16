@@ -19,6 +19,9 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cameraOpen, setCameraOpen] = useState(false)
+  // İK kararı: kamera ÖNCELİKLİ. "Dosyadan Seç" yalnız kamera açılamazsa (izin reddi /
+  // kamera yok) fallback olarak gösterilir → kimse bloke olmasın.
+  const [cameraFallback, setCameraFallback] = useState(false)
 
   useEffect(() => {
     if (!value) {
@@ -100,32 +103,35 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
 
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* BİRİNCİL: Kameradan Çek (dolgulu, öne çıkan) */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setCameraOpen(true)}
+        className="w-full flex items-center justify-center gap-2 rounded-xl p-5 bg-[#1B4F72] text-white font-medium hover:bg-[#163d5a] transition-colors disabled:opacity-50"
+      >
+        <Camera className="w-6 h-6" />
+        Kameradan Çek
+      </button>
+      <p className="text-xs text-slate-400 mt-1.5 text-center">Live preview · ön/arka kamera · Maks. {maxSizeMB} MB</p>
+
+      {/* FALLBACK: yalnız kamera açılamazsa (izin reddi / kamera yok) "Dosyadan Seç" */}
+      {cameraFallback && (
         <button
           type="button"
           disabled={disabled}
           onClick={() => inputRef.current?.click()}
-          className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center hover:border-[#1B4F72]/60 hover:bg-slate-50 transition-colors disabled:opacity-50"
+          className="mt-3 w-full flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl p-4 text-slate-700 hover:border-[#1B4F72]/60 hover:bg-slate-50 transition-colors disabled:opacity-50"
         >
-          <ImageIcon className="w-7 h-7 text-slate-400 mx-auto mb-2" />
-          <p className="text-sm font-medium text-slate-700">
+          <ImageIcon className="w-5 h-5 text-slate-400" />
+          <span className="text-sm font-medium">
             <Upload className="w-4 h-4 inline mr-1" />
             Dosyadan Seç
-          </p>
-          <p className="text-xs text-slate-400 mt-1">JPG / PNG / GIF</p>
+          </span>
+          <span className="text-xs text-slate-400">(JPG / PNG / GIF)</span>
         </button>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setCameraOpen(true)}
-          className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center hover:border-[#1B4F72]/60 hover:bg-slate-50 transition-colors disabled:opacity-50"
-        >
-          <Camera className="w-7 h-7 text-slate-400 mx-auto mb-2" />
-          <p className="text-sm font-medium text-slate-700">Kameradan Çek</p>
-          <p className="text-xs text-slate-400 mt-1">Live preview · ön/arka kamera</p>
-        </button>
-      </div>
-      <p className="text-xs text-slate-400 mt-2 text-center">Maks. {maxSizeMB} MB</p>
+      )}
+
       <input
         ref={inputRef}
         type="file"
@@ -138,6 +144,7 @@ export function FormImageUpload({ value, onChange, maxSizeMB = 5, disabled }: Pr
         open={cameraOpen}
         onClose={() => setCameraOpen(false)}
         onCapture={handleCameraCapture}
+        onUnavailable={() => setCameraFallback(true)}
       />
     </div>
   )

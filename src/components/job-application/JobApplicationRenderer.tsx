@@ -26,6 +26,7 @@ import { SectionTercihEgitim } from './sections/SectionTercihEgitim'
 import { SectionDeneyimReferans } from './sections/SectionDeneyimReferans'
 import { SectionBeyanFotograf } from './sections/SectionBeyanFotograf'
 import { initialFormState, type FormState, type SectionProps } from './types'
+import { missingFieldsInStep, allRequiredFilled } from './required-fields'
 
 const SECTIONS: ReadonlyArray<{
   title: string
@@ -68,19 +69,16 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
     }
   }, [currentStep])
 
-  const canSubmit =
-    form.fullName.trim().length > 0 &&
-    form.declarationAccepted &&
-    form.digitalSignature.length > 0
+  // MERKEZİ ŞEMA: submit yalnız TÜM bölümlerin zorunlu alanları dolu ise açık.
+  const canSubmit = allRequiredFilled(form)
 
-  const canAdvanceFromStep = (step: number): boolean => {
-    if (step === 0 && !form.fullName.trim()) return false
-    return true
-  }
+  // Bölüm geçişi: o bölümün zorunlu alanları dolu değilse "İleri" engellenir.
+  const canAdvanceFromStep = (step: number): boolean => missingFieldsInStep(form, step).length === 0
 
   const handleSubmit = async () => {
     if (!canSubmit) {
-      setError('Ad Soyad, beyan onayı ve imza zorunludur.')
+      const eksik = SECTIONS.map((_, i) => missingFieldsInStep(form, i)).flat()
+      setError(eksik.length ? `Eksik zorunlu alanlar: ${eksik.join(', ')}` : 'Zorunlu alanları doldurun.')
       return
     }
     setSubmitting(true)
@@ -278,8 +276,9 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
             <button
               type="button"
               onClick={() => {
-                if (!canAdvanceFromStep(currentStep)) {
-                  setError('Ad Soyad zorunludur.')
+                const eksik = missingFieldsInStep(form, currentStep)
+                if (eksik.length > 0) {
+                  setError(`Bu bölümde zorunlu alanlar eksik: ${eksik.join(', ')}`)
                   return
                 }
                 setError(null)

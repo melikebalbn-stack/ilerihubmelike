@@ -1,6 +1,7 @@
 import 'server-only'
 import { getIfsConfig } from './config'
 import { getIfsAccessToken } from './token'
+import { dostaneIfsHata } from './ifs-hata'
 import { getStokSatirlari, type FifoKaynak } from './tuketim'
 
 /**
@@ -96,4 +97,54 @@ export async function bulBarkodunStoklari(kimlik: BarkodKimlik): Promise<FifoKay
     nz(k.kimlik.engChgLevel) === nz(kimlik.engChgLevel) &&
     nz(k.kimlik.waivDevRejNo) === nz(kimlik.waivDevRejNo),
   )
+}
+
+export interface BarkodUretKimlik {
+  partNo: string
+  lotBatchNo?: string
+  serialNo?: string
+  configurationId?: string
+  engChgLevel?: string
+  waivDevRejNo?: string
+  activitySeq?: number
+  originPackSize?: number
+}
+
+/**
+ * IFS'te yeni bir barkod ID tahsis eder (entity/v1 gateway; EL-9b'de 201 Created kanıtlandı).
+ * BarcodeId GÖNDERİLMEZ → IFS otomatik üretir; dönen değer yeni BarcodeId.
+ *
+ * ⚠️ Her çağrı BENZERSİZ ve KALICI bir barkod üretir (IFS'te silinemez) → çağıran taraf
+ * tekrar-basmayı önlemekten sorumlu. Token her iki gateway'de geçerli (aynı client_credentials).
+ * Hata → IFS gövdesi dostaneIfsHata ile sadeleşip Error olarak fırlatılır.
+ */
+export async function uretBarkod(kimlik: BarkodUretKimlik): Promise<number> {
+  const { contract, entityBaseUrl } = getIfsConfig()
+  const token = await getIfsAccessToken()
+  const body = {
+    Contract: contract,
+    PartNo: kimlik.partNo,
+    LotBatchNo: kimlik.lotBatchNo ?? '*',
+    SerialNo: kimlik.serialNo ?? '*',
+    EngChgLevel: kimlik.engChgLevel ?? '1',
+    WaivDevRejNo: kimlik.waivDevRejNo ?? '*',
+    ConfigurationId: kimlik.configurationId ?? '*',
+    ActivitySeq: kimlik.activitySeq ?? 0,
+    OriginPackSize: kimlik.originPackSize ?? 1,
+  }
+  const res = await fetch(`${entityBaseUrl}/InventoryPartBarcodeEntity.svc/InventoryPartBarcodeSet`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  })
+  const text = await res.text()
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(dostaneIfsHata(`Barkod üretimi HTTP ${res.status}: ${text.slice(0, 1200)}`, 'Barkod üretilemedi'))
+  }
+  let raw: unknown
+  try { raw = JSON.parse(text)?.BarcodeId } catch { /* gövde parse edilemedi */ }
+  const barcodeId = num(raw)
+  if (barcodeId <= 0) throw new Error('Barkod üretildi ama BarcodeId okunamadı')
+  return barcodeId
 }

@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
-import { barkodIdAday, parseEtiket } from '@/lib/depo/etiket-parse'
+import { parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { BekleyenIs, FifoKaynak, IsEmriBaslik, ToplamaSatiri } from '@/lib/ifs/tuketim'
 
@@ -103,8 +103,8 @@ export function MalzemeToplamaClient() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualVal, setManualVal] = useState('')
 
-  // Okut-doldur (LISTE) — sıralı yazma kuyruğu + kart durumları + geri bildirim.
-  const [kuyruk, setKuyruk] = useState<string[]>([])
+  // Okut-doldur (LISTE) — sıralı yazma kuyruğu (her öğe geliş yolunu taşır) + kart durumları.
+  const [kuyruk, setKuyruk] = useState<{ kod: string; kaynak: EtiketKaynak }[]>([])
   const [isleniyor, setIsleniyor] = useState(false)
   const [kartDurum, setKartDurum] = useState<Record<number, KartDurum>>({})
   const [info, setInfo] = useState<string | null>(null)
@@ -113,7 +113,7 @@ export function MalzemeToplamaClient() {
   const [toastKey, setToastKey] = useState(0)
   const satirlarRef = useRef<ToplamaSatirDetay[]>([])
   const baslikRef = useRef<IsEmriBaslik | null>(null)
-  const kuyrukRef = useRef<string[]>([])
+  const kuyrukRef = useRef<{ kod: string; kaynak: EtiketKaynak }[]>([])
   const isleniyorRef = useRef(false)
   useEffect(() => { satirlarRef.current = satirlar }, [satirlar])
   useEffect(() => { baslikRef.current = baslik }, [baslik])
@@ -225,17 +225,18 @@ export function MalzemeToplamaClient() {
     [showError],
   )
   const girisOkut = useCallback(
-    async (ham: string) => {
+    async (ham: string, kaynak: EtiketKaynak) => {
       const v = ham.trim()
       if (!v) return
-      // 1) İş emri olarak dene (sessiz — iş emri no da sayısal, öncelik iş emrinde).
-      if (await isEmriOkut(v, { sessiz: true })) return
-      // 2) Malzeme olarak çöz → bekleyen işler. Sayısalsa önce barkod_id.
+      const p = parseEtiket(v, kaynak)
+      // OKUTMA + barkod → doğrudan malzeme (iş emri DENENMEZ). Aksi halde önce iş emri (sessiz).
+      if (!(kaynak === 'okutma' && p.tip === 'barkodId')) {
+        if (await isEmriOkut(v, { sessiz: true })) return
+      }
+      // 2) Malzeme olarak çöz → bekleyen işler. Barkod_id ise IFS'ten kimliğe çevir.
       setLoading(true)
-      const bid = barkodIdAday(v)
-      const bk = bid ? await barkodKimligiGetir(bid) : null
-      const p = parseEtiket(v)
-      const partNo = bk ? bk.partNo : p.tip === 'MALZEME' && p.stokKodu ? p.stokKodu : v
+      const bk = p.tip === 'barkodId' && p.barkodId != null ? await barkodKimligiGetir(p.barkodId) : null
+      const partNo = bk ? bk.partNo : p.stokKodu ?? v
       const isler = await malzemeIsleriGetir(partNo)
       setLoading(false)
       if (!isler) return
@@ -296,12 +297,12 @@ export function MalzemeToplamaClient() {
 
   // Malzeme okutma (TEYIT) — beklenen parça ile eşleşme.
   const malzemeOkut = useCallback(
-    async (ham: string) => {
+    async (ham: string, kaynak: EtiketKaynak) => {
       if (!secilen) return
-      // Sayısal → önce barkod_id çöz (partNo eşleşmesi; lot teyidi 'doğru yer' katmanının ilk taşı).
-      const bid = barkodIdAday(ham)
-      if (bid) {
-        const k = await barkodKimligiGetir(bid)
+      const p = parseEtiket(ham, kaynak)
+      // Barkod_id → IFS'ten kimlik çöz (partNo eşleşmesi; lot teyidi 'doğru yer' katmanının ilk taşı).
+      if (p.tip === 'barkodId' && p.barkodId != null) {
+        const k = await barkodKimligiGetir(p.barkodId)
         if (k) {
           if (k.partNo === secilen.partNo) {
             setTeyitEslesti(true)
@@ -315,10 +316,9 @@ export function MalzemeToplamaClient() {
           }
           return
         }
-        // barkod çözülemedi → aşağıda etiket/partNo denemesine düş.
+        // barkod çözülemedi → yerel alan (varsa P:) ile eşleşmeye düş.
       }
-      const p = parseEtiket(ham)
-      if (p.tip === 'MALZEME' && p.stokKodu === secilen.partNo) {
+      if (p.stokKodu === secilen.partNo) {
         setTeyitEslesti(true)
       } else {
         showError(`Bu değil — ${secilen.partNo} olmalı`)
@@ -377,18 +377,24 @@ export function MalzemeToplamaClient() {
   // Okut-doldur: tek kodu işle (parse → eşleştir → tam miktar otomatik topla).
   // satirlar/baslik ref'ten okunur (kuyruk döngüsünde taze kalsın diye).
   const islem = useCallback(
-    async (kod: string) => {
-      const p = parseEtiket(kod)
-      if (p.tip !== 'MALZEME' || !p.stokKodu) {
+    async (kod: string, kaynak: EtiketKaynak) => {
+      const p = parseEtiket(kod, kaynak)
+      // Barkod_id ise IFS'ten kimliğe çevir (okut-doldur barkod desteği); yerelde stokKodu.
+      let partNo = p.stokKodu
+      if (p.tip === 'barkodId' && p.barkodId != null) {
+        const k = await barkodKimligiGetir(p.barkodId)
+        if (k) partNo = k.partNo
+      }
+      if (!partNo) {
         showError(`Bu iş emrinde yok: ${kod}`)
         return
       }
       const sat = satirlarRef.current
-      const acik = sat.find((s) => s.kalan > 0 && s.partNo === p.stokKodu)
+      const acik = sat.find((s) => s.kalan > 0 && s.partNo === partNo)
       if (!acik) {
-        const bitmis = sat.find((s) => s.kalan === 0 && s.partNo === p.stokKodu)
-        if (bitmis) showInfo(`Zaten toplandı: ${p.stokKodu}`)
-        else showError(`Bu iş emrinde yok: ${p.stokKodu}`)
+        const bitmis = sat.find((s) => s.kalan === 0 && s.partNo === partNo)
+        if (bitmis) showInfo(`Zaten toplandı: ${partNo}`)
+        else showError(`Bu iş emrinde yok: ${partNo}`)
         return
       }
       const b = baslikRef.current
@@ -437,17 +443,17 @@ export function MalzemeToplamaClient() {
         showError('Bağlantı hatası — tekrar deneyin')
       }
     },
-    [showError, showInfo, showToast],
+    [showError, showInfo, showToast, barkodKimligiGetir],
   )
 
-  // Kuyruğu SIRAYLA boşalt (paralel değil — aynı emirde ETag/yarış riski).
+  // Kuyruğu SIRAYLA boşalt (paralel değil — aynı emirde ETag/yarış riski). Her öğe geliş yolunu taşır.
   const drain = useCallback(async () => {
     if (isleniyorRef.current) return
     isleniyorRef.current = true
     setIsleniyor(true)
     while (kuyrukRef.current.length > 0) {
-      const kod = kuyrukRef.current[0]
-      await islem(kod)
+      const item = kuyrukRef.current[0]
+      await islem(item.kod, item.kaynak)
       kuyrukRef.current = kuyrukRef.current.slice(1)
       setKuyruk([...kuyrukRef.current])
     }
@@ -456,22 +462,23 @@ export function MalzemeToplamaClient() {
   }, [islem])
 
   const listeScanEkle = useCallback(
-    (kod: string) => {
+    (kod: string, kaynak: EtiketKaynak) => {
       const v = kod.trim()
       if (!v) return
-      kuyrukRef.current = [...kuyrukRef.current, v]
+      kuyrukRef.current = [...kuyrukRef.current, { kod: v, kaynak }]
       setKuyruk([...kuyrukRef.current])
       void drain()
     },
     [drain],
   )
 
+  // Geliş yolu (kaynak) belirler: scanner → 'okutma', elle giriş → 'elle'.
   const handleScan = useCallback(
-    (v: string) => {
-      if (step === 'IS_EMRI') return void girisOkut(v)
-      if (step === 'LISTE') return listeScanEkle(v)
+    (v: string, kaynak: EtiketKaynak = 'okutma') => {
+      if (step === 'IS_EMRI') return void girisOkut(v, kaynak)
+      if (step === 'LISTE') return listeScanEkle(v, kaynak)
       if (step === 'TEYIT' && sapmaAcik && !sapmaSecili) return void rafOkut(v)
-      if (step === 'TEYIT') return void malzemeOkut(v)
+      if (step === 'TEYIT') return void malzemeOkut(v, kaynak)
     },
     [step, sapmaAcik, sapmaSecili, girisOkut, listeScanEkle, malzemeOkut, rafOkut],
   )
@@ -488,12 +495,12 @@ export function MalzemeToplamaClient() {
     !ozet
   const { inputProps } = useScanner(scanAktif, handleScan)
 
-  // Elle giriş — aktif adıma göre (IS_EMRI → iş emri, TEYIT → malzeme) aynı yoldan.
+  // Elle giriş — geliş yolu 'elle' (barkod DENENMEZ; kısa sayı → iş emri, uzun → stok kodu).
   const submitManual = () => {
     const v = manualVal
     setManualVal('')
     setManualOpen(false)
-    handleScan(v)
+    handleScan(v, 'elle')
   }
 
   const kalemAc = (s: ToplamaSatirDetay) => {
@@ -1204,6 +1211,11 @@ function SonCikisSatirlari({ sonCikis }: { sonCikis?: SonCikisSatir[] }) {
 }
 
 function KalemKart({ s, durum, sonCikis, vurgu, onSelect }: { s: ToplamaSatirDetay; durum?: KartDurum; sonCikis?: SonCikisSatir[]; vurgu?: boolean; onSelect: () => void }) {
+  // Hook'lar erken-return'lerden ÖNCE (rules-of-hooks). ref yalnız açık kartta bağlanır.
+  const ref = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (vurgu) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [vurgu])
   if (s.kalan === 0) {
     return (
       <div className="flex min-h-16 items-start gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-800">
@@ -1233,10 +1245,6 @@ function KalemKart({ s, durum, sonCikis, vurgu, onSelect }: { s: ToplamaSatirDet
   }
   const hata = durum === 'hata'
   const isleniyor = durum === 'isleniyor'
-  const ref = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    if (vurgu) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [vurgu])
   return (
     <button
       ref={ref}

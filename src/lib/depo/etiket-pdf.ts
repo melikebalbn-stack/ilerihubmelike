@@ -5,9 +5,8 @@
  * malzeme-etiketi-pdf.ts) yeniden kullanıldı: pdf-lib + @pdf-lib/fontkit +
  * public/fonts Poppins TTF (Türkçe karakter gömülü) + bwip-js/node DataMatrix.
  *
- * TODO (DataMatrix iç formatı): 'P:{stok}|T:{lot}|Q:{mik}|S:{etiketNo}' geçici;
- * gerçek saha etiket formatı görülünce ISO 15434 / mevcut formatla ve
- * etiket-parse.ts sözleşmesiyle hizalanacak.
+ * DataMatrix iç formatı 'B:{barkodId}|P:{stok}|T:{lot}|Q:{mik}|S:{etiketNo}' — etiket-parse.ts
+ * sözleşmesiyle hizalı; B: IFS barkod_id, terminal okumada öncelikli çözülür.
  *
  * SERVER-ONLY: node fs + bwip-js/node kullanır (malzeme-etiketi-pdf.ts peer'iyle
  * aynı desen); yalnızca API route'undan çağrılır, client bundle'a girmez.
@@ -28,6 +27,8 @@ export interface MalzemeEtiketiVeri {
   kaynakBilgi: string
   lokasyon: string
   etiketNo: string
+  /** IFS BarcodeId — DataMatrix'e B: öneki + görünür "BARKOD NO" olarak basılır. */
+  barkodId: number
   basanKullanici: string
   kaynakModul: string
 }
@@ -117,7 +118,7 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   // ── DataMatrix (sağ üst) ──
   const dmSize = 26 * MM
   const dmX = PAGE_W - margin - dmSize
-  const dmContent = `P:${veri.stokKodu}|T:${veri.lot ?? '*'}|Q:${veri.miktar}|S:${veri.etiketNo}`
+  const dmContent = `B:${veri.barkodId}|P:${veri.stokKodu}|T:${veri.lot ?? '*'}|Q:${veri.miktar}|S:${veri.etiketNo}`
   try {
     const png = await bwipjs.toBuffer({ bcid: 'datamatrix', text: dmContent, scale: 4, backgroundcolor: 'FFFFFF' })
     const img = await pdf.embedPng(png)
@@ -125,13 +126,14 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   } catch {
     /* DataMatrix üretilemezse kart yine basılır */
   }
-  const cap = `(S) ${veri.etiketNo}`
+  // DM altı: görünür (insan-okunur) BARKOD NO. etiketNo alt ızgarada '(S) ETIKET NO' olarak var.
+  const cap = `BARKOD NO: ${veri.barkodId}`
   page.drawText(cap, {
-    x: dmX + (dmSize - reg.widthOfTextAtSize(cap, 6)) / 2,
-    y: contentTop - dmSize - 8,
-    size: 6,
-    font: reg,
-    color: GRAY,
+    x: dmX + (dmSize - bold.widthOfTextAtSize(cap, 7.5)) / 2,
+    y: contentTop - dmSize - 8.5,
+    size: 7.5,
+    font: bold,
+    color: BLACK,
   })
 
   // ── DURUM kutusu (sağ, DM altı) — şimdilik sabit SERBEST ──

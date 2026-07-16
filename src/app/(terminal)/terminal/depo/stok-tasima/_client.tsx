@@ -18,10 +18,24 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { barkodIdAday, parseEtiket } from '@/lib/depo/etiket-parse'
+import { barkodIdAday, parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { useScanner } from '@/lib/depo/use-scanner'
 import type { DepoRafBilgisi, DepoStokKaydi } from '@/lib/ifs/depo-stok'
 import type { FifoKaynak } from '@/lib/ifs/tuketim'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { TERMINAL_ACCENT } from '../../_shared'
 
 // KAYNAK_SECIM: malzeme birden çok rafta bulunduğunda kaynak raf seçimi (hâlâ 1. adım).
@@ -48,6 +62,56 @@ interface HizliSonuc {
   hedefAdi: string
 }
 
+// Ortak kaynak çözücü sonucu (sihirbaz + Hızlı panel paylaşır).
+type KaynakSonuc =
+  | { tip: 'raf'; raf: DepoRafBilgisi; stok: DepoStokKaydi[] }
+  | { tip: 'stoklar'; satirlar: FifoKaynak[] }
+  | { tip: 'barkod-stoksuz'; kod: string } // barkod GEÇERLİ ama taşınabilir stok yok
+  | { tip: 'yok'; sorgu: string }
+
+/**
+ * Ortak kaynak çözücü — state'e DOKUNMAZ, yalnız fetch + sınıflama.
+ * Sıra: barkod → raf (/raf/{kod}/stok) → parça (/parca/{stokKodu}/stok).
+ *
+ * Barkod dalı GELİŞ YOLUNDAN BAĞIMSIZ: Stok Taşıma'da iş emri kavramı yok → çıplak sayının
+ * "barkod mu iş emri mi" belirsizliği burada YOK; barkod bulunamazsa zaten raf→parça'ya düşülür.
+ * (Toplama ekranındaki 'elle→barkod denenmez' kuralı oraya özeldir, burayı bağlamaz.)
+ * `kaynak` hâlâ parça dalında parseEtiket için kullanılır.
+ */
+async function cozKaynakCekirdek(giris: string, kaynak: EtiketKaynak): Promise<KaynakSonuc> {
+  // 1) Barkod — okutma/elle fark etmez
+  const bId = barkodIdAday(giris)
+  if (bId !== null) {
+    const bRes = await fetch(`/api/depo/barkod/${bId}`)
+    if (bRes.ok) {
+      const bData = await bRes.json().catch(() => null)
+      if (bData?.ok) {
+        // Barkod GEÇERLİ → sonucu maskeleme: stok boşsa raf/parça'ya düşme, ayırt et.
+        const stoklar = (bData.stoklar ?? []) as FifoKaynak[]
+        if (stoklar.length > 0) return { tip: 'stoklar', satirlar: stoklar }
+        return { tip: 'barkod-stoksuz', kod: giris }
+      }
+    }
+    // Barkod BULUNAMADI (404/!ok) → aşağıdaki raf/parça yoluna düş
+  }
+  // 2) Raf
+  const rafRes = await fetch(`/api/depo/raf/${encodeURIComponent(giris)}/stok`)
+  const rafData = await rafRes.json().catch(() => null)
+  if (rafRes.ok && rafData?.ok) {
+    return { tip: 'raf', raf: rafData.raf as DepoRafBilgisi, stok: (rafData.stok ?? []) as DepoStokKaydi[] }
+  }
+  // 3) Parça
+  const p = parseEtiket(giris, kaynak)
+  const stokKodu = p.stokKodu ?? giris
+  const pRes = await fetch(`/api/depo/parca/${encodeURIComponent(stokKodu)}/stok`)
+  if (pRes.ok) {
+    const pData = await pRes.json().catch(() => null)
+    const satirlar = pData?.ok ? ((pData.satirlar ?? []) as FifoKaynak[]) : []
+    if (satirlar.length > 0) return { tip: 'stoklar', satirlar }
+  }
+  return { tip: 'yok', sorgu: giris }
+}
+
 export function StokTasimaClient() {
   const router = useRouter()
 
@@ -60,7 +124,6 @@ export function StokTasimaClient() {
   const [loading, setLoading] = useState(false)
   const [tasiniyor, setTasiniyor] = useState(false)
   const [sonucYol, setSonucYol] = useState<'CREATE' | 'UPDATE' | null>(null)
-  const [etiketYukleniyor, setEtiketYukleniyor] = useState(false)
 
   // Malzeme-öncelikli giriş: çoklu raf seçim listesi + otomatik seçim teyidi.
   const [malzemeKaynaklar, setMalzemeKaynaklar] = useState<FifoKaynak[]>([])
@@ -71,11 +134,9 @@ export function StokTasimaClient() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualVal, setManualVal] = useState('')
 
-  // ── BÖLÜM 3: Hızlı Taşıma paneli (üstte, tek ekran) + sihirbaz accordion ─────
-  // Sihirbaz artık ikincil: kapalıyken scanner Hızlı panelin; açıkken sihirbazın.
-  // Hızlı panel ve sihirbaz aynı ekranda; okutma odağı hangisinde? Varsayılan hızlı panel,
-  // sihirbaz alanına dokununca ona geçer (tek aktif scanner).
-  const [okutHedefi, setOkutHedefi] = useState<'hizli' | 'sihirbaz'>('hizli')
+  // ── BÖLÜM 3: Hızlı Taşıma paneli + sihirbaz — TEK görünür panel (tek scanner) ─────
+  // tasimaMode: aynı anda YALNIZ biri render edilir → tek scanner, çakışma yok.
+  const [tasimaMode, setTasimaMode] = useState<'hizli' | 'sihirbaz'>('hizli')
   const [hAdaylar, setHAdaylar] = useState<FifoKaynak[]>([]) // çoklu lokasyon seçim adayları
   const [hKaynak, setHKaynak] = useState<FifoKaynak | null>(null) // seçili kaynak stok satırı
   const [hPartCip, setHPartCip] = useState<string | null>(null) // '{partNo}{ · lot}'
@@ -88,7 +149,9 @@ export function StokTasimaClient() {
   const [hOkutVal, setHOkutVal] = useState('')
   const [hHedefManual, setHHedefManual] = useState(false)
   const [hHedefVal, setHHedefVal] = useState('')
-  const [hEtiketYuk, setHEtiketYuk] = useState(false)
+  // Hızlı'da raf→malzeme mini-seçimi (sihirbazın MALZEME adımının karşılığı).
+  const [hRaf, setHRaf] = useState<DepoRafBilgisi | null>(null)
+  const [hRafStok, setHRafStok] = useState<DepoStokKaydi[]>([])
 
   const isScanStep =
     step === 'KAYNAK_RAF' || step === 'KAYNAK_SECIM' || step === 'MALZEME' || step === 'HEDEF_RAF'
@@ -126,62 +189,35 @@ export function StokTasimaClient() {
 
   // ── İlk okutma: RAF veya MALZEME çözümleme (API) ─────────────────
   const cozKaynak = useCallback(
-    async (kod: string) => {
+    async (kod: string, kaynak: EtiketKaynak) => {
       setLoading(true)
       try {
-        // EL-9b (BÖLÜM 2): salt-sayısal okuma → ÖNCE barkod_id dene. Çözülürse `stoklar`
-        // kaynak adayı (tek satır → otomatik kaynak+MIKTAR; çok satır → KAYNAK_SECIM).
-        const bId = barkodIdAday(kod)
-        if (bId !== null) {
-          const bRes = await fetch(`/api/depo/barkod/${bId}`)
-          if (bRes.ok) {
-            const bData = await bRes.json().catch(() => null)
-            const stoklar = bData?.ok ? ((bData.stoklar ?? []) as FifoKaynak[]) : []
-            if (stoklar.length > 0) {
-              const rafSayisi = new Set(stoklar.map((s) => s.locationNo)).size
-              if (rafSayisi === 1) {
-                secKaynakStok(stoklar[0])
-                return
-              }
-              setMalzemeKaynaklar(stoklar)
-              setStep('KAYNAK_SECIM')
-              return
-            }
-          }
-          // 404 / boş → aşağıdaki mevcut raf→malzeme davranışına düş.
-        }
-
-        // TODO: çakışan kod politikası — şimdilik raf öncelikli
-        const rafRes = await fetch(`/api/depo/raf/${encodeURIComponent(kod)}/stok`)
-        const rafData = await rafRes.json().catch(() => null)
-        if (rafRes.ok && rafData?.ok) {
+        const r = await cozKaynakCekirdek(kod, kaynak)
+        if (r.tip === 'raf') {
           // MEVCUT davranış: kaynakRaf + rafStok set, MALZEME adımına geç.
-          setKaynakRaf(rafData.raf as DepoRafBilgisi)
-          setRafStok((rafData.stok ?? []) as DepoStokKaydi[])
+          setKaynakRaf(r.raf)
+          setRafStok(r.stok)
           setStep('MALZEME')
           return
         }
-
-        // Raf değil → malzeme dene.
-        const p = parseEtiket(kod)
-        const stokKodu = p.tip === 'MALZEME' && p.stokKodu ? p.stokKodu : kod
-        const res = await fetch(`/api/depo/parca/${encodeURIComponent(stokKodu)}/stok`)
-        const data = await res.json().catch(() => null)
-        const satirlar = res.ok && data?.ok ? ((data.satirlar ?? []) as FifoKaynak[]) : []
-        if (satirlar.length === 0) {
-          showError(`Ne raf ne malzeme bulundu: ${kod}`)
+        if (r.tip === 'stoklar') {
+          const rafSayisi = new Set(r.satirlar.map((s) => s.locationNo)).size
+          if (rafSayisi === 1) {
+            // Tek raf → otomatik seç (FIFO ilk satır), MIKTAR'a geç.
+            secKaynakStok(r.satirlar[0])
+            return
+          }
+          // Çoklu raf → seçim listesi (gelen sıra = FIFO).
+          setMalzemeKaynaklar(r.satirlar)
+          setStep('KAYNAK_SECIM')
           return
         }
-
-        const rafSayisi = new Set(satirlar.map((s) => s.locationNo)).size
-        if (rafSayisi === 1) {
-          // Tek raf → otomatik seç (FIFO ilk satır), MALZEME adımını atla.
-          secKaynakStok(satirlar[0])
+        if (r.tip === 'barkod-stoksuz') {
+          showError(`Barkod geçerli ama taşınabilir stok yok: ${r.kod}`)
           return
         }
-        // Çoklu raf → seçim listesi (gelen sıra = FIFO).
-        setMalzemeKaynaklar(satirlar)
-        setStep('KAYNAK_SECIM')
+        // Barkod da her iki yolda deneniyor → kaynak ayrımlı mesaj anlamsız: tek mesaj.
+        showError(`Barkod, raf ya da stok kodu bulunamadı: ${r.sorgu}`)
       } catch {
         showError('Bağlantı hatası — tekrar deneyin')
       } finally {
@@ -224,10 +260,10 @@ export function StokTasimaClient() {
 
   // ── Okutma dağıtımı ──────────────────────────────────────────────
   const handleValue = useCallback(
-    (raw: string) => {
+    (raw: string, kaynak: EtiketKaynak = 'okutma') => {
       const val = raw.trim()
       if (!val) return
-      if (step === 'KAYNAK_RAF') return void cozKaynak(val)
+      if (step === 'KAYNAK_RAF') return void cozKaynak(val, kaynak)
       if (step === 'KAYNAK_SECIM') {
         // Okunan kodu listedeki locationNo / lokasyonAdi ile eşleştir.
         const low = val.toLowerCase()
@@ -239,8 +275,8 @@ export function StokTasimaClient() {
       }
       if (step === 'HEDEF_RAF') return void cozRafHedef(val)
       if (step === 'MALZEME') {
-        const p = parseEtiket(val)
-        if (p.tip !== 'MALZEME' || !p.stokKodu) return showError('Malzeme okutun')
+        const p = parseEtiket(val, kaynak)
+        if (!p.stokKodu) return showError('Malzeme okutun')
         const eslesme = rafStok.find(
           (s) => s.stokKodu === p.stokKodu && (p.lot ? s.lot === p.lot : true),
         )
@@ -263,67 +299,71 @@ export function StokTasimaClient() {
     setHOkutVal('')
     setHHedefManual(false)
     setHHedefVal('')
+    setHRaf(null)
+    setHRafStok([])
   }
 
   // Kaynak stok satırını seç → çip + adet/hedef alanlarını aç.
   const secHizliKaynak = (k: FifoKaynak) => {
     setHKaynak(k)
     setHAdaylar((a) => (a.length ? a : [k]))
+    setHRaf(null)
+    setHRafStok([])
     setHMiktar('')
     setHHedef(null)
     setHHedefManual(false)
     setHHedefVal('')
   }
 
-  // a) Okut çözümle: sayısalsa barkod→(404)parça; değilse parseEtiket→parça.
-  const cozHizliKaynak = async (kod: string) => {
+  // Raf çözülünce o raftaki bir malzemeyi (DepoStokKaydi) seç → FifoKaynak'a çevir → kaynak yap.
+  const secRafMalzeme = (raf: DepoRafBilgisi, kaydi: DepoStokKaydi) => {
+    const asFifo: FifoKaynak = {
+      kimlik: kaydi.kimlik,
+      locationNo: raf.locationNo,
+      lokasyonAdi: raf.aciklama || raf.locationNo,
+      lotBatchNo: kaydi.lot,
+      alinacak: kaydi.miktar,
+      mevcutMiktar: kaydi.miktar,
+      receiptDate: '',
+    }
+    setHPartCip(`${kaydi.stokKodu}${kaydi.lot ? ` · ${kaydi.lot}` : ''}`)
+    secHizliKaynak(asFifo)
+  }
+
+  // a) Okut çözümle — ortak çekirdek: barkod→raf→parça. Sonucu Hızlı state'ine işle.
+  const cozHizliKaynak = async (kod: string, kaynak: EtiketKaynak) => {
     setHLoading(true)
     setHSonuc(null)
     try {
-      let satirlar: FifoKaynak[] = []
-      const bId = barkodIdAday(kod)
-      if (bId !== null) {
-        const bRes = await fetch(`/api/depo/barkod/${bId}`)
-        if (bRes.ok) {
-          const bData = await bRes.json().catch(() => null)
-          if (bData?.ok) satirlar = (bData.stoklar ?? []) as FifoKaynak[]
+      const r = await cozKaynakCekirdek(kod, kaynak)
+      if (r.tip === 'stoklar') {
+        const satirlar = r.satirlar
+        const partNo = satirlar[0].kimlik.partNo
+        const lotlar = new Set(satirlar.map((s) => s.lotBatchNo ?? ''))
+        const tekLot = lotlar.size === 1 ? satirlar[0].lotBatchNo : undefined
+        setHPartCip(`${partNo}${tekLot ? ` · ${tekLot}` : ''}`)
+        const rafSayisi = new Set(satirlar.map((s) => s.locationNo)).size
+        if (rafSayisi === 1) {
+          setHAdaylar(satirlar)
+          secHizliKaynak(satirlar[0])
+        } else {
+          // Çok lokasyon → mini kaynak seçim (FIFO sıralı).
+          setHAdaylar(satirlar)
+          setHKaynak(null)
         }
-        if (satirlar.length === 0) {
-          // 404/boş → sayısal değeri malzeme (partNo) olarak dene.
-          const pRes = await fetch(`/api/depo/parca/${encodeURIComponent(kod)}/stok`)
-          if (pRes.ok) {
-            const pData = await pRes.json().catch(() => null)
-            if (pData?.ok) satirlar = (pData.satirlar ?? []) as FifoKaynak[]
-          }
+      } else if (r.tip === 'raf') {
+        // Raf çözüldü → o raftaki malzemeyi seç (sihirbaz MALZEME adımının Hızlı karşılığı).
+        setHRaf(r.raf)
+        if (r.stok.length === 1) {
+          secRafMalzeme(r.raf, r.stok[0]) // tek malzeme → otomatik seç
+        } else {
+          setHRafStok(r.stok) // çok malzeme → liste
         }
+      } else if (r.tip === 'barkod-stoksuz') {
+        showError(`Barkod geçerli ama taşınabilir stok yok: ${r.kod}`)
       } else {
-        const p = parseEtiket(kod)
-        const stokKodu = p.tip === 'MALZEME' && p.stokKodu ? p.stokKodu : kod
-        const pRes = await fetch(`/api/depo/parca/${encodeURIComponent(stokKodu)}/stok`)
-        if (pRes.ok) {
-          const pData = await pRes.json().catch(() => null)
-          if (pData?.ok) satirlar = (pData.satirlar ?? []) as FifoKaynak[]
-        }
-      }
-
-      if (satirlar.length === 0) {
-        showError(`Çözülemedi: ${kod}`)
-        return
-      }
-
-      const partNo = satirlar[0].kimlik.partNo
-      const lotlar = new Set(satirlar.map((s) => s.lotBatchNo ?? ''))
-      const tekLot = lotlar.size === 1 ? satirlar[0].lotBatchNo : undefined
-      setHPartCip(`${partNo}${tekLot ? ` · ${tekLot}` : ''}`)
-
-      const rafSayisi = new Set(satirlar.map((s) => s.locationNo)).size
-      if (rafSayisi === 1) {
-        setHAdaylar(satirlar)
-        secHizliKaynak(satirlar[0])
-      } else {
-        // Çok lokasyon → mini kaynak seçim (FIFO sıralı).
-        setHAdaylar(satirlar)
-        setHKaynak(null)
+        // Barkod da her iki yolda deneniyor → kaynak ayrımlı mesaj anlamsız: tek mesaj.
+        showError(`Barkod, raf ya da stok kodu bulunamadı: ${kod}`)
       }
     } catch {
       showError('Bağlantı hatası — tekrar deneyin')
@@ -369,18 +409,30 @@ export function StokTasimaClient() {
     })
   }
 
-  // Okutma dağıtımı (Hızlı panel): kaynak yoksa okut; adaylar varsa raf seç; kaynak varsa hedef.
-  const hizliHandle = (raw: string) => {
+  // Okutma dağıtımı (Hızlı panel): kaynak yoksa çöz/seç; kaynak varsa hedef.
+  const hizliHandle = (raw: string, kaynak: EtiketKaynak = 'okutma') => {
     const val = raw.trim()
     if (!val || hLoading || hTasiniyor) return
-    if (!hKaynak && hAdaylar.length === 0) return void cozHizliKaynak(val)
     if (!hKaynak) {
-      const low = val.toLowerCase()
-      const k = hAdaylar.find(
-        (m) => m.locationNo.toLowerCase() === low || (m.lokasyonAdi ?? '').toLowerCase() === low,
-      )
-      if (!k) return showError('Bu rafta bu malzeme yok')
-      return secHizliKaynak(k)
+      // Raf çözüldü → o raftaki malzemeyi okutarak seç.
+      if (hRaf && hRafStok.length > 0) {
+        const p = parseEtiket(val, kaynak)
+        const kod = p.stokKodu ?? val
+        const m = hRafStok.find((s) => s.stokKodu === kod)
+        if (!m) return showError('Bu rafta bu malzeme yok')
+        return secRafMalzeme(hRaf, m)
+      }
+      // Çoklu lokasyon → raf okutarak seç.
+      if (hAdaylar.length > 0) {
+        const low = val.toLowerCase()
+        const k = hAdaylar.find(
+          (m) => m.locationNo.toLowerCase() === low || (m.lokasyonAdi ?? '').toLowerCase() === low,
+        )
+        if (!k) return showError('Bu rafta bu malzeme yok')
+        return secHizliKaynak(k)
+      }
+      // Hiç aday yok → ilk çözüm.
+      return void cozHizliKaynak(val, kaynak)
     }
     return void cozHizliHedef(val)
   }
@@ -422,6 +474,8 @@ export function StokTasimaClient() {
       setHOkutVal('')
       setHHedefManual(false)
       setHHedefVal('')
+      setHRaf(null)
+      setHRafStok([])
     } catch {
       showError('Bağlantı hatası — tekrar deneyin')
     } finally {
@@ -429,60 +483,32 @@ export function StokTasimaClient() {
     }
   }
 
-  const hizliEtiketYazdir = async () => {
-    if (hEtiketYuk || !hSonuc) return
-    setHEtiketYuk(true)
-    try {
-      const res = await fetch('/api/depo/etiket', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stokKodu: hSonuc.partNo,
-          stokAdi: '',
-          miktar: hSonuc.miktar,
-          birim: hSonuc.birim,
-          lot: hSonuc.lot,
-          girisTarihi: new Date().toISOString().slice(0, 10),
-          kaynakBilgi: `Stok Tasima · ${hSonuc.kaynakAdi} → ${hSonuc.hedefAdi}`,
-          lokasyon: hSonuc.hedefAdi,
-          kaynakModul: 'Depo El Terminali / Hizli Tasima',
-        }),
-      })
-      if (!res.ok) {
-        showError('Etiket üretilemedi')
-        return
-      }
-      const url = URL.createObjectURL(await res.blob())
-      window.open(url, '_blank')
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    } catch {
-      showError('Etiket üretilemedi')
-    } finally {
-      setHEtiketYuk(false)
-    }
-  }
 
-  // ── Tek aktif scanner: odak hangisindeyse onun input'u DOM'da → çakışma yok ──
-  const hizliScanAktif =
-    okutHedefi === 'hizli' && !hOkutManual && !hHedefManual && !hLoading && !hTasiniyor
-  const sihirbazScanAktif = okutHedefi === 'sihirbaz' && isScanStep && !manualOpen && !loading
-  const { inputProps: hizliInputProps } = useScanner(hizliScanAktif, hizliHandle)
-  const { inputProps } = useScanner(sihirbazScanAktif, handleValue)
+  // ── TEK scanner: yalnız render'daki panel dinler (tasimaMode). Tarama daima 'okutma'. ──
+  const dispatchScan = (v: string) => {
+    if (tasimaMode === 'hizli') hizliHandle(v, 'okutma')
+    else handleValue(v, 'okutma')
+  }
+  const scanAktif =
+    tasimaMode === 'hizli'
+      ? !hOkutManual && !hHedefManual && !hLoading && !hTasiniyor
+      : isScanStep && !manualOpen && !loading
+  const { inputProps } = useScanner(scanAktif, dispatchScan)
 
   const submitManual = () => {
-    handleValue(manualVal)
+    handleValue(manualVal, 'elle')
     setManualVal('')
     setManualOpen(false)
   }
 
   const submitHizliOkut = () => {
-    hizliHandle(hOkutVal)
+    hizliHandle(hOkutVal, 'elle')
     setHOkutVal('')
     setHOkutManual(false)
   }
 
   const submitHizliHedef = () => {
-    hizliHandle(hHedefVal)
+    hizliHandle(hHedefVal, 'elle')
     setHHedefVal('')
     setHHedefManual(false)
   }
@@ -490,6 +516,15 @@ export function StokTasimaClient() {
   const goBack = () => {
     setErrorMsg(null)
     setManualOpen(false)
+    // Hızlı mod: `step` kullanılmaz → kendi kademeli dalı (toplama'nın geri() mantığı).
+    // Seçim varsa önce onu temizle (ekranda kal), başlangıç durumundaysa menüye çık.
+    if (tasimaMode === 'hizli') {
+      const secimVar =
+        hKaynak !== null || hRaf !== null || hRafStok.length > 0 || hAdaylar.length > 0
+      if (secimVar) hizliOkutSifirla()
+      else router.push('/terminal/depo')
+      return
+    }
     switch (step) {
       case 'KAYNAK_RAF':
         router.push('/terminal/depo')
@@ -523,6 +558,10 @@ export function StokTasimaClient() {
       case 'HEDEF_RAF':
         setHedefRaf(null)
         setStep('MIKTAR')
+        break
+      case 'TAMAM':
+        // Taşıma bitti → adım geri anlamsız; "Yeni Taşıma" ile aynı: başa dön.
+        resetAll()
         break
       default:
         break
@@ -586,46 +625,11 @@ export function StokTasimaClient() {
     }
   }
 
-  const etiketYazdir = async () => {
-    if (etiketYukleniyor || !secilenStok || !kaynakRaf || !hedefRaf) return
-    setEtiketYukleniyor(true)
-    try {
-      const kaynakAd = kaynakRaf.aciklama || kaynakRaf.locationNo
-      const hedefAd = hedefRaf.aciklama || hedefRaf.locationNo
-      const res = await fetch('/api/depo/etiket', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stokKodu: secilenStok.stokKodu,
-          stokAdi: secilenStok.stokAdi,
-          miktar: miktarNum,
-          birim: secilenStok.birim,
-          lot: secilenStok.lot,
-          girisTarihi: new Date().toISOString().slice(0, 10),
-          kaynakBilgi: `Stok Tasima · ${kaynakAd} → ${hedefAd}`,
-          lokasyon: hedefAd,
-          kaynakModul: 'Depo El Terminali / Stok Tasima',
-        }),
-      })
-      if (!res.ok) {
-        showError('Etiket üretilemedi')
-        return
-      }
-      const url = URL.createObjectURL(await res.blob())
-      window.open(url, '_blank')
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    } catch {
-      showError('Etiket üretilemedi')
-    } finally {
-      setEtiketYukleniyor(false)
-    }
-  }
 
   return (
     <div className="relative flex flex-1 flex-col gap-3 py-2">
-      {/* Tek aktif scanner: yalnız aktif olan input DOM'da → odak çakışması yok. */}
-      {hizliScanAktif && <input {...hizliInputProps} />}
-      {sihirbazScanAktif && <input {...inputProps} />}
+      {/* TEK scanner: yalnız aktif panel dinler (tek gizli input). */}
+      {scanAktif && <input {...inputProps} />}
 
       {errorMsg && (
         <div className="absolute inset-x-0 top-0 z-20 mx-2 flex items-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-base font-semibold text-white shadow-lg">
@@ -634,15 +638,35 @@ export function StokTasimaClient() {
         </div>
       )}
 
-      {/* ═══ BÖLÜM 3: HIZLI TAŞIMA paneli (üstte, tek ekran) ═══ */}
+      {/* Üst bar — HER İKİ modda ortak (geri + başlık); n/4 çipi yalnız sihirbazda. */}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={goBack}
+          aria-label="Geri"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors active:bg-muted/70"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="flex-1 text-lg font-semibold">Stok Taşıma</h1>
+        {tasimaMode === 'sihirbaz' && step !== 'TAMAM' && (
+          <span className="rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+            {STEP_INDEX[step]}/4
+          </span>
+        )}
+      </div>
+
+      {/* ═══ HIZLI TAŞIMA paneli — tasimaMode==='hizli' iken TEK görünür ═══ */}
+      {tasimaMode === 'hizli' && (
       <section
-        onPointerDownCapture={() => setOkutHedefi('hizli')}
         className="flex flex-col gap-2.5 rounded-2xl border-2 p-3"
         style={{ borderColor: TERMINAL_ACCENT }}
       >
         <div className="flex items-center gap-2">
-          <Zap className="h-5 w-5" style={{ color: TERMINAL_ACCENT }} />
-          <h2 className="text-base font-semibold" style={{ color: TERMINAL_ACCENT }}>
+          {/* Mod etiketi — ekran başlığı ortak barda (h1); burası sihirbazdaki
+              'Adım adım taşıma' etiketinin karşılığı → h1 ile yarışmasın diye küçük. */}
+          <Zap className="h-4 w-4" style={{ color: TERMINAL_ACCENT }} />
+          <h2 className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
             Hızlı Taşıma
           </h2>
           {hLoading && (
@@ -650,18 +674,9 @@ export function StokTasimaClient() {
           )}
         </div>
 
-        {/* a) Okut / kaynak */}
-        {!hKaynak && hAdaylar.length === 0 ? (
-          <HizliOkutAlani
-            label="Barkod ya da malzeme okut"
-            placeholder="Barkod veya stok kodu"
-            manualOpen={hOkutManual}
-            val={hOkutVal}
-            setVal={setHOkutVal}
-            onOpen={() => setHOkutManual(true)}
-            onSubmit={submitHizliOkut}
-          />
-        ) : (
+        {/* a) Kaynak — okutma şeridi (barkod DAHİL) + elle; çözülünce çip / seçim listeleri */}
+        {hKaynak ? (
+          /* Kaynak seçildi → çip + değiştir */
           <div className="flex flex-wrap items-center gap-2">
             {hPartCip && (
               <span className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-sm font-medium text-emerald-700">
@@ -669,14 +684,12 @@ export function StokTasimaClient() {
                 {hPartCip}
               </span>
             )}
-            {hKaynak ? (
-              <span className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-sm font-medium text-emerald-700">
-                <MapPin className="h-4 w-4" />
-                {hKaynak.lokasyonAdi || hKaynak.locationNo} · {hKaynak.mevcutMiktar} {HIZLI_BIRIM}
-              </span>
-            ) : (
-              <span className="text-xs text-muted-foreground">Kaynak rafını seç ↓</span>
-            )}
+            <span
+              className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-sm font-medium text-emerald-700"
+            >
+              <MapPin className="h-4 w-4" />
+              {hKaynak.lokasyonAdi || hKaynak.locationNo} · {hKaynak.mevcutMiktar} {HIZLI_BIRIM}
+            </span>
             <button
               type="button"
               onClick={hizliOkutSifirla}
@@ -685,11 +698,42 @@ export function StokTasimaClient() {
               değiştir
             </button>
           </div>
-        )}
-
-        {/* çok lokasyon → mini kaynak seçim (FIFO sıralı) */}
-        {!hKaynak && hAdaylar.length > 0 && (
+        ) : hRafStok.length > 0 ? (
+          /* Raf çözüldü → o raftaki malzemeyi seç (dokun ya da okut) */
           <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <MapPin className="h-4 w-4" /> {hRaf?.aciklama || hRaf?.locationNo} — malzeme seç
+            </div>
+            {hRafStok.map((s, i) => (
+              <button
+                key={`${s.stokKodu}-${s.lot ?? '_'}-${i}`}
+                type="button"
+                onClick={() => hRaf && secRafMalzeme(hRaf, s)}
+                className="flex min-h-11 items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2 text-left transition-colors active:bg-muted"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">{s.stokKodu}</div>
+                  {s.lot && <div className="text-[11px] text-muted-foreground">Lot {s.lot}</div>}
+                </div>
+                <div className="shrink-0 text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
+                  {s.miktar} {s.birim}
+                </div>
+              </button>
+            ))}
+            <button type="button" onClick={hizliOkutSifirla} className="self-center text-xs text-muted-foreground underline underline-offset-2">
+              vazgeç
+            </button>
+          </div>
+        ) : hAdaylar.length > 0 ? (
+          /* Çoklu lokasyon (aynı malzeme) → raf seç (dokun ya da okut) */
+          <div className="flex flex-col gap-1.5">
+            {hPartCip && (
+              <span className="flex w-fit items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-sm font-medium text-emerald-700">
+                <Package className="h-4 w-4" />
+                {hPartCip}
+              </span>
+            )}
+            <div className="text-xs font-medium text-muted-foreground">Kaynak rafını seç:</div>
             {hAdaylar.map((k, i) => (
               <button
                 key={`${k.locationNo}-${k.lotBatchNo ?? '_'}-${i}`}
@@ -710,6 +754,42 @@ export function StokTasimaClient() {
                 </div>
               </button>
             ))}
+            <button type="button" onClick={hizliOkutSifirla} className="self-center text-xs text-muted-foreground underline underline-offset-2">
+              vazgeç
+            </button>
+          </div>
+        ) : (
+          /* Henüz hiçbir şey → okutma şeridi (kaynak:'okutma') + "veya elle gir" (kaynak:'elle') */
+          <div className="flex flex-col gap-2">
+            <div
+              className="flex items-center gap-3 rounded-xl border p-3"
+              style={{ borderColor: TERMINAL_ACCENT, background: `${TERMINAL_ACCENT}0D` }}
+            >
+              <ScanLine className="h-6 w-6 shrink-0" style={{ color: TERMINAL_ACCENT }} />
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>Barkod ya da malzeme okut</div>
+                <div className="truncate text-xs text-muted-foreground">barkod / raf / stok kodu çözülür</div>
+              </div>
+            </div>
+            {hOkutManual ? (
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  value={hOkutVal}
+                  onChange={(e) => setHOkutVal(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && submitHizliOkut()}
+                  placeholder="Raf ya da stok kodu"
+                  className="h-10 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:ring-1 focus:ring-ring"
+                />
+                <button type="button" onClick={submitHizliOkut} className="h-10 rounded-xl px-3 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
+                  Onayla
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setHOkutManual(true)} className="self-center text-sm text-muted-foreground underline underline-offset-2">
+                veya elle gir
+              </button>
+            )}
           </div>
         )}
 
@@ -800,46 +880,55 @@ export function StokTasimaClient() {
               <Check className="h-4 w-4 shrink-0" />
               {hSonuc.miktar} {hSonuc.birim} · {hSonuc.kaynakAdi} → {hSonuc.hedefAdi}
             </div>
-            <button
-              type="button"
-              onClick={hizliEtiketYazdir}
-              disabled={hEtiketYuk}
-              className="flex min-h-10 items-center justify-center gap-2 rounded-xl border bg-card text-sm font-medium transition-colors active:bg-muted/70 disabled:opacity-50"
-            >
-              {hEtiketYuk ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Printer className="h-4 w-4" />
-              )}
-              Etiket Yazdır
-            </button>
+            <EtiketYazdirButton
+              key={`${hSonuc.partNo}|${hSonuc.hedefAdi}|${hSonuc.miktar}|${hSonuc.kaynakAdi}`}
+              payload={{
+                stokKodu: hSonuc.partNo,
+                stokAdi: '',
+                miktar: hSonuc.miktar,
+                birim: hSonuc.birim,
+                lot: hSonuc.lot,
+                girisTarihi: new Date().toISOString().slice(0, 10),
+                kaynakBilgi: `Stok Tasima · ${hSonuc.kaynakAdi} → ${hSonuc.hedefAdi}`,
+                lokasyon: hSonuc.hedefAdi,
+                kaynakModul: 'Depo El Terminali / Hizli Tasima',
+              }}
+            />
           </div>
         )}
-      </section>
 
-      {/* ═══ Adım adım taşıma (sihirbaz — hep görünür, ikincil) ═══ */}
-      <div
-        onPointerDownCapture={() => setOkutHedefi('sihirbaz')}
-        className="flex flex-col gap-3 border-t pt-3"
-      >
-        <div className="text-sm font-medium text-muted-foreground">Adım adım taşıma</div>
-      {/* Üst bar */}
-      <div className="flex items-center gap-2 pt-1">
-        <button
-          type="button"
-          onClick={goBack}
-          aria-label="Geri"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors active:bg-muted/70"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="flex-1 text-lg font-semibold">Stok Taşıma</h1>
-        {step !== 'TAMAM' && (
-          <span className="rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-            {STEP_INDEX[step]}/4
-          </span>
+        {/* Sihirbaza geç (yalnız başlangıç okutma durumunda) */}
+        {!hKaynak && hAdaylar.length === 0 && hRafStok.length === 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setTasimaMode('sihirbaz')}
+            className="self-center gap-2 text-sm text-muted-foreground"
+          >
+            <ArrowRight className="h-4 w-4" />
+            Adım adım taşı
+          </Button>
         )}
-      </div>
+      </section>
+      )}
+
+      {/* ═══ Adım adım taşıma (sihirbaz) — tasimaMode==='sihirbaz' iken TEK görünür ═══ */}
+      {tasimaMode === 'sihirbaz' && (
+      <div className="flex flex-col gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            resetAll()
+            setTasimaMode('hizli')
+          }}
+          className="self-start gap-2 text-sm text-muted-foreground"
+        >
+          {/* Zap: mod değiştirme — ortak bardaki ArrowLeft (navigasyon) ile karışmasın. */}
+          <Zap className="h-4 w-4" />
+          Hızlı taşımaya dön
+        </Button>
+        <div className="text-sm font-medium text-muted-foreground">Adım adım taşıma</div>
 
       {kaynakRaf && step !== 'TAMAM' && (
         <div className="flex w-fit items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
@@ -1089,19 +1178,24 @@ export function StokTasimaClient() {
           </div>
 
           <div className="mt-1 flex w-full flex-col gap-2">
-            <button
-              type="button"
-              onClick={etiketYazdir}
-              disabled={etiketYukleniyor}
-              className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border bg-card text-base font-medium transition-colors active:bg-muted/70 disabled:opacity-50"
-            >
-              {etiketYukleniyor ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Printer className="h-5 w-5" />
-              )}
-              {etiketYukleniyor ? 'Hazırlanıyor…' : 'Etiket Yazdır'}
-            </button>
+            <EtiketYazdirButton
+              buyuk
+              payload={
+                secilenStok && kaynakRaf && hedefRaf
+                  ? {
+                      stokKodu: secilenStok.stokKodu,
+                      stokAdi: secilenStok.stokAdi,
+                      miktar: miktarNum,
+                      birim: secilenStok.birim,
+                      lot: secilenStok.lot,
+                      girisTarihi: new Date().toISOString().slice(0, 10),
+                      kaynakBilgi: `Stok Tasima · ${kaynakRaf.aciklama || kaynakRaf.locationNo} → ${hedefRaf.aciklama || hedefRaf.locationNo}`,
+                      lokasyon: hedefRaf.aciklama || hedefRaf.locationNo,
+                      kaynakModul: 'Depo El Terminali / Stok Tasima',
+                    }
+                  : null
+              }
+            />
             <button
               type="button"
               onClick={resetAll}
@@ -1120,6 +1214,7 @@ export function StokTasimaClient() {
         </div>
       )}
       </div>
+      )}
     </div>
   )
 }
@@ -1178,7 +1273,6 @@ function HizliOkutAlani({
     >
       {icon ?? <ScanLine className="h-5 w-5" />}
       {label}
-      <span className="text-xs text-muted-foreground">/ elle</span>
     </button>
   )
 }
@@ -1251,5 +1345,146 @@ function ScanPrompt({
         </button>
       )}
     </div>
+  )
+}
+
+interface EtiketPayload {
+  stokKodu: string
+  stokAdi: string
+  miktar: number
+  birim: string
+  lot?: string
+  girisTarihi: string
+  kaynakBilgi: string
+  lokasyon: string
+  kaynakModul: string
+}
+
+/**
+ * "Etiket Yazdır" — adet sorusu + kalıcı-barkod uyarısı + tekrar-basma koruması.
+ * Her basım route'ta adet kadar AYRI IFS barkodu üretir (kalıcı). payload null ise pasif.
+ */
+function EtiketYazdirButton({ payload, buyuk }: { payload: EtiketPayload | null; buyuk?: boolean }) {
+  const [acik, setAcik] = useState(false)
+  const [onayAcik, setOnayAcik] = useState(false)
+  const [adet, setAdet] = useState('1')
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const [hata, setHata] = useState<string | null>(null)
+  const [basildi, setBasildi] = useState(false)
+
+  const adetNum = Math.min(50, Math.max(1, Math.floor(Number(adet) || 1)))
+
+  const diyaloguAc = () => {
+    setHata(null)
+    setAdet('1')
+    setAcik(true)
+  }
+
+  const bas = async () => {
+    if (!payload || yukleniyor) return
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const res = await fetch('/api/depo/etiket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, adet: adetNum }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        // Route'un mesajı (üretilen kalıcı ID'ler dahil) olduğu gibi gösterilir.
+        setHata(data?.error ?? `Etiket üretilemedi (HTTP ${res.status})`)
+        return
+      }
+      const url = URL.createObjectURL(await res.blob())
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      setBasildi(true)
+      setAcik(false)
+    } catch {
+      setHata('Bağlantı hatası — tekrar deneyin')
+    } finally {
+      setYukleniyor(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={!payload}
+        onClick={() => (basildi ? setOnayAcik(true) : diyaloguAc())}
+        className={cn(
+          'w-full gap-2',
+          buyuk ? 'min-h-14 rounded-2xl text-base' : 'min-h-10 rounded-xl text-sm',
+          basildi && 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-50',
+        )}
+      >
+        {basildi ? <Check className={buyuk ? 'h-5 w-5' : 'h-4 w-4'} /> : <Printer className={buyuk ? 'h-5 w-5' : 'h-4 w-4'} />}
+        {basildi ? 'Basıldı' : 'Etiket Yazdır'}
+      </Button>
+
+      {/* Basım diyaloğu — adet + kalıcı-barkod uyarısı */}
+      <Dialog open={acik} onOpenChange={(o) => { if (!yukleniyor) setAcik(o) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Etiket Yazdır</DialogTitle>
+          </DialogHeader>
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Kalıcı barkod üretilir</AlertTitle>
+            <AlertDescription>
+              Her etiket için IFS&apos;te benzersiz barkod numarası üretilir. Bu numaralar kalıcıdır, silinemez.
+            </AlertDescription>
+          </Alert>
+          <div className="flex items-center gap-3">
+            <label htmlFor="etiket-adet" className="text-sm font-medium">Adet</label>
+            <Input
+              id="etiket-adet"
+              type="number"
+              min={1}
+              max={50}
+              value={adet}
+              onChange={(e) => setAdet(e.target.value)}
+              disabled={yukleniyor}
+              className="w-24"
+            />
+            <span className="text-xs text-muted-foreground">1–50</span>
+          </div>
+          {hata && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="whitespace-pre-wrap break-words">{hata}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAcik(false)} disabled={yukleniyor}>
+              Vazgeç
+            </Button>
+            <Button type="button" onClick={bas} disabled={yukleniyor} className="gap-2">
+              {yukleniyor && <Loader2 className="h-4 w-4 animate-spin" />}
+              {yukleniyor ? `${adetNum} etiket üretiliyor…` : `${adetNum} etiket bas`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tekrar-basma onayı — kazara ikinci tıklama yeni barkod doğurmasın */}
+      <AlertDialog open={onayAcik} onOpenChange={setOnayAcik}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tekrar bas?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Yeni (kalıcı) barkod numarası üretilecek. Devam edilsin mi?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+            <AlertDialogAction onClick={diyaloguAc}>Devam</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

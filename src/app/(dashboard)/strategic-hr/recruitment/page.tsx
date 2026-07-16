@@ -82,6 +82,11 @@ import {
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
+import RecruitmentDashboard from "./_components/RecruitmentDashboard"
+import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
+import CostPerHirePanel from "./_components/CostPerHirePanel"
+import TanimlarPanel from "./_components/TanimlarPanel"
+import AssessmentPanel from "./_components/AssessmentPanel"
 
 interface JobOpening {
   id: string
@@ -176,6 +181,16 @@ interface PersonnelRequest {
   rejectedByName: string | null
   rejectedAt: string | null
   rejectionReason: string | null
+  approvals?: {
+    id: string
+    step: number
+    kademe: string
+    role: string
+    decision: "APPROVED" | "REJECTED" | "RETURNED" | "FORWARDED" | null
+    comment: string | null
+    decidedAt: string | null
+    approver: { id: string; name: string | null; email: string | null } | null
+  }[]
   jobOpening: {
     id: string
     title: string
@@ -319,10 +334,27 @@ const jobAppStatusLabels: Record<string, string> = {
   PENDING: "Beklemede",
   REVIEWING: "Inceleniyor",
   SHORTLISTED: "On Eleme",
+  SINAV: "Sinav",
+  TELEFON_MULAKATI: "Telefon Mulakati",
+  IK_MULAKATI: "IK Mulakati",
+  TEKNIK_MULAKAT: "Teknik Mulakat",
   INTERVIEW: "Mulakat",
+  TEKLIF: "Teklif",
+  TEKLIF_KABUL: "Teklif Kabul",
+  ISE_BASLADI: "Ise Basladi",
   ACCEPTED: "Kabul Edildi",
   REJECTED: "Reddedildi",
   WITHDRAWN: "Geri Cekildi"
+}
+
+// İşe alım hunisi / dropdown sırası (mantıklı aşama sırası). Form-öncesi + terminal hariç.
+const ASAMA_SIRA = ["PENDING", "REVIEWING", "SHORTLISTED", "SINAV", "TELEFON_MULAKATI", "IK_MULAKATI", "TEKNIK_MULAKAT", "INTERVIEW", "TEKLIF", "TEKLIF_KABUL", "ISE_BASLADI"] as const
+
+// Ret (kök-neden) kategori etiketleri
+const RET_KATEGORI_ETIKET: Record<string, string> = {
+  TEKLIF_REDDI: "Teklif Reddi (aday kaynaklı)",
+  ISE_ALMAMA: "İşe Almama (şirket kaynaklı)",
+  SUREC_KAYBI: "Süreç Kaybı",
 }
 
 const jobAppStatusColors: Record<string, string> = {
@@ -379,6 +411,16 @@ export default function RecruitmentPage() {
   const [selectedJobApp, setSelectedJobApp] = useState<PublicJobApplication | null>(null)
   const [isJobAppDetailOpen, setIsJobAppDetailOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("requests")
+  // Ret nedeni (kök-neden) modalı
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null)
+  const [rejectReasonId, setRejectReasonId] = useState("")
+  const [rejectNotes, setRejectNotes] = useState("")
+  const [rejectReasons, setRejectReasons] = useState<{ id: string; category: string; name: string }[]>([])
+  // İK maaş/bütçe düzenleme (talep detayı — yalnız recruitment.admin)
+  const [salaryForm, setSalaryForm] = useState<{ salaryMin: string; salaryMax: string; hasBudget: boolean }>({ salaryMin: "", salaryMax: "", hasBudget: false })
+  // "Onaya Gönder" gerekçe uyarısı (Elif 2. tur)
+  const [submitConfirmId, setSubmitConfirmId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [rejectionReason, setRejectionReason] = useState("")
@@ -517,6 +559,15 @@ export default function RecruitmentPage() {
   }
 
   const handleJobAppStatusChange = async (id: string, newStatus: string) => {
+    // REJECTED → ret nedeni ZORUNLU: doğrudan PATCH etme, önce ret modalını aç.
+    if (newStatus === "REJECTED") {
+      if (rejectReasons.length === 0) await fetchRejectReasons()
+      setRejectTargetId(id)
+      setRejectReasonId("")
+      setRejectNotes("")
+      setRejectDialogOpen(true)
+      return
+    }
     try {
       const res = await fetch(`/api/strategic-hr/recruitment/job-applications/${id}`, {
         method: "PATCH",
@@ -533,6 +584,34 @@ export default function RecruitmentPage() {
     } catch (error) {
       console.error("Durum guncellenirken hata:", error)
       toast.error("Bir hata olustu")
+    }
+  }
+
+  // Ret nedeni sözlüğü + ret modalı onayı
+  const fetchRejectReasons = async () => {
+    try {
+      const res = await fetch("/api/strategic-hr/recruitment/rejection-reasons?activeOnly=1")
+      if (res.ok) setRejectReasons(await res.json())
+    } catch (e) { console.error("Ret nedenleri yuklenemedi:", e) }
+  }
+  const confirmReject = async () => {
+    if (!rejectTargetId || !rejectReasonId) return
+    try {
+      const res = await fetch(`/api/strategic-hr/recruitment/job-applications/${rejectTargetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "REJECTED", rejectionReasonId: rejectReasonId, ...(rejectNotes ? { notes: rejectNotes } : {}) })
+      })
+      if (res.ok) {
+        setRejectDialogOpen(false)
+        fetchJobApplications()
+        toast.success("Basvuru ret nedeniyle reddedildi")
+      } else {
+        const error = await res.json()
+        toast.error(error.error || "Reddedilemedi")
+      }
+    } catch (e) {
+      console.error("Ret hatasi:", e); toast.error("Bir hata olustu")
     }
   }
 
@@ -769,6 +848,24 @@ export default function RecruitmentPage() {
       console.error("Talep olusturulurken hata:", error)
       toast.error("Bir hata olustu")
     }
+  }
+
+  // İK maaş/bütçe kaydet (recruitment.admin). update action → API yalnız admin'de yazar.
+  const handleSalarySave = async (requestId: string) => {
+    try {
+      const res = await fetch(`/api/strategic-hr/recruitment/personnel-requests/${requestId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          salaryMin: salaryForm.salaryMin ? parseInt(salaryForm.salaryMin) : null,
+          salaryMax: salaryForm.salaryMax ? parseInt(salaryForm.salaryMax) : null,
+          hasBudget: salaryForm.hasBudget,
+        }),
+      })
+      if (res.ok) { fetchRequests(); toast.success("Maas/butce bilgileri kaydedildi") }
+      else { const e = await res.json(); toast.error(e.error || "Kaydedilemedi") }
+    } catch { toast.error("Bir hata olustu") }
   }
 
   const handleRequestAction = async (requestId: string, action: string, data?: any) => {
@@ -1267,25 +1364,8 @@ export default function RecruitmentPage() {
                 </Select>
               </div>
 
-              <div>
-                <Label>Min Maas (TL)</Label>
-                <Input
-                  type="number"
-                  value={requestForm.salaryMin}
-                  onChange={(e) => setRequestForm({ ...requestForm, salaryMin: e.target.value })}
-                  placeholder="50000"
-                />
-              </div>
-
-              <div>
-                <Label>Max Maas (TL)</Label>
-                <Input
-                  type="number"
-                  value={requestForm.salaryMax}
-                  onChange={(e) => setRequestForm({ ...requestForm, salaryMax: e.target.value })}
-                  placeholder="80000"
-                />
-              </div>
+              {/* Maaş/bütçe TALEP FORMUNDAN çıkarıldı (Elif geri bildirimi) — birim müdürü
+                  girmez; İK talep detayında girer. Alanlar şemada + İK görünümünde durur. */}
 
               <div className="col-span-2">
                 <Label>Gerekce / Neden Ihtiyac Var? *</Label>
@@ -1318,18 +1398,6 @@ export default function RecruitmentPage() {
                 />
               </div>
 
-              <div className="col-span-2 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="hasBudget"
-                  checked={requestForm.hasBudget}
-                  onChange={(e) => setRequestForm({ ...requestForm, hasBudget: e.target.checked })}
-                  className="rounded border-gray-300"
-                />
-                <Label htmlFor="hasBudget" className="cursor-pointer">
-                  Butce onayi mevcut
-                </Label>
-              </div>
             </div>
 
             <div className="flex justify-end gap-2">
@@ -1419,6 +1487,28 @@ export default function RecruitmentPage() {
                   )}
                 </div>
 
+                {/* İK maaş/bütçe — YALNIZ recruitment.admin görür + düzenler (birim müdürü görmez) */}
+                {hasFullAccess && (
+                  <div className="border rounded-md p-3 bg-slate-50">
+                    <h4 className="font-medium mb-2 text-sm">İK: Maaş / Bütçe (yalnız İK)</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                      <div>
+                        <Label className="text-xs">Min Maaş (TL)</Label>
+                        <Input type="number" value={salaryForm.salaryMin} onChange={(e) => setSalaryForm({ ...salaryForm, salaryMin: e.target.value })} placeholder="—" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Max Maaş (TL)</Label>
+                        <Input type="number" value={salaryForm.salaryMax} onChange={(e) => setSalaryForm({ ...salaryForm, salaryMax: e.target.value })} placeholder="—" />
+                      </div>
+                      <div className="flex items-center gap-2 h-9">
+                        <input type="checkbox" id="ikHasBudget" checked={salaryForm.hasBudget} onChange={(e) => setSalaryForm({ ...salaryForm, hasBudget: e.target.checked })} className="rounded border-gray-300" />
+                        <Label htmlFor="ikHasBudget" className="cursor-pointer text-xs">Bütçe onayı mevcut</Label>
+                      </div>
+                    </div>
+                    <Button size="sm" className="mt-2 bg-[#1B4F72]" onClick={() => handleSalarySave(selectedRequest.id)}>Maaş/Bütçe Kaydet</Button>
+                  </div>
+                )}
+
                 <div>
                   <h4 className="font-medium mb-1">Gerekce</h4>
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">
@@ -1480,8 +1570,47 @@ export default function RecruitmentPage() {
                   </div>
                 )}
 
-                {/* Red gerekce alani */}
-                {selectedRequest.status === "PENDING" && hasFullAccess && (
+                {/* Onay zinciri (3 kademe: Müdür → GMY → GM) */}
+                {selectedRequest.approvals && selectedRequest.approvals.length > 0 && (
+                  <div className="border rounded-lg p-3">
+                    <p className="text-sm font-medium mb-2">Onay Zinciri</p>
+                    <div className="space-y-2">
+                      {selectedRequest.approvals.map((a) => {
+                        const isCurrent =
+                          a.decision === null &&
+                          selectedRequest.approvals?.find((x) => x.decision === null)?.id === a.id
+                        return (
+                          <div key={a.id} className="flex items-center justify-between text-sm">
+                            <div>
+                              <span className="font-medium">{a.step}. {a.role}</span>
+                              {a.approver?.name && <span className="text-slate-500"> — {a.approver.name}</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {a.decision === "APPROVED" ? (
+                                <Badge className="bg-green-100 text-green-700">Onayladı</Badge>
+                              ) : a.decision === "REJECTED" ? (
+                                <Badge className="bg-red-100 text-red-700">Reddetti</Badge>
+                              ) : isCurrent ? (
+                                <Badge className="bg-amber-100 text-amber-700">Sırada</Badge>
+                              ) : (
+                                <Badge variant="secondary">Bekliyor</Badge>
+                              )}
+                              {a.decidedAt && (
+                                <span className="text-xs text-slate-400">
+                                  {format(new Date(a.decidedAt), "d MMM HH:mm", { locale: tr })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Red gerekce alani — yalnız sıradaki adımın onaycısına */}
+                {selectedRequest.status === "PENDING" &&
+                  selectedRequest.approvals?.find((a) => a.decision === null)?.approver?.email === session?.user?.email && (
                   <div>
                     <Label>Red Gerekcesi (red icin zorunlu)</Label>
                     <Textarea
@@ -1498,7 +1627,7 @@ export default function RecruitmentPage() {
                 {/* Talep sahibi islemleri */}
                 {selectedRequest.status === "DRAFT" && selectedRequest.requesterEmail === session?.user?.email && (
                   <>
-                    <Button variant="outline" onClick={() => handleRequestAction(selectedRequest.id, "submit")}>
+                    <Button variant="outline" onClick={() => setSubmitConfirmId(selectedRequest.id)}>
                       Onaya Gonder
                     </Button>
                     <Button variant="destructive" onClick={() => handleDeleteRequest(selectedRequest.id)}>
@@ -1513,8 +1642,9 @@ export default function RecruitmentPage() {
                   </Button>
                 )}
 
-                {/* IK islemleri */}
-                {selectedRequest.status === "PENDING" && hasFullAccess && (
+                {/* Onay/red: YALNIZ sıradaki adımın onaycısı (admin bile başkası adına onaylayamaz) */}
+                {selectedRequest.status === "PENDING" &&
+                  selectedRequest.approvals?.find((a) => a.decision === null)?.approver?.email === session?.user?.email && (
                   <>
                     <Button
                       variant="destructive"
@@ -2059,6 +2189,9 @@ export default function RecruitmentPage() {
           </TabsTrigger>
           <TabsTrigger value="openings">Acik Pozisyonlar ({filteredOpenings.length})</TabsTrigger>
           <TabsTrigger value="candidates">Aday Havuzu ({filteredCandidates.length})</TabsTrigger>
+          <TabsTrigger value="analiz">Analiz</TabsTrigger>
+          <TabsTrigger value="sinavlar">Sınavlar</TabsTrigger>
+          <TabsTrigger value="tanimlar">Tanımlar</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests">
@@ -2124,6 +2257,7 @@ export default function RecruitmentPage() {
                               <DropdownMenuLabel>Islemler</DropdownMenuLabel>
                               <DropdownMenuItem onClick={() => {
                                 setSelectedRequest(req)
+                                setSalaryForm({ salaryMin: req.salaryMin != null ? String(req.salaryMin) : "", salaryMax: req.salaryMax != null ? String(req.salaryMax) : "", hasBudget: req.hasBudget })
                                 setIsRequestDetailOpen(true)
                               }}>
                                 <Eye className="h-4 w-4 mr-2" />
@@ -2132,7 +2266,7 @@ export default function RecruitmentPage() {
                               {req.status === "DRAFT" && req.requesterEmail === session?.user?.email && (
                                 <>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => handleRequestAction(req.id, "submit")}>
+                                  <DropdownMenuItem onClick={() => setSubmitConfirmId(req.id)}>
                                     <Play className="h-4 w-4 mr-2" />
                                     Onaya Gonder
                                   </DropdownMenuItem>
@@ -2518,6 +2652,31 @@ export default function RecruitmentPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="analiz">
+          <div className="space-y-6">
+            {/* Tek sayfa KPI dashboard (Elif düzeni): 8 kart + huni/pareto + pozisyon + kaynak */}
+            <RecruitmentDashboard />
+
+            {/* Veri yönetimi (İK): ret nedeni tanımları + maliyet kalemi/girişi.
+                Analitik dashboard'da; bu paneller yalnızca Tanımlar/giriş için korunur. */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-500 mb-2">Veri Yönetimi (İK)</h3>
+              <div className="space-y-4">
+                <RejectionReasonsPanel />
+                <CostPerHirePanel />
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="sinavlar">
+          <AssessmentPanel />
+        </TabsContent>
+
+        <TabsContent value="tanimlar">
+          <TanimlarPanel />
+        </TabsContent>
       </Tabs>
 
       {/* Is Basvurusu Detay Modal */}
@@ -2659,13 +2818,11 @@ export default function RecruitmentPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="PENDING">Beklemede</SelectItem>
-                      <SelectItem value="REVIEWING">Inceleniyor</SelectItem>
-                      <SelectItem value="SHORTLISTED">On Eleme</SelectItem>
-                      <SelectItem value="INTERVIEW">Mulakat</SelectItem>
+                      {ASAMA_SIRA.map((s) => (
+                        <SelectItem key={s} value={s}>{jobAppStatusLabels[s]}</SelectItem>
+                      ))}
                       <SelectItem value="ACCEPTED">Kabul Edildi</SelectItem>
                       <SelectItem value="REJECTED">Reddedildi</SelectItem>
-                      <SelectItem value="WITHDRAWN">Geri Cekildi</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2689,6 +2846,64 @@ export default function RecruitmentPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ret nedeni (kök-neden) modalı — REJECTED'da zorunlu */}
+      {/* Onaya Gönder gerekçe uyarısı (Elif 2. tur) */}
+      <Dialog open={!!submitConfirmId} onOpenChange={(o) => !o && setSubmitConfirmId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Onaya Göndermeden Önce</DialogTitle>
+            <DialogDescription>
+              Gerekçe alanını detaylı doldurduğunuzdan emin olun. Yetersiz görülen talepler
+              reddedilir ve yeniden talep açmanız gerekir.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSubmitConfirmId(null)}>Vazgeç</Button>
+            <Button onClick={() => { const id = submitConfirmId; setSubmitConfirmId(null); if (id) handleRequestAction(id, "submit") }}>Onaya Gönder</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ret Nedeni</DialogTitle>
+            <DialogDescription>Başvuruyu reddetmek için bir kök-neden seçin (zorunlu).</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Ret Nedeni</Label>
+              <Select value={rejectReasonId} onValueChange={setRejectReasonId}>
+                <SelectTrigger><SelectValue placeholder="Neden seçin…" /></SelectTrigger>
+                <SelectContent>
+                  {(["TEKLIF_REDDI", "ISE_ALMAMA", "SUREC_KAYBI"] as const).map((kat) => {
+                    const grup = rejectReasons.filter((r) => r.category === kat)
+                    if (grup.length === 0) return null
+                    return (
+                      <div key={kat}>
+                        <div className="px-2 py-1 text-xs font-semibold text-slate-400">{RET_KATEGORI_ETIKET[kat]}</div>
+                        {grup.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                      </div>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+              {rejectReasons.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">Tanımlı ret nedeni yok — "Analiz → Ret Nedenleri" bölümünden ekleyin.</p>
+              )}
+            </div>
+            <div>
+              <Label>Detay Not (opsiyonel)</Label>
+              <Textarea value={rejectNotes} onChange={(e) => setRejectNotes(e.target.value)} placeholder="Serbest metin açıklama…" rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Vazgeç</Button>
+            <Button variant="destructive" disabled={!rejectReasonId} onClick={confirmReject}>Reddet</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
+import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,35 @@ function isHRDepartment(dept: string | undefined | null): boolean {
 
 function hasPersonnelAccess(role: string, department?: string | null): boolean {
   return ALLOWED_ROLES.includes(role) || isHRDepartment(department)
+}
+
+// Beden profili girdisini normalize eder: boş string'ler null'a, olcuTarihi Date'e çevrilir.
+// Hiçbir alan dolu değilse null döner → çağıran taraf boş profil satırı OLUŞTURMAZ.
+function normalizeBeden(beden: unknown): {
+  ustBeden: string | null
+  altBeden: string | null
+  ayakkabiNo: string | null
+  eldivenNo: string | null
+  olcuTarihi: Date | null
+  not: string | null
+} | null {
+  if (!beden || typeof beden !== 'object') return null
+  const b = beden as Record<string, unknown>
+  const str = (v: unknown) => {
+    if (v === null || v === undefined) return null
+    const s = String(v).trim()
+    return s === '' ? null : s
+  }
+  const ustBeden = str(b.ustBeden)
+  const altBeden = str(b.altBeden)
+  const ayakkabiNo = str(b.ayakkabiNo)
+  const eldivenNo = str(b.eldivenNo)
+  const not = str(b.not)
+  const olcuRaw = str(b.olcuTarihi)
+  const olcuTarihi = olcuRaw ? new Date(olcuRaw) : null
+  // Hiçbiri yoksa profil yaratma.
+  if (!ustBeden && !altBeden && !ayakkabiNo && !eldivenNo && !not && !olcuTarihi) return null
+  return { ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, not }
 }
 
 export async function GET(request: NextRequest) {
@@ -104,7 +134,9 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { sensitive, ...personnelData } = body
+    // PR-1: bankAccounts ayrı tabloya (PersonnelBankAccount) yazılır.
+    // beden: EnvanterPersonelBedenProfili'ne ayrı yazılır (personnelData'ya sızmamalı).
+    const { sensitive, bankAccounts, beden, ...personnelData } = body
 
     // Parse date fields
     if (personnelData.iseGirisTarihi) {
@@ -142,10 +174,23 @@ export async function POST(request: NextRequest) {
       if (personnelData[key] === '') personnelData[key] = null
     }
 
+    // Yaka Aşama 1: yeni personel aktif → Yaka Rengi + Yaka Detayı zorunlu + tutarlı.
+    if (!personnelData.yakaRengi || !personnelData.yakaDetayi) {
+      return NextResponse.json({ error: 'Yaka Rengi ve Yaka Detayı zorunludur' }, { status: 400 })
+    }
+    const izinliDetay = YAKA_DETAY_MAP[personnelData.yakaRengi as string] ?? []
+    if (!izinliDetay.includes(personnelData.yakaDetayi as string)) {
+      return NextResponse.json({ error: 'Yaka Detayı, seçilen Yaka Rengi ile uyumsuz' }, { status: 400 })
+    }
+
     personnelData.createdBy = user.id
 
-    // PR-B: Personnel create + ilk AÇIK EmploymentPeriod = TEK transaction (dual-write).
-    // Eski Personnel.iseGirisTarihi/exitDate alanları AYNEN yazılır (paralel korunur).
+    // Beden profili: yalnız en az bir alan doluysa oluşturulur (boş kayıt yaratma).
+    const bedenData = normalizeBeden(beden)
+
+    // PR-B: Personnel create + ilk AÇIK EmploymentPeriod = TEK transaction.
+    // PR-4b: Personnel.exit* DROP edildi; çıkış verisi tek kaynak EmploymentPeriod'da.
+    // Personnel.iseGirisTarihi yazılmaya devam (giriş tarihi paralel korunur).
     const newPersonnel = await prisma.$transaction(async (tx) => {
       const created = await tx.personnel.create({ data: personnelData })
       await tx.employmentPeriod.create({
@@ -157,6 +202,12 @@ export async function POST(request: NextRequest) {
           entryRecordedAt: new Date(),
         },
       })
+      // Beden profili (varsa) — aynı transaction içinde.
+      if (bedenData) {
+        await tx.envanterPersonelBedenProfili.create({
+          data: { personnelId: created.id, ...bedenData, updatedById: user.id },
+        })
+      }
       return created
     })
 
@@ -183,6 +234,34 @@ export async function POST(request: NextRequest) {
           ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
         },
       })
+    }
+
+    // PR-1: Banka hesapları (varsa) — PersonnelBankAccount'a yaz. Tek primary normalize edilir.
+    if (Array.isArray(bankAccounts) && bankAccounts.length > 0) {
+      const emptyToNull = (v: unknown) => {
+        if (v === null || v === undefined) return null
+        const s = String(v).trim()
+        return s === '' ? null : s
+      }
+      const primaryIdx = bankAccounts.findIndex((a: any) => a.isPrimary)
+      // En az bir hesap varsa ve hiçbiri primary değilse ilkini primary yap.
+      const effectivePrimary = primaryIdx >= 0 ? primaryIdx : 0
+      for (let i = 0; i < bankAccounts.length; i++) {
+        const a = bankAccounts[i]
+        await prisma.personnelBankAccount.create({
+          data: {
+            personnelId: newPersonnel.id,
+            bankaAdi: emptyToNull(a.bankaAdi),
+            bankaSube: emptyToNull(a.bankaSube),
+            hesapNo: emptyToNull(a.hesapNo),
+            ibanNo: emptyToNull(a.ibanNo),
+            isPrimary: i === effectivePrimary,
+            aktif: a.aktif === undefined ? true : !!a.aktif,
+            aciklama: emptyToNull(a.aciklama),
+            updatedBy: user.id,
+          },
+        })
+      }
     }
 
     return NextResponse.json(newPersonnel, { status: 201 })

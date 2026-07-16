@@ -3,6 +3,23 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { requireUser } from '@/lib/auth/require-user'
+import { sendEmail } from '@/lib/email'
+import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { buildVardiyaServiceMailHtml, buildVardiyaServiceMailText } from '@/lib/email-templates/vardiya-service'
+import {
+  approvalPendingSubject,
+  buildApprovalPendingMailText,
+  buildApprovalPendingMailHtml,
+  pickApprovalNotifyRecipient,
+} from '@/lib/email-templates/overtime-approval-pending'
+import { notifyDeptResponsiblesOnApproval } from '@/lib/overtime-dept-responsible-notify'
+
+// Vardiya Faz 3: son onayda servis listesi maili alıcıları. İKİ alıcı: Üretim Planlama +
+// İnsan Varlıkları (NOKTALI adres — insan.varliklari@, eski noktasız insanvarliklari@ düzeltildi).
+const VARDIYA_SERVICE_MAIL_TO = [
+  { email: 'uretimplanlama@ilerigroup.com', name: 'Üretim Planlama' },
+  { email: 'insan.varliklari@ilerigroup.com', name: 'İnsan Varlıkları' },
+]
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -26,8 +43,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { decision, comment, forwardToGM } = body
 
     // Karar doğrulama
-    if (!decision || !['APPROVED', 'REJECTED'].includes(decision)) {
-      return apiBadRequest('Geçerli bir karar belirtilmelidir (APPROVED veya REJECTED)')
+    if (!decision || !['APPROVED', 'REJECTED', 'RETURNED'].includes(decision)) {
+      return apiBadRequest('Geçerli bir karar belirtilmelidir (APPROVED, REJECTED veya RETURNED)')
+    }
+
+    // RETURNED (düzeltmeye iade) için açıklama zorunlu
+    if (decision === 'RETURNED' && !comment?.trim()) {
+      return apiBadRequest('İade için açıklama zorunludur')
     }
 
     // Formu kontrol et
@@ -39,6 +61,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         },
         createdBy: {
           select: { id: true, name: true, email: true },
+        },
+        // Vardiya Faz 3: final onayda servis listesi maili için personel + güzergah/durak.
+        personnel: {
+          include: {
+            personnel: { select: { adSoyad: true, serviceRoute: true, serviceStop: true } },
+          },
         },
       },
     })
@@ -62,8 +90,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Yetki kontrolü: Atanmış kişi mi veya admin mi?
+    // Çift-onaycı: adım eskale olmuşsa ASIL onaycı (approverId) VE yedek (escalatedToId)
+    // ikisi de onaylayabilir. Eskale olmamışsa escalatedToId boş → yalnız asıl.
     const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
-    const isAssignedApprover = pendingApproval.approverId === user.id
+    const isAssignedApprover =
+      pendingApproval.approverId === user.id ||
+      pendingApproval.escalatedToId === user.id
 
     if (!isAdmin && !isAssignedApprover) {
       return apiError(
@@ -181,6 +213,28 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             // Bildirim oluşturulamazsa devam et
           }
 
+          // Vardiya Faz 3: YALNIZ VARDIYA final onayında İnsan Varlıkları'na servis
+          // güzergahı listesi maili. Güzergah önceliği: form satırı (OvertimePersonnel.
+          // serviceRoute) → Personnel.serviceRoute → '-'. Durak: Personnel.serviceStop.
+          // MESAI'de mail: null (mevcut davranış birebir korunur).
+          const vardiyaMail =
+            form.formTipi === 'VARDIYA'
+              ? {
+                  kind: 'VARDIYA_SERVICE' as const,
+                  to: VARDIYA_SERVICE_MAIL_TO,
+                  subject: `Vardiya Servis Listesi — ${form.formNo}`,
+                  formNo: form.formNo,
+                  // Mail'de hafta/tarih bilgisi için (hafta modu → "38. Hafta (14-18 Temmuz)").
+                  date: form.date.toISOString().slice(0, 10),
+                  vardiyaHaftaMi: form.vardiyaHaftaMi,
+                  rows: form.personnel.map((op) => ({
+                    ad: op.personnel?.adSoyad ?? '-',
+                    guzergah: op.serviceRoute ?? op.personnel?.serviceRoute ?? '-',
+                    durak: op.personnel?.serviceStop ?? '-',
+                  })),
+                }
+              : null
+
           return {
             result,
             pushTarget: {
@@ -188,6 +242,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               title: 'Mesai Formu Onaylandı',
               body: `${form.formNo} numaralı mesai formunuz tamamen onaylandı.`,
             },
+            mail: vardiyaMail,
           }
         } else {
           // Sonraki adıma geç
@@ -228,7 +283,77 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               title: 'Mesai Formu Onayı Bekliyor',
               body: `${form.formNo} numaralı mesai formu onayınızı bekliyor.`,
             } : null,
+            // ANINDA onay-bekliyor maili: sonraki onaycıya (atanmışsa). Eskalasyon/hatırlatma
+            // AYRI (check-overdue cron) — burada yalnız normal adım geçişi.
+            mail: nextPending.approverId
+              ? {
+                  kind: 'NEXT_APPROVER' as const,
+                  approverId: nextPending.approverId,
+                  role: nextPending.role,
+                  formNo: form.formNo,
+                  isVardiya: form.formTipi === 'VARDIYA',
+                  olusturan: form.createdBy?.name ?? form.createdBy?.email ?? '—',
+                  tarihStr: form.date.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' }),
+                  personelSayisi: form.personnel.length,
+                }
+              : null,
           }
+        }
+      } else if (decision === 'RETURNED') {
+        // RETURNED — düzeltmeye iade: form DRAFT'a döner, sahibi düzeltip yeniden gönderir.
+        // Diğer (decision=null) approval kayıtlarına DOKUNMA — resubmit (submit) hepsini
+        // silip zinciri 1. adımdan yeniden kurar (deleteMany + createMany).
+        await tx.overtimeApproval.update({
+          where: { id: pendingApproval.id },
+          data: {
+            decision: 'RETURNED',
+            approverId: user.id,
+            comment: comment || null,
+            decidedAt: new Date(),
+          },
+        })
+
+        const result = await tx.overtimeForm.update({
+          where: { id },
+          data: { status: 'DRAFT', currentStep: 0 },
+          include: {
+            approvals: { orderBy: { step: 'asc' } },
+            createdBy: { select: { id: true, name: true, email: true } },
+          },
+        })
+
+        const returnMsg = `${form.formNo} numaralı mesai formunuz ${pendingApproval.role || 'onaylayıcı'} tarafından düzeltme için iade edildi. Açıklama: ${comment}`
+
+        try {
+          await tx.notification.create({
+            data: {
+              userId: form.createdById,
+              title: 'Mesai Formu Düzeltme İçin İade Edildi',
+              message: returnMsg,
+              type: 'REMINDER',
+              link: `/forms/overtime/${id}`,
+            },
+          })
+        } catch {
+          // Bildirim oluşturulamazsa devam et
+        }
+
+        return {
+          result,
+          pushTarget: {
+            userId: form.createdById,
+            title: 'Mesai Formu Düzeltme İçin İade Edildi',
+            body: returnMsg,
+          },
+          mail: form.createdBy?.email
+            ? {
+                to: { email: form.createdBy.email, name: form.createdBy.name ?? form.createdBy.email },
+                subject: `Mesai Formu Düzeltmeye İade — ${form.formNo}`,
+                role: pendingApproval.role || 'Onaylayıcı',
+                comment: String(comment),
+                kind: 'RETURNED' as const,
+              }
+            : null,
         }
       } else {
         // REJECTED
@@ -279,6 +404,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             title: 'Mesai Formu Reddedildi',
             body: rejectMsg,
           },
+          mail: form.createdBy?.email
+            ? {
+                to: { email: form.createdBy.email, name: form.createdBy.name ?? form.createdBy.email },
+                subject: `Mesai Formu Reddedildi — ${form.formNo}`,
+                role: pendingApproval.role || 'Onaylayıcı',
+                comment: comment ? String(comment) : '',
+                kind: 'REJECTED' as const,
+              }
+            : null,
         }
       }
     })
@@ -291,6 +425,86 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         url: `/forms/overtime/${id}`,
         tag: `overtime-approve-${id}`,
       }).catch(() => {})
+    }
+
+    // Son onay (APPROVED): formdaki personellerin birim sorumlularına bilgi maili — MESAI
+    // ve VARDIYA. tx DIŞINDA, non-blocking; resolve edilemeyen sorumlu loglanır+atlanır.
+    // VARDIYA'nın mevcut servis güzergahı maili (aşağıdaki updatedForm.mail) AYRICA aynen gider.
+    if (updatedForm.result?.status === 'APPROVED') {
+      try {
+        await notifyDeptResponsiblesOnApproval(form)
+      } catch (e) {
+        console.error('[overtime-approve] birim sorumlusu bilgi maili gönderilemedi (akış etkilenmedi):', e)
+      }
+    }
+
+    // Transaction sonrası mail (iade/red) — SMTP yan-etki tx DIŞINDA; hata akışı BOZMAZ.
+    if (updatedForm.mail) {
+      const m = updatedForm.mail
+      try {
+        // Vardiya Faz 3: final onay → İnsan Varlıkları'na servis güzergahı tablosu.
+        if (m.kind === 'VARDIYA_SERVICE') {
+          const meta = { date: m.date, vardiyaHaftaMi: m.vardiyaHaftaMi }
+          const text = buildVardiyaServiceMailText(m.formNo, m.rows, meta)
+          const html = buildVardiyaServiceMailHtml(m.formNo, m.rows, meta)
+          // İKİ alıcıya (Üretim Planlama + İnsan Varlıkları). m.to zaten dizi.
+          await sendEmail(m.to, m.subject, text, html)
+          return apiSuccess(updatedForm.result)
+        }
+
+        // ANINDA onay-bekliyor maili — sonraki onaycı (approverId ile user fetch).
+        if (m.kind === 'NEXT_APPROVER') {
+          const approver = await prisma.user.findUnique({
+            where: { id: m.approverId },
+            select: { email: true, name: true },
+          })
+          const recipient = pickApprovalNotifyRecipient(approver)
+          if (recipient) {
+            const mailInput = {
+              formNo: m.formNo,
+              olusturan: m.olusturan,
+              tarihStr: m.tarihStr,
+              personelSayisi: m.personelSayisi,
+              link: ileriHubUrl(`/forms/overtime/${id}`),
+              isVardiya: m.isVardiya,
+              role: m.role || undefined,
+            }
+            await sendEmail(
+              [recipient],
+              approvalPendingSubject(m.formNo, m.isVardiya),
+              buildApprovalPendingMailText(mailInput),
+              buildApprovalPendingMailHtml(mailInput)
+            )
+          }
+          return apiSuccess(updatedForm.result)
+        }
+
+        // Mevcut RETURNED/REJECTED maili (davranış aynen korunur).
+        const link = ileriHubUrl(`/forms/overtime/${id}`)
+        const iade = m.kind === 'RETURNED'
+        const baslik = iade ? 'Mesai Formu Düzeltme İçin İade Edildi' : 'Mesai Formu Reddedildi'
+        const aksiyon = iade
+          ? 'Formu düzenleyip yeniden onaya gönderebilirsiniz.'
+          : 'Form reddedilmiştir. Gerekirse yeni bir form oluşturabilirsiniz.'
+        const navy = '#1B4F72'
+        const text = `${baslik}\n\n${m.role} tarafından${m.comment ? `: ${m.comment}` : ''}\n\n${aksiyon}\n${link}`
+        const html = `<!DOCTYPE html><html><body style="margin:0;background:#f4f6f8;font-family:Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;"><tr><td align="center">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;max-width:560px;overflow:hidden;">
+      <tr><td style="background:${iade ? '#c98500' : '#d03b3b'};padding:16px 24px;color:#fff;font-size:17px;font-weight:bold;">${baslik}</td></tr>
+      <tr><td style="padding:20px 24px;color:#333;font-size:14px;line-height:1.6;">
+        <p style="margin:0 0 8px;"><b>${m.role}</b> tarafından${iade ? ' düzeltme için iade edildi' : ' reddedildi'}.</p>
+        ${m.comment ? `<div style="background:#f7f9fb;border-left:4px solid ${iade ? '#c98500' : '#d03b3b'};padding:10px 14px;margin:12px 0;color:#444;"><b>Açıklama:</b> ${m.comment}</div>` : ''}
+        <p style="margin:8px 0 18px;">${aksiyon}</p>
+        <a href="${link}" style="display:inline-block;background:${navy};color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;">Formu Görüntüle</a>
+      </td></tr>
+      <tr><td style="padding:12px 24px;background:#f7f9fb;color:#999;font-size:11px;">Otomatik ILERIHub mesai onay bildirimi.</td></tr>
+    </table>
+  </td></tr></table></body></html>`
+        await sendEmail([m.to], m.subject, text, html)
+      } catch (e) {
+        console.error('[overtime-approve] onay bildirim maili gönderilemedi (akış etkilenmedi):', e)
+      }
     }
 
     return apiSuccess(updatedForm.result)

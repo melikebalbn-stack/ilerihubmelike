@@ -14,6 +14,7 @@ interface ReportData {
     toplamCalisan: number
     beyazYaka: number
     maviYaka: number
+    griYaka: number
     direkt: number
     endirekt: number
   }
@@ -48,6 +49,7 @@ interface ReportData {
 const COLORS = {
   beyaz: "#2563eb",
   mavi: "#7c3aed",
+  gri: "#6b7280",
   erkek: "#14b8a6",
   kadin: "#f43f5e",
   direkt: "#f59e0b",
@@ -106,8 +108,9 @@ export default function PersonnelReportsPage() {
   const yakaPieData = [
     { name: "Beyaz Yaka", value: ozet.beyazYaka },
     { name: "Mavi Yaka", value: ozet.maviYaka },
+    { name: "Gri Yaka", value: ozet.griYaka },
   ]
-  const yakaPieColors = [COLORS.beyaz, COLORS.mavi]
+  const yakaPieColors = [COLORS.beyaz, COLORS.mavi, COLORS.gri]
 
   const cinsiyetPieData = [
     { name: "Erkek", value: cinsiyetDagilimi.erkek },
@@ -139,6 +142,7 @@ export default function PersonnelReportsPage() {
     rows.push(`Toplam Çalışan,${ozet.toplamCalisan}`)
     rows.push(`Beyaz Yaka,${ozet.beyazYaka}`)
     rows.push(`Mavi Yaka,${ozet.maviYaka}`)
+    rows.push(`Gri Yaka,${ozet.griYaka}`)
     rows.push(`Direkt,${ozet.direkt}`)
     rows.push(`Endirekt,${ozet.endirekt}`)
     rows.push(`Erkek,${cinsiyetDagilimi.erkek}`)

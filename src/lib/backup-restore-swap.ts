@@ -5,12 +5,61 @@ import path from 'path'
 
 const execAsync = promisify(exec)
 
-const ILERIHUB_LIVE = '/home/rokunet/projects/ilerihub'
+// PR-RESTORE-PARAM: restore hedefi artık prod'a ÇİVİLİ değil — çalışan ortamdan
+// türetilir. Beklenen kök altında olmalı (path traversal / yanlış env koruması).
+const ALLOWED_ROOT = '/home/rokunet/projects'
 const PRE_RESTORE_BASE = '/home/rokunet/pre-restore-backups'
+
+/**
+ * Restore hedef dizinini güvenli biçimde türet:
+ *   1) ENV ILERIHUB_RESTORE_TARGET (açık override) — varsa
+ *   2) yoksa process.cwd() (çalışan slotun kendi dizini)
+ * GÜVENLİK: sonuç /home/rokunet/projects/<slot> altında olmalı; değilse REDDET.
+ * Böylece staging'den çalıştırınca staging'i, blue'dan çalıştırınca blue'yu
+ * hedefler; asla başka bir yol (ör. /, /etc) restore edilemez.
+ */
+export function resolveRestoreTarget(): string {
+  const raw = process.env.ILERIHUB_RESTORE_TARGET?.trim() || process.cwd()
+  const target = path.resolve(raw)
+  const rel = path.relative(ALLOWED_ROOT, target)
+  const underRoot =
+    target !== ALLOWED_ROOT && rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+  // Ayrıca kök'ün doğrudan bir alt dizini olmalı (nested değil): tek segment.
+  const singleSegment = underRoot && !rel.includes(path.sep)
+  if (!singleSegment) {
+    throw new Error(
+      `Restore hedef dizini güvenlik kontrolünden geçemedi: "${target}" — ` +
+        `beklenen ${ALLOWED_ROOT}/<slot> (tek segment) olmalı`
+    )
+  }
+  return target
+}
+
+/** Tatbikat/log kanıtı için hedef dizin + hedef DB host/adı. */
+export function describeRestoreTarget(): {
+  targetDir: string
+  dbHost: string
+  dbName: string
+} {
+  const db = parseDbConn()
+  const url = process.env.DATABASE_URL ?? ''
+  const dbName = url.match(/@[^/]+\/([^?]+)/)?.[1] ?? 'bilinmiyor'
+  let targetDir: string
+  try {
+    targetDir = resolveRestoreTarget()
+  } catch (err) {
+    targetDir = `GEÇERSİZ (${(err as Error).message})`
+  }
+  return { targetDir, dbHost: db.host, dbName }
+}
 
 // Live'da kalması gereken dosyalar (staging tarball'ında olabilir veya
 // olmayabilir; mevcut hali korumak için pre-restore'dan geri taşınır).
-const PRESERVE = ['.env', '.env.local', 'node_modules', '.next', 'logs']
+// RESTORE-ORCHESTRATOR (Faz 1): '.next' PRESERVE'den ÇIKARILDI — restore edilen
+// kod artık orchestrator'da KENDİ .next'ini `npm run build` ile üretiyor. Eski
+// .next'i korumak, yeni kod + eski build uyumsuzluğu yaratıyordu. node_modules
+// hâlâ korunur (build için gerekli); .next taze üretilir.
+const PRESERVE = ['.env', '.env.local', 'node_modules', 'logs']
 
 interface DbConn {
   user: string
@@ -48,12 +97,30 @@ export interface SwapResult {
  * değiştirmediği için pm2 restart sonrasına kadar process eski cwd'de
  * çalışmaya devam eder. Endpoint akışı: swap → pm2 restart → health check.
  */
+/**
+ * RESTORE-ORCHESTRATOR Faz 1.3: pre-restore dizininin DETERMINISTIK yolu —
+ * yalnız backupId'den türetilir (swap'tan bağımsız). Checkpoint bu yolu swap'tan
+ * ÖNCE yazabilsin ki mid-swap kill'de "adressiz pencere" kalmasın; recovery de
+ * checkpoint'te yoksa buradan türetsin. swapFilesAtomic ile TEK doğruluk kaynağı.
+ */
+export function resolvePreRestoreDir(backupId: string): string {
+  const safeId = backupId.replace(/[^a-z0-9_-]/gi, '_')
+  return path.join(PRE_RESTORE_BASE, safeId)
+}
+
 export async function swapFilesAtomic(
   stagingDir: string,
   options: { backupId: string }
 ): Promise<SwapResult> {
-  const safeId = options.backupId.replace(/[^a-z0-9_-]/gi, '_')
-  const preRestoreDir = path.join(PRE_RESTORE_BASE, safeId)
+  const preRestoreDir = resolvePreRestoreDir(options.backupId)
+
+  // Hedef dizini türet — güvenlik kontrolünden geçemezse restore REDDET.
+  let ILERIHUB_LIVE: string
+  try {
+    ILERIHUB_LIVE = resolveRestoreTarget()
+  } catch (err) {
+    return { success: false, preRestoreDir, errors: [(err as Error).message] }
+  }
 
   await fs.mkdir(PRE_RESTORE_BASE, { recursive: true })
 
@@ -75,7 +142,11 @@ export async function swapFilesAtomic(
       { maxBuffer: 100 * 1024 * 1024 }
     )
 
-    // 4. PRESERVE'lerini pre-restore'dan live'a geri taşı
+    // 4. PRESERVE'leri pre-restore'dan live'a KOPYALA (mv DEĞİL).
+    // RESTORE-PARAM-2 (rollback veri kaybı fix'i): orijinaller pre-restore'da
+    // KALIR → pre-restore her an EKSİKSİZ geri dönüş noktası; rollback'in özel
+    // PRESERVE mantığına gerek kalmaz, yıkıcı rollback riski ortadan kalkar.
+    // Disk maliyeti (node_modules kopyası) kabul — güvenlik > disk.
     for (const item of PRESERVE) {
       const src = path.join(preRestoreDir, item)
       const dest = path.join(ILERIHUB_LIVE, item)
@@ -83,7 +154,10 @@ export async function swapFilesAtomic(
         await fs.access(src)
         // Live tarafında varsa önce kaldır (rsync'ten gelen versiyonu)
         await execAsync(`rm -rf ${JSON.stringify(dest)}`).catch(() => {})
-        await execAsync(`mv ${JSON.stringify(src)} ${JSON.stringify(dest)}`)
+        // cp -a: attribute + symlink korunur; kaynak pre-restore'da DURUR.
+        await execAsync(`cp -a ${JSON.stringify(src)} ${JSON.stringify(dest)}`, {
+          maxBuffer: 100 * 1024 * 1024,
+        })
       } catch {
         // PRESERVE itemı pre-restore'da yoksa sorun değil (ilk kurulum vb.)
       }
@@ -107,11 +181,22 @@ export async function swapFilesAtomic(
  */
 export async function rollbackFiles(preRestoreDir: string): Promise<void> {
   if (!preRestoreDir.startsWith(PRE_RESTORE_BASE)) return
+  // Swap ile AYNI hedefi türet (aynı env/cwd) — tutarlı geri yükleme.
+  const ILERIHUB_LIVE = resolveRestoreTarget()
+
+  // RESTORE-PARAM-2: live'ı SİLMEDEN ÖNCE pre-restore'un EKSİKSİZ olduğunu
+  // doğrula (dir + kritik snapshot kanıtı package.json). Eksikse rollback YAPMA
+  // — eldeki live'ı KORU. "Yarım rollback > yıkıcı rollback": asla veri kaybı.
   try {
     await fs.access(preRestoreDir)
+    await fs.access(path.join(preRestoreDir, 'package.json'))
   } catch {
-    return // pre-restore yok, rollback imkansız
+    throw new Error(
+      `Rollback İPTAL: pre-restore snapshot eksik/bulunamadı (${preRestoreDir}) — ` +
+        `live korunuyor (yıkıcı rollback engellendi)`
+    )
   }
+
   await execAsync(`rm -rf ${JSON.stringify(ILERIHUB_LIVE)}`)
   await execAsync(`mv ${JSON.stringify(preRestoreDir)} ${JSON.stringify(ILERIHUB_LIVE)}`)
 }

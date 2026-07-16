@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
 import { NativeSelect as Select } from "@/components/ui/select"
 import {
   AlertDialog,
@@ -33,9 +34,13 @@ import {
   KAN_GRUBU_LABELS,
   CINSIYET_LABELS,
   YAKA_LABELS,
+  YAKA_DETAYI_LABELS,
+  YAKA_DETAY_MAP,
   DIREKT_ENDIREKT_LABELS,
   ASANSOR_MEKANIK_LABELS,
 } from "@/lib/personnel-constants"
+import { UST_BEDENLER, AYAKKABI_NOLARI, AYAK_UZUNLUK_CM, oneriAltBeden, altBedenSecenekleri } from "@/lib/envanter/beden-referans"
+import type { Gender } from "@/generated/prisma"
 
 // PR-C: İstihdam dönemi (salt görüntüleme)
 type EmploymentPeriodItem = {
@@ -59,6 +64,7 @@ type PersonnelData = {
   cinsiyet: string | null
   sinif: string | null
   yakaRengi: string | null
+  yakaDetayi: string | null
   kanGrubu: string | null
   gorev: string | null
   bolum: string | null
@@ -95,17 +101,8 @@ type PersonnelData = {
   aktif: boolean
   denemeDegerlendirme: string | null
   altiAyDegerlendirme: string | null
-  // PR-PERSONEL-CIKIS-FORMU
-  exitDate: string | null
-  exitParty: string | null
-  exitCode: string | null
-  exitReason: string | null
-  exitRootCause: string | null
-  exitTurnoverType: string | null
-  exitGeneralNote: string | null
-  exitRecordedAt: string | null
-  exitRecordedBy: { id: string; name: string | null; email: string } | null
-  workingPeriod: { years: number; months: number; totalMonths: number } | null
+  // PR-4a: Personnel.exit* + workingPeriod artık API'den dönmüyor — çıkış verisi
+  // lastClosedPeriod'dan (aşağıda). Alanlar 4b'de DROP edilecek.
   // PR-C
   employmentPeriods: EmploymentPeriodItem[]
   employmentSummary: {
@@ -114,6 +111,29 @@ type PersonnelData = {
     totalMonths: number
     firstEntryDate: string | null
     periodCount: number
+  } | null
+  // PR-EXIT-READ-FROM-PERIODS: Çıkış Bilgileri kartı bu son kapalı dönemden beslenir.
+  lastClosedPeriod: {
+    girisTarihi: string | null
+    cikisTarihi: string | null
+    exitParty: string | null
+    exitCode: string | null
+    exitReason: string | null
+    exitRootCause: string | null
+    exitTurnoverType: string | null
+    exitGeneralNote: string | null
+    exitRecordedAt: string | null
+    exitRecordedBy: { name: string | null; email: string } | null
+    workingPeriod: { years: number; months: number; totalMonths: number } | null
+  } | null
+  // Envanter: personel beden profili (1-1, opsiyonel)
+  bedenProfili: {
+    ustBeden: string | null
+    altBeden: string | null
+    ayakkabiNo: string | null
+    eldivenNo: string | null
+    olcuTarihi: string | null
+    not: string | null
   } | null
 }
 
@@ -138,6 +158,8 @@ export default function PersonnelDetailPage() {
   const [jobTitles, setJobTitles] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
+  // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer yüklenince/seçilince açılır.
+  const [altBedenDiger, setAltBedenDiger] = useState(false)
   // PR-PERSONEL-CIKIS-FORMU
   const [showExitModal, setShowExitModal] = useState(false)
   const [exitModalMode, setExitModalMode] = useState<"create" | "edit">("create")
@@ -180,6 +202,7 @@ export default function PersonnelDetailPage() {
             formData[k] = v ?? ""
           }
         })
+        applyBedenToForm(formData, json)
         setForm(formData)
       } catch (err: any) {
         toast.error(err.message || "Veriler yüklenemedi")
@@ -200,6 +223,22 @@ export default function PersonnelDetailPage() {
     return d.toISOString().split("T")[0]
   }
 
+  // Beden profilini (nested obje) flat form alanlarına aç. bedenProfili nested obje
+  // input'lara bağlanmaz; PUT'ta da geri gönderilmez (handleSave strip eder).
+  const applyBedenToForm = (fd: Record<string, any>, json: any) => {
+    const bp = json?.bedenProfili
+    fd.ustBeden = bp?.ustBeden ?? ""
+    fd.altBeden = bp?.altBeden ?? ""
+    fd.ayakkabiNo = bp?.ayakkabiNo ?? ""
+    fd.eldivenNo = bp?.eldivenNo ?? ""
+    fd.olcuTarihi = bp?.olcuTarihi ? new Date(bp.olcuTarihi).toISOString().slice(0, 10) : ""
+    fd.bedenNot = bp?.not ?? ""
+    delete fd.bedenProfili
+    // Yüklenen alt beden, cinsiyetin liste seçeneklerinde yoksa "Diğer..." moduna geç.
+    const opts = json?.cinsiyet ? altBedenSecenekleri(json.cinsiyet as Gender) : []
+    setAltBedenDiger(!!fd.altBeden && !opts.includes(fd.altBeden))
+  }
+
   const set = (field: string, value: string | boolean) => {
     setForm((prev) => {
       const next: Record<string, unknown> = { ...prev, [field]: value }
@@ -207,6 +246,18 @@ export default function PersonnelDetailPage() {
       if (field === "iseGirisTarihi" && typeof value === "string") {
         next.denemeDegerlendirme = addMonths(value, 2) || null
         next.altiAyDegerlendirme = addMonths(value, 6) || null
+      }
+      // Yaka değişince yakaDetayi'yi sıfırla (tutarsız yaka-detay kombinasyonu kalmasın).
+      if (field === "yakaRengi") {
+        next.yakaDetayi = ""
+      }
+      // Cinsiyet değişince: seçili alt beden (liste değeri) yeni listede yoksa temizle.
+      // "Diğer..." (serbest) modundaki değer korunur.
+      if (field === "cinsiyet" && !altBedenDiger) {
+        const opts = value ? altBedenSecenekleri(value as Gender) : []
+        if (next.altBeden && !opts.includes(next.altBeden as string)) {
+          next.altBeden = ""
+        }
       }
       return next as typeof prev
     })
@@ -217,12 +268,21 @@ export default function PersonnelDetailPage() {
       toast.error("Sicil No ve Ad Soyad zorunludur")
       return
     }
+    // Yaka Aşama 1: aktif personelde Yaka Rengi + Yaka Detayı zorunlu (pasifte opsiyonel).
+    if (data?.aktif && (!form.yakaRengi || !form.yakaDetayi)) {
+      toast.error("Aktif personel için Yaka Rengi ve Yaka Detayı zorunludur")
+      return
+    }
     try {
       setSaving(true)
+      // Beden alanlarını nested `beden` objesine topla; flat alanlar ve salt-okuma
+      // bedenProfili payload'a girmez (API beden'i ayrı upsert eder).
+      const { ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, bedenNot, bedenProfili, ...rest } = form
+      const beden = { ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, not: bedenNot }
       const res = await fetch(`/api/personnel/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...rest, beden }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -276,6 +336,7 @@ export default function PersonnelDetailPage() {
           formData[k] = v ?? ""
         }
       })
+      applyBedenToForm(formData, json)
       setForm(formData)
     } catch {}
   }
@@ -450,11 +511,24 @@ export default function PersonnelDetailPage() {
                 <Input value={form.sinif || ""} onChange={(e) => set("sinif", e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label>Yaka Rengi</Label>
+                <Label>Yaka Rengi{data.aktif ? " *" : ""}</Label>
                 <Select value={form.yakaRengi || ""} onChange={(e) => set("yakaRengi", e.target.value)}>
                   <option value="">Seçiniz</option>
                   {Object.entries(YAKA_LABELS).map(([k, v]) => (
                     <option key={k} value={k}>{v}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Yaka Detayı{data.aktif ? " *" : ""}</Label>
+                <Select
+                  value={form.yakaDetayi || ""}
+                  onChange={(e) => set("yakaDetayi", e.target.value)}
+                  disabled={!form.yakaRengi}
+                >
+                  <option value="">{form.yakaRengi ? "Seçiniz" : "Önce yaka seçin"}</option>
+                  {(YAKA_DETAY_MAP[form.yakaRengi as string] ?? []).map((k) => (
+                    <option key={k} value={k}>{YAKA_DETAYI_LABELS[k] ?? k}</option>
                   ))}
                 </Select>
               </div>
@@ -476,10 +550,16 @@ export default function PersonnelDetailPage() {
               <div><p className="text-sm text-muted-foreground">Sınıf</p><p className="font-medium">{data.sinif || "-"}</p></div>
               <div>
                 <p className="text-sm text-muted-foreground">Yaka Rengi</p>
-                <div>
+                <div className="flex items-center gap-2 flex-wrap">
                   {data.yakaRengi === "MAVI" && <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Mavi Yaka</Badge>}
                   {data.yakaRengi === "BEYAZ" && <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Beyaz Yaka</Badge>}
+                  {data.yakaRengi === "GRI" && <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Gri Yaka</Badge>}
                   {!data.yakaRengi && <p className="font-medium">-</p>}
+                  {data.yakaDetayi && (
+                    <span className="text-xs text-muted-foreground">
+                      {YAKA_DETAYI_LABELS[data.yakaDetayi] ?? data.yakaDetayi}
+                    </span>
+                  )}
                 </div>
               </div>
               <div><p className="text-sm text-muted-foreground">Kan Grubu</p><p className="font-medium">{displayValue(data.kanGrubu, KAN_GRUBU_LABELS)}</p></div>
@@ -839,14 +919,104 @@ export default function PersonnelDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Beden Bilgileri (envanter/zimmet) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Beden Bilgileri</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {editMode ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Üst Beden</Label>
+                <Select value={form.ustBeden || ""} onChange={(e) => set("ustBeden", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  {UST_BEDENLER.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Alt Beden</Label>
+                <Select
+                  value={altBedenDiger ? "__OTHER__" : (form.altBeden || "")}
+                  disabled={!form.cinsiyet}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === "__OTHER__") { setAltBedenDiger(true); set("altBeden", "") }
+                    else { setAltBedenDiger(false); set("altBeden", v) }
+                  }}
+                >
+                  <option value="">{form.cinsiyet ? "Seçiniz" : "Önce cinsiyet seçin"}</option>
+                  {(form.cinsiyet ? altBedenSecenekleri(form.cinsiyet as Gender) : []).map((o) => {
+                    const oneri = form.ustBeden ? oneriAltBeden(form.ustBeden, form.cinsiyet as Gender) : null
+                    return <option key={o} value={o}>{o === oneri ? `${o} (öneri)` : o}</option>
+                  })}
+                  {form.cinsiyet && <option value="__OTHER__">Diğer...</option>}
+                </Select>
+                {altBedenDiger && (
+                  <Input
+                    value={form.altBeden || ""}
+                    onChange={(e) => set("altBeden", e.target.value)}
+                    placeholder="Alt beden (serbest)"
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Ayakkabı No</Label>
+                <Select value={form.ayakkabiNo || ""} onChange={(e) => set("ayakkabiNo", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  {AYAKKABI_NOLARI.map((n) => (
+                    <option key={n} value={n}>{`${n} (${AYAK_UZUNLUK_CM[n]} cm)`}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Eldiven No</Label>
+                <Input value={form.eldivenNo || ""} onChange={(e) => set("eldivenNo", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Ölçü Tarihi</Label>
+                <Input type="date" value={form.olcuTarihi || ""} onChange={(e) => set("olcuTarihi", e.target.value)} />
+              </div>
+              <div className="space-y-2 md:col-span-3">
+                <Label>Açıklama</Label>
+                <Textarea value={form.bedenNot || ""} onChange={(e) => set("bedenNot", e.target.value)} rows={2} />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div><p className="text-sm text-muted-foreground">Üst Beden</p><p className="font-medium">{data.bedenProfili?.ustBeden || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Alt Beden</p><p className="font-medium">{data.bedenProfili?.altBeden || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Ayakkabı No</p><p className="font-medium">{data.bedenProfili?.ayakkabiNo ? `${data.bedenProfili.ayakkabiNo}${AYAK_UZUNLUK_CM[data.bedenProfili.ayakkabiNo] ? ` (${AYAK_UZUNLUK_CM[data.bedenProfili.ayakkabiNo]} cm)` : ""}` : "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Eldiven No</p><p className="font-medium">{data.bedenProfili?.eldivenNo || "-"}</p></div>
+              <div><p className="text-sm text-muted-foreground">Ölçü Tarihi</p><p className="font-medium">{formatDate(data.bedenProfili?.olcuTarihi ?? null)}</p></div>
+              <div className="md:col-span-3"><p className="text-sm text-muted-foreground">Açıklama</p><p className="font-medium whitespace-pre-wrap">{data.bedenProfili?.not || "-"}</p></div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* PR-PERSONEL-CIKIS-FORMU: Pasif personel için çıkış bilgileri kartı */}
-      {!data.aktif && data.exitDate && (
+      {/* PR-EXIT-READ-FROM-PERIODS: kart en son KAPALI dönemden beslenir.
+          Kişi aktifse (çıkış-giriş yapmış) kart yine görünür, "Çıkış-Giriş (aktif)"
+          rozetiyle; pasifse "Ayrıldı". */}
+      {data.lastClosedPeriod && (
         <Card className="border-amber-500/40 bg-amber-50/40 dark:bg-amber-950/10">
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <UserX className="h-5 w-5 text-amber-600" />
                 Çıkış Bilgileri
+                {data.aktif ? (
+                  <Badge variant="outline" className="border-sky-300 text-sky-700 font-normal">
+                    Çıkış-Giriş (aktif)
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="border-slate-300 text-slate-600 font-normal">
+                    Ayrıldı
+                  </Badge>
+                )}
               </span>
               {isAdmin && (
                 <Button
@@ -866,49 +1036,49 @@ export default function PersonnelDetailPage() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Çıkış Tarihi</p>
-              <p className="font-medium">{formatDate(data.exitDate)}</p>
+              <p className="font-medium">{formatDate(data.lastClosedPeriod.cikisTarihi)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Çalışma Süresi</p>
               <p className="font-medium">
-                {data.workingPeriod
-                  ? `${data.workingPeriod.years} yıl ${data.workingPeriod.months} ay`
+                {data.lastClosedPeriod.workingPeriod
+                  ? `${data.lastClosedPeriod.workingPeriod.years} yıl ${data.lastClosedPeriod.workingPeriod.months} ay`
                   : "-"}
               </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Taraf</p>
-              <p className="font-medium">{data.exitParty || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitParty || "-"}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Çıkış Kodu</p>
-              <p className="font-medium">{data.exitCode || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitCode || "-"}</p>
             </div>
             <div className="md:col-span-2">
               <p className="text-sm text-muted-foreground">Çıkış Nedeni</p>
-              <p className="font-medium">{data.exitReason || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitReason || "-"}</p>
             </div>
             <div className="md:col-span-2">
               <p className="text-sm text-muted-foreground">Kök Neden</p>
-              <p className="font-medium">{data.exitRootCause || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitRootCause || "-"}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">İstenen / İstenmeyen</p>
-              <p className="font-medium">{data.exitTurnoverType || "-"}</p>
+              <p className="font-medium">{data.lastClosedPeriod.exitTurnoverType || "-"}</p>
             </div>
-            {data.exitGeneralNote && (
+            {data.lastClosedPeriod.exitGeneralNote && (
               <div className="md:col-span-2">
                 <p className="text-sm text-muted-foreground">Açıklama</p>
-                <p className="font-medium whitespace-pre-wrap">{data.exitGeneralNote}</p>
+                <p className="font-medium whitespace-pre-wrap">{data.lastClosedPeriod.exitGeneralNote}</p>
               </div>
             )}
             <div className="md:col-span-2 pt-2 border-t text-xs text-muted-foreground">
-              Kayıt eden: <strong>{data.exitRecordedBy?.name ?? data.exitRecordedBy?.email ?? "-"}</strong>
-              {data.exitRecordedAt && (
-                <> · {new Date(data.exitRecordedAt).toLocaleString("tr-TR")}</>
+              Kayıt eden: <strong>{data.lastClosedPeriod.exitRecordedBy?.name ?? data.lastClosedPeriod.exitRecordedBy?.email ?? "-"}</strong>
+              {data.lastClosedPeriod.exitRecordedAt && (
+                <> · {new Date(data.lastClosedPeriod.exitRecordedAt).toLocaleString("tr-TR")}</>
               )}
             </div>
-            {isAdmin && (
+            {!data.aktif && isAdmin && (
               <div className="md:col-span-2 pt-2">
                 <Button size="sm" variant="outline" onClick={() => setShowReactivateConfirm(true)}>
                   Aktife geri al
@@ -1031,15 +1201,17 @@ export default function PersonnelDetailPage() {
         hireDate={data.iseGirisTarihi}
         mode={exitModalMode}
         initialData={
-          exitModalMode === "edit" && data.exitDate
+          exitModalMode === "edit" && data.lastClosedPeriod
             ? {
-                exitDate: data.exitDate.split("T")[0],
-                exitParty: data.exitParty ?? "",
-                exitCode: data.exitCode ?? "",
-                exitReason: data.exitReason ?? "",
-                exitRootCause: data.exitRootCause ?? "",
-                exitTurnoverType: data.exitTurnoverType ?? "",
-                exitGeneralNote: data.exitGeneralNote ?? "",
+                exitDate: data.lastClosedPeriod.cikisTarihi
+                  ? data.lastClosedPeriod.cikisTarihi.split("T")[0]
+                  : "",
+                exitParty: data.lastClosedPeriod.exitParty ?? "",
+                exitCode: data.lastClosedPeriod.exitCode ?? "",
+                exitReason: data.lastClosedPeriod.exitReason ?? "",
+                exitRootCause: data.lastClosedPeriod.exitRootCause ?? "",
+                exitTurnoverType: data.lastClosedPeriod.exitTurnoverType ?? "",
+                exitGeneralNote: data.lastClosedPeriod.exitGeneralNote ?? "",
               }
             : undefined
         }

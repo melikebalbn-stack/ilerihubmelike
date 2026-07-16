@@ -1,15 +1,21 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
-import { OvertimeType, OvertimeStatus } from '@/generated/prisma'
+import { OvertimeType, OvertimeStatus, FormTipi } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { buildSingles, buildUretimRows, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { resolveAllowedDepts } from '@/lib/overtime-performance'
+
+// Vardiya Faz 1: gece vardiyası sabit penceresi (Pzt-Cuma 21:00 → ertesi 07:00).
+const VARDIYA_START = '21:00'
+const VARDIYA_END = '07:00'
 
 /**
- * Form numarası oluştur: OT-YYYY-NNN
+ * Form numarası oluştur: MESAI → OT-YYYY-NNN, VARDIYA → VRD-YYYY-NNN
  */
-async function generateFormNo(): Promise<string> {
+async function generateFormNo(formTipi: FormTipi): Promise<string> {
   const year = new Date().getFullYear()
-  const prefix = `OT-${year}-`
+  const prefix = `${formTipi === 'VARDIYA' ? 'VRD' : 'OT'}-${year}-`
 
   const lastForm = await prisma.overtimeForm.findFirst({
     where: { formNo: { startsWith: prefix } },
@@ -44,13 +50,38 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
 
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    const perms = session.user.permissions ?? []
+    const isAdmin = perms.includes('forms.admin')
+    const canViewAll = perms.includes('overtime.view.all') // salt-okuma, TÜM formlar
+    const canViewDept = perms.includes('overtime.view.dept') // salt-okuma, kendi bölüm(ler)i
+
+    // Vardiya Faz 1: formTipi ile mesai/vardiya ayrımı. Verilmezse MESAI (geriye
+    // uyum — mevcut mesai listesi vardiya kayıtlarını GÖRMESİN).
+    const formTipiParam = searchParams.get('formTipi')
+    const formTipi: FormTipi =
+      formTipiParam === 'VARDIYA' ? 'VARDIYA' : 'MESAI'
 
     // Filtre koşulları
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { formTipi }
 
-    // Admin değilse sadece kendi formlarını veya onaylayıcı olduğu formları göster
-    if (!isAdmin) {
+    // Görünürlük önceliği (ilk eşleşen kazanır):
+    //   forms.admin > overtime.view.all > overtime.view.dept > self-scope
+    // view.* salt-okuma: liste/detay görünür, yazma yolları (POST/PUT/approve/
+    // gerçekleşen-giriş) ayrıca korunur — burada değişmez.
+    if (isAdmin || canViewAll) {
+      // Tüm formlar (formTipi'ye göre). Kapsam filtresi yok.
+    } else if (canViewDept) {
+      // Departman scope — performans raporuyla AYNI resolveAllowedDepts semantiği:
+      //   undefined = kapsam sınırsız (ör. report.all da varsa) → filtre yok
+      //   [] = hiçbiri → in:[] hiçbir personel satırıyla eşleşmez → boş liste (doğru)
+      //   [adlar] = o bölümler
+      // "Formun bölümü" = OvertimePersonnel.workDepartment (raporun süzdüğü alanla tutarlı).
+      const allowedDepts = await resolveAllowedDepts(user.id)
+      if (allowedDepts !== undefined) {
+        where.personnel = { some: { workDepartment: { in: allowedDepts } } }
+      }
+    } else {
+      // Self-scope: kendi oluşturduğu / onaycı olduğu / personel olduğu formlar
       where.OR = [
         { createdById: user.id },
         { approvals: { some: { approverId: user.id } } },
@@ -132,6 +163,7 @@ export async function GET(request: NextRequest) {
       formNo: form.formNo,
       overtimeType: form.overtimeType,
       date: form.date,
+      vardiyaHaftaMi: form.vardiyaHaftaMi,
       isFullDay: form.isFullDay,
       startTime: form.startTime,
       endTime: form.endTime,
@@ -196,14 +228,38 @@ export async function POST(request: NextRequest) {
       personnel,
     } = body
 
+    // Vardiya Faz 1: form tipi (default MESAI → mesai davranışı değişmez).
+    const formTipi: FormTipi = body.formTipi === 'VARDIYA' ? 'VARDIYA' : 'MESAI'
+    const isVardiya = formTipi === 'VARDIYA'
+    // Vardiya Hafta Modu: yalnız VARDIYA'da anlamlı. MESAI'de her zaman false.
+    const vardiyaHaftaMi = isVardiya && body.vardiyaHaftaMi === true
+
+    // Vardiya sadeleştirme: UI'da mesai-türü kartları kaldırıldı. Savunmacı default —
+    // VARDIYA'da tür gelmese bile sabit WEEKDAY_EXTRA. MESAI'de overtimeType client'tan
+    // gelir, zorunlu (davranış değişmez).
+    const effOvertimeType = isVardiya && !overtimeType ? 'WEEKDAY_EXTRA' : overtimeType
+
     // Zorunlu alan kontrolleri
-    if (!overtimeType || !date) {
+    if (!effOvertimeType || !date) {
       return apiBadRequest('Mesai türü ve tarih alanları zorunludur')
     }
 
     // Mesai türü doğrulama
-    if (!Object.values(OvertimeType).includes(overtimeType as OvertimeType)) {
+    if (!Object.values(OvertimeType).includes(effOvertimeType as OvertimeType)) {
       return apiBadRequest('Geçersiz mesai türü')
+    }
+
+    // Vardiya tarih kuralı. Hafta modu: date = haftanın PAZARTESİ'si (dow===1). Gün modu:
+    // Pzt-Cuma (dow 1-5). getUTCDay 0=Paz..6=Cmt.
+    if (isVardiya) {
+      const dow = new Date(date).getUTCDay()
+      if (vardiyaHaftaMi) {
+        if (dow !== 1) {
+          return apiBadRequest('Hafta modunda tarih haftanın Pazartesi günü olmalıdır')
+        }
+      } else if (dow === 0 || dow === 6) {
+        return apiBadRequest('Vardiya yalnızca Pazartesi-Cuma günleri için oluşturulabilir')
+      }
     }
 
     // Personel kontrolü
@@ -216,18 +272,29 @@ export async function POST(request: NextRequest) {
       if (!p.personnelId || !p.workDepartment) {
         return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
       }
-      if (!p.mesaiNedeni || !String(p.mesaiNedeni).trim()) {
-        return apiBadRequest('Her personel için Mesai Nedeni zorunludur')
+      // Faz 2: MESAI'de en az 1 geçerli üretim satırı (parça kodu + hedefAdet > 0) zorunlu.
+      // buildUretimRows uretimSatirlari[] veya legacy tekil alanlardan türetir. VARDIYA: opsiyonel.
+      if (!isVardiya && buildUretimRows(p).length === 0) {
+        return apiBadRequest('Her personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir')
       }
     }
 
-    // Saat aralığı kontrolü (tam gün değilse)
-    if (!isFullDay && (!startTime || !endTime)) {
+    // Vardiya: gece penceresi sabit (21:00→07:00); MESAI: mevcut saat-aralığı kuralı.
+    const effIsFullDay = isVardiya ? false : isFullDay
+    const effStartTime = isVardiya ? VARDIYA_START : startTime
+    const effEndTime = isVardiya ? VARDIYA_END : endTime
+
+    // Vardiya Faz 2: 10 kişiyi geçen VARDIYA'da GM onayı ZORUNLU (client bypass'a karşı
+    // sunucuda enforce). MESAI'de dokunulmaz — sendToGM body'den gelir.
+    const effSendToGM = isVardiya && personnel.length > 10 ? true : sendToGM
+
+    // Saat aralığı kontrolü (tam gün değilse) — vardiyada sabit olduğu için atlanır.
+    if (!isVardiya && !isFullDay && (!startTime || !endTime)) {
       return apiBadRequest('Saat aralığı seçildiğinde başlangıç ve bitiş saati zorunludur')
     }
 
-    // Form numarası oluştur
-    const formNo = await generateFormNo()
+    // Form numarası oluştur (tip bazlı prefix)
+    const formNo = await generateFormNo(formTipi)
 
     // Formu ve personelleri tek transaction ile oluştur
     // Seçim sırasını DETERMİNİSTİK koru: createMany/nested-create aynı ms'te
@@ -238,31 +305,37 @@ export async function POST(request: NextRequest) {
     const form = await prisma.overtimeForm.create({
       data: {
         formNo,
-        overtimeType: overtimeType as OvertimeType,
+        formTipi,
+        overtimeType: effOvertimeType as OvertimeType,
         date: new Date(date),
-        isFullDay,
-        startTime: isFullDay ? null : startTime,
-        endTime: isFullDay ? null : endTime,
+        vardiyaHaftaMi,
+        isFullDay: effIsFullDay,
+        startTime: effIsFullDay ? null : effStartTime,
+        endTime: effIsFullDay ? null : effEndTime,
         description: description || null,
-        sendToGM,
+        sendToGM: effSendToGM,
         createdById: user.id,
         status: 'DRAFT',
         currentStep: 0,
         personnel: {
-          create: personnel.map((p: {
+          create: personnel.map((p: OvertimePersonnelInput & {
             personnelId: string
             workDepartment: string
-            serviceRoute?: string
-            targetProduction?: string
-            mesaiNedeni?: string
-          }, index: number) => ({
-            personnelId: p.personnelId,
-            workDepartment: p.workDepartment,
-            serviceRoute: p.serviceRoute || null,
-            targetProduction: p.targetProduction || null,
-            mesaiNedeni: p.mesaiNedeni?.trim() || null,
-            createdAt: new Date(orderBase + index),
-          })),
+            serviceRoute?: string | null
+          }, index: number) => {
+            // Faz 1 çift yazma: tekil alanlar (buildSingles) + çoklu üretim satırları.
+            // targetProduction retired — yazılmıyor.
+            const singles = buildSingles(p)
+            return {
+              personnelId: p.personnelId,
+              workDepartment: p.workDepartment,
+              serviceRoute: p.serviceRoute || null,
+              hedefAdet: singles.hedefAdet,
+              mesaiNedeni: singles.mesaiNedeni,
+              createdAt: new Date(orderBase + index),
+              uretimSatirlari: { create: buildUretimRows(p) },
+            }
+          }),
         },
       },
       include: {
@@ -271,6 +344,7 @@ export async function POST(request: NextRequest) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
+            uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
           },
         },
         createdBy: {

@@ -8,22 +8,35 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Save, Loader2, Eye, EyeOff, AlertTriangle, Shield } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Switch } from "@/components/ui/switch"
+import { ArrowLeft, Save, Loader2, Eye, EyeOff, AlertTriangle, Shield, Plus, Trash2, Landmark } from "lucide-react"
 import { toast } from "sonner"
+
+type BankAccount = {
+  id?: string
+  bankaAdi: string | null
+  bankaSube: string | null
+  hesapNo: string | null
+  ibanNo: string | null
+  isPrimary: boolean
+  aktif: boolean
+  aciklama?: string | null
+}
 
 type SensitiveData = {
   tcKimlikNo: string | null
   sgkNo: string | null
   dogumTarihi: string | null
-  bankaSube: string | null
-  bankaHesapNo: string | null
-  ibanNo: string | null
+  bankAccounts: BankAccount[]
   updatedBy: string | null
   updatedAt: string | null
 }
 
 const ADMIN_ROLES = ["ADMIN", "HR_MANAGER", "SUPER_ADMIN"]
 const EDIT_ROLES = ["ADMIN", "SUPER_ADMIN"]
+const NAVY = "#1B4F72"
 
 export default function SensitivePage() {
   const { data: session, status } = useSession()
@@ -37,6 +50,7 @@ export default function SensitivePage() {
 
   const [data, setData] = useState<SensitiveData | null>(null)
   const [form, setForm] = useState<Record<string, any>>({})
+  const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -56,16 +70,23 @@ export default function SensitivePage() {
       if (!res.ok) throw new Error("Veriler yüklenemedi")
       const json = await res.json()
       setData(json)
-      // Prepare form
-      const formData: Record<string, any> = {}
-      Object.entries(json).forEach(([k, v]) => {
-        if (k === "dogumTarihi" && v) {
-          formData[k] = new Date(v as string).toISOString().slice(0, 10)
-        } else {
-          formData[k] = v ?? ""
-        }
+      setForm({
+        tcKimlikNo: json.tcKimlikNo ?? "",
+        sgkNo: json.sgkNo ?? "",
+        dogumTarihi: json.dogumTarihi ? new Date(json.dogumTarihi).toISOString().slice(0, 10) : "",
       })
-      setForm(formData)
+      setAccounts(
+        (json.bankAccounts ?? []).map((a: BankAccount) => ({
+          id: a.id,
+          bankaAdi: a.bankaAdi ?? "",
+          bankaSube: a.bankaSube ?? "",
+          hesapNo: a.hesapNo ?? "",
+          ibanNo: a.ibanNo ?? "",
+          isPrimary: !!a.isPrimary,
+          aktif: a.aktif !== false,
+          aciklama: a.aciklama ?? "",
+        }))
+      )
       if (unmask) setUnmasked(true)
     } catch (err: any) {
       toast.error(err.message || "Veriler yüklenemedi")
@@ -74,8 +95,29 @@ export default function SensitivePage() {
     }
   }
 
-  const handleUnmask = () => {
-    fetchData(true)
+  const handleUnmask = () => fetchData(true)
+
+  const setAccountField = (idx: number, field: keyof BankAccount, value: any) => {
+    setAccounts((prev) => prev.map((a, i) => (i === idx ? { ...a, [field]: value } : a)))
+  }
+  const setPrimary = (idx: number) => {
+    setAccounts((prev) => prev.map((a, i) => ({ ...a, isPrimary: i === idx })))
+  }
+  const addAccount = () => {
+    setAccounts((prev) => [
+      ...prev,
+      { bankaAdi: "", bankaSube: "", hesapNo: "", ibanNo: "", isPrimary: prev.length === 0, aktif: true, aciklama: "" },
+    ])
+  }
+  const removeAccount = (idx: number) => {
+    setAccounts((prev) => {
+      const next = prev.filter((_, i) => i !== idx)
+      // Silinen primary ise ve başka hesap varsa ilkini primary yap
+      if (prev[idx]?.isPrimary && next.length > 0 && !next.some((a) => a.isPrimary)) {
+        next[0] = { ...next[0], isPrimary: true }
+      }
+      return next
+    })
   }
 
   const handleSave = async () => {
@@ -88,14 +130,12 @@ export default function SensitivePage() {
           tcKimlikNo: form.tcKimlikNo,
           sgkNo: form.sgkNo,
           dogumTarihi: form.dogumTarihi,
-          bankaSube: form.bankaSube,
-          bankaHesapNo: form.bankaHesapNo,
-          ibanNo: form.ibanNo,
+          bankAccounts: accounts,
         }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || "Güncelleme başarısız")
+        throw new Error(err.error || err.message || "Güncelleme başarısız")
       }
       toast.success("Hassas bilgiler güncellendi")
       setEditMode(false)
@@ -139,7 +179,6 @@ export default function SensitivePage() {
     }
   }
 
-  // Auth check
   if (status === "loading" || loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -210,7 +249,7 @@ export default function SensitivePage() {
               )}
               {editMode && (
                 <>
-                  <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>İptal</Button>
+                  <Button variant="outline" size="sm" onClick={() => { setEditMode(false); fetchData(unmasked) }}>İptal</Button>
                   <Button size="sm" onClick={handleSave} disabled={saving}>
                     {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     <Save className="h-4 w-4 mr-2" />
@@ -236,18 +275,6 @@ export default function SensitivePage() {
                 <Label>Doğum Tarihi</Label>
                 <Input type="date" value={form.dogumTarihi || ""} onChange={(e) => setForm(prev => ({ ...prev, dogumTarihi: e.target.value }))} />
               </div>
-              <div className="space-y-2">
-                <Label>Banka Şube</Label>
-                <Input value={form.bankaSube || ""} onChange={(e) => setForm(prev => ({ ...prev, bankaSube: e.target.value }))} />
-              </div>
-              <div className="space-y-2">
-                <Label>Banka Hesap No</Label>
-                <Input value={form.bankaHesapNo || ""} onChange={(e) => setForm(prev => ({ ...prev, bankaHesapNo: e.target.value }))} />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>IBAN No</Label>
-                <Input value={form.ibanNo || ""} onChange={(e) => setForm(prev => ({ ...prev, ibanNo: e.target.value }))} placeholder="TR..." />
-              </div>
             </div>
           ) : data ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -268,21 +295,114 @@ export default function SensitivePage() {
                   )}
                 </p>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Banka Şube</p>
-                <p className="font-medium">{data.bankaSube || "-"}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Banka Hesap No</p>
-                <p className="font-medium font-mono">{data.bankaHesapNo || "-"}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">IBAN No</p>
-                <p className="font-medium font-mono">{data.ibanNo || "-"}</p>
-              </div>
             </div>
           ) : (
             <p className="text-muted-foreground">Veri bulunamadı</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Banka Hesapları Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2" style={{ color: NAVY }}>
+            <Landmark className="h-5 w-5" />
+            Banka Hesapları
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {editMode ? (
+            <>
+              <RadioGroup
+                value={String(accounts.findIndex((a) => a.isPrimary))}
+                onValueChange={(v) => setPrimary(Number(v))}
+                className="space-y-4"
+              >
+                {accounts.map((a, idx) => (
+                  <div key={idx} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value={String(idx)} id={`primary-${idx}`} />
+                        <Label htmlFor={`primary-${idx}`} className="cursor-pointer">Maaş hesabı</Label>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <Switch checked={a.aktif} onCheckedChange={(v) => setAccountField(idx, "aktif", v)} />
+                          <span className="text-sm text-muted-foreground">Aktif</span>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => removeAccount(idx)}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Banka Adı</Label>
+                        <Input value={a.bankaAdi || ""} onChange={(e) => setAccountField(idx, "bankaAdi", e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Banka Şube</Label>
+                        <Input value={a.bankaSube || ""} onChange={(e) => setAccountField(idx, "bankaSube", e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Hesap No</Label>
+                        <Input value={a.hesapNo || ""} onChange={(e) => setAccountField(idx, "hesapNo", e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>IBAN No</Label>
+                        <Input value={a.ibanNo || ""} onChange={(e) => setAccountField(idx, "ibanNo", e.target.value)} placeholder="TR..." />
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Açıklama</Label>
+                        <Input value={a.aciklama || ""} onChange={(e) => setAccountField(idx, "aciklama", e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </RadioGroup>
+              <Button variant="outline" size="sm" onClick={addAccount}>
+                <Plus className="h-4 w-4 mr-2" />
+                Hesap Ekle
+              </Button>
+            </>
+          ) : (data?.bankAccounts?.length ?? 0) > 0 ? (
+            <div className="space-y-3">
+              {data!.bankAccounts.map((a, idx) => (
+                <div key={a.id || idx} className={`rounded-lg border p-4 ${!a.aktif ? "opacity-60" : ""}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{a.bankaAdi || "Banka"}</span>
+                      {a.isPrimary && (
+                        <Badge style={{ backgroundColor: NAVY }}>Maaş Hesabı</Badge>
+                      )}
+                      {!a.aktif && <Badge variant="secondary">Pasif</Badge>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Banka Şube</p>
+                      <p className="font-medium">{a.bankaSube || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Hesap No</p>
+                      <p className="font-medium font-mono">{a.hesapNo || "-"}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-muted-foreground">IBAN No</p>
+                      <p className="font-medium font-mono">{a.ibanNo || "-"}</p>
+                    </div>
+                    {a.aciklama && (
+                      <div className="md:col-span-2">
+                        <p className="text-muted-foreground">Açıklama</p>
+                        <p className="font-medium">{a.aciklama}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">Kayıtlı banka hesabı yok.</p>
           )}
         </CardContent>
       </Card>

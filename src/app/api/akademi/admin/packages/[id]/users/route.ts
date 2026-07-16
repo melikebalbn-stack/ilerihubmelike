@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import { materializePackage } from "@/lib/akademi-package-materialize";
-import { notifyPackageAssignedBatch } from "@/lib/akademi-notify";
-import type { AdminPackageUsersAddInput } from "@/types/akademi-package";
+import { parseDueDateEndOfDay } from "@/lib/akademi/due-date";
+import {
+  notifyPackageAssignedBatch,
+  notifyDueDateSetBatch,
+} from "@/lib/akademi-notify";
+
+const bodySchema = z.object({
+  userIds: z.array(z.string().trim().min(1)).min(1, "userIds boş olamaz"),
+  // PR-IFS-RAPOR-2a: opsiyonel paket son tarihi (bu atama akışına özel).
+  dueDate: z.string().trim().nullish(),
+});
 
 export async function POST(
   req: NextRequest,
@@ -14,15 +24,25 @@ export async function POST(
 
   const { id } = await params;
 
-  let body: AdminPackageUsersAddInput;
+  let raw: unknown;
   try {
-    body = await req.json();
+    raw = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!Array.isArray(body.userIds) || body.userIds.length === 0) {
-    return NextResponse.json({ error: "userIds boş olamaz" }, { status: 400 });
+  const parsed = bodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Geçersiz parametre" },
+      { status: 400 }
+    );
+  }
+  const body = parsed.data;
+
+  const { dueDate, error: dueErr } = parseDueDateEndOfDay(body.dueDate);
+  if (dueErr) {
+    return NextResponse.json({ error: dueErr }, { status: 400 });
   }
 
   const pkg = await prisma.coursePackage.findUnique({ where: { id } });
@@ -51,7 +71,20 @@ export async function POST(
     skipDuplicates: true,
   });
 
-  const materializeResult = await materializePackage(id);
+  // PR-IFS-RAPOR-2a: verilen son tarih bu istekteki kullanıcılara tighten-only
+  // taşınır (yeni satırlara yazılır, mevcut satırlar yalnız sıkışır).
+  const materializeResult = await materializePackage(id, undefined, {
+    overrideDueDate: dueDate,
+    overrideUserIds: requested,
+  });
+
+  // PR-IFS-RAPOR-2b: son tarihi yazılan/öne çekilen kullanıcılara son tarih maili
+  // (fire-and-forget; tarih yazımını kilitlemez / geri almaz).
+  if (materializeResult.affectedDueDates.length > 0) {
+    void notifyDueDateSetBatch(materializeResult.affectedDueDates, {
+      packageName: pkg.name,
+    }).catch(() => {});
+  }
 
   // Bildirim — yalnız bu istekte YENİ atanan kullanıcılar (alıcı=user, batch,
   // fire-and-forget: HTTP yanıtını kilitleme).
@@ -72,6 +105,7 @@ export async function POST(
       targetUserCount: materializeResult.targetUserCount,
       newAssignments: materializeResult.newAssignments,
       skippedExisting: materializeResult.skippedExisting,
+      dueDateUpdated: materializeResult.dueDateUpdated,
       errors: materializeResult.errors,
     },
   });

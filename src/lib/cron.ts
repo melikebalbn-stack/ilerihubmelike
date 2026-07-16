@@ -24,7 +24,7 @@ import {
   getFileSize,
   cleanOldBackups
 } from '@/lib/backup-service'
-import { syncLDAPUsersToDb } from '@/lib/ldap-sync'
+// PR-LDAP-DEBOUNCE: syncLDAPUsersToDb import'u kaldırıldı — LDAP sync sistem cron'a taşındı.
 
 let isSchedulerInitialized = false
 
@@ -105,38 +105,11 @@ export function initializeCalibrationScheduler() {
     }
   })
 
-  // LDAP → DB kullanıcı senkronizasyonu - Her 6 saatte bir (02:00, 08:00, 14:00, 20:00)
-  cron.schedule('0 2,8,14,20 * * *', async () => {
-    console.log('⏰ Running scheduled LDAP user sync...')
-
-    try {
-      const result = await syncLDAPUsersToDb()
-      console.log('✅ LDAP sync completed:', {
-        created: result.created,
-        updated: result.updated,
-        deactivated: result.deactivated,
-        errors: result.errors,
-        duration: `${result.duration}s`,
-      })
-    } catch (error) {
-      console.error('❌ LDAP sync failed:', error)
-    }
-  })
-
-  // Uygulama başlangıcında ilk LDAP sync'i çalıştır (30 saniye gecikmeyle)
-  setTimeout(async () => {
-    console.log('⏰ Running initial LDAP user sync...')
-    try {
-      const result = await syncLDAPUsersToDb()
-      console.log('✅ Initial LDAP sync completed:', {
-        created: result.created,
-        updated: result.updated,
-        duration: `${result.duration}s`,
-      })
-    } catch (error) {
-      console.error('❌ Initial LDAP sync failed:', error)
-    }
-  }, 30000)
+  // PR-LDAP-DEBOUNCE: LDAP sync ARTIK in-process'ten ÇIKARILDI (mount tetiği + 6h schedule
+  // + 30sn initial kaldırıldı). blue+green'de çift-sync ve her restart'ta tekrarlayan
+  // initial-sync yanlış-pasifleştirmeyi besliyordu. Tek tetikleyici = SİSTEM CRON:
+  //   POST /api/cron/ldap-sync  (x-cron-secret)  @ /etc/cron.d/ilerihub-cron "0 2,8,14,20 * * *"
+  // Endpoint + sync içindeki pg advisory lock birlikte kesin tek-uçuş sağlar.
 
   // Akademi: deadline kontrolleri - Her gün 10:00
   cron.schedule('0 10 * * *', async () => {
@@ -181,8 +154,7 @@ export function initializeCalibrationScheduler() {
   console.log('   - Personnel evaluation (2ay/6ay): 09:45 AM daily')
   console.log('   - Akademi deadlines: 10:00 AM daily')
   console.log('   - Akademi certificates: 10:30 AM daily')
-  console.log('   - LDAP user sync: every 6 hours (02:00, 08:00, 14:00, 20:00)')
-  console.log('   - LDAP initial sync: 30s after startup')
+  console.log('   - LDAP user sync: SİSTEM CRON (POST /api/cron/ldap-sync) — in-process DEĞİL')
   console.log('   - Backup scheduler: every minute')
 }
 

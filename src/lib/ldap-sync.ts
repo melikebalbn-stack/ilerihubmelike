@@ -14,6 +14,16 @@ import { getAllLDAPUsers, determineUserRole, getEmailFromDN, type LDAPUser } fro
 import { prisma } from './prisma'
 import { UserRoleEnum as Role } from '@/generated/prisma'
 import { logger } from './logger'
+import { sendEmail } from './email'
+
+// PR-LDAP-DEBOUNCE: AD-disabled sinyali kaç ardışık sync turunda görülürse pasifleştirilir.
+// Bayat/partial uac okuması tek turda yanlış-pasifleştirmesin diye debounce.
+const DISABLED_STREAK_THRESHOLD = 3
+// Güvenlik ağı: tek turda bu sayıdan fazla kullanıcı pasifleşecekse → tümü ABORT + alarm
+// (muhtemel toplu hatalı sinyal). Eski %50 SAFETY_RATIO'nun yerini alır.
+const DEACTIVATION_ABORT_LIMIT = 5
+// Güvenlik ağı alarmı kime gider (env > fallback).
+const LDAP_SYNC_ALERT_EMAIL = process.env.LDAP_SYNC_ALERT_EMAIL || 'melih.dilben@ilerigroup.com'
 
 // Email-bazlı rol override'ları (auth.ts ile senkron — tek source of truth
 // gelecekte ortak modüle çıkarılabilir).
@@ -146,11 +156,49 @@ function isSystemAccount(email: string): boolean {
 }
 
 /**
+ * PR-LDAP-DEBOUNCE: AD-disabled sinyalini debounce'lar.
+ *
+ * - disabled=false (AD'de aktif) → streak sıfırla + isActive=true (mevcut davranış).
+ * - disabled=true ama eşik dolmadı → streak++ , isActive'e DOKUNMA (bayat-okuma tek turda
+ *   pasifleştirmesin). lastDisabledSeenAt güncellenir.
+ * - disabled=true + eşik doldu (>=N) + hâlâ aktif → pasifleştirme ADAYI (candidate=true);
+ *   isActive YİNE yazılmaz — kararı (güvenlik ağı dahil) çağıran verir, toplu yazar.
+ *
+ * `fields` doğrudan prisma update/create data'sına merge edilir.
+ */
+export function computeActivityFields(
+  disabled: boolean,
+  prevStreak: number,
+  prevActive: boolean,
+): { fields: { disabledStreak: number; lastDisabledSeenAt?: Date; isActive?: boolean }; candidate: boolean } {
+  if (!disabled) {
+    return { fields: { disabledStreak: 0, isActive: true }, candidate: false }
+  }
+  const streak = (prevStreak || 0) + 1
+  const fields: { disabledStreak: number; lastDisabledSeenAt?: Date; isActive?: boolean } = {
+    disabledStreak: streak,
+    lastDisabledSeenAt: new Date(),
+  }
+  const candidate = streak >= DISABLED_STREAK_THRESHOLD && prevActive
+  return { fields, candidate }
+}
+
+/**
  * Ana senkronizasyon fonksiyonu
  * Tüm LDAP kullanıcılarını DB'ye upsert eder.
  */
 export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
+  // PR-LDAP-DEBOUNCE: TEK-UÇUŞ.
+  // (1) Same-process: bu guard ile aşağıdaki `status='running'` ataması arasında AWAIT
+  //     YOK → iki eşzamanlı çağrıdan biri kesin atlar (atomik). (Manuel admin tetiği +
+  //     cron aynı process'te çakışırsa biri çalışır.)
+  // (2) Cross-process (blue/green): LDAP sync artık in-process'ten kaldırıldı; TEK
+  //     tetikleyici sistem cron → nginx yalnız AKTİF renge POST atar → tek process çalışır.
+  // NOT: pg session advisory lock denendi ama Prisma connection-pool unlock'u farklı
+  //      bağlantıya yönlendirip lock'u sızdırabiliyor (→ sonraki sync'in YANLIŞ atlanması).
+  //      Bu sessiz-atlama riski guard+tek-tetik'ten kötü olduğu için kullanılmadı.
   if (lastSyncStatus.status === 'running') {
+    logger.warn('LDAP-SYNC', 'Zaten çalışıyor (in-memory guard) — bu tetik atlandı')
     return lastSyncStatus
   }
 
@@ -217,13 +265,17 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
     }
 
     // 4. Kullanıcıları upsert et (batch - 10'luk gruplar)
+    // PR-LDAP-DEBOUNCE: upsert artık isActive=false YAZMAZ; eşik dolan (N=3) + hâlâ aktif
+    // kullanıcıları "pasifleştirme adayı" olarak döndürür. Güvenlik ağından sonra toplu yazılır.
+    const deactivateCandidates: { id: string; email: string }[] = []
     const batchSize = 10
     for (let i = 0; i < validUsers.length; i += batchSize) {
       const batch = validUsers.slice(i, i + batchSize)
 
       await Promise.all(batch.map(async (ldapUser) => {
         try {
-          await upsertUser(ldapUser, managerEmailMap, mappingByGroupCN)
+          const candidate = await upsertUser(ldapUser, managerEmailMap, mappingByGroupCN)
+          if (candidate) deactivateCandidates.push(candidate)
 
           if (dbEmailSet.has(ldapUser.email!.toLowerCase()) || dbIdSet.has(`ad_${ldapUser.username}`)) {
             lastSyncStatus.updated++
@@ -241,50 +293,64 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
       }))
     }
 
-    // 5. LDAP'da olmayan DB kullanıcılarını devre dışı bırak
-    // (Sadece ad_ prefix'li kullanıcılar - LDAP'dan gelenler. Bluecollar ve manuel eklenenler hariç)
-    //
-    // SAFETY THRESHOLD (PR-LDAP-SYNC-SAFETY, 27 May 2026):
-    // 26 May 2026'da partial LDAP response sonucu 68 user (tüm SUPER_ADMIN dahil)
-    // toplu pasifleşti. Bu blok artık ldapEmailSet boyutunu DB'deki aktif AD
-    // user sayısı ile karşılaştırır — eğer LDAP %50'sinden az user döndüyse
-    // partial response varsayar ve pasifleştirme adımını ABORT eder.
-    const activeAdDbCount = dbUsers.filter(
-      u => u.isActive && u.id.startsWith('ad_') && !isSystemAccount(u.email),
-    ).length
-    const SAFETY_RATIO = 0.5
-    const minimumExpected = Math.floor(activeAdDbCount * SAFETY_RATIO)
-
-    if (ldapEmailSet.size < minimumExpected) {
-      logger.error('LDAP-SYNC', 'PARTIAL RESPONSE — deactivation aborted', {
-        ldapEmailCount: ldapEmailSet.size,
-        activeAdDbCount,
-        minimumExpected,
-        threshold: `${SAFETY_RATIO * 100}%`,
+    // 5. PR-LDAP-DEBOUNCE: Pasifleştirme (debounce eşiği dolanlar) + GÜVENLİK AĞI.
+    // Adaylar = AD-disabled N=3 ardışık turda görülen + hâlâ aktif kullanıcılar (upsert topladı).
+    // Streak güncellemeleri zaten yazıldı; burada yalnız toplu isActive=false kararı verilir.
+    if (deactivateCandidates.length > DEACTIVATION_ABORT_LIMIT) {
+      // Güvenlik ağı: tek turda çok sayıda pasifleştirme = muhtemel toplu hatalı sinyal → ABORT.
+      logger.error('LDAP-SYNC', 'GÜVENLİK AĞI: çok sayıda pasifleştirme — TÜMÜ İPTAL', {
+        candidateCount: deactivateCandidates.length,
+        limit: DEACTIVATION_ABORT_LIMIT,
+        emails: deactivateCandidates.map((c) => c.email),
       })
       lastSyncStatus.errors++
       lastSyncStatus.errorDetails.push(
-        `Deactivation aborted: LDAP returned ${ldapEmailSet.size} users, expected >= ${minimumExpected} (${SAFETY_RATIO * 100}% of ${activeAdDbCount} active AD users)`,
+        `Deactivation aborted (güvenlik ağı): ${deactivateCandidates.length} kullanıcı pasifleştirilecekti (limit ${DEACTIVATION_ABORT_LIMIT})`,
       )
+      try {
+        await sendEmail(
+          [{ email: LDAP_SYNC_ALERT_EMAIL, name: 'LDAP Sync Alert' }],
+          'LDAP Sync — toplu pasifleştirme İPTAL edildi (güvenlik ağı)',
+          `LDAP sync bu turda ${deactivateCandidates.length} kullanıcıyı pasifleştirecekti ` +
+            `(limit ${DEACTIVATION_ABORT_LIMIT}). Muhtemel toplu hatalı AD sinyali — güvenlik ağı ` +
+            `TÜM pasifleştirmeyi iptal etti. Streak sayaçları korundu.\n\nKullanıcılar:\n` +
+            deactivateCandidates.map((c) => `- ${c.email}`).join('\n'),
+        )
+      } catch (mailErr) {
+        logger.error('LDAP-SYNC', 'güvenlik ağı uyarı maili gönderilemedi', { error: String(mailErr) })
+      }
     } else {
-      for (const dbUser of dbUsers) {
-        if (
-          dbUser.isActive &&
-          dbUser.id.startsWith('ad_') &&
-          !ldapEmailSet.has(dbUser.email.toLowerCase()) &&
-          !isSystemAccount(dbUser.email)
-        ) {
-          try {
-            await prisma.user.update({
-              where: { id: dbUser.id },
-              data: { isActive: false },
-            })
-            lastSyncStatus.deactivated++
-            logger.info('LDAP-SYNC', 'Kullanıcı devre dışı bırakıldı', { email: dbUser.email })
-          } catch (error) {
-            lastSyncStatus.errors++
-          }
+      for (const cand of deactivateCandidates) {
+        try {
+          await prisma.user.update({ where: { id: cand.id }, data: { isActive: false } })
+          lastSyncStatus.deactivated++
+          logger.info('LDAP-SYNC', 'Kullanıcı devre dışı bırakıldı (debounce eşiği doldu)', {
+            email: cand.email,
+            threshold: DISABLED_STREAK_THRESHOLD,
+          })
+        } catch (error) {
+          lastSyncStatus.errors++
+          logger.error('LDAP-SYNC', 'Pasifleştirme hatası', { email: cand.email, error: String(error) })
         }
+      }
+    }
+
+    // 6. PR-A: "AD sonuç listesinde YOK" (missing) ARTIK pasifleştirmez.
+    // Pasifleştirme yalnızca upsert'teki isActive: !ldapUser.disabled (AD-disabled,
+    // userAccountControl & 2) üzerinden gerçekleşir. Eskiden ldapEmailSet'te email'i
+    // bulunmayan ad_ kullanıcıları isActive:false yapılıyordu; bu, partial LDAP
+    // response'ta (26 May 2026'daki gibi tüm SUPER_ADMIN dahil 68 user) toplu
+    // yanlış-pasifleşmeye yol açıyordu. Artık yalnızca BİLGİ amaçlı loglanır.
+    for (const dbUser of dbUsers) {
+      if (
+        dbUser.isActive &&
+        dbUser.id.startsWith('ad_') &&
+        !ldapEmailSet.has(dbUser.email.toLowerCase()) &&
+        !isSystemAccount(dbUser.email)
+      ) {
+        console.warn(
+          `[LDAP-SYNC] AD sonuç listesinde görünmüyor (pasifleştirilmedi): ${dbUser.email}`,
+        )
       }
     }
 
@@ -322,13 +388,20 @@ async function upsertUser(
   ldapUser: LDAPUser,
   managerEmailMap: Map<string, string>,
   mappingByGroupCN: Map<string, string>
-): Promise<void> {
+): Promise<{ id: string; email: string } | null> {
   const email = ldapUser.email!.trim()
   const emailLower = email.toLowerCase()
   const ldapRole = determineUserRole(ldapUser)
   const baseRole = mapLdapRoleToPrismaRole(ldapRole, emailLower)
   const prismaRole = inferRoleFromJobTitle(ldapUser.title, baseRole)
   const userId = `ad_${ldapUser.username}`
+
+  // Güvenlik kemeri: sync YALNIZCA ad_ kaynaklı (LDAP) kullanıcıları işler.
+  // Mavi yaka id'leri cuid'dir (ad_ değil) ve LDAP'ta yoktur → bu fonksiyona hiç gelmez.
+  if (!ldapUser.username || !userId.startsWith('ad_')) {
+    console.warn(`[LDAP-SYNC] Geçersiz/eksik sAMAccountName, kayıt atlandı: ${ldapUser.email}`)
+    return null
+  }
 
   // Manager email'ini çöz
   let managerEmail: string | null = null
@@ -347,7 +420,7 @@ async function upsertUser(
     officeLocation: ldapUser.ou,
     ...(ldapUser.ipPhone ? { extension3cx: ldapUser.ipPhone } : {}),
     role: prismaRole,
-    isActive: true,
+    // PR-LDAP-DEBOUNCE: isActive ARTIK burada yazılmaz; computeActivityFields debounce'lar.
     groups, // PR-Y4-PRE
   }
 
@@ -356,32 +429,48 @@ async function upsertUser(
   // Önce id ile bul (login olmuş kullanıcılar ad_username formatında)
   const existingById = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true },
+    select: { id: true, email: true, isActive: true, disabledStreak: true },
   })
 
   let resolvedUserId: string
+  let deactivateCandidate = false
 
   if (existingById) {
+    const act = computeActivityFields(ldapUser.disabled, existingById.disabledStreak, existingById.isActive)
+    deactivateCandidate = act.candidate
     await prisma.user.update({
       where: { id: userId },
-      data: { ...adFields, ...managerData },
+      data: { ...adFields, ...managerData, ...act.fields },
     })
     resolvedUserId = userId
   } else {
     // id ile bulunamadı - email ile ara (case-insensitive)
     const existingByEmail = await prisma.user.findFirst({
       where: { email: { equals: emailLower, mode: 'insensitive' } },
-      select: { id: true, email: true },
+      select: { id: true, email: true, isActive: true, disabledStreak: true },
     })
 
     if (existingByEmail) {
+      // GÜVENLİK KEMERİ: email eşleşmesi ad_ OLMAYAN bir kayda (mavi yaka cuid id)
+      // denk gelirse DOKUNMA — sync yalnız LDAP-kaynaklı (ad_) kullanıcıları yazar.
+      // Mavi yaka isActive'i SADECE bluecollar route'undan değişmeli.
+      if (!existingByEmail.id.startsWith('ad_')) {
+        console.warn(
+          `[LDAP-SYNC] ad_ olmayan kayda update atlandı (mavi yaka korundu): ${existingByEmail.email} (id=${existingByEmail.id})`,
+        )
+        return null
+      }
+      const act = computeActivityFields(ldapUser.disabled, existingByEmail.disabledStreak, existingByEmail.isActive)
+      deactivateCandidate = act.candidate
       await prisma.user.update({
         where: { id: existingByEmail.id },
-        data: { ...adFields, ...managerData },
+        data: { ...adFields, ...managerData, ...act.fields },
       })
       resolvedUserId = existingByEmail.id
     } else {
-      // Kullanıcı hiç yok - oluştur
+      // Kullanıcı hiç yok - oluştur. Yeni kullanıcı streak 0'dan başlar (ilk turda asla pasif).
+      const act = computeActivityFields(ldapUser.disabled, 0, true)
+      deactivateCandidate = act.candidate
       const created = await prisma.user.create({
         data: {
           id: userId,
@@ -389,6 +478,7 @@ async function upsertUser(
           email: email.toLowerCase(),
           ...adFields,
           ...managerData,
+          ...act.fields,
         },
         select: { id: true },
       })
@@ -398,6 +488,9 @@ async function upsertUser(
 
   // PR-Y4a: AD grupları → user_role tablosu (source='azure_ad') diff
   await syncUserAzureRoles(resolvedUserId, groups, mappingByGroupCN)
+
+  // PR-LDAP-DEBOUNCE: eşik dolan + hâlâ aktif kullanıcı → pasifleştirme adayı (çağıran toplar).
+  return deactivateCandidate ? { id: resolvedUserId, email: emailLower } : null
 }
 
 /**

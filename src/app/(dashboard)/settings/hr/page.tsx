@@ -3,13 +3,12 @@
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ArrowLeft, Plus, Trash2, Loader2, Briefcase, Search, X, Building2 } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Loader2, Briefcase, Search, X, Building2, Network } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
+import { DeptOrgDialog, type DeptOrgItem } from "@/components/settings/dept-org-dialog"
 
-interface ListItem {
-  id: string
-  name: string
+interface ListItem extends DeptOrgItem {
   isActive: boolean
 }
 
@@ -19,18 +18,21 @@ function ManageableList({
   icon: Icon,
   apiUrl,
   placeholder,
+  orgEdit = false,
 }: {
   title: string
   subtitle: string
   icon: React.ComponentType<{ className?: string }>
   apiUrl: string
   placeholder: string
+  orgEdit?: boolean // PR-FAZ-B1: bölüm için parent+sorumlu/müdür düzenleme
 }) {
   const [items, setItems] = useState<ListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState("")
   const [adding, setAdding] = useState(false)
   const [search, setSearch] = useState("")
+  const [editingOrg, setEditingOrg] = useState<ListItem | null>(null)
 
   const fetchItems = useCallback(async () => {
     try {
@@ -175,19 +177,48 @@ function ManageableList({
                   }`} />
                 </button>
                 <span className="text-sm font-medium">{item.name}</span>
+                {orgEdit && item.parent?.name && (
+                  <span className="text-[11px] text-muted-foreground">↳ {item.parent.name}</span>
+                )}
+                {orgEdit && item.mudur?.adSoyad && (
+                  <span className="text-[11px] rounded bg-muted px-1.5 py-0.5 text-muted-foreground">Müdür: {item.mudur.adSoyad}</span>
+                )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                onClick={() => handleDelete(item)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {orgEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                    onClick={() => setEditingOrg(item)}
+                    title="Org yapısı (üst birim + sorumlular)"
+                  >
+                    <Network className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                  onClick={() => handleDelete(item)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           ))
         )}
       </div>
+
+      {orgEdit && editingOrg && (
+        <DeptOrgDialog
+          dept={editingOrg}
+          allDepts={items.map((i) => ({ id: i.id, name: i.name }))}
+          open={!!editingOrg}
+          onClose={() => setEditingOrg(null)}
+          onSaved={() => { setEditingOrg(null); fetchItems() }}
+        />
+      )}
     </div>
   )
 }
@@ -227,6 +258,7 @@ export default function HRSettingsPage() {
           icon={Building2}
           apiUrl="/api/settings/hr-departments"
           placeholder="Yeni bölüm adı..."
+          orgEdit
         />
       </div>
     </div>

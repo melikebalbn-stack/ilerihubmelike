@@ -58,10 +58,16 @@ model User {
   // ILERIHub fields
   role      UserRoleEnum @default(EMPLOYEE)
   isActive  Boolean @default(true)
+  // PR-LDAP-DEBOUNCE: AD-disabled sinyali debounce — bayat uac okumasıyla tek turda
+  // yanlış-pasifleştirmeyi önler. disabled N=3 ardışık turda görülmeden isActive=false yazılmaz.
+  disabledStreak     Int       @default(0) // ardışık "AD disabled görüldü" tur sayısı
+  lastDisabledSeenAt DateTime?             // son disabled gözlemi (audit)
   managerId String?
 
   // PR-Y4-PRE: AD grup CN listesi (LDAP memberOf'tan parse). Y4a'da → Role mapping.
   groups String[] @default([])
+  // PR-FAZ2A: mesai performans görünür bölümler (DepartmentDefinition.name). Boş = TÜM bölümler.
+  gorunurBolumler String[] @default([])
   manager   User?   @relation("ManagerEmployees", fields: [managerId], references: [id])
   employees User[]  @relation("ManagerEmployees")
 
@@ -160,8 +166,14 @@ model User {
   // Overtime (Mesai) Relations
   overtimeFormsCreated OvertimeForm[]          @relation("OvertimeCreator")
   overtimeApprovals    OvertimeApproval[]      @relation("OvertimeApprover")
+  personnelRequestApprovals PersonnelRequestApproval[] @relation("PersonnelRequestApprover")
   approvalPositions    ApprovalPosition[]      @relation("ApprovalPositionUser")
   overtimeAuthorized   OvertimeAuthorizedUser? @relation("OvertimeAuthorizedUser")
+  // Faz 2+: parça kodu (Mesai Nedeni) sonradan düzeltmeleri
+  uretimParcaDuzeltmeleri OvertimePersonnelUretim[] @relation("UretimParcaDuzelten")
+  // PR-3 eskalasyon back-relation'ları (named relation ZORUNLU)
+  approvalPositionBackups ApprovalPosition[]   @relation("ApprovalPositionBackup")
+  overtimeEscalations     OvertimeApproval[]   @relation("OvertimeApprovalEscalatedTo")
 
   // Akademi Relations
   courseAssignments    UserCourseAssignment[]
@@ -199,9 +211,6 @@ model User {
   assignedUserRoles      UserRole[]           @relation("UserRoleAssignedBy")
   grantedRolePermissions RolePermission[]     @relation("RolePermissionGrantedBy")
   permissionAuditLogs    PermissionAuditLog[] @relation("PermissionAuditLogActor")
-
-  // PR-PERSONEL-CIKIS-FORMU: Bu user'ın kaydettiği personel çıkışları
-  recordedExits Personnel[] @relation("PersonnelExitRecorder")
 
   // PR-PERSONNEL-DEPARTMENT-TRANSFER
   recordedDepartmentTransfers PersonnelDepartmentTransfer[] @relation("DepartmentTransferRecorder")
@@ -405,6 +414,7 @@ model CalibrationDevice {
   serialNumber           String?
   location               String?
   department             String?
+  productionSection      String? // Üretim Bölümü (departman=Üretim iken; location'dan bağımsız)
   responsiblePerson      String?
   responsiblePersonEmail String? // AD'den seçilen kişinin email adresi
 
@@ -4105,6 +4115,7 @@ enum BackupType {
   SCHEDULED // Zamanlanmış yedek
   PRE_UPDATE // Güncelleme öncesi
   PRE_RESTORE // Geri yükleme öncesi
+  RESTORE // RESTORE-ORCHESTRATOR: restore-job satırı (ilerleme taşıyıcısı)
 }
 
 // Yedekleme Durumu
@@ -4113,6 +4124,11 @@ enum BackupStatus {
   IN_PROGRESS // Devam ediyor
   COMPLETED // Tamamlandı
   FAILED // Başarısız
+  // RESTORE-ORCHESTRATOR (Faz 1): restore-job yaşam döngüsü durumları
+  RESTORING // Restore başladı (pre-restore backup)
+  BUILDING // Restore edilen kod derleniyor
+  SWAPPING // Dosya/DB swap + restart
+  ROLLED_BACK // Başarısız → rollback ile geri alındı (veri kaybı yok)
 }
 
 // Yedekleme Sıklığı
@@ -4202,6 +4218,9 @@ model Position {
 
   isCritical Boolean @default(false) // Kritik pozisyon mu?
   isActive   Boolean @default(true)
+  hedefTimeToHire Int? // hedef işe alım süresi - gün (Time-to-Hire analitiği)
+  yaka            String?  // MAVI | BEYAZ (Elif Tanımlar ekranı — İK yönetir)
+  ingilizceZorunlu Boolean @default(false) // İngilizce zorunlu mu (Tanımlar)
 
   // İlişkiler
   requiredCompetencies PositionCompetency[]
@@ -4995,9 +5014,35 @@ model PersonnelRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Kademe bazlı onay zinciri (Müdür → GMY → GM). Yalnız back-relation, DB kolonu değil.
+  approvals PersonnelRequestApproval[]
+
   @@index([requesterId])
   @@index([department])
   @@index([status])
+}
+
+// Eleman talebi onay adımı — OvertimeApproval deseninin karşılığı.
+// Submit anında 3 satır kurulur (MUDUR→DEPUTY_GM→GM), sıralı ilerler.
+model PersonnelRequestApproval {
+  id                String          @id @default(cuid())
+  personnelRequestId String
+  personnelRequest  PersonnelRequest @relation(fields: [personnelRequestId], references: [id], onDelete: Cascade)
+
+  step       Int // 1..3 (sıra)
+  kademe     String // "MUDUR" | "DEPUTY_GM" | "GM"
+  role       String // ünvan snapshot (görünüm)
+  approverId String? // çözülen onaycı (User). null olamaz normalde; guard submit'te
+  approver   User?   @relation("PersonnelRequestApprover", fields: [approverId], references: [id])
+
+  decision  ApprovalDecision? // null = beklemede
+  comment   String?
+  decidedAt DateTime?
+  createdAt DateTime          @default(now())
+
+  @@unique([personnelRequestId, step])
+  @@index([personnelRequestId])
+  @@index([approverId])
 }
 
 // Açık Pozisyon (İş İlanı)
@@ -5591,8 +5636,11 @@ model PublicJobApplication {
   email       String? // E-mail
 
   // Bize Nasıl Ulaştınız
-  referralSource      ReferralSource? // Bize Nasıl Ulaştınız
+  referralSource      ReferralSource? // ESKİ sabit enum — geriye dönük güvence (DROP edilmedi)
   referralSourceOther String? // Diğer (açıklama)
+  // Yeni: yönetilebilir kaynak sözlüğüne bağ (İK Tanımlar'dan yönetir). Göç: eski enum → bu FK.
+  referralSourceId    String?
+  referralSourceDef   ReferralSourceDef? @relation(fields: [referralSourceId], references: [id])
 
   // Üyelikler
   memberships String? @db.Text // Dernek/Kulüp/Sendika Üyelikleri
@@ -5678,12 +5726,157 @@ model PublicJobApplication {
   status    JobApplicationStatus @default(PENDING)
   notes     String?              @db.Text // İK Notları
 
+  // Faz 1: KVKK onayı (dijital imza) + sağlık beyanı (özel nitelikli). 1:1, FK karşı
+  // tablolarda (applicationId @unique) → mevcut kayıtlarda null (nullable ilişki).
+  // "kvkkConsentId/healthFormId" yerine bu desen (circular FK'dan kaçınır).
+  consent    JobApplicationConsent?
+  health     JobApplicationHealth?
+  accessLogs JobApplicationAccessLog[]
+
+  // Aşama/durum geçiş logu (Time-to-Hire + aşama süresi + darboğaz analizi).
+  // Yalnız back-relation — DB kolonu doğurmaz.
+  stageLogs PublicJobApplicationStageLog[]
+
+  // İşe alım aday sınav oturumları (Faz 1) — yalnız ilişki, DB kolonu değil.
+  assessmentSessions AssessmentSession[]
+
+  // Ret (kök-neden) sözlüğüne bağ — REJECTED'da zorunlu, diğer durumlarda null.
+  // Serbest metin detay `notes`'ta kalır; bu FK yapılandırılmış analiz için.
+  rejectionReasonId String?
+  rejectionReason   RejectionReason? @relation(fields: [rejectionReasonId], references: [id])
+
+  // İşe alım maliyet kayıtları (başvuru bazlı: mülakat/sınav masrafı).
+  // Yalnız back-relation — DB kolonu doğurmaz. Genel maliyetlerde bağ null'dır.
+  recruitmentCosts RecruitmentCost[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([createdAt])
   @@index([applicationNumber])
+  @@index([rejectionReasonId])
+  @@index([referralSourceId])
+}
+
+// Başvuru kaynağı SÖZLÜĞÜ — İK yönetir (Tanımlar). Eski ReferralSource enum'unun
+// yönetilebilir karşılığı. Silme YOK → pasifleştirme.
+model ReferralSourceDef {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applications PublicJobApplication[]
+
+  @@index([isActive])
+}
+
+// ── KVKK aydınlatma onayı (IK-T-866, dijital imzalı) ──
+model JobApplicationConsent {
+  id            String               @id @default(cuid())
+  applicationId String               @unique
+  application   PublicJobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  adSoyad      String
+  tcKimlikNo   String
+  documentCode String  @default("IK-T-866") // belge kodu
+  documentRev  String  @default("00") // revizyon
+  consentTextHash String? // gösterilen metnin SHA-256'sı (tamper-evidence)
+
+  signatureImage String @db.Text // canvas imzası — base64 PNG (consent ile atomik)
+  signedAt       DateTime @default(now())
+
+  ipAddress String?
+  userAgent String? @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([tcKimlikNo])
+}
+
+// ── Sağlık beyanı (ÖZEL NİTELİKLİ — ayrı tablo, İK-only erişim Faz 3) ──
+model JobApplicationHealth {
+  id            String               @id @default(cuid())
+  applicationId String               @unique
+  application   PublicJobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Kronik hastalık — 26 madde ayrı satır tablosunda (JobApplicationHealthItem).
+  gecmisHastalikNotu String?  @db.Text
+  ameliyatOlduMu     Boolean?
+  ameliyatNotu       String?  @db.Text
+
+  // Astım anketi — 7 soru + koşullu 1_1/1_2 (soru1 HAYIR ise null).
+  astimSoru1   Boolean?
+  astimSoru1_1 Boolean?
+  astimSoru1_2 Boolean?
+  astimSoru2   Boolean?
+  astimSoru3   Boolean?
+  astimSoru4   Boolean?
+  astimSoru5   Boolean?
+  astimSoru6   Boolean?
+  astimSoru7   Boolean?
+
+  dogumTarihi   DateTime? @db.Date
+  testTarihi    DateTime? @db.Date
+  cinsiyet      String?
+  telefonGunduz String?
+  telefonGece   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items JobApplicationHealthItem[]
+}
+
+// Kronik hastalık maddesi (VAR/YOK) — raporlama kolaylığı için satır tablosu.
+model JobApplicationHealthItem {
+  id       String               @id @default(cuid())
+  healthId String
+  health   JobApplicationHealth @relation(fields: [healthId], references: [id], onDelete: Cascade)
+
+  itemNo    Int
+  itemLabel String
+  deger     Boolean // VAR=true / YOK=false
+
+  @@unique([healthId, itemNo])
+  @@index([healthId])
+}
+
+// Faz 3: İK'nın sağlık/KVKK özel-nitelikli verisine erişim logu (PersonnelAccessLog
+// deseni; personnelId FK'ye bağlı o tablo başvuruya uymadığı için ayrı tablo).
+model JobApplicationAccessLog {
+  id            String               @id @default(cuid())
+  applicationId String
+  application   PublicJobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  accessedBy String // erişen kullanıcı id
+  accessType String // "VIEW_HEALTH" | "VIEW_CONSENT" | "UNMASK_CONSENT"
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([applicationId])
+  @@index([accessedBy])
+}
+
+// Başvuru aşama/durum geçiş logu — her status değişiminde otomatik yazılır.
+// Time-to-Hire, aşama-bazlı süre, darboğaz ve kök-neden analizi için.
+// JobApplicationAccessLog desenini taklit eder (applicationId FK, Cascade).
+model PublicJobApplicationStageLog {
+  id            String               @id @default(cuid())
+  applicationId String
+  application   PublicJobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  fromStatus JobApplicationStatus? // önceki durum (ilk/başlangıç satırında null)
+  toStatus   JobApplicationStatus // geçilen yeni durum
+  changedBy  String? // değiştiren kullanıcı id (public geçişlerde null)
+  note       String?               @db.Text // opsiyonel açıklama
+
+  createdAt DateTime @default(now())
+
+  @@index([applicationId])
+  @@index([createdAt])
 }
 
 enum Gender {
@@ -5725,13 +5918,91 @@ enum ReferralSource {
 }
 
 enum JobApplicationStatus {
-  PENDING // Beklemede
+  // Akış-öncesi taslak durumları (KVKK → sağlık → tam başvuru). Tam submit'te PENDING.
+  CONSENT_PENDING // KVKK onayı verildi, sağlık bekliyor
+  HEALTH_PENDING // Sağlık beyanı verildi, başvuru formu bekliyor
+  PENDING // Beklemede (İK inceleme kuyruğu)
   REVIEWED // İncelendi
   REVIEWING // İnceleniyor
   SHORTLISTED // Ön Eleme
-  INTERVIEW // Mülakata Çağrıldı
+  INTERVIEW // Mülakata Çağrıldı (genel)
+  // Elif aşama modeli — additive. Mevcut değerler dokunulmadı, 20 başvuru etkilenmez.
+  SINAV // Sınav aşaması
+  TELEFON_MULAKATI // Telefon mülakatı
+  IK_MULAKATI // İK mülakatı
+  TEKNIK_MULAKAT // Teknik mülakat
+  TEKLIF // Teklif aşaması
+  TEKLIF_KABUL // Teklif kabul edildi
+  ISE_BASLADI // İşe başladı
   ACCEPTED // Kabul Edildi
   REJECTED // Reddedildi
+}
+
+// Ret (kök-neden) kategorileri — sabit 3 kategori (İK yalnız ad'ları yönetir).
+enum RejectionReasonCategory {
+  TEKLIF_REDDI // Aday kaynaklı: ücret, lokasyon, vardiya, rakip teklif
+  ISE_ALMAMA // Şirket kaynaklı: teknik yeterlilik, sınav, yönetici kararı
+  SUREC_KAYBI // Ulaşılamadı, karar süresi, işe başlamadı, deneme olumsuz
+}
+
+// Ret nedeni SÖZLÜĞÜ — İK ekler/pasifleştirir (sabit enum'a düşürülmez).
+model RejectionReason {
+  id        String                  @id @default(cuid())
+  category  RejectionReasonCategory
+  name      String
+  isActive  Boolean                 @default(true)
+  order     Int                     @default(0)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  applications PublicJobApplication[]
+
+  @@unique([category, name])
+  @@index([isActive])
+}
+
+// İşe alım maliyet kalemi tipi (Elif deseni). Para birimi TL sabit.
+enum RecruitmentCostType {
+  SABIT // tek tutar girilir (miktar = 1)
+  SAATLIK // saat girilir; tutar = saat × birim ücret (kayıt anında snapshot)
+}
+
+// Maliyet kalemi KATALOĞU — İK yönetir (İlan Maliyeti, Saatlik İK, Ajans...).
+model RecruitmentCostItem {
+  id        String              @id @default(cuid())
+  name      String              @unique
+  type      RecruitmentCostType @default(SABIT)
+  unitRate  Float? // SAATLIK kalemlerde saat ücreti (TL). SABIT'te null.
+  isActive  Boolean             @default(true)
+  order     Int                 @default(0)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  costs RecruitmentCost[]
+
+  @@index([isActive])
+}
+
+// Maliyet KAYDI. Tutar giriş anında hesaplanıp SNAPSHOT yazılır (kalem ücreti
+// sonradan değişse geçmiş bozulmaz). Başvuru bağı NULLABLE: doluysa başvuru-bazlı
+// (mülakat/sınav), null'sa genel maliyet (ilan/ajans).
+model RecruitmentCost {
+  id     String @id @default(cuid())
+  itemId String
+  item   RecruitmentCostItem @relation(fields: [itemId], references: [id])
+
+  publicJobApplicationId String?
+  publicJobApplication   PublicJobApplication? @relation(fields: [publicJobApplicationId], references: [id], onDelete: SetNull)
+
+  quantity      Float   @default(1) // SAATLIK: saat; SABIT: 1
+  amount        Float // TL — kayıt anında hesaplanan snapshot
+  note          String?
+  enteredByEmail String? // giren İK kullanıcısı (session)
+  createdAt     DateTime @default(now())
+
+  @@index([itemId])
+  @@index([publicJobApplicationId])
+  @@index([createdAt])
 }
 
 enum EducationLevel {
@@ -8011,6 +8282,10 @@ model OvertimeForm {
   id     String @id @default(cuid())
   formNo String @unique // OT-2026-001
 
+  // Vardiya Faz 1: form tipi ayrımı (MESAI çekirdeği paylaşımlı). Default MESAI →
+  // mevcut tüm kayıtlar otomatik MESAI, mesai davranışı bozulmaz.
+  formTipi     FormTipi     @default(MESAI)
+
   // Mesai bilgileri
   overtimeType OvertimeType
   date         DateTime     @db.Date
@@ -8018,6 +8293,16 @@ model OvertimeForm {
   startTime    String? // "17:00" (saat aralığı için)
   endTime      String? // "20:30"
   description  String? // Genel açıklama
+
+  // Vardiya Hafta Modu: true ise date = haftanın Pazartesi'si ve form Pzt-Cuma 5 gece
+  // (aynı ekip, tek form) anlamına gelir. false = tek gün (mevcut davranış). MESAI'de her zaman false.
+  vardiyaHaftaMi Boolean @default(false)
+
+  // Mesai performans FAZ 1: proration için gerçek dönem sınırları. Backfill (ayrı script)
+  // ile doldurulur: vardiyaHaftaMi=false → periodStart=periodEnd=date; true → periodStart=date(Pzt),
+  // periodEnd=date+4gün(Cum). Nullable (backfill öncesi eski kayıtlar boş); yeni kayıtlarda kod doldurur.
+  periodStart DateTime? @db.Date
+  periodEnd   DateTime? @db.Date
 
   // Oluşturan
   createdById String
@@ -8039,6 +8324,11 @@ model OvertimeForm {
   @@index([status])
   @@index([createdById])
   @@index([date])
+}
+
+enum FormTipi {
+  MESAI
+  VARDIYA
 }
 
 enum OvertimeType {
@@ -8069,15 +8359,56 @@ model OvertimePersonnel {
   // Mesai detayları
   workDepartment   String // Mesai yapacak bölüm
   serviceRoute     String? // Servis güzergahı (mavi yaka için)
-  targetProduction String? // Hedef üretim
-  actualProduction String? // Gerçekleşen üretim
+  targetProduction String? // Hedef üretim (parça/iş-emri kodu — serbest metin)
+  actualProduction String? // Gerçekleşen üretim (parça/iş-emri kodu — serbest metin)
+  // PR-PERF: sayısal performans alanları (parça-kodu alanlarından AYRI)
+  hedefAdet        Int? // performans: hedeflenen üretim adedi (formu oluşturan girer)
+  gerceklesenAdet  Int? // performans: gerçekleşen üretim adedi (onay sonrası girilir)
+  gerceklesenNote  String? // gerçekleşen girilirken açıklama (ör. tezgah arızası)
   mesaiNedeni      String? // Mesai nedeni (nullable: eski formlar boş; onay görünümünde ünvana fallback)
+
+  // Faz 1: personel başına çoklu üretim satırı. Tekil alanlar 1. satırla senkron
+  // tutulur; Faz 3'te DROP edilecek: targetProduction (kullanılmıyor, %100 boş),
+  // mesaiNedeni (prod'da parça kodu buraya girilmiş → parcaKodu'na taşınır),
+  // hedefAdet, gerceklesenAdet, gerceklesenNote.
+  // NOT: targetProduction artık hiçbir yerden okunmaz/yazılmaz (retired).
+  uretimSatirlari OvertimePersonnelUretim[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([overtimeFormId, personnelId])
   @@index([overtimeFormId])
+}
+
+// Faz 1: Bir mesai personelinin birden fazla üretim satırı olabilir.
+// Backfill kaynak eşlemesi (prod gerçeği): parcaKodu←mesaiNedeni (parça kodu prod'da
+// bu alana girilmiş; targetProduction %100 boş), mesaiNedeni(yeni)←null (tarihsel
+// gerekçe yok), hedefAdet←hedefAdet (çoğu null → taşınır), gerceklesenAdet/Note←aynı.
+model OvertimePersonnelUretim {
+  id                  String            @id @default(cuid())
+  overtimePersonnelId String
+  overtimePersonnel   OvertimePersonnel @relation(fields: [overtimePersonnelId], references: [id], onDelete: Cascade)
+
+  parcaKodu       String // Üretilecek parça kodu (satırın ana alanı; eski mesaiNedeni)
+  mesaiNedeni     String? // Gerekçe (nullable; ayrı gerekçe alanı — backfill'de null)
+  // hedefAdet DB'de nullable: tarihsel kayıtların çoğunda yok. Zorunluluk API/form
+  // seviyesinde (yeni giriş/update'te > 0). Backfill hedefAdet null ise null taşır.
+  hedefAdet       Int? // Hedeflenen üretim adedi
+  gerceklesenAdet Int? // Gerçekleşen üretim adedi (onay sonrası girilir)
+  gerceklesenNote String? // Gerçekleşen girilirken açıklama (ör. tezgah arızası)
+  hurdaAdet       Int? // Hurda adedi (>= 0)
+  sira            Int     @default(1) // Satır sırası
+
+  // Parça kodu sonradan düzeltme audit'i (APPROVED formda eksik malzeme vb. → başka parça).
+  parcaKoduDuzeltmeNote String? // Opsiyonel düzeltme gerekçesi
+  duzeltenById          String? // Düzelten kullanıcı (User FK)
+  duzelten              User?     @relation("UretimParcaDuzelten", fields: [duzeltenById], references: [id])
+  duzeltmeTarihi        DateTime? // Son düzeltme zamanı
+  eskiParcaKodu         String? // İlk düzeltmede orijinal parça kodu (BİR KEZ yazılır, sonrakiler ezmez)
+
+  @@index([overtimePersonnelId])
+  @@index([duzeltenById])
 }
 
 model OvertimeApproval {
@@ -8105,6 +8436,12 @@ model OvertimeApproval {
   // (1 kez). null = henüz gönderilmedi. Sonraki adım kendi null'ı ile başlar.
   reminderSentAt DateTime?
 
+  // PR-3 eskalasyon: 15 dk içinde onaylanmayan adım yedek onaycıya devredildiğinde
+  // set edilir (tek seviye — escalatedAt doluysa tekrar eskale edilmez).
+  escalatedAt   DateTime?
+  escalatedToId String?
+  escalatedTo   User?     @relation("OvertimeApprovalEscalatedTo", fields: [escalatedToId], references: [id])
+
   @@index([overtimeFormId])
   @@index([approverId])
 }
@@ -8117,6 +8454,10 @@ model ApprovalPosition {
   title     String // Üretim Müdür Yardımcısı, Fabrika Müdürü, vb.
   userId    String? // Atanmış kullanıcı (null = henüz atanmamış)
   user      User?   @relation("ApprovalPositionUser", fields: [userId], references: [id])
+  // PR-3 eskalasyon: bu adım 15 dk içinde onaylanmazsa devredilecek yedek onaycı.
+  // null = eskalasyon devre dışı (adım-bazlı opt-in).
+  backupUserId String?
+  backupUser   User?  @relation("ApprovalPositionBackup", fields: [backupUserId], references: [id])
   sortOrder Int     @default(0)
   isActive  Boolean @default(true)
 
@@ -8442,11 +8783,32 @@ model SupplierCriteria {
 enum YakaRengi {
   MAVI
   BEYAZ
+  GRI
+}
+
+// Yaka Aşama 1: beyaz yaka içinde yönetici kademesi + gri (üretim birim sorumluları) ayrımı.
+// yakaDetayi, yakaRengi'nin ALT KIRILIMI (YAKA_DETAY_MAP ile tutarlılık form+backend'de enforce).
+enum YakaDetayi {
+  BEYAZ
+  BEYAZ_GMUDUR_YRD
+  BEYAZ_GENEL_MDR
+  BEYAZ_MUDUR
+  BEYAZ_MUDUR_YRD
+  BEYAZ_MUHENDIS
+  BEYAZ_MUHENDIS_MDRYRD
+  BEYAZ_MUHENDIS_MUDUR
+  BEYAZ_SORUMLU_TEKNIKER
+  BEYAZ_TEKNIKER
+  GRI
+  GRI_VEKALET
+  MAVI
 }
 
 enum DirektEndirekt {
   DIREKT
   ENDIREKT
+  A_DIREKT
+  B_ENDIREKT
 }
 
 enum AsansorMekanik {
@@ -8464,6 +8826,9 @@ model Personnel {
   cinsiyet       Gender
   adSoyad        String
   yakaRengi      YakaRengi
+  // Yaka Aşama 1: yakaRengi alt kırılımı (yönetici kademesi). NULLABLE — mevcut kayıtlar
+  // migration'da patlamasın; zorunluluk aktif personele form+backend seviyesinde uygulanır.
+  yakaDetayi     YakaDetayi?
   direktEndirekt DirektEndirekt?
   asansorMekanik AsansorMekanik?
 
@@ -8517,19 +8882,8 @@ model Personnel {
   engelli Boolean @default(false)
   aktif   Boolean @default(true)
 
-  // PR-PERSONEL-CIKIS-FORMU: Çıkış bilgileri (aktif=false olduğunda doldurulur)
-  // ÇALIŞMA SÜRESİ runtime'da hesaplanır (iseGirisTarihi + exitDate), saklanmaz.
-  exitDate         DateTime? @db.Date
-  exitParty        String? // TARAF: İŞÇİ / İŞVEREN / KARŞILIKLI
-  exitCode         String? // ÇIKIŞ KODU
-  exitReason       String? // ÇIKIŞ NEDENİ AÇIKLAMA
-  exitRootCause    String? // KÖK NEDEN
-  exitTurnoverType String? // İSTENEN / İSTENMEYEN
-  exitGeneralNote  String? @db.Text
-
-  exitRecordedById String?
-  exitRecordedAt   DateTime?
-  exitRecordedBy   User?     @relation("PersonnelExitRecorder", fields: [exitRecordedById], references: [id], onDelete: SetNull)
+  // PR-4b: Personnel.exit* alanları DROP edildi — çıkış verisi tek kaynak olarak
+  // EmploymentPeriod'da (kapalı dönem). Detay/leavers/HR denetimi oradan besleniyor.
 
   // Azure AD bağlantısı
   azureAdId    String? @unique
@@ -8542,6 +8896,8 @@ model Personnel {
 
   // İlişkiler
   sensitive           PersonnelSensitive?
+  // PR-1: çoklu banka hesabı (1-çok). Eski sensitive.banka* alanları PR-2'de düşürülecek.
+  bankAccounts        PersonnelBankAccount[]
   accessLogs          PersonnelAccessLog[]
   overtimeRecords     OvertimePersonnel[]
   evaluationEmails    PersonnelEvaluationEmailLog[]
@@ -8551,10 +8907,48 @@ model Personnel {
   employmentPeriods   EmploymentPeriod[]
   // OFFB-1: Zimmet İade / İlişik Kesme formları
   offboardingForms    OffboardingForm[]
+  // PR-FAZ-B1: bu personelin sorumlu/müdür olduğu bölümler (DepartmentDefinition FK ters yönü)
+  sorumlusuOlduguBolumler1      DepartmentDefinition[] @relation("Dept_S1")
+  sorumlusuOlduguBolumler2      DepartmentDefinition[] @relation("Dept_S2")
+  sorumlusuOlduguBolumler3      DepartmentDefinition[] @relation("Dept_S3")
+  sorumlusuOlduguBolumler4      DepartmentDefinition[] @relation("Dept_S4")
+  mudurYardimcisiOlduguBolumler DepartmentDefinition[] @relation("Dept_MY")
+  muduruOlduguBolumler          DepartmentDefinition[] @relation("Dept_M")
+  // Kiosk/Workstation Faz 1: bu personelin atandığı tezgahlar (join)
+  workstations                  PersonnelWorkstation[]
+  // Envanter: personel beden profili (1-1, opsiyonel). onDelete Restrict → personel
+  // silinmeden profil silinmez (zimmet/beden geçmişi korunur).
+  bedenProfili                  EnvanterPersonelBedenProfili?
 
   @@index([bolum])
   @@index([yakaRengi])
   @@index([aktif])
+}
+
+// Envanter — Personel Beden Profili. Personel başına en fazla 1 satır (personnelId @unique).
+// PPE/kıyafet zimmeti için üst/alt beden, ayakkabı, eldiven ölçüleri. Elif envanter modülünün
+// alt bileşeni; burada yalnız beden profili additive olarak eklenir (zimmet/stok modelleri değil).
+// onDelete: Restrict (Elif branch'indeki Cascade'ten FARKLI) — personel silinmeden profil düşmez.
+model EnvanterPersonelBedenProfili {
+  id String @id @default(cuid())
+
+  personnelId String    @unique
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+
+  ustBeden   String?
+  altBeden   String?
+  ayakkabiNo String?
+  eldivenNo  String?
+  olcuTarihi DateTime?
+  not        String?
+
+  updatedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([personnelId])
+  @@map("envanter_personel_beden_profili")
 }
 
 // PR-A: İstihdam Dönemi — her giriş-çıkış döngüsü = 1 satır. Additive; Personnel'in
@@ -8671,6 +9065,27 @@ model PersonnelSensitive {
   updatedBy String?
 }
 
+// PR-1: Çoklu banka hesabı (1-çok). Hassas veri — maskeleme + PersonnelAccessLog
+// koruması PersonnelSensitive ile AYNI yoldan uygulanır (bkz. [id]/sensitive/route.ts).
+model PersonnelBankAccount {
+  id          String    @id @default(cuid())
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  bankaAdi    String?
+  bankaSube   String?
+  hesapNo     String?
+  ibanNo      String?
+  isPrimary   Boolean   @default(false)
+  aktif       Boolean   @default(true)
+  aciklama    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  updatedBy   String?
+
+  @@unique([personnelId, ibanNo])
+  @@index([personnelId])
+}
+
 // ERİŞİM LOG — ISO 27001 A.8.15
 model PersonnelAccessLog {
   id          String    @id @default(cuid())
@@ -8697,13 +9112,43 @@ model JobTitle {
 }
 
 // İV Ayarları: Bölüm Tanımları
+// PR-FAZ-B1: org omurgası — hiyerarşi (parent) + sorumlular/müdür (Personnel FK). Yetki türetme Faz-B2.
 model DepartmentDefinition {
   id        String   @id @default(cuid())
   name      String   @unique
   isActive  Boolean  @default(true)
+  // Mesai performans FAZ 1: eksik-veri raporunun ayracı. Üretim yapan bölümde
+  // hedef/parça beklenir; false olan bölüm (ör. Bakımhane) rapordan dışlanır.
+  // @default(true): mevcut TÜM bölümler üretim-yapar varsayılır; istisnalar veri
+  // güncellemesiyle (ayrı adım) false yapılır. Nullable değil ama default'lu → additive.
+  uretimYapar Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Hiyerarşi
+  parentId  String?
+  parent    DepartmentDefinition?  @relation("DeptTree", fields: [parentId], references: [id])
+  children  DepartmentDefinition[] @relation("DeptTree")
+  sortOrder Int @default(0)
+
+  // Sorumlular / müdür — Personnel FK (string ad DEĞİL)
+  sorumlu1Id        String?
+  sorumlu2Id        String?
+  sorumlu3Id        String?
+  sorumlu4Id        String?
+  mudurYardimcisiId String?
+  mudurId           String?
+  sorumlu1        Personnel? @relation("Dept_S1", fields: [sorumlu1Id], references: [id])
+  sorumlu2        Personnel? @relation("Dept_S2", fields: [sorumlu2Id], references: [id])
+  sorumlu3        Personnel? @relation("Dept_S3", fields: [sorumlu3Id], references: [id])
+  sorumlu4        Personnel? @relation("Dept_S4", fields: [sorumlu4Id], references: [id])
+  mudurYardimcisi Personnel? @relation("Dept_MY", fields: [mudurYardimcisiId], references: [id])
+  mudur           Personnel? @relation("Dept_M", fields: [mudurId], references: [id])
+
+  // Kiosk/Workstation Faz 1: bu bölüme bağlı tezgahlar
+  workstations Workstation[]
+
+  @@index([parentId])
   @@index([isActive])
 }
 
@@ -10016,4 +10461,175 @@ model OffboardingAccessItem {
   appliedBy String?
 
   @@index([formId])
+}
+
+// Kiosk/Workstation Faz 1 — ILERIHub'ın kendi tezgah/iş istasyonu verisi (IFS'e bağımlı değil).
+// ifsWorkCenterKod IFS iş merkezini kod olarak taşır (UNIQUE değil; çok tezgah aynı merkeze bağlanabilir).
+model Workstation {
+  id               String   @id @default(cuid())
+  kod              String   @unique // fiziksel tezgah, örn PH50
+  ad               String // örn "100 ton pres"
+  ifsWorkCenterKod String // IFS iş merkezi, örn PH — UNIQUE DEĞİL
+  departmentId     String // DepartmentDefinition FK (org/İK domaini)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  department DepartmentDefinition   @relation(fields: [departmentId], references: [id])
+  personnel  PersonnelWorkstation[]
+
+  @@index([ifsWorkCenterKod])
+  @@index([departmentId])
+  @@map("workstations")
+}
+
+// Personel ↔ Tezgah çoktan-çoğa eşlemesi (explicit join, DepartmentPackage deseni).
+model PersonnelWorkstation {
+  id            String   @id @default(cuid())
+  personnelId   String
+  workstationId String
+  createdAt     DateTime @default(now())
+
+  personnel   Personnel   @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  workstation Workstation @relation(fields: [workstationId], references: [id], onDelete: Cascade)
+
+  @@unique([personnelId, workstationId])
+  @@index([workstationId])
+  @@map("personnel_workstations")
+}
+
+// ============================================================
+// İŞE ALIM ADAY SINAV MOTORU (Assessment Faz 1)
+// Akademi Exam*/UserExamAttempt'ten AYRI. Aday kuyruğu = PublicJobApplication.
+// ============================================================
+
+enum AssessmentType {
+  YETKINLIK   // Yetkinlik sınavı
+  YABANCI_DIL // Yabancı dil
+  GENEL       // Genel
+}
+
+enum AssessmentQuestionType {
+  TEK_SECIM    // Tek doğru şık
+  COKLU_SECIM  // Birden çok doğru şık
+  DOGRU_YANLIS // Doğru / Yanlış
+}
+
+enum AssessmentSessionStatus {
+  ATANDI
+  BASLADI
+  TAMAMLANDI
+  SURESI_DOLDU
+  IPTAL
+}
+
+enum AssessmentResult {
+  GECTI
+  KALDI
+}
+
+// Sınav tanımı (İK oluşturur)
+model CandidateAssessment {
+  id           String         @id @default(cuid())
+  name         String
+  type         AssessmentType @default(GENEL)
+  durationMin  Int            // süre (dakika)
+  passingScore Int            // geçme puanı
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  questions AssessmentQuestion[]
+  sessions  AssessmentSession[]
+
+  @@index([isActive])
+}
+
+model AssessmentQuestion {
+  id           String                 @id @default(cuid())
+  assessmentId String
+  type         AssessmentQuestionType @default(TEK_SECIM)
+  text         String                 @db.Text
+  points       Int                    @default(1)
+  order        Int                    @default(0)
+  isActive     Boolean                @default(true)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  assessment CandidateAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  options    AssessmentOption[]
+  answers    AssessmentAnswer[]
+
+  @@index([assessmentId])
+}
+
+model AssessmentOption {
+  id         String  @id @default(cuid())
+  questionId String
+  text       String
+  isCorrect  Boolean @default(false)
+  order      Int     @default(0)
+
+  question AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+// Adaya atanan sınav oturumu (token Faz 2'de kullanılacak, şimdi dışa açılmaz).
+// Bağ: PublicJobApplication (gerçek başvuru kuyruğu). JobApplication DEĞİL.
+model AssessmentSession {
+  id                    String                  @id @default(cuid())
+  publicJobApplicationId String
+  assessmentId          String
+  token                 String                  @unique // crypto-random (32B base64url), koddan üretilir
+  status                AssessmentSessionStatus @default(ATANDI)
+  assignedAt            DateTime                @default(now())
+  expiresAt             DateTime                // atanma + geçerlilik (72 saat)
+  startedAt             DateTime?
+  finishedAt            DateTime?
+  score                 Int?
+  result                AssessmentResult?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  publicJobApplication PublicJobApplication @relation(fields: [publicJobApplicationId], references: [id], onDelete: Cascade)
+  assessment           CandidateAssessment  @relation(fields: [assessmentId], references: [id])
+  answers              AssessmentAnswer[]
+  attemptLogs          AssessmentAttemptLog[]
+
+  @@unique([publicJobApplicationId, assessmentId])
+  @@index([publicJobApplicationId])
+  @@index([token])
+}
+
+// Public sınav erişim/denetim izi (Faz 2). Public akış → accessedBy YOK.
+// Geçersiz token denemeleri de loglanır (sessionId null) → brute-force tespiti.
+// Ham token SAKLANMAZ (yalnız sonuç + IP).
+model AssessmentAttemptLog {
+  id        String   @id @default(cuid())
+  sessionId String? // geçerli token ise oturum; geçersiz denemede null
+  action    String // "OPEN" | "SUBMIT" | "INVALID_TOKEN" | "EXPIRED" | "ALREADY_DONE" | "TIMEOUT"
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  session AssessmentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model AssessmentAnswer {
+  id                String   @id @default(cuid())
+  sessionId         String
+  questionId        String
+  selectedOptionIds Json     // seçilen şık id'leri
+  isCorrect         Boolean  @default(false)
+  points            Int      @default(0)
+  createdAt         DateTime @default(now())
+
+  session  AssessmentSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question AssessmentQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
 }

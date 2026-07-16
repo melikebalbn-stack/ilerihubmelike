@@ -1,18 +1,38 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect as Select } from "@/components/ui/select"
-import { Clock, ArrowLeft, Check, X, MessageSquare, Loader2, Users, Send, FlaskConical, Plus, Trash2, Search, Pencil, Save } from "lucide-react"
+import { Clock, ArrowLeft, Check, X, MessageSquare, Loader2, Users, Send, FlaskConical, Plus, Trash2, Search, Pencil, Save, ChevronRight, ChevronDown, Info } from "lucide-react"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import Link from "next/link"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { formatVardiyaHafta } from "@/lib/vardiya-hafta"
 import { toast } from "sonner"
 import { MESAI_TURLERI, OVERTIME_STATUS_LABELS, OVERTIME_STATUS_COLORS } from "@/lib/overtime-constants"
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert"
+import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments } from "@/lib/use-departments"
 import { useSession } from "next-auth/react"
+
+interface UretimSatir {
+  id: string
+  parcaKodu: string
+  mesaiNedeni: string | null
+  hedefAdet: number | null
+  gerceklesenAdet: number | null
+  gerceklesenNote: string | null
+  hurdaAdet: number | null
+  sira: number
+  // Parça kodu sonradan düzeltme audit'i
+  eskiParcaKodu: string | null
+  parcaKoduDuzeltmeNote: string | null
+  duzeltmeTarihi: string | null
+  duzelten: { id: string; name: string | null } | null
+}
 
 interface Personnel {
   id: string
@@ -20,8 +40,12 @@ interface Personnel {
   workDepartment: string
   serviceRoute: string | null
   targetProduction: string | null
-  actualProduction: string | null
+  hedefAdet: number | null
+  gerceklesenAdet: number | null
+  gerceklesenNote: string | null
   mesaiNedeni: string | null
+  // Faz 2: çoklu üretim satırı (sira asc). Backfill tam → 26 boş-neden kayıt hariç dolu.
+  uretimSatirlari: UretimSatir[]
   personnel: {
     id: string
     sicilNo: string
@@ -48,13 +72,21 @@ interface Approval {
     department: string | null
     jobTitle: string | null
   } | null
+  // Çift-onaycı: adım eskale olduysa yedek onaycı (asıl onaycıyla birlikte onaylayabilir).
+  escalatedTo: {
+    id: string
+    name: string
+    email: string
+  } | null
 }
 
 interface OvertimeFormDetail {
   id: string
   formNo: string
+  formTipi?: "MESAI" | "VARDIYA"
   overtimeType: "SATURDAY" | "SUNDAY" | "WEEKDAY_EXTRA" | "HOLIDAY"
   date: string
+  vardiyaHaftaMi?: boolean
   isFullDay: boolean
   startTime: string | null
   endTime: string | null
@@ -72,6 +104,9 @@ interface OvertimeFormDetail {
   }
   personnel: Personnel[]
   approvals: Approval[]
+  // Gerçekleşen adet satır-bazlı yetki: kullanıcının omurga bölümleri.
+  // null = tüm bölümler (admin/report.all); [adlar] = sadece o bölümler; [] = hiçbiri.
+  currentUserAllowedDepts: string[] | null
 }
 
 function getOvertimeTypeInfo(type: string) {
@@ -106,7 +141,7 @@ export default function OvertimeDetailPage() {
   const [submitting, setSubmitting] = useState(false)
   const [comment, setComment] = useState("")
   const [forwardToGM, setForwardToGM] = useState(false)
-  const [actionLoading, setActionLoading] = useState<"approve" | "reject" | "test" | null>(null)
+  const [actionLoading, setActionLoading] = useState<"approve" | "reject" | "return" | "test" | null>(null)
 
   // Personnel editing state
   const [showAddPanel, setShowAddPanel] = useState(false)
@@ -114,6 +149,8 @@ export default function OvertimeDetailPage() {
   const [personnelItemsLoading, setPersonnelItemsLoading] = useState(false)
   const [personnelSearch, setPersonnelSearch] = useState("")
   const [addWorkDept, setAddWorkDept] = useState("")
+  const [addHedefAdet, setAddHedefAdet] = useState("")
+  const [addParcaKodu, setAddParcaKodu] = useState("") // Faz 2: eklenen personelin parça kodu
 
   // Bölümler yüklenince varsayılan workDept seç
   useEffect(() => {
@@ -126,15 +163,29 @@ export default function OvertimeDetailPage() {
 
   // Actual production editing state
   const [isAuthorizedUser, setIsAuthorizedUser] = useState(false)
+  // Gerçekleşen adet satır-bazlı yetki — yalnız GET'ten set edilir; form mutasyonları
+  // (add/remove/actual PUT yanıtları bu alanı taşımaz) bunu bozmasın diye ayrı state.
+  // null = tüm bölümler (admin/report.all); [adlar] = sadece o bölümler; [] = hiçbiri.
+  const [allowedDepts, setAllowedDepts] = useState<string[] | null>(null)
   const [editingActual, setEditingActual] = useState(false)
-  const [actualValues, setActualValues] = useState<Record<string, string>>({})
+  // Faz 2: satır-bazlı düzenleme — üretim satırı ID'si ile anahtarlanır.
+  // parcaKodu + parcaKoduNote: parça kodu (Mesai Nedeni) sonradan düzeltme.
+  const [rowValues, setRowValues] = useState<
+    Record<
+      string,
+      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string; parcaKodu: string; parcaKoduNote: string }
+    >
+  >({})
+  // Çoklu satırı olan personelde alt-satır expand durumu (overtimePersonnel id).
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [savingActual, setSavingActual] = useState(false)
 
   const fetchAllPersonnelItems = useCallback(async () => {
     if (allPersonnelItems.length > 0) return
     setPersonnelItemsLoading(true)
     try {
-      const res = await fetch("/api/overtime/personnel-list")
+      const res = await apiFetch("/api/overtime/personnel-list")
+      if (res.__authHandled) return
       if (!res.ok) throw new Error()
       const data = await res.json()
       setAllPersonnelItems(Array.isArray(data) ? data : [])
@@ -149,17 +200,28 @@ export default function OvertimeDetailPage() {
     setAddingId(personnelItemId)
     try {
       const targetPerson = allPersonnelItems.find((p) => p.id === personnelItemId)
-      const res = await fetch(`/api/overtime/${id}/personnel`, {
+      const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personnelId: personnelItemId, workDepartment: addWorkDept, serviceRoute: targetPerson?.serviceRoute || null }),
+        body: JSON.stringify({
+          personnelId: personnelItemId,
+          workDepartment: addWorkDept,
+          serviceRoute: targetPerson?.serviceRoute || null,
+          // FIX: sonradan eklenen personel için hedef adet (boşsa null).
+          hedefAdet: addHedefAdet ? Number(addHedefAdet) : null,
+          // Faz 2: parça kodu (mesaiNedeni) → API buradan 1. üretim satırını türetir.
+          mesaiNedeni: addParcaKodu.trim() || null,
+        }),
       })
+      if (res.__authHandled) return
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || "Personel eklenemedi")
       }
       const updated = await res.json()
       setForm(updated)
+      setAddHedefAdet("")
+      setAddParcaKodu("")
       toast.success("Personel eklendi")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bir hata oluştu")
@@ -172,11 +234,12 @@ export default function OvertimeDetailPage() {
     if (!window.confirm("Bu personeli formdan çıkarmak istediğinize emin misiniz?")) return
     setRemovingId(personnelId)
     try {
-      const res = await fetch(`/api/overtime/${id}/personnel`, {
+      const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ personnelId }),
       })
+      if (res.__authHandled) return
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || "Personel çıkarılamadı")
@@ -193,27 +256,82 @@ export default function OvertimeDetailPage() {
 
   function startEditingActual() {
     if (!form) return
-    const values: Record<string, string> = {}
+    const values: Record<
+      string,
+      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string; parcaKodu: string; parcaKoduNote: string }
+    > = {}
     form.personnel.forEach((p) => {
-      values[p.id] = p.actualProduction || ""
+      p.uretimSatirlari.forEach((r) => {
+        values[r.id] = {
+          gerceklesenAdet: r.gerceklesenAdet != null ? String(r.gerceklesenAdet) : "",
+          gerceklesenNote: r.gerceklesenNote || "",
+          hurdaAdet: r.hurdaAdet != null ? String(r.hurdaAdet) : "",
+          hedefAdet: r.hedefAdet != null ? String(r.hedefAdet) : "",
+          parcaKodu: r.parcaKodu ?? "",
+          parcaKoduNote: "", // gerekçe her düzenlemede boş başlar
+        }
+      })
     })
-    setActualValues(values)
+    setRowValues(values)
     setEditingActual(true)
+  }
+
+  function updateRowValue(
+    rowId: string,
+    field: "gerceklesenAdet" | "gerceklesenNote" | "hurdaAdet" | "hedefAdet" | "parcaKodu" | "parcaKoduNote",
+    value: string
+  ) {
+    setRowValues((prev) => ({
+      ...prev,
+      [rowId]: {
+        gerceklesenAdet: prev[rowId]?.gerceklesenAdet ?? "",
+        gerceklesenNote: prev[rowId]?.gerceklesenNote ?? "",
+        hurdaAdet: prev[rowId]?.hurdaAdet ?? "",
+        hedefAdet: prev[rowId]?.hedefAdet ?? "",
+        parcaKodu: prev[rowId]?.parcaKodu ?? "",
+        parcaKoduNote: prev[rowId]?.parcaKoduNote ?? "",
+        [field]: value,
+      },
+    }))
+  }
+
+  function toggleExpanded(personnelId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(personnelId)) next.delete(personnelId)
+      else next.add(personnelId)
+      return next
+    })
   }
 
   async function saveActualProduction() {
     if (!form) return
     setSavingActual(true)
     try {
-      const personnelData = Object.entries(actualValues).map(([overtimePersonnelId, actualProduction]) => ({
-        overtimePersonnelId,
-        actualProduction,
-      }))
-      const res = await fetch(`/api/overtime/${id}/personnel`, {
+      // Satır-bazlı: yalnız yetkili + satırı olan personeli, satır ID'leriyle gönder.
+      // hedefAdet API'de yalnız > 0 ise yazılır (tarihsel null doldurma). Boş hedefAdet
+      // mevcut değeri korur. Satırsız (26 boş-neden) kayıt gönderilmez (upsert türetilemez).
+      const personnelData = form.personnel
+        .filter((p) => canEditActualRow(p) && p.uretimSatirlari.length > 0)
+        .map((p) => ({
+          overtimePersonnelId: p.id,
+          uretimSatirlari: p.uretimSatirlari.map((r) => ({
+            id: r.id,
+            gerceklesenAdet: rowValues[r.id]?.gerceklesenAdet ?? "",
+            gerceklesenNote: rowValues[r.id]?.gerceklesenNote ?? "",
+            hurdaAdet: rowValues[r.id]?.hurdaAdet ?? "",
+            hedefAdet: rowValues[r.id]?.hedefAdet ?? "",
+            // Parça kodu düzeltme: backend yalnız değişince audit yazar; boş → 400.
+            parcaKodu: rowValues[r.id]?.parcaKodu ?? "",
+            parcaKoduDuzeltmeNote: rowValues[r.id]?.parcaKoduNote ?? "",
+          })),
+        }))
+      const res = await apiFetch(`/api/overtime/${id}/personnel`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ personnel: personnelData }),
       })
+      if (res.__authHandled) return
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || "Güncelleme başarısız")
@@ -232,13 +350,15 @@ export default function OvertimeDetailPage() {
   async function fetchForm() {
     try {
       setLoading(true)
-      const res = await fetch(`/api/overtime/${id}`)
+      const res = await apiFetch(`/api/overtime/${id}`)
+      if (res.__authHandled) return
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Form yüklenemedi")
       }
       const data = await res.json()
       setForm(data)
+      setAllowedDepts(data.currentUserAllowedDepts ?? null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Form yüklenirken bir hata oluştu")
     } finally {
@@ -255,7 +375,8 @@ export default function OvertimeDetailPage() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const res = await fetch("/api/overtime/authorized-users?check=me")
+        const res = await apiFetch("/api/overtime/authorized-users?check=me")
+        if (res.__authHandled) return
         if (res.ok) {
           const data = await res.json()
           setIsAuthorizedUser(data.authorized === true)
@@ -271,7 +392,8 @@ export default function OvertimeDetailPage() {
     if (!window.confirm("Formu onaya göndermek istediğinize emin misiniz?")) return
     try {
       setSubmitting(true)
-      const res = await fetch(`/api/overtime/${id}/submit`, { method: "POST" })
+      const res = await apiFetch(`/api/overtime/${id}/submit`, { method: "POST" })
+      if (res.__authHandled) return
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Form gönderilemedi")
@@ -285,21 +407,28 @@ export default function OvertimeDetailPage() {
     }
   }
 
-  async function handleApprovalAction(decision: "APPROVED" | "REJECTED") {
-    const label = decision === "APPROVED" ? "onaylamak" : "reddetmek"
+  async function handleApprovalAction(decision: "APPROVED" | "REJECTED" | "RETURNED") {
+    // RETURNED (düzeltmeye iade) için açıklama zorunlu
+    if (decision === "RETURNED" && !comment.trim()) {
+      toast.error("Düzeltme göndermek için açıklama girin")
+      return
+    }
+    const label =
+      decision === "APPROVED" ? "onaylamak" : decision === "REJECTED" ? "reddetmek" : "düzeltmeye göndermek"
     if (!window.confirm(`Bu formu ${label} istediğinize emin misiniz?`)) return
 
     try {
-      setActionLoading(decision === "APPROVED" ? "approve" : "reject")
+      setActionLoading(decision === "APPROVED" ? "approve" : decision === "REJECTED" ? "reject" : "return")
       const body: Record<string, unknown> = { decision }
       if (comment.trim()) body.comment = comment.trim()
       if (forwardToGM) body.forwardToGM = true
 
-      const res = await fetch(`/api/overtime/${id}/approve`, {
+      const res = await apiFetch(`/api/overtime/${id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
+      if (res.__authHandled) return
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -307,7 +436,11 @@ export default function OvertimeDetailPage() {
       }
 
       toast.success(
-        decision === "APPROVED" ? "Form onaylandı" : "Form reddedildi"
+        decision === "APPROVED"
+          ? "Form onaylandı"
+          : decision === "REJECTED"
+          ? "Form reddedildi"
+          : "Form düzeltmeye gönderildi"
       )
       setComment("")
       setForwardToGM(false)
@@ -324,9 +457,10 @@ export default function OvertimeDetailPage() {
 
     try {
       setActionLoading("test")
-      const res = await fetch(`/api/overtime/${id}/test-approve-all`, {
+      const res = await apiFetch(`/api/overtime/${id}/test-approve-all`, {
         method: "POST",
       })
+      if (res.__authHandled) return
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -353,6 +487,8 @@ export default function OvertimeDetailPage() {
     if (!currentApproval) return false
 
     if (currentApproval.approver?.email === session.user.email) return true
+    // Çift-onaycı: adım eskale olduysa yedek onaycı da onaylayabilir.
+    if (currentApproval.escalatedTo?.email === session.user.email) return true
 
     const userRole = (session.user as Record<string, unknown>).role as string | undefined
     if (userRole === "ADMIN" || userRole === "SUPER_ADMIN") return true
@@ -398,7 +534,7 @@ export default function OvertimeDetailPage() {
           <Link href="/forms/overtime">
             <Button variant="outline">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Mesai Formlarına Dön
+              Formlara Dön
             </Button>
           </Link>
         </div>
@@ -409,11 +545,32 @@ export default function OvertimeDetailPage() {
   const typeInfo = getOvertimeTypeInfo(form.overtimeType)
   const isCreator = session?.user?.email === form.createdBy.email
   const showApprovalActions = canUserApprove()
+  // Özellik B: kullanıcı bu adımı zaten karara bağladıysa (artık buton görünmez)
+  // butonun yerine bilgi kartı göster. canUserApprove ile AYNI email-eşleşme deseni
+  // (id/email karışımı yok); session email yoksa hesaplanmaz.
+  const sessionEmail = session?.user?.email
+  const myDecided = sessionEmail
+    ? form.approvals.find(
+        (a) =>
+          a.approver?.email === sessionEmail &&
+          a.decision !== null &&
+          a.decidedAt
+      )
+    : undefined
   const showTestMode = isSuperAdmin() && ["PENDING", "IN_PROGRESS"].includes(form.status)
   const canEditPersonnel = showApprovalActions || (form.status === "DRAFT" && isCreator)
   const userRole = (session?.user as Record<string, unknown>)?.role as string | undefined
   const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN"
-  const canEditActual = form.status === "APPROVED" && (isCreator || isAdmin || isAuthorizedUser)
+  // Gerçekleşen adet yetkisi (backend PUT ile BİREBİR aynı mantık):
+  // fullAccess = admin/creator/global-authorized/omurga-tümü (currentUserAllowedDepts===null).
+  // Kısıtlı sorumlu → sadece kendi bölümü (allowedDeptSet) satırları.
+  const normDept = (s?: string | null) => (s ?? "").trim().toLocaleUpperCase("tr-TR")
+  const fullActualAccess = isCreator || isAdmin || isAuthorizedUser || allowedDepts === null
+  const allowedDeptSet = new Set((allowedDepts ?? []).map(normDept))
+  const canEditActualRow = (p: Personnel): boolean =>
+    fullActualAccess || allowedDeptSet.has(normDept(p.workDepartment))
+  const canEditActual =
+    form.status === "APPROVED" && (fullActualAccess || form.personnel.some(canEditActualRow))
   const existingPersonnelIds = new Set(form.personnel.map((p) => p.personnelId).filter(Boolean))
   const filteredAddPersonnel = allPersonnelItems.filter((pi) => {
     if (existingPersonnelIds.has(pi.id)) return false
@@ -426,10 +583,10 @@ export default function OvertimeDetailPage() {
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/forms/overtime">
+          <Link href={form?.formTipi === "VARDIYA" ? "/forms/vardiya" : "/forms/overtime"}>
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Mesai Formları
+              {form?.formTipi === "VARDIYA" ? "Vardiya" : "Mesai"} Formları
             </Button>
           </Link>
           <div className="flex items-center gap-3">
@@ -446,7 +603,7 @@ export default function OvertimeDetailPage() {
         </div>
         {form.status === "DRAFT" && isCreator && (
           <div className="flex items-center gap-2">
-            <Link href={`/forms/overtime/${form.id}/edit`}>
+            <Link href={`${form?.formTipi === "VARDIYA" ? "/forms/vardiya" : "/forms/overtime"}/${form.id}/edit`}>
               <Button variant="outline" size="sm">
                 Düzenle
               </Button>
@@ -478,9 +635,11 @@ export default function OvertimeDetailPage() {
             </span>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Tarih</p>
+            <p className="text-sm text-muted-foreground">{form.vardiyaHaftaMi ? "Vardiya Haftası" : "Tarih"}</p>
             <p className="font-medium mt-1">
-              {format(new Date(form.date), "dd MMMM yyyy EEEE", { locale: tr })}
+              {form.vardiyaHaftaMi
+                ? formatVardiyaHafta(form.date)
+                : format(new Date(form.date), "dd MMMM yyyy EEEE", { locale: tr })}
             </p>
           </div>
           <div>
@@ -560,6 +719,21 @@ export default function OvertimeDetailPage() {
                   <option key={b} value={b}>{b}</option>
                 ))}
               </Select>
+              <Input
+                placeholder="Parça kodu (Mesai Nedeni)"
+                value={addParcaKodu}
+                onChange={(e) => setAddParcaKodu(e.target.value)}
+                className="w-44"
+              />
+              <Input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                placeholder="Hedef Adet"
+                value={addHedefAdet}
+                onChange={(e) => setAddHedefAdet(e.target.value)}
+                className="w-32"
+              />
               <Button
                 variant="ghost"
                 size="sm"
@@ -623,10 +797,11 @@ export default function OvertimeDetailPage() {
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Mesai Nedeni</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Mesai Yapacak Bölüm</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Servis Güzergahı</th>
-                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Üretim</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Adet</th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hurda Adet</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    Gerçekleşen Üretim
+                    Gerçekleşen Adet
                     {canEditActual && !editingActual && (
                       <button
                         onClick={startEditingActual}
@@ -657,61 +832,205 @@ export default function OvertimeDetailPage() {
                     )}
                   </div>
                 </th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Açıklama</th>
                 {canEditPersonnel && (
                   <th className="text-right py-3 px-2 font-medium text-muted-foreground w-16"></th>
                 )}
               </tr>
             </thead>
             <tbody>
-              {form.personnel.map((p, index) => (
-                <tr key={p.id} className="border-b last:border-0 hover:bg-muted/50">
-                  <td className="py-3 px-2 text-muted-foreground">{index + 1}</td>
-                  <td className="py-3 px-2 font-mono text-xs">{pSicilNo(p)}</td>
-                  <td className="py-3 px-2 font-medium">{pName(p)}</td>
-                  <td className="py-3 px-2 text-xs">{pTelefon(p)}</td>
-                  <td className="py-3 px-2">{pBolum(p)}</td>
-                  <td className="py-3 px-2">{p.mesaiNedeni || pGorev(p)}</td>
-                  <td className="py-3 px-2">{p.workDepartment}</td>
-                  <td className="py-3 px-2">{p.serviceRoute || "—"}</td>
-                  <td className="py-3 px-2">{p.targetProduction || "—"}</td>
-                  <td className="py-3 px-2">
-                    {editingActual ? (
-                      <Input
-                        value={actualValues[p.id] || ""}
-                        onChange={(e) =>
-                          setActualValues((prev) => ({ ...prev, [p.id]: e.target.value }))
-                        }
-                        placeholder="Üretim girin..."
-                        className="h-8 w-32 text-sm"
-                      />
-                    ) : form.status === "APPROVED" ? (
-                      <span className={!p.actualProduction ? "text-muted-foreground italic" : ""}>
-                        {p.actualProduction || "Henüz girilmedi"}
-                      </span>
-                    ) : (
-                      p.actualProduction || "—"
-                    )}
-                  </td>
-                  {canEditPersonnel && (
-                    <td className="py-3 px-2 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                        onClick={() => handleRemovePersonnel(p.id)}
-                        disabled={removingId !== null}
-                        title="Personeli çıkar"
-                      >
-                        {removingId === p.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {form.personnel.map((p, index) => {
+                const rows = p.uretimSatirlari ?? []
+                const row0: UretimSatir | undefined = rows[0]
+                const rowCount = rows.length
+                const isExpanded = expanded.has(p.id)
+                const rowEditable = editingActual && canEditActualRow(p)
+
+                // Bir üretim satırının 4 düzenlenebilir hücresi (Hedef/Hurda/Gerçekleşen/Açıklama).
+                // r yoksa (satırsız kayıt) düzenleme kapalı → "—".
+                const cellFor = (r: UretimSatir | undefined) => {
+                  const editable = rowEditable && !!r
+                  const rv = r ? rowValues[r.id] : undefined
+                  return (
+                    <>
+                      {/* Hedef Adet — null (tarihsel) ise inline doldurulabilir (>0) */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            type="number" inputMode="numeric" min="1"
+                            value={rv?.hedefAdet || ""}
+                            onChange={(e) => updateRowValue(r!.id, "hedefAdet", e.target.value)}
+                            placeholder="—"
+                            className="h-8 w-20 text-sm"
+                          />
+                        ) : r?.hedefAdet != null ? r.hedefAdet : "—"}
+                      </td>
+                      {/* Hurda Adet — satır bazlı (>=0) */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            type="number" inputMode="numeric" min="0"
+                            value={rv?.hurdaAdet || ""}
+                            onChange={(e) => updateRowValue(r!.id, "hurdaAdet", e.target.value)}
+                            placeholder="Ör: 3"
+                            className="h-8 w-20 text-sm"
+                          />
+                        ) : r?.hurdaAdet != null ? r.hurdaAdet : "—"}
+                      </td>
+                      {/* Gerçekleşen Adet */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            type="number" inputMode="numeric" min="0"
+                            value={rv?.gerceklesenAdet || ""}
+                            onChange={(e) => updateRowValue(r!.id, "gerceklesenAdet", e.target.value)}
+                            placeholder="Ör: 42"
+                            className="h-8 w-24 text-sm"
+                          />
+                        ) : r?.gerceklesenAdet != null ? (
+                          r.gerceklesenAdet
+                        ) : form.status === "APPROVED" ? (
+                          <span className="text-muted-foreground italic">Henüz girilmedi</span>
                         ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
+                          "—"
                         )}
-                      </Button>
-                    </td>
-                  )}
-                </tr>
-              ))}
+                      </td>
+                      {/* Açıklama */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            value={rv?.gerceklesenNote || ""}
+                            onChange={(e) => updateRowValue(r!.id, "gerceklesenNote", e.target.value)}
+                            placeholder="Açıklama (ör. tezgah arızası)"
+                            className="h-8 w-40 text-sm"
+                          />
+                        ) : (
+                          r?.gerceklesenNote || "—"
+                        )}
+                      </td>
+                    </>
+                  )
+                }
+
+                // Parça kodu (Mesai Nedeni) içeriği: yetkiliyken inline-edit + "düzeltildi"
+                // tooltip (eski kod / düzelten / tarih) + değişince opsiyonel gerekçe input.
+                const parcaContent = (r: UretimSatir | undefined, fallbackText: string) => {
+                  const editable = rowEditable && !!r
+                  const rv = r ? rowValues[r.id] : undefined
+                  const duzeltildi = !!r?.eskiParcaKodu
+                  const changed = !!(editable && rv && rv.parcaKodu.trim() !== (r?.parcaKodu ?? ""))
+                  return (
+                    <>
+                      {editable ? (
+                        <Input
+                          value={rv?.parcaKodu ?? ""}
+                          onChange={(e) => updateRowValue(r!.id, "parcaKodu", e.target.value)}
+                          placeholder="Parça kodu"
+                          className="h-8 w-32 text-sm"
+                        />
+                      ) : (
+                        <span>{r?.parcaKodu || fallbackText}</span>
+                      )}
+                      {duzeltildi && r && (
+                        <TooltipProvider delayDuration={150}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-amber-500 shrink-0 cursor-help" aria-label="Düzeltildi">
+                                <Info className="h-3.5 w-3.5" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <div className="text-xs space-y-0.5">
+                                <div>Eski kod: <span className="font-mono">{r.eskiParcaKodu}</span></div>
+                                <div>Düzelten: {r.duzelten?.name || "—"}</div>
+                                <div>Tarih: {r.duzeltmeTarihi ? new Date(r.duzeltmeTarihi).toLocaleString("tr-TR") : "—"}</div>
+                                {r.parcaKoduDuzeltmeNote && <div>Gerekçe: {r.parcaKoduDuzeltmeNote}</div>}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      {changed && (
+                        <Input
+                          value={rv?.parcaKoduNote ?? ""}
+                          onChange={(e) => updateRowValue(r!.id, "parcaKoduNote", e.target.value)}
+                          placeholder="düzeltme gerekçesi (ops.)"
+                          className="h-8 w-40 text-sm"
+                        />
+                      )}
+                    </>
+                  )
+                }
+
+                return (
+                  <Fragment key={p.id}>
+                    <tr className="border-b last:border-0 hover:bg-muted/50">
+                      <td className="py-3 px-2 text-muted-foreground">{index + 1}</td>
+                      <td className="py-3 px-2 font-mono text-xs">{pSicilNo(p)}</td>
+                      <td className="py-3 px-2 font-medium">{pName(p)}</td>
+                      <td className="py-3 px-2 text-xs">{pTelefon(p)}</td>
+                      <td className="py-3 px-2">{pBolum(p)}</td>
+                      {/* Mesai Nedeni = 1. üretim satırının parça kodu (+ çoklu satır expand + düzelt) */}
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {rowCount > 1 && (
+                            <button
+                              onClick={() => toggleExpanded(p.id)}
+                              className="text-muted-foreground hover:text-foreground shrink-0"
+                              title={isExpanded ? "Satırları gizle" : "Satırları göster"}
+                            >
+                              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                          )}
+                          {parcaContent(row0, p.mesaiNedeni || pGorev(p))}
+                          {rowCount > 1 && (
+                            <span className="text-xs rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 shrink-0">
+                              {rowCount} parça
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">{p.workDepartment}</td>
+                      <td className="py-3 px-2">{p.serviceRoute || "—"}</td>
+                      {cellFor(row0)}
+                      {canEditPersonnel && (
+                        <td className="py-3 px-2 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                            onClick={() => handleRemovePersonnel(p.id)}
+                            disabled={removingId !== null}
+                            title="Personeli çıkar"
+                          >
+                            {removingId === p.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </td>
+                      )}
+                    </tr>
+
+                    {/* Alt üretim satırları (2+) — expand açıkken */}
+                    {isExpanded && rowCount > 1 && rows.slice(1).map((r) => (
+                      <tr key={r.id} className="border-b last:border-0 bg-muted/30">
+                        <td className="py-2 px-2" colSpan={5} />
+                        <td className="py-2 px-2 pl-6">
+                          <div className="flex items-center gap-1.5 flex-wrap text-muted-foreground">
+                            <span className="shrink-0">↳</span>
+                            {parcaContent(r, "—")}
+                          </div>
+                        </td>
+                        <td className="py-2 px-2" colSpan={2} />
+                        {cellFor(r)}
+                        {canEditPersonnel && <td className="py-2 px-2" />}
+                      </tr>
+                    ))}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -786,7 +1105,7 @@ export default function OvertimeDetailPage() {
                       >
                         {approval.decision === "APPROVED" && "Onaylandı"}
                         {approval.decision === "REJECTED" && "Reddedildi"}
-                        {approval.decision === "RETURNED" && "İade Edildi"}
+                        {approval.decision === "RETURNED" && "Düzeltmeye Gönderildi"}
                         {approval.decision === "FORWARDED" && "Yönlendirildi"}
                       </span>
                     )}
@@ -830,6 +1149,18 @@ export default function OvertimeDetailPage() {
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold mb-4">Onay İşlemi</h2>
 
+          {/* Vardiya Faz 2: GM adımı + VARDIYA + 10+ kişi → dinamik servis notu (N güncel) */}
+          {form.formTipi === "VARDIYA" &&
+            form.personnel.length > 10 &&
+            form.approvals.find((a) => a.decision === null)?.role?.trim() === "Genel Müdür" && (
+              <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-900">
+                <AlertTitle>Servis Bilgisi</AlertTitle>
+                <AlertDescription className="text-amber-800">
+                  Vardiya 10 kişiyi geçtiği için servis ayarlanacaktır. Vardiya&apos;da {form.personnel.length} kişi olacaktır.
+                </AlertDescription>
+              </Alert>
+            )}
+
           {isGMYStep() && (
             <label className="flex items-center gap-2 mb-4 cursor-pointer">
               <input
@@ -846,7 +1177,7 @@ export default function OvertimeDetailPage() {
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Yorum ekleyin (opsiyonel)..."
+              placeholder="Yorum ekleyin (düzeltme göndermek için zorunlu)..."
               rows={3}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
@@ -877,9 +1208,59 @@ export default function OvertimeDetailPage() {
               )}
               Reddet
             </Button>
+            <Button
+              onClick={() => handleApprovalAction("RETURNED")}
+              disabled={actionLoading !== null}
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              {actionLoading === "return" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Pencil className="h-4 w-4 mr-2" />
+              )}
+              Düzeltme Gönder
+            </Button>
           </div>
         </div>
       )}
+
+      {/* Özellik B: kendi kararını vermiş kullanıcıya buton yerine bilgi kartı.
+          showApprovalActions FALSE (artık sıradaki onaycı değil) + kendi kararı varsa. */}
+      {!showApprovalActions &&
+        myDecided &&
+        (myDecided.decision === "APPROVED" || myDecided.decision === "REJECTED") && (
+          <div
+            className={`rounded-lg border p-4 ${
+              myDecided.decision === "APPROVED"
+                ? "border-green-200 bg-green-50"
+                : "border-red-200 bg-red-50"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {myDecided.decision === "APPROVED" ? (
+                <Check className="h-5 w-5 text-green-600" />
+              ) : (
+                <X className="h-5 w-5 text-red-600" />
+              )}
+              <p
+                className={`text-sm font-medium ${
+                  myDecided.decision === "APPROVED"
+                    ? "text-green-800"
+                    : "text-red-800"
+                }`}
+              >
+                {myDecided.decision === "APPROVED"
+                  ? `Bu formu ${format(new Date(myDecided.decidedAt!), "dd MMM yyyy HH:mm", { locale: tr })} tarihinde onayladınız.`
+                  : `Bu formu ${format(new Date(myDecided.decidedAt!), "dd MMM yyyy HH:mm", { locale: tr })} tarihinde reddettiniz.`}
+              </p>
+            </div>
+            {myDecided.comment && (
+              <p className="text-xs text-muted-foreground mt-2 ml-7">
+                Notunuz: {myDecided.comment}
+              </p>
+            )}
+          </div>
+        )}
 
       {/* Test Mode Card - Only for SUPER_ADMIN */}
       {showTestMode && (

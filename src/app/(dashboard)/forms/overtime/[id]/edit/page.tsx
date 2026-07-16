@@ -4,11 +4,19 @@ import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect as Select } from "@/components/ui/select"
+import { getVardiyaHaftaOptions, formatVardiyaHafta } from "@/lib/vardiya-hafta"
 import { Clock, ChevronRight, ChevronLeft, Search, X, Users, Check, Save, Send, Loader2 } from "lucide-react"
 import { useRouter, useParams } from "next/navigation"
 import { toast } from "sonner"
 import { MESAI_TURLERI } from "@/lib/overtime-constants"
+import { apiFetch } from "@/lib/api-fetch"
 import { useDepartments, resolveDefaultDepartment } from "@/lib/use-departments"
+import UretimSatirlariEditor, {
+  type UretimSatirInput,
+  emptyUretimSatir,
+  personelSatirlariGecerli,
+  toApiUretimSatirlari,
+} from "@/components/overtime/UretimSatirlariEditor"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,9 +35,8 @@ interface PersonnelItem {
 interface PersonnelDetail {
   workDepartment: string
   serviceRoute: string
-  targetProduction: string
-  actualProduction: string
-  mesaiNedeni: string
+  // Faz 2: çoklu üretim satırı (parça kodu + hedef adet)
+  uretimSatirlari: UretimSatirInput[]
 }
 
 type OvertimeType = "SATURDAY" | "SUNDAY" | "WEEKDAY_EXTRA" | "HOLIDAY"
@@ -66,6 +73,11 @@ export default function EditOvertimeFormPage() {
   // Page loading
   const [pageLoading, setPageLoading] = useState(true)
   const [formNo, setFormNo] = useState("")
+  // Vardiya Faz 1: yüklenen formun tipi (redirect/başlık için).
+  const [detailFormTipi, setDetailFormTipi] = useState<"MESAI" | "VARDIYA">("MESAI")
+  const isVardiya = detailFormTipi === "VARDIYA"
+  const basePath = detailFormTipi === "VARDIYA" ? "/forms/vardiya" : "/forms/overtime"
+  const kind = detailFormTipi === "VARDIYA" ? "Vardiya" : "Mesai"
 
   // Wizard step
   const [step, setStep] = useState(1)
@@ -73,6 +85,8 @@ export default function EditOvertimeFormPage() {
   // Step 1 state
   const [overtimeType, setOvertimeType] = useState<OvertimeType | "">("")
   const [date, setDate] = useState("")
+  // Vardiya Hafta Modu (form.vardiyaHaftaMi'den yüklenir).
+  const [vardiyaHaftaMi, setVardiyaHaftaMi] = useState(false)
   const [isFullDay, setIsFullDay] = useState(true)
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
@@ -96,7 +110,8 @@ export default function EditOvertimeFormPage() {
   const fetchPersonnel = useCallback(async () => {
     setPersonnelLoading(true)
     try {
-      const res = await fetch("/api/overtime/personnel-list")
+      const res = await apiFetch("/api/overtime/personnel-list")
+      if (res.__authHandled) return
       if (!res.ok) throw new Error("Personel listesi yüklenemedi")
       const data: PersonnelItem[] = await res.json()
       setPersonnelList(data)
@@ -111,7 +126,8 @@ export default function EditOvertimeFormPage() {
   useEffect(() => {
     async function loadForm() {
       try {
-        const res = await fetch(`/api/overtime/${id}`)
+        const res = await apiFetch(`/api/overtime/${id}`)
+        if (res.__authHandled) return
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
           throw new Error(err.error || "Form yüklenemedi")
@@ -120,13 +136,15 @@ export default function EditOvertimeFormPage() {
 
         if (form.status !== "DRAFT") {
           toast.error("Sadece taslak durumundaki formlar düzenlenebilir")
-          router.push(`/forms/overtime/${id}`)
+          router.push(`${basePath}/${id}`)
           return
         }
 
         setFormNo(form.formNo)
+        setDetailFormTipi(form.formTipi === "VARDIYA" ? "VARDIYA" : "MESAI")
         setOvertimeType(form.overtimeType)
         setDate(form.date ? form.date.split("T")[0] : "")
+        setVardiyaHaftaMi(!!form.vardiyaHaftaMi)
         setIsFullDay(form.isFullDay)
         setStartTime(form.startTime || "")
         setEndTime(form.endTime || "")
@@ -143,16 +161,21 @@ export default function EditOvertimeFormPage() {
           details[key] = {
             workDepartment: p.workDepartment || departments[0] || "",
             serviceRoute: p.serviceRoute || "",
-            targetProduction: p.targetProduction || "",
-            actualProduction: p.actualProduction || "",
-            mesaiNedeni: p.mesaiNedeni || "",
+            // Faz 2: mevcut üretim satırlarını yükle; yoksa (satırsız kayıt) 1 boş satır.
+            uretimSatirlari:
+              Array.isArray(p.uretimSatirlari) && p.uretimSatirlari.length > 0
+                ? p.uretimSatirlari.map((u: { parcaKodu?: string | null; hedefAdet?: number | null }) => ({
+                    parcaKodu: u.parcaKodu ?? "",
+                    hedefAdet: u.hedefAdet != null ? String(u.hedefAdet) : "",
+                  }))
+                : [emptyUretimSatir()],
           }
         }
         setSelectedIds(ids)
         setPersonnelDetails(details)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Form yüklenemedi")
-        router.push("/forms/overtime")
+        router.push(basePath)
       } finally {
         setPageLoading(false)
       }
@@ -189,9 +212,7 @@ export default function EditOvertimeFormPage() {
           [person.id]: {
             workDepartment: resolveDefaultDepartment(person.bolum, departments),
             serviceRoute: person.serviceRoute || "",
-            targetProduction: "",
-            actualProduction: "",
-            mesaiNedeni: "",
+            uretimSatirlari: [emptyUretimSatir()],
           },
         }))
       }
@@ -212,10 +233,17 @@ export default function EditOvertimeFormPage() {
     })
   }
 
-  function updateDetail(personnelId: string, field: keyof PersonnelDetail, value: string) {
+  function updateDetail(personnelId: string, field: "workDepartment" | "serviceRoute", value: string) {
     setPersonnelDetails((pd) => ({
       ...pd,
       [personnelId]: { ...pd[personnelId], [field]: value },
+    }))
+  }
+
+  function updateRows(personnelId: string, rows: UretimSatirInput[]) {
+    setPersonnelDetails((pd) => ({
+      ...pd,
+      [personnelId]: { ...pd[personnelId], uretimSatirlari: rows },
     }))
   }
 
@@ -232,16 +260,17 @@ export default function EditOvertimeFormPage() {
 
   // Helpers
   const canProceedStep1 = overtimeType !== "" && date !== ""
-  // Mesai Nedeni her seçili personel için ZORUNLU
-  const allMesaiNedeniFilled = selectedPersonnel.every(
-    (p) => (personnelDetails[p.id]?.mesaiNedeni ?? "").trim() !== ""
+  // Faz 2: her seçili personel için üretim satırları geçerli olmalı (MESAI: en az 1
+  // geçerli parça satırı; VARDIYA: opsiyonel, doldurulmuş satır geçerli olmalı).
+  const allMesaiNedeniFilled = selectedPersonnel.every((p) =>
+    personelSatirlariGecerli(personnelDetails[p.id]?.uretimSatirlari ?? [], isVardiya)
   )
   const canProceedStep2 = selectedIds.size > 0 && allMesaiNedeniFilled
 
   async function fetchApprovalChain(toGM: boolean = sendToGM) {
     setChainLoading(true)
     try {
-      const res = await fetch("/api/overtime/approval-chain", {
+      const res = await apiFetch("/api/overtime/approval-chain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -249,6 +278,7 @@ export default function EditOvertimeFormPage() {
           sendToGM: toGM,
         }),
       })
+      if (res.__authHandled) return
       if (res.ok) {
         const data = await res.json()
         setApprovalChain(data.chain || [])
@@ -270,9 +300,13 @@ export default function EditOvertimeFormPage() {
   // ---------------------------------------------------------------------------
 
   async function handleSave(submit: boolean) {
-    // Mesai Nedeni zorunlu — eksikse engelle
+    // Üretim satırları geçerli değilse engelle (MESAI: en az 1 geçerli parça satırı).
     if (!allMesaiNedeniFilled) {
-      toast.error("Her seçili personel için Mesai Nedeni girilmelidir.")
+      toast.error(
+        isVardiya
+          ? "Doldurulan üretim satırlarında parça kodu ve geçerli hedef adet girilmelidir."
+          : "Her seçili personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir."
+      )
       return
     }
     setSaving(true)
@@ -280,6 +314,7 @@ export default function EditOvertimeFormPage() {
       const body = {
         overtimeType,
         date,
+        vardiyaHaftaMi: isVardiya && vardiyaHaftaMi,
         isFullDay,
         startTime: isFullDay ? null : startTime,
         endTime: isFullDay ? null : endTime,
@@ -291,16 +326,18 @@ export default function EditOvertimeFormPage() {
             personnelDetails[p.id]?.workDepartment ||
             resolveDefaultDepartment(p.bolum, departments),
           serviceRoute: personnelDetails[p.id]?.serviceRoute || null,
-          targetProduction: personnelDetails[p.id]?.targetProduction || null,
-          mesaiNedeni: personnelDetails[p.id]?.mesaiNedeni?.trim() || null,
+          // Faz 2: çoklu üretim satırı (Faz 1 API sözleşmesi). API tekil alanları 1.
+          // satırdan türetir; PUT deleteMany+recreate ile satırlar da yeniden yazılır.
+          uretimSatirlari: toApiUretimSatirlari(personnelDetails[p.id]?.uretimSatirlari ?? []),
         })),
       }
 
-      const res = await fetch(`/api/overtime/${id}`, {
+      const res = await apiFetch(`/api/overtime/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
+      if (res.__authHandled) return
 
       if (!res.ok) {
         const err = await res.json().catch(() => null)
@@ -308,17 +345,18 @@ export default function EditOvertimeFormPage() {
       }
 
       if (submit) {
-        const submitRes = await fetch(`/api/overtime/${id}/submit`, { method: "POST" })
+        const submitRes = await apiFetch(`/api/overtime/${id}/submit`, { method: "POST" })
+        if (submitRes.__authHandled) return
         if (!submitRes.ok) {
           const submitErr = await submitRes.json().catch(() => null)
           throw new Error(submitErr?.error || "Onaya gönderme başarısız")
         }
-        toast.success("Mesai formu güncellendi ve onaya gönderildi")
+        toast.success(`${kind} formu güncellendi ve onaya gönderildi`)
       } else {
-        toast.success("Mesai formu güncellendi")
+        toast.success(`${kind} formu güncellendi`)
       }
 
-      router.push("/forms/overtime")
+      router.push(basePath)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Bir hata oluştu"
       toast.error(message)
@@ -345,7 +383,7 @@ export default function EditOvertimeFormPage() {
             <Clock className="h-6 w-6 text-teal-700" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900">MESAİ FORMU DÜZENLE</h1>
+            <h1 className="text-lg font-bold text-gray-900">{kind.toUpperCase() === "VARDIYA" ? "VARDİYA" : "MESAİ"} FORMU DÜZENLE</h1>
             <p className="text-sm text-gray-500">{formNo}</p>
           </div>
         </div>
@@ -419,15 +457,31 @@ export default function EditOvertimeFormPage() {
           </div>
         </div>
 
-        {/* Date */}
+        {/* Date / Week (vardiya hafta modu form.vardiyaHaftaMi'den sabit; mod değiştirilmez) */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tarih</label>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="max-w-xs"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {isVardiya && vardiyaHaftaMi ? "Vardiya Haftası" : "Tarih"}
+          </label>
+          {isVardiya && vardiyaHaftaMi ? (
+            <Select value={date} onChange={(e) => setDate(e.target.value)} className="max-w-md">
+              <option value="">Hafta seçiniz</option>
+              {(() => {
+                const opts = getVardiyaHaftaOptions(5)
+                // Kayıtlı hafta (bu hafta öncesi olabilir) listede yoksa başa ekle.
+                if (date && !opts.some((o) => o.value === date)) {
+                  opts.unshift({ value: date, label: formatVardiyaHafta(date) })
+                }
+                return opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)
+              })()}
+            </Select>
+          ) : (
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="max-w-xs"
+            />
+          )}
         </div>
 
         {/* Work mode toggle */}
@@ -684,42 +738,14 @@ export default function EditOvertimeFormPage() {
                             {detail.serviceRoute || <span className="text-gray-400">Tanımlı değil</span>}
                           </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Hedef Üretim
-                          </label>
-                          <Input
-                            placeholder="Ör: KR09-8041-8042"
-                            value={detail.targetProduction}
-                            onChange={(e) => updateDetail(person.id, "targetProduction", e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Gerçekleşen Üretim
-                          </label>
-                          <Input
-                            placeholder="Mesai sonrası girilecek"
-                            value={detail.actualProduction}
-                            onChange={(e) => updateDetail(person.id, "actualProduction", e.target.value)}
-                          />
-                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">
-                          Mesai Nedeni <span className="text-red-500">*</span>
-                        </label>
-                        <Input
-                          placeholder="Mesai nedenini girin (zorunlu)"
-                          value={detail.mesaiNedeni}
-                          onChange={(e) => updateDetail(person.id, "mesaiNedeni", e.target.value)}
-                          className={!detail.mesaiNedeni.trim() ? "border-red-300 focus-visible:ring-red-400" : ""}
-                        />
-                        {!detail.mesaiNedeni.trim() && (
-                          <p className="text-xs text-red-500 mt-1">Mesai nedeni zorunludur</p>
-                        )}
-                      </div>
+                      {/* Faz 2: çoklu üretim satırı (parça kodu + hedef adet) */}
+                      <UretimSatirlariEditor
+                        rows={detail.uretimSatirlari}
+                        onChange={(rows) => updateRows(person.id, rows)}
+                        isVardiya={isVardiya}
+                      />
                     </div>
                   )
                 })
@@ -787,14 +813,17 @@ export default function EditOvertimeFormPage() {
                   <th className="px-4 py-3">Personel Adı</th>
                   <th className="px-4 py-3">Telefon</th>
                   <th className="px-4 py-3">Departman</th>
-                  <th className="px-4 py-3">Mesai Nedeni</th>
+                  <th className="px-4 py-3">{isVardiya ? "Vardiya Sebebi" : "Mesai Nedeni"}</th>
                   <th className="px-4 py-3">Servis Güzergahı</th>
-                  <th className="px-4 py-3">Hedef Üretim</th>
+                  <th className="px-4 py-3">Hedef Adet</th>
                 </tr>
               </thead>
               <tbody>
                 {selectedPersonnel.map((person, idx) => {
                   const detail = personnelDetails[person.id]
+                  const apiRows = toApiUretimSatirlari(detail?.uretimSatirlari ?? [])
+                  const ilk = apiRows[0]
+                  const ekN = apiRows.length > 1 ? ` +${apiRows.length - 1}` : ""
                   return (
                     <tr
                       key={person.id}
@@ -808,9 +837,11 @@ export default function EditOvertimeFormPage() {
                       <td className="px-4 py-3 text-gray-900">{person.adSoyad}</td>
                       <td className="px-4 py-3 text-xs text-gray-600">{person.telefon || "-"}</td>
                       <td className="px-4 py-3 text-gray-600">{person.bolum}</td>
-                      <td className="px-4 py-3 text-gray-600">{detail?.mesaiNedeni || person.gorev || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {ilk ? `${ilk.parcaKodu}${ekN}` : person.gorev || "-"}
+                      </td>
                       <td className="px-4 py-3 text-gray-600">{detail?.serviceRoute || "-"}</td>
-                      <td className="px-4 py-3 text-gray-600">{detail?.targetProduction || "-"}</td>
+                      <td className="px-4 py-3 text-gray-600">{ilk ? `${ilk.hedefAdet}${ekN}` : "-"}</td>
                     </tr>
                   )
                 })}

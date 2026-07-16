@@ -78,6 +78,11 @@ export async function GET(request: NextRequest) {
             code: true,
             status: true
           }
+        },
+        // Onay zinciri (liste + detay dialog için) — onaycı adı/karar/tarih.
+        approvals: {
+          orderBy: { step: "asc" },
+          include: { approver: { select: { id: true, name: true, email: true } } }
         }
       }
     });
@@ -112,11 +117,9 @@ export async function POST(request: NextRequest) {
       preferredStartDate,
       location,
       workModel,
-      salaryMin,
-      salaryMax,
-      hasBudget,
       priority,
       status // DRAFT veya PENDING
+      // NOT: salaryMin/salaryMax/hasBudget body'den ALINMAZ — İK sonradan girer.
     } = body;
 
     if (!title || !justification) {
@@ -145,9 +148,11 @@ export async function POST(request: NextRequest) {
         preferredStartDate: preferredStartDate ? new Date(preferredStartDate) : null,
         location,
         workModel,
-        salaryMin,
-        salaryMax,
-        hasBudget: hasBudget || false,
+        // Maaş/bütçe TALEP FORMUNDA girilmez (birim müdürü görmez). İK talep detayında
+        // sonradan girer (recruitment.admin). Create'te daima boş bırakılır.
+        salaryMin: null,
+        salaryMax: null,
+        hasBudget: false,
         priority: (priority as JobPriority) || "MEDIUM",
         status: (status as PersonnelRequestStatus) || "DRAFT"
       }

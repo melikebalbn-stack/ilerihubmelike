@@ -39,6 +39,7 @@ export interface LDAPUser {
   ou: string | null; // Organizational Unit
   managerDN: string | null; // Yöneticinin DN'i
   ipPhone: string | null; // 3CX dahili numarası
+  disabled: boolean; // AD userAccountControl & 2 (ACCOUNTDISABLE) → hesap devre dışı mı
 }
 
 // Rol eşleme - OU veya grup bazlı
@@ -142,6 +143,8 @@ export async function authenticateUser(username: string, password: string): Prom
       ou,
       managerDN: getStringValue(userEntry.manager),
       ipPhone: getStringValue(userEntry.ipPhone),
+      // Bind başarılı = hesap AD'de aktif (disabled hesap bind edemez).
+      disabled: false,
     };
 
   } catch (error) {
@@ -229,8 +232,8 @@ export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
 
     const { searchEntries } = await client.search(LDAP_CONFIG.usersDN, {
       scope: 'sub',
-      filter: '(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))',
-      attributes: ['cn', 'sAMAccountName', 'mail', 'department', 'title', 'distinguishedName', 'memberOf', 'manager', 'ipPhone'],
+      filter: '(&(objectClass=user)(objectCategory=person))',
+      attributes: ['cn', 'sAMAccountName', 'mail', 'department', 'title', 'distinguishedName', 'memberOf', 'manager', 'ipPhone', 'userAccountControl'],
     });
 
     const users = searchEntries.map(entry => {
@@ -241,6 +244,8 @@ export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
           : [];
 
       const ouMatch = (entry.distinguishedName as string).match(/OU=([^,]+)/);
+      // İşten ayrılanlar OU'su → AD'de pasif kabul (uac disabled biti olmasa bile).
+      const isAyrilan = /OU=IstenAyrilanlar/i.test((entry.distinguishedName as string) || '');
 
       // LDAP bazen array döndürüyor, ilk elemanı al veya string ise direkt kullan
       const getStringValue = (val: unknown): string | null => {
@@ -261,12 +266,14 @@ export async function getAllLDAPUsers(): Promise<LDAPUser[]> {
         ou: ouMatch ? ouMatch[1] : null,
         managerDN: getStringValue(entry.manager),
         ipPhone: getStringValue(entry.ipPhone),
+        disabled: (((Number(entry.userAccountControl) || 0) & 2) === 2) || isAyrilan,
       };
     }).filter(user => {
       // Sistem hesaplarını filtrele
       if (!user.username || user.username.startsWith('$')) return false;
-      // İşten ayrılanları filtrele (IstenAyrilanlar OU'sunda olanlar)
-      if (user.distinguishedName.includes('OU=IstenAyrilanlar')) return false;
+      // NOT (PR-A ek): IstenAyrilanlar OU'su ARTIK ELENMEZ — sonuç setinde TUTULUR ve
+      // map'te disabled:true işaretlenir → sync isActive:false yapar. (Eskiden eleniyordu;
+      // bu yüzden ayrılanlar hiç pasifleşmiyordu.)
       return true;
     });
 

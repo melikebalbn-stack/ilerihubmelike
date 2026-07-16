@@ -57,11 +57,50 @@ export const CINSIYET_LABELS: Record<string, string> = {
 export const YAKA_LABELS: Record<string, string> = {
   MAVI: "Mavi Yaka",
   BEYAZ: "Beyaz Yaka",
+  GRI: "Gri Yaka",
+}
+
+// Yaka Aşama 1: yakaDetayi (yönetici kademesi) tam Türkçe gösterim.
+export const YAKA_DETAYI_LABELS: Record<string, string> = {
+  BEYAZ: "Beyaz",
+  BEYAZ_GMUDUR_YRD: "Beyaz-G.Müdür Yrd.",
+  BEYAZ_GENEL_MDR: "Beyaz-Genel Müdür",
+  BEYAZ_MUDUR: "Beyaz-Müdür",
+  BEYAZ_MUDUR_YRD: "Beyaz-Müdür Yrd.",
+  BEYAZ_MUHENDIS: "Beyaz-Mühendis",
+  BEYAZ_MUHENDIS_MDRYRD: "Beyaz-Mühendis (Mdr.Yrd.)",
+  BEYAZ_MUHENDIS_MUDUR: "Beyaz-Mühendis-Müdür",
+  BEYAZ_SORUMLU_TEKNIKER: "Beyaz-Sorumlu Tekniker",
+  BEYAZ_TEKNIKER: "Beyaz-Tekniker",
+  GRI: "Gri",
+  GRI_VEKALET: "Gri-Vekalet",
+  MAVI: "Mavi",
+}
+
+// Yaka Aşama 1: yakaRengi → izin verilen yakaDetayi değerleri (dropdown filtresi + backend
+// tutarlılık kontrolü aynı kaynağı kullanır). yakaDetayi bu haritada yaka'nın altında olmalı.
+export const YAKA_DETAY_MAP: Record<string, string[]> = {
+  MAVI: ["MAVI"],
+  BEYAZ: [
+    "BEYAZ",
+    "BEYAZ_GMUDUR_YRD",
+    "BEYAZ_GENEL_MDR",
+    "BEYAZ_MUDUR",
+    "BEYAZ_MUDUR_YRD",
+    "BEYAZ_MUHENDIS",
+    "BEYAZ_MUHENDIS_MDRYRD",
+    "BEYAZ_MUHENDIS_MUDUR",
+    "BEYAZ_SORUMLU_TEKNIKER",
+    "BEYAZ_TEKNIKER",
+  ],
+  GRI: ["GRI", "GRI_VEKALET"],
 }
 
 export const DIREKT_ENDIREKT_LABELS: Record<string, string> = {
   DIREKT: "Direkt",
   ENDIREKT: "Endirekt",
+  A_DIREKT: "A-Direkt",
+  B_ENDIREKT: "B-Endirekt",
 }
 
 export const ASANSOR_MEKANIK_LABELS: Record<string, string> = {
@@ -77,6 +116,8 @@ export const EXCEL_COLUMN_MAP: Record<string, string> = {
   "SINIF": "sinif",
   "CİNSİYET": "cinsiyet",
   "YAKA": "yakaRengi",
+  "YAKA DETAYI": "yakaDetayi",
+  "YAKA DETAY": "yakaDetayi",
   "DİREK ENDİREK": "direktEndirekt",
   "DİREK ENDRİEK": "direktEndirekt",
   "ASANSÖR/MEKANİK": "asansorMekanik",

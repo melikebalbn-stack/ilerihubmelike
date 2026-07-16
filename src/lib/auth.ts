@@ -502,27 +502,7 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      // PR-Y2.1: Eski JWT'leri sessizce düzelt — token.id yoksa email ile DB'den çek.
-      // Login path'i yukarıda hallediyor; bu blok refresh path'i için (eski cookie'ler).
-      // token.sub DN olabileceği için cuid değil; doğru kimlik için email lookup zorunlu.
-      if (!token.id && token.email) {
-        try {
-          const dbUser = await prisma.user.findUnique({
-            where: { email: (token.email as string).toLowerCase() },
-            select: { id: true },
-          });
-          if (dbUser) {
-            token.providerSub = (token.sub as string | undefined) ?? token.providerSub ?? null;
-            token.id = dbUser.id;
-            // Cache'i sıfırla; yeni cuid ile permissions tekrar yüklensin
-            token.permissionsLoadedAt = undefined;
-          }
-        } catch (err) {
-          console.error('[auth.jwt] refresh DB lookup hatası:', err);
-        }
-      }
-
-      // PR-Y2: Permission yükleme.
+      // PR-Y2: Permission yükleme + PR-SR401-A: bayat-id self-heal (tek sorguda birleşik).
       // - Login anında (`user` mevcut) zorla yükle
       // - `update()` tetiklenirse yükle
       // - 5 dakikadan eski ise yükle (rol değişimini hızla yansıtmak için)
@@ -531,31 +511,71 @@ export const authOptions: NextAuthOptions = {
       const now = Date.now();
       const stale = !token.permissionsLoadedAt || (now - token.permissionsLoadedAt) > FIVE_MIN_MS;
       const shouldLoadPermissions = !!user || trigger === 'update' || stale;
-      // PR-Y2.1: token.id (cuid) öncelikli — yukarıda set edildi.
-      // Eski oturumlar (henüz token.id yoksa) için fallback: token.sub.
-      const userId = token.id ?? (token.sub as string | undefined);
 
-      if (shouldLoadPermissions && userId) {
+      if (shouldLoadPermissions) {
         try {
-          const userRoles = await prisma.userRole.findMany({
-            where: {
-              userId,
-              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-            },
-            select: {
-              role: {
-                select: {
-                  rolePermissions: { select: { permission: { select: { key: true } } } },
+          // PR-SR401-A: Reload'u mümkünse email-key'li TEK sorguya bağla.
+          // token.email login path'te her zaman set ediliyor. Email lookup ile:
+          //   (1) doğru User.id (cuid) gelir → bayat/eksik token.id kendiliğinden düzelir,
+          //   (2) permissions aynı sorguda yüklenir → ekstra round-trip yok.
+          // Eski kod yalnız `!token.id` halini iyileştiriyordu; DB'de eşleşmeyen DOLU bir
+          // token.id (eski DN / silinip yeniden oluşturulmuş kullanıcı = "Gürhan senaryosu")
+          // kaçıyor, requireUser kalıcı 401 veriyordu. Artık her reload'da doğrulanıyor.
+          if (token.email) {
+            const dbUser = await prisma.user.findUnique({
+              where: { email: (token.email as string).toLowerCase() },
+              select: {
+                id: true,
+                userRoles: {
+                  where: { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+                  select: {
+                    role: {
+                      select: {
+                        rolePermissions: { select: { permission: { select: { key: true } } } },
+                      },
+                    },
+                  },
                 },
               },
-            },
-          });
-          const keys = new Set<string>();
-          for (const ur of userRoles) {
-            for (const rp of ur.role.rolePermissions) keys.add(rp.permission.key);
+            });
+            if (dbUser) {
+              // Bayat/eksik token.id → DB cuid ile düzelt (refresh path self-heal).
+              if (dbUser.id !== token.id) {
+                token.providerSub = token.providerSub ?? (token.sub as string | undefined) ?? null;
+                token.id = dbUser.id;
+              }
+              const keys = new Set<string>();
+              for (const ur of dbUser.userRoles) {
+                for (const rp of ur.role.rolePermissions) keys.add(rp.permission.key);
+              }
+              token.permissions = [...keys];
+              token.permissionsLoadedAt = now;
+            }
+          } else {
+            // Fallback: email yok (çok eski token) → id/sub ile klasik yol.
+            const userId = token.id ?? (token.sub as string | undefined);
+            if (userId) {
+              const userRoles = await prisma.userRole.findMany({
+                where: {
+                  userId,
+                  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+                },
+                select: {
+                  role: {
+                    select: {
+                      rolePermissions: { select: { permission: { select: { key: true } } } },
+                    },
+                  },
+                },
+              });
+              const keys = new Set<string>();
+              for (const ur of userRoles) {
+                for (const rp of ur.role.rolePermissions) keys.add(rp.permission.key);
+              }
+              token.permissions = [...keys];
+              token.permissionsLoadedAt = now;
+            }
           }
-          token.permissions = [...keys];
-          token.permissionsLoadedAt = now;
         } catch (err) {
           console.error('[auth] permission yükleme hatası:', err);
           // Eski permissions korunur
@@ -598,7 +618,12 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
-    maxAge: 8 * 60 * 60, // 8 saat (iş günü)
+    // PR-SR401-B: Kayan (sliding) oturum.
+    // maxAge: 4 saat — son aktiviteden itibaren geçerlilik (hareketsizlikte 4h'de dolar).
+    // updateAge: 30 dk — bu süreden eski token, session okunduğunda yeniden yazılır;
+    // SessionProvider refetch (5 dk) aktif kullanıcıda token'ı tazeler = sliding.
+    maxAge: 4 * 60 * 60, // 4 saat
+    updateAge: 30 * 60, // 30 dakika
   },
   secret: process.env.NEXTAUTH_SECRET,
 };

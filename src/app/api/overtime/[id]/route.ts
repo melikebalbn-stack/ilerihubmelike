@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { OvertimeType } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { resolveAllowedDepts } from '@/lib/overtime-performance'
+import { buildSingles, buildUretimRows, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -28,6 +30,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             personnel: {
               select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
             },
+            // Faz 2: çoklu üretim satırları (detay expand + edit yükleme)
+            uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
           },
           orderBy: { createdAt: 'asc' },
         },
@@ -40,6 +44,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
                 email: true,
                 department: true,
                 jobTitle: true,
+              },
+            },
+            // Çift-onaycı: eskale olmuş adımda yedek onaycı da "Onayla" görebilsin diye email lazım.
+            escalatedTo: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
               },
             },
           },
@@ -61,17 +73,38 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return apiNotFound('Mesai formu bulunamadı')
     }
 
-    // Erişim kontrolü: admin, form sahibi, personel veya onaylayıcı olmalı
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    // Erişim kontrolü: admin, form sahibi, personel, onaylayıcı VEYA omurga birim
+    // sorumlusu (formda kendi bölümünün personeli varsa). Sorumlu, gerçekleşen adet
+    // girebilmek için formu açabilmeli.
+    const perms = session.user.permissions ?? []
+    const isAdmin = perms.includes('forms.admin')
+    // Salt-okuma görüntüleme: view.all → herhangi bir form; view.dept → resolveAllowedDepts
+    // kapsamı (aşağıdaki isDeptResponsible ile AYNI mekanizma, ayrı dal gerekmez).
+    // Bu permission'lar YAZMA açmaz — PUT/approve/personnel route'ları değişmedi.
+    const canViewAll = perms.includes('overtime.view.all')
     const isCreator = form.createdById === user.id
     const isPersonnel = !!user.personnelId && form.personnel.some((p) => p.personnelId === user.personnelId)
     const isApprover = form.approvals.some((a) => a.approverId === user.id)
 
-    if (!isAdmin && !isCreator && !isPersonnel && !isApprover) {
+    // Omurga kapsamı (gerçekleşen adet satır-bazlı yetki + read erişimi):
+    // undefined = tümü (admin/report.all); [adlar] = o bölümler; [] = hiçbiri.
+    const allowed = await resolveAllowedDepts(user.id)
+    const currentUserAllowedDepts = allowed === undefined ? null : allowed
+    const normDept = (s?: string | null) => (s ?? '').trim().toLocaleUpperCase('tr-TR')
+    const isDeptResponsible =
+      allowed === undefined
+        ? true
+        : allowed.length > 0 &&
+          (() => {
+            const set = new Set(allowed.map(normDept))
+            return form.personnel.some((op) => set.has(normDept(op.workDepartment)))
+          })()
+
+    if (!isAdmin && !canViewAll && !isCreator && !isPersonnel && !isApprover && !isDeptResponsible) {
       return apiError('Bu forma erişim yetkiniz yok', 403)
     }
 
-    return apiSuccess(form)
+    return apiSuccess({ ...form, currentUserAllowedDepts })
   } catch (error) {
     return apiError('Mesai formu detayı alınırken bir hata oluştu', 500, {
       endpoint: 'GET /api/overtime/[id]',
@@ -130,6 +163,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Geçersiz mesai türü')
     }
 
+    // Vardiya tarih kuralı (create ile birebir). Hafta modu → Pazartesi (dow 1);
+    // gün modu → Pzt-Cuma (1-5). effHaftaMi: body verdiyse ondan, yoksa mevcut kayıttan.
+    const isVardiyaForm = existingForm.formTipi === 'VARDIYA'
+    const effHaftaMi = isVardiyaForm && (body.vardiyaHaftaMi !== undefined ? body.vardiyaHaftaMi === true : existingForm.vardiyaHaftaMi)
+    if (isVardiyaForm && date !== undefined) {
+      const dow = new Date(date).getUTCDay()
+      if (effHaftaMi) {
+        if (dow !== 1) return apiBadRequest('Hafta modunda tarih haftanın Pazartesi günü olmalıdır')
+      } else if (dow === 0 || dow === 6) {
+        return apiBadRequest('Vardiya yalnızca Pazartesi-Cuma günleri için oluşturulabilir')
+      }
+    }
+
     // Personel doğrulama
     if (personnel !== undefined) {
       if (!Array.isArray(personnel) || personnel.length === 0) {
@@ -139,8 +185,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         if (!p.personnelId || !p.workDepartment) {
           return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
         }
-        if (!p.mesaiNedeni || !String(p.mesaiNedeni).trim()) {
-          return apiBadRequest('Her personel için Mesai Nedeni zorunludur')
+        // Faz 2: MESAI'de en az 1 geçerli üretim satırı (parça kodu + hedefAdet > 0) zorunlu.
+        // VARDIYA formunda opsiyonel. buildUretimRows uretimSatirlari[] veya legacy'den türetir.
+        if (!isVardiyaForm && buildUretimRows(p).length === 0) {
+          return apiBadRequest('Her personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir')
         }
       }
     }
@@ -163,6 +211,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (endTime !== undefined) formData.endTime = endTime
       if (description !== undefined) formData.description = description || null
       if (sendToGM !== undefined) formData.sendToGM = sendToGM
+      // Vardiya Hafta Modu: yalnız VARDIYA formunda güncellenir (MESAI'de dokunulmaz).
+      if (isVardiyaForm && body.vardiyaHaftaMi !== undefined) formData.vardiyaHaftaMi = body.vardiyaHaftaMi === true
 
       const form = await tx.overtimeForm.update({
         where: { id },
@@ -179,24 +229,29 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         // Yeni personel listesini ekle — seçim/kayıt sırasını DETERMİNİSTİK koru:
         // index ile monoton createdAt damgalıyoruz (aksi halde tümü aynı ms = TIE →
         // orderBy createdAt asc kararsız). Onay görünümü = kayıt sırası.
+        // Faz 1 çift yazma: createMany nested-relation desteklemediği için nested
+        // create döngüsü. Deterministik createdAt (orderBase + index) korunur.
         const orderBase = Date.now()
-        await tx.overtimePersonnel.createMany({
-          data: personnel.map((p: {
-            personnelId: string
-            workDepartment: string
-            serviceRoute?: string
-            targetProduction?: string
-            mesaiNedeni?: string
-          }, index: number) => ({
-            overtimeFormId: id,
-            personnelId: p.personnelId,
-            workDepartment: p.workDepartment,
-            serviceRoute: p.serviceRoute || null,
-            targetProduction: p.targetProduction || null,
-            mesaiNedeni: p.mesaiNedeni?.trim() || null,
-            createdAt: new Date(orderBase + index),
-          })),
-        })
+        for (const [index, p] of (personnel as (OvertimePersonnelInput & {
+          personnelId: string
+          workDepartment: string
+          serviceRoute?: string | null
+        })[]).entries()) {
+          // targetProduction retired — yazılmıyor.
+          const singles = buildSingles(p)
+          await tx.overtimePersonnel.create({
+            data: {
+              overtimeFormId: id,
+              personnelId: p.personnelId,
+              workDepartment: p.workDepartment,
+              serviceRoute: p.serviceRoute || null,
+              hedefAdet: singles.hedefAdet,
+              mesaiNedeni: singles.mesaiNedeni,
+              createdAt: new Date(orderBase + index),
+              uretimSatirlari: { create: buildUretimRows(p) },
+            },
+          })
+        }
       }
 
       // Güncellenmiş formu ilişkileri ile döndür
@@ -208,6 +263,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
               personnel: {
                 select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, telefon: true, serviceRoute: true },
               },
+              uretimSatirlari: { orderBy: { sira: 'asc' }, include: { duzelten: { select: { id: true, name: true } } } },
             },
             orderBy: { createdAt: 'asc' },
           },

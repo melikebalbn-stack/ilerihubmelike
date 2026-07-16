@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
 import { materializePackage } from "@/lib/akademi-package-materialize";
+import { parseDueDateEndOfDay } from "@/lib/akademi/due-date";
 import { notifyPackageAssignedBatch } from "@/lib/akademi-notify";
 import type { AdminPackageBolumsUpdateInput } from "@/types/akademi-package";
 
@@ -38,14 +39,10 @@ export async function PUT(
   );
 
   // Seçili tüm bölümlere uygulanan tek son tarih (opsiyonel). Boş/null = süresiz.
-  // Parse pattern'i assignments POST ile aynı (manuel validasyon, Zod yok).
-  let dueDate: Date | null = null;
-  if (body.dueDate) {
-    const parsed = new Date(body.dueDate);
-    if (isNaN(parsed.getTime())) {
-      return NextResponse.json({ error: "Geçersiz tarih" }, { status: 400 });
-    }
-    dueDate = parsed;
+  // PR-IFS-RAPOR-2a: gün SONUNA normalize (parseDueDateEndOfDay) — overdue ile uyum.
+  const { dueDate, error: dueErr } = parseDueDateEndOfDay(body.dueDate);
+  if (dueErr) {
+    return NextResponse.json({ error: dueErr }, { status: 400 });
   }
 
   // Değişiklik ÖNCESİ atanmış bölümler (idempotency: yalnız YENİ eklenen

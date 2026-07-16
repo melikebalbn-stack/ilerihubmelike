@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma, JobApplicationStatus } from '@/generated/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { updateApplicationStatus } from '@/lib/recruitment/stage-log'
 
 // PR-RECRUIT-RBAC: PublicJobApplication HR-only (recruitment.admin)
 
@@ -49,15 +51,32 @@ export async function PATCH(
 
     const { id } = await params
     const body = await request.json()
-    const { status, notes } = body
+    const { status, notes, rejectionReasonId } = body
 
-    const updateData: any = {}
-    if (status) updateData.status = status
-    if (notes !== undefined) updateData.notes = notes
+    // REJECTED'da ret nedeni ZORUNLU (kök-neden analizi için). Boş geçilemez.
+    if (status === 'REJECTED' && !rejectionReasonId) {
+      return NextResponse.json({ error: 'Ret nedeni seçimi zorunludur' }, { status: 400 })
+    }
 
-    const application = await prisma.publicJobApplication.update({
-      where: { id },
-      data: updateData
+    // Tek geçit: status değişimi helper'dan geçer (status + aşama logu + ret nedeni aynı tx'te,
+    // changedBy = İK kullanıcısı). status YOKSA yalnız diğer alanlar (notes) güncellenir
+    // → log yazılmaz (davranış korunur). fromStatus == toStatus ise de log yazılmaz.
+    const application = await prisma.$transaction(async (tx) => {
+      if (status) {
+        const data: Prisma.PublicJobApplicationUpdateInput = {}
+        if (notes !== undefined) data.notes = notes
+        // Ret nedeni yalnız REJECTED'da yazılır (atomik — status + aşama logu ile birlikte).
+        if (status === 'REJECTED') data.rejectionReason = { connect: { id: rejectionReasonId } }
+        return updateApplicationStatus(tx, {
+          applicationId: id,
+          toStatus: status as JobApplicationStatus,
+          changedBy: session.user.id,
+          data: Object.keys(data).length ? data : undefined,
+        })
+      }
+      const updateData: Prisma.PublicJobApplicationUpdateInput = {}
+      if (notes !== undefined) updateData.notes = notes
+      return tx.publicJobApplication.update({ where: { id }, data: updateData })
     })
 
     return NextResponse.json(application)

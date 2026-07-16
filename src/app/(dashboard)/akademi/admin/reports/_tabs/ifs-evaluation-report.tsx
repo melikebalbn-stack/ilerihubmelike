@@ -5,7 +5,8 @@
 // tamamlanma = seviye===BASARILI. Matris self-mark'ı (completionPct) KULLANILMAZ.
 
 import { useEffect, useState, useCallback } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   BarChart,
   Bar,
@@ -27,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { IfsBolumReportView } from "./ifs-bolum-report";
 
 const ILERI = "#1B4F72";
 const COLOR = {
@@ -48,6 +50,11 @@ interface CourseOpt {
   id: string;
   title: string;
   isIfs: boolean;
+}
+interface PackageOpt {
+  packageId: string;
+  displayName: string;
+  courseCount: number;
 }
 type SeviyeDist = {
   BASARILI: number;
@@ -122,10 +129,15 @@ function SeviyeBadge({ seviye }: { seviye: string | null }) {
 export function IfsEvaluationReportTab() {
   const [courses, setCourses] = useState<CourseOpt[]>([]);
   const [bolums, setBolums] = useState<string[]>([]);
+  const [packages, setPackages] = useState<PackageOpt[]>([]);
   const [courseId, setCourseId] = useState("");
   const [bolum, setBolum] = useState<string>(""); // "" = bölüm bazında
+  const [packageId, setPackageId] = useState("");
   const [data, setData] = useState<BolumData | KisiData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
+  // PR-IFS-RAPOR-2b: Bölüm Görünümü varsayılan; Paket Görünümü ikincil.
+  const [view, setView] = useState<"bolum" | "paket">("bolum");
 
   useEffect(() => {
     fetch("/api/akademi/admin/courses?includeInactive=true")
@@ -142,6 +154,15 @@ export function IfsEvaluationReportTab() {
       .then((r) => (r.ok ? r.json() : null))
       .then((m) => setBolums(m?.bolums ?? []))
       .catch(() => setBolums([]));
+    // Rapor indirme için IFS paket listesi (paket bazlı yönetim raporu).
+    fetch("/api/akademi/ifs/departments")
+      .then((r) => (r.ok ? r.json() : { departments: [] }))
+      .then((d) => {
+        const pkgs: PackageOpt[] = d.departments ?? [];
+        setPackages(pkgs);
+        if (pkgs.length) setPackageId(pkgs[0].packageId);
+      })
+      .catch(() => setPackages([]));
   }, []);
 
   const load = useCallback(() => {
@@ -159,6 +180,54 @@ export function IfsEvaluationReportTab() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // İndirme sayfa navigasyonundan KOPUK: fetch + blob + geçici <a download>.
+  // (Düz <a href> API'ye navigasyon başlatıp global yükleme göstergesini
+  // asılı bırakıyordu.) Hata → toast, buton loading state ile.
+  const download = useCallback(
+    async (format: "xlsx" | "pdf") => {
+      if (!packageId || downloading) return;
+      setDownloading(format);
+      try {
+        const res = await fetch(
+          `/api/akademi/admin/reports/ifs-aggregate/export?format=${format}&packageId=${encodeURIComponent(packageId)}`
+        );
+        if (!res.ok) {
+          const msg = await res
+            .json()
+            .then((j) => j?.error)
+            .catch(() => null);
+          toast.error(
+            msg ??
+              (res.status === 401 || res.status === 403
+                ? "Bu raporu indirme yetkiniz yok"
+                : "Rapor indirilemedi")
+          );
+          return;
+        }
+        const blob = await res.blob();
+        // Dosya adını Content-Disposition'dan al (sunucu Türkçe-sanitize ediyor).
+        const cd = res.headers.get("content-disposition") ?? "";
+        const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+        const fallback = `IFS-Egitim-Raporu.${format === "pdf" ? "pdf" : "xlsx"}`;
+        const filename = match ? decodeURIComponent(match[1]) : fallback;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch {
+        toast.error("Rapor indirilemedi");
+      } finally {
+        setDownloading(null);
+      }
+    },
+    [packageId, downloading]
+  );
 
   const filters = (
     <div className="flex flex-wrap items-end gap-3 mb-5">
@@ -211,26 +280,121 @@ export function IfsEvaluationReportTab() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Paket bazlı yönetim raporu indirme (Excel + PDF) */}
+      <div className="ml-auto flex items-end gap-2">
+        <div className="space-y-1">
+          <label
+            className="text-xs font-medium block"
+            style={{ color: "var(--ak-text-secondary)" }}
+          >
+            Rapor Paketi (indirme)
+          </label>
+          <Select value={packageId} onValueChange={setPackageId}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Paket seçin" />
+            </SelectTrigger>
+            <SelectContent>
+              {packages.length === 0 && (
+                <SelectItem value="__none" disabled>
+                  IFS paketi yok
+                </SelectItem>
+              )}
+              {packages.map((p) => (
+                <SelectItem key={p.packageId} value={p.packageId}>
+                  {p.displayName} ({p.courseCount} kurs)
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <button
+          type="button"
+          onClick={() => download("xlsx")}
+          disabled={!packageId || downloading !== null}
+          className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-white transition ${
+            packageId && downloading === null
+              ? "bg-emerald-600 hover:bg-emerald-700"
+              : "bg-slate-300 cursor-not-allowed"
+          }`}
+        >
+          {downloading === "xlsx" ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <FileSpreadsheet size={14} />
+          )}
+          Excel İndir
+        </button>
+        <button
+          type="button"
+          onClick={() => download("pdf")}
+          disabled={!packageId || downloading !== null}
+          className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-white transition ${
+            packageId && downloading === null
+              ? "bg-slate-900 hover:bg-slate-800"
+              : "bg-slate-300 cursor-not-allowed"
+          }`}
+        >
+          {downloading === "pdf" ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <FileText size={14} />
+          )}
+          PDF İndir
+        </button>
+      </div>
+    </div>
+  );
+
+  const viewToggle = (
+    <div className="flex gap-1 mb-4">
+      {(
+        [
+          ["bolum", "Bölüm Görünümü"],
+          ["paket", "Paket Görünümü"],
+        ] as const
+      ).map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => setView(v)}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition ${
+            view === v
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:bg-slate-100"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 
   return (
     <div className="ak-animate-in">
-      {filters}
+      {viewToggle}
 
-      {loading ? (
-        <div
-          className="text-center py-12 text-sm"
-          style={{ color: "var(--ak-text-tertiary)" }}
-        >
-          Yükleniyor...
-        </div>
-      ) : !data ? (
-        <Empty />
-      ) : data.mode === "bolum" ? (
-        <BolumView data={data} onDrill={(b) => setBolum(b)} />
+      {view === "bolum" ? (
+        <IfsBolumReportView />
       ) : (
-        <KisiView data={data} onBack={() => setBolum("")} />
+        <>
+          {filters}
+
+          {loading ? (
+            <div
+              className="text-center py-12 text-sm"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              Yükleniyor...
+            </div>
+          ) : !data ? (
+            <Empty />
+          ) : data.mode === "bolum" ? (
+            <BolumView data={data} onDrill={(b) => setBolum(b)} />
+          ) : (
+            <KisiView data={data} onBack={() => setBolum("")} />
+          )}
+        </>
       )}
     </div>
   );

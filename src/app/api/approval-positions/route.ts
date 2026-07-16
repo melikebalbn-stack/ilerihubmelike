@@ -20,6 +20,10 @@ export async function GET() {
         user: {
           select: { id: true, name: true, email: true },
         },
+        // Yedek onaycı (eskalasyon hedefi) — cron check-overdue bunu okur.
+        backupUser: {
+          select: { id: true, name: true, email: true },
+        },
       },
     })
 
@@ -57,9 +61,32 @@ export async function PUT(request: NextRequest) {
       return apiBadRequest('Geçersiz istek formatı')
     }
 
+    // VALIDASYON: yedek onaycı asıl onaycının kendisi olamaz (kendine eskalasyon yok).
+    // backupUserId boş/"none" → null (o adım eskalasyonsuz).
+    type Item = {
+      code: string
+      userId: string | null
+      backupUserId?: string | null
+      departments?: string[]
+    }
+    const items = body as Item[]
+    for (const item of items) {
+      const backup = item.backupUserId && item.backupUserId !== 'none' ? item.backupUserId : null
+      if (backup && item.userId && backup === item.userId) {
+        return apiBadRequest(
+          `Yedek onaycı, asıl onaycı ile aynı kişi olamaz (${item.code}).`
+        )
+      }
+    }
+
     const updates = await Promise.all(
-      body.map((item: { code: string; userId: string | null; departments?: string[] }) => {
+      items.map((item) => {
         const data: Record<string, unknown> = { userId: item.userId }
+        if (item.backupUserId !== undefined) {
+          // boş/"none" → null (eskalasyonsuz)
+          data.backupUserId =
+            item.backupUserId && item.backupUserId !== 'none' ? item.backupUserId : null
+        }
         if (item.departments !== undefined) {
           data.departments = item.departments
         }
@@ -68,6 +95,9 @@ export async function PUT(request: NextRequest) {
           data,
           include: {
             user: {
+              select: { id: true, name: true, email: true },
+            },
+            backupUser: {
               select: { id: true, name: true, email: true },
             },
           },

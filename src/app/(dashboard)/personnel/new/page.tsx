@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
 import { NativeSelect as Select } from "@/components/ui/select"
 import { ArrowLeft, Save, Loader2 } from "lucide-react"
 import { PersonnelAutocomplete } from "@/components/ui/personnel-autocomplete"
@@ -17,9 +18,22 @@ import {
   KAN_GRUBU_LABELS,
   CINSIYET_LABELS,
   YAKA_LABELS,
+  YAKA_DETAYI_LABELS,
+  YAKA_DETAY_MAP,
   DIREKT_ENDIREKT_LABELS,
   ASANSOR_MEKANIK_LABELS,
 } from "@/lib/personnel-constants"
+import { UST_BEDENLER, AYAKKABI_NOLARI, AYAK_UZUNLUK_CM, oneriAltBeden, altBedenSecenekleri } from "@/lib/envanter/beden-referans"
+import type { Gender } from "@/generated/prisma"
+
+// Bugünün tarihi (yerel/TR), YYYY-MM-DD — date input için.
+const bugunTR = (): string => {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const g = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${g}`
+}
 
 type FormData = {
   sicilNo: string
@@ -27,6 +41,7 @@ type FormData = {
   cinsiyet: string
   sinif: string
   yakaRengi: string
+  yakaDetayi: string
   kanGrubu: string
   gorev: string
   bolum: string
@@ -70,6 +85,13 @@ type FormData = {
   bankaSube: string
   bankaHesapNo: string
   ibanNo: string
+  // Beden profili (envanter)
+  ustBeden: string
+  altBeden: string
+  ayakkabiNo: string
+  eldivenNo: string
+  olcuTarihi: string
+  bedenNot: string
 }
 
 const initialForm: FormData = {
@@ -78,6 +100,7 @@ const initialForm: FormData = {
   cinsiyet: "",
   sinif: "",
   yakaRengi: "",
+  yakaDetayi: "",
   kanGrubu: "",
   gorev: "",
   bolum: "",
@@ -119,13 +142,22 @@ const initialForm: FormData = {
   bankaSube: "",
   bankaHesapNo: "",
   ibanNo: "",
+  ustBeden: "",
+  altBeden: "",
+  ayakkabiNo: "",
+  eldivenNo: "",
+  olcuTarihi: "",
+  bedenNot: "",
 }
 
 export default function NewPersonnelPage() {
   const { data: session } = useSession()
   const router = useRouter()
-  const [form, setForm] = useState<FormData>(initialForm)
+  // Ölçü Tarihi yeni personelde bugünle dolu gelir (kullanıcı değiştirebilir/silebilir).
+  const [form, setForm] = useState<FormData>(() => ({ ...initialForm, olcuTarihi: bugunTR() }))
   const [saving, setSaving] = useState(false)
+  // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer girildiğinde açılır.
+  const [altBedenDiger, setAltBedenDiger] = useState(false)
   const [jobTitles, setJobTitles] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
@@ -164,6 +196,18 @@ export default function NewPersonnelPage() {
         next.denemeDegerlendirme = addMonths(value, 2)
         next.altiAyDegerlendirme = addMonths(value, 6)
       }
+      // Yaka değişince yakaDetayi'yi sıfırla (yaka=BEYAZ iken MAVI detay kalmasın — tutarlılık).
+      if (field === "yakaRengi") {
+        next.yakaDetayi = ""
+      }
+      // Cinsiyet değişince: seçili alt beden (liste değeri) yeni listede yoksa temizle.
+      // "Diğer..." (serbest) modundaki değer korunur — kullanıcı bilerek girmiştir.
+      if (field === "cinsiyet" && !altBedenDiger) {
+        const opts = value ? altBedenSecenekleri(value as Gender) : []
+        if (next.altBeden && !opts.includes(next.altBeden as string)) {
+          next.altBeden = ""
+        }
+      }
       return next
     })
   }
@@ -176,17 +220,37 @@ export default function NewPersonnelPage() {
       return
     }
 
+    // Yaka Aşama 1: yeni personel her zaman aktif → Yaka Rengi + Yaka Detayı zorunlu.
+    if (!form.yakaRengi || !form.yakaDetayi) {
+      toast.error("Yaka Rengi ve Yaka Detayı zorunludur")
+      return
+    }
+
     try {
       setSaving(true)
-      // KVKK alanlarını sensitive olarak ayır
-      const { tcKimlikNo, sgkNo, dogumTarihi, bankaSube, bankaHesapNo, ibanNo, ...personnelFields } = form
+      // KVKK alanlarını sensitive olarak, beden alanlarını ayrı ayır (personnelFields'e sızmasın)
+      const {
+        tcKimlikNo, sgkNo, dogumTarihi, bankaSube, bankaHesapNo, ibanNo,
+        ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, bedenNot,
+        ...personnelFields
+      } = form
       const sensitive: Record<string, string> = {}
       if (tcKimlikNo) sensitive.tcKimlikNo = tcKimlikNo
       if (sgkNo) sensitive.sgkNo = sgkNo
       if (dogumTarihi) sensitive.dogumTarihi = dogumTarihi
-      if (bankaSube) sensitive.bankaSube = bankaSube
-      if (bankaHesapNo) sensitive.bankaHesapNo = bankaHesapNo
-      if (ibanNo) sensitive.ibanNo = ibanNo
+
+      // Beden profili — en az bir alan doluysa gönderilir (yoksa undefined → satır yaratılmaz)
+      const beden =
+        ustBeden || altBeden || ayakkabiNo || eldivenNo || olcuTarihi || bedenNot
+          ? { ustBeden, altBeden, ayakkabiNo, eldivenNo, olcuTarihi, not: bedenNot }
+          : undefined
+
+      // PR-1: banka bilgisi tek primary PersonnelBankAccount olarak gönderilir (sensitive.banka* yerine).
+      // Çoklu hesap, personel oluşturulduktan sonra Hassas Bilgiler sayfasından eklenir.
+      const bankAccounts =
+        bankaSube || bankaHesapNo || ibanNo
+          ? [{ bankaSube: bankaSube || null, hesapNo: bankaHesapNo || null, ibanNo: ibanNo || null, isPrimary: true, aktif: true }]
+          : undefined
 
       const res = await fetch("/api/personnel", {
         method: "POST",
@@ -194,6 +258,8 @@ export default function NewPersonnelPage() {
         body: JSON.stringify({
           ...personnelFields,
           sensitive: Object.keys(sensitive).length > 0 ? sensitive : undefined,
+          bankAccounts,
+          beden,
         }),
       })
 
@@ -254,11 +320,25 @@ export default function NewPersonnelPage() {
                 <Input id="sinif" value={form.sinif} onChange={(e) => set("sinif", e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="yakaRengi">Yaka Rengi</Label>
+                <Label htmlFor="yakaRengi">Yaka Rengi *</Label>
                 <Select id="yakaRengi" value={form.yakaRengi} onChange={(e) => set("yakaRengi", e.target.value)}>
                   <option value="">Seçiniz</option>
                   {Object.entries(YAKA_LABELS).map(([k, v]) => (
                     <option key={k} value={k}>{v}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="yakaDetayi">Yaka Detayı *</Label>
+                <Select
+                  id="yakaDetayi"
+                  value={form.yakaDetayi}
+                  onChange={(e) => set("yakaDetayi", e.target.value)}
+                  disabled={!form.yakaRengi}
+                >
+                  <option value="">{form.yakaRengi ? "Seçiniz" : "Önce yaka seçin"}</option>
+                  {(YAKA_DETAY_MAP[form.yakaRengi] ?? []).map((k) => (
+                    <option key={k} value={k}>{YAKA_DETAYI_LABELS[k] ?? k}</option>
                   ))}
                 </Select>
               </div>
@@ -589,6 +669,74 @@ export default function NewPersonnelPage() {
                     className="bg-gray-50"
                   />
                 </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Section 7: Beden Bilgileri (envanter/zimmet) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Beden Bilgileri</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="ustBeden">Üst Beden</Label>
+                <Select id="ustBeden" value={form.ustBeden} onChange={(e) => set("ustBeden", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  {UST_BEDENLER.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="altBeden">Alt Beden</Label>
+                <Select
+                  id="altBeden"
+                  value={altBedenDiger ? "__OTHER__" : form.altBeden}
+                  disabled={!form.cinsiyet}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === "__OTHER__") { setAltBedenDiger(true); set("altBeden", "") }
+                    else { setAltBedenDiger(false); set("altBeden", v) }
+                  }}
+                >
+                  <option value="">{form.cinsiyet ? "Seçiniz" : "Önce cinsiyet seçin"}</option>
+                  {(form.cinsiyet ? altBedenSecenekleri(form.cinsiyet as Gender) : []).map((o) => {
+                    const oneri = form.ustBeden ? oneriAltBeden(form.ustBeden, form.cinsiyet as Gender) : null
+                    return <option key={o} value={o}>{o === oneri ? `${o} (öneri)` : o}</option>
+                  })}
+                  {form.cinsiyet && <option value="__OTHER__">Diğer...</option>}
+                </Select>
+                {altBedenDiger && (
+                  <Input
+                    value={form.altBeden}
+                    onChange={(e) => set("altBeden", e.target.value)}
+                    placeholder="Alt beden (serbest)"
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ayakkabiNo">Ayakkabı No</Label>
+                <Select id="ayakkabiNo" value={form.ayakkabiNo} onChange={(e) => set("ayakkabiNo", e.target.value)}>
+                  <option value="">Seçiniz</option>
+                  {AYAKKABI_NOLARI.map((n) => (
+                    <option key={n} value={n}>{`${n} (${AYAK_UZUNLUK_CM[n]} cm)`}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="eldivenNo">Eldiven No</Label>
+                <Input id="eldivenNo" value={form.eldivenNo} onChange={(e) => set("eldivenNo", e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="olcuTarihi">Ölçü Tarihi</Label>
+                <Input id="olcuTarihi" type="date" value={form.olcuTarihi} onChange={(e) => set("olcuTarihi", e.target.value)} />
+              </div>
+              <div className="space-y-2 md:col-span-3">
+                <Label htmlFor="bedenNot">Açıklama</Label>
+                <Textarea id="bedenNot" value={form.bedenNot} onChange={(e) => set("bedenNot", e.target.value)} rows={2} />
               </div>
             </div>
           </CardContent>

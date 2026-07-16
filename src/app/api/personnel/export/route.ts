@@ -72,9 +72,14 @@ export async function GET(request: NextRequest) {
     const includeSensitive = ALLOWED_ROLES.includes(user.role)
     const includeBank = FULL_SENSITIVE_ROLES.includes(user.role)
 
+    // PR-1: banka kolonları primary PersonnelBankAccount'tan gelir (sensitive.banka* yerine).
+    const includeObj: any = {}
+    if (includeSensitive) includeObj.sensitive = true
+    if (includeBank) includeObj.bankAccounts = { where: { isPrimary: true }, take: 1 }
+
     const personnel = await prisma.personnel.findMany({
       where,
-      include: includeSensitive ? { sensitive: true } : undefined,
+      include: Object.keys(includeObj).length ? includeObj : undefined,
       orderBy: { adSoyad: 'asc' },
     })
 
@@ -82,7 +87,8 @@ export async function GET(request: NextRequest) {
     // Excel sırasıyla birebir aynı sütun düzeni
     const data = personnel.map((p: any, idx: number) => {
       const s = (includeSensitive && p.sensitive) ? p.sensitive : null
-      const bank = (includeBank && s) ? true : false
+      // PR-1: primary banka hesabı (yetki gate'i: includeBank). Yoksa boş.
+      const primaryBank = (includeBank && p.bankAccounts && p.bankAccounts.length) ? p.bankAccounts[0] : null
 
       const row: Record<string, any> = {
         'NO': idx + 1,
@@ -105,8 +111,8 @@ export async function GET(request: NextRequest) {
         '2. SORUMLU': p.sorumlu2 || '',
         '3. SORUMLU': p.sorumlu3 || '',
         'BÖLÜM MÜDÜRÜ': p.bolumMuduru || '',
-        'BANKA ŞUBE': bank ? (s.bankaSube || '') : '',
-        'BANKA HESAP NO': bank ? (s.bankaHesapNo || '') : '',
+        'BANKA ŞUBE': primaryBank ? (primaryBank.bankaSube || '') : '',
+        'BANKA HESAP NO': primaryBank ? (primaryBank.hesapNo || '') : '',
         'TELEFON NO': p.telefon || '',
         'DOĞUM TARİHİ': s ? toExcelDate(s.dogumTarihi) : '',
         'EMEKLİ': boolToStr(p.emekli),
@@ -122,7 +128,7 @@ export async function GET(request: NextRequest) {
         'MAİL ADRESİ': p.mailAdresi || '',
         'SERVİS': p.serviceRoute || '',
         'DURAK ADI': p.serviceStop || '',
-        'IBAN NO': bank ? (s.ibanNo || '') : '',
+        'IBAN NO': primaryBank ? (primaryBank.ibanNo || '') : '',
         'İLKYARDIMCI BELGESİ': toExcelDate(p.ilkYardimciBelgesi),
         'KALFALIK BELGESİ': toExcelDate(p.kalfalikBelgesi),
         'USTALIK BELGESİ': toExcelDate(p.ustalikBelgesi),

@@ -28,11 +28,15 @@ function calculateHours(isFullDay: boolean, startTime: string | null, endTime: s
  * - Aylık toplam mesai saatleri (onaylanmış formlar)
  * - En çok mesai yapan bölüm (aylık)
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     // PR-Y2.5-overtime: requireSession (read-only stats)
     const { error } = await requireSession()
     if (error) return error
+
+    // Vardiya Faz 2: formTipi ayrımı (default MESAI → mesai KPI vardiyayı saymaz).
+    const formTipiParam = new URL(request.url).searchParams.get('formTipi')
+    const formTipi: 'MESAI' | 'VARDIYA' = formTipiParam === 'VARDIYA' ? 'VARDIYA' : 'MESAI'
 
     const now = new Date()
 
@@ -52,6 +56,7 @@ export async function GET() {
       where: {
         status: 'APPROVED',
         date: { gte: monthStart },
+        formTipi,
       },
       include: {
         personnel: {

@@ -27,8 +27,6 @@ export const MILITARY_STATUS_OPTIONS = [
 export const MARITAL_STATUS_OPTIONS = [
   { value: 'SINGLE', label: 'Bekar' },
   { value: 'MARRIED', label: 'Evli' },
-  { value: 'DIVORCED', label: 'Boşanmış' },
-  { value: 'WIDOWED', label: 'Dul' },
 ] as const
 
 export const REFERRAL_SOURCE_OPTIONS = [

@@ -92,6 +92,10 @@ export const PERMISSION_KEYS = {
   // === FORMS (visit-reports, overtime, project-bar) ===
   FORMS_ADMIN: 'forms.admin',
   FORMS_APPROVE: 'forms.approve',
+  OVERTIME_REPORT: 'overtime.report',
+  OVERTIME_REPORT_ALL: 'overtime.report.all',
+  OVERTIME_VIEW_ALL: 'overtime.view.all',
+  OVERTIME_VIEW_DEPT: 'overtime.view.dept',
 
   // === RECRUITMENT (strategic-hr/recruitment) ===
   RECRUITMENT_ADMIN: 'recruitment.admin',
@@ -101,6 +105,8 @@ export const PERMISSION_KEYS = {
 
   // === ÜRETİM (IFS shop-floor terminali) ===
   URETIM_BILDIRIM: 'uretim.bildirim',
+  // === ÜRETİM / TEZGAH ===
+  URETIM_TEZGAH_MANAGE: 'uretim.tezgah.manage',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -198,6 +204,10 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'forms.admin': 'Form modüllerini yönet (visit-reports, overtime, project-bar)',
   'forms.approve': 'Form başvurularını onayla (departman müdürü dahil)',
+  'overtime.report': 'Mesai üretim performans raporunu görüntüle',
+  'overtime.report.all': 'Mesai performans raporunda TÜM bölümleri gör (kapsam sınırsız)',
+  'overtime.view.all': 'Mesai/vardiya formlarını salt-okuma görüntüle (TÜM formlar)',
+  'overtime.view.dept': 'Mesai/vardiya formlarını salt-okuma görüntüle (yalnız kendi bölüm(ler)i)',
 
   'recruitment.admin': 'İşe alım tam yönetim (pozisyon/aday/talep)',
   'recruitment.view': 'İşe alım kendi departmanı görünürlük',
@@ -205,4 +215,5 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'recruitment.candidate.view': 'Aday detay görme (CV ve değerlendirme)',
 
   'uretim.bildirim': 'Üretim terminali — iş emri operasyonu bildirimi (IFS shop-floor)',
+  'uretim.tezgah.manage': 'Tezgah tanımı ve personel atama',
 };

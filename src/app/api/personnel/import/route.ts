@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
-import { EXCEL_COLUMN_MAP } from '@/lib/personnel-constants'
+import { EXCEL_COLUMN_MAP, YAKA_DETAY_MAP } from '@/lib/personnel-constants'
 import { requireUser } from '@/lib/auth/require-user'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 
@@ -33,9 +33,47 @@ function normalizeYaka(value: string | null | undefined): string | null {
     .replace(/Ş/g, 'S')
     .replace(/Ö/g, 'O')
     .replace(/Ç/g, 'C')
+  if (v === 'GRI' || v.includes('GRI')) return 'GRI'
   if (v === 'MAVI' || v.includes('MAVI')) return 'MAVI'
   if (v === 'BEYAZ' || v.includes('BEYAZ')) return 'BEYAZ'
   return null
+}
+
+// Yaka Aşama 1: "YAKA DETAYI" sütunundaki Türkçe metni YakaDetayi enum'una çevir.
+// Sütun yoksa/eşleşmezse yakaRengi'nin taban değerine düşer (MAVI/BEYAZ/GRI). Sonuç her
+// zaman YAKA_DETAY_MAP[yakaRengi] içinde tutulur (tutarlılık garantisi).
+function normalizeYakaDetayi(value: string | null | undefined, yakaRengi: string | null): string | null {
+  const izinli = yakaRengi ? (YAKA_DETAY_MAP[yakaRengi] ?? []) : []
+  const base = izinli[0] ?? null // MAVI→'MAVI', BEYAZ→'BEYAZ', GRI→'GRI'
+  if (!value) return base
+  const v = value.toString().toUpperCase().trim()
+    .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
+    .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+    .replace(/[\s.]+/g, ' ').trim()
+  const patterns: [RegExp, string][] = [
+    [/GENEL MUDUR YRD|G MUDUR YRD/, 'BEYAZ_GMUDUR_YRD'],
+    [/GENEL MUDUR/, 'BEYAZ_GENEL_MDR'],
+    [/MUHENDIS.*(MDR YRD|MUDUR YRD)/, 'BEYAZ_MUHENDIS_MDRYRD'],
+    [/MUHENDIS.*MUDUR/, 'BEYAZ_MUHENDIS_MUDUR'],
+    [/MUHENDIS/, 'BEYAZ_MUHENDIS'],
+    [/SORUMLU TEKNIKER/, 'BEYAZ_SORUMLU_TEKNIKER'],
+    [/TEKNIKER/, 'BEYAZ_TEKNIKER'],
+    [/MUDUR YRD/, 'BEYAZ_MUDUR_YRD'],
+    [/MUDUR/, 'BEYAZ_MUDUR'],
+    [/VEKALET/, 'GRI_VEKALET'],
+  ]
+  let match: string | null = null
+  for (const [re, enumVal] of patterns) {
+    if (re.test(v)) { match = enumVal; break }
+  }
+  if (!match) {
+    if (v.includes('GRI')) match = 'GRI'
+    else if (v.includes('MAVI')) match = 'MAVI'
+    else if (v.includes('BEYAZ')) match = 'BEYAZ'
+  }
+  // Tutarlılık: bulunan değer seçili yaka'nın altında değilse taban değere düş.
+  if (match && izinli.includes(match)) return match
+  return base
 }
 
 function normalizeDirektEndirekt(value: string | null | undefined): string | null {
@@ -47,8 +85,25 @@ function normalizeDirektEndirekt(value: string | null | undefined): string | nul
     .replace(/Ş/g, 'S')
     .replace(/Ö/g, 'O')
     .replace(/Ç/g, 'C')
-  if (v.includes('DIREKT') && !v.includes('ENDIREKT')) return 'DIREKT'
-  if (v.includes('ENDIREKT') || v.includes('INDIREKT')) return 'ENDIREKT'
+  // Ayraçları (boşluk/tire/altçizgi) temizle: "A-DIREK" → "ADIREK", "EN DIREK" → "ENDIREK".
+  const t = v.replace(/[\s\-_]/g, '')
+  // NOT: "DIREK" alt-dizesi "ENDIREK" içinde de bulunur → DIREKT ayrımı hep !hasEndirek ile.
+  const hasDirek = t.includes('DIREK')
+  const hasEndirek = t.includes('ENDIREK') || t.includes('INDIREK')
+  const isA = t.startsWith('A')
+  const isB = t.startsWith('B')
+
+  // A/B ÖNCE (sıralama kritik). Excel: A hep direkt, B hep endirekt.
+  if (isA && hasDirek && !hasEndirek) return 'A_DIREKT'
+  if (isB && hasEndirek) return 'B_ENDIREKT'
+
+  // Beklenmedik kombinasyonlar (Excel'de görülmez) — güvenlik için logla, baz kurala düş.
+  if (isA && hasEndirek) console.warn(`[normalizeDirektEndirekt] beklenmedik A+ENDIREK: "${value}" → ENDIREKT`)
+  if (isB && hasDirek && !hasEndirek) console.warn(`[normalizeDirektEndirekt] beklenmedik B+DIREK: "${value}" → DIREKT`)
+
+  // Baz kurallar (A/B yok veya beklenmedik kombinasyon fallback'i)
+  if (hasDirek && !hasEndirek) return 'DIREKT'
+  if (hasEndirek) return 'ENDIREKT'
   return null
 }
 
@@ -187,6 +242,8 @@ export async function POST(request: NextRequest) {
           errors.push({ row: rowNum, message: `Geçersiz yaka rengi: ${mapped.yakaRengi}` })
           continue
         }
+        // Yaka Aşama 1: yakaDetayi (sütun varsa metinden, yoksa yaka tabanı — hep tutarlı).
+        const yakaDetayi = normalizeYakaDetayi(mapped.yakaDetayi, yakaRengi)
 
         const iseGirisTarihi = parseDate(mapped.iseGirisTarihi)
         if (!iseGirisTarihi) {
@@ -210,6 +267,7 @@ export async function POST(request: NextRequest) {
           adSoyad: mapped.adSoyad.toString().trim(),
           cinsiyet,
           yakaRengi,
+          yakaDetayi,
           iseGirisTarihi,
           gorev: mapped.gorev.toString().trim(),
           bolum: mapped.bolum.toString().trim(),
@@ -314,18 +372,7 @@ export async function POST(request: NextRequest) {
           sensitiveData.sgkNo = mapped.sgkNo.toString().trim()
           hasSensitive = true
         }
-        if (mapped.bankaSube) {
-          sensitiveData.bankaSube = mapped.bankaSube.toString().trim()
-          hasSensitive = true
-        }
-        if (mapped.bankaHesapNo) {
-          sensitiveData.bankaHesapNo = mapped.bankaHesapNo.toString().trim()
-          hasSensitive = true
-        }
-        if (mapped.ibanNo) {
-          sensitiveData.ibanNo = mapped.ibanNo.toString().trim()
-          hasSensitive = true
-        }
+        // PR-1: banka alanları artık PersonnelBankAccount'a yazılır (aşağıda), sensitive'e DEĞİL.
         if (mapped.dogumTarihi) {
           const dogumTarihi = parseDate(mapped.dogumTarihi)
           if (dogumTarihi) {
@@ -344,6 +391,25 @@ export async function POST(request: NextRequest) {
               ...sensitiveData,
             },
           })
+        }
+
+        // PR-1: banka bilgisi → PersonnelBankAccount (primary). IDEMPOTENT: hesabı olan kişiyi atla.
+        const hasBankData = !!(mapped.bankaSube || mapped.bankaHesapNo || mapped.ibanNo)
+        if (hasBankData) {
+          const accountCount = await prisma.personnelBankAccount.count({ where: { personnelId } })
+          if (accountCount === 0) {
+            await prisma.personnelBankAccount.create({
+              data: {
+                personnelId,
+                bankaSube: mapped.bankaSube ? mapped.bankaSube.toString().trim() : null,
+                hesapNo: mapped.bankaHesapNo ? mapped.bankaHesapNo.toString().trim() : null,
+                ibanNo: mapped.ibanNo ? mapped.ibanNo.toString().trim() : null,
+                isPrimary: true,
+                aktif: true,
+                updatedBy: user.id,
+              },
+            })
+          }
         }
       } catch (rowError: any) {
         errors.push({ row: rowNum, message: rowError.message || 'Bilinmeyen hata' })

@@ -7,11 +7,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminCoursesTable } from "@/components/akademi/admin/AdminCoursesTable";
 import { AdminPackagesTable } from "@/components/akademi/admin/AdminPackagesTable";
 import { AdminPackageFormModal } from "@/components/akademi/admin/AdminPackageFormModal";
+import { AdminDeleteConfirm } from "@/components/akademi/admin/AdminDeleteConfirm";
 import type { AdminCourseListItem } from "@/types/akademi-admin";
 import type { AdminPackageListItem } from "@/types/akademi-package";
 
@@ -21,6 +23,9 @@ export default function AkademiAdminIfsTrainingPage() {
   const [packages, setPackages] = useState<AdminPackageListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [pkgModalOpen, setPkgModalOpen] = useState(false);
+  const [deletePackage, setDeletePackage] =
+    useState<AdminPackageListItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -55,6 +60,27 @@ export default function AkademiAdminIfsTrainingPage() {
     router.push(`/akademi/admin/courses/${c.id}`);
   const toPackage = (p: AdminPackageListItem) =>
     router.push(`/akademi/admin/packages/${p.id}`);
+
+  // Paket silme — Paketler sekmesiyle AYNI akış (AdminDeleteConfirm + DELETE
+  // packages/[id] cascade). Çöp ikonu artık detaya yönlenmiyor, siliyor.
+  const handleConfirmDelete = async () => {
+    if (!deletePackage) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/akademi/admin/packages/${deletePackage.id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error("delete failed");
+      setDeletePackage(null);
+      load();
+      toast.success("Paket silindi");
+    } catch {
+      toast.error("Silinemedi");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const emptyBox = (text: string) => (
     <div
@@ -110,7 +136,7 @@ export default function AkademiAdminIfsTrainingPage() {
               <AdminPackagesTable
                 packages={packages}
                 onEdit={toPackage}
-                onDelete={toPackage}
+                onDelete={setDeletePackage}
                 onToggleActive={toPackage}
               />
             ) : (
@@ -129,7 +155,6 @@ export default function AkademiAdminIfsTrainingPage() {
               <AdminCoursesTable
                 courses={courses}
                 onEdit={toCourse}
-                onDelete={toCourse}
                 onToggleActive={toCourse}
               />
             ) : (
@@ -150,6 +175,19 @@ export default function AkademiAdminIfsTrainingPage() {
           setPkgModalOpen(false);
           load();
         }}
+      />
+
+      <AdminDeleteConfirm
+        open={!!deletePackage}
+        onOpenChange={(open) => !open && setDeletePackage(null)}
+        title="IFS paketini sil"
+        description={
+          deletePackage
+            ? `"${deletePackage.name}" paketi kalıcı olarak silinecek. Bu paket altındaki tüm kurs, departman ve kullanıcı atamaları da silinecek. Emin misiniz?`
+            : ""
+        }
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );

@@ -1,18 +1,23 @@
-// PR-RESTORE-3: Restore endpoint atomic swap + rollback
+// PR-RESTORE-3 + RESTORE-ORCHESTRATOR (Faz 1): Restore endpoint.
 //
-// Akış:
+// Route = YALNIZ HAZIRLIK (senkron, çökme-dışı):
 //   1. Kill switch (ENABLE_BACKUP_RESTORE)
 //   2. Auth + admin.backup.manage permission
 //   3. BackupLog kayıt + dosya kontrolü
 //   4. validateBackup gate (PR-RESTORE-1)
 //   5. extractToStaging + checkSchemaCompatibility (PR-RESTORE-2)
-//   6. ?dryRun=true → buradan dön (atomic swap atlanır)
-//   7. Pre-restore safety backup
-//   8. swapFilesAtomic → swapDbAtomic
-//   9. pm2 restart → healthCheck
-//  10. Hata her aşamada otomatik rollback + audit log
+//   6. ?dryRun=true → buradan dön (commit atlanır)
+//   7. restore-job satırı aç → DETACHED orchestrator spawn → "started" dön.
+//
+// COMMIT fazı (pre-restore backup → file swap → BUILD → db swap → pm2 delete+start
+// → health → rollback) DETACHED çalışır: scripts/restore-orchestrator.ts →
+// src/lib/backup-restore-commit.ts. DRILL-3 dersi: in-place file swap çalışan
+// process'i düşürüyor; detached orchestrator app ölse bile commit+rollback'i
+// tamamlar ve durumu BackupLog.status'a yazar (UI 10sn polling ile okur).
 import { NextRequest, NextResponse } from 'next/server'
 import * as fs from 'fs'
+import * as path from 'path'
+import { spawn } from 'child_process'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { logAuditEvent } from '@/lib/audit-log'
@@ -22,14 +27,14 @@ import {
   cleanupStaging,
   checkSchemaCompatibility,
 } from '@/lib/backup-restore-staging'
-import {
-  swapFilesAtomic,
-  swapDbAtomic,
-  rollbackFiles,
-  rollbackDb,
-} from '@/lib/backup-restore-swap'
-import { pm2RestartIlerihub, healthCheck } from '@/lib/backup-restore-health'
-import { backupILERIHub, generateBackupName } from '@/lib/backup-service'
+// RESTORE-ORCHESTRATOR (Faz 1): commit fazı (swap/build/db/restart/health/rollback)
+// artık route'ta DEĞİL — detached scripts/restore-orchestrator.ts +
+// src/lib/backup-restore-commit.ts. Route yalnız HAZIRLIK yapar; buradan sadece
+// hedef-kanıt helper'ları (describeRestoreTarget / resolveRestorePm2) gerekir.
+import { describeRestoreTarget } from '@/lib/backup-restore-swap'
+import { resolveRestorePm2 } from '@/lib/backup-restore-health'
+import { resolveRestoreModeInfo } from '@/lib/backup-restore-mode'
+import { BackupStatus, BackupType } from '@/generated/prisma'
 
 export async function POST(
   request: NextRequest,
@@ -99,7 +104,26 @@ export async function POST(
     return NextResponse.json({ error: 'Yedek dosyası bulunamadı' }, { status: 404 })
   }
 
-  // AUDIT: STARTED
+  // AUDIT: STARTED — PR-RESTORE-PARAM: "neyi hedefledi" kanıtı (hedef dizin +
+  // hedef DB host/adı). Tatbikatta hangi ortama restore edildiği okunabilir.
+  const restoreTarget = describeRestoreTarget()
+  // RESTORE-PARAM-2: hedef PM2 process adını da kanıt setine yaz (türetme
+  // başarısızsa sebebi görünür olsun; restore ilerideki adımda zaten reddedilir).
+  let restorePm2Name: string
+  try {
+    restorePm2Name = (await resolveRestorePm2()).name
+  } catch (err) {
+    restorePm2Name = `ÇÖZÜLEMEDİ (${(err as Error).message})`
+  }
+  // Faz 2: mode + gerçek hedef (in-place: cwd | passive-slot: pasif slot). Guard hatası
+  // burada da görünür (ör. çalışan slot CURRENT_ACTIVE ile uyuşmuyor).
+  let restoreModeInfo: string
+  try {
+    const mi = resolveRestoreModeInfo()
+    restoreModeInfo = `${mi.mode} → ${mi.targetDir}${mi.nginxSwap ? ` (aktif=${mi.activeColor}→pasif=${mi.passiveColor}, nginx swap)` : ''}`
+  } catch (err) {
+    restoreModeInfo = `ÇÖZÜLEMEDİ/REDDEDİLDİ (${(err as Error).message})`
+  }
   await logAuditEvent({
     action: dryRun ? 'BACKUP_RESTORE_DRY_RUN_STARTED' : 'BACKUP_RESTORE_STARTED',
     actorId: user.id,
@@ -110,6 +134,11 @@ export async function POST(
       backupName: backup.backupName,
       projectName: backup.projectName,
       dryRun,
+      restoreTargetDir: restoreTarget.targetDir,
+      restoreDbHost: restoreTarget.dbHost,
+      restoreDbName: restoreTarget.dbName,
+      restorePm2Name,
+      restoreMode: restoreModeInfo,
     },
   })
 
@@ -201,147 +230,121 @@ export async function POST(
     })
   }
 
-  // ============ GERÇEK RESTORE ============
-  // 8. Pre-restore safety backup (canlı state'i yedekle, rollback için)
-  let preRestoreBackupName: string | null = null
-  let preRestoreFilePath: string | null = null
-  if (backup.projectName === 'ILERIHub' || backup.projectName === 'All') {
-    preRestoreBackupName = generateBackupName('ilerihub_prerestore')
-    const result = await backupILERIHub(preRestoreBackupName)
-    if (!result.success) {
-      await cleanupStaging(staging.staging!.stagingDir, staging.staging!.testDbName)
-      await logAuditEvent({
-        action: 'BACKUP_RESTORE_FAILED',
-        actorId: user.id,
-        targetType: 'BACKUP',
-        targetId: id,
-        details: { stage: 'pre_restore_backup', error: result.error },
-      })
-      return NextResponse.json(
-        { error: 'Pre-restore backup failed', details: result.error },
-        { status: 500 }
-      )
-    }
-    preRestoreFilePath = result.filePath
-    await logAuditEvent({
-      action: 'BACKUP_RESTORE_PRE_BACKUP',
-      actorId: user.id,
-      targetType: 'BACKUP',
-      targetId: id,
-      details: { preRestoreBackupName, preRestoreFilePath },
-    })
-  }
+  // ============ GERÇEK RESTORE — DETACHED ORCHESTRATOR'A DEVİR ============
+  // RESTORE-ORCHESTRATOR (Faz 1): commit fazı (pre-restore backup → file swap →
+  // BUILD → db swap → pm2 delete+start → health → rollback) ARTIK bu request
+  // handler'da DEĞİL. In-place restore'da file swap çalışan process'i düşürdüğü
+  // için (DRILL-3), commit'i DETACHED bir tsx orchestrator'a devrediyoruz: app
+  // ölse bile bağımsız tamamlanır + rollback eder + durumu BackupLog'a yazar.
+  // Route yalnız restore-job satırı açar, orchestrator'ı spawn eder, "started" döner.
 
-  // 9. Atomic swap (dosyalar)
-  const filesSwap = await swapFilesAtomic(staging.staging!.stagingDir, { backupId: id })
-  if (!filesSwap.success) {
-    await cleanupStaging(staging.staging!.stagingDir, staging.staging!.testDbName)
+  const liveDbName =
+    process.env.DATABASE_URL?.match(/\/([^/?]+)(\?|$)/)?.[1] ?? 'ilerihub'
+
+  // tsx runner önkoşulu — yoksa hiç swap yapmadan reddet (yarım state olmaz).
+  const tsxBin = path.join(process.cwd(), 'node_modules/.bin/tsx')
+  if (!fs.existsSync(tsxBin)) {
     await logAuditEvent({
       action: 'BACKUP_RESTORE_FAILED',
       actorId: user.id,
       targetType: 'BACKUP',
       targetId: id,
-      details: { stage: 'files_swap', errors: filesSwap.errors },
+      details: { stage: 'dispatch', error: 'tsx runner bulunamadı (node_modules/.bin/tsx)' },
     })
+    await cleanupStaging(staging.staging!.stagingDir, staging.staging!.testDbName)
     return NextResponse.json(
-      { error: 'Files swap failed', details: filesSwap.errors },
+      { error: 'Restore orchestrator runner (tsx) bulunamadı' },
       { status: 500 }
     )
   }
 
-  // 10. Atomic swap (DB) — staging test DB → live DB
-  const liveDbName = process.env.DATABASE_URL?.match(/\/([^/?]+)(\?|$)/)?.[1] ?? 'ilerihub'
-  let dbSwap: Awaited<ReturnType<typeof swapDbAtomic>> | null = null
-  if (staging.staging?.testDbName) {
-    dbSwap = await swapDbAtomic(staging.staging.testDbName, liveDbName)
-    if (!dbSwap.success) {
-      // FELAKET: dosyalar swap edildi, DB swap başarısız → rollback dosyalar
-      await rollbackFiles(filesSwap.preRestoreDir).catch(() => {})
-      await logAuditEvent({
-        action: 'BACKUP_RESTORE_ROLLBACK_TRIGGERED',
-        actorId: user.id,
-        targetType: 'BACKUP',
-        targetId: id,
-        details: { reason: 'db_swap_failed', errors: dbSwap.errors },
-      })
-      return NextResponse.json(
-        { error: 'DB swap failed, files rolled back', details: dbSwap.errors },
-        { status: 500 }
-      )
-    }
-  }
-
-  await logAuditEvent({
-    action: 'BACKUP_RESTORE_SWAPPED',
-    actorId: user.id,
-    targetType: 'BACKUP',
-    targetId: id,
-    details: {
-      filesSwap: { preRestoreDir: filesSwap.preRestoreDir },
-      dbSwap: dbSwap ? { oldDbName: dbSwap.oldDbName } : null,
+  // Restore-job satırı: UI'ın izleyeceği ilerleme taşıyıcısı. KAYNAK yedek satırı
+  // DOKUNULMAZ; orchestrator yalnız bu satırın status'unu günceller.
+  const job = await prisma.backupLog.create({
+    data: {
+      backupName: `restore_${backup.backupName}`,
+      backupType: BackupType.RESTORE,
+      projectName: backup.projectName,
+      filePath: backup.filePath,
+      fileSize: backup.fileSize,
+      includeDatabase: !!staging.staging?.testDbName,
+      status: BackupStatus.RESTORING,
+      createdBy: user.id,
+      createdByName: user.email ?? 'system',
+      notes: `Kaynak yedek: ${backup.backupName} (id=${id}) — orchestrator başlatılıyor`,
     },
   })
 
-  // 11. PM2 restart
-  const pm2 = await pm2RestartIlerihub()
-  if (!pm2.success) {
-    if (dbSwap) await rollbackDb(dbSwap.oldDbName, liveDbName).catch(() => {})
-    await rollbackFiles(filesSwap.preRestoreDir).catch(() => {})
-    await pm2RestartIlerihub().catch(() => {})
-    await logAuditEvent({
-      action: 'BACKUP_RESTORE_ROLLBACK_TRIGGERED',
+  // Orchestrator parametreleri (temp JSON — spawn'a yol olarak geçilir).
+  const jobsDir = '/tmp/ilerihub-restore-jobs'
+  await fs.promises.mkdir(jobsDir, { recursive: true })
+  const paramsPath = path.join(jobsDir, `${job.id}.json`)
+  await fs.promises.writeFile(
+    paramsPath,
+    JSON.stringify({
+      jobId: job.id,
+      sourceBackupId: id,
+      backupName: backup.backupName,
+      projectName: backup.projectName,
+      stagingDir: staging.staging!.stagingDir,
+      testDbName: staging.staging?.testDbName ?? null,
+      liveDbName,
       actorId: user.id,
-      targetType: 'BACKUP',
-      targetId: id,
-      details: { reason: 'pm2_restart_failed', error: pm2.error },
-    })
-    return NextResponse.json(
-      { error: 'PM2 restart failed, rolled back', details: pm2.error },
-      { status: 500 }
-    )
-  }
+      // Faz 1.2 (iş-kaydı görünürlüğü): DB swap sonrası restore-job satırı canlı
+      // (restore edilen) DB'de bulunmaz; orchestrator bu alanlarla satırı jobId
+      // sabit UPSERT eder → COMPLETED canlı DB'de görünür.
+      jobRow: {
+        backupName: `restore_${backup.backupName}`,
+        backupType: BackupType.RESTORE,
+        projectName: backup.projectName,
+        filePath: backup.filePath,
+        includeDatabase: !!staging.staging?.testDbName,
+        createdBy: user.id,
+        createdByName: user.email ?? 'system',
+      },
+    }),
+    'utf8'
+  )
 
-  // 12. Health check (max 30sn)
-  const health = await healthCheck(30)
-  if (!health.healthy) {
-    if (dbSwap) await rollbackDb(dbSwap.oldDbName, liveDbName).catch(() => {})
-    await rollbackFiles(filesSwap.preRestoreDir).catch(() => {})
-    await pm2RestartIlerihub().catch(() => {})
-    await logAuditEvent({
-      action: 'BACKUP_RESTORE_ROLLBACK_TRIGGERED',
-      actorId: user.id,
-      targetType: 'BACKUP',
-      targetId: id,
-      details: { reason: 'health_check_failed', attempts: health.attempts },
-    })
-    return NextResponse.json(
-      { error: 'Health check failed, rolled back' },
-      { status: 500 }
-    )
-  }
+  // Faz 1.2 REPARENT: orchestrator'ı `setsid --fork` ile başlat. setsid --fork
+  // fork eder ve setsid ANA process'i hemen çıkar → orchestrator init'e (ppid=1)
+  // reparent olur, app'in process-tree'sinden ÇIKAR. Böylece orchestrator kendi
+  // `pm2 delete <app>` komutunu çalıştırınca pm2'nin tree-kill'i ona ULAŞAMAZ
+  // (DRILL-5 self-death fix'i). detached+unref korunur; stdio log dosyasına.
+  const logPath = path.join(jobsDir, `${job.id}.log`)
+  const logFd = fs.openSync(logPath, 'a')
+  const child = spawn(
+    'setsid',
+    ['--fork', tsxBin, 'scripts/restore-orchestrator.ts', paramsPath],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+    }
+  )
+  child.unref()
 
-  // 13. COMPLETED
   await logAuditEvent({
-    action: 'BACKUP_RESTORE_COMPLETED',
+    action: 'BACKUP_RESTORE_DISPATCHED',
     actorId: user.id,
     targetType: 'BACKUP',
     targetId: id,
     details: {
-      backupName: backup.backupName,
-      preRestoreBackupName,
-      preRestoreFilePath,
-      preRestoreDir: filesSwap.preRestoreDir,
-      oldDbName: dbSwap?.oldDbName ?? null,
-      healthCheckAttempts: health.attempts,
+      jobId: job.id,
+      orchestratorPid: child.pid ?? null,
+      restoreTargetDir: restoreTarget.targetDir,
+      restoreDbName: restoreTarget.dbName,
+      liveDbName,
+      logPath,
     },
   })
 
   return NextResponse.json({
     ok: true,
-    message: 'Restore completed successfully',
-    preRestoreBackup: preRestoreBackupName,
-    preRestoreDir: filesSwap.preRestoreDir,
-    oldDbPreserved: dbSwap?.oldDbName ?? null,
-    healthCheckAttempts: health.attempts,
+    started: true,
+    jobId: job.id,
+    message:
+      'Restore başlatıldı (detached orchestrator). İlerleme BackupLog üzerinden izlenir.',
   })
 }

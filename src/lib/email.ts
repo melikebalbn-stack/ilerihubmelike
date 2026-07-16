@@ -157,23 +157,49 @@ export async function sendEmail(
   // Prod'da env boş → hiçbir değişiklik (normal gönderim).
   let effectiveTo = to
   let effectiveSubject = subject
-  const override = process.env.MAIL_RECIPIENT_OVERRIDE?.trim()
-  if (override) {
-    const original = to.map((r) => r.email).join(', ') || '(boş)'
-    console.log(`✉️  mail override → gerçek:${original} yerine ${override}`)
-    effectiveTo = [{ email: override, name: to[0]?.name ?? 'STAGING' }]
-    effectiveSubject = subject.startsWith('[STAGING]') ? subject : `[STAGING] ${subject}`
+  let effectiveBody = body
+  let effectiveHtml = html
+  let forceSimulate = false
+
+  const original = to.map((r) => r.email).join(', ') || '(boş)'
+
+  // GUARD (opt-IN): bildirim test-modu. NOTIFY_TEST_MODE === "true" ise TÜM mailler
+  // NOTIFY_TEST_EMAIL'e yönlendirilir; konuya "[TEST → gerçek alıcı: X]" eklenir; gövdede
+  // orijinal alıcı görünür. NOTIFY_TEST_EMAIL yoksa fail-safe: gerçek mail ATILMAZ (simüle).
+  // Prod'da NOTIFY_TEST_MODE set EDİLMEZ → blok atlanır, normal gönderim. Kalıcı koruma:
+  // ileride staging'e SMTP eklense bile bu bayrak açıkken gerçek alıcıya gitmez.
+  const testMode = process.env.NOTIFY_TEST_MODE === 'true'
+  const testEmail = process.env.NOTIFY_TEST_EMAIL?.trim()
+  if (testMode) {
+    if (testEmail) {
+      console.warn(`🧪 NOTIFY_TEST_MODE AKTİF — mail gerçek alıcıya GİTMİYOR. Orijinal:[${original}] → ${testEmail}`)
+      effectiveTo = [{ email: testEmail, name: to[0]?.name ?? 'TEST' }]
+      effectiveSubject = `[TEST → gerçek alıcı: ${original}] ${subject}`
+      effectiveBody = `${body}\n\n---\n[NOTIFY_TEST_MODE] Bu e-posta normalde şu alıcı(lar)a giderdi: ${original}`
+      effectiveHtml = `${html ?? body.replace(/\n/g, '<br>')}<hr><p style="color:#b91c1c">[NOTIFY_TEST_MODE] Gerçek alıcı(lar): ${original}</p>`
+    } else {
+      console.warn(`🧪 NOTIFY_TEST_MODE AKTİF ama NOTIFY_TEST_EMAIL boş — mail SİMÜLE ediliyor (gönderilmiyor). Orijinal:[${original}]`)
+      forceSimulate = true
+    }
+  } else {
+    // Geriye dönük uyumluluk: mevcut MAIL_RECIPIENT_OVERRIDE (test modu KAPALIYKEN).
+    const override = process.env.MAIL_RECIPIENT_OVERRIDE?.trim()
+    if (override) {
+      console.log(`✉️  mail override → gerçek:${original} yerine ${override}`)
+      effectiveTo = [{ email: override, name: to[0]?.name ?? 'STAGING' }]
+      effectiveSubject = subject.startsWith('[STAGING]') ? subject : `[STAGING] ${subject}`
+    }
   }
 
   const smtp = getTransporter()
 
-  // If SMTP is not configured, use simulation mode
-  if (!smtp) {
+  // SMTP yoksa VEYA test-modu hedefsizse → simülasyon
+  if (!smtp || forceSimulate) {
     console.log('📧 [EMAIL SIMULATION] ========================')
     console.log('To:', effectiveTo.map((r) => `${r.name} <${r.email}>`).join(', '))
     console.log('Subject:', effectiveSubject)
     console.log('Body:')
-    console.log(body)
+    console.log(effectiveBody)
     console.log('============================================')
 
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -188,8 +214,8 @@ export async function sendEmail(
       from: process.env.SMTP_FROM || `ILERIHub <${process.env.SMTP_USER}>`,
       to: toAddresses,
       subject: effectiveSubject,
-      text: body,
-      html: html ?? body.replace(/\n/g, '<br>'),
+      text: effectiveBody,
+      html: effectiveHtml ?? effectiveBody.replace(/\n/g, '<br>'),
       ...(attachments && attachments.length ? { attachments } : {}),
     })
 

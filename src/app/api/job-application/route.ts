@@ -1,15 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@/generated/prisma'
+import { updateApplicationStatus } from '@/lib/recruitment/stage-log'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
 import { sendEmail } from '@/lib/email'
 import { resolveHRRecipients } from '@/lib/hr-notifications'
+import { verifyConsentedDraft } from '@/lib/job-application/consent-guard'
+import { DRAFT_COOKIE_NAME } from '@/lib/job-application/draft-cookie'
+import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
 
 // POST - İş başvurusu kaydet
 export async function POST(request: NextRequest) {
   try {
+    // AKIŞ GUARD: KVKK onayı + sağlık beyanı tamamlanmadan başvuru gönderilemez.
+    // (Adım atlanamaz — consent/health yoksa 403. Mevcut form davranışı korunur.)
+    const draftToken = request.cookies.get(DRAFT_COOKIE_NAME)?.value
+    const consentedApplicationId = await verifyConsentedDraft(draftToken)
+    if (!consentedApplicationId) {
+      return NextResponse.json(
+        { error: 'Önce KVKK onayını tamamlamalısınız.' },
+        { status: 403 }
+      )
+    }
+    const healthDone = await prisma.jobApplicationHealth.findUnique({
+      where: { applicationId: consentedApplicationId },
+      select: { id: true },
+    })
+    if (!healthDone) {
+      return NextResponse.json(
+        { error: 'Önce sağlık beyan formunu tamamlamalısınız.' },
+        { status: 403 }
+      )
+    }
+
     const formData = await request.formData()
 
     // Zorunlu alan kontrolü
@@ -79,7 +105,7 @@ export async function POST(request: NextRequest) {
       bloodType: formData.get('bloodType') as string || null,
       militaryStatus: formData.get('militaryStatus') as string || null,
       militaryPostponeDate: formData.get('militaryPostponeDate') ? new Date(formData.get('militaryPostponeDate') as string) : null,
-      maritalStatus: formData.get('maritalStatus') as string || null,
+      maritalStatus: normalizeMaritalStatus(formData.get('maritalStatus')),
       numberOfChildren: formData.get('numberOfChildren') ? parseInt(formData.get('numberOfChildren') as string) : null,
       spouseWorking: formData.get('spouseWorking') === 'true' ? true : formData.get('spouseWorking') === 'false' ? false : null,
       spouseOccupation: (formData.get('spouseOccupation') as string)?.trim() || null,
@@ -89,7 +115,9 @@ export async function POST(request: NextRequest) {
       workPhone: (formData.get('workPhone') as string)?.trim() || null,
       homePhone: (formData.get('homePhone') as string)?.trim() || null,
       email: (formData.get('email') as string)?.trim() || null,
-      referralSource: formData.get('referralSource') as string || null,
+      // Kaynak artık sözlükten (ReferralSourceDef). Form 'referralSource' alanında kaynak
+      // ADINI gönderir; aşağıda ada göre referralSourceId çözülür. Eski enum kolonu yeni
+      // kayıtlarda null bırakılır (geriye dönük 20 başvuruda duruyor).
       referralSourceOther: (formData.get('referralSourceOther') as string)?.trim() || null,
       memberships: (formData.get('memberships') as string)?.trim() || null,
       hasDriverLicense: formData.get('hasDriverLicense') === 'true' ? true : formData.get('hasDriverLicense') === 'false' ? false : null,
@@ -150,10 +178,26 @@ export async function POST(request: NextRequest) {
       userAgent,
     }
 
-    // Veritabanına kaydet
-    const application = await prisma.publicJobApplication.create({
-      data: applicationData as Parameters<typeof prisma.publicJobApplication.create>[0]['data'],
-    })
+    // Kaynak sözlüğü: form 'referralSource' alanında kaynak ADI gönderir → aktif
+    // ReferralSourceDef'e göre referralSourceId çözülür (bulunamazsa null; form bozulmaz).
+    const kaynakAdi = (formData.get('referralSource') as string)?.trim()
+    if (kaynakAdi) {
+      const def = await prisma.referralSourceDef.findFirst({ where: { name: kaynakAdi, isActive: true }, select: { id: true } })
+      if (def) (applicationData as Record<string, unknown>).referralSourceId = def.id
+    }
+
+    // Taslak birleştirme: KVKK adımında oluşan taslağı (cookie'deki applicationId) tam form
+    // alanlarıyla GÜNCELLE + status PENDING (İK inceleme kuyruğu). Yeni kayıt açılmaz —
+    // consent+health bu final başvuruyla ilişkili kalır.
+    // Tek geçit: status + aşama logu aynı transaction'da (from=HEALTH_PENDING → PENDING).
+    // Public form → changedBy null. Diğer form alanları helper'ın data'sında güncellenir.
+    const application = await prisma.$transaction((tx) =>
+      updateApplicationStatus(tx, {
+        applicationId: consentedApplicationId,
+        toStatus: 'PENDING',
+        data: applicationData as Prisma.PublicJobApplicationUpdateInput,
+      }),
+    )
 
     // E-posta bildirimi gönder
     try {

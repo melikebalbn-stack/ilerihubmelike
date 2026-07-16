@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { UserRoleEnum as Role, LoginStatus } from '@/generated/prisma';
 import { inferRoleFromJobTitle, extractGroupCNs } from '@/lib/ldap-sync';
 import { checkRateLimit, resetRateLimit, getRateLimitKey } from '@/lib/rate-limit';
+import { verifyPin } from '@/lib/pin-utils';
 
 // Login log fonksiyonu
 async function logLogin(data: {
@@ -247,6 +248,119 @@ export const authOptions: NextAuthOptions = {
           }
           throw error;
         }
+      },
+    }),
+    // IPRO kiosk login (cihaz kod + sifre). AD'den BAGIMSIZ. bluecollar deseni:
+    // rate-limit + logLogin AYNI; fark → IproKiosk.kod ile bul, bcrypt ile dogrula.
+    // Operator BURAYA girmez — CIHAZ girer, operator listeden secilir (identifyOperator).
+    CredentialsProvider({
+      id: 'kiosk',
+      name: 'Kiosk Girisi',
+      credentials: {
+        kod: { label: 'Cihaz Kodu', type: 'text', placeholder: 'KIOSK-CN01' },
+        password: { label: 'Sifre', type: 'password' },
+      },
+      async authorize(credentials, req) {
+        if (!credentials?.kod || !credentials?.password) {
+          throw new Error('Cihaz kodu ve sifre gerekli');
+        }
+
+        // Rate limiting — bluecollar ile BIREBIR ayni util/parametre.
+        const forwardedFor = req?.headers?.['x-forwarded-for'];
+        const ip = typeof forwardedFor === 'string'
+          ? forwardedFor.split(',')[0].trim()
+          : 'unknown';
+
+        const rateLimitKey = getRateLimitKey(ip, `kiosk_${credentials.kod}`);
+        const rateLimitResult = checkRateLimit(rateLimitKey, {
+          windowMs: 15 * 60 * 1000,  // 15 dakika
+          maxAttempts: 5,  // 5 basarisiz deneme
+        });
+
+        if (!rateLimitResult.success) {
+          await logLogin({
+            email: `kiosk_${credentials.kod}@kiosk.ilerigroup.com`,
+            username: credentials.kod,
+            status: LoginStatus.FAILED,
+            errorMessage: `Rate limit asildi. ${rateLimitResult.resetIn} saniye bekleyin.`,
+          });
+          throw new Error(`Cok fazla basarisiz deneme. ${Math.ceil(rateLimitResult.resetIn / 60)} dakika sonra tekrar deneyin.`);
+        }
+
+        const kiosk = await prisma.iproKiosk.findUnique({
+          where: { kod: credentials.kod },
+          include: { user: true },
+        });
+
+        if (!kiosk) {
+          await logLogin({
+            email: `kiosk_${credentials.kod}@kiosk.ilerigroup.com`,
+            username: credentials.kod,
+            status: LoginStatus.FAILED,
+            errorMessage: 'Cihaz kodu bulunamadi',
+          });
+          throw new Error('Cihaz kodu bulunamadi');
+        }
+
+        if (!kiosk.aktif) {
+          await logLogin({
+            email: kiosk.user.email,
+            username: credentials.kod,
+            status: LoginStatus.FAILED,
+            errorMessage: 'Kiosk cihazi pasif',
+          });
+          throw new Error('Kiosk cihazi pasif');
+        }
+
+        if (!kiosk.user.isActive) {
+          await logLogin({
+            email: kiosk.user.email,
+            username: credentials.kod,
+            status: LoginStatus.FAILED,
+            errorMessage: 'Kiosk kullanici hesabi aktif degil',
+          });
+          throw new Error('Kiosk kullanici hesabi aktif degil');
+        }
+
+        const sifreDogru = await verifyPin(credentials.password, kiosk.sifreHash);
+        if (!sifreDogru) {
+          await logLogin({
+            email: kiosk.user.email,
+            username: credentials.kod,
+            status: LoginStatus.FAILED,
+            errorMessage: 'Sifre hatali',
+          });
+          throw new Error('Sifre hatali');
+        }
+
+        // Basarili — rate limit sifirla, son giris damgala, logla.
+        resetRateLimit(rateLimitKey);
+        await prisma.iproKiosk.update({
+          where: { id: kiosk.id },
+          data: { sonGirisAt: new Date() },
+        });
+        await logLogin({
+          email: kiosk.user.email,
+          username: credentials.kod,
+          name: kiosk.user.name ?? undefined,
+          role: kiosk.user.role,
+          status: LoginStatus.SUCCESS,
+        });
+
+        // Session bagli User uzerinden kurulur (role KIOSK).
+        return {
+          id: kiosk.user.id,
+          name: kiosk.user.name,
+          email: kiosk.user.email,
+          username: credentials.kod,
+          role: kiosk.user.role,
+          department: kiosk.user.department,
+          title: kiosk.user.jobTitle,
+          distinguishedName: `kiosk=${credentials.kod}`,
+          ou: null,
+          managerDN: null,
+          managerEmail: null,
+        };
       },
     }),
     // LDAP login (Active Directory)

@@ -95,6 +95,8 @@ model User {
   pushSubscriptions  PushSubscription[]
   responsibleDevices CalibrationDevice[]   @relation("ResponsibleDevices")
   emailLogs          CalibrationEmailLog[]
+  // IPRO: bu User bir kiosk cihaz hesabiysa karsilik gelen cihaz (1-1, opsiyonel)
+  iproKiosk          IproKiosk?
 
   // QDMS Relations
   qdmsDocumentsOwned        QdmsDocument[]              @relation("DocumentOwner")
@@ -250,6 +252,9 @@ enum UserRoleEnum {
   DEPT_HEAD
   SUPERVISOR
   EMPLOYEE
+  // IPRO kiosk cihaz hesabi. Rol kontrolleri allow-list oldugu icin additive:
+  // hicbir allowedRoles listesinde olmadigindan her yerde default-deny.
+  KIOSK
 
   @@map("Role")
 }
@@ -10681,6 +10686,7 @@ model IproTezgah {
   durusKayit  IproMachineDowntime[]
   durusEsleme IproDurusTezgah[]
   hurdaEsleme IproHurdaTezgah[]
+  kiosklar    IproKioskTezgah[]
 
   @@index([ifsWorkCenterNo])
   @@index([ifsResourceId])
@@ -10786,15 +10792,29 @@ model IproOperatorTezgah {
   @@map("ipro_operator_tezgah")
 }
 
+enum IproAuthMethod {
+  LIST // operatör listeden seçilir (varsayılan)
+  CARD // RFID kart — C fazı; kart→sicil eşleme tablosu HENÜZ YOK (format elde görülünce)
+}
+
 model IproOperatorSession {
-  id          String     @id @default(cuid())
+  id          String         @id @default(cuid())
+  // personnelId bilinçli olarak çıplak String (FK yok) — IPRO bloğu geneliyle tutarlı.
+  // Gerekçe: üretim oturumu kalıcı denetim kaydıdır, Personnel satırından bağımsız
+  // yaşamalı. FK CASCADE geçmişi siler, RESTRICT İK/offboarding silmeyi bloklar —
+  // ikisi de istenmiyor. Bütünlük identify anında uygulama katmanında sağlanır.
   personnelId String
   tezgahId    String
-  tezgah      IproTezgah @relation(fields: [tezgahId], references: [id])
-  girisAt     DateTime   @default(now())
+  tezgah      IproTezgah     @relation(fields: [tezgahId], references: [id])
+  authMethod  IproAuthMethod @default(LIST)
+  girisAt     DateTime       @default(now())
   cikisAt     DateTime?
 
+  // ACTIVE = cikisAt IS NULL. Ayrı status kolonu YOK (tek doğruluk kaynağı).
+  // "Tek ACTIVE per (personnelId, tezgahId)" — Prisma @@unique partial ifade edemez,
+  // migration'da RAW partial unique index ile kuruluyor.
   @@index([tezgahId, cikisAt])
+  @@index([personnelId, cikisAt])
   @@map("ipro_operator_session")
 }
 
@@ -10834,4 +10854,49 @@ model IproMachineDowntime {
 
   @@index([tezgahId, bitis])
   @@map("ipro_machine_downtime")
+}
+
+/// IPRO kiosk cihazi. AD'den BAGIMSIZ; kendi kod+sifresiyle giren fiziksel terminal.
+/// Operator BURAYA girmez — CIHAZ girer, operator listeden secilir (bkz. identifyOperator).
+///
+/// UYARI: Workstation modelinin "Kiosk/Workstation Faz 1" basligi YANILTICI.
+/// Gercek kiosk yolu BU model. Workstation (1 satir) ile IproTezgah (203 satir)
+/// ayri ve birbirine bagli DEGIL; Workstation'in akibeti AYRI bir is.
+model IproKiosk {
+  id        String @id @default(cuid())
+  kod       String @unique // login kimligi, orn "KIOSK-CN01"
+  ad        String // gorunen cihaz adi, orn "CNC Hatti Terminal 1"
+  sifreHash String // bcrypt — pin-utils.hashPin deseni (saltRounds=10). PIN DEGIL: validatePinStrength UYGULANMAZ.
+
+  // Oturum acacak User. bluecollar deseni: sentetik email, employeeId NULL
+  // -> /api/bluecollar-users GET (employeeId: { not: null }) kiosk'u LISTELEMEZ.
+  // Duz cuid id (ad_ degil) -> ldap-sync "guvenlik kemeri" bu satira dokunmaz.
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  aktif      Boolean   @default(true)
+  sonGirisAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tezgahlar IproKioskTezgah[]
+
+  @@index([aktif])
+  @@map("ipro_kiosk")
+}
+
+/// Kiosk <-> Tezgah cokdan-coga eslemesi (explicit join; PersonnelWorkstation deseni).
+/// Cihaz hangi tezgahlara bagliysa kiosk ekraninda O tezgahlar gorunur.
+model IproKioskTezgah {
+  id        String   @id @default(cuid())
+  kioskId   String
+  tezgahId  String
+  createdAt DateTime @default(now())
+
+  kiosk  IproKiosk  @relation(fields: [kioskId], references: [id], onDelete: Cascade)
+  tezgah IproTezgah @relation(fields: [tezgahId], references: [id], onDelete: Cascade)
+
+  @@unique([kioskId, tezgahId])
+  @@index([tezgahId])
+  @@map("ipro_kiosk_tezgah")
 }

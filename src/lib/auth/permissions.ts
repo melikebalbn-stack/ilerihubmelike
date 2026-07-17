@@ -107,6 +107,9 @@ export const PERMISSION_KEYS = {
   URETIM_BILDIRIM: 'uretim.bildirim',
   // === ÜRETİM / TEZGAH ===
   URETIM_TEZGAH_MANAGE: 'uretim.tezgah.manage',
+
+  // === DEPO (El terminali) ===
+  DEPO_TERMINAL_USE: 'depo.terminal.use',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -130,6 +133,7 @@ export const MODULE_LABELS: Record<string, string> = {
   forms: 'Form Modülleri',
   recruitment: 'İşe Alım',
   uretim: 'Üretim',
+  depo: 'Depo',
 };
 
 /**
@@ -216,4 +220,5 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'uretim.bildirim': 'Üretim terminali — iş emri operasyonu bildirimi (IFS shop-floor)',
   'uretim.tezgah.manage': 'Tezgah tanımı ve personel atama',
+  'depo.terminal.use': 'Depo el terminali erişimi',
 };

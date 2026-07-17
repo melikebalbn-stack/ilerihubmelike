@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 
 // Stok Taşıma sihirbazı (EL-2, mock). Guard: admin.system.manage.
 export default async function StokTasimaPage() {
-  const { error } = await requirePermission('admin.system.manage')
+  const { error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) {
     return (
       <div className="p-4 text-sm text-muted-foreground">

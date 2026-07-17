@@ -7,7 +7,7 @@ export const metadata = { title: 'Malzeme Toplama' }
 
 // Malzeme Toplama (EL-6a). Guard: admin.system.manage. SADECE OKUMA (yazma EL-6b).
 export default async function MalzemeToplamaPage() {
-  const { error } = await requirePermission('admin.system.manage')
+  const { error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) {
     return (
       <div className="p-4 text-sm text-muted-foreground">

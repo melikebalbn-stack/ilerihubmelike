@@ -11,6 +11,7 @@ import { resolveHRRecipients } from '@/lib/hr-notifications'
 import { verifyConsentedDraft } from '@/lib/job-application/consent-guard'
 import { DRAFT_COOKIE_NAME } from '@/lib/job-application/draft-cookie'
 import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
+import { SERVER_SCALAR_REQUIRED } from '@/components/job-application/required-fields'
 
 // POST - İş başvurusu kaydet
 export async function POST(request: NextRequest) {
@@ -38,11 +39,49 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData()
 
-    // Zorunlu alan kontrolü
-    const fullName = formData.get('fullName') as string
-    if (!fullName || !fullName.trim()) {
-      return NextResponse.json({ error: 'Ad Soyad zorunludur' }, { status: 400 })
+    // ── ZORUNLU ALAN KONTROLÜ (merkezi şema — frontend ile AYNI kaynak) ──
+    // Manuel validasyon (Zod değil). Düz-metin alanlar SERVER_SCALAR_REQUIRED'dan;
+    // yapısal/özel alanlar (foto, beyan, eğitim geçmişi, iş tecrübesi, referans,
+    // iletişim tercihi) aşağıda ayrı kontrol edilir.
+    const missing: string[] = []
+    for (const { key, label } of SERVER_SCALAR_REQUIRED) {
+      const v = formData.get(key)
+      if (typeof v !== 'string' || !v.trim()) missing.push(label)
     }
+    const parseJsonArr = (k: string): unknown[] => {
+      try {
+        const v = JSON.parse((formData.get(k) as string) || '[]')
+        return Array.isArray(v) ? v : []
+      } catch {
+        return []
+      }
+    }
+    const eduHistory = (() => {
+      try {
+        return JSON.parse((formData.get('educationHistory') as string) || '{}') as Record<string, { institution?: string }>
+      } catch {
+        return {}
+      }
+    })()
+    const str = (o: unknown, k: string) => String((o as Record<string, unknown>)?.[k] ?? '').trim()
+    if (!Object.values(eduHistory).some((e) => (e?.institution ?? '').trim())) missing.push('Eğitim Geçmişi')
+    if (!parseJsonArr('workExperience').some((r) => str(r, 'company') || str(r, 'position'))) missing.push('İş Tecrübeleri')
+    if (!parseJsonArr('references').some((r) => str(r, 'name') || str(r, 'company'))) missing.push('Referanslar')
+    const prefGsm = formData.get('preferredContactGsm') === 'true'
+    const prefEmail = formData.get('preferredContactEmail') === 'true'
+    const prefOther = ((formData.get('preferredContactOther') as string) || '').trim()
+    if (!prefGsm && !prefEmail && !prefOther) missing.push('Size nasıl ulaşabiliriz?')
+    const declAccepted = formData.get('declarationAccepted') === 'true'
+    const sig = ((formData.get('digitalSignature') as string) || '').trim()
+    if (!declAccepted || !sig) missing.push('Beyan')
+    const photoField = formData.get('photo') as File | null
+    if (!photoField || photoField.size === 0) missing.push('Fotoğraf')
+
+    if (missing.length > 0) {
+      return NextResponse.json({ error: `Eksik zorunlu alanlar: ${missing.join(', ')}` }, { status: 400 })
+    }
+
+    const fullName = formData.get('fullName') as string
 
     // IP ve User Agent
     const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0] ||

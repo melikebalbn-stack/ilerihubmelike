@@ -1,22 +1,22 @@
 'use client'
 
 // PR-JOBAPP-INPUT-FOCUS: Bölüm 2 — İletişim.
+// İK talebi (2026-07): "Bakmakla Yükümlü Kişiler" (dependents) ve "İş Telefonu" (workPhone)
+// formdan ÇIKARILDI. DB kolonları nullable korunuyor (migration yok) — sadece UI'dan alındı.
 
 import { FormQuestionCard } from '@/components/forms/multi-step/FormQuestionCard'
 import { FormShortText } from '@/components/forms/multi-step/question-types/FormShortText'
 import { FormLongText } from '@/components/forms/multi-step/question-types/FormLongText'
+import { isRequiredField } from '../required-fields'
 import type { SectionProps } from '../types'
 
 export function SectionIletisim({ form, onChange }: SectionProps) {
   return (
     <>
-      <FormQuestionCard number={1} title="Ev Adresi">
+      <FormQuestionCard number={1} title="Ev Adresi" isRequired={isRequiredField('homeAddress')}>
         <FormLongText value={form.homeAddress} onChange={(v) => onChange({ homeAddress: v })} rows={3} maxLength={500} />
       </FormQuestionCard>
-      <FormQuestionCard number={2} title="Yanınızda Bakmakla Yükümlü Olduğunuz Kişiler">
-        <FormLongText value={form.dependents} onChange={(v) => onChange({ dependents: v })} rows={2} maxLength={300} />
-      </FormQuestionCard>
-      <FormQuestionCard number={3} title="Cep Telefonu">
+      <FormQuestionCard number={2} title="Cep Telefonu" isRequired={isRequiredField('mobilePhone')}>
         <FormShortText
           value={form.mobilePhone}
           onChange={(v) => onChange({ mobilePhone: v })}
@@ -26,7 +26,7 @@ export function SectionIletisim({ form, onChange }: SectionProps) {
           maxLength={11}
         />
       </FormQuestionCard>
-      <FormQuestionCard number={4} title="E-posta">
+      <FormQuestionCard number={3} title="E-posta" isRequired={isRequiredField('email')}>
         <FormShortText
           value={form.email}
           onChange={(v) => onChange({ email: v })}
@@ -34,16 +34,7 @@ export function SectionIletisim({ form, onChange }: SectionProps) {
           inputMode="email"
         />
       </FormQuestionCard>
-      <FormQuestionCard number={5} title="İş Telefonu">
-        <FormShortText
-          value={form.workPhone}
-          onChange={(v) => onChange({ workPhone: v })}
-          inputMode="tel"
-          onlyDigits
-          maxLength={11}
-        />
-      </FormQuestionCard>
-      <FormQuestionCard number={6} title="Ev Telefonu">
+      <FormQuestionCard number={4} title="Ev Telefonu">
         <FormShortText
           value={form.homePhone}
           onChange={(v) => onChange({ homePhone: v })}

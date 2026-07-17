@@ -177,6 +177,9 @@ model User {
   approvalPositionBackups   ApprovalPosition[]         @relation("ApprovalPositionBackup")
   overtimeEscalations       OvertimeApproval[]         @relation("OvertimeApprovalEscalatedTo")
 
+  // Toplu Kart Okutamama Relations
+  bulkCardScanFailuresCreated BulkCardScanFailure[] @relation("BulkCardScanFailureCreator")
+
   // Akademi Relations
   courseAssignments    UserCourseAssignment[]
   packageAssignments   UserPackageAssignment[]
@@ -8927,6 +8930,8 @@ model Personnel {
   // silinmeden profil silinmez (zimmet/beden geçmişi korunur).
   bedenProfili                  EnvanterPersonelBedenProfili?
   envanterZimmetleri            EnvanterZimmet[]
+  // Toplu Kart Okutamama formları
+  bulkCardScanFailures          BulkCardScanFailure[]
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -11420,4 +11425,33 @@ model DepoHareketLog {
   @@index([userId, createdAt])
   @@index([partNo])
   @@map("depo_hareket_log")
+}
+
+// ═══════════════════════════════════════════════
+// TOPLU KART OKUTAMAMA FORMU
+// ═══════════════════════════════════════════════
+
+model BulkCardScanFailure {
+  id String @id @default(cuid())
+
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+
+  // Personel Yönetimi'nden seçim anındaki görüntü (Personnel kaydı sonradan değişse de form sabit kalır)
+  sicilNo String?
+  adSoyad String
+
+  tarih      DateTime @db.Date
+  girisSaati String? // "08:00"
+  cikisSaati String? // "17:00"
+
+  createdById String
+  createdBy   User   @relation("BulkCardScanFailureCreator", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([personnelId])
+  @@index([tarih])
+  @@index([createdById])
 }

@@ -1,20 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
+import { getBulkCardScanAccess } from '../_lib/access'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * GET: Toplu Kart Okutamama formu için Personnel (İV) tablosundan
- * aktif personel arama — sadece oturum gerekli, sicilNo/adSoyad/bolum
- * dışında alan döndürülmez (PII sızıntısını önlemek için /api/personnel
- * yerine bu dar kapsamlı endpoint kullanılıyor).
- * Query params: search, bolum
+ * aktif personel arama — sicilNo/adSoyad/bolum dışında alan döndürülmez
+ * (PII sızıntısını önlemek için /api/personnel yerine bu dar kapsamlı
+ * endpoint kullanılıyor).
+ *
+ * GRI kullanıcı için sonuçlar KENDİ BÖLÜMÜYLE sınırlanır (elle bölüm
+ * seçmesine gerek kalmaz, başka bölümden personel getirilmez) — FULL
+ * erişimde (Beyaz Yaka/Admin) kısıtlama yok.
+ * Query params: search, bolum (sadece FULL erişimde etkili)
  */
 export async function GET(request: NextRequest) {
   try {
-    const { error } = await requireSession()
+    const { user, error } = await requireUser()
     if (error) return error
+
+    const access = await getBulkCardScanAccess(user.id)
+    if (access.level === 'NONE') {
+      return NextResponse.json({ error: 'Bu forma erişim yetkiniz yok' }, { status: 403 })
+    }
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
@@ -29,7 +39,11 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    if (bolum) {
+    if (access.level === 'GRI') {
+      // Güvenlik sınırı: GRI kullanıcı sadece kendi bölümünde arama yapabilir,
+      // client'tan gelen bolum parametresi bu durumda göz ardı edilir.
+      where.bolum = access.bolum
+    } else if (bolum) {
       where.bolum = bolum
     }
 

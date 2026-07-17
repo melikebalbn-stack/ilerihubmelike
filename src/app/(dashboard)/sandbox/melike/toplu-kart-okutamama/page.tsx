@@ -6,13 +6,6 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
   Table,
   TableBody,
   TableCell,
@@ -46,7 +39,7 @@ export default function TopluKartOkutamamaPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
 
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formPersonnel, setFormPersonnel] = useState<PickedPersonnel | null>(null)
   const [formTarih, setFormTarih] = useState("")
@@ -57,6 +50,9 @@ export default function TopluKartOkutamamaPage() {
 
   const [importResult, setImportResult] = useState<{ created: number; errors: { row: number; message: string }[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [notifying, setNotifying] = useState(false)
+  const [notifyMessage, setNotifyMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   useEffect(() => {
     if (status === "loading") return
@@ -92,7 +88,6 @@ export default function TopluKartOkutamamaPage() {
   }, [status, loadRecords])
 
   function resetForm() {
-    setEditingId(null)
     setFormPersonnel(null)
     setFormTarih("")
     setFormGiris("")
@@ -100,12 +95,14 @@ export default function TopluKartOkutamamaPage() {
     setFormError(null)
   }
 
-  function openNewDialog() {
+  function startAdding() {
     resetForm()
-    setDialogOpen(true)
+    setEditingId(null)
+    setIsAdding(true)
   }
 
-  function openEditDialog(record: BulkCardScanRecord) {
+  function startEditing(record: BulkCardScanRecord) {
+    setIsAdding(false)
     setEditingId(record.id)
     setFormPersonnel({
       id: record.personnel?.id || "",
@@ -117,7 +114,12 @@ export default function TopluKartOkutamamaPage() {
     setFormGiris(record.girisSaati || "")
     setFormCikis(record.cikisSaati || "")
     setFormError(null)
-    setDialogOpen(true)
+  }
+
+  function cancelForm() {
+    setIsAdding(false)
+    setEditingId(null)
+    resetForm()
   }
 
   async function handleSave() {
@@ -144,8 +146,7 @@ export default function TopluKartOkutamamaPage() {
         setFormError(err.error || "Kayıt yapılamadı")
         return
       }
-      setDialogOpen(false)
-      resetForm()
+      cancelForm()
       loadRecords()
     } finally {
       setSaving(false)
@@ -170,6 +171,22 @@ export default function TopluKartOkutamamaPage() {
     a.download = `toplu_kart_okutamama_${new Date().toISOString().slice(0, 10)}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function handleNotify() {
+    setNotifying(true)
+    setNotifyMessage(null)
+    try {
+      const res = await fetch(`${API_BASE}/notify`, { method: "POST" })
+      const result = await res.json()
+      if (!res.ok) {
+        setNotifyMessage({ type: "error", text: result.error || "Bildirim gönderilemedi" })
+        return
+      }
+      setNotifyMessage({ type: "success", text: `${result.count} kayıt için İK'ya bildirim gönderildi.` })
+    } finally {
+      setNotifying(false)
+    }
   }
 
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -202,6 +219,32 @@ export default function TopluKartOkutamamaPage() {
     )
   }
 
+  const editableRowContent = (
+    <>
+      <TableCell colSpan={3}>
+        <PersonnelPicker value={formPersonnel} onSelect={setFormPersonnel} />
+      </TableCell>
+      <TableCell>
+        <Input type="date" value={formTarih} onChange={(e) => setFormTarih(e.target.value)} />
+      </TableCell>
+      <TableCell>
+        <Input type="time" value={formGiris} onChange={(e) => setFormGiris(e.target.value)} />
+      </TableCell>
+      <TableCell>
+        <Input type="time" value={formCikis} onChange={(e) => setFormCikis(e.target.value)} />
+      </TableCell>
+      <TableCell>-</TableCell>
+      <TableCell className="space-x-2 whitespace-nowrap">
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? "Kaydediliyor..." : "Kaydet"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={cancelForm}>
+          Vazgeç
+        </Button>
+      </TableCell>
+    </>
+  )
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -220,9 +263,26 @@ export default function TopluKartOkutamamaPage() {
           <Button variant="outline" onClick={handleExport}>
             Excel'e Aktar
           </Button>
-          <Button onClick={openNewDialog}>Yeni Kayıt</Button>
+          <Button variant="outline" onClick={handleNotify} disabled={notifying}>
+            {notifying ? "Gönderiliyor..." : "İK'ya Bildir"}
+          </Button>
+          <Button onClick={startAdding} disabled={isAdding}>
+            Yeni Kayıt
+          </Button>
         </div>
       </div>
+
+      {notifyMessage && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            notifyMessage.type === "success"
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
+          {notifyMessage.text}
+        </div>
+      )}
 
       {importResult && (
         <div className="rounded-md border bg-muted/40 p-3 text-sm">
@@ -259,6 +319,14 @@ export default function TopluKartOkutamamaPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {isAdding && <TableRow>{editableRowContent}</TableRow>}
+            {formError && (isAdding || editingId) && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-sm text-red-600">
+                  {formError}
+                </TableCell>
+              </TableRow>
+            )}
             {loading && (
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground">
@@ -266,7 +334,7 @@ export default function TopluKartOkutamamaPage() {
                 </TableCell>
               </TableRow>
             )}
-            {!loading && records.length === 0 && (
+            {!loading && !isAdding && records.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground">
                   Kayıt bulunamadı
@@ -275,6 +343,9 @@ export default function TopluKartOkutamamaPage() {
             )}
             {records.map((r) => {
               const canEdit = accessLevel === "FULL" || r.createdById === session?.user?.id
+              if (editingId === r.id) {
+                return <TableRow key={r.id}>{editableRowContent}</TableRow>
+              }
               return (
                 <TableRow key={r.id}>
                   <TableCell>{r.sicilNo || "-"}</TableCell>
@@ -284,10 +355,10 @@ export default function TopluKartOkutamamaPage() {
                   <TableCell>{r.girisSaati || "-"}</TableCell>
                   <TableCell>{r.cikisSaati || "-"}</TableCell>
                   <TableCell>{r.createdBy?.name || r.createdBy?.email}</TableCell>
-                  <TableCell className="space-x-2">
+                  <TableCell className="space-x-2 whitespace-nowrap">
                     {canEdit && (
                       <>
-                        <Button size="sm" variant="outline" onClick={() => openEditDialog(r)}>
+                        <Button size="sm" variant="outline" onClick={() => startEditing(r)}>
                           Düzenle
                         </Button>
                         <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)}>
@@ -302,43 +373,6 @@ export default function TopluKartOkutamamaPage() {
           </TableBody>
         </Table>
       </div>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingId ? "Kaydı Düzenle" : "Yeni Kayıt"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Personel (Sicil No / Ad Soyad)</label>
-              <PersonnelPicker value={formPersonnel} onSelect={setFormPersonnel} />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Tarih</label>
-              <Input type="date" value={formTarih} onChange={(e) => setFormTarih(e.target.value)} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Giriş Saati</label>
-                <Input type="time" value={formGiris} onChange={(e) => setFormGiris(e.target.value)} />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Çıkış Saati</label>
-                <Input type="time" value={formCikis} onChange={(e) => setFormCikis(e.target.value)} />
-              </div>
-            </div>
-            {formError && <p className="text-sm text-red-600">{formError}</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Vazgeç
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Kaydediliyor..." : "Kaydet"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

@@ -11,12 +11,15 @@ async function loadRecordWithAccessCheck(id: string, userId: string) {
     return { error: NextResponse.json({ error: 'Bu forma erişim yetkiniz yok' }, { status: 403 }) }
   }
 
-  const record = await prisma.bulkCardScanFailure.findUnique({ where: { id } })
+  const record = await prisma.bulkCardScanFailure.findUnique({
+    where: { id },
+    include: { personnel: { select: { bolum: true } } },
+  })
   if (!record) {
     return { error: NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 }) }
   }
 
-  if (access.level === 'GRI' && record.createdById !== userId) {
+  if (access.level === 'GRI' && record.personnel?.bolum !== access.bolum) {
     return { error: NextResponse.json({ error: 'Bu kaydı düzenleme yetkiniz yok' }, { status: 403 }) }
   }
 

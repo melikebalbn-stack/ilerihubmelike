@@ -54,6 +54,12 @@ export default function TopluKartOkutamamaPage() {
   const [notifying, setNotifying] = useState(false)
   const [notifyMessage, setNotifyMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
+  // GRI için: kendi bölümündeki personel otomatik listelenir, tek tek "Yeni Kayıt"
+  // aramaya gerek kalmaz — her satırda doğrudan tarih/saat girip kaydedilir.
+  const [team, setTeam] = useState<PickedPersonnel[]>([])
+  const [teamDrafts, setTeamDrafts] = useState<Record<string, { tarih: string; giris: string; cikis: string }>>({})
+  const [teamSavingId, setTeamSavingId] = useState<string | null>(null)
+
   useEffect(() => {
     if (status === "loading") return
     if (!session?.user?.email) {
@@ -86,6 +92,44 @@ export default function TopluKartOkutamamaPage() {
   useEffect(() => {
     if (status === "authenticated") loadRecords()
   }, [status, loadRecords])
+
+  useEffect(() => {
+    if (accessLevel !== "GRI") return
+    fetch("/api/sandbox/melike/toplu-kart-okutamama/personnel-search")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: PickedPersonnel[]) => setTeam(data))
+  }, [accessLevel])
+
+  function updateTeamDraft(personnelId: string, field: "tarih" | "giris" | "cikis", value: string) {
+    setTeamDrafts((prev) => ({
+      ...prev,
+      [personnelId]: { tarih: "", giris: "", cikis: "", ...prev[personnelId], [field]: value },
+    }))
+  }
+
+  async function handleTeamSave(personnel: PickedPersonnel) {
+    const draft = teamDrafts[personnel.id]
+    if (!draft?.tarih) return
+    setTeamSavingId(personnel.id)
+    try {
+      const res = await fetch(API_BASE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          personnelId: personnel.id,
+          tarih: draft.tarih,
+          girisSaati: draft.giris,
+          cikisSaati: draft.cikis,
+        }),
+      })
+      if (res.ok) {
+        setTeamDrafts((prev) => ({ ...prev, [personnel.id]: { tarih: "", giris: "", cikis: "" } }))
+        loadRecords()
+      }
+    } finally {
+      setTeamSavingId(null)
+    }
+  }
 
   function resetForm() {
     setFormPersonnel(null)
@@ -294,6 +338,74 @@ export default function TopluKartOkutamamaPage() {
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {accessLevel === "GRI" && (
+        <div className="rounded-md border">
+          <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
+            Bana Bağlı Personel {team.length > 0 && `(${team.length})`}
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Sicil No</TableHead>
+                <TableHead>Ad Soyad</TableHead>
+                <TableHead>Tarih</TableHead>
+                <TableHead>Giriş Saati</TableHead>
+                <TableHead>Çıkış Saati</TableHead>
+                <TableHead>İşlem</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {team.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    Bölümünüzde kayıtlı personel bulunamadı
+                  </TableCell>
+                </TableRow>
+              )}
+              {team.map((p) => {
+                const draft = teamDrafts[p.id] || { tarih: "", giris: "", cikis: "" }
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell>{p.sicilNo || "-"}</TableCell>
+                    <TableCell>{p.adSoyad}</TableCell>
+                    <TableCell>
+                      <Input
+                        type="date"
+                        value={draft.tarih}
+                        onChange={(e) => updateTeamDraft(p.id, "tarih", e.target.value)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="time"
+                        value={draft.giris}
+                        onChange={(e) => updateTeamDraft(p.id, "giris", e.target.value)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="time"
+                        value={draft.cikis}
+                        onChange={(e) => updateTeamDraft(p.id, "cikis", e.target.value)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        disabled={!draft.tarih || teamSavingId === p.id}
+                        onClick={() => handleTeamSave(p)}
+                      >
+                        {teamSavingId === p.id ? "Kaydediliyor..." : "Kaydet"}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 

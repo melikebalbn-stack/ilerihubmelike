@@ -11,12 +11,19 @@ export interface BulkCardScanAccess {
 
 const FULL_ACCESS_ROLES = ['SUPER_ADMIN', 'ADMIN']
 
+// Beyaz Yaka'nın TAMAMI değil, sadece bu bölümlerdeki personel FULL erişim alır.
+// SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ şimdilik (test/geliştirme amaçlı) dahil — asıl
+// sahiplik İnsan Varlıkları'nda, bu ikinci bölüm daha sonra kaldırılabilir.
+const FULL_ACCESS_BOLUMLER = ['İNSAN VARLIKLARI', 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ']
+
 /**
- * Toplu Kart Okutamama yetki seviyesi — Personnel.yakaRengi'ye göre:
- *   BEYAZ -> FULL (tüm kayıtları görür/düzenler/siler)
- *   MAVI  -> NONE (forma hiç erişemez)
- *   GRI   -> GRI  (formu doldurabilir; kendi bölümündeki (Personnel.bolum) personel
- *                  ve kayıtlar üzerinde çalışır)
+ * Toplu Kart Okutamama yetki seviyesi:
+ *   - Personnel.bolum İnsan Varlıkları veya Sistem Geliştirme Müdürlüğü ise -> FULL
+ *     (Beyaz Yaka'nın TAMAMI değil, sadece bu bölümler — diğer beyaz yaka bölümleri
+ *     bu forma erişemez)
+ *   - MAVI  -> NONE (forma hiç erişemez)
+ *   - GRI   -> GRI  (formu doldurabilir; kendi bölümündeki (Personnel.bolum) personel
+ *                    ve kayıtlar üzerinde çalışır)
  * Ayrıca SUPER_ADMIN/ADMIN (legacy UserRoleEnum) Personnel bağlantısından
  * bağımsız olarak FULL sayılır (diğer formlardaki admin-her-zaman-erişir
  * kuralıyla tutarlı).
@@ -38,7 +45,7 @@ export async function getBulkCardScanAccess(userId: string): Promise<BulkCardSca
   if (user && FULL_ACCESS_ROLES.includes(user.role)) {
     return { level: 'FULL', personnelId, bolum }
   }
-  if (yakaRengi === 'BEYAZ') {
+  if (bolum && FULL_ACCESS_BOLUMLER.includes(bolum)) {
     return { level: 'FULL', personnelId, bolum }
   }
   if (yakaRengi === 'MAVI') {
@@ -48,7 +55,7 @@ export async function getBulkCardScanAccess(userId: string): Promise<BulkCardSca
     return { level: 'GRI', personnelId, bolum }
   }
 
-  // Personnel kaydı yok veya yakaRengi tanınmıyor (ör. sadece User hesabı var,
-  // Personnel bağlantısı yok) -> erişim yok.
+  // Beyaz Yaka ama İnsan Varlıkları/Sistem Geliştirme dışında, ya da Personnel
+  // kaydı/yakaRengi hiç yok -> erişim yok.
   return { level: 'NONE', personnelId, bolum }
 }

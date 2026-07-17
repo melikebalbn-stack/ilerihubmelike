@@ -4206,6 +4206,9 @@ model Position {
   isCritical Boolean @default(false) // Kritik pozisyon mu?
   isActive   Boolean @default(true)
 
+  yaka              String?
+  ingilizceZorunlu  Boolean @default(false)
+
   // İlişkiler
   requiredCompetencies PositionCompetency[]
   talentProfiles       TalentProfile[]
@@ -8445,6 +8448,23 @@ model SupplierCriteria {
 enum YakaRengi {
   MAVI
   BEYAZ
+  GRI
+}
+
+enum YakaDetayi {
+  BEYAZ
+  BEYAZ_GMUDUR_YRD
+  BEYAZ_GENEL_MDR
+  BEYAZ_MUDUR
+  BEYAZ_MUDUR_YRD
+  BEYAZ_MUHENDIS
+  BEYAZ_MUHENDIS_MDRYRD
+  BEYAZ_MUHENDIS_MUDUR
+  BEYAZ_SORUMLU_TEKNIKER
+  BEYAZ_TEKNIKER
+  GRI
+  GRI_VEKALET
+  MAVI
 }
 
 enum DirektEndirekt {
@@ -8467,6 +8487,7 @@ model Personnel {
   cinsiyet       Gender
   adSoyad        String
   yakaRengi      YakaRengi
+  yakaDetayi     YakaDetayi?
   direktEndirekt DirektEndirekt?
   asansorMekanik AsansorMekanik?
 

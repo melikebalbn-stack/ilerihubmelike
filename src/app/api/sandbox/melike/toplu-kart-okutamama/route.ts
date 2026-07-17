@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/sandbox/melike/toplu-kart-okutamama
- * Liste — FULL (Beyaz Yaka) tüm kayıtları görür, GRI sadece kendi
- * oluşturduklarını görür, NONE (Mavi Yaka) erişemez.
+ * Liste — FULL (Beyaz Yaka) tüm kayıtları görür, GRI kendi bölümündeki
+ * (Personnel.bolum) personele ait kayıtları görür, NONE (Mavi Yaka) erişemez.
  * Query params: search (sicilNo/adSoyad), startDate, endDate, page, limit
  */
 export async function GET(request: NextRequest) {
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = {}
 
     if (access.level === 'GRI') {
-      where.createdById = user.id
+      where.personnel = { bolum: access.bolum }
     }
 
     if (search) {
@@ -99,11 +99,15 @@ export async function POST(request: NextRequest) {
     // gelen isim/sicil değeri güvenilmez, sadece seçim (personnelId) kabul edilir.
     const personnel = await prisma.personnel.findUnique({
       where: { id: personnelId },
-      select: { id: true, sicilNo: true, adSoyad: true, aktif: true },
+      select: { id: true, sicilNo: true, adSoyad: true, aktif: true, bolum: true },
     })
 
     if (!personnel || !personnel.aktif) {
       return NextResponse.json({ error: 'Seçilen personel bulunamadı veya pasif' }, { status: 400 })
+    }
+
+    if (access.level === 'GRI' && personnel.bolum !== access.bolum) {
+      return NextResponse.json({ error: 'Sadece kendi bölümünüzdeki personel için kayıt açabilirsiniz' }, { status: 403 })
     }
 
     const record = await prisma.bulkCardScanFailure.create({

@@ -50,7 +50,8 @@ export function pencereHatasiMi(detay: string): boolean {
   return /ORGCODENOTVALID|CompanyPersAssign\.NOTVALID|not valid during entered date interval/i.test(detay)
 }
 
-async function istek(yol: string, init: RequestInit): Promise<unknown> {
+/** Ham istek — gövdeyle birlikte ETag'i de döndürür (bound action'lar için gerekli). */
+async function ham(yol: string, init: RequestInit): Promise<{ body: unknown; etag: string | null }> {
   const token = await getIfsAccessToken()
   const res = await fetch(`${mainRoot()}${yol}`, {
     ...init,
@@ -74,7 +75,12 @@ async function istek(yol: string, init: RequestInit): Promise<unknown> {
     const detay = e?.error?.details?.[0]?.message ?? e?.error?.message ?? (typeof body === 'string' ? body.slice(0, 300) : '')
     throw new IfsPersonelError(res.status, detay)
   }
-  return body
+  const govdeEtag = (body as Record<string, unknown> | null)?.['@odata.etag']
+  return { body, etag: res.headers.get('etag') ?? (typeof govdeEtag === 'string' ? govdeEtag : null) }
+}
+
+async function istek(yol: string, init: RequestInit): Promise<unknown> {
+  return (await ham(yol, init)).body
 }
 
 async function tekKayit(yol: string): Promise<Record<string, unknown> | null> {
@@ -215,13 +221,26 @@ export async function createShopFloorEmployeeSite(empNo: string, laborClass: str
 /**
  * Site'ı pasifleştir. IFS'te "Inactive" durumu YOK — bound action'lar
  * SetActive / SetBlocked / SetHidden. Pasif karşılığı SetBlocked.
+ *
+ * BOUND action entity durumunu değiştirir → OData `If-Match` ZORUNLU. Başlıksız
+ * çağrı "A precondition is missing in the request." ile reddedilir. ETag entity'den
+ * okunur; `If-Match: *` KULLANILMAZ — eşzamanlılık kontrolünü tümden atlardı.
+ * GET ile POST arasında kayıt değişirse IFS 412 döner ve senkron bunu hatalilar[]'a
+ * düşürür (bir sonraki koşuda taze ETag ile yeniden denenir).
  */
 export async function blockShopFloorEmployeeSite(empNo: string) {
   const { company, contract } = getIfsConfig()
   const key = `(Company='${esc(company)}',Contract='${esc(contract)}',EmployeeId='${esc(empNo)}')`
-  return istek(
-    `ShopFloorEmployeesHandling.svc/ShopFloorEmployeeSites${key}` +
-      `/IfsApp.ShopFloorEmployeesHandling.ShopFloorEmployeeSite_SetBlocked`,
-    { method: 'POST', body: JSON.stringify({}) },
-  )
+  const yol = `ShopFloorEmployeesHandling.svc/ShopFloorEmployeeSites${key}`
+
+  const { etag } = await ham(yol, { method: 'GET' })
+  if (!etag) {
+    throw new IfsPersonelError(0, `ShopFloorEmployeeSite ETag okunamadı (${empNo}) — SetBlocked If-Match'siz gönderilmez`)
+  }
+
+  return istek(`${yol}/IfsApp.ShopFloorEmployeesHandling.ShopFloorEmployeeSite_SetBlocked`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+    headers: { 'If-Match': etag },
+  })
 }

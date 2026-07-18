@@ -71,6 +71,7 @@ vi.mock('@/lib/ifs/personel', () => {
       return {}
     },
     blockShopFloorEmployeeSite: async (e: string) => {
+      patlat(e) // 412 (bayat ETag) senaryosu buradan tetiklenir
       ifs.cagrilar.block.push(e)
       return {}
     },
@@ -91,6 +92,8 @@ const KISILER = [
   { sicilNo: 'TSY-005', adSoyad: 'EMRE TEST', bolum: 'TEST MONTAJ', gorev: 'TEST OPERATÖRÜ', operator: true },
   // Operatör eşlemesi YOK → aday değil; IFS'te Active site'ı var → pasifleştirilmeli.
   { sicilNo: 'TSY-006', adSoyad: 'FURKAN TEST', bolum: 'TEST MONTAJ', gorev: 'TEST OPERATÖRÜ', operator: false },
+  // Aynı durumda ama SetBlocked 412 döner (bayat ETag) → kosu kırılmamalı.
+  { sicilNo: 'TSY-007', adSoyad: 'GOKHAN TEST', bolum: 'TEST MONTAJ', gorev: 'TEST OPERATÖRÜ', operator: false },
 ]
 
 let sonuc: SenkronSonuc
@@ -125,8 +128,12 @@ beforeAll(async () => {
   // TSY-004 katman 1'de geçerlilik penceresi hatası alır.
   ifs.hatalar.set('TSY-004', 'ORGCODENOTVALID: Org code is not valid during entered date interval')
 
+  // SetBlocked 412: ETag GET ile POST arasında bayatlamış.
+  ifs.hatalar.set('TSY-007', 'Precondition Failed — kayıt başkası tarafından değiştirildi')
+
   ifs.siteler.push(
     { employeeId: 'TSY-006', objstate: 'Active' }, // bilinen sicil, aday değil → block
+    { employeeId: 'TSY-007', objstate: 'Active' }, // aynı ama block 412 verecek
     { employeeId: 'TSY-005', objstate: 'Active' }, // hâlâ aday → dokunma
     { employeeId: 'IG002', objstate: 'Active' }, // ILERIHub dışı → ASLA dokunma
   )
@@ -228,5 +235,13 @@ describe('ifsPersonelSenkronu — pasifleştirme', () => {
 
   it('ILERIHub dışı sicile (IG002) ASLA dokunulmaz', () => {
     expect(ifs.cagrilar.block).not.toContain('IG002')
+  })
+
+  it('SetBlocked 412 verirse koşu kırılmaz, hatalilar[]’a düşer', () => {
+    expect(sonuc.hatalilar).toContainEqual(
+      expect.objectContaining({ sicilNo: 'TSY-007', adSoyad: '(pasifleştirme)' }),
+    )
+    // 412 alan kayıt pasiflenen sayılmaz; diğerleri (TSY-006) işlenmeye devam etti.
+    expect(ifs.cagrilar.block).toContain('TSY-006')
   })
 })

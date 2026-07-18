@@ -3,7 +3,7 @@
  *
  * GÜVENLİK:
  *   - VARSAYILAN DRY-RUN. Yazmak icin --commit.
- *   - dev-guard: DATABASE_URL 'ilerihub_dev' ICERMIYORSA → DUR (prod/staging asla).
+ *   - hedef-DB guard (_guard.ts): dev serbest, dev disi YALNIZ --prod-onay ile.
  *
  * Calistirma:
  *   npx tsx --env-file=.env scripts/ipro/seed-test-kiosk.ts            (dry-run)
@@ -20,6 +20,7 @@
  * Tezgah UYDURMAZ: 3 tezgah yoksa DUR.
  */
 import { createPrisma } from './_lib'
+import { hedefDbGuard } from './_guard'
 import { hashPin } from '../../src/lib/pin-utils'
 
 const COMMIT = process.argv.includes('--commit')
@@ -61,9 +62,7 @@ async function main() {
     }
 
     // dev-guard: prod/staging'e ASLA yazma
-    if (!url.includes('ilerihub_dev')) {
-      throw new Error(`GUVENLIK DURDU: DATABASE_URL dev degil → ${masked}`)
-    }
+    hedefDbGuard()
 
     // ── User (idempotent; sentetik email, employeeId YOK) ──
     const user = await prisma.user.upsert({

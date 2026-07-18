@@ -6,13 +6,14 @@
  * Buradaki satırlar "IFS'te aynı isimle karşılığı olmayan" değerler içindir.
  *
  * Idempotent: (tip, ilerihubDeger) unique → upsert. Tekrar çalıştırmak güvenli.
- * dev-guard: DATABASE_URL 'ilerihub_dev' İÇERMİYORSA → DUR (prod/staging asla).
+ * Hedef-DB guard (_guard.ts): dev serbest, dev dışı YALNIZ --prod-onay ile.
  *
  *   npx tsx --env-file=.env scripts/ipro/seed-ifs-eslesme.ts [--dry-run]
  */
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient, type IproIfsEslesmeTipi } from '../../src/generated/prisma'
+import { hedefDbGuard } from './_guard'
 
 const DRY = process.argv.includes('--dry-run')
 
@@ -102,12 +103,7 @@ const SATIRLAR: Array<{ tip: IproIfsEslesmeTipi; ilerihubDeger: string; ifsKod: 
 ]
 
 async function main() {
-  const url = process.env.DATABASE_URL ?? ''
-  if (!url.includes('ilerihub_dev')) {
-    throw new Error(
-      `GÜVENLİK DURDU: DATABASE_URL 'ilerihub_dev' içermiyor → ${url.replace(/:[^:@]+@/, ':****@')}`,
-    )
-  }
+  const url = hedefDbGuard()
 
   const pool = new Pool({ connectionString: url })
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })

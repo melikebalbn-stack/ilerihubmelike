@@ -17,11 +17,14 @@ import * as XLSX from 'xlsx'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../../src/generated/prisma'
+import { hedefDbGuard } from './_guard'
 
 export const MAS_DIR = '/home/rokunet/ipro-mas-export'
 
 export function createPrisma() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  // Hedef-DB guard: dev serbest, dev dışı YALNIZ --prod-onay ile (tek nokta: _guard.ts).
+  const url = hedefDbGuard()
+  const pool = new Pool({ connectionString: url })
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
   return {
     prisma,

@@ -10915,6 +10915,34 @@ model IproKiosk {
   @@map("ipro_kiosk")
 }
 
+enum IproIfsEslesmeTipi {
+  ORG // Personnel.bolum → IFS OrgCode (ör. "Mekanik Montaj" → 202)
+  POZISYON // Personnel.gorev → IFS PosCode (ör. "MONTAJ OPERATÖRÜ" → 100151)
+}
+
+/// ILERIHub serbest-metin değeri ↔ IFS kodu eşlemesi (personel senkronu için).
+///
+/// TEK TABLO + tip ayrımı: org ve pozisyon eşlemesinin şekli birebir aynı (deger→kod);
+/// ayrı iki model yalnız yapı tekrarı olurdu.
+///
+/// Senkron önce İSİM EŞLEŞMESİ dener (normalize: büyük/küçük + Türkçe karakter) —
+/// prod ölçümünde gorev %97, bolum %77 tutuyor. Tutmayanlar buraya elle girilir
+/// (ör. "PAKETLEME & DİREKSİYON" → 208). Eşleşmeyen operatör ATLANIR, yarım kayıt açılmaz.
+model IproIfsEslesme {
+  id            String             @id @default(cuid())
+  tip           IproIfsEslesmeTipi
+  ilerihubDeger String // Personnel.bolum veya Personnel.gorev — HAM değer (normalize kodda)
+  ifsKod        String // IFS OrgCode veya PosCode
+  aciklama      String?
+  aktif         Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@unique([tip, ilerihubDeger])
+  @@index([tip, aktif])
+  @@map("ipro_ifs_eslesme")
+}
+
 /// Kiosk <-> Tezgah cokdan-coga eslemesi (explicit join; PersonnelWorkstation deseni).
 /// Cihaz hangi tezgahlara bagliysa kiosk ekraninda O tezgahlar gorunur.
 model IproKioskTezgah {

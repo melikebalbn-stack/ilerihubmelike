@@ -31,10 +31,22 @@ import {
 const PRIMARY_LABOR_CLASS = 'WMM'
 
 export type SenkronSonuc = {
+  dryRun: boolean
   taranan: number
+  /** dryRun=true iken "yaratılacak" sayısı — hiçbir POST atılmamıştır. */
   yaratilan: number
   atlanan: number
+  /** dryRun=true iken "pasiflenecek" sayısı. */
   pasiflenen: number
+  /** Eksik katmanı olan her kayıt — kuru koşu raporunun gövdesi. */
+  yaratilacaklar: Array<{
+    sicilNo: string
+    adSoyad: string
+    orgCode: string
+    posCode: string
+    eksikKatmanlar: string[]
+  }>
+  pasiflenecekler: string[]
   eslesmeyenler: Array<{ sicilNo: string; adSoyad: string; alan: 'bolum' | 'gorev'; deger: string }>
   pencereHatalilar: Array<{ sicilNo: string; adSoyad: string; detay: string }>
   hatalilar: Array<{ sicilNo: string; adSoyad: string; detay: string }>
@@ -73,12 +85,20 @@ function cozucuKur(dbEsleme: Map<string, string>, ifsIsimler: Map<string, string
   }
 }
 
-export async function ifsPersonelSenkronu(): Promise<SenkronSonuc> {
+/**
+ * @param dryRun IFS'e HİÇBİR yazma yapmaz (create/SetBlocked atlanır); yalnız
+ *   okur ve ne yapılacağını hesaplar. NOT: geçerlilik penceresi hataları POST
+ *   sırasında ortaya çıktığı için kuru koşuda GÖRÜNMEZ — pencereHatalilar boş kalır.
+ */
+export async function ifsPersonelSenkronu({ dryRun = false } = {}): Promise<SenkronSonuc> {
   const sonuc: SenkronSonuc = {
+    dryRun,
     taranan: 0,
     yaratilan: 0,
     atlanan: 0,
     pasiflenen: 0,
+    yaratilacaklar: [],
+    pasiflenecekler: [],
     eslesmeyenler: [],
     pencereHatalilar: [],
     hatalilar: [],
@@ -136,34 +156,42 @@ export async function ifsPersonelSenkronu(): Promise<SenkronSonuc> {
     }
 
     try {
-      let yeniKatmanVar = false
+      const eksikKatmanlar: string[] = []
 
       if (!(await getCompanyPerson(sicilNo))) {
-        const { fname, lname } = adSoyadBol(adSoyad)
-        await createCompanyPerson({
-          empNo: sicilNo,
-          fname,
-          lname,
-          displayName: adSoyad,
-          employmentDate: tarihYaz(p.iseGirisTarihi),
-          orgCode,
-          posCode,
-        })
-        yeniKatmanVar = true
+        eksikKatmanlar.push('CompanyPerson')
+        if (!dryRun) {
+          const { fname, lname } = adSoyadBol(adSoyad)
+          await createCompanyPerson({
+            empNo: sicilNo,
+            fname,
+            lname,
+            displayName: adSoyad,
+            employmentDate: tarihYaz(p.iseGirisTarihi),
+            orgCode,
+            posCode,
+          })
+        }
       }
 
+      // NOT (dryRun): katman 1 yaratılmadığı için 2/3 de "eksik" görünür — kuru
+      // koşuda beklenen davranış, gerçek koşuda zincir sırayla dolar.
       if (!(await getShopFloorEmployee(sicilNo))) {
-        await createShopFloorEmployee(sicilNo)
-        yeniKatmanVar = true
+        eksikKatmanlar.push('ShopFloorEmployee')
+        if (!dryRun) await createShopFloorEmployee(sicilNo)
       }
 
       if (!(await getShopFloorEmployeeSite(sicilNo))) {
-        await createShopFloorEmployeeSite(sicilNo, PRIMARY_LABOR_CLASS)
-        yeniKatmanVar = true
+        eksikKatmanlar.push('ShopFloorEmployeeSite')
+        if (!dryRun) await createShopFloorEmployeeSite(sicilNo, PRIMARY_LABOR_CLASS)
       }
 
-      if (yeniKatmanVar) sonuc.yaratilan++
-      else sonuc.atlanan++
+      if (eksikKatmanlar.length) {
+        sonuc.yaratilan++
+        sonuc.yaratilacaklar.push({ sicilNo, adSoyad, orgCode, posCode, eksikKatmanlar })
+      } else {
+        sonuc.atlanan++
+      }
     } catch (err) {
       const detay = err instanceof IfsPersonelError ? err.detay : String(err)
       // Geçerlilik penceresi hataları ayrı sayılır: kod hatası değil, IFS'te
@@ -190,8 +218,9 @@ export async function ifsPersonelSenkronu(): Promise<SenkronSonuc> {
     if (s.objstate !== 'Active') continue // zaten pasif
 
     try {
-      await blockShopFloorEmployeeSite(s.employeeId)
+      if (!dryRun) await blockShopFloorEmployeeSite(s.employeeId)
       sonuc.pasiflenen++
+      sonuc.pasiflenecekler.push(s.employeeId)
     } catch (err) {
       const detay = err instanceof IfsPersonelError ? err.detay : String(err)
       sonuc.hatalilar.push({ sicilNo: s.employeeId, adSoyad: '(pasifleştirme)', detay })

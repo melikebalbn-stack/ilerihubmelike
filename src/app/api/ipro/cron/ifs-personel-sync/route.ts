@@ -13,7 +13,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const sonuc = await ifsPersonelSenkronu()
+    // ?dry=true → kuru koşu: IFS'ten okur, ne yapılacağını hesaplar, YAZMAZ.
+    const dryRun = req.nextUrl.searchParams.get('dry') === 'true'
+    const sonuc = await ifsPersonelSenkronu({ dryRun })
     return NextResponse.json({ ok: true, ...sonuc })
   } catch (e) {
     console.error('[ipro-ifs-personel-sync] cron hata', e)

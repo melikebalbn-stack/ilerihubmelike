@@ -187,6 +187,36 @@ describe('ifsPersonelSenkronu — hata sınıflandırması', () => {
   })
 })
 
+describe('ifsPersonelSenkronu — kuru koşu (dryRun)', () => {
+  let kuru: SenkronSonuc
+  let oncekiYazmaSayisi = 0
+
+  beforeAll(async () => {
+    // Diğer describe'lar bu noktada koştu; sayaçları dondurup dry koşuda
+    // ARTMADIKLARINI doğruluyoruz (arrayleri temizlemiyoruz — kırılgan olurdu).
+    const c = ifs.cagrilar
+    oncekiYazmaSayisi = c.createPerson.length + c.createSfe.length + c.createSite.length + c.block.length
+    kuru = await ifsPersonelSenkronu({ dryRun: true })
+  })
+
+  it('IFS’e tek bir yazma çağrısı yapılmaz', () => {
+    const c = ifs.cagrilar
+    const simdiki = c.createPerson.length + c.createSfe.length + c.createSite.length + c.block.length
+    expect(simdiki).toBe(oncekiYazmaSayisi)
+  })
+
+  it('yapılacaklar plana yazılır (sicil + org/poz + eksik katmanlar)', () => {
+    const plan = kuru.yaratilacaklar.find((x) => x.sicilNo === 'TSY-001')
+    expect(plan).toMatchObject({ adSoyad: 'AHMET TEST YILMAZ', orgCode: '900', posCode: '900901' })
+    expect(plan?.eksikKatmanlar).toContain('CompanyPerson')
+  })
+
+  it('pasiflenecekler listelenir ama bloklanmaz', () => {
+    expect(kuru.pasiflenecekler).toContain('TSY-006')
+    expect(kuru.dryRun).toBe(true)
+  })
+})
+
 describe('ifsPersonelSenkronu — pasifleştirme', () => {
   it('yetkisi kalkan bilinen sicil SetBlocked edilir', () => {
     expect(ifs.cagrilar.block).toContain('TSY-006')

@@ -1,8 +1,38 @@
 'use client'
 
+import Link from 'next/link'
+import { Lock } from 'lucide-react'
+
 // Üretim Terminali — ekranlar arası paylaşılan küçük UI parçaları.
 
 export const TERMINAL_ACCENT = '#1B4F72'
+
+/**
+ * Terminal guard reddinde gösterilen sade "yetkisiz" ekranı.
+ * Terminal kabuğu sidebar'sız olduğundan çıkış yolu panoya (/dashboard) döner.
+ */
+export function TerminalYetkiYok() {
+  return (
+    <div className="flex min-h-screen w-full flex-col items-center justify-center gap-5 p-6 text-center">
+      <span
+        className="flex h-16 w-16 items-center justify-center rounded-2xl text-white"
+        style={{ background: TERMINAL_ACCENT }}
+      >
+        <Lock className="h-8 w-8" />
+      </span>
+      <p className="max-w-xs text-base font-medium text-foreground">
+        Bu sayfayı görmek için yetkiniz bulunmamaktadır.
+      </p>
+      <Link
+        href="/dashboard"
+        className="flex min-h-11 items-center justify-center rounded-xl px-6 text-sm font-semibold text-white active:translate-y-px"
+        style={{ background: TERMINAL_ACCENT }}
+      >
+        Panoya dön
+      </Link>
+    </div>
+  )
+}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)

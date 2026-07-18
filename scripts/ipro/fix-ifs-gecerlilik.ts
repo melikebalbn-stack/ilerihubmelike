@@ -16,7 +16,7 @@
  */
 const HEDEF_TARIH = '2000-01-01'
 
-const MOD = process.argv.find((a) => ['--kesif', '--kesif-tip', '--sonda', '--yetki', '--dry-run', '--apply', '--dogrula'].includes(a))
+const MOD = process.argv.find((a) => ['--kesif', '--kesif-tip', '--sonda', '--sonda2', '--yetki', '--ara', '--orgset', '--org2', '--alan', '--tekyaz', '--dry-run', '--apply', '--dogrula'].includes(a))
 const TIP_ARG = process.argv[process.argv.indexOf('--kesif-tip') + 1]
 const POZISYON = process.argv.includes('--pozisyon')
 const TEK = process.argv.includes('--tek') ? process.argv[process.argv.indexOf('--tek') + 1] : null
@@ -156,20 +156,27 @@ async function kesifTip(tipAdi: string) {
 
 // ── org okuma ────────────────────────────────────────────────────────────
 
-type Org = { OrgCode: string; OrgName: string; ValidFrom: string; ValidTo?: string }
+/**
+ * YAZILABİLİR org yüzeyi. Aurena'nın kullandığı set (Network yakalaması).
+ * DİKKAT: anahtarda OrgCode YOK — (BusinessUnitId, StructType, RelationId).
+ * Geçerlilik alanı da ValidFrom değil **OrgValidFrom**.
+ * EmployeesHandling/OrganizationSet ve tüm `Lov` / `Reference_` set'leri salt
+ * okunur (PATCH → HTTP 500); tek yazılabilir yol budur.
+ */
 
-/** Keşifte doğrulanan set. */
-const ORG_YOL = 'EmployeesHandling.svc/OrganizationSet'
-
-async function orgListesi(): Promise<Org[]> {
-  const f = encodeURIComponent(`CompanyId eq '${COMPANY}'`)
-  const r = await istek(`${ORG_YOL}?$filter=${f}&$top=500`)
-  if (r.status !== 200) throw new Error(`org listesi HTTP ${r.status}: ${hataMesaji(r)}`)
-  return r.body.value
+type Org = {
+  OrgCode: string
+  OrgName: string
+  OrgValidFrom: string
+  BusinessUnitId: number
+  StructType: string
+  RelationId: number
 }
 
-function orgAnahtar(o: Org): string {
-  return `(CompanyId='${COMPANY}',OrgCode='${o.OrgCode}')`
+async function orgListesi(): Promise<Org[]> {
+  const r = await istek(`${ORG2_YOL}?$top=500`)
+  if (r.status !== 200) throw new Error(`org listesi HTTP ${r.status}: ${hataMesaji(r)}`)
+  return r.body.value
 }
 
 // ── pozisyon okuma ───────────────────────────────────────────────────────
@@ -193,20 +200,24 @@ function pozAnahtar(p: Poz): string {
 
 type Kayit = { kod: string; ad: string; validFrom: string; anahtar: string }
 
-async function kayitlar(): Promise<{ yol: string; tur: string; hepsi: Kayit[] }> {
+async function kayitlar(): Promise<{ yol: string; tur: string; alan: string; hepsi: Kayit[] }> {
   if (POZISYON) {
     const l = await pozListesi()
     return {
       yol: POZ_YOL,
       tur: 'pozisyon',
+      alan: 'ValidFrom',
       hepsi: l.map((p) => ({ kod: p.PosCode, ad: p.PositionTitle ?? '', validFrom: (p.ValidFrom ?? '').slice(0, 10), anahtar: pozAnahtar(p) })),
     }
   }
   const l = await orgListesi()
   return {
-    yol: ORG_YOL,
+    yol: ORG2_YOL,
     tur: 'org',
-    hepsi: l.map((o) => ({ kod: o.OrgCode, ad: o.OrgName ?? '', validFrom: (o.ValidFrom ?? '').slice(0, 10), anahtar: orgAnahtar(o) })),
+    alan: 'OrgValidFrom',
+    hepsi: l
+      .map((o) => ({ kod: o.OrgCode, ad: o.OrgName ?? '', validFrom: (o.OrgValidFrom ?? '').slice(0, 10), anahtar: org2Anahtar(o) }))
+      .sort((a, b) => a.kod.localeCompare(b.kod)),
   }
 }
 
@@ -227,7 +238,7 @@ async function dryRun() {
 }
 
 async function apply() {
-  const { yol, tur, hepsi } = await kayitlar()
+  const { yol, tur, alan, hepsi } = await kayitlar()
   let hedef = hepsi.filter((k) => k.validFrom !== HEDEF_TARIH)
   if (TEK) hedef = hedef.filter((k) => k.kod === TEK) // tek kayıtlık PATCH desteği sondası
   console.log(`=== ${tur.toUpperCase()} PATCH — ${hedef.length} kayıt ===\n`)
@@ -243,7 +254,7 @@ async function apply() {
 
       const r = await istek(`${yol}${k.anahtar}`, {
         method: 'PATCH',
-        body: JSON.stringify({ ValidFrom: HEDEF_TARIH }), // YALNIZ ValidFrom
+        body: JSON.stringify({ [alan]: HEDEF_TARIH }), // YALNIZ geçerlilik alanı
         headers: oku.etag ? { 'If-Match': oku.etag } : {},
       })
       if (r.status >= 400) throw new Error(`PATCH HTTP ${r.status}: ${hataMesaji(r)}`)
@@ -322,6 +333,162 @@ async function yetkiTeshis() {
   }
 }
 
+/** OrganizationStructuresHandling: action envanteri + CompanyOrgStructures dogru anahtar. */
+async function sonda2() {
+  const r = await istek('OrganizationStructuresHandling.svc/$metadata')
+  const ns = r.body?.['IfsApp.OrganizationStructuresHandling'] ?? {}
+
+  console.log('=== Action / Function envanteri ===')
+  for (const [ad, tanim] of Object.entries(ns)) {
+    const t: any = Array.isArray(tanim) ? tanim[0] : tanim
+    if (t?.$Kind !== 'Action' && t?.$Kind !== 'Function') continue
+    const bound = t.$IsBound ? 'BOUND' : 'unbound'
+    const par = (t.$Parameter ?? []).map((x: any) => `${x.$Name}:${String(x.$Type ?? 'Edm.String').split('.').pop()}`).join(', ')
+    console.log(`  ${bound.padEnd(8)} ${ad}(${par})`)
+  }
+
+  console.log('\n=== CompanyOrgStructures — dogru anahtar denemeleri ===')
+  const liste = await istek(`OrganizationStructuresHandling.svc/CompanyOrgStructures?$filter=${encodeURIComponent("CompanyId eq 'ILERI2' and OrgCode eq '100'")}&$top=1`)
+  const k: any = liste.body?.value?.[0]
+  console.log(`  ham ValidDate: ${JSON.stringify(k?.ValidDate)}  | ValidFrom: ${JSON.stringify(k?.ValidFrom)}`)
+  const adaylar = [k?.ValidDate, String(k?.ValidDate ?? '').replace('Z', ''), `${String(k?.ValidDate ?? '').slice(0, 19)}Z`]
+  for (const v of adaylar.filter(Boolean)) {
+    const anahtar = `(CompanyId='ILERI2',OrgCode='100',ValidDate=${v})`
+    const g = await istek(`OrganizationStructuresHandling.svc/CompanyOrgStructures${anahtar}`)
+    console.log(`  GET ${anahtar} -> HTTP ${g.status}`)
+    if (g.status !== 200) continue
+    const pr = await istek(`OrganizationStructuresHandling.svc/CompanyOrgStructures${anahtar}`, {
+      method: 'PATCH', body: JSON.stringify({ ValidFrom: HEDEF_TARIH }),
+      headers: g.etag ? { 'If-Match': g.etag } : {},
+    })
+    console.log(`  PATCH -> HTTP ${pr.status}${pr.status >= 400 ? ` — ${hataMesaji(pr)}` : '  ✓ YAZILABILIR'}`)
+    break
+  }
+}
+
+/** CompanyOrg'u YAZILABILIR EntitySet olarak sunan projeksiyonu ara. */
+async function projeksiyonAra() {
+  const adaylar = [
+    'CompanyOrganizationsHandling', 'CompanyOrganizationHandling', 'OrganizationBasicDataHandling',
+    'CompanyOrgHandling', 'OrganizationDetailsHandling', 'OrganizationsHandling', 'OrgUnitHandling',
+    'CompanyOrganizationStructureHandling', 'EmployeeOrganizationHandling', 'CompanyBasicDataHandling',
+    'OrganizationChartHandling', 'CompanyOrganizationBasicHandling', 'HcmBasicDataHandling',
+    'OrganizationStructuresHandling', 'EmployeesHandling', 'PositionsHandling',
+  ]
+  for (const p of adaylar) {
+    const r = await istek(`${p}.svc/$metadata`)
+    if (r.status !== 200) { console.log(`  ✗ ${String(r.status)} ${p}`); continue }
+    const ns = r.body?.[`IfsApp.${p}`] ?? {}
+    const kap: any = Object.values(ns).find((v: any) => v?.$Kind === 'EntityContainer')
+    // CompanyOrg tipini sunan EntitySet'ler (Lov* olmayanlar oncelikli)
+    const setler = Object.entries(kap ?? {})
+      .filter(([, v]: [string, any]) => /\.CompanyOrg$/.test(String(v?.$Type ?? '')))
+      .map(([ad]) => ad)
+    console.log(`  ✓ 200 ${p.padEnd(38)} CompanyOrg set: ${setler.join(', ') || '(yok)'}`)
+    for (const set of setler) {
+      const g = await istek(`${p}.svc/${set}(CompanyId='ILERI2',OrgCode='100')`)
+      if (g.status !== 200) { console.log(`        ${set}: GET ${g.status}`); continue }
+      const pr = await istek(`${p}.svc/${set}(CompanyId='ILERI2',OrgCode='100')`, {
+        method: 'PATCH', body: JSON.stringify({ ValidFrom: HEDEF_TARIH }),
+        headers: g.etag ? { 'If-Match': g.etag } : {},
+      })
+      console.log(`        ${set}: GET 200, PATCH ${pr.status}${pr.status >= 400 ? ` — ${hataMesaji(pr)}` : '  ✓✓ YAZILABILIR'}`)
+    }
+  }
+}
+
+/** Erisilebilir projeksiyonlarda anahtarinda OrgCode gecen TUM set'ler + PATCH sondasi. */
+async function orgSetTara() {
+  for (const p of ['OrganizationStructuresHandling', 'OrganizationChartHandling', 'EmployeesHandling', 'PositionsHandling']) {
+    const r = await istek(`${p}.svc/$metadata`)
+    if (r.status !== 200) continue
+    const ns = r.body?.[`IfsApp.${p}`] ?? {}
+    const kap: any = Object.values(ns).find((v: any) => v?.$Kind === 'EntityContainer')
+    console.log(`\n── ${p}`)
+    for (const [setAdi, v] of Object.entries(kap ?? {})) {
+      const tipAdi = String((v as any)?.$Type ?? '').split('.').pop()
+      if (!tipAdi) continue
+      const tip: any = ns[tipAdi]
+      const key: string[] = tip?.$Key ?? []
+      if (!key.includes('OrgCode') || !tip?.ValidFrom) continue
+      console.log(`   ${setAdi} (${tipAdi}) key=${JSON.stringify(key)}`)
+      if (key.length !== 2) { console.log(`      → cok-anahtarli, atlandi`); continue }
+      const g = await istek(`${p}.svc/${setAdi}(CompanyId='ILERI2',OrgCode='100')`)
+      if (g.status !== 200) { console.log(`      GET ${g.status}`); continue }
+      const pr = await istek(`${p}.svc/${setAdi}(CompanyId='ILERI2',OrgCode='100')`, {
+        method: 'PATCH', body: JSON.stringify({ ValidFrom: HEDEF_TARIH }),
+        headers: g.etag ? { 'If-Match': g.etag } : {},
+      })
+      console.log(`      GET 200, PATCH ${pr.status}${pr.status >= 400 ? ` — ${hataMesaji(pr)}` : '  ✓✓ YAZILABILIR'}`)
+    }
+  }
+}
+
+/** Organizations set'i — Aurena'nin gercek yazma yuzeyi (Network yakalamasi). */
+async function orgListe2() {
+  const meta = await istek('OrganizationStructuresHandling.svc/$metadata')
+  const ns = meta.body?.['IfsApp.OrganizationStructuresHandling'] ?? {}
+  const kap: any = Object.values(ns).find((v: any) => v?.$Kind === 'EntityContainer')
+  const tipAdi = String(kap?.Organizations?.$Type ?? '').split('.').pop()
+  const tip: any = ns[tipAdi ?? '']
+  console.log(`Organizations → ${tipAdi}  key=${JSON.stringify(tip?.$Key)}`)
+  console.log(`Alanlar: ${Object.keys(tip ?? {}).filter((k) => !k.startsWith('$')).join(', ')}\n`)
+
+  const r = await istek(`OrganizationStructuresHandling.svc/Organizations?$top=200`)
+  console.log(`GET liste: HTTP ${r.status}${r.status !== 200 ? ` — ${hataMesaji(r)}` : ''}`)
+  if (r.status !== 200) return
+  const v: any[] = r.body.value ?? []
+  console.log(`Kayit: ${v.length}\n`)
+  const dag: Record<string, number> = {}
+  for (const o of v) {
+    const d = String(o.OrgValidFrom ?? '(null)').slice(0, 10)
+    dag[d] = (dag[d] ?? 0) + 1
+  }
+  console.log('OrgValidFrom dagilimi:', dag, '\n')
+  for (const o of v.slice(0, 40)) {
+    console.log(`  ${String(o.OrgCode).padEnd(6)} ${String(o.OrgName ?? '').slice(0,34).padEnd(36)} BU=${String(o.BusinessUnitId).padEnd(6)} Rel=${String(o.RelationId).padEnd(5)} ${String(o.OrgValidFrom).slice(0,10)}`)
+  }
+}
+
+/** Iki set'in geçerlilik alanlarini yan yana koy: hangi alan LOV'a yansiyor? */
+async function alanKarsilastir() {
+  const a = await istek('OrganizationStructuresHandling.svc/Organizations?$top=200')
+  const b = await istek(`EmployeesHandling.svc/OrganizationSet?$filter=${encodeURIComponent("CompanyId eq 'ILERI2'")}&$top=500`)
+  const lov = new Map<string, any>((b.body?.value ?? []).map((o: any) => [String(o.OrgCode), o]))
+  console.log('OrgCode | Organizations.OrgValidFrom | .OrgStrValidFrom | LOV.ValidFrom')
+  for (const o of (a.body?.value ?? []).sort((x: any, y: any) => String(x.OrgCode).localeCompare(String(y.OrgCode)))) {
+    const l = lov.get(String(o.OrgCode))
+    console.log(`  ${String(o.OrgCode).padEnd(6)} ${String(o.OrgValidFrom).slice(0,10).padEnd(27)} ${String(o.OrgStrValidFrom).slice(0,10).padEnd(17)} ${String(l?.ValidFrom).slice(0,10)}`)
+  }
+}
+
+const ORG2_YOL = 'OrganizationStructuresHandling.svc/Organizations'
+const org2Anahtar = (o: any) => `(BusinessUnitId=${o.BusinessUnitId},StructType='${o.StructType}',RelationId=${o.RelationId})`
+
+/** Tek org uzerinde yazma sondasi (OrgCode ile). */
+async function tekYaz(kod: string) {
+  const l = await istek(`${ORG2_YOL}?$top=200`)
+  const o = (l.body?.value ?? []).find((x: any) => String(x.OrgCode) === kod)
+  if (!o) throw new Error(`org ${kod} bulunamadi`)
+  const anahtar = org2Anahtar(o)
+  console.log(`hedef: ${kod} ${o.OrgName} ${anahtar}`)
+  console.log(`once : OrgValidFrom=${String(o.OrgValidFrom).slice(0,10)}`)
+
+  const g = await istek(`${ORG2_YOL}${anahtar}`)
+  console.log(`GET tekil: HTTP ${g.status}  etag=${g.etag ? 'var' : 'YOK'}`)
+  if (g.status !== 200) { console.log(`  ${hataMesaji(g)}`); return }
+
+  const pr = await istek(`${ORG2_YOL}${anahtar}`, {
+    method: 'PATCH', body: JSON.stringify({ OrgValidFrom: HEDEF_TARIH }),
+    headers: g.etag ? { 'If-Match': g.etag } : {},
+  })
+  console.log(`PATCH: HTTP ${pr.status}${pr.status >= 400 ? ` — ${hataMesaji(pr)}` : ''}`)
+
+  const l2 = await istek(`${ORG2_YOL}?$top=200`)
+  const o2 = (l2.body?.value ?? []).find((x: any) => String(x.OrgCode) === kod)
+  console.log(`sonra: OrgValidFrom=${String(o2?.OrgValidFrom).slice(0,10)}  → ${String(o2?.OrgValidFrom).slice(0,10) === HEDEF_TARIH ? '✓ YAZILDI' : '✗ degismedi'}`)
+}
+
 async function main() {
   const host = process.env.IFS_INT_BASE_URL ?? ''
   if (!host.includes('ifscloudtest')) {
@@ -330,6 +497,12 @@ async function main() {
   if (!MOD) throw new Error('Mod gerekli: --kesif | --dry-run | --apply | --dogrula  [--pozisyon]')
 
   if (MOD === '--kesif') return kesif()
+  if (MOD === '--tekyaz') return tekYaz(process.argv[process.argv.indexOf('--tekyaz') + 1])
+  if (MOD === '--alan') return alanKarsilastir()
+  if (MOD === '--org2') return orgListe2()
+  if (MOD === '--orgset') return orgSetTara()
+  if (MOD === '--ara') return projeksiyonAra()
+  if (MOD === '--sonda2') return sonda2()
   if (MOD === '--yetki') return yetkiTeshis()
   if (MOD === '--sonda') return sondaYaz()
   if (MOD === '--kesif-tip') return kesifTip(TIP_ARG)

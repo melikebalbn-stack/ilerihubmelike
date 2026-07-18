@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { getPartAdi } from '@/lib/ifs/depo-stok'
 import { uretBarkod } from '@/lib/ifs/barkod'
 import { generateMalzemeEtiketi, genEtiketNo } from '@/lib/depo/etiket-pdf'
+import { logDepoHareket } from '@/lib/depo/hareket-log'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,7 +32,7 @@ const BodySchema = z.object({
 // anlamlı hata döner (kaç barkod üretildiği + kalıcı oldukları bildirilir, ID'ler log'a yazılır).
 // originPackSize v1'de sabit 1 (mevcut stok 1'lik).
 export async function POST(request: Request) {
-  const { session, error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
+  const { session, userId, error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
 
   let payload: unknown
@@ -70,6 +71,20 @@ export async function POST(request: Request) {
       } catch (e) {
         const sebep = e instanceof Error ? e.message : 'Barkod üretilemedi'
         console.error('[etiket] barkod üretim hatası', { stokKodu: d.stokKodu, istenen: adet, uretilenAdet: uretilen.length, hataSirasi: i + 1, uretilenIdler: uretilen })
+        // Kısmi hata: PDF basılmasa da üretilen barkodlar IFS'te KALICI → loglanmalı.
+        if (uretilen.length > 0) {
+          await logDepoHareket({
+            olay: 'ETIKET_BASMA',
+            userId,
+            kullaniciAd: basanKullanici,
+            partNo: d.stokKodu,
+            lotBatchNo: d.lot ?? null,
+            miktar: uretilen.length,
+            hedefLok: d.lokasyon,
+            etiketIdler: uretilen,
+            detay: { kismiHata: true, istenen: adet, hataSirasi: i + 1, sebep, kaynakModul: d.kaynakModul },
+          })
+        }
         return NextResponse.json(
           {
             ok: false,
@@ -97,6 +112,19 @@ export async function POST(request: Request) {
       birlesik.addPage(sayfa)
     }
     const out = await birlesik.save()
+
+    // Kalıcı hareket logu — tüm barkodlar üretildi, PDF dönmeden önce. Hata yutulur.
+    await logDepoHareket({
+      olay: 'ETIKET_BASMA',
+      userId,
+      kullaniciAd: basanKullanici,
+      partNo: d.stokKodu,
+      lotBatchNo: d.lot ?? null,
+      miktar: adet,
+      hedefLok: d.lokasyon,
+      etiketIdler: uretilen,
+      detay: { kaynakModul: d.kaynakModul, kaynakBilgi: d.kaynakBilgi },
+    })
 
     return new Response(out as BodyInit, {
       status: 200,

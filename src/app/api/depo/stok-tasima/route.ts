@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
+import { logDepoHareket } from '@/lib/depo/hareket-log'
 import { getRafBilgisi, getRaftakiStok, moveStok, type StokKimlik } from '@/lib/ifs/depo-stok'
 
 export const runtime = 'nodejs'
@@ -38,7 +39,7 @@ const sameKeys = (a: StokKimlik, b: StokKimlik) =>
 
 // POST /api/depo/stok-tasima → stok taşı (server-side taze doğrulamalı). Guard: admin.system.manage.
 export async function POST(request: Request) {
-  const { error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
+  const { session, userId, error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
 
   let payload: unknown
@@ -86,6 +87,19 @@ export async function POST(request: Request) {
     if (!sonuc.ok) {
       return NextResponse.json({ ok: false, yol: sonuc.yol, error: sonuc.error ?? 'Taşıma başarısız' }, { status: 502 })
     }
+    // Kalıcı hareket logu — taşıma BAŞARILI olduktan sonra. Hata yutulur.
+    await logDepoHareket({
+      olay: 'STOK_TASIMA',
+      userId,
+      kullaniciAd: session.user.name ?? 'Operatör',
+      partNo: kimlik.partNo,
+      lotBatchNo: kimlik.lotBatchNo || null,
+      miktar,
+      kaynakLok: kimlik.locationNo,
+      hedefLok: hedefLocationNo,
+      detay: { yol: sonuc.yol },
+    })
+
     return NextResponse.json({ ok: true, yol: sonuc.yol })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'IFS verisi alınamadı'

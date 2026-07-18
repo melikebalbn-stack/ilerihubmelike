@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
+import { logDepoHareket } from '@/lib/depo/hareket-log'
 import type { StokKimlik } from '@/lib/ifs/depo-stok'
 import { dostaneIfsHata } from '@/lib/ifs/ifs-hata'
 import {
@@ -58,7 +59,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ orderNo: string }> },
 ) {
-  const { userId, error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
+  const { session, userId, error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
 
   const { orderNo: ham } = await params
@@ -108,6 +109,9 @@ export async function POST(
 
     let yol: 'TAM' | 'KISMI' | 'SAPMA'
     let rezervKimlik: StokKimlik | null = null
+    // Hareket logu için: dal içinde çözülen partNo + FIFO önerisi dışarı taşınır.
+    let logPartNo: string | null = null
+    let logFifoOnerisi: unknown = undefined
 
     // 1) Rezervasyon — yola göre.
     if (sapma) {
@@ -115,6 +119,7 @@ export async function POST(
       rezervKimlik = sapma.stokKimlik
 
       const partNo = sapma.stokKimlik.partNo || (await getSatirPartNo(satir))
+      logPartNo = partNo
 
       // Raf-mevcut sınırı: seçilen kaynağın güncel AvailableQtyToMove'unu doğrula
       // (IFS'e HİÇ yazma yapmadan). Aşımda 409 + dostane mesaj.
@@ -143,7 +148,7 @@ export async function POST(
           sequenceNo: satir.sequenceNo,
           lineItemNo: satir.lineItemNo,
           partNo,
-          fifoOnerisi: tumStok[0]?.locationNo ?? '—',
+          fifoOnerisi: (logFifoOnerisi = tumStok[0]?.locationNo ?? '—'),
           secilen: sapma.stokKimlik.locationNo,
           sebep: sapma.sebep,
           miktar,
@@ -175,6 +180,7 @@ export async function POST(
         )
       }
       const partNo = await getSatirPartNo(satir)
+      logPartNo = partNo
       const fifo = await getFifoKirilim(partNo, miktar)
       if (!fifo.length) {
         return NextResponse.json({ ok: false, yol, error: 'FIFO kaynağı bulunamadı' }, { status: 502 })
@@ -225,6 +231,25 @@ export async function POST(
         : `Çıkış başarısız (${cikisHata}), rezerv geri ALINAMADI — yöneticiye bildirin`
       return NextResponse.json({ ok: false, yol, error: mesaj, kirilim }, { status: 502 })
     }
+
+    // 3b) Kalıcı hareket logu — çıkış BAŞARILI olduktan sonra. Hata yutulur.
+    await logDepoHareket({
+      olay: 'TOPLAMA_CIKIS',
+      userId,
+      kullaniciAd: session.user.name ?? 'Operatör',
+      partNo: logPartNo ?? sapma?.stokKimlik.partNo ?? '—',
+      lotBatchNo: sapma?.stokKimlik.lotBatchNo ?? kirilim[0]?.lotBatchNo ?? null,
+      miktar,
+      kaynakLok: sapma?.stokKimlik.locationNo ?? kirilim[0]?.locationNo ?? null,
+      orderNo,
+      releaseNo: satir.releaseNo,
+      sequenceNo: satir.sequenceNo,
+      lineItemNo: satir.lineItemNo,
+      // Sapma yolunda sebep dolu (çok-lot seçiminde 'Çok lot (COK_LOT)'); FIFO'da null.
+      sapmaSebep: sapma?.sebep ?? null,
+      fifoOnerisi: logFifoOnerisi,
+      detay: { yol, kirilim },
+    })
 
     // 4) Taze satır durumu.
     const durum = await getSatirDurum(satir)

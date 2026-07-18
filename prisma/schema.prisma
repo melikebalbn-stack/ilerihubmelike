@@ -225,6 +225,8 @@ model User {
   offboardingFormsReceived OffboardingForm[] @relation("OffboardingReceiver")
   offboardingFormsCreated  OffboardingForm[] @relation("OffboardingCreator")
 
+  depoHareketleri DepoHareketLog[] @relation("DepoHareketKullanici")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -11038,4 +11040,47 @@ model EnvanterSezonKalem {
 
   @@index([planId])
   @@map("envanter_sezon_kalem")
+}
+
+/// Depo el terminali hareket/sapma logu.
+/// IFS'e yazılan her kalıcı depo işleminin izlenebilir kaydı: kim, ne, nereden,
+/// nereye, FIFO dışına çıkıldı mı. Salt-ekleme (append-only) — güncellenmez.
+/// Not: IFS'in kendi hareket geçmişi ayrıdır; bu tablo ILERIHub tarafındaki
+/// operatör izini tutar (IFS InventoryTransactionHist okuma yetkisi yok).
+model DepoHareketLog {
+  id String @id @default(cuid())
+
+  /// TOPLAMA_CIKIS | STOK_TASIMA | ETIKET_BASMA
+  olay        String
+  userId      String
+  user        User   @relation("DepoHareketKullanici", fields: [userId], references: [id], onDelete: Restrict)
+  /// Kullanıcı adı anlık kopyası (kullanıcı sonradan değişse de kayıt okunabilir).
+  kullaniciAd String
+
+  partNo     String
+  lotBatchNo String?
+  /// ETIKET_BASMA'da basılan adet; diğerlerinde işlem miktarı.
+  miktar     Decimal? @db.Decimal(18, 6)
+  kaynakLok  String?
+  hedefLok   String?
+
+  /// Toplama bağlamı — IFS iş emri satır anahtarı.
+  orderNo    String?
+  releaseNo  String?
+  sequenceNo String?
+  lineItemNo Int?
+
+  /// Doluysa FIFO dışına çıkıldı ('Çok lot (COK_LOT)' dahil).
+  sapmaSebep  String?
+  fifoOnerisi Json?
+  /// ETIKET_BASMA: IFS'te üretilen kalıcı BarcodeId listesi.
+  etiketIdler Json?
+  detay       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([olay, createdAt])
+  @@index([userId, createdAt])
+  @@index([partNo])
+  @@map("depo_hareket_log")
 }

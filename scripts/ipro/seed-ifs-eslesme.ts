@@ -36,6 +36,69 @@ const SATIRLAR: Array<{ tip: IproIfsEslesmeTipi; ilerihubDeger: string; ifsKod: 
     ifsKod: '100151',
     aciklama: 'IFS pozisyon 100151 = MONTAJ OPERATÖRÜ. ILERIHub "Operatör" karşılığı (onaylı karar).',
   },
+
+  // ── PROD bölüm eşlemeleri (9 satır) ───────────────────────────────────
+  // Kaynak: personnel_prod_25062026.csv, aktif='t' → 192 kişi / 25 farklı bolum.
+  // 16'sı IFS'te birebir aynı isimle var; aşağıdaki 9'u eşleşmiyordu.
+  // Fark hep aynı üç kalıptan biri: "Müdürlüğü" sonekinin düşmesi, "&"↔"ve",
+  // ya da kısaltma ("PAZ."). Onaylı karar — 18.07.2026.
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'MÜHENDİSLİK',
+    ifsKod: '105',
+    aciklama: 'IFS 105 = Mühendislik Müdürlüğü. "Müdürlüğü" soneki düşmüş (8 kişi).',
+  },
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'İDARİ İŞLER',
+    ifsKod: '111',
+    aciklama: 'IFS 111 = İdari İşler Müdürlüğü. "Müdürlüğü" soneki düşmüş (7 kişi).',
+  },
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'PAKETLEME & DİREKSİYON',
+    ifsKod: '208',
+    aciklama: 'IFS 208 = Paketleme ve Direksiyon. "&" ↔ "ve" farkı (6 kişi).',
+  },
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'SATIŞ VE PAZ.MÜDÜRLÜĞÜ',
+    ifsKod: '108',
+    aciklama: 'IFS 108 = Satış ve Pazarlama Müdürlüğü. "PAZ." kısaltması (6 kişi).',
+  },
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'ASANSÖR',
+    ifsKod: '112',
+    // DİKKAT: 113 DEĞİL 112 — "ASANSÖR SATIŞ PAZARLAMA" ILERIHub'da AYRI bir
+    // bolum değeri olarak zaten var ve IFS'te 113'e birebir eşleşiyor. Çıplak
+    // "ASANSÖR" bu yüzden Asansör Müdürlüğü'ne (112) gider.
+    aciklama: 'IFS 112 = Asansör Müdürlüğü. 113 (Asansör Satış Pazarlama) ayrı değere gidiyor (6 kişi).',
+  },
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'İNSAN VARLIKLARI',
+    ifsKod: '109',
+    aciklama: 'IFS 109 = İnsan Varlıkları Müdürlüğü. "Müdürlüğü" soneki düşmüş (5 kişi).',
+  },
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'LAZER & DAİRE TESTERE',
+    ifsKod: '207',
+    aciklama: 'IFS 207 = Lazer ve Daire Testere. "&" ↔ "ve" farkı (4 kişi).',
+  },
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'YATIRIM VE TEŞVİK',
+    ifsKod: '114',
+    aciklama: 'IFS 114 = Yatırım ve Teşvik Müdürlüğü. "Müdürlüğü" soneki düşmüş (2 kişi).',
+  },
+  {
+    tip: 'ORG',
+    ilerihubDeger: 'YENİ İŞ GELİŞTİRME',
+    ifsKod: '115',
+    aciklama: 'IFS 115 = Yeni İş Geliştirme Müdürlüğü. "Müdürlüğü" soneki düşmüş (1 kişi).',
+  },
 ]
 
 async function main() {

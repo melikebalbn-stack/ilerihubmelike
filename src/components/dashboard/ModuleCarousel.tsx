@@ -73,7 +73,7 @@ const MODULES: CarouselItem[] = [
 export default function ModuleCarousel() {
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-3">
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {MODULES.map(item => (
           <Link
             key={item.id}
@@ -81,15 +81,14 @@ export default function ModuleCarousel() {
             className="group block"
           >
             <div
-              className={`relative w-full rounded-lg overflow-hidden mb-2 bg-gradient-to-br ${item.placeholderGradient} transition-all duration-300 group-hover:brightness-95`}
-              style={{ aspectRatio: '21/9' }}
+              className={`relative h-20 w-full rounded-lg overflow-hidden mb-1.5 bg-gradient-to-br ${item.placeholderGradient} transition-all duration-300 group-hover:brightness-95`}
             >
               {item.image ? (
                 <Image
                   src={item.image}
                   alt={item.headline}
                   fill
-                  sizes="(max-width: 1024px) 50vw, 33vw"
+                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
               ) : (
@@ -100,10 +99,10 @@ export default function ModuleCarousel() {
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300" />
             </div>
 
-            <h3 className="text-[13px] font-bold text-slate-900 mb-0.5 leading-snug group-hover:underline underline-offset-2 decoration-slate-400">
+            <h3 className="text-sm font-bold text-slate-900 mb-0.5 leading-snug group-hover:underline underline-offset-2 decoration-slate-400">
               {item.headline}
             </h3>
-            <p className="text-[11px] text-slate-500 leading-relaxed line-clamp-1">
+            <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
               {item.description}
             </p>
           </Link>

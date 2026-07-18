@@ -33,24 +33,6 @@ const MODULES: CarouselItem[] = [
     placeholderGradient: 'from-violet-100 to-violet-200',
   },
   {
-    id: 'anketler',
-    headline: 'Anketler',
-    description: 'Memnuniyet anketlerine katil, goruslerini paylas ve sonuclari goruntule.',
-    href: '/surveys',
-    image: '/carousel/anketler.jpg',
-    placeholderIcon: '\uD83D\uDCCB',
-    placeholderGradient: 'from-blue-100 to-blue-200',
-  },
-  {
-    id: 'oneri-sistemi',
-    headline: 'Oneri Sistemi',
-    description: 'Kaizen, NearMiss ve 5S onerilerini kaydet, surec iyilestirmelerine katki sagla.',
-    href: '/suggestions',
-    image: '/carousel/oneri-sistemi.jpg',
-    placeholderIcon: '\uD83D\uDCA1',
-    placeholderGradient: 'from-amber-100 to-amber-200',
-  },
-  {
     id: 'ipro-uretim',
     headline: 'IPRO \u2014 \u00DCretim Takip',
     description: 'Is emri operasyonlarini takip et, uretim bildirimlerini terminalden gir.',
@@ -73,7 +55,7 @@ const MODULES: CarouselItem[] = [
 export default function ModuleCarousel() {
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-3">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {MODULES.map(item => (
           <Link
             key={item.id}
@@ -88,7 +70,7 @@ export default function ModuleCarousel() {
                   src={item.image}
                   alt={item.headline}
                   fill
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
               ) : (

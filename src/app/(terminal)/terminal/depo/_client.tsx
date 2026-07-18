@@ -5,6 +5,7 @@ import {
   ArrowDownUp,
   ArrowLeft,
   ClipboardList,
+  HelpCircle,
   PackageMinus,
   Send,
 } from 'lucide-react'
@@ -93,6 +94,15 @@ export function DepoMenuClient({ operatorName }: Props) {
           ),
         )}
       </div>
+
+      {/* Yardım — kısa tanıtım rehberi (statik) */}
+      <Link
+        href="/terminal/depo/yardim"
+        className="flex min-h-12 items-center justify-center gap-2 rounded-xl border text-sm font-medium text-muted-foreground transition-colors active:bg-muted/70"
+      >
+        <HelpCircle className="h-4 w-4" />
+        Nasıl kullanılır?
+      </Link>
     </div>
   )
 }

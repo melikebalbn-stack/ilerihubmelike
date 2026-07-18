@@ -103,6 +103,10 @@ export const PERMISSION_KEYS = {
   RECRUITMENT_CREATE: 'recruitment.create',
   RECRUITMENT_CANDIDATE_VIEW: 'recruitment.candidate.view',
 
+  // === ENVANTER (zimmet/stok/satınalma/sezon) ===
+  ENVANTER_VIEW:  'envanter.view',
+  ENVANTER_ADMIN: 'envanter.admin',
+
   // === ÜRETİM (IFS shop-floor terminali) ===
   URETIM_BILDIRIM: 'uretim.bildirim',
   // === ÜRETİM / TEZGAH ===
@@ -217,6 +221,9 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'recruitment.view': 'İşe alım kendi departmanı görünürlük',
   'recruitment.create': 'Pozisyon/personel talebi oluşturma',
   'recruitment.candidate.view': 'Aday detay görme (CV ve değerlendirme)',
+
+  'envanter.view':  'Envanter görüntüleme (ürün/stok/zimmet/sezon/satınalma)',
+  'envanter.admin': 'Envanter tam yönetim (ürün/zimmet/stok/satınalma/tanım)',
 
   'uretim.bildirim': 'Üretim terminali — iş emri operasyonu bildirimi (IFS shop-floor)',
   'uretim.tezgah.manage': 'Tezgah tanımı ve personel atama',

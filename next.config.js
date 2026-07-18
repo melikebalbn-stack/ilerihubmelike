@@ -31,6 +31,18 @@ const nextConfig = {
         destination: '/arsiv/:path*',
         permanent: false,
       },
+      // EL-1: Üretim terminali (dashboard) route group'undan bağımsız
+      // /terminal grubuna taşındı. Eski URL'ler kırılmasın.
+      {
+        source: '/uretim/terminal',
+        destination: '/terminal/uretim',
+        permanent: false,
+      },
+      {
+        source: '/uretim/terminal/:path*',
+        destination: '/terminal/uretim/:path*',
+        permanent: false,
+      },
     ];
   },
   // Güvenlik header'ları

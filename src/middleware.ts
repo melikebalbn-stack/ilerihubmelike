@@ -94,5 +94,6 @@ export const config = {
     '/helpdesk/:path*',
     '/meetings/:path*',
     '/personnel/:path*',
+    '/envanter/:path*',
   ],
 };

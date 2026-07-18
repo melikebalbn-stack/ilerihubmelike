@@ -46,6 +46,7 @@ type CalibrationDevice = {
   serialNumber?: string | null
   location?: string | null
   department?: string | null
+  productionSection?: string | null
   responsiblePerson?: string | null
   responsiblePersonEmail?: string | null
   calibrationInterval: number
@@ -120,6 +121,7 @@ export default function CalibrationPage() {
     serialNumber: "",
     location: "",
     department: "",
+    productionSection: "",
     responsiblePerson: "",
     responsiblePersonEmail: "",
     calibrationInterval: "365",
@@ -165,6 +167,7 @@ export default function CalibrationPage() {
   const [historyRecords, setHistoryRecords] = useState<CalibrationHistoryRecord[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [showAddHistoryForm, setShowAddHistoryForm] = useState(false)
+  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null)
   const [historyFormData, setHistoryFormData] = useState({
     calibrationDate: new Date().toISOString().split('T')[0],
     certificateNumber: "",
@@ -266,7 +269,16 @@ export default function CalibrationPage() {
     loadDropdownData()
   }, [])
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, deviceCondition?: string | null) => {
+    // Hurda cihaz: geleceği yok — "Süresi Doldu" yerine gri "Hurda" rozeti göster
+    if (deviceCondition === 'Hurda') {
+      return (
+        <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">
+          <Ban className="mr-1 h-3 w-3" />
+          Hurda
+        </Badge>
+      )
+    }
     switch (status) {
       case "VALID":
         return (
@@ -407,9 +419,9 @@ export default function CalibrationPage() {
   const matchesStatFilter = (device: CalibrationDevice): boolean => {
     switch (activeFilter) {
       case 'all': return true
-      case 'valid': return device.status === 'VALID'
-      case 'expiring': return device.status === 'EXPIRING'
-      case 'expired': return device.status === 'EXPIRED'
+      case 'valid': return device.status === 'VALID' && device.deviceCondition !== 'Hurda'
+      case 'expiring': return device.status === 'EXPIRING' && device.deviceCondition !== 'Hurda'
+      case 'expired': return device.status === 'EXPIRED' && device.deviceCondition !== 'Hurda'
       case 'atCompany': return !device.deviceCondition || device.deviceCondition === 'Şirkette' || device.deviceCondition === 'Kalibrasyon Planlanıyor'
       case 'atCalibration': return device.deviceCondition === 'Kalibrasyonda'
       case 'scrap': return device.deviceCondition === 'Hurda'
@@ -482,6 +494,7 @@ export default function CalibrationPage() {
       serialNumber: "",
       location: "",
       department: "",
+      productionSection: "",
       responsiblePerson: "",
       responsiblePersonEmail: "",
       calibrationInterval: "365",
@@ -707,6 +720,7 @@ export default function CalibrationPage() {
       serialNumber: device.serialNumber || "",
       location: device.location || "",
       department: device.department || "",
+      productionSection: device.productionSection || "",
       responsiblePerson: device.responsiblePerson || "",
       responsiblePersonEmail: device.responsiblePersonEmail || "",
       calibrationInterval: device.calibrationInterval?.toString() || "",
@@ -751,6 +765,7 @@ export default function CalibrationPage() {
     setShowHistoryDialog(true)
     setLoadingHistory(true)
     setShowAddHistoryForm(false)
+    setEditingHistoryId(null)
     setHistoryFormData({
       calibrationDate: new Date().toISOString().split('T')[0],
       certificateNumber: "",
@@ -772,33 +787,65 @@ export default function CalibrationPage() {
     }
   }
 
+  // Kaydı düzenlemek için formu doldur
+  const startEditHistory = (record: CalibrationHistoryRecord) => {
+    setEditingHistoryId(record.id)
+    setShowAddHistoryForm(true)
+    setHistoryFormData({
+      calibrationDate: new Date(record.calibrationDate).toISOString().split('T')[0],
+      certificateNumber: record.certificateNumber || "",
+      calibratedBy: record.calibratedBy || "",
+      cost: record.cost != null ? String(record.cost) : "",
+      result: record.result || "PASS",
+      notes: record.notes || "",
+    })
+  }
+
+  const cancelHistoryForm = () => {
+    setShowAddHistoryForm(false)
+    setEditingHistoryId(null)
+    setHistoryFormData({
+      calibrationDate: new Date().toISOString().split('T')[0],
+      certificateNumber: "",
+      calibratedBy: "",
+      cost: "",
+      result: "PASS",
+      notes: "",
+    })
+  }
+
   const handleAddHistory = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!historyDevice) return
+    const isEdit = editingHistoryId !== null
     try {
-      const res = await fetch('/api/calibration/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deviceId: historyDevice.id,
-          calibrationDate: historyFormData.calibrationDate,
-          certificateNumber: historyFormData.certificateNumber || undefined,
-          calibratedBy: historyFormData.calibratedBy,
-          cost: historyFormData.cost ? parseFloat(historyFormData.cost) : null,
-          result: historyFormData.result,
-          notes: historyFormData.notes || undefined,
-        }),
-      })
+      const res = await fetch(
+        isEdit ? `/api/calibration/history/${editingHistoryId}` : '/api/calibration/history',
+        {
+          method: isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: historyDevice.id,
+            calibrationDate: historyFormData.calibrationDate,
+            certificateNumber: historyFormData.certificateNumber || undefined,
+            calibratedBy: historyFormData.calibratedBy,
+            cost: historyFormData.cost ? parseFloat(historyFormData.cost) : null,
+            result: historyFormData.result,
+            notes: historyFormData.notes || undefined,
+          }),
+        }
+      )
       if (res.ok) {
-        toast.success('Kalibrasyon kaydı eklendi!')
+        toast.success(isEdit ? 'Kalibrasyon kaydı güncellendi!' : 'Kalibrasyon kaydı eklendi!')
+        setEditingHistoryId(null)
         openHistoryDialog(historyDevice)
         loadData()
       } else {
         const error = await res.json()
-        toast.error(error.error || 'Kayıt eklenemedi')
+        toast.error(error.error || (isEdit ? 'Kayıt güncellenemedi' : 'Kayıt eklenemedi'))
       }
     } catch (error) {
-      toast.error('Kayıt eklenirken hata oluştu')
+      toast.error('Kayıt kaydedilirken hata oluştu')
     }
   }
 
@@ -837,6 +884,7 @@ export default function CalibrationPage() {
       'Seri No': device.serialNumber || '',
       'Lokasyon': device.location || '',
       'Departman': device.department || '',
+      'Üretim Bölümü': device.productionSection || '',
       'Sorumlu Kişi': device.responsiblePerson || '',
       'Kalibrasyon Periyodu (Gün)': device.calibrationInterval || '',
       'Son Kalibrasyon': device.lastCalibrationDate
@@ -958,6 +1006,7 @@ export default function CalibrationPage() {
             const serialNumber = row['Seri No'] || row['SeriNo'] || row['Seri Numarası'] || row['SERI NO'] || ''
             const location = row['Lokasyon'] || row['LOKASYON'] || row['Konum'] || row['Yer'] || ''
             const department = row['Departman'] || row['DEPARTMAN'] || row['Bölüm'] || ''
+            const productionSection = row['Üretim Bölümü'] || row['ÜRETİM BÖLÜMÜ'] || row['Uretim Bolumu'] || ''
             const responsiblePerson = row['Sorumlu Kişi'] || row['Sorumlu Kisi'] || row['Sorumlu'] || row['SORUMLU'] || ''
             const calibrationIntervalRaw = row['Kalibrasyon Periyodu (Gün)'] || row['Kalibrasyon Periyodu'] ||
                                           row['Periyot'] || row['Süre'] || '365'
@@ -1071,6 +1120,7 @@ export default function CalibrationPage() {
                 serialNumber: serialNumber.toString().trim(),
                 location: location.toString().trim(),
                 department: department.toString().trim(),
+                productionSection: productionSection.toString().trim() || null,
                 responsiblePerson: responsiblePerson.toString().trim(),
                 calibrationInterval: parseInt(calibrationIntervalRaw.toString()) || 365,
                 lastCalibrationDate,
@@ -1346,7 +1396,7 @@ export default function CalibrationPage() {
                     <Select
                       id="department"
                       value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value, ...(e.target.value !== "Üretim" ? { location: formData.location } : {}) })}
+                      onChange={(e) => setFormData({ ...formData, department: e.target.value, ...(e.target.value !== "Üretim" ? { productionSection: "" } : {}) })}
                     >
                       <option value="">Seçiniz</option>
                       {departments.map((dept) => (
@@ -1361,8 +1411,8 @@ export default function CalibrationPage() {
                     <Label htmlFor="productionSection">Üretim Bölümü</Label>
                     <Select
                       id="productionSection"
-                      value={formData.location}
-                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                      value={formData.productionSection}
+                      onChange={(e) => setFormData({ ...formData, productionSection: e.target.value })}
                     >
                       <option value="">Bölüm Seçiniz</option>
                       {productionSections.map((section) => (
@@ -1945,9 +1995,9 @@ export default function CalibrationPage() {
                       <TableCell>{device.calibrationType || "-"}</TableCell>
                       <TableCell>{device.department || "-"}</TableCell>
                       <TableCell>{device.calibrationType === 'Doğrulama' || !device.lastCalibrationDate ? '-' : new Date(device.lastCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
-                      <TableCell>{device.calibrationType === 'Doğrulama' || !device.nextCalibrationDate ? '-' : new Date(device.nextCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
+                      <TableCell>{device.deviceCondition === 'Hurda' || device.calibrationType === 'Doğrulama' || !device.nextCalibrationDate ? '-' : new Date(device.nextCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
                       <TableCell>
-                        {device.calibrationType === 'Doğrulama' ? '-' : device.plannedCalibrationDate ? (() => {
+                        {device.deviceCondition === 'Hurda' ? '-' : device.calibrationType === 'Doğrulama' ? '-' : device.plannedCalibrationDate ? (() => {
                           const planned = new Date(device.plannedCalibrationDate!)
                           const lastCal = new Date(device.lastCalibrationDate)
                           const now = new Date()
@@ -1978,7 +2028,7 @@ export default function CalibrationPage() {
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        {device.calibrationType === 'Kalibrasyon' ? '-' : device.plannedVerificationDate ? (() => {
+                        {device.deviceCondition === 'Hurda' ? '-' : device.calibrationType === 'Kalibrasyon' ? '-' : device.plannedVerificationDate ? (() => {
                           const planned = new Date(device.plannedVerificationDate!)
                           const lastVer = device.lastVerificationDate ? new Date(device.lastVerificationDate) : null
                           const now = new Date()
@@ -2003,7 +2053,7 @@ export default function CalibrationPage() {
                           )
                         })() : "-"}
                       </TableCell>
-                      <TableCell>{getStatusBadge(device.status)}</TableCell>
+                      <TableCell>{getStatusBadge(device.status, device.deviceCondition)}</TableCell>
                       <TableCell>
                         {attachmentCount > 0 ? (
                           <Badge
@@ -2162,6 +2212,15 @@ export default function CalibrationPage() {
                     <div>
                       <p className="text-muted-foreground text-xs">Kalibrasyon Durumu</p>
                       {(() => {
+                        // Hurda cihaz: geleceği yok — "Gecikmiş" gösterme
+                        if (formData.deviceCondition === 'Hurda') {
+                          return (
+                            <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100 mt-1">
+                              <Ban className="mr-1 h-3 w-3" />
+                              Hurda
+                            </Badge>
+                          )
+                        }
                         if (!formData.plannedCalibrationDate) {
                           return <p className="text-muted-foreground text-xs mt-1">Tarih planlanmadı</p>
                         }
@@ -2302,8 +2361,8 @@ export default function CalibrationPage() {
                   <Label htmlFor="edit-productionSection">Üretim Bölümü</Label>
                   <Select
                     id="edit-productionSection"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    value={formData.productionSection}
+                    onChange={(e) => setFormData({ ...formData, productionSection: e.target.value })}
                   >
                     <option value="">Bölüm Seçiniz</option>
                     {productionSections.map((section) => (
@@ -2784,6 +2843,7 @@ export default function CalibrationPage() {
                       <TableHead>Sonuç</TableHead>
                       <TableHead>Maliyet</TableHead>
                       <TableHead>Notlar</TableHead>
+                      {canEdit && <TableHead className="text-right">İşlemler</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2805,6 +2865,13 @@ export default function CalibrationPage() {
                         </TableCell>
                         <TableCell>{record.cost ? `${Number(record.cost).toLocaleString('tr-TR')} TL` : '-'}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{record.notes || '-'}</TableCell>
+                        {canEdit && (
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => startEditHistory(record)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -2821,12 +2888,12 @@ export default function CalibrationPage() {
           {canEdit && (
             <>
               {!showAddHistoryForm ? (
-                <Button onClick={() => setShowAddHistoryForm(true)} className="mt-2">
+                <Button onClick={() => { setEditingHistoryId(null); setShowAddHistoryForm(true) }} className="mt-2">
                   <Plus className="mr-2 h-4 w-4" /> Yeni Kalibrasyon Kaydı Ekle
                 </Button>
               ) : (
                 <form onSubmit={handleAddHistory} className="mt-4 border-t pt-4 space-y-4">
-                  <h4 className="font-medium">Yeni Kalibrasyon Kaydı</h4>
+                  <h4 className="font-medium">{editingHistoryId ? 'Kalibrasyon Kaydını Düzenle' : 'Yeni Kalibrasyon Kaydı'}</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Kalibrasyon Tarihi</Label>
@@ -2868,8 +2935,8 @@ export default function CalibrationPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 justify-end">
-                    <Button type="button" variant="outline" onClick={() => setShowAddHistoryForm(false)}>İptal</Button>
-                    <Button type="submit">Kaydet</Button>
+                    <Button type="button" variant="outline" onClick={cancelHistoryForm}>İptal</Button>
+                    <Button type="submit">{editingHistoryId ? 'Güncelle' : 'Kaydet'}</Button>
                   </div>
                 </form>
               )}

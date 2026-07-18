@@ -16,27 +16,28 @@ import {
   YES_NO_OPTIONS,
   EDUCATION_HISTORY_KEYS,
 } from '../constants'
+import { isRequiredField } from '../required-fields'
 import type { SectionProps, EducationEntry, CourseRow, LanguageRow, ComputerRow } from '../types'
 
 export function SectionTercihEgitim({ form, onChange }: SectionProps) {
   return (
     <>
-      <FormQuestionCard number={1} title="Başlayabileceğiniz tarih">
+      <FormQuestionCard number={1} title="Başlayabileceğiniz tarih" isRequired={isRequiredField('availableStartDate')}>
         <FormDateInput value={form.availableStartDate} onChange={(v) => onChange({ availableStartDate: v })} />
       </FormQuestionCard>
-      <FormQuestionCard number={2} title="Maaş Beklentisi (₺)">
+      <FormQuestionCard number={2} title="Maaş Beklentisi (₺)" isRequired={isRequiredField('expectedSalary')}>
         <FormNumberInput value={form.expectedSalary} onChange={(v) => onChange({ expectedSalary: v })} min={0} step={500} />
       </FormQuestionCard>
-      <FormQuestionCard number={3} title="Başvurulan Pozisyon">
+      <FormQuestionCard number={3} title="Başvurulan Pozisyon" isRequired={isRequiredField('requestedPosition')}>
         <FormShortText value={form.requestedPosition} onChange={(v) => onChange({ requestedPosition: v })} />
       </FormQuestionCard>
-      <FormQuestionCard number={4} title="Daha önce şirketimizde çalıştınız mı?">
+      <FormQuestionCard number={4} title="Daha önce şirketimizde çalıştınız mı?" isRequired={isRequiredField('previouslyWorkedHere')}>
         <FormSegmentControl options={YES_NO_OPTIONS as unknown as { value: string; label: string }[]} value={form.previouslyWorkedHere} onChange={(v) => onChange({ previouslyWorkedHere: v })} />
       </FormQuestionCard>
-      <FormQuestionCard number={5} title="Eğitim Seviyesi">
+      <FormQuestionCard number={5} title="Eğitim Seviyesi" isRequired={isRequiredField('educationLevel')}>
         <FormSegmentControl options={EDUCATION_LEVEL_OPTIONS as unknown as { value: string; label: string }[]} value={form.educationLevel} onChange={(v) => onChange({ educationLevel: v })} mobileColumns={1} />
       </FormQuestionCard>
-      <FormQuestionCard number={6} title="Eğitim Geçmişi" helperText="İlgili olan kademeleri doldurun, boş bırakabilirsiniz.">
+      <FormQuestionCard number={6} title="Eğitim Geçmişi" isRequired={isRequiredField('educationHistory')} helperText="İlgili olan kademeleri doldurun, boş bırakabilirsiniz.">
         <FormFixedKeyRecord
           keys={EDUCATION_HISTORY_KEYS}
           fields={[

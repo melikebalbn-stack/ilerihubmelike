@@ -46,6 +46,7 @@ import {
   LogIn,
   X,
   Package,
+  Boxes,
   Server,
   Calendar,
   Calculator,
@@ -103,6 +104,7 @@ const strategicHrMenuItems = [
   { name: "Yedekleme Planlaması", icon: UserCheck, href: "/strategic-hr/succession-planning", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "Performans Yönetimi", icon: Target, href: "/strategic-hr/performance", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
+  { name: "Envanter", icon: Boxes, href: "/envanter", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
 ]
 

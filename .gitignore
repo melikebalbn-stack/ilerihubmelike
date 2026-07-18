@@ -31,3 +31,5 @@ data/*.xls
 data/*.csv
 public/uploads
 .venv-ipro/
+.env.bak*
+scripts/import-data/

@@ -80,9 +80,9 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Tüm aktif cihazları çek
+    // Tüm aktif cihazları çek (Hurda hariç — geleceği yok, uyarı maili gitmemeli)
     const allDevices = await prisma.calibrationDevice.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deviceCondition: { not: 'Hurda' } },
     })
 
     // PR-CALIBRATION-MAIL-DEDUP: son 30 gün içinde EXPIRING_SOON maili

@@ -10,6 +10,9 @@ import { z } from 'zod'
 
 const IfsConfigSchema = z.object({
   IFS_INT_BASE_URL: z.string().min(1, 'IFS_INT_BASE_URL zorunlu'),
+  // entity/v1 gateway kökü (barkod üretimi). Opsiyonel — boşsa IFS_INT_BASE_URL'den türetilir
+  // ki barkod dışı IFS akışlarını çalıştıran mevcut ortamları kırmayalım.
+  IFS_ENTITY_BASE_URL: z.string().optional(),
   IFS_TOKEN_URL: z.string().min(1, 'IFS_TOKEN_URL zorunlu'),
   IFS_CLIENT_ID: z.string().min(1, 'IFS_CLIENT_ID zorunlu'),
   IFS_CLIENT_SECRET: z.string().min(1, 'IFS_CLIENT_SECRET zorunlu'),
@@ -22,6 +25,8 @@ const IfsConfigSchema = z.object({
 export interface IfsConfig {
   /** ShopFloorService.svc base URL — sondaki slash temizlenmiş. */
   baseUrl: string
+  /** entity/v1 gateway kökü (barkod üretimi) — sondaki slash temizlenmiş. */
+  entityBaseUrl: string
   /** Keycloak OAuth2 token endpoint (client_credentials). */
   tokenUrl: string
   clientId: string
@@ -52,9 +57,17 @@ export function getIfsConfig(): IfsConfig {
   }
 
   const d = parsed.data
+  // entity/v1 kökü: açık env varsa onu; yoksa IFS_INT_BASE_URL'den türet
+  // (.../ifsapplications/projection/v1/ShopFloorService.svc → .../ifsapplications/entity/v1).
+  const entityBaseUrl = (
+    d.IFS_ENTITY_BASE_URL?.trim() ||
+    d.IFS_INT_BASE_URL.replace(/\/ifsapplications\/.*$/, '/ifsapplications/entity/v1')
+  ).replace(/\/+$/, '')
+
   cached = {
     // base + '/' + funcCall birleştirmesinde çift slash olmasın diye temizle
     baseUrl: d.IFS_INT_BASE_URL.replace(/\/+$/, ''),
+    entityBaseUrl,
     tokenUrl: d.IFS_TOKEN_URL,
     clientId: d.IFS_CLIENT_ID,
     clientSecret: d.IFS_CLIENT_SECRET,

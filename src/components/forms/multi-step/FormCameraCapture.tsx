@@ -16,9 +16,12 @@ interface Props {
   open: boolean
   onCapture: (dataUrl: string) => void
   onClose: () => void
+  // Kamera açılamazsa (izin reddi / kamera yok / diğer) çağrılır → çağıran taraf
+  // galeri (Dosyadan Seç) fallback'ini gösterir. Kimse bloke olmasın (İK kararı).
+  onUnavailable?: () => void
 }
 
-export function FormCameraCapture({ open, onCapture, onClose }: Props) {
+export function FormCameraCapture({ open, onCapture, onClose, onUnavailable }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -54,11 +57,13 @@ export function FormCameraCapture({ open, onCapture, onClose }: Props) {
         const e = err as { name?: string; message?: string }
         setError(
           e.name === 'NotAllowedError'
-            ? 'Kamera izni reddedildi. Tarayıcı izinlerinden açın.'
+            ? 'Kamera izni reddedildi. "Dosyadan Seç" ile fotoğraf yükleyebilirsiniz.'
             : e.name === 'NotFoundError'
-              ? 'Kamera bulunamadı.'
+              ? 'Kamera bulunamadı. "Dosyadan Seç" ile fotoğraf yükleyebilirsiniz.'
               : `Kamera açılamadı: ${e.message ?? 'bilinmeyen hata'}`
         )
+        // Fallback'i aç: çağıran "Dosyadan Seç"i göstersin (kimse bloke olmasın).
+        onUnavailable?.()
       }
     }
 

@@ -16,7 +16,7 @@
  */
 const HEDEF_TARIH = '2000-01-01'
 
-const MOD = process.argv.find((a) => ['--kesif', '--kesif-tip', '--sonda', '--sonda2', '--yetki', '--ara', '--orgset', '--org2', '--alan', '--tekyaz', '--dry-run', '--apply', '--dogrula'].includes(a))
+const MOD = process.argv.find((a) => ['--kesif', '--kesif-tip', '--sonda', '--sonda2', '--yetki', '--ara', '--orgset', '--org2', '--alan', '--tekyaz', '--pozlist', '--dry-run', '--apply', '--dogrula'].includes(a))
 const TIP_ARG = process.argv[process.argv.indexOf('--kesif-tip') + 1]
 const POZISYON = process.argv.includes('--pozisyon')
 const TEK = process.argv.includes('--tek') ? process.argv[process.argv.indexOf('--tek') + 1] : null
@@ -489,6 +489,14 @@ async function tekYaz(kod: string) {
   console.log(`sonra: OrgValidFrom=${String(o2?.OrgValidFrom).slice(0,10)}  → ${String(o2?.OrgValidFrom).slice(0,10) === HEDEF_TARIH ? '✓ YAZILDI' : '✗ degismedi'}`)
 }
 
+async function pozList() {
+  const l = await pozListesi()
+  console.log(`IFS pozisyon: ${l.length}`)
+  for (const p of l.sort((a, b) => String(a.PositionTitle).localeCompare(String(b.PositionTitle)))) {
+    console.log(`  ${String(p.PosCode).padEnd(8)} ${p.PositionTitle}`)
+  }
+}
+
 async function main() {
   const host = process.env.IFS_INT_BASE_URL ?? ''
   if (!host.includes('ifscloudtest')) {
@@ -497,6 +505,7 @@ async function main() {
   if (!MOD) throw new Error('Mod gerekli: --kesif | --dry-run | --apply | --dogrula  [--pozisyon]')
 
   if (MOD === '--kesif') return kesif()
+  if (MOD === '--pozlist') return pozList()
   if (MOD === '--tekyaz') return tekYaz(process.argv[process.argv.indexOf('--tekyaz') + 1])
   if (MOD === '--alan') return alanKarsilastir()
   if (MOD === '--org2') return orgListe2()

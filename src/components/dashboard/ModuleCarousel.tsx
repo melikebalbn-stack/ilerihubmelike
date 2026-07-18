@@ -63,7 +63,7 @@ export default function ModuleCarousel() {
             className="group block"
           >
             <div
-              className={`relative h-20 w-full rounded-lg overflow-hidden mb-1.5 bg-gradient-to-br ${item.placeholderGradient} transition-all duration-300 group-hover:brightness-95`}
+              className={`relative h-32 w-full rounded-lg overflow-hidden mb-1.5 bg-gradient-to-br ${item.placeholderGradient} transition-all duration-300 group-hover:brightness-95`}
             >
               {item.image ? (
                 <Image

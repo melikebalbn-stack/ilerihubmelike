@@ -10810,6 +10810,8 @@ model IproOperatorSession {
   girisAt     DateTime       @default(now())
   cikisAt     DateTime?
 
+  productionLogs IproProductionLog[]
+
   // ACTIVE = cikisAt IS NULL. Ayrı status kolonu YOK (tek doğruluk kaynağı).
   // "Tek ACTIVE per (personnelId, tezgahId)" — Prisma @@unique partial ifade edemez,
   // migration'da RAW partial unique index ile kuruluyor.
@@ -10818,12 +10820,22 @@ model IproOperatorSession {
   @@map("ipro_operator_session")
 }
 
+enum IproIsDurum {
+  ACIK
+  KAPALI
+}
+
 model IproProductionLog {
   id                String     @id @default(cuid())
   tezgahId          String
   tezgah            IproTezgah @relation(fields: [tezgahId], references: [id])
+  sessionId         String
+  // onDelete: Restrict — oturum silinirse üretim kaydı korunur (denetim izi).
+  session           IproOperatorSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   personnelId       String
   ifsOperationId    String?
+  // ifsOrderNo / ifsOperationNo nullable KALIR (geçmiş kayıtlar için NOT NULL yapılamaz).
+  // Açık iş satırında ikisinin dolu olması "başla" endpoint'inde (uygulama katmanı) garanti edilir.
   ifsOrderNo        String?
   ifsOperationNo    Int?
   qtyComplete       Int        @default(0)
@@ -10831,12 +10843,30 @@ model IproProductionLog {
   hurdaSebebiKod    String?
   plcSayacBaslangic Int?
   plcSayacBitis     Int?
+  // İş yaşam döngüsü: default KAPALI — mevcut/eski kayıtlar bitmiş sayılır.
+  // "başla" endpoint'i ACIK üretir; "bitir"/"durdur" KAPALI'ya çeker.
+  durum             IproIsDurum @default(KAPALI)
+  baslatildiAt      DateTime?  // "başla" anı; açık iş için dolu
+  bitirildiAt       DateTime?  // "bitir"/"durdur" anı; kapanınca dolu
+  tamamlandi        Boolean    @default(true) // true = tam bitirildi; false = durduruldu/eksik. Eski kayıtlar true.
+  // IFS geri-yazım — çift bayrak. reportQuantityComplete (iyi) + reportQuantityScrap (hurda)
+  // AYRI action'lar; biri başarıp biri başarısız olabilir → ayrı izlenir.
+  // Eski ifsYazildi/ifsHata şimdilik dokunulmadan duruyor (ileride temizlenir — ayrı iş).
+  ifsCompleteYazildi Boolean   @default(false) // iyi (qtyComplete) IFS'e gitti mi
+  ifsScrapYazildi    Boolean   @default(false) // hurda (qtyScrap) IFS'e gitti mi
+  ifsCompleteHata    String?                   // iyi yazım hatası
+  ifsScrapHata       String?                   // hurda yazım hatası
   ifsYazildi        Boolean    @default(false)
   ifsHata           String?
   createdAt         DateTime   @default(now())
 
   @@index([tezgahId, createdAt])
   @@index([ifsYazildi])
+  @@index([ifsCompleteYazildi])
+  @@index([sessionId])
+  @@index([personnelId, ifsOrderNo, ifsOperationNo])
+  // Partial UNIQUE (açık iş tekilliği) Prisma @@unique ile ifade edilemez —
+  // migration.sql'e ELLE eklenir: WHERE durum = 'ACIK'.
   @@map("ipro_production_log")
 }
 

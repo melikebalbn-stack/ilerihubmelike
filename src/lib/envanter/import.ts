@@ -4,7 +4,7 @@ import type { WorkBook } from 'xlsx'
 // `import XLSX from 'xlsx'` Next.js server ortamında (webpack/SWC CJS-ESM interop
 // tutarsızlığı) default export'u undefined döndürebiliyor. CommonJS require ile
 // yükleniyor — xlsx paketi zaten module.exports tabanlı (CJS), bu güvenilir yol.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line
 const XLSX = require('xlsx') as typeof import('xlsx')
 
 const URUN_TIPLERI = [

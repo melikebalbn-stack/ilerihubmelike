@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 
 // `import XLSX from 'xlsx'` Next.js server ortamında CJS/ESM interop tutarsızlığı
 // yüzünden undefined dönebiliyor (import.ts'te de aynı sebeple require kullanılıyor).
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line
 const XLSX = require('xlsx') as typeof import('xlsx')
 
 export type BedenProfilImportHata = {

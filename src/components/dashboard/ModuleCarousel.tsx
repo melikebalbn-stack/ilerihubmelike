@@ -51,6 +51,15 @@ const MODULES: CarouselItem[] = [
     placeholderIcon: '\uD83D\uDCA1',
     placeholderGradient: 'from-amber-100 to-amber-200',
   },
+  {
+    id: 'el-terminali',
+    headline: 'El Terminali',
+    description: 'Depo el terminali \u2014 stok tasima, malzeme toplama ve etiket islemleri.',
+    href: '/terminal',
+    image: null,
+    placeholderIcon: '\uD83D\uDCE6',
+    placeholderGradient: 'from-cyan-100 to-cyan-200',
+  },
 ]
 
 export default function ModuleCarousel() {

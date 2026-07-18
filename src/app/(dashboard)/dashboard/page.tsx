@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight, FolderSync, GraduationCap, Settings2, RefreshCw, Eye, EyeOff, GripVertical, X, Check, LayoutDashboard, Users, FileText, Shield, Briefcase, Wrench, Activity, TrendingUp, Ticket, ScanLine } from "lucide-react"
+import { Bell, UtensilsCrossed, ClipboardList, AlertTriangle, Clock, CheckCircle2, Lightbulb, ThumbsUp, XCircle, ArrowRight, Megaphone, Pin, Calendar, Video, MapPin, Headphones, ChevronLeft, ChevronRight, FolderSync, GraduationCap, Settings2, RefreshCw, Eye, EyeOff, GripVertical, X, Check, LayoutDashboard, Users, FileText, Shield, Briefcase, Wrench, Activity, TrendingUp, Ticket } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { useEffect, useState, useCallback } from "react"
@@ -201,8 +201,6 @@ interface QuickAccessModule {
   href: string
   icon: React.ReactNode
   color: string
-  /** Verilirse: kullanıcıda bu permission'lardan EN AZ BİRİ olmalı; yoksa modül gizlenir. */
-  permission?: string[]
 }
 
 const ALL_QUICK_ACCESS_MODULES: QuickAccessModule[] = [
@@ -216,7 +214,6 @@ const ALL_QUICK_ACCESS_MODULES: QuickAccessModule[] = [
   { id: 'strategic-hr', name: 'Stratejik İK', href: '/strategic-hr/recruitment', icon: <Briefcase className="h-4 w-4" />, color: 'text-pink-500' },
   { id: 'announcements', name: 'Duyurular', href: '/announcements', icon: <Megaphone className="h-4 w-4" />, color: 'text-violet-500' },
   { id: 'settings', name: 'Ayarlar', href: '/settings', icon: <Settings2 className="h-4 w-4" />, color: 'text-gray-500' },
-  { id: 'terminal', name: 'El Terminali', href: '/terminal', icon: <ScanLine className="h-4 w-4" />, color: 'text-cyan-500', permission: ['depo.terminal.use', 'admin.system.manage'] },
 ]
 
 // Dashboard ayarları tipi
@@ -608,15 +605,8 @@ export default function DashboardPage() {
   // Widget görünürlük kontrolü
   const isWidgetVisible = (widgetId: WidgetId) => settings.visibleWidgets.includes(widgetId)
 
-  // İzin kapısı: permission tanımlı modüller yalnız yetkili kullanıcıya görünür (OR).
-  // İzinsiz modüller herkese açık (permission alanı yok). Tercihten ÖNCE uygulanır.
-  const userPermissions = session?.user?.permissions ?? []
-  const availableQuickAccessModules = ALL_QUICK_ACCESS_MODULES.filter(
-    m => !m.permission || m.permission.some(p => userPermissions.includes(p))
-  )
-
-  // Seçili hızlı erişim modülleri (izin kapısının üstüne kullanıcı tercihi)
-  const selectedQuickAccessModules = availableQuickAccessModules.filter(m =>
+  // Seçili hızlı erişim modülleri
+  const selectedQuickAccessModules = ALL_QUICK_ACCESS_MODULES.filter(m =>
     settings.quickAccessModules.includes(m.id)
   )
 
@@ -714,7 +704,7 @@ export default function DashboardPage() {
                     En fazla 6 modül seçebilirsiniz
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {availableQuickAccessModules.map(module => {
+                    {ALL_QUICK_ACCESS_MODULES.map(module => {
                       const isSelected = tempSettings.quickAccessModules.includes(module.id)
                       const isDisabled = !isSelected && tempSettings.quickAccessModules.length >= 6
                       return (

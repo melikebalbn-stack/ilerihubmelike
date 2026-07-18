@@ -306,6 +306,9 @@ export function StokTasimaClient() {
   // Kaynak stok satırını seç → çip + adet/hedef alanlarını aç.
   const secHizliKaynak = (k: FifoKaynak) => {
     setHKaynak(k)
+    // Seçim yapıldı → çipi SEÇİLEN satırın lot'uyla tazele. (Seçim öncesi çip yalnız
+    // tek lot varsa lot yazar; çoklu lotta hangi lot olduğu ancak burada belli olur.)
+    setHPartCip(`${k.kimlik.partNo}${k.lotBatchNo ? ` · ${k.lotBatchNo}` : ''}`)
     setHAdaylar((a) => (a.length ? a : [k]))
     setHRaf(null)
     setHRafStok([])

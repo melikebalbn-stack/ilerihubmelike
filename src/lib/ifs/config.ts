@@ -18,6 +18,8 @@ const IfsConfigSchema = z.object({
   IFS_CLIENT_SECRET: z.string().min(1, 'IFS_CLIENT_SECRET zorunlu'),
   IFS_SCOPE: z.string().optional(),
   IFS_CONTRACT: z.string().min(1).default('ILER2'),
+  // DİKKAT: Company (ILERI2) ≠ Contract (ILER2) — farklı değerler, contract'tan TÜRETİLMEZ.
+  IFS_COMPANY: z.string().min(1).default('ILERI2'),
 })
 
 export interface IfsConfig {
@@ -33,6 +35,8 @@ export interface IfsConfig {
   scope?: string
   /** IFS site/contract kodu (varsayılan ILER2). */
   contract: string
+  /** IFS firma (Company) kodu — TeamEmployee için (varsayılan ILERI2, contract'tan FARKLI). */
+  company: string
 }
 
 let cached: IfsConfig | null = null
@@ -59,6 +63,7 @@ export function getIfsConfig(): IfsConfig {
     d.IFS_ENTITY_BASE_URL?.trim() ||
     d.IFS_INT_BASE_URL.replace(/\/ifsapplications\/.*$/, '/ifsapplications/entity/v1')
   ).replace(/\/+$/, '')
+
   cached = {
     // base + '/' + funcCall birleştirmesinde çift slash olmasın diye temizle
     baseUrl: d.IFS_INT_BASE_URL.replace(/\/+$/, ''),
@@ -68,6 +73,7 @@ export function getIfsConfig(): IfsConfig {
     clientSecret: d.IFS_CLIENT_SECRET,
     scope: d.IFS_SCOPE,
     contract: d.IFS_CONTRACT,
+    company: d.IFS_COMPANY,
   }
   return cached
 }

@@ -1,7 +1,7 @@
 import 'server-only'
 import { getIfsConfig } from './config'
 import { getIfsAccessToken } from './token'
-import type { TerminalIsEmri, TerminalDurum } from '@/lib/uretim/terminal-mock'
+import type { IfsShopOrderOperation, IfsOperationStatus } from './types'
 
 /**
  * ShopOrderOperationsHandling okuma katmanı (E1). SERVER-ONLY.
@@ -103,12 +103,12 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0
 }
 
-/** Ham kaydı ortak TerminalIsEmri sözleşmesine map'ler. */
-function toTerminal(r: RawShopOrderOperation): TerminalIsEmri {
+/** Ham kaydı ortak IfsShopOrderOperation sözleşmesine map'ler. */
+function toTerminal(r: RawShopOrderOperation): IfsShopOrderOperation {
   const orderNo = r.OrderNo ?? ''
   const operationNo = num(r.OperationNo)
   const kalan = num(r.RemainingQty)
-  const durum: TerminalDurum =
+  const durum: IfsOperationStatus =
     r.OperStatusCode === 'Released' && kalan > 0 ? 'ISLENEBILIR' : 'BEKLIYOR'
   return {
     id: `${orderNo}-${operationNo}`,
@@ -129,7 +129,7 @@ function toTerminal(r: RawShopOrderOperation): TerminalIsEmri {
 }
 
 /** teslimTarihi artan; boş tarihler sona. */
-function byTeslim(a: TerminalIsEmri, b: TerminalIsEmri): number {
+function byTeslim(a: IfsShopOrderOperation, b: IfsShopOrderOperation): number {
   if (!a.teslimTarihi && !b.teslimTarihi) return 0
   if (!a.teslimTarihi) return 1
   if (!b.teslimTarihi) return -1
@@ -142,7 +142,7 @@ function byTeslim(a: TerminalIsEmri, b: TerminalIsEmri): number {
  */
 export async function getShopOrderOperations(params: {
   workCenter?: string
-}): Promise<TerminalIsEmri[]> {
+}): Promise<IfsShopOrderOperation[]> {
   const { contract } = getIfsConfig()
   const conds = [`Contract eq '${esc(contract)}'`]
   if (params.workCenter) conds.push(`WorkCenterNo eq '${esc(params.workCenter)}'`)
@@ -156,7 +156,7 @@ export async function getShopOrderOperations(params: {
 export async function getShopOrderOperation(
   orderNo: string,
   operationNo: number,
-): Promise<TerminalIsEmri | null> {
+): Promise<IfsShopOrderOperation | null> {
   const { contract } = getIfsConfig()
   const filter =
     `Contract eq '${esc(contract)}' and OrderNo eq '${esc(orderNo)}' ` +

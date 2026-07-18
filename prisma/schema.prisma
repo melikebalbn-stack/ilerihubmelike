@@ -95,6 +95,8 @@ model User {
   pushSubscriptions  PushSubscription[]
   responsibleDevices CalibrationDevice[]   @relation("ResponsibleDevices")
   emailLogs          CalibrationEmailLog[]
+  // IPRO: bu User bir kiosk cihaz hesabiysa karsilik gelen cihaz (1-1, opsiyonel)
+  iproKiosk          IproKiosk?
 
   // QDMS Relations
   qdmsDocumentsOwned        QdmsDocument[]              @relation("DocumentOwner")
@@ -252,6 +254,9 @@ enum UserRoleEnum {
   DEPT_HEAD
   SUPERVISOR
   EMPLOYEE
+  // IPRO kiosk cihaz hesabi. Rol kontrolleri allow-list oldugu icin additive:
+  // hicbir allowedRoles listesinde olmadigindan her yerde default-deny.
+  KIOSK
 
   @@map("Role")
 }
@@ -10635,6 +10640,338 @@ model AssessmentAnswer {
 
   @@unique([sessionId, questionId])
   @@index([sessionId])
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// IPRO — MAS Üretim Takip Modülü (şema + import katmanı)
+// Kimlik hizalaması:
+//   IproTezgah.kod    = IFS ResourceId = MAS iş merkezi kodu (CN01, KH01, PH19)
+//   Personnel.sicilNo = IFS EmployeeId
+//   PLC pin kimliği    = (plcId, sayacAdresi) — offset tek başına anlamsız
+// ══════════════════════════════════════════════════════════════════════════
+
+model IproPlc {
+  id    String  @id @default(cuid())
+  kod   String  @unique
+  ad    String
+  ip    String
+  rack  Int     @default(0)
+  slot  Int     @default(1)
+  aktif Boolean @default(true)
+
+  pinler IproPlcPin[]
+
+  @@map("ipro_plc")
+}
+
+model IproPlcPin {
+  id          String  @id @default(cuid())
+  kod         Int     @unique
+  plcId       String
+  plc         IproPlc @relation(fields: [plcId], references: [id])
+  inputPin    String
+  sayacAdresi Int
+  resetAdresi Int
+  durusAdresi Int
+  sayacTipi   String  @default("CTCounter")
+  aktif       Boolean @default(true)
+
+  tezgahId String?
+  tezgah   IproTezgah? @relation(fields: [tezgahId], references: [id])
+
+  @@unique([plcId, sayacAdresi])
+  @@index([tezgahId])
+  @@map("ipro_plc_pin")
+}
+
+model IproTezgah {
+  id              String  @id @default(cuid())
+  kod             String  @unique
+  ad              String
+  ifsWorkCenterNo String?
+  ifsResourceId   String? // IFS Resource; cogu kod=kod, 30 override farkli (KR kapilari, numerik, mukerrer markalama)
+  masGrupKodu     String?
+  masGrupAdi      String?
+  aktif           Boolean @default(true)
+
+  plcPinler   IproPlcPin[]
+  operatorler IproOperatorTezgah[]
+  sessionlar  IproOperatorSession[]
+  uretimKayit IproProductionLog[]
+  durusKayit  IproMachineDowntime[]
+  durusEsleme IproDurusTezgah[]
+  hurdaEsleme IproHurdaTezgah[]
+  kiosklar    IproKioskTezgah[]
+
+  @@index([ifsWorkCenterNo])
+  @@index([ifsResourceId])
+  @@map("ipro_tezgah")
+}
+
+model IproDurusTipi {
+  id        String  @id @default(cuid())
+  kod       String  @unique
+  ad        String
+  teepOrder Int?
+  aktif     Boolean @default(true)
+
+  sebepler IproDurusSebebi[]
+
+  @@map("ipro_durus_tipi")
+}
+
+model IproDurusSebebi {
+  id         String         @id @default(cuid())
+  kod        String         @unique
+  ad         String
+  erpKodu    String?
+  tipId      String?
+  tip        IproDurusTipi? @relation(fields: [tipId], references: [id])
+  bitisTipi  String
+  renkKodu   String?
+  temelSebep String?
+
+  planli                     Boolean @default(false)
+  uretimDisi                 Boolean @default(false)
+  setupDurusu                Boolean @default(false)
+  plcKilitle                 Boolean @default(false)
+  askiyaAl                   Boolean @default(false)
+  makineKaynakli             Boolean @default(false)
+  operatorKaynakli           Boolean @default(false)
+  yetkiliOnayGerekli         Boolean @default(false)
+  durusAktifkenIsBitirilemez Boolean @default(false)
+  uretimdeGosterilsin        Boolean @default(true)
+  aktif                      Boolean @default(true)
+
+  tezgahlar IproDurusTezgah[]
+  kayitlar  IproMachineDowntime[]
+
+  @@map("ipro_durus_sebebi")
+}
+
+model IproDurusTezgah {
+  id            String          @id @default(cuid())
+  durusSebebiId String
+  durusSebebi   IproDurusSebebi @relation(fields: [durusSebebiId], references: [id], onDelete: Cascade)
+  tezgahId      String
+  tezgah        IproTezgah      @relation(fields: [tezgahId], references: [id], onDelete: Cascade)
+  sikKullanilan Boolean         @default(false)
+
+  @@unique([durusSebebiId, tezgahId])
+  @@index([tezgahId, sikKullanilan])
+  @@map("ipro_durus_tezgah")
+}
+
+model IproHurdaSebebi {
+  id                 String  @id @default(cuid())
+  kod                String  @unique
+  ad                 String
+  erpKodu            String?
+  grupKodu           String?
+  grubu              String?
+  uretimHurdaRework  Boolean @default(false)
+  rework             Boolean @default(false)
+  hurda              Boolean @default(true)
+  bilesenHurdaRework Boolean @default(false)
+  oeeEtkiler         Boolean @default(true)
+  yorumZorunlu       Boolean @default(false)
+  sinyalsizGiris     Boolean @default(false)
+  aktif              Boolean @default(true)
+
+  tezgahlar IproHurdaTezgah[]
+
+  @@map("ipro_hurda_sebebi")
+}
+
+model IproHurdaTezgah {
+  id            String          @id @default(cuid())
+  hurdaSebebiId String
+  hurdaSebebi   IproHurdaSebebi @relation(fields: [hurdaSebebiId], references: [id], onDelete: Cascade)
+  tezgahId      String
+  tezgah        IproTezgah      @relation(fields: [tezgahId], references: [id], onDelete: Cascade)
+
+  @@unique([hurdaSebebiId, tezgahId])
+  @@map("ipro_hurda_tezgah")
+}
+
+model IproOperatorTezgah {
+  id          String     @id @default(cuid())
+  personnelId String
+  tezgahId    String
+  tezgah      IproTezgah @relation(fields: [tezgahId], references: [id])
+  kaynak      String     @default("MAS_IMPORT")
+  aktif       Boolean    @default(true)
+
+  @@unique([personnelId, tezgahId])
+  @@index([personnelId])
+  @@map("ipro_operator_tezgah")
+}
+
+enum IproAuthMethod {
+  LIST // operatör listeden seçilir (varsayılan)
+  CARD // RFID kart — C fazı; kart→sicil eşleme tablosu HENÜZ YOK (format elde görülünce)
+}
+
+model IproOperatorSession {
+  id          String         @id @default(cuid())
+  // personnelId bilinçli olarak çıplak String (FK yok) — IPRO bloğu geneliyle tutarlı.
+  // Gerekçe: üretim oturumu kalıcı denetim kaydıdır, Personnel satırından bağımsız
+  // yaşamalı. FK CASCADE geçmişi siler, RESTRICT İK/offboarding silmeyi bloklar —
+  // ikisi de istenmiyor. Bütünlük identify anında uygulama katmanında sağlanır.
+  personnelId String
+  tezgahId    String
+  tezgah      IproTezgah     @relation(fields: [tezgahId], references: [id])
+  authMethod  IproAuthMethod @default(LIST)
+  girisAt     DateTime       @default(now())
+  cikisAt     DateTime?
+
+  productionLogs IproProductionLog[]
+
+  // ACTIVE = cikisAt IS NULL. Ayrı status kolonu YOK (tek doğruluk kaynağı).
+  // "Tek ACTIVE per (personnelId, tezgahId)" — Prisma @@unique partial ifade edemez,
+  // migration'da RAW partial unique index ile kuruluyor.
+  @@index([tezgahId, cikisAt])
+  @@index([personnelId, cikisAt])
+  @@map("ipro_operator_session")
+}
+
+enum IproIsDurum {
+  ACIK
+  KAPALI
+}
+
+model IproProductionLog {
+  id                 String              @id @default(cuid())
+  tezgahId           String
+  tezgah             IproTezgah          @relation(fields: [tezgahId], references: [id])
+  sessionId          String
+  // onDelete: Restrict — oturum silinirse üretim kaydı korunur (denetim izi).
+  session            IproOperatorSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  personnelId        String
+  ifsOperationId     String?
+  // ifsOrderNo / ifsOperationNo nullable KALIR (geçmiş kayıtlar için NOT NULL yapılamaz).
+  // Açık iş satırında ikisinin dolu olması "başla" endpoint'inde (uygulama katmanı) garanti edilir.
+  ifsOrderNo         String?
+  ifsOperationNo     Int?
+  qtyComplete        Int                 @default(0)
+  qtyScrap           Int                 @default(0)
+  hurdaSebebiKod     String?
+  plcSayacBaslangic  Int?
+  plcSayacBitis      Int?
+  // İş yaşam döngüsü: default KAPALI — mevcut/eski kayıtlar bitmiş sayılır.
+  // "başla" endpoint'i ACIK üretir; "bitir"/"durdur" KAPALI'ya çeker.
+  durum              IproIsDurum         @default(KAPALI)
+  baslatildiAt       DateTime? // "başla" anı; açık iş için dolu
+  bitirildiAt        DateTime? // "bitir"/"durdur" anı; kapanınca dolu
+  tamamlandi         Boolean             @default(true) // true = tam bitirildi; false = durduruldu/eksik. Eski kayıtlar true.
+  // IFS geri-yazım — çift bayrak. reportQuantityComplete (iyi) + reportQuantityScrap (hurda)
+  // AYRI action'lar; biri başarıp biri başarısız olabilir → ayrı izlenir.
+  // Eski ifsYazildi/ifsHata şimdilik dokunulmadan duruyor (ileride temizlenir — ayrı iş).
+  ifsCompleteYazildi Boolean             @default(false) // iyi (qtyComplete) IFS'e gitti mi
+  ifsScrapYazildi    Boolean             @default(false) // hurda (qtyScrap) IFS'e gitti mi
+  ifsCompleteHata    String? // iyi yazım hatası
+  ifsScrapHata       String? // hurda yazım hatası
+  ifsYazildi         Boolean             @default(false)
+  ifsHata            String?
+  createdAt          DateTime            @default(now())
+
+  @@index([tezgahId, createdAt])
+  @@index([ifsYazildi])
+  @@index([ifsCompleteYazildi])
+  @@index([sessionId])
+  @@index([personnelId, ifsOrderNo, ifsOperationNo])
+  // Partial UNIQUE (açık iş tekilliği) Prisma @@unique ile ifade edilemez —
+  // migration.sql'e ELLE eklenir: WHERE durum = 'ACIK'.
+  @@map("ipro_production_log")
+}
+
+model IproMachineDowntime {
+  id            String           @id @default(cuid())
+  tezgahId      String
+  tezgah        IproTezgah       @relation(fields: [tezgahId], references: [id])
+  durusSebebiId String?
+  durusSebebi   IproDurusSebebi? @relation(fields: [durusSebebiId], references: [id])
+  personnelId   String?
+  baslangic     DateTime
+  bitis         DateTime?
+  kaynak        String           @default("PLC")
+  yorum         String?
+
+  @@index([tezgahId, bitis])
+  @@map("ipro_machine_downtime")
+}
+
+/// IPRO kiosk cihazi. AD'den BAGIMSIZ; kendi kod+sifresiyle giren fiziksel terminal.
+/// Operator BURAYA girmez — CIHAZ girer, operator listeden secilir (bkz. identifyOperator).
+///
+/// UYARI: Workstation modelinin "Kiosk/Workstation Faz 1" basligi YANILTICI.
+/// Gercek kiosk yolu BU model. Workstation (1 satir) ile IproTezgah (203 satir)
+/// ayri ve birbirine bagli DEGIL; Workstation'in akibeti AYRI bir is.
+model IproKiosk {
+  id        String @id @default(cuid())
+  kod       String @unique // login kimligi, orn "KIOSK-CN01"
+  ad        String // gorunen cihaz adi, orn "CNC Hatti Terminal 1"
+  sifreHash String // bcrypt — pin-utils.hashPin deseni (saltRounds=10). PIN DEGIL: validatePinStrength UYGULANMAZ.
+
+  // Oturum acacak User. bluecollar deseni: sentetik email, employeeId NULL
+  // -> /api/bluecollar-users GET (employeeId: { not: null }) kiosk'u LISTELEMEZ.
+  // Duz cuid id (ad_ degil) -> ldap-sync "guvenlik kemeri" bu satira dokunmaz.
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  aktif      Boolean   @default(true)
+  sonGirisAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tezgahlar IproKioskTezgah[]
+
+  @@index([aktif])
+  @@map("ipro_kiosk")
+}
+
+enum IproIfsEslesmeTipi {
+  ORG // Personnel.bolum → IFS OrgCode (ör. "Mekanik Montaj" → 202)
+  POZISYON // Personnel.gorev → IFS PosCode (ör. "MONTAJ OPERATÖRÜ" → 100151)
+}
+
+/// ILERIHub serbest-metin değeri ↔ IFS kodu eşlemesi (personel senkronu için).
+///
+/// TEK TABLO + tip ayrımı: org ve pozisyon eşlemesinin şekli birebir aynı (deger→kod);
+/// ayrı iki model yalnız yapı tekrarı olurdu.
+///
+/// Senkron önce İSİM EŞLEŞMESİ dener (normalize: büyük/küçük + Türkçe karakter) —
+/// prod ölçümünde gorev %97, bolum %77 tutuyor. Tutmayanlar buraya elle girilir
+/// (ör. "PAKETLEME & DİREKSİYON" → 208). Eşleşmeyen operatör ATLANIR, yarım kayıt açılmaz.
+model IproIfsEslesme {
+  id            String             @id @default(cuid())
+  tip           IproIfsEslesmeTipi
+  ilerihubDeger String // Personnel.bolum veya Personnel.gorev — HAM değer (normalize kodda)
+  ifsKod        String // IFS OrgCode veya PosCode
+  aciklama      String?
+  aktif         Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@unique([tip, ilerihubDeger])
+  @@index([tip, aktif])
+  @@map("ipro_ifs_eslesme")
+}
+
+/// Kiosk <-> Tezgah cokdan-coga eslemesi (explicit join; PersonnelWorkstation deseni).
+/// Cihaz hangi tezgahlara bagliysa kiosk ekraninda O tezgahlar gorunur.
+model IproKioskTezgah {
+  id        String   @id @default(cuid())
+  kioskId   String
+  tezgahId  String
+  createdAt DateTime @default(now())
+
+  kiosk  IproKiosk  @relation(fields: [kioskId], references: [id], onDelete: Cascade)
+  tezgah IproTezgah @relation(fields: [tezgahId], references: [id], onDelete: Cascade)
+
+  @@unique([kioskId, tezgahId])
+  @@index([tezgahId])
+  @@map("ipro_kiosk_tezgah")
 }
 
 enum EnvanterUrunTipi {

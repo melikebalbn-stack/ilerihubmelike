@@ -179,6 +179,22 @@ export async function POST(
       if (!fifo.length) {
         return NextResponse.json({ ok: false, yol, error: 'FIFO kaynağı bulunamadı' }, { status: 502 })
       }
+      // Çok lot: istenen miktar tek stok satırına sığmıyor. ÖNCEDEN kod sessizce
+      // fifo[0]'a daraltıp tüm miktarı tek lota rezerve etmeye çalışıyordu; ilk lot
+      // yetmediğinde IFS reddediyor ve kullanıcı sebebini anlamıyordu.
+      // Artık rezerv DENENMEZ — kırılım kullanıcıya döner, lotu o seçer (sapma yolu).
+      if (fifo.length > 1) {
+        return NextResponse.json(
+          {
+            ok: false,
+            yol,
+            hata: 'COK_LOT',
+            fifo,
+            error: `Bu miktar ${fifo.length} lota yayılıyor — hangi lottan toplanacağını seçin`,
+          },
+          { status: 409 },
+        )
+      }
       rezervKimlik = fifo[0].kimlik
       const rez = await modifyManuelRezerv(satir, rezervKimlik, miktar)
       if (!rez.ok) {

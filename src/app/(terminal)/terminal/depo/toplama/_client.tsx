@@ -40,6 +40,9 @@ const SEBEPLER = [
   { key: 'Diğer', Icon: HelpCircle },
 ] as const
 
+// Çok-lot seçiminde sapma sebebi otomatik bu değerle gider (sunucu log'una `sebep` alanından düşer).
+const COK_LOT_SEBEP = 'Çok lot (COK_LOT)'
+
 const EPS = 1e-9
 const BEKLEYEN_BOYUT = 25
 
@@ -97,6 +100,8 @@ export function MalzemeToplamaClient() {
   const [sapmaLoading, setSapmaLoading] = useState(false)
   const [sapmaSecili, setSapmaSecili] = useState<FifoKaynak | null>(null)
   const [sapmaSebep, setSapmaSebep] = useState<string | null>(null)
+  // Çok-lot modu: panel aynı, ama sebep sorulmaz (sebep otomatik) ve başlık değişir.
+  const [cokLotMod, setCokLotMod] = useState(false)
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [errorKey, setErrorKey] = useState(0)
@@ -333,6 +338,7 @@ export function MalzemeToplamaClient() {
     setSapmaAcik(true)
     setSapmaSecili(null)
     setSapmaSebep(null)
+    setCokLotMod(false)
     setSapmaLoading(true)
     try {
       const res = await fetch(`/api/depo/parca/${encodeURIComponent(secilen.partNo)}/stok`)
@@ -514,12 +520,14 @@ export function MalzemeToplamaClient() {
     setSapmaAcik(false)
     setSapmaSecili(null)
     setSapmaSebep(null)
+    setCokLotMod(false)
     setStep('TEYIT')
   }
   const sapmaKapat = () => {
     setSapmaAcik(false)
     setSapmaSecili(null)
     setSapmaSebep(null)
+    setCokLotMod(false)
     setErrorMsg(null)
   }
   const teyitKapat = () => {
@@ -532,6 +540,7 @@ export function MalzemeToplamaClient() {
     setSapmaAcik(false)
     setSapmaSecili(null)
     setSapmaSebep(null)
+    setCokLotMod(false)
   }
   const geri = () => {
     if (step === 'TEYIT' && sapmaAcik) return sapmaKapat()
@@ -595,6 +604,17 @@ export function MalzemeToplamaClient() {
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.ok) {
+        // Çok lot (409): sunucu rezerv DENEMEDİ, kırılımı geri verdi. Hata gösterme —
+        // mevcut sapma panelini "çok lot" modunda aç, kullanıcı lotu seçsin.
+        const cokLot = (data?.fifo ?? []) as FifoKaynak[]
+        if (data?.hata === 'COK_LOT' && cokLot.length > 0) {
+          setSapmaListe(cokLot)
+          setSapmaSecili(cokLot[0]) // FIFO önerisi varsayılan seçili
+          setSapmaSebep(COK_LOT_SEBEP) // sebep sorulmaz, otomatik
+          setCokLotMod(true)
+          setSapmaAcik(true)
+          return
+        }
         showError(data?.error ?? 'Çıkış başarısız')
         return
       }
@@ -640,6 +660,7 @@ export function MalzemeToplamaClient() {
       setSapmaAcik(false)
       setSapmaSecili(null)
       setSapmaSebep(null)
+      setCokLotMod(false)
       isEmriOkut(baslik.orderNo)
     }, 1600)
     return () => clearTimeout(t)
@@ -1055,13 +1076,24 @@ export function MalzemeToplamaClient() {
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="truncate text-base font-semibold">
-                {teyitMiktar || '0'} {secilen.birim} ·{' '}
-                <span className="font-normal text-muted-foreground">farklı yerden</span>
+                {cokLotMod ? (
+                  <>Çok lot — lot seçin</>
+                ) : (
+                  <>
+                    {teyitMiktar || '0'} {secilen.birim} ·{' '}
+                    <span className="font-normal text-muted-foreground">farklı yerden</span>
+                  </>
+                )}
               </div>
               <div className="truncate text-xs text-muted-foreground">
                 {secilen.partNo}
                 {secilen.partAdi ? ` · ${secilen.partAdi}` : ''}
               </div>
+              {cokLotMod && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Bu parça birden fazla lotta bulunuyor. Hangi lottan toplanacağını seçin.
+                </div>
+              )}
             </div>
           </div>
 
@@ -1121,7 +1153,8 @@ export function MalzemeToplamaClient() {
             )}
           </div>
 
-          {/* b) Zorunlu sebep */}
+          {/* b) Zorunlu sebep — çok-lot modunda sorulmaz (sebep otomatik COK_LOT). */}
+          {!cokLotMod && (
           <div className="flex flex-col gap-1">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sebep (zorunlu)</div>
             <div className="grid grid-cols-2 gap-2">
@@ -1145,6 +1178,7 @@ export function MalzemeToplamaClient() {
               })}
             </div>
           </div>
+          )}
 
           {/* Raf-mevcut aşımı uyarısı */}
           {sapmaMiktarAsim && (
@@ -1264,6 +1298,12 @@ function KalemKart({ s, durum, sonCikis, vurgu, onSelect }: { s: ToplamaSatirDet
           {s.kaynakTipi === 'REZERV' && (
             <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
               REZERVLİ
+            </span>
+          )}
+          {/* Çok lot: kalan miktar tek stok satırına sığmıyor → toplamada lot sorulacak. */}
+          {s.fifo.length > 1 && (
+            <span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              {s.fifo.length} LOTTAN
             </span>
           )}
         </span>

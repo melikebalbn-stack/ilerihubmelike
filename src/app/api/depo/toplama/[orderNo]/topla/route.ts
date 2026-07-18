@@ -58,7 +58,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ orderNo: string }> },
 ) {
-  const { userId, error } = await requirePermission('admin.system.manage')
+  const { userId, error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
 
   const { orderNo: ham } = await params

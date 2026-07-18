@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 // GET /api/depo/toplama-bekleyen?sayfa=0&boyut=25&q= → açık kalemli Released/Started emirler.
 // Guard: admin.system.manage. SADECE OKUMA. { ok, isler, toplam }.
 export async function GET(request: Request) {
-  const { error } = await requirePermission('admin.system.manage')
+  const { error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
 
   const sp = new URL(request.url).searchParams

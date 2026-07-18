@@ -31,7 +31,7 @@ const BodySchema = z.object({
 // anlamlı hata döner (kaç barkod üretildiği + kalıcı oldukları bildirilir, ID'ler log'a yazılır).
 // originPackSize v1'de sabit 1 (mevcut stok 1'lik).
 export async function POST(request: Request) {
-  const { session, error } = await requirePermission('admin.system.manage')
+  const { session, error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
 
   let payload: unknown

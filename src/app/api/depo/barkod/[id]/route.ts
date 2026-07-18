@@ -11,7 +11,7 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { error } = await requirePermission('admin.system.manage')
+  const { error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
 
   const { id: ham } = await params

@@ -38,7 +38,7 @@ const sameKeys = (a: StokKimlik, b: StokKimlik) =>
 
 // POST /api/depo/stok-tasima → stok taşı (server-side taze doğrulamalı). Guard: admin.system.manage.
 export async function POST(request: Request) {
-  const { error } = await requirePermission('admin.system.manage')
+  const { error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
 
   let payload: unknown

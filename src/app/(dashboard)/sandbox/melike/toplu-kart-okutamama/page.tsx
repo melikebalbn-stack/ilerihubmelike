@@ -101,10 +101,10 @@ export default function TopluKartOkutamamaPage() {
   }, [accessLevel])
 
   function updateTeamDraft(personnelId: string, field: "tarih" | "giris" | "cikis", value: string) {
-    setTeamDrafts((prev) => ({
-      ...prev,
-      [personnelId]: { tarih: "", giris: "", cikis: "", ...prev[personnelId], [field]: value },
-    }))
+    setTeamDrafts((prev) => {
+      const base = prev[personnelId] ?? { tarih: "", giris: "", cikis: "" }
+      return { ...prev, [personnelId]: { ...base, [field]: value } }
+    })
   }
 
   async function handleTeamSave(personnel: PickedPersonnel) {

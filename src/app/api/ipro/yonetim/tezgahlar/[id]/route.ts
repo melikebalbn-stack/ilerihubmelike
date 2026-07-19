@@ -7,7 +7,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // PATCH /api/ipro/yonetim/tezgahlar/{id} — ad / IFS alanları / aktif.
-// kod DEĞİŞTİRİLEMEZ (MAS kimliği), ekleme-silme yok.
+// kod DEĞİŞTİRİLEMEZ (IFS kaynak kimliği), ekleme IFS hizalama script'i ile.
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { error } = await requirePermission('ipro.admin')
   if (error) return error
@@ -15,7 +15,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const body = (await request.json()) as TezgahGuncelle & { kod?: string }
     if (body.kod !== undefined) {
-      return NextResponse.json({ ok: false, error: 'Tezgah kodu değiştirilemez (MAS kimliği)' }, { status: 400 })
+      return NextResponse.json({ ok: false, error: 'Tezgah kodu değiştirilemez (IFS kaynak kimliği)' }, { status: 400 })
     }
     const data: TezgahGuncelle = {}
     if (body.ad !== undefined) data.ad = String(body.ad).trim()

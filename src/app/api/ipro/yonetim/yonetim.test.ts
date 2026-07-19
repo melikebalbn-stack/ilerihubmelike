@@ -122,7 +122,7 @@ describe('tezgahlar', () => {
     expect(d.tezgahlar[0]).toHaveProperty('operatorSayisi')
   })
 
-  it('kod değiştirme DENEMESİ 400 ile reddedilir (MAS kimliği)', async () => {
+  it('kod değiştirme DENEMESİ 400 ile reddedilir (IFS kaynak kimliği)', async () => {
     const res = await tezgahPATCH(req({ kod: 'YENI-KOD' }), ctx(tezgahId))
     expect(res.status).toBe(400)
     const d = await res.json()

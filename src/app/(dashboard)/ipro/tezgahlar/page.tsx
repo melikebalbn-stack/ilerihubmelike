@@ -22,7 +22,7 @@ export default async function IproTezgahlarPage() {
           Tezgahlar
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          MAS iş merkezleri. Kod ve liste MAS import’undan gelir; buradan ad, IFS eşleşme alanları ve aktiflik yönetilir.
+          İş merkezleri. Kaynak IFS; yeni tezgah IFS’te açılır ve hizalama script’i ile eklenir. Buradan ad, IFS eşleşme alanları ve aktiflik yönetilir.
         </p>
       </div>
       <TezgahlarClient canEdit={canEdit} />

@@ -199,7 +199,7 @@ function DuzenleDialog({
         <DialogHeader>
           <DialogTitle>Tezgah düzenle — {tezgah?.kod}</DialogTitle>
           <DialogDescription>
-            Tezgah kodu MAS kimliğidir, değiştirilemez. Tezgah ekleme/silme MAS import’u ile yapılır.
+            Tezgah kodu IFS kaynak kimliğidir, değiştirilemez. Ekleme IFS hizalama script’i ile yapılır.
           </DialogDescription>
         </DialogHeader>
 

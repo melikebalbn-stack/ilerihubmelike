@@ -22,9 +22,18 @@ async function checkAccess(session: any) {
 // GET - Organizasyon birimleri listesi
 export async function GET(request: NextRequest) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (org chart herkese açık)
-    const { error } = await requireSession();
+    // PR-Y2.5-strategic-hr: requireSession (org chart herkese açık, finansal alanlar hasFullAccess'e kısıtlı)
+    const { session, error } = await requireSession();
     if (error) return error;
+    const { hasFullAccess } = await checkAccess(session);
+    // Beyaz liste projeksiyon — costCenter/approvedHeadcount/managerEmail sadece tam yetkiliye
+    const orgUnitFields = {
+      id: true, code: true, name: true, shortName: true, description: true,
+      parentId: true, level: true, sortOrder: true, unitType: true,
+      managerId: true, managerName: true, managerPhoto: true, location: true,
+      headcount: true, isActive: true, createdAt: true, updatedAt: true,
+      ...(hasFullAccess ? { costCenter: true, approvedHeadcount: true, managerEmail: true } : {}),
+    };
 
     // Org chart herkese açık olabilir
     const { searchParams } = new URL(request.url);
@@ -57,33 +66,24 @@ export async function GET(request: NextRequest) {
         { sortOrder: "asc" },
         { name: "asc" }
       ],
-      include: {
+      select: {
+        ...orgUnitFields,
+        _count: { select: { employees: true } },
         children: {
           where: { isActive: true },
-          orderBy: [
-            { sortOrder: "asc" },
-            { name: "asc" }
-          ],
-          include: {
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          select: {
+            ...orgUnitFields,
+            _count: { select: { employees: true } },
             children: {
               where: { isActive: true },
-              orderBy: [
-                { sortOrder: "asc" },
-                { name: "asc" }
-              ],
-              include: {
-                _count: {
-                  select: { employees: true }
-                }
+              orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+              select: {
+                ...orgUnitFields,
+                _count: { select: { employees: true } }
               }
-            },
-            _count: {
-              select: { employees: true }
             }
           }
-        },
-        _count: {
-          select: { employees: true }
         }
       }
     });

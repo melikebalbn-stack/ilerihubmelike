@@ -6,9 +6,27 @@ import { requireSession } from "@/lib/auth/require-session";
 // GET - Organizasyon çalışanları listesi
 export async function GET(request: NextRequest) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (read-only liste)
-    const { error } = await requireSession();
+    // PR-Y2.5-strategic-hr: requireSession (read-only; PII alanları hasFullAccess'e kısıtlı)
+    const { session, error } = await requireSession();
     if (error) return error;
+    const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"];
+    const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"];
+    const userRole = session?.user?.role;
+    const userDept = (session?.user?.department || "").toLowerCase();
+    const hasFullAccess = fullAccessRoles.includes(userRole) || hrDepartments.some(d => userDept.includes(d));
+    // Beyaz liste — email/phone/hireDate/title/userId/lastSyncedAt sadece tam yetkiliye
+    const employeeFields = {
+      id: true, displayName: true, positionTitle: true, positionLevel: true,
+      orgUnitId: true, reportsToId: true, employmentStatus: true,
+      workLocation: true, officeLocation: true, photoUrl: true, isActive: true,
+      createdAt: true, updatedAt: true,
+      ...(hasFullAccess ? { email: true, phone: true, hireDate: true, title: true, userId: true, lastSyncedAt: true } : {}),
+    };
+    // Nested (yönetici/astlar) — email/title bypass'ını da kapat
+    const relEmployeeFields = {
+      id: true, displayName: true,
+      ...(hasFullAccess ? { email: true, title: true } : {}),
+    };
 
     const { searchParams } = new URL(request.url);
     const orgUnitId = searchParams.get("orgUnitId");
@@ -43,36 +61,14 @@ export async function GET(request: NextRequest) {
       orderBy: [
         { displayName: "asc" }
       ],
-      include: {
+      select: {
+        ...employeeFields,
         orgUnit: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            unitType: true
-          }
+          select: { id: true, code: true, name: true, unitType: true }
         },
-        reportsTo: {
-          select: {
-            id: true,
-            displayName: true,
-            email: true,
-            title: true
-          }
-        },
-        directReports: {
-          select: {
-            id: true,
-            displayName: true,
-            email: true,
-            title: true
-          }
-        },
-        _count: {
-          select: {
-            directReports: true
-          }
-        }
+        reportsTo: { select: relEmployeeFields },
+        directReports: { select: relEmployeeFields },
+        _count: { select: { directReports: true } }
       }
     });
 

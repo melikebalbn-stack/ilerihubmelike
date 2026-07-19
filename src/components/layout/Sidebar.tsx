@@ -27,6 +27,8 @@ import {
   MessageSquare,
   BarChart3,
   Factory,
+  MonitorSmartphone,
+  Link2,
   Shield,
   FileCheck,
   AlertTriangle,
@@ -95,6 +97,17 @@ const teknikMenuItems = [
   { name: "Tezgah Bakım", icon: Factory, href: "/maintenance", roles: ["*"] },
   { name: "Arşiv", icon: Archive, href: "/arsiv/koli", roles: ["*"] },
   { name: "IT Raporları", icon: BarChart3, href: "/it-reports", roles: ["IT_MANAGER", "ADMIN"] },
+]
+
+// IPRO — MAS üretim takip modülü yönetimi (tanımlar + kiosk cihazları)
+// Sidebar rol tabanlı; permission (ipro.view/ipro.admin) sayfa ve API guard'larında.
+// Roller ipro.view eşlemesiyle hizalı: super-admin/admin/it-admin/departman-muduru.
+const iproMenuItems = [
+  { name: "Tezgahlar", icon: Factory, href: "/ipro/tezgahlar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
+  { name: "Operatör Eşlemeleri", icon: Users, href: "/ipro/operator-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
+  { name: "Hurda / Duruş Sebepleri", icon: ClipboardList, href: "/ipro/sebepler", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
+  { name: "Kiosk Cihazları", icon: MonitorSmartphone, href: "/ipro/kiosklar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
+  { name: "IFS Eşlemeleri", icon: Link2, href: "/ipro/ifs-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
 ]
 
 // Stratejik IK alt menüsü
@@ -201,6 +214,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const [teknikOpen, setTeknikOpen] = useState(false)
+  const [iproOpen, setIproOpen] = useState(false)
   const [qdmsOpen, setQdmsOpen] = useState(false)
   const [kaliteYonetimOpen, setKaliteYonetimOpen] = useState(false)
   const [ikOpen, setIkOpen] = useState(false)
@@ -218,6 +232,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       setKaliteYonetimOpen(true)
       setAuditsOpen(true)
       setIso27001Open(true)
+    }
+    if (pathname.startsWith('/ipro')) {
+      setIproOpen(true)
     }
     if (pathname.startsWith('/qdms')) {
       setQdmsOpen(true)
@@ -318,6 +335,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const filteredMainItems = filterItems(mainMenuItems)
   const filteredTeknikItems = filterItems(teknikMenuItems)
+  const filteredIproItems = filterItems(iproMenuItems)
   const filteredQdmsItems = filterItems(qdmsMenuItems)
   const filteredKaliteItems = filterItems(kaliteMenuItems)
   const filteredAuditsItems = filterItems(auditsMenuItems)
@@ -339,6 +357,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isTeknikActive = teknikMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname === '/it-reports' || pathname.startsWith('/it-reports/')
+
+  // IPRO menüsünde aktif sayfa var mı
+  const isIproActive = pathname === '/ipro' || pathname.startsWith('/ipro/')
 
   // "Kalite Yönetim" alt-grubu (KYS + Denetimler/ISO 27001) aktif mi
   const isKaliteYonetimActive = qdmsMenuItems.some(item =>
@@ -727,6 +748,34 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {teknikOpen && (
               <div className="space-y-1 ml-4">
                 {filteredTeknikItems.map(item => renderMenuItem(item))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* IPRO — Üretim Takip Yönetimi */}
+        {filteredIproItems.length > 0 && (
+          <>
+            <button
+              onClick={() => setIproOpen(!iproOpen)}
+              className={cn(
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                isIproActive
+                  ? "text-teal-300"
+                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+              )}
+            >
+              <Factory className="h-5 w-5" />
+              <span className="flex-1 text-left">IPRO Üretim Takip</span>
+              {iproOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+            {iproOpen && (
+              <div className="space-y-1 ml-4">
+                {filteredIproItems.map(item => renderMenuItem(item))}
               </div>
             )}
           </>

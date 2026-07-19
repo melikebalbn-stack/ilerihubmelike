@@ -114,6 +114,10 @@ export const PERMISSION_KEYS = {
 
   // === DEPO (El terminali) ===
   DEPO_TERMINAL_USE: 'depo.terminal.use',
+
+  // === IPRO (MAS üretim takip — tanım ve kiosk yönetimi) ===
+  IPRO_VIEW: 'ipro.view',
+  IPRO_ADMIN: 'ipro.admin',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -138,6 +142,7 @@ export const MODULE_LABELS: Record<string, string> = {
   recruitment: 'İşe Alım',
   uretim: 'Üretim',
   depo: 'Depo',
+  ipro: 'IPRO Üretim Takip',
 };
 
 /**
@@ -224,6 +229,9 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'envanter.view':  'Envanter görüntüleme (ürün/stok/zimmet/sezon/satınalma)',
   'envanter.admin': 'Envanter tam yönetim (ürün/zimmet/stok/satınalma/tanım)',
+
+  'ipro.view': 'IPRO tanımlarını görüntüleme (tezgah/operatör/sebep/kiosk/IFS eşleme)',
+  'ipro.admin': 'IPRO tam yönetim — tanım düzenleme + kiosk cihazı oluşturma (KIOSK rollü kullanıcı hesabı üretir)',
 
   'uretim.bildirim': 'Üretim terminali — iş emri operasyonu bildirimi (IFS shop-floor)',
   'uretim.tezgah.manage': 'Tezgah tanımı ve personel atama',

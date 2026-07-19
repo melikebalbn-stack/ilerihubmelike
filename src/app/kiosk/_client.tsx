@@ -66,13 +66,19 @@ function BigButton({
 }
 
 export function KioskClient() {
-  const { status } = useSession()
+  const { data: session, status } = useSession()
 
   if (status === 'loading') {
     return <Merkez>Yükleniyor…</Merkez>
   }
   if (status !== 'authenticated') {
     return <KioskLogin />
+  }
+  // Oturum var ama KIOSK rolü DEĞİL (ör. beyaz yaka kendi hesabıyla girmiş).
+  // Rol kontrolü olmadan akış açılıyor, ardından her API çağrısı requireKiosk'ta
+  // 403 alıyordu → operatör "ekran geldi ama hiçbir şey yüklenmiyor" görüyordu.
+  if (session?.user?.role !== 'KIOSK') {
+    return <KioskLogin yabanciOturum={session?.user?.email ?? null} />
   }
   return <KioskAkis />
 }
@@ -82,7 +88,9 @@ function Merkez({ children }: { children: React.ReactNode }) {
 }
 
 // ── Cihaz login ──
-function KioskLogin() {
+// yabanciOturum: KIOSK olmayan bir oturum açıksa o hesabın e-postası; uyarı +
+// çıkış butonu gösterilir. null ise sade giriş ekranı.
+function KioskLogin({ yabanciOturum = null }: { yabanciOturum?: string | null }) {
   const [kod, setKod] = useState('')
   const [password, setPassword] = useState('')
   const [hata, setHata] = useState<string | null>(null)
@@ -101,6 +109,25 @@ function KioskLogin() {
       <div className="w-full max-w-md space-y-5 rounded-2xl bg-slate-900 p-8">
         <h1 className="text-center text-4xl font-bold text-[#4a90c2]">IPRO Kiosk</h1>
         <p className="text-center text-lg text-slate-400">Üretim Terminali — Cihaz Girişi</p>
+
+        {yabanciOturum && (
+          <div className="space-y-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-5">
+            <p className="text-center text-xl text-amber-200">
+              Bu cihaz için kiosk hesabıyla giriş yapın.
+            </p>
+            <p className="text-center text-base text-amber-200/70">
+              Şu an açık oturum: {yabanciOturum}
+            </p>
+            <BigButton
+              variant="ghost"
+              onClick={() => signOut({ callbackUrl: '/kiosk' })}
+              className="w-full"
+            >
+              Oturumu Kapat
+            </BigButton>
+          </div>
+        )}
+
         <input
           value={kod}
           onChange={(e) => setKod(e.target.value)}
@@ -143,6 +170,16 @@ function KioskAkis() {
   }, [])
 
   const geri = useCallback(() => setHata(null), [])
+
+  // Adım değiştiren HER gezinme hatayı da temizler. Düz setAdim kullanılırsa
+  // önceki adımın hata banner'ı yeni ekranda asılı kalıyor (ör. iş listesi 503
+  // aldıktan sonra geri dönünce "Tezgah Seç" başlığının üstünde duruyordu).
+  // İstisna: hatayı bilerek gösterip adım değiştiren yerler (503 yolu) —
+  // orada setHata + setAdim sırası korunur.
+  const adimGec = useCallback((a: Adim) => {
+    setHata(null)
+    setAdim(a)
+  }, [])
 
   // Tezgah seç → operatörleri getir
   async function tezgahSec(t: Tezgah) {
@@ -227,7 +264,7 @@ function KioskAkis() {
     }
     setOperator(null)
     setAktifIs(null)
-    setAdim('tezgah')
+    adimGec('tezgah')
   }
 
   const ustBar = (
@@ -246,8 +283,9 @@ function KioskAkis() {
     <div className="flex h-full flex-col">
       {ustBar}
       {hata && (
-        <div className="mx-6 mt-4 rounded-xl bg-red-900/60 px-5 py-4 text-center text-2xl text-red-200" onClick={geri}>
-          {hata}
+        <div className="mx-6 mt-4 rounded-xl bg-red-900/60 px-5 py-4 text-center text-red-200" onClick={geri}>
+          <p className="text-2xl">{hata}</p>
+          <p className="mt-1 text-base text-red-300/60">kapatmak için dokun</p>
         </div>
       )}
       <div className="flex-1 overflow-y-auto p-6">
@@ -265,7 +303,7 @@ function KioskAkis() {
         )}
 
         {!yukleniyor && adim === 'operator' && (
-          <Secim baslik="Operatör Seç" geriye={() => setAdim('tezgah')}>
+          <Secim baslik="Operatör Seç" geriye={() => adimGec('tezgah')}>
             {operatorler.length === 0 && <p className="text-2xl text-slate-500">Bu tezgaha bağlı operatör yok.</p>}
             {operatorler.map((o) => (
               <SecimKart key={o.id} onClick={() => operatorSec(o)}>
@@ -296,7 +334,7 @@ function KioskAkis() {
         {!yukleniyor && adim === 'calisiyor' && aktifIs && (
           <Calisiyor
             aktifIs={aktifIs}
-            onBitir={() => setAdim('bitir')}
+            onBitir={() => adimGec('bitir')}
             onYeniIs={isListesiYukle}
           />
         )}
@@ -306,8 +344,8 @@ function KioskAkis() {
             tezgahId={tezgah.id}
             personnelId={operator.id}
             aktifIs={aktifIs}
-            onIptal={() => setAdim('calisiyor')}
-            onTamam={() => setAdim('ozet')}
+            onIptal={() => adimGec('calisiyor')}
+            onTamam={() => adimGec('ozet')}
             onHata={setHata}
           />
         )}

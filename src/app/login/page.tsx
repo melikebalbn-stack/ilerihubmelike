@@ -249,6 +249,18 @@ function LoginForm() {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Atölye terminali ayrı bir giriş yüzeyi: cihaz kodu + şifre ile
+            signIn('kiosk'). Sekme olarak eklenmedi — cihaz kimlik bilgisi
+            personelin gördüğü forma karışmasın, tek kod yolu kalsın. */}
+        <div className="mt-6 border-t pt-4 text-center">
+          <a
+            href="/kiosk"
+            className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Üretim Terminali →
+          </a>
+        </div>
       </CardContent>
     </Card>
   );

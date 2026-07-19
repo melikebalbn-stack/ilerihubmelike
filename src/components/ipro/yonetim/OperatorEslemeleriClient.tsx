@@ -1,19 +1,28 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Trash2, UserX } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus, Search, Trash2, UserX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, SiralanabilirTablo, type SiralanabilirKolon } from './ortak'
 
-type Tezgah = { id: string; kod: string; ad: string; aktif: boolean; operatorSayisi: number }
+type Tezgah = {
+  id: string
+  kod: string
+  ad: string
+  aktif: boolean
+  operatorSayisi: number
+  masGrupAdi: string | null
+}
 type Esleme = {
   id: string
   personnelId: string
@@ -166,20 +175,9 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[260px] flex-1 space-y-1.5">
+        <div className="min-w-[320px] flex-1 space-y-1.5">
           <label className="text-sm font-medium">Tezgah</label>
-          <Select value={tezgahId} onValueChange={setTezgahId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Tezgah seçin…" />
-            </SelectTrigger>
-            <SelectContent className="max-h-80">
-              {tezgahlar.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.kod} — {t.ad} ({t.operatorSayisi})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <TezgahSecici tezgahlar={tezgahlar} secili={secili ?? null} onSec={setTezgahId} />
         </div>
         {tezgahId && canEdit && (
           <Button onClick={() => setEkleAcik((a) => !a)}>
@@ -330,5 +328,86 @@ function PersonelSecici({ onSec }: { onSec: (personnelId: string) => void }) {
         Zaten pasif bir eşleme varsa yeniden aktifleştirilir, kopya kayıt oluşmaz.
       </p>
     </div>
+  )
+}
+
+/**
+ * Aranabilir tezgah seçici (shadcn Combobox deseni: Popover + Command).
+ *
+ * 203 tezgah düz dropdown'da kullanışsızdı. Arama kod/ad/MAS grubunda çalışır
+ * (CommandItem value'suna üçü de yazılır), liste MAS grubuna göre kümelenir.
+ *
+ * Ayrı bir "önce grup seç" filtresi YERİNE tek kontrol tercih edildi: 14 grup
+ * göz taramasıyla okunuyor ve yaygın kullanım kodu bilip yazmak — iki kontrol
+ * fazladan bir adım olurdu. Gruplar kapı değil, görsel kümeleme.
+ */
+function TezgahSecici({
+  tezgahlar,
+  secili,
+  onSec,
+}: {
+  tezgahlar: Tezgah[]
+  secili: Tezgah | null
+  onSec: (id: string) => void
+}) {
+  const [acik, setAcik] = useState(false)
+
+  const gruplar = useMemo(() => {
+    const m = new Map<string, Tezgah[]>()
+    for (const t of tezgahlar) {
+      const g = t.masGrupAdi ?? '(grupsuz)'
+      if (!m.has(g)) m.set(g, [])
+      m.get(g)!.push(t)
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+  }, [tezgahlar])
+
+  return (
+    <Popover open={acik} onOpenChange={setAcik}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={acik} className="w-full justify-between font-normal">
+          {secili ? (
+            <span className="truncate">
+              <span className="font-medium">{secili.kod}</span>
+              <span className="text-slate-500"> — {secili.ad}</span>
+              <span className="text-slate-500"> ({secili.operatorSayisi})</span>
+            </span>
+          ) : (
+            <span className="text-slate-500">Tezgah seçin…</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Kod, ad veya MAS grubu ara…" />
+          <CommandList className="max-h-80">
+            <CommandEmpty>Tezgah bulunamadı.</CommandEmpty>
+            {gruplar.map(([grup, liste]) => (
+              <CommandGroup key={grup} heading={`${grup} (${liste.length})`}>
+                {liste.map((t) => (
+                  <CommandItem
+                    key={t.id}
+                    // Arama bu değer üzerinden çalışır → kod, ad ve grup üçü de dahil.
+                    value={`${t.kod} ${t.ad} ${t.masGrupAdi ?? ''}`}
+                    onSelect={() => {
+                      onSec(t.id)
+                      setAcik(false)
+                    }}
+                  >
+                    <Check className={cn('mr-2 h-4 w-4', secili?.id === t.id ? 'opacity-100' : 'opacity-0')} />
+                    <span className="flex-1 truncate">
+                      <span className="font-medium">{t.kod}</span>
+                      <span className="text-slate-500"> — {t.ad}</span>
+                    </span>
+                    <span className="ml-2 shrink-0 text-xs text-slate-400">{t.operatorSayisi}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }

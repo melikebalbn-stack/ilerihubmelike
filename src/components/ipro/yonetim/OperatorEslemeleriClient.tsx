@@ -11,8 +11,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
-import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, KompaktListe } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, SiralanabilirTablo, type SiralanabilirKolon } from './ortak'
 
 type Tezgah = { id: string; kod: string; ad: string; aktif: boolean; operatorSayisi: number }
 type Esleme = {
@@ -79,11 +78,13 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
 
   const secili = tezgahlar.find((t) => t.id === tezgahId)
 
-  const kolonlar: ResponsiveColumn<Esleme>[] = [
+  const kolonlar: SiralanabilirKolon<Esleme>[] = [
     {
       key: 'adSoyad',
       label: 'Personel',
       primary: true,
+      siralanabilir: true,
+      siraDeger: (e) => e.adSoyad ?? '',
       // "Ayrılmış" göstergesi burada, ayrı kolonda DEĞİL: ayrı kolon başlığı da
       // "Personel" oluyordu (çift başlık) ve aktif kişilerde boş '—' basıyordu.
       render: (e) =>
@@ -100,12 +101,14 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
           <span className="text-slate-400">(personel kaydı bulunamadı: {e.personnelId.slice(0, 8)}…)</span>
         ),
     },
-    { key: 'sicilNo', label: 'Sicil', render: (e) => e.sicilNo ?? '—' },
-    { key: 'bolum', label: 'Bölüm', hideOnMobile: true, render: (e) => e.bolum ?? '—' },
-    { key: 'kaynak', label: 'Kaynak', hideOnMobile: true, render: (e) => <Badge variant="outline">{e.kaynak}</Badge> },
+    { key: 'sicilNo', label: 'Sicil', siralanabilir: true, render: (e) => e.sicilNo ?? '—' },
+    { key: 'bolum', label: 'Bölüm', hideOnMobile: true, siralanabilir: true, render: (e) => e.bolum ?? '—' },
+    { key: 'kaynak', label: 'Kaynak', hideOnMobile: true, siralanabilir: true, render: (e) => <Badge variant="outline">{e.kaynak}</Badge> },
     {
       key: 'aktif',
       label: 'Eşleme',
+      siralanabilir: true,
+      siraTipi: 'bool',
       render: (e) =>
         canEdit ? (
           <Switch
@@ -132,7 +135,7 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
                 <Trash2 className="h-4 w-4 text-red-600" />
               </Button>
             ),
-          } as ResponsiveColumn<Esleme>,
+          } as SiralanabilirKolon<Esleme>,
         ]
       : []),
   ]
@@ -223,13 +226,11 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
           {yukleniyor ? (
             <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
           ) : (
-            <KompaktListe>
-              <ResponsiveTable
-                columns={kolonlar}
-                data={gosterilen}
-                emptyMessage="Bu tezgaha bağlı operatör yok"
-              />
-            </KompaktListe>
+            <SiralanabilirTablo
+              kolonlar={kolonlar}
+              veri={gosterilen}
+              emptyMessage="Bu tezgaha bağlı operatör yok"
+            />
           )}
         </>
       )}

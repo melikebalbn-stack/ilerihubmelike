@@ -14,8 +14,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
-import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, KompaktListe } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, SiralanabilirTablo, type SiralanabilirKolon } from './ortak'
 
 type Tezgah = { id: string; kod: string; ad: string }
 type Kiosk = {
@@ -68,12 +67,15 @@ export function KiosklarClient({ canEdit }: { canEdit: boolean }) {
     })
   }, [kiosklar, arama, durum])
 
-  const kolonlar: ResponsiveColumn<Kiosk>[] = [
-    { key: 'kod', label: 'Cihaz kodu', primary: true },
-    { key: 'ad', label: 'Ad' },
+  const kolonlar: SiralanabilirKolon<Kiosk>[] = [
+    { key: 'kod', label: 'Cihaz kodu', primary: true, siralanabilir: true },
+    { key: 'ad', label: 'Ad', siralanabilir: true },
     {
       key: 'tezgahlar',
       label: 'Tezgahlar',
+      siralanabilir: true,
+      siraTipi: 'sayi',
+      siraDeger: (k) => k.tezgahlar.length,
       render: (k) =>
         k.tezgahlar.length === 0 ? (
           <span className="text-amber-600">bağlı tezgah yok</span>
@@ -81,14 +83,17 @@ export function KiosklarClient({ canEdit }: { canEdit: boolean }) {
           <span className="text-sm">{k.tezgahlar.map((t) => t.kod).join(', ')}</span>
         ),
     },
-    { key: 'userEmail', label: 'Hesap', hideOnMobile: true },
+    { key: 'userEmail', label: 'Hesap', hideOnMobile: true, siralanabilir: true },
     {
       key: 'sonGirisAt',
       label: 'Son giriş',
       hideOnMobile: true,
+      siralanabilir: true,
+      // ISO metin sıralaması tarih sırasıyla aynı; ayrıca parse gerekmiyor.
+      siraDeger: (k) => k.sonGirisAt ?? '',
       render: (k) => (k.sonGirisAt ? new Date(k.sonGirisAt).toLocaleString('tr-TR') : 'hiç'),
     },
-    { key: 'aktif', label: 'Durum', render: (k) => <AktifRozet aktif={k.aktif} /> },
+    { key: 'aktif', label: 'Durum', siralanabilir: true, siraTipi: 'bool', render: (k) => <AktifRozet aktif={k.aktif} /> },
     ...(canEdit
       ? [
           {
@@ -103,7 +108,7 @@ export function KiosklarClient({ canEdit }: { canEdit: boolean }) {
                 </Button>
               </div>
             ),
-          } as ResponsiveColumn<Kiosk>,
+          } as SiralanabilirKolon<Kiosk>,
         ]
       : []),
   ]
@@ -154,9 +159,7 @@ export function KiosklarClient({ canEdit }: { canEdit: boolean }) {
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <KompaktListe>
-          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Kayıtlı kiosk cihazı yok" />
-        </KompaktListe>
+        <SiralanabilirTablo kolonlar={kolonlar} veri={gosterilen} emptyMessage="Kayıtlı kiosk cihazı yok" />
       )}
 
       <YeniCihazDialog

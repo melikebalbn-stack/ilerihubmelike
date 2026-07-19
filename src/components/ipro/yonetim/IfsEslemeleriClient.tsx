@@ -13,8 +13,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
-import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, KompaktListe } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, SiralanabilirTablo, type SiralanabilirKolon } from './ortak'
 
 type Esleme = {
   id: string
@@ -62,12 +61,12 @@ export function IfsEslemeleriClient({ canEdit }: { canEdit: boolean }) {
     })
   }, [eslemeler, arama, tipFiltre])
 
-  const kolonlar: ResponsiveColumn<Esleme>[] = [
-    { key: 'tip', label: 'Tip', badge: true, render: (e) => <Badge variant="outline">{e.tip}</Badge> },
-    { key: 'ilerihubDeger', label: 'ILERIHub değeri', primary: true },
-    { key: 'ifsKod', label: 'IFS kodu' },
-    { key: 'aciklama', label: 'Açıklama', hideOnMobile: true, render: (e) => e.aciklama ?? '—' },
-    { key: 'aktif', label: 'Durum', render: (e) => <AktifRozet aktif={e.aktif} /> },
+  const kolonlar: SiralanabilirKolon<Esleme>[] = [
+    { key: 'tip', label: 'Tip', badge: true, siralanabilir: true, render: (e) => <Badge variant="outline">{e.tip}</Badge> },
+    { key: 'ilerihubDeger', label: 'ILERIHub değeri', primary: true, siralanabilir: true },
+    { key: 'ifsKod', label: 'IFS kodu', siralanabilir: true, siraTipi: 'sayi' },
+    { key: 'aciklama', label: 'Açıklama', hideOnMobile: true, siralanabilir: true, render: (e) => e.aciklama ?? '—' },
+    { key: 'aktif', label: 'Durum', siralanabilir: true, siraTipi: 'bool', render: (e) => <AktifRozet aktif={e.aktif} /> },
     ...(canEdit
       ? [
           {
@@ -84,7 +83,7 @@ export function IfsEslemeleriClient({ canEdit }: { canEdit: boolean }) {
                 </Button>
               </div>
             ),
-          } as ResponsiveColumn<Esleme>,
+          } as SiralanabilirKolon<Esleme>,
         ]
       : []),
   ]
@@ -131,9 +130,7 @@ export function IfsEslemeleriClient({ canEdit }: { canEdit: boolean }) {
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <KompaktListe>
-          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Eşleme yok" />
-        </KompaktListe>
+        <SiralanabilirTablo kolonlar={kolonlar} veri={gosterilen} emptyMessage="Eşleme yok" />
       )}
 
       <FormDialog

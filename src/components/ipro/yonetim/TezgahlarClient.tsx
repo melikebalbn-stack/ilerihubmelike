@@ -7,8 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
-import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, KompaktListe } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, SiralanabilirTablo, type SiralanabilirKolon } from './ortak'
 
 type Tezgah = {
   id: string
@@ -64,14 +63,16 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
     })
   }, [tezgahlar, arama, durum, sinyal])
 
-  const kolonlar: ResponsiveColumn<Tezgah>[] = [
-    { key: 'kod', label: 'Kod', primary: true },
-    { key: 'ad', label: 'Ad' },
-    { key: 'masGrupAdi', label: 'MAS Grubu', hideOnMobile: true, render: (t) => t.masGrupAdi ?? '—' },
+  const kolonlar: SiralanabilirKolon<Tezgah>[] = [
+    { key: 'kod', label: 'Kod', primary: true, siralanabilir: true },
+    { key: 'ad', label: 'Ad', siralanabilir: true },
+    { key: 'masGrupAdi', label: 'MAS Grubu', hideOnMobile: true, siralanabilir: true, render: (t) => t.masGrupAdi ?? '—' },
     {
       key: 'sinyalli',
       label: 'Sinyal',
       badge: true,
+      siralanabilir: true,
+      siraTipi: 'bool',
       // Sinyalsizde ikon YOK: lucide SignalZero "sıfır çubuklu sinyal" çiziyor,
       // görüntüsü tek bir noktaya iniyor ve tabloda artefakt gibi duruyordu.
       render: (t) =>
@@ -84,10 +85,10 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
           <span className="text-slate-400">Sinyalsiz</span>
         ),
     },
-    { key: 'operatorSayisi', label: 'Operatör', hideOnMobile: true, render: (t) => String(t.operatorSayisi) },
-    { key: 'ifsWorkCenterNo', label: 'IFS WC', hideOnMobile: true, render: (t) => t.ifsWorkCenterNo ?? '—' },
-    { key: 'ifsResourceId', label: 'IFS Resource', hideOnMobile: true, render: (t) => t.ifsResourceId ?? '—' },
-    { key: 'aktif', label: 'Durum', render: (t) => <AktifRozet aktif={t.aktif} /> },
+    { key: 'operatorSayisi', label: 'Operatör', hideOnMobile: true, siralanabilir: true, siraTipi: 'sayi', render: (t) => String(t.operatorSayisi) },
+    { key: 'ifsWorkCenterNo', label: 'IFS WC', hideOnMobile: true, siralanabilir: true, siraTipi: 'sayi', render: (t) => t.ifsWorkCenterNo ?? '—' },
+    { key: 'ifsResourceId', label: 'IFS Resource', hideOnMobile: true, siralanabilir: true, siraTipi: 'sayi', render: (t) => t.ifsResourceId ?? '—' },
+    { key: 'aktif', label: 'Durum', siralanabilir: true, siraTipi: 'bool', render: (t) => <AktifRozet aktif={t.aktif} /> },
     ...(canEdit
       ? [
           {
@@ -99,7 +100,7 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
                 <Pencil className="mr-1 h-4 w-4" /> Düzenle
               </Button>
             ),
-          } as ResponsiveColumn<Tezgah>,
+          } as SiralanabilirKolon<Tezgah>,
         ]
       : []),
   ]
@@ -139,9 +140,7 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <KompaktListe>
-          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Tezgah bulunamadı" />
-        </KompaktListe>
+        <SiralanabilirTablo kolonlar={kolonlar} veri={gosterilen} emptyMessage="Tezgah bulunamadı" />
       )}
 
       <DuzenleDialog

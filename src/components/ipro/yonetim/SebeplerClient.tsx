@@ -10,9 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
 import { HURDA_BAYRAKLARI, DURUS_BAYRAKLARI, BITIS_TIPI_SECENEKLERI } from '@/lib/ipro/yonetim-etiketler'
-import { iproFetch, iproYaz, AktifRozet, GelismisBolum, ListeAracCubugu, KompaktListe } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, GelismisBolum, ListeAracCubugu, SiralanabilirTablo, type SiralanabilirKolon } from './ortak'
 
 // Bayraklar AÇIKÇA yazılır; `& Record<string, boolean>` kesişimi string alanlarla
 // çakışıyor (index signature 'kod: string'i boolean'a zorluyor).
@@ -117,12 +116,12 @@ function HurdaSekmesi({ canEdit }: { canEdit: boolean }) {
     })
   }, [liste, arama, durum])
 
-  const kolonlar: ResponsiveColumn<HurdaSebebi>[] = [
-    { key: 'kod', label: 'Kod', primary: true },
-    { key: 'ad', label: 'Ad' },
-    { key: 'grubu', label: 'Grup', hideOnMobile: true, render: (s) => s.grubu ?? '—' },
-    { key: 'erpKodu', label: 'ERP', hideOnMobile: true, render: (s) => s.erpKodu ?? '—' },
-    { key: 'aktif', label: 'Durum', render: (s) => <AktifRozet aktif={s.aktif} /> },
+  const kolonlar: SiralanabilirKolon<HurdaSebebi>[] = [
+    { key: 'kod', label: 'Kod', primary: true, siralanabilir: true },
+    { key: 'ad', label: 'Ad', siralanabilir: true },
+    { key: 'grubu', label: 'Grup', hideOnMobile: true, siralanabilir: true, render: (s) => s.grubu ?? '—' },
+    { key: 'erpKodu', label: 'ERP', hideOnMobile: true, siralanabilir: true, render: (s) => s.erpKodu ?? '—' },
+    { key: 'aktif', label: 'Durum', siralanabilir: true, siraTipi: 'bool', render: (s) => <AktifRozet aktif={s.aktif} /> },
     ...(canEdit
       ? [
           {
@@ -132,7 +131,7 @@ function HurdaSekmesi({ canEdit }: { canEdit: boolean }) {
                 <Pencil className="h-4 w-4" />
               </Button>
             ),
-          } as ResponsiveColumn<HurdaSebebi>,
+          } as SiralanabilirKolon<HurdaSebebi>,
         ]
       : []),
   ]
@@ -167,9 +166,7 @@ function HurdaSekmesi({ canEdit }: { canEdit: boolean }) {
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <KompaktListe>
-          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Hurda sebebi yok" />
-        </KompaktListe>
+        <SiralanabilirTablo kolonlar={kolonlar} veri={gosterilen} emptyMessage="Hurda sebebi yok" />
       )}
       <HurdaForm form={form} onKapat={() => setForm(null)} onKaydedildi={() => { setForm(null); void yukle() }} />
     </div>
@@ -284,12 +281,12 @@ function DurusSekmesi({ canEdit }: { canEdit: boolean }) {
     })
   }, [liste, arama, durum, bayrak])
 
-  const kolonlar: ResponsiveColumn<DurusSebebi>[] = [
-    { key: 'kod', label: 'Kod', primary: true },
-    { key: 'ad', label: 'Ad' },
-    { key: 'tip', label: 'Tip', hideOnMobile: true, render: (s) => s.tip?.ad ?? '—' },
-    { key: 'bitisTipi', label: 'Bitiş', badge: true, render: (s) => <Badge variant="outline">{s.bitisTipi}</Badge> },
-    { key: 'aktif', label: 'Durum', render: (s) => <AktifRozet aktif={s.aktif} /> },
+  const kolonlar: SiralanabilirKolon<DurusSebebi>[] = [
+    { key: 'kod', label: 'Kod', primary: true, siralanabilir: true },
+    { key: 'ad', label: 'Ad', siralanabilir: true },
+    { key: 'tip', label: 'Tip', hideOnMobile: true, siralanabilir: true, siraDeger: (s) => s.tip?.ad ?? '', render: (s) => s.tip?.ad ?? '—' },
+    { key: 'bitisTipi', label: 'Bitiş', badge: true, siralanabilir: true, render: (s) => <Badge variant="outline">{s.bitisTipi}</Badge> },
+    { key: 'aktif', label: 'Durum', siralanabilir: true, siraTipi: 'bool', render: (s) => <AktifRozet aktif={s.aktif} /> },
     ...(canEdit
       ? [
           {
@@ -299,7 +296,7 @@ function DurusSekmesi({ canEdit }: { canEdit: boolean }) {
                 <Pencil className="h-4 w-4" />
               </Button>
             ),
-          } as ResponsiveColumn<DurusSebebi>,
+          } as SiralanabilirKolon<DurusSebebi>,
         ]
       : []),
   ]
@@ -345,9 +342,7 @@ function DurusSekmesi({ canEdit }: { canEdit: boolean }) {
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <KompaktListe>
-          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Duruş sebebi yok" />
-        </KompaktListe>
+        <SiralanabilirTablo kolonlar={kolonlar} veri={gosterilen} emptyMessage="Duruş sebebi yok" />
       )}
       <DurusForm
         form={form}
@@ -495,12 +490,12 @@ function TipSekmesi({ canEdit }: { canEdit: boolean }) {
     })
   }, [liste, arama, durum])
 
-  const kolonlar: ResponsiveColumn<DurusTipi>[] = [
-    { key: 'kod', label: 'Kod', primary: true },
-    { key: 'ad', label: 'Ad' },
-    { key: 'teepOrder', label: 'TEEP sırası', hideOnMobile: true, render: (t) => (t.teepOrder ?? '—').toString() },
-    { key: 'sebepSayisi', label: 'Sebep', hideOnMobile: true, render: (t) => String(t._count.sebepler) },
-    { key: 'aktif', label: 'Durum', render: (t) => <AktifRozet aktif={t.aktif} /> },
+  const kolonlar: SiralanabilirKolon<DurusTipi>[] = [
+    { key: 'kod', label: 'Kod', primary: true, siralanabilir: true },
+    { key: 'ad', label: 'Ad', siralanabilir: true },
+    { key: 'teepOrder', label: 'TEEP sırası', hideOnMobile: true, siralanabilir: true, siraTipi: 'sayi', render: (t) => (t.teepOrder ?? '—').toString() },
+    { key: 'sebepSayisi', label: 'Sebep', hideOnMobile: true, siralanabilir: true, siraTipi: 'sayi', siraDeger: (t) => t._count.sebepler, render: (t) => String(t._count.sebepler) },
+    { key: 'aktif', label: 'Durum', siralanabilir: true, siraTipi: 'bool', render: (t) => <AktifRozet aktif={t.aktif} /> },
     ...(canEdit
       ? [
           {
@@ -510,7 +505,7 @@ function TipSekmesi({ canEdit }: { canEdit: boolean }) {
                 <Pencil className="h-4 w-4" />
               </Button>
             ),
-          } as ResponsiveColumn<DurusTipi>,
+          } as SiralanabilirKolon<DurusTipi>,
         ]
       : []),
   ]
@@ -553,9 +548,7 @@ function TipSekmesi({ canEdit }: { canEdit: boolean }) {
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <KompaktListe>
-          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Duruş tipi yok" />
-        </KompaktListe>
+        <SiralanabilirTablo kolonlar={kolonlar} veri={gosterilen} emptyMessage="Duruş tipi yok" />
       )}
       <TipForm form={form} onKapat={() => setForm(null)} onKaydet={kaydet} />
     </div>

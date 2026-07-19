@@ -1,14 +1,17 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { ChevronDown, ChevronRight, Info, Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Info, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import type { BayrakTanim } from '@/lib/ipro/yonetim-etiketler'
 
 /** IPRO yönetim API zarfı: { ok, ... } / { ok:false, error }. */
@@ -182,17 +185,132 @@ export function ListeAracCubugu({
   )
 }
 
+
+// ── Sıralanabilir tablo ──────────────────────────────────────────────────
+
+export type SiraTipi = 'metin' | 'sayi' | 'bool'
+
+export type SiralanabilirKolon<T> = ResponsiveColumn<T> & {
+  siralanabilir?: boolean
+  /** Karşılaştırma türü — metin Türkçe locale ile, sayı sayısal. */
+  siraTipi?: SiraTipi
+  /**
+   * Sıralama için HAM değer. `render` JSX döndürdüğünde satırdan doğrudan
+   * okunamadığı için gerekli (ör. Durum kolonu rozet basıyor ama sıralama
+   * `aktif` boolean'ına göre yapılmalı).
+   */
+  siraDeger?: (row: T) => string | number | boolean | null | undefined
+}
+
+type SiraDurum = { key: string; yon: 'artan' | 'azalan' } | null
+
+function karsilastir(a: unknown, b: unknown, tip: SiraTipi): number {
+  // null/undefined her zaman sona — hangi yönde sıralanırsa sıralansın.
+  const aBos = a === null || a === undefined || a === ''
+  const bBos = b === null || b === undefined || b === ''
+  if (aBos && bBos) return 0
+  if (aBos) return 1
+  if (bBos) return -1
+
+  if (tip === 'sayi') return Number(a) - Number(b)
+  if (tip === 'bool') return Number(Boolean(a)) - Number(Boolean(b))
+  // Türkçe locale: İ/ı, Ç, Ş, Ğ, Ö, Ü doğru sıralansın.
+  return String(a).localeCompare(String(b), 'tr', { numeric: true, sensitivity: 'base' })
+}
+
 /**
- * IPRO listelerinde kompakt gövde fontu.
+ * IPRO listelerinin ortak tablosu: başlığa tıklayınca sıralar
+ * (artan → azalan → varsayılan), aktif kolonda ▲/▼ gösterir.
  *
- * `ResponsiveTable` 58 dosyada ortak kullanılıyor — ona dokunulmadı, modüle
- * özel prop da eklenmedi. Bunun yerine sarmalayıcıda arbitrary variant ile
- * YALNIZ gövde hücreleri (td) küçültülüyor; başlıklar (th) olduğu gibi kalıyor.
- * text-sm (14px) → text-xs (12px).
- *
- * NOT: mobil kart görünümünde hücreler kendi açık font sınıflarını taşıdığı
- * için bu kural onlara işlemez — masaüstü tablo için geçerlidir.
+ * Masaüstünde kendi başlıklarını çizer; MOBİLDE `ResponsiveTable`'a devreder —
+ * kart görünümünde `label` düz metin olarak basıldığı için oraya tıklanabilir
+ * başlık koymak kart etiketlerini bozardı. Ortak bileşen değiştirilmedi.
  */
-export function KompaktListe({ children }: { children: ReactNode }) {
-  return <div className="[&_td]:text-xs">{children}</div>
+export function SiralanabilirTablo<T extends Record<string, any>>({
+  kolonlar,
+  veri,
+  emptyMessage = 'Kayıt bulunamadı',
+  keyField = 'id',
+}: {
+  kolonlar: SiralanabilirKolon<T>[]
+  veri: T[]
+  emptyMessage?: string
+  keyField?: string
+}) {
+  const isMobile = useIsMobile()
+  const [sira, setSira] = useState<SiraDurum>(null)
+
+  const siraliVeri = useMemo(() => {
+    if (!sira) return veri
+    const kolon = kolonlar.find((k) => k.key === sira.key)
+    if (!kolon) return veri
+    const tip = kolon.siraTipi ?? 'metin'
+    const deger = (row: T) => (kolon.siraDeger ? kolon.siraDeger(row) : row[kolon.key])
+    // Kopya üzerinde sırala — prop dizisini yerinde değiştirme.
+    return [...veri].sort((a, b) => {
+      const s = karsilastir(deger(a), deger(b), tip)
+      return sira.yon === 'artan' ? s : -s
+    })
+  }, [veri, sira, kolonlar])
+
+  function basligaTikla(key: string) {
+    setSira((mevcut) => {
+      if (!mevcut || mevcut.key !== key) return { key, yon: 'artan' }
+      if (mevcut.yon === 'artan') return { key, yon: 'azalan' }
+      return null // üçüncü tık → varsayılan sıra
+    })
+  }
+
+  if (isMobile) {
+    return <ResponsiveTable columns={kolonlar} data={veri} emptyMessage={emptyMessage} keyField={keyField} />
+  }
+
+  if (veri.length === 0) {
+    return <div className="py-8 text-center text-muted-foreground">{emptyMessage}</div>
+  }
+
+  return (
+    <div className="rounded-md border [&_td]:text-xs">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {kolonlar.map((k) => (
+              <TableHead key={k.key}>
+                {k.siralanabilir ? (
+                  <button
+                    type="button"
+                    onClick={() => basligaTikla(k.key)}
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                    title="Sıralamak için tıklayın"
+                  >
+                    {k.label}
+                    {sira?.key === k.key ? (
+                      sira.yon === 'artan' ? (
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3.5 w-3.5 opacity-30" />
+                    )}
+                  </button>
+                ) : (
+                  k.label
+                )}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {siraliVeri.map((row) => (
+            <TableRow key={row[keyField]}>
+              {kolonlar.map((k) => (
+                <TableCell key={k.key}>{k.render ? k.render(row) : (row[k.key] ?? '-')}</TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
 }

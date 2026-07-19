@@ -35,9 +35,12 @@ export function IfsEslemeleriClient({ canEdit }: { canEdit: boolean }) {
 
   async function yukle() {
     setYukleniyor(true)
-    const { ok, data } = await iproFetch<{ eslemeler: Esleme[] }>('/api/ipro/yonetim/ifs-eslemeleri')
-    if (ok) setEslemeler(data.eslemeler)
-    setYukleniyor(false)
+    try {
+      const { ok, data } = await iproFetch<{ eslemeler: Esleme[] }>('/api/ipro/yonetim/ifs-eslemeleri')
+      if (ok) setEslemeler(data.eslemeler)
+    } finally {
+      setYukleniyor(false)
+    }
   }
 
   useEffect(() => {

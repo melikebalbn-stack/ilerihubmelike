@@ -14,13 +14,20 @@ export async function iproFetch<T = unknown>(
   url: string,
   init?: RequestInit,
 ): Promise<{ ok: boolean; data: T & { error?: string } }> {
-  const res = await fetch(url, {
-    cache: 'no-store',
-    ...init,
-    headers: init?.body ? { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } : init?.headers,
-  })
-  const data = await res.json().catch(() => ({}))
-  return { ok: res.ok && data?.ok !== false, data }
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store',
+      ...init,
+      headers: init?.body ? { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } : init?.headers,
+    })
+    const data = await res.json().catch(() => ({}))
+    return { ok: res.ok && data?.ok !== false, data }
+  } catch {
+    // Ağ hatası (bağlantı kopması, dev sunucu yeniden yükleme) — ASLA fırlatma.
+    // Fırlatırsa çağıran yukle() yarıda kalır, setYukleniyor(false) hiç çalışmaz
+    // ve ekranın ortasındaki "Yükleniyor…" sonsuza kadar asılı kalır.
+    return { ok: false, data: { error: 'Sunucuya ulaşılamadı' } as T & { error?: string } }
+  }
 }
 
 /** Yazma işlemi + toast. Başarılıysa true döner. */

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, Search, Signal, SignalZero } from 'lucide-react'
+import { Pencil, Search, Signal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -35,9 +35,12 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
 
   async function yukle() {
     setYukleniyor(true)
-    const { ok, data } = await iproFetch<{ tezgahlar: Tezgah[] }>('/api/ipro/yonetim/tezgahlar')
-    if (ok) setTezgahlar(data.tezgahlar)
-    setYukleniyor(false)
+    try {
+      const { ok, data } = await iproFetch<{ tezgahlar: Tezgah[] }>('/api/ipro/yonetim/tezgahlar')
+      if (ok) setTezgahlar(data.tezgahlar)
+    } finally {
+      setYukleniyor(false)
+    }
   }
 
   useEffect(() => {
@@ -68,15 +71,16 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
       key: 'sinyalli',
       label: 'Sinyal',
       badge: true,
+      // Sinyalsizde ikon YOK: lucide SignalZero "sıfır çubuklu sinyal" çiziyor,
+      // görüntüsü tek bir noktaya iniyor ve tabloda artefakt gibi duruyordu.
       render: (t) =>
         t.sinyalli ? (
-          <span className="inline-flex items-center gap-1 text-emerald-700">
-            <Signal className="h-4 w-4" /> Sinyalli
+          <span className="inline-flex items-center gap-1.5 text-emerald-700">
+            <Signal className="h-4 w-4 shrink-0" />
+            Sinyalli
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-slate-400">
-            <SignalZero className="h-4 w-4" /> Sinyalsiz
-          </span>
+          <span className="text-slate-400">Sinyalsiz</span>
         ),
     },
     { key: 'operatorSayisi', label: 'Operatör', hideOnMobile: true, render: (t) => String(t.operatorSayisi) },

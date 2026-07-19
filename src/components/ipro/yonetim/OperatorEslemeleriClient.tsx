@@ -45,11 +45,14 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
   async function eslemeleriYukle(id: string) {
     if (!id) return
     setYukleniyor(true)
-    const { ok, data } = await iproFetch<{ eslemeler: Esleme[] }>(
-      `/api/ipro/yonetim/operator-eslemeleri?tezgahId=${id}`,
-    )
-    if (ok) setEslemeler(data.eslemeler)
-    setYukleniyor(false)
+    try {
+      const { ok, data } = await iproFetch<{ eslemeler: Esleme[] }>(
+        `/api/ipro/yonetim/operator-eslemeleri?tezgahId=${id}`,
+      )
+      if (ok) setEslemeler(data.eslemeler)
+    } finally {
+      setYukleniyor(false)
+    }
   }
 
   useEffect(() => {
@@ -74,24 +77,24 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
       key: 'adSoyad',
       label: 'Personel',
       primary: true,
+      // "Ayrılmış" göstergesi burada, ayrı kolonda DEĞİL: ayrı kolon başlığı da
+      // "Personel" oluyordu (çift başlık) ve aktif kişilerde boş '—' basıyordu.
       render: (e) =>
-        e.adSoyad ?? <span className="text-slate-400">(personel kaydı bulunamadı: {e.personnelId.slice(0, 8)}…)</span>,
+        e.adSoyad ? (
+          <span className="inline-flex items-center gap-2">
+            {e.adSoyad}
+            {e.personelAktif === false && (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                <UserX className="h-3.5 w-3.5" /> ayrılmış
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="text-slate-400">(personel kaydı bulunamadı: {e.personnelId.slice(0, 8)}…)</span>
+        ),
     },
     { key: 'sicilNo', label: 'Sicil', render: (e) => e.sicilNo ?? '—' },
     { key: 'bolum', label: 'Bölüm', hideOnMobile: true, render: (e) => e.bolum ?? '—' },
-    {
-      key: 'personelAktif',
-      label: 'Personel',
-      hideOnMobile: true,
-      render: (e) =>
-        e.personelAktif === false ? (
-          <span className="inline-flex items-center gap-1 text-amber-600">
-            <UserX className="h-4 w-4" /> Ayrılmış
-          </span>
-        ) : (
-          '—'
-        ),
-    },
     { key: 'kaynak', label: 'Kaynak', hideOnMobile: true, render: (e) => <Badge variant="outline">{e.kaynak}</Badge> },
     {
       key: 'aktif',

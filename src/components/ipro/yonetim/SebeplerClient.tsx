@@ -90,9 +90,12 @@ function HurdaSekmesi({ canEdit }: { canEdit: boolean }) {
 
   async function yukle() {
     setYukleniyor(true)
-    const { ok, data } = await iproFetch<{ sebepler: HurdaSebebi[] }>('/api/ipro/yonetim/hurda-sebepleri')
-    if (ok) setListe(data.sebepler)
-    setYukleniyor(false)
+    try {
+      const { ok, data } = await iproFetch<{ sebepler: HurdaSebebi[] }>('/api/ipro/yonetim/hurda-sebepleri')
+      if (ok) setListe(data.sebepler)
+    } finally {
+      setYukleniyor(false)
+    }
   }
   useEffect(() => {
     void yukle()
@@ -213,13 +216,16 @@ function DurusSekmesi({ canEdit }: { canEdit: boolean }) {
 
   async function yukle() {
     setYukleniyor(true)
-    const [s, t] = await Promise.all([
-      iproFetch<{ sebepler: DurusSebebi[] }>('/api/ipro/yonetim/durus-sebepleri'),
-      iproFetch<{ tipler: DurusTipi[] }>('/api/ipro/yonetim/durus-tipleri'),
-    ])
-    if (s.ok) setListe(s.data.sebepler)
-    if (t.ok) setTipler(t.data.tipler)
-    setYukleniyor(false)
+    try {
+      const [s, t] = await Promise.all([
+        iproFetch<{ sebepler: DurusSebebi[] }>('/api/ipro/yonetim/durus-sebepleri'),
+        iproFetch<{ tipler: DurusTipi[] }>('/api/ipro/yonetim/durus-tipleri'),
+      ])
+      if (s.ok) setListe(s.data.sebepler)
+      if (t.ok) setTipler(t.data.tipler)
+    } finally {
+      setYukleniyor(false)
+    }
   }
   useEffect(() => {
     void yukle()
@@ -383,9 +389,12 @@ function TipSekmesi({ canEdit }: { canEdit: boolean }) {
 
   async function yukle() {
     setYukleniyor(true)
-    const { ok, data } = await iproFetch<{ tipler: DurusTipi[] }>('/api/ipro/yonetim/durus-tipleri')
-    if (ok) setListe(data.tipler)
-    setYukleniyor(false)
+    try {
+      const { ok, data } = await iproFetch<{ tipler: DurusTipi[] }>('/api/ipro/yonetim/durus-tipleri')
+      if (ok) setListe(data.tipler)
+    } finally {
+      setYukleniyor(false)
+    }
   }
   useEffect(() => {
     void yukle()

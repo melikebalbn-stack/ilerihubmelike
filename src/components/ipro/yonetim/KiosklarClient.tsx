@@ -41,13 +41,16 @@ export function KiosklarClient({ canEdit }: { canEdit: boolean }) {
 
   async function yukle() {
     setYukleniyor(true)
-    const [k, t] = await Promise.all([
-      iproFetch<{ kiosklar: Kiosk[] }>('/api/ipro/yonetim/kiosklar'),
-      iproFetch<{ tezgahlar: Tezgah[] }>('/api/ipro/yonetim/tezgahlar'),
-    ])
-    if (k.ok) setKiosklar(k.data.kiosklar)
-    if (t.ok) setTezgahlar(t.data.tezgahlar)
-    setYukleniyor(false)
+    try {
+      const [k, t] = await Promise.all([
+        iproFetch<{ kiosklar: Kiosk[] }>('/api/ipro/yonetim/kiosklar'),
+        iproFetch<{ tezgahlar: Tezgah[] }>('/api/ipro/yonetim/tezgahlar'),
+      ])
+      if (k.ok) setKiosklar(k.data.kiosklar)
+      if (t.ok) setTezgahlar(t.data.tezgahlar)
+    } finally {
+      setYukleniyor(false)
+    }
   }
   useEffect(() => {
     void yukle()

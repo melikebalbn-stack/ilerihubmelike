@@ -2,6 +2,7 @@ import 'server-only'
 import { randomBytes } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { hashPin } from '@/lib/pin-utils'
+import { iproNormalize } from '@/lib/ipro/metin'
 
 /**
  * IPRO yönetim modülü servis katmanı (FAZ 1 — tanımlar + kiosk cihaz yönetimi).
@@ -122,18 +123,24 @@ export async function listOperatorEslemeleri(tezgahId: string): Promise<Operator
 export async function personelAra(q: string, limit = 20) {
   const aranan = q.trim()
   if (aranan.length < 2) return []
-  return prisma.personnel.findMany({
-    where: {
-      aktif: true,
-      OR: [
-        { adSoyad: { contains: aranan, mode: 'insensitive' } },
-        { sicilNo: { contains: aranan, mode: 'insensitive' } },
-      ],
-    },
+
+  // Aksan katlamalı arama SQL'de yapılamıyor: Postgres ILIKE aksan katlamaz
+  // ("celik" → "Çelik" bulmaz), unaccent eklentisi de kurulu değil. Aktif
+  // personel küçük bir küme (~190) olduğu için çekip JS'te filtreliyoruz.
+  const aktifler = await prisma.personnel.findMany({
+    where: { aktif: true },
     select: { id: true, adSoyad: true, sicilNo: true, bolum: true, gorev: true },
     orderBy: { adSoyad: 'asc' },
-    take: limit,
   })
+
+  const hedef = iproNormalize(aranan)
+  return aktifler
+    .filter(
+      (p) =>
+        iproNormalize(p.adSoyad).includes(hedef) ||
+        iproNormalize(p.sicilNo ?? '').includes(hedef),
+    )
+    .slice(0, limit)
 }
 
 export async function addOperatorEsleme(tezgahId: string, personnelId: string) {

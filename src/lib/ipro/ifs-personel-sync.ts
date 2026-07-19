@@ -1,5 +1,6 @@
 import 'server-only'
 import { prisma } from '@/lib/prisma'
+import { iproNormalize as normalize } from '@/lib/ipro/metin'
 import {
   IfsPersonelError,
   pencereHatasiMi,
@@ -50,20 +51,6 @@ export type SenkronSonuc = {
   eslesmeyenler: Array<{ sicilNo: string; adSoyad: string; alan: 'bolum' | 'gorev'; deger: string }>
   pencereHatalilar: Array<{ sicilNo: string; adSoyad: string; detay: string }>
   hatalilar: Array<{ sicilNo: string; adSoyad: string; detay: string }>
-}
-
-/** Türkçe-duyarlı katlama: eşleme karşılaştırması aksan/büyük-küçük farkına takılmasın. */
-function normalize(s: string): string {
-  return s
-    .replace(/[ıİi]/g, 'i')
-    .replace(/[şŞ]/g, 's')
-    .replace(/[ğĞ]/g, 'g')
-    .replace(/[üÜ]/g, 'u')
-    .replace(/[öÖ]/g, 'o')
-    .replace(/[çÇ]/g, 'c')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
 }
 
 /** "AHMET YILMAZ KAYA" → { fname: 'AHMET YILMAZ', lname: 'KAYA' } (son token soyad). */

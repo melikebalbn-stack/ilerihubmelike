@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { iproNormalize } from '@/lib/ipro/metin'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -334,12 +335,18 @@ function PersonelSecici({ onSec }: { onSec: (personnelId: string) => void }) {
 /**
  * Aranabilir tezgah seçici (shadcn Combobox deseni: Popover + Command).
  *
- * 203 tezgah düz dropdown'da kullanışsızdı. Arama kod/ad/MAS grubunda çalışır
- * (CommandItem value'suna üçü de yazılır), liste MAS grubuna göre kümelenir.
+ * 203 tezgah düz dropdown'da kullanışsızdı.
  *
- * Ayrı bir "önce grup seç" filtresi YERİNE tek kontrol tercih edildi: 14 grup
- * göz taramasıyla okunuyor ve yaygın kullanım kodu bilip yazmak — iki kontrol
- * fazladan bir adım olurdu. Gruplar kapı değil, görsel kümeleme.
+ * FİLTRELEME KENDİMİZDE (`shouldFilter={false}`). cmdk'nın varsayılan filtresi
+ * `command-score` ile BULANIK eşleşme yapıyor: "preshane" harflerini KALIPHANE
+ * içinde boşluklu alt-dizi olarak tutturup alakasız grubu listede bırakıyordu.
+ * Yerine birebir `includes` kullanılıyor — kod, ad ve MAS grubu ayrı ayrı.
+ *
+ * Grup adı eşleşirse o grubun TÜM tezgahları görünür (preshane → PRESHANE'nin
+ * 17 tezgahı) — istenen davranış bu; sorun bulanık eşleşmeydi.
+ *
+ * Normalizasyon ortak `iproNormalize` ile: aksan katlamalı — "sasi" de "şasi"
+ * de ŞASİ KAYNAK'ı bulur, "kaliphane" de KALIPHANE'yi.
  */
 function TezgahSecici({
   tezgahlar,
@@ -351,16 +358,34 @@ function TezgahSecici({
   onSec: (id: string) => void
 }) {
   const [acik, setAcik] = useState(false)
+  const [sorgu, setSorgu] = useState('')
 
   const gruplar = useMemo(() => {
+    const norm = iproNormalize
+    const q = norm(sorgu)
+
+    const uygun = tezgahlar.filter((t) => {
+      if (!q) return true
+      return (
+        norm(t.kod).includes(q) ||
+        norm(t.ad).includes(q) ||
+        norm(t.masGrupAdi ?? '').includes(q)
+      )
+    })
+
     const m = new Map<string, Tezgah[]>()
-    for (const t of tezgahlar) {
+    for (const t of uygun) {
       const g = t.masGrupAdi ?? '(grupsuz)'
       if (!m.has(g)) m.set(g, [])
       m.get(g)!.push(t)
     }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'tr'))
-  }, [tezgahlar])
+    // Gruplar alfabetik, grup içi tezgahlar kod sırasında.
+    return [...m.entries()]
+      .map(([grup, liste]) => [grup, [...liste].sort((a, b) => a.kod.localeCompare(b.kod, 'tr', { numeric: true }))] as const)
+      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+  }, [tezgahlar, sorgu])
+
+  const sonucVar = gruplar.length > 0
 
   return (
     <Popover open={acik} onOpenChange={setAcik}>
@@ -379,19 +404,21 @@ function TezgahSecici({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Kod, ad veya MAS grubu ara…" />
+        {/* shouldFilter=false → eşleşme yukarıdaki useMemo'da, cmdk yalnız
+            klavye gezinme ve seçim işini yapar. */}
+        <Command shouldFilter={false}>
+          <CommandInput placeholder="Kod, ad veya MAS grubu ara…" value={sorgu} onValueChange={setSorgu} />
           <CommandList className="max-h-80">
-            <CommandEmpty>Tezgah bulunamadı.</CommandEmpty>
+            {!sonucVar && <CommandEmpty>Tezgah bulunamadı.</CommandEmpty>}
             {gruplar.map(([grup, liste]) => (
               <CommandGroup key={grup} heading={`${grup} (${liste.length})`}>
                 {liste.map((t) => (
                   <CommandItem
                     key={t.id}
-                    // Arama bu değer üzerinden çalışır → kod, ad ve grup üçü de dahil.
-                    value={`${t.kod} ${t.ad} ${t.masGrupAdi ?? ''}`}
+                    value={t.id}
                     onSelect={() => {
                       onSec(t.id)
+                      setSorgu('')
                       setAcik(false)
                     }}
                   >

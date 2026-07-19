@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { ChevronDown, ChevronRight, Info } from 'lucide-react'
+import { ChevronDown, ChevronRight, Info, Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -113,4 +115,84 @@ export function GelismisBolum({
       )}
     </div>
   )
+}
+
+// ── Liste araç çubuğu (5 ekranda ortak) ──────────────────────────────────
+
+export type FiltreSecenek = { deger: string; etiket: string }
+export type FiltreGrubu = {
+  /** Grup etiketi — birden fazla grup varsa ayırt etmek için. */
+  ad?: string
+  secili: string
+  sec: (deger: string) => void
+  secenekler: FiltreSecenek[]
+}
+
+/**
+ * Arama kutusu + filtre butonları + "gösterilen / toplam" rozeti.
+ * Beş yönetim ekranı da bunu kullanır; desen tek yerde durur.
+ */
+export function ListeAracCubugu({
+  arama,
+  onArama,
+  placeholder,
+  gruplar = [],
+  gosterilen,
+  toplam,
+  children,
+}: {
+  arama: string
+  onArama: (v: string) => void
+  placeholder: string
+  gruplar?: FiltreGrubu[]
+  gosterilen: number
+  toplam: number
+  /** Sağa yerleşen ek içerik — "Yeni" butonu gibi. */
+  children?: ReactNode
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="relative min-w-[220px] flex-1">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+        <Input value={arama} onChange={(e) => onArama(e.target.value)} placeholder={placeholder} className="pl-8" />
+      </div>
+
+      {gruplar.map((g, i) => (
+        <div key={g.ad ?? i} className="flex flex-wrap items-center gap-1">
+          {g.ad && <span className="mr-1 text-xs text-slate-500">{g.ad}:</span>}
+          {g.secenekler.map((s) => (
+            <Button
+              key={s.deger}
+              variant={g.secili === s.deger ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => g.sec(s.deger)}
+            >
+              {s.etiket}
+            </Button>
+          ))}
+        </div>
+      ))}
+
+      <Badge variant="outline">
+        {gosterilen} / {toplam}
+      </Badge>
+
+      {children}
+    </div>
+  )
+}
+
+/**
+ * IPRO listelerinde kompakt gövde fontu.
+ *
+ * `ResponsiveTable` 58 dosyada ortak kullanılıyor — ona dokunulmadı, modüle
+ * özel prop da eklenmedi. Bunun yerine sarmalayıcıda arbitrary variant ile
+ * YALNIZ gövde hücreleri (td) küçültülüyor; başlıklar (th) olduğu gibi kalıyor.
+ * text-sm (14px) → text-xs (12px).
+ *
+ * NOT: mobil kart görünümünde hücreler kendi açık font sınıflarını taşıdığı
+ * için bu kural onlara işlemez — masaüstü tablo için geçerlidir.
+ */
+export function KompaktListe({ children }: { children: ReactNode }) {
+  return <div className="[&_td]:text-xs">{children}</div>
 }

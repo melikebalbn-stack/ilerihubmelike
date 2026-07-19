@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Copy, KeyRound, MonitorSmartphone, Pencil, Plus, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
-import { iproFetch, iproYaz, AktifRozet } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, KompaktListe } from './ortak'
 
 type Tezgah = { id: string; kod: string; ad: string }
 type Kiosk = {
@@ -38,6 +38,8 @@ export function KiosklarClient({ canEdit }: { canEdit: boolean }) {
   const [sifreYenilenecek, setSifreYenilenecek] = useState<Kiosk | null>(null)
   /** Üretilen şifre — YALNIZ bir kez gösterilir, sunucudan tekrar alınamaz. */
   const [gosterilecekSifre, setGosterilecekSifre] = useState<{ kod: string; sifre: string } | null>(null)
+  const [arama, setArama] = useState('')
+  const [durum, setDurum] = useState<'hepsi' | 'aktif' | 'pasif'>('hepsi')
 
   async function yukle() {
     setYukleniyor(true)
@@ -55,6 +57,16 @@ export function KiosklarClient({ canEdit }: { canEdit: boolean }) {
   useEffect(() => {
     void yukle()
   }, [])
+
+  const gosterilen = useMemo(() => {
+    const q = arama.trim().toLocaleLowerCase('tr')
+    return kiosklar.filter((k) => {
+      if (durum === 'aktif' && !k.aktif) return false
+      if (durum === 'pasif' && k.aktif) return false
+      if (!q) return true
+      return k.kod.toLocaleLowerCase('tr').includes(q) || k.ad.toLocaleLowerCase('tr').includes(q)
+    })
+  }, [kiosklar, arama, durum])
 
   const kolonlar: ResponsiveColumn<Kiosk>[] = [
     { key: 'kod', label: 'Cihaz kodu', primary: true },
@@ -113,19 +125,38 @@ export function KiosklarClient({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Badge variant="outline">{kiosklar.length} cihaz</Badge>
+      <ListeAracCubugu
+        arama={arama}
+        onArama={setArama}
+        placeholder="Cihaz kodu veya adı ara…"
+        gosterilen={gosterilen.length}
+        toplam={kiosklar.length}
+        gruplar={[
+          {
+            ad: 'Durum',
+            secili: durum,
+            sec: (v) => setDurum(v as typeof durum),
+            secenekler: [
+              { deger: 'hepsi', etiket: 'Hepsi' },
+              { deger: 'aktif', etiket: 'Aktif' },
+              { deger: 'pasif', etiket: 'Pasif' },
+            ],
+          },
+        ]}
+      >
         {canEdit && (
           <Button onClick={() => setYeniAcik(true)}>
             <Plus className="mr-1 h-4 w-4" /> Yeni cihaz
           </Button>
         )}
-      </div>
+      </ListeAracCubugu>
 
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <ResponsiveTable columns={kolonlar} data={kiosklar} emptyMessage="Kayıtlı kiosk cihazı yok" />
+        <KompaktListe>
+          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Kayıtlı kiosk cihazı yok" />
+        </KompaktListe>
       )}
 
       <YeniCihazDialog

@@ -12,7 +12,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
-import { iproFetch, iproYaz, AktifRozet } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, KompaktListe } from './ortak'
 
 type Tezgah = { id: string; kod: string; ad: string; aktif: boolean; operatorSayisi: number }
 type Esleme = {
@@ -34,6 +34,8 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
   const [arama, setArama] = useState('')
   const [silinecek, setSilinecek] = useState<Esleme | null>(null)
   const [ekleAcik, setEkleAcik] = useState(false)
+  const [eslemeDurum, setEslemeDurum] = useState<'hepsi' | 'aktif' | 'pasif'>('hepsi')
+  const [ayrilmis, setAyrilmis] = useState<'goster' | 'gizle'>('goster')
 
   useEffect(() => {
     void (async () => {
@@ -62,13 +64,18 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
 
   const gosterilen = useMemo(() => {
     const q = arama.trim().toLocaleLowerCase('tr')
-    if (!q) return eslemeler
-    return eslemeler.filter(
-      (e) =>
+    return eslemeler.filter((e) => {
+      if (eslemeDurum === 'aktif' && !e.aktif) return false
+      if (eslemeDurum === 'pasif' && e.aktif) return false
+      // personelAktif === null → personel kaydı silinmiş; "ayrılmış" sayılmaz.
+      if (ayrilmis === 'gizle' && e.personelAktif === false) return false
+      if (!q) return true
+      return (
         (e.adSoyad ?? '').toLocaleLowerCase('tr').includes(q) ||
-        (e.sicilNo ?? '').toLocaleLowerCase('tr').includes(q),
-    )
-  }, [eslemeler, arama])
+        (e.sicilNo ?? '').toLocaleLowerCase('tr').includes(q)
+      )
+    })
+  }, [eslemeler, arama, eslemeDurum, ayrilmis])
 
   const secili = tezgahlar.find((t) => t.id === tezgahId)
 
@@ -182,30 +189,47 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
 
       {tezgahId && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[220px] flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input
-                value={arama}
-                onChange={(e) => setArama(e.target.value)}
-                placeholder="Ad veya sicil ara…"
-                className="pl-8"
-              />
-            </div>
-            <Badge variant="outline">
-              {gosterilen.length} / {eslemeler.length}
-            </Badge>
+          <ListeAracCubugu
+            arama={arama}
+            onArama={setArama}
+            placeholder="Ad veya sicil ara…"
+            gosterilen={gosterilen.length}
+            toplam={eslemeler.length}
+            gruplar={[
+              {
+                ad: 'Eşleme',
+                secili: eslemeDurum,
+                sec: (v) => setEslemeDurum(v as typeof eslemeDurum),
+                secenekler: [
+                  { deger: 'hepsi', etiket: 'Hepsi' },
+                  { deger: 'aktif', etiket: 'Aktif' },
+                  { deger: 'pasif', etiket: 'Pasif' },
+                ],
+              },
+              {
+                ad: 'Ayrılmış',
+                secili: ayrilmis,
+                sec: (v) => setAyrilmis(v as typeof ayrilmis),
+                secenekler: [
+                  { deger: 'goster', etiket: 'Göster' },
+                  { deger: 'gizle', etiket: 'Gizle' },
+                ],
+              },
+            ]}
+          >
             {secili && !secili.aktif && <Badge variant="destructive">Tezgah pasif</Badge>}
-          </div>
+          </ListeAracCubugu>
 
           {yukleniyor ? (
             <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
           ) : (
-            <ResponsiveTable
-              columns={kolonlar}
-              data={gosterilen}
-              emptyMessage="Bu tezgaha bağlı operatör yok"
-            />
+            <KompaktListe>
+              <ResponsiveTable
+                columns={kolonlar}
+                data={gosterilen}
+                emptyMessage="Bu tezgaha bağlı operatör yok"
+              />
+            </KompaktListe>
           )}
         </>
       )}

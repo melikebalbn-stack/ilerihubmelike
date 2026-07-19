@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
 import { HURDA_BAYRAKLARI, DURUS_BAYRAKLARI, BITIS_TIPI_SECENEKLERI } from '@/lib/ipro/yonetim-etiketler'
-import { iproFetch, iproYaz, AktifRozet, GelismisBolum } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, GelismisBolum, ListeAracCubugu, KompaktListe } from './ortak'
 
 // Bayraklar AÇIKÇA yazılır; `& Record<string, boolean>` kesişimi string alanlarla
 // çakışıyor (index signature 'kod: string'i boolean'a zorluyor).
@@ -87,6 +87,8 @@ function HurdaSekmesi({ canEdit }: { canEdit: boolean }) {
   const [liste, setListe] = useState<HurdaSebebi[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [form, setForm] = useState<Partial<HurdaSebebi> | null>(null)
+  const [arama, setArama] = useState('')
+  const [durum, setDurum] = useState<'hepsi' | 'aktif' | 'pasif'>('hepsi')
 
   async function yukle() {
     setYukleniyor(true)
@@ -100,6 +102,20 @@ function HurdaSekmesi({ canEdit }: { canEdit: boolean }) {
   useEffect(() => {
     void yukle()
   }, [])
+
+  const gosterilen = useMemo(() => {
+    const q = arama.trim().toLocaleLowerCase('tr')
+    return liste.filter((x) => {
+      if (durum === 'aktif' && !x.aktif) return false
+      if (durum === 'pasif' && x.aktif) return false
+      if (!q) return true
+      return (
+        x.kod.toLocaleLowerCase('tr').includes(q) ||
+        x.ad.toLocaleLowerCase('tr').includes(q) ||
+        (x.grubu ?? '').toLocaleLowerCase('tr').includes(q)
+      )
+    })
+  }, [liste, arama, durum])
 
   const kolonlar: ResponsiveColumn<HurdaSebebi>[] = [
     { key: 'kod', label: 'Kod', primary: true },
@@ -123,18 +139,37 @@ function HurdaSekmesi({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Badge variant="outline">{liste.length} sebep</Badge>
+      <ListeAracCubugu
+        arama={arama}
+        onArama={setArama}
+        placeholder="Kod, ad veya grup ara…"
+        gosterilen={gosterilen.length}
+        toplam={liste.length}
+        gruplar={[
+              {
+                ad: 'Durum',
+                secili: durum,
+                sec: (v) => setDurum(v as typeof durum),
+                secenekler: [
+                  { deger: 'hepsi', etiket: 'Hepsi' },
+                  { deger: 'aktif', etiket: 'Aktif' },
+                  { deger: 'pasif', etiket: 'Pasif' },
+                ],
+              },
+        ]}
+      >
         {canEdit && (
           <Button onClick={() => setForm({ kod: '', ad: '', hurda: true, oeeEtkiler: true, aktif: true })}>
             <Plus className="mr-1 h-4 w-4" /> Yeni
           </Button>
         )}
-      </div>
+      </ListeAracCubugu>
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <ResponsiveTable columns={kolonlar} data={liste} emptyMessage="Hurda sebebi yok" />
+        <KompaktListe>
+          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Hurda sebebi yok" />
+        </KompaktListe>
       )}
       <HurdaForm form={form} onKapat={() => setForm(null)} onKaydedildi={() => { setForm(null); void yukle() }} />
     </div>
@@ -213,6 +248,9 @@ function DurusSekmesi({ canEdit }: { canEdit: boolean }) {
   const [tipler, setTipler] = useState<DurusTipi[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [form, setForm] = useState<Partial<DurusSebebi> | null>(null)
+  const [arama, setArama] = useState('')
+  const [durum, setDurum] = useState<'hepsi' | 'aktif' | 'pasif'>('hepsi')
+  const [bayrak, setBayrak] = useState<'hepsi' | 'planli' | 'uretimDisi' | 'setupDurusu'>('hepsi')
 
   async function yukle() {
     setYukleniyor(true)
@@ -230,6 +268,21 @@ function DurusSekmesi({ canEdit }: { canEdit: boolean }) {
   useEffect(() => {
     void yukle()
   }, [])
+
+  const gosterilen = useMemo(() => {
+    const q = arama.trim().toLocaleLowerCase('tr')
+    return liste.filter((x) => {
+      if (durum === 'aktif' && !x.aktif) return false
+      if (durum === 'pasif' && x.aktif) return false
+      if (bayrak !== 'hepsi' && !x[bayrak]) return false
+      if (!q) return true
+      return (
+        x.kod.toLocaleLowerCase('tr').includes(q) ||
+        x.ad.toLocaleLowerCase('tr').includes(q) ||
+        (x.tip?.ad ?? '').toLocaleLowerCase('tr').includes(q)
+      )
+    })
+  }, [liste, arama, durum, bayrak])
 
   const kolonlar: ResponsiveColumn<DurusSebebi>[] = [
     { key: 'kod', label: 'Kod', primary: true },
@@ -253,18 +306,48 @@ function DurusSekmesi({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Badge variant="outline">{liste.length} sebep</Badge>
+      <ListeAracCubugu
+        arama={arama}
+        onArama={setArama}
+        placeholder="Kod, ad veya tip ara…"
+        gosterilen={gosterilen.length}
+        toplam={liste.length}
+        gruplar={[
+              {
+                ad: 'Durum',
+                secili: durum,
+                sec: (v) => setDurum(v as typeof durum),
+                secenekler: [
+                  { deger: 'hepsi', etiket: 'Hepsi' },
+                  { deger: 'aktif', etiket: 'Aktif' },
+                  { deger: 'pasif', etiket: 'Pasif' },
+                ],
+              },
+          {
+            ad: 'Tür',
+            secili: bayrak,
+            sec: (v) => setBayrak(v as typeof bayrak),
+            secenekler: [
+              { deger: 'hepsi', etiket: 'Hepsi' },
+              { deger: 'planli', etiket: 'Planlı' },
+              { deger: 'uretimDisi', etiket: 'Üretim Dışı' },
+              { deger: 'setupDurusu', etiket: 'Setup' },
+            ],
+          },
+        ]}
+      >
         {canEdit && (
           <Button onClick={() => setForm({ kod: '', ad: '', bitisTipi: 'Both', uretimdeGosterilsin: true, aktif: true })}>
             <Plus className="mr-1 h-4 w-4" /> Yeni
           </Button>
         )}
-      </div>
+      </ListeAracCubugu>
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <ResponsiveTable columns={kolonlar} data={liste} emptyMessage="Duruş sebebi yok" />
+        <KompaktListe>
+          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Duruş sebebi yok" />
+        </KompaktListe>
       )}
       <DurusForm
         form={form}
@@ -386,6 +469,8 @@ function TipSekmesi({ canEdit }: { canEdit: boolean }) {
   const [liste, setListe] = useState<DurusTipi[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [form, setForm] = useState<Partial<DurusTipi> | null>(null)
+  const [arama, setArama] = useState('')
+  const [durum, setDurum] = useState<'hepsi' | 'aktif' | 'pasif'>('hepsi')
 
   async function yukle() {
     setYukleniyor(true)
@@ -399,6 +484,16 @@ function TipSekmesi({ canEdit }: { canEdit: boolean }) {
   useEffect(() => {
     void yukle()
   }, [])
+
+  const gosterilen = useMemo(() => {
+    const q = arama.trim().toLocaleLowerCase('tr')
+    return liste.filter((x) => {
+      if (durum === 'aktif' && !x.aktif) return false
+      if (durum === 'pasif' && x.aktif) return false
+      if (!q) return true
+      return x.kod.toLocaleLowerCase('tr').includes(q) || x.ad.toLocaleLowerCase('tr').includes(q)
+    })
+  }, [liste, arama, durum])
 
   const kolonlar: ResponsiveColumn<DurusTipi>[] = [
     { key: 'kod', label: 'Kod', primary: true },
@@ -430,18 +525,37 @@ function TipSekmesi({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Badge variant="outline">{liste.length} tip</Badge>
+      <ListeAracCubugu
+        arama={arama}
+        onArama={setArama}
+        placeholder="Kod veya ad ara…"
+        gosterilen={gosterilen.length}
+        toplam={liste.length}
+        gruplar={[
+              {
+                ad: 'Durum',
+                secili: durum,
+                sec: (v) => setDurum(v as typeof durum),
+                secenekler: [
+                  { deger: 'hepsi', etiket: 'Hepsi' },
+                  { deger: 'aktif', etiket: 'Aktif' },
+                  { deger: 'pasif', etiket: 'Pasif' },
+                ],
+              },
+        ]}
+      >
         {canEdit && (
           <Button onClick={() => setForm({ kod: '', ad: '', aktif: true })}>
             <Plus className="mr-1 h-4 w-4" /> Yeni
           </Button>
         )}
-      </div>
+      </ListeAracCubugu>
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <ResponsiveTable columns={kolonlar} data={liste} emptyMessage="Duruş tipi yok" />
+        <KompaktListe>
+          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Duruş tipi yok" />
+        </KompaktListe>
       )}
       <TipForm form={form} onKapat={() => setForm(null)} onKaydet={kaydet} />
     </div>

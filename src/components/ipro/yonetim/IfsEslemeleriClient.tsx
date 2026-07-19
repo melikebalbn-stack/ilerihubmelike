@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
-import { iproFetch, iproYaz, AktifRozet } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, KompaktListe } from './ortak'
 
 type Esleme = {
   id: string
@@ -32,6 +32,8 @@ export function IfsEslemeleriClient({ canEdit }: { canEdit: boolean }) {
   const [yukleniyor, setYukleniyor] = useState(true)
   const [form, setForm] = useState<(Omit<Esleme, 'id'> & { id?: string }) | null>(null)
   const [silinecek, setSilinecek] = useState<Esleme | null>(null)
+  const [arama, setArama] = useState('')
+  const [tipFiltre, setTipFiltre] = useState<'hepsi' | 'ORG' | 'POZISYON'>('hepsi')
 
   async function yukle() {
     setYukleniyor(true)
@@ -46,6 +48,19 @@ export function IfsEslemeleriClient({ canEdit }: { canEdit: boolean }) {
   useEffect(() => {
     void yukle()
   }, [])
+
+  const gosterilen = useMemo(() => {
+    const q = arama.trim().toLocaleLowerCase('tr')
+    return eslemeler.filter((e) => {
+      if (tipFiltre !== 'hepsi' && e.tip !== tipFiltre) return false
+      if (!q) return true
+      return (
+        e.ilerihubDeger.toLocaleLowerCase('tr').includes(q) ||
+        e.ifsKod.toLocaleLowerCase('tr').includes(q) ||
+        (e.aciklama ?? '').toLocaleLowerCase('tr').includes(q)
+      )
+    })
+  }, [eslemeler, arama, tipFiltre])
 
   const kolonlar: ResponsiveColumn<Esleme>[] = [
     { key: 'tip', label: 'Tip', badge: true, render: (e) => <Badge variant="outline">{e.tip}</Badge> },
@@ -87,19 +102,38 @@ export function IfsEslemeleriClient({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Badge variant="outline">{eslemeler.length} eşleme</Badge>
+      <ListeAracCubugu
+        arama={arama}
+        onArama={setArama}
+        placeholder="Değer, IFS kodu veya açıklama ara…"
+        gosterilen={gosterilen.length}
+        toplam={eslemeler.length}
+        gruplar={[
+          {
+            ad: 'Tip',
+            secili: tipFiltre,
+            sec: (v) => setTipFiltre(v as typeof tipFiltre),
+            secenekler: [
+              { deger: 'hepsi', etiket: 'Hepsi' },
+              { deger: 'ORG', etiket: 'ORG' },
+              { deger: 'POZISYON', etiket: 'POZISYON' },
+            ],
+          },
+        ]}
+      >
         {canEdit && (
           <Button onClick={() => setForm({ ...BOS })}>
             <Plus className="mr-1 h-4 w-4" /> Yeni eşleme
           </Button>
         )}
-      </div>
+      </ListeAracCubugu>
 
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <ResponsiveTable columns={kolonlar} data={eslemeler} emptyMessage="Eşleme yok" />
+        <KompaktListe>
+          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Eşleme yok" />
+        </KompaktListe>
       )}
 
       <FormDialog

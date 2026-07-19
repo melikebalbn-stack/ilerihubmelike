@@ -1,15 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, Search, Signal } from 'lucide-react'
+import { Pencil, Signal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
-import { iproFetch, iproYaz, AktifRozet } from './ortak'
+import { iproFetch, iproYaz, AktifRozet, ListeAracCubugu, KompaktListe } from './ortak'
 
 type Tezgah = {
   id: string
@@ -24,13 +23,15 @@ type Tezgah = {
   operatorSayisi: number
 }
 
-type Filtre = 'hepsi' | 'aktif' | 'pasif' | 'sinyalli' | 'sinyalsiz'
+type Durum = 'hepsi' | 'aktif' | 'pasif'
+type Sinyal = 'hepsi' | 'sinyalli' | 'sinyalsiz'
 
 export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
   const [tezgahlar, setTezgahlar] = useState<Tezgah[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [arama, setArama] = useState('')
-  const [filtre, setFiltre] = useState<Filtre>('hepsi')
+  const [durum, setDurum] = useState<Durum>('hepsi')
+  const [sinyal, setSinyal] = useState<Sinyal>('hepsi')
   const [duzenlenen, setDuzenlenen] = useState<Tezgah | null>(null)
 
   async function yukle() {
@@ -50,10 +51,10 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
   const gosterilen = useMemo(() => {
     const q = arama.trim().toLocaleLowerCase('tr')
     return tezgahlar.filter((t) => {
-      if (filtre === 'aktif' && !t.aktif) return false
-      if (filtre === 'pasif' && t.aktif) return false
-      if (filtre === 'sinyalli' && !t.sinyalli) return false
-      if (filtre === 'sinyalsiz' && t.sinyalli) return false
+      if (durum === 'aktif' && !t.aktif) return false
+      if (durum === 'pasif' && t.aktif) return false
+      if (sinyal === 'sinyalli' && !t.sinyalli) return false
+      if (sinyal === 'sinyalsiz' && t.sinyalli) return false
       if (!q) return true
       return (
         t.kod.toLocaleLowerCase('tr').includes(q) ||
@@ -61,7 +62,7 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
         (t.masGrupAdi ?? '').toLocaleLowerCase('tr').includes(q)
       )
     })
-  }, [tezgahlar, arama, filtre])
+  }, [tezgahlar, arama, durum, sinyal])
 
   const kolonlar: ResponsiveColumn<Tezgah>[] = [
     { key: 'kod', label: 'Kod', primary: true },
@@ -105,30 +106,42 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-          <Input
-            value={arama}
-            onChange={(e) => setArama(e.target.value)}
-            placeholder="Kod, ad veya MAS grubu ara…"
-            className="pl-8"
-          />
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {(['hepsi', 'aktif', 'pasif', 'sinyalli', 'sinyalsiz'] as Filtre[]).map((f) => (
-            <Button key={f} variant={filtre === f ? 'default' : 'outline'} size="sm" onClick={() => setFiltre(f)}>
-              {f === 'hepsi' ? 'Hepsi' : f[0].toLocaleUpperCase('tr') + f.slice(1)}
-            </Button>
-          ))}
-        </div>
-        <Badge variant="outline">{gosterilen.length} / {tezgahlar.length}</Badge>
-      </div>
+      <ListeAracCubugu
+        arama={arama}
+        onArama={setArama}
+        placeholder="Kod, ad veya MAS grubu ara…"
+        gosterilen={gosterilen.length}
+        toplam={tezgahlar.length}
+        gruplar={[
+          {
+            ad: 'Durum',
+            secili: durum,
+            sec: (v) => setDurum(v as Durum),
+            secenekler: [
+              { deger: 'hepsi', etiket: 'Hepsi' },
+              { deger: 'aktif', etiket: 'Aktif' },
+              { deger: 'pasif', etiket: 'Pasif' },
+            ],
+          },
+          {
+            ad: 'Sinyal',
+            secili: sinyal,
+            sec: (v) => setSinyal(v as Sinyal),
+            secenekler: [
+              { deger: 'hepsi', etiket: 'Hepsi' },
+              { deger: 'sinyalli', etiket: 'Sinyalli' },
+              { deger: 'sinyalsiz', etiket: 'Sinyalsiz' },
+            ],
+          },
+        ]}
+      />
 
       {yukleniyor ? (
         <p className="py-8 text-center text-sm text-slate-500">Yükleniyor…</p>
       ) : (
-        <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Tezgah bulunamadı" />
+        <KompaktListe>
+          <ResponsiveTable columns={kolonlar} data={gosterilen} emptyMessage="Tezgah bulunamadı" />
+        </KompaktListe>
       )}
 
       <DuzenleDialog

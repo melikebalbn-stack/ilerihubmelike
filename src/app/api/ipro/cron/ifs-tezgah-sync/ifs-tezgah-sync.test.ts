@@ -37,7 +37,11 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await prisma.iproTezgah.deleteMany({ where: { kod: { in: olusanKodlar } } })
+  // Kod VE rid bazlı temizlik: kodsuz kayıtlar ResourceId'yle eklendiği için
+  // kod eşleşmesi kaçırabilir (RID-MUK-* gibi).
+  await prisma.iproTezgah.deleteMany({
+    where: { OR: [{ kod: { in: olusanKodlar } }, { kod: { startsWith: 'RID-' } }, { ifsResourceId: { startsWith: 'RID-' } }] },
+  })
   await prisma.$disconnect()
 })
 
@@ -158,6 +162,32 @@ describe('tezgahSenkronu', () => {
     expect(t?.ifsResourceId).toBe('RID-TZY-B') // TZY11'e bağlandı
   })
 
+  it('MÜKERRER rid (KR02 anomalisi): deterministik seçim, ikinci koşuda guncellenen=0', async () => {
+    // Aynı rid, iki farklı WC/ad — IFS'te KR02 kaynak robotlarındaki gibi.
+    const kod = `${P}88` // sayısal: kodCikar yakalasın (harf-only olursa null)
+    olusanKodlar.push(kod)
+    const cift = (wc: string, ad: string) => ({ rid: 'RID-MUK-1', wc, desc: `${kod} - ${ad}` })
+    const kaynaklar = [cift('302', 'IKINCI KAPI'), cift('301', 'BIRINCI KAPI')] // sırası karışık
+
+    // 1. koşu: kayıt yok → en küçük WC (301) deterministik seçilir → eklenir.
+    const s1 = await tezgahSenkronu(kaynaklar)
+    expect(s1.eklenen).toBe(1)
+    expect(s1.mukerrerRidler).toHaveLength(1)
+    expect(s1.mukerrerRidler[0]).toMatchObject({ rid: 'RID-MUK-1' })
+    expect(s1.mukerrerRidler[0].wcler.sort()).toEqual(['301', '302'])
+    const t1 = await prisma.iproTezgah.findUnique({ where: { kod }, select: { ifsWorkCenterNo: true, ad: true } })
+    expect(t1).toMatchObject({ ifsWorkCenterNo: '301', ad: 'BIRINCI KAPI' }) // küçük WC seçildi
+
+    // 2. koşu: mevcut değer (301) gruptakilerden biri → KORUNUR → guncellenen=0.
+    const s2 = await tezgahSenkronu(kaynaklar)
+    expect(s2.guncellenen).toBe(0) // SALINIM YOK
+    expect(s2.eklenen).toBe(0)
+    expect(s2.hatalilar).toHaveLength(0)
+    expect(s2.mukerrerRidler).toHaveLength(1) // anomali her koşu raporlanır
+    const t2 = await prisma.iproTezgah.findUnique({ where: { kod }, select: { ifsWorkCenterNo: true } })
+    expect(t2?.ifsWorkCenterNo).toBe('301') // hâlâ 301, salınmadı
+  })
+
   it('PASİFLEME YAPMAZ — IFS listesinde olmayan tezgaha dokunmaz', async () => {
     const oncekiAktif = await prisma.iproTezgah.count({ where: { aktif: true } })
     await tezgahSenkronu([{ rid: '99977', wc: '999', desc: `${P}77 - TEST MATKAP` }]) // yalnız 1 makine
@@ -181,7 +211,7 @@ describe('cron endpoint', () => {
     // gidilmez. (ifsResourcesFetch'i mock'lamak yetmez: tezgahSenkronu onu
     // modül-İÇİ referansla çağırıyor, mock devreye girmez.)
     vi.doMock('@/lib/ipro/tezgah-sync', () => ({
-      tezgahSenkronu: vi.fn(async () => ({ taranan: 0, eklenen: 0, guncellenen: 0, atlanan: 0, hatalilar: [] })),
+      tezgahSenkronu: vi.fn(async () => ({ taranan: 0, eklenen: 0, guncellenen: 0, atlanan: 0, hatalilar: [], mukerrerRidler: [] })),
     }))
     const { POST } = await import('@/app/api/ipro/cron/ifs-tezgah-sync/route')
     const secret = process.env.CRON_SECRET
@@ -195,6 +225,7 @@ describe('cron endpoint', () => {
     expect(d).toHaveProperty('guncellenen')
     expect(d).toHaveProperty('atlanan')
     expect(Array.isArray(d.hatalilar)).toBe(true)
+    expect(Array.isArray(d.mukerrerRidler)).toBe(true)
     vi.doUnmock('@/lib/ipro/tezgah-sync')
   })
 })

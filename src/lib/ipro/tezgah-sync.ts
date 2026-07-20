@@ -30,6 +30,12 @@ export type TezgahSyncSonuc = {
   guncellenen: number // ad/WC değişikliği + backfill birlikte
   atlanan: number // IFS ile birebir aynı, değişiklik yok
   hatalilar: Array<{ kod: string; detay: string }>
+  /**
+   * Aynı ifsResourceId'ye sahip birden fazla IFS kaynağı (IFS anomalisi —
+   * ResourceId benzersiz olmalı). Her koşu raporlanır; IFS düzelince kendiliğinden
+   * boşalır. Anomali maskelenmez: sabitlenip görünür tutulur.
+   */
+  mukerrerRidler: Array<{ rid: string; wcler: string[] }>
 }
 
 // ── IFS okuma (config/token lib'i üzerinden — cron için) ─────────────────
@@ -71,7 +77,7 @@ export async function ifsResourcesFetch(): Promise<IfsResource[]> {
  *   canlı IFS'ten çekilir). PASİFLEME YAPMAZ.
  */
 export async function tezgahSenkronu(resources?: IfsResource[]): Promise<TezgahSyncSonuc> {
-  const sonuc: TezgahSyncSonuc = { taranan: 0, eklenen: 0, guncellenen: 0, atlanan: 0, hatalilar: [] }
+  const sonuc: TezgahSyncSonuc = { taranan: 0, eklenen: 0, guncellenen: 0, atlanan: 0, hatalilar: [], mukerrerRidler: [] }
 
   const ifsHepsi = resources ?? (await ifsResourcesFetch())
   const makineler = ifsHepsi.filter((r) => !makineDegil(r))
@@ -88,7 +94,42 @@ export async function tezgahSenkronu(resources?: IfsResource[]): Promise<TezgahS
   // ResourceId olarak eklenmiş) kod-önekle bulunamaz; ResourceId ile bulunur.
   const byRid = new Map(tezgahlar.filter((t) => t.ifsResourceId).map((t) => [t.ifsResourceId!, t]))
 
+  // ── Mükerrer ifsResourceId dedup (IFS anomalisi — KR02 kaynak robotları:
+  //    aynı rid, iki farklı WC/ad). Seçim DETERMİNİSTİK:
+  //      - bizde kayıtlı mevcut değer gruptakilerden biriyse → MEVCUT korunur
+  //        (salınım biter, guncellenen=0)
+  //      - hiç kayıt yoksa → en küçük WC (numeric)
+  //    Yutulanlar sessizce kaybolmaz: mukerrerRidler[]'e raporlanır.
+  const ridGrup = new Map<string, IfsResource[]>()
   for (const r of makineler) {
+    if (!ridGrup.has(r.rid)) ridGrup.set(r.rid, [])
+    ridGrup.get(r.rid)!.push(r)
+  }
+  const secilen: IfsResource[] = []
+  for (const [rid, grup] of ridGrup) {
+    if (grup.length === 1) {
+      secilen.push(grup[0])
+      continue
+    }
+    sonuc.mukerrerRidler.push({ rid, wcler: grup.map((g) => g.wc || '(boş)') })
+    const mevcut = byRid.get(rid)
+    let sec: IfsResource | undefined
+    if (mevcut) {
+      // Mevcut DB değeriyle (wc + varsa ad) eşleşen kaynağı koru → değişiklik yok.
+      sec = grup.find(
+        (g) =>
+          (g.wc || null) === mevcut.ifsWorkCenterNo &&
+          (!kodCikar(g.desc) || adCikar(g.desc) === mevcut.ad),
+      )
+    }
+    if (!sec) {
+      // Deterministik: en küçük WC (sayısal). Kayıt yoksa da hep aynı seçilir.
+      sec = [...grup].sort((a, b) => (a.wc || '').localeCompare(b.wc || '', undefined, { numeric: true }))[0]
+    }
+    secilen.push(sec)
+  }
+
+  for (const r of secilen) {
     try {
       // 0) ifsResourceId ile mevcut kayıt — kodsuz kaynağın idempotent yolu.
       //    Bu ResourceId zaten bir tezgahtaysa kod eşleştirme DENENMEZ; yalnız

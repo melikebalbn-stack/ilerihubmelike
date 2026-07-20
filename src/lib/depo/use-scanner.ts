@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, KeyboardEvent } from 'react'
+import type { ChangeEvent, FocusEvent, KeyboardEvent } from 'react'
 
 /**
  * Ortak okutma altyapısı (depo terminal ekranları). Görünmez, her zaman odakta
@@ -30,8 +30,15 @@ export function useScanner(active: boolean, onScan: (v: string) => void) {
         onScan(v)
       }
     },
-    onBlur: () => {
-      if (active) setTimeout(() => ref.current?.focus(), 50)
+    onBlur: (e: FocusEvent<HTMLInputElement>) => {
+      if (!active) return
+      // Odak GERÇEK bir form alanına geçtiyse geri çalma: kullanıcı klavyeyle
+      // yazıyor demektir (ör. toplama arama kutusu). Aksi halde geri-odaklama
+      // gizli scanner'ı tekrar aktif eder ve tuş vuruşlarını çalardı. relatedTarget
+      // null (boşluğa/karta dokunma, bazı dokunmatik durumlar) ise eski davranış korunur.
+      const next = e.relatedTarget as HTMLElement | null
+      if (next?.matches('input, textarea, select, [contenteditable="true"]')) return
+      setTimeout(() => ref.current?.focus(), 50)
     },
     autoFocus: true,
     'aria-hidden': true,

@@ -107,31 +107,55 @@ describe('tezgahSenkronu', () => {
     expect(t).toMatchObject({ ad: 'Lazer Kesim', ifsResourceId: kod })
   })
 
+  it('KODSUZ kaynak İKİNCİ koşuda ATLANIR — unique hata DEĞİL (ifsResourceId fallback)', async () => {
+    // Prod 10101 bug'ı: kodsuz kaynak (desc'te kod yok) kod-önekle bulunamıyor,
+    // her koşuda yeniden eklenmeye çalışılıp unique hata veriyordu.
+    const kod = `${P}KODSUZ` // önceki testte eklendi
+    const r = [{ rid: kod, wc: '101', desc: 'Lazer Kesim' }]
+    const s = await tezgahSenkronu(r)
+    expect(s.eklenen).toBe(0) // yeniden eklenmez
+    expect(s.hatalilar).toHaveLength(0) // unique hata YOK
+    expect(s.atlanan + s.guncellenen).toBe(1) // ResourceId ile bulundu, ele alındı
+
+    // WC değişirse ikinci koşu güncellemeli (yine ekleme değil)
+    const s2 = await tezgahSenkronu([{ rid: kod, wc: '999', desc: 'Lazer Kesim' }])
+    expect(s2.eklenen).toBe(0)
+    expect(s2.guncellenen).toBe(1)
+    expect(s2.hatalilar).toHaveLength(0)
+    const t = await prisma.iproTezgah.findUnique({ where: { kod }, select: { ifsWorkCenterNo: true } })
+    expect(t?.ifsWorkCenterNo).toBe('999')
+  })
+
   it('BACKFILL: eşleşen kaydın boş IFS alanları dolar, ad da güncellenir', async () => {
-    const s = await tezgahSenkronu([{ rid: '20811', wc: '208', desc: `${P}11 - YENİ AD` }])
+    const s = await tezgahSenkronu([{ rid: 'RID-TZY-A', wc: '208', desc: `${P}11 - YENİ AD` }])
     expect(s.guncellenen).toBe(1)
     const t = await prisma.iproTezgah.findUnique({ where: { id: mevcutTezgahId }, select: { ad: true, ifsResourceId: true, ifsWorkCenterNo: true } })
-    expect(t).toMatchObject({ ad: 'YENİ AD', ifsResourceId: '20811', ifsWorkCenterNo: '208' })
+    expect(t).toMatchObject({ ad: 'YENİ AD', ifsResourceId: 'RID-TZY-A', ifsWorkCenterNo: '208' })
   })
 
   it('değişiklik yoksa ATLANIR (idempotent)', async () => {
-    // Bir önceki testten sonra TSY911 artık 20811/208/YENİ AD. Aynı kaynak → atla.
-    const s = await tezgahSenkronu([{ rid: '20811', wc: '208', desc: `${P}11 - YENİ AD` }])
+    // Bir önceki testten sonra TZY11 artık RID-TZY-A/208/YENİ AD. Aynı kaynak → atla.
+    const s = await tezgahSenkronu([{ rid: 'RID-TZY-A', wc: '208', desc: `${P}11 - YENİ AD` }])
     expect(s.atlanan).toBe(1)
     expect(s.guncellenen).toBe(0)
     expect(s.eklenen).toBe(0)
   })
 
   it('sıfır-dolgu şüphelisi mevcut kayda bağlanır, YENİ kayıt açılmaz', async () => {
-    // TSY911 var; IFS "TSY9011" olarak gelirse → TSY911'e bağlan, TSY9011 açma.
+    // TZY11 var; IFS "TZY011" olarak gelirse → TZY11'e bağlan, TZY011 açma.
+    // Sıra bağımsızlığı için TZY11'in rid'ini bilinen bir değere resetle (önceki
+    // testler değiştirmiş olabilir — bu test rid DEĞİŞİMİNİ ölçüyor).
+    await prisma.iproTezgah.update({ where: { kod: `${P}11` }, data: { ifsResourceId: 'RESET-RID' } })
     const oncekiSayi = await prisma.iproTezgah.count({ where: { kod: { startsWith: P } } })
-    const s = await tezgahSenkronu([{ rid: '30811', wc: '308', desc: `${P}011 - PRES` }])
+    const s = await tezgahSenkronu([{ rid: 'RID-TZY-B', wc: '308', desc: `${P}011 - PRES` }])
     expect(s.eklenen).toBe(0)
-    expect(s.guncellenen).toBe(1) // rid değişti → güncelleme
+    expect(s.guncellenen).toBe(1) // rid RESET-RID → RID-TZY-B değişti → güncelleme
     const sonrakiSayi = await prisma.iproTezgah.count({ where: { kod: { startsWith: P } } })
     expect(sonrakiSayi).toBe(oncekiSayi) // yeni kod açılmadı
     const yok = await prisma.iproTezgah.findUnique({ where: { kod: `${P}011` } })
     expect(yok).toBeNull()
+    const t = await prisma.iproTezgah.findUnique({ where: { kod: `${P}11` }, select: { ifsResourceId: true } })
+    expect(t?.ifsResourceId).toBe('RID-TZY-B') // TZY11'e bağlandı
   })
 
   it('PASİFLEME YAPMAZ — IFS listesinde olmayan tezgaha dokunmaz', async () => {

@@ -14,6 +14,13 @@ interface ImportRow {
   'ÇIKIŞ SAATİ'?: string
 }
 
+const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB
+const MAX_ROWS = 500
+const ALLOWED_MIME_TYPES = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/octet-stream', // bazı tarayıcılar/OS'ler .xlsx için bunu gönderir
+]
+
 function parseExcelDate(value: string | number | Date | undefined): Date | null {
   if (!value) return null
   if (value instanceof Date) return value
@@ -32,11 +39,20 @@ function parseExcelDate(value: string | number | Date | undefined): Date | null 
   return isNaN(fallback.getTime()) ? null : fallback
 }
 
+interface PersonnelLite {
+  id: string
+  sicilNo: string | null
+  adSoyad: string
+  bolum: string
+}
+
 /**
  * POST /api/sandbox/melike/toplu-kart-okutamama/import
  * Excel dosyasından toplu kayıt oluşturur. Her satır SİCİL NO ile
  * Personnel (İV) tablosunda eşleştirilir — isim/sicil client'tan güvenilmez,
  * sadece gerçek Personnel kaydına bağlanan satırlar kabul edilir.
+ * GRİ kullanıcı yalnızca kendi bölümündeki personel için kayıt açabilir
+ * (POST /toplu-kart-okutamama route'undaki 403 kuralıyla birebir aynı).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -54,15 +70,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Dosya bulunamadı' }, { status: 400 })
     }
 
-    const arrayBuffer = await file.arrayBuffer()
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-    const sheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rows: ImportRow[] = XLSX.utils.sheet_to_json(sheet)
+    if (!file.name.toLowerCase().endsWith('.xlsx') || !ALLOWED_MIME_TYPES.includes(file.type)) {
+      return NextResponse.json({ error: 'Geçersiz dosya formatı — yalnızca .xlsx kabul edilir' }, { status: 400 })
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: 'Dosya boyutu 2MB sınırını aşıyor' }, { status: 400 })
+    }
+
+    let rows: ImportRow[]
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      rows = XLSX.utils.sheet_to_json(sheet)
+    } catch {
+      return NextResponse.json({ error: 'Geçersiz dosya — Excel içeriği okunamadı' }, { status: 400 })
+    }
+
+    if (rows.length > MAX_ROWS) {
+      return NextResponse.json(
+        { error: `En fazla ${MAX_ROWS} satır aktarılabilir (bu dosyada ${rows.length} satır var)` },
+        { status: 400 },
+      )
+    }
 
     const results: { created: number; errors: { row: number; message: string }[] } = {
       created: 0,
       errors: [],
     }
+
+    interface ParsedRow {
+      rowIndex: number
+      sicilNo: string
+      adSoyad: string
+      tarih: Date
+      girisSaati: string | null
+      cikisSaati: string | null
+    }
+    const parsed: ParsedRow[] = []
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
@@ -79,36 +125,103 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const personnel = await prisma.personnel.findFirst({
+      parsed.push({
+        rowIndex: i + 2,
+        sicilNo,
+        adSoyad,
+        tarih,
+        girisSaati: row['GİRİŞ SAATİ'] ? String(row['GİRİŞ SAATİ']).trim() : null,
+        cikisSaati: row['ÇIKIŞ SAATİ'] ? String(row['ÇIKIŞ SAATİ']).trim() : null,
+      })
+    }
+
+    // Satır başına findFirst yerine TEK toplu sorgu + Map: sicilNo'lu satırlar
+    // sicilNo IN (...), sicilNo'suz (yalnız ad-soyad) satırlar OR/insensitive IN (...).
+    const bySicil = new Map<string, PersonnelLite>()
+    const byAdSoyad = new Map<string, PersonnelLite>()
+
+    const sicilNos = [...new Set(parsed.filter((p) => p.sicilNo).map((p) => p.sicilNo))]
+    const adSoyadlarSicilsiz = [...new Set(parsed.filter((p) => !p.sicilNo && p.adSoyad).map((p) => p.adSoyad))]
+
+    if (sicilNos.length > 0) {
+      const found = await prisma.personnel.findMany({
+        where: { aktif: true, sicilNo: { in: sicilNos } },
+        select: { id: true, sicilNo: true, adSoyad: true, bolum: true },
+      })
+      for (const p of found) {
+        if (p.sicilNo) bySicil.set(p.sicilNo, p)
+      }
+    }
+
+    if (adSoyadlarSicilsiz.length > 0) {
+      const found = await prisma.personnel.findMany({
         where: {
           aktif: true,
-          ...(sicilNo
-            ? { sicilNo }
-            : { adSoyad: { equals: adSoyad, mode: 'insensitive' } }),
+          OR: adSoyadlarSicilsiz.map((name) => ({ adSoyad: { equals: name, mode: 'insensitive' as const } })),
         },
-        select: { id: true, sicilNo: true, adSoyad: true },
+        select: { id: true, sicilNo: true, adSoyad: true, bolum: true },
       })
+      for (const p of found) {
+        byAdSoyad.set(p.adSoyad.toLowerCase(), p)
+      }
+    }
+
+    interface ToCreate {
+      personnelId: string
+      sicilNo: string | null
+      adSoyad: string
+      tarih: Date
+      girisSaati: string | null
+      cikisSaati: string | null
+    }
+    const toCreate: ToCreate[] = []
+
+    for (const p of parsed) {
+      const personnel = p.sicilNo ? bySicil.get(p.sicilNo) : byAdSoyad.get(p.adSoyad.toLowerCase())
 
       if (!personnel) {
         results.errors.push({
-          row: i + 2,
-          message: `Personel bulunamadı (Sicil No: ${sicilNo || '-'}, Ad Soyad: ${adSoyad || '-'})`,
+          row: p.rowIndex,
+          message: `Personel bulunamadı (Sicil No: ${p.sicilNo || '-'}, Ad Soyad: ${p.adSoyad || '-'})`,
         })
         continue
       }
 
-      await prisma.bulkCardScanFailure.create({
-        data: {
-          personnelId: personnel.id,
-          sicilNo: personnel.sicilNo,
-          adSoyad: personnel.adSoyad,
-          tarih,
-          girisSaati: row['GİRİŞ SAATİ'] ? String(row['GİRİŞ SAATİ']).trim() : null,
-          cikisSaati: row['ÇIKIŞ SAATİ'] ? String(row['ÇIKIŞ SAATİ']).trim() : null,
-          createdById: user.id,
-        },
+      if (access.level === 'GRI' && personnel.bolum !== access.bolum) {
+        results.errors.push({
+          row: p.rowIndex,
+          message: `Yetki dışı bölüm — sadece kendi bölümünüzdeki personel için kayıt açabilirsiniz (Sicil No: ${personnel.sicilNo || '-'}, Ad Soyad: ${personnel.adSoyad})`,
+        })
+        continue
+      }
+
+      toCreate.push({
+        personnelId: personnel.id,
+        sicilNo: personnel.sicilNo,
+        adSoyad: personnel.adSoyad,
+        tarih: p.tarih,
+        girisSaati: p.girisSaati,
+        cikisSaati: p.cikisSaati,
       })
-      results.created++
+    }
+
+    if (toCreate.length > 0) {
+      await prisma.$transaction(
+        toCreate.map((c) =>
+          prisma.bulkCardScanFailure.create({
+            data: {
+              personnelId: c.personnelId,
+              sicilNo: c.sicilNo,
+              adSoyad: c.adSoyad,
+              tarih: c.tarih,
+              girisSaati: c.girisSaati,
+              cikisSaati: c.cikisSaati,
+              createdById: user.id,
+            },
+          }),
+        ),
+      )
+      results.created = toCreate.length
     }
 
     return NextResponse.json(results)

@@ -32,10 +32,12 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../../src/generated/prisma'
 import { hedefDbGuard } from './_guard'
+import {
+  startsWithKod, kodCikar, sifirsiz, makineDegil, adCikar,
+  type IfsResource,
+} from '../../src/lib/ipro/tezgah-esleme'
 
 const UYGULA = process.argv.includes('--uygula')
-
-type IfsResource = { rid: string; wc: string; desc: string }
 
 async function ifsResources(): Promise<IfsResource[]> {
   for (const k of ['IFS_INT_BASE_URL', 'IFS_TOKEN_URL', 'IFS_CLIENT_ID', 'IFS_CLIENT_SECRET']) {
@@ -68,34 +70,6 @@ async function ifsResources(): Promise<IfsResource[]> {
       desc: String(x.Description ?? '').trim(),
     }))
     .filter((x) => x.rid)
-}
-
-/** Kod sonrası harf/rakam GELMEMELİ → PH08 ≠ PH081. */
-function startsWithKod(desc: string, kod: string): boolean {
-  const d = desc.toUpperCase()
-  const k = kod.toUpperCase()
-  if (!d.startsWith(k)) return false
-  const next = d.charAt(k.length)
-  return next === '' || !/[A-Z0-9]/.test(next)
-}
-
-/** "PH011 - 150 TON PRES" → "PH011" */
-function kodCikar(desc: string): string | null {
-  const m = desc.match(/^([A-Z]{1,3}[0-9]{1,4}(?:-[0-9]+)?)\s*[-–]/i)
-  return m ? m[1].toUpperCase() : null
-}
-
-/** PH011 → PH11 (sıfır dolgusu atılmış) */
-function sifirsiz(kod: string): string | null {
-  const m = kod.match(/^([A-Z]+)0*([1-9][0-9]*)$/i)
-  if (!m) return null
-  const sade = `${m[1].toUpperCase()}${m[2]}`
-  return sade === kod.toUpperCase() ? null : sade
-}
-
-/** Planlama WC'si veya fason kaydı mı? Makine değil → hizalamaya girmez. */
-function makineDegil(r: IfsResource): boolean {
-  return /^(W[A-Z]{2}\d*|WYD|FSN)$/i.test(r.rid) || /^9000\d$/.test(r.rid)
 }
 
 async function main() {
@@ -151,7 +125,7 @@ async function main() {
     const eklenecek = eklenecekAdaylar.map((r) => {
       const k = kodCikar(r.desc)
       const kod = k && !kodSet.has(k) ? k : r.rid
-      const ad = k ? r.desc.replace(/^[^-–]+[-–]\s*/, '').trim() || r.desc : r.desc
+      const ad = adCikar(r.desc)
       return { kod, ad, r, kodKaynagi: k && !kodSet.has(k) ? 'açıklama' : 'ResourceId' }
     })
 

@@ -84,9 +84,31 @@ export async function tezgahSenkronu(resources?: IfsResource[]): Promise<TezgahS
   const kods = tezgahlar.map((t) => t.kod)
   const kodSet = new Set(kods)
   const byKod = new Map(tezgahlar.map((t) => [t.kod, t]))
+  // ifsResourceId → tezgah. Kodsuz IFS kaynağı (desc'te kod deseni yok, kod =
+  // ResourceId olarak eklenmiş) kod-önekle bulunamaz; ResourceId ile bulunur.
+  const byRid = new Map(tezgahlar.filter((t) => t.ifsResourceId).map((t) => [t.ifsResourceId!, t]))
 
   for (const r of makineler) {
     try {
+      // 0) ifsResourceId ile mevcut kayıt — kodsuz kaynağın idempotent yolu.
+      //    Bu ResourceId zaten bir tezgahtaysa kod eşleştirme DENENMEZ; yalnız
+      //    ad/WC değişikliği güncellenir. (10101 "Lazer Kesim" gibi kodsuzlar
+      //    aksi halde her koşuda yeniden eklenmeye çalışılıp unique hata verir.)
+      const ridEsl = byRid.get(r.rid)
+      if (ridEsl) {
+        const yeniAd = adCikar(r.desc)
+        const data: { ad?: string; ifsWorkCenterNo?: string | null } = {}
+        if (kodCikar(r.desc) && ridEsl.ad !== yeniAd) data.ad = yeniAd
+        if (ridEsl.ifsWorkCenterNo !== (r.wc || null)) data.ifsWorkCenterNo = r.wc || null
+        if (Object.keys(data).length) {
+          await prisma.iproTezgah.update({ where: { id: ridEsl.id }, data })
+          sonuc.guncellenen++
+        } else {
+          sonuc.atlanan++
+        }
+        continue
+      }
+
       // 1) Kod-önek eşleşmesi (en uzun kazanır)
       const adaylar = kods.filter((k) => startsWithKod(r.desc, k))
       if (adaylar.length) {
@@ -131,7 +153,9 @@ export async function tezgahSenkronu(resources?: IfsResource[]): Promise<TezgahS
         select: { id: true, kod: true },
       })
       // Yeni kaydı canlı haritaya ekle — aynı koşuda ikinci referans çakışmasın.
-      byKod.set(yeni.kod, { id: yeni.id, kod: yeni.kod, ad: adCikar(r.desc), ifsResourceId: r.rid, ifsWorkCenterNo: r.wc || null })
+      const yeniKayit = { id: yeni.id, kod: yeni.kod, ad: adCikar(r.desc), ifsResourceId: r.rid, ifsWorkCenterNo: r.wc || null }
+      byKod.set(yeni.kod, yeniKayit)
+      byRid.set(r.rid, yeniKayit)
       kodSet.add(yeni.kod)
       kods.push(yeni.kod)
       sonuc.eklenen++

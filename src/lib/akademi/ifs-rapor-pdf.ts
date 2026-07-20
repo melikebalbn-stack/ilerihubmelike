@@ -39,6 +39,12 @@ const DURUM_COLOR: Record<IfsDurum, [number, number, number]> = {
   GECIKTI: [220, 38, 38],
   TARIHSIZ: [120, 120, 120],
 };
+// Ders seviyesi renk kodu: yeşil/sarı/kırmızı; değerlendirilmemiş → gri.
+const SEVIYE_COLOR: Record<string, [number, number, number]> = {
+  BASARILI: [22, 163, 74],
+  EGITIM_GEREKLI: [202, 138, 4],
+  BASARISIZ: [220, 38, 38],
+};
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -360,16 +366,22 @@ export function generateIfsBolumPdfBuffer(
         String(c.gorevCount),
         String(c.basarili),
         `%${c.pct}`,
+        seviyeText(c.seviye),
         fmtDate(c.dueDate),
         DURUM_LABEL[c.durum],
       ]);
 
   const durumSeq: IfsDurum[] = [];
-  for (const k of report.kisiler) for (const c of k.kurslar) durumSeq.push(c.durum);
+  const seviyeSeq: (Seviye | null)[] = [];
+  for (const k of report.kisiler)
+    for (const c of k.kurslar) {
+      durumSeq.push(c.durum);
+      seviyeSeq.push(c.seviye);
+    }
 
   autoTable(doc, {
     startY: yPos,
-    head: [["Ad Soyad", "Eğitim", "Görev", "BAŞARILI", "%", "Son Tarih", "Durum"]],
+    head: [["Ad Soyad", "Eğitim", "Görev", "BAŞARILI", "%", "Değerlendirme", "Son Tarih", "Durum"]],
     body,
     margin: { left: margin, right: margin },
     styles: {
@@ -384,16 +396,24 @@ export function generateIfsBolumPdfBuffer(
     headStyles: { fillColor: HEAD, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
     alternateRowStyles: { fillColor: LIGHT },
     columnStyles: {
-      0: { cellWidth: 50 },
+      0: { cellWidth: 48 },
       1: { cellWidth: "auto" },
-      2: { cellWidth: 18, halign: "center" },
-      3: { cellWidth: 22, halign: "center" },
-      4: { cellWidth: 16, halign: "center" },
-      5: { cellWidth: 28, halign: "center" },
+      2: { cellWidth: 16, halign: "center" },
+      3: { cellWidth: 20, halign: "center" },
+      4: { cellWidth: 14, halign: "center" },
+      5: { cellWidth: 34, halign: "center" },
       6: { cellWidth: 26, halign: "center" },
+      7: { cellWidth: 24, halign: "center" },
     },
     didParseCell: (d) => {
-      if (d.section === "body" && d.column.index === 6) {
+      if (d.section !== "body") return;
+      if (d.column.index === 5) {
+        const seviye = seviyeSeq[d.row.index];
+        if (seviye && SEVIYE_COLOR[seviye]) {
+          d.cell.styles.textColor = SEVIYE_COLOR[seviye];
+          d.cell.styles.fontStyle = "bold";
+        }
+      } else if (d.column.index === 7) {
         const durum = durumSeq[d.row.index];
         if (durum) {
           d.cell.styles.textColor = DURUM_COLOR[durum];

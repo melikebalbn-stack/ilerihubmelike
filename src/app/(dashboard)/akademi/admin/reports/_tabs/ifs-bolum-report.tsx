@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 const ILERI = "#1B4F72";
 
 type Durum = "YOLUNDA" | "GECIKTI" | "TARIHSIZ";
+type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ";
 interface KursRow {
   courseId: string;
   kursAd: string;
@@ -27,6 +28,7 @@ interface KursRow {
   pct: number;
   dueDate: string | null;
   durum: Durum;
+  seviye: Seviye | null; // ders değerlendirmesi; null = değerlendirilmedi
 }
 interface Kisi {
   userId: string;
@@ -54,6 +56,16 @@ const DURUM_CLS: Record<Durum, string> = {
   YOLUNDA: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
   GECIKTI: "bg-red-100 text-red-700 hover:bg-red-100",
   TARIHSIZ: "bg-slate-100 text-slate-600 hover:bg-slate-100",
+};
+const SEVIYE_LABEL: Record<Seviye, string> = {
+  BASARILI: "Başarılı",
+  EGITIM_GEREKLI: "Eğitim Gerekli",
+  BASARISIZ: "Başarısız",
+};
+const SEVIYE_CLS: Record<Seviye, string> = {
+  BASARILI: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
+  EGITIM_GEREKLI: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+  BASARISIZ: "bg-red-100 text-red-700 hover:bg-red-100",
 };
 
 function fmtDate(iso: string | null): string {
@@ -278,6 +290,7 @@ export function IfsBolumReportView() {
                   <th className="text-left px-4 py-3">Görev</th>
                   <th className="text-left px-4 py-3">BAŞARILI</th>
                   <th className="text-left px-4 py-3">%</th>
+                  <th className="text-left px-4 py-3">Değerlendirme</th>
                   <th className="text-left px-4 py-3">Son Tarih</th>
                   <th className="text-left px-4 py-3">Durum</th>
                 </tr>
@@ -320,6 +333,15 @@ export function IfsBolumReportView() {
                         style={{ color: ILERI }}
                       >
                         %{c.pct}
+                      </td>
+                      <td className="px-4 py-3">
+                        {c.seviye ? (
+                          <Badge className={SEVIYE_CLS[c.seviye]} variant="secondary">
+                            {SEVIYE_LABEL[c.seviye]}
+                          </Badge>
+                        ) : (
+                          <span style={{ color: "var(--ak-text-tertiary)" }}>—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">{fmtDate(c.dueDate)}</td>
                       <td className="px-4 py-3">

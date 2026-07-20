@@ -530,6 +530,9 @@ export interface IfsBolumKursRow {
   pct: number;
   dueDate: string | null; // ISO
   durum: IfsDurum;
+  // Ders değerlendirmesi (eğitmen nitel kararı) — ifs_course_evaluations.seviye.
+  // null = henüz değerlendirilmemiş. (Yorum/not KAPSAM DIŞI — İK: tek satır.)
+  seviye: Seviye | null;
 }
 export interface IfsBolumKisi {
   userId: string;
@@ -620,8 +623,9 @@ export async function computeIfsBolumReport(args: {
   const courseIds = [...new Set(accs.map((a) => a.courseId))];
   const userIds = [...new Set(accs.map((a) => a.userId))];
 
-  // Kurs başına aktif GOREV içerikleri + BASARILI değerlendirmeler.
-  const [contents, evals] = await Promise.all([
+  // Kurs başına aktif GOREV içerikleri + BASARILI görev değerlendirmeleri +
+  // ders seviye değerlendirmeleri (computeIfsAggregate ile AYNI desen).
+  const [contents, evals, courseEvals] = await Promise.all([
     courseIds.length
       ? prisma.content.findMany({
           where: { courseId: { in: courseIds }, isActive: true, type: "GOREV" },
@@ -638,6 +642,12 @@ export async function computeIfsBolumReport(args: {
           select: { userId: true, content: { select: { courseId: true } } },
         })
       : [],
+    courseIds.length && userIds.length
+      ? prisma.ifsCourseEvaluation.findMany({
+          where: { courseId: { in: courseIds }, userId: { in: userIds } },
+          select: { userId: true, courseId: true, seviye: true },
+        })
+      : [],
   ]);
 
   const gorevByCourse = new Map<string, number>();
@@ -647,6 +657,11 @@ export async function computeIfsBolumReport(args: {
   for (const e of evals) {
     const k = key(e.userId, e.content.courseId);
     basariliByUC.set(k, (basariliByUC.get(k) ?? 0) + 1);
+  }
+  // Ders seviye değerlendirmesi (user×course) — null = değerlendirilmemiş.
+  const seviyeByUC = new Map<string, Seviye | null>();
+  for (const e of courseEvals) {
+    seviyeByUC.set(key(e.userId, e.courseId), (e.seviye ?? null) as Seviye | null);
   }
 
   // Kişi×kurs satırları
@@ -676,6 +691,7 @@ export async function computeIfsBolumReport(args: {
       pct,
       dueDate: a.dueDate ? a.dueDate.toISOString() : null,
       durum,
+      seviye: seviyeByUC.get(key(a.userId, a.courseId)) ?? null,
     });
   }
 

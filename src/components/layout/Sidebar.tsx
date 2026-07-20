@@ -26,6 +26,7 @@ import {
   Megaphone,
   MessageSquare,
   BarChart3,
+  Activity,
   Factory,
   MonitorSmartphone,
   Link2,
@@ -103,6 +104,7 @@ const teknikMenuItems = [
 // Sidebar rol tabanlı; permission (ipro.view/ipro.admin) sayfa ve API guard'larında.
 // Roller ipro.view eşlemesiyle hizalı: super-admin/admin/it-admin/departman-muduru.
 const iproMenuItems = [
+  { name: "İzleme Panosu", icon: Activity, href: "/ipro/izleme", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Tezgahlar", icon: Factory, href: "/ipro/tezgahlar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Operatör Eşlemeleri", icon: Users, href: "/ipro/operator-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Hurda / Duruş Sebepleri", icon: ClipboardList, href: "/ipro/sebepler", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },

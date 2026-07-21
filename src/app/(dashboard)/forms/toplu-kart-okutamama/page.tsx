@@ -38,6 +38,8 @@ export default function TopluKartOkutamamaPage() {
   const [forbidden, setForbidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  // Varsayılan tarih filtresi = bugün (tarayıcı yerel günü); temizlenebilir.
+  const [filterTarih, setFilterTarih] = useState<string>(() => new Date().toLocaleDateString("en-CA"))
 
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -70,6 +72,11 @@ export default function TopluKartOkutamamaPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set("search", search)
+      if (filterTarih) {
+        // Tek gün filtresi: tarih @db.Date olduğundan start=end=aynı gün eşleşir.
+        params.set("startDate", filterTarih)
+        params.set("endDate", filterTarih)
+      }
       const res = await fetch(`${API_BASE}?${params.toString()}`)
       if (res.status === 403) {
         setForbidden(true)
@@ -84,7 +91,7 @@ export default function TopluKartOkutamamaPage() {
     } finally {
       setLoading(false)
     }
-  }, [search])
+  }, [search, filterTarih])
 
   useEffect(() => {
     if (status === "authenticated") loadRecords()
@@ -375,12 +382,25 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      <Input
-        placeholder="Sicil No veya Ad Soyad ile ara..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Sicil No veya Ad Soyad ile ara..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-sm"
+        />
+        <Input
+          type="date"
+          value={filterTarih}
+          onChange={(e) => setFilterTarih(e.target.value)}
+          className="max-w-[11rem]"
+        />
+        {filterTarih && (
+          <Button variant="ghost" size="sm" onClick={() => setFilterTarih("")}>
+            Tarihi temizle
+          </Button>
+        )}
+      </div>
 
       <div className="rounded-md border">
         <Table>

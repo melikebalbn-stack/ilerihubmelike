@@ -25,6 +25,20 @@ vi.mock('@/lib/ipro/require-kiosk', () => ({
   })),
 }))
 
+// IFS malzeme snapshot re-fetch — MOCK'lu (gerçek IFS'e gidilmez). `firlat` true ise
+// hata atar → yumuşak hata yolu (iş yine başlar, malzeme null) sınanır.
+const ifsMock = vi.hoisted(() => ({
+  firlat: false,
+  stokKodu: 'PART-7250',
+  stokAdi: 'TEST MİL 12mm',
+}))
+vi.mock('@/lib/ifs/shop-order-operations', () => ({
+  getShopOrderOperation: vi.fn(async () => {
+    if (ifsMock.firlat) throw new Error('IFS down')
+    return { stokKodu: ifsMock.stokKodu, stokAdi: ifsMock.stokAdi }
+  }),
+}))
+
 import { prisma } from '@/lib/prisma'
 import { POST } from '@/app/api/ipro/kiosk/is-basla/route'
 
@@ -58,12 +72,37 @@ afterAll(async () => {
 })
 
 describe('is-basla', () => {
-  it('sinyalsiz tezgahta başla → 201 ACIK, plcSayacBaslangic null', async () => {
+  it('sinyalsiz tezgahta başla → 201 ACIK, plcSayacBaslangic null, malzeme snapshot yazılır', async () => {
+    ifsMock.firlat = false
     const res = await POST(req({ tezgahId: MM63_ID, ifsOrderNo: ORDER, ifsOperationNo: OPNO, personnelId: P1 }))
     expect(res.status).toBe(201)
     const d = await res.json()
     expect(d.durum).toBe('ACIK')
     expect(d.plcSayacBaslangic).toBeNull()
+    // Malzeme IFS'ten OTORITER çekilip DB'ye snapshot'landı.
+    const log = await prisma.iproProductionLog.findUnique({
+      where: { id: d.id },
+      select: { ifsPartNo: true, ifsPartDescription: true },
+    })
+    expect(log?.ifsPartNo).toBe('PART-7250')
+    expect(log?.ifsPartDescription).toBe('TEST MİL 12mm')
+  })
+
+  it('IFS malzeme alınamazsa → iş yine başlar (201), malzeme null (yumuşak hata)', async () => {
+    ifsMock.firlat = true
+    const res = await POST(req({ tezgahId: MM63_ID, ifsOrderNo: ORDER, ifsOperationNo: 55, personnelId: P1 }))
+    ifsMock.firlat = false
+    expect(res.status).toBe(201)
+    const d = await res.json()
+    expect(d.durum).toBe('ACIK')
+    const log = await prisma.iproProductionLog.findUnique({
+      where: { id: d.id },
+      select: { ifsPartNo: true, ifsPartDescription: true },
+    })
+    expect(log?.ifsPartNo).toBeNull()
+    expect(log?.ifsPartDescription).toBeNull()
+    // temizlik: bu ekstra satırı da kaldır
+    await prisma.iproProductionLog.deleteMany({ where: { id: d.id } })
   })
 
   it('aynı personnel+order+op tekrar → 409 (partial unique)', async () => {

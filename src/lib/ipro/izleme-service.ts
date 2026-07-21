@@ -13,6 +13,9 @@ import { prisma } from '@/lib/prisma'
  * Poller YOK → sinyalli tezgah canlı sayaçları GÖSTERİLMEZ (backlog).
  */
 
+/** Kart durumu — renk mantığı: çalışıyor=yeşil, duruşta=kırmızı, boşta=gri. */
+export type KartDurum = 'calisiyor' | 'durusta' | 'bosta'
+
 export type TezgahKart = {
   id: string
   kod: string
@@ -20,13 +23,25 @@ export type TezgahKart = {
   masGrupAdi: string | null
   aktif: boolean
   sinyalli: boolean
+  durum: KartDurum
   /** Açık iş varsa dolu — kart "çalışıyor" görünür. */
   calisan: {
     adSoyad: string | null
     sicilNo: string | null
     ifsOrderNo: string | null
     ifsOperationNo: number | null
+    ifsPartNo: string | null // malzeme kodu (başla anında IFS snapshot)
+    ifsPartDescription: string | null // malzeme adı
     baslatildiAt: string // ISO — süre istemcide hesaplanır (canlı sayaç)
+  } | null
+  /**
+   * Açık duruş (IproMachineDowntime, bitis=null). DÜRÜST SINIR: kioskta duruş
+   * akışı henüz YOK → bu her zaman null. Veri (FAZ 2.5 / PLC) gelince kart otomatik
+   * kırmızıya döner. istemci "—" gösterir.
+   */
+  durus: {
+    baslangicAt: string // ISO
+    sebep: string | null
   } | null
 }
 
@@ -60,8 +75,9 @@ function gununBasi(): Date {
 export async function panoData(): Promise<PanoData> {
   const bugun = gununBasi()
 
-  // ── Tek turda topla: tezgahlar + açık işler + gün özeti + kuyruk ──
-  const [tezgahlar, acikIsler, kapananBugun, toplamlar, acikOturumlar, bekleyen, enEski, hatali] = await Promise.all([
+  // ── Tek turda topla: tezgahlar + açık işler + gün özeti + kuyruk + açık duruşlar ──
+  const [tezgahlar, acikIsler, acikDuruslar, kapananBugun, toplamlar, acikOturumlar, bekleyen, enEski, hatali] =
+    await Promise.all([
     prisma.iproTezgah.findMany({
       where: { aktif: true },
       orderBy: { kod: 'asc' },
@@ -76,7 +92,21 @@ export async function panoData(): Promise<PanoData> {
     }),
     prisma.iproProductionLog.findMany({
       where: { durum: 'ACIK' },
-      select: { tezgahId: true, personnelId: true, ifsOrderNo: true, ifsOperationNo: true, baslatildiAt: true },
+      select: {
+        tezgahId: true,
+        personnelId: true,
+        ifsOrderNo: true,
+        ifsOperationNo: true,
+        ifsPartNo: true,
+        ifsPartDescription: true,
+        baslatildiAt: true,
+      },
+    }),
+    // Açık duruşlar (bitis=null). Şu an akış yok → boş; kırmızı kart mantığı hazır.
+    prisma.iproMachineDowntime.findMany({
+      where: { bitis: null },
+      orderBy: { baslangic: 'asc' },
+      select: { tezgahId: true, baslangic: true, durusSebebi: { select: { ad: true } } },
     }),
     prisma.iproProductionLog.count({ where: { durum: 'KAPALI', bitirildiAt: { gte: bugun } } }),
     prisma.iproProductionLog.aggregate({
@@ -97,6 +127,10 @@ export async function panoData(): Promise<PanoData> {
 
   // ── Açık işlerdeki operatör adlarını ikinci sorguyla eşle (FK yok) ──
   const acikByTezgah = new Map(acikIsler.map((a) => [a.tezgahId, a]))
+  // İlk (en eski) açık duruş her tezgah için — kırmızı kart sinyali.
+  const durusByTezgah = new Map<string, (typeof acikDuruslar)[number]>()
+  for (const d of acikDuruslar) if (!durusByTezgah.has(d.tezgahId)) durusByTezgah.set(d.tezgahId, d)
+
   const personIds = [...new Set(acikIsler.map((a) => a.personnelId))]
   const personeller = personIds.length
     ? await prisma.personnel.findMany({
@@ -108,7 +142,11 @@ export async function panoData(): Promise<PanoData> {
 
   const kartlar: TezgahKart[] = tezgahlar.map((t) => {
     const acik = acikByTezgah.get(t.id)
+    const durus = durusByTezgah.get(t.id)
     const person = acik ? personById.get(acik.personnelId) : null
+    const calisiyor = !!(acik && acik.baslatildiAt)
+    // Duruş çalışmanın önüne geçer (kırmızı > yeşil): açık duruş varsa "durusta".
+    const durum: KartDurum = durus ? 'durusta' : calisiyor ? 'calisiyor' : 'bosta'
     return {
       id: t.id,
       kod: t.kod,
@@ -116,16 +154,21 @@ export async function panoData(): Promise<PanoData> {
       masGrupAdi: t.masGrupAdi,
       aktif: t.aktif,
       sinyalli: t._count.plcPinler > 0,
-      calisan:
-        acik && acik.baslatildiAt
-          ? {
-              adSoyad: person?.adSoyad ?? null,
-              sicilNo: person?.sicilNo ?? null,
-              ifsOrderNo: acik.ifsOrderNo,
-              ifsOperationNo: acik.ifsOperationNo,
-              baslatildiAt: acik.baslatildiAt.toISOString(),
-            }
-          : null,
+      durum,
+      calisan: calisiyor
+        ? {
+            adSoyad: person?.adSoyad ?? null,
+            sicilNo: person?.sicilNo ?? null,
+            ifsOrderNo: acik!.ifsOrderNo,
+            ifsOperationNo: acik!.ifsOperationNo,
+            ifsPartNo: acik!.ifsPartNo,
+            ifsPartDescription: acik!.ifsPartDescription,
+            baslatildiAt: acik!.baslatildiAt!.toISOString(),
+          }
+        : null,
+      durus: durus
+        ? { baslangicAt: durus.baslangic.toISOString(), sebep: durus.durusSebebi?.ad ?? null }
+        : null,
     }
   })
 
@@ -143,5 +186,108 @@ export async function panoData(): Promise<PanoData> {
       enEskiBeklemeAt: enEski?.bitirildiAt?.toISOString() ?? null,
       hataliKayit: hatali,
     },
+  }
+}
+
+// ── Tek tezgah detayı (kart tıklaması → dialog). ON-DEMAND: 10sn poll'a girmez. ──
+
+export type TezgahIsSatiri = {
+  id: string
+  ifsOrderNo: string | null
+  ifsOperationNo: number | null
+  ifsPartNo: string | null
+  ifsPartDescription: string | null
+  qtyComplete: number
+  qtyScrap: number
+  baslatildiAt: string | null
+  bitirildiAt: string | null
+  operator: string | null // adSoyad, FK'sız ikinci sorgudan
+}
+
+export type TezgahDetay = {
+  id: string
+  kod: string
+  ad: string
+  masGrupAdi: string | null
+  aktif: boolean
+  sinyalli: boolean
+  durum: KartDurum
+  aktifIs: TezgahIsSatiri | null // ACIK satır (varsa)
+  durus: { baslangicAt: string; sebep: string | null } | null
+  bugunKapanan: TezgahIsSatiri[] // bugün KAPANMIŞ işler, en yeni önce
+}
+
+/** Tezgah + aktif iş + bugün kapanan işler. Bulunamazsa null. */
+export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null> {
+  const bugun = gununBasi()
+
+  const [tezgah, satirlar, durus] = await Promise.all([
+    prisma.iproTezgah.findUnique({
+      where: { id: tezgahId },
+      select: { id: true, kod: true, ad: true, masGrupAdi: true, aktif: true, _count: { select: { plcPinler: true } } },
+    }),
+    // Açık iş + bugün kapananlar tek sorguda.
+    prisma.iproProductionLog.findMany({
+      where: { tezgahId, OR: [{ durum: 'ACIK' }, { durum: 'KAPALI', bitirildiAt: { gte: bugun } }] },
+      orderBy: [{ durum: 'asc' }, { bitirildiAt: 'desc' }],
+      select: {
+        id: true,
+        durum: true,
+        personnelId: true,
+        ifsOrderNo: true,
+        ifsOperationNo: true,
+        ifsPartNo: true,
+        ifsPartDescription: true,
+        qtyComplete: true,
+        qtyScrap: true,
+        baslatildiAt: true,
+        bitirildiAt: true,
+      },
+    }),
+    prisma.iproMachineDowntime.findFirst({
+      where: { tezgahId, bitis: null },
+      orderBy: { baslangic: 'asc' },
+      select: { baslangic: true, durusSebebi: { select: { ad: true } } },
+    }),
+  ])
+
+  if (!tezgah) return null
+
+  // Operatör adlarını FK'sız eşle (IPRO deseni).
+  const personIds = [...new Set(satirlar.map((s) => s.personnelId))]
+  const personeller = personIds.length
+    ? await prisma.personnel.findMany({ where: { id: { in: personIds } }, select: { id: true, adSoyad: true } })
+    : []
+  const adById = new Map(personeller.map((p) => [p.id, p.adSoyad]))
+
+  const map = (s: (typeof satirlar)[number]): TezgahIsSatiri => ({
+    id: s.id,
+    ifsOrderNo: s.ifsOrderNo,
+    ifsOperationNo: s.ifsOperationNo,
+    ifsPartNo: s.ifsPartNo,
+    ifsPartDescription: s.ifsPartDescription,
+    qtyComplete: s.qtyComplete,
+    qtyScrap: s.qtyScrap,
+    baslatildiAt: s.baslatildiAt?.toISOString() ?? null,
+    bitirildiAt: s.bitirildiAt?.toISOString() ?? null,
+    operator: adById.get(s.personnelId) ?? null,
+  })
+
+  const aktif = satirlar.find((s) => s.durum === 'ACIK')
+  const kapananlar = satirlar.filter((s) => s.durum === 'KAPALI')
+  const calisiyor = !!(aktif && aktif.baslatildiAt)
+  const durum: KartDurum = durus ? 'durusta' : calisiyor ? 'calisiyor' : 'bosta'
+
+  return {
+    id: tezgah.id,
+    kod: tezgah.kod,
+    ad: tezgah.ad,
+    masGrupAdi: tezgah.masGrupAdi,
+    aktif: tezgah.aktif,
+    sinyalli: tezgah._count.plcPinler > 0,
+    durum,
+    aktifIs: aktif ? map(aktif) : null,
+    durus: durus ? { baslangicAt: durus.baslangic.toISOString(), sebep: durus.durusSebebi?.ad ?? null } : null,
+    bugunKapanan: kapananlar.map(map),
   }
 }

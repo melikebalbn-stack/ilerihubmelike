@@ -10853,6 +10853,11 @@ model IproProductionLog {
   // Açık iş satırında ikisinin dolu olması "başla" endpoint'inde (uygulama katmanı) garanti edilir.
   ifsOrderNo         String?
   ifsOperationNo     Int?
+  // Malzeme snapshot — "başla" anında IFS ShopOrderOperations'tan otoriter çekilir
+  // (server-side re-fetch; client input'una GÜVENİLMEZ). IFS erişilemezse null kalır,
+  // iş yine başlar (yumuşak hata). Pano/detay bunları gösterir; her poll'da IFS'e GİDİLMEZ.
+  ifsPartNo          String?
+  ifsPartDescription String?
   qtyComplete        Int                 @default(0)
   qtyScrap           Int                 @default(0)
   hurdaSebebiKod     String?

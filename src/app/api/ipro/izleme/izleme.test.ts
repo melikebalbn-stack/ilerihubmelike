@@ -22,6 +22,7 @@ vi.mock('@/lib/auth/require-permission', () => ({
 
 import { prisma } from '@/lib/prisma'
 import { GET } from '@/app/api/ipro/izleme/route'
+import { GET as GET_DETAY } from '@/app/api/ipro/izleme/tezgah/[id]/route'
 import { panoData } from '@/lib/ipro/izleme-service'
 
 const KOD = 'IZL-TEST-TZ'
@@ -49,7 +50,7 @@ beforeAll(async () => {
   })
   sessionId = s.id
 
-  // ACIK iş — kartın "çalışıyor" görünmesi için baslatildiAt dolu.
+  // ACIK iş — kartın "çalışıyor" görünmesi için baslatildiAt dolu. Malzeme snapshot dolu.
   const log = await prisma.iproProductionLog.create({
     data: {
       tezgahId,
@@ -57,6 +58,8 @@ beforeAll(async () => {
       personnelId,
       ifsOrderNo: 'IZL-9001',
       ifsOperationNo: 5,
+      ifsPartNo: 'IZL-PART-1',
+      ifsPartDescription: 'İZLEME TEST MALZEME',
       durum: 'ACIK',
       baslatildiAt: new Date(Date.now() - 12 * 60_000), // 12 dk önce
     },
@@ -92,15 +95,44 @@ describe('izleme yetki', () => {
 })
 
 describe('panoData toplama', () => {
-  it('ACIK işli tezgah "çalışan" olarak gelir — operatör adı FK-siz eşlenir', async () => {
+  it('ACIK işli tezgah "çalışan" olarak gelir — operatör adı FK-siz eşlenir + malzeme snapshot', async () => {
     const d = await panoData()
     const bizim = d.tezgahlar.find((t) => t.kod === KOD)
     expect(bizim).toBeTruthy()
+    expect(bizim!.durum).toBe('calisiyor')
     expect(bizim!.calisan).toBeTruthy()
     expect(bizim!.calisan!.adSoyad).toBe(adSoyad) // ikinci sorgudan eşlendi
     expect(bizim!.calisan!.ifsOrderNo).toBe('IZL-9001')
     expect(bizim!.calisan!.ifsOperationNo).toBe(5)
+    expect(bizim!.calisan!.ifsPartNo).toBe('IZL-PART-1') // malzeme kodu passthrough
+    expect(bizim!.calisan!.ifsPartDescription).toBe('İZLEME TEST MALZEME')
     expect(bizim!.calisan!.baslatildiAt).toBeTruthy()
+    expect(bizim!.durus).toBeNull() // duruş akışı yok → hep null
+  })
+
+  it('tezgah detay endpoint: aktif iş + malzeme; yetkisiz 403; yok 404', async () => {
+    // yetkisiz
+    yetki.keys = new Set()
+    const r403 = await GET_DETAY(new Request('http://x'), { params: Promise.resolve({ id: tezgahId }) })
+    expect(r403.status).toBe(403)
+    yetki.keys = new Set(['ipro.view'])
+
+    // bulunamayan tezgah
+    const r404 = await GET_DETAY(new Request('http://x'), { params: Promise.resolve({ id: 'yok-boyle-tezgah' }) })
+    expect(r404.status).toBe(404)
+
+    // aktif iş + malzeme
+    const res = await GET_DETAY(new Request('http://x'), { params: Promise.resolve({ id: tezgahId }) })
+    expect(res.status).toBe(200)
+    const d = await res.json()
+    expect(d.ok).toBe(true)
+    expect(d.kod).toBe(KOD)
+    expect(d.durum).toBe('calisiyor')
+    expect(d.aktifIs).toBeTruthy()
+    expect(d.aktifIs.ifsOrderNo).toBe('IZL-9001')
+    expect(d.aktifIs.ifsPartNo).toBe('IZL-PART-1')
+    expect(d.aktifIs.operator).toBe(adSoyad)
+    expect(Array.isArray(d.bugunKapanan)).toBe(true)
   })
 
   it('sadece AKTİF tezgahlar döner; pasif hariç', async () => {
@@ -123,9 +155,17 @@ describe('panoData toplama', () => {
     const d = await panoData()
     const bizim = d.tezgahlar.find((t) => t.kod === KOD)
     expect(bizim!.calisan).toBeNull() // artık boşta
+    expect(bizim!.durum).toBe('bosta')
     expect(d.ozet.toplamIyi).toBeGreaterThanOrEqual(7)
     expect(d.ozet.toplamHurda).toBeGreaterThanOrEqual(2)
     expect(d.ozet.kapananIs).toBeGreaterThanOrEqual(1)
+
+    // Detay: kapanan iş bugünKapanan listesine düşer.
+    const dres = await GET_DETAY(new Request('http://x'), { params: Promise.resolve({ id: tezgahId }) })
+    const detay = await dres.json()
+    expect(detay.aktifIs).toBeNull()
+    expect(detay.bugunKapanan.some((s: { id: string }) => s.id === logId)).toBe(true)
+
     // Geri al — sonraki testler ACIK bekliyor değil ama afterAll temizliği net kalsın.
     await prisma.iproProductionLog.update({
       where: { id: logId },

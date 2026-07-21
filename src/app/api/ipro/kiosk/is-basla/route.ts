@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireKiosk } from '@/lib/ipro/require-kiosk'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiForbidden, apiBadRequest } from '@/lib/api-response'
+import { getShopOrderOperation } from '@/lib/ifs/shop-order-operations'
 
 // POST /api/ipro/kiosk/is-basla — body { tezgahId, ifsOrderNo, ifsOperationNo, personnelId, ifsOperationId? }
 // Aktif oturuma bagli bir ACIK uretim satiri acar. Sinyalli tezgahta baslangic sayacini
@@ -68,6 +69,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Malzeme snapshot — IFS'ten OTORITER cek (client input'una guvenilmez: pano/rapor
+  // dogrulanmamis input uzerine kurulamaz). YUMUSAK HATA: IFS erisilemezse null kalir,
+  // is yine baslar; hata loglanir. Her poll'da DEGIL, yalnizca baslangicta tek cagri.
+  let ifsPartNo: string | null = null
+  let ifsPartDescription: string | null = null
+  try {
+    const op = await getShopOrderOperation(ifsOrderNo, ifsOperationNo)
+    ifsPartNo = op?.stokKodu || null
+    ifsPartDescription = op?.stokAdi || null
+  } catch (e) {
+    console.error('[ipro-is-basla] malzeme snapshot alinamadi (is yine baslar)', e)
+  }
+
   // ACIK satir yaz. Partial unique (acik_is_uq) ihlali → P2002 → 409.
   try {
     const log = await prisma.iproProductionLog.create({
@@ -78,6 +92,8 @@ export async function POST(req: NextRequest) {
         ifsOrderNo,
         ifsOperationNo,
         ifsOperationId: opId,
+        ifsPartNo,
+        ifsPartDescription,
         durum: 'ACIK',
         baslatildiAt: new Date(),
         plcSayacBaslangic,

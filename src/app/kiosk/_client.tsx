@@ -21,7 +21,7 @@ type AcikIs = { id: string; ifsOrderNo: string; ifsOperationNo: number } | null
 type Sebep = { kod: string; ad: string }
 type DurusSebep = { id: string; kod: string; ad: string; renkKodu: string | null; durusAktifkenIsBitirilemez: boolean }
 type AktifDurus = { id: string; sebepAd: string; baslangic: string; durusAktifkenIsBitirilemez: boolean }
-type Adim = 'tezgah' | 'operator' | 'is-listesi' | 'calisiyor' | 'durus-sebep' | 'durusta' | 'bitir' | 'ozet'
+type Adim = 'tezgah' | 'operator' | 'is-listesi' | 'is-onay' | 'calisiyor' | 'durus-sebep' | 'durusta' | 'bitir' | 'ozet'
 
 // ── Ortak API yardımcıları ──
 async function apiGet<T>(url: string): Promise<{ ok: boolean; status: number; data: T }> {
@@ -160,6 +160,7 @@ function KioskAkis() {
   const [operatorler, setOperatorler] = useState<Operator[]>([])
   const [operator, setOperator] = useState<Operator | null>(null)
   const [isler, setIsler] = useState<Is[]>([])
+  const [secilenIs, setSecilenIs] = useState<Is | null>(null) // onay ekranındaki iş
   const [aktifIs, setAktifIs] = useState<{ ifsOrderNo: string; ifsOperationNo: number; operasyon?: string } | null>(null)
   const [durusSebepler, setDurusSebepler] = useState<DurusSebep[]>([])
   const [aktifDurus, setAktifDurus] = useState<AktifDurus | null>(null)
@@ -342,30 +343,31 @@ function KioskAkis() {
     adimGec('tezgah')
   }
 
-  // Operatör değiştir yalnız operatör seçiliyken + çalışma/bekleme/duruş ekranlarında.
-  const operatorDegistirGoster = operator && (adim === 'calisiyor' || adim === 'is-listesi' || adim === 'durusta')
+  // Operatör değiştir: operatör seçiliyken + iş/çalışma/bekleme/duruş ekranlarında sabit görünür.
+  const operatorDegistirGoster =
+    operator && (adim === 'calisiyor' || adim === 'is-listesi' || adim === 'is-onay' || adim === 'durusta')
 
   const ustBar = (
-    <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+    <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-6 py-4">
       <div className="flex items-center gap-3 text-xl text-slate-400">
         {tezgah && <span className="font-bold text-slate-100">{tezgah.kod}</span>}
-        {operator &&
-          (operatorDegistirGoster ? (
-            // Operatör adına dokununca da değiştirir (dokunma hedefi büyük).
-            <button
-              type="button"
-              onClick={operatorDegistir}
-              className="rounded-lg bg-slate-800 px-4 py-2 text-lg font-medium text-slate-100 active:bg-slate-700"
-            >
-              {operator.adSoyad} · Operatör Değiştir ⇄
-            </button>
-          ) : (
-            <span>· {operator.adSoyad}</span>
-          ))}
+        {operator && <span className="text-slate-200">· {operator.adSoyad}</span>}
       </div>
-      <BigButton variant="ghost" onClick={() => signOut({ redirect: false })} className="min-h-12 text-lg">
-        Cihaz Çıkışı
-      </BigButton>
+      <div className="flex items-center gap-3">
+        {operatorDegistirGoster && (
+          // Belirgin, sabit buton — ikon + metin, amber vurgu (kolay fark edilir dokunma hedefi).
+          <button
+            type="button"
+            onClick={operatorDegistir}
+            className="flex min-h-12 items-center gap-2 rounded-xl bg-amber-500 px-5 text-lg font-bold text-slate-900 active:bg-amber-400"
+          >
+            <span className="text-2xl leading-none">⇄</span> Operatör Değiştir
+          </button>
+        )}
+        <BigButton variant="ghost" onClick={() => signOut({ redirect: false })} className="min-h-12 text-lg">
+          Cihaz Çıkışı
+        </BigButton>
+      </div>
     </div>
   )
 
@@ -408,7 +410,7 @@ function KioskAkis() {
           <Secim baslik="İş Seç" altBaslik="Tüm açık işler listeleniyor" geriye={operatorCikis}>
             {isler.length === 0 && <p className="text-2xl text-slate-500">Açık iş bulunamadı.</p>}
             {isler.map((is) => (
-              <SecimKart key={is.id} onClick={() => isBasla(is)}>
+              <SecimKart key={is.id} onClick={() => { setSecilenIs(is); adimGec('is-onay') }}>
                 <div className="text-2xl font-bold">
                   {is.isEmriNo} · Op {is.operasyonNo}
                 </div>
@@ -421,9 +423,16 @@ function KioskAkis() {
           </Secim>
         )}
 
-        {!yukleniyor && adim === 'calisiyor' && aktifIs && (
+        {!yukleniyor && adim === 'is-onay' && secilenIs && (
+          <IsOnay is={secilenIs} onBasla={() => isBasla(secilenIs)} onGeri={() => adimGec('is-listesi')} />
+        )}
+
+        {!yukleniyor && adim === 'calisiyor' && aktifIs && tezgah && operator && (
           <Calisiyor
             aktifIs={aktifIs}
+            tezgahId={tezgah.id}
+            personnelId={operator.id}
+            operatorAd={operator.adSoyad}
             onBitir={() => adimGec('bitir')}
             onYeniIs={isListesiYukle}
             onDurus={durusAc}
@@ -517,37 +526,176 @@ function SecimKart({ children, onClick }: { children: React.ReactNode; onClick: 
   )
 }
 
+/** İş başlatma ONAY ekranı — yanlış işe dokunup yanlış order'a üretim yazmayı önler. */
+function IsOnay({ is, onBasla, onGeri }: { is: Is; onBasla: () => void; onGeri: () => void }) {
+  return (
+    <div className="mx-auto flex h-full max-w-2xl flex-col justify-center gap-6">
+      <div className="rounded-2xl bg-slate-800 p-8">
+        <div className="text-lg uppercase tracking-widest text-slate-400">İş Emri</div>
+        <div className="mt-1 text-5xl font-bold text-slate-100">
+          {is.isEmriNo} · Op {is.operasyonNo}
+        </div>
+        <div className="mt-2 text-2xl text-slate-300">{is.operasyon}</div>
+        <div className="mt-6 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-xl">
+          <span className="text-slate-500">Malzeme</span>
+          <span className="font-medium text-slate-100">{is.stokKodu} — {is.stokAdi}</span>
+          <span className="text-slate-500">Kalan</span>
+          <span className="font-medium text-slate-100">{is.kalanMiktar}</span>
+        </div>
+      </div>
+      <div className="flex gap-4">
+        <BigButton variant="ghost" onClick={onGeri} className="min-h-16 text-xl">
+          ← Geri
+        </BigButton>
+        <BigButton variant="primary" onClick={onBasla} className="min-h-20 flex-1 text-3xl">
+          İŞE BAŞLA
+        </BigButton>
+      </div>
+    </div>
+  )
+}
+
+type CalisiyorDetay = {
+  baslatildiAt: string | null
+  ifsPartNo: string | null
+  ifsPartDescription: string | null
+  ifsQtyDue: number | null
+  ifsDueDate: string | null
+  ifsNeedDate: string | null
+  ifsMachRunFactor: number | null
+  ifsLaborRunFactor: number | null
+  ifsRunTimeCode: string | null
+}
+
+/** ms → "HH:MM:SS" canlı süre. */
+function gecenSure(ms: number): string {
+  const sn = Math.max(0, Math.floor(ms / 1000))
+  const s = Math.floor(sn / 3600)
+  const d = Math.floor((sn % 3600) / 60)
+  const k = sn % 60
+  return `${String(s).padStart(2, '0')}:${String(d).padStart(2, '0')}:${String(k).padStart(2, '0')}`
+}
+const trTarih = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('tr-TR') : '—')
+
 function Calisiyor({
   aktifIs,
+  tezgahId,
+  personnelId,
+  operatorAd,
   onBitir,
   onYeniIs,
   onDurus,
 }: {
   aktifIs: { ifsOrderNo: string; ifsOperationNo: number; operasyon?: string }
+  tezgahId: string
+  personnelId: string
+  operatorAd: string
   onBitir: () => void
   onYeniIs: () => void
   onDurus: () => void
 }) {
+  const [detay, setDetay] = useState<CalisiyorDetay | null>(null)
+  const [sinyalli, setSinyalli] = useState<boolean | null>(null)
+  const [, tik] = useState(0)
+
+  useEffect(() => {
+    let iptal = false
+    apiGet<{ acik: CalisiyorDetay | null; sinyalli: boolean }>(
+      `/api/ipro/kiosk/acik-is?tezgahId=${tezgahId}&personnelId=${personnelId}`,
+    ).then((r) => {
+      if (iptal || !r.ok) return
+      setDetay(r.data.acik)
+      setSinyalli(r.data.sinyalli)
+    })
+    return () => {
+      iptal = true
+    }
+  }, [tezgahId, personnelId])
+
+  // Canlı süre için saniyelik tik.
+  useEffect(() => {
+    const id = setInterval(() => tik((n) => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const sure = detay?.baslatildiAt ? gecenSure(Date.now() - new Date(detay.baslatildiAt).getTime()) : '—'
+  const cevrim =
+    detay?.ifsMachRunFactor != null && detay.ifsMachRunFactor > 0
+      ? `${detay.ifsMachRunFactor} ${detay.ifsRunTimeCode ?? ''}`.trim()
+      : '—'
+
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-8">
+    <div className="mx-auto flex h-full max-w-3xl flex-col gap-4 py-2">
+      {/* Başlık */}
       <div className="text-center">
-        <div className="text-lg text-slate-400">ÇALIŞIYOR</div>
-        <div className="mt-2 text-5xl font-bold text-slate-100">
+        <div className="text-base uppercase tracking-widest text-emerald-400">● ÇALIŞIYOR</div>
+        <div className="mt-1 text-5xl font-bold text-slate-100">
           {aktifIs.ifsOrderNo} · Op {aktifIs.ifsOperationNo}
         </div>
-        {aktifIs.operasyon && <div className="mt-2 text-2xl text-slate-300">{aktifIs.operasyon}</div>}
+        {aktifIs.operasyon && <div className="mt-1 text-xl text-slate-300">{aktifIs.operasyon}</div>}
+        <div className="mt-2 text-2xl font-semibold text-slate-100">👤 {operatorAd}</div>
       </div>
-      <div className="flex flex-wrap justify-center gap-4">
-        <BigButton variant="primary" onClick={onBitir} className="px-12">
-          BİTİR / DURDUR
-        </BigButton>
-        <BigButton variant="danger" onClick={onDurus} className="px-12">
-          ⏸ DURUŞ BAŞLAT
+
+      {/* Eldeki veriler */}
+      <div className="grid grid-cols-2 gap-3">
+        <Bilgi etiket="Malzeme" deger={detay?.ifsPartDescription ?? detay?.ifsPartNo ?? '—'} alt={detay?.ifsPartNo ?? undefined} />
+        <Bilgi etiket="PLC" deger={sinyalli == null ? '—' : sinyalli ? '📶 Sinyalli' : 'Sinyalsiz'} />
+        <Bilgi etiket="Planlanan adet" deger={detay?.ifsQtyDue != null ? String(detay.ifsQtyDue) : '—'} />
+        <Bilgi etiket="Geçen süre" deger={sure} vurgu />
+        <Bilgi etiket="Teslim tarihi" deger={trTarih(detay?.ifsDueDate ?? null)} />
+        <Bilgi etiket="İhtiyaç tarihi" deger={trTarih(detay?.ifsNeedDate ?? null)} />
+        <Bilgi etiket="Planlı çevrim" deger={cevrim} />
+        <Bilgi etiket="Başlangıç" deger={detay?.baslatildiAt ? new Date(detay.baslatildiAt).toLocaleTimeString('tr-TR') : '—'} />
+      </div>
+
+      {/* Verisi olmayan (PLC sayacı → poller) — yerleşim hazır, değer "—" */}
+      <div className="rounded-xl border border-dashed border-slate-700 p-3">
+        <div className="mb-2 text-xs uppercase tracking-wider text-slate-500">
+          PLC sayacı (poller gelince dolar; sinyalsizde bitir anında girilir)
+        </div>
+        <div className="grid grid-cols-4 gap-2 text-center">
+          <Placeholder etiket="Baskı sayısı" />
+          <Placeholder etiket="Gerçekleşen adet" />
+          <Placeholder etiket="Adet/ort. süre" />
+          <Placeholder etiket="Ort. çevrim" />
+        </div>
+      </div>
+
+      {/* Aksiyonlar */}
+      <div className="mt-auto flex flex-col gap-3">
+        <div className="flex flex-wrap justify-center gap-4">
+          <BigButton variant="primary" onClick={onBitir} className="px-12">
+            BİTİR / DURDUR
+          </BigButton>
+          <BigButton variant="danger" onClick={onDurus} className="px-12">
+            ⏸ DURUŞ BAŞLAT
+          </BigButton>
+        </div>
+        <BigButton variant="ghost" onClick={onYeniIs} className="mx-auto min-h-12 text-lg">
+          Başka işe geç (aynı operatör)
         </BigButton>
       </div>
-      <BigButton variant="ghost" onClick={onYeniIs} className="min-h-12 text-lg">
-        Başka işe geç
-      </BigButton>
+    </div>
+  )
+}
+
+function Bilgi({ etiket, deger, alt, vurgu }: { etiket: string; deger: string; alt?: string; vurgu?: boolean }) {
+  return (
+    <div className="rounded-xl bg-slate-800 px-4 py-3">
+      <div className="text-sm text-slate-400">{etiket}</div>
+      <div className={`mt-0.5 truncate font-semibold ${vurgu ? 'text-2xl text-emerald-300' : 'text-xl text-slate-100'}`} title={alt}>
+        {deger}
+      </div>
+      {alt && deger !== alt && <div className="truncate text-xs text-slate-500">{alt}</div>}
+    </div>
+  )
+}
+
+function Placeholder({ etiket }: { etiket: string }) {
+  return (
+    <div>
+      <div className="text-2xl font-bold text-slate-600">—</div>
+      <div className="text-xs text-slate-500">{etiket}</div>
     </div>
   )
 }

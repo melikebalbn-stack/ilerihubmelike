@@ -166,15 +166,20 @@ export function IzlemeClient() {
   const gosterilen = useMemo(() => {
     if (!pano) return []
     const q = arama.trim().toLocaleLowerCase('tr')
-    return pano.tezgahlar.filter((t) => {
-      if (grup !== 'hepsi' && (t.masGrupAdi ?? '(grupsuz)') !== grup) return false
-      if (!q) return true
-      return (
-        t.kod.toLocaleLowerCase('tr').includes(q) ||
-        t.ad.toLocaleLowerCase('tr').includes(q) ||
-        (t.calisan?.adSoyad ?? '').toLocaleLowerCase('tr').includes(q)
-      )
-    })
+    // Durum önceliği: DURUŞTA (kırmızı) → ÇALIŞIYOR (yeşil) → BOŞTA (gri).
+    const oncelik: Record<Durum, number> = { durusta: 0, calisiyor: 1, bosta: 2 }
+    return pano.tezgahlar
+      .filter((t) => {
+        if (grup !== 'hepsi' && (t.masGrupAdi ?? '(grupsuz)') !== grup) return false
+        if (!q) return true
+        return (
+          t.kod.toLocaleLowerCase('tr').includes(q) ||
+          t.ad.toLocaleLowerCase('tr').includes(q) ||
+          (t.calisan?.adSoyad ?? '').toLocaleLowerCase('tr').includes(q)
+        )
+      })
+      // Durum öncelikli, aynı durumda kod sırası (filtre/arama bu sıralamanın içinde).
+      .sort((a, b) => oncelik[a.durum] - oncelik[b.durum] || a.kod.localeCompare(b.kod, 'tr'))
   }, [pano, arama, grup])
 
   const calisanSayisi = gosterilen.filter((t) => t.durum === 'calisiyor').length
@@ -205,6 +210,14 @@ export function IzlemeClient() {
             {tvModu ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
           </Button>
         </div>
+      </div>
+
+      {/* Gösterge kartları (OEE/PERF/KULL/KALİTE) — YERLEŞİM; hesaplama AYRI İŞ (OEE-HESAP backlog). */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Gosterge etiket="OEE" renk="text-sky-300" />
+        <Gosterge etiket="Performans" renk="text-emerald-300" />
+        <Gosterge etiket="Kullanılabilirlik" renk="text-amber-300" />
+        <Gosterge etiket="Kalite" renk="text-violet-300" />
       </div>
 
       {/* Araç çubuğu — TV modunda gizli */}
@@ -260,6 +273,16 @@ export function IzlemeClient() {
 
       {/* Kart detay dialog — TV modunda da açılabilir; portal body'ye gider */}
       <DetayDialog tezgahId={seciliId} onClose={() => setSeciliId(null)} />
+    </div>
+  )
+}
+
+/** OEE/PERF/KULL/KALİTE göstergesi — bu turda placeholder "%—". Hesaplama OEE-HESAP (backlog). */
+function Gosterge({ etiket, renk }: { etiket: string; renk: string }) {
+  return (
+    <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-center">
+      <div className={`text-3xl font-bold ${renk}`}>%—</div>
+      <div className="mt-0.5 text-xs uppercase tracking-wider text-slate-400">{etiket}</div>
     </div>
   )
 }

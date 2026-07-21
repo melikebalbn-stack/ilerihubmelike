@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
+    const bolum = searchParams.get('bolum')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
@@ -34,6 +35,9 @@ export async function GET(request: NextRequest) {
 
     if (access.level === 'GRI') {
       where.personnel = { bolum: access.bolum }
+    } else if (bolum) {
+      // Bölüm filtresi sadece FULL erişimde anlamlı — GRI zaten kendi bölümüne kilitli.
+      where.personnel = { bolum }
     }
 
     if (search) {

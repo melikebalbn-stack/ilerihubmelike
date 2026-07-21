@@ -27,12 +27,15 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
+    const bolum = searchParams.get('bolum')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
     const where: Record<string, unknown> = {}
     if (access.level === 'GRI') {
       where.createdById = user.id
+    } else if (bolum) {
+      where.personnel = { bolum }
     }
     if (search) {
       where.OR = [

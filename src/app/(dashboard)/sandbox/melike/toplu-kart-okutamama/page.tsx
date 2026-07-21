@@ -70,6 +70,33 @@ function NedenSelect({
   )
 }
 
+function BolumSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: string[]
+  placeholder: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      <option value="">{placeholder}</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 const API_BASE = "/api/sandbox/melike/toplu-kart-okutamama"
 
 export default function TopluKartOkutamamaPage() {
@@ -82,6 +109,9 @@ export default function TopluKartOkutamamaPage() {
   const [forbidden, setForbidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [oldBolum, setOldBolum] = useState("")
+  const [oldStartDate, setOldStartDate] = useState("")
+  const [oldEndDate, setOldEndDate] = useState("")
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -111,6 +141,8 @@ export default function TopluKartOkutamamaPage() {
   const [bulkSaving, setBulkSaving] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ created: number; errors: { personnelId: string; message: string }[] } | null>(null)
   const [manualAddValue, setManualAddValue] = useState<PickedPersonnel | null>(null)
+  const [bolumList, setBolumList] = useState<string[]>([])
+  const [bulkAddBolum, setBulkAddBolum] = useState("")
 
   const [showOldRecords, setShowOldRecords] = useState(false)
 
@@ -127,6 +159,9 @@ export default function TopluKartOkutamamaPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set("search", search)
+      if (oldBolum) params.set("bolum", oldBolum)
+      if (oldStartDate) params.set("startDate", oldStartDate)
+      if (oldEndDate) params.set("endDate", oldEndDate)
       params.set("page", String(page))
       const res = await fetch(`${API_BASE}?${params.toString()}`)
       if (res.status === 403) {
@@ -145,12 +180,12 @@ export default function TopluKartOkutamamaPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, page])
+  }, [search, oldBolum, oldStartDate, oldEndDate, page])
 
-  // Arama değişince ilk sayfaya dön
+  // Filtreler değişince ilk sayfaya dön
   useEffect(() => {
     setPage(1)
-  }, [search])
+  }, [search, oldBolum, oldStartDate, oldEndDate])
 
   useEffect(() => {
     if (status === "authenticated") loadRecords()
@@ -166,6 +201,43 @@ export default function TopluKartOkutamamaPage() {
       .then((res) => (res.ok ? res.json() : []))
       .then((data: PickedPersonnel[]) => setTeam(data))
   }, [myBolum])
+
+  // Bölüm listesi — sadece FULL erişimde: Eski Kayıtlar filtresi ve
+  // "Bölüme Göre Ekle/Çıkar" seçimi için.
+  useEffect(() => {
+    if (accessLevel !== "FULL") return
+    fetch("/api/sandbox/melike/toplu-kart-okutamama/bolumler")
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setBolumList)
+  }, [accessLevel])
+
+  async function addBolumToTeam() {
+    if (!bulkAddBolum) return
+    const params = new URLSearchParams({ bolum: bulkAddBolum })
+    const res = await fetch(`/api/sandbox/melike/toplu-kart-okutamama/personnel-search?${params.toString()}`)
+    if (!res.ok) return
+    const people: PickedPersonnel[] = await res.json()
+    setTeam((prev) => {
+      const existingIds = new Set(prev.map((p) => p.id))
+      return [...prev, ...people.filter((p) => !existingIds.has(p.id))]
+    })
+  }
+
+  function removeBolumFromTeam() {
+    if (!bulkAddBolum) return
+    const idsToRemove = new Set(team.filter((p) => p.bolum === bulkAddBolum).map((p) => p.id))
+    setTeam((prev) => prev.filter((p) => !idsToRemove.has(p.id)))
+    setTeamDrafts((prev) => {
+      const next = { ...prev }
+      for (const id of idsToRemove) delete next[id]
+      return next
+    })
+    setExcludedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of idsToRemove) next.delete(id)
+      return next
+    })
+  }
 
   function updateTeamDraft(personnelId: string, field: keyof RecordDraft, value: string) {
     setTeamDrafts((prev) => {
@@ -341,6 +413,9 @@ export default function TopluKartOkutamamaPage() {
   async function handleExport() {
     const params = new URLSearchParams()
     if (search) params.set("search", search)
+    if (oldBolum) params.set("bolum", oldBolum)
+    if (oldStartDate) params.set("startDate", oldStartDate)
+    if (oldEndDate) params.set("endDate", oldEndDate)
     const res = await fetch(`${API_BASE}/export?${params.toString()}`)
     if (!res.ok) return
     const blob = await res.blob()
@@ -460,12 +535,35 @@ export default function TopluKartOkutamamaPage() {
           </div>
 
           {canManageAnyone && (
-            <div className="border-b px-4 py-3">
-              <label className="mb-1 block text-xs text-muted-foreground">
-                Personel Ekle (bölümden bağımsız)
-              </label>
-              <div className="max-w-sm">
-                <PersonnelPicker value={manualAddValue} onSelect={addManualPerson} />
+            <div className="border-b px-4 py-3 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Bölüme Göre Ekle / Çıkar
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="max-w-xs flex-1 min-w-[200px]">
+                    <BolumSelect
+                      value={bulkAddBolum}
+                      onChange={setBulkAddBolum}
+                      options={bolumList}
+                      placeholder="Bölüm seçin..."
+                    />
+                  </div>
+                  <Button variant="outline" size="sm" disabled={!bulkAddBolum} onClick={addBolumToTeam}>
+                    Bölümü Listeye Ekle
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={!bulkAddBolum} onClick={removeBolumFromTeam}>
+                    Bölümü Listeden Çıkar
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Tek Kişi Ekle (bölümden bağımsız)
+                </label>
+                <div className="max-w-sm">
+                  <PersonnelPicker value={manualAddValue} onSelect={addManualPerson} />
+                </div>
               </div>
             </div>
           )}
@@ -590,12 +688,42 @@ export default function TopluKartOkutamamaPage() {
 
       {showOldRecords && canManageAnyone && (
         <>
-      <Input
-        placeholder="Sicil No veya Ad Soyad ile ara..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="max-w-sm flex-1 min-w-[200px]">
+          <label className="mb-1 block text-xs text-muted-foreground">Ara</label>
+          <Input
+            placeholder="Sicil No veya Ad Soyad ile ara..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="min-w-[200px]">
+          <label className="mb-1 block text-xs text-muted-foreground">Bölüm</label>
+          <BolumSelect value={oldBolum} onChange={setOldBolum} options={bolumList} placeholder="Tüm bölümler" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Başlangıç Tarihi</label>
+          <Input type="date" value={oldStartDate} onChange={(e) => setOldStartDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Bitiş Tarihi</label>
+          <Input type="date" value={oldEndDate} onChange={(e) => setOldEndDate(e.target.value)} />
+        </div>
+        {(search || oldBolum || oldStartDate || oldEndDate) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSearch("")
+              setOldBolum("")
+              setOldStartDate("")
+              setOldEndDate("")
+            }}
+          >
+            Filtreleri Temizle
+          </Button>
+        )}
+      </div>
 
       <div className="rounded-md border">
         <Table>

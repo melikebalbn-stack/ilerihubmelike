@@ -6,7 +6,7 @@ import { getBulkCardScanAccess } from './_lib/access'
 export const dynamic = 'force-dynamic'
 
 /**
- * GET /api/sandbox/melike/toplu-kart-okutamama
+ * GET /api/toplu-kart-okutamama
  * Liste — FULL (Beyaz Yaka) tüm kayıtları görür, GRI kendi bölümündeki
  * (Personnel.bolum) personele ait kayıtları görür, NONE (Mavi Yaka) erişemez.
  * Query params: search (sicilNo/adSoyad), startDate, endDate, page, limit
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/sandbox/melike/toplu-kart-okutamama
+ * POST /api/toplu-kart-okutamama
  * Yeni kayıt oluştur — FULL veya GRI oluşturabilir, NONE oluşturamaz.
  * Body: { personnelId, tarih, girisSaati?, cikisSaati? }
  */

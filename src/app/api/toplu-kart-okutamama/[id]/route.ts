@@ -27,7 +27,7 @@ async function loadRecordWithAccessCheck(id: string, userId: string) {
 }
 
 /**
- * PUT /api/sandbox/melike/toplu-kart-okutamama/[id]
+ * PUT /api/toplu-kart-okutamama/[id]
  * Body: { personnelId?, tarih?, girisSaati?, cikisSaati? }
  */
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -78,7 +78,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 /**
- * DELETE /api/sandbox/melike/toplu-kart-okutamama/[id]
+ * DELETE /api/toplu-kart-okutamama/[id]
  */
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

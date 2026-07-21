@@ -89,6 +89,10 @@ const formsMenuItems = [
   { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"] },
   { name: "Vardiya Formu", icon: Clock, href: "/forms/vardiya", roles: ["*"] },
   { name: "Mesai Performansı", icon: BarChart3, href: "/forms/overtime/performans", roles: ["*"] },
+  // Görünürlük diğer form kalemleriyle aynı desende (roles: "*"); asıl erişim
+  // layout guard + API'de (getBulkCardScanAccess). Statik dept filtresi GRI
+  // yaka kullanıcıları yanlış gizleyeceğinden burada rol/dept ile daraltılmaz.
+  { name: "Toplu Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"] },
   // { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] }, // Şimdilik gizli
 ]
 

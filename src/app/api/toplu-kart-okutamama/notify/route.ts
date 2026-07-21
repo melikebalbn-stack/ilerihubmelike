@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 const HR_NOTIFICATION_EMAIL = 'melike.balaban@ilerigroup.com'
 
 /**
- * POST /api/sandbox/melike/toplu-kart-okutamama/notify
+ * POST /api/toplu-kart-okutamama/notify
  * Manuel tetiklenen toplu bildirim maili — her kayıt eklendiğinde tek tek
  * mail ATILMAZ, kullanıcı "İK'ya Bildir" butonuna bastığında o an erişebildiği
  * kayıtların özetini tek seferde İK'ya (şimdilik test amaçlı sabit adrese) yollar.

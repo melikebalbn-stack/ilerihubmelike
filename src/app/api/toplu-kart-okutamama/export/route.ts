@@ -11,7 +11,7 @@ function formatDate(date: Date): string {
 }
 
 /**
- * GET /api/sandbox/melike/toplu-kart-okutamama/export
+ * GET /api/toplu-kart-okutamama/export
  * FULL (Beyaz Yaka) tüm kayıtları, GRI sadece kendi oluşturduklarını export eder.
  */
 export async function GET(request: NextRequest) {

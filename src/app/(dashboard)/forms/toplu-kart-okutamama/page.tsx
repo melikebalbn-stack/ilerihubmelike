@@ -27,7 +27,7 @@ interface BulkCardScanRecord {
   personnel: { id: string; bolum: string; gorev: string } | null
 }
 
-const API_BASE = "/api/sandbox/melike/toplu-kart-okutamama"
+const API_BASE = "/api/toplu-kart-okutamama"
 
 export default function TopluKartOkutamamaPage() {
   const { data: session, status } = useSession()
@@ -95,7 +95,7 @@ export default function TopluKartOkutamamaPage() {
 
   useEffect(() => {
     if (accessLevel !== "GRI") return
-    fetch("/api/sandbox/melike/toplu-kart-okutamama/personnel-search")
+    fetch("/api/toplu-kart-okutamama/personnel-search")
       .then((res) => (res.ok ? res.json() : []))
       .then((data: PickedPersonnel[]) => setTeam(data))
   }, [accessLevel])

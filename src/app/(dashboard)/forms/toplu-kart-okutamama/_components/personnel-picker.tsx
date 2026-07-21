@@ -48,7 +48,7 @@ export function PersonnelPicker({ value, onSelect, placeholder }: Props) {
       setLoading(true)
       try {
         const res = await fetch(
-          `/api/sandbox/melike/toplu-kart-okutamama/personnel-search?search=${encodeURIComponent(query)}`
+          `/api/toplu-kart-okutamama/personnel-search?search=${encodeURIComponent(query)}`
         )
         if (res.ok) {
           setResults(await res.json())

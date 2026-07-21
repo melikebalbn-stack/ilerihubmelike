@@ -3,12 +3,9 @@
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { getSandboxBySlug, canAccessSandbox } from '@/lib/sandbox-config'
 import SandboxHeader from '@/components/sandbox/SandboxHeader'
 import SandboxWorkspace from '@/components/sandbox/SandboxWorkspace'
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { ClipboardList } from 'lucide-react'
 
 export default function MelikeSandboxPage() {
   const { data: session, status } = useSession()
@@ -46,20 +43,6 @@ export default function MelikeSandboxPage() {
         module={sandboxModule}
         userName={session?.user?.name ?? 'Melike'}
       />
-
-      <Link href="/sandbox/melike/toplu-kart-okutamama">
-        <Card className="hover:shadow-md transition-shadow cursor-pointer border-teal-200">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-teal-600" />
-              Toplu Kart Okutamama
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Sicil No / Ad Soyad seçimli, Excel export/import destekli liste
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </Link>
 
       <SandboxWorkspace ownerName="Melike" />
     </div>

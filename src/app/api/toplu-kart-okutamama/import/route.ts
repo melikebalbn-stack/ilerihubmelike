@@ -43,7 +43,7 @@ interface PersonnelLite {
 }
 
 /**
- * POST /api/sandbox/melike/toplu-kart-okutamama/import
+ * POST /api/toplu-kart-okutamama/import
  * Excel dosyasından toplu kayıt oluşturur. Her satır SİCİL NO ile
  * Personnel (İV) tablosunda eşleştirilir — isim/sicil client'tan güvenilmez,
  * sadece gerçek Personnel kaydına bağlanan satırlar kabul edilir.

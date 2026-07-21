@@ -42,6 +42,14 @@ export async function POST(req: NextRequest) {
   if (!kt) return apiForbidden()
   const tezgahKod = kt.tezgah.kod
 
+  // DURUS KILIDI: tezgahta durusAktifkenIsBitirilemez bayrakli acik durus varsa is
+  // bitirilemez. UI de kilitler ama gercek garanti burada (sunucu tarafi).
+  const kilitliDurus = await prisma.iproMachineDowntime.findFirst({
+    where: { tezgahId, bitis: null, durusSebebi: { durusAktifkenIsBitirilemez: true } },
+    select: { id: true },
+  })
+  if (kilitliDurus) return apiError('Önce duruşu bitirin (aktif duruş iş bitirmeyi engelliyor)', 409)
+
   // Acik satiri bul.
   const acik = await prisma.iproProductionLog.findFirst({
     where: { personnelId, tezgahId, ifsOrderNo, ifsOperationNo, durum: 'ACIK' },

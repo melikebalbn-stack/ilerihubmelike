@@ -204,6 +204,14 @@ export type TezgahIsSatiri = {
   operator: string | null // adSoyad, FK'sız ikinci sorgudan
 }
 
+export type TezgahDurusSatiri = {
+  id: string
+  sebep: string | null
+  baslangicAt: string
+  bitisAt: string | null // null = hâlâ açık
+  operator: string | null
+}
+
 export type TezgahDetay = {
   id: string
   kod: string
@@ -215,13 +223,14 @@ export type TezgahDetay = {
   aktifIs: TezgahIsSatiri | null // ACIK satır (varsa)
   durus: { baslangicAt: string; sebep: string | null } | null
   bugunKapanan: TezgahIsSatiri[] // bugün KAPANMIŞ işler, en yeni önce
+  bugunDuruslar: TezgahDurusSatiri[] // bugün başlayan + hâlâ açık duruşlar, en yeni önce
 }
 
 /** Tezgah + aktif iş + bugün kapanan işler. Bulunamazsa null. */
 export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null> {
   const bugun = gununBasi()
 
-  const [tezgah, satirlar, durus] = await Promise.all([
+  const [tezgah, satirlar, durus, duruslar] = await Promise.all([
     prisma.iproTezgah.findUnique({
       where: { id: tezgahId },
       select: { id: true, kod: true, ad: true, masGrupAdi: true, aktif: true, _count: { select: { plcPinler: true } } },
@@ -249,12 +258,29 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
       orderBy: { baslangic: 'asc' },
       select: { baslangic: true, durusSebebi: { select: { ad: true } } },
     }),
+    // Bugün başlayan + hâlâ açık duruşlar (detay dialog tablosu).
+    prisma.iproMachineDowntime.findMany({
+      where: { tezgahId, OR: [{ bitis: null }, { baslangic: { gte: bugun } }] },
+      orderBy: { baslangic: 'desc' },
+      select: {
+        id: true,
+        personnelId: true,
+        baslangic: true,
+        bitis: true,
+        durusSebebi: { select: { ad: true } },
+      },
+    }),
   ])
 
   if (!tezgah) return null
 
-  // Operatör adlarını FK'sız eşle (IPRO deseni).
-  const personIds = [...new Set(satirlar.map((s) => s.personnelId))]
+  // Operatör adlarını FK'sız eşle (IPRO deseni) — iş satırları + duruşlar birlikte.
+  const personIds = [
+    ...new Set([
+      ...satirlar.map((s) => s.personnelId),
+      ...duruslar.map((d) => d.personnelId).filter((x): x is string => !!x),
+    ]),
+  ]
   const personeller = personIds.length
     ? await prisma.personnel.findMany({ where: { id: { in: personIds } }, select: { id: true, adSoyad: true } })
     : []
@@ -289,5 +315,12 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
     aktifIs: aktif ? map(aktif) : null,
     durus: durus ? { baslangicAt: durus.baslangic.toISOString(), sebep: durus.durusSebebi?.ad ?? null } : null,
     bugunKapanan: kapananlar.map(map),
+    bugunDuruslar: duruslar.map((d) => ({
+      id: d.id,
+      sebep: d.durusSebebi?.ad ?? null,
+      baslangicAt: d.baslangic.toISOString(),
+      bitisAt: d.bitis?.toISOString() ?? null,
+      operator: d.personnelId ? (adById.get(d.personnelId) ?? null) : null,
+    })),
   }
 }

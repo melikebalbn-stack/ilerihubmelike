@@ -10908,6 +10908,9 @@ model IproMachineDowntime {
   yorum         String?
 
   @@index([tezgahId, bitis])
+  // Partial UNIQUE (tezgah başına tek AÇIK duruş) Prisma @@unique ile ifade
+  // edilemez — migration.sql'e ELLE eklenir: WHERE bitis IS NULL.
+  // Index: ipro_machine_downtime_acik_uq
   @@map("ipro_machine_downtime")
 }
 

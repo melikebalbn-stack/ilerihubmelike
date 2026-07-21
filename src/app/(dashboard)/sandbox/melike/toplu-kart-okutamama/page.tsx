@@ -69,6 +69,9 @@ export default function TopluKartOkutamamaPage() {
   const [bulkCikis, setBulkCikis] = useState("")
   const [bulkSaving, setBulkSaving] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ created: number; errors: { personnelId: string; message: string }[] } | null>(null)
+  const [manualAddValue, setManualAddValue] = useState<PickedPersonnel | null>(null)
+
+  const [showOldRecords, setShowOldRecords] = useState(false)
 
   useEffect(() => {
     if (status === "loading") return
@@ -149,6 +152,13 @@ export default function TopluKartOkutamamaPage() {
       else next.add(personnelId)
       return next
     })
+  }
+
+  // FULL erişim (Süper Admin / İV / Sistem Geliştirme) bölümden bağımsız
+  // olarak herhangi bir personeli listeye elle ekleyebilir.
+  function addManualPerson(p: PickedPersonnel) {
+    setTeam((prev) => (prev.some((existing) => existing.id === p.id) ? prev : [...prev, p]))
+    setManualAddValue(null)
   }
 
   async function handleBulkSaveAll() {
@@ -346,6 +356,9 @@ export default function TopluKartOkutamamaPage() {
     )
   }
 
+  // Süper Admin / İV / Sistem Geliştirme: bölümden bağımsız herkesi elle ekleyip çıkarabilir.
+  const canManageAnyone = accessLevel === "FULL"
+
   const editableRowContent = (
     <>
       <TableCell colSpan={3}>
@@ -393,8 +406,8 @@ export default function TopluKartOkutamamaPage() {
           <Button variant="outline" onClick={handleNotify} disabled={notifying}>
             {notifying ? "Gönderiliyor..." : "İK'ya Bildir"}
           </Button>
-          <Button onClick={startAdding} disabled={isAdding}>
-            Yeni Kayıt
+          <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
+            {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
           </Button>
         </div>
       </div>
@@ -424,11 +437,22 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {myBolum && (
+      {(myBolum || canManageAnyone) && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Bana Bağlı Personel {team.length > 0 && `(${team.length})`}
           </div>
+
+          {canManageAnyone && (
+            <div className="border-b px-4 py-3">
+              <label className="mb-1 block text-xs text-muted-foreground">
+                Personel Ekle (bölümden bağımsız)
+              </label>
+              <div className="max-w-sm">
+                <PersonnelPicker value={manualAddValue} onSelect={addManualPerson} />
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-end gap-3 border-b bg-muted/20 px-4 py-3">
             <div>
@@ -534,12 +558,19 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      <Input
-        placeholder="Sicil No veya Ad Soyad ile ara..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
+      {showOldRecords && (
+        <>
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          placeholder="Sicil No veya Ad Soyad ile ara..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-sm"
+        />
+        <Button variant="outline" onClick={startAdding} disabled={isAdding}>
+          Yeni Kayıt
+        </Button>
+      </div>
 
       <div className="rounded-md border">
         <Table>
@@ -632,6 +663,8 @@ export default function TopluKartOkutamamaPage() {
           </Button>
         </div>
       </div>
+        </>
+      )}
     </div>
   )
 }

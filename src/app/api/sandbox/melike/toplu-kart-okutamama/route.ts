@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from './_lib/access'
+import { notifyHrOfBulkCardScanRecords } from './_lib/notify-hr'
 
 export const dynamic = 'force-dynamic'
 
@@ -126,6 +127,9 @@ export async function POST(request: NextRequest) {
         personnel: { select: { id: true, bolum: true, gorev: true } },
       },
     })
+
+    // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok)
+    notifyHrOfBulkCardScanRecords([{ sicilNo: record.sicilNo, adSoyad: record.adSoyad }], user.name || user.email)
 
     return NextResponse.json(record, { status: 201 })
   } catch (error) {

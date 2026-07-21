@@ -54,9 +54,6 @@ export default function TopluKartOkutamamaPage() {
   const [importResult, setImportResult] = useState<{ created: number; errors: { row: number; message: string }[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [notifying, setNotifying] = useState(false)
-  const [notifyMessage, setNotifyMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
-
   // GRI için: kendi bölümündeki personel otomatik listelenir, tek tek "Yeni Kayıt"
   // aramaya gerek kalmaz — her satırda doğrudan tarih/saat girip kaydedilir.
   const [team, setTeam] = useState<PickedPersonnel[]>([])
@@ -301,22 +298,6 @@ export default function TopluKartOkutamamaPage() {
     URL.revokeObjectURL(url)
   }
 
-  async function handleNotify() {
-    setNotifying(true)
-    setNotifyMessage(null)
-    try {
-      const res = await fetch(`${API_BASE}/notify`, { method: "POST" })
-      const result = await res.json()
-      if (!res.ok) {
-        setNotifyMessage({ type: "error", text: result.error || "Bildirim gönderilemedi" })
-        return
-      }
-      setNotifyMessage({ type: "success", text: `${result.count} kayıt için İK'ya bildirim gönderildi.` })
-    } finally {
-      setNotifying(false)
-    }
-  }
-
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -394,9 +375,6 @@ export default function TopluKartOkutamamaPage() {
           <Button variant="outline" onClick={handleExport}>
             Excel'e Aktar
           </Button>
-          <Button variant="outline" onClick={handleNotify} disabled={notifying}>
-            {notifying ? "Gönderiliyor..." : "İK'ya Bildir"}
-          </Button>
           {canManageAnyone && (
             <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
               {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
@@ -404,18 +382,6 @@ export default function TopluKartOkutamamaPage() {
           )}
         </div>
       </div>
-
-      {notifyMessage && (
-        <div
-          className={`rounded-md border p-3 text-sm ${
-            notifyMessage.type === "success"
-              ? "border-green-200 bg-green-50 text-green-700"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {notifyMessage.text}
-        </div>
-      )}
 
       {importResult && (
         <div className="rounded-md border bg-muted/40 p-3 text-sm">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
+import { notifyHrOfBulkCardScanRecords } from '../_lib/notify-hr'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
 
     let created = 0
     const errors: { personnelId: string; message: string }[] = []
+    const createdSummaries: { sicilNo: string | null; adSoyad: string }[] = []
 
     for (const item of items) {
       const personnel = personnelMap.get(item.personnelId)
@@ -74,7 +76,11 @@ export async function POST(request: NextRequest) {
         },
       })
       created++
+      createdSummaries.push({ sicilNo: personnel.sicilNo, adSoyad: personnel.adSoyad })
     }
+
+    // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok)
+    notifyHrOfBulkCardScanRecords(createdSummaries, user.name || user.email)
 
     return NextResponse.json({ created, errors })
   } catch (error) {

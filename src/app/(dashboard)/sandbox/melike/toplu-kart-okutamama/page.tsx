@@ -43,7 +43,6 @@ export default function TopluKartOkutamamaPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
 
-  const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formPersonnel, setFormPersonnel] = useState<PickedPersonnel | null>(null)
   const [formTarih, setFormTarih] = useState("")
@@ -232,14 +231,7 @@ export default function TopluKartOkutamamaPage() {
     setFormError(null)
   }
 
-  function startAdding() {
-    resetForm()
-    setEditingId(null)
-    setIsAdding(true)
-  }
-
   function startEditing(record: BulkCardScanRecord) {
-    setIsAdding(false)
     setEditingId(record.id)
     setFormPersonnel({
       id: record.personnel?.id || "",
@@ -254,7 +246,6 @@ export default function TopluKartOkutamamaPage() {
   }
 
   function cancelForm() {
-    setIsAdding(false)
     setEditingId(null)
     resetForm()
   }
@@ -560,17 +551,12 @@ export default function TopluKartOkutamamaPage() {
 
       {showOldRecords && (
         <>
-      <div className="flex flex-wrap items-center gap-3">
-        <Input
-          placeholder="Sicil No veya Ad Soyad ile ara..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
-        <Button variant="outline" onClick={startAdding} disabled={isAdding}>
-          Yeni Kayıt
-        </Button>
-      </div>
+      <Input
+        placeholder="Sicil No veya Ad Soyad ile ara..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="max-w-sm"
+      />
 
       <div className="rounded-md border">
         <Table>
@@ -587,8 +573,7 @@ export default function TopluKartOkutamamaPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isAdding && <TableRow>{editableRowContent}</TableRow>}
-            {formError && (isAdding || editingId) && (
+            {formError && editingId && (
               <TableRow>
                 <TableCell colSpan={8} className="text-sm text-red-600">
                   {formError}
@@ -602,7 +587,7 @@ export default function TopluKartOkutamamaPage() {
                 </TableCell>
               </TableRow>
             )}
-            {!loading && !isAdding && records.length === 0 && (
+            {!loading && records.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground">
                   Kayıt bulunamadı

@@ -73,7 +73,7 @@ export default function TopluKartOkutamamaPage() {
   useEffect(() => {
     if (status === "loading") return
     if (!session?.user?.email) {
-      router.push("/login")
+      router.push(`/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [session, status, router])
 

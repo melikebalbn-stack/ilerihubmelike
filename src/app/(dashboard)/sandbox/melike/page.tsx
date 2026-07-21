@@ -18,7 +18,7 @@ export default function MelikeSandboxPage() {
   useEffect(() => {
     if (status === 'loading') return
     if (!session?.user?.email) {
-      router.push('/login')
+      router.push(`/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`)
       return
     }
     const userRole = (session.user as any).role || 'EMPLOYEE'

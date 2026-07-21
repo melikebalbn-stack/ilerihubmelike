@@ -6,9 +6,8 @@ import { getBulkCardScanAccess } from '../_lib/access'
 
 export const dynamic = 'force-dynamic'
 
-// GEÇİCİ: Gerçek İK e-posta adresi netleşene kadar bildirimler buraya gider.
-// Melih/İK ile netleşince bu sabit gerçek İK adresiyle değiştirilecek.
-const HR_NOTIFICATION_EMAIL = 'melike.balaban@ilerigroup.com'
+// İK bildirim adresi env'den okunur (her iki slot .env'ine ayrıca girilir).
+// Tanımlı değilse mail ATILMAZ — log uyarısı düşülür, akış 200 ile hatasız döner.
 
 /**
  * POST /api/toplu-kart-okutamama/notify
@@ -61,8 +60,22 @@ export async function POST(request: NextRequest) {
       `Sicil No | Ad Soyad | Bölüm | Tarih | Giriş | Çıkış\n${rows}\n\n` +
       `Bildiren: ${user.name || user.email}`
 
+    const hrEmail = process.env.KART_OKUTAMAMA_HR_EMAIL
+    if (!hrEmail) {
+      console.warn(
+        '[toplu-kart-okutamama] KART_OKUTAMAMA_HR_EMAIL tanımlı değil — İK bildirim maili atlandı ' +
+          `(${records.length} kayıt bildirilecekti).`
+      )
+      return NextResponse.json({
+        success: false,
+        skipped: true,
+        reason: 'İK bildirim adresi yapılandırılmamış (KART_OKUTAMAMA_HR_EMAIL)',
+        count: records.length,
+      })
+    }
+
     const result = await sendEmail(
-      [{ email: HR_NOTIFICATION_EMAIL, name: 'İK' }],
+      [{ email: hrEmail, name: 'İK' }],
       `Toplu Kart Okutamama Bildirimi (${records.length} kayıt)`,
       body_
     )

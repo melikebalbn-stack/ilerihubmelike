@@ -279,6 +279,7 @@ export async function PUT(
     // PR-C: salt-görüntüleme alanları — update body'sine girmez
     delete body.employmentPeriods
     delete body.employmentSummary
+    delete body.lastClosedPeriod // GET-türetilmiş salt-okuma nesne; şema alanı değil
     delete body.aktif // toggle artık PATCH ile yapılıyor
     // Beden: nested obje ayrı upsert edilir; personnel.update data'sına girmemeli.
     // bedenProfili = GET'ten dönen salt-okuma nested obje (varsa) — silinir.

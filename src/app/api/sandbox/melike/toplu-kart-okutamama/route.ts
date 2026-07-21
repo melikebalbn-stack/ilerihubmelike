@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
       records,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       accessLevel: access.level,
+      bolum: access.bolum,
     })
   } catch (error) {
     console.error('Toplu kart okutamama liste hatası:', error)

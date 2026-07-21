@@ -35,6 +35,7 @@ export default function TopluKartOkutamamaPage() {
 
   const [records, setRecords] = useState<BulkCardScanRecord[]>([])
   const [accessLevel, setAccessLevel] = useState<"FULL" | "GRI" | null>(null)
+  const [myBolum, setMyBolum] = useState<string | null>(null)
   const [forbidden, setForbidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -93,6 +94,7 @@ export default function TopluKartOkutamamaPage() {
         const data = await res.json()
         setRecords(data.records)
         setAccessLevel(data.accessLevel)
+        setMyBolum(data.bolum ?? null)
         setTotalPages(data.pagination?.totalPages || 1)
         setTotal(data.pagination?.total || 0)
       }
@@ -110,12 +112,16 @@ export default function TopluKartOkutamamaPage() {
     if (status === "authenticated") loadRecords()
   }, [status, loadRecords])
 
+  // Panel GRI'ya özel değil — Personnel kaydı olan (bolum'u bilinen) herkes
+  // (FULL/admin dahil) kendi bölümündeki ekibi burada görür. FULL için bolum
+  // parametresi elle geçiliyor (GRI'da sunucu zaten kendi bölümüne zorluyor).
   useEffect(() => {
-    if (accessLevel !== "GRI") return
-    fetch("/api/sandbox/melike/toplu-kart-okutamama/personnel-search")
+    if (!myBolum) return
+    const params = new URLSearchParams({ bolum: myBolum })
+    fetch(`/api/sandbox/melike/toplu-kart-okutamama/personnel-search?${params.toString()}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: PickedPersonnel[]) => setTeam(data))
-  }, [accessLevel])
+  }, [myBolum])
 
   function updateTeamDraft(personnelId: string, field: "tarih" | "giris" | "cikis", value: string) {
     setTeamDrafts((prev) => {
@@ -418,7 +424,7 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {accessLevel === "GRI" && (
+      {myBolum && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Bana Bağlı Personel {team.length > 0 && `(${team.length})`}

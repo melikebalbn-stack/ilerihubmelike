@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Activity, AlertTriangle, Factory, Maximize, Minimize, Package, RefreshCw, Search, Signal } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -56,7 +56,14 @@ type IsSatiri = {
   baslatildiAt: string | null
   bitirildiAt: string | null
   operator: string | null
+  ifsQtyDue: number | null
+  ifsDueDate: string | null
+  ifsNeedDate: string | null
+  ifsMachRunFactor: number | null
+  ifsLaborRunFactor: number | null
+  ifsRunTimeCode: string | null
 }
+type DurusSatiri = { id: string; sebep: string | null; baslangicAt: string; bitisAt: string | null; operator: string | null }
 type Detay = {
   id: string
   kod: string
@@ -68,6 +75,9 @@ type Detay = {
   aktifIs: IsSatiri | null
   durus: Durus | null
   bugunKapanan: IsSatiri[]
+  bugunDuruslar: DurusSatiri[]
+  sureDagilimi: { calismaDk: number; durusDk: number; bostaDk: number; elapsedDk: number }
+  uretim: { gerceklesen: number; planlanan: number | null }
 }
 
 /** ms → "1s 12dk" / "12dk" / "45sn". Canlı süre için. */
@@ -365,17 +375,23 @@ function Satir({ etiket, deger, tv, baslik }: { etiket: string; deger: string; t
   )
 }
 
+function dkBicim(dk: number): string {
+  if (dk < 1) return '0dk'
+  if (dk < 60) return `${dk}dk`
+  return `${Math.floor(dk / 60)}s ${dk % 60}dk`
+}
+const trTarih2 = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('tr-TR') : '—')
+
 function DetayDialog({ tezgahId, onClose }: { tezgahId: string | null; onClose: () => void }) {
   const [detay, setDetay] = useState<Detay | null>(null)
-  const [yukleniyor, setYukleniyor] = useState(false)
   const [hata, setHata] = useState<string | null>(null)
+  const [, tik] = useState(0)
 
   useEffect(() => {
     if (!tezgahId) return
     let iptal = false
     setDetay(null)
     setHata(null)
-    setYukleniyor(true)
     fetch(`/api/ipro/izleme/tezgah/${tezgahId}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
@@ -384,69 +400,218 @@ function DetayDialog({ tezgahId, onClose }: { tezgahId: string | null; onClose: 
         else setHata(d?.error ?? 'Detay alınamadı')
       })
       .catch(() => !iptal && setHata('Bağlantı hatası'))
-      .finally(() => !iptal && setYukleniyor(false))
     return () => {
       iptal = true
     }
   }, [tezgahId])
 
+  // Canlı süre için saniyelik tik.
+  useEffect(() => {
+    const id = setInterval(() => tik((n) => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+
   const acik = !!tezgahId
   const aktif = detay?.aktifIs
-  const aktifSure = aktif?.baslatildiAt ? sureBicim(Date.now() - new Date(aktif.baslatildiAt).getTime()) : null
+  const aktifSure = aktif?.baslatildiAt ? sureBicim(Date.now() - new Date(aktif.baslatildiAt).getTime()) : '—'
+  const durusSure = detay?.durus ? sureBicim(Date.now() - new Date(detay.durus.baslangicAt).getTime()) : null
+  const sd = detay?.sureDagilimi
+  const toplamDurusDk =
+    detay?.bugunDuruslar.reduce((a, d) => {
+      const end = d.bitisAt ? new Date(d.bitisAt).getTime() : Date.now()
+      return a + Math.max(0, (end - new Date(d.baslangicAt).getTime()) / 60000)
+    }, 0) ?? 0
+  const planCevrim =
+    aktif?.ifsMachRunFactor != null && aktif.ifsMachRunFactor > 0
+      ? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim()
+      : '—'
+  const uret = detay?.uretim
+  const yuzde = uret && uret.planlanan ? Math.min(100, Math.round((uret.gerceklesen / uret.planlanan) * 100)) : null
+
+  const rozet =
+    detay?.durum === 'durusta'
+      ? { t: 'DURUŞTA', c: 'bg-red-100 text-red-700' }
+      : detay?.durum === 'calisiyor'
+        ? { t: 'ÇALIŞIYOR', c: 'bg-emerald-100 text-emerald-700' }
+        : { t: 'BOŞTA', c: 'bg-slate-100 text-slate-500' }
 
   return (
     <Dialog open={acik} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-3">
             <Factory className="h-5 w-5 text-[#1B4F72]" />
-            {detay ? `${detay.kod} — ${detay.ad}` : 'Tezgah detayı'}
+            <span>{detay ? detay.kod : 'Tezgah'}</span>
+            {detay && <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${rozet.c}`}>{rozet.t}</span>}
           </DialogTitle>
           <DialogDescription>
-            {detay?.masGrupAdi ?? (yukleniyor ? 'Yükleniyor…' : '')}
+            {detay ? `${detay.ad}${detay.masGrupAdi ? ` · ${detay.masGrupAdi}` : ''}` : 'Yükleniyor…'}
           </DialogDescription>
         </DialogHeader>
 
         {hata ? (
           <p className="py-6 text-center text-sm text-red-600">{hata}</p>
         ) : !detay ? (
-          <p className="py-6 text-center text-sm text-slate-500">Yükleniyor…</p>
+          <p className="py-10 text-center text-sm text-slate-400">Yükleniyor…</p>
         ) : (
-          <div className="space-y-4 text-sm">
-            {/* Aktif iş */}
-            <section>
-              <h3 className="mb-1.5 font-semibold text-slate-700">Aktif iş</h3>
-              {detay.durum === 'durusta' ? (
-                <p className="rounded-lg bg-red-50 px-3 py-2 font-medium text-red-700">
-                  DURUŞTA{detay.durus?.sebep ? ` — ${detay.durus.sebep}` : ''}
-                </p>
-              ) : aktif ? (
-                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg bg-emerald-50 px-3 py-2">
-                  <Alan etiket="Operatör" deger={aktif.operator ?? '—'} />
-                  <Alan etiket="İş emri" deger={aktif.ifsOrderNo ?? '—'} />
-                  <Alan etiket="Operasyon" deger={aktif.ifsOperationNo != null ? String(aktif.ifsOperationNo) : '—'} />
-                  <Alan etiket="Malzeme kodu" deger={aktif.ifsPartNo ?? '—'} />
-                  <Alan etiket="Malzeme adı" deger={aktif.ifsPartDescription ?? '—'} />
-                  <Alan etiket="Süredir" deger={aktifSure ?? '—'} />
+          <div className="space-y-5">
+            {/* Aktif iş / durum */}
+            {detay.durum === 'durusta' ? (
+              <div className="rounded-xl bg-red-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wider text-red-500">Duruşta</div>
+                <div className="mt-1 flex items-baseline justify-between">
+                  <span className="text-xl font-bold text-red-700">{detay.durus?.sebep ?? 'Duruş'}</span>
+                  <span className="font-mono text-lg text-red-600">{durusSure}</span>
                 </div>
+              </div>
+            ) : aktif ? (
+              <div>
+                <div className="mb-3 flex items-baseline justify-between">
+                  <span className="text-lg font-bold text-slate-800">👤 {aktif.operator ?? '—'}</span>
+                  <span className="font-mono text-2xl font-semibold text-emerald-600">{aktifSure}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+                  <Alan2 e="İş emri" d={`${aktif.ifsOrderNo ?? '—'} · Op ${aktif.ifsOperationNo ?? '—'}`} />
+                  <Alan2 e="Malzeme" d={aktif.ifsPartNo ?? '—'} alt={aktif.ifsPartDescription ?? undefined} />
+                  <Alan2 e="Planlanan adet" d={aktif.ifsQtyDue != null ? String(aktif.ifsQtyDue) : '—'} />
+                  <Alan2 e="Teslim" d={trTarih2(aktif.ifsDueDate)} />
+                  <Alan2 e="İhtiyaç" d={trTarih2(aktif.ifsNeedDate)} />
+                  <Alan2 e="Planlı çevrim" d={planCevrim} />
+                  <Alan2 e="PLC" d={detay.sinyalli ? '📶 Sinyalli' : 'Sinyalsiz'} />
+                  <Alan2 e="Başlangıç" d={aktif.baslatildiAt ? new Date(aktif.baslatildiAt).toLocaleTimeString('tr-TR') : '—'} />
+                </div>
+              </div>
+            ) : (
+              <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Boşta — açık iş yok.</p>
+            )}
+
+            {/* Üretim ilerleme */}
+            <section>
+              <SecBaslik>Üretim ilerleme</SecBaslik>
+              {uret && uret.planlanan ? (
+                <>
+                  <div className="mb-1 flex items-baseline justify-between text-sm">
+                    <span className="font-semibold text-slate-700">
+                      {uret.gerceklesen} / {uret.planlanan}
+                    </span>
+                    <span className="text-slate-500">%{yuzde}</span>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${yuzde}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">bugün kapanan iyi toplamı; poller gelince canlı sayaçla zenginleşir</p>
+                </>
               ) : (
-                <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">Boşta — açık iş yok.</p>
+                <p className="text-sm text-slate-400">Planlanan adet yok — {uret?.gerceklesen ?? 0} adet üretildi (bugün).</p>
+              )}
+            </section>
+
+            {/* Çevrim karşılaştırma */}
+            <section>
+              <SecBaslik>Çevrim (planlı vs ort.)</SecBaslik>
+              <div className="flex items-center gap-4 text-sm">
+                <div>
+                  <span className="text-slate-400">planlı</span> <span className="font-semibold text-slate-700">{planCevrim}</span>
+                </div>
+                <div className="text-slate-300">|</div>
+                <div>
+                  <span className="text-slate-400">ort.</span> <span className="font-semibold text-slate-400">—</span>
+                </div>
+                <span className="ml-auto text-xs text-slate-400">ort. çevrim poller ile</span>
+              </div>
+            </section>
+
+            {/* Süre dağılımı */}
+            {sd && sd.elapsedDk > 0 && (
+              <section>
+                <SecBaslik>Bugün süre dağılımı ({dkBicim(sd.elapsedDk)})</SecBaslik>
+                <div className="flex h-4 overflow-hidden rounded-full bg-slate-100">
+                  <StackSeg dk={sd.calismaDk} toplam={sd.elapsedDk} renk="bg-emerald-500" />
+                  <StackSeg dk={sd.durusDk} toplam={sd.elapsedDk} renk="bg-red-500" />
+                  <StackSeg dk={sd.bostaDk} toplam={sd.elapsedDk} renk="bg-slate-300" />
+                </div>
+                <div className="mt-2 flex flex-wrap gap-4 text-xs">
+                  <Lej renk="bg-emerald-500" e="Çalışma" v={dkBicim(sd.calismaDk)} />
+                  <Lej renk="bg-red-500" e="Duruş" v={dkBicim(sd.durusDk)} />
+                  <Lej renk="bg-slate-300" e="Boşta" v={dkBicim(sd.bostaDk)} />
+                </div>
+              </section>
+            )}
+
+            {/* Göstergeler (mini) */}
+            <section>
+              <SecBaslik>Göstergeler</SecBaslik>
+              <div className="grid grid-cols-4 gap-2">
+                <MiniKart e="OEE" />
+                <MiniKart e="Perf." />
+                <MiniKart e="Kull." />
+                <MiniKart e="Kalite" />
+              </div>
+              <p className="mt-1 text-xs text-slate-400">hesaplama sonra (OEE-HESAP)</p>
+            </section>
+
+            {/* PLC sayacı placeholder */}
+            <section>
+              <SecBaslik>PLC sayacı</SecBaslik>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <Ph e="Baskı sayısı" />
+                <Ph e="Gerçekleşen (poller)" />
+                <Ph e="Ort. çevrim" />
+              </div>
+              <p className="mt-1 text-xs text-slate-400">poller gelince dolar; sinyalsizde bitir anında girilir</p>
+            </section>
+
+            {/* Bugünkü duruşlar */}
+            <section>
+              <SecBaslik>
+                Bugünkü duruşlar ({detay.bugunDuruslar.length}) · toplam {dkBicim(Math.round(toplamDurusDk))}
+              </SecBaslik>
+              {detay.bugunDuruslar.length === 0 ? (
+                <p className="text-sm text-slate-400">Bugün duruş yok.</p>
+              ) : (
+                <div className="overflow-hidden rounded-lg border">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left">Sebep</th>
+                        <th className="px-2 py-1.5 text-left">Başlangıç</th>
+                        <th className="px-2 py-1.5 text-right">Süre</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detay.bugunDuruslar.map((d) => {
+                        const end = d.bitisAt ? new Date(d.bitisAt).getTime() : Date.now()
+                        const dk = Math.round(Math.max(0, (end - new Date(d.baslangicAt).getTime()) / 60000))
+                        return (
+                          <tr key={d.id} className="border-t">
+                            <td className="px-2 py-1.5">
+                              {d.sebep ?? '—'}
+                              {!d.bitisAt && <span className="ml-1 text-red-500">●</span>}
+                            </td>
+                            <td className="px-2 py-1.5 text-slate-500">
+                              {new Date(d.baslangicAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-medium">{dkBicim(dk)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </section>
 
             {/* Bugün kapanan işler */}
             <section>
-              <h3 className="mb-1.5 flex items-center gap-1.5 font-semibold text-slate-700">
-                <Package className="h-4 w-4" /> Bugün kapanan işler ({detay.bugunKapanan.length})
-              </h3>
+              <SecBaslik>Bugün kapanan işler ({detay.bugunKapanan.length})</SecBaslik>
               {detay.bugunKapanan.length === 0 ? (
-                <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-500">Bugün kapanan iş yok.</p>
+                <p className="text-sm text-slate-400">Bugün kapanan iş yok.</p>
               ) : (
-                <div className="max-h-64 overflow-y-auto rounded-lg border">
+                <div className="max-h-56 overflow-y-auto rounded-lg border">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-slate-100 text-slate-600">
+                    <thead className="sticky top-0 bg-slate-50 text-slate-500">
                       <tr>
-                        <th className="px-2 py-1.5 text-left">İş emri / Op</th>
+                        <th className="px-2 py-1.5 text-left">İş / Op</th>
                         <th className="px-2 py-1.5 text-left">Malzeme</th>
                         <th className="px-2 py-1.5 text-right">İyi</th>
                         <th className="px-2 py-1.5 text-right">Hurda</th>
@@ -482,11 +647,47 @@ function DetayDialog({ tezgahId, onClose }: { tezgahId: string | null; onClose: 
   )
 }
 
-function Alan({ etiket, deger }: { etiket: string; deger: string }) {
+function SecBaslik({ children }: { children: ReactNode }) {
+  return <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">{children}</h3>
+}
+function Alan2({ e, d, alt }: { e: string; d: string; alt?: string }) {
   return (
-    <>
-      <span className="text-slate-500">{etiket}</span>
-      <span className="font-medium text-slate-800">{deger}</span>
-    </>
+    <div>
+      <div className="text-xs text-slate-400">{e}</div>
+      <div className="truncate font-medium text-slate-800" title={alt}>
+        {d}
+      </div>
+      {alt && d !== alt && <div className="truncate text-xs text-slate-500">{alt}</div>}
+    </div>
+  )
+}
+function StackSeg({ dk, toplam, renk }: { dk: number; toplam: number; renk: string }) {
+  const w = toplam > 0 ? (dk / toplam) * 100 : 0
+  if (w <= 0) return null
+  return <div className={`${renk} transition-all duration-700`} style={{ width: `${w}%` }} />
+}
+function Lej({ renk, e, v }: { renk: string; e: string; v: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={`h-2.5 w-2.5 rounded-full ${renk}`} />
+      <span className="text-slate-500">{e}</span>
+      <span className="font-medium text-slate-700">{v}</span>
+    </span>
+  )
+}
+function MiniKart({ e }: { e: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 py-2 text-center">
+      <div className="text-lg font-bold text-slate-400">%—</div>
+      <div className="text-[10px] uppercase tracking-wider text-slate-400">{e}</div>
+    </div>
+  )
+}
+function Ph({ e }: { e: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 py-2">
+      <div className="text-lg font-bold text-slate-300">—</div>
+      <div className="text-[10px] text-slate-400">{e}</div>
+    </div>
   )
 }

@@ -133,6 +133,14 @@ describe('panoData toplama', () => {
     expect(d.aktifIs.ifsPartNo).toBe('IZL-PART-1')
     expect(d.aktifIs.operator).toBe(adSoyad)
     expect(Array.isArray(d.bugunKapanan)).toBe(true)
+    // Süre dağılımı + üretim (MAS detay redesign) — DB'den hesaplanır.
+    expect(d.sureDagilimi).toBeTruthy()
+    expect(typeof d.sureDagilimi.calismaDk).toBe('number')
+    expect(typeof d.sureDagilimi.durusDk).toBe('number')
+    expect(typeof d.sureDagilimi.bostaDk).toBe('number')
+    expect(d.uretim).toBeTruthy()
+    expect(typeof d.uretim.gerceklesen).toBe('number')
+    expect(Array.isArray(d.bugunDuruslar)).toBe(true)
   })
 
   it('sadece AKTİF tezgahlar döner; pasif hariç', async () => {

@@ -202,6 +202,13 @@ export type TezgahIsSatiri = {
   baslatildiAt: string | null
   bitirildiAt: string | null
   operator: string | null // adSoyad, FK'sız ikinci sorgudan
+  // Plan snapshot (başla anında ShopOrderOperations'tan) — aktif iş detayında gösterilir.
+  ifsQtyDue: number | null
+  ifsDueDate: string | null
+  ifsNeedDate: string | null
+  ifsMachRunFactor: number | null
+  ifsLaborRunFactor: number | null
+  ifsRunTimeCode: string | null
 }
 
 export type TezgahDurusSatiri = {
@@ -224,6 +231,10 @@ export type TezgahDetay = {
   durus: { baslangicAt: string; sebep: string | null } | null
   bugunKapanan: TezgahIsSatiri[] // bugün KAPANMIŞ işler, en yeni önce
   bugunDuruslar: TezgahDurusSatiri[] // bugün başlayan + hâlâ açık duruşlar, en yeni önce
+  // Bugün (gün başından şimdiye) süre dağılımı — dakika. DB'den hesaplanır, IFS yok.
+  sureDagilimi: { calismaDk: number; durusDk: number; bostaDk: number; elapsedDk: number }
+  // Üretim ilerleme — gerçekleşen (bugün kapananların iyi toplamı) / planlanan (aktif iş ifsQtyDue).
+  uretim: { gerceklesen: number; planlanan: number | null }
 }
 
 /** Tezgah + aktif iş + bugün kapanan işler. Bulunamazsa null. */
@@ -247,6 +258,12 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
         ifsOperationNo: true,
         ifsPartNo: true,
         ifsPartDescription: true,
+        ifsQtyDue: true,
+        ifsDueDate: true,
+        ifsNeedDate: true,
+        ifsMachRunFactor: true,
+        ifsLaborRunFactor: true,
+        ifsRunTimeCode: true,
         qtyComplete: true,
         qtyScrap: true,
         baslatildiAt: true,
@@ -297,12 +314,38 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
     baslatildiAt: s.baslatildiAt?.toISOString() ?? null,
     bitirildiAt: s.bitirildiAt?.toISOString() ?? null,
     operator: adById.get(s.personnelId) ?? null,
+    ifsQtyDue: s.ifsQtyDue,
+    ifsDueDate: s.ifsDueDate?.toISOString() ?? null,
+    ifsNeedDate: s.ifsNeedDate?.toISOString() ?? null,
+    ifsMachRunFactor: s.ifsMachRunFactor,
+    ifsLaborRunFactor: s.ifsLaborRunFactor,
+    ifsRunTimeCode: s.ifsRunTimeCode,
   })
 
   const aktif = satirlar.find((s) => s.durum === 'ACIK')
   const kapananlar = satirlar.filter((s) => s.durum === 'KAPALI')
   const calisiyor = !!(aktif && aktif.baslatildiAt)
   const durum: KartDurum = durus ? 'durusta' : calisiyor ? 'calisiyor' : 'bosta'
+
+  // ── Bugün süre dağılımı (dakika) — production_log + downtime'dan, gün başından şimdiye ──
+  const now = new Date()
+  const clampDk = (start: Date, end: Date): number => {
+    const s = Math.max(start.getTime(), bugun.getTime())
+    const e = Math.min(end.getTime(), now.getTime())
+    return Math.max(0, (e - s) / 60000)
+  }
+  const uretimDk = satirlar.reduce(
+    (acc, s) => acc + (s.baslatildiAt ? clampDk(s.baslatildiAt, s.bitirildiAt ?? now) : 0),
+    0,
+  )
+  const durusDk = duruslar.reduce((acc, d) => acc + clampDk(d.baslangic, d.bitis ?? now), 0)
+  const elapsedDk = Math.max(0, (now.getTime() - bugun.getTime()) / 60000)
+  // Çalışma = üreten süre eksi duruş (duruş, iş açıkken makine durması). Boşta = kalan.
+  const calismaDk = Math.max(0, uretimDk - durusDk)
+  const bostaDk = Math.max(0, elapsedDk - calismaDk - durusDk)
+  const yuvarla = (n: number) => Math.round(n)
+
+  const gerceklesen = kapananlar.reduce((a, s) => a + s.qtyComplete, 0) + (aktif?.qtyComplete ?? 0)
 
   return {
     id: tezgah.id,
@@ -322,5 +365,12 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
       bitisAt: d.bitis?.toISOString() ?? null,
       operator: d.personnelId ? (adById.get(d.personnelId) ?? null) : null,
     })),
+    sureDagilimi: {
+      calismaDk: yuvarla(calismaDk),
+      durusDk: yuvarla(durusDk),
+      bostaDk: yuvarla(bostaDk),
+      elapsedDk: yuvarla(elapsedDk),
+    },
+    uretim: { gerceklesen, planlanan: aktif?.ifsQtyDue ?? null },
   }
 }

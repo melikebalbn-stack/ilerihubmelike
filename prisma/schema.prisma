@@ -11431,6 +11431,13 @@ model DepoHareketLog {
 // TOPLU KART OKUTAMAMA FORMU
 // ═══════════════════════════════════════════════
 
+enum KartOkutamamaNedeni {
+  UNUTMA
+  BOZULMA
+  KAYBETME
+  VAZIFE
+}
+
 model BulkCardScanFailure {
   id String @id @default(cuid())
 
@@ -11444,6 +11451,7 @@ model BulkCardScanFailure {
   tarih      DateTime @db.Date
   girisSaati String? // "08:00"
   cikisSaati String? // "17:00"
+  neden      KartOkutamamaNedeni?
 
   createdById String
   createdBy   User   @relation("BulkCardScanFailureCreator", fields: [createdById], references: [id])

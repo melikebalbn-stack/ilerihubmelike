@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
+import { VALID_NEDEN } from '../_lib/neden'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,7 +41,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (accessError) return accessError
 
     const body = await request.json()
-    const { personnelId, tarih, girisSaati, cikisSaati } = body
+    const { personnelId, tarih, girisSaati, cikisSaati, neden } = body
+
+    if (neden && !(VALID_NEDEN as readonly string[]).includes(neden)) {
+      return NextResponse.json({ error: 'Geçersiz neden' }, { status: 400 })
+    }
 
     const data: Record<string, unknown> = {}
 
@@ -60,6 +65,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (tarih) data.tarih = new Date(tarih)
     if (girisSaati !== undefined) data.girisSaati = girisSaati || null
     if (cikisSaati !== undefined) data.cikisSaati = cikisSaati || null
+    if (neden !== undefined) data.neden = neden || null
 
     const updated = await prisma.bulkCardScanFailure.update({
       where: { id },

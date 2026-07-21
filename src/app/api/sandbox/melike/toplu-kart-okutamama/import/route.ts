@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
+import { VALID_NEDEN, NEDEN_LABELS, type KartOkutamamaNedeni } from '../_lib/neden'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +13,23 @@ interface ImportRow {
   'TARİH'?: string | number | Date
   'GİRİŞ SAATİ'?: string
   'ÇIKIŞ SAATİ'?: string
+  'NEDEN'?: string
+}
+
+const NEDEN_LABEL_TO_KEY: Record<string, KartOkutamamaNedeni> = Object.fromEntries(
+  VALID_NEDEN.map((key) => [NEDEN_LABELS[key].toLocaleUpperCase('tr-TR'), key])
+) as Record<string, KartOkutamamaNedeni>
+
+function parseNeden(value: string | undefined): { neden: KartOkutamamaNedeni | null; invalid: boolean } {
+  if (!value || !value.trim()) return { neden: null, invalid: false }
+  const normalized = value.trim().toLocaleUpperCase('tr-TR')
+  if ((VALID_NEDEN as readonly string[]).includes(normalized)) {
+    return { neden: normalized as KartOkutamamaNedeni, invalid: false }
+  }
+  if (NEDEN_LABEL_TO_KEY[normalized]) {
+    return { neden: NEDEN_LABEL_TO_KEY[normalized], invalid: false }
+  }
+  return { neden: null, invalid: true }
 }
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB
@@ -107,6 +125,7 @@ export async function POST(request: NextRequest) {
       tarih: Date
       girisSaati: string | null
       cikisSaati: string | null
+      neden: KartOkutamamaNedeni | null
     }
     const parsed: ParsedRow[] = []
 
@@ -125,6 +144,12 @@ export async function POST(request: NextRequest) {
         continue
       }
 
+      const { neden, invalid } = parseNeden(row['NEDEN'])
+      if (invalid) {
+        results.errors.push({ row: i + 2, message: `Geçersiz neden: "${row['NEDEN']}"` })
+        continue
+      }
+
       parsed.push({
         rowIndex: i + 2,
         sicilNo,
@@ -132,6 +157,7 @@ export async function POST(request: NextRequest) {
         tarih,
         girisSaati: row['GİRİŞ SAATİ'] ? String(row['GİRİŞ SAATİ']).trim() : null,
         cikisSaati: row['ÇIKIŞ SAATİ'] ? String(row['ÇIKIŞ SAATİ']).trim() : null,
+        neden,
       })
     }
 
@@ -173,6 +199,7 @@ export async function POST(request: NextRequest) {
       tarih: Date
       girisSaati: string | null
       cikisSaati: string | null
+      neden: KartOkutamamaNedeni | null
     }
     const toCreate: ToCreate[] = []
 
@@ -202,6 +229,7 @@ export async function POST(request: NextRequest) {
         tarih: p.tarih,
         girisSaati: p.girisSaati,
         cikisSaati: p.cikisSaati,
+        neden: p.neden,
       })
     }
 
@@ -216,6 +244,7 @@ export async function POST(request: NextRequest) {
               tarih: c.tarih,
               girisSaati: c.girisSaati,
               cikisSaati: c.cikisSaati,
+              neden: c.neden,
               createdById: user.id,
             },
           }),

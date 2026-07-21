@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from './_lib/access'
 import { notifyHrOfBulkCardScanRecords } from './_lib/notify-hr'
+import { VALID_NEDEN } from './_lib/neden'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,10 +92,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { personnelId, tarih, girisSaati, cikisSaati } = body
+    const { personnelId, tarih, girisSaati, cikisSaati, neden } = body
 
     if (!personnelId || !tarih) {
       return NextResponse.json({ error: 'personnelId ve tarih zorunludur' }, { status: 400 })
+    }
+
+    if (neden && !(VALID_NEDEN as readonly string[]).includes(neden)) {
+      return NextResponse.json({ error: 'Geçersiz neden' }, { status: 400 })
     }
 
     // Sicil No / Ad Soyad her zaman Personnel (İV) kaydından alınır — client'tan
@@ -120,6 +125,7 @@ export async function POST(request: NextRequest) {
         tarih: new Date(tarih),
         girisSaati: girisSaati || null,
         cikisSaati: cikisSaati || null,
+        neden: neden || null,
         createdById: user.id,
       },
       include: {

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
 import { notifyHrOfBulkCardScanRecords } from '../_lib/notify-hr'
+import { VALID_NEDEN } from '../_lib/neden'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,6 +12,7 @@ interface BulkItem {
   tarih: string
   girisSaati?: string
   cikisSaati?: string
+  neden?: string
 }
 
 /**
@@ -65,6 +67,10 @@ export async function POST(request: NextRequest) {
         errors.push({ personnelId: item.personnelId, message: 'Bu personel sizin bölümünüzde değil' })
         continue
       }
+      if (item.neden && !(VALID_NEDEN as readonly string[]).includes(item.neden)) {
+        errors.push({ personnelId: item.personnelId, message: 'Geçersiz neden' })
+        continue
+      }
 
       await prisma.bulkCardScanFailure.create({
         data: {
@@ -74,6 +80,7 @@ export async function POST(request: NextRequest) {
           tarih: new Date(item.tarih),
           girisSaati: item.girisSaati || null,
           cikisSaati: item.cikisSaati || null,
+          neden: (item.neden as 'UNUTMA' | 'BOZULMA' | 'KAYBETME' | 'VAZIFE') || null,
           createdById: user.id,
         },
       })

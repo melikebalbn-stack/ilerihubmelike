@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
+import { NEDEN_LABELS, type KartOkutamamaNedeni } from '../_lib/neden'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
       orderBy: { tarih: 'desc' },
     })
 
-    const headers = ['SİCİL NO', 'ADI VE SOYADI', 'BÖLÜM', 'TARİH', 'GİRİŞ SAATİ', 'ÇIKIŞ SAATİ']
+    const headers = ['SİCİL NO', 'ADI VE SOYADI', 'BÖLÜM', 'TARİH', 'GİRİŞ SAATİ', 'ÇIKIŞ SAATİ', 'NEDEN']
     const data = records.map((r) => ({
       'SİCİL NO': r.sicilNo || '',
       'ADI VE SOYADI': r.adSoyad,
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
       'TARİH': formatDate(r.tarih),
       'GİRİŞ SAATİ': r.girisSaati || '',
       'ÇIKIŞ SAATİ': r.cikisSaati || '',
+      'NEDEN': r.neden ? NEDEN_LABELS[r.neden as KartOkutamamaNedeni] : '',
     }))
 
     const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })

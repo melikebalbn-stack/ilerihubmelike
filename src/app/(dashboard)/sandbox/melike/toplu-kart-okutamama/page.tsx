@@ -38,6 +38,9 @@ export default function TopluKartOkutamamaPage() {
   const [forbidden, setForbidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
 
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -59,6 +62,12 @@ export default function TopluKartOkutamamaPage() {
   const [team, setTeam] = useState<PickedPersonnel[]>([])
   const [teamDrafts, setTeamDrafts] = useState<Record<string, { tarih: string; giris: string; cikis: string }>>({})
   const [teamSavingId, setTeamSavingId] = useState<string | null>(null)
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
+  const [bulkTarih, setBulkTarih] = useState("")
+  const [bulkGiris, setBulkGiris] = useState("")
+  const [bulkCikis, setBulkCikis] = useState("")
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkResult, setBulkResult] = useState<{ created: number; errors: { personnelId: string; message: string }[] } | null>(null)
 
   useEffect(() => {
     if (status === "loading") return
@@ -73,6 +82,7 @@ export default function TopluKartOkutamamaPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set("search", search)
+      params.set("page", String(page))
       const res = await fetch(`${API_BASE}?${params.toString()}`)
       if (res.status === 403) {
         setForbidden(true)
@@ -83,10 +93,17 @@ export default function TopluKartOkutamamaPage() {
         const data = await res.json()
         setRecords(data.records)
         setAccessLevel(data.accessLevel)
+        setTotalPages(data.pagination?.totalPages || 1)
+        setTotal(data.pagination?.total || 0)
       }
     } finally {
       setLoading(false)
     }
+  }, [search, page])
+
+  // Arama değişince ilk sayfaya dön
+  useEffect(() => {
+    setPage(1)
   }, [search])
 
   useEffect(() => {
@@ -105,6 +122,66 @@ export default function TopluKartOkutamamaPage() {
       const base = prev[personnelId] ?? { tarih: "", giris: "", cikis: "" }
       return { ...prev, [personnelId]: { ...base, [field]: value } }
     })
+  }
+
+  function applyToAll() {
+    if (!bulkTarih) return
+    setTeamDrafts((prev) => {
+      const next = { ...prev }
+      for (const p of team) {
+        if (excludedIds.has(p.id)) continue
+        next[p.id] = { tarih: bulkTarih, giris: bulkGiris, cikis: bulkCikis }
+      }
+      return next
+    })
+  }
+
+  function toggleExcluded(personnelId: string) {
+    setExcludedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(personnelId)) next.delete(personnelId)
+      else next.add(personnelId)
+      return next
+    })
+  }
+
+  async function handleBulkSaveAll() {
+    const items = team
+      .filter((p) => !excludedIds.has(p.id))
+      .map((p) => ({ personnelId: p.id, draft: teamDrafts[p.id] }))
+      .filter((x): x is { personnelId: string; draft: { tarih: string; giris: string; cikis: string } } => !!x.draft?.tarih)
+      .map((x) => ({
+        personnelId: x.personnelId,
+        tarih: x.draft.tarih,
+        girisSaati: x.draft.giris,
+        cikisSaati: x.draft.cikis,
+      }))
+
+    if (items.length === 0) {
+      setBulkResult({ created: 0, errors: [{ personnelId: "", message: "Tarih girilmiş kimse yok" }] })
+      return
+    }
+
+    setBulkSaving(true)
+    setBulkResult(null)
+    try {
+      const res = await fetch(`${API_BASE}/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      })
+      const result = await res.json()
+      if (!res.ok) {
+        setBulkResult({ created: 0, errors: [{ personnelId: "", message: result.error || "Toplu kayıt başarısız" }] })
+        return
+      }
+      setBulkResult(result)
+      setTeamDrafts({})
+      setExcludedIds(new Set())
+      loadRecords()
+    } finally {
+      setBulkSaving(false)
+    }
   }
 
   async function handleTeamSave(personnel: PickedPersonnel) {
@@ -346,6 +423,41 @@ export default function TopluKartOkutamamaPage() {
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Bana Bağlı Personel {team.length > 0 && `(${team.length})`}
           </div>
+
+          <div className="flex flex-wrap items-end gap-3 border-b bg-muted/20 px-4 py-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Tarih</label>
+              <Input type="date" value={bulkTarih} onChange={(e) => setBulkTarih(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Giriş Saati</label>
+              <Input type="time" value={bulkGiris} onChange={(e) => setBulkGiris(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Çıkış Saati</label>
+              <Input type="time" value={bulkCikis} onChange={(e) => setBulkCikis(e.target.value)} />
+            </div>
+            <Button variant="outline" disabled={!bulkTarih} onClick={applyToAll}>
+              Tümüne Uygula
+            </Button>
+            <Button disabled={bulkSaving} onClick={handleBulkSaveAll}>
+              {bulkSaving ? "Kaydediliyor..." : "Tümünü Kaydet"}
+            </Button>
+          </div>
+
+          {bulkResult && (
+            <div className="border-b px-4 py-2 text-sm">
+              <p>{bulkResult.created} kayıt oluşturuldu.</p>
+              {bulkResult.errors.length > 0 && (
+                <ul className="mt-1 list-disc pl-5 text-red-700">
+                  {bulkResult.errors.map((e, i) => (
+                    <li key={i}>{e.message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -367,14 +479,16 @@ export default function TopluKartOkutamamaPage() {
               )}
               {team.map((p) => {
                 const draft = teamDrafts[p.id] || { tarih: "", giris: "", cikis: "" }
+                const isExcluded = excludedIds.has(p.id)
                 return (
-                  <TableRow key={p.id}>
+                  <TableRow key={p.id} className={isExcluded ? "opacity-40" : undefined}>
                     <TableCell>{p.sicilNo || "-"}</TableCell>
                     <TableCell>{p.adSoyad}</TableCell>
                     <TableCell>
                       <Input
                         type="date"
                         value={draft.tarih}
+                        disabled={isExcluded}
                         onChange={(e) => updateTeamDraft(p.id, "tarih", e.target.value)}
                       />
                     </TableCell>
@@ -382,6 +496,7 @@ export default function TopluKartOkutamamaPage() {
                       <Input
                         type="time"
                         value={draft.giris}
+                        disabled={isExcluded}
                         onChange={(e) => updateTeamDraft(p.id, "giris", e.target.value)}
                       />
                     </TableCell>
@@ -389,16 +504,20 @@ export default function TopluKartOkutamamaPage() {
                       <Input
                         type="time"
                         value={draft.cikis}
+                        disabled={isExcluded}
                         onChange={(e) => updateTeamDraft(p.id, "cikis", e.target.value)}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="space-x-2 whitespace-nowrap">
                       <Button
                         size="sm"
-                        disabled={!draft.tarih || teamSavingId === p.id}
+                        disabled={isExcluded || !draft.tarih || teamSavingId === p.id}
                         onClick={() => handleTeamSave(p)}
                       >
                         {teamSavingId === p.id ? "Kaydediliyor..." : "Kaydet"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => toggleExcluded(p.id)}>
+                        {isExcluded ? "Listeye Ekle" : "Kaldır"}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -484,6 +603,28 @@ export default function TopluKartOkutamamaPage() {
             })}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>Toplam {total} kayıt — Sayfa {page} / {totalPages}</span>
+        <div className="space-x-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Önceki
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Sonraki
+          </Button>
+        </div>
       </div>
     </div>
   )

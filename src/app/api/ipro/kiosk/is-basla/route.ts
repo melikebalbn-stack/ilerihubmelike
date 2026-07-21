@@ -69,17 +69,40 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Malzeme snapshot — IFS'ten OTORITER cek (client input'una guvenilmez: pano/rapor
+  // Plan snapshot — IFS'ten OTORITER cek (client input'una guvenilmez: pano/rapor
   // dogrulanmamis input uzerine kurulamaz). YUMUSAK HATA: IFS erisilemezse null kalir,
   // is yine baslar; hata loglanir. Her poll'da DEGIL, yalnizca baslangicta tek cagri.
-  let ifsPartNo: string | null = null
-  let ifsPartDescription: string | null = null
+  // yyyy-MM-dd string → Date (bos ise null).
+  const gunToDate = (s: string | undefined): Date | null => (s ? new Date(s) : null)
+  let snapshot: {
+    ifsPartNo: string | null
+    ifsPartDescription: string | null
+    ifsQtyDue: number | null
+    ifsDueDate: Date | null
+    ifsNeedDate: Date | null
+    ifsMachRunFactor: number | null
+    ifsLaborRunFactor: number | null
+    ifsRunTimeCode: string | null
+  } = {
+    ifsPartNo: null, ifsPartDescription: null, ifsQtyDue: null, ifsDueDate: null,
+    ifsNeedDate: null, ifsMachRunFactor: null, ifsLaborRunFactor: null, ifsRunTimeCode: null,
+  }
   try {
     const op = await getShopOrderOperation(ifsOrderNo, ifsOperationNo)
-    ifsPartNo = op?.stokKodu || null
-    ifsPartDescription = op?.stokAdi || null
+    if (op) {
+      snapshot = {
+        ifsPartNo: op.stokKodu || null,
+        ifsPartDescription: op.stokAdi || null,
+        ifsQtyDue: op.miktar || null,
+        ifsDueDate: gunToDate(op.teslimTarihi),
+        ifsNeedDate: gunToDate(op.ihtiyacTarihi),
+        ifsMachRunFactor: op.machRunFactor ?? null,
+        ifsLaborRunFactor: op.laborRunFactor ?? null,
+        ifsRunTimeCode: op.runTimeCode || null,
+      }
+    }
   } catch (e) {
-    console.error('[ipro-is-basla] malzeme snapshot alinamadi (is yine baslar)', e)
+    console.error('[ipro-is-basla] plan snapshot alinamadi (is yine baslar)', e)
   }
 
   // ACIK satir yaz. Partial unique (acik_is_uq) ihlali → P2002 → 409.
@@ -92,16 +115,18 @@ export async function POST(req: NextRequest) {
         ifsOrderNo,
         ifsOperationNo,
         ifsOperationId: opId,
-        ifsPartNo,
-        ifsPartDescription,
+        ...snapshot,
         durum: 'ACIK',
         baslatildiAt: new Date(),
         plcSayacBaslangic,
         // qtyComplete/qtyScrap default 0; tamamlandi default true (bitirde ayarlanir); ifsYazildi default false
       },
-      select: { id: true, durum: true, plcSayacBaslangic: true },
+      select: { id: true, durum: true, plcSayacBaslangic: true, baslatildiAt: true },
     })
-    return apiSuccess({ id: log.id, durum: log.durum, plcSayacBaslangic: log.plcSayacBaslangic }, 201)
+    return apiSuccess(
+      { id: log.id, durum: log.durum, plcSayacBaslangic: log.plcSayacBaslangic, baslatildiAt: log.baslatildiAt, sinyalli },
+      201,
+    )
   } catch (e: unknown) {
     const code = (e as { code?: string })?.code
     if (code === 'P2002') return apiError('Bu iş zaten açık', 409)

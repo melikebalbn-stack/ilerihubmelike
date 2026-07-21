@@ -10863,6 +10863,13 @@ model IproProductionLog {
   // iş yine başlar (yumuşak hata). Pano/detay bunları gösterir; her poll'da IFS'e GİDİLMEZ.
   ifsPartNo          String?
   ifsPartDescription String?
+  // Plan snapshot (başla anında ShopOrderOperations'tan; salt gösterim, additive).
+  ifsQtyDue          Int? // RevisedQtyDue — planlanan üretim adeti
+  ifsDueDate         DateTime? // RevisedDueDate — teslim tarihi
+  ifsNeedDate        DateTime? // NeedDate — ihtiyaç tarihi
+  ifsMachRunFactor   Float? // MachRunFactor — planlı makine çevrim (birim: ifsRunTimeCode)
+  ifsLaborRunFactor  Float? // LaborRunFactor — planlı işçilik çevrim
+  ifsRunTimeCode     String? // RunTimeCode — çevrim birimi (ör. HoursUnit)
   qtyComplete        Int                 @default(0)
   qtyScrap           Int                 @default(0)
   hurdaSebebiKod     String?

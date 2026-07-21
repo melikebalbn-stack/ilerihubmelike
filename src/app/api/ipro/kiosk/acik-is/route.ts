@@ -24,9 +24,22 @@ export async function GET(req: NextRequest) {
       ifsOperationId: true,
       baslatildiAt: true,
       plcSayacBaslangic: true,
+      // Plan snapshot — çalışıyor ekranı zenginleştirme (devam eden işte de görünsün).
+      ifsPartNo: true,
+      ifsPartDescription: true,
+      ifsQtyDue: true,
+      ifsDueDate: true,
+      ifsNeedDate: true,
+      ifsMachRunFactor: true,
+      ifsLaborRunFactor: true,
+      ifsRunTimeCode: true,
     },
     orderBy: { baslatildiAt: 'desc' },
   })
 
-  return apiSuccess({ acik })
+  // Tezgah sinyalli mi (çalışıyor ekranı PLC göstergesi) — is-basla ile aynı sorgu.
+  const sinyalli =
+    (await prisma.iproPlcPin.count({ where: { tezgahId, aktif: true, plc: { aktif: true } } })) > 0
+
+  return apiSuccess({ acik, sinyalli })
 }

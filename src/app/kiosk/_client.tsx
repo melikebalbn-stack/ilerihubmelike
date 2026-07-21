@@ -306,6 +306,28 @@ function KioskAkis() {
     } else setHata('Duruş bitirilemedi')
   }
 
+  // Operatör değiştir (vardiya/kişi değişimi) → operatör seçim ekranına dön.
+  // Cihaz (KIOSK) oturumu KORUNUR. AÇIK İŞ varken engelli (sunucu 409); açık duruş
+  // tezgah-seviyesi → engellemez, duruş sürer.
+  async function operatorDegistir() {
+    if (!tezgah || !operator) return
+    setHata(null)
+    setYukleniyor(true)
+    const r = await apiPost('/api/ipro/kiosk/operator-degistir', { tezgahId: tezgah.id, personnelId: operator.id })
+    if (!r.ok) {
+      setYukleniyor(false)
+      if (r.status === 409) setHata('Açık iş var — önce işi bitirin/durdurun, sonra operatör değiştirin')
+      else setHata('Operatör değiştirilemedi')
+      return
+    }
+    const ops = await apiGet<{ operatorler: Operator[] }>(`/api/ipro/kiosk/operatorler?tezgahId=${tezgah.id}`)
+    setYukleniyor(false)
+    setOperator(null)
+    setAktifIs(null)
+    if (ops.ok) setOperatorler(ops.data.operatorler)
+    setAdim('operator')
+  }
+
   // Operatör çıkışı → oturumu kapat, başa dön
   async function operatorCikis() {
     if (operator && tezgah) {
@@ -320,11 +342,26 @@ function KioskAkis() {
     adimGec('tezgah')
   }
 
+  // Operatör değiştir yalnız operatör seçiliyken + çalışma/bekleme/duruş ekranlarında.
+  const operatorDegistirGoster = operator && (adim === 'calisiyor' || adim === 'is-listesi' || adim === 'durusta')
+
   const ustBar = (
     <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
-      <div className="text-xl text-slate-400">
+      <div className="flex items-center gap-3 text-xl text-slate-400">
         {tezgah && <span className="font-bold text-slate-100">{tezgah.kod}</span>}
-        {operator && <span className="ml-3">· {operator.adSoyad}</span>}
+        {operator &&
+          (operatorDegistirGoster ? (
+            // Operatör adına dokununca da değiştirir (dokunma hedefi büyük).
+            <button
+              type="button"
+              onClick={operatorDegistir}
+              className="rounded-lg bg-slate-800 px-4 py-2 text-lg font-medium text-slate-100 active:bg-slate-700"
+            >
+              {operator.adSoyad} · Operatör Değiştir ⇄
+            </button>
+          ) : (
+            <span>· {operator.adSoyad}</span>
+          ))}
       </div>
       <BigButton variant="ghost" onClick={() => signOut({ redirect: false })} className="min-h-12 text-lg">
         Cihaz Çıkışı

@@ -19,7 +19,9 @@ type Is = {
 }
 type AcikIs = { id: string; ifsOrderNo: string; ifsOperationNo: number } | null
 type Sebep = { kod: string; ad: string }
-type Adim = 'tezgah' | 'operator' | 'is-listesi' | 'calisiyor' | 'bitir' | 'ozet'
+type DurusSebep = { id: string; kod: string; ad: string; renkKodu: string | null; durusAktifkenIsBitirilemez: boolean }
+type AktifDurus = { id: string; sebepAd: string; baslangic: string; durusAktifkenIsBitirilemez: boolean }
+type Adim = 'tezgah' | 'operator' | 'is-listesi' | 'calisiyor' | 'durus-sebep' | 'durusta' | 'bitir' | 'ozet'
 
 // ── Ortak API yardımcıları ──
 async function apiGet<T>(url: string): Promise<{ ok: boolean; status: number; data: T }> {
@@ -159,6 +161,8 @@ function KioskAkis() {
   const [operator, setOperator] = useState<Operator | null>(null)
   const [isler, setIsler] = useState<Is[]>([])
   const [aktifIs, setAktifIs] = useState<{ ifsOrderNo: string; ifsOperationNo: number; operasyon?: string } | null>(null)
+  const [durusSebepler, setDurusSebepler] = useState<DurusSebep[]>([])
+  const [aktifDurus, setAktifDurus] = useState<AktifDurus | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [yukleniyor, setYukleniyor] = useState(false)
 
@@ -253,6 +257,55 @@ function KioskAkis() {
     } else setHata('İş başlatılamadı')
   }
 
+  // Duruş başlat → sebep listesini yükle → sebep gridi
+  async function durusAc() {
+    setHata(null)
+    setYukleniyor(true)
+    const r = await apiGet<{ sebepler: DurusSebep[] }>('/api/ipro/kiosk/durus-sebepleri')
+    setYukleniyor(false)
+    if (r.ok) {
+      setDurusSebepler(r.data.sebepler)
+      setAdim('durus-sebep')
+    } else setHata('Duruş sebepleri alınamadı')
+  }
+
+  // Sebep seç → duruş başlat → kırmızı duruş modu
+  async function durusSecti(s: DurusSebep) {
+    if (!tezgah || !operator) return
+    setHata(null)
+    setYukleniyor(true)
+    const r = await apiPost<{ id: string; baslangic: string }>('/api/ipro/kiosk/durus-basla', {
+      tezgahId: tezgah.id,
+      personnelId: operator.id,
+      durusSebebiId: s.id,
+    })
+    setYukleniyor(false)
+    if (r.ok) {
+      setAktifDurus({
+        id: r.data.id,
+        sebepAd: s.ad,
+        baslangic: r.data.baslangic,
+        durusAktifkenIsBitirilemez: s.durusAktifkenIsBitirilemez,
+      })
+      setAdim('durusta')
+    } else if (r.status === 409) {
+      setHata('Bu tezgahta zaten açık duruş var')
+    } else setHata('Duruş başlatılamadı')
+  }
+
+  // Duruş bitir → çalışıyor ekranına dön
+  async function durusBitir() {
+    if (!tezgah) return
+    setHata(null)
+    setYukleniyor(true)
+    const r = await apiPost('/api/ipro/kiosk/durus-bitir', { tezgahId: tezgah.id })
+    setYukleniyor(false)
+    if (r.ok) {
+      setAktifDurus(null)
+      setAdim(aktifIs ? 'calisiyor' : 'is-listesi')
+    } else setHata('Duruş bitirilemedi')
+  }
+
   // Operatör çıkışı → oturumu kapat, başa dön
   async function operatorCikis() {
     if (operator && tezgah) {
@@ -336,7 +389,27 @@ function KioskAkis() {
             aktifIs={aktifIs}
             onBitir={() => adimGec('bitir')}
             onYeniIs={isListesiYukle}
+            onDurus={durusAc}
           />
+        )}
+
+        {!yukleniyor && adim === 'durus-sebep' && (
+          <Secim baslik="Duruş Sebebi" altBaslik="Tezgah neden durdu?" geriye={() => adimGec(aktifIs ? 'calisiyor' : 'is-listesi')}>
+            {durusSebepler.length === 0 && <p className="text-2xl text-slate-500">Kullanılabilir duruş sebebi yok.</p>}
+            {durusSebepler.map((s) => (
+              <SecimKart key={s.id} onClick={() => durusSecti(s)}>
+                <div className="flex items-center gap-3">
+                  {s.renkKodu && <span className="h-5 w-5 rounded-full" style={{ backgroundColor: s.renkKodu }} />}
+                  <span className="text-2xl font-bold">{s.ad}</span>
+                </div>
+                <div className="text-base text-slate-400">{s.kod}</div>
+              </SecimKart>
+            ))}
+          </Secim>
+        )}
+
+        {!yukleniyor && adim === 'durusta' && aktifDurus && (
+          <DurusModu durus={aktifDurus} onBitir={durusBitir} />
         )}
 
         {!yukleniyor && adim === 'bitir' && tezgah && operator && aktifIs && (
@@ -411,10 +484,12 @@ function Calisiyor({
   aktifIs,
   onBitir,
   onYeniIs,
+  onDurus,
 }: {
   aktifIs: { ifsOrderNo: string; ifsOperationNo: number; operasyon?: string }
   onBitir: () => void
   onYeniIs: () => void
+  onDurus: () => void
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-8">
@@ -425,13 +500,49 @@ function Calisiyor({
         </div>
         {aktifIs.operasyon && <div className="mt-2 text-2xl text-slate-300">{aktifIs.operasyon}</div>}
       </div>
-      <div className="flex gap-4">
+      <div className="flex flex-wrap justify-center gap-4">
         <BigButton variant="primary" onClick={onBitir} className="px-12">
           BİTİR / DURDUR
+        </BigButton>
+        <BigButton variant="danger" onClick={onDurus} className="px-12">
+          ⏸ DURUŞ BAŞLAT
         </BigButton>
       </div>
       <BigButton variant="ghost" onClick={onYeniIs} className="min-h-12 text-lg">
         Başka işe geç
+      </BigButton>
+    </div>
+  )
+}
+
+/** Kırmızı tam-ekran duruş modu — büyük sebep + canlı süre sayacı + "Duruş Bitir". */
+function DurusModu({ durus, onBitir }: { durus: AktifDurus; onBitir: () => void }) {
+  const [, tik] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => tik((n) => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const gecen = Date.now() - new Date(durus.baslangic).getTime()
+  const sn = Math.max(0, Math.floor(gecen / 1000))
+  const saat = String(Math.floor(sn / 3600)).padStart(2, '0')
+  const dk = String(Math.floor((sn % 3600) / 60)).padStart(2, '0')
+  const sns = String(sn % 60).padStart(2, '0')
+
+  return (
+    <div className="-m-6 flex h-full flex-col items-center justify-center gap-10 bg-red-950 p-6">
+      <div className="text-center">
+        <div className="text-2xl font-bold uppercase tracking-widest text-red-300">DURUŞTA</div>
+        <div className="mt-3 text-6xl font-bold text-red-100">{durus.sebepAd}</div>
+      </div>
+      <div className="font-mono text-8xl font-bold tabular-nums text-red-50">
+        {saat}:{dk}:{sns}
+      </div>
+      {durus.durusAktifkenIsBitirilemez && (
+        <div className="text-xl text-red-300/80">Bu duruş bitmeden iş bitirilemez.</div>
+      )}
+      <BigButton variant="default" onClick={onBitir} className="min-h-24 bg-red-100 px-16 text-3xl text-red-900 active:bg-white">
+        ▶ DURUŞ BİTİR
       </BigButton>
     </div>
   )

@@ -27,8 +27,10 @@ export async function POST(request: NextRequest) {
     if (error) return error
 
     const access = await getBulkCardScanAccess(user.id)
-    if (access.level === 'NONE') {
-      return NextResponse.json({ error: 'Bu forma erişim yetkiniz yok' }, { status: 403 })
+    // Toplu tarih/saat girme yetkisi sadece FULL'da (Süper Admin/İV/Sistem
+    // Geliştirme) — GRI tek tek kayıt açar, bu endpoint'i kullanamaz.
+    if (access.level !== 'FULL') {
+      return NextResponse.json({ error: 'Toplu kayıt girme yetkiniz yok' }, { status: 403 })
     }
 
     const body = await request.json()

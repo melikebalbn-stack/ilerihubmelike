@@ -413,28 +413,30 @@ export default function TopluKartOkutamamaPage() {
             </div>
           )}
 
-          <div className="flex flex-wrap items-end gap-3 border-b bg-muted/20 px-4 py-3">
-            <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Tarih</label>
-              <Input type="date" value={bulkTarih} onChange={(e) => setBulkTarih(e.target.value)} />
+          {canManageAnyone && (
+            <div className="flex flex-wrap items-end gap-3 border-b bg-muted/20 px-4 py-3">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Tarih</label>
+                <Input type="date" value={bulkTarih} onChange={(e) => setBulkTarih(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Giriş Saati</label>
+                <Input type="time" value={bulkGiris} onChange={(e) => setBulkGiris(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Çıkış Saati</label>
+                <Input type="time" value={bulkCikis} onChange={(e) => setBulkCikis(e.target.value)} />
+              </div>
+              <Button variant="outline" disabled={!bulkTarih} onClick={applyToAll}>
+                Tümüne Uygula
+              </Button>
+              <Button disabled={bulkSaving} onClick={handleBulkSaveAll}>
+                {bulkSaving ? "Kaydediliyor..." : "Tümünü Kaydet"}
+              </Button>
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Giriş Saati</label>
-              <Input type="time" value={bulkGiris} onChange={(e) => setBulkGiris(e.target.value)} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Çıkış Saati</label>
-              <Input type="time" value={bulkCikis} onChange={(e) => setBulkCikis(e.target.value)} />
-            </div>
-            <Button variant="outline" disabled={!bulkTarih} onClick={applyToAll}>
-              Tümüne Uygula
-            </Button>
-            <Button disabled={bulkSaving} onClick={handleBulkSaveAll}>
-              {bulkSaving ? "Kaydediliyor..." : "Tümünü Kaydet"}
-            </Button>
-          </div>
+          )}
 
-          {bulkResult && (
+          {canManageAnyone && bulkResult && (
             <div className="border-b px-4 py-2 text-sm">
               <p>{bulkResult.created} kayıt oluşturuldu.</p>
               {bulkResult.errors.length > 0 && (

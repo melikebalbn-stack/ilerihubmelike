@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from './_lib/access'
+import { notifyHrOfBulkCardScanRecords } from './_lib/notify-hr'
+import { VALID_NEDEN } from './_lib/neden'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +25,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
+    const bolum = searchParams.get('bolum')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
@@ -32,6 +35,9 @@ export async function GET(request: NextRequest) {
 
     if (access.level === 'GRI') {
       where.personnel = { bolum: access.bolum }
+    } else if (bolum) {
+      // Bölüm filtresi sadece FULL erişimde anlamlı — GRI zaten kendi bölümüne kilitli.
+      where.personnel = { bolum }
     }
 
     if (search) {
@@ -66,6 +72,7 @@ export async function GET(request: NextRequest) {
       records,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       accessLevel: access.level,
+      bolum: access.bolum,
     })
   } catch (error) {
     console.error('Toplu kart okutamama liste hatası:', error)
@@ -89,10 +96,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { personnelId, tarih, girisSaati, cikisSaati } = body
+    const { personnelId, tarih, girisSaati, cikisSaati, neden } = body
 
     if (!personnelId || !tarih) {
       return NextResponse.json({ error: 'personnelId ve tarih zorunludur' }, { status: 400 })
+    }
+
+    if (neden && !(VALID_NEDEN as readonly string[]).includes(neden)) {
+      return NextResponse.json({ error: 'Geçersiz neden' }, { status: 400 })
     }
 
     // Sicil No / Ad Soyad her zaman Personnel (İV) kaydından alınır — client'tan
@@ -118,6 +129,7 @@ export async function POST(request: NextRequest) {
         tarih: new Date(tarih),
         girisSaati: girisSaati || null,
         cikisSaati: cikisSaati || null,
+        neden: neden || null,
         createdById: user.id,
       },
       include: {
@@ -125,6 +137,9 @@ export async function POST(request: NextRequest) {
         personnel: { select: { id: true, bolum: true, gorev: true } },
       },
     })
+
+    // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok)
+    notifyHrOfBulkCardScanRecords([{ sicilNo: record.sicilNo, adSoyad: record.adSoyad }], user.name || user.email)
 
     return NextResponse.json(record, { status: 201 })
   } catch (error) {

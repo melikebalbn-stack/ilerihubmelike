@@ -22,9 +22,79 @@ interface BulkCardScanRecord {
   tarih: string
   girisSaati: string | null
   cikisSaati: string | null
+  neden: string | null
   createdById: string
   createdBy: { id: string; name: string | null; email: string }
   personnel: { id: string; bolum: string; gorev: string } | null
+}
+
+interface RecordDraft {
+  tarih: string
+  giris: string
+  cikis: string
+  neden: string
+}
+
+const EMPTY_DRAFT: RecordDraft = { tarih: "", giris: "", cikis: "", neden: "" }
+
+const NEDEN_OPTIONS = [
+  { value: "UNUTMA", label: "Unutma" },
+  { value: "BOZULMA", label: "Bozulma" },
+  { value: "KAYBETME", label: "Kaybetme" },
+  { value: "VAZIFE", label: "Vazife" },
+]
+
+function NedenSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <option value="">Neden seçin...</option>
+      {NEDEN_OPTIONS.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function BolumSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: string[]
+  placeholder: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      <option value="">{placeholder}</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  )
 }
 
 const API_BASE = "/api/toplu-kart-okutamama"
@@ -35,18 +105,23 @@ export default function TopluKartOkutamamaPage() {
 
   const [records, setRecords] = useState<BulkCardScanRecord[]>([])
   const [accessLevel, setAccessLevel] = useState<"FULL" | "GRI" | null>(null)
+  const [myBolum, setMyBolum] = useState<string | null>(null)
   const [forbidden, setForbidden] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
-  // Varsayılan tarih filtresi = bugün (tarayıcı yerel günü); temizlenebilir.
-  const [filterTarih, setFilterTarih] = useState<string>(() => new Date().toLocaleDateString("en-CA"))
+  const [oldBolum, setOldBolum] = useState("")
+  const [oldStartDate, setOldStartDate] = useState("")
+  const [oldEndDate, setOldEndDate] = useState("")
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
 
-  const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formPersonnel, setFormPersonnel] = useState<PickedPersonnel | null>(null)
   const [formTarih, setFormTarih] = useState("")
   const [formGiris, setFormGiris] = useState("")
   const [formCikis, setFormCikis] = useState("")
+  const [formNeden, setFormNeden] = useState("")
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -56,13 +131,25 @@ export default function TopluKartOkutamamaPage() {
   // GRI için: kendi bölümündeki personel otomatik listelenir, tek tek "Yeni Kayıt"
   // aramaya gerek kalmaz — her satırda doğrudan tarih/saat girip kaydedilir.
   const [team, setTeam] = useState<PickedPersonnel[]>([])
-  const [teamDrafts, setTeamDrafts] = useState<Record<string, { tarih: string; giris: string; cikis: string }>>({})
+  const [teamDrafts, setTeamDrafts] = useState<Record<string, RecordDraft>>({})
   const [teamSavingId, setTeamSavingId] = useState<string | null>(null)
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
+  const [bulkTarih, setBulkTarih] = useState("")
+  const [bulkGiris, setBulkGiris] = useState("")
+  const [bulkCikis, setBulkCikis] = useState("")
+  const [bulkNeden, setBulkNeden] = useState("")
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkResult, setBulkResult] = useState<{ created: number; errors: { personnelId: string; message: string }[] } | null>(null)
+  const [manualAddValue, setManualAddValue] = useState<PickedPersonnel | null>(null)
+  const [bolumList, setBolumList] = useState<string[]>([])
+  const [bulkAddBolum, setBulkAddBolum] = useState("")
+
+  const [showOldRecords, setShowOldRecords] = useState(false)
 
   useEffect(() => {
     if (status === "loading") return
     if (!session?.user?.email) {
-      router.push("/login")
+      router.push(`/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [session, status, router])
 
@@ -72,11 +159,10 @@ export default function TopluKartOkutamamaPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set("search", search)
-      if (filterTarih) {
-        // Tek gün filtresi: tarih @db.Date olduğundan start=end=aynı gün eşleşir.
-        params.set("startDate", filterTarih)
-        params.set("endDate", filterTarih)
-      }
+      if (oldBolum) params.set("bolum", oldBolum)
+      if (oldStartDate) params.set("startDate", oldStartDate)
+      if (oldEndDate) params.set("endDate", oldEndDate)
+      params.set("page", String(page))
       const res = await fetch(`${API_BASE}?${params.toString()}`)
       if (res.status === 403) {
         setForbidden(true)
@@ -87,28 +173,149 @@ export default function TopluKartOkutamamaPage() {
         const data = await res.json()
         setRecords(data.records)
         setAccessLevel(data.accessLevel)
+        setMyBolum(data.bolum ?? null)
+        setTotalPages(data.pagination?.totalPages || 1)
+        setTotal(data.pagination?.total || 0)
       }
     } finally {
       setLoading(false)
     }
-  }, [search, filterTarih])
+  }, [search, oldBolum, oldStartDate, oldEndDate, page])
+
+  // Filtreler değişince ilk sayfaya dön
+  useEffect(() => {
+    setPage(1)
+  }, [search, oldBolum, oldStartDate, oldEndDate])
 
   useEffect(() => {
     if (status === "authenticated") loadRecords()
   }, [status, loadRecords])
 
+  // Panel GRI'ya özel değil — Personnel kaydı olan (bolum'u bilinen) herkes
+  // (FULL/admin dahil) kendi bölümündeki ekibi burada görür. FULL için bolum
+  // parametresi elle geçiliyor (GRI'da sunucu zaten kendi bölümüne zorluyor).
   useEffect(() => {
-    if (accessLevel !== "GRI") return
-    fetch("/api/toplu-kart-okutamama/personnel-search")
+    if (!myBolum) return
+    const params = new URLSearchParams({ bolum: myBolum })
+    fetch(`/api/toplu-kart-okutamama/personnel-search?${params.toString()}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: PickedPersonnel[]) => setTeam(data))
+  }, [myBolum])
+
+  // Bölüm listesi — sadece FULL erişimde: Eski Kayıtlar filtresi ve
+  // "Bölüme Göre Ekle/Çıkar" seçimi için.
+  useEffect(() => {
+    if (accessLevel !== "FULL") return
+    fetch("/api/toplu-kart-okutamama/bolumler")
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setBolumList)
   }, [accessLevel])
 
-  function updateTeamDraft(personnelId: string, field: "tarih" | "giris" | "cikis", value: string) {
+  async function addBolumToTeam() {
+    if (!bulkAddBolum) return
+    const params = new URLSearchParams({ bolum: bulkAddBolum })
+    const res = await fetch(`/api/toplu-kart-okutamama/personnel-search?${params.toString()}`)
+    if (!res.ok) return
+    const people: PickedPersonnel[] = await res.json()
+    setTeam((prev) => {
+      const existingIds = new Set(prev.map((p) => p.id))
+      return [...prev, ...people.filter((p) => !existingIds.has(p.id))]
+    })
+  }
+
+  function removeBolumFromTeam() {
+    if (!bulkAddBolum) return
+    const idsToRemove = new Set(team.filter((p) => p.bolum === bulkAddBolum).map((p) => p.id))
+    setTeam((prev) => prev.filter((p) => !idsToRemove.has(p.id)))
     setTeamDrafts((prev) => {
-      const base = prev[personnelId] ?? { tarih: "", giris: "", cikis: "" }
+      const next = { ...prev }
+      for (const id of idsToRemove) delete next[id]
+      return next
+    })
+    setExcludedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of idsToRemove) next.delete(id)
+      return next
+    })
+  }
+
+  function updateTeamDraft(personnelId: string, field: keyof RecordDraft, value: string) {
+    setTeamDrafts((prev) => {
+      const base = prev[personnelId] ?? EMPTY_DRAFT
       return { ...prev, [personnelId]: { ...base, [field]: value } }
     })
+  }
+
+  function applyToAll() {
+    if (!bulkTarih) return
+    setTeamDrafts((prev) => {
+      const next = { ...prev }
+      for (const p of team) {
+        if (excludedIds.has(p.id)) continue
+        next[p.id] = { tarih: bulkTarih, giris: bulkGiris, cikis: bulkCikis, neden: bulkNeden }
+      }
+      return next
+    })
+  }
+
+  function toggleExcluded(personnelId: string) {
+    setExcludedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(personnelId)) next.delete(personnelId)
+      else next.add(personnelId)
+      return next
+    })
+  }
+
+  // FULL erişim (Süper Admin / İV / Sistem Geliştirme) bölümden bağımsız
+  // olarak herhangi bir personeli listeye elle ekleyebilir.
+  function addManualPerson(p: PickedPersonnel) {
+    setTeam((prev) => (prev.some((existing) => existing.id === p.id) ? prev : [...prev, p]))
+    setManualAddValue(null)
+  }
+
+  async function handleBulkSaveAll() {
+    const items = team
+      .filter((p) => !excludedIds.has(p.id))
+      .map((p) => ({ personnelId: p.id, draft: teamDrafts[p.id] }))
+      .filter((x): x is { personnelId: string; draft: RecordDraft } => !!x.draft?.tarih)
+      .map((x) => ({
+        personnelId: x.personnelId,
+        tarih: x.draft.tarih,
+        girisSaati: x.draft.giris,
+        cikisSaati: x.draft.cikis,
+        neden: x.draft.neden || undefined,
+      }))
+
+    if (items.length === 0) {
+      setBulkResult({ created: 0, errors: [{ personnelId: "", message: "Tarih girilmiş kimse yok" }] })
+      return
+    }
+
+    setBulkSaving(true)
+    setBulkResult(null)
+    try {
+      const res = await fetch(`${API_BASE}/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      })
+      const result = await res.json()
+      if (!res.ok) {
+        setBulkResult({ created: 0, errors: [{ personnelId: "", message: result.error || "Toplu kayıt başarısız" }] })
+        return
+      }
+      setBulkResult(result)
+      setTeamDrafts({})
+      setExcludedIds(new Set())
+      setBulkTarih("")
+      setBulkGiris("")
+      setBulkCikis("")
+      setBulkNeden("")
+      loadRecords()
+    } finally {
+      setBulkSaving(false)
+    }
   }
 
   async function handleTeamSave(personnel: PickedPersonnel) {
@@ -124,10 +331,11 @@ export default function TopluKartOkutamamaPage() {
           tarih: draft.tarih,
           girisSaati: draft.giris,
           cikisSaati: draft.cikis,
+          neden: draft.neden || undefined,
         }),
       })
       if (res.ok) {
-        setTeamDrafts((prev) => ({ ...prev, [personnel.id]: { tarih: "", giris: "", cikis: "" } }))
+        setTeamDrafts((prev) => ({ ...prev, [personnel.id]: EMPTY_DRAFT }))
         loadRecords()
       }
     } finally {
@@ -140,17 +348,11 @@ export default function TopluKartOkutamamaPage() {
     setFormTarih("")
     setFormGiris("")
     setFormCikis("")
+    setFormNeden("")
     setFormError(null)
   }
 
-  function startAdding() {
-    resetForm()
-    setEditingId(null)
-    setIsAdding(true)
-  }
-
   function startEditing(record: BulkCardScanRecord) {
-    setIsAdding(false)
     setEditingId(record.id)
     setFormPersonnel({
       id: record.personnel?.id || "",
@@ -161,11 +363,11 @@ export default function TopluKartOkutamamaPage() {
     setFormTarih(record.tarih.slice(0, 10))
     setFormGiris(record.girisSaati || "")
     setFormCikis(record.cikisSaati || "")
+    setFormNeden(record.neden || "")
     setFormError(null)
   }
 
   function cancelForm() {
-    setIsAdding(false)
     setEditingId(null)
     resetForm()
   }
@@ -183,6 +385,7 @@ export default function TopluKartOkutamamaPage() {
         tarih: formTarih,
         girisSaati: formGiris,
         cikisSaati: formCikis,
+        neden: formNeden || undefined,
       }
       const res = await fetch(editingId ? `${API_BASE}/${editingId}` : API_BASE, {
         method: editingId ? "PUT" : "POST",
@@ -210,6 +413,9 @@ export default function TopluKartOkutamamaPage() {
   async function handleExport() {
     const params = new URLSearchParams()
     if (search) params.set("search", search)
+    if (oldBolum) params.set("bolum", oldBolum)
+    if (oldStartDate) params.set("startDate", oldStartDate)
+    if (oldEndDate) params.set("endDate", oldEndDate)
     const res = await fetch(`${API_BASE}/export?${params.toString()}`)
     if (!res.ok) return
     const blob = await res.blob()
@@ -251,6 +457,9 @@ export default function TopluKartOkutamamaPage() {
     )
   }
 
+  // Süper Admin / İV / Sistem Geliştirme: bölümden bağımsız herkesi elle ekleyip çıkarabilir.
+  const canManageAnyone = accessLevel === "FULL"
+
   const editableRowContent = (
     <>
       <TableCell colSpan={3}>
@@ -264,6 +473,9 @@ export default function TopluKartOkutamamaPage() {
       </TableCell>
       <TableCell>
         <Input type="time" value={formCikis} onChange={(e) => setFormCikis(e.target.value)} />
+      </TableCell>
+      <TableCell>
+        <NedenSelect value={formNeden} onChange={setFormNeden} />
       </TableCell>
       <TableCell>-</TableCell>
       <TableCell className="space-x-2 whitespace-nowrap">
@@ -295,9 +507,11 @@ export default function TopluKartOkutamamaPage() {
           <Button variant="outline" onClick={handleExport}>
             Excel'e Aktar
           </Button>
-          <Button onClick={startAdding} disabled={isAdding}>
-            Yeni Kayıt
-          </Button>
+          {canManageAnyone && (
+            <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
+              {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -314,11 +528,86 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {accessLevel === "GRI" && (
+      {!showOldRecords && (myBolum || canManageAnyone) && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Bana Bağlı Personel {team.length > 0 && `(${team.length})`}
           </div>
+
+          {canManageAnyone && (
+            <div className="border-b px-4 py-3 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Bölüme Göre Ekle / Çıkar
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="max-w-xs flex-1 min-w-[200px]">
+                    <BolumSelect
+                      value={bulkAddBolum}
+                      onChange={setBulkAddBolum}
+                      options={bolumList}
+                      placeholder="Bölüm seçin..."
+                    />
+                  </div>
+                  <Button variant="outline" size="sm" disabled={!bulkAddBolum} onClick={addBolumToTeam}>
+                    Bölümü Listeye Ekle
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={!bulkAddBolum} onClick={removeBolumFromTeam}>
+                    Bölümü Listeden Çıkar
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Tek Kişi Ekle (bölümden bağımsız)
+                </label>
+                <div className="max-w-sm">
+                  <PersonnelPicker value={manualAddValue} onSelect={addManualPerson} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {canManageAnyone && (
+            <div className="flex flex-wrap items-end gap-3 border-b bg-muted/20 px-4 py-3">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Tarih</label>
+                <Input type="date" value={bulkTarih} onChange={(e) => setBulkTarih(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Giriş Saati</label>
+                <Input type="time" value={bulkGiris} onChange={(e) => setBulkGiris(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Çıkış Saati</label>
+                <Input type="time" value={bulkCikis} onChange={(e) => setBulkCikis(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Neden</label>
+                <NedenSelect value={bulkNeden} onChange={setBulkNeden} />
+              </div>
+              <Button variant="outline" disabled={!bulkTarih} onClick={applyToAll}>
+                Tümüne Uygula
+              </Button>
+              <Button disabled={bulkSaving} onClick={handleBulkSaveAll}>
+                {bulkSaving ? "Kaydediliyor..." : "Tümünü Kaydet"}
+              </Button>
+            </div>
+          )}
+
+          {canManageAnyone && bulkResult && (
+            <div className="border-b px-4 py-2 text-sm">
+              <p>{bulkResult.created} kayıt oluşturuldu.</p>
+              {bulkResult.errors.length > 0 && (
+                <ul className="mt-1 list-disc pl-5 text-red-700">
+                  {bulkResult.errors.map((e, i) => (
+                    <li key={i}>{e.message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -327,27 +616,30 @@ export default function TopluKartOkutamamaPage() {
                 <TableHead>Tarih</TableHead>
                 <TableHead>Giriş Saati</TableHead>
                 <TableHead>Çıkış Saati</TableHead>
+                <TableHead>Neden</TableHead>
                 <TableHead>İşlem</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {team.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     Bölümünüzde kayıtlı personel bulunamadı
                   </TableCell>
                 </TableRow>
               )}
               {team.map((p) => {
-                const draft = teamDrafts[p.id] || { tarih: "", giris: "", cikis: "" }
+                const draft = teamDrafts[p.id] || EMPTY_DRAFT
+                const isExcluded = excludedIds.has(p.id)
                 return (
-                  <TableRow key={p.id}>
+                  <TableRow key={p.id} className={isExcluded ? "opacity-40" : undefined}>
                     <TableCell>{p.sicilNo || "-"}</TableCell>
                     <TableCell>{p.adSoyad}</TableCell>
                     <TableCell>
                       <Input
                         type="date"
                         value={draft.tarih}
+                        disabled={isExcluded}
                         onChange={(e) => updateTeamDraft(p.id, "tarih", e.target.value)}
                       />
                     </TableCell>
@@ -355,6 +647,7 @@ export default function TopluKartOkutamamaPage() {
                       <Input
                         type="time"
                         value={draft.giris}
+                        disabled={isExcluded}
                         onChange={(e) => updateTeamDraft(p.id, "giris", e.target.value)}
                       />
                     </TableCell>
@@ -362,16 +655,27 @@ export default function TopluKartOkutamamaPage() {
                       <Input
                         type="time"
                         value={draft.cikis}
+                        disabled={isExcluded}
                         onChange={(e) => updateTeamDraft(p.id, "cikis", e.target.value)}
                       />
                     </TableCell>
                     <TableCell>
+                      <NedenSelect
+                        value={draft.neden}
+                        disabled={isExcluded}
+                        onChange={(v) => updateTeamDraft(p.id, "neden", v)}
+                      />
+                    </TableCell>
+                    <TableCell className="space-x-2 whitespace-nowrap">
                       <Button
                         size="sm"
-                        disabled={!draft.tarih || teamSavingId === p.id}
+                        disabled={isExcluded || !draft.tarih || teamSavingId === p.id}
                         onClick={() => handleTeamSave(p)}
                       >
                         {teamSavingId === p.id ? "Kaydediliyor..." : "Kaydet"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => toggleExcluded(p.id)}>
+                        {isExcluded ? "Listeye Ekle" : "Kaldır"}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -382,22 +686,41 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Sicil No veya Ad Soyad ile ara..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
-        <Input
-          type="date"
-          value={filterTarih}
-          onChange={(e) => setFilterTarih(e.target.value)}
-          className="max-w-[11rem]"
-        />
-        {filterTarih && (
-          <Button variant="ghost" size="sm" onClick={() => setFilterTarih("")}>
-            Tarihi temizle
+      {showOldRecords && canManageAnyone && (
+        <>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="max-w-sm flex-1 min-w-[200px]">
+          <label className="mb-1 block text-xs text-muted-foreground">Ara</label>
+          <Input
+            placeholder="Sicil No veya Ad Soyad ile ara..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="min-w-[200px]">
+          <label className="mb-1 block text-xs text-muted-foreground">Bölüm</label>
+          <BolumSelect value={oldBolum} onChange={setOldBolum} options={bolumList} placeholder="Tüm bölümler" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Başlangıç Tarihi</label>
+          <Input type="date" value={oldStartDate} onChange={(e) => setOldStartDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Bitiş Tarihi</label>
+          <Input type="date" value={oldEndDate} onChange={(e) => setOldEndDate(e.target.value)} />
+        </div>
+        {(search || oldBolum || oldStartDate || oldEndDate) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSearch("")
+              setOldBolum("")
+              setOldStartDate("")
+              setOldEndDate("")
+            }}
+          >
+            Filtreleri Temizle
           </Button>
         )}
       </div>
@@ -412,29 +735,29 @@ export default function TopluKartOkutamamaPage() {
               <TableHead>Tarih</TableHead>
               <TableHead>Giriş Saati</TableHead>
               <TableHead>Çıkış Saati</TableHead>
+              <TableHead>Neden</TableHead>
               <TableHead>Oluşturan</TableHead>
               <TableHead>İşlemler</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isAdding && <TableRow>{editableRowContent}</TableRow>}
-            {formError && (isAdding || editingId) && (
+            {formError && editingId && (
               <TableRow>
-                <TableCell colSpan={8} className="text-sm text-red-600">
+                <TableCell colSpan={9} className="text-sm text-red-600">
                   {formError}
                 </TableCell>
               </TableRow>
             )}
             {loading && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   Yükleniyor...
                 </TableCell>
               </TableRow>
             )}
-            {!loading && !isAdding && records.length === 0 && (
+            {!loading && records.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                <TableCell colSpan={9} className="text-center text-muted-foreground">
                   Kayıt bulunamadı
                 </TableCell>
               </TableRow>
@@ -452,6 +775,7 @@ export default function TopluKartOkutamamaPage() {
                   <TableCell>{new Date(r.tarih).toLocaleDateString("tr-TR")}</TableCell>
                   <TableCell>{r.girisSaati || "-"}</TableCell>
                   <TableCell>{r.cikisSaati || "-"}</TableCell>
+                  <TableCell>{NEDEN_OPTIONS.find((o) => o.value === r.neden)?.label || "-"}</TableCell>
                   <TableCell>{r.createdBy?.name || r.createdBy?.email}</TableCell>
                   <TableCell className="space-x-2 whitespace-nowrap">
                     {canEdit && (
@@ -471,6 +795,30 @@ export default function TopluKartOkutamamaPage() {
           </TableBody>
         </Table>
       </div>
+
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>Toplam {total} kayıt — Sayfa {page} / {totalPages}</span>
+        <div className="space-x-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Önceki
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Sonraki
+          </Button>
+        </div>
+      </div>
+        </>
+      )}
     </div>
   )
 }

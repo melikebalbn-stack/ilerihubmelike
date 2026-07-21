@@ -430,7 +430,7 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {(myBolum || canManageAnyone) && (
+      {!showOldRecords && (myBolum || canManageAnyone) && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Bana Bağlı Personel {team.length > 0 && `(${team.length})`}

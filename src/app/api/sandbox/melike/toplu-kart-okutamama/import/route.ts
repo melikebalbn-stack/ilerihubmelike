@@ -16,10 +16,6 @@ interface ImportRow {
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB
 const MAX_ROWS = 500
-const ALLOWED_MIME_TYPES = [
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/octet-stream', // bazı tarayıcılar/OS'ler .xlsx için bunu gönderir
-]
 
 function parseExcelDate(value: string | number | Date | undefined): Date | null {
   if (!value) return null
@@ -70,7 +66,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Dosya bulunamadı' }, { status: 400 })
     }
 
-    if (!file.name.toLowerCase().endsWith('.xlsx') || !ALLOWED_MIME_TYPES.includes(file.type)) {
+    // Uzantı asıl kapıdır; content-type tarayıcı/OS'e göre değişebildiğinden
+    // (application/octet-stream vb.) TEK BAŞINA red sebebi yapılmaz.
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
       return NextResponse.json({ error: 'Geçersiz dosya formatı — yalnızca .xlsx kabul edilir' }, { status: 400 })
     }
 
@@ -83,6 +81,9 @@ export async function POST(request: NextRequest) {
       const arrayBuffer = await file.arrayBuffer()
       const workbook = XLSX.read(arrayBuffer, { type: 'array' })
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      if (!sheet) {
+        return NextResponse.json({ error: 'Geçersiz dosya — sayfa bulunamadı' }, { status: 400 })
+      }
       rows = XLSX.utils.sheet_to_json(sheet)
     } catch {
       return NextResponse.json({ error: 'Geçersiz dosya — Excel içeriği okunamadı' }, { status: 400 })
@@ -109,6 +110,7 @@ export async function POST(request: NextRequest) {
       cikisSaati: string | null
     }
     const parsed: ParsedRow[] = []
+    const gorulenSicil = new Set<string>() // dosya İÇİ mükerrer sicilNo kontrolü
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
@@ -123,6 +125,15 @@ export async function POST(request: NextRequest) {
       if (!tarih) {
         results.errors.push({ row: i + 2, message: 'Tarih okunamadı' })
         continue
+      }
+
+      // Dosya içi mükerrer sicil — aynı sicil ikinci kez gelirse kaydetme.
+      if (sicilNo) {
+        if (gorulenSicil.has(sicilNo)) {
+          results.errors.push({ row: i + 2, message: `Mükerrer satır (Sicil No: ${sicilNo} dosyada tekrar ediyor)` })
+          continue
+        }
+        gorulenSicil.add(sicilNo)
       }
 
       parsed.push({
@@ -162,7 +173,7 @@ export async function POST(request: NextRequest) {
         select: { id: true, sicilNo: true, adSoyad: true, bolum: true },
       })
       for (const p of found) {
-        byAdSoyad.set(p.adSoyad.toLowerCase(), p)
+        byAdSoyad.set(p.adSoyad.toLocaleLowerCase('tr'), p)
       }
     }
 
@@ -177,7 +188,7 @@ export async function POST(request: NextRequest) {
     const toCreate: ToCreate[] = []
 
     for (const p of parsed) {
-      const personnel = p.sicilNo ? bySicil.get(p.sicilNo) : byAdSoyad.get(p.adSoyad.toLowerCase())
+      const personnel = p.sicilNo ? bySicil.get(p.sicilNo) : byAdSoyad.get(p.adSoyad.toLocaleLowerCase('tr'))
 
       if (!personnel) {
         results.errors.push({

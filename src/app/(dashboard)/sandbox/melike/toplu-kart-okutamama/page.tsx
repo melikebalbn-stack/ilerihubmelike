@@ -397,9 +397,11 @@ export default function TopluKartOkutamamaPage() {
           <Button variant="outline" onClick={handleNotify} disabled={notifying}>
             {notifying ? "Gönderiliyor..." : "İK'ya Bildir"}
           </Button>
-          <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
-            {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
-          </Button>
+          {canManageAnyone && (
+            <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
+              {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -549,7 +551,7 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {showOldRecords && (
+      {showOldRecords && canManageAnyone && (
         <>
       <Input
         placeholder="Sicil No veya Ad Soyad ile ara..."

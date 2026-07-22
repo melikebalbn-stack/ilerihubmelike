@@ -29,6 +29,7 @@ import { prisma } from '@/lib/prisma'
 import { GET as SEBEPLER } from '@/app/api/ipro/kiosk/durus-sebepleri/route'
 import { POST as DURUS_BASLA } from '@/app/api/ipro/kiosk/durus-basla/route'
 import { POST as DURUS_BITIR } from '@/app/api/ipro/kiosk/durus-bitir/route'
+import { POST as DURUS_YORUM, yorumNormalize } from '@/app/api/ipro/kiosk/durus-yorum/route'
 import { POST as IS_BITIR } from '@/app/api/ipro/kiosk/is-bitir/route'
 import { tezgahDetay } from '@/lib/ipro/izleme-service'
 
@@ -131,5 +132,66 @@ describe('is-bitir guard', () => {
     // guard geçer (kilit yok), açık iş bulunamaz → 404
     expect(res.status).toBe(404)
     await DURUS_BITIR(req({ tezgahId }))
+  })
+})
+
+describe('duruş yorumu (OPSİYONEL)', () => {
+  it('YORUMSUZ yol: durus-basla yorum göndermeden çalışır, yorum null', async () => {
+    // Davranış değişikliği YOK — bugünkü akış aynen sürer.
+    const r = await DURUS_BASLA(req({ tezgahId, personnelId: P1, durusSebebiId: sebepGorunurId }))
+    expect(r.status).toBe(201)
+    const d = await r.json()
+    expect(d.yorum).toBeNull()
+    const kayit = await prisma.iproMachineDowntime.findUnique({ where: { id: d.id }, select: { yorum: true } })
+    expect(kayit?.yorum).toBeNull()
+    await DURUS_BITIR(req({ tezgahId }))
+  })
+
+  it('YORUMLU yol: durus-basla ile yorum kaydedilir', async () => {
+    const r = await DURUS_BASLA(req({
+      tezgahId, personnelId: P1, durusSebebiId: sebepGorunurId, yorum: '  rulman değişimi bekleniyor  ',
+    }))
+    expect(r.status).toBe(201)
+    const d = await r.json()
+    expect(d.yorum).toBe('rulman değişimi bekleniyor') // trim uygulandı
+    await DURUS_BITIR(req({ tezgahId }))
+  })
+
+  it('durus-yorum: duruş sürerken yorum yazılır/güncellenir', async () => {
+    const b = await DURUS_BASLA(req({ tezgahId, personnelId: P1, durusSebebiId: sebepGorunurId }))
+    const id = (await b.json()).id
+
+    const y1 = await DURUS_YORUM(req({ tezgahId, yorum: 'ilk not' }))
+    expect(y1.status).toBe(200)
+    expect((await y1.json()).yorum).toBe('ilk not')
+
+    const y2 = await DURUS_YORUM(req({ tezgahId, yorum: 'düzeltilmiş not' }))
+    expect((await y2.json()).yorum).toBe('düzeltilmiş not')
+
+    const kayit = await prisma.iproMachineDowntime.findUnique({ where: { id }, select: { yorum: true } })
+    expect(kayit?.yorum).toBe('düzeltilmiş not')
+    await DURUS_BITIR(req({ tezgahId }))
+  })
+
+  it('durus-yorum: açık duruş yoksa 404, tezgah kiosk\'a bağlı değilse 403', async () => {
+    expect((await DURUS_YORUM(req({ tezgahId }))).status).toBe(404)
+    expect((await DURUS_YORUM(req({ tezgahId: 'baska-tezgah', yorum: 'x' }))).status).toBe(403)
+  })
+
+  it('yorum pano detayında görünür (izleme entegrasyonu)', async () => {
+    await DURUS_BASLA(req({ tezgahId, personnelId: P1, durusSebebiId: sebepGorunurId, yorum: 'kalıp bekleniyor' }))
+    const d = await tezgahDetay(tezgahId)
+    const satir = d!.bugunDuruslar.find((x) => x.bitisAt === null)
+    expect(satir?.yorum).toBe('kalıp bekleniyor')
+    await DURUS_BITIR(req({ tezgahId }))
+  })
+
+  it('yorumNormalize: boş/whitespace → null, 200 karakterde kırpılır', () => {
+    expect(yorumNormalize('')).toBeNull()
+    expect(yorumNormalize('   ')).toBeNull()
+    expect(yorumNormalize(undefined)).toBeNull()
+    expect(yorumNormalize(123)).toBeNull()
+    expect(yorumNormalize(' not ')).toBe('not')
+    expect(yorumNormalize('x'.repeat(250))).toHaveLength(200)
   })
 })

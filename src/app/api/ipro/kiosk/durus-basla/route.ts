@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireKiosk } from '@/lib/ipro/require-kiosk'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiForbidden, apiBadRequest } from '@/lib/api-response'
+import { yorumNormalize } from '../durus-yorum/route'
 
 // POST /api/ipro/kiosk/durus-basla — body { tezgahId, personnelId, durusSebebiId }.
 // Tezgah duruşu (açık iş ŞART DEĞİL). Tezgah başına tek açık duruş — partial unique
@@ -29,16 +30,20 @@ export async function POST(req: NextRequest) {
   })
   if (!sebep) return apiBadRequest('Geçersiz veya kioskta kullanılamaz duruş sebebi')
 
+  // Opsiyonel yorum — ZORUNLU DEĞİL. Gönderilmezse null kalır, akış bugünkü gibi işler.
+  const yorum = yorumNormalize(body?.yorum)
+
   // Ac. Partial unique (acik_uq) ihlali → P2002 → 409.
   try {
     const durus = await prisma.iproMachineDowntime.create({
-      data: { tezgahId, personnelId, durusSebebiId: sebep.id, baslangic: new Date(), kaynak: 'KIOSK' },
-      select: { id: true, baslangic: true },
+      data: { tezgahId, personnelId, durusSebebiId: sebep.id, baslangic: new Date(), kaynak: 'KIOSK', yorum },
+      select: { id: true, baslangic: true, yorum: true },
     })
     return apiSuccess(
       {
         id: durus.id,
         baslangic: durus.baslangic,
+        yorum: durus.yorum,
         sebepAd: sebep.ad,
         durusAktifkenIsBitirilemez: sebep.durusAktifkenIsBitirilemez,
       },

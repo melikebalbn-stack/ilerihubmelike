@@ -20,7 +20,7 @@ type Is = {
 type AcikIs = { id: string; ifsOrderNo: string; ifsOperationNo: number } | null
 type Sebep = { kod: string; ad: string }
 type DurusSebep = { id: string; kod: string; ad: string; renkKodu: string | null; durusAktifkenIsBitirilemez: boolean }
-type AktifDurus = { id: string; sebepAd: string; baslangic: string; durusAktifkenIsBitirilemez: boolean }
+type AktifDurus = { id: string; sebepAd: string; baslangic: string; durusAktifkenIsBitirilemez: boolean; yorum: string | null }
 type Adim = 'tezgah' | 'operator' | 'is-listesi' | 'is-onay' | 'calisiyor' | 'durus-sebep' | 'durusta' | 'bitir' | 'ozet'
 
 // ── Ortak API yardımcıları ──
@@ -287,11 +287,28 @@ function KioskAkis() {
         sebepAd: s.ad,
         baslangic: r.data.baslangic,
         durusAktifkenIsBitirilemez: s.durusAktifkenIsBitirilemez,
+        yorum: null,
       })
       setAdim('durusta')
     } else if (r.status === 409) {
       setHata('Bu tezgahta zaten açık duruş var')
     } else setHata('Duruş başlatılamadı')
+  }
+
+  // Duruş yorumu kaydet (OPSİYONEL). Duruş zaten başlamıştır — bu çağrı akışı
+  // geciktirmez, hiç yapılmazsa duruş bugünkü gibi işler.
+  async function durusYorumKaydet(yorum: string): Promise<boolean> {
+    if (!tezgah) return false
+    const r = await apiPost<{ yorum: string | null }>('/api/ipro/kiosk/durus-yorum', {
+      tezgahId: tezgah.id,
+      yorum,
+    })
+    if (!r.ok) {
+      setHata('Yorum kaydedilemedi')
+      return false
+    }
+    setAktifDurus((d) => (d ? { ...d, yorum: r.data.yorum } : d))
+    return true
   }
 
   // Duruş bitir → çalışıyor ekranına dön
@@ -455,7 +472,7 @@ function KioskAkis() {
         )}
 
         {!yukleniyor && adim === 'durusta' && aktifDurus && (
-          <DurusModu durus={aktifDurus} onBitir={durusBitir} />
+          <DurusModu durus={aktifDurus} onBitir={durusBitir} onYorum={durusYorumKaydet} />
         )}
 
         {!yukleniyor && adim === 'bitir' && tezgah && operator && aktifIs && (
@@ -701,8 +718,22 @@ function Placeholder({ etiket }: { etiket: string }) {
 }
 
 /** Kırmızı tam-ekran duruş modu — büyük sebep + canlı süre sayacı + "Duruş Bitir". */
-function DurusModu({ durus, onBitir }: { durus: AktifDurus; onBitir: () => void }) {
+function DurusModu({
+  durus,
+  onBitir,
+  onYorum,
+}: {
+  durus: AktifDurus
+  onBitir: () => void
+  onYorum: (yorum: string) => Promise<boolean>
+}) {
   const [, tik] = useState(0)
+  // Yorum OPSİYONEL: duruş zaten başladı. Panel kapalı açılır — klavye duruşun
+  // başlamasını geciktirmez, operatör hiç dokunmadan da devam edebilir.
+  const [panelAcik, setPanelAcik] = useState(false)
+  const [metin, setMetin] = useState('')
+  const [kaydediliyor, setKaydediliyor] = useState(false)
+
   useEffect(() => {
     const id = setInterval(() => tik((n) => n + 1), 1000)
     return () => clearInterval(id)
@@ -714,8 +745,17 @@ function DurusModu({ durus, onBitir }: { durus: AktifDurus; onBitir: () => void 
   const dk = String(Math.floor((sn % 3600) / 60)).padStart(2, '0')
   const sns = String(sn % 60).padStart(2, '0')
 
+  const YORUM_MAX = 200
+
+  async function kaydet() {
+    setKaydediliyor(true)
+    const ok = await onYorum(metin)
+    setKaydediliyor(false)
+    if (ok) setPanelAcik(false)
+  }
+
   return (
-    <div className="-m-6 flex h-full flex-col items-center justify-center gap-10 bg-red-950 p-6">
+    <div className="-m-6 flex h-full flex-col items-center justify-center gap-8 bg-red-950 p-6">
       <div className="text-center">
         <div className="text-2xl font-bold uppercase tracking-widest text-red-300">DURUŞTA</div>
         <div className="mt-3 text-6xl font-bold text-red-100">{durus.sebepAd}</div>
@@ -726,7 +766,63 @@ function DurusModu({ durus, onBitir }: { durus: AktifDurus; onBitir: () => void 
       {durus.durusAktifkenIsBitirilemez && (
         <div className="text-xl text-red-300/80">Bu duruş bitmeden iş bitirilemez.</div>
       )}
-      <BigButton variant="default" onClick={onBitir} className="min-h-24 bg-red-100 px-16 text-3xl text-red-900 active:bg-white">
+
+      {/* Kayıtlı yorum özeti */}
+      {durus.yorum && !panelAcik && (
+        <div className="max-w-2xl rounded-xl bg-red-900/60 px-5 py-3 text-center text-lg text-red-100">
+          📝 {durus.yorum}
+        </div>
+      )}
+
+      {/* Opsiyonel yorum paneli — kapalıyken tek buton, akışı yavaşlatmaz */}
+      {!panelAcik ? (
+        <BigButton
+          variant="ghost"
+          onClick={() => {
+            setMetin(durus.yorum ?? '')
+            setPanelAcik(true)
+          }}
+          className="min-h-14 text-xl text-red-200"
+        >
+          📝 {durus.yorum ? 'Yorumu düzenle' : 'Yorum ekle (isteğe bağlı)'}
+        </BigButton>
+      ) : (
+        <div className="w-full max-w-2xl space-y-3">
+          <textarea
+            value={metin}
+            onChange={(e) => setMetin(e.target.value.slice(0, YORUM_MAX))}
+            maxLength={YORUM_MAX}
+            rows={3}
+            autoFocus
+            placeholder="Kısa not (isteğe bağlı) — ör. rulman değişimi bekleniyor"
+            className="w-full rounded-xl bg-red-100 p-4 text-2xl text-red-950 placeholder:text-red-400"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-lg text-red-200">
+              {metin.length}/{YORUM_MAX}
+            </span>
+            <div className="flex gap-3">
+              <BigButton variant="ghost" onClick={() => setPanelAcik(false)} className="min-h-14 text-xl text-red-200">
+                Geç
+              </BigButton>
+              <BigButton
+                variant="default"
+                onClick={kaydet}
+                disabled={kaydediliyor}
+                className="min-h-14 bg-red-100 px-8 text-xl text-red-900 active:bg-white"
+              >
+                {kaydediliyor ? 'Kaydediliyor…' : 'Kaydet'}
+              </BigButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <BigButton
+        variant="default"
+        onClick={onBitir}
+        className="min-h-24 bg-red-100 px-16 text-3xl text-red-900 active:bg-white"
+      >
         ▶ DURUŞ BİTİR
       </BigButton>
     </div>

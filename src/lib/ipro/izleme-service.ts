@@ -214,6 +214,8 @@ export type TezgahIsSatiri = {
 export type TezgahDurusSatiri = {
   id: string
   sebep: string | null
+  /** Operatörün kiosktan yazdığı opsiyonel not (yoksa null). */
+  yorum: string | null
   baslangicAt: string
   bitisAt: string | null // null = hâlâ açık
   operator: string | null
@@ -284,6 +286,7 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
         personnelId: true,
         baslangic: true,
         bitis: true,
+        yorum: true,
         durusSebebi: { select: { ad: true } },
       },
     }),
@@ -361,6 +364,7 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
     bugunDuruslar: duruslar.map((d) => ({
       id: d.id,
       sebep: d.durusSebebi?.ad ?? null,
+      yorum: d.yorum,
       baslangicAt: d.baslangic.toISOString(),
       bitisAt: d.bitis?.toISOString() ?? null,
       operator: d.personnelId ? (adById.get(d.personnelId) ?? null) : null,

@@ -63,7 +63,7 @@ type IsSatiri = {
   ifsLaborRunFactor: number | null
   ifsRunTimeCode: string | null
 }
-type DurusSatiri = { id: string; sebep: string | null; baslangicAt: string; bitisAt: string | null; operator: string | null }
+type DurusSatiri = { id: string; sebep: string | null; yorum: string | null; baslangicAt: string; bitisAt: string | null; operator: string | null }
 type Detay = {
   id: string
   kod: string
@@ -576,6 +576,7 @@ function DetayDialog({ tezgahId, onClose }: { tezgahId: string | null; onClose: 
                         <th className="px-2 py-1.5 text-left">Sebep</th>
                         <th className="px-2 py-1.5 text-left">Başlangıç</th>
                         <th className="px-2 py-1.5 text-right">Süre</th>
+                        <th className="px-2 py-1.5 text-left">Yorum</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -592,6 +593,9 @@ function DetayDialog({ tezgahId, onClose }: { tezgahId: string | null; onClose: 
                               {new Date(d.baslangicAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                             </td>
                             <td className="px-2 py-1.5 text-right font-medium">{dkBicim(dk)}</td>
+                            <td className="max-w-[220px] px-2 py-1.5 text-slate-600" title={d.yorum ?? undefined}>
+                              {d.yorum ? <span className="line-clamp-2">{d.yorum}</span> : <span className="text-slate-300">—</span>}
+                            </td>
                           </tr>
                         )
                       })}

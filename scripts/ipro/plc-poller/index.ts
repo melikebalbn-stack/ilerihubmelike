@@ -18,7 +18,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../../../src/generated/prisma'
 import { PlcConnection } from './plc'
-import { sayacDelta, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
+import { sayacIsle, blokGecersizMi, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
 
 // ── config (env'den; hardcode yok) ──
 const POLL_INTERVAL_MS = Number(process.env.IPRO_POLLER_INTERVAL_MS ?? 5_000)
@@ -70,6 +70,18 @@ interface PlcGroup {
   sayacSize: number
   durusStart: number
   durusSize: number
+  // ── Telemetri (/health) + hayalet üretim savunması ──
+  /** Toplam başarısız/geçersiz okuma (TCP hatası + blok-geneli sıfır). */
+  okumaHatasiToplam: number
+  sonHataZamani: string | null
+  /** İlk bağlantıdan SONRAKİ yeniden bağlanma sayısı. */
+  yenidenBaglanmaSayisi: number
+  /** Katman 1'in kaç kez devreye girdiği. */
+  baselineTazelemeSayisi: number
+  /** Katman 1 bayrağı: bir sonraki başarılı okuma delta üretmesin. */
+  baselineTazeleGerek: boolean
+  /** İlk bağlantı yapıldı mı (ilk connect'i "yeniden bağlanma" saymamak için). */
+  ilkBaglantiYapildi: boolean
 }
 interface TezgahState {
   tezgahKod: string
@@ -124,6 +136,12 @@ async function loadPins() {
       sayacSize: Math.max(...sAddrs) + 4 - sayacStart,
       durusStart,
       durusSize: Math.max(...dAddrs) + 1 - durusStart,
+      okumaHatasiToplam: 0,
+      sonHataZamani: null,
+      yenidenBaglanmaSayisi: 0,
+      baselineTazelemeSayisi: 0,
+      baselineTazeleGerek: false,
+      ilkBaglantiYapildi: false,
     })
     for (const p of group) {
       if (p.tezgah && !tezgahState.has(p.tezgah.kod)) {
@@ -143,7 +161,18 @@ async function loadPins() {
 }
 
 async function pollPlc(g: PlcGroup) {
+  const oncedenBagli = g.conn.connected
   if (!(await g.conn.ensureConnected())) return
+  // KATMAN 1 — yeniden bağlanma: ilk başarılı okuma delta ÜRETMEMELİ.
+  if (!oncedenBagli) {
+    if (g.ilkBaglantiYapildi) {
+      g.yenidenBaglanmaSayisi++
+      g.baselineTazeleGerek = true
+      log(`↻ ${g.conn.kod} yeniden bağlandı — baseline tazelenecek (delta üretilmeyecek)`)
+    }
+    g.ilkBaglantiYapildi = true
+  }
+
   let sayacBuf: Buffer
   let durusBuf: Buffer
   try {
@@ -154,19 +183,50 @@ async function pollPlc(g: PlcGroup) {
     const msg = e instanceof Error ? e.message : String(e)
     log(`⛔ ${g.conn.kod} okuma hatası: ${msg}`)
     g.conn.onReadError(msg)
+    // KATMAN 1 — hatadan sonraki ilk başarılı okuma delta üretmemeli.
+    g.okumaHatasiToplam++
+    g.sonHataZamani = now()
+    g.baselineTazeleGerek = true
     return
   }
   g.conn.markRead()
 
-  for (const pin of g.pins) {
-    const cur = sayacBuf.readUInt32BE(pin.sayacAdresi - g.sayacStart) // DWORD BE
+  // Tüm pinlerin ham değerlerini önce çöz — KATMAN 2 blok kararı bunu gerektirir.
+  const okumalar = g.pins.map((pin) => ({
+    pin,
+    prev: pin.prevSayac,
+    cur: sayacBuf.readUInt32BE(pin.sayacAdresi - g.sayacStart), // DWORD BE
+  }))
+
+  // KATMAN 2 — blok-geneli sıfır: önceden dolu TÜM sayaçlar aynı turda 0 ise okuma geçersiz.
+  const blokGecersiz = blokGecersizMi(okumalar)
+  if (blokGecersiz) {
+    g.okumaHatasiToplam++
+    g.sonHataZamani = now()
+    log(
+      `🚫 ${g.conn.kod} BLOK-GENELİ SIFIR — okuma GEÇERSİZ sayıldı (yarı-kopuk bağlantı imzası), ` +
+        `prevSayac korundu, delta üretilmedi`,
+    )
+  }
+
+  // KATMAN 1 bayrağı bu turda tüketiliyor mu (geçersiz okumada TÜKETİLMEZ).
+  const baselineTazele = g.baselineTazeleGerek && !blokGecersiz
+  if (baselineTazele) {
+    g.baselineTazelemeSayisi++
+    log(`↺ ${g.conn.kod} baseline tazelendi — bu tur delta üretilmedi (hata/reconnect sonrası)`)
+  }
+
+  for (const { pin, prev, cur } of okumalar) {
     const durus = (durusBuf.readUInt8(pin.durusAdresi - g.durusStart) & 0x01) === 1
 
-    // ── SAYAÇ DELTA ── (saf hesap: hesap.ts — wrap branch'i YOK, gerekçe orada)
-    const { delta, resetMi } = sayacDelta(pin.prevSayac, cur)
-    if (resetMi) log(`ℹ️ ${g.conn.kod} pin ${pin.kod} sayaç RESET (${pin.prevSayac} → ${cur}), delta=${delta}`)
-    pin.prevSayac = cur
-    pin.curSayac = cur
+    // ── SAYAÇ ── (saf karar: hesap.ts sayacIsle — üç katman orada birleşir)
+    const { delta, yeniPrev, olay } = sayacIsle({ prev, cur, baselineTazele, blokGecersiz })
+    if (olay === 'reset-kabul') log(`ℹ️ ${g.conn.kod} pin ${pin.kod} gerçek RESET (${prev} → ${cur}), delta=${delta}`)
+    else if (olay === 'sifir-suphesi') log(`⚠️ ${g.conn.kod} pin ${pin.kod} SIFIR ŞÜPHESİ (${prev} → 0) — prevSayac korundu`)
+    pin.prevSayac = yeniPrev
+    // curSayac = son GÜVENİLİR değer. Geçersiz/şüpheli okumada ham `cur` (0) YAZILMAZ —
+    // yoksa /status sayacToplam=0 sunar ve is-basla sıfır baseline alırdı (asıl kusur buydu).
+    pin.curSayac = yeniPrev ?? 0
     pin.lastDelta = delta
 
     // ── DURUŞ GEÇİŞİ ── (ilk turda geçiş üretilmez)
@@ -176,6 +236,10 @@ async function pollPlc(g: PlcGroup) {
     pin.prevDurusBit = durus
     pin.durusBit = durus
   }
+
+  // Katman 1 bayrağı yalnız GEÇERLİ bir okumada tüketilir; geçersiz okumada
+  // bir sonraki tura devreder (aksi hâlde tazeleme boşa gider ve hayalet döner).
+  if (baselineTazele) g.baselineTazeleGerek = false
 }
 
 function aggregate() {
@@ -246,6 +310,12 @@ const server = http.createServer((req, res) => {
             return {
               ...s,
               sonOkumaYasiMs: s.lastReadAt ? simdi - Date.parse(s.lastReadAt) : null,
+              // İzleme: "tek seferlik ağ olayı mı, bu PLC'ye özgü mü" sorusu logda
+              // arama yapmadan cevaplanabilsin (22.07 hayalet üretim olayının dersi).
+              okumaHatasiToplam: g.okumaHatasiToplam,
+              sonHataZamani: g.sonHataZamani,
+              yenidenBaglanmaSayisi: g.yenidenBaglanmaSayisi,
+              baselineTazelemeSayisi: g.baselineTazelemeSayisi,
             }
           }),
         },

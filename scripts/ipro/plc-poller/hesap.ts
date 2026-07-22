@@ -16,6 +16,94 @@ export interface SayacSonuc {
   resetMi: boolean
 }
 
+// ── Hayalet üretim savunması (22.07.2026 saha olayı) ──
+//
+// KALICI DERS: **MBRead hata vermemesi verinin GEÇERLİ olduğu anlamına GELMEZ.**
+// (IFS'teki "HTTP 500 ≠ yazılmadı" dersinin ikizi.)
+//
+// OLAY: 12:13–12:15 PANO-3 yarı-kopuk TCP. MBRead hata vermeden 0 döndürdü →
+// kod bunu RESET sandı → prevSayac=0 yazdı → bağlantı toparlayınca
+// delta = 1146 - 0 = 1146 HAYALET üretim birikti (KH01 hiç üretmediği hâlde).
+//
+// ÜÇ KATMAN birlikte savunur (biri tek başına yetmez):
+//   1) Hata/reconnect sonrası BASELINE TAZELEME — ilk başarılı okuma delta üretmez.
+//   2) BLOK-GENELİ SIFIR — bir PLC'de önceden dolu TÜM sayaçlar aynı turda 0 ise
+//      okuma geçersizdir (gerçek reset makine bazındadır: CN14 tek başına sıfırlandı).
+//   3) SIFIR ŞÜPHESİ — cur<prev ve cur===0 ise prevSayac KORUNUR, delta 0.
+//      Sıfır, bozuk okumanın imzasıdır; sıfır-olmayan düşük değer gerçek resettir.
+//
+// TAKAS (bilinçli): kopma penceresindeki gerçek üretim kaybolabilir.
+// Hayalet üretmektense EKSİK saymak yeğdir — Faz 2'de kalıcı delta ile telafi.
+
+export type SayacOlay =
+  | 'ilk' // baseline kuruldu (ilk okuma)
+  | 'normal' // cur >= prev, düz artış
+  | 'baseline-tazelendi' // katman 1: hata/reconnect sonrası ilk okuma
+  | 'blok-gecersiz' // katman 2: PLC'de toplu sıfır → okuma geçersiz
+  | 'sifir-suphesi' // katman 3: cur===0 & cur<prev → prev korunur
+  | 'reset-kabul' // gerçek reset (0 < cur < prev)
+
+export interface SayacGirdi {
+  prev: number | undefined
+  cur: number
+  /** Katman 1: bu PLC'de hata/reconnect oldu → bu okuma yalnız baseline tazeler. */
+  baselineTazele: boolean
+  /** Katman 2: bu turda PLC blok-geneli sıfır tespit edildi → okuma geçersiz. */
+  blokGecersiz: boolean
+}
+
+export interface SayacIsleSonuc {
+  delta: number
+  /** prevSayac'ın yeni değeri (korunuyorsa eski değerin aynısı). */
+  yeniPrev: number | undefined
+  olay: SayacOlay
+}
+
+/**
+ * Tek pin için sayaç kararı — üç katman burada birleşir. SAF: yan etkisiz.
+ *
+ * Sıra önemlidir: geçersiz okuma (katman 2) her şeyden önce elenir, sonra
+ * baseline tazeleme (katman 1), sonra normal/şüphe/reset ayrımı (katman 3).
+ */
+export function sayacIsle(g: SayacGirdi): SayacIsleSonuc {
+  // KATMAN 2 — okuma geçersiz: hiçbir şey güncellenmez, prev KORUNUR.
+  if (g.blokGecersiz) return { delta: 0, yeniPrev: g.prev, olay: 'blok-gecersiz' }
+
+  // KATMAN 1 — hata/reconnect sonrası: yalnız baseline tazelenir, delta ÜRETİLMEZ.
+  if (g.baselineTazele) return { delta: 0, yeniPrev: g.cur, olay: 'baseline-tazelendi' }
+
+  // İlk okuma: baseline kurulur (birikmiş sayaç üretim sayılmaz).
+  if (g.prev === undefined) return { delta: 0, yeniPrev: g.cur, olay: 'ilk' }
+
+  // Düz artış.
+  if (g.cur >= g.prev) return { delta: g.cur - g.prev, yeniPrev: g.cur, olay: 'normal' }
+
+  // KATMAN 3 — cur < prev.
+  // cur === 0: bozuk okumanın imzası. prev KORUNUR, delta yok. Kaç tur sürerse
+  // sürsün korunur; değer geri dönerse 'normal' dalında delta ≈ 0 çıkar (hayalet yok).
+  if (g.cur === 0) return { delta: 0, yeniPrev: g.prev, olay: 'sifir-suphesi' }
+
+  // 0 < cur < prev: gerçek reset. Sıfırlamadan bu yana üretilen adet = cur.
+  return { delta: g.cur, yeniPrev: g.cur, olay: 'reset-kabul' }
+}
+
+/**
+ * KATMAN 2 — blok-geneli sıfır tespiti (PLC turu bazında).
+ *
+ * Bir PLC'de önceden SIFIR OLMAYAN sayaçların TAMAMI aynı turda 0 dönüyorsa okuma
+ * geçersizdir. Gerçek reset makine bazındadır — saha kanıtı: CN14 tek başına
+ * sıfırlandı, komşuları etkilenmedi. Buna karşılık 22.07 olayında PANO-3'te
+ * 1146/1425/2053 AYNI turda 0 döndü (üçü birden sıfırlanamaz).
+ *
+ * En az 2 dolu sayaç aranır: tek dolu sayaçta toplu-sıfır ile gerçek reset
+ * ayırt edilemez, o durum katman 3'e bırakılır.
+ */
+export function blokGecersizMi(okumalar: Array<{ prev: number | undefined; cur: number }>): boolean {
+  const oncedenDolu = okumalar.filter((o) => o.prev !== undefined && o.prev > 0)
+  if (oncedenDolu.length < 2) return false
+  return oncedenDolu.every((o) => o.cur === 0)
+}
+
 /**
  * İki okuma arasındaki sayaç deltası.
  *

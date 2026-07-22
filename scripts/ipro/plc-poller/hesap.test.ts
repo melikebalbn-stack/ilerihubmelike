@@ -5,55 +5,138 @@
  * Reset senaryosu BİRİNCİ SINIF vaka (sahada canlı kanıtlandı: CN14 prev=1 → cur=0).
  */
 import { describe, it, expect } from 'vitest'
-import { sayacDelta, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
+import { sayacIsle, blokGecersizMi, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
 
-describe('sayacDelta', () => {
-  it('normal artış → delta = fark', () => {
-    expect(sayacDelta(100, 103)).toEqual({ delta: 3, resetMi: false })
-  })
-
-  it('değişim yok → delta 0', () => {
-    expect(sayacDelta(42, 42)).toEqual({ delta: 0, resetMi: false })
-  })
-
-  it('ilk tur (prev undefined) → delta 0, baseline kurulur', () => {
-    // Birikmiş sayaç tek turda "üretim" gibi görünmemeli.
-    expect(sayacDelta(undefined, 2053)).toEqual({ delta: 0, resetMi: false })
-  })
-
-  it('RESET: cur < prev → delta = cur (wrap DEĞİL)', () => {
-    // Saha kanıtı: CN14 prev=1 → cur=0 → sonra 1,2 diye yeniden saydı.
-    expect(sayacDelta(1, 0)).toEqual({ delta: 0, resetMi: true })
-    expect(sayacDelta(500, 0)).toEqual({ delta: 0, resetMi: true })
-  })
-
-  it('RESET + aynı turda üretim: prev=500, cur=3 → delta 3 (üretim kaybolmaz)', () => {
-    expect(sayacDelta(500, 3)).toEqual({ delta: 3, resetMi: true })
-  })
-
-  it('wrap branch YOK — büyük prev/küçük cur da RESET sayılır', () => {
-    // Sayaçlar wrap eşiğine yaklaşmadan sıfırlanıyor (max görülen 3997).
-    // Bu yüzden 2^32'ye yakın değerler bile reset olarak yorumlanır.
-    const r = sayacDelta(4_294_967_000, 5)
-    expect(r.resetMi).toBe(true)
-    expect(r.delta).toBe(5)
-  })
-
-  it('negatif guard: bozuk cur → delta 0', () => {
-    expect(sayacDelta(10, -5).delta).toBe(0)
-  })
-
-  it('gerçek akış: baseline → artış → reset → artış', () => {
-    let prev: number | undefined = undefined
+describe('sayacIsle — hayalet üretim savunması', () => {
+  // Yardımcı: bir pin'in tur dizisini işleyip toplam birikimi ve olayları döndürür.
+  function akis(
+    okumalar: Array<{ cur: number; baselineTazele?: boolean; blokGecersiz?: boolean }>,
+  ) {
+    let prev: number | undefined
+    let birikim = 0
+    const olaylar: string[] = []
     const deltalar: number[] = []
-    for (const cur of [1000, 1001, 1003, 0, 1, 2]) {
-      const r = sayacDelta(prev, cur)
+    for (const o of okumalar) {
+      const r = sayacIsle({
+        prev,
+        cur: o.cur,
+        baselineTazele: o.baselineTazele ?? false,
+        blokGecersiz: o.blokGecersiz ?? false,
+      })
+      prev = r.yeniPrev
+      birikim += r.delta
       deltalar.push(r.delta)
-      prev = cur
+      olaylar.push(r.olay)
     }
-    // ilk tur 0, +1, +2, reset(0), +1, +1 → toplam üretim 5
-    expect(deltalar).toEqual([0, 1, 2, 0, 1, 1])
-    expect(deltalar.reduce((a, b) => a + b, 0)).toBe(5)
+    return { birikim, olaylar, deltalar, prev }
+  }
+
+  it('ilk okuma baseline kurar — birikmiş sayaç üretim SAYILMAZ', () => {
+    const { birikim, olaylar } = akis([{ cur: 2053 }])
+    expect(birikim).toBe(0)
+    expect(olaylar).toEqual(['ilk'])
+  })
+
+  it('normal artış → delta = fark', () => {
+    const { birikim, deltalar } = akis([{ cur: 100 }, { cur: 103 }, { cur: 105 }])
+    expect(deltalar).toEqual([0, 3, 2])
+    expect(birikim).toBe(5)
+  })
+
+  it('TEK TURLUK GLITCH (1146→0→1146) → birikim ARTMAZ', () => {
+    // 22.07 saha olayının tam senaryosu: yarı-kopuk TCP'de 0 okundu, sonra toparladı.
+    const { birikim, olaylar } = akis([{ cur: 1146 }, { cur: 0 }, { cur: 1146 }])
+    expect(birikim).toBe(0) // HAYALET YOK
+    expect(olaylar).toEqual(['ilk', 'sifir-suphesi', 'normal'])
+  })
+
+  it('ÇOK TURLUK GLITCH (1146→0→0→0→1146) → birikim ARTMAZ', () => {
+    // Tek tur teyidi tek başına yetmezdi: 0>=0 sağlanıp gerçek reset sanılırdı.
+    const { birikim, olaylar, prev } = akis([
+      { cur: 1146 }, { cur: 0 }, { cur: 0 }, { cur: 0 }, { cur: 1146 },
+    ])
+    expect(birikim).toBe(0) // HAYALET YOK
+    expect(olaylar).toEqual(['ilk', 'sifir-suphesi', 'sifir-suphesi', 'sifir-suphesi', 'normal'])
+    expect(prev).toBe(1146) // prevSayac hiç bozulmadı
+  })
+
+  it('GERÇEK RESET (1146→3→5) → delta 3 sonra 2', () => {
+    // Sıfır-olmayan düşük değer = gerçek reset (sayım yeniden başladı).
+    const { deltalar, birikim } = akis([{ cur: 1146 }, { cur: 3 }, { cur: 5 }])
+    expect(deltalar).toEqual([0, 3, 2])
+    expect(birikim).toBe(5)
+  })
+
+  it('reset 0\'dan başlayıp sonra sayarsa üretim kaybolmaz (1146→0→3)', () => {
+    const { deltalar, birikim } = akis([{ cur: 1146 }, { cur: 0 }, { cur: 3 }])
+    expect(deltalar).toEqual([0, 0, 3]) // 0 turu şüpheli, 3 gelince gerçek reset
+    expect(birikim).toBe(3)
+  })
+
+  it('BLOK GEÇERSİZ tur → delta yok, prevSayac KORUNUR', () => {
+    const { birikim, olaylar, prev } = akis([
+      { cur: 1146 }, { cur: 0, blokGecersiz: true }, { cur: 1146 },
+    ])
+    expect(birikim).toBe(0)
+    expect(olaylar).toEqual(['ilk', 'blok-gecersiz', 'normal'])
+    expect(prev).toBe(1146)
+  })
+
+  it('RECONNECT sonrası ilk okuma DELTA ÜRETMEZ, yalnız baseline tazeler', () => {
+    // Kopma penceresinde makine üretmiş olabilir; o üretim bilinçli olarak sayılmaz
+    // (hayalet üretmektense eksik saymak yeğdir).
+    const { birikim, olaylar, prev } = akis([
+      { cur: 1146 }, { cur: 1200, baselineTazele: true }, { cur: 1203 },
+    ])
+    expect(olaylar).toEqual(['ilk', 'baseline-tazelendi', 'normal'])
+    expect(birikim).toBe(3) // 1146→1200 arası sayılmadı; 1200→1203 sayıldı
+    expect(prev).toBe(1203)
+  })
+})
+
+describe('blokGecersizMi — blok-geneli sıfır tespiti', () => {
+  it('önceden dolu 3 sayaç aynı turda 0 → GEÇERSİZ', () => {
+    // 22.07 PANO-3: 1146/1425/2053 aynı anda 0 döndü — üçü birden sıfırlanamaz.
+    expect(
+      blokGecersizMi([
+        { prev: 1146, cur: 0 },
+        { prev: 1425, cur: 0 },
+        { prev: 2053, cur: 0 },
+      ]),
+    ).toBe(true)
+  })
+
+  it('TEK makine sıfırlandı, komşular normal → geçersiz DEĞİL (gerçek reset adayı)', () => {
+    // Saha kanıtı: CN14 tek başına sıfırlandı, komşuları etkilenmedi.
+    expect(
+      blokGecersizMi([
+        { prev: 1146, cur: 1146 },
+        { prev: 1425, cur: 0 },
+        { prev: 2053, cur: 2055 },
+      ]),
+    ).toBe(false)
+  })
+
+  it('önceden sıfır olanlar hesaba katılmaz', () => {
+    expect(
+      blokGecersizMi([
+        { prev: 0, cur: 0 },
+        { prev: 0, cur: 0 },
+        { prev: 500, cur: 502 },
+      ]),
+    ).toBe(false)
+  })
+
+  it('tek dolu sayaç varsa blok kararı VERİLMEZ (katman 3\'e bırakılır)', () => {
+    expect(blokGecersizMi([{ prev: 1146, cur: 0 }, { prev: 0, cur: 0 }])).toBe(false)
+  })
+
+  it('ilk tur (prev undefined) → geçersiz değil', () => {
+    expect(blokGecersizMi([{ prev: undefined, cur: 0 }, { prev: undefined, cur: 0 }])).toBe(false)
+  })
+
+  it('boş liste → geçersiz değil', () => {
+    expect(blokGecersizMi([])).toBe(false)
   })
 })
 

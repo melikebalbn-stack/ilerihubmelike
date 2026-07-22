@@ -5,7 +5,7 @@
  * Reset senaryosu BİRİNCİ SINIF vaka (sahada canlı kanıtlandı: CN14 prev=1 → cur=0).
  */
 import { describe, it, expect } from 'vitest'
-import { sayacIsle, blokGecersizMi, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
+import { sayacIsle, blokGecersizMi, okumaHatasiKarari, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
 
 describe('sayacIsle — hayalet üretim savunması', () => {
   // Yardımcı: bir pin'in tur dizisini işleyip toplam birikimi ve olayları döndürür.
@@ -172,6 +172,39 @@ describe('blokGecersizMi — blok-geneli sıfır tespiti', () => {
 
   it('boş liste → geçersiz değil', () => {
     expect(blokGecersizMi([])).toBe(false)
+  })
+})
+
+describe('okumaHatasiKarari — yeniden bağlanma disiplini', () => {
+  const ESIK = 2
+
+  it('TEK hata → zorla kopma YOK (oturum muhtemelen canlı, churn yaratma)', () => {
+    // Saha gözlemi: poller hiç reconnect etmeden okumalar geri geldi → oturum ölmemişti.
+    expect(okumaHatasiKarari(0, ESIK)).toEqual({ ardArdaHata: 1, zorlaKop: false })
+  })
+
+  it('ARD ARDA 2 hata → ZORLA KOPMA', () => {
+    const ilk = okumaHatasiKarari(0, ESIK)
+    expect(ilk.zorlaKop).toBe(false)
+    const ikinci = okumaHatasiKarari(ilk.ardArdaHata, ESIK)
+    expect(ikinci).toEqual({ ardArdaHata: 2, zorlaKop: true })
+  })
+
+  it('araya BAŞARILI okuma girerse zincir kırılır — tek tek hatalar kopma yaratmaz', () => {
+    // hata → başarı (sayaç 0'a döner) → hata → hâlâ kopma yok
+    let sayac = 0
+    sayac = okumaHatasiKarari(sayac, ESIK).ardArdaHata // 1
+    sayac = 0 // markRead() başarılı okumada sıfırlar
+    const sonraki = okumaHatasiKarari(sayac, ESIK)
+    expect(sonraki).toEqual({ ardArdaHata: 1, zorlaKop: false })
+  })
+
+  it('eşik aşılırsa da kopma kararı sürer (3. hata)', () => {
+    expect(okumaHatasiKarari(2, ESIK).zorlaKop).toBe(true)
+  })
+
+  it('eşik 1 verilirse ilk hatada kopar (yapılandırılabilir)', () => {
+    expect(okumaHatasiKarari(0, 1)).toEqual({ ardArdaHata: 1, zorlaKop: true })
   })
 })
 

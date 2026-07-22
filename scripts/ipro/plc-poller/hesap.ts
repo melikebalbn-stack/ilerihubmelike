@@ -108,6 +108,32 @@ export function blokGecersizMi(okumalar: Array<{ prev: number | undefined; cur: 
 }
 
 
+// ── Yeniden bağlanma disiplini ──
+
+export interface OkumaHatasiKarar {
+  /** Güncellenmiş ard arda hata sayacı. */
+  ardArdaHata: number
+  /** Oturum ZORLA koparılmalı mı (Connected() ne derse desin). */
+  zorlaKop: boolean
+}
+
+/**
+ * Okuma hatası sonrası karar.
+ *
+ * NEDEN EŞİK (her hatada değil): 22.07 saha gözlemi — poller epizodlarda HİÇ reconnect
+ * etmediği hâlde okumalar kendiliğinden geri geldi. Demek ki **TCP oturumu ölmemişti**;
+ * PLC 30–90 sn yanıt vermedi. Her tek timeout'ta Disconnect çağırmak, slotu kıt bir
+ * PLC'de (S7-300: 8–16 eşzamanlı bağlantı) gereksiz bağlantı churn'ü yaratır ve
+ * sorunu BÜYÜTÜR. Bu yüzden yalnız ARD ARDA `esik` hatada oturum koparılır.
+ *
+ * Karar YALNIZ bu sayaca dayanır — `Connected()`'ın döndürdüğü değere GÜVENİLMEZ
+ * (oturum sessizce ölse de true dönebiliyor; asıl kusur buydu).
+ */
+export function okumaHatasiKarari(oncekiArdArda: number, esik: number): OkumaHatasiKarar {
+  const ardArdaHata = oncekiArdArda + 1
+  return { ardArdaHata, zorlaKop: ardArdaHata >= esik }
+}
+
 // ── Duruş ──
 
 export type DurusGecis = 'basladi' | 'bitti' | null

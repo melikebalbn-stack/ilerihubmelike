@@ -6,10 +6,17 @@
  * Bağlantı bilgileri DB'den (IproPlc) gelir, hardcode yok.
  */
 import { S7Client } from 'node-snap7'
+import { okumaHatasiKarari } from './hesap'
 
 const BACKOFF_MIN = 1_000
 const BACKOFF_MAX = 60_000
 const OP_TIMEOUT = 4_000
+/**
+ * Ard arda kaç okuma hatasında oturum ZORLA koparılır. 1 DEĞİL: saha gözlemi oturumun
+ * genelde canlı olduğunu, PLC'nin geçici yanıt vermediğini gösterdi; her hatada kopmak
+ * slotu kıt PLC'de churn yaratır (bkz. hesap.ts okumaHatasiKarari).
+ */
+const ZORLA_KOPMA_ESIGI = 2
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -28,12 +35,22 @@ export interface PlcStatus {
   lastReadAt: string | null
   backoffMs: number
   lastError: string | null
+  /** GERÇEK başarılı yeniden bağlanma sayısı (ilk bağlantı sayılmaz). */
+  yenidenBaglanmaSayisi: number
+  /** Anlık ard arda okuma hatası sayacı (başarılı okumada sıfırlanır). */
+  ardArdaHataSayisi: number
+  /** Eşiğe ulaşıp oturumun ZORLA koparıldığı kez sayısı. */
+  zorlaKopmaSayisi: number
 }
 
 export class PlcConnection {
   private client = new S7Client()
   private backoffMs = BACKOFF_MIN
   private nextAttemptAt = 0
+  private ardArdaHata = 0
+  private ilkBaglanti = true
+  private yenidenBaglanmaSayisi = 0
+  private zorlaKopmaSayisi = 0
   lastReadAt: number | null = null
   lastError: string | null = null
 
@@ -62,6 +79,15 @@ export class PlcConnection {
   }
 
   private connect(): Promise<void> {
+    // TAZE İSTEMCİ: aynı S7Client üzerinde tekrar ConnectTo eski soketi bırakabilir
+    // (native kaynak + PLC tarafında yarım açık oturum = slot sızıntısı). Eskisini
+    // kapatıp yenisini yaratıyoruz.
+    try {
+      this.client.Disconnect()
+    } catch {
+      /* yoksay — zaten kopuk olabilir */
+    }
+    this.client = new S7Client()
     return withTimeout(
       new Promise<void>((resolve, reject) => {
         this.client.ConnectTo(this.ip, this.rack, this.slot, (err) => {
@@ -83,7 +109,14 @@ export class PlcConnection {
       await this.connect()
       this.backoffMs = BACKOFF_MIN
       this.lastError = null
-      this.log(`✅ ${this.kod} (${this.ip}) bağlandı`)
+      this.ardArdaHata = 0
+      if (this.ilkBaglanti) {
+        this.ilkBaglanti = false
+        this.log(`✅ ${this.kod} (${this.ip}) bağlandı`)
+      } else {
+        this.yenidenBaglanmaSayisi++
+        this.log(`✅ ${this.kod} (${this.ip}) YENİDEN bağlandı (#${this.yenidenBaglanmaSayisi})`)
+      }
       return true
     } catch (e) {
       this.lastError = e instanceof Error ? e.message : String(e)
@@ -111,14 +144,34 @@ export class PlcConnection {
   markRead() {
     this.lastReadAt = Date.now()
     this.lastError = null
+    this.ardArdaHata = 0 // başarılı okuma → ard arda hata zinciri kırıldı
   }
 
+  /**
+   * Okuma hatası. Connected()'a GÜVENİLMEZ — karar yalnız ard arda hata sayacına dayanır.
+   * Eşiğe ulaşılmadıysa hiçbir şey yapılmaz (oturum muhtemelen canlı, PLC geçici yanıtsız).
+   */
   onReadError(msg: string) {
     this.lastError = msg
-    if (!this.connected) {
-      this.nextAttemptAt = Date.now() + this.backoffMs
-      this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX)
+    const { ardArdaHata, zorlaKop } = okumaHatasiKarari(this.ardArdaHata, ZORLA_KOPMA_ESIGI)
+    this.ardArdaHata = ardArdaHata
+    if (!zorlaKop) return
+
+    // Eşiğe ulaşıldı: yarım açık oturumu KAPAT (PLC tarafındaki slot sızıntısını durdurur)
+    // ve KOŞULSUZ backoff kur — ensureConnected bir sonraki turda gerçekten bağlanacak.
+    try {
+      this.client.Disconnect()
+    } catch {
+      /* yoksay */
     }
+    this.zorlaKopmaSayisi++
+    this.ardArdaHata = 0
+    this.nextAttemptAt = Date.now() + this.backoffMs
+    this.log(
+      `✂️ ${this.kod} ${ZORLA_KOPMA_ESIGI} ard arda okuma hatası → oturum ZORLA koparıldı ` +
+        `(#${this.zorlaKopmaSayisi}), ${this.backoffMs / 1000}s sonra yeniden bağlanılacak`,
+    )
+    this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX)
   }
 
   disconnect() {
@@ -137,6 +190,9 @@ export class PlcConnection {
       lastReadAt: this.lastReadAt ? new Date(this.lastReadAt).toISOString() : null,
       backoffMs: this.backoffMs,
       lastError: this.lastError,
+      yenidenBaglanmaSayisi: this.yenidenBaglanmaSayisi,
+      ardArdaHataSayisi: this.ardArdaHata,
+      zorlaKopmaSayisi: this.zorlaKopmaSayisi,
     }
   }
 }

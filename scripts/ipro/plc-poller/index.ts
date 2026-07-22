@@ -74,8 +74,6 @@ interface PlcGroup {
   /** Toplam başarısız/geçersiz okuma (TCP hatası + blok-geneli sıfır). */
   okumaHatasiToplam: number
   sonHataZamani: string | null
-  /** İlk bağlantıdan SONRAKİ yeniden bağlanma sayısı. */
-  yenidenBaglanmaSayisi: number
   /** Katman 1'in kaç kez devreye girdiği. */
   baselineTazelemeSayisi: number
   /** Katman 1 bayrağı: bir sonraki başarılı okuma delta üretmesin. */
@@ -138,7 +136,6 @@ async function loadPins() {
       durusSize: Math.max(...dAddrs) + 1 - durusStart,
       okumaHatasiToplam: 0,
       sonHataZamani: null,
-      yenidenBaglanmaSayisi: 0,
       baselineTazelemeSayisi: 0,
       baselineTazeleGerek: false,
       ilkBaglantiYapildi: false,
@@ -166,7 +163,7 @@ async function pollPlc(g: PlcGroup) {
   // KATMAN 1 — yeniden bağlanma: ilk başarılı okuma delta ÜRETMEMELİ.
   if (!oncedenBagli) {
     if (g.ilkBaglantiYapildi) {
-      g.yenidenBaglanmaSayisi++
+      // Sayaç plc.ts'te (gerçek reconnect); burada yalnız KATMAN 1 tetiklenir.
       g.baselineTazeleGerek = true
       log(`↻ ${g.conn.kod} yeniden bağlandı — baseline tazelenecek (delta üretilmeyecek)`)
     }
@@ -325,7 +322,6 @@ const server = http.createServer((req, res) => {
               // arama yapmadan cevaplanabilsin (22.07 hayalet üretim olayının dersi).
               okumaHatasiToplam: g.okumaHatasiToplam,
               sonHataZamani: g.sonHataZamani,
-              yenidenBaglanmaSayisi: g.yenidenBaglanmaSayisi,
               baselineTazelemeSayisi: g.baselineTazelemeSayisi,
             }
           }),

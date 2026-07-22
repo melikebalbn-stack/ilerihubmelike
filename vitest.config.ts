@@ -53,7 +53,11 @@ export default defineConfig({
         test: {
           ...sharedTest,
           name: 'unit',
-          include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+          include: [
+            'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
+            // PLC poller saf hesap testleri (PLC/DB dokunmaz → unit'te paralel koşar).
+            'scripts/ipro/plc-poller/**/*.{test,spec}.{ts,mts,cts}',
+          ],
           // IPRO entegrasyon testleri buradan HARİÇ — ayrı 'integration' projesinde seri koşar.
           exclude: ['node_modules', '.next', 'dist', ...IPRO_INTEGRATION],
         },

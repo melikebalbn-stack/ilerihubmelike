@@ -18,11 +18,21 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../../../src/generated/prisma'
 import { PlcConnection } from './plc'
+import { sayacDelta, durusGecis, aggregateTezgah, type PinOzet } from './hesap'
 
 // ── config (env'den; hardcode yok) ──
 const POLL_INTERVAL_MS = Number(process.env.IPRO_POLLER_INTERVAL_MS ?? 5_000)
 const HTTP_PORT = Number(process.env.IPRO_POLLER_PORT ?? 3_020)
 const DEBUG = process.env.IPRO_POLLER_DEBUG === '1'
+/**
+ * Yalnız belirtilen PLC(ler) ile çalış — virgülle ayrılmış kod listesi (ör. "PANO-3").
+ * Aşamalı açılım (önce PANO-3, sonra 3 PLC) ve saha debug'ı için. Boşsa TÜM aktif PLC'ler.
+ * Prod veriye DOKUNULMAZ (IproPlc.aktif=false yapmak YASAK) — filtre yalnız bellekte.
+ */
+const ONLY_PLC = (process.env.IPRO_POLLER_ONLY_PLC ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
 
 // ── log (token/secret ASLA loglanmaz) ──
 const now = () => new Date().toISOString()
@@ -43,6 +53,8 @@ interface PinState {
   curSayac: number
   lastDelta: number
   durusBit: boolean
+  /** Bir önceki turun duruş biti — geçiş tespiti için (ilk turda undefined). */
+  prevDurusBit?: boolean
 }
 interface PlcGroup {
   conn: PlcConnection
@@ -69,9 +81,14 @@ let stopping = false
 
 async function loadPins() {
   const pins = await prisma.iproPlcPin.findMany({
-    where: { aktif: true, plc: { aktif: true } },
+    where: {
+      aktif: true,
+      // ONLY_PLC doluysa yalnız o PLC'ler — DB'ye YAZMADAN (aktif=false yapmadan) filtre.
+      plc: { aktif: true, ...(ONLY_PLC.length ? { kod: { in: ONLY_PLC } } : {}) },
+    },
     include: { plc: true, tezgah: { select: { kod: true, ad: true } } },
   })
+  if (ONLY_PLC.length) log(`⚙️ IPRO_POLLER_ONLY_PLC=${ONLY_PLC.join(',')} — yalnız bu PLC'ler okunacak`)
   const byPlc = new Map<string, typeof pins>()
   for (const p of pins) {
     const arr = byPlc.get(p.plcId) ?? []
@@ -137,54 +154,51 @@ async function pollPlc(g: PlcGroup) {
   for (const pin of g.pins) {
     const cur = sayacBuf.readUInt32BE(pin.sayacAdresi - g.sayacStart) // DWORD BE
     const durus = (durusBuf.readUInt8(pin.durusAdresi - g.durusStart) & 0x01) === 1
-    const first = pin.prevSayac === undefined
 
-    // ── SAYAÇ DELTA ──
-    let delta = 0
-    if (first) {
-      delta = 0 // baseline: ilk turda delta yok
-    } else if (cur >= pin.prevSayac!) {
-      delta = cur - pin.prevSayac!
-    } else {
-      delta = cur // sayaç reset'lenmiş → baştan
-      log(`ℹ️ ${g.conn.kod} pin ${pin.kod} sayaç RESET (${pin.prevSayac} → ${cur}), delta=${delta}`)
-    }
-    if (delta < 0) {
-      log(`⚠️ BUG: ${g.conn.kod} pin ${pin.kod} NEGATİF delta ${delta} (prev=${pin.prevSayac} cur=${cur})`)
-      delta = 0
-    }
+    // ── SAYAÇ DELTA ── (saf hesap: hesap.ts — wrap branch'i YOK, gerekçe orada)
+    const { delta, resetMi } = sayacDelta(pin.prevSayac, cur)
+    if (resetMi) log(`ℹ️ ${g.conn.kod} pin ${pin.kod} sayaç RESET (${pin.prevSayac} → ${cur}), delta=${delta}`)
     pin.prevSayac = cur
     pin.curSayac = cur
     pin.lastDelta = delta
 
-    // ── DURUŞ GEÇİŞİ ── (ilk turda geçiş loglanmaz)
-    if (!first) {
-      if (!pin.durusBit && durus) log(`🔴 ${g.conn.kod} pin ${pin.kod} DURUŞ BAŞLADI`)
-      else if (pin.durusBit && !durus) log(`🟢 ${g.conn.kod} pin ${pin.kod} DURUŞ BİTTİ`)
-    }
+    // ── DURUŞ GEÇİŞİ ── (ilk turda geçiş üretilmez)
+    const gecis = durusGecis(pin.prevDurusBit, durus)
+    if (gecis === 'basladi') log(`🔴 ${g.conn.kod} pin ${pin.kod} DURUŞ BAŞLADI`)
+    else if (gecis === 'bitti') log(`🟢 ${g.conn.kod} pin ${pin.kod} DURUŞ BİTTİ`)
+    pin.prevDurusBit = durus
     pin.durusBit = durus
   }
 }
 
 function aggregate() {
-  for (const t of tezgahState.values()) {
-    t.sonDelta = 0
-    t.sayacToplam = 0
-    t.durusta = false
-  }
+  // Pin özetlerini topla + her tezgahın son okuma zamanını (kendi PLC'sinden) izle.
+  const pinOzetler: PinOzet[] = []
+  const okumaByTezgah = new Map<string, string>()
   for (const g of plcGroups) {
     const okuma = g.conn.lastReadAt ? new Date(g.conn.lastReadAt).toISOString() : null
     for (const pin of g.pins) {
-      if (!pin.tezgahKod) continue // tezgaha bağlı olmayan pin toplamaya girmez
-      const t = tezgahState.get(pin.tezgahKod)
-      if (!t) continue
-      t.sayacToplam += pin.curSayac
-      t.sonDelta += pin.lastDelta // bir tezgahın üretimi = TÜM pinlerinin deltaları toplamı
-      if (pin.durusBit) t.durusta = true
-      if (okuma) t.sonOkuma = okuma
+      pinOzetler.push({
+        tezgahKod: pin.tezgahKod,
+        curSayac: pin.curSayac,
+        lastDelta: pin.lastDelta,
+        durusBit: pin.durusBit,
+      })
+      if (pin.tezgahKod && okuma) okumaByTezgah.set(pin.tezgahKod, okuma)
     }
   }
-  for (const t of tezgahState.values()) t.uretimBirikim += t.sonDelta
+
+  // Saf toplama (hesap.ts) — bir tezgahın üretimi = TÜM pinlerinin deltaları toplamı.
+  const toplam = aggregateTezgah(pinOzetler)
+  for (const t of tezgahState.values()) {
+    const x = toplam.get(t.tezgahKod)
+    t.sayacToplam = x?.sayacToplam ?? 0
+    t.sonDelta = x?.sonDelta ?? 0
+    t.durusta = x?.durusta ?? false
+    const okuma = okumaByTezgah.get(t.tezgahKod)
+    if (okuma) t.sonOkuma = okuma
+    t.uretimBirikim += t.sonDelta
+  }
 }
 
 async function tick() {
@@ -217,11 +231,29 @@ const server = http.createServer((req, res) => {
       ),
     )
   } else if (req.url === '/status') {
+    // SÖZLEŞME: is-basla bu şekli okuyor ({tezgahKod, sayacToplam, ...}) — DEĞİŞTİRME.
     const list = [...tezgahState.values()].sort((a, b) => a.tezgahKod.localeCompare(b.tezgahKod, 'tr'))
     res.end(JSON.stringify(list, null, 2))
+  } else if (req.url === '/pins') {
+    // Pin bazlı son-okuma snapshot'ı — sinyal takibi ekranı (Melike #14) için.
+    // Veri zaten bellekte; burada yalnız dışa açılır.
+    const pins = plcGroups.flatMap((g) => {
+      const sonOkuma = g.conn.lastReadAt ? new Date(g.conn.lastReadAt).toISOString() : null
+      return g.pins.map((p) => ({
+        kod: p.kod,
+        plc: g.conn.kod,
+        tezgahKod: p.tezgahKod,
+        curSayac: p.curSayac,
+        lastDelta: p.lastDelta,
+        durusBit: p.durusBit,
+        sonOkuma,
+      }))
+    })
+    pins.sort((a, b) => a.plc.localeCompare(b.plc, 'tr') || a.kod - b.kod)
+    res.end(JSON.stringify({ sonOkuma: sonGlobalOkuma, pinSayisi: pins.length, pins }, null, 2))
   } else {
     res.statusCode = 404
-    res.end(JSON.stringify({ error: 'bulunamadı', endpoints: ['/health', '/status'] }))
+    res.end(JSON.stringify({ error: 'bulunamadı', endpoints: ['/health', '/status', '/pins'] }))
   }
 })
 
@@ -241,7 +273,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'))
 async function main() {
   log(`IPRO PLC Poller başlıyor (interval=${POLL_INTERVAL_MS}ms, port=${HTTP_PORT})`)
   await loadPins()
-  server.listen(HTTP_PORT, () => log(`HTTP dinliyor :${HTTP_PORT} → /health, /status`))
+  server.listen(HTTP_PORT, () => log(`HTTP dinliyor :${HTTP_PORT} → /health, /status, /pins`))
   loop()
 }
 

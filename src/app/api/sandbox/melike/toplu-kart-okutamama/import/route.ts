@@ -4,6 +4,8 @@ import * as XLSX from 'xlsx'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
 import { VALID_NEDEN, NEDEN_LABELS, type KartOkutamamaNedeni } from '../_lib/neden'
+import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
+import { notifyApproverOfPendingRecord } from '../_lib/notify-hr'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
     if (error) return error
 
     const access = await getBulkCardScanAccess(user.id)
-    if (access.level === 'NONE') {
+    if (access.level === 'NONE' || access.level === 'SELF') {
       return NextResponse.json({ error: 'Bu forma erişim yetkiniz yok' }, { status: 403 })
     }
 
@@ -200,8 +202,16 @@ export async function POST(request: NextRequest) {
       girisSaati: string | null
       cikisSaati: string | null
       neden: KartOkutamamaNedeni | null
+      onayDurumu: 'BEKLIYOR' | 'ONAYLANDI'
+      approverId: string | null
     }
     const toCreate: ToCreate[] = []
+
+    // Sistem Geliştirme gibi selfApprovalRequired bölümlerde, FULL kullanıcı
+    // kendi adına bir satır import ederse o satır yine müdür onayından geçer.
+    const requesterManagerId = access.selfApprovalRequired
+      ? (await prisma.user.findUnique({ where: { id: user.id }, select: { managerId: true } }))?.managerId ?? null
+      : null
 
     for (const p of parsed) {
       const personnel = p.sicilNo ? bySicil.get(p.sicilNo) : byAdSoyad.get(p.adSoyad.toLowerCase())
@@ -222,6 +232,19 @@ export async function POST(request: NextRequest) {
         continue
       }
 
+      const isDuplicate = await hasDuplicateRecord({
+        personnelId: personnel.id,
+        tarih: p.tarih,
+        girisSaati: p.girisSaati,
+        cikisSaati: p.cikisSaati,
+      })
+      if (isDuplicate) {
+        results.errors.push({ row: p.rowIndex, message: DUPLICATE_ERROR_MESSAGE })
+        continue
+      }
+
+      const requiresSelfApproval = access.selfApprovalRequired && personnel.id === access.personnelId && !!requesterManagerId
+
       toCreate.push({
         personnelId: personnel.id,
         sicilNo: personnel.sicilNo,
@@ -230,11 +253,13 @@ export async function POST(request: NextRequest) {
         girisSaati: p.girisSaati,
         cikisSaati: p.cikisSaati,
         neden: p.neden,
+        onayDurumu: requiresSelfApproval ? 'BEKLIYOR' : 'ONAYLANDI',
+        approverId: requiresSelfApproval ? requesterManagerId : null,
       })
     }
 
     if (toCreate.length > 0) {
-      await prisma.$transaction(
+      const created = await prisma.$transaction(
         toCreate.map((c) =>
           prisma.bulkCardScanFailure.create({
             data: {
@@ -246,11 +271,19 @@ export async function POST(request: NextRequest) {
               cikisSaati: c.cikisSaati,
               neden: c.neden,
               createdById: user.id,
+              onayDurumu: c.onayDurumu,
+              approverId: c.approverId,
             },
           }),
         ),
       )
       results.created = toCreate.length
+
+      for (const record of created) {
+        if (record.onayDurumu === 'BEKLIYOR' && record.approverId) {
+          notifyApproverOfPendingRecord(record.approverId, { sicilNo: record.sicilNo, adSoyad: record.adSoyad }, user.name || user.email)
+        }
+      }
     }
 
     return NextResponse.json(results)

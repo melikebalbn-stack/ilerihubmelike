@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from './_lib/access'
-import { notifyHrOfBulkCardScanRecords } from './_lib/notify-hr'
+import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from './_lib/notify-hr'
 import { VALID_NEDEN } from './_lib/neden'
+import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from './_lib/duplicate-check'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,6 +36,9 @@ export async function GET(request: NextRequest) {
 
     if (access.level === 'GRI') {
       where.personnel = { bolum: access.bolum }
+    } else if (access.level === 'SELF') {
+      // SELF sadece kendi kayıtlarını görebilir — bölüm/arama parametreleri göz ardı edilir.
+      where.personnelId = access.personnelId ?? '__none__'
     } else if (bolum) {
       // Bölüm filtresi sadece FULL erişimde anlamlı — GRI zaten kendi bölümüne kilitli.
       where.personnel = { bolum }
@@ -106,6 +110,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Geçersiz neden' }, { status: 400 })
     }
 
+    // SELF (Beyaz Yaka, kendisi için giriş) sadece kendi personnelId'si için kayıt açabilir.
+    if (access.level === 'SELF' && personnelId !== access.personnelId) {
+      return NextResponse.json({ error: 'Sadece kendi adınıza kayıt girebilirsiniz' }, { status: 403 })
+    }
+
     // Sicil No / Ad Soyad her zaman Personnel (İV) kaydından alınır — client'tan
     // gelen isim/sicil değeri güvenilmez, sadece seçim (personnelId) kabul edilir.
     const personnel = await prisma.personnel.findUnique({
@@ -121,6 +130,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Sadece kendi bölümünüzdeki personel için kayıt açabilirsiniz' }, { status: 403 })
     }
 
+    const isDuplicate = await hasDuplicateRecord({
+      personnelId: personnel.id,
+      tarih: new Date(tarih),
+      girisSaati: girisSaati || null,
+      cikisSaati: cikisSaati || null,
+    })
+    if (isDuplicate) {
+      return NextResponse.json({ error: DUPLICATE_ERROR_MESSAGE }, { status: 409 })
+    }
+
+    // SELF akışı her zaman, FULL akışı ise sadece selfApprovalRequired olan bir
+    // bölümdeyken (örn. Sistem Geliştirme) VE kendi adına giriyorsa müdür onayından
+    // geçer. Müdürü yoksa (managerId null) onay adımı atlanır, kayıt direkt onaylı sayılır.
+    const requiresSelfApproval =
+      access.level === 'SELF' || (access.selfApprovalRequired && personnel.id === access.personnelId)
+
+    let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
+    let approverId: string | null = null
+    if (requiresSelfApproval) {
+      const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { managerId: true } })
+      if (requester?.managerId) {
+        onayDurumu = 'BEKLIYOR'
+        approverId = requester.managerId
+      }
+    }
+
     const record = await prisma.bulkCardScanFailure.create({
       data: {
         personnelId: personnel.id,
@@ -131,6 +166,8 @@ export async function POST(request: NextRequest) {
         cikisSaati: cikisSaati || null,
         neden: neden || null,
         createdById: user.id,
+        onayDurumu,
+        approverId,
       },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },
@@ -138,8 +175,12 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok)
-    notifyHrOfBulkCardScanRecords([{ sicilNo: record.sicilNo, adSoyad: record.adSoyad }], user.name || user.email)
+    if (record.onayDurumu === 'ONAYLANDI') {
+      // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok)
+      notifyHrOfBulkCardScanRecords([{ sicilNo: record.sicilNo, adSoyad: record.adSoyad }], user.name || user.email)
+    } else if (record.approverId) {
+      notifyApproverOfPendingRecord(record.approverId, { sicilNo: record.sicilNo, adSoyad: record.adSoyad }, user.name || user.email)
+    }
 
     return NextResponse.json(record, { status: 201 })
   } catch (error) {

@@ -5,6 +5,12 @@ import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
 import { NEDEN_LABELS, type KartOkutamamaNedeni } from '../_lib/neden'
 
+const ONAY_DURUMU_LABELS: Record<string, string> = {
+  BEKLIYOR: 'Onay Bekliyor',
+  ONAYLANDI: 'Onaylandı',
+  REDDEDILDI: 'Reddedildi',
+}
+
 export const dynamic = 'force-dynamic'
 
 function formatDate(date: Date): string {
@@ -34,6 +40,8 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = {}
     if (access.level === 'GRI') {
       where.createdById = user.id
+    } else if (access.level === 'SELF') {
+      where.personnelId = access.personnelId ?? '__none__'
     } else if (bolum) {
       where.personnel = { bolum }
     }
@@ -56,7 +64,7 @@ export async function GET(request: NextRequest) {
       orderBy: { tarih: 'desc' },
     })
 
-    const headers = ['SİCİL NO', 'ADI VE SOYADI', 'BÖLÜM', 'TARİH', 'GİRİŞ SAATİ', 'ÇIKIŞ SAATİ', 'NEDEN']
+    const headers = ['SİCİL NO', 'ADI VE SOYADI', 'BÖLÜM', 'TARİH', 'GİRİŞ SAATİ', 'ÇIKIŞ SAATİ', 'NEDEN', 'DURUM']
     const data = records.map((r) => ({
       'SİCİL NO': r.sicilNo || '',
       'ADI VE SOYADI': r.adSoyad,
@@ -65,6 +73,7 @@ export async function GET(request: NextRequest) {
       'GİRİŞ SAATİ': r.girisSaati || '',
       'ÇIKIŞ SAATİ': r.cikisSaati || '',
       'NEDEN': r.neden ? NEDEN_LABELS[r.neden as KartOkutamamaNedeni] : '',
+      'DURUM': ONAY_DURUMU_LABELS[r.onayDurumu] || '',
     }))
 
     const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })

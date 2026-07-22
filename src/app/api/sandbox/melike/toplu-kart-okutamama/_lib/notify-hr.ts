@@ -49,3 +49,54 @@ export async function notifyHrOfBulkCardScanRecords(
     console.error('[toplu-kart-okutamama] İK bildirim hatası:', err)
   }
 }
+
+/**
+ * Beyaz Yaka'nın kendisi için girdiği kayıt (SELF akışı) müdür onayına düştüğünde
+ * müdüre in-app bildirim gönderir.
+ */
+export async function notifyApproverOfPendingRecord(
+  approverId: string,
+  record: RecordSummary,
+  submitterName: string
+): Promise<void> {
+  try {
+    await prisma.notification.create({
+      data: {
+        userId: approverId,
+        title: `Onayınızı Bekleyen Kayıt: ${record.adSoyad}`,
+        message: `${submitterName}, kart okutamama kaydını (${record.sicilNo || '-'}) onayınıza sundu.`,
+        type: 'INFO' as const,
+        link: '/sandbox/melike/toplu-kart-okutamama',
+      },
+    })
+  } catch (err) {
+    console.error('[toplu-kart-okutamama] Onay bildirimi hatası:', err)
+  }
+}
+
+/**
+ * Müdür kararını (onay/red) kaydı giren kişiye bildirir.
+ */
+export async function notifySubmitterOfDecision(
+  submitterId: string,
+  tarihLabel: string,
+  decision: 'APPROVE' | 'REJECT',
+  approverName: string
+): Promise<void> {
+  try {
+    const approved = decision === 'APPROVE'
+    await prisma.notification.create({
+      data: {
+        userId: submitterId,
+        title: approved ? 'Kart Okutamama Kaydınız Onaylandı' : 'Kart Okutamama Kaydınız Reddedildi',
+        message: approved
+          ? `${approverName}, ${tarihLabel} tarihli kaydınızı onayladı.`
+          : `${approverName}, ${tarihLabel} tarihli kaydınızı reddetti.`,
+        type: approved ? ('SUCCESS' as const) : ('WARNING' as const),
+        link: '/sandbox/melike/toplu-kart-okutamama',
+      },
+    })
+  } catch (err) {
+    console.error('[toplu-kart-okutamama] Karar bildirimi hatası:', err)
+  }
+}

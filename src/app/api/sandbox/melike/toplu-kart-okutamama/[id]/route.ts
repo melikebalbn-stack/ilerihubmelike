@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
 import { VALID_NEDEN } from '../_lib/neden'
+import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +23,20 @@ async function loadRecordWithAccessCheck(id: string, userId: string) {
 
   if (access.level === 'GRI' && record.personnel?.bolum !== access.bolum) {
     return { error: NextResponse.json({ error: 'Bu kaydı düzenleme yetkiniz yok' }, { status: 403 }) }
+  }
+
+  if (access.level === 'SELF') {
+    if (record.personnelId !== access.personnelId || record.createdById !== userId) {
+      return { error: NextResponse.json({ error: 'Bu kaydı düzenleme yetkiniz yok' }, { status: 403 }) }
+    }
+    if (record.onayDurumu !== 'BEKLIYOR') {
+      return {
+        error: NextResponse.json(
+          { error: 'Karara bağlanmış (onaylanmış/reddedilmiş) bir kayıt artık düzenlenemez veya silinemez' },
+          { status: 403 }
+        ),
+      }
+    }
   }
 
   return { record }
@@ -47,6 +62,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Geçersiz neden' }, { status: 400 })
     }
 
+    const access = await getBulkCardScanAccess(user.id)
+    if (access.level === 'SELF' && personnelId && personnelId !== record!.personnelId) {
+      return NextResponse.json({ error: 'Sadece kendi adınıza kayıt girebilirsiniz' }, { status: 403 })
+    }
+
     const data: Record<string, unknown> = {}
 
     if (personnelId && personnelId !== record!.personnelId) {
@@ -66,6 +86,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (girisSaati !== undefined) data.girisSaati = girisSaati || null
     if (cikisSaati !== undefined) data.cikisSaati = cikisSaati || null
     if (neden !== undefined) data.neden = neden || null
+
+    const effectivePersonnelId = (data.personnelId as string | undefined) ?? record!.personnelId
+    const effectiveTarih = (data.tarih as Date | undefined) ?? record!.tarih
+    const effectiveGiris = girisSaati !== undefined ? (girisSaati || null) : record!.girisSaati
+    const effectiveCikis = cikisSaati !== undefined ? (cikisSaati || null) : record!.cikisSaati
+
+    const isDuplicate = await hasDuplicateRecord({
+      personnelId: effectivePersonnelId,
+      tarih: effectiveTarih,
+      girisSaati: effectiveGiris,
+      cikisSaati: effectiveCikis,
+      excludeId: id,
+    })
+    if (isDuplicate) {
+      return NextResponse.json({ error: DUPLICATE_ERROR_MESSAGE }, { status: 409 })
+    }
 
     const updated = await prisma.bulkCardScanFailure.update({
       where: { id },

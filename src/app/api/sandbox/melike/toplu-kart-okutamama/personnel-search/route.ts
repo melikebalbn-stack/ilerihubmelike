@@ -32,6 +32,18 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = { aktif: true }
 
+    if (access.level === 'SELF') {
+      // SELF (kendisi için giriş) başkasını arayamaz — arama metni ne olursa
+      // olsun her zaman sadece kendi kaydı döner.
+      where.id = access.personnelId ?? '__none__'
+      const personnel = await prisma.personnel.findMany({
+        where,
+        select: { id: true, sicilNo: true, adSoyad: true, bolum: true },
+        take: 1,
+      })
+      return NextResponse.json(personnel)
+    }
+
     if (search) {
       where.OR = [
         { adSoyad: { contains: search, mode: 'insensitive' } },

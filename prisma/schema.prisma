@@ -178,7 +178,8 @@ model User {
   overtimeEscalations       OvertimeApproval[]         @relation("OvertimeApprovalEscalatedTo")
 
   // Toplu Kart Okutamama Relations
-  bulkCardScanFailuresCreated BulkCardScanFailure[] @relation("BulkCardScanFailureCreator")
+  bulkCardScanFailuresCreated  BulkCardScanFailure[] @relation("BulkCardScanFailureCreator")
+  bulkCardScanFailuresToApprove BulkCardScanFailure[] @relation("BulkCardScanFailureApprover")
 
   // Akademi Relations
   courseAssignments    UserCourseAssignment[]
@@ -11438,6 +11439,12 @@ enum KartOkutamamaNedeni {
   VAZIFE
 }
 
+enum KartOkutamamaOnayDurumu {
+  BEKLIYOR
+  ONAYLANDI
+  REDDEDILDI
+}
+
 model BulkCardScanFailure {
   id String @id @default(cuid())
 
@@ -11456,10 +11463,19 @@ model BulkCardScanFailure {
   createdById String
   createdBy   User   @relation("BulkCardScanFailureCreator", fields: [createdById], references: [id])
 
+  // Beyaz Yaka'nın kendisi için girdiği kayıtlar müdür onayından geçer (SELF akışı).
+  // Diğer tüm akışlar (Gri Yaka, FULL/İV/Admin) ONAYLANDI ile başlar — onay akışına girmez.
+  onayDurumu  KartOkutamamaOnayDurumu @default(ONAYLANDI)
+  approverId  String? // Kayıt anındaki müdürü (User.managerId'den anlık kopya) — sonradan müdür değişse de sabit kalır
+  approver    User?                   @relation("BulkCardScanFailureApprover", fields: [approverId], references: [id])
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([personnelId])
   @@index([tarih])
   @@index([createdById])
+  @@index([approverId])
 }

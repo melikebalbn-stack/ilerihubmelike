@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
-import { notifyHrOfBulkCardScanRecords } from '../_lib/notify-hr'
+import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from '../_lib/notify-hr'
 import { VALID_NEDEN } from '../_lib/neden'
+import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,8 +20,8 @@ interface BulkItem {
  * POST /api/sandbox/melike/toplu-kart-okutamama/bulk
  * "Bana Bağlı Personel" panelinde tek tarih/saat girip tüm ekibe uygulama
  * (o günlük olmaması gereken kişi listeden çıkarıldıktan sonra kalanlar için
- * tek seferde kayıt oluşturur). Her personel ayrı ayrı doğrulanır (aktif +
- * GRI ise kendi bölümü) — biri geçersizse diğerleri etkilenmez, hata olarak raporlanır.
+ * tek seferde kayıt oluşturur). Her personel ayrı ayrı doğrulanır (aktif mi) —
+ * biri geçersizse diğerleri etkilenmez, hata olarak raporlanır.
  * Body: { items: { personnelId, tarih, girisSaati?, cikisSaati? }[] }
  */
 export async function POST(request: NextRequest) {
@@ -49,6 +50,13 @@ export async function POST(request: NextRequest) {
     })
     const personnelMap = new Map(personnelList.map((p) => [p.id, p]))
 
+    // Sistem Geliştirme gibi selfApprovalRequired bölümlerde, FULL kullanıcı
+    // kendi adına da bu toplu akıştan kayıt girebilir — o satır yine müdür
+    // onayından geçer, diğerleri (başkaları için) her zamanki gibi direkt onaylı.
+    const requesterManagerId = access.selfApprovalRequired
+      ? (await prisma.user.findUnique({ where: { id: user.id }, select: { managerId: true } }))?.managerId ?? null
+      : null
+
     let created = 0
     const errors: { personnelId: string; message: string }[] = []
     const createdSummaries: { sicilNo: string | null; adSoyad: string }[] = []
@@ -63,16 +71,27 @@ export async function POST(request: NextRequest) {
         errors.push({ personnelId: item.personnelId, message: 'Personel bulunamadı veya pasif' })
         continue
       }
-      if (access.level === 'GRI' && personnel.bolum !== access.bolum) {
-        errors.push({ personnelId: item.personnelId, message: 'Bu personel sizin bölümünüzde değil' })
-        continue
-      }
       if (item.neden && !(VALID_NEDEN as readonly string[]).includes(item.neden)) {
         errors.push({ personnelId: item.personnelId, message: 'Geçersiz neden' })
         continue
       }
 
-      await prisma.bulkCardScanFailure.create({
+      const isDuplicate = await hasDuplicateRecord({
+        personnelId: personnel.id,
+        tarih: new Date(item.tarih),
+        girisSaati: item.girisSaati || null,
+        cikisSaati: item.cikisSaati || null,
+      })
+      if (isDuplicate) {
+        errors.push({ personnelId: item.personnelId, message: DUPLICATE_ERROR_MESSAGE })
+        continue
+      }
+
+      const requiresSelfApproval = access.selfApprovalRequired && personnel.id === access.personnelId && !!requesterManagerId
+      const onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = requiresSelfApproval ? 'BEKLIYOR' : 'ONAYLANDI'
+      const approverId = requiresSelfApproval ? requesterManagerId : null
+
+      const record = await prisma.bulkCardScanFailure.create({
         data: {
           personnelId: personnel.id,
           sicilNo: personnel.sicilNo,
@@ -82,13 +101,20 @@ export async function POST(request: NextRequest) {
           cikisSaati: item.cikisSaati || null,
           neden: (item.neden as 'UNUTMA' | 'BOZULMA' | 'KAYBETME' | 'VAZIFE') || null,
           createdById: user.id,
+          onayDurumu,
+          approverId,
         },
       })
       created++
-      createdSummaries.push({ sicilNo: personnel.sicilNo, adSoyad: personnel.adSoyad })
+      if (onayDurumu === 'ONAYLANDI') {
+        createdSummaries.push({ sicilNo: personnel.sicilNo, adSoyad: personnel.adSoyad })
+      } else if (record.approverId) {
+        notifyApproverOfPendingRecord(record.approverId, { sicilNo: record.sicilNo, adSoyad: record.adSoyad }, user.name || user.email)
+      }
     }
 
-    // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok)
+    // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok) — sadece
+    // direkt onaylı (BEKLIYOR olmayan) kayıtlar için.
     notifyHrOfBulkCardScanRecords(createdSummaries, user.name || user.email)
 
     return NextResponse.json({ created, errors })

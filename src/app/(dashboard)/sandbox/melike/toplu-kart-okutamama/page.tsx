@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,9 +23,16 @@ interface BulkCardScanRecord {
   girisSaati: string | null
   cikisSaati: string | null
   neden: string | null
+  onayDurumu: "BEKLIYOR" | "ONAYLANDI" | "REDDEDILDI"
   createdById: string
   createdBy: { id: string; name: string | null; email: string }
   personnel: { id: string; bolum: string; gorev: string } | null
+}
+
+const ONAY_DURUMU_LABELS: Record<BulkCardScanRecord["onayDurumu"], string> = {
+  BEKLIYOR: "Onay Bekliyor",
+  ONAYLANDI: "Onaylandı",
+  REDDEDILDI: "Reddedildi",
 }
 
 interface RecordDraft {
@@ -104,7 +111,7 @@ export default function TopluKartOkutamamaPage() {
   const router = useRouter()
 
   const [records, setRecords] = useState<BulkCardScanRecord[]>([])
-  const [accessLevel, setAccessLevel] = useState<"FULL" | "GRI" | null>(null)
+  const [accessLevel, setAccessLevel] = useState<"FULL" | "GRI" | "SELF" | null>(null)
   const [myBolum, setMyBolum] = useState<string | null>(null)
   const [forbidden, setForbidden] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -133,6 +140,7 @@ export default function TopluKartOkutamamaPage() {
   const [team, setTeam] = useState<PickedPersonnel[]>([])
   const [teamDrafts, setTeamDrafts] = useState<Record<string, RecordDraft>>({})
   const [teamSavingId, setTeamSavingId] = useState<string | null>(null)
+  const [teamErrors, setTeamErrors] = useState<Record<string, string>>({})
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
   const [bulkTarih, setBulkTarih] = useState("")
   const [bulkGiris, setBulkGiris] = useState("")
@@ -145,6 +153,86 @@ export default function TopluKartOkutamamaPage() {
   const [bulkAddBolum, setBulkAddBolum] = useState("")
 
   const [showOldRecords, setShowOldRecords] = useState(false)
+
+  // SELF: Beyaz Yaka kendisi için giriş yapar — sadece kendi Personnel kaydı.
+  const [selfPersonnel, setSelfPersonnel] = useState<PickedPersonnel | null>(null)
+  const [selfTarih, setSelfTarih] = useState("")
+  const [selfGiris, setSelfGiris] = useState("")
+  const [selfCikis, setSelfCikis] = useState("")
+  const [selfNeden, setSelfNeden] = useState("")
+  const [selfSaving, setSelfSaving] = useState(false)
+  const [selfError, setSelfError] = useState<string | null>(null)
+
+  // Onayınızı bekleyen kayıtlar — formun kendi accessLevel'ından bağımsız:
+  // herhangi bir kullanıcı birinin müdürüyse burada onun bekleyen kayıtlarını görür.
+  const [pendingApprovals, setPendingApprovals] = useState<BulkCardScanRecord[]>([])
+  const [decidingId, setDecidingId] = useState<string | null>(null)
+
+  const loadApprovals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sandbox/melike/toplu-kart-okutamama/approvals")
+      if (res.ok) {
+        const data = await res.json()
+        setPendingApprovals(data.records || [])
+      }
+    } catch {
+      // sessiz geç — onay listesi ikincil bilgi, sayfanın geri kalanını engellemesin
+    }
+  }, [])
+
+  useEffect(() => {
+    if (status === "authenticated") loadApprovals()
+  }, [status, loadApprovals])
+
+  async function handleApprovalDecision(id: string, decision: "APPROVE" | "REJECT") {
+    setDecidingId(id)
+    try {
+      const res = await fetch(`${API_BASE}/${id}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      })
+      if (res.ok) {
+        loadApprovals()
+      }
+    } finally {
+      setDecidingId(null)
+    }
+  }
+
+  async function handleSelfSave() {
+    if (!selfPersonnel || !selfTarih) {
+      setSelfError("Tarih zorunludur")
+      return
+    }
+    setSelfSaving(true)
+    setSelfError(null)
+    try {
+      const res = await fetch(API_BASE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          personnelId: selfPersonnel.id,
+          tarih: selfTarih,
+          girisSaati: selfGiris,
+          cikisSaati: selfCikis,
+          neden: selfNeden || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setSelfError(err.error || "Kayıt yapılamadı")
+        return
+      }
+      setSelfTarih("")
+      setSelfGiris("")
+      setSelfCikis("")
+      setSelfNeden("")
+      loadRecords()
+    } finally {
+      setSelfSaving(false)
+    }
+  }
 
   useEffect(() => {
     if (status === "loading") return
@@ -194,13 +282,23 @@ export default function TopluKartOkutamamaPage() {
   // Panel GRI'ya özel değil — Personnel kaydı olan (bolum'u bilinen) herkes
   // (FULL/admin dahil) kendi bölümündeki ekibi burada görür. FULL için bolum
   // parametresi elle geçiliyor (GRI'da sunucu zaten kendi bölümüne zorluyor).
+  // SELF hariç — o "Kendi Kaydım" bölümünü kullanır, ekip paneli ona gösterilmez.
   useEffect(() => {
-    if (!myBolum) return
+    if (!myBolum || accessLevel === "SELF") return
     const params = new URLSearchParams({ bolum: myBolum })
     fetch(`/api/sandbox/melike/toplu-kart-okutamama/personnel-search?${params.toString()}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: PickedPersonnel[]) => setTeam(data))
   }, [myBolum])
+
+  // SELF: kendi Personnel kaydını (id/sicilNo/adSoyad) çek — personnel-search
+  // SELF için zaten sadece kendi kaydını döndürüyor, ekstra parametre gerekmez.
+  useEffect(() => {
+    if (accessLevel !== "SELF") return
+    fetch("/api/sandbox/melike/toplu-kart-okutamama/personnel-search")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: PickedPersonnel[]) => setSelfPersonnel(data[0] || null))
+  }, [accessLevel])
 
   // Bölüm listesi — sadece FULL erişimde: Eski Kayıtlar filtresi ve
   // "Bölüme Göre Ekle/Çıkar" seçimi için.
@@ -322,6 +420,7 @@ export default function TopluKartOkutamamaPage() {
     const draft = teamDrafts[personnel.id]
     if (!draft?.tarih) return
     setTeamSavingId(personnel.id)
+    setTeamErrors((prev) => ({ ...prev, [personnel.id]: "" }))
     try {
       const res = await fetch(API_BASE, {
         method: "POST",
@@ -337,6 +436,9 @@ export default function TopluKartOkutamamaPage() {
       if (res.ok) {
         setTeamDrafts((prev) => ({ ...prev, [personnel.id]: EMPTY_DRAFT }))
         loadRecords()
+      } else {
+        const err = await res.json()
+        setTeamErrors((prev) => ({ ...prev, [personnel.id]: err.error || "Kayıt yapılamadı" }))
       }
     } finally {
       setTeamSavingId(null)
@@ -447,18 +549,14 @@ export default function TopluKartOkutamamaPage() {
     )
   }
 
-  if (forbidden) {
-    return (
-      <div className="p-6">
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
-          Bu forma erişim yetkiniz yok.
-        </div>
-      </div>
-    )
-  }
-
   // Süper Admin / İV / Sistem Geliştirme: bölümden bağımsız herkesi elle ekleyip çıkarabilir.
   const canManageAnyone = accessLevel === "FULL"
+
+  // "Kaldır" o günkü listeden gerçekten çıkarır (excludedIds) — Tümüne
+  // Uygula/Tümünü Kaydet bu kişileri atlar. Geri almak için "hariç
+  // tutulanlar" alanından tek tıkla eklenebilir.
+  const visibleTeam = team.filter((p) => !excludedIds.has(p.id))
+  const hiddenTeam = team.filter((p) => excludedIds.has(p.id))
 
   const editableRowContent = (
     <>
@@ -478,6 +576,7 @@ export default function TopluKartOkutamamaPage() {
         <NedenSelect value={formNeden} onChange={setFormNeden} />
       </TableCell>
       <TableCell>-</TableCell>
+      <TableCell>-</TableCell>
       <TableCell className="space-x-2 whitespace-nowrap">
         <Button size="sm" onClick={handleSave} disabled={saving}>
           {saving ? "Kaydediliyor..." : "Kaydet"}
@@ -493,29 +592,89 @@ export default function TopluKartOkutamamaPage() {
     <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Toplu Kart Okutamama</h1>
-        <div className="flex flex-wrap gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={handleImportFile}
-          />
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-            Excel'den İçe Aktar
-          </Button>
-          <Button variant="outline" onClick={handleExport}>
-            Excel'e Aktar
-          </Button>
-          {canManageAnyone && (
-            <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
-              {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
+        {!forbidden && (
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+              Excel'den İçe Aktar
             </Button>
-          )}
-        </div>
+            <Button variant="outline" onClick={handleExport}>
+              Excel'e Aktar
+            </Button>
+            {canManageAnyone && (
+              <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
+                {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      {importResult && (
+      {pendingApprovals.length > 0 && (
+        <div className="rounded-md border">
+          <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
+            Onayınızı Bekleyen Kayıtlar ({pendingApprovals.length})
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Sicil No</TableHead>
+                <TableHead>Ad Soyad</TableHead>
+                <TableHead>Tarih</TableHead>
+                <TableHead>Giriş Saati</TableHead>
+                <TableHead>Çıkış Saati</TableHead>
+                <TableHead>Neden</TableHead>
+                <TableHead>Talep Eden</TableHead>
+                <TableHead>İşlem</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pendingApprovals.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>{r.sicilNo || "-"}</TableCell>
+                  <TableCell>{r.adSoyad}</TableCell>
+                  <TableCell>{new Date(r.tarih).toLocaleDateString("tr-TR")}</TableCell>
+                  <TableCell>{r.girisSaati || "-"}</TableCell>
+                  <TableCell>{r.cikisSaati || "-"}</TableCell>
+                  <TableCell>{NEDEN_OPTIONS.find((o) => o.value === r.neden)?.label || "-"}</TableCell>
+                  <TableCell>{r.createdBy?.name || r.createdBy?.email}</TableCell>
+                  <TableCell className="space-x-2 whitespace-nowrap">
+                    <Button
+                      size="sm"
+                      disabled={decidingId === r.id}
+                      onClick={() => handleApprovalDecision(r.id, "APPROVE")}
+                    >
+                      Onayla
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={decidingId === r.id}
+                      onClick={() => handleApprovalDecision(r.id, "REJECT")}
+                    >
+                      Reddet
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {forbidden && pendingApprovals.length === 0 && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-red-700">
+          Bu forma erişim yetkiniz yok.
+        </div>
+      )}
+
+      {!forbidden && importResult && (
         <div className="rounded-md border bg-muted/40 p-3 text-sm">
           <p>{importResult.created} kayıt oluşturuldu.</p>
           {importResult.errors.length > 0 && (
@@ -528,10 +687,86 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {!showOldRecords && (myBolum || canManageAnyone) && (
+      {!forbidden && accessLevel === "SELF" && (
+        <div className="rounded-md border">
+          <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">Kendi Kaydım</div>
+          <div className="flex flex-wrap items-end gap-3 px-4 py-3">
+            <div className="min-w-[200px]">
+              <label className="mb-1 block text-xs text-muted-foreground">Sicil No / Ad Soyad</label>
+              <Input
+                readOnly
+                value={selfPersonnel ? `${selfPersonnel.sicilNo ? selfPersonnel.sicilNo + " - " : ""}${selfPersonnel.adSoyad}` : "Yükleniyor..."}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Tarih</label>
+              <Input type="date" value={selfTarih} onChange={(e) => setSelfTarih(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Giriş Saati</label>
+              <Input type="time" value={selfGiris} onChange={(e) => setSelfGiris(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Çıkış Saati</label>
+              <Input type="time" value={selfCikis} onChange={(e) => setSelfCikis(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">Neden</label>
+              <NedenSelect value={selfNeden} onChange={setSelfNeden} />
+            </div>
+            <Button disabled={!selfTarih || selfSaving || !selfPersonnel} onClick={handleSelfSave}>
+              {selfSaving ? "Kaydediliyor..." : "Kaydet"}
+            </Button>
+          </div>
+          {selfError && <div className="border-t px-4 py-2 text-sm text-red-600">{selfError}</div>}
+          <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+            Kaydınız müdürünüzün onayına gönderilir, onaylandıktan sonra İnsan Varlıkları&apos;na iletilir.
+          </p>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tarih</TableHead>
+                <TableHead>Giriş Saati</TableHead>
+                <TableHead>Çıkış Saati</TableHead>
+                <TableHead>Neden</TableHead>
+                <TableHead>Durum</TableHead>
+                <TableHead>İşlem</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {records.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    Henüz kaydınız yok
+                  </TableCell>
+                </TableRow>
+              )}
+              {records.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>{new Date(r.tarih).toLocaleDateString("tr-TR")}</TableCell>
+                  <TableCell>{r.girisSaati || "-"}</TableCell>
+                  <TableCell>{r.cikisSaati || "-"}</TableCell>
+                  <TableCell>{NEDEN_OPTIONS.find((o) => o.value === r.neden)?.label || "-"}</TableCell>
+                  <TableCell>{ONAY_DURUMU_LABELS[r.onayDurumu]}</TableCell>
+                  <TableCell>
+                    {r.onayDurumu === "BEKLIYOR" && (
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)}>
+                        Sil
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {!forbidden && !showOldRecords && accessLevel !== "SELF" && (myBolum || canManageAnyone) && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
-            Bana Bağlı Personel {team.length > 0 && `(${team.length})`}
+            Bana Bağlı Personel {visibleTeam.length > 0 && `(${visibleTeam.length})`}
           </div>
 
           {canManageAnyone && (
@@ -628,61 +863,100 @@ export default function TopluKartOkutamamaPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {team.map((p) => {
+              {team.length > 0 && visibleTeam.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    Bugün için listede kimse yok — tümü hariç tutuldu
+                  </TableCell>
+                </TableRow>
+              )}
+              {visibleTeam.map((p) => {
                 const draft = teamDrafts[p.id] || EMPTY_DRAFT
-                const isExcluded = excludedIds.has(p.id)
+                const rowError = teamErrors[p.id]
                 return (
-                  <TableRow key={p.id} className={isExcluded ? "opacity-40" : undefined}>
-                    <TableCell>{p.sicilNo || "-"}</TableCell>
-                    <TableCell>{p.adSoyad}</TableCell>
-                    <TableCell>
-                      <Input
-                        type="date"
-                        value={draft.tarih}
-                        disabled={isExcluded}
-                        onChange={(e) => updateTeamDraft(p.id, "tarih", e.target.value)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="time"
-                        value={draft.giris}
-                        disabled={isExcluded}
-                        onChange={(e) => updateTeamDraft(p.id, "giris", e.target.value)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="time"
-                        value={draft.cikis}
-                        disabled={isExcluded}
-                        onChange={(e) => updateTeamDraft(p.id, "cikis", e.target.value)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <NedenSelect
-                        value={draft.neden}
-                        disabled={isExcluded}
-                        onChange={(v) => updateTeamDraft(p.id, "neden", v)}
-                      />
-                    </TableCell>
-                    <TableCell className="space-x-2 whitespace-nowrap">
-                      <Button
-                        size="sm"
-                        disabled={isExcluded || !draft.tarih || teamSavingId === p.id}
-                        onClick={() => handleTeamSave(p)}
-                      >
-                        {teamSavingId === p.id ? "Kaydediliyor..." : "Kaydet"}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => toggleExcluded(p.id)}>
-                        {isExcluded ? "Listeye Ekle" : "Kaldır"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <Fragment key={p.id}>
+                    <TableRow>
+                      <TableCell>{p.sicilNo || "-"}</TableCell>
+                      <TableCell>{p.adSoyad}</TableCell>
+                      <TableCell>
+                        <Input
+                          type="date"
+                          value={draft.tarih}
+                          onChange={(e) => updateTeamDraft(p.id, "tarih", e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="time"
+                          value={draft.giris}
+                          onChange={(e) => updateTeamDraft(p.id, "giris", e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="time"
+                          value={draft.cikis}
+                          onChange={(e) => updateTeamDraft(p.id, "cikis", e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <NedenSelect
+                          value={draft.neden}
+                          onChange={(v) => updateTeamDraft(p.id, "neden", v)}
+                        />
+                      </TableCell>
+                      <TableCell className="space-x-2 whitespace-nowrap">
+                        <Button
+                          size="sm"
+                          disabled={!draft.tarih || teamSavingId === p.id}
+                          onClick={() => handleTeamSave(p)}
+                        >
+                          {teamSavingId === p.id ? "Kaydediliyor..." : "Kaydet"}
+                        </Button>
+                        {canManageAnyone && (
+                          <Button size="sm" variant="outline" onClick={() => toggleExcluded(p.id)}>
+                            Kaldır
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    {rowError && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-1 text-xs text-red-600">
+                          {rowError}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
                 )
               })}
             </TableBody>
           </Table>
+
+          {canManageAnyone && hiddenTeam.length > 0 && (
+            <div className="border-t bg-muted/20 px-4 py-3">
+              <p className="mb-2 text-xs text-muted-foreground">
+                Bugün için listeden kaldırılanlar ({hiddenTeam.length})
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {hiddenTeam.map((p) => (
+                  <span
+                    key={p.id}
+                    className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-sm"
+                  >
+                    {p.adSoyad}
+                    <button
+                      type="button"
+                      className="text-xs text-primary underline"
+                      onClick={() => toggleExcluded(p.id)}
+                    >
+                      Geri Ekle
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -736,6 +1010,7 @@ export default function TopluKartOkutamamaPage() {
               <TableHead>Giriş Saati</TableHead>
               <TableHead>Çıkış Saati</TableHead>
               <TableHead>Neden</TableHead>
+              <TableHead>Durum</TableHead>
               <TableHead>Oluşturan</TableHead>
               <TableHead>İşlemler</TableHead>
             </TableRow>
@@ -743,21 +1018,21 @@ export default function TopluKartOkutamamaPage() {
           <TableBody>
             {formError && editingId && (
               <TableRow>
-                <TableCell colSpan={9} className="text-sm text-red-600">
+                <TableCell colSpan={10} className="text-sm text-red-600">
                   {formError}
                 </TableCell>
               </TableRow>
             )}
             {loading && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground">
+                <TableCell colSpan={10} className="text-center text-muted-foreground">
                   Yükleniyor...
                 </TableCell>
               </TableRow>
             )}
             {!loading && records.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground">
+                <TableCell colSpan={10} className="text-center text-muted-foreground">
                   Kayıt bulunamadı
                 </TableCell>
               </TableRow>
@@ -776,6 +1051,7 @@ export default function TopluKartOkutamamaPage() {
                   <TableCell>{r.girisSaati || "-"}</TableCell>
                   <TableCell>{r.cikisSaati || "-"}</TableCell>
                   <TableCell>{NEDEN_OPTIONS.find((o) => o.value === r.neden)?.label || "-"}</TableCell>
+                  <TableCell>{ONAY_DURUMU_LABELS[r.onayDurumu]}</TableCell>
                   <TableCell>{r.createdBy?.name || r.createdBy?.email}</TableCell>
                   <TableCell className="space-x-2 whitespace-nowrap">
                     {canEdit && (

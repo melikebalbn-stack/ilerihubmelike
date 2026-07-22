@@ -18,12 +18,19 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../../../src/generated/prisma'
 import { PlcConnection } from './plc'
-import { sayacDelta, durusGecis, aggregateTezgah, type PinOzet } from './hesap'
+import { sayacDelta, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
 
 // ── config (env'den; hardcode yok) ──
 const POLL_INTERVAL_MS = Number(process.env.IPRO_POLLER_INTERVAL_MS ?? 5_000)
 const HTTP_PORT = Number(process.env.IPRO_POLLER_PORT ?? 3_020)
 const DEBUG = process.env.IPRO_POLLER_DEBUG === '1'
+/**
+ * Bayatlık eşiği (ms). Bir tezgahın son okuması bundan eskiyse `/status`'te YER ALMAZ
+ * → is-basla 503 döner → iş açılmaz (fail-safe).
+ * Varsayılan 20000: döngü 5 sn + okuma timeout 4 sn ≈ kaçan tur 9 sn; 20 sn İKİ kaçan
+ * turu tolere eder, gereksiz 503 üretmez.
+ */
+const BAYATLIK_MS = Number(process.env.IPRO_POLLER_BAYATLIK_MS ?? 20_000)
 /**
  * Yalnız belirtilen PLC(ler) ile çalış — virgülle ayrılmış kod listesi (ör. "PANO-3").
  * Aşamalı açılım (önce PANO-3, sonra 3 PLC) ve saha debug'ı için. Boşsa TÜM aktif PLC'ler.
@@ -222,23 +229,46 @@ function loop() {
 // ── HTTP: /health + /status (iç ağ, auth yok) ──
 const server = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  const simdi = Date.now()
   if (req.url === '/health') {
+    // /health HER ZAMAN ayakta — PLC hiç bağlanamasa bile teşhis uç noktası lazım.
+    const tazeSayi = [...tezgahState.values()].filter((t) => taze(t.sonOkuma, simdi, BAYATLIK_MS)).length
     res.end(
       JSON.stringify(
-        { ok: true, sonOkuma: sonGlobalOkuma, pollIntervalMs: POLL_INTERVAL_MS, plclar: plcGroups.map((g) => g.conn.status()) },
+        {
+          ok: true,
+          sonOkuma: sonGlobalOkuma,
+          pollIntervalMs: POLL_INTERVAL_MS,
+          bayatlikMs: BAYATLIK_MS,
+          tezgah: { taze: tazeSayi, bayat: tezgahState.size - tazeSayi, toplam: tezgahState.size },
+          plclar: plcGroups.map((g) => {
+            const s = g.conn.status()
+            return {
+              ...s,
+              sonOkumaYasiMs: s.lastReadAt ? simdi - Date.parse(s.lastReadAt) : null,
+            }
+          }),
+        },
         null,
         2,
       ),
     )
   } else if (req.url === '/status') {
-    // SÖZLEŞME: is-basla bu şekli okuyor ({tezgahKod, sayacToplam, ...}) — DEĞİŞTİRME.
-    const list = [...tezgahState.values()].sort((a, b) => a.tezgahKod.localeCompare(b.tezgahKod, 'tr'))
+    // SÖZLEŞME: is-basla bu şekli okuyor ({tezgahKod, sayacToplam, ...}) — ŞEKİL DEĞİŞMEZ.
+    // DEĞİŞEN: yalnız TAZE okumadan gelen tezgahlar listeye girer. Veri yoksa (soğuk
+    // açılış) veya bayatsa (PLC koptu) tezgah listede YER ALMAZ → is-basla 503 → iş
+    // açılmaz. Fail-safe: yanlış/bayat baseline ile prod kaydı oluşmaz.
+    const list = [...tezgahState.values()]
+      .filter((t) => taze(t.sonOkuma, simdi, BAYATLIK_MS))
+      .sort((a, b) => a.tezgahKod.localeCompare(b.tezgahKod, 'tr'))
     res.end(JSON.stringify(list, null, 2))
   } else if (req.url === '/pins') {
     // Pin bazlı son-okuma snapshot'ı — sinyal takibi ekranı (Melike #14) için.
-    // Veri zaten bellekte; burada yalnız dışa açılır.
+    // FİLTRELENMEZ: bayat pinler de sunulur (teşhis aracı burası), her pine `bayat`
+    // bayrağı eklenir. /status'ten farkı bilinçli — orada fail-safe filtre var.
     const pins = plcGroups.flatMap((g) => {
       const sonOkuma = g.conn.lastReadAt ? new Date(g.conn.lastReadAt).toISOString() : null
+      const bayat = !taze(sonOkuma, simdi, BAYATLIK_MS)
       return g.pins.map((p) => ({
         kod: p.kod,
         plc: g.conn.kod,
@@ -247,6 +277,7 @@ const server = http.createServer((req, res) => {
         lastDelta: p.lastDelta,
         durusBit: p.durusBit,
         sonOkuma,
+        bayat,
       }))
     })
     pins.sort((a, b) => a.plc.localeCompare(b.plc, 'tr') || a.kod - b.kod)

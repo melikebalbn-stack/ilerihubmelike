@@ -60,6 +60,36 @@ export function durusGecis(prevBit: boolean | undefined, curBit: boolean): Durus
   return null
 }
 
+// ── Tazelik (fail-safe) ──
+
+/**
+ * Bir okumanın TAZE olup olmadığı.
+ *
+ * NEDEN: `/status`'ü yalnız gerçek ve taze okumayla beslemek için. İki pencere
+ * kapanır:
+ *   1) SOĞUK AÇILIŞ — poller ayağa kalkar, `/status` yayına girer ama ilk PLC
+ *      okuması henüz yapılmamıştır (sonOkuma = null). Filtresiz kalırsa
+ *      `sayacToplam: 0` sunulur; o anda iş başlatan operatör YANLIŞ (sıfır)
+ *      plcSayacBaslangic alır ve bu prod kaydı geri alınamaz.
+ *   2) BAĞLANTI KOPMASI — PLC koparsa son bilinen değerler bellekte kalır ve
+ *      sunulmaya devam eder (backoff 60 sn'ye kadar çıkabilir) → BAYAT baseline.
+ *
+ * FAIL-SAFE YÖN: şüphede kalınca tezgah `/status`'te YER ALMAZ → is-basla
+ * bugünkü 503 dalına düşer → iş AÇILMAZ. Yanlış kayıt yerine açılmamış iş.
+ *
+ * @param sonOkuma ISO zaman damgası; null ise hiç okuma yapılmamıştır
+ * @param simdi    şimdiki zaman (ms epoch)
+ * @param esikMs   bayatlık eşiği; yaş bunu AŞARSA bayat (eşiğe eşit hâlâ taze)
+ */
+export function taze(sonOkuma: string | null, simdi: number, esikMs: number): boolean {
+  if (!sonOkuma) return false // hiç okuma yok → asla taze sayılmaz
+  const t = Date.parse(sonOkuma)
+  if (Number.isNaN(t)) return false // bozuk damga → güvenli tarafta kal
+  const yas = simdi - t
+  if (yas < 0) return true // saat kayması: gelecekten damga → taze say
+  return yas <= esikMs
+}
+
 // ── Tezgah toplama ──
 
 export interface PinOzet {

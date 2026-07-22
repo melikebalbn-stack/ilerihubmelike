@@ -5,7 +5,7 @@
  * Reset senaryosu BİRİNCİ SINIF vaka (sahada canlı kanıtlandı: CN14 prev=1 → cur=0).
  */
 import { describe, it, expect } from 'vitest'
-import { sayacDelta, durusGecis, aggregateTezgah, type PinOzet } from './hesap'
+import { sayacDelta, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
 
 describe('sayacDelta', () => {
   it('normal artış → delta = fark', () => {
@@ -74,6 +74,81 @@ describe('durusGecis', () => {
   it('ilk tur (prev undefined) → geçiş üretilmez (baseline)', () => {
     expect(durusGecis(undefined, true)).toBeNull()
     expect(durusGecis(undefined, false)).toBeNull()
+  })
+})
+
+describe('taze (fail-safe tazelik)', () => {
+  const T0 = Date.parse('2026-07-22T10:00:00.000Z')
+  const ISO = (msOnce: number) => new Date(T0 - msOnce).toISOString()
+  const ESIK = 20_000
+
+  it('sonOkuma null (SOĞUK AÇILIŞ) → taze DEĞİL', () => {
+    // Kritik: poller yeni kalktı, hiç okuma yok → tezgah /status'e GİRMEMELİ.
+    expect(taze(null, T0, ESIK)).toBe(false)
+  })
+
+  it('az önce okundu → taze', () => {
+    expect(taze(ISO(1_000), T0, ESIK)).toBe(true)
+  })
+
+  it('eşiğin ALTINDA (19.999 sn) → taze', () => {
+    expect(taze(ISO(19_999), T0, ESIK)).toBe(true)
+  })
+
+  it('eşiğe TAM EŞİT (20.000 sn) → hâlâ taze (yaş eşiği AŞMALI)', () => {
+    expect(taze(ISO(20_000), T0, ESIK)).toBe(true)
+  })
+
+  it('eşiğin ÜSTÜNDE (20.001 sn) → BAYAT', () => {
+    expect(taze(ISO(20_001), T0, ESIK)).toBe(false)
+  })
+
+  it('PLC koptu, backoff 60 sn → BAYAT (bayat baseline sunulmaz)', () => {
+    expect(taze(ISO(60_000), T0, ESIK)).toBe(false)
+  })
+
+  it('bozuk zaman damgası → güvenli tarafta, taze DEĞİL', () => {
+    expect(taze('bozuk-damga', T0, ESIK)).toBe(false)
+  })
+
+  it('gelecekten damga (saat kayması) → taze sayılır', () => {
+    expect(taze(ISO(-5_000), T0, ESIK)).toBe(true)
+  })
+})
+
+describe('/status filtresi — fail-safe davranış', () => {
+  // /status derlenirken aggregate sonucu taze() ile filtrelenir; burada o filtreyi
+  // aynı mantıkla kurup uçtan uca davranışı doğruluyoruz (HTTP/PLC gerekmez).
+  const T0 = Date.parse('2026-07-22T10:00:00.000Z')
+  const ESIK = 20_000
+  type TezgahSatir = { tezgahKod: string; sayacToplam: number; sonOkuma: string | null }
+  const filtrele = (liste: TezgahSatir[]) => liste.filter((t) => taze(t.sonOkuma, T0, ESIK))
+
+  it('SOĞUK AÇILIŞ: hiç okuma yokken /status BOŞ dizi döner', () => {
+    const liste: TezgahSatir[] = [
+      { tezgahKod: 'KH31', sayacToplam: 0, sonOkuma: null },
+      { tezgahKod: 'KH32', sayacToplam: 0, sonOkuma: null },
+    ]
+    expect(filtrele(liste)).toEqual([])
+    // ⇒ is-basla kaydı bulamaz → 503 → yanlış (sıfır) baseline ile iş AÇILMAZ.
+  })
+
+  it('KOPMA: bayat tezgah listeden düşer, taze olan kalır', () => {
+    const liste: TezgahSatir[] = [
+      { tezgahKod: 'KH31', sayacToplam: 2053, sonOkuma: new Date(T0 - 3_000).toISOString() },
+      { tezgahKod: 'KH32', sayacToplam: 999, sonOkuma: new Date(T0 - 45_000).toISOString() },
+    ]
+    const sonuc = filtrele(liste)
+    expect(sonuc.map((t) => t.tezgahKod)).toEqual(['KH31'])
+    expect(sonuc[0].sayacToplam).toBe(2053) // taze olanın şekli korunur (is-basla sözleşmesi)
+  })
+
+  it('hepsi taze → hepsi listede (gereksiz 503 üretilmez)', () => {
+    const liste: TezgahSatir[] = [
+      { tezgahKod: 'KH31', sayacToplam: 10, sonOkuma: new Date(T0 - 5_000).toISOString() },
+      { tezgahKod: 'KH32', sayacToplam: 20, sonOkuma: new Date(T0 - 9_000).toISOString() },
+    ]
+    expect(filtrele(liste)).toHaveLength(2)
   })
 })
 

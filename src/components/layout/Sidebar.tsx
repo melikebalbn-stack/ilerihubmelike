@@ -27,6 +27,7 @@ import {
   MessageSquare,
   BarChart3,
   Activity,
+  Radio,
   Factory,
   MonitorSmartphone,
   Link2,
@@ -114,6 +115,7 @@ const iproMenuItems = [
   { name: "Hurda / Duruş Sebepleri", icon: ClipboardList, href: "/ipro/sebepler", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Kiosk Cihazları", icon: MonitorSmartphone, href: "/ipro/kiosklar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
   { name: "IFS Eşlemeleri", icon: Link2, href: "/ipro/ifs-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
+  { name: "Sinyal Takibi", icon: Radio, href: "/ipro/sinyal", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
 ]
 
 // Stratejik IK alt menüsü

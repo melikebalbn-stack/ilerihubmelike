@@ -216,11 +216,16 @@ async function pollPlc(g: PlcGroup) {
     log(`↺ ${g.conn.kod} baseline tazelendi — bu tur delta üretilmedi (hata/reconnect sonrası)`)
   }
 
+  // Baseline tazeleme turunda herhangi bir pin BOZUK SIFIR gördüyse tazeleme
+  // TAMAMLANMAMIŞ sayılır → bayrak tüketilmez, sonraki tura devreder.
+  let suphelSifirGoruldu = false
+
   for (const { pin, prev, cur } of okumalar) {
     const durus = (durusBuf.readUInt8(pin.durusAdresi - g.durusStart) & 0x01) === 1
 
     // ── SAYAÇ ── (saf karar: hesap.ts sayacIsle — üç katman orada birleşir)
     const { delta, yeniPrev, olay } = sayacIsle({ prev, cur, baselineTazele, blokGecersiz })
+    if (baselineTazele && olay === 'sifir-suphesi') suphelSifirGoruldu = true
     if (olay === 'reset-kabul') log(`ℹ️ ${g.conn.kod} pin ${pin.kod} gerçek RESET (${prev} → ${cur}), delta=${delta}`)
     else if (olay === 'sifir-suphesi') log(`⚠️ ${g.conn.kod} pin ${pin.kod} SIFIR ŞÜPHESİ (${prev} → 0) — prevSayac korundu`)
     pin.prevSayac = yeniPrev
@@ -237,9 +242,15 @@ async function pollPlc(g: PlcGroup) {
     pin.durusBit = durus
   }
 
-  // Katman 1 bayrağı yalnız GEÇERLİ bir okumada tüketilir; geçersiz okumada
-  // bir sonraki tura devreder (aksi hâlde tazeleme boşa gider ve hayalet döner).
-  if (baselineTazele) g.baselineTazeleGerek = false
+  // Katman 1 bayrağı yalnız GEÇERLİ ve ŞÜPHESİZ bir okumada tüketilir:
+  //  - blok-geçersiz okumada zaten baselineTazele=false (bayrak duruyor),
+  //  - baseline turunda bozuk sıfır görüldüyse tazeleme tamamlanmamıştır.
+  // Aksi hâlde prev=0 benimsenir ve sonraki gerçek okumada hayalet üretilir.
+  if (baselineTazele && !suphelSifirGoruldu) {
+    g.baselineTazeleGerek = false
+  } else if (baselineTazele && suphelSifirGoruldu) {
+    log(`⚠️ ${g.conn.kod} baseline tazeleme ERTELENDİ — turda bozuk sıfır görüldü, bayrak korundu`)
+  }
 }
 
 function aggregate() {

@@ -63,7 +63,17 @@ export function sayacIsle(g: SayacGirdi): SayacIsleSonuc {
   if (g.blokGecersiz) return { delta: 0, yeniPrev: g.prev, olay: 'blok-gecersiz' }
 
   // KATMAN 1 — hata/reconnect sonrası: yalnız baseline tazelenir, delta ÜRETİLMEZ.
-  if (g.baselineTazele) return { delta: 0, yeniPrev: g.cur, olay: 'baseline-tazelendi' }
+  if (g.baselineTazele) {
+    // ANCAK bozuk bir sıfır baseline olarak BENİMSENMEZ. Katman 2 yalnız EN AZ İKİ
+    // dolu sayaç varken ateşlenir; tek dolu sayaçlı PLC/vardiya başında bozuk 0
+    // buraya kadar gelebilir. Benimsenirse prev=0 olur ve sonraki gerçek okumada
+    // delta = tüm sayaç kadar HAYALET üretilir (17:47 epizodunun varyantı).
+    // Sıfır reddedilir, bayrak çağıran tarafta tüketilmez → sonraki tura devreder.
+    if (g.cur === 0 && g.prev !== undefined && g.prev > 0) {
+      return { delta: 0, yeniPrev: g.prev, olay: 'sifir-suphesi' }
+    }
+    return { delta: 0, yeniPrev: g.cur, olay: 'baseline-tazelendi' }
+  }
 
   // İlk okuma: baseline kurulur (birikmiş sayaç üretim sayılmaz).
   if (g.prev === undefined) return { delta: 0, yeniPrev: g.cur, olay: 'ilk' }

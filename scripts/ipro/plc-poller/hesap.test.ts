@@ -82,6 +82,41 @@ describe('sayacIsle — hayalet üretim savunması', () => {
     expect(prev).toBe(1146)
   })
 
+  it('HATA → RECONNECT → 0 (geçersiz) → 0 (geçersiz) → 1146: birikim ARTMAZ, baseline 1146', () => {
+    // 17:47 epizodunun tam deseni: sahte RESET reconnect SONRASINDA geliyor
+    // (PLC toparlandıktan sonra da bir süre 0 dönüyor).
+    const { birikim, olaylar, prev } = akis([
+      { cur: 1146 },                                            // baseline
+      { cur: 0, baselineTazele: true, blokGecersiz: true },      // reconnect + blok geçersiz
+      { cur: 0, baselineTazele: true, blokGecersiz: true },      // hâlâ 0, hâlâ geçersiz
+      { cur: 1146, baselineTazele: true },                       // toparlandı → baseline tazele
+    ])
+    expect(birikim).toBe(0) // HAYALET YOK
+    expect(olaylar).toEqual(['ilk', 'blok-gecersiz', 'blok-gecersiz', 'baseline-tazelendi'])
+    expect(prev).toBe(1146) // baseline gerçek değere tazelendi
+  })
+
+  it('KATMAN 2 ATEŞLENEMEZKEN baseline turunda bozuk 0 BENİMSENMEZ', () => {
+    // Tek dolu sayaçlı PLC/vardiya başı: blokGecersizMi >=2 dolu sayaç ister,
+    // ateşlenmez. Bozuk 0 baseline olarak benimsenirse sonraki gerçek okumada
+    // delta = 1146 hayalet üretilirdi.
+    const { birikim, olaylar, prev } = akis([
+      { cur: 1146 },                          // baseline
+      { cur: 0, baselineTazele: true },       // reconnect + bozuk 0, blok ATEŞLENMEDİ
+      { cur: 1146, baselineTazele: true },    // bayrak devretti, gerçek değer geldi
+    ])
+    expect(birikim).toBe(0) // HAYALET YOK
+    expect(olaylar).toEqual(['ilk', 'sifir-suphesi', 'baseline-tazelendi'])
+    expect(prev).toBe(1146)
+  })
+
+  it('baseline turunda GERÇEK sıfır (prev de 0) sorunsuz benimsenir', () => {
+    // Hiç üretmemiş makine: prev=0, cur=0 → şüphe yok, baseline tazelenir.
+    const { olaylar, prev } = akis([{ cur: 0 }, { cur: 0, baselineTazele: true }])
+    expect(olaylar).toEqual(['ilk', 'baseline-tazelendi'])
+    expect(prev).toBe(0)
+  })
+
   it('RECONNECT sonrası ilk okuma DELTA ÜRETMEZ, yalnız baseline tazeler', () => {
     // Kopma penceresinde makine üretmiş olabilir; o üretim bilinçli olarak sayılmaz
     // (hayalet üretmektense eksik saymak yeğdir).

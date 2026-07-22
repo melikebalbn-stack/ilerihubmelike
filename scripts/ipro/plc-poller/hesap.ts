@@ -9,13 +9,6 @@
 
 // ── Sayaç ──
 
-export interface SayacSonuc {
-  /** Bu turdaki üretim artışı (asla negatif). */
-  delta: number
-  /** PLC sayacı sıfırlanmış mı (cur < prev). */
-  resetMi: boolean
-}
-
 // ── Hayalet üretim savunması (22.07.2026 saha olayı) ──
 //
 // KALICI DERS: **MBRead hata vermemesi verinin GEÇERLİ olduğu anlamına GELMEZ.**
@@ -104,34 +97,6 @@ export function blokGecersizMi(okumalar: Array<{ prev: number | undefined; cur: 
   return oncedenDolu.every((o) => o.cur === 0)
 }
 
-/**
- * İki okuma arasındaki sayaç deltası.
- *
- * WRAP BRANCH'İ BİLİNÇLİ OLARAK YOK (gündüz sonda kanıtı, 22.07.2026):
- * sahada görülen en yüksek sayaç 3997 — DWORD_MAX'ın (4 294 967 296) yalnızca
- * %0.0001'i. Sayaçlar wrap eşiğine YAKLAŞMADAN zaten sıfırlanıyor
- * (kanıt: CN14 prev=1 → cur=0, ardından 1, 2 diye yeniden saymaya başladı).
- * Bu yüzden `cur < prev` durumu WRAP değil, RESET olarak yorumlanır.
- * Wrap gerçekten mümkün olsaydı ayrı bir branch gerekirdi; veri onu göstermiyor.
- *
- * Reset + aynı turda üretim: prev=500, cur=3 → reset olmuş VE 3 adet üretilmiş
- * demektir; delta = cur = 3 (üretim kaybedilmez).
- *
- * @param prev önceki okuma; undefined ise bu ilk turdur
- * @param cur  şimdiki okuma (DWORD big-endian, ham)
- */
-export function sayacDelta(prev: number | undefined, cur: number): SayacSonuc {
-  // İlk tur: baseline kurulur, delta sayılmaz (aksi halde tüm birikmiş sayaç
-  // tek turda "üretim" gibi görünürdü).
-  if (prev === undefined) return { delta: 0, resetMi: false }
-
-  if (cur >= prev) return { delta: cur - prev, resetMi: false }
-
-  // cur < prev → RESET (yukarıdaki gerekçe). Sıfırlama sonrası okunan değer,
-  // sıfırlamadan bu yana üretilen adettir.
-  const delta = cur < 0 ? 0 : cur
-  return { delta, resetMi: true }
-}
 
 // ── Duruş ──
 

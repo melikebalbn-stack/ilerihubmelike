@@ -124,7 +124,7 @@ export default function SettingsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingType, setEditingType] = useState<EditingType>(null)
   const [editingItem, setEditingItem] = useState<any>(null)
-  const [formData, setFormData] = useState<SettingsFormData>({ name: '', code: '', manufacturer: '', description: '', color: '#3b82f6', departmentId: '' })
+  const [formData, setFormData] = useState<SettingsFormData>({ name: '', code: '', manufacturer: '', description: '', color: '#3b82f6', departmentId: '', isHurdaTarget: false })
 
   // Email test
   const [emailTest, setEmailTest] = useState<EmailTestData>({ email: '', name: '', sending: false })
@@ -691,6 +691,7 @@ export default function SettingsPage() {
       else if (editingType === 'production-section') {
         endpoint = '/api/settings/production-sections'
         body.departmentId = formData.departmentId || null
+        body.isHurdaTarget = formData.isHurdaTarget
       }
 
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -724,6 +725,7 @@ export default function SettingsPage() {
       else if (editingType === 'production-section') {
         endpoint = `/api/settings/production-sections/${editingItem.id}`
         body.departmentId = formData.departmentId || null
+        body.isHurdaTarget = formData.isHurdaTarget
       }
 
       const res = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -774,12 +776,12 @@ export default function SettingsPage() {
   const openEditDialog = (item: any, type: EditingType) => {
     setEditingType(type)
     setEditingItem(item)
-    setFormData({ name: item.name, code: item.code || '', manufacturer: item.manufacturer || '', description: item.description || '', color: item.color || '#3b82f6', departmentId: item.departmentId || '' })
+    setFormData({ name: item.name, code: item.code || '', manufacturer: item.manufacturer || '', description: item.description || '', color: item.color || '#3b82f6', departmentId: item.departmentId || '', isHurdaTarget: !!item.isHurdaTarget })
     setIsEditDialogOpen(true)
   }
 
   const resetForm = () => {
-    setFormData({ name: '', code: '', manufacturer: '', description: '', color: '#3b82f6', departmentId: '' })
+    setFormData({ name: '', code: '', manufacturer: '', description: '', color: '#3b82f6', departmentId: '', isHurdaTarget: false })
   }
 
   // Email test
@@ -1403,6 +1405,20 @@ export default function SettingsPage() {
                 </select>
               </div>
             )}
+            {editingType === 'production-section' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isHurdaTarget"
+                  checked={formData.isHurdaTarget}
+                  onChange={(e) => setFormData({ ...formData, isHurdaTarget: e.target.checked })}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="isHurdaTarget" className="text-sm font-normal">
+                  Hurda hedef bölümü (Kalibrasyon &quot;Karar: Hurda&quot;da cihaz buraya taşınır — tek bölüm işaretli olabilir)
+                </Label>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>İptal</Button>
@@ -1459,6 +1475,20 @@ export default function SettingsPage() {
                     <option key={dept.id} value={dept.id}>{dept.name}</option>
                   ))}
                 </select>
+              </div>
+            )}
+            {editingType === 'production-section' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="edit-isHurdaTarget"
+                  checked={formData.isHurdaTarget}
+                  onChange={(e) => setFormData({ ...formData, isHurdaTarget: e.target.checked })}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="edit-isHurdaTarget" className="text-sm font-normal">
+                  Hurda hedef bölümü (Kalibrasyon &quot;Karar: Hurda&quot;da cihaz buraya taşınır — tek bölüm işaretli olabilir)
+                </Label>
               </div>
             )}
           </div>

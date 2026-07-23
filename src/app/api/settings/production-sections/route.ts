@@ -21,22 +21,32 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, code, departmentId } = body
+    const { name, code, departmentId, isHurdaTarget } = body
 
     const maxSortOrder = await prisma.calibrationProductionSection.aggregate({
       _max: { sortOrder: true },
     })
     const nextSortOrder = (maxSortOrder._max.sortOrder ?? 0) + 1
 
-    const section = await prisma.calibrationProductionSection.create({
-      data: {
-        name,
-        code: code || null,
-        departmentId: departmentId || null,
-        isActive: true,
-        sortOrder: nextSortOrder,
-      },
-      include: { department: { select: { id: true, name: true } } },
+    // Hurda hedef bölümü tekil olmalı: yeni kayıt hedef seçilirse diğerlerinden kaldırılır.
+    const section = await prisma.$transaction(async (tx) => {
+      if (isHurdaTarget) {
+        await tx.calibrationProductionSection.updateMany({
+          where: { isHurdaTarget: true },
+          data: { isHurdaTarget: false },
+        })
+      }
+      return tx.calibrationProductionSection.create({
+        data: {
+          name,
+          code: code || null,
+          departmentId: departmentId || null,
+          isHurdaTarget: !!isHurdaTarget,
+          isActive: true,
+          sortOrder: nextSortOrder,
+        },
+        include: { department: { select: { id: true, name: true } } },
+      })
     })
 
     return NextResponse.json(section, { status: 201 })

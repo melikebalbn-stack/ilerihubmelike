@@ -357,6 +357,9 @@ model CalibrationProductionSection {
   code         String?
   departmentId String?
   department   Department? @relation("DepartmentProductionSections", fields: [departmentId], references: [id])
+  // Kalibrasyon geçmişinde Karar=Hurda seçilince cihazın taşınacağı hedef bölüm.
+  // Tekil olmalı (UI/API tek kaydı true tutar); koda departman/bölüm adı gömülmez.
+  isHurdaTarget Boolean    @default(false)
   isActive     Boolean     @default(true)
   sortOrder    Int         @default(0)
   createdAt    DateTime    @default(now())

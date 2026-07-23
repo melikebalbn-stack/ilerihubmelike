@@ -150,7 +150,7 @@ export default function CalibrationPage() {
   const [deviceTypes, setDeviceTypes] = useState<string[]>([])
   const [deviceNames, setDeviceNames] = useState<string[]>([])
   const [models, setModels] = useState<string[]>([])
-  const [productionSections, setProductionSections] = useState<{ name: string; departmentName: string | null }[]>([])
+  const [productionSections, setProductionSections] = useState<{ name: string; departmentName: string | null; isHurdaTarget: boolean }[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [lastImportErrors, setLastImportErrors] = useState<string[]>([])
@@ -247,7 +247,7 @@ export default function CalibrationPage() {
         setDeviceTypes(data.deviceTypes?.map((t: any) => t.name) || [])
         setDeviceNames(data.deviceModels?.map((m: any) => m.name) || [])
         setModels(data.deviceModels?.map((m: any) => m.name) || [])
-        setProductionSections(data.productionSections?.map((s: any) => ({ name: s.name, departmentName: s.department?.name || null })) || [])
+        setProductionSections(data.productionSections?.map((s: any) => ({ name: s.name, departmentName: s.department?.name || null, isHurdaTarget: !!s.isHurdaTarget })) || [])
       }
 
       if (deptRes.ok) {
@@ -1339,7 +1339,7 @@ export default function CalibrationPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="name">Cihaz Tipi</Label>
+                    <Label htmlFor="name">Cihaz Adı</Label>
                     <Select
                       id="name"
                       value={formData.name}
@@ -1348,6 +1348,22 @@ export default function CalibrationPage() {
                       <option value="">Seçiniz</option>
                       {deviceNames.map((name) => (
                         <option key={name} value={name}>{name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Cihaz Tipi</Label>
+                    <Select
+                      id="type"
+                      value={formData.type}
+                      onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    >
+                      <option value="">Seçiniz</option>
+                      {deviceTypes.map((type) => (
+                        <option key={type} value={type}>{type}</option>
                       ))}
                     </Select>
                   </div>
@@ -2307,7 +2323,7 @@ export default function CalibrationPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-name">Cihaz Tipi</Label>
+                  <Label htmlFor="edit-name">Cihaz Adı</Label>
                   <Select
                     id="edit-name"
                     value={formData.name}
@@ -2316,6 +2332,22 @@ export default function CalibrationPage() {
                     <option value="">Seçiniz</option>
                     {deviceNames.map((name) => (
                       <option key={name} value={name}>{name}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-type">Cihaz Tipi</Label>
+                  <Select
+                    id="edit-type"
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  >
+                    <option value="">Seçiniz</option>
+                    {deviceTypes.map((type) => (
+                      <option key={type} value={type}>{type}</option>
                     ))}
                   </Select>
                 </div>
@@ -3012,11 +3044,16 @@ export default function CalibrationPage() {
                     </div>
                   )}
 
-                  {historyFormData.result === 'HURDA' && (
-                    <div className="rounded-md border px-3 py-2 text-sm bg-red-50 border-red-200 text-red-800">
-                      Kaydedince cihaz otomatik olarak Kalite / KARANTİNA bölümüne taşınacak ve Cihaz Durumu "Hurda" olarak işaretlenecek.
-                    </div>
-                  )}
+                  {historyFormData.result === 'HURDA' && (() => {
+                    const hurdaTarget = productionSections.find((s) => s.isHurdaTarget)
+                    return (
+                      <div className="rounded-md border px-3 py-2 text-sm bg-red-50 border-red-200 text-red-800">
+                        {hurdaTarget
+                          ? `Kaydedince cihaz otomatik olarak ${hurdaTarget.departmentName || ""} / ${hurdaTarget.name} bölümüne taşınacak ve Cihaz Durumu "Hurda" olarak işaretlenecek.`
+                          : 'Hurda hedef bölümü Ayarlar\'da tanımlı değil — kaydetmeye çalışırsan hata alırsın. Önce Ayarlar > Kalibrasyon Ayarları > Bölümler\'den bir bölümü "Hurda hedef bölümü" olarak işaretle.'}
+                      </div>
+                    )
+                  })()}
 
                   <div className="flex gap-2 justify-end">
                     <Button type="button" variant="outline" onClick={cancelHistoryForm}>İptal</Button>

@@ -41,6 +41,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Karar: Hurda için hedef bölüm Ayarlar > Kalibrasyon > Bölümler'den (isHurdaTarget)
+    // gelir; koda departman/bölüm adı gömülmez. Tanımlı değilse kayıt oluşturulmadan durur.
+    let hurdaTarget: { name: string; department: { name: string } | null } | null = null
+    if (result === 'HURDA') {
+      hurdaTarget = await prisma.calibrationProductionSection.findFirst({
+        where: { isHurdaTarget: true },
+        select: { name: true, department: { select: { name: true } } },
+      })
+      if (!hurdaTarget) {
+        return NextResponse.json(
+          { error: 'Hurda hedef bölümü tanımlı değil. Ayarlar > Kalibrasyon Ayarları > Bölümler\'den bir bölümü "Hurda hedef bölümü" olarak işaretleyin.' },
+          { status: 400 }
+        )
+      }
+    }
+
     const calDate = new Date(calibrationDate)
     const nextDueDate = new Date(calDate.getTime() + (device.calibrationInterval || 365) * 24 * 60 * 60 * 1000)
 
@@ -79,11 +95,14 @@ export async function POST(request: NextRequest) {
       deviceUpdateData.statusManualOverride = false // Yeni kalibrasyon yapıldı, manuel override sıfırla
     }
 
-    // Karar: Hurda → cihaz Kalite/KARANTİNA'ya taşınır ve Hurda olarak işaretlenir.
+    // Karar: Hurda → cihaz, Ayarlar'da işaretli hedef bölüme (ve o bölümün departmanına)
+    // taşınır ve Hurda olarak işaretlenir.
     // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
-    if (result === 'HURDA') {
-      deviceUpdateData.department = 'Kalite'
-      deviceUpdateData.productionSection = 'KARANTİNA'
+    if (result === 'HURDA' && hurdaTarget) {
+      deviceUpdateData.productionSection = hurdaTarget.name
+      if (hurdaTarget.department?.name) {
+        deviceUpdateData.department = hurdaTarget.department.name
+      }
       deviceUpdateData.deviceCondition = 'Hurda'
       deviceUpdateData.scrapDate = calDate
       deviceUpdateData.scrapDescription = notes || device.scrapDescription || null

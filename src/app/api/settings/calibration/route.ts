@@ -39,6 +39,7 @@ export async function GET() {
           code: true,
           departmentId: true,
           department: { select: { id: true, name: true } },
+          isHurdaTarget: true,
         },
       }),
     ])

@@ -49,6 +49,7 @@ export interface ProductionSection {
   code: string | null
   departmentId: string | null
   department: { id: string; name: string } | null
+  isHurdaTarget: boolean
   isActive: boolean
   sortOrder: number
 }
@@ -156,6 +157,7 @@ export interface SettingsFormData {
   description: string
   color: string
   departmentId: string
+  isHurdaTarget: boolean
 }
 
 export interface EmailTestData {

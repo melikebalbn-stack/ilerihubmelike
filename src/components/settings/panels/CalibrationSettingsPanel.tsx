@@ -157,6 +157,9 @@ export function CalibrationSettingsPanel({
           {type === 'production-section' && (
             <span>Departman: {item.department?.name || '—'}</span>
           )}
+          {type === 'production-section' && item.isHurdaTarget && (
+            <span className="text-orange-600 font-medium">Hurda hedef bölümü</span>
+          )}
           <span className={item.isActive ? 'text-green-600' : 'text-red-600'}>
             {item.isActive ? 'Aktif' : 'Pasif'}
           </span>

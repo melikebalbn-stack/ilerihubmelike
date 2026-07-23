@@ -9,12 +9,21 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, code, departmentId, isActive, sortOrder } = body
+    const { name, code, departmentId, isActive, sortOrder, isHurdaTarget } = body
 
-    const section = await prisma.calibrationProductionSection.update({
-      where: { id },
-      data: { name, code, departmentId: departmentId || null, isActive, sortOrder },
-      include: { department: { select: { id: true, name: true } } },
+    // Hurda hedef bölümü tekil olmalı: bu kayıt hedef seçilirse diğerlerinden kaldırılır.
+    const section = await prisma.$transaction(async (tx) => {
+      if (isHurdaTarget) {
+        await tx.calibrationProductionSection.updateMany({
+          where: { isHurdaTarget: true, id: { not: id } },
+          data: { isHurdaTarget: false },
+        })
+      }
+      return tx.calibrationProductionSection.update({
+        where: { id },
+        data: { name, code, departmentId: departmentId || null, isActive, sortOrder, isHurdaTarget: !!isHurdaTarget },
+        include: { department: { select: { id: true, name: true } } },
+      })
     })
 
     return NextResponse.json(section)

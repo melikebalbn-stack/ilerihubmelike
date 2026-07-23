@@ -52,6 +52,22 @@ export async function PUT(
 
     const finalResult: CalibrationResult = (result as CalibrationResult) ?? existing.result
 
+    // Karar: Hurda için hedef bölüm Ayarlar > Kalibrasyon > Bölümler'den (isHurdaTarget)
+    // gelir; koda departman/bölüm adı gömülmez. Tanımlı değilse kayıt güncellenmeden durur.
+    let hurdaTarget: { name: string; department: { name: string } | null } | null = null
+    if (finalResult === 'HURDA') {
+      hurdaTarget = await prisma.calibrationProductionSection.findFirst({
+        where: { isHurdaTarget: true },
+        select: { name: true, department: { select: { name: true } } },
+      })
+      if (!hurdaTarget) {
+        return NextResponse.json(
+          { error: 'Hurda hedef bölümü tanımlı değil. Ayarlar > Kalibrasyon Ayarları > Bölümler\'den bir bölümü "Hurda hedef bölümü" olarak işaretleyin.' },
+          { status: 400 }
+        )
+      }
+    }
+
     // Kaydı güncelle
     const updated = await prisma.calibrationHistory.update({
       where: { id },
@@ -96,11 +112,14 @@ export async function PUT(
         }
       }
 
-      // Karar: Hurda → cihaz Kalite/KARANTİNA'ya taşınır ve Hurda olarak işaretlenir.
+      // Karar: Hurda → cihaz, Ayarlar'da işaretli hedef bölüme (ve o bölümün departmanına)
+      // taşınır ve Hurda olarak işaretlenir.
       // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
-      if (finalResult === 'HURDA') {
-        deviceData.department = 'Kalite'
-        deviceData.productionSection = 'KARANTİNA'
+      if (finalResult === 'HURDA' && hurdaTarget) {
+        deviceData.productionSection = hurdaTarget.name
+        if (hurdaTarget.department?.name) {
+          deviceData.department = hurdaTarget.department.name
+        }
         deviceData.deviceCondition = 'Hurda'
         deviceData.scrapDate = calDate
         deviceData.scrapDescription = notes || existing.device.scrapDescription || null

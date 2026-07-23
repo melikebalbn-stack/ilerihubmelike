@@ -64,6 +64,7 @@ import {
   ArrowRightLeft,
   UserMinus,
   Shapes,
+  Laptop,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -81,6 +82,12 @@ const mainMenuItems = [
   // { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] }, // Şimdilik gizli
   { name: "Akademi", icon: GraduationCap, href: "/akademi", roles: ["*"] },
   { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+  // Zimmet Teslim Formu — cihaz teslim tutanağı. "Zimmet İade / İlişik Kesme"
+  // (offboarding) ve envanter zimmetinden AYRI modül.
+  // Liste yetkiye bağlı; "Zimmetlerim" herkese açık (her personelin imzalaması
+  // gereken kendi tutanakları — API zaten yalnız kendi kayıtlarını döner).
+  { name: "Zimmet Teslim Formu", icon: Laptop, href: "/zimmet-formu/liste", roles: [] as string[], permission: "zimmet-formu.view" },
+  { name: "Zimmetlerim", icon: Laptop, href: "/zimmet-formu/zimmetlerim", roles: ["*"] },
 ]
 
 // Formlar alt menüsü
@@ -303,8 +310,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Kullanıcı rolüne göre menü filtreleme
   const userRole = session?.user?.role || 'USER'
   const userDepartment = session?.user?.department || ''
+  const userPermissions = session?.user?.permissions || []
 
   const filterItems = (items: typeof mainMenuItems) => items.filter(item => {
+    // Permission tabanlı erişim: item'da `permission` varsa TEK belirleyici
+    // odur (rol/departman/e-posta clause'ları değerlendirilmez). Menü
+    // görünürlüğü kozmetiktir; asıl zorlama sayfa ve API guard'larındadır.
+    const itemPermission = (item as { permission?: string }).permission
+    if (itemPermission) return userPermissions.includes(itemPermission)
+
     if (item.roles.includes('*')) return true
     if (item.roles.includes('SUPER_ADMIN') && userRole === 'SUPER_ADMIN') return true
     if (item.roles.includes(userRole)) return true

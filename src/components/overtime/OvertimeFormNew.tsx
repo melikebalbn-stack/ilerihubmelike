@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { TopScrollbar } from "@/components/ui/TopScrollbar"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -89,6 +90,9 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
 
   // Wizard step
   const [step, setStep] = useState(1)
+
+  // Step3 personel tablosu yatay-kaydırma: üst şerit ile senkron (TopScrollbar)
+  const previewScrollRef = useRef<HTMLDivElement>(null)
 
   // Step 1 state
   const [overtimeType, setOvertimeType] = useState<OvertimeType | "">(isVardiya ? "WEEKDAY_EXTRA" : "")
@@ -852,7 +856,8 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
           </div>
 
           {/* Personnel table */}
-          <div className="overflow-x-auto">
+          <TopScrollbar targetRef={previewScrollRef} />
+          <div ref={previewScrollRef} className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">

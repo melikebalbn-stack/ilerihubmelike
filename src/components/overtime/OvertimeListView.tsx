@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { TopScrollbar } from "@/components/ui/TopScrollbar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,6 +68,8 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
   const isVardiya = formTipi === "VARDIYA"
   const basePath = isVardiya ? "/forms/vardiya" : "/forms/overtime"
   const kind = isVardiya ? "Vardiya" : "Mesai"
+  // Liste tablosu yatay-kaydırma: üst şerit ile senkron (TopScrollbar)
+  const listScrollRef = useRef<HTMLDivElement>(null)
   const [forms, setForms] = useState<OvertimeForm[]>([])
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 5, total: 0, totalPages: 0 })
   const [loading, setLoading] = useState(true)
@@ -263,7 +266,9 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
 
       {/* Table */}
       <Card>
-        <CardContent className="p-0 overflow-x-auto">
+        {/* Üst yatay-kaydırma şeridi; iç Table scroller'ı nötrlenir ki tek scroller CardContent olsun */}
+        <TopScrollbar targetRef={listScrollRef} />
+        <CardContent ref={listScrollRef} className="p-0 overflow-x-auto [&>div]:overflow-visible">
           <Table>
             <TableHeader>
               <TableRow>

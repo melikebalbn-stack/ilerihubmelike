@@ -798,7 +798,6 @@ export default function OvertimeDetailPage() {
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Mesai Yapacak Bölüm</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Servis Güzergahı</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hedef Adet</th>
-                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hurda Adet</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">
                   <div className="flex items-center gap-2">
                     Gerçekleşen Adet
@@ -832,6 +831,7 @@ export default function OvertimeDetailPage() {
                     )}
                   </div>
                 </th>
+                <th className="text-left py-3 px-2 font-medium text-muted-foreground">Hurda Adet</th>
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">Açıklama</th>
                 {canEditPersonnel && (
                   <th className="text-right py-3 px-2 font-medium text-muted-foreground w-16"></th>
@@ -846,7 +846,7 @@ export default function OvertimeDetailPage() {
                 const isExpanded = expanded.has(p.id)
                 const rowEditable = editingActual && canEditActualRow(p)
 
-                // Bir üretim satırının 4 düzenlenebilir hücresi (Hedef/Hurda/Gerçekleşen/Açıklama).
+                // Bir üretim satırının 4 düzenlenebilir hücresi (Hedef/Gerçekleşen/Hurda/Açıklama).
                 // r yoksa (satırsız kayıt) düzenleme kapalı → "—".
                 const cellFor = (r: UretimSatir | undefined) => {
                   const editable = rowEditable && !!r
@@ -865,18 +865,6 @@ export default function OvertimeDetailPage() {
                           />
                         ) : r?.hedefAdet != null ? r.hedefAdet : "—"}
                       </td>
-                      {/* Hurda Adet — satır bazlı (>=0) */}
-                      <td className="py-3 px-2">
-                        {editable ? (
-                          <Input
-                            type="number" inputMode="numeric" min="0"
-                            value={rv?.hurdaAdet || ""}
-                            onChange={(e) => updateRowValue(r!.id, "hurdaAdet", e.target.value)}
-                            placeholder="Ör: 3"
-                            className="h-8 w-20 text-sm"
-                          />
-                        ) : r?.hurdaAdet != null ? r.hurdaAdet : "—"}
-                      </td>
                       {/* Gerçekleşen Adet */}
                       <td className="py-3 px-2">
                         {editable ? (
@@ -894,6 +882,18 @@ export default function OvertimeDetailPage() {
                         ) : (
                           "—"
                         )}
+                      </td>
+                      {/* Hurda Adet — satır bazlı (>=0) */}
+                      <td className="py-3 px-2">
+                        {editable ? (
+                          <Input
+                            type="number" inputMode="numeric" min="0"
+                            value={rv?.hurdaAdet || ""}
+                            onChange={(e) => updateRowValue(r!.id, "hurdaAdet", e.target.value)}
+                            placeholder="Ör: 3"
+                            className="h-8 w-20 text-sm"
+                          />
+                        ) : r?.hurdaAdet != null ? r.hurdaAdet : "—"}
                       </td>
                       {/* Açıklama */}
                       <td className="py-3 px-2">

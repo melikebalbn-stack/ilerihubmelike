@@ -8,6 +8,7 @@ import { buildKalibrasyonMailHtml, KalibrasyonDevice } from '@/lib/mail/kalibras
 type DeviceAlert = {
   deviceId: string
   deviceName: string
+  deviceType?: string | null
   alertDate: Date // nextCalibrationDate veya nextVerificationDate
   responsiblePerson: string
   responsiblePersonEmail?: string | null
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
               alertDevices.push({
                 deviceId: device.deviceId,
                 deviceName: device.name,
+                deviceType: device.type,
                 alertDate: nextDate,
                 responsiblePerson: device.responsiblePerson || 'Atanmamış',
                 responsiblePersonEmail: device.responsiblePersonEmail,
@@ -166,6 +168,7 @@ export async function POST(request: NextRequest) {
               alertDevices.push({
                 deviceId: device.deviceId,
                 deviceName: device.name,
+                deviceType: device.type,
                 alertDate: nextDate,
                 responsiblePerson: device.responsiblePerson || 'Atanmamış',
                 responsiblePersonEmail: device.responsiblePersonEmail,
@@ -409,6 +412,7 @@ Bu e-posta otomatik olarak ILERIHub Kalibrasyon Yönetim Sistemi tarafından gö
 function toMailDevice(d: DeviceAlert): KalibrasyonDevice {
   return {
     cihazId: d.deviceId,
+    cihazTipi: d.deviceType,
     departman: d.department,
     uretimBolumu: d.location,
     seriNo: d.serialNumber,

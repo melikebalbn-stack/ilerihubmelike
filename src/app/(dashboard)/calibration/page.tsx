@@ -1875,6 +1875,19 @@ export default function CalibrationPage() {
                   </TableHead>
                   <TableHead
                     className="cursor-pointer select-none hover:bg-accent"
+                    onClick={() => handleSort('type')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Cihaz Tipi
+                      {sortField === 'type' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                      ) : (
+                        <ArrowUpDown className="h-4 w-4 opacity-50" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none hover:bg-accent"
                     onClick={() => handleSort('model')}
                   >
                     <div className="flex items-center gap-1">
@@ -1997,7 +2010,7 @@ export default function CalibrationPage() {
               <TableBody>
                 {paginatedDevices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="text-center text-muted-foreground">
+                    <TableCell colSpan={14} className="text-center text-muted-foreground">
                       {searchTerm ? 'Arama sonucu bulunamadı' : 'Henüz cihaz eklenmemiş'}
                     </TableCell>
                   </TableRow>
@@ -2015,6 +2028,7 @@ export default function CalibrationPage() {
                       >
                         {device.deviceId}
                       </TableCell>
+                      <TableCell>{device.type || "-"}</TableCell>
                       <TableCell>{device.model || "-"}</TableCell>
                       <TableCell>{device.calibrationType || "-"}</TableCell>
                       <TableCell>{device.department || "-"}</TableCell>

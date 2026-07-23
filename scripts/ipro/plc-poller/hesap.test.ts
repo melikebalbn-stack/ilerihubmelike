@@ -5,7 +5,18 @@
  * Reset senaryosu BİRİNCİ SINIF vaka (sahada canlı kanıtlandı: CN14 prev=1 → cur=0).
  */
 import { describe, it, expect } from 'vitest'
-import { sayacIsle, blokGecersizMi, okumaHatasiKarari, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
+import {
+  sayacIsle,
+  blokGecersizMi,
+  okumaHatasiKarari,
+  durusGecis,
+  aggregateTezgah,
+  taze,
+  kacisKapisiKarari,
+  sifirGuvenKarari,
+  tazelikDamgasiGuncellensinMi,
+  type PinOzet,
+} from './hesap'
 
 describe('sayacIsle — hayalet üretim savunması', () => {
   // Yardımcı: bir pin'in tur dizisini işleyip toplam birikimi ve olayları döndürür.
@@ -348,5 +359,230 @@ describe('aggregateTezgah', () => {
 
   it('boş girdi → boş sonuç', () => {
     expect(aggregateTezgah([]).size).toBe(0)
+  })
+})
+
+// ── Donma tuzağı / kaçış kapısı (23.07.2026 bulgusu) ──
+//
+// Sahada 104 dk KESİNTİSİZ blok-geçersiz pencere görüldü (1248 tur). İki ayrı kusur:
+//   (1) markRead() blok-geçersizlikten ÖNCE çağrıldığı için çöp okuma tezgahı TAZE
+//       tutuyordu → /status donmuş sayaç sunuyordu (fail-safe filtresi atlanıyordu).
+//   (2) Katman 2 sıfırları SONSUZA KADAR reddediyordu → gerçek sıfırlamada donma.
+//
+// Aşağıdaki simülasyon index.ts'in tur döngüsünü birebir yansıtır: saf fonksiyonların
+// BİRLİKTE doğru davrandığı burada kanıtlanır.
+
+describe('kacisKapisiKarari', () => {
+  it('geçerli okuma ard arda sayacı sıfırlar, kapı açılmaz', () => {
+    expect(kacisKapisiKarari({ blokGecersiz: false, ardArda: 7, maxTur: 12 })).toEqual({
+      ardArda: 0,
+      kacisKapisi: false,
+    })
+  })
+
+  it('eşiğin altında yalnız sayaç ilerler', () => {
+    expect(kacisKapisiKarari({ blokGecersiz: true, ardArda: 0, maxTur: 12 })).toEqual({
+      ardArda: 1,
+      kacisKapisi: false,
+    })
+    expect(kacisKapisiKarari({ blokGecersiz: true, ardArda: 10, maxTur: 12 })).toEqual({
+      ardArda: 11,
+      kacisKapisi: false,
+    })
+  })
+
+  it('eşiğe ulaşınca kapı açılır ve sayaç sıfırlanır (her turda tekrar ateşlenmez)', () => {
+    expect(kacisKapisiKarari({ blokGecersiz: true, ardArda: 11, maxTur: 12 })).toEqual({
+      ardArda: 0,
+      kacisKapisi: true,
+    })
+  })
+})
+
+describe('sifirGuvenKarari', () => {
+  it('bekleme kurulmamışsa (kalanTur=0) beklenmez', () => {
+    expect(sifirGuvenKarari({ kalanTur: 0, hepsiSifir: true })).toEqual({ kalanTur: 0, bekleniyor: false })
+  })
+
+  it('sıfırlar sürdükçe beklenir, tur tur azalır', () => {
+    expect(sifirGuvenKarari({ kalanTur: 60, hepsiSifir: true })).toEqual({ kalanTur: 59, bekleniyor: true })
+  })
+
+  it('sıfır olmayan gerçek değer gelince bekleme ANINDA biter', () => {
+    expect(sifirGuvenKarari({ kalanTur: 59, hepsiSifir: false })).toEqual({ kalanTur: 0, bekleniyor: false })
+  })
+
+  it('kalan tur tükenince bekleme biter (sonsuza kadar 503 vermeyiz)', () => {
+    expect(sifirGuvenKarari({ kalanTur: 1, hepsiSifir: true })).toEqual({ kalanTur: 0, bekleniyor: true })
+    expect(sifirGuvenKarari({ kalanTur: 0, hepsiSifir: true })).toEqual({ kalanTur: 0, bekleniyor: false })
+  })
+})
+
+describe('tazelikDamgasiGuncellensinMi', () => {
+  it('geçerli okuma → damga ilerler', () => {
+    expect(
+      tazelikDamgasiGuncellensinMi({ okumaBasarili: true, blokGecersiz: false, sifirGuvenBekleniyor: false }),
+    ).toBe(true)
+  })
+
+  it('BLOK-GEÇERSİZ tur damgayı İLERLETMEZ (asıl kusur buydu)', () => {
+    expect(
+      tazelikDamgasiGuncellensinMi({ okumaBasarili: true, blokGecersiz: true, sifirGuvenBekleniyor: false }),
+    ).toBe(false)
+  })
+
+  it('okuma hatası damgayı ilerletmez', () => {
+    expect(
+      tazelikDamgasiGuncellensinMi({ okumaBasarili: false, blokGecersiz: false, sifirGuvenBekleniyor: false }),
+    ).toBe(false)
+  })
+
+  it('kaçış sonrası doğrulanmamış sıfır damgayı ilerletmez', () => {
+    expect(
+      tazelikDamgasiGuncellensinMi({ okumaBasarili: true, blokGecersiz: false, sifirGuvenBekleniyor: true }),
+    ).toBe(false)
+  })
+})
+
+/**
+ * index.ts tur döngüsünün saf simülasyonu (aynı sıra, aynı kararlar).
+ * Girdi: her tur için pin başına ham okuma (null = MBRead hatası).
+ */
+function plcAkis(
+  turlar: Array<Array<number | null>>,
+  { maxTur = 12, guvenTuru = 6, bayatlikMs = 20_000, intervalMs = 5_000 } = {},
+) {
+  const pinSayisi = turlar[0].length
+  const pins = Array.from({ length: pinSayisi }, () => ({
+    prev: undefined as number | undefined,
+    kacisEsigi: undefined as number | undefined,
+  }))
+  let ardArda = 0
+  let sifirGuvenKalan = 0
+  let baselineTazeleGerek = false
+  let sonGecerliOkuma: string | null = null
+  const kayit: Array<{ tur: number; bayat: boolean; delta: number; olaylar: string[] }> = []
+  let birikim = 0
+
+  turlar.forEach((okuma, i) => {
+    const simdi = (i + 1) * intervalMs
+    const olaylar: string[] = []
+    let turDelta = 0
+
+    if (okuma.some((v) => v === null)) {
+      // MBRead hatası → damga ilerlemez, katman 1 bayrağı kurulur.
+      baselineTazeleGerek = true
+      kayit.push({ tur: i, bayat: !taze(sonGecerliOkuma, simdi, bayatlikMs), delta: 0, olaylar: ['hata'] })
+      return
+    }
+    const curlar = okuma as number[]
+    const blokGecersiz = blokGecersizMi(curlar.map((cur, k) => ({ prev: pins[k].prev, cur })))
+    const kk = kacisKapisiKarari({ blokGecersiz, ardArda, maxTur })
+    ardArda = kk.ardArda
+    if (kk.kacisKapisi) {
+      sifirGuvenKalan = guvenTuru
+      pins.forEach((p) => { if (p.prev !== undefined && p.prev > 0) p.kacisEsigi = p.prev })
+      baselineTazeleGerek = false
+    }
+    const baselineTazele = baselineTazeleGerek && !blokGecersiz
+    let suphelSifir = false
+
+    curlar.forEach((cur, k) => {
+      const p = pins[k]
+      const r = sayacIsle({
+        prev: p.prev, cur, baselineTazele, blokGecersiz,
+        kacisKapisi: kk.kacisKapisi, kacisEsigi: p.kacisEsigi,
+      })
+      if (baselineTazele && r.olay === 'sifir-suphesi') suphelSifir = true
+      if (r.olay === 'kacis-geri-donus') p.kacisEsigi = undefined
+      p.prev = r.yeniPrev
+      turDelta += r.delta
+      olaylar.push(r.olay)
+    })
+    if (baselineTazele && !suphelSifir) baselineTazeleGerek = false
+
+    const sg = sifirGuvenKarari({ kalanTur: sifirGuvenKalan, hepsiSifir: curlar.every((c) => c === 0) })
+    sifirGuvenKalan = sg.kalanTur
+    if (tazelikDamgasiGuncellensinMi({ okumaBasarili: true, blokGecersiz, sifirGuvenBekleniyor: sg.bekleniyor })) {
+      sonGecerliOkuma = new Date(simdi).toISOString()
+    }
+    birikim += turDelta
+    kayit.push({ tur: i, bayat: !taze(sonGecerliOkuma, simdi, bayatlikMs), delta: turDelta, olaylar })
+  })
+  return { kayit, birikim, pins }
+}
+
+describe('donma tuzağı + kaçış kapısı (tur döngüsü simülasyonu)', () => {
+  const tekrar = <T>(n: number, v: T): T[] => Array.from({ length: n }, () => v)
+
+  it('blok-geçersiz tur tazelik damgasını GÜNCELLEMEZ → 20 sn sonra BAYAT', () => {
+    // 2 normal tur, ardından blok-geçersiz sıfırlar.
+    const { kayit } = plcAkis([[100, 200], [101, 201], ...tekrar(8, [0, 0])])
+    expect(kayit[1].bayat).toBe(false) // geçerli okuma → taze
+    // Damga tur 1'de (t=10sn) donar. Bayatlık 20 sn → t=30sn'de hâlâ taze (yaş 20),
+    // t=35sn'den (tur 6) itibaren BAYAT.
+    expect(kayit[5].bayat).toBe(false) // t=30sn, yaş=20sn → eşiğe eşit, hâlâ taze
+    expect(kayit[6].bayat).toBe(true) // t=35sn, yaş=25sn → BAYAT → /status'ten düşer
+  })
+
+  it('kısa blok-geçersizlik (3 tur) sonrası normal okuma → kaçış kapısı DEVREYE GİRMEZ', () => {
+    const { kayit, birikim } = plcAkis([[100, 200], ...tekrar(3, [0, 0]), [102, 202]])
+    expect(kayit.some((k) => k.olaylar.includes('kacis-kapisi'))).toBe(false)
+    expect(birikim).toBe(4) // 100→102 (+2) ve 200→202 (+2); sıfırlar yutuldu
+    expect(kayit[4].bayat).toBe(false) // geçerli okuma damgayı tazeledi
+  })
+
+  it('12+ tur sürerse kaçış kapısı açılır: baseline 0, delta ÜRETİLMEZ', () => {
+    const { kayit, birikim, pins } = plcAkis([[100, 200], ...tekrar(12, [0, 0])])
+    const kacis = kayit.find((k) => k.olaylar.includes('kacis-kapisi'))
+    expect(kacis).toBeTruthy()
+    expect(kacis!.tur).toBe(12) // 12. ard arda blok-geçersiz tur
+    expect(kacis!.delta).toBe(0)
+    expect(birikim).toBe(0) // hiçbir hayalet üretim yok
+    expect(pins.map((p) => p.prev)).toEqual([0, 0]) // baseline sıfıra kuruldu (donma açıldı)
+  })
+
+  it('kaçıştan sonra ilk GERÇEK artış doğru delta üretir (donma tuzağı kapandı)', () => {
+    // Kaçış → sıfırlar sürer (güven turu dolar) → sayaç gerçekten 0'dan tırmanır.
+    const { kayit, birikim } = plcAkis([
+      [100, 200], ...tekrar(12, [0, 0]), ...tekrar(6, [0, 0]), [3, 4], [5, 7],
+    ])
+    expect(birikim).toBe(12) // 0→3→5 (+5) ve 0→4→7 (+7)
+    expect(kayit.at(-1)!.bayat).toBe(false) // gerçek değer geldi → yeniden taze
+  })
+
+  it('kaçış sonrası ESKİ DEĞERE sıçrama üretim SAYILMAZ (hayalet kapalı)', () => {
+    // 22.07 senaryosunun uzun hâli: sıfırlar bozuktu, bağlantı toparlayınca
+    // sayaç eski büyük değerine geri döndü. prev=0 olduğu için hayalet riski burada.
+    const { kayit, birikim } = plcAkis([[1146, 1425], ...tekrar(12, [0, 0]), [1146, 1425], [1148, 1427]])
+    expect(kayit.at(-2)!.olaylar).toEqual(['kacis-geri-donus', 'kacis-geri-donus'])
+    expect(birikim).toBe(4) // yalnız gerçek artış (1146→1148, 1425→1427)
+    expect(birikim).toBeLessThan(100) // 2571'lik hayalet ÜRETİLMEDİ
+  })
+
+  it('kaçış sonrası sıfırlar doğrulanana kadar tezgah BAYAT (0 baseline sızmaz)', () => {
+    const { kayit } = plcAkis([[100, 200], ...tekrar(12, [0, 0]), ...tekrar(3, [0, 0])])
+    // Kaçış turundan sonraki turlarda sıfır güveni bekleniyor → damga ilerlemez.
+    expect(kayit.slice(13).every((k) => k.bayat)).toBe(true)
+  })
+
+  it('sıfır güveni turu dolunca sıfır kabul edilir ve tezgah yeniden TAZE olur', () => {
+    const { kayit } = plcAkis([[100, 200], ...tekrar(12, [0, 0]), ...tekrar(8, [0, 0])], { guvenTuru: 6 })
+    expect(kayit.at(-1)!.bayat).toBe(false) // 6 tur bekleme doldu → sıfır artık gerçek
+  })
+
+  it('REGRESYON: 22.07 hayalet senaryosu (kısa pencere) HÂLÂ kapalı', () => {
+    // Yarı-kopuk TCP: 3 tur bozuk sıfır, sonra eski değer geri geldi.
+    const { birikim, kayit } = plcAkis([[1146, 1425], ...tekrar(3, [0, 0]), [1146, 1425], [1147, 1426]])
+    expect(birikim).toBe(2) // 1146→1147, 1425→1426 — 2571 hayalet YOK
+    expect(kayit.some((k) => k.olaylar.includes('kacis-kapisi'))).toBe(false)
+  })
+
+  it('REGRESYON: gerçek tek-makine reset (CN14 prev=1 → 0 → 1,2) bozulmadı', () => {
+    // Tek pin sıfırlanır, komşusu üretmeye devam eder → blok-geçersiz DEĞİL.
+    const { birikim } = plcAkis([[1, 500], [0, 501], [1, 502], [2, 503]])
+    // 1→0 sıfır şüphesi (prev korunur), 0→1 'normal' değil: prev=1, cur=1 → delta 0,
+    // sonra 1→2 delta 1. Komşu: 500→503 = 3.
+    expect(birikim).toBe(4)
   })
 })

@@ -28,6 +28,25 @@
 // TAKAS (bilinçli): kopma penceresindeki gerçek üretim kaybolabilir.
 // Hayalet üretmektense EKSİK saymak yeğdir — Faz 2'de kalıcı delta ile telafi.
 
+// ── Donma tuzağı ve KAÇIŞ KAPISI (23.07.2026) ──
+//
+// Katman 2 tek başına SONSUZA KADAR reddeder: prev eski değerde donduğu için
+// `oncedenDolu` her turda dolu kalır, sıfırlar hep "geçersiz" sayılır. Sayaçlar
+// GERÇEKTEN sıfırlandıysa (PLC restart / toplu sıfırlama) poller bir daha
+// toparlanamaz — hayaleti kapatırken ters yönde DONMA TUZAĞI kurulmuş olur.
+// Saha kanıtı: 22–23.07 gecesi PANO-3'te 104 dk KESİNTİSİZ blok-geçersiz pencere
+// (1248 tur). %2 paket kaybı böyle bir pencere üretmez.
+//
+// KAÇIŞ KAPISI: blok-geçersizlik ard arda `maxTur` turdan uzun sürerse sıfırlar
+// GERÇEK kabul edilir → baseline 0'a kurulur, delta ÜRETİLMEZ, akış normale döner.
+//
+// SIÇRAMA KORUMASI (kaçış kapısının hayalet riski): sıfırlar aslında bozuksa,
+// bağlantı toparlayınca sayaç eski büyük değerine GERİ SIÇRAR ve prev=0 olduğu için
+// delta = tüm sayaç kadar hayalet üretirdi. Bu yüzden kaçıştan sonra pin başına
+// `kacisEsigi` (kaçış öncesi son güvenilir değer) hatırlanır: sonraki okuma bu
+// eşiğe ULAŞIRSA üretim değil GERİ DÖNÜŞ sayılır → delta 0, baseline yeniden kurulur.
+// Bedeli: gerçek restart sonrası sayaç eşiği aşarken bir turluk delta kaybı.
+
 export type SayacOlay =
   | 'ilk' // baseline kuruldu (ilk okuma)
   | 'normal' // cur >= prev, düz artış
@@ -35,6 +54,8 @@ export type SayacOlay =
   | 'blok-gecersiz' // katman 2: PLC'de toplu sıfır → okuma geçersiz
   | 'sifir-suphesi' // katman 3: cur===0 & cur<prev → prev korunur
   | 'reset-kabul' // gerçek reset (0 < cur < prev)
+  | 'kacis-kapisi' // uzun süren blok-geçersizlik → sıfır gerçek kabul, baseline 0
+  | 'kacis-geri-donus' // kaçış sonrası eski değere sıçrama → üretim DEĞİL, delta 0
 
 export interface SayacGirdi {
   prev: number | undefined
@@ -43,6 +64,10 @@ export interface SayacGirdi {
   baselineTazele: boolean
   /** Katman 2: bu turda PLC blok-geneli sıfır tespit edildi → okuma geçersiz. */
   blokGecersiz: boolean
+  /** Kaçış kapısı bu turda açıldı → sıfır GERÇEK kabul edilir (baseline 0, delta yok). */
+  kacisKapisi?: boolean
+  /** Sıçrama koruması: kaçış öncesi son güvenilir değer (yoksa undefined). */
+  kacisEsigi?: number
 }
 
 export interface SayacIsleSonuc {
@@ -59,6 +84,10 @@ export interface SayacIsleSonuc {
  * baseline tazeleme (katman 1), sonra normal/şüphe/reset ayrımı (katman 3).
  */
 export function sayacIsle(g: SayacGirdi): SayacIsleSonuc {
+  // KAÇIŞ KAPISI — katman 2'yi bilinçli olarak EZER (tur zaten blok-geçersizdir).
+  // Sıfır gerçek kabul edilir: baseline 0'a kurulur, delta ÜRETİLMEZ.
+  if (g.kacisKapisi) return { delta: 0, yeniPrev: g.cur, olay: 'kacis-kapisi' }
+
   // KATMAN 2 — okuma geçersiz: hiçbir şey güncellenmez, prev KORUNUR.
   if (g.blokGecersiz) return { delta: 0, yeniPrev: g.prev, olay: 'blok-gecersiz' }
 
@@ -77,6 +106,12 @@ export function sayacIsle(g: SayacGirdi): SayacIsleSonuc {
 
   // İlk okuma: baseline kurulur (birikmiş sayaç üretim sayılmaz).
   if (g.prev === undefined) return { delta: 0, yeniPrev: g.cur, olay: 'ilk' }
+
+  // SIÇRAMA KORUMASI — kaçış sonrası eski değere geri dönüş. 'normal' dalından
+  // ÖNCE gelmeli: cur(1146) >= prev(0) olduğu için aksi hâlde hayalet üretirdi.
+  if (g.kacisEsigi !== undefined && g.cur > 0 && g.cur >= g.kacisEsigi) {
+    return { delta: 0, yeniPrev: g.cur, olay: 'kacis-geri-donus' }
+  }
 
   // Düz artış.
   if (g.cur >= g.prev) return { delta: g.cur - g.prev, yeniPrev: g.cur, olay: 'normal' }
@@ -107,6 +142,65 @@ export function blokGecersizMi(okumalar: Array<{ prev: number | undefined; cur: 
   return oncedenDolu.every((o) => o.cur === 0)
 }
 
+export interface KacisKapisiGirdi {
+  /** Bu turda blok-geçersizlik var mı. */
+  blokGecersiz: boolean
+  /** Bir önceki ard arda blok-geçersiz tur sayısı. */
+  ardArda: number
+  /** Kaç ard arda turdan sonra sıfırlar gerçek kabul edilir. */
+  maxTur: number
+}
+
+export interface KacisKapisiSonuc {
+  /** Güncellenmiş ard arda sayaç (geçerli okumada ve kaçış turunda 0'lanır). */
+  ardArda: number
+  /** Bu turda kaçış kapısı açıldı mı. */
+  kacisKapisi: boolean
+}
+
+/**
+ * KAÇIŞ KAPISI kararı — donma tuzağını kapatır.
+ *
+ * Geçerli bir okuma zinciri kırar. Ard arda `maxTur` blok-geçersiz tur birikirse
+ * kapı AÇILIR ve sayaç sıfırlanır (kapı her turda yeniden ateşlenmesin diye).
+ */
+export function kacisKapisiKarari(g: KacisKapisiGirdi): KacisKapisiSonuc {
+  if (!g.blokGecersiz) return { ardArda: 0, kacisKapisi: false }
+  const ardArda = g.ardArda + 1
+  if (ardArda >= g.maxTur) return { ardArda: 0, kacisKapisi: true }
+  return { ardArda, kacisKapisi: false }
+}
+
+export interface SifirGuvenGirdi {
+  /** Kalan bekleme turu (kaçış kapısında kurulur, tükendiğinde bekleme biter). */
+  kalanTur: number
+  /** Bu turda PLC'nin TÜM sayaçları 0 mı. */
+  hepsiSifir: boolean
+}
+
+export interface SifirGuvenSonuc {
+  kalanTur: number
+  /** Bekleniyorsa tezgah TAZE sayılmaz (bkz. tazelikDamgasiGuncellensinMi). */
+  bekleniyor: boolean
+}
+
+/**
+ * KAÇIŞ SONRASI SIFIR GÜVENİ.
+ *
+ * Kaçış kapısı sıfırı "gerçek" kabul eder ama bu kabul HENÜZ DOĞRULANMAMIŞTIR.
+ * Doğrulanmamış sıfır `/status`'e sızarsa is-basla `plcSayacBaslangic = 0` alır;
+ * sayaç sonradan eski değerine dönerse İŞ KAYDINDA hayalet üretim oluşur (poller
+ * deltası sıçrama korumasıyla temiz kalsa bile). Bu yüzden kaçıştan sonra sayaçlar
+ * 0 kaldığı sürece tezgah BAYAT tutulur → is-basla 503 → iş açılmaz.
+ *
+ * Bekleme iki yoldan biter: (a) sıfır olmayan gerçek değer gelir, (b) `kalanTur`
+ * tükenir (sıfırlar gerçekten kalıcı → sonsuza kadar 503 vermeyelim).
+ */
+export function sifirGuvenKarari(g: SifirGuvenGirdi): SifirGuvenSonuc {
+  if (g.kalanTur <= 0) return { kalanTur: 0, bekleniyor: false }
+  if (!g.hepsiSifir) return { kalanTur: 0, bekleniyor: false }
+  return { kalanTur: g.kalanTur - 1, bekleniyor: true }
+}
 
 // ── Yeniden bağlanma disiplini ──
 
@@ -177,6 +271,27 @@ export function taze(sonOkuma: string | null, simdi: number, esikMs: number): bo
   const yas = simdi - t
   if (yas < 0) return true // saat kayması: gelecekten damga → taze say
   return yas <= esikMs
+}
+
+export interface TazelikDamgasiGirdi {
+  /** MBRead hatasız döndü mü. */
+  okumaBasarili: boolean
+  /** Bu tur blok-geçersiz mi (MBRead başarılı olsa bile veri ÇÖP). */
+  blokGecersiz: boolean
+  /** Kaçış sonrası sıfır güveni bekleniyor mu. */
+  sifirGuvenBekleniyor: boolean
+}
+
+/**
+ * TAZELİK YALNIZ GEÇERLİ OKUMADAN.
+ *
+ * 23.07 bulgusu: `markRead()` blok-geçersizlik tespitinden ÖNCE çağrılıyordu.
+ * MBRead hata vermediği için çöp okuma da damgayı tazeliyor, tezgah saatlerce
+ * TAZE görünüyor ve `/status` DONMUŞ sayaç sunuyordu — fail-safe filtresi bu
+ * yoldan atlanıyordu. Damga artık yalnız veriye GÜVENİLEN turda ilerler.
+ */
+export function tazelikDamgasiGuncellensinMi(g: TazelikDamgasiGirdi): boolean {
+  return g.okumaBasarili && !g.blokGecersiz && !g.sifirGuvenBekleniyor
 }
 
 // ── Tezgah toplama ──

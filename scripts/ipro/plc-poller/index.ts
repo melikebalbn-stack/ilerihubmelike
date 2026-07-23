@@ -18,7 +18,17 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../../../src/generated/prisma'
 import { PlcConnection } from './plc'
-import { sayacIsle, blokGecersizMi, durusGecis, aggregateTezgah, taze, type PinOzet } from './hesap'
+import {
+  sayacIsle,
+  blokGecersizMi,
+  durusGecis,
+  aggregateTezgah,
+  taze,
+  kacisKapisiKarari,
+  sifirGuvenKarari,
+  tazelikDamgasiGuncellensinMi,
+  type PinOzet,
+} from './hesap'
 
 // ── config (env'den; hardcode yok) ──
 const POLL_INTERVAL_MS = Number(process.env.IPRO_POLLER_INTERVAL_MS ?? 5_000)
@@ -36,6 +46,19 @@ const BAYATLIK_MS = Number(process.env.IPRO_POLLER_BAYATLIK_MS ?? 20_000)
  * Aşamalı açılım (önce PANO-3, sonra 3 PLC) ve saha debug'ı için. Boşsa TÜM aktif PLC'ler.
  * Prod veriye DOKUNULMAZ (IproPlc.aktif=false yapmak YASAK) — filtre yalnız bellekte.
  */
+/**
+ * Kaç ard arda blok-geçersiz turdan sonra sıfırlar GERÇEK kabul edilir (kaçış kapısı).
+ * Varsayılan 12 tur ≈ 60 sn: gerçek bir yarı-kopukluk bu kadar sürmeden ya toparlar
+ * ya da TCP hatasına döner; 60 sn'yi aşan kesintisiz sıfır dizisi sahada gerçek
+ * sıfırlamanın imzasıdır (bkz. hesap.ts kacisKapisiKarari).
+ */
+const BLOK_GECERSIZ_MAX_TUR = Number(process.env.IPRO_POLLER_BLOK_GECERSIZ_MAX_TUR ?? 12)
+/**
+ * Kaçıştan sonra sıfırların DOĞRULANMASI için beklenen tur sayısı. Bu süre boyunca
+ * tezgah bayat tutulur (is-basla 503) — doğrulanmamış sıfır baseline'ı `/status`'e
+ * sızdırmamak için. Varsayılan 60 tur ≈ 5 dk.
+ */
+const KACIS_GUVEN_TURU = Number(process.env.IPRO_POLLER_KACIS_GUVEN_TURU ?? 60)
 const ONLY_PLC = (process.env.IPRO_POLLER_ONLY_PLC ?? '')
   .split(',')
   .map((s) => s.trim())
@@ -62,6 +85,8 @@ interface PinState {
   durusBit: boolean
   /** Bir önceki turun duruş biti — geçiş tespiti için (ilk turda undefined). */
   prevDurusBit?: boolean
+  /** Sıçrama koruması eşiği: kaçış kapısı öncesi son güvenilir değer. */
+  kacisEsigi?: number
 }
 interface PlcGroup {
   conn: PlcConnection
@@ -80,6 +105,22 @@ interface PlcGroup {
   baselineTazeleGerek: boolean
   /** İlk bağlantı yapıldı mı (ilk connect'i "yeniden bağlanma" saymamak için). */
   ilkBaglantiYapildi: boolean
+  // ── Tazelik + kaçış kapısı (23.07.2026) ──
+  /**
+   * Son GEÇERLİ okumanın damgası. `conn.lastReadAt`'ten AYRI: o MBRead'in hatasız
+   * dönmesini gösterir, bu ise veriye GÜVENİLDİĞİNİ. Tazelik filtresi bunu kullanır.
+   */
+  sonGecerliOkuma: string | null
+  /** Toplam blok-geçersiz tur (okumaHatasiToplam'ın içinden ayrıştırılmış hâli). */
+  blokGecersizTurToplam: number
+  /** Anlık ard arda blok-geçersiz tur sayısı (geçerli okumada sıfırlanır). */
+  ardArdaBlokGecersizTur: number
+  /** Kaçış kapısının kaç kez açıldığı. */
+  kacisKapisiSayisi: number
+  /** Sıçrama korumasının kaç kez geri dönüş yakaladığı. */
+  kacisGeriDonusSayisi: number
+  /** Kaçış sonrası sıfır güveni için kalan tur. */
+  sifirGuvenKalanTur: number
 }
 interface TezgahState {
   tezgahKod: string
@@ -139,6 +180,12 @@ async function loadPins() {
       baselineTazelemeSayisi: 0,
       baselineTazeleGerek: false,
       ilkBaglantiYapildi: false,
+      sonGecerliOkuma: null,
+      blokGecersizTurToplam: 0,
+      ardArdaBlokGecersizTur: 0,
+      kacisKapisiSayisi: 0,
+      kacisGeriDonusSayisi: 0,
+      sifirGuvenKalanTur: 0,
     })
     for (const p of group) {
       if (p.tezgah && !tezgahState.has(p.tezgah.kod)) {
@@ -199,10 +246,32 @@ async function pollPlc(g: PlcGroup) {
   const blokGecersiz = blokGecersizMi(okumalar)
   if (blokGecersiz) {
     g.okumaHatasiToplam++
+    g.blokGecersizTurToplam++
     g.sonHataZamani = now()
     log(
       `🚫 ${g.conn.kod} BLOK-GENELİ SIFIR — okuma GEÇERSİZ sayıldı (yarı-kopuk bağlantı imzası), ` +
         `prevSayac korundu, delta üretilmedi`,
+    )
+  }
+
+  // KAÇIŞ KAPISI — donma tuzağı: blok-geçersizlik ard arda maxTur sürerse sıfırlar
+  // gerçek kabul edilir, baseline 0'a kurulur. Sıçrama koruması için kaçış öncesi
+  // değerler pin başına hatırlanır (geri dönerse üretim sayılmasın).
+  const kk = kacisKapisiKarari({
+    blokGecersiz,
+    ardArda: g.ardArdaBlokGecersizTur,
+    maxTur: BLOK_GECERSIZ_MAX_TUR,
+  })
+  g.ardArdaBlokGecersizTur = kk.ardArda
+  if (kk.kacisKapisi) {
+    g.kacisKapisiSayisi++
+    g.sifirGuvenKalanTur = KACIS_GUVEN_TURU
+    for (const { pin, prev } of okumalar) if (prev !== undefined && prev > 0) pin.kacisEsigi = prev
+    g.baselineTazeleGerek = false // kaçış baseline'ı zaten kuruyor
+    log(
+      `🚪 ${g.conn.kod} KAÇIŞ KAPISI — ${BLOK_GECERSIZ_MAX_TUR} ard arda blok-geçersiz tur (#${g.kacisKapisiSayisi}); ` +
+        `sıfırlar GERÇEK kabul edildi, baseline 0'a kuruldu, delta üretilmedi. ` +
+        `Sayaçlar doğrulanana kadar tezgahlar BAYAT (is-basla 503).`,
     )
   }
 
@@ -221,10 +290,27 @@ async function pollPlc(g: PlcGroup) {
     const durus = (durusBuf.readUInt8(pin.durusAdresi - g.durusStart) & 0x01) === 1
 
     // ── SAYAÇ ── (saf karar: hesap.ts sayacIsle — üç katman orada birleşir)
-    const { delta, yeniPrev, olay } = sayacIsle({ prev, cur, baselineTazele, blokGecersiz })
+    const { delta, yeniPrev, olay } = sayacIsle({
+      prev,
+      cur,
+      baselineTazele,
+      blokGecersiz,
+      kacisKapisi: kk.kacisKapisi,
+      kacisEsigi: pin.kacisEsigi,
+    })
     if (baselineTazele && olay === 'sifir-suphesi') suphelSifirGoruldu = true
     if (olay === 'reset-kabul') log(`ℹ️ ${g.conn.kod} pin ${pin.kod} gerçek RESET (${prev} → ${cur}), delta=${delta}`)
     else if (olay === 'sifir-suphesi') log(`⚠️ ${g.conn.kod} pin ${pin.kod} SIFIR ŞÜPHESİ (${prev} → 0) — prevSayac korundu`)
+    else if (olay === 'kacis-geri-donus') {
+      // Sıfırlar bozukmuş: sayaç kaçış öncesi değerine döndü. Üretim DEĞİL.
+      g.kacisGeriDonusSayisi++
+      const esik = pin.kacisEsigi
+      pin.kacisEsigi = undefined
+      log(
+        `↩️ ${g.conn.kod} pin ${pin.kod} KAÇIŞ SONRASI GERİ DÖNÜŞ (eşik ${esik} → ${cur}) — ` +
+          `sıçrama üretim sayılmadı, baseline yeniden kuruldu`,
+      )
+    }
     pin.prevSayac = yeniPrev
     // curSayac = son GÜVENİLİR değer. Geçersiz/şüpheli okumada ham `cur` (0) YAZILMAZ —
     // yoksa /status sayacToplam=0 sunar ve is-basla sıfır baseline alırdı (asıl kusur buydu).
@@ -248,6 +334,21 @@ async function pollPlc(g: PlcGroup) {
   } else if (baselineTazele && suphelSifirGoruldu) {
     log(`⚠️ ${g.conn.kod} baseline tazeleme ERTELENDİ — turda bozuk sıfır görüldü, bayrak korundu`)
   }
+
+  // ── TAZELİK DAMGASI — yalnız GÜVENİLEN turda ilerler ──
+  // Kaçıştan sonra sayaçlar 0 kaldığı sürece bekleme sürer: doğrulanmamış sıfır
+  // baseline'ı `/status`'e sızdırmayız (is-basla 503 → iş açılmaz, fail-safe).
+  const sg = sifirGuvenKarari({
+    kalanTur: g.sifirGuvenKalanTur,
+    hepsiSifir: okumalar.every((o) => o.cur === 0),
+  })
+  if (g.sifirGuvenKalanTur > 0 && sg.kalanTur === 0) {
+    log(`🔓 ${g.conn.kod} kaçış sonrası sıfır güveni tamamlandı — tezgahlar yeniden TAZE sayılacak`)
+  }
+  g.sifirGuvenKalanTur = sg.kalanTur
+  if (tazelikDamgasiGuncellensinMi({ okumaBasarili: true, blokGecersiz, sifirGuvenBekleniyor: sg.bekleniyor })) {
+    g.sonGecerliOkuma = now()
+  }
 }
 
 function aggregate() {
@@ -255,7 +356,9 @@ function aggregate() {
   const pinOzetler: PinOzet[] = []
   const okumaByTezgah = new Map<string, string>()
   for (const g of plcGroups) {
-    const okuma = g.conn.lastReadAt ? new Date(g.conn.lastReadAt).toISOString() : null
+    // conn.lastReadAt DEĞİL: MBRead'in hatasız dönmesi verinin geçerli olduğunu
+    // GÖSTERMEZ (23.07 bulgusu). Tazelik yalnız GEÇERLİ okumadan beslenir.
+    const okuma = g.sonGecerliOkuma
     for (const pin of g.pins) {
       pinOzetler.push({
         tezgahKod: pin.tezgahKod,
@@ -323,6 +426,13 @@ const server = http.createServer((req, res) => {
               okumaHatasiToplam: g.okumaHatasiToplam,
               sonHataZamani: g.sonHataZamani,
               baselineTazelemeSayisi: g.baselineTazelemeSayisi,
+              // Tazelik conn.lastReadAt'ten AYRI izlenir — çöp okuma damgayı ilerletmez.
+              sonGecerliOkuma: g.sonGecerliOkuma,
+              blokGecersizTurToplam: g.blokGecersizTurToplam,
+              ardArdaBlokGecersizTur: g.ardArdaBlokGecersizTur,
+              kacisKapisiSayisi: g.kacisKapisiSayisi,
+              kacisGeriDonusSayisi: g.kacisGeriDonusSayisi,
+              sifirGuvenKalanTur: g.sifirGuvenKalanTur,
             }
           }),
         },
@@ -344,7 +454,8 @@ const server = http.createServer((req, res) => {
     // FİLTRELENMEZ: bayat pinler de sunulur (teşhis aracı burası), her pine `bayat`
     // bayrağı eklenir. /status'ten farkı bilinçli — orada fail-safe filtre var.
     const pins = plcGroups.flatMap((g) => {
-      const sonOkuma = g.conn.lastReadAt ? new Date(g.conn.lastReadAt).toISOString() : null
+      // `sonOkuma` = son GEÇERLİ okuma (blok-geçersiz turlar damgayı ilerletmez).
+      const sonOkuma = g.sonGecerliOkuma
       const bayat = !taze(sonOkuma, simdi, BAYATLIK_MS)
       return g.pins.map((p) => ({
         kod: p.kod,
@@ -380,6 +491,10 @@ process.on('SIGTERM', () => shutdown('SIGTERM'))
 
 async function main() {
   log(`IPRO PLC Poller başlıyor (interval=${POLL_INTERVAL_MS}ms, port=${HTTP_PORT})`)
+  log(
+    `⚙️ bayatlık=${BAYATLIK_MS}ms · kaçış kapısı=${BLOK_GECERSIZ_MAX_TUR} tur · ` +
+      `kaçış sonrası sıfır güveni=${KACIS_GUVEN_TURU} tur`,
+  )
   await loadPins()
   server.listen(HTTP_PORT, () => log(`HTTP dinliyor :${HTTP_PORT} → /health, /status, /pins`))
   loop()

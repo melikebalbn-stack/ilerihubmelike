@@ -60,21 +60,6 @@ export async function POST(request: NextRequest) {
     const calDate = new Date(calibrationDate)
     const nextDueDate = new Date(calDate.getTime() + (device.calibrationInterval || 365) * 24 * 60 * 60 * 1000)
 
-    // Kalibrasyon kaydı oluştur
-    const history = await prisma.calibrationHistory.create({
-      data: {
-        deviceId,
-        calibrationDate: calDate,
-        nextDueDate,
-        certificateNumber,
-        calibratedBy,
-        cost,
-        result: result as CalibrationResult,
-        notes,
-        certificatePath,
-      },
-    })
-
     // Cihazın kalibrasyon tarihlerini güncelle - SADECE Başarılı ise (Şartlı/Hurda'da
     // kalibrasyon fiilen yapılmadı/geçmedi, bir sonraki vade ileri atılmamalı).
     const now = new Date()
@@ -87,42 +72,63 @@ export async function POST(request: NextRequest) {
       status = CalibrationStatus.EXPIRING
     }
 
-    const deviceUpdateData: Record<string, unknown> = {}
-    if (result === 'PASS') {
-      deviceUpdateData.lastCalibrationDate = calDate
-      deviceUpdateData.nextCalibrationDate = nextDueDate
-      deviceUpdateData.status = status
-      deviceUpdateData.statusManualOverride = false // Yeni kalibrasyon yapıldı, manuel override sıfırla
-    }
-
-    // Karar: Hurda → cihaz, Ayarlar'da işaretli hedef bölüme (ve o bölümün departmanına)
-    // taşınır ve Hurda olarak işaretlenir.
-    // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
-    if (result === 'HURDA' && hurdaTarget) {
-      deviceUpdateData.productionSection = hurdaTarget.name
-      if (hurdaTarget.department?.name) {
-        deviceUpdateData.department = hurdaTarget.department.name
-      }
-      deviceUpdateData.deviceCondition = 'Hurda'
-      deviceUpdateData.scrapDate = calDate
-      deviceUpdateData.scrapDescription = notes || device.scrapDescription || null
-    } else if (result === 'CONDITIONAL' && newProductionSection) {
-      deviceUpdateData.productionSection = newProductionSection
-      const section = await prisma.calibrationProductionSection.findUnique({
-        where: { name: newProductionSection },
-        select: { department: { select: { name: true } } },
+    // Geçmiş kaydı + cihaz güncellemesi tek transaction'da: yarıda kesilirse
+    // (ör. Hurda taşıma) geçmiş yazılıp cihaz güncellenmeden kalmasın (atomik).
+    // Hurda-hedef-yok 400 kontrolü transaction'dan ÖNCE yapıldı (yukarıda).
+    const history = await prisma.$transaction(async (tx) => {
+      const created = await tx.calibrationHistory.create({
+        data: {
+          deviceId,
+          calibrationDate: calDate,
+          nextDueDate,
+          certificateNumber,
+          calibratedBy,
+          cost,
+          result: result as CalibrationResult,
+          notes,
+          certificatePath,
+        },
       })
-      if (section?.department?.name) {
-        deviceUpdateData.department = section.department.name
-      }
-    }
 
-    if (Object.keys(deviceUpdateData).length > 0) {
-      await prisma.calibrationDevice.update({
-        where: { id: deviceId },
-        data: deviceUpdateData,
-      })
-    }
+      const deviceUpdateData: Record<string, unknown> = {}
+      if (result === 'PASS') {
+        deviceUpdateData.lastCalibrationDate = calDate
+        deviceUpdateData.nextCalibrationDate = nextDueDate
+        deviceUpdateData.status = status
+        deviceUpdateData.statusManualOverride = false // Yeni kalibrasyon yapıldı, manuel override sıfırla
+      }
+
+      // Karar: Hurda → cihaz, Ayarlar'da işaretli hedef bölüme (ve o bölümün departmanına)
+      // taşınır ve Hurda olarak işaretlenir.
+      // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
+      if (result === 'HURDA' && hurdaTarget) {
+        deviceUpdateData.productionSection = hurdaTarget.name
+        if (hurdaTarget.department?.name) {
+          deviceUpdateData.department = hurdaTarget.department.name
+        }
+        deviceUpdateData.deviceCondition = 'Hurda'
+        deviceUpdateData.scrapDate = calDate
+        deviceUpdateData.scrapDescription = notes || device.scrapDescription || null
+      } else if (result === 'CONDITIONAL' && newProductionSection) {
+        deviceUpdateData.productionSection = newProductionSection
+        const section = await tx.calibrationProductionSection.findUnique({
+          where: { name: newProductionSection },
+          select: { department: { select: { name: true } } },
+        })
+        if (section?.department?.name) {
+          deviceUpdateData.department = section.department.name
+        }
+      }
+
+      if (Object.keys(deviceUpdateData).length > 0) {
+        await tx.calibrationDevice.update({
+          where: { id: deviceId },
+          data: deviceUpdateData,
+        })
+      }
+
+      return created
+    })
 
     return NextResponse.json(history, { status: 201 })
   } catch (error) {

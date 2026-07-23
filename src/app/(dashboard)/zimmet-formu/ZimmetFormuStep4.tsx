@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
-import { CheckCircle2, Clock, ExternalLink, Eye, PenLine, Printer } from 'lucide-react'
+import { CheckCircle2, Clock, Eye, PenLine, Printer } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -110,29 +109,6 @@ export function ZimmetFormuStep4({
             </p>
           </CardContent>
         </Card>
-
-        <div className="space-y-2">
-          <Button variant="outline" className="w-full" asChild>
-            <Link
-              href={`/zimmet-formu/${createdZimmetId}/onayla`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <ExternalLink className="w-4 h-4 mr-1.5" />
-              Onay sayfasını görüntüle
-            </Link>
-          </Button>
-          <Button variant="outline" className="w-full" asChild>
-            <Link
-              href={`/zimmet-formu/${createdZimmetId}/imzala`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <PenLine className="w-4 h-4 mr-1.5" />
-              Zimmet sahibi imzala sayfası
-            </Link>
-          </Button>
-        </div>
 
         <div>
           <Button

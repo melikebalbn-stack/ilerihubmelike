@@ -280,6 +280,15 @@ export default function CalibrationPage() {
         </Badge>
       )
     }
+    // Cihaz kalibrasyona gönderilmiş: vade durumu yerine "Kalibrasyonda" rozeti göster
+    if (deviceCondition === 'Kalibrasyonda') {
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+          <Wrench className="mr-1 h-3 w-3" />
+          Kalibrasyonda
+        </Badge>
+      )
+    }
     switch (status) {
       case "VALID":
         return (
@@ -420,9 +429,9 @@ export default function CalibrationPage() {
   const matchesStatFilter = (device: CalibrationDevice): boolean => {
     switch (activeFilter) {
       case 'all': return true
-      case 'valid': return device.status === 'VALID' && device.deviceCondition !== 'Hurda'
-      case 'expiring': return device.status === 'EXPIRING' && device.deviceCondition !== 'Hurda'
-      case 'expired': return device.status === 'EXPIRED' && device.deviceCondition !== 'Hurda'
+      case 'valid': return device.status === 'VALID' && device.deviceCondition !== 'Hurda' && device.deviceCondition !== 'Kalibrasyonda'
+      case 'expiring': return device.status === 'EXPIRING' && device.deviceCondition !== 'Hurda' && device.deviceCondition !== 'Kalibrasyonda'
+      case 'expired': return device.status === 'EXPIRED' && device.deviceCondition !== 'Hurda' && device.deviceCondition !== 'Kalibrasyonda'
       case 'atCompany': return !device.deviceCondition || device.deviceCondition === 'Şirkette' || device.deviceCondition === 'Kalibrasyon Planlanıyor'
       case 'atCalibration': return device.deviceCondition === 'Kalibrasyonda'
       case 'scrap': return device.deviceCondition === 'Hurda'

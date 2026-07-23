@@ -2,19 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireKiosk } from '@/lib/ipro/require-kiosk'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiForbidden, apiBadRequest, apiNotFound } from '@/lib/api-response'
-
-export const YORUM_MAX = 200
-
-/**
- * Duruş yorumunu normalize eder: trim + üst sınır. Boş/whitespace → null.
- * (Aynı kural durus-basla'da da kullanılır — tek doğruluk kaynağı.)
- */
-export function yorumNormalize(ham: unknown): string | null {
-  if (typeof ham !== 'string') return null
-  const t = ham.trim()
-  if (!t) return null
-  return t.slice(0, YORUM_MAX)
-}
+import { yorumNormalize } from '@/lib/ipro/durus-yorum'
 
 // POST /api/ipro/kiosk/durus-yorum — body { tezgahId, yorum }
 // Tezgahın AÇIK duruşuna opsiyonel yorum yazar/günceller.

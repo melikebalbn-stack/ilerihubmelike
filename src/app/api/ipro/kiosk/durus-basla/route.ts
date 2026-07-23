@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { requireKiosk } from '@/lib/ipro/require-kiosk'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiForbidden, apiBadRequest } from '@/lib/api-response'
-import { yorumNormalize } from '../durus-yorum/route'
+import { yorumNormalize } from '@/lib/ipro/durus-yorum'
 
 // POST /api/ipro/kiosk/durus-basla — body { tezgahId, personnelId, durusSebebiId }.
 // Tezgah duruşu (açık iş ŞART DEĞİL). Tezgah başına tek açık duruş — partial unique

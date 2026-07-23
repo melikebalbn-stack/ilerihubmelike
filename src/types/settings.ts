@@ -47,6 +47,9 @@ export interface ProductionSection {
   id: string
   name: string
   code: string | null
+  departmentId: string | null
+  department: { id: string; name: string } | null
+  isHurdaTarget: boolean
   isActive: boolean
   sortOrder: number
 }
@@ -153,6 +156,8 @@ export interface SettingsFormData {
   manufacturer: string
   description: string
   color: string
+  departmentId: string
+  isHurdaTarget: boolean
 }
 
 export interface EmailTestData {

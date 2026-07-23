@@ -14,13 +14,13 @@ export async function GET() {
         where: { isActive: true },
       }),
       prisma.calibrationDevice.count({
-        where: { isActive: true, status: CalibrationStatus.VALID, deviceCondition: { not: 'Hurda' } },
+        where: { isActive: true, status: CalibrationStatus.VALID, deviceCondition: { notIn: ['Hurda', 'Kalibrasyonda'] } },
       }),
       prisma.calibrationDevice.count({
-        where: { isActive: true, status: CalibrationStatus.EXPIRING, deviceCondition: { not: 'Hurda' } },
+        where: { isActive: true, status: CalibrationStatus.EXPIRING, deviceCondition: { notIn: ['Hurda', 'Kalibrasyonda'] } },
       }),
       prisma.calibrationDevice.count({
-        where: { isActive: true, status: CalibrationStatus.EXPIRED, deviceCondition: { not: 'Hurda' } },
+        where: { isActive: true, status: CalibrationStatus.EXPIRED, deviceCondition: { notIn: ['Hurda', 'Kalibrasyonda'] } },
       }),
       prisma.calibrationDevice.count({
         where: { isActive: true, status: CalibrationStatus.IN_PROCESS },

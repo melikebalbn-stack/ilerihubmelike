@@ -10,6 +10,7 @@
 
 export interface KalibrasyonDevice {
   cihazId: string;                   // "Kod" — Cihaz ID (örn. "C 1019")
+  cihazTipi?: string | null;         // "Cihaz Tipi" — device.name (örn. "Dijital Kumpas")
   departman?: string | null;         // "Cihaz Yeri" = departman + yer
   uretimBolumu?: string | null;      // "Cihaz Yeri" ikinci parça (location)
   seriNo?: string | null;            // "Seri Numarası"
@@ -45,6 +46,7 @@ function rowHtml(dev: KalibrasyonDevice): string {
 
   return `        <tr>
           <td class="kod">${esc(dev.cihazId)}</td>
+          <td>${esc(dev.cihazTipi || "—")}</td>
           <td>${esc(cihazYeri(dev) || "—")}</td>
           <td class="muted">${esc(dev.seriNo || "—")}</td>
           <td class="detay">${esc(dev.model)}</td>
@@ -106,7 +108,7 @@ export function buildKalibrasyonMailHtml(
     <div class="tablewrap">
       <table>
         <thead><tr>
-          <th>Kod</th><th>Cihaz Yeri</th><th>Seri Numarası</th><th>Cihaz Detayı</th>
+          <th>Kod</th><th>Cihaz Tipi</th><th>Cihaz Yeri</th><th>Seri Numarası</th><th>Cihaz Detayı</th>
           <th>Zimmet Sorumlusu</th><th>${esc(tarihBaslik)}</th><th>Kalan Gün</th><th>Durum</th>
         </tr></thead>
         <tbody>

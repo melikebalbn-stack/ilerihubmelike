@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       result,
       notes,
       certificatePath,
+      newProductionSection,
     } = body
 
     // Cihazın var olup olmadığını kontrol et
@@ -38,6 +39,22 @@ export async function POST(request: NextRequest) {
         { error: 'Cihaz bulunamadı' },
         { status: 404 }
       )
+    }
+
+    // Karar: Hurda için hedef bölüm Ayarlar > Kalibrasyon > Bölümler'den (isHurdaTarget)
+    // gelir; koda departman/bölüm adı gömülmez. Tanımlı değilse kayıt oluşturulmadan durur.
+    let hurdaTarget: { name: string; department: { name: string } | null } | null = null
+    if (result === 'HURDA') {
+      hurdaTarget = await prisma.calibrationProductionSection.findFirst({
+        where: { isHurdaTarget: true },
+        select: { name: true, department: { select: { name: true } } },
+      })
+      if (!hurdaTarget) {
+        return NextResponse.json(
+          { error: 'Hurda hedef bölümü tanımlı değil. Ayarlar > Kalibrasyon Ayarları > Bölümler\'den bir bölümü "Hurda hedef bölümü" olarak işaretleyin.' },
+          { status: 400 }
+        )
+      }
     }
 
     const calDate = new Date(calibrationDate)
@@ -58,7 +75,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Cihazın kalibrasyon tarihlerini güncelle
+    // Cihazın kalibrasyon tarihlerini güncelle - SADECE Başarılı ise (Şartlı/Hurda'da
+    // kalibrasyon fiilen yapılmadı/geçmedi, bir sonraki vade ileri atılmamalı).
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
@@ -69,15 +87,42 @@ export async function POST(request: NextRequest) {
       status = CalibrationStatus.EXPIRING
     }
 
-    await prisma.calibrationDevice.update({
-      where: { id: deviceId },
-      data: {
-        lastCalibrationDate: calDate,
-        nextCalibrationDate: nextDueDate,
-        status,
-        statusManualOverride: false, // Yeni kalibrasyon yapıldı, manuel override sıfırla
-      },
-    })
+    const deviceUpdateData: Record<string, unknown> = {}
+    if (result === 'PASS') {
+      deviceUpdateData.lastCalibrationDate = calDate
+      deviceUpdateData.nextCalibrationDate = nextDueDate
+      deviceUpdateData.status = status
+      deviceUpdateData.statusManualOverride = false // Yeni kalibrasyon yapıldı, manuel override sıfırla
+    }
+
+    // Karar: Hurda → cihaz, Ayarlar'da işaretli hedef bölüme (ve o bölümün departmanına)
+    // taşınır ve Hurda olarak işaretlenir.
+    // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
+    if (result === 'HURDA' && hurdaTarget) {
+      deviceUpdateData.productionSection = hurdaTarget.name
+      if (hurdaTarget.department?.name) {
+        deviceUpdateData.department = hurdaTarget.department.name
+      }
+      deviceUpdateData.deviceCondition = 'Hurda'
+      deviceUpdateData.scrapDate = calDate
+      deviceUpdateData.scrapDescription = notes || device.scrapDescription || null
+    } else if (result === 'CONDITIONAL' && newProductionSection) {
+      deviceUpdateData.productionSection = newProductionSection
+      const section = await prisma.calibrationProductionSection.findUnique({
+        where: { name: newProductionSection },
+        select: { department: { select: { name: true } } },
+      })
+      if (section?.department?.name) {
+        deviceUpdateData.department = section.department.name
+      }
+    }
+
+    if (Object.keys(deviceUpdateData).length > 0) {
+      await prisma.calibrationDevice.update({
+        where: { id: deviceId },
+        data: deviceUpdateData,
+      })
+    }
 
     return NextResponse.json(history, { status: 201 })
   } catch (error) {

@@ -21,8 +21,21 @@ async function loadRecordWithAccessCheck(id: string, userId: string) {
     return { error: NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 }) }
   }
 
-  if (access.level === 'GRI' && record.personnel?.bolum !== access.bolum) {
-    return { error: NextResponse.json({ error: 'Bu kaydı düzenleme yetkiniz yok' }, { status: 403 }) }
+  // Gri Yaka: sadece KENDİ girdiği kayıtları düzenleyebilir (bölüm eşleşmesi
+  // yeterli değil — bir Gri Yaka başka bir Gri Yaka'nın kaydına dokunamaz),
+  // İV onaylayana kadar.
+  if (access.level === 'GRI') {
+    if (record.createdById !== userId) {
+      return { error: NextResponse.json({ error: 'Bu kaydı düzenleme yetkiniz yok' }, { status: 403 }) }
+    }
+    if (record.ivOnaylandi) {
+      return {
+        error: NextResponse.json(
+          { error: 'İV onayından geçmiş bir kayıt artık düzenlenemez veya silinemez' },
+          { status: 403 }
+        ),
+      }
+    }
   }
 
   if (access.level === 'SELF') {
@@ -33,6 +46,14 @@ async function loadRecordWithAccessCheck(id: string, userId: string) {
       return {
         error: NextResponse.json(
           { error: 'Karara bağlanmış (onaylanmış/reddedilmiş) bir kayıt artık düzenlenemez veya silinemez' },
+          { status: 403 }
+        ),
+      }
+    }
+    if (record.ivOnaylandi) {
+      return {
+        error: NextResponse.json(
+          { error: 'İV onayından geçmiş bir kayıt artık düzenlenemez veya silinemez' },
           { status: 403 }
         ),
       }
@@ -72,10 +93,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (personnelId && personnelId !== record!.personnelId) {
       const personnel = await prisma.personnel.findUnique({
         where: { id: personnelId },
-        select: { id: true, sicilNo: true, adSoyad: true, aktif: true },
+        select: { id: true, sicilNo: true, adSoyad: true, aktif: true, bolum: true },
       })
       if (!personnel || !personnel.aktif) {
         return NextResponse.json({ error: 'Seçilen personel bulunamadı veya pasif' }, { status: 400 })
+      }
+      if (access.level === 'GRI' && personnel.bolum !== access.bolum) {
+        return NextResponse.json({ error: 'Sadece kendi bölümünüzdeki personel için kayıt açabilirsiniz' }, { status: 403 })
       }
       data.personnelId = personnel.id
       data.sicilNo = personnel.sicilNo

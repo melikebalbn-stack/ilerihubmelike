@@ -36,8 +36,11 @@ export async function GET(request: NextRequest) {
     const bolum = searchParams.get('bolum')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
+    const ivDurum = searchParams.get('ivDurum')
 
     const where: Record<string, unknown> = {}
+    if (ivDurum === 'onaylandi') where.ivOnaylandi = true
+    else if (ivDurum === 'bekliyor') where.ivOnaylandi = false
     if (access.level === 'GRI') {
       where.createdById = user.id
     } else if (access.level === 'SELF') {
@@ -64,7 +67,7 @@ export async function GET(request: NextRequest) {
       orderBy: { tarih: 'desc' },
     })
 
-    const headers = ['SİCİL NO', 'ADI VE SOYADI', 'BÖLÜM', 'TARİH', 'GİRİŞ SAATİ', 'ÇIKIŞ SAATİ', 'NEDEN', 'DURUM']
+    const headers = ['SİCİL NO', 'ADI VE SOYADI', 'BÖLÜM', 'TARİH', 'GİRİŞ SAATİ', 'ÇIKIŞ SAATİ', 'NEDEN', 'DURUM', 'İV ONAYI']
     const data = records.map((r) => ({
       'SİCİL NO': r.sicilNo || '',
       'ADI VE SOYADI': r.adSoyad,
@@ -74,6 +77,7 @@ export async function GET(request: NextRequest) {
       'ÇIKIŞ SAATİ': r.cikisSaati || '',
       'NEDEN': r.neden ? NEDEN_LABELS[r.neden as KartOkutamamaNedeni] : '',
       'DURUM': ONAY_DURUMU_LABELS[r.onayDurumu] || '',
+      'İV ONAYI': r.ivOnaylandi ? 'Onaylandı' : 'Onay Bekliyor',
     }))
 
     const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })

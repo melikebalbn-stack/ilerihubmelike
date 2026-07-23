@@ -24,6 +24,7 @@ interface BulkCardScanRecord {
   cikisSaati: string | null
   neden: string | null
   onayDurumu: "BEKLIYOR" | "ONAYLANDI" | "REDDEDILDI"
+  ivOnaylandi: boolean
   createdById: string
   createdBy: { id: string; name: string | null; email: string }
   personnel: { id: string; bolum: string; gorev: string } | null
@@ -104,6 +105,43 @@ function BolumSelect({
   )
 }
 
+type SortOrder = "asc" | "desc"
+
+function SortableHead({
+  label,
+  active,
+  order,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  order: SortOrder
+  onClick: () => void
+}) {
+  return (
+    <TableHead className="cursor-pointer select-none" onClick={onClick}>
+      <span className="inline-flex items-center gap-1">
+        {label}
+        <span className="text-xs text-muted-foreground">{active ? (order === "asc" ? "▲" : "▼") : ""}</span>
+      </span>
+    </TableHead>
+  )
+}
+
+// İstemci tarafında (henüz sayfalanmamış) listeler için genel sıralama yardımcısı.
+function sortItems<T>(items: T[], key: keyof T, order: SortOrder): T[] {
+  return [...items].sort((a, b) => {
+    const av = a[key]
+    const bv = b[key]
+    if (av == null && bv == null) return 0
+    if (av == null) return 1
+    if (bv == null) return -1
+    if (av < bv) return order === "asc" ? -1 : 1
+    if (av > bv) return order === "asc" ? 1 : -1
+    return 0
+  })
+}
+
 const API_BASE = "/api/sandbox/melike/toplu-kart-okutamama"
 
 export default function TopluKartOkutamamaPage() {
@@ -119,6 +157,17 @@ export default function TopluKartOkutamamaPage() {
   const [oldBolum, setOldBolum] = useState("")
   const [oldStartDate, setOldStartDate] = useState("")
   const [oldEndDate, setOldEndDate] = useState("")
+  const [ivFilter, setIvFilter] = useState("")
+  const [selectedIvIds, setSelectedIvIds] = useState<Set<string>>(new Set())
+  const [ivApproving, setIvApproving] = useState(false)
+  const [eskiSortBy, setEskiSortBy] = useState("tarih")
+  const [eskiSortOrder, setEskiSortOrder] = useState<SortOrder>("desc")
+  const [teamSortKey, setTeamSortKey] = useState<keyof PickedPersonnel>("adSoyad")
+  const [teamSortOrder, setTeamSortOrder] = useState<SortOrder>("asc")
+  const [approvalsSortKey, setApprovalsSortKey] = useState<keyof BulkCardScanRecord>("tarih")
+  const [approvalsSortOrder, setApprovalsSortOrder] = useState<SortOrder>("desc")
+  const [selfSortKey, setSelfSortKey] = useState<keyof BulkCardScanRecord>("tarih")
+  const [selfSortOrder, setSelfSortOrder] = useState<SortOrder>("desc")
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -250,6 +299,9 @@ export default function TopluKartOkutamamaPage() {
       if (oldBolum) params.set("bolum", oldBolum)
       if (oldStartDate) params.set("startDate", oldStartDate)
       if (oldEndDate) params.set("endDate", oldEndDate)
+      if (ivFilter) params.set("ivDurum", ivFilter)
+      params.set("sortBy", eskiSortBy)
+      params.set("sortOrder", eskiSortOrder)
       params.set("page", String(page))
       const res = await fetch(`${API_BASE}?${params.toString()}`)
       if (res.status === 403) {
@@ -268,12 +320,12 @@ export default function TopluKartOkutamamaPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, oldBolum, oldStartDate, oldEndDate, page])
+  }, [search, oldBolum, oldStartDate, oldEndDate, ivFilter, eskiSortBy, eskiSortOrder, page])
 
   // Filtreler değişince ilk sayfaya dön
   useEffect(() => {
     setPage(1)
-  }, [search, oldBolum, oldStartDate, oldEndDate])
+  }, [search, oldBolum, oldStartDate, oldEndDate, ivFilter, eskiSortBy, eskiSortOrder])
 
   useEffect(() => {
     if (status === "authenticated") loadRecords()
@@ -512,12 +564,72 @@ export default function TopluKartOkutamamaPage() {
     if (res.ok) loadRecords()
   }
 
+  function toggleEskiSort(field: string) {
+    if (eskiSortBy === field) setEskiSortOrder((o) => (o === "asc" ? "desc" : "asc"))
+    else {
+      setEskiSortBy(field)
+      setEskiSortOrder("asc")
+    }
+  }
+
+  function toggleTeamSort(key: keyof PickedPersonnel) {
+    if (teamSortKey === key) setTeamSortOrder((o) => (o === "asc" ? "desc" : "asc"))
+    else {
+      setTeamSortKey(key)
+      setTeamSortOrder("asc")
+    }
+  }
+
+  function toggleApprovalsSort(key: keyof BulkCardScanRecord) {
+    if (approvalsSortKey === key) setApprovalsSortOrder((o) => (o === "asc" ? "desc" : "asc"))
+    else {
+      setApprovalsSortKey(key)
+      setApprovalsSortOrder("asc")
+    }
+  }
+
+  function toggleSelfSort(key: keyof BulkCardScanRecord) {
+    if (selfSortKey === key) setSelfSortOrder((o) => (o === "asc" ? "desc" : "asc"))
+    else {
+      setSelfSortKey(key)
+      setSelfSortOrder("asc")
+    }
+  }
+
+  function toggleIvSelected(id: string) {
+    setSelectedIvIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleIvApprove(ids: string[]) {
+    if (ids.length === 0) return
+    setIvApproving(true)
+    try {
+      const res = await fetch(`${API_BASE}/iv-onay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      })
+      if (res.ok) {
+        setSelectedIvIds(new Set())
+        loadRecords()
+      }
+    } finally {
+      setIvApproving(false)
+    }
+  }
+
   async function handleExport() {
     const params = new URLSearchParams()
     if (search) params.set("search", search)
     if (oldBolum) params.set("bolum", oldBolum)
     if (oldStartDate) params.set("startDate", oldStartDate)
     if (oldEndDate) params.set("endDate", oldEndDate)
+    if (ivFilter) params.set("ivDurum", ivFilter)
     const res = await fetch(`${API_BASE}/export?${params.toString()}`)
     if (!res.ok) return
     const blob = await res.blob()
@@ -555,14 +667,47 @@ export default function TopluKartOkutamamaPage() {
   // "Kaldır" o günkü listeden gerçekten çıkarır (excludedIds) — Tümüne
   // Uygula/Tümünü Kaydet bu kişileri atlar. Geri almak için "hariç
   // tutulanlar" alanından tek tıkla eklenebilir.
-  const visibleTeam = team.filter((p) => !excludedIds.has(p.id))
+  const visibleTeam = sortItems(team.filter((p) => !excludedIds.has(p.id)), teamSortKey, teamSortOrder)
   const hiddenTeam = team.filter((p) => excludedIds.has(p.id))
+  const sortedPendingApprovals = sortItems(pendingApprovals, approvalsSortKey, approvalsSortOrder)
+  const sortedSelfRecords = sortItems(records, selfSortKey, selfSortOrder)
 
   const editableRowContent = (
     <>
+      {canManageAnyone && <TableCell>-</TableCell>}
       <TableCell colSpan={3}>
         <PersonnelPicker value={formPersonnel} onSelect={setFormPersonnel} />
       </TableCell>
+      <TableCell>
+        <Input type="date" value={formTarih} onChange={(e) => setFormTarih(e.target.value)} />
+      </TableCell>
+      <TableCell>
+        <Input type="time" value={formGiris} onChange={(e) => setFormGiris(e.target.value)} />
+      </TableCell>
+      <TableCell>
+        <Input type="time" value={formCikis} onChange={(e) => setFormCikis(e.target.value)} />
+      </TableCell>
+      <TableCell>
+        <NedenSelect value={formNeden} onChange={setFormNeden} />
+      </TableCell>
+      <TableCell>-</TableCell>
+      <TableCell>-</TableCell>
+      <TableCell>-</TableCell>
+      <TableCell className="space-x-2 whitespace-nowrap">
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? "Kaydediliyor..." : "Kaydet"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={cancelForm}>
+          Vazgeç
+        </Button>
+      </TableCell>
+    </>
+  )
+
+  // SELF "Kendi Kaydım" geçmişi için — kişi sabit (değiştirilemez), sadece
+  // tarih/saat/neden düzenlenir. editingId/handleSave ile aynı mekanizmayı kullanır.
+  const selfEditableRowContent = (
+    <>
       <TableCell>
         <Input type="date" value={formTarih} onChange={(e) => setFormTarih(e.target.value)} />
       </TableCell>
@@ -624,18 +769,18 @@ export default function TopluKartOkutamamaPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Sicil No</TableHead>
-                <TableHead>Ad Soyad</TableHead>
-                <TableHead>Tarih</TableHead>
-                <TableHead>Giriş Saati</TableHead>
-                <TableHead>Çıkış Saati</TableHead>
-                <TableHead>Neden</TableHead>
+                <SortableHead label="Sicil No" active={approvalsSortKey === "sicilNo"} order={approvalsSortOrder} onClick={() => toggleApprovalsSort("sicilNo")} />
+                <SortableHead label="Ad Soyad" active={approvalsSortKey === "adSoyad"} order={approvalsSortOrder} onClick={() => toggleApprovalsSort("adSoyad")} />
+                <SortableHead label="Tarih" active={approvalsSortKey === "tarih"} order={approvalsSortOrder} onClick={() => toggleApprovalsSort("tarih")} />
+                <SortableHead label="Giriş Saati" active={approvalsSortKey === "girisSaati"} order={approvalsSortOrder} onClick={() => toggleApprovalsSort("girisSaati")} />
+                <SortableHead label="Çıkış Saati" active={approvalsSortKey === "cikisSaati"} order={approvalsSortOrder} onClick={() => toggleApprovalsSort("cikisSaati")} />
+                <SortableHead label="Neden" active={approvalsSortKey === "neden"} order={approvalsSortOrder} onClick={() => toggleApprovalsSort("neden")} />
                 <TableHead>Talep Eden</TableHead>
                 <TableHead>İşlem</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pendingApprovals.map((r) => (
+              {sortedPendingApprovals.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>{r.sicilNo || "-"}</TableCell>
                   <TableCell>{r.adSoyad}</TableCell>
@@ -726,38 +871,51 @@ export default function TopluKartOkutamamaPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tarih</TableHead>
-                <TableHead>Giriş Saati</TableHead>
-                <TableHead>Çıkış Saati</TableHead>
-                <TableHead>Neden</TableHead>
-                <TableHead>Durum</TableHead>
+                <SortableHead label="Tarih" active={selfSortKey === "tarih"} order={selfSortOrder} onClick={() => toggleSelfSort("tarih")} />
+                <SortableHead label="Giriş Saati" active={selfSortKey === "girisSaati"} order={selfSortOrder} onClick={() => toggleSelfSort("girisSaati")} />
+                <SortableHead label="Çıkış Saati" active={selfSortKey === "cikisSaati"} order={selfSortOrder} onClick={() => toggleSelfSort("cikisSaati")} />
+                <SortableHead label="Neden" active={selfSortKey === "neden"} order={selfSortOrder} onClick={() => toggleSelfSort("neden")} />
+                <SortableHead label="Durum" active={selfSortKey === "onayDurumu"} order={selfSortOrder} onClick={() => toggleSelfSort("onayDurumu")} />
+                <SortableHead label="İV Onayı" active={selfSortKey === "ivOnaylandi"} order={selfSortOrder} onClick={() => toggleSelfSort("ivOnaylandi")} />
                 <TableHead>İşlem</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {records.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
                     Henüz kaydınız yok
                   </TableCell>
                 </TableRow>
               )}
-              {records.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>{new Date(r.tarih).toLocaleDateString("tr-TR")}</TableCell>
-                  <TableCell>{r.girisSaati || "-"}</TableCell>
-                  <TableCell>{r.cikisSaati || "-"}</TableCell>
-                  <TableCell>{NEDEN_OPTIONS.find((o) => o.value === r.neden)?.label || "-"}</TableCell>
-                  <TableCell>{ONAY_DURUMU_LABELS[r.onayDurumu]}</TableCell>
-                  <TableCell>
-                    {r.onayDurumu === "BEKLIYOR" && (
-                      <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)}>
-                        Sil
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {sortedSelfRecords.map((r) => {
+                if (editingId === r.id) {
+                  return <TableRow key={r.id}>{selfEditableRowContent}</TableRow>
+                }
+                const canEditSelf = r.onayDurumu === "BEKLIYOR" && !r.ivOnaylandi
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell>{new Date(r.tarih).toLocaleDateString("tr-TR")}</TableCell>
+                    <TableCell>{r.girisSaati || "-"}</TableCell>
+                    <TableCell>{r.cikisSaati || "-"}</TableCell>
+                    <TableCell>{NEDEN_OPTIONS.find((o) => o.value === r.neden)?.label || "-"}</TableCell>
+                    <TableCell>{ONAY_DURUMU_LABELS[r.onayDurumu]}</TableCell>
+                    <TableCell>{r.ivOnaylandi ? "Onaylandı" : "Onay Bekliyor"}</TableCell>
+                    <TableCell className="space-x-2 whitespace-nowrap">
+                      {canEditSelf && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => startEditing(r)}>
+                            Düzenle
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)}>
+                            Sil
+                          </Button>
+                        </>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </div>
@@ -846,8 +1004,8 @@ export default function TopluKartOkutamamaPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Sicil No</TableHead>
-                <TableHead>Ad Soyad</TableHead>
+                <SortableHead label="Sicil No" active={teamSortKey === "sicilNo"} order={teamSortOrder} onClick={() => toggleTeamSort("sicilNo")} />
+                <SortableHead label="Ad Soyad" active={teamSortKey === "adSoyad"} order={teamSortOrder} onClick={() => toggleTeamSort("adSoyad")} />
                 <TableHead>Tarih</TableHead>
                 <TableHead>Giriş Saati</TableHead>
                 <TableHead>Çıkış Saati</TableHead>
@@ -960,8 +1118,33 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {showOldRecords && canManageAnyone && (
+      {((showOldRecords && canManageAnyone) || accessLevel === "GRI") && (
         <>
+      <h2 className="text-sm font-medium text-muted-foreground">
+        {canManageAnyone ? "Eski Kayıtlar" : "Geçmiş Kayıtlarım"}
+      </h2>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">İV Onayı:</span>
+        <Button variant={ivFilter === "" ? "default" : "outline"} size="sm" onClick={() => setIvFilter("")}>
+          Tümü
+        </Button>
+        <Button
+          variant={ivFilter === "bekliyor" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setIvFilter("bekliyor")}
+        >
+          Onay Bekliyor
+        </Button>
+        <Button
+          variant={ivFilter === "onaylandi" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setIvFilter("onaylandi")}
+        >
+          Onaylandı
+        </Button>
+      </div>
+
       <div className="flex flex-wrap items-end gap-3">
         <div className="max-w-sm flex-1 min-w-[200px]">
           <label className="mb-1 block text-xs text-muted-foreground">Ara</label>
@@ -971,10 +1154,12 @@ export default function TopluKartOkutamamaPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="min-w-[200px]">
-          <label className="mb-1 block text-xs text-muted-foreground">Bölüm</label>
-          <BolumSelect value={oldBolum} onChange={setOldBolum} options={bolumList} placeholder="Tüm bölümler" />
-        </div>
+        {canManageAnyone && (
+          <div className="min-w-[200px]">
+            <label className="mb-1 block text-xs text-muted-foreground">Bölüm</label>
+            <BolumSelect value={oldBolum} onChange={setOldBolum} options={bolumList} placeholder="Tüm bölümler" />
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">Başlangıç Tarihi</label>
           <Input type="date" value={oldStartDate} onChange={(e) => setOldStartDate(e.target.value)} />
@@ -983,7 +1168,7 @@ export default function TopluKartOkutamamaPage() {
           <label className="mb-1 block text-xs text-muted-foreground">Bitiş Tarihi</label>
           <Input type="date" value={oldEndDate} onChange={(e) => setOldEndDate(e.target.value)} />
         </div>
-        {(search || oldBolum || oldStartDate || oldEndDate) && (
+        {(search || oldBolum || oldStartDate || oldEndDate || ivFilter) && (
           <Button
             variant="outline"
             size="sm"
@@ -992,9 +1177,15 @@ export default function TopluKartOkutamamaPage() {
               setOldBolum("")
               setOldStartDate("")
               setOldEndDate("")
+              setIvFilter("")
             }}
           >
             Filtreleri Temizle
+          </Button>
+        )}
+        {canManageAnyone && selectedIvIds.size > 0 && (
+          <Button disabled={ivApproving} onClick={() => handleIvApprove([...selectedIvIds])}>
+            {ivApproving ? "Onaylanıyor..." : `Seçilenleri İV Onayla (${selectedIvIds.size})`}
           </Button>
         )}
       </div>
@@ -1003,47 +1194,62 @@ export default function TopluKartOkutamamaPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Sicil No</TableHead>
-              <TableHead>Ad Soyad</TableHead>
-              <TableHead>Bölüm</TableHead>
-              <TableHead>Tarih</TableHead>
-              <TableHead>Giriş Saati</TableHead>
-              <TableHead>Çıkış Saati</TableHead>
-              <TableHead>Neden</TableHead>
-              <TableHead>Durum</TableHead>
-              <TableHead>Oluşturan</TableHead>
+              {canManageAnyone && <TableHead className="w-8"></TableHead>}
+              <SortableHead label="Sicil No" active={eskiSortBy === "sicilNo"} order={eskiSortOrder} onClick={() => toggleEskiSort("sicilNo")} />
+              <SortableHead label="Ad Soyad" active={eskiSortBy === "adSoyad"} order={eskiSortOrder} onClick={() => toggleEskiSort("adSoyad")} />
+              <SortableHead label="Bölüm" active={eskiSortBy === "bolum"} order={eskiSortOrder} onClick={() => toggleEskiSort("bolum")} />
+              <SortableHead label="Tarih" active={eskiSortBy === "tarih"} order={eskiSortOrder} onClick={() => toggleEskiSort("tarih")} />
+              <SortableHead label="Giriş Saati" active={eskiSortBy === "girisSaati"} order={eskiSortOrder} onClick={() => toggleEskiSort("girisSaati")} />
+              <SortableHead label="Çıkış Saati" active={eskiSortBy === "cikisSaati"} order={eskiSortOrder} onClick={() => toggleEskiSort("cikisSaati")} />
+              <SortableHead label="Neden" active={eskiSortBy === "neden"} order={eskiSortOrder} onClick={() => toggleEskiSort("neden")} />
+              <SortableHead label="Durum" active={eskiSortBy === "onayDurumu"} order={eskiSortOrder} onClick={() => toggleEskiSort("onayDurumu")} />
+              <SortableHead label="İV Onayı" active={eskiSortBy === "ivOnaylandi"} order={eskiSortOrder} onClick={() => toggleEskiSort("ivOnaylandi")} />
+              <SortableHead label="Oluşturan" active={eskiSortBy === "olusturan"} order={eskiSortOrder} onClick={() => toggleEskiSort("olusturan")} />
               <TableHead>İşlemler</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {formError && editingId && (
               <TableRow>
-                <TableCell colSpan={10} className="text-sm text-red-600">
+                <TableCell colSpan={12} className="text-sm text-red-600">
                   {formError}
                 </TableCell>
               </TableRow>
             )}
             {loading && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground">
+                <TableCell colSpan={12} className="text-center text-muted-foreground">
                   Yükleniyor...
                 </TableCell>
               </TableRow>
             )}
             {!loading && records.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground">
+                <TableCell colSpan={12} className="text-center text-muted-foreground">
                   Kayıt bulunamadı
                 </TableCell>
               </TableRow>
             )}
             {records.map((r) => {
-              const canEdit = accessLevel === "FULL" || r.createdById === session?.user?.id
+              const canEdit =
+                accessLevel === "FULL" ||
+                (accessLevel === "GRI" && r.createdById === session?.user?.id && !r.ivOnaylandi)
               if (editingId === r.id) {
                 return <TableRow key={r.id}>{editableRowContent}</TableRow>
               }
               return (
                 <TableRow key={r.id}>
+                  {canManageAnyone && (
+                    <TableCell>
+                      {!r.ivOnaylandi && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIvIds.has(r.id)}
+                          onChange={() => toggleIvSelected(r.id)}
+                        />
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell>{r.sicilNo || "-"}</TableCell>
                   <TableCell>{r.adSoyad}</TableCell>
                   <TableCell>{r.personnel?.bolum || "-"}</TableCell>
@@ -1052,8 +1258,14 @@ export default function TopluKartOkutamamaPage() {
                   <TableCell>{r.cikisSaati || "-"}</TableCell>
                   <TableCell>{NEDEN_OPTIONS.find((o) => o.value === r.neden)?.label || "-"}</TableCell>
                   <TableCell>{ONAY_DURUMU_LABELS[r.onayDurumu]}</TableCell>
+                  <TableCell>{r.ivOnaylandi ? "Onaylandı" : "Onay Bekliyor"}</TableCell>
                   <TableCell>{r.createdBy?.name || r.createdBy?.email}</TableCell>
                   <TableCell className="space-x-2 whitespace-nowrap">
+                    {canManageAnyone && !r.ivOnaylandi && (
+                      <Button size="sm" disabled={ivApproving} onClick={() => handleIvApprove([r.id])}>
+                        Onayla
+                      </Button>
+                    )}
                     {canEdit && (
                       <>
                         <Button size="sm" variant="outline" onClick={() => startEditing(r)}>

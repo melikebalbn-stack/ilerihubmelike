@@ -8,11 +8,40 @@ import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from './_lib/duplicate-ch
 
 export const dynamic = 'force-dynamic'
 
+// Sıralanabilir kolonlar — client'tan gelen sortBy bunlardan biri değilse tarih'e düşülür.
+const SORTABLE_FIELDS: Record<string, object> = {
+  tarih: { tarih: true },
+  sicilNo: { sicilNo: true },
+  adSoyad: { adSoyad: true },
+  girisSaati: { girisSaati: true },
+  cikisSaati: { cikisSaati: true },
+  neden: { neden: true },
+  onayDurumu: { onayDurumu: true },
+  ivOnaylandi: { ivOnaylandi: true },
+  bolum: { personnel: { bolum: true } },
+  olusturan: { createdBy: { name: true } },
+}
+
+function buildOrderBy(sortBy: string | null, sortOrder: string | null) {
+  const order = sortOrder === 'asc' ? 'asc' : 'desc'
+  const fieldShape = (sortBy && SORTABLE_FIELDS[sortBy]) || SORTABLE_FIELDS.tarih
+
+  function applyOrder(shape: object): unknown {
+    const [key] = Object.keys(shape)
+    const value = (shape as Record<string, unknown>)[key]
+    return { [key]: value === true ? order : applyOrder(value as object) }
+  }
+
+  return applyOrder(fieldShape)
+}
+
 /**
  * GET /api/sandbox/melike/toplu-kart-okutamama
  * Liste — FULL (Beyaz Yaka) tüm kayıtları görür, GRI kendi bölümündeki
  * (Personnel.bolum) personele ait kayıtları görür, NONE (Mavi Yaka) erişemez.
- * Query params: search (sicilNo/adSoyad), startDate, endDate, page, limit
+ * Query params: search (sicilNo/adSoyad), startDate, endDate, page, limit,
+ * sortBy (tarih|sicilNo|adSoyad|girisSaati|cikisSaati|neden|onayDurumu|ivOnaylandi|bolum|olusturan),
+ * sortOrder (asc|desc)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -29,10 +58,16 @@ export async function GET(request: NextRequest) {
     const bolum = searchParams.get('bolum')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
+    const ivDurum = searchParams.get('ivDurum') // 'onaylandi' | 'bekliyor'
+    const sortBy = searchParams.get('sortBy')
+    const sortOrder = searchParams.get('sortOrder')
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
     const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '25')))
 
     const where: Record<string, unknown> = {}
+
+    if (ivDurum === 'onaylandi') where.ivOnaylandi = true
+    else if (ivDurum === 'bekliyor') where.ivOnaylandi = false
 
     if (access.level === 'GRI') {
       where.personnel = { bolum: access.bolum }
@@ -65,7 +100,7 @@ export async function GET(request: NextRequest) {
           createdBy: { select: { id: true, name: true, email: true } },
           personnel: { select: { id: true, bolum: true, gorev: true } },
         },
-        orderBy: { tarih: 'desc' },
+        orderBy: buildOrderBy(sortBy, sortOrder),
         skip: (page - 1) * limit,
         take: limit,
       }),

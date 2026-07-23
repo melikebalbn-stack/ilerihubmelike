@@ -180,6 +180,7 @@ model User {
   // Toplu Kart Okutamama Relations
   bulkCardScanFailuresCreated  BulkCardScanFailure[] @relation("BulkCardScanFailureCreator")
   bulkCardScanFailuresToApprove BulkCardScanFailure[] @relation("BulkCardScanFailureApprover")
+  bulkCardScanFailuresIvOnayladi BulkCardScanFailure[] @relation("BulkCardScanFailureIvApprover")
 
   // Akademi Relations
   courseAssignments    UserCourseAssignment[]
@@ -11470,6 +11471,14 @@ model BulkCardScanFailure {
   approver    User?                   @relation("BulkCardScanFailureApprover", fields: [approverId], references: [id])
   approvedAt  DateTime?
   rejectedAt  DateTime?
+
+  // İV onayı — müdür onayından TAMAMEN AYRI, ek bir katman. Herkesin (Gri Yaka,
+  // Beyaz Yaka, Full) kaydı bu onaydan geçmeden önce Eski Kayıtlar'da "onaysız"
+  // görünür ve kaydı giren kişi tarafından düzenlenebilir. İV onaylayınca kilitlenir.
+  ivOnaylandi   Boolean   @default(false)
+  ivOnaylayanId String?
+  ivOnaylayan   User?     @relation("BulkCardScanFailureIvApprover", fields: [ivOnaylayanId], references: [id])
+  ivOnaylandiAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

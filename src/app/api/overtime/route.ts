@@ -54,6 +54,11 @@ export async function GET(request: NextRequest) {
     const isAdmin = perms.includes('forms.admin')
     const canViewAll = perms.includes('overtime.view.all') // salt-okuma, TÜM formlar
     const canViewDept = perms.includes('overtime.view.dept') // salt-okuma, kendi bölüm(ler)i
+    // Yönetim raporu izni (report.all) rapor katmanında TÜM bölümleri açar
+    // (resolveAllowedDepts → undefined). Liste görünürlüğü de tutarlı olsun: report.all
+    // olan kullanıcı listede de tümünü görür (aksi halde self-scope'a düşüp yalnız
+    // kendi formlarını görüyordu — rapor/liste tutarsızlığı).
+    const canReportAll = perms.includes('overtime.report.all')
 
     // Vardiya Faz 1: formTipi ile mesai/vardiya ayrımı. Verilmezse MESAI (geriye
     // uyum — mevcut mesai listesi vardiya kayıtlarını GÖRMESİN).
@@ -65,10 +70,10 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = { formTipi }
 
     // Görünürlük önceliği (ilk eşleşen kazanır):
-    //   forms.admin > overtime.view.all > overtime.view.dept > self-scope
-    // view.* salt-okuma: liste/detay görünür, yazma yolları (POST/PUT/approve/
+    //   forms.admin > overtime.view.all > overtime.report.all > overtime.view.dept > self-scope
+    // view.*/report.all salt-okuma: liste/detay görünür, yazma yolları (POST/PUT/approve/
     // gerçekleşen-giriş) ayrıca korunur — burada değişmez.
-    if (isAdmin || canViewAll) {
+    if (isAdmin || canViewAll || canReportAll) {
       // Tüm formlar (formTipi'ye göre). Kapsam filtresi yok.
     } else if (canViewDept) {
       // Departman scope — performans raporuyla AYNI resolveAllowedDepts semantiği:

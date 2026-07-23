@@ -1,14 +1,36 @@
 "use client"
 
 import React from "react"
-import { Sidebar } from "@/components/layout/Sidebar"
+import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 import { BottomNav } from "@/components/layout/BottomNav"
 import { useEffect, Suspense, useState } from "react"
 import { Toaster } from "sonner"
+import { cn } from "@/lib/utils"
 import { RouteChangeProvider } from "@/components/providers/route-change-provider"
 import { InstallPrompt } from "@/components/pwa/install-prompt"
 import { NotificationPermission } from "@/components/pwa/notification-permission"
+
+// İçerik alanı — sidebar collapse/pin durumuna göre sol ofset (lg) ayarlanır.
+function DashboardContent({ children }: { children: React.ReactNode }) {
+  const { pinned, collapsed } = useSidebar()
+  // İçerik geniş ofset yalnız sidebar docked-geniş iken (pinli + collapsed değil).
+  // Pinsiz/hover'da sidebar overlay olarak açılır, içerik kaymaz (dar ofset kalır).
+  const contentWide = pinned && !collapsed
+  return (
+    <div
+      className={cn(
+        "flex flex-1 flex-col overflow-hidden min-w-0 transition-[padding] duration-200",
+        contentWide ? "lg:pl-64" : "lg:pl-16"
+      )}
+    >
+      <Header />
+      <main className="flex-1 overflow-y-auto overflow-x-hidden bg-background p-4 lg:p-6 pb-20 lg:pb-4">
+        {children}
+      </main>
+    </div>
+  )
+}
 
 // PWA bileşenlerini izole et - hata olursa sayfayı çökertmesin
 function SafeComponent({ children }: { children: React.ReactNode }) {
@@ -69,25 +91,22 @@ export default function DashboardLayout({
   return (
     <Suspense fallback={null}>
       <RouteChangeProvider>
-        <div className="flex h-screen overflow-hidden">
-          <Toaster position="top-right" richColors closeButton />
-          <SafeComponent><InstallPrompt /></SafeComponent>
-          <SafeComponent><NotificationPermission /></SafeComponent>
+        <SidebarProvider>
+          <div className="flex h-screen overflow-hidden">
+            <Toaster position="top-right" richColors closeButton />
+            <SafeComponent><InstallPrompt /></SafeComponent>
+            <SafeComponent><NotificationPermission /></SafeComponent>
 
-          {/* Masaüstü Sidebar */}
-          <Sidebar />
+            {/* Masaüstü Sidebar */}
+            <Sidebar />
 
-          {/* İçerik alanı */}
-          <div className="flex flex-1 flex-col overflow-hidden min-w-0 lg:pl-64">
-            <Header />
-            <main className="flex-1 overflow-y-auto overflow-x-hidden bg-background p-4 lg:p-6 pb-20 lg:pb-4">
-              {children}
-            </main>
+            {/* İçerik alanı (collapse/pin'e göre ofset) */}
+            <DashboardContent>{children}</DashboardContent>
+
+            {/* Mobil alt navigasyon */}
+            <BottomNav />
           </div>
-
-          {/* Mobil alt navigasyon */}
-          <BottomNav />
-        </div>
+        </SidebarProvider>
       </RouteChangeProvider>
     </Suspense>
   )

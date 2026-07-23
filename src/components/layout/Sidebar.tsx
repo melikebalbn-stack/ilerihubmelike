@@ -64,9 +64,71 @@ import {
   ArrowRightLeft,
   UserMinus,
   Shapes,
+  Pin,
+  PinOff,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect } from "react"
+import { useState, useEffect, createContext, useContext } from "react"
+
+/* ───────── Sidebar collapse/pin durumu (masaüstü) ─────────
+ * Sidebar + (dashboard)/layout içerik ofseti bu context'i paylaşır.
+ *  - collapsed: dar (yalnız ikon) mod   [localStorage: sidebar:collapsed]
+ *  - pinned:    sabit açık; pinsizken hover ile geçici açılır [localStorage: sidebar:pinned]
+ * Hidrasyon uyumsuzluğunu önlemek için varsayılanlarla başlar, localStorage useEffect'te okunur. */
+type SidebarCtx = {
+  collapsed: boolean
+  pinned: boolean
+  hovering: boolean
+  hydrated: boolean
+  setCollapsed: (v: boolean) => void
+  setPinned: (v: boolean) => void
+  setHovering: (v: boolean) => void
+}
+const SidebarStateContext = createContext<SidebarCtx | null>(null)
+
+export function SidebarProvider({ children }: { children: React.ReactNode }) {
+  const [collapsed, setCollapsedState] = useState(false)
+  const [pinned, setPinnedState] = useState(true)
+  const [hovering, setHovering] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("sidebar:collapsed")
+      const p = localStorage.getItem("sidebar:pinned")
+      if (c !== null) setCollapsedState(c === "true")
+      if (p !== null) setPinnedState(p === "true")
+    } catch {
+      /* localStorage erişilemezse varsayılanlar */
+    }
+    setHydrated(true)
+  }, [])
+
+  const setCollapsed = (v: boolean) => {
+    setCollapsedState(v)
+    try { localStorage.setItem("sidebar:collapsed", String(v)) } catch {}
+  }
+  const setPinned = (v: boolean) => {
+    setPinnedState(v)
+    try { localStorage.setItem("sidebar:pinned", String(v)) } catch {}
+  }
+
+  return (
+    <SidebarStateContext.Provider
+      value={{ collapsed, pinned, hovering, hydrated, setCollapsed, setPinned, setHovering }}
+    >
+      {children}
+    </SidebarStateContext.Provider>
+  )
+}
+
+export function useSidebar(): SidebarCtx {
+  const ctx = useContext(SidebarStateContext)
+  if (!ctx) throw new Error("useSidebar SidebarProvider içinde kullanılmalı")
+  return ctx
+}
 
 // Ana menü öğeleri
 const mainMenuItems = [
@@ -232,6 +294,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [formsOpen, setFormsOpen] = useState(false)
   const [sistemGelistirmeOpen, setSistemGelistirmeOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
+
+  // Collapse/pin (yalnız masaüstü; mobil sheet'te isOpen=true → her zaman geniş)
+  const { collapsed, pinned, hovering, setCollapsed, setPinned, setHovering } = useSidebar()
+  const isMobile = !!isOpen
+  // expanded = etiketlerin görüneceği geniş mod. Pinliyse collapsed'e bağlı; pinsizken hover ile.
+  const expanded = isMobile ? true : pinned ? !collapsed : hovering
 
   // Pathname değiştiğinde ilgili menüyü otomatik aç
   useEffect(() => {
@@ -446,6 +514,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           href={item.href}
           target="_blank"
           rel="noopener noreferrer"
+          title={item.name}
           className={cn(
             "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
             "text-white/50 hover:text-white/90 hover:bg-white/[0.07]",
@@ -486,6 +555,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         href={item.href}
         prefetch={false}
         onClick={handleClick}
+        title={item.name}
         className={cn(
           "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
           isActive
@@ -512,35 +582,78 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   return (
     <div
+      onMouseEnter={!isMobile && !pinned ? () => setHovering(true) : undefined}
+      onMouseLeave={!isMobile && !pinned ? () => setHovering(false) : undefined}
       className={cn(
-        "w-64 flex-col border-r border-white/[0.07] bg-slate-900 flex h-full",
-        // Masaüstü: sabit sidebar
-        "max-lg:hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30",
+        "flex-col border-r border-white/[0.07] bg-slate-900 flex h-full transition-[width] duration-200",
+        // Masaüstü: sabit sidebar; genişlik collapse/pin durumuna göre
+        "max-lg:hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 w-64",
+        !isMobile && (expanded ? "lg:w-64" : "lg:w-16"),
+        // Dar mod: etiketleri gizle, ikonları ortala, grup chevron'larını gizle
+        !isMobile && !expanded && "[&_.flex-1]:hidden [&_nav_a]:justify-center [&_nav_button]:justify-center [&_nav_button>svg:last-child]:hidden",
         // Sheet içindeyse (isOpen=true) her zaman göster, fixed kullanma
-        isOpen && "!flex !max-lg:flex !relative !inset-auto !z-auto"
+        isOpen && "!flex !max-lg:flex !relative !inset-auto !z-auto !w-64"
       )}
     >
-      {/* Logo */}
-      <div className="flex h-16 items-center justify-between border-b border-white/[0.07] px-6">
-        <Link href="/dashboard" prefetch={false} className="flex items-center" onClick={onClose}>
-          <Image
-            src="/ilerihublogo.png"
-            alt="ILERIHub"
-            width={192}
-            height={48}
-            className="h-11 w-auto brightness-0 invert"
-            priority
-          />
-        </Link>
-        {/* Mobile close button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="lg:hidden text-white/70 hover:text-white hover:bg-white/10"
-          onClick={onClose}
-        >
-          <X className="h-5 w-5" />
-        </Button>
+      {/* Logo + masaüstü collapse/pin kontrolleri */}
+      <div className={cn("flex h-16 items-center justify-between border-b border-white/[0.07]", expanded ? "px-6" : "px-2")}>
+        {expanded && (
+          <Link href="/dashboard" prefetch={false} className="flex items-center min-w-0" onClick={onClose}>
+            <Image
+              src="/ilerihublogo.png"
+              alt="ILERIHub"
+              width={192}
+              height={48}
+              className="h-11 w-auto brightness-0 invert"
+              priority
+            />
+          </Link>
+        )}
+        <div className={cn("flex items-center gap-1", !expanded && "w-full justify-center")}>
+          {/* Masaüstü: pin + collapse/expand */}
+          {!isMobile && (
+            expanded ? (
+              <>
+                <button
+                  type="button"
+                  title={pinned ? "Sabitlemeyi kaldır (hover ile açılır)" : "Sabitle (açık kalır)"}
+                  onClick={() => { setPinned(!pinned); if (!pinned) setCollapsed(false) }}
+                  className="rounded p-1.5 text-white/60 hover:text-white hover:bg-white/10"
+                >
+                  {pinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+                </button>
+                {pinned && (
+                  <button
+                    type="button"
+                    title="Menüyü daralt"
+                    onClick={() => setCollapsed(true)}
+                    className="rounded p-1.5 text-white/60 hover:text-white hover:bg-white/10"
+                  >
+                    <PanelLeftClose className="h-4 w-4" />
+                  </button>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                title="Menüyü genişlet"
+                onClick={() => { setCollapsed(false); setPinned(true) }}
+                className="rounded p-1.5 text-white/60 hover:text-white hover:bg-white/10"
+              >
+                <PanelLeftOpen className="h-5 w-5" />
+              </button>
+            )
+          )}
+          {/* Mobile close button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden text-white/70 hover:text-white hover:bg-white/10"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
 
       {/* Navigation */}

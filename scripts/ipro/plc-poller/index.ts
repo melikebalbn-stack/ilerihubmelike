@@ -25,7 +25,6 @@ import {
   aggregateTezgah,
   taze,
   kacisKapisiKarari,
-  sifirGuvenKarari,
   tazelikDamgasiGuncellensinMi,
   type PinOzet,
 } from './hesap'
@@ -41,24 +40,13 @@ const DEBUG = process.env.IPRO_POLLER_DEBUG === '1'
  * turu tolere eder, gereksiz 503 üretmez.
  */
 const BAYATLIK_MS = Number(process.env.IPRO_POLLER_BAYATLIK_MS ?? 20_000)
+// NOT: kaçış kapısının SÜRE eşiği YOKTUR (env yok). Sıfır ancak sıfırdan gelen
+// gerçek artış kanıtıyla benimsenir — bkz. hesap.ts kacisKapisiKarari.
 /**
  * Yalnız belirtilen PLC(ler) ile çalış — virgülle ayrılmış kod listesi (ör. "PANO-3").
  * Aşamalı açılım (önce PANO-3, sonra 3 PLC) ve saha debug'ı için. Boşsa TÜM aktif PLC'ler.
  * Prod veriye DOKUNULMAZ (IproPlc.aktif=false yapmak YASAK) — filtre yalnız bellekte.
  */
-/**
- * Kaç ard arda blok-geçersiz turdan sonra sıfırlar GERÇEK kabul edilir (kaçış kapısı).
- * Varsayılan 12 tur ≈ 60 sn: gerçek bir yarı-kopukluk bu kadar sürmeden ya toparlar
- * ya da TCP hatasına döner; 60 sn'yi aşan kesintisiz sıfır dizisi sahada gerçek
- * sıfırlamanın imzasıdır (bkz. hesap.ts kacisKapisiKarari).
- */
-const BLOK_GECERSIZ_MAX_TUR = Number(process.env.IPRO_POLLER_BLOK_GECERSIZ_MAX_TUR ?? 12)
-/**
- * Kaçıştan sonra sıfırların DOĞRULANMASI için beklenen tur sayısı. Bu süre boyunca
- * tezgah bayat tutulur (is-basla 503) — doğrulanmamış sıfır baseline'ı `/status`'e
- * sızdırmamak için. Varsayılan 60 tur ≈ 5 dk.
- */
-const KACIS_GUVEN_TURU = Number(process.env.IPRO_POLLER_KACIS_GUVEN_TURU ?? 60)
 const ONLY_PLC = (process.env.IPRO_POLLER_ONLY_PLC ?? '')
   .split(',')
   .map((s) => s.trim())
@@ -119,8 +107,6 @@ interface PlcGroup {
   kacisKapisiSayisi: number
   /** Sıçrama korumasının kaç kez geri dönüş yakaladığı. */
   kacisGeriDonusSayisi: number
-  /** Kaçış sonrası sıfır güveni için kalan tur. */
-  sifirGuvenKalanTur: number
 }
 interface TezgahState {
   tezgahKod: string
@@ -185,7 +171,6 @@ async function loadPins() {
       ardArdaBlokGecersizTur: 0,
       kacisKapisiSayisi: 0,
       kacisGeriDonusSayisi: 0,
-      sifirGuvenKalanTur: 0,
     })
     for (const p of group) {
       if (p.tezgah && !tezgahState.has(p.tezgah.kod)) {
@@ -254,24 +239,28 @@ async function pollPlc(g: PlcGroup) {
     )
   }
 
-  // KAÇIŞ KAPISI — donma tuzağı: blok-geçersizlik ard arda maxTur sürerse sıfırlar
-  // gerçek kabul edilir, baseline 0'a kurulur. Sıçrama koruması için kaçış öncesi
-  // değerler pin başına hatırlanır (geri dönerse üretim sayılmasın).
+  // KAÇIŞ KAPISI — KANITA dayalı (süreye DEĞİL): donmuş bir blok-geçersiz dizinin
+  // ardından bir pin `0 < cur < prev` okuyorsa PLC gerçekten sıfırlanıp yukarı
+  // saymaya başlamıştır. Kanıt gelmezse kapı hiç açılmaz — tezgah /status dışında
+  // kalır (süre ne olursa olsun). Karar, sayaç GÜNCELLENMEDEN önce alınır.
   const kk = kacisKapisiKarari({
     blokGecersiz,
-    ardArda: g.ardArdaBlokGecersizTur,
-    maxTur: BLOK_GECERSIZ_MAX_TUR,
+    blokGecersizDizisiVar: g.ardArdaBlokGecersizTur > 0,
+    okumalar,
   })
-  g.ardArdaBlokGecersizTur = kk.ardArda
+  g.ardArdaBlokGecersizTur = blokGecersiz ? g.ardArdaBlokGecersizTur + 1 : 0 // TELEMETRİ
   if (kk.kacisKapisi) {
     g.kacisKapisiSayisi++
-    g.sifirGuvenKalanTur = KACIS_GUVEN_TURU
-    for (const { pin, prev } of okumalar) if (prev !== undefined && prev > 0) pin.kacisEsigi = prev
+    // Hâlâ 0 okuyan kardeş pinlerin donmuş baseline'ı da 0'a çekilir; geri sıçrarlarsa
+    // üretim sayılmasın diye kaçış öncesi değerleri hatırlanır (katman 3).
+    for (const { pin, prev, cur } of okumalar) {
+      if (cur === 0 && prev !== undefined && prev > 0) pin.kacisEsigi = prev
+    }
     g.baselineTazeleGerek = false // kaçış baseline'ı zaten kuruyor
+    const kanit = okumalar[kk.kanitIndex!]
     log(
-      `🚪 ${g.conn.kod} KAÇIŞ KAPISI — ${BLOK_GECERSIZ_MAX_TUR} ard arda blok-geçersiz tur (#${g.kacisKapisiSayisi}); ` +
-        `sıfırlar GERÇEK kabul edildi, baseline 0'a kuruldu, delta üretilmedi. ` +
-        `Sayaçlar doğrulanana kadar tezgahlar BAYAT (is-basla 503).`,
+      `🚪 ${g.conn.kod} KAÇIŞ KAPISI (#${g.kacisKapisiSayisi}) — pin ${kanit.pin.kod} sıfırdan ARTIŞ kanıtı ` +
+        `(${kanit.prev} → ${kanit.cur}); sıfırlar GERÇEK kabul edildi, donmuş baseline'lar 0'a çekildi`,
     )
   }
 
@@ -336,17 +325,10 @@ async function pollPlc(g: PlcGroup) {
   }
 
   // ── TAZELİK DAMGASI — yalnız GÜVENİLEN turda ilerler ──
-  // Kaçıştan sonra sayaçlar 0 kaldığı sürece bekleme sürer: doğrulanmamış sıfır
-  // baseline'ı `/status`'e sızdırmayız (is-basla 503 → iş açılmaz, fail-safe).
-  const sg = sifirGuvenKarari({
-    kalanTur: g.sifirGuvenKalanTur,
-    hepsiSifir: okumalar.every((o) => o.cur === 0),
-  })
-  if (g.sifirGuvenKalanTur > 0 && sg.kalanTur === 0) {
-    log(`🔓 ${g.conn.kod} kaçış sonrası sıfır güveni tamamlandı — tezgahlar yeniden TAZE sayılacak`)
-  }
-  g.sifirGuvenKalanTur = sg.kalanTur
-  if (tazelikDamgasiGuncellensinMi({ okumaBasarili: true, blokGecersiz, sifirGuvenBekleniyor: sg.bekleniyor })) {
+  // Blok-geçersizlik sürdüğü sürece damga DONAR: tezgah bayat olur, /status'ten
+  // düşer, is-basla 503 verir. Çıkış yolu SÜRE değil, kaçış kapısının KANITIdır —
+  // doğrulanmamış sıfır baseline'ı /status'e asla sızdırmayız.
+  if (tazelikDamgasiGuncellensinMi({ okumaBasarili: true, blokGecersiz })) {
     g.sonGecerliOkuma = now()
   }
 }
@@ -432,7 +414,6 @@ const server = http.createServer((req, res) => {
               ardArdaBlokGecersizTur: g.ardArdaBlokGecersizTur,
               kacisKapisiSayisi: g.kacisKapisiSayisi,
               kacisGeriDonusSayisi: g.kacisGeriDonusSayisi,
-              sifirGuvenKalanTur: g.sifirGuvenKalanTur,
             }
           }),
         },
@@ -491,10 +472,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'))
 
 async function main() {
   log(`IPRO PLC Poller başlıyor (interval=${POLL_INTERVAL_MS}ms, port=${HTTP_PORT})`)
-  log(
-    `⚙️ bayatlık=${BAYATLIK_MS}ms · kaçış kapısı=${BLOK_GECERSIZ_MAX_TUR} tur · ` +
-      `kaçış sonrası sıfır güveni=${KACIS_GUVEN_TURU} tur`,
-  )
+  log(`⚙️ bayatlık=${BAYATLIK_MS}ms · kaçış kapısı: KANIT tabanlı (süre eşiği YOK)`)
   await loadPins()
   server.listen(HTTP_PORT, () => log(`HTTP dinliyor :${HTTP_PORT} → /health, /status, /pins`))
   loop()

@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { requirePermission } from '@/lib/auth/require-permission'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  const { error: permError } = await requirePermission('zimmet-formu.view')
+  if (permError) return permError
+
+  // `user.id` yalnız kendi zimmetlerini filtrelemek için gerekli.
   const { user, error } = await requireUser()
   if (error) return error
 

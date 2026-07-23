@@ -275,6 +275,7 @@ model Department {
   parent    Department?         @relation("SubDepartments", fields: [parentId], references: [id])
   children  Department[]        @relation("SubDepartments")
   devices   CalibrationDevice[] @relation("DepartmentDevices")
+  calibrationProductionSections CalibrationProductionSection[] @relation("DepartmentProductionSections")
   isActive  Boolean             @default(true)
   sortOrder Int                 @default(0)
   createdAt DateTime            @default(now())
@@ -351,15 +352,18 @@ model CalibrationLocation {
 }
 
 model CalibrationProductionSection {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  code      String?
-  isActive  Boolean  @default(true)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String      @id @default(cuid())
+  name         String      @unique
+  code         String?
+  departmentId String?
+  department   Department? @relation("DepartmentProductionSections", fields: [departmentId], references: [id])
+  isActive     Boolean     @default(true)
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   @@index([isActive, sortOrder])
+  @@index([departmentId])
 }
 
 model CalibrationDeviceType {
@@ -512,8 +516,9 @@ model CalibrationHistory {
 
 enum CalibrationResult {
   PASS // Başarılı
-  FAIL // Başarısız
-  CONDITIONAL // Şartlı
+  FAIL // Başarısız (karar seçilmeden - legacy)
+  CONDITIONAL // Başarısız + Karar: Şartlı Kabul
+  HURDA // Başarısız + Karar: Hurda
 }
 
 // Email Bildirim Sistemi

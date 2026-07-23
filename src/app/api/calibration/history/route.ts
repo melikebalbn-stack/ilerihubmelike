@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       result,
       notes,
       certificatePath,
+      newProductionSection,
     } = body
 
     // Cihazın var olup olmadığını kontrol et
@@ -58,7 +59,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Cihazın kalibrasyon tarihlerini güncelle
+    // Cihazın kalibrasyon tarihlerini güncelle - SADECE Başarılı ise (Şartlı/Hurda'da
+    // kalibrasyon fiilen yapılmadı/geçmedi, bir sonraki vade ileri atılmamalı).
     const now = new Date()
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
@@ -69,15 +71,39 @@ export async function POST(request: NextRequest) {
       status = CalibrationStatus.EXPIRING
     }
 
-    await prisma.calibrationDevice.update({
-      where: { id: deviceId },
-      data: {
-        lastCalibrationDate: calDate,
-        nextCalibrationDate: nextDueDate,
-        status,
-        statusManualOverride: false, // Yeni kalibrasyon yapıldı, manuel override sıfırla
-      },
-    })
+    const deviceUpdateData: Record<string, unknown> = {}
+    if (result === 'PASS') {
+      deviceUpdateData.lastCalibrationDate = calDate
+      deviceUpdateData.nextCalibrationDate = nextDueDate
+      deviceUpdateData.status = status
+      deviceUpdateData.statusManualOverride = false // Yeni kalibrasyon yapıldı, manuel override sıfırla
+    }
+
+    // Karar: Hurda → cihaz Kalite/KARANTİNA'ya taşınır ve Hurda olarak işaretlenir.
+    // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
+    if (result === 'HURDA') {
+      deviceUpdateData.department = 'Kalite'
+      deviceUpdateData.productionSection = 'KARANTİNA'
+      deviceUpdateData.deviceCondition = 'Hurda'
+      deviceUpdateData.scrapDate = calDate
+      deviceUpdateData.scrapDescription = notes || device.scrapDescription || null
+    } else if (result === 'CONDITIONAL' && newProductionSection) {
+      deviceUpdateData.productionSection = newProductionSection
+      const section = await prisma.calibrationProductionSection.findUnique({
+        where: { name: newProductionSection },
+        select: { department: { select: { name: true } } },
+      })
+      if (section?.department?.name) {
+        deviceUpdateData.department = section.department.name
+      }
+    }
+
+    if (Object.keys(deviceUpdateData).length > 0) {
+      await prisma.calibrationDevice.update({
+        where: { id: deviceId },
+        data: deviceUpdateData,
+      })
+    }
 
     return NextResponse.json(history, { status: 201 })
   } catch (error) {

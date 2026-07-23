@@ -150,7 +150,7 @@ export default function CalibrationPage() {
   const [deviceTypes, setDeviceTypes] = useState<string[]>([])
   const [deviceNames, setDeviceNames] = useState<string[]>([])
   const [models, setModels] = useState<string[]>([])
-  const [productionSections, setProductionSections] = useState<string[]>([])
+  const [productionSections, setProductionSections] = useState<{ name: string; departmentName: string | null }[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [lastImportErrors, setLastImportErrors] = useState<string[]>([])
@@ -175,6 +175,7 @@ export default function CalibrationPage() {
     cost: "",
     result: "PASS",
     notes: "",
+    newProductionSection: "",
   })
 
   // Status dialog
@@ -246,7 +247,7 @@ export default function CalibrationPage() {
         setDeviceTypes(data.deviceTypes?.map((t: any) => t.name) || [])
         setDeviceNames(data.deviceModels?.map((m: any) => m.name) || [])
         setModels(data.deviceModels?.map((m: any) => m.name) || [])
-        setProductionSections(data.productionSections?.map((s: any) => s.name) || [])
+        setProductionSections(data.productionSections?.map((s: any) => ({ name: s.name, departmentName: s.department?.name || null })) || [])
       }
 
       if (deptRes.ok) {
@@ -492,7 +493,7 @@ export default function CalibrationPage() {
       manufacturer: "",
       model: "",
       serialNumber: "",
-      location: "",
+      location: "ILERI-1",
       department: "",
       productionSection: "",
       responsiblePerson: "",
@@ -773,6 +774,7 @@ export default function CalibrationPage() {
       cost: "",
       result: "PASS",
       notes: "",
+      newProductionSection: "",
     })
     try {
       const res = await fetch(`/api/calibration/${device.id}`)
@@ -798,6 +800,7 @@ export default function CalibrationPage() {
       cost: record.cost != null ? String(record.cost) : "",
       result: record.result || "PASS",
       notes: record.notes || "",
+      newProductionSection: "",
     })
   }
 
@@ -811,12 +814,21 @@ export default function CalibrationPage() {
       cost: "",
       result: "PASS",
       notes: "",
+      newProductionSection: "",
     })
   }
 
   const handleAddHistory = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!historyDevice) return
+    if (!historyFormData.result) {
+      toast.error('Başarısız için Karar seçmelisiniz (Şartlı Kabul / Hurda)')
+      return
+    }
+    if (historyFormData.result === 'CONDITIONAL' && !historyFormData.newProductionSection) {
+      toast.error('Şartlı Kabul için yeni Bölüm seçmelisiniz')
+      return
+    }
     const isEdit = editingHistoryId !== null
     try {
       const res = await fetch(
@@ -832,6 +844,7 @@ export default function CalibrationPage() {
             cost: historyFormData.cost ? parseFloat(historyFormData.cost) : null,
             result: historyFormData.result,
             notes: historyFormData.notes || undefined,
+            newProductionSection: historyFormData.result === 'CONDITIONAL' ? historyFormData.newProductionSection : undefined,
           }),
         }
       )
@@ -1396,7 +1409,7 @@ export default function CalibrationPage() {
                     <Select
                       id="department"
                       value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value, ...(e.target.value !== "Üretim" ? { productionSection: "" } : {}) })}
+                      onChange={(e) => setFormData({ ...formData, department: e.target.value, productionSection: "" })}
                     >
                       <option value="">Seçiniz</option>
                       {departments.map((dept) => (
@@ -1406,18 +1419,20 @@ export default function CalibrationPage() {
                   </div>
                 </div>
 
-                {formData.department === "Üretim" && (
+                {productionSections.some((s) => s.departmentName === formData.department) && (
                   <div className="space-y-2">
-                    <Label htmlFor="productionSection">Üretim Bölümü</Label>
+                    <Label htmlFor="productionSection">Bölüm</Label>
                     <Select
                       id="productionSection"
                       value={formData.productionSection}
                       onChange={(e) => setFormData({ ...formData, productionSection: e.target.value })}
                     >
                       <option value="">Bölüm Seçiniz</option>
-                      {productionSections.map((section) => (
-                        <option key={section} value={section}>{section}</option>
-                      ))}
+                      {productionSections
+                        .filter((s) => s.departmentName === formData.department)
+                        .map((section) => (
+                          <option key={section.name} value={section.name}>{section.name}</option>
+                        ))}
                     </Select>
                   </div>
                 )}
@@ -2346,7 +2361,7 @@ export default function CalibrationPage() {
                   <Select
                     id="edit-department"
                     value={formData.department}
-                    onChange={(e) => setFormData({ ...formData, department: e.target.value, ...(e.target.value !== "Üretim" ? { location: formData.location } : {}) })}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value, productionSection: "" })}
                   >
                     <option value="">Seçiniz</option>
                     {departments.map((dept) => (
@@ -2356,18 +2371,20 @@ export default function CalibrationPage() {
                 </div>
               </div>
 
-              {formData.department === "Üretim" && (
+              {productionSections.some((s) => s.departmentName === formData.department) && (
                 <div className="space-y-2">
-                  <Label htmlFor="edit-productionSection">Üretim Bölümü</Label>
+                  <Label htmlFor="edit-productionSection">Bölüm</Label>
                   <Select
                     id="edit-productionSection"
                     value={formData.productionSection}
                     onChange={(e) => setFormData({ ...formData, productionSection: e.target.value })}
                   >
                     <option value="">Bölüm Seçiniz</option>
-                    {productionSections.map((section) => (
-                      <option key={section} value={section}>{section}</option>
-                    ))}
+                    {productionSections
+                      .filter((s) => s.departmentName === formData.department)
+                      .map((section) => (
+                        <option key={section.name} value={section.name}>{section.name}</option>
+                      ))}
                   </Select>
                 </div>
               )}
@@ -2856,11 +2873,12 @@ export default function CalibrationPage() {
                         <TableCell>
                           <Badge className={
                             record.result === 'PASS' ? 'bg-green-100 text-green-800 hover:bg-green-100' :
-                            record.result === 'FAIL' ? 'bg-red-100 text-red-800 hover:bg-red-100' :
-                            'bg-yellow-100 text-yellow-800 hover:bg-yellow-100'
+                            record.result === 'CONDITIONAL' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100' :
+                            'bg-red-100 text-red-800 hover:bg-red-100'
                           }>
                             {record.result === 'PASS' ? 'Başarılı' :
-                             record.result === 'FAIL' ? 'Başarısız' : 'Şartlı'}
+                             record.result === 'CONDITIONAL' ? 'Şartlı Kabul' :
+                             record.result === 'HURDA' ? 'Hurda' : 'Başarısız'}
                           </Badge>
                         </TableCell>
                         <TableCell>{record.cost ? `${Number(record.cost).toLocaleString('tr-TR')} TL` : '-'}</TableCell>
@@ -2920,13 +2938,27 @@ export default function CalibrationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Sonuç</Label>
-                      <Select value={historyFormData.result}
-                        onChange={e => setHistoryFormData({...historyFormData, result: e.target.value})}>
+                      <Select value={historyFormData.result === 'PASS' ? 'PASS' : 'FAIL'}
+                        onChange={e => setHistoryFormData({
+                          ...historyFormData,
+                          result: e.target.value === 'PASS' ? 'PASS' : '',
+                          newProductionSection: "",
+                        })}>
                         <option value="PASS">Başarılı</option>
                         <option value="FAIL">Başarısız</option>
-                        <option value="CONDITIONAL">Şartlı</option>
                       </Select>
                     </div>
+                    {historyFormData.result !== 'PASS' && (
+                      <div className="space-y-2">
+                        <Label>Karar</Label>
+                        <Select value={historyFormData.result}
+                          onChange={e => setHistoryFormData({...historyFormData, result: e.target.value, newProductionSection: ""})}>
+                          <option value="">Seçiniz</option>
+                          <option value="CONDITIONAL">Şartlı Kabul</option>
+                          <option value="HURDA">Hurda</option>
+                        </Select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label>Notlar</Label>
                       <Input value={historyFormData.notes}
@@ -2934,6 +2966,35 @@ export default function CalibrationPage() {
                         placeholder="Ek bilgiler..." />
                     </div>
                   </div>
+
+                  {historyFormData.result === 'CONDITIONAL' && (
+                    <div className="space-y-2">
+                      <Label>Yeni Bölüm</Label>
+                      <Select value={historyFormData.newProductionSection}
+                        onChange={e => setHistoryFormData({...historyFormData, newProductionSection: e.target.value})}>
+                        <option value="">Seçiniz</option>
+                        {Array.from(new Set(productionSections.map((s) => s.departmentName).filter(Boolean))).map((dep) => (
+                          <optgroup key={dep as string} label={dep as string}>
+                            {productionSections
+                              .filter((s) => s.departmentName === dep)
+                              .map((section) => (
+                                <option key={section.name} value={section.name}>{section.name}</option>
+                              ))}
+                          </optgroup>
+                        ))}
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Seçilen bölümün bağlı olduğu departman cihaza otomatik atanır.
+                      </p>
+                    </div>
+                  )}
+
+                  {historyFormData.result === 'HURDA' && (
+                    <div className="rounded-md border px-3 py-2 text-sm bg-red-50 border-red-200 text-red-800">
+                      Kaydedince cihaz otomatik olarak Kalite / KARANTİNA bölümüne taşınacak ve Cihaz Durumu "Hurda" olarak işaretlenecek.
+                    </div>
+                  )}
+
                   <div className="flex gap-2 justify-end">
                     <Button type="button" variant="outline" onClick={cancelHistoryForm}>İptal</Button>
                     <Button type="submit">{editingHistoryId ? 'Güncelle' : 'Kaydet'}</Button>

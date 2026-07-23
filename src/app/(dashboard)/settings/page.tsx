@@ -67,6 +67,7 @@ export default function SettingsPage() {
   const [deviceNames, setDeviceNames] = useState<DeviceName[]>([])
   const [departments, setDepartments] = useState<CalibrationDepartment[]>([])
   const [productionSections, setProductionSections] = useState<ProductionSection[]>([])
+  const [realDepartments, setRealDepartments] = useState<{ id: string; name: string }[]>([])
   const [expiringEmails, setExpiringEmails] = useState<NotificationEmail[]>([])
   const [expiredEmails, setExpiredEmails] = useState<NotificationEmail[]>([])
   const [notificationRules, setNotificationRules] = useState<NotificationRule[]>([])
@@ -123,7 +124,7 @@ export default function SettingsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingType, setEditingType] = useState<EditingType>(null)
   const [editingItem, setEditingItem] = useState<any>(null)
-  const [formData, setFormData] = useState<SettingsFormData>({ name: '', code: '', manufacturer: '', description: '', color: '#3b82f6' })
+  const [formData, setFormData] = useState<SettingsFormData>({ name: '', code: '', manufacturer: '', description: '', color: '#3b82f6', departmentId: '' })
 
   // Email test
   const [emailTest, setEmailTest] = useState<EmailTestData>({ email: '', name: '', sending: false })
@@ -174,10 +175,11 @@ export default function SettingsPage() {
         fetch('/api/settings/notification-emails?category=EXPIRING'),
         fetch('/api/settings/notification-emails?category=EXPIRED'),
         fetch('/api/settings/notification-rules'),
+        fetch('/api/departments'),
       ]
 
       if (isKaliteUser) {
-        const [locsRes, typesRes, modelsRes, namesRes, deptsRes, prodSectionsRes, expiringEmailsRes, expiredEmailsRes, rulesRes] = await Promise.all(calibrationFetches)
+        const [locsRes, typesRes, modelsRes, namesRes, deptsRes, prodSectionsRes, expiringEmailsRes, expiredEmailsRes, rulesRes, realDeptsRes] = await Promise.all(calibrationFetches)
 
         if (locsRes.ok) setLocations(await locsRes.json())
         if (typesRes.ok) setDeviceTypes(await typesRes.json())
@@ -188,8 +190,9 @@ export default function SettingsPage() {
         if (expiringEmailsRes.ok) setExpiringEmails(await expiringEmailsRes.json())
         if (expiredEmailsRes.ok) setExpiredEmails(await expiredEmailsRes.json())
         if (rulesRes.ok) setNotificationRules(await rulesRes.json())
+        if (realDeptsRes.ok) setRealDepartments(await realDeptsRes.json())
       } else {
-        const [locsRes, typesRes, modelsRes, namesRes, deptsRes, prodSectionsRes, expiringEmailsRes, expiredEmailsRes, rulesRes, categoriesRes, taskEmailsRes, boardMembersRes, systemRes, annCategoriesRes, surveysRes, ticketCategoriesRes] = await Promise.all([
+        const [locsRes, typesRes, modelsRes, namesRes, deptsRes, prodSectionsRes, expiringEmailsRes, expiredEmailsRes, rulesRes, realDeptsRes, categoriesRes, taskEmailsRes, boardMembersRes, systemRes, annCategoriesRes, surveysRes, ticketCategoriesRes] = await Promise.all([
           ...calibrationFetches,
           fetch('/api/tasks/categories'),
           fetch('/api/tasks/notification-emails'),
@@ -209,6 +212,7 @@ export default function SettingsPage() {
         if (expiringEmailsRes.ok) setExpiringEmails(await expiringEmailsRes.json())
         if (expiredEmailsRes.ok) setExpiredEmails(await expiredEmailsRes.json())
         if (rulesRes.ok) setNotificationRules(await rulesRes.json())
+        if (realDeptsRes.ok) setRealDepartments(await realDeptsRes.json())
         if (categoriesRes.ok) setTaskCategories(await categoriesRes.json())
         if (taskEmailsRes.ok) setTaskNotificationEmails(await taskEmailsRes.json())
         if (boardMembersRes.ok) setSuggestionBoardMembers(await boardMembersRes.json())
@@ -684,7 +688,10 @@ export default function SettingsPage() {
       }
       else if (editingType === 'device-name') endpoint = '/api/settings/device-names'
       else if (editingType === 'department') endpoint = '/api/settings/departments'
-      else if (editingType === 'production-section') endpoint = '/api/settings/production-sections'
+      else if (editingType === 'production-section') {
+        endpoint = '/api/settings/production-sections'
+        body.departmentId = formData.departmentId || null
+      }
 
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
@@ -714,7 +721,10 @@ export default function SettingsPage() {
       }
       else if (editingType === 'device-name') endpoint = `/api/settings/device-names/${editingItem.id}`
       else if (editingType === 'department') endpoint = `/api/settings/departments/${editingItem.id}`
-      else if (editingType === 'production-section') endpoint = `/api/settings/production-sections/${editingItem.id}`
+      else if (editingType === 'production-section') {
+        endpoint = `/api/settings/production-sections/${editingItem.id}`
+        body.departmentId = formData.departmentId || null
+      }
 
       const res = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
@@ -764,12 +774,12 @@ export default function SettingsPage() {
   const openEditDialog = (item: any, type: EditingType) => {
     setEditingType(type)
     setEditingItem(item)
-    setFormData({ name: item.name, code: item.code || '', manufacturer: item.manufacturer || '', description: item.description || '', color: item.color || '#3b82f6' })
+    setFormData({ name: item.name, code: item.code || '', manufacturer: item.manufacturer || '', description: item.description || '', color: item.color || '#3b82f6', departmentId: item.departmentId || '' })
     setIsEditDialogOpen(true)
   }
 
   const resetForm = () => {
-    setFormData({ name: '', code: '', manufacturer: '', description: '', color: '#3b82f6' })
+    setFormData({ name: '', code: '', manufacturer: '', description: '', color: '#3b82f6', departmentId: '' })
   }
 
   // Email test
@@ -801,7 +811,7 @@ export default function SettingsPage() {
     if (editingType === 'device-model') return 'Cihaz Modeli'
     if (editingType === 'device-name') return 'Cihaz Adı'
     if (editingType === 'department') return 'Departman'
-    if (editingType === 'production-section') return 'Üretim Bölümü'
+    if (editingType === 'production-section') return 'Bölüm'
     if (editingType === 'task-category') return 'Görev Kategorisi'
     if (editingType === 'announcement-category') return 'Duyuru Kategorisi'
     return ''
@@ -1377,6 +1387,22 @@ export default function SettingsPage() {
                 />
               </div>
             )}
+            {editingType === 'production-section' && (
+              <div className="space-y-2">
+                <Label htmlFor="departmentId">Departman *</Label>
+                <select
+                  id="departmentId"
+                  value={formData.departmentId}
+                  onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+                  className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+                >
+                  <option value="">Seçiniz</option>
+                  {realDepartments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>İptal</Button>
@@ -1417,6 +1443,22 @@ export default function SettingsPage() {
                   value={formData.manufacturer}
                   onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
                 />
+              </div>
+            )}
+            {editingType === 'production-section' && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-departmentId">Departman *</Label>
+                <select
+                  id="edit-departmentId"
+                  value={formData.departmentId}
+                  onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+                  className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+                >
+                  <option value="">Seçiniz</option>
+                  {realDepartments.map((dept) => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  ))}
+                </select>
               </div>
             )}
           </div>

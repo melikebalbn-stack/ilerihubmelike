@@ -154,6 +154,9 @@ export function CalibrationSettingsPanel({
         <div className="flex gap-3 text-xs text-muted-foreground">
           {item.code && <span>Kod: {item.code}</span>}
           {item.manufacturer && <span>Üretici: {item.manufacturer}</span>}
+          {type === 'production-section' && (
+            <span>Departman: {item.department?.name || '—'}</span>
+          )}
           <span className={item.isActive ? 'text-green-600' : 'text-red-600'}>
             {item.isActive ? 'Aktif' : 'Pasif'}
           </span>
@@ -344,8 +347,8 @@ export function CalibrationSettingsPanel({
         </div>
       </Subsection>
 
-      {/* Üretim Bölümleri */}
-      <Subsection title="Üretim Bölümleri" icon={Factory} count={productionSections.length}>
+      {/* Bölümler */}
+      <Subsection title="Bölümler" icon={Factory} count={productionSections.length}>
         <div className="p-3 border-b bg-background flex justify-end">
           <Button
             variant="outline"
@@ -358,7 +361,7 @@ export function CalibrationSettingsPanel({
         </div>
         <div className="p-3 border-b bg-background">
           <Input
-            placeholder="Üretim bölümü ara..."
+            placeholder="Bölüm ara..."
             value={productionSectionSearch}
             onChange={(e) => setProductionSectionSearch(e.target.value)}
             className="h-9"
@@ -368,7 +371,7 @@ export function CalibrationSettingsPanel({
         <div className="p-3 max-h-64 overflow-y-auto space-y-2">
           {filteredProductionSections.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              {productionSectionSearch ? "Sonuç bulunamadı" : "Henüz üretim bölümü eklenmemiş"}
+              {productionSectionSearch ? "Sonuç bulunamadı" : "Henüz bölüm eklenmemiş"}
             </p>
           ) : (
             filteredProductionSections.map((item) => (

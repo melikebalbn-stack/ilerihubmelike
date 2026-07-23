@@ -8,6 +8,7 @@ export async function GET() {
   try {
     const sections = await prisma.calibrationProductionSection.findMany({
       orderBy: { sortOrder: 'asc' },
+      include: { department: { select: { id: true, name: true } } },
     })
     return NextResponse.json(sections)
   } catch (error) {
@@ -20,7 +21,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, code } = body
+    const { name, code, departmentId } = body
 
     const maxSortOrder = await prisma.calibrationProductionSection.aggregate({
       _max: { sortOrder: true },
@@ -31,9 +32,11 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         code: code || null,
+        departmentId: departmentId || null,
         isActive: true,
         sortOrder: nextSortOrder,
       },
+      include: { department: { select: { id: true, name: true } } },
     })
 
     return NextResponse.json(section, { status: 201 })

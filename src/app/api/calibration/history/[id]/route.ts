@@ -29,6 +29,7 @@ export async function PUT(
       result,
       notes,
       certificatePath,
+      newProductionSection,
     } = body
 
     // Kaydın var olup olmadığını ve cihazını al
@@ -49,6 +50,8 @@ export async function PUT(
     const interval = existing.device.calibrationInterval || 365
     const nextDueDate = new Date(calDate.getTime() + interval * 24 * 60 * 60 * 1000)
 
+    const finalResult: CalibrationResult = (result as CalibrationResult) ?? existing.result
+
     // Kaydı güncelle
     const updated = await prisma.calibrationHistory.update({
       where: { id },
@@ -58,7 +61,7 @@ export async function PUT(
         certificateNumber: certificateNumber ?? null,
         calibratedBy: calibratedBy ?? existing.calibratedBy,
         cost: cost === undefined ? existing.cost : cost,
-        result: (result as CalibrationResult) ?? existing.result,
+        result: finalResult,
         notes: notes ?? null,
         certificatePath: certificatePath ?? existing.certificatePath,
       },
@@ -74,30 +77,50 @@ export async function PUT(
       const now = new Date()
       const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
-      // Manuel override (IN_PROCESS / OUT_OF_ORDER) varsa otomatik statüyü ezme
-      const deviceData: {
-        lastCalibrationDate: Date
-        nextCalibrationDate: Date
-        status?: CalibrationStatus
-      } = {
-        lastCalibrationDate: latest.calibrationDate,
-        nextCalibrationDate: latest.nextDueDate,
-      }
+      // Tarih/durum senkronu SADECE en güncel kayıt Başarılı ise yapılır (Şartlı/Hurda'da
+      // kalibrasyon fiilen geçmedi, vade ileri atılmamalı).
+      const deviceData: Record<string, unknown> = {}
+      if (latest.result === 'PASS') {
+        deviceData.lastCalibrationDate = latest.calibrationDate
+        deviceData.nextCalibrationDate = latest.nextDueDate
 
-      if (!existing.device.statusManualOverride) {
-        if (latest.nextDueDate < now) {
-          deviceData.status = CalibrationStatus.EXPIRED
-        } else if (latest.nextDueDate <= thirtyDaysFromNow) {
-          deviceData.status = CalibrationStatus.EXPIRING
-        } else {
-          deviceData.status = CalibrationStatus.VALID
+        // Manuel override (IN_PROCESS / OUT_OF_ORDER) varsa otomatik statüyü ezme
+        if (!existing.device.statusManualOverride) {
+          if (latest.nextDueDate < now) {
+            deviceData.status = CalibrationStatus.EXPIRED
+          } else if (latest.nextDueDate <= thirtyDaysFromNow) {
+            deviceData.status = CalibrationStatus.EXPIRING
+          } else {
+            deviceData.status = CalibrationStatus.VALID
+          }
         }
       }
 
-      await prisma.calibrationDevice.update({
-        where: { id: existing.deviceId },
-        data: deviceData,
-      })
+      // Karar: Hurda → cihaz Kalite/KARANTİNA'ya taşınır ve Hurda olarak işaretlenir.
+      // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
+      if (finalResult === 'HURDA') {
+        deviceData.department = 'Kalite'
+        deviceData.productionSection = 'KARANTİNA'
+        deviceData.deviceCondition = 'Hurda'
+        deviceData.scrapDate = calDate
+        deviceData.scrapDescription = notes || existing.device.scrapDescription || null
+      } else if (finalResult === 'CONDITIONAL' && newProductionSection) {
+        deviceData.productionSection = newProductionSection
+        const section = await prisma.calibrationProductionSection.findUnique({
+          where: { name: newProductionSection },
+          select: { department: { select: { name: true } } },
+        })
+        if (section?.department?.name) {
+          deviceData.department = section.department.name
+        }
+      }
+
+      if (Object.keys(deviceData).length > 0) {
+        await prisma.calibrationDevice.update({
+          where: { id: existing.deviceId },
+          data: deviceData,
+        })
+      }
     }
 
     return NextResponse.json(updated)

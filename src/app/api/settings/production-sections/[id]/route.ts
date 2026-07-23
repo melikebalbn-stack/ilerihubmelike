@@ -9,11 +9,12 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, code, isActive, sortOrder } = body
+    const { name, code, departmentId, isActive, sortOrder } = body
 
     const section = await prisma.calibrationProductionSection.update({
       where: { id },
-      data: { name, code, isActive, sortOrder },
+      data: { name, code, departmentId: departmentId || null, isActive, sortOrder },
+      include: { department: { select: { id: true, name: true } } },
     })
 
     return NextResponse.json(section)

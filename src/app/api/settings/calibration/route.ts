@@ -33,7 +33,13 @@ export async function GET() {
       prisma.calibrationProductionSection.findMany({
         where: { isActive: true },
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, name: true, code: true },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          departmentId: true,
+          department: { select: { id: true, name: true } },
+        },
       }),
     ])
 

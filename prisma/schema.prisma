@@ -230,6 +230,11 @@ model User {
   offboardingFormsReceived OffboardingForm[] @relation("OffboardingReceiver")
   offboardingFormsCreated  OffboardingForm[] @relation("OffboardingCreator")
 
+  // Zimmet Teslim Formu (cihaz teslim tutanağı — offboarding'den AYRI modül)
+  zimmetFormlariSahip     ZimmetFormu[] @relation("ZimmetFormuSahibi")
+  zimmetFormlariOnaylanan ZimmetFormu[] @relation("ZimmetFormuOnaylayan")
+  zimmetFormlariOlusturan ZimmetFormu[] @relation("ZimmetFormuOlusturan")
+
   depoHareketleri DepoHareketLog[] @relation("DepoHareketKullanici")
 
   createdAt   DateTime  @default(now())
@@ -11477,4 +11482,76 @@ model BulkCardScanFailure {
   @@index([personnelId])
   @@index([tarih])
   @@index([createdById])
+}
+
+// ============================================================
+// ZİMMET TESLİM FORMU
+// Cihaz teslim tutanağı + onay/imza akışı.
+// NOT: OffboardingForm ("Zimmet İade / İlişik Kesme") ve EnvanterZimmet
+// (envanter modülü personel zimmeti) modellerinden AYRIDIR.
+// ============================================================
+
+enum ZimmetTuru {
+  NOTEBOOK_BILGISAYAR
+  DESKTOP_BILGISAYAR
+  CEP_TELEFONU
+  EL_TERMINALI
+  OFFICE_365
+  DIGER
+}
+
+enum ZimmetCihazDurumu {
+  AKTIF
+  PASIF
+}
+
+enum ZimmetOnayDurumu {
+  ONAY_BEKLIYOR
+  ONAYLANDI
+  REDDEDILDI
+}
+
+model ZimmetFormu {
+  id String @id @default(cuid())
+
+  zimmetSahibiId  String
+  zimmetSahibi    User    @relation("ZimmetFormuSahibi", fields: [zimmetSahibiId], references: [id])
+  altZimmetSahibi String?
+  departman       String?
+
+  tur      ZimmetTuru
+  turDiger String?
+
+  seriNumarasi String?
+  aciklama     String? @db.Text
+  ozellik      String?
+  macAdresi    String?
+  pcAdi        String?
+  imeiNumarasi String?
+
+  verilisTarihi DateTime?
+  cihazDurumu   ZimmetCihazDurumu @default(AKTIF)
+  teslimNotu    String?           @db.Text
+
+  durum       ZimmetOnayDurumu @default(ONAY_BEKLIYOR)
+  onaylayanId String?
+  onaylayan   User?            @relation("ZimmetFormuOnaylayan", fields: [onaylayanId], references: [id])
+  onayTarihi  DateTime? // onay tarihi
+  zimmetSahibiImzaTarihi DateTime? // zimmet sahibi imza tarihi
+  teslimEdenImzaTarihi   DateTime? // zimmeti verenin imza tarihi
+
+  imzaModu         String? // 'DIJITAL' | 'ISLAK'
+  // Yalnızca DOSYA ADI tutulur (public URL DEĞİL). Gerçek konum uploads/
+  // ağacının DIŞINDA: UPLOAD_DIR (varsayılan /home/rokunet/shared/zimmet-imza).
+  // Okuma tek yol: auth + sahiplik korumalı /api/zimmet-formu/[id]/belge.
+  islakImzaDosyasi String?
+
+  createdById String
+  createdBy   User   @relation("ZimmetFormuOlusturan", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([zimmetSahibiId])
+  @@index([durum])
 }

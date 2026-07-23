@@ -66,6 +66,14 @@ export const PERMISSION_KEYS = {
   OFFBOARDING_APPROVE: 'offboarding.approve',
   OFFBOARDING_DELETE: 'offboarding.delete',
 
+  // === ZİMMET TESLİM FORMU ===
+  // NOT: offboarding.* ("Zimmet İade / İlişik Kesme") ve Elif'in envanter
+  // zimmetinden AYRI bir modül — bu yüzden anahtar 'zimmet.*' değil
+  // 'zimmet-formu.*'. Cihaz teslim tutanağı + onay/imza akışı.
+  ZIMMET_FORMU_VIEW: 'zimmet-formu.view',
+  ZIMMET_FORMU_CREATE: 'zimmet-formu.create',
+  ZIMMET_FORMU_APPROVE: 'zimmet-formu.approve',
+
   // === YANGIN TÜPÜ ===
   YANGIN_VIEW: 'yangin.view',
   YANGIN_QR_SCAN: 'yangin.qr.scan',
@@ -134,6 +142,7 @@ export const MODULE_LABELS: Record<string, string> = {
   izin: 'İzin Yönetimi',
   kalibrasyon: 'Kalibrasyon',
   offboarding: 'Zimmet İade / İlişik Kesme',
+  'zimmet-formu': 'Zimmet Teslim Formu',
   yangin: 'Yangın Tüpü',
   helpdesk: 'IT Destek',
   costanalysis: 'Maliyet Analizi',
@@ -195,6 +204,10 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'offboarding.edit': 'Zimmet iade / ilişik kesme formu düzenleme',
   'offboarding.approve': 'Zimmet iade / ilişik kesme formu onaylama',
   'offboarding.delete': 'Zimmet iade / ilişik kesme formu silme',
+
+  'zimmet-formu.view': 'Zimmet teslim formlarını görüntüleme (liste, tutanak, belge)',
+  'zimmet-formu.create': 'Zimmet teslim formu oluşturma',
+  'zimmet-formu.approve': 'Zimmet teslim formu onaylama ve ıslak imzalı belge yükleme',
 
   'yangin.view': 'Yangın tüpü görüntüleme',
   'yangin.qr.scan': 'QR ile periyodik kontrol kaydı',

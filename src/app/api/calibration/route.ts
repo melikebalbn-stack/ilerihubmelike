@@ -173,9 +173,8 @@ export async function POST(request: NextRequest) {
     const isDogrulama = calibrationType === 'Doğrulama' || calibrationType === 'Kal/Doğ'
 
     if (isKalibrasyon) {
-      if (!lastCalibrationDate) {
-        lastCalibrationDate = new Date().toISOString().split('T')[0]
-      }
+      // Son Kalibrasyon Tarihi zorunlu değil — yeni cihazın henüz kalibrasyon
+      // geçmişi olmayabilir; bugüne otomatik atanmaz, boş/null kalır.
       if (!calibrationInterval || isNaN(parseInt(calibrationInterval))) {
         calibrationInterval = 365
       } else {

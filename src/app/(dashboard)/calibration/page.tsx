@@ -125,7 +125,7 @@ export default function CalibrationPage() {
     responsiblePerson: "",
     responsiblePersonEmail: "",
     calibrationInterval: "365",
-    lastCalibrationDate: new Date().toISOString().split('T')[0],
+    lastCalibrationDate: "",
     plannedCalibrationDate: "",
     verificationInterval: "",
     lastVerificationDate: "",
@@ -508,7 +508,7 @@ export default function CalibrationPage() {
       responsiblePerson: "",
       responsiblePersonEmail: "",
       calibrationInterval: "365",
-      lastCalibrationDate: new Date().toISOString().split('T')[0],
+      lastCalibrationDate: "",
       plannedCalibrationDate: "",
       verificationInterval: "",
       lastVerificationDate: "",
@@ -2048,8 +2048,8 @@ export default function CalibrationPage() {
                       <TableCell>{device.model || "-"}</TableCell>
                       <TableCell>{device.calibrationType || "-"}</TableCell>
                       <TableCell>{device.department || "-"}</TableCell>
-                      <TableCell>{device.calibrationType === 'Doğrulama' || !device.lastCalibrationDate ? '-' : new Date(device.lastCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
-                      <TableCell>{device.deviceCondition === 'Hurda' || device.calibrationType === 'Doğrulama' || !device.nextCalibrationDate ? '-' : new Date(device.nextCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
+                      <TableCell>{device.deviceCondition === 'Kalibrasyonda' || device.calibrationType === 'Doğrulama' || !device.lastCalibrationDate ? '-' : new Date(device.lastCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
+                      <TableCell>{device.deviceCondition === 'Hurda' || device.deviceCondition === 'Kalibrasyonda' || device.calibrationType === 'Doğrulama' || !device.nextCalibrationDate ? '-' : new Date(device.nextCalibrationDate).toLocaleDateString('tr-TR')}</TableCell>
                       <TableCell>
                         {device.deviceCondition === 'Hurda' ? '-' : device.calibrationType === 'Doğrulama' ? '-' : device.plannedCalibrationDate ? (() => {
                           const planned = new Date(device.plannedCalibrationDate!)

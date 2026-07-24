@@ -428,6 +428,7 @@ export default function RecruitmentPage() {
   const [submitConfirmId, setSubmitConfirmId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [candidateSourceFilter, setCandidateSourceFilter] = useState("all")
   const [rejectionReason, setRejectionReason] = useState("")
 
   // Form state - Ilan
@@ -995,10 +996,19 @@ export default function RecruitmentPage() {
   })
 
   const filteredCandidates = candidates.filter(c => {
+    const q = searchTerm.toLowerCase()
     const fullName = `${c.firstName} ${c.lastName}`.toLowerCase()
-    return fullName.includes(searchTerm.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.currentCompany?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
+    const matchesSearch = !q ||
+      fullName.includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      (c.currentCompany?.toLowerCase().includes(q) ?? false) ||
+      (c.currentTitle?.toLowerCase().includes(q) ?? false) ||
+      (c.education?.toLowerCase().includes(q) ?? false) ||
+      (c.notes?.toLowerCase().includes(q) ?? false) ||
+      (c.skills?.some(sk => sk.toLowerCase().includes(q)) ?? false) ||
+      (c.tags?.some(tg => tg.toLowerCase().includes(q)) ?? false)
+    const matchesSource = candidateSourceFilter === "all" || c.source === candidateSourceFilter
+    return matchesSearch && matchesSource
   })
 
   const filteredRequests = requests.filter(r => {
@@ -2560,10 +2570,28 @@ export default function RecruitmentPage() {
         <TabsContent value="candidates">
           <Card>
             <CardHeader>
-              <CardTitle>Aday Havuzu</CardTitle>
-              <CardDescription>
-                Tum adaylar ve basvuru gecmisleri
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Aday Havuzu</CardTitle>
+                  <CardDescription>
+                    Tum adaylar ve basvuru gecmisleri
+                  </CardDescription>
+                </div>
+                <Select value={candidateSourceFilter} onValueChange={setCandidateSourceFilter}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Kaynak" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tum Kaynaklar</SelectItem>
+                    <SelectItem value="DIRECT">Direkt Basvuru</SelectItem>
+                    <SelectItem value="REFERRAL">Referans</SelectItem>
+                    <SelectItem value="LINKEDIN">LinkedIn</SelectItem>
+                    <SelectItem value="JOB_BOARD">Is Ilani Sitesi</SelectItem>
+                    <SelectItem value="AGENCY">Ajans</SelectItem>
+                    <SelectItem value="OTHER">Diger</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               {filteredCandidates.length === 0 ? (

@@ -590,7 +590,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         "max-lg:hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 w-64",
         !isMobile && (expanded ? "lg:w-64" : "lg:w-16"),
         // Dar mod: etiketleri gizle, ikonları ortala, grup chevron'larını gizle
-        !isMobile && !expanded && "[&_.flex-1]:hidden [&_nav_a]:justify-center [&_nav_button]:justify-center [&_nav_button>svg:last-child]:hidden",
+        // Dar mod: YALNIZ nav içi link/buton etiketlerini gizle (nav'ın kendi flex-1'ini
+        // DEĞİL — aksi halde nav gizlenip dikey akış bozulur), ikonları ortala, chevron gizle
+        !isMobile && !expanded && "[&_nav_a_.flex-1]:hidden [&_nav_button_.flex-1]:hidden [&_nav_a]:justify-center [&_nav_button]:justify-center [&_nav_button>svg:last-child]:hidden",
         // Sheet içindeyse (isOpen=true) her zaman göster, fixed kullanma
         isOpen && "!flex !max-lg:flex !relative !inset-auto !z-auto !w-64"
       )}
@@ -949,36 +951,57 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
       </nav>
 
-      {/* User Info & Logout */}
-      <div className="border-t border-white/[0.07] p-4 space-y-3">
+      {/* User Info & Logout — dar modda yalnız avatar + çıkış ikonu (metin sarmasın) */}
+      <div className={cn("border-t border-white/[0.07] overflow-hidden", expanded ? "p-4 space-y-3" : "p-2 space-y-2")}>
         {session?.user && (
-          <div className="flex items-center space-x-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white text-xs font-bold flex-shrink-0">
-              {session.user.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || <User className="h-5 w-5" />}
+          expanded ? (
+            <div className="flex items-center space-x-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white text-xs font-bold flex-shrink-0">
+                {session.user.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || <User className="h-5 w-5" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12.5px] font-semibold text-white truncate leading-tight">{session.user.name}</p>
+                <p className="text-[10.5px] text-white/40 truncate">{session.user.department || session.user.role}</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[12.5px] font-semibold text-white truncate leading-tight">{session.user.name}</p>
-              <p className="text-[10.5px] text-white/40 truncate">{session.user.department || session.user.role}</p>
+          ) : (
+            <div className="flex justify-center" title={session.user.name ?? undefined}>
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-700 text-white text-xs font-bold flex-shrink-0">
+                {session.user.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || <User className="h-5 w-5" />}
+              </div>
             </div>
-          </div>
+          )
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full border-white/10 text-white/60 hover:text-white hover:bg-white/10 hover:border-white/20 bg-transparent"
-          onClick={() => signOut({ callbackUrl: '/login' })}
-        >
-          <LogOut className="h-4 w-4 mr-2" />
-          Çıkış Yap
-        </Button>
+        {expanded ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full border-white/10 text-white/60 hover:text-white hover:bg-white/10 hover:border-white/20 bg-transparent"
+            onClick={() => signOut({ callbackUrl: '/login' })}
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Çıkış Yap
+          </Button>
+        ) : (
+          <button
+            type="button"
+            title="Çıkış Yap"
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="flex w-full items-center justify-center rounded-md border border-white/10 p-2 text-white/60 hover:text-white hover:bg-white/10 hover:border-white/20"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-white/[0.07] p-4">
-        <div className="text-[10px] text-white/20">
-          System Development Team ILERI<span className="text-teal-300">Hub</span> V.1.1
+      {/* Footer — sürüm/takım metni YALNIZ geniş modda render edilir (dar modda hiç yok) */}
+      {expanded && (
+        <div className="border-t border-white/[0.07] p-4">
+          <div className="text-[10px] text-white/20 whitespace-nowrap overflow-hidden">
+            System Development Team ILERI<span className="text-teal-300">Hub</span> V.1.1
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

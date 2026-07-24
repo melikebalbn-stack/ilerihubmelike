@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
     // Geçmiş kaydı + cihaz güncellemesi tek transaction'da: yarıda kesilirse
     // (ör. Hurda taşıma) geçmiş yazılıp cihaz güncellenmeden kalmasın (atomik).
     // Hurda-hedef-yok 400 kontrolü transaction'dan ÖNCE yapıldı (yukarıda).
+    // Cihaz Durumu sonuca göre otomatik: Başarılı/Şartlı Kabul → Şirkette, Hurda → Hurda.
     const history = await prisma.$transaction(async (tx) => {
       const created = await tx.calibrationHistory.create({
         data: {
@@ -96,11 +97,12 @@ export async function POST(request: NextRequest) {
         deviceUpdateData.nextCalibrationDate = nextDueDate
         deviceUpdateData.status = status
         deviceUpdateData.statusManualOverride = false // Yeni kalibrasyon yapıldı, manuel override sıfırla
+        deviceUpdateData.deviceCondition = 'Şirkette'
       }
 
       // Karar: Hurda → cihaz, Ayarlar'da işaretli hedef bölüme (ve o bölümün departmanına)
       // taşınır ve Hurda olarak işaretlenir.
-      // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
+      // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme taşınır, Cihaz Durumu Şirkette olur.
       if (result === 'HURDA' && hurdaTarget) {
         deviceUpdateData.productionSection = hurdaTarget.name
         if (hurdaTarget.department?.name) {
@@ -110,6 +112,7 @@ export async function POST(request: NextRequest) {
         deviceUpdateData.scrapDate = calDate
         deviceUpdateData.scrapDescription = notes || device.scrapDescription || null
       } else if (result === 'CONDITIONAL' && newProductionSection) {
+        deviceUpdateData.deviceCondition = 'Şirkette'
         deviceUpdateData.productionSection = newProductionSection
         const section = await tx.calibrationProductionSection.findUnique({
           where: { name: newProductionSection },

@@ -5,6 +5,7 @@ import { getBulkCardScanAccess } from './_lib/access'
 import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from './_lib/notify-hr'
 import { VALID_NEDEN } from './_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from './_lib/duplicate-check'
+import { resolveApprovers } from './_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +69,13 @@ export async function GET(request: NextRequest) {
 
     if (ivDurum === 'onaylandi') where.ivOnaylandi = true
     else if (ivDurum === 'bekliyor') where.ivOnaylandi = false
+
+    // Full (Eski Kayıtlar): müdür onayı BEKLIYOR durumundaki kayıtlar (Self/Sistem
+    // Geliştirme kendi kaydı akışı) müdür onaylamadan burada görünmez. GRI/SELF
+    // kendi kayıtlarını (durumu ne olursa olsun) her zaman görebilir.
+    if (access.level === 'FULL') {
+      where.onayDurumu = { not: 'BEKLIYOR' }
+    }
 
     if (access.level === 'GRI') {
       where.personnel = { bolum: access.bolum }
@@ -176,18 +184,21 @@ export async function POST(request: NextRequest) {
     }
 
     // SELF akışı her zaman, FULL akışı ise sadece selfApprovalRequired olan bir
-    // bölümdeyken (örn. Sistem Geliştirme) VE kendi adına giriyorsa müdür onayından
-    // geçer. Müdürü yoksa (managerId null) onay adımı atlanır, kayıt direkt onaylı sayılır.
+    // bölümdeyken (örn. Sistem Geliştirme) VE kendi adına giriyorsa onay akışına
+    // girer. Onaylayıcı 1. Sorumlu / 2. Sorumlu'dan çözülür — ikisi de yoksa/
+    // eşleşmezse onay adımı atlanır, kayıt direkt onaylı sayılır.
     const requiresSelfApproval =
       access.level === 'SELF' || (access.selfApprovalRequired && personnel.id === access.personnelId)
 
     let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
     let approverId: string | null = null
+    let approverId2: string | null = null
     if (requiresSelfApproval) {
-      const requester = await prisma.user.findUnique({ where: { id: user.id }, select: { managerId: true } })
-      if (requester?.managerId) {
+      const resolved = await resolveApprovers(personnel.id)
+      if (resolved.approverId || resolved.approverId2) {
         onayDurumu = 'BEKLIYOR'
-        approverId = requester.managerId
+        approverId = resolved.approverId
+        approverId2 = resolved.approverId2
       }
     }
 
@@ -203,6 +214,7 @@ export async function POST(request: NextRequest) {
         createdById: user.id,
         onayDurumu,
         approverId,
+        approverId2,
       },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },
@@ -213,8 +225,12 @@ export async function POST(request: NextRequest) {
     if (record.onayDurumu === 'ONAYLANDI') {
       // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok)
       notifyHrOfBulkCardScanRecords([{ sicilNo: record.sicilNo, adSoyad: record.adSoyad }], user.name || user.email)
-    } else if (record.approverId) {
-      notifyApproverOfPendingRecord(record.approverId, { sicilNo: record.sicilNo, adSoyad: record.adSoyad }, user.name || user.email)
+    } else {
+      notifyApproverOfPendingRecord(
+        [record.approverId, record.approverId2].filter((id): id is string => !!id),
+        { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
+        user.name || user.email
+      )
     }
 
     return NextResponse.json(record, { status: 201 })

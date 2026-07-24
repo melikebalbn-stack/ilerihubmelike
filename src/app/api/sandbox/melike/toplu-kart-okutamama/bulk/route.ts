@@ -5,6 +5,7 @@ import { getBulkCardScanAccess } from '../_lib/access'
 import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from '../_lib/notify-hr'
 import { VALID_NEDEN } from '../_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
+import { resolveApprovers } from '../_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,13 +51,6 @@ export async function POST(request: NextRequest) {
     })
     const personnelMap = new Map(personnelList.map((p) => [p.id, p]))
 
-    // Sistem Geliştirme gibi selfApprovalRequired bölümlerde, FULL kullanıcı
-    // kendi adına da bu toplu akıştan kayıt girebilir — o satır yine müdür
-    // onayından geçer, diğerleri (başkaları için) her zamanki gibi direkt onaylı.
-    const requesterManagerId = access.selfApprovalRequired
-      ? (await prisma.user.findUnique({ where: { id: user.id }, select: { managerId: true } }))?.managerId ?? null
-      : null
-
     let created = 0
     const errors: { personnelId: string; message: string }[] = []
     const createdSummaries: { sicilNo: string | null; adSoyad: string }[] = []
@@ -87,9 +81,17 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const requiresSelfApproval = access.selfApprovalRequired && personnel.id === access.personnelId && !!requesterManagerId
-      const onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = requiresSelfApproval ? 'BEKLIYOR' : 'ONAYLANDI'
-      const approverId = requiresSelfApproval ? requesterManagerId : null
+      let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
+      let approverId: string | null = null
+      let approverId2: string | null = null
+      if (access.selfApprovalRequired && personnel.id === access.personnelId) {
+        const resolved = await resolveApprovers(personnel.id)
+        if (resolved.approverId || resolved.approverId2) {
+          onayDurumu = 'BEKLIYOR'
+          approverId = resolved.approverId
+          approverId2 = resolved.approverId2
+        }
+      }
 
       const record = await prisma.bulkCardScanFailure.create({
         data: {
@@ -103,13 +105,18 @@ export async function POST(request: NextRequest) {
           createdById: user.id,
           onayDurumu,
           approverId,
+          approverId2,
         },
       })
       created++
       if (onayDurumu === 'ONAYLANDI') {
         createdSummaries.push({ sicilNo: personnel.sicilNo, adSoyad: personnel.adSoyad })
-      } else if (record.approverId) {
-        notifyApproverOfPendingRecord(record.approverId, { sicilNo: record.sicilNo, adSoyad: record.adSoyad }, user.name || user.email)
+      } else {
+        notifyApproverOfPendingRecord(
+          [record.approverId, record.approverId2].filter((id): id is string => !!id),
+          { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
+          user.name || user.email
+        )
       }
     }
 

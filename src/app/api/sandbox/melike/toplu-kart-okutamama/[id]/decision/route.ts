@@ -7,10 +7,11 @@ export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/sandbox/melike/toplu-kart-okutamama/[id]/decision
- * Müdür onayı/reddi — SELF akışında (Beyaz Yaka kendisi için giriş) kaydın
- * approverId'si olan kişi karar verir. Bu yetki formun genel accessLevel'ından
- * BAĞIMSIZDIR: yönetici kendisi formu kullanamıyor olsa bile (örn. NONE) kendisine
- * atanmış bekleyen kaydı onaylayıp reddedebilir.
+ * Onay/red — SELF akışında (Beyaz Yaka kendisi için giriş) kaydın approverId
+ * VEYA approverId2'si (1. Sorumlu / 2. Sorumlu) olan kişi karar verir —
+ * hangisi önce davranırsa geçerli olur, sıra yok. Bu yetki formun genel
+ * accessLevel'ından BAĞIMSIZDIR: onaylayıcı kendisi formu kullanamıyor olsa
+ * bile (örn. NONE) kendisine atanmış bekleyen kaydı onaylayıp reddedebilir.
  * Body: { decision: 'APPROVE' | 'REJECT' }
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       select: {
         id: true,
         approverId: true,
+        approverId2: true,
         onayDurumu: true,
         sicilNo: true,
         adSoyad: true,
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 })
     }
 
-    if (record.approverId !== user.id) {
+    if (record.approverId !== user.id && record.approverId2 !== user.id) {
       return NextResponse.json({ error: 'Bu kaydı onaylama/reddetme yetkiniz yok' }, { status: 403 })
     }
 

@@ -6,6 +6,7 @@ import { getBulkCardScanAccess } from '../_lib/access'
 import { VALID_NEDEN, NEDEN_LABELS, type KartOkutamamaNedeni } from '../_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
 import { notifyApproverOfPendingRecord } from '../_lib/notify-hr'
+import { resolveApprovers } from '../_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -204,14 +205,9 @@ export async function POST(request: NextRequest) {
       neden: KartOkutamamaNedeni | null
       onayDurumu: 'BEKLIYOR' | 'ONAYLANDI'
       approverId: string | null
+      approverId2: string | null
     }
     const toCreate: ToCreate[] = []
-
-    // Sistem Geliştirme gibi selfApprovalRequired bölümlerde, FULL kullanıcı
-    // kendi adına bir satır import ederse o satır yine müdür onayından geçer.
-    const requesterManagerId = access.selfApprovalRequired
-      ? (await prisma.user.findUnique({ where: { id: user.id }, select: { managerId: true } }))?.managerId ?? null
-      : null
 
     for (const p of parsed) {
       const personnel = p.sicilNo ? bySicil.get(p.sicilNo) : byAdSoyad.get(p.adSoyad.toLowerCase())
@@ -243,7 +239,17 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const requiresSelfApproval = access.selfApprovalRequired && personnel.id === access.personnelId && !!requesterManagerId
+      let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
+      let approverId: string | null = null
+      let approverId2: string | null = null
+      if (access.selfApprovalRequired && personnel.id === access.personnelId) {
+        const resolved = await resolveApprovers(personnel.id)
+        if (resolved.approverId || resolved.approverId2) {
+          onayDurumu = 'BEKLIYOR'
+          approverId = resolved.approverId
+          approverId2 = resolved.approverId2
+        }
+      }
 
       toCreate.push({
         personnelId: personnel.id,
@@ -253,8 +259,9 @@ export async function POST(request: NextRequest) {
         girisSaati: p.girisSaati,
         cikisSaati: p.cikisSaati,
         neden: p.neden,
-        onayDurumu: requiresSelfApproval ? 'BEKLIYOR' : 'ONAYLANDI',
-        approverId: requiresSelfApproval ? requesterManagerId : null,
+        onayDurumu,
+        approverId,
+        approverId2,
       })
     }
 
@@ -273,6 +280,7 @@ export async function POST(request: NextRequest) {
               createdById: user.id,
               onayDurumu: c.onayDurumu,
               approverId: c.approverId,
+              approverId2: c.approverId2,
             },
           }),
         ),
@@ -280,8 +288,12 @@ export async function POST(request: NextRequest) {
       results.created = toCreate.length
 
       for (const record of created) {
-        if (record.onayDurumu === 'BEKLIYOR' && record.approverId) {
-          notifyApproverOfPendingRecord(record.approverId, { sicilNo: record.sicilNo, adSoyad: record.adSoyad }, user.name || user.email)
+        if (record.onayDurumu === 'BEKLIYOR') {
+          notifyApproverOfPendingRecord(
+            [record.approverId, record.approverId2].filter((id): id is string => !!id),
+            { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
+            user.name || user.email
+          )
         }
       }
     }

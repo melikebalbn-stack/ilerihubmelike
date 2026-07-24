@@ -51,23 +51,26 @@ export async function notifyHrOfBulkCardScanRecords(
 }
 
 /**
- * Beyaz Yaka'nın kendisi için girdiği kayıt (SELF akışı) müdür onayına düştüğünde
- * müdüre in-app bildirim gönderir.
+ * Beyaz Yaka'nın kendisi için girdiği kayıt (SELF akışı) onay adayına/adaylarına
+ * (1. Sorumlu / 2. Sorumlu) düştüğünde in-app bildirim gönderir — hangisi önce
+ * onaylarsa/reddederse geçerli olduğu için ikisine de aynı anda bildirim gider.
  */
 export async function notifyApproverOfPendingRecord(
-  approverId: string,
+  approverIds: string[],
   record: RecordSummary,
   submitterName: string
 ): Promise<void> {
+  const recipientIds = [...new Set(approverIds.filter(Boolean))]
+  if (recipientIds.length === 0) return
   try {
-    await prisma.notification.create({
-      data: {
+    await prisma.notification.createMany({
+      data: recipientIds.map((approverId) => ({
         userId: approverId,
         title: `Onayınızı Bekleyen Kayıt: ${record.adSoyad}`,
         message: `${submitterName}, kart okutamama kaydını (${record.sicilNo || '-'}) onayınıza sundu.`,
         type: 'INFO' as const,
         link: '/sandbox/melike/toplu-kart-okutamama',
-      },
+      })),
     })
   } catch (err) {
     console.error('[toplu-kart-okutamama] Onay bildirimi hatası:', err)

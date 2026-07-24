@@ -33,6 +33,8 @@ export type AuditTargetType =
   | 'BACKUP'
   | 'BGYS_DOCUMENT'
   | 'PERSONNEL'
+  // Org şeması (kadro omurgası)
+  | 'ORG_UNIT'
   // IFS canlı değerlendirme (PR-2)
   | 'IFS_TASK_EVALUATION'
   | 'IFS_COURSE_EVALUATION'

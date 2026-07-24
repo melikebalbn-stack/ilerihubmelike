@@ -19,23 +19,15 @@ async function checkAccess(session: any) {
   };
 }
 
-// GET - Organizasyon birimleri listesi
+// GET - Organizasyon birimleri listesi (flat — ağacı client kurar)
 export async function GET(request: NextRequest) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (org chart herkese açık, finansal alanlar hasFullAccess'e kısıtlı)
+    // PR-Y2.5-strategic-hr: requireSession (org chart herkese açık, hassas alanlar role'e göre kısıtlı)
     const { session, error } = await requireSession();
     if (error) return error;
-    const { hasFullAccess } = await checkAccess(session);
-    // Beyaz liste projeksiyon — costCenter/approvedHeadcount/managerEmail sadece tam yetkiliye
-    const orgUnitFields = {
-      id: true, code: true, name: true, shortName: true, description: true,
-      parentId: true, level: true, sortOrder: true, unitType: true,
-      managerId: true, managerName: true, managerPhoto: true, location: true,
-      headcount: true, isActive: true, createdAt: true, updatedAt: true,
-      ...(hasFullAccess ? { costCenter: true, approvedHeadcount: true, managerEmail: true } : {}),
-    };
 
-    // Org chart herkese açık olabilir
+    const { hasFullAccess } = await checkAccess(session);
+
     const { searchParams } = new URL(request.url);
     const unitType = searchParams.get("unitType") as OrgUnitType | null;
     const parentId = searchParams.get("parentId");
@@ -67,28 +59,97 @@ export async function GET(request: NextRequest) {
         { name: "asc" }
       ],
       select: {
-        ...orgUnitFields,
-        _count: { select: { employees: true } },
-        children: {
+        id: true,
+        code: true,
+        name: true,
+        shortName: true,
+        description: true,
+        parentId: true,
+        level: true,
+        sortOrder: true,
+        unitType: true,
+        managerId: true,
+        managerName: true,
+        managerPhoto: true,
+        location: true,
+        headcount: true,
+        isActive: true,
+        // --- F1 yapısal alanlar ---
+        positionId: true,
+        positionStatus: true,
+        isExternal: true,
+        gecerlilikBaslangic: true,
+        gecerlilikBitis: true,
+        _count: {
+          select: { employees: true }
+        },
+        employees: {
           where: { isActive: true },
-          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
           select: {
-            ...orgUnitFields,
-            _count: { select: { employees: true } },
-            children: {
-              where: { isActive: true },
-              orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-              select: {
-                ...orgUnitFields,
-                _count: { select: { employees: true } }
-              }
+            id: true,
+            displayName: true,
+            positionTitle: true,
+            orgUnitId: true,
+            reportsToId: true,
+            employmentStatus: true,
+            workLocation: true,
+            photoUrl: true,
+            isActive: true,
+            personnelId: true, // --- F1 ---
+            ...(hasFullAccess ? { email: true, phone: true, hireDate: true, title: true } : {}),
+          },
+        },
+        // F1 — sorumlu tablosu (IV-LS-45): export'ta zaten açık, hasFullAccess gerekmez.
+        sorumluluklar: {
+          orderBy: { sira: "asc" },
+          select: { id: true, sira: true, birinciSorumlu: true, yedekSorumlu: true },
+        },
+        ...(hasFullAccess
+          ? {
+              costCenter: true,
+              approvedHeadcount: true,
+              managerEmail: true,
+              vekaletDurumu: true,
+              vekilAdi: true,
+              // F1 — pozisyon dondurma izi: yalnız Pozisyon Yönetimi panelini
+              // kullanan hasFullAccess oturumlar görür.
+              dondurmaGerekce: true,
+              dondurmaTarihi: true,
+              dondurmaYapan: true,
             }
-          }
-        }
+          : {}),
       }
     });
 
-    return NextResponse.json(units);
+    // F1 — Avatar için cinsiyet: OrgEmployee.personnelId gevşek referans (relation yok),
+    // Prisma join yapamaz. Tüm personnelId'leri toplayıp TEK toplu sorguyla (N+1 yok)
+    // Personnel.cinsiyet'i çekip employee'lere ekliyoruz. Personnel'e SADECE OKUMA.
+    const personnelIdler = Array.from(
+      new Set(
+        units.flatMap((u) => u.employees.map((e) => e.personnelId).filter((id): id is string => !!id))
+      )
+    );
+
+    const cinsiyetMap = new Map<string, string>();
+    if (personnelIdler.length > 0) {
+      const personeller = await prisma.personnel.findMany({
+        where: { id: { in: personnelIdler } },
+        select: { id: true, cinsiyet: true },
+      });
+      for (const p of personeller) {
+        cinsiyetMap.set(p.id, p.cinsiyet);
+      }
+    }
+
+    const unitsWithCinsiyet = units.map((u) => ({
+      ...u,
+      employees: u.employees.map((e) => ({
+        ...e,
+        cinsiyet: e.personnelId ? cinsiyetMap.get(e.personnelId) ?? null : null,
+      })),
+    }));
+
+    return NextResponse.json(unitsWithCinsiyet);
   } catch (error) {
     console.error("Organizasyon birimleri listesi hatası:", error);
     return NextResponse.json(

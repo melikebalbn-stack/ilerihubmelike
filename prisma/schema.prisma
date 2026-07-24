@@ -5347,10 +5347,32 @@ model OrgUnit {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // F1 - Pozisyon/bölüm meta ve sorumluluklar
+  positionId          String?
+  positionStatus      OrgPositionStatus @default(AKTIF)
+  isExternal          Boolean           @default(false)
+  gecerlilikBaslangic DateTime?         @db.Date
+  gecerlilikBitis     DateTime?         @db.Date
+  bolumMeta           OrgBolumMeta?
+  sorumluluklar       OrgSorumluluk[]
+  revizyonlar         OrgRevizyon[]
+
+  // R4 - Vekalet
+  vekaletDurumu    Boolean @default(false)
+  vekilPersonnelId String?
+  vekilAdi         String?
+
+  // Pozisyon dondurma izi
+  dondurmaGerekce String?
+  dondurmaTarihi  DateTime? @db.Date
+  dondurmaYapan   String?
+
   @@index([parentId])
   @@index([unitType])
   @@index([level])
   @@index([isActive])
+  @@index([positionId])
+  @@index([vekilPersonnelId])
 }
 
 // Organizasyon Çalışan Kaydı
@@ -5400,10 +5422,14 @@ model OrgEmployee {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // F1 - Personel loose ref
+  personnelId String?
+
   @@index([orgUnitId])
   @@index([reportsToId])
   @@index([employmentStatus])
   @@index([isActive])
+  @@index([personnelId])
 }
 
 // Login aktiviteleri loglama
@@ -5611,6 +5637,7 @@ enum OrgUnitType {
   TEAM // Takım
   GROUP // Grup
   PROJECT // Proje
+  POSITION // Pozisyon
 }
 
 enum EmploymentStatus {
@@ -11587,4 +11614,57 @@ model ZimmetFormu {
 
   @@index([zimmetSahibiId])
   @@index([durum])
+}
+
+// ===== ORG ŞEMASI DEVRİ (F1/R1/R4) — Elif =====
+
+enum OrgPositionStatus {
+  AKTIF
+  DONDURULDU
+  PLANLANAN
+}
+
+model OrgBolumMeta {
+  id                String    @id @default(cuid())
+  orgUnitId         String    @unique
+  orgUnit           OrgUnit   @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
+  dokumanNo         String
+  ilkYayinTarihi    DateTime? @db.Date
+  revNo             String?
+  sayNo             String?
+  hazirlayan        String?
+  yonetimTemsilcisi String?
+  gmOnayi           String?
+  gizlilik          String?   @default("HİZMETE ÖZEL")
+  isoMadde          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model OrgSorumluluk {
+  id             String   @id @default(cuid())
+  orgUnitId      String
+  orgUnit        OrgUnit  @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
+  sira           Int
+  birinciSorumlu String
+  yedekSorumlu   String?
+  createdAt      DateTime @default(now())
+
+  @@index([orgUnitId])
+}
+
+model OrgRevizyon {
+  id             String   @id @default(cuid())
+  orgUnitId      String
+  orgUnit        OrgUnit  @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
+  revNo          Int
+  tarih          DateTime @db.Date
+  aciklama       String
+  degisiklikYeri String
+  yapan          String
+  yapanUserId    String?
+  createdAt      DateTime @default(now())
+
+  @@index([orgUnitId])
+  @@unique([orgUnitId, revNo])
 }

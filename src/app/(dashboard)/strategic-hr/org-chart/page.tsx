@@ -3,6 +3,11 @@
 import { useState, useEffect, useRef } from "react"
 import { useSession } from "next-auth/react"
 import Image from "next/image"
+import OrgChartTree from "./OrgChartTree"
+import RevizyonPanel from "./RevizyonPanel"
+import BosKadroModal, { BosKadro } from "./BosKadroModal"
+import SorumluTablosuPanel from "./SorumluTablosuPanel"
+import PozisyonYonetimPanel from "./PozisyonYonetimPanel"
 import {
   Card,
   CardContent,
@@ -34,10 +39,7 @@ import {
   Building2,
   Plus,
   Users,
-  ChevronRight,
-  ChevronDown,
   User,
-  MapPin,
   Layers,
   HelpCircle,
   BookOpen,
@@ -46,11 +48,11 @@ import {
   Target,
   Upload,
   X,
-  UserPlus,
-  Briefcase,
   AlertCircle,
   Edit,
-  Trash2
+  Trash2,
+  Download,
+  History
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -72,6 +74,9 @@ interface OrgEmployee {
     code: string
     name: string
   }
+  orgUnitId: string
+  isActive?: boolean
+  personnelId?: string | null
 }
 
 interface OrgUnit {
@@ -89,31 +94,53 @@ interface OrgUnit {
   managerPhoto: string | null
   location: string | null
   headcount: number
-  approvedHeadcount: number | null
+  approvedHeadcount?: number | null // full-access'te gelir, yoksa undefined
   isActive: boolean
-  children: OrgUnit[]
+  parentId?: string | null
+  children?: OrgUnit[] // client'ta buildTree ile doldurulur
   employees?: OrgEmployee[]
   _count: {
     employees: number
   }
+  // --- F1 alanları ---
+  positionId?: string | null
+  positionStatus?: "AKTIF" | "DONDURULDU" | "PLANLANAN"
+  isExternal?: boolean
+  gecerlilikBaslangic?: string | null
+  gecerlilikBitis?: string | null
+  // --- R4/V3 vekalet — full-access'te gelir, yoksa undefined ---
+  vekaletDurumu?: boolean
+  vekilAdi?: string | null
+  // --- F1 sorumlu tablosu (IV-LS-45) — yalnız departman kökünde dolu gelir ---
+  sorumluluklar?: SorumlulukKaydi[]
+  // --- Pozisyon dondurma izi — full-access'te gelir, yoksa undefined ---
+  dondurmaGerekce?: string | null
+  dondurmaTarihi?: string | null
+  dondurmaYapan?: string | null
 }
 
-const unitTypeLabels: Record<string, string> = {
-  COMPANY: "Sirket",
-  DIVISION: "Bolum",
-  DEPARTMENT: "Departman",
-  TEAM: "Takim",
-  GROUP: "Grup",
-  PROJECT: "Proje"
+interface SorumlulukKaydi {
+  id: string
+  sira: number
+  birinciSorumlu: string
+  yedekSorumlu: string | null
 }
 
-const unitTypeColors: Record<string, string> = {
-  COMPANY: "bg-purple-100 text-purple-800",
-  DIVISION: "bg-blue-100 text-blue-800",
-  DEPARTMENT: "bg-green-100 text-green-800",
-  TEAM: "bg-yellow-100 text-yellow-800",
-  GROUP: "bg-orange-100 text-orange-800",
-  PROJECT: "bg-pink-100 text-pink-800"
+// Flat OrgUnit listesinden hiyerarşik ağaç kurar (GET artık flat dönüyor)
+function buildTree(flat: OrgUnit[]): OrgUnit[] {
+  const byId = new Map<string, OrgUnit>()
+  flat.forEach(u => byId.set(u.id, { ...u, children: [] }))
+  const roots: OrgUnit[] = []
+  byId.forEach(node => {
+    if (node.parentId && byId.has(node.parentId)) {
+      byId.get(node.parentId)!.children!.push(node)
+    } else {
+      roots.push(node)
+    }
+  })
+  // children'ı sortOrder'a göre sırala (flat zaten sıralı gelse de garanti)
+  byId.forEach(n => n.children!.sort((a, b) => a.sortOrder - b.sortOrder))
+  return roots
 }
 
 const employmentStatusLabels: Record<string, string> = {
@@ -136,253 +163,18 @@ const employmentStatusColors: Record<string, string> = {
   VACANT: "bg-amber-100 text-amber-800 border-2 border-dashed border-amber-400"
 }
 
-// Unvan sıralaması - düşük değer = yüksek öncelik
-const titlePriority: Record<string, number> = {
-  "mudur": 1,
-  "müdür": 1,
-  "genel mudur": 0,
-  "genel müdür": 0,
-  "direktor": 2,
-  "direktör": 2,
-  "sef": 3,
-  "şef": 3,
-  "muhendis": 4,
-  "mühendis": 4,
-  "uzman": 5,
-  "uzman yardimcisi": 6,
-  "uzman yardımcısı": 6,
-  "asistan": 7,
-  "stajyer": 8
-}
-
-// Unvana göre öncelik hesapla
-function getTitlePriority(title: string | null | undefined): number {
-  if (!title) return 100 // Unvan yoksa en sona
-  const lowerTitle = title.toLowerCase()
-
-  // Tam eşleşme ara
-  for (const [key, value] of Object.entries(titlePriority)) {
-    if (lowerTitle.includes(key)) {
-      return value
-    }
-  }
-  return 50 // Bilinmeyen unvan ortada
-}
-
-// Personelleri unvana göre sırala (boş pozisyonlar en sona)
-function sortEmployeesByTitle(employees: OrgEmployee[]): OrgEmployee[] {
-  return [...employees].sort((a, b) => {
-    // Önce boş pozisyonları en sona at
-    if (a.employmentStatus === "VACANT" && b.employmentStatus !== "VACANT") return 1
-    if (a.employmentStatus !== "VACANT" && b.employmentStatus === "VACANT") return -1
-
-    // İkisi de boş pozisyon ise alfabetik
-    if (a.employmentStatus === "VACANT" && b.employmentStatus === "VACANT") {
-      return a.displayName.localeCompare(b.displayName, 'tr')
-    }
-
-    // Unvan önceliğine göre sırala
-    const priorityA = getTitlePriority(a.positionTitle)
-    const priorityB = getTitlePriority(b.positionTitle)
-
-    if (priorityA !== priorityB) {
-      return priorityA - priorityB
-    }
-
-    // Aynı öncelikteyse alfabetik
-    return a.displayName.localeCompare(b.displayName, 'tr')
-  })
-}
-
-interface OrgUnitNodeProps {
-  unit: OrgUnit
-  level: number
-  expandedIds: Set<string>
-  toggleExpand: (id: string) => void
-  employees: OrgEmployee[]
-  onAddEmployee: (unitId: string) => void
-}
-
-function OrgUnitNode({ unit, level, expandedIds, toggleExpand, employees, onAddEmployee }: OrgUnitNodeProps) {
-  const isExpanded = expandedIds.has(unit.id)
-  const hasChildren = unit.children && unit.children.length > 0
-  const unitEmployees = employees.filter(e => e.orgUnit?.id === unit.id)
-  const sortedEmployees = sortEmployeesByTitle(unitEmployees)
-  const activeEmployees = unitEmployees.filter(e => e.employmentStatus !== "VACANT")
-  const vacantPositions = unitEmployees.filter(e => e.employmentStatus === "VACANT")
-
-  return (
-    <div className="ml-4">
-      <div
-        className={`flex items-center gap-3 p-3 rounded-lg hover:bg-muted cursor-pointer border border-transparent hover:border-border ${
-          level === 0 ? "ml-0" : ""
-        }`}
-        onClick={() => toggleExpand(unit.id)}
-      >
-        {(hasChildren || unitEmployees.length > 0) ? (
-          isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          )
-        ) : (
-          <div className="w-4 flex-shrink-0" />
-        )}
-
-        {/* Unit Icon */}
-        <div className="flex-shrink-0">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/40 flex items-center justify-center">
-            <Building2 className="h-5 w-5 text-primary" />
-          </div>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge className={unitTypeColors[unit.unitType]}>
-              {unitTypeLabels[unit.unitType]}
-            </Badge>
-            <span className="font-semibold text-base">{unit.name}</span>
-            {unit.shortName && (
-              <span className="text-muted-foreground text-sm">({unit.shortName})</span>
-            )}
-          </div>
-          <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap">
-            {unit.location && (
-              <span className="flex items-center gap-1">
-                <MapPin className="h-3 w-3" />
-                {unit.location}
-              </span>
-            )}
-            <span className="flex items-center gap-1">
-              <Users className="h-3 w-3" />
-              {activeEmployees.length} personel
-            </span>
-            {vacantPositions.length > 0 && (
-              <span className="flex items-center gap-1 text-amber-600">
-                <AlertCircle className="h-3 w-3" />
-                {vacantPositions.length} bos pozisyon
-              </span>
-            )}
-          </div>
-        </div>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onAddEmployee(unit.id)
-          }}
-          className="p-2 hover:bg-primary/10 rounded-lg"
-          title="Personel/Pozisyon Ekle"
-        >
-          <UserPlus className="h-4 w-4 text-primary" />
-        </button>
-      </div>
-
-      {isExpanded && (
-        <div className="border-l-2 border-primary/20 ml-6">
-          {/* Employees - Kart Görünümü */}
-          {sortedEmployees.length > 0 && (
-            <div className="py-3 px-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {sortedEmployees.map((emp) => (
-                  <div
-                    key={emp.id}
-                    className={`p-4 rounded-xl border shadow-sm transition-all hover:shadow-md ${
-                      emp.employmentStatus === "VACANT"
-                        ? "bg-amber-50/50 border-dashed border-amber-300 hover:border-amber-400"
-                        : "bg-card hover:bg-accent/50 border-border"
-                    }`}
-                  >
-                    {/* Üst Kısım - Foto ve İsim */}
-                    <div className="flex items-center gap-3 mb-3">
-                      {/* Employee Photo */}
-                      <div className="flex-shrink-0">
-                        {emp.photoUrl ? (
-                          <Image
-                            src={emp.photoUrl}
-                            alt={emp.displayName}
-                            width={48}
-                            height={48}
-                            className="rounded-full object-cover border-2 border-primary/20"
-                          />
-                        ) : (
-                          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                            emp.employmentStatus === "VACANT"
-                              ? "bg-amber-100 border-2 border-dashed border-amber-400"
-                              : "bg-gradient-to-br from-primary/20 to-primary/40"
-                          }`}>
-                            {emp.employmentStatus === "VACANT" ? (
-                              <Briefcase className="h-6 w-6 text-amber-600" />
-                            ) : (
-                              <User className="h-6 w-6 text-primary" />
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p className={`font-semibold truncate ${emp.employmentStatus === "VACANT" ? "text-amber-700" : ""}`}>
-                          {emp.displayName}
-                        </p>
-                        {emp.employmentStatus === "VACANT" && (
-                          <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-xs mt-1">
-                            Bos Pozisyon
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Alt Kısım - Unvan ve Email */}
-                    <div className="space-y-1.5">
-                      {emp.positionTitle && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Briefcase className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                          <span className="text-muted-foreground truncate">{emp.positionTitle}</span>
-                        </div>
-                      )}
-                      {emp.email && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground truncate">{emp.email}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Children */}
-          {hasChildren && unit.children.map((child) => (
-            <OrgUnitNode
-              key={child.id}
-              unit={child}
-              level={level + 1}
-              expandedIds={expandedIds}
-              toggleExpand={toggleExpand}
-              employees={employees}
-              onAddEmployee={onAddEmployee}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function OrgChartPage() {
   const { data: session } = useSession()
   const [units, setUnits] = useState<OrgUnit[]>([])
   const [employees, setEmployees] = useState<OrgEmployee[]>([])
   const [loading, setLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false)
   const [isGuideOpen, setIsGuideOpen] = useState(false)
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [isRevizyonDialogOpen, setIsRevizyonDialogOpen] = useState(false)
+  const [isBosKadroModalOpen, setIsBosKadroModalOpen] = useState(false)
+  const [selectedDeptId, setSelectedDeptId] = useState<string>("")
   const [uploading, setUploading] = useState(false)
-  const [selectedUnitId, setSelectedUnitId] = useState<string>("")
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const empFileInputRef = useRef<HTMLInputElement>(null)
 
   // Form state - Birim
   const [formData, setFormData] = useState({
@@ -399,17 +191,6 @@ export default function OrgChartPage() {
     approvedHeadcount: ""
   })
 
-  // Form state - Personel/Pozisyon
-  const [empFormData, setEmpFormData] = useState({
-    displayName: "",
-    email: "",
-    positionTitle: "",
-    employmentStatus: "ACTIVE",
-    photoUrl: "",
-    phone: "",
-    workLocation: ""
-  })
-
   useEffect(() => {
     fetchUnits()
     fetchEmployees()
@@ -417,13 +198,11 @@ export default function OrgChartPage() {
 
   const fetchUnits = async () => {
     try {
-      const res = await fetch("/api/strategic-hr/org-chart")
+      const res = await fetch("/api/strategic-hr/org-chart?flat=true")
       if (res.ok) {
         const data = await res.json()
-        setUnits(data)
-        // Ilk seviye birimleri otomatik ac
-        const rootIds = data.map((u: OrgUnit) => u.id)
-        setExpandedIds(new Set(rootIds))
+        const roots = buildTree(data)
+        setUnits(roots)
       }
     } catch (error) {
       console.error("Birimler yuklenirken hata:", error)
@@ -520,143 +299,8 @@ export default function OrgChartPage() {
     }
   }
 
-  // Personel fotograf yukleme
-  const handleEmpPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Dosya boyutu 2MB'dan kucuk olmali")
-      return
-    }
-
-    setUploading(true)
-    try {
-      const formDataUpload = new FormData()
-      formDataUpload.append("file", file)
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formDataUpload
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        setEmpFormData({ ...empFormData, photoUrl: data.url })
-        toast.success("Fotograf yuklendi")
-      } else {
-        toast.error("Fotograf yuklenemedi")
-      }
-    } catch (error) {
-      console.error("Upload hatasi:", error)
-      toast.error("Fotograf yuklenirken hata olustu")
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  // Personel/Pozisyon ekle
-  const handleEmployeeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    try {
-      const res = await fetch("/api/strategic-hr/org-chart/employees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...empFormData,
-          orgUnitId: selectedUnitId
-        })
-      })
-
-      if (res.ok) {
-        setIsEmployeeDialogOpen(false)
-        fetchEmployees()
-        fetchUnits()
-        setEmpFormData({
-          displayName: "",
-          email: "",
-          positionTitle: "",
-          employmentStatus: "ACTIVE",
-          photoUrl: "",
-          phone: "",
-          workLocation: ""
-        })
-        toast.success(empFormData.employmentStatus === "VACANT" ? "Bos pozisyon eklendi" : "Personel eklendi")
-      } else {
-        const errorData = await res.json()
-        toast.error(errorData.error || "Islem basarisiz")
-      }
-    } catch (error) {
-      console.error("Personel eklenirken hata:", error)
-      toast.error("Bir hata olustu")
-    }
-  }
-
-  // Birime personel ekleme dialogunu ac
-  const openAddEmployeeDialog = (unitId: string) => {
-    setSelectedUnitId(unitId)
-    setEmpFormData({
-      displayName: "",
-      email: "",
-      positionTitle: "",
-      employmentStatus: "ACTIVE",
-      photoUrl: "",
-      phone: "",
-      workLocation: ""
-    })
-    setIsEmployeeDialogOpen(true)
-  }
-
-  const toggleExpand = (id: string) => {
-    const newExpanded = new Set(expandedIds)
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id)
-    } else {
-      newExpanded.add(id)
-    }
-    setExpandedIds(newExpanded)
-  }
-
-  const expandAll = () => {
-    const allIds = new Set<string>()
-    const addAllIds = (unitList: OrgUnit[]) => {
-      unitList.forEach((unit) => {
-        allIds.add(unit.id)
-        if (unit.children) {
-          addAllIds(unit.children)
-        }
-      })
-    }
-    addAllIds(units)
-    setExpandedIds(allIds)
-  }
-
-  const collapseAll = () => {
-    setExpandedIds(new Set())
-  }
-
   // Stats
-  const countUnits = (unitList: OrgUnit[]): number => {
-    return unitList.reduce((sum, unit) => {
-      return sum + 1 + (unit.children ? countUnits(unit.children) : 0)
-    }, 0)
-  }
-
-  const totalUnits = countUnits(units)
-  const activeEmployees = employees.filter(e => e.employmentStatus !== "VACANT")
-  const vacantPositions = employees.filter(e => e.employmentStatus === "VACANT")
-  const departments = units.reduce((sum, u) => {
-    const countDepts = (list: OrgUnit[]): number => {
-      return list.reduce((s, unit) => {
-        const isDept = unit.unitType === "DEPARTMENT" ? 1 : 0
-        return s + isDept + (unit.children ? countDepts(unit.children) : 0)
-      }, 0)
-    }
-    return sum + (u.unitType === "DEPARTMENT" ? 1 : 0) + (u.children ? countDepts(u.children) : 0)
-  }, 0)
-
-  // Tum birimleri flat liste olarak al (Select icin)
+  // Tum birimleri flat liste olarak al (Select icin + kurul/Tum Firma/Yonetim tespiti icin asagida kullanilir)
   const getAllUnitsFlat = (unitList: OrgUnit[], result: OrgUnit[] = []): OrgUnit[] => {
     unitList.forEach((unit) => {
       result.push(unit)
@@ -668,6 +312,138 @@ export default function OrgChartPage() {
   }
 
   const flatUnits = getAllUnitsFlat(units)
+
+  // Toplam Birim / Toplam Personel — Tüm Firma (ORG-TF*) ve Yönetim (ORG-YN*) HARİÇ:
+  // Tüm Firma gerçek departmanların isimsiz kopyası (envanter), Yönetim'deki müdürler
+  // zaten kendi gerçek departmanlarında sayılı — ikisi de üst sayaçlarda mükerrer.
+  // Departman seçicide GÖRÜNMEYE devam ederler, yalnız bu sayaçlardan çıkarıldılar.
+  const tfYnUnitIds = new Set(
+    flatUnits
+      .filter(
+        u =>
+          u.code === "ORG-TF" ||
+          u.code.startsWith("ORG-TF-") ||
+          u.code === "ORG-YN" ||
+          u.code.startsWith("ORG-YN-")
+      )
+      .map(u => u.id)
+  )
+  const totalUnits = flatUnits.filter(u => !tfYnUnitIds.has(u.id)).length
+
+  // Toplam Personel — kurul (ORG-KR-*) kutularindaki OrgEmployee'ler ek gorev/mukerrer
+  // sayildigi icin, Tum Firma/Yonetim de yukaridaki sebeple haric tutulur. Ayrica ayni
+  // kisi birden fazla kutuda olabildigi icin (ör. Bedri Güler, Fatih Kaya) benzersiz
+  // personnelId'ye göre sayılır — personnelId'si olmayan (eşleşmemiş) kayıtlar ayrı ayrı
+  // sayılır (ortak bir kimlik anahtarları olmadığı için tekilleştirilemezler).
+  // Vekiller zaten OrgEmployee degil (OrgUnit.vekilAdi alaninda statik metin) — bu sayima
+  // hic girmiyorlar, ekstra filtreye gerek yok.
+  const kurulUnitIds = new Set(flatUnits.filter(u => u.code.startsWith("ORG-KR-")).map(u => u.id))
+  const disariBirakilanUnitIds = new Set([...kurulUnitIds, ...tfYnUnitIds])
+  const activeEmployees = employees.filter(
+    e => e.employmentStatus !== "VACANT" && !disariBirakilanUnitIds.has(e.orgUnitId)
+  )
+  const benzersizPersonnelIdler = new Set(activeEmployees.filter(e => e.personnelId).map(e => e.personnelId))
+  const isimsizCalisanSayisi = activeEmployees.filter(e => !e.personnelId).length
+  const toplamPersonelSayisi = benzersizPersonnelIdler.size + isimsizCalisanSayisi
+
+  // Boş Pozisyon — gerçek açık kadro listesi: her POSITION kutusu için (N - M), N>0,
+  // M<N, DONDURULMUŞ olmayan kutularda satır. Eskiden employmentStatus==="VACANT"
+  // OrgEmployee kaydı arıyordu — pilot seed'ler hiç VACANT-statülü kayıt oluşturmadığı
+  // için (boş kadro = OrgEmployee'nin YOKLUĞU) bu sayaç hep 0 kalıyordu. Tüm Firma/
+  // Yönetim (tfYnUnitIds) yukarıdaki sayaçlarla tutarlı olsun diye hariç. Vekaletli
+  // kutular da SAYILIR — vekalet, kadronun hâlâ açık (M=0) olduğu, yalnız geçici
+  // vekille yürütüldüğü anlamına gelir. Sayaç (bosPozisyonSayisi) VE modal (BosKadroModal)
+  // AYNI listeden (bosKadrolar) türetilir — kopya filtre mantığı yok, tek kaynak.
+  const flatUnitsById = new Map(flatUnits.map(u => [u.id, u]))
+
+  // Kutunun kök DEPARTMENT'ini bulur (parentId zinciriyle) — "Bölüm" sütunu için.
+  const bulKokDepartman = (unit: OrgUnit): string => {
+    let current: OrgUnit | undefined = unit
+    while (current) {
+      if (current.unitType === "DEPARTMENT" && !current.parentId) return current.name
+      current = current.parentId ? flatUnitsById.get(current.parentId) : undefined
+    }
+    return unit.name
+  }
+
+  const bosKadrolar: BosKadro[] = flatUnits
+    .filter(u => u.unitType === "POSITION" && !tfYnUnitIds.has(u.id) && u.positionStatus !== "DONDURULDU")
+    .map(u => {
+      const n = u.approvedHeadcount ?? 0
+      const m = (u.employees ?? []).filter(e => e.employmentStatus !== "VACANT").length
+      return { unit: u, acikKadro: n - m }
+    })
+    .filter(({ acikKadro }) => acikKadro > 0)
+    .map(({ unit, acikKadro }) => ({
+      id: unit.id,
+      bolum: bulKokDepartman(unit),
+      pozisyon: unit.name,
+      acikKadro,
+      vekaletDurumu: unit.vekaletDurumu === true,
+      vekilAdi: unit.vekilAdi ?? null,
+    }))
+    .sort((a, b) => a.bolum.localeCompare(b.bolum, "tr") || a.pozisyon.localeCompare(b.pozisyon, "tr"))
+
+  const bosPozisyonSayisi = bosKadrolar.reduce((sum, k) => sum + k.acikKadro, 0)
+  const departments = units.reduce((sum, u) => {
+    const countDepts = (list: OrgUnit[]): number => {
+      return list.reduce((s, unit) => {
+        const isDept = unit.unitType === "DEPARTMENT" ? 1 : 0
+        return s + isDept + (unit.children ? countDepts(unit.children) : 0)
+      }, 0)
+    }
+    return sum + (u.unitType === "DEPARTMENT" ? 1 : 0) + (u.children ? countDepts(u.children) : 0)
+  }, 0)
+
+  // Departman seçici — units (buildTree kökleri) birden fazla DEPARTMENT içerebilir (İK, Fabrika, ...)
+  const departmanKokleri = units.filter(u => u.unitType === "DEPARTMENT")
+  const selectedUnit = departmanKokleri.find(u => u.id === selectedDeptId) ?? departmanKokleri[0]
+
+  // Yalnız seçili departmanın kendi kutuları (kök + tüm alt pozisyonlar) — Pozisyon
+  // Yönetimi panelindeki parent/dondurma dropdown'ları başka departmana karışmasın.
+  const selectedDeptUnits = selectedUnit ? getAllUnitsFlat([selectedUnit]) : []
+
+  useEffect(() => {
+    if (!selectedDeptId && departmanKokleri.length > 0) {
+      setSelectedDeptId(departmanKokleri[0].id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [units])
+
+  // Export gate — org-chart/export route'undaki checkAccess ile AYNI liste (client'ta UX amaçlı;
+  // gerçek yetki denetimi route'ta yapılıyor, buton burada sadece göster/gizle)
+  const userRole = session?.user?.role ?? ""
+  const userDepartment = session?.user?.department || ""
+  const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"]
+  const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"]
+  const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept))
+  const hasFullAccess = fullAccessRoles.includes(userRole) || isHrDepartment
+
+  // Export/Revizyon artık SEÇİLİ departmanı hedefler (birden fazla departman olabildiği için)
+  const kokKod = selectedUnit?.code ?? "ORG-IV"
+  const kokAd = selectedUnit?.name ?? kokKod
+  const varsayilanYapan = session?.user?.name || "İV"
+
+  const handleExportOrgChart = async () => {
+    try {
+      const res = await fetch(`/api/strategic-hr/org-chart/export?code=${kokKod}`)
+      if (res.status === 403) {
+        toast.error("Bu işlem için yetkiniz yok")
+        return
+      }
+      if (!res.ok) throw new Error("Export hatası")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ORG_${kokKod}_${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Excel dosyası indirildi")
+    } catch (err: any) {
+      toast.error(err.message || "Export başarısız")
+    }
+  }
 
   if (loading) {
     return (
@@ -695,11 +471,15 @@ export default function OrgChartPage() {
             <HelpCircle className="h-4 w-4 mr-2" />
             Kilavuz
           </Button>
-          <Button variant="outline" onClick={expandAll}>
-            Tumu Ac
-          </Button>
-          <Button variant="outline" onClick={collapseAll}>
-            Tumu Kapat
+          {hasFullAccess && (
+            <Button variant="outline" onClick={handleExportOrgChart}>
+              <Download className="h-4 w-4 mr-2" />
+              IV-LS-45 İndir
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => setIsRevizyonDialogOpen(true)}>
+            <History className="h-4 w-4 mr-2" />
+            Revizyon Geçmişi
           </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -896,6 +676,22 @@ export default function OrgChartPage() {
           </Dialog>
         </div>
 
+        <RevizyonPanel
+          open={isRevizyonDialogOpen}
+          onOpenChange={setIsRevizyonDialogOpen}
+          kokKod={kokKod}
+          kokAd={kokAd}
+          hasFullAccess={hasFullAccess}
+          varsayilanYapan={varsayilanYapan}
+        />
+
+        <BosKadroModal
+          open={isBosKadroModalOpen}
+          onOpenChange={setIsBosKadroModalOpen}
+          bosKadrolar={bosKadrolar}
+          toplamAcikKadro={bosPozisyonSayisi}
+        />
+
         {/* Kilavuz Modal */}
         <Dialog open={isGuideOpen} onOpenChange={setIsGuideOpen}>
           <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
@@ -1026,146 +822,6 @@ export default function OrgChartPage() {
         </Dialog>
       </div>
 
-      {/* Personel/Pozisyon Ekleme Modal */}
-      <Dialog open={isEmployeeDialogOpen} onOpenChange={setIsEmployeeDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Personel / Pozisyon Ekle</DialogTitle>
-            <DialogDescription>
-              Birime yeni bir personel veya bos pozisyon ekleyin
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleEmployeeSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label>Durum</Label>
-                <Select
-                  value={empFormData.employmentStatus}
-                  onValueChange={(v) => setEmpFormData({ ...empFormData, employmentStatus: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ACTIVE">Aktif Personel</SelectItem>
-                    <SelectItem value="VACANT">Bos Pozisyon (Doldurulacak)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="col-span-2">
-                <Label>{empFormData.employmentStatus === "VACANT" ? "Pozisyon Adi" : "Ad Soyad"}</Label>
-                <Input
-                  value={empFormData.displayName}
-                  onChange={(e) => setEmpFormData({ ...empFormData, displayName: e.target.value })}
-                  placeholder={empFormData.employmentStatus === "VACANT" ? "IT Uzmani" : "Ahmet Yilmaz"}
-                  required
-                />
-              </div>
-
-              <div className="col-span-2">
-                <Label>Unvan</Label>
-                <Input
-                  value={empFormData.positionTitle}
-                  onChange={(e) => setEmpFormData({ ...empFormData, positionTitle: e.target.value })}
-                  placeholder="Sistem Gelistirme Muhendisi"
-                />
-              </div>
-
-              {empFormData.employmentStatus !== "VACANT" && (
-                <>
-                  <div className="col-span-2">
-                    <Label>E-posta</Label>
-                    <Input
-                      type="email"
-                      value={empFormData.email}
-                      onChange={(e) => setEmpFormData({ ...empFormData, email: e.target.value })}
-                      placeholder="email@example.com"
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Telefon</Label>
-                    <Input
-                      value={empFormData.phone}
-                      onChange={(e) => setEmpFormData({ ...empFormData, phone: e.target.value })}
-                      placeholder="+90 5XX XXX XX XX"
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Calisma Lokasyonu</Label>
-                    <Input
-                      value={empFormData.workLocation}
-                      onChange={(e) => setEmpFormData({ ...empFormData, workLocation: e.target.value })}
-                      placeholder="Istanbul Merkez"
-                    />
-                  </div>
-
-                  {/* Photo Upload */}
-                  <div className="col-span-2">
-                    <Label>Fotograf</Label>
-                    <div className="flex items-center gap-4 mt-2">
-                      {empFormData.photoUrl ? (
-                        <div className="relative">
-                          <Image
-                            src={empFormData.photoUrl}
-                            alt="Personel"
-                            width={64}
-                            height={64}
-                            className="rounded-full object-cover border-2 border-primary/20"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setEmpFormData({ ...empFormData, photoUrl: "" })}
-                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-                          <User className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div>
-                        <input
-                          ref={empFileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleEmpPhotoUpload}
-                          className="hidden"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => empFileInputRef.current?.click()}
-                          disabled={uploading}
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          {uploading ? "Yukleniyor..." : "Fotograf Yukle"}
-                        </Button>
-                        <p className="text-xs text-muted-foreground mt-1">Max 2MB</p>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsEmployeeDialogOpen(false)}>
-                Iptal
-              </Button>
-              <Button type="submit" disabled={!empFormData.displayName}>
-                {empFormData.employmentStatus === "VACANT" ? "Pozisyon Ekle" : "Personel Ekle"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -1194,28 +850,47 @@ export default function OrgChartPage() {
             <Users className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeEmployees.length}</div>
+            <div className="text-2xl font-bold">{toplamPersonelSayisi}</div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card
+          className="cursor-pointer transition-colors hover:bg-amber-50"
+          onClick={() => setIsBosKadroModalOpen(true)}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Bos Pozisyon</CardTitle>
             <AlertCircle className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{vacantPositions.length}</div>
+            <div className="text-2xl font-bold text-amber-600">{bosPozisyonSayisi}</div>
           </CardContent>
         </Card>
       </div>
 
       {/* Org Chart Tree */}
       <Card>
-        <CardHeader>
-          <CardTitle>Organizasyon Yapisi</CardTitle>
-          <CardDescription>
-            Sirketin hiyerarsik organizasyon yapisi
-          </CardDescription>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <CardTitle>Organizasyon Yapisi</CardTitle>
+            <CardDescription>
+              Sirketin hiyerarsik organizasyon yapisi
+            </CardDescription>
+          </div>
+          {departmanKokleri.length > 0 && (
+            <Select value={selectedUnit?.id ?? ""} onValueChange={setSelectedDeptId}>
+              <SelectTrigger className="w-full sm:w-[280px]">
+                <SelectValue placeholder="Departman seçin" />
+              </SelectTrigger>
+              <SelectContent>
+                {departmanKokleri.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardHeader>
         <CardContent>
           {units.length === 0 ? (
@@ -1225,19 +900,29 @@ export default function OrgChartPage() {
               <p className="text-sm text-muted-foreground mt-1">Yukaridaki "Yeni Birim" butonuna tiklayarak baslayabilirsiniz.</p>
             </div>
           ) : (
-            <div className="space-y-1">
-              {units.map((unit) => (
-                <OrgUnitNode
-                  key={unit.id}
-                  unit={unit}
-                  level={0}
-                  expandedIds={expandedIds}
-                  toggleExpand={toggleExpand}
-                  employees={employees}
-                  onAddEmployee={openAddEmployeeDialog}
-                />
-              ))}
-            </div>
+            <>
+              <div className="flex justify-end mb-2">
+                <div className="w-full sm:w-auto sm:min-w-[380px] sm:max-w-md space-y-2">
+                  <SorumluTablosuPanel
+                    sorumluluklar={selectedUnit?.sorumluluklar}
+                    orgUnitCode={selectedUnit?.code}
+                    hasFullAccess={hasFullAccess}
+                    onRefresh={fetchUnits}
+                  />
+                  <PozisyonYonetimPanel
+                    departmanUnitlari={selectedDeptUnits}
+                    orgUnitCode={selectedUnit?.code}
+                    hasFullAccess={hasFullAccess}
+                    onRefresh={fetchUnits}
+                  />
+                </div>
+              </div>
+              <OrgChartTree
+                units={selectedUnit ? [selectedUnit] : []}
+                hasFullAccess={hasFullAccess}
+                onRefresh={fetchUnits}
+              />
+            </>
           )}
         </CardContent>
       </Card>

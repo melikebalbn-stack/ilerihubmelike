@@ -93,12 +93,14 @@ export async function PUT(
       const now = new Date()
       const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
-      // Tarih/durum senkronu SADECE en güncel kayıt Başarılı ise yapılır (Şartlı/Hurda'da
-      // kalibrasyon fiilen geçmedi, vade ileri atılmamalı).
+      // Tarih/durum/Cihaz Durumu senkronu EN GÜNCEL kayda göre yapılır (tarih ilerlemesi
+      // SADECE Başarılı ise; Cihaz Durumu her zaman en güncel kararı yansıtır — böylece
+      // bir kaydı Hurda'dan Başarılı'ya düzenlemek Cihaz Durumu'nu da Şirkette'ye döndürür).
       const deviceData: Record<string, unknown> = {}
       if (latest.result === 'PASS') {
         deviceData.lastCalibrationDate = latest.calibrationDate
         deviceData.nextCalibrationDate = latest.nextDueDate
+        deviceData.deviceCondition = 'Şirkette'
 
         // Manuel override (IN_PROCESS / OUT_OF_ORDER) varsa otomatik statüyü ezme
         if (!existing.device.statusManualOverride) {
@@ -110,8 +112,14 @@ export async function PUT(
             deviceData.status = CalibrationStatus.VALID
           }
         }
+      } else if (latest.result === 'CONDITIONAL') {
+        deviceData.deviceCondition = 'Şirkette'
+      } else if (latest.result === 'HURDA') {
+        deviceData.deviceCondition = 'Hurda'
       }
 
+      // Bölüm/Departman taşıma: bu düzenlemenin Karar'ına (finalResult) göre uygulanır —
+      // seçilen yeni bölüm sadece bu istekte var, kayıtta saklanmaz.
       // Karar: Hurda → cihaz, Ayarlar'da işaretli hedef bölüme (ve o bölümün departmanına)
       // taşınır ve Hurda olarak işaretlenir.
       // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.

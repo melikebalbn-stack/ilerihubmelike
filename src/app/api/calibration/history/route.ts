@@ -87,17 +87,21 @@ export async function POST(request: NextRequest) {
       status = CalibrationStatus.EXPIRING
     }
 
+    // Cihaz Durumu, kalibrasyon sonucuna göre otomatik belirlenir: Başarılı/Şartlı Kabul
+    // → Şirkette (cihaz geri döndü); Hurda → Hurda. Elle "Kalibrasyonda"ya geri dönülmez.
     const deviceUpdateData: Record<string, unknown> = {}
     if (result === 'PASS') {
       deviceUpdateData.lastCalibrationDate = calDate
       deviceUpdateData.nextCalibrationDate = nextDueDate
       deviceUpdateData.status = status
       deviceUpdateData.statusManualOverride = false // Yeni kalibrasyon yapıldı, manuel override sıfırla
+      deviceUpdateData.deviceCondition = 'Şirkette'
     }
 
     // Karar: Hurda → cihaz, Ayarlar'da işaretli hedef bölüme (ve o bölümün departmanına)
     // taşınır ve Hurda olarak işaretlenir.
-    // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır.
+    // Karar: Şartlı Kabul → cihaz, seçilen yeni bölüme ve o bölümün departmanına taşınır,
+    // Cihaz Durumu Şirkette olur (cihaz fiilen şirkete döndü, şartlı kabul edildi).
     if (result === 'HURDA' && hurdaTarget) {
       deviceUpdateData.productionSection = hurdaTarget.name
       if (hurdaTarget.department?.name) {
@@ -107,6 +111,7 @@ export async function POST(request: NextRequest) {
       deviceUpdateData.scrapDate = calDate
       deviceUpdateData.scrapDescription = notes || device.scrapDescription || null
     } else if (result === 'CONDITIONAL' && newProductionSection) {
+      deviceUpdateData.deviceCondition = 'Şirkette'
       deviceUpdateData.productionSection = newProductionSection
       const section = await prisma.calibrationProductionSection.findUnique({
         where: { name: newProductionSection },

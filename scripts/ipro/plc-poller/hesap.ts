@@ -194,6 +194,53 @@ export function kacisKapisiKarari(g: KacisKapisiGirdi): KacisKapisiSonuc {
   return i >= 0 ? { kacisKapisi: true, kanitIndex: i } : { kacisKapisi: false, kanitIndex: null }
 }
 
+// ── Blok okuma parçalama (çok-PDU birleştirme yolunu kaldırır) ──
+//
+// KALICI DERS (24.07.2026): PANO-1'de aralıklı ×256 kayma epizodları gözlendi —
+// gerçek sayaç `00 00 02 7D` (637) iken poller `00 02 7D 00` (163072 = 637×256)
+// okuyordu: BİR BAYT SONRADAN. Kök sebep izole edildi: tek MBRead(0,400) PLC'nin
+// PDU yükünü (~PDU−18) aşıyor → node-snap7 çok-PDU yanıtı bir bayt kaymalı birleştiriyor.
+// python-snap7 (C kütüphanesi kendi böldüğü için) her koşulda temizdi; PANO-3 (56B, tek
+// PDU) hiç bozulmadı. ÇÖZÜM: bloğu PDU yüküne göre parçala → çok-PDU birleştirme HİÇ olmaz.
+// Katsayı yaması DEĞİL; bozulmanın yolu kökten kalkar.
+
+export interface OkumaParcasi {
+  /** Mutlak Merker ofseti (blok start + kayma). */
+  off: number
+  /** Bu parçanın bayt uzunluğu (≤ maxChunk). */
+  len: number
+}
+
+/**
+ * Bir [start, start+size) bloğunu ≤ maxChunk baytlık parçalara böler.
+ *
+ * maxChunk PLC'nin MÜZAKERE EDİLEN PDU yükünden türetilir (sabit değil) ve DWORD'a
+ * hizalıdır (4'ün katı) — sayaç DWORD'ları (4-hizalı pin adreslerinde) bir parçadan
+ * diğerine BÖLÜNMEZ. Parça sınırları 4-hizalı, start 4-hizalı → hiza korunur.
+ *
+ * size ≤ maxChunk ise TEK parça döner (PANO-3 gibi küçük bloklar parçalanmaz — regresyon yok).
+ * Birleştirme byte-exact: parçaların ardışık okunup birleştirilmesi tek okumayla aynı buffer'ı verir.
+ */
+export function parcaPlani(start: number, size: number, maxChunk: number): OkumaParcasi[] {
+  // Güvenlik: maxChunk en az 4 (bir DWORD) olmalı; hizala.
+  const chunk = Math.max(4, Math.floor(maxChunk / 4) * 4)
+  const parcalar: OkumaParcasi[] = []
+  for (let off = start; off < start + size; off += chunk) {
+    parcalar.push({ off, len: Math.min(chunk, start + size - off) })
+  }
+  return parcalar
+}
+
+/**
+ * Müzakere edilen PDU uzunluğundan güvenli, DWORD-hizalı okuma parça boyutu türetir.
+ * snap7 tek PDU'da en çok `PDU − 18` veri baytı okur (read yanıt başlık payı); 4'e hizalanır.
+ * PDU okunamazsa (0/geçersiz) güvenli varsayılan uygulanır.
+ */
+export function pduParcaBoyutu(pduLength: number, varsayilan = 200): number {
+  if (!Number.isFinite(pduLength) || pduLength < 22) return Math.floor(varsayilan / 4) * 4
+  return Math.floor((pduLength - 18) / 4) * 4
+}
+
 // ── Yeniden bağlanma disiplini ──
 
 export interface OkumaHatasiKarar {

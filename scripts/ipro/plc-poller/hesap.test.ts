@@ -14,6 +14,8 @@ import {
   taze,
   kacisKapisiKarari,
   tazelikDamgasiGuncellensinMi,
+  parcaPlani,
+  pduParcaBoyutu,
   type PinOzet,
 } from './hesap'
 
@@ -556,5 +558,69 @@ describe('donma tuzağı + kaçış kapısı (tur döngüsü simülasyonu)', () 
   it('REGRESYON: gerçek tek-makine reset (CN14 prev=1 → 0 → 1,2) bozulmadı', () => {
     const { birikim } = plcAkis([[1, 500], [0, 501], [1, 502], [2, 503]])
     expect(birikim).toBe(4) // CN14: 1, komşu: 3
+  })
+})
+
+// ── Blok okuma parçalama (PDU çok-parça birleştirme yolunu kaldırır, 24.07.2026) ──
+describe('pduParcaBoyutu — müzakere edilen PDU\'dan DWORD-hizalı boyut', () => {
+  it('PDU 240 → payload 222 → 220 (DWORD hizalı)', () => {
+    expect(pduParcaBoyutu(240)).toBe(220)
+  })
+  it('PDU 480 (S7-1500) → 462 → 460', () => {
+    expect(pduParcaBoyutu(480)).toBe(460)
+  })
+  it('geçersiz/küçük PDU → güvenli varsayılan (DWORD hizalı)', () => {
+    expect(pduParcaBoyutu(0)).toBe(200)
+    expect(pduParcaBoyutu(10)).toBe(200)
+    expect(pduParcaBoyutu(NaN)).toBe(200)
+  })
+  it('sonuç DAİMA 4\'ün katı', () => {
+    for (const pdu of [128, 240, 300, 480, 960]) expect(pduParcaBoyutu(pdu) % 4).toBe(0)
+  })
+})
+
+describe('parcaPlani — blok parçalama', () => {
+  const kapla = (p: { off: number; len: number }[]) => p.reduce((s, x) => s + x.len, 0)
+
+  it('küçük blok (size ≤ chunk) TEK parça kalır — PANO-3 regresyonu', () => {
+    const p = parcaPlani(0, 56, 220)
+    expect(p).toEqual([{ off: 0, len: 56 }])
+  })
+
+  it('PANO-1 400B / 220 chunk → iki parça, toplam kapsam 400', () => {
+    const p = parcaPlani(0, 400, 220)
+    expect(p).toEqual([{ off: 0, len: 220 }, { off: 220, len: 180 }])
+    expect(kapla(p)).toBe(400)
+  })
+
+  it('parça sınırları ve start DWORD-hizalı (her off %4==0)', () => {
+    for (const p of parcaPlani(0, 400, 220)) expect(p.off % 4).toBe(0)
+  })
+
+  it('start 0 değilse ofsetler mutlak (duruş bloğu 1000\'den)', () => {
+    const p = parcaPlani(1000, 400, 220)
+    expect(p).toEqual([{ off: 1000, len: 220 }, { off: 1220, len: 180 }])
+  })
+
+  it('tam katı blok artık parça bırakmaz (440/220 → iki tam parça)', () => {
+    expect(parcaPlani(0, 440, 220)).toEqual([{ off: 0, len: 220 }, { off: 220, len: 220 }])
+  })
+
+  it('chunk DWORD hizalanır (222 verilse de 220 kullanılır)', () => {
+    expect(parcaPlani(0, 400, 222)).toEqual([{ off: 0, len: 220 }, { off: 220, len: 180 }])
+  })
+
+  it('çok parça: 960B / 220 → 5 parça, kapsam tam', () => {
+    const p = parcaPlani(0, 960, 220)
+    expect(p.length).toBe(5) // 220*4 + 80
+    expect(kapla(p)).toBe(960)
+    expect(p.at(-1)).toEqual({ off: 880, len: 80 })
+  })
+
+  it('birleştirme byte-exact: parça ofsetleri ardışık, boşluk/çakışma yok', () => {
+    const p = parcaPlani(0, 400, 220)
+    let beklenen = 0
+    for (const { off, len } of p) { expect(off).toBe(beklenen); beklenen += len }
+    expect(beklenen).toBe(400)
   })
 })

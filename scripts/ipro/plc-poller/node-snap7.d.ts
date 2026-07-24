@@ -10,5 +10,7 @@ declare module 'node-snap7' {
     /** Merker (M) alanından `size` byte oku, `start` byte offset'inden. */
     MBRead(start: number, size: number, cb: (err: number, data: Buffer) => void): void
     ErrorText(err: number): string
+    /** Bağlantıda müzakere edilen PDU uzunluğu (byte). Okuma parçalama boyutu bundan türetilir. */
+    PDULength(): number
   }
 }

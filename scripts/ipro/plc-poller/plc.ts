@@ -6,7 +6,7 @@
  * Bağlantı bilgileri DB'den (IproPlc) gelir, hardcode yok.
  */
 import { S7Client } from 'node-snap7'
-import { okumaHatasiKarari } from './hesap'
+import { okumaHatasiKarari, parcaPlani, pduParcaBoyutu } from './hesap'
 
 const BACKOFF_MIN = 1_000
 const BACKOFF_MAX = 60_000
@@ -41,6 +41,10 @@ export interface PlcStatus {
   ardArdaHataSayisi: number
   /** Eşiğe ulaşıp oturumun ZORLA koparıldığı kez sayısı. */
   zorlaKopmaSayisi: number
+  /** Son okumanın kaç parçada yapıldığı (PDU parçalama). */
+  parcaSayisi: number
+  /** Eksik bayt dönen (kısmi) parça kaç kez yakalandı (kümülatif). */
+  eksikBaytSayisi: number
 }
 
 export class PlcConnection {
@@ -51,6 +55,12 @@ export class PlcConnection {
   private ilkBaglanti = true
   private yenidenBaglanmaSayisi = 0
   private zorlaKopmaSayisi = 0
+  /** Müzakere edilen PDU'dan türetilen, DWORD-hizalı parça boyutu (bağlantıda hesaplanır). */
+  private parcaBoyutu = 0
+  /** Son okumanın kaç parçada yapıldığı (telemetri). */
+  private sonParcaSayisi = 0
+  /** Eksik bayt dönen (kısmi) parça kaç kez yakalandı (kümülatif telemetri). */
+  private eksikBaytSayisi = 0
   lastReadAt: number | null = null
   lastError: string | null = null
 
@@ -110,12 +120,21 @@ export class PlcConnection {
       this.backoffMs = BACKOFF_MIN
       this.lastError = null
       this.ardArdaHata = 0
+      // Parça boyutunu MÜZAKERE EDİLEN PDU'dan türet (sabit değil — CPU'ya göre değişebilir).
+      // Bağlantı başına bir kez; okuma bu boyutta parçalanır → çok-PDU birleştirme olmaz.
+      let pdu = 0
+      try {
+        pdu = this.client.PDULength()
+      } catch {
+        /* okunamadı → güvenli varsayılan */
+      }
+      this.parcaBoyutu = pduParcaBoyutu(pdu)
       if (this.ilkBaglanti) {
         this.ilkBaglanti = false
-        this.log(`✅ ${this.kod} (${this.ip}) bağlandı`)
+        this.log(`✅ ${this.kod} (${this.ip}) bağlandı · PDU=${pdu || '?'} → parça=${this.parcaBoyutu}B`)
       } else {
         this.yenidenBaglanmaSayisi++
-        this.log(`✅ ${this.kod} (${this.ip}) YENİDEN bağlandı (#${this.yenidenBaglanmaSayisi})`)
+        this.log(`✅ ${this.kod} (${this.ip}) YENİDEN bağlandı (#${this.yenidenBaglanmaSayisi}) · PDU=${pdu || '?'} → parça=${this.parcaBoyutu}B`)
       }
       return true
     } catch (e) {
@@ -127,18 +146,45 @@ export class PlcConnection {
     }
   }
 
-  /** Merker bloğu oku (byte). Hata bağlantı kopması olabilir. */
-  readMerker(start: number, size: number): Promise<Buffer> {
+  /** Tek MBRead (bir parça). Hata bağlantı kopması olabilir. */
+  private mbReadTek(off: number, len: number): Promise<Buffer> {
     return withTimeout(
       new Promise<Buffer>((resolve, reject) => {
-        this.client.MBRead(start, size, (err, data) => {
+        this.client.MBRead(off, len, (err, data) => {
           if (err) reject(new Error(this.errText(err)))
           else resolve(data)
         })
       }),
       OP_TIMEOUT,
-      `${this.kod} MBRead(${start},${size})`,
+      `${this.kod} MBRead(${off},${len})`,
     )
+  }
+
+  /**
+   * Merker bloğu oku — PDU yüküne göre PARÇALI (çok-PDU birleştirme yolunu kaldırır).
+   *
+   * Neden: tek büyük MBRead PDU'yu aşınca node-snap7 çok-PDU yanıtı bir bayt kaymalı
+   * birleştiriyordu (24.07 ×256 epizotları). Parça boyutu ≤ PDU yükü olunca her MBRead
+   * tek PDU'da tamamlanır, birleştirme hiç olmaz. Parçalar ardışık okunup birleştirilir.
+   * Küçük bloklar (size ≤ parça) TEK parça kalır → PANO-3 davranışı değişmez.
+   *
+   * Eksik bayt dönen parça → okuma HATASI (kısmi/yutulmuş yanıta karşı ikinci kapı;
+   * mevcut fail-safe: baseline tazeleme + blok-geçersiz zaten devrede).
+   */
+  async readMerker(start: number, size: number): Promise<Buffer> {
+    const chunk = this.parcaBoyutu > 0 ? this.parcaBoyutu : pduParcaBoyutu(0)
+    const plan = parcaPlani(start, size, chunk)
+    this.sonParcaSayisi = plan.length
+    const buf = Buffer.allocUnsafe(size)
+    for (const { off, len } of plan) {
+      const data = await this.mbReadTek(off, len)
+      if (data.length !== len) {
+        this.eksikBaytSayisi++
+        throw new Error(`${this.kod} eksik bayt: MBRead(${off},${len}) → ${data.length}`)
+      }
+      data.copy(buf, off - start)
+    }
+    return buf
   }
 
   markRead() {
@@ -193,6 +239,8 @@ export class PlcConnection {
       yenidenBaglanmaSayisi: this.yenidenBaglanmaSayisi,
       ardArdaHataSayisi: this.ardArdaHata,
       zorlaKopmaSayisi: this.zorlaKopmaSayisi,
+      parcaSayisi: this.sonParcaSayisi,
+      eksikBaytSayisi: this.eksikBaytSayisi,
     }
   }
 }

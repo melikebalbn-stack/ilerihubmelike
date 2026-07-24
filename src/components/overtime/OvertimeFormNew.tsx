@@ -858,7 +858,7 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
           {/* Personnel table — alt native scrollbar gizli (üst şerit kullanılıyor) */}
           <TopScrollbar targetRef={previewScrollRef} />
           <div ref={previewScrollRef} className="overflow-x-auto scrollbar-hide">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <th className="px-4 py-3 w-10">#</th>

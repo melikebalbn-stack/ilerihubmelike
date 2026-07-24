@@ -268,8 +268,7 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
       <Card>
         {/* Üst yatay-kaydırma şeridi; iç Table scroller'ı nötrlenir ki tek scroller CardContent olsun */}
         <TopScrollbar targetRef={listScrollRef} />
-        {/* Liste puntosu bir kademe küçük (text-sm→text-xs); yalnız bu tablo, padding korunur */}
-        <CardContent ref={listScrollRef} className="p-0 overflow-x-auto scrollbar-hide [&>div]:overflow-visible [&_table]:text-xs">
+        <CardContent ref={listScrollRef} className="p-0 overflow-x-auto scrollbar-hide [&>div]:overflow-visible">
           <Table>
             <TableHeader>
               <TableRow>

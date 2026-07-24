@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback, Fragment } from "react"
+import { useState, useEffect, useCallback, useRef, Fragment } from "react"
+import { TopScrollbar } from "@/components/ui/TopScrollbar"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -139,6 +140,8 @@ export default function OvertimeDetailPage() {
   const [form, setForm] = useState<OvertimeFormDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  // Personel Listesi tablosu yatay-kaydırma: üst şerit ile senkron (TopScrollbar)
+  const personelScrollRef = useRef<HTMLDivElement>(null)
   const [comment, setComment] = useState("")
   const [forwardToGM, setForwardToGM] = useState(false)
   const [actionLoading, setActionLoading] = useState<"approve" | "reject" | "return" | "test" | null>(null)
@@ -785,8 +788,9 @@ export default function OvertimeDetailPage() {
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <TopScrollbar targetRef={personelScrollRef} />
+        <div ref={personelScrollRef} className="overflow-x-auto scrollbar-hide">
+          <table className="w-full text-xs">
             <thead>
               <tr className="border-b">
                 <th className="text-left py-3 px-2 font-medium text-muted-foreground">#</th>

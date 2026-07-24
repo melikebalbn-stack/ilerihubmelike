@@ -40,6 +40,9 @@ export function TopScrollbar({
       setOverflow(target.scrollWidth - target.clientWidth > 1)
     }
     measure()
+    // İlk ölçüm layout/paint oturmadan yanlış (scrollWidth==clientWidth) çıkabilir;
+    // mount sonrası bir kez daha ölç → taşma varsa şerit doğru görünür.
+    const raf = requestAnimationFrame(measure)
 
     const ro = new ResizeObserver(measure)
     ro.observe(target)
@@ -62,6 +65,7 @@ export function TopScrollbar({
     target.addEventListener("scroll", onTarget, { passive: true })
 
     return () => {
+      cancelAnimationFrame(raf)
       ro.disconnect()
       mo.disconnect()
       top.removeEventListener("scroll", onTop)

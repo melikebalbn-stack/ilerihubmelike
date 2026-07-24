@@ -127,6 +127,10 @@ interface Candidate {
   linkedinUrl: string | null
   resumeUrl: string | null
   notes: string | null
+  skills: string[]
+  education: string | null
+  tags: string[]
+  referredBy: string | null
   _count: {
     applications: number
   }
@@ -403,6 +407,7 @@ export default function RecruitmentPage() {
   const [isCandidateDialogOpen, setIsCandidateDialogOpen] = useState(false)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false)
+  const [isCandidateDetailOpen, setIsCandidateDetailOpen] = useState(false)
   const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false)
   const [isRequestDetailOpen, setIsRequestDetailOpen] = useState(false)
   const [selectedOpening, setSelectedOpening] = useState<JobOpening | null>(null)
@@ -1425,6 +1430,132 @@ export default function RecruitmentPage() {
       </Dialog>
 
       {/* Talep Detay Modal */}
+      {/* ADAY DETAY MODALI */}
+      <Dialog open={isCandidateDetailOpen} onOpenChange={setIsCandidateDetailOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {selectedCandidate && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-xl">
+                  {selectedCandidate.firstName} {selectedCandidate.lastName}
+                </DialogTitle>
+                <DialogDescription className="flex items-center gap-2 mt-1">
+                  {selectedCandidate.currentTitle && (
+                    <span>{selectedCandidate.currentTitle}</span>
+                  )}
+                  <Badge variant="outline">{sourceLabels[selectedCandidate.source]}</Badge>
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                {/* Iletisim */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {selectedCandidate.phone && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span>{selectedCandidate.phone}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span>{selectedCandidate.email}</span>
+                  </div>
+                  {selectedCandidate.currentCompany && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <span>{selectedCandidate.currentCompany}</span>
+                    </div>
+                  )}
+                  {selectedCandidate.yearsOfExperience != null && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Briefcase className="h-4 w-4 text-muted-foreground" />
+                      <span>{selectedCandidate.yearsOfExperience} yil deneyim</span>
+                    </div>
+                  )}
+                  {selectedCandidate.referredBy && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span>Sorumlu/Referans: {selectedCandidate.referredBy}</span>
+                    </div>
+                  )}
+                  {selectedCandidate.linkedinUrl && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      <a href={selectedCandidate.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        LinkedIn Profili
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Egitim */}
+                {selectedCandidate.education && (
+                  <div>
+                    <h4 className="font-medium mb-2">Egitim</h4>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      {selectedCandidate.education}
+                    </p>
+                  </div>
+                )}
+
+                {/* Teknik Yetkinlikler */}
+                {selectedCandidate.skills && selectedCandidate.skills.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Teknik Yetkinlikler</h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedCandidate.skills.map((sk, i) => (
+                        <Badge key={i} variant="secondary">{sk}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Hedef Pozisyon / Sektor (tags) */}
+                {selectedCandidate.tags && selectedCandidate.tags.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Hedef Pozisyon / Sektor</h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedCandidate.tags.map((tg, i) => (
+                        <Badge key={i} variant="outline">{tg}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* IK Notu */}
+                {selectedCandidate.notes && (
+                  <div>
+                    <h4 className="font-medium mb-2">IK Notu</h4>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      {selectedCandidate.notes}
+                    </p>
+                  </div>
+                )}
+
+                {/* Basvuru Gecmisi */}
+                {selectedCandidate.applications && selectedCandidate.applications.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Basvuru Gecmisi ({selectedCandidate._count.applications})</h4>
+                    <div className="space-y-1.5">
+                      {selectedCandidate.applications.map((app) => (
+                        <div key={app.id} className="flex items-center justify-between text-sm border rounded px-3 py-2">
+                          <span>{app.jobOpening.title} <span className="font-mono text-xs text-muted-foreground">({app.jobOpening.code})</span></span>
+                          <Badge variant="outline">{applicationStatusLabels[app.status] || app.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCandidateDetailOpen(false)}>Kapat</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isRequestDetailOpen} onOpenChange={setIsRequestDetailOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedRequest && (
@@ -1889,7 +2020,7 @@ export default function RecruitmentPage() {
                   </div>
                   {selectedOpening.applications && selectedOpening.applications.length > 0 ? (
                     <div className="border rounded-lg overflow-x-auto">
-                      <Table>
+                      <Table className="text-xs">
                         <TableHeader>
                           <TableRow>
                             <TableHead>Aday</TableHead>
@@ -2209,7 +2340,7 @@ export default function RecruitmentPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                <Table>
+                <Table className="text-xs">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Talep No</TableHead>
@@ -2325,7 +2456,7 @@ export default function RecruitmentPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                <Table>
+                <Table className="text-xs">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Kod</TableHead>
@@ -2441,7 +2572,7 @@ export default function RecruitmentPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                <Table>
+                <Table className="text-xs">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Ad Soyad</TableHead>
@@ -2483,6 +2614,16 @@ export default function RecruitmentPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Islemler</DropdownMenuLabel>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedCandidate(candidate)
+                                  setIsCandidateDetailOpen(true)
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                Detay Goruntule
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
                               {candidate.phone && (
                                 <DropdownMenuItem>
                                   <Phone className="h-4 w-4 mr-2" />
@@ -2539,7 +2680,7 @@ export default function RecruitmentPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                <Table>
+                <Table className="text-xs">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Basvuru No</TableHead>

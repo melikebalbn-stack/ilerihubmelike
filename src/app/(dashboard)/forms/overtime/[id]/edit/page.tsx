@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { TopScrollbar } from "@/components/ui/TopScrollbar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect as Select } from "@/components/ui/select"
@@ -73,6 +74,8 @@ export default function EditOvertimeFormPage() {
   // Page loading
   const [pageLoading, setPageLoading] = useState(true)
   const [formNo, setFormNo] = useState("")
+  // Personel Listesi tablosu yatay-kaydırma: üst şerit ile senkron (TopScrollbar)
+  const personelScrollRef = useRef<HTMLDivElement>(null)
   // Vardiya Faz 1: yüklenen formun tipi (redirect/başlık için).
   const [detailFormTipi, setDetailFormTipi] = useState<"MESAI" | "VARDIYA">("MESAI")
   const isVardiya = detailFormTipi === "VARDIYA"
@@ -803,8 +806,9 @@ export default function EditOvertimeFormPage() {
           </div>
 
           {/* Personnel table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <TopScrollbar targetRef={personelScrollRef} />
+          <div ref={personelScrollRef} className="overflow-x-auto scrollbar-hide">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <th className="px-4 py-3 w-10">#</th>

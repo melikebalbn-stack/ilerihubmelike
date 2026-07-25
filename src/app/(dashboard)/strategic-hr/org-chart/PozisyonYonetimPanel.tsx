@@ -49,20 +49,6 @@ interface PozisyonYonetimPanelProps {
   onRefresh?: () => void
 }
 
-// Sorumlu tablosu paneliyle AYNI görünürlük kuralı — kurullar/Tüm Firma/Yönetim hariç.
-const GERCEK_DEPARTMANLAR = new Set([
-  "ORG-IV",
-  "ORG-FB",
-  "ORG-SA",
-  "ORG-FN",
-  "ORG-MH",
-  "ORG-KL",
-  "ORG-ST",
-  "ORG-AS",
-  "ORG-SS",
-  "ORG-SG",
-])
-
 function birimEtiketi(u: DepartmanUnit): string {
   return u.code ? `${u.name} (${u.code})` : u.name
 }
@@ -88,8 +74,9 @@ export default function PozisyonYonetimPanel({
 
   const [aktifEtSubmittingId, setAktifEtSubmittingId] = useState<string | null>(null)
 
-  const gercekDepartmanMi = !!orgUnitCode && GERCEK_DEPARTMANLAR.has(orgUnitCode)
-  if (!gercekDepartmanMi) return null
+  // Görünürlük: seçili birim var (kod whitelist'i DEĞİL — BGYS/GROUP dahil her birim).
+  // Full-access ek şartı aşağıda (bu panel yalnız düzenleyiciye açık).
+  if (!orgUnitCode) return null
 
   // Çıkar (dondur) adayları: POSITION + yaprak (children yok) + boş (M=0) + AKTIF —
   // backend pozisyon-cikar'ın kabul ettiği kutularla birebir aynı süzgeç.

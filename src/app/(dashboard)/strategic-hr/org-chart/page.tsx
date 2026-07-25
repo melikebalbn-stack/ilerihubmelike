@@ -166,6 +166,8 @@ const employmentStatusColors: Record<string, string> = {
 export default function OrgChartPage() {
   const { data: session } = useSession()
   const [units, setUnits] = useState<OrgUnit[]>([])
+  // Sunucudan gelen yetki bayrağı (GET yanıtı). Yüklenene kadar false → butonlar gizli (fail-closed).
+  const [hasFullAccess, setHasFullAccess] = useState(false)
   const [employees, setEmployees] = useState<OrgEmployee[]>([])
   const [loading, setLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -201,7 +203,8 @@ export default function OrgChartPage() {
       const res = await fetch("/api/strategic-hr/org-chart?flat=true")
       if (res.ok) {
         const data = await res.json()
-        const roots = buildTree(data)
+        setHasFullAccess(!!data.hasFullAccess)
+        const roots = buildTree(data.units ?? [])
         setUnits(roots)
       }
     } catch (error) {
@@ -397,7 +400,9 @@ export default function OrgChartPage() {
 
   // Departman seçici — units (buildTree kökleri) birden fazla DEPARTMENT içerebilir (İK, Fabrika, ...)
   const departmanKokleri = units.filter(u => u.unitType === "DEPARTMENT")
-  const selectedUnit = departmanKokleri.find(u => u.id === selectedDeptId) ?? departmanKokleri[0]
+  // Seçili birim: önce TÜM birimler arasında ara (kart tıklama non-root da seçebilsin),
+  // yoksa kök departmanlara düş. (flatUnitsById yukarıda tanımlı.)
+  const selectedUnit = flatUnitsById.get(selectedDeptId) ?? departmanKokleri.find(u => u.id === selectedDeptId) ?? departmanKokleri[0]
 
   // Yalnız seçili departmanın kendi kutuları (kök + tüm alt pozisyonlar) — Pozisyon
   // Yönetimi panelindeki parent/dondurma dropdown'ları başka departmana karışmasın.
@@ -410,14 +415,8 @@ export default function OrgChartPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [units])
 
-  // Export gate — org-chart/export route'undaki checkAccess ile AYNI liste (client'ta UX amaçlı;
-  // gerçek yetki denetimi route'ta yapılıyor, buton burada sadece göster/gizle)
-  const userRole = session?.user?.role ?? ""
-  const userDepartment = session?.user?.department || ""
-  const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"]
-  const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"]
-  const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept))
-  const hasFullAccess = fullAccessRoles.includes(userRole) || isHrDepartment
+  // Yetki bayrağı SUNUCUDAN gelir (GET yanıtındaki hasFullAccess) — client'ta yeniden
+  // hesaplanmaz. Buton görünürlüğü bu bayrağa; gerçek denetim her uçta 403.
 
   // Export/Revizyon artık SEÇİLİ departmanı hedefler (birden fazla departman olabildiği için)
   const kokKod = selectedUnit?.code ?? "ORG-IV"
@@ -908,6 +907,7 @@ export default function OrgChartPage() {
                   units={selectedUnit ? [selectedUnit] : []}
                   hasFullAccess={hasFullAccess}
                   onRefresh={fetchUnits}
+                  onSelectUnit={setSelectedDeptId}
                 />
               </div>
               {/* Yönetim paneli (sağ yan): sabit dar genişlik, ağacın üstünü kapatmaz.

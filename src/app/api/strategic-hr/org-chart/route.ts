@@ -149,7 +149,9 @@ export async function GET(request: NextRequest) {
       })),
     }));
 
-    return NextResponse.json(unitsWithCinsiyet);
+    // hasFullAccess SUNUCUDA hesaplanır (checkAccess) — client mükerrer hesaplamasın diye
+    // yanıtta döner. Düzenleme butonlarının görünürlüğü bu bayrağa bağlanır (güvenlik yine 403).
+    return NextResponse.json({ units: unitsWithCinsiyet, hasFullAccess });
   } catch (error) {
     console.error("Organizasyon birimleri listesi hatası:", error);
     return NextResponse.json(

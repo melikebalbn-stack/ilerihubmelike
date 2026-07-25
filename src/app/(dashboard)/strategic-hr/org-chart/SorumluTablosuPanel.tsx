@@ -50,20 +50,6 @@ interface SorumluTablosuPanelProps {
   onRefresh?: () => void
 }
 
-// Sorumlu tablosu yalnız gerçek departmanlarda anlamlı — kurullar (ORG-KR-*),
-// Tüm Firma (ORG-TF, isimsiz envanter) ve Yönetim (ORG-YN, mükerrer) hariç.
-const GERCEK_DEPARTMANLAR = new Set([
-  "ORG-IV",
-  "ORG-FB",
-  "ORG-SA",
-  "ORG-FN",
-  "ORG-MH",
-  "ORG-KL",
-  "ORG-ST",
-  "ORG-AS",
-  "ORG-SS",
-  "ORG-SG",
-])
 
 // Tek bir personel arama+seç alanı — VekilAtamaModal'daki arama mantığının aynısı,
 // modal yerine inline (form içinde iki kez kullanılabilsin diye).
@@ -188,8 +174,9 @@ export default function SorumluTablosuPanel({
   const [yedekSecili, setYedekSecili] = useState<PersonelSonucu | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const gercekDepartmanMi = !!orgUnitCode && GERCEK_DEPARTMANLAR.has(orgUnitCode)
-  if (!gercekDepartmanMi) return null
+  // Görünürlük: seçili birim var + (full-access veya listede kayıt var). unitType/kod
+  // whitelist'ine bağlı DEĞİL — sorumlu ekleme her birimde anlamlı (BGYS/GROUP dahil).
+  if (!orgUnitCode) return null
 
   const liste = sorumluluklar ?? []
 

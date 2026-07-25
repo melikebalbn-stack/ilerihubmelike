@@ -1,7 +1,7 @@
 import { Prisma, JobApplicationStatus } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { notifyApplicationStageChange } from "@/lib/hr-notifications";
-import { ensureAssessmentSession, AssessmentSessionError } from "@/lib/recruitment/assessment-session";
+import { ensureAssessmentSession, AssessmentSessionError, aktifOturumBul } from "@/lib/recruitment/assessment-session";
 import { requiresAssessment } from "@/lib/recruitment/transitions";
 
 // Başvuru aşama/durum geçişleri için TEK GEÇİT.
@@ -145,6 +145,9 @@ export async function transitionApplicationStatus(args: {
       args.toStatus === "MUDUR_DEGERLENDIRME" &&
       !!args.assignedManagerId &&
       args.assignedManagerId !== before.assignedManagerId;
+    // SINAV → SINAV sınav değiştirme de aynı-statü geçiş → StageLog yazılsın (aksi halde not kaybolur).
+    const isSinavDegistir =
+      before.status === "SINAV" && args.toStatus === "SINAV" && !!args.assessmentId;
     if (isReassign) {
       const ids = [before.assignedManagerId, args.assignedManagerId].filter(
         (x): x is string => !!x,
@@ -179,16 +182,50 @@ export async function transitionApplicationStatus(args: {
       effectiveNote = effectiveNote ? `${effectiveNote} | ${reasonNote}` : reasonNote;
     }
 
-    // Sınav: verilmişse AYNI tx'te oturum aç (ORTAK helper, idempotent) + note'a sınav adı.
-    // Helper sınav geçerliliğini doğrular; başarısızsa fırlatır → tx GERİ ALINIR
-    // (statü SINAV olup oturumsuz kalmaz). Statü guard'ı matriste; helper statüye bakmaz.
+    // Sınav: verilmişse AYNI tx'te oturum aç/değiştir. İlk atama + SINAV→SINAV değiştirme ortak akış.
+    // Helper sınav geçerliliğini doğrular; başarısızsa fırlatır → tx GERİ ALINIR (oturumsuz SINAV yok).
     if (args.assessmentId) {
-      const { assessmentName } = await ensureAssessmentSession(tx, {
-        publicJobApplicationId: args.applicationId,
-        assessmentId: args.assessmentId,
-        select: { id: true },
+      // Mevcut aktif oturum (tek kaynak). Sınav değiştirme senaryosunda referans.
+      const mevcutAktif = await aktifOturumBul(tx, args.applicationId, {
+        id: true,
+        status: true,
+        assessmentId: true,
+        assessment: { select: { name: true } },
       });
-      const sinavNote = `Sınava yönlendirildi: ${assessmentName}`;
+      // (app, assessmentId) zaten var mı? Tekil kısıt → en çok bir tane; idempotency temeli.
+      const ayniVar = await tx.assessmentSession.findUnique({
+        where: {
+          publicJobApplicationId_assessmentId: {
+            publicJobApplicationId: args.applicationId,
+            assessmentId: args.assessmentId,
+          },
+        },
+        select: { id: true, assessment: { select: { name: true } } },
+      });
+
+      let sinavNote: string;
+      if (ayniVar) {
+        // Aynı sınav yeniden seçildi → yeni oturum AÇMA, mevcudu koru (idempotent, no-op, 400 yok).
+        sinavNote = `Aynı sınav korundu: ${ayniVar.assessment.name}`;
+      } else {
+        // Farklı/yeni sınav. Eski AKTİF oturum ATANDI (başlamamış) ise linkini öldür:
+        // expiresAt=now → link ölür; kayıt tarihçe olarak KALIR (silme/iptal statüsü/migration YOK).
+        // BASLADI veya terminal ise DOKUNMA — aday verisi korunur, yeni oturum yanına eklenir.
+        if (mevcutAktif && mevcutAktif.status === "ATANDI") {
+          await tx.assessmentSession.update({
+            where: { id: mevcutAktif.id },
+            data: { expiresAt: new Date() },
+          });
+        }
+        const { assessmentName } = await ensureAssessmentSession(tx, {
+          publicJobApplicationId: args.applicationId,
+          assessmentId: args.assessmentId,
+          select: { id: true },
+        });
+        sinavNote = mevcutAktif
+          ? `Sınav değiştirildi: ${mevcutAktif.assessment.name} → ${assessmentName}`
+          : `Sınava yönlendirildi: ${assessmentName}`;
+      }
       effectiveNote = effectiveNote ? `${effectiveNote} | ${sinavNote}` : sinavNote;
     }
 
@@ -199,8 +236,8 @@ export async function transitionApplicationStatus(args: {
       note: effectiveNote,
       assignedManagerId: args.assignedManagerId,
       data: Object.keys(extraData).length ? extraData : undefined,
-      // Yeniden atama (aynı durum) → log yine yazılsın.
-      forceLog: isReassign,
+      // Aynı-durum geçişlerde (müdür yeniden atama VEYA sınav değiştirme) log yine yazılsın.
+      forceLog: isReassign || isSinavDegistir,
     });
     return {
       updated,

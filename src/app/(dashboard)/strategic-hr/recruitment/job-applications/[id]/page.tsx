@@ -37,6 +37,7 @@ import {
   Trash2,
   Printer,
   History,
+  ClipboardList,
   XCircle,
   AlertTriangle,
 } from "lucide-react"
@@ -125,6 +126,18 @@ type WorkflowCtx = {
   requiresAssessmentTargets: string[]
 }
 type AssessmentOption = { id: string; title: string; durationMin: number; passingScore: number; soruSayisi: number }
+type OturumOzeti = {
+  id: string; assessmentId: string; assessmentTitle: string; durum: string; puan: number | null; gecmeNotu: number
+  gecti: boolean | null; atanmaTarihi: string; baslamaTarihi: string | null
+  tamamlanmaTarihi: string | null; sonGecerlilik: string; sinavLink?: string
+}
+const sinavDurumLabel: Record<string, string> = {
+  ATANDI: "Atandı", BASLADI: "Başladı", TAMAMLANDI: "Tamamlandı", SURESI_DOLDU: "Süresi Doldu", IPTAL: "İptal",
+}
+const sinavDurumRenk: Record<string, string> = {
+  ATANDI: "bg-blue-100 text-blue-800", BASLADI: "bg-amber-100 text-amber-800",
+  TAMAMLANDI: "bg-emerald-100 text-emerald-800", SURESI_DOLDU: "bg-slate-100 text-slate-600", IPTAL: "bg-slate-100 text-slate-600",
+}
 type StageLogRow = {
   id: string
   fromStatus: string | null
@@ -213,7 +226,8 @@ export default function JobApplicationDetailPage() {
     setTxNote("")
     setTxManagerId("")
     setTxReasonId("")
-    setTxAssessmentId("")
+    // Sınav değiştirme: aktif oturumun sınavı seçili gelsin (yoksa boş).
+    setTxAssessmentId(target === "SINAV" ? (app.sinavlar?.aktif?.assessmentId ?? "") : "")
     setTxAssessmentSearch("")
     if (workflow?.requiresManagerTargets.includes(target) && !managers) {
       try {
@@ -895,6 +909,11 @@ export default function JobApplicationDetailPage() {
                   <div className="mt-2 flex flex-col gap-2">
                     {workflow.allowedTargets.map((target) => {
                       const isReject = target === "REJECTED"
+                      // SINAV hedefi + zaten aktif oturum varsa: "Sınavı Değiştir" (aynı-statü değişim).
+                      const sinavDegistir = target === "SINAV" && !!app.sinavlar?.aktif
+                      const label = sinavDegistir
+                        ? "Sınavı Değiştir"
+                        : STATUS_LABELS_TR[target as keyof typeof STATUS_LABELS_TR] || target
                       return (
                         <Button
                           key={target}
@@ -908,7 +927,7 @@ export default function JobApplicationDetailPage() {
                           ) : (
                             <CheckCircle2 className="h-4 w-4 mr-2" />
                           )}
-                          {STATUS_LABELS_TR[target as keyof typeof STATUS_LABELS_TR] || target}
+                          {label}
                         </Button>
                       )
                     })}
@@ -952,7 +971,57 @@ export default function JobApplicationDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Asama Gecmisi (Timeline) — stage-log ucundan */}
+          {/* Sınav kartı — oturum yoksa hiç çıkmaz. sinavLink yalnız İK+aktif (sunucudan) */}
+          {app.sinavlar && (app.sinavlar.aktif || app.sinavlar.gecmis.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4" />
+                  Sınav
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[app.sinavlar.aktif, ...app.sinavlar.gecmis].filter(Boolean).map((o: OturumOzeti) => (
+                  <div key={o.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{o.assessmentTitle}</span>
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${sinavDurumRenk[o.durum] || "bg-slate-100 text-slate-700"}`}>
+                        {sinavDurumLabel[o.durum] || o.durum}
+                      </span>
+                    </div>
+                    {o.durum === "TAMAMLANDI" && o.puan != null && (
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="font-semibold">{o.puan} puan</span>
+                        <span className="text-xs text-muted-foreground">geçme notu {o.gecmeNotu}</span>
+                        <span className={`text-xs font-semibold ${o.gecti ? "text-emerald-600" : "text-red-600"}`}>
+                          {o.gecti ? "GEÇTİ" : "KALDI"}
+                        </span>
+                      </div>
+                    )}
+                    <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                      <div>Atanma: {format(new Date(o.atanmaTarihi), "d MMM yyyy HH:mm", { locale: tr })}</div>
+                      {o.baslamaTarihi && <div>Başlama: {format(new Date(o.baslamaTarihi), "d MMM yyyy HH:mm", { locale: tr })}</div>}
+                      {o.tamamlanmaTarihi && <div>Tamamlanma: {format(new Date(o.tamamlanmaTarihi), "d MMM yyyy HH:mm", { locale: tr })}</div>}
+                      <div>Son geçerlilik: {format(new Date(o.sonGecerlilik), "d MMM yyyy HH:mm", { locale: tr })}</div>
+                    </div>
+                    {o.sinavLink && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Input readOnly value={o.sinavLink} className="text-xs" onFocus={(e) => e.target.select()} />
+                        <Button
+                          type="button" variant="outline" size="sm"
+                          onClick={() => { navigator.clipboard?.writeText(o.sinavLink!); toast.success("Link kopyalandi") }}
+                        >
+                          Kopyala
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Asama Gecmisi (Timeline) — stage-log ucundan + sinav olaylari (session'dan turetilir) */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -993,6 +1062,30 @@ export default function JobApplicationDetailPage() {
                   ))}
                 </ol>
               )}
+              {/* Sınav olayları — session'dan TÜRETİLİR (StageLog'a yazılmaz), bilgi satırı */}
+              {app.sinavlar && (app.sinavlar.aktif || app.sinavlar.gecmis.length > 0) && (() => {
+                const oturumlar = [app.sinavlar.aktif, ...app.sinavlar.gecmis].filter(Boolean) as OturumOzeti[]
+                const olaylar: { t: string; text: string }[] = []
+                for (const o of oturumlar) {
+                  olaylar.push({ t: o.atanmaTarihi, text: `Sınav atandı: ${o.assessmentTitle}` })
+                  if (o.baslamaTarihi) olaylar.push({ t: o.baslamaTarihi, text: `Sınav başladı: ${o.assessmentTitle}` })
+                  if (o.tamamlanmaTarihi) olaylar.push({ t: o.tamamlanmaTarihi, text: `Sınav tamamlandı: ${o.assessmentTitle} — ${o.puan} puan (${o.gecti ? "geçti" : "kaldı"})` })
+                }
+                olaylar.sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime())
+                return (
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <div className="text-xs font-semibold text-muted-foreground mb-2">Sınav olayları</div>
+                    <ol className="space-y-2">
+                      {olaylar.map((e, i) => (
+                        <li key={i} className="border-l-2 border-emerald-200 pl-4">
+                          <div className="text-xs text-muted-foreground">{format(new Date(e.t), "d MMM yyyy HH:mm", { locale: tr })}</div>
+                          <div className="text-sm text-slate-700">{e.text}</div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )
+              })()}
             </CardContent>
           </Card>
 

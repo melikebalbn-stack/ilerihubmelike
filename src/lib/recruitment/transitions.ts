@@ -55,7 +55,8 @@ export const ALLOWED_TRANSITIONS: Record<
     IK: ["SINAV", "REJECTED"],
   },
   SINAV: {
-    IK: ["TEKNIK_MULAKAT", "IK_MULAKATI", "TEKLIF", "REJECTED"],
+    // 'SINAV' → 'SINAV': İK sınavı DEĞİŞTİREBİLİR (assessmentId zorunlu). Müdür değiştiremez.
+    IK: ["SINAV", "TEKNIK_MULAKAT", "IK_MULAKATI", "TEKLIF", "REJECTED"],
     MUDUR: [],
   },
   IK_MULAKATI: {

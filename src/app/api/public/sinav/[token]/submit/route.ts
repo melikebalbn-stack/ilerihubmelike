@@ -8,6 +8,7 @@ import {
   invalidSinavResponse,
   logAttempt,
 } from "@/lib/assessment/public";
+import { notifyAssessmentCompleted } from "@/lib/hr-notifications";
 
 const DK_MS = 60 * 1000;
 const MAX_ANSWERS = 500; // makul üst sınır (DoS/aşırı payload reddi)
@@ -52,8 +53,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       status: true,
       expiresAt: true,
       startedAt: true,
+      publicJobApplication: { select: { id: true, fullName: true, assignedManagerId: true } },
       assessment: {
         select: {
+          name: true,
           passingScore: true,
           durationMin: true,
           questions: {
@@ -137,6 +140,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   ]);
 
   await logAttempt("SUBMIT", ip, oturum.id);
+
+  // Sınav tamamlandı bildirimi — puan yazma COMMIT'inden SONRA, best-effort.
+  // İdempotent: tamamlanmış oturum yukarıda 409 döner, buraya ulaşmaz → tekrar bildirim gitmez.
+  // Bildirim hatası adayın gönderimini BOZMAZ (try/catch), yanıt değişmez.
+  try {
+    await notifyAssessmentCompleted({
+      applicationId: oturum.publicJobApplication.id,
+      applicantName: oturum.publicJobApplication.fullName,
+      assessmentTitle: oturum.assessment.name,
+      puan: yuzde,
+      gecmeNotu: oturum.assessment.passingScore,
+      gecti,
+      assignedManagerId: oturum.publicJobApplication.assignedManagerId,
+    });
+  } catch (err) {
+    console.error("notifyAssessmentCompleted başarısız (sınav sonucu kalıcı):", err);
+  }
 
   // Adaya puan GÖSTERİLMEZ — yalnız tamamlandı bilgisi.
   return NextResponse.json(

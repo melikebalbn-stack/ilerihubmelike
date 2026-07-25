@@ -11,6 +11,7 @@ import { PrismaClient } from '../src/generated/prisma'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import * as dotenv from 'dotenv'
+import { generateAssessmentToken } from '../src/lib/assessment/token'
 
 dotenv.config()
 
@@ -112,8 +113,10 @@ async function main() {
     },
   ]
 
+  const olusturulanId = new Map<string, string>()
   for (const k of kayitlar) {
     const created = await prisma.publicJobApplication.create({ data: k })
+    olusturulanId.set(k.applicationNumber, created.id)
     // Başlangıç aşama logu (fromStatus = null) — geçmiş tutarlı olsun.
     await prisma.publicJobApplicationStageLog.create({
       data: { applicationId: created.id, fromStatus: null, toStatus: k.status, note: 'seed-basvuru-test' },
@@ -177,6 +180,66 @@ async function main() {
     },
   })
   console.log(`  ✓ Test sınavı oluşturuldu: ${sinav.name} (3 soru, ${sinav.durationMin} dk, geçme ${sinav.passingScore})`)
+
+  // 2. aktif sınav ("TEST-SINAV Teknik", 3 soru) → SINAV→SINAV değiştirme testi için.
+  const sinav2 = await prisma.candidateAssessment.create({
+    data: {
+      name: 'TEST-SINAV Teknik',
+      type: 'YETKINLIK',
+      durationMin: 20,
+      passingScore: 70,
+      isActive: true,
+      questions: {
+        create: [
+          {
+            type: 'TEK_SECIM', text: 'HTTP hangi portu varsayılan kullanır?', order: 1,
+            options: { create: [
+              { text: '21', isCorrect: false, order: 1 },
+              { text: '80', isCorrect: true, order: 2 },
+              { text: '443', isCorrect: false, order: 3 },
+            ] },
+          },
+          {
+            type: 'DOGRU_YANLIS', text: 'SQL bir programlama dili değil, sorgu dilidir.', order: 2,
+            options: { create: [
+              { text: 'Doğru', isCorrect: true, order: 1 },
+              { text: 'Yanlış', isCorrect: false, order: 2 },
+            ] },
+          },
+          {
+            type: 'TEK_SECIM', text: 'Git’te değişiklikleri kaydeden komut?', order: 3,
+            options: { create: [
+              { text: 'git push', isCorrect: false, order: 1 },
+              { text: 'git commit', isCorrect: true, order: 2 },
+              { text: 'git clone', isCorrect: false, order: 3 },
+            ] },
+          },
+        ],
+      },
+    },
+  })
+  console.log(`  ✓ 2. test sınavı: ${sinav2.name} (değiştirme testi için)`)
+
+  // 1 TAMAMLANMIŞ oturum (puanlı) → sonuç kartı testi. TEST-BASVURU-0004 (SINAV) üzerine.
+  const app0004 = olusturulanId.get('TEST-BASVURU-0004')
+  if (app0004) {
+    const simdi = Date.now()
+    await prisma.assessmentSession.create({
+      data: {
+        publicJobApplicationId: app0004,
+        assessmentId: sinav.id, // Genel Yetenek
+        token: generateAssessmentToken(),
+        status: 'TAMAMLANDI',
+        assignedAt: new Date(simdi - 3 * 60 * 60 * 1000),
+        startedAt: new Date(simdi - 2 * 60 * 60 * 1000),
+        finishedAt: new Date(simdi - 2 * 60 * 60 * 1000 + 12 * 60 * 1000),
+        expiresAt: new Date(simdi + 69 * 60 * 60 * 1000),
+        score: 80,
+        result: 'GECTI',
+      },
+    })
+    console.log('  ✓ Tamamlanmış oturum: TEST-BASVURU-0004 → Genel Yetenek (80 puan, GEÇTİ)')
+  }
 }
 
 main()

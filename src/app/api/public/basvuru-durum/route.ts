@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { imzaDogrula } from "@/lib/recruitment/basvuru-takip";
-import { AKTIF_OTURUM_STATUS, sinavUrl } from "@/lib/recruitment/assessment-session";
+import { aktifOturumBul, sinavUrl } from "@/lib/recruitment/assessment-session";
 
 export const dynamic = "force-dynamic";
 
@@ -53,20 +53,12 @@ export async function POST(req: NextRequest) {
   // İmza doğrula (sabit-zaman). Yanlışsa aynı jenerik 403.
   if (!imzaDogrula(basvuru.id, takipImzasi)) return reddet(403);
 
-  // Oturumlar — en yeni önce. Aktif (ATANDI/BASLADI) + süresi geçmemiş varsa link ver.
-  const oturumlar = await prisma.assessmentSession.findMany({
-    where: { publicJobApplicationId: basvuru.id },
-    orderBy: { assignedAt: "desc" },
-    select: {
-      status: true,
-      token: true,
-      expiresAt: true,
-      assessment: { select: { name: true } },
-    },
+  // Aktif oturum TEK KAYNAK (aktifOturumBul) — link yalnız aktif+süresi geçmemişte.
+  const aktif = await aktifOturumBul(prisma, basvuru.id, {
+    status: true,
+    token: true,
+    assessment: { select: { name: true } },
   });
-
-  const now = new Date();
-  const aktif = oturumlar.find((o) => AKTIF_OTURUM_STATUS.has(o.status) && o.expiresAt > now);
   if (aktif) {
     return NextResponse.json(
       {
@@ -78,7 +70,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const tamamlanan = oturumlar.find((o) => o.status === "TAMAMLANDI");
+  // Aktif yoksa en son tamamlanmış oturum var mı?
+  const tamamlanan = await prisma.assessmentSession.findFirst({
+    where: { publicJobApplicationId: basvuru.id, status: "TAMAMLANDI" },
+    orderBy: { finishedAt: "desc" },
+    select: { assessment: { select: { name: true } } },
+  });
   if (tamamlanan) {
     return NextResponse.json(
       { durum: "TAMAMLANDI", sinavAdi: tamamlanan.assessment.name },

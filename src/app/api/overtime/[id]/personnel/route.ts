@@ -4,6 +4,7 @@ import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-resp
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
 import { buildSingles, buildUretimRows, buildBackfillRow, coerceIntNonNeg, coerceHedefPozitif, buildParcaKoduDuzeltme, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { logAuditEvent } from '@/lib/audit-log'
 
 // Bölüm adı normalize: workDepartment ↔ omurga (getDeptSubtreeNames) adları güvenli
 // kıyas (Türkçe upper + trim). Exact-match'in süperseti; geçerli eşleşmeyi bozmaz.
@@ -278,6 +279,16 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    // Hedef adet üst-kapısı: yalnız Fabrika Müdürü (Personnel.gorev) VEYA forms.admin.
+    // ⚠ User.jobTitle KULLANILMAZ (AD ASCII-folded/casing bozuk) — Personnel.gorev otorite.
+    // Mevcut satır-yazma yetkisi (fullAccess/omurga) KORUNUR; bu yalnız HEDEF için üst-kapı.
+    const meForTarget = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { personnel: { select: { gorev: true } } },
+    })
+    const isFabrikaMuduru = normDept(meForTarget?.personnel?.gorev) === normDept('FABRİKA MÜDÜRÜ')
+    const canEditTarget = isFabrikaMuduru || isAdmin
+
     const body = await request.json()
     const { personnel } = body
 
@@ -292,6 +303,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     //   - Satır-bazlı payload (uretimSatirlari[]): her satır id ile güncellenir,
     //     1. satır tekil alana yansıtılır.
     const ops: Promise<unknown>[] = []
+    // Hedef değişimleri — Promise.all sonrası audit'lenir (üretim satırı = tek kaynak).
+    const targetChanges: {
+      satirId: string; overtimePersonnelId: string; parcaKodu: string
+      eskiHedef: number | null; yeniHedef: number; sebep: string | null
+    }[] = []
     for (const p of personnel as {
       overtimePersonnelId: string
       gerceklesenAdet?: string | number
@@ -302,6 +318,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         gerceklesenNote?: string
         hurdaAdet?: string | number
         hedefAdet?: string | number
+        hedefDegisiklikSebebi?: string
         parcaKodu?: string
         parcaKoduDuzeltmeNote?: string
       }[]
@@ -340,8 +357,26 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           if ('gerceklesenNote' in r) data.gerceklesenNote = r.gerceklesenNote?.trim() || null
           if ('hurdaAdet' in r) data.hurdaAdet = coerceIntNonNeg(r.hurdaAdet)
           if ('hedefAdet' in r) {
-            const h = coerceHedefPozitif(r.hedefAdet)
-            if (h != null) data.hedefAdet = h
+            const yeniHedef = coerceHedefPozitif(r.hedefAdet)
+            const eskiHedef = existingRow.hedefAdet
+            // Üst-kapı YALNIZ gerçek değişimde: aynı değer/boş gelirse dokunma (birim
+            // sorumlusu gerçekleşeni girerken hedefi aynı gönderebilir → 403'e düşürme).
+            if (yeniHedef != null && yeniHedef !== eskiHedef) {
+              if (!canEditTarget) {
+                return apiError('Hedef adeti sadece Fabrika Müdürü değiştirebilir', 403)
+              }
+              data.hedefAdet = yeniHedef
+              const sebepRaw = 'hedefDegisiklikSebebi' in r ? r.hedefDegisiklikSebebi : undefined
+              const sebep = typeof sebepRaw === 'string' && sebepRaw.trim() ? sebepRaw.trim() : null
+              targetChanges.push({
+                satirId: r.id,
+                overtimePersonnelId: existingPersonnel.id,
+                parcaKodu: existingRow.parcaKodu,
+                eskiHedef,
+                yeniHedef,
+                sebep,
+              })
+            }
           }
           // Parça kodu (Mesai Nedeni) sonradan düzeltme — yetki bu satır için yukarıda geçti.
           // Saf mantık helper'da (eskiParcaKodu bir-kez, audit): buildParcaKoduDuzeltme.
@@ -412,6 +447,27 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     await Promise.all(ops)
+
+    // Hedef değişimlerini logla (best-effort, üretim satırı = tek kaynak; tekil alan
+    // türev olduğu için ayrı log yok). logAuditEvent kendi try/catch'inde — audit
+    // kaybı request'i bozmaz (tx kullanılmadı: mevcut Promise.all yazım deseni korundu).
+    for (const tc of targetChanges) {
+      await logAuditEvent({
+        action: 'OVERTIME_TARGET_CHANGED',
+        actorId: user.id,
+        targetType: 'OVERTIME_TARGET',
+        targetId: tc.satirId,
+        details: {
+          formId: id,
+          overtimePersonnelId: tc.overtimePersonnelId,
+          parcaKodu: tc.parcaKodu,
+          eskiHedef: tc.eskiHedef,
+          yeniHedef: tc.yeniHedef,
+          unvan: isFabrikaMuduru ? 'FABRİKA MÜDÜRÜ' : 'ADMIN',
+          sebep: tc.sebep,
+        },
+      })
+    }
 
     // Güncellenmiş formu döndür
     const updatedForm = await prisma.overtimeForm.findUnique({

@@ -104,7 +104,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return apiError('Bu forma erişim yetkiniz yok', 403)
     }
 
-    return apiSuccess({ ...form, currentUserAllowedDepts })
+    // Hedef adet üst-kapısı (frontend readonly sinyali): yalnız Fabrika Müdürü
+    // (Personnel.gorev — User.jobTitle DEĞİL, AD casing bozuk) veya forms.admin.
+    const meForTarget = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { personnel: { select: { gorev: true } } },
+    })
+    const currentUserCanEditTarget =
+      isAdmin || normDept(meForTarget?.personnel?.gorev) === normDept('FABRİKA MÜDÜRÜ')
+
+    return apiSuccess({ ...form, currentUserAllowedDepts, currentUserCanEditTarget })
   } catch (error) {
     return apiError('Mesai formu detayı alınırken bir hata oluştu', 500, {
       endpoint: 'GET /api/overtime/[id]',

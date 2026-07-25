@@ -41,6 +41,8 @@ export type AuditTargetType =
   // Akademi hard-delete
   | 'AKADEMI_COURSE'
   | 'AKADEMI_CONTENT'
+  // Mesai hedef adet değişikliği (yalnız Fabrika Müdürü/admin)
+  | 'OVERTIME_TARGET'
 
 export interface AuditLogParams {
   action: string

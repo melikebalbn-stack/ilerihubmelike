@@ -176,12 +176,14 @@ export default function OvertimeDetailPage() {
   const [rowValues, setRowValues] = useState<
     Record<
       string,
-      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string; parcaKodu: string; parcaKoduNote: string }
+      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string; hedefDegisiklikSebebi: string; parcaKodu: string; parcaKoduNote: string }
     >
   >({})
   // Çoklu satırı olan personelde alt-satır expand durumu (overtimePersonnel id).
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [savingActual, setSavingActual] = useState(false)
+  // Hedef adet üst-kapısı (backend GET'ten): yalnız Fabrika Müdürü/admin hedefi düzenler.
+  const [canEditTarget, setCanEditTarget] = useState(false)
 
   const fetchAllPersonnelItems = useCallback(async () => {
     if (allPersonnelItems.length > 0) return
@@ -261,7 +263,7 @@ export default function OvertimeDetailPage() {
     if (!form) return
     const values: Record<
       string,
-      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string; parcaKodu: string; parcaKoduNote: string }
+      { gerceklesenAdet: string; gerceklesenNote: string; hurdaAdet: string; hedefAdet: string; hedefDegisiklikSebebi: string; parcaKodu: string; parcaKoduNote: string }
     > = {}
     form.personnel.forEach((p) => {
       p.uretimSatirlari.forEach((r) => {
@@ -270,6 +272,7 @@ export default function OvertimeDetailPage() {
           gerceklesenNote: r.gerceklesenNote || "",
           hurdaAdet: r.hurdaAdet != null ? String(r.hurdaAdet) : "",
           hedefAdet: r.hedefAdet != null ? String(r.hedefAdet) : "",
+          hedefDegisiklikSebebi: "", // hedef sebebi her düzenlemede boş başlar
           parcaKodu: r.parcaKodu ?? "",
           parcaKoduNote: "", // gerekçe her düzenlemede boş başlar
         }
@@ -281,7 +284,7 @@ export default function OvertimeDetailPage() {
 
   function updateRowValue(
     rowId: string,
-    field: "gerceklesenAdet" | "gerceklesenNote" | "hurdaAdet" | "hedefAdet" | "parcaKodu" | "parcaKoduNote",
+    field: "gerceklesenAdet" | "gerceklesenNote" | "hurdaAdet" | "hedefAdet" | "hedefDegisiklikSebebi" | "parcaKodu" | "parcaKoduNote",
     value: string
   ) {
     setRowValues((prev) => ({
@@ -291,6 +294,7 @@ export default function OvertimeDetailPage() {
         gerceklesenNote: prev[rowId]?.gerceklesenNote ?? "",
         hurdaAdet: prev[rowId]?.hurdaAdet ?? "",
         hedefAdet: prev[rowId]?.hedefAdet ?? "",
+        hedefDegisiklikSebebi: prev[rowId]?.hedefDegisiklikSebebi ?? "",
         parcaKodu: prev[rowId]?.parcaKodu ?? "",
         parcaKoduNote: prev[rowId]?.parcaKoduNote ?? "",
         [field]: value,
@@ -324,6 +328,7 @@ export default function OvertimeDetailPage() {
             gerceklesenNote: rowValues[r.id]?.gerceklesenNote ?? "",
             hurdaAdet: rowValues[r.id]?.hurdaAdet ?? "",
             hedefAdet: rowValues[r.id]?.hedefAdet ?? "",
+            hedefDegisiklikSebebi: rowValues[r.id]?.hedefDegisiklikSebebi ?? "",
             // Parça kodu düzeltme: backend yalnız değişince audit yazar; boş → 400.
             parcaKodu: rowValues[r.id]?.parcaKodu ?? "",
             parcaKoduDuzeltmeNote: rowValues[r.id]?.parcaKoduNote ?? "",
@@ -362,6 +367,7 @@ export default function OvertimeDetailPage() {
       const data = await res.json()
       setForm(data)
       setAllowedDepts(data.currentUserAllowedDepts ?? null)
+      setCanEditTarget(data.currentUserCanEditTarget ?? false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Form yüklenirken bir hata oluştu")
     } finally {
@@ -857,16 +863,28 @@ export default function OvertimeDetailPage() {
                   const rv = r ? rowValues[r.id] : undefined
                   return (
                     <>
-                      {/* Hedef Adet — null (tarihsel) ise inline doldurulabilir (>0) */}
+                      {/* Hedef Adet — üst-kapı: yalnız Fabrika Müdürü/admin (canEditTarget)
+                          düzenler. Diğer yetkililer için salt-metin. Değer değişince opsiyonel
+                          sebep alanı açılır; değişiklik backend'de loglanır (403 gerçek kapı). */}
                       <td className="py-3 px-2">
-                        {editable ? (
-                          <Input
-                            type="number" inputMode="numeric" min="1"
-                            value={rv?.hedefAdet || ""}
-                            onChange={(e) => updateRowValue(r!.id, "hedefAdet", e.target.value)}
-                            placeholder="—"
-                            className="h-8 w-20 text-sm"
-                          />
+                        {editable && canEditTarget ? (
+                          <div className="flex flex-col gap-1">
+                            <Input
+                              type="number" inputMode="numeric" min="1"
+                              value={rv?.hedefAdet || ""}
+                              onChange={(e) => updateRowValue(r!.id, "hedefAdet", e.target.value)}
+                              placeholder="—"
+                              className="h-8 w-20 text-sm"
+                            />
+                            {String(rv?.hedefAdet ?? "") !== String(r!.hedefAdet ?? "") && (
+                              <Input
+                                value={rv?.hedefDegisiklikSebebi || ""}
+                                onChange={(e) => updateRowValue(r!.id, "hedefDegisiklikSebebi", e.target.value)}
+                                placeholder="Değişiklik sebebi (opsiyonel)"
+                                className="h-7 w-40 text-xs"
+                              />
+                            )}
+                          </div>
                         ) : r?.hedefAdet != null ? r.hedefAdet : "—"}
                       </td>
                       {/* Gerçekleşen Adet */}

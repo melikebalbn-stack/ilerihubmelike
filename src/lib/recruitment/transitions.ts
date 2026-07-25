@@ -9,16 +9,39 @@ import type { JobApplicationStatus } from "@/generated/prisma";
 export type TransitionRole = "IK" | "MUDUR";
 
 // from durum → { IK: izinli hedefler, MUDUR: izinli hedefler }
-// Listede olmayan `from` durumları (ör. ACCEPTED, ISE_BASLADI) hiçbir geçişe izin vermez.
-export const ALLOWED_TRANSITIONS: Partial<
-  Record<JobApplicationStatus, { IK: JobApplicationStatus[]; MUDUR: JobApplicationStatus[] }>
+//
+// EXHAUSTIVENESS GUARD: `satisfies Record<JobApplicationStatus, ...>` — her statü için anahtar
+// ZORUNLU (eksik statü = derleme hatası) ve hedefler JobApplicationStatus[] (geçersiz enum =
+// derleme hatası). Böylece enum'a statü eklendiğinde matris güncellenmesi unutulamaz.
+// Terminal durumlar boş dizi ({IK:[], MUDUR:[]}) ile açıkça işaretlenir — donmuş kayıt kalmaz.
+// Rol belirtilmeyen hedefler İK'ya aittir; MUDUR satırları workflow tasarımıyla korunur.
+export const ALLOWED_TRANSITIONS: Record<
+  JobApplicationStatus,
+  { IK: JobApplicationStatus[]; MUDUR: JobApplicationStatus[] }
 > = {
+  // Intake (matris-öncesi) durumlar — İK bayat/askıda kayıtları ileri taşıyabilir.
+  CONSENT_PENDING: {
+    IK: ["PENDING", "REJECTED"],
+    MUDUR: [],
+  },
+  HEALTH_PENDING: {
+    IK: ["PENDING", "REVIEWING", "REJECTED"],
+    MUDUR: [],
+  },
   PENDING: {
     IK: ["REVIEWING", "MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
     MUDUR: [],
   },
   REVIEWING: {
-    IK: ["MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
+    IK: ["SHORTLISTED", "MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
+    MUDUR: [],
+  },
+  SHORTLISTED: {
+    IK: ["MUDUR_DEGERLENDIRME", "TELEFON_MULAKATI", "SINAV", "REJECTED"],
+    MUDUR: [],
+  },
+  TELEFON_MULAKATI: {
+    IK: ["IK_MULAKATI", "SINAV", "MUDUR_DEGERLENDIRME", "REJECTED"],
     MUDUR: [],
   },
   MUDUR_DEGERLENDIRME: {
@@ -35,9 +58,43 @@ export const ALLOWED_TRANSITIONS: Partial<
     IK: ["TEKNIK_MULAKAT", "IK_MULAKATI", "TEKLIF", "REJECTED"],
     MUDUR: [],
   },
+  IK_MULAKATI: {
+    IK: ["TEKNIK_MULAKAT", "MUDUR_MULAKATI", "TEKLIF", "REJECTED"],
+    MUDUR: [],
+  },
+  TEKNIK_MULAKAT: {
+    IK: ["TEKLIF", "MUDUR_MULAKATI", "REJECTED"],
+    MUDUR: [],
+  },
+  TEKLIF: {
+    IK: ["TEKLIF_KABUL", "REJECTED"],
+    MUDUR: [],
+  },
+  TEKLIF_KABUL: {
+    IK: ["ISE_BASLADI", "REJECTED"],
+    MUDUR: [],
+  },
+  ISE_BASLADI: {
+    // Terminal.
+    IK: [],
+    MUDUR: [],
+  },
   REJECTED: {
     // Terminal — geçiş yok.
     IK: [],
+    MUDUR: [],
+  },
+  // Eski enum kaçış yolları — yalnız bayat kayıtlar sıkışmasın diye (İK).
+  REVIEWED: {
+    IK: ["REVIEWING", "REJECTED"],
+    MUDUR: [],
+  },
+  INTERVIEW: {
+    IK: ["IK_MULAKATI", "REJECTED"],
+    MUDUR: [],
+  },
+  ACCEPTED: {
+    IK: ["TEKLIF_KABUL", "REJECTED"],
     MUDUR: [],
   },
 };
@@ -71,6 +128,15 @@ export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
  */
 export function requiresAssignedManager(to: JobApplicationStatus): boolean {
   return to === "MUDUR_DEGERLENDIRME";
+}
+
+/**
+ * REJECTED hedefine geçiş için ret nedeni (rejectionReasonId) ZORUNLUDUR.
+ * Kök-neden/analitik için: her ret bir nedene bağlanmalı. requiresAssignedManager
+ * ile aynı desende yapısal kural (matris-bağımsız, TEK KAYNAK).
+ */
+export function requiresRejectionReason(to: JobApplicationStatus): boolean {
+  return to === "REJECTED";
 }
 
 /** (from, to, role) üçlüsü izin matrisinde var mı. */

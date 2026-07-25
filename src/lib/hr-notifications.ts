@@ -15,6 +15,8 @@
  */
 
 import { prisma } from '@/lib/prisma'
+import type { JobApplicationStatus } from '@/generated/prisma'
+import { STATUS_LABELS_TR } from '@/lib/recruitment/transitions'
 
 export type HRRecipient = {
   id: string
@@ -96,4 +98,58 @@ export async function resolveHRRecipients(): Promise<HRRecipient[]> {
   }
 
   return out
+}
+
+// Başvuru detay sayfası (gerçek route — /ik/* YOK, doğrulandı).
+const APPLICATION_LINK = (id: string) => `/strategic-hr/recruitment/job-applications/${id}`
+
+/**
+ * Başvuru aşama değişiminde Notification üretir (in-app).
+ * - toStatus === MUDUR_DEGERLENDIRME: SADECE atanan müdüre ("Değerlendirmeniz bekleniyor").
+ * - diğer tüm geçişler: resolveHRRecipients() ile İK ekibine.
+ * Notification'lar createMany ile tek seferde. Metinlerde STATUS_LABELS_TR (ham enum yazılmaz).
+ * Alıcı yoksa sessizce çıkar (hata fırlatmaz — çağıran best-effort bekler).
+ */
+export async function notifyApplicationStageChange(args: {
+  applicationId: string
+  applicantName: string
+  fromStatus: JobApplicationStatus
+  toStatus: JobApplicationStatus
+  assignedManagerId?: string | null
+  actorName?: string | null
+}): Promise<void> {
+  const link = APPLICATION_LINK(args.applicationId)
+  const toLabel = STATUS_LABELS_TR[args.toStatus] ?? args.toStatus
+  const fromLabel = STATUS_LABELS_TR[args.fromStatus] ?? args.fromStatus
+  const actor = args.actorName ? ` (${args.actorName})` : ''
+
+  // Müdür değerlendirmesi: yalnız atanan müdüre.
+  if (args.toStatus === 'MUDUR_DEGERLENDIRME') {
+    if (!args.assignedManagerId) return // müdür atanmamışsa bildirim yok
+    await prisma.notification.createMany({
+      data: [
+        {
+          userId: args.assignedManagerId,
+          title: 'Değerlendirmeniz bekleniyor',
+          message: `${args.applicantName} adlı adayın başvurusu değerlendirmeniz için atandı${actor}.`,
+          type: 'INFO',
+          link,
+        },
+      ],
+    })
+    return
+  }
+
+  // Diğer tüm geçişler: İK ekibine.
+  const recipients = await resolveHRRecipients()
+  if (recipients.length === 0) return
+  await prisma.notification.createMany({
+    data: recipients.map((r) => ({
+      userId: r.id,
+      title: `Başvuru durumu: ${toLabel}`,
+      message: `${args.applicantName} — ${fromLabel} → ${toLabel}${actor}`,
+      type: 'INFO' as const,
+      link,
+    })),
+  })
 }

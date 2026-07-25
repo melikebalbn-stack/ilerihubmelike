@@ -62,6 +62,9 @@ export async function updateApplicationStatus(
     // Workflow: müdür ataması. Verilirse assignedManagerId + assignedAt AYNI tx'te yazılır.
     // (relation connect ile — assignedManagerId scalar FK'si relation üzerinden yönetilir.)
     assignedManagerId?: string | null;
+    // Yeniden atama gibi AYNI-durum geçişlerinde de StageLog yazılsın (aksi halde
+    // fromStatus === toStatus olduğundan log atlanır ve "müdür yeniden atandı" izi kaybolur).
+    forceLog?: boolean;
   },
 ) {
   const current = await tx.publicJobApplication.findUnique({
@@ -84,7 +87,7 @@ export async function updateApplicationStatus(
     data: { ...(args.data ?? {}), ...assignData, status: args.toStatus },
   });
 
-  if (fromStatus !== args.toStatus) {
+  if (fromStatus !== args.toStatus || args.forceLog) {
     await writeStageLog(tx, {
       applicationId: args.applicationId,
       fromStatus,
@@ -151,6 +154,8 @@ export async function transitionApplicationStatus(args: {
       changedBy: args.changedBy,
       note: effectiveNote,
       assignedManagerId: args.assignedManagerId,
+      // Yeniden atama (aynı durum) → log yine yazılsın.
+      forceLog: isReassign,
     });
     return {
       updated,

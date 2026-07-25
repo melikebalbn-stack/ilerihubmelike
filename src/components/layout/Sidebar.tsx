@@ -29,6 +29,7 @@ import {
   Activity,
   Radio,
   Factory,
+  Map,
   MonitorSmartphone,
   Link2,
   Shield,
@@ -172,6 +173,7 @@ const teknikMenuItems = [
 // Roller ipro.view eşlemesiyle hizalı: super-admin/admin/it-admin/departman-muduru.
 const iproMenuItems = [
   { name: "İzleme Panosu", icon: Activity, href: "/ipro/izleme", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
+  { name: "Fabrika Haritası", icon: Map, href: "/ipro/harita", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"], note: "temsili veri" },
   { name: "Tezgahlar", icon: Factory, href: "/ipro/tezgahlar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Operatör Eşlemeleri", icon: Users, href: "/ipro/operator-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Hurda / Duruş Sebepleri", icon: ClipboardList, href: "/ipro/sebepler", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
@@ -548,6 +550,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
     // Mesajlar icin badge goster
     const showBadge = item.href === "/messages" && unreadMessages > 0
+    // Kesif/temsili sayfalar icin kucuk not etiketi (or. "temsili veri")
+    const note = 'note' in item ? (item as { note?: string }).note : null
 
     return (
       <Link
@@ -566,6 +570,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       >
         <Icon className="h-5 w-5" />
         <span className="flex-1">{item.name}</span>
+        {note && (
+          <span className="rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300/80 bg-amber-400/10">
+            {note}
+          </span>
+        )}
         {showBadge && (
           <span className={cn(
             "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold",

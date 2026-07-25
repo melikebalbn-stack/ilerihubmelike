@@ -16,6 +16,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -177,7 +183,7 @@ export default function SorumluTablosuPanel({
   hasFullAccess,
   onRefresh,
 }: SorumluTablosuPanelProps) {
-  const [formAcik, setFormAcik] = useState(false)
+  const [modalAcik, setModalAcik] = useState(false)
   const [birinciSecili, setBirinciSecili] = useState<PersonelSonucu | null>(null)
   const [yedekSecili, setYedekSecili] = useState<PersonelSonucu | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -187,8 +193,8 @@ export default function SorumluTablosuPanel({
 
   const liste = sorumluluklar ?? []
 
-  const formuKapat = () => {
-    setFormAcik(false)
+  // Ekleme formundaki seçimleri sıfırla (modal AÇIK kalır — üstteki liste tazelenir).
+  const resetSecim = () => {
     setBirinciSecili(null)
     setYedekSecili(null)
   }
@@ -223,7 +229,7 @@ export default function SorumluTablosuPanel({
       }
 
       toast.success("Sorumlu eklendi")
-      formuKapat()
+      resetSecim()
       onRefresh?.()
     } catch (err) {
       console.error("Sorumlu ekleme hatası:", err)
@@ -258,50 +264,77 @@ export default function SorumluTablosuPanel({
     }
   }
 
-  return (
-    <div className="w-full border rounded-md overflow-hidden text-sm">
-      <div className="bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-900">Sorumlular</div>
+  // Panelde artık tablo YOK — tek buton. Liste + silme + ekleme modalın içinde.
+  // Full-access: "+ Sorumlu Ekle" (ekle/sil). Salt-görüntüleme kullanıcısı: liste varsa
+  // "Sorumlular" (yalnız okuma) — böylece görüntüleme yeteneği kaybolmaz.
+  const butonGoster = hasFullAccess || liste.length > 0
 
-      {liste.length === 0 ? (
-        <div className="px-2 py-1.5 text-xs text-muted-foreground">Sorumlu ekleyin</div>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="h-7 px-2 text-xs w-12">Sıra</TableHead>
-              <TableHead className="h-7 px-2 text-xs">1. Sorumlu</TableHead>
-              <TableHead className="h-7 px-2 text-xs">Yedek Sorumlu</TableHead>
-              {hasFullAccess && <TableHead className="h-7 px-2 w-8" />}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {liste.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell className="py-1 px-2">{s.sira}</TableCell>
-                <TableCell className="py-1 px-2">{s.birinciSorumlu}</TableCell>
-                <TableCell className="py-1 px-2">{s.yedekSorumlu ?? "—"}</TableCell>
-                {hasFullAccess && (
-                  <TableCell className="py-1 px-2">
-                    <button
-                      type="button"
-                      onClick={() => handleSil(s.id)}
-                      className="text-muted-foreground hover:text-red-600 leading-none"
-                      title="Satırı sil"
-                    >
-                      ×
-                    </button>
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+  return (
+    <>
+      {butonGoster && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full justify-start"
+          onClick={() => setModalAcik(true)}
+        >
+          {hasFullAccess ? "+ Sorumlu Ekle" : "Sorumlular"}
+        </Button>
       )}
 
-      {hasFullAccess && (
-        <div className="border-t px-2 py-1">
-          {formAcik ? (
-            <div className="space-y-2">
+      <Dialog
+        open={modalAcik}
+        onOpenChange={(o) => {
+          setModalAcik(o)
+          if (!o) resetSecim()
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Sorumlular</DialogTitle>
+          </DialogHeader>
+
+          {/* Üstte mevcut sorumlular (+ full-access'te × silme) */}
+          {liste.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Henüz sorumlu yok.</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-8 px-2 text-xs w-12">Sıra</TableHead>
+                  <TableHead className="h-8 px-2 text-xs">1. Sorumlu</TableHead>
+                  <TableHead className="h-8 px-2 text-xs">Yedek Sorumlu</TableHead>
+                  {hasFullAccess && <TableHead className="h-8 px-2 w-8" />}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {liste.map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell className="py-1.5 px-2">{s.sira}</TableCell>
+                    <TableCell className="py-1.5 px-2">{s.birinciSorumlu}</TableCell>
+                    <TableCell className="py-1.5 px-2">{s.yedekSorumlu ?? "—"}</TableCell>
+                    {hasFullAccess && (
+                      <TableCell className="py-1.5 px-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSil(s.id)}
+                          className="text-muted-foreground hover:text-red-600 leading-none"
+                          title="Satırı sil"
+                        >
+                          ×
+                        </button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          {/* Altta ekleme formu (yalnız full-access) */}
+          {hasFullAccess && (
+            <div className="border-t pt-3 space-y-2">
+              <div className="text-xs font-semibold text-muted-foreground">Yeni Sorumlu Ekle</div>
               <div className="grid grid-cols-2 gap-2">
                 <PersonelSeciciAlan
                   label="1. Sorumlu"
@@ -315,26 +348,15 @@ export default function SorumluTablosuPanel({
                   onSecim={setYedekSecili}
                 />
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={formuKapat}>
-                  İptal
-                </Button>
+              <div className="flex justify-end">
                 <Button size="sm" onClick={handleEkle} disabled={submitting}>
                   {submitting ? "Ekleniyor..." : "Ekle"}
                 </Button>
               </div>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setFormAcik(true)}
-              className="text-xs px-2 py-1 rounded border border-blue-300 text-blue-600 hover:bg-blue-50"
-            >
-              + Sorumlu Ekle
-            </button>
           )}
-        </div>
-      )}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

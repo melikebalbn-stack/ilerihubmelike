@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/generated/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { resolveTransitionRoles } from '@/lib/recruitment/resolve-roles'
+import { oturumOzetiGetir } from '@/lib/recruitment/assessment-session'
 
 // PR-RECRUIT-RBAC: PublicJobApplication — İK (recruitment.admin/hr.admin) tam erişim;
 // atanan müdür (assignedManagerId) yalnız değerlendirme için gereken NON-hassas alanlar.
@@ -58,18 +59,21 @@ export async function GET(
       return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
     }
 
-    // İK → tam kayıt (mevcut davranış birebir korunur, regresyon yok).
+    // İK → tam kayıt (mevcut davranış birebir korunur) + sınav oturum özeti (İK: aktif linkli).
     if (roles.includes('IK')) {
       const application = await prisma.publicJobApplication.findUnique({ where: { id } })
-      return NextResponse.json(application)
+      const sinavlar = await oturumOzetiGetir(prisma, id, { ik: true })
+      return NextResponse.json({ ...application, sinavlar })
     }
 
-    // Saf müdür → yalnız whitelist alanlar + kısıtlı görünüm işareti (UI bilgi satırı için).
+    // Saf müdür → whitelist alanlar + kısıtlı işaret + sınav özeti (müdür: puan/durum/tarih VAR,
+    // sinavLink/token YOK — alan kapısı SUNUCUDA oturumOzetiGetir({ik:false})).
     const application = await prisma.publicJobApplication.findUnique({
       where: { id },
       select: MANAGER_SELECT,
     })
-    return NextResponse.json({ ...application, _restrictedView: true })
+    const sinavlar = await oturumOzetiGetir(prisma, id, { ik: false })
+    return NextResponse.json({ ...application, _restrictedView: true, sinavlar })
   } catch (error) {
     console.error('Basvuru detayi alinirken hata:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

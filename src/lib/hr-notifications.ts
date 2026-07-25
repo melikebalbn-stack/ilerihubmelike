@@ -153,3 +153,40 @@ export async function notifyApplicationStageChange(args: {
     })),
   })
 }
+
+/**
+ * Aday sınavı tamamlanınca in-app bildirim. Alıcılar: İK ekibi (resolveHRRecipients) +
+ * varsa atanan müdür — TEK createMany (userId tekilleştirilir). Başlık geçti/kaldı ayrımı,
+ * mesajda puan + geçme notu. Süreci BOZMAZ (çağıran try/catch ile sarar).
+ */
+export async function notifyAssessmentCompleted(args: {
+  applicationId: string
+  applicantName: string
+  assessmentTitle: string
+  puan: number
+  gecmeNotu: number
+  gecti: boolean
+  assignedManagerId?: string | null
+}): Promise<void> {
+  const link = APPLICATION_LINK(args.applicationId)
+  const title = `Sınav sonucu: ${args.gecti ? 'Geçti' : 'Kaldı'}`
+  const message =
+    `${args.applicantName} — ${args.assessmentTitle}: ${args.puan} puan ` +
+    `(geçme notu ${args.gecmeNotu}) — ${args.gecti ? 'geçti' : 'kaldı'}.`
+
+  // İK + (varsa) atanan müdür; Set ile tekilleştir (aynı kişi iki bildirim almasın).
+  const recipients = await resolveHRRecipients()
+  const userIds = new Set<string>(recipients.map((r) => r.id))
+  if (args.assignedManagerId) userIds.add(args.assignedManagerId)
+  if (userIds.size === 0) return
+
+  await prisma.notification.createMany({
+    data: [...userIds].map((userId) => ({
+      userId,
+      title,
+      message,
+      type: 'INFO' as const,
+      link,
+    })),
+  })
+}

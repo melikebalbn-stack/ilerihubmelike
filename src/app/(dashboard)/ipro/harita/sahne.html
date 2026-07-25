@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- FABRIKA HARITASI SURUM: v23 (tezgaha tiklayinca tezgaha zoom) -->
+<!-- FABRIKA HARITASI SURUM: v24 (canli modda temsili kalinti temizligi) -->
 <title>ILERIHub · Fabrika Haritası v3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -275,7 +275,7 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
     <div class="ust">
       <div class="logo">İLERİ<span>HUB</span></div>
       <div class="baslikKutu"><div class="b" id="baslik">Tüm Fabrika</div><div class="a" id="altbaslik"></div></div>
-      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v23</span>
+      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v24</span>
       <div class="saat"><span class="canli"><i></i>CANLI</span><span id="saat">--:--:--</span></div>
     </div>
     <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"><div class="dokular"></div></div></div></div>
@@ -930,7 +930,12 @@ async function canliCek(){
     if(rz)rz.textContent='CANLI VERİ · '+new Date().toLocaleTimeString('tr-TR',{hour12:false});
     TEZGAHLAR.forEach(t=>{
       const v=d.tezgahlar[t.kod];
-      if(!v){if(t.ipro){t.durum='sinyalyok';t.say=null}return}
+      if(!v){if(t.ipro){t.durum='sinyalyok';t.say=null;
+        t.uretilen=0;t.plan=0;t.sure=0;t.hiz=0;t.opr='—';t.ie='—';t.mlz='—';t.sebep='—'}return}
+      /* yanıtta var ama alan eksikse de temsili kalıntı taşınmasın */
+      if(v.opr===undefined)t.opr='—';if(v.ie===undefined)t.ie='—';
+      if(v.mlz===undefined)t.mlz='—';if(v.uretilen===undefined)t.uretilen=0;
+      if(v.say===undefined)t.say=null;
       for(const k of['durum','say','opr','ie','mlz','sebep','sure','uretilen','plan','hiz'])
         if(v[k]!==undefined)t[k]=v[k];});
     tazele();

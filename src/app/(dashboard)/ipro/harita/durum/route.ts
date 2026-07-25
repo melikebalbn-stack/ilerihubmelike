@@ -9,9 +9,18 @@ import { prisma } from '@/lib/prisma'
 // Yanıt sözleşmesi tezgah KODU → durum nesnesi:
 //   { "tezgahlar": { "<KOD>": { "durum": "...", "say": null, ... } } }
 //
+// KAPSAM (v24): DB'deki TÜM aktif tezgahlar yanıta girer. Aktif iş varsa
+// "calisiyor", açık duruş varsa "durusta", hiçbiri yoksa "bosta" (bugün kaydı
+// şartı YOK). Böylece DB karşılığı olan her tezgah en az SARI (boşta) görünür;
+// gri "sinyal yok" yalnız DB'de kaydı OLMAYAN sahne kutularına kalır.
+//
 // DÜRÜSTLÜK KURALI: bilinmeyen alan yanıta HİÇ konmaz (uydurma yok). Tek istisna
-// "say" (sayaç): poller/PLC entegrasyonu yokken null bırakılır. Hiç veri/eşleşme
-// olmayan tezgah yanıta KONMAZ → sahne o tezgahı "sinyal yok" gösterir.
+// "say" (sayaç): poller/PLC entegrasyonu yokken null bırakılır.
+//
+// Durum türetme, izleme panosuyla (izleme-service.ts) aynı kaynaklardan:
+//   açık duruş (IproMachineDowntime.bitis=null)      → "durusta" (duruş > çalışıyor)
+//   açık iş  (IproProductionLog.durum=ACIK)          → "calisiyor"
+//   ikisi de yok                                     → "bosta"
 //
 // Auth guard birebir sahne/route.ts ile aynı.
 export const runtime = 'nodejs'
@@ -29,21 +38,13 @@ const DB2SAHNE: Record<string, string> = {
   MM230: 'ELFREN-1', MM202: 'ELFREN-2', MM233: 'ELFREN-3',
   KH29: 'PM14', KR09: 'KR06',
   KP15: 'TRN-1', KP16: 'TRN-2',
-  PK07: 'DIREKSIYON', PK08: '2197H',
-  PK13: 'PK31', // 2197 Rulman Çakma — ürün teyidi bekliyor (2197 mi 2489 mi)
+  PK07: 'DIREKSIYON', PK08: '2197H', PK13: 'PK31',
   CN08: 'PM02', CN09: 'PM05', CN10: 'PM06', CN11: 'PM07',
   CN12: 'PM08', CN13: 'PM09', CN14: 'PM10', // matkap sırası teyit edilecek
 }
 
 // Robot kaynak fan-out: KR01-1..KR04-6 kapı istasyonları → KR01..KR04 kutusu.
 const ROBOT_RE = /^(KR0[1-4])-\d+$/
-
-function gununBasi(): Date {
-  // Sunucu saatiyle bugünün 00:00'ı (prod tek TZ: Europe/Istanbul).
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  return d
-}
 
 type DurumTip = 'calisiyor' | 'durusta' | 'bosta'
 
@@ -60,9 +61,7 @@ type TezgahDurum = {
 }
 
 async function durumTuret(): Promise<Record<string, TezgahDurum>> {
-  const bugun = gununBasi()
-
-  const [tezgahlar, acikIsler, acikDuruslar, bugunKayitlar] = await Promise.all([
+  const [tezgahlar, acikIsler, acikDuruslar] = await Promise.all([
     prisma.iproTezgah.findMany({
       where: { aktif: true },
       select: { id: true, kod: true },
@@ -86,10 +85,6 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
       orderBy: { baslangic: 'asc' },
       select: { tezgahId: true, baslangic: true, durusSebebi: { select: { ad: true } } },
     }),
-    prisma.iproProductionLog.findMany({
-      where: { OR: [{ baslatildiAt: { gte: bugun } }, { bitirildiAt: { gte: bugun } }] },
-      select: { tezgahId: true },
-    }),
   ])
 
   const personIds = [...new Set(acikIsler.map((a) => a.personnelId))]
@@ -104,12 +99,10 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
   const acikByTezgah = new Map(acikIsler.map((a) => [a.tezgahId, a]))
   const durusByTezgah = new Map<string, (typeof acikDuruslar)[number]>()
   for (const d of acikDuruslar) if (!durusByTezgah.has(d.tezgahId)) durusByTezgah.set(d.tezgahId, d)
-  const bugunKayitVar = new Set(bugunKayitlar.map((r) => r.tezgahId))
 
   const now = Date.now()
   const sn = (ms: number) => Math.max(0, Math.floor((now - ms) / 1000))
 
-  // Açık iş kaydını durum nesnesine çevir (calisiyor).
   const calisiyorEntry = (acik: (typeof acikIsler)[number]): TezgahDurum => {
     const e: TezgahDurum = { durum: 'calisiyor', say: null, sure: sn(acik.baslatildiAt!.getTime()) }
     const opr = adById.get(acik.personnelId)
@@ -124,8 +117,8 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
     return e
   }
 
-  // Tek tezgah için ham durum (fan-out dışı).
-  const entryFor = (tezgahId: string): TezgahDurum | null => {
+  // Tek tezgah (fan-out dışı). v24: iş/duruş yoksa DAİMA "bosta" (kayıt şartı yok).
+  const entryFor = (tezgahId: string): TezgahDurum => {
     const durus = durusByTezgah.get(tezgahId)
     if (durus) {
       const e: TezgahDurum = { durum: 'durusta', say: null, sure: sn(durus.baslangic.getTime()) }
@@ -134,15 +127,14 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
     }
     const acik = acikByTezgah.get(tezgahId)
     if (acik && acik.baslatildiAt) return calisiyorEntry(acik)
-    if (bugunKayitVar.has(tezgahId)) return { durum: 'bosta', say: null }
-    return null
+    return { durum: 'bosta', say: null }
   }
 
   // Robot grubu (KR01..KR04) — istasyonları topla, tek kutuya indir.
   //   herhangi biri calisiyor → calisiyor (sure=en güncel aktif, opr=ilk aktif)
   //   değilse biri durusta → durusta (sebep=ilk duruş, sure=en güncel duruş)
-  //   değilse bugün kaydı varsa → bosta
-  const robotAgg = (stationIds: string[]): TezgahDurum | null => {
+  //   değilse → bosta (v24: kayıt şartı yok)
+  const robotAgg = (stationIds: string[]): TezgahDurum => {
     const aktifler = stationIds
       .map((id) => acikByTezgah.get(id))
       .filter((a): a is (typeof acikIsler)[number] => !!(a && a.baslatildiAt))
@@ -165,8 +157,7 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
       if (ilk.durusSebebi?.ad) e.sebep = ilk.durusSebebi.ad
       return e
     }
-    if (stationIds.some((id) => bugunKayitVar.has(id))) return { durum: 'bosta', say: null }
-    return null
+    return { durum: 'bosta', say: null }
   }
 
   const out: Record<string, TezgahDurum> = {}
@@ -181,13 +172,11 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
       robotGruplari.set(g, arr)
       continue
     }
-    const e = entryFor(t.id)
-    if (e) out[DB2SAHNE[t.kod] ?? t.kod] = e
+    out[DB2SAHNE[t.kod] ?? t.kod] = entryFor(t.id)
   }
 
   for (const [g, ids] of robotGruplari) {
-    const e = robotAgg(ids)
-    if (e) out[g] = e
+    out[g] = robotAgg(ids)
   }
 
   return out

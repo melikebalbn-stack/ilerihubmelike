@@ -399,12 +399,24 @@ export default function JobApplicationDetailPage() {
             <Printer className="h-4 w-4 mr-2" />
             Yazdir
           </Button>
-          <Button variant="destructive" size="sm" onClick={handleDelete}>
-            <Trash2 className="h-4 w-4 mr-2" />
-            Sil
-          </Button>
+          {/* Silme yalnız İK — kısıtlı (müdür) görünümde gizli */}
+          {!app._restrictedView && (
+            <Button variant="destructive" size="sm" onClick={handleDelete}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Sil
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Saf müdür (İK yetkisi yok) — kısıtlı görünüm bilgi satırı */}
+      {app._restrictedView && (
+        <div className="mb-6 flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 no-print">
+          <Shield className="h-4 w-4 shrink-0" />
+          Bu görünüm size atanmış başvuruyla sınırlıdır. Hassas kişisel bilgiler (kimlik,
+          sağlık, KVKK, iletişim vb.) gösterilmez.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main content - printable */}
@@ -814,8 +826,9 @@ export default function JobApplicationDetailPage() {
               </div>
             )}
 
-            {/* Faz 3: KVKK onayı + Sağlık beyanı (yalnız yetkili rolde render edilir) */}
-            <JobApplicationSensitiveSections applicationId={id} />
+            {/* Faz 3: KVKK onayı + Sağlık beyanı (yalnız yetkili rolde render edilir).
+                Kısıtlı (müdür) görünümde hiç render edilmez — bu veriler müdüre kapalı. */}
+            {!app._restrictedView && <JobApplicationSensitiveSections applicationId={id} />}
           </div>
         </div>
 
@@ -876,16 +889,19 @@ export default function JobApplicationDetailPage() {
                   </div>
                 )}
               </div>
-              <div>
-                <Label>IK Notlari</Label>
-                <Textarea
-                  defaultValue={app.notes || ""}
-                  placeholder="Bu basvuru hakkinda notlariniz..."
-                  rows={5}
-                  onBlur={(e) => handleNotesUpdate(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+              {/* İK notu yalnız İK — kısıtlı (müdür) görünümde gizli (PATCH zaten admin-only) */}
+              {!app._restrictedView && (
+                <div>
+                  <Label>IK Notlari</Label>
+                  <Textarea
+                    defaultValue={app.notes || ""}
+                    placeholder="Bu basvuru hakkinda notlariniz..."
+                    rows={5}
+                    onBlur={(e) => handleNotesUpdate(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
 

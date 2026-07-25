@@ -2,8 +2,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/generated/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { resolveTransitionRoles } from '@/lib/recruitment/resolve-roles'
 
-// PR-RECRUIT-RBAC: PublicJobApplication HR-only (recruitment.admin)
+// PR-RECRUIT-RBAC: PublicJobApplication — İK (recruitment.admin/hr.admin) tam erişim;
+// atanan müdür (assignedManagerId) yalnız değerlendirme için gereken NON-hassas alanlar.
+
+// Saf müdür (İK yetkisi yok) görünürlük WHITELIST'i. Alan seçimi SUNUCUDA yapılır —
+// hassas alanlar (TC, doğum, adli sicil, sağlık, medeni/askerlik, beden, KVKK imza, ev adresi,
+// İK notu, iletişim) client'a HİÇ gönderilmez. (org modülü hasFullAccess deseni.)
+const MANAGER_SELECT = {
+  id: true,
+  applicationNumber: true,
+  fullName: true,
+  requestedPosition: true,
+  educationLevel: true,
+  educationHistory: true,
+  workExperience: true,
+  foreignLanguages: true,
+  computerSkills: true,
+  coursesAndSeminars: true,
+  photoUrl: true,
+  status: true,
+  assignedManagerId: true,
+  assignedAt: true,
+  createdAt: true,
+} satisfies Prisma.PublicJobApplicationSelect
 
 // GET - Başvuru detayı
 export async function GET(
@@ -14,21 +37,39 @@ export async function GET(
     const { session, error } = await requireSession()
     if (error) return error
 
-    if (!session.user.permissions?.includes('recruitment.admin')) {
-      return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
-    }
-
     const { id } = await params
 
-    const application = await prisma.publicJobApplication.findUnique({
-      where: { id }
+    // Rol belirleme için önce yalnız atama bilgisini oku (hassas veri çekmeden).
+    const base = await prisma.publicJobApplication.findUnique({
+      where: { id },
+      select: { id: true, assignedManagerId: true },
     })
-
-    if (!application) {
+    if (!base) {
       return NextResponse.json({ error: 'Basvuru bulunamadi' }, { status: 404 })
     }
 
-    return NextResponse.json(application)
+    // Yetki: İK (recruitment.admin/hr.admin) VEYA atanan müdür. TEK KAYNAK (resolve-roles).
+    const roles = resolveTransitionRoles({
+      permissions: session.user.permissions,
+      userId: session.user.id,
+      assignedManagerId: base.assignedManagerId,
+    })
+    if (roles.length === 0) {
+      return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
+    }
+
+    // İK → tam kayıt (mevcut davranış birebir korunur, regresyon yok).
+    if (roles.includes('IK')) {
+      const application = await prisma.publicJobApplication.findUnique({ where: { id } })
+      return NextResponse.json(application)
+    }
+
+    // Saf müdür → yalnız whitelist alanlar + kısıtlı görünüm işareti (UI bilgi satırı için).
+    const application = await prisma.publicJobApplication.findUnique({
+      where: { id },
+      select: MANAGER_SELECT,
+    })
+    return NextResponse.json({ ...application, _restrictedView: true })
   } catch (error) {
     console.error('Basvuru detayi alinirken hata:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

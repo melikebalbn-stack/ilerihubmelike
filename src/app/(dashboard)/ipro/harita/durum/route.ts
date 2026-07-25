@@ -5,23 +5,38 @@ import { prisma } from '@/lib/prisma'
 
 // Fabrika Haritası CANLI DURUM endpoint'i — SALT OKUMA.
 //
-// Sahne (sahne.html) bunu ~30sn'de bir GET'ler; yanıt yoksa/boşsa temsili
-// (simülasyon) sürer. Yanıt sözleşmesi tezgah KODU → durum nesnesi:
+// Sahne (sahne.html) bunu ~30sn'de bir GET'ler; yanıt yoksa/boşsa temsili sürer.
+// Yanıt sözleşmesi tezgah KODU → durum nesnesi:
 //   { "tezgahlar": { "<KOD>": { "durum": "...", "say": null, ... } } }
 //
 // DÜRÜSTLÜK KURALI: bilinmeyen alan yanıta HİÇ konmaz (uydurma yok). Tek istisna
 // "say" (sayaç): poller/PLC entegrasyonu yokken null bırakılır. Hiç veri/eşleşme
 // olmayan tezgah yanıta KONMAZ → sahne o tezgahı "sinyal yok" gösterir.
 //
-// Durum türetme, izleme panosuyla (izleme-service.ts) aynı kaynaklardan:
-//   açık duruş (IproMachineDowntime.bitis=null)      → "durusta" (duruş > çalışıyor)
-//   açık iş  (IproProductionLog.durum=ACIK)          → "calisiyor"
-//   bugün kaydı var ama şu an açık iş/duruş yok       → "bosta"
-//   hiçbiri                                           → tezgah atlanır (sinyalyok)
-//
 // Auth guard birebir sahne/route.ts ile aynı.
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+// ── Alias katmanı: DB tezgah kodu → sahne kodu ──────────────────────────────
+// Onaylı eşleme turu. Anahtar = DB kodu, değer = sahnedeki kutu kodu. Yanıt
+// anahtarları SAHNE koduyla yazılır. Burada olmayan DB kodları kendi koduyla
+// geçer (DT06, KH04, KH13, KH27, PH09, PH13, PK15, MM150, MM151, HM15, HM16
+// artık sahnede birebir var → alias gerekmez).
+const DB2SAHNE: Record<string, string> = {
+  CN19: 'ARES', CN16: 'PM13', MM210: 'ELGAZI', MM30: '1410H',
+  PH20: 'BROS', // DB PH20 = Broş Çekme; sahnedeki eski PH20 kutusu PH10 oldu
+  KM01: 'KILIT-1', KM02: 'KILIT-2', KM03: 'KILIT-3',
+  MM230: 'ELFREN-1', MM202: 'ELFREN-2', MM233: 'ELFREN-3',
+  KH29: 'PM14', KR09: 'KR06',
+  KP15: 'TRN-1', KP16: 'TRN-2',
+  PK07: 'DIREKSIYON', PK08: '2197H',
+  PK13: 'PK31', // 2197 Rulman Çakma — ürün teyidi bekliyor (2197 mi 2489 mi)
+  CN08: 'PM02', CN09: 'PM05', CN10: 'PM06', CN11: 'PM07',
+  CN12: 'PM08', CN13: 'PM09', CN14: 'PM10', // matkap sırası teyit edilecek
+}
+
+// Robot kaynak fan-out: KR01-1..KR04-6 kapı istasyonları → KR01..KR04 kutusu.
+const ROBOT_RE = /^(KR0[1-4])-\d+$/
 
 function gununBasi(): Date {
   // Sunucu saatiyle bugünün 00:00'ı (prod tek TZ: Europe/Istanbul).
@@ -66,20 +81,17 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
         ifsQtyDue: true,
       },
     }),
-    // Açık duruşlar (bitis=null) — en eskisi tezgahın güncel duruşu sayılır.
     prisma.iproMachineDowntime.findMany({
       where: { bitis: null },
       orderBy: { baslangic: 'asc' },
       select: { tezgahId: true, baslangic: true, durusSebebi: { select: { ad: true } } },
     }),
-    // "bosta" sinyali: bugün başlamış ya da bugün kapanmış herhangi bir iş kaydı.
     prisma.iproProductionLog.findMany({
       where: { OR: [{ baslatildiAt: { gte: bugun } }, { bitirildiAt: { gte: bugun } }] },
       select: { tezgahId: true },
     }),
   ])
 
-  // Açık işlerdeki operatör adları (personnelId FK'sız — ikinci sorguyla eşlenir).
   const personIds = [...new Set(acikIsler.map((a) => a.personnelId))]
   const personeller = personIds.length
     ? await prisma.personnel.findMany({
@@ -95,40 +107,87 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
   const bugunKayitVar = new Set(bugunKayitlar.map((r) => r.tezgahId))
 
   const now = Date.now()
+  const sn = (ms: number) => Math.max(0, Math.floor((now - ms) / 1000))
+
+  // Açık iş kaydını durum nesnesine çevir (calisiyor).
+  const calisiyorEntry = (acik: (typeof acikIsler)[number]): TezgahDurum => {
+    const e: TezgahDurum = { durum: 'calisiyor', say: null, sure: sn(acik.baslatildiAt!.getTime()) }
+    const opr = adById.get(acik.personnelId)
+    if (opr) e.opr = opr
+    if (acik.ifsOrderNo) {
+      e.ie = acik.ifsOperationNo != null ? `${acik.ifsOrderNo}/${acik.ifsOperationNo}` : acik.ifsOrderNo
+    }
+    const mlz = acik.ifsPartDescription ?? acik.ifsPartNo
+    if (mlz) e.mlz = mlz
+    if (acik.qtyComplete != null) e.uretilen = acik.qtyComplete
+    if (acik.ifsQtyDue != null) e.plan = acik.ifsQtyDue
+    return e
+  }
+
+  // Tek tezgah için ham durum (fan-out dışı).
+  const entryFor = (tezgahId: string): TezgahDurum | null => {
+    const durus = durusByTezgah.get(tezgahId)
+    if (durus) {
+      const e: TezgahDurum = { durum: 'durusta', say: null, sure: sn(durus.baslangic.getTime()) }
+      if (durus.durusSebebi?.ad) e.sebep = durus.durusSebebi.ad
+      return e
+    }
+    const acik = acikByTezgah.get(tezgahId)
+    if (acik && acik.baslatildiAt) return calisiyorEntry(acik)
+    if (bugunKayitVar.has(tezgahId)) return { durum: 'bosta', say: null }
+    return null
+  }
+
+  // Robot grubu (KR01..KR04) — istasyonları topla, tek kutuya indir.
+  //   herhangi biri calisiyor → calisiyor (sure=en güncel aktif, opr=ilk aktif)
+  //   değilse biri durusta → durusta (sebep=ilk duruş, sure=en güncel duruş)
+  //   değilse bugün kaydı varsa → bosta
+  const robotAgg = (stationIds: string[]): TezgahDurum | null => {
+    const aktifler = stationIds
+      .map((id) => acikByTezgah.get(id))
+      .filter((a): a is (typeof acikIsler)[number] => !!(a && a.baslatildiAt))
+      .sort((x, y) => x.baslatildiAt!.getTime() - y.baslatildiAt!.getTime())
+    if (aktifler.length) {
+      const ilk = aktifler[0] // ilk (en eski) aktif → tanımlayıcı alanlar
+      const enGuncel = aktifler[aktifler.length - 1] // en güncel (en yeni) → sure
+      const e = calisiyorEntry(ilk)
+      e.sure = sn(enGuncel.baslatildiAt!.getTime())
+      return e
+    }
+    const duruslar = stationIds
+      .map((id) => durusByTezgah.get(id))
+      .filter((d): d is (typeof acikDuruslar)[number] => !!d)
+      .sort((x, y) => x.baslangic.getTime() - y.baslangic.getTime())
+    if (duruslar.length) {
+      const ilk = duruslar[0] // sebep = ilk duruş
+      const enGuncel = duruslar[duruslar.length - 1] // sure = en güncel duruş
+      const e: TezgahDurum = { durum: 'durusta', say: null, sure: sn(enGuncel.baslangic.getTime()) }
+      if (ilk.durusSebebi?.ad) e.sebep = ilk.durusSebebi.ad
+      return e
+    }
+    if (stationIds.some((id) => bugunKayitVar.has(id))) return { durum: 'bosta', say: null }
+    return null
+  }
+
   const out: Record<string, TezgahDurum> = {}
+  const robotGruplari = new Map<string, string[]>() // 'KR01' → [tezgahId, ...]
 
   for (const t of tezgahlar) {
-    const durus = durusByTezgah.get(t.id)
-    const acik = acikByTezgah.get(t.id)
-
-    if (durus) {
-      const e: TezgahDurum = {
-        durum: 'durusta',
-        say: null,
-        sure: Math.max(0, Math.floor((now - durus.baslangic.getTime()) / 1000)),
-      }
-      if (durus.durusSebebi?.ad) e.sebep = durus.durusSebebi.ad
-      out[t.kod] = e
-    } else if (acik && acik.baslatildiAt) {
-      const e: TezgahDurum = {
-        durum: 'calisiyor',
-        say: null,
-        sure: Math.max(0, Math.floor((now - acik.baslatildiAt.getTime()) / 1000)),
-      }
-      const opr = adById.get(acik.personnelId)
-      if (opr) e.opr = opr
-      if (acik.ifsOrderNo) {
-        e.ie = acik.ifsOperationNo != null ? `${acik.ifsOrderNo}/${acik.ifsOperationNo}` : acik.ifsOrderNo
-      }
-      const mlz = acik.ifsPartDescription ?? acik.ifsPartNo
-      if (mlz) e.mlz = mlz
-      if (acik.qtyComplete != null) e.uretilen = acik.qtyComplete
-      if (acik.ifsQtyDue != null) e.plan = acik.ifsQtyDue
-      out[t.kod] = e
-    } else if (bugunKayitVar.has(t.id)) {
-      out[t.kod] = { durum: 'bosta', say: null }
+    const rm = ROBOT_RE.exec(t.kod)
+    if (rm) {
+      const g = rm[1]
+      const arr = robotGruplari.get(g) ?? []
+      arr.push(t.id)
+      robotGruplari.set(g, arr)
+      continue
     }
-    // else: veri yok → tezgahı atla (sahne "sinyal yok" gösterir)
+    const e = entryFor(t.id)
+    if (e) out[DB2SAHNE[t.kod] ?? t.kod] = e
+  }
+
+  for (const [g, ids] of robotGruplari) {
+    const e = robotAgg(ids)
+    if (e) out[g] = e
   }
 
   return out

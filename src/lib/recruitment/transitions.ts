@@ -73,6 +73,15 @@ export function requiresAssignedManager(to: JobApplicationStatus): boolean {
   return to === "MUDUR_DEGERLENDIRME";
 }
 
+/**
+ * REJECTED hedefine geçiş için ret nedeni (rejectionReasonId) ZORUNLUDUR.
+ * Kök-neden/analitik için: her ret bir nedene bağlanmalı. requiresAssignedManager
+ * ile aynı desende yapısal kural (matris-bağımsız, TEK KAYNAK).
+ */
+export function requiresRejectionReason(to: JobApplicationStatus): boolean {
+  return to === "REJECTED";
+}
+
 /** (from, to, role) üçlüsü izin matrisinde var mı. */
 export function canTransition(
   from: JobApplicationStatus,

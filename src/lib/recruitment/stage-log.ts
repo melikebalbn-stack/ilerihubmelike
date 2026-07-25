@@ -111,6 +111,9 @@ export async function transitionApplicationStatus(args: {
   note?: string | null;
   assignedManagerId?: string | null;
   actorName?: string | null;
+  // REJECTED geçişinde ret nedeni. Verilirse PublicJobApplication.rejectionReasonId AYNI
+  // tx'te yazılır ve StageLog note'una nedenin ETİKETİ (ham id değil) eklenir.
+  rejectionReasonId?: string | null;
 }) {
   // İşlem: önce mevcut durumu + başvuran adını oku (bildirim metni için), sonra güncelle.
   const outcome = await prisma.$transaction(async (tx) => {
@@ -148,12 +151,29 @@ export async function transitionApplicationStatus(args: {
       effectiveNote = args.note ? `${args.note} | ${reassignNote}` : reassignNote;
     }
 
+    // Ret nedeni: verilmişse AYNI tx'te rejectionReasonId yaz + note'a okunabilir etiket ekle.
+    // (Etiket StageLog note'una girer; ham id kullanıcıya gösterilmez.)
+    const extraData: Prisma.PublicJobApplicationUpdateInput = {};
+    if (args.rejectionReasonId) {
+      const reason = await tx.rejectionReason.findUnique({
+        where: { id: args.rejectionReasonId },
+        select: { name: true },
+      });
+      if (!reason) {
+        throw new Error(`RejectionReason bulunamadı: ${args.rejectionReasonId}`);
+      }
+      extraData.rejectionReason = { connect: { id: args.rejectionReasonId } };
+      const reasonNote = `Ret nedeni: ${reason.name}`;
+      effectiveNote = effectiveNote ? `${effectiveNote} | ${reasonNote}` : reasonNote;
+    }
+
     const updated = await updateApplicationStatus(tx, {
       applicationId: args.applicationId,
       toStatus: args.toStatus,
       changedBy: args.changedBy,
       note: effectiveNote,
       assignedManagerId: args.assignedManagerId,
+      data: Object.keys(extraData).length ? extraData : undefined,
       // Yeniden atama (aynı durum) → log yine yazılsın.
       forceLog: isReassign,
     });

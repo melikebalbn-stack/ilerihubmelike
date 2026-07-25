@@ -2,10 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -15,6 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import {
   ArrowLeft,
   User,
@@ -29,31 +35,16 @@ import {
   CheckCircle2,
   Trash2,
   Printer,
+  History,
+  XCircle,
+  AlertTriangle,
 } from "lucide-react"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { JobApplicationSensitiveSections } from "@/components/job-application/JobApplicationSensitiveSections"
-
-const jobAppStatusLabels: Record<string, string> = {
-  PENDING: "Beklemede",
-  REVIEWING: "Inceleniyor",
-  SHORTLISTED: "On Eleme",
-  INTERVIEW: "Mulakat",
-  ACCEPTED: "Kabul Edildi",
-  REJECTED: "Reddedildi",
-  WITHDRAWN: "Geri Cekildi",
-}
-
-const jobAppStatusColors: Record<string, string> = {
-  PENDING: "bg-yellow-100 text-yellow-800",
-  REVIEWING: "bg-blue-100 text-blue-800",
-  SHORTLISTED: "bg-purple-100 text-purple-800",
-  INTERVIEW: "bg-indigo-100 text-indigo-800",
-  ACCEPTED: "bg-green-100 text-green-800",
-  REJECTED: "bg-red-100 text-red-800",
-  WITHDRAWN: "bg-gray-100 text-gray-800",
-}
+import { JobApplicationStatusBadge } from "@/components/recruitment/JobApplicationStatusBadge"
+import { STATUS_LABELS_TR } from "@/lib/recruitment/transitions"
 
 const educationLevelLabels: Record<string, string> = {
   PRIMARY_SCHOOL: "Ilkogretim",
@@ -121,17 +112,56 @@ function SectionTitle({ icon: Icon, title }: { icon: any; title: string }) {
   )
 }
 
+// stage-log ucundan dönen workflow bağlamı (izinler SUNUCUDA hesaplanır; client türetmez).
+type WorkflowCtx = {
+  currentStatus: string
+  roles: string[]
+  allowedTargets: string[]
+  isTerminal: boolean
+  assignedManagerId: string | null
+  requiresManagerTargets: string[]
+  requiresReasonTargets: string[]
+}
+type StageLogRow = {
+  id: string
+  fromStatus: string | null
+  toStatus: string
+  note: string | null
+  createdAt: string
+  changedByName: string | null
+  changedByTitle: string | null
+}
+type ManagerOption = { id: string; name: string; departmentName: string | null; isDeputy: boolean }
+type UnmatchedManager = { personnelId: string; adSoyad: string | null; departmentName: string | null; isDeputy: boolean }
+type ManagersResp = { onerilenler: ManagerOption[]; tumAktif: ManagerOption[]; unmatchedManagers: UnmatchedManager[] }
+type RejectionReasonOption = { id: string; category: string; name: string }
+
 export default function JobApplicationDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { data: session } = useSession()
   const [app, setApp] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+
+  // Workflow: aşama geçmişi + izin bağlamı (stage-log ucundan).
+  const [workflow, setWorkflow] = useState<WorkflowCtx | null>(null)
+  const [logs, setLogs] = useState<StageLogRow[]>([])
+
+  // Geçiş modalı state'i.
+  const [txTarget, setTxTarget] = useState<string | null>(null)
+  const [txNote, setTxNote] = useState("")
+  const [txManagerId, setTxManagerId] = useState("")
+  const [txReasonId, setTxReasonId] = useState("")
+  const [txSubmitting, setTxSubmitting] = useState(false)
+  const [managers, setManagers] = useState<ManagersResp | null>(null)
+  const [reasons, setReasons] = useState<RejectionReasonOption[]>([])
 
   const id = params.id as string
 
   useEffect(() => {
-    if (id) fetchDetail()
+    if (id) {
+      fetchDetail()
+      fetchWorkflow()
+    }
   }, [id])
 
   const fetchDetail = async () => {
@@ -151,22 +181,84 @@ export default function JobApplicationDetailPage() {
     }
   }
 
-  const handleStatusChange = async (newStatus: string) => {
+  // Aşama geçmişi + izin bağlamı. Geçişten sonra da çağrılır (timeline + butonlar bayat kalmasın).
+  const fetchWorkflow = async () => {
     try {
-      const res = await fetch(`/api/strategic-hr/recruitment/job-applications/${id}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/strategic-hr/recruitment/job-applications/${id}/stage-log`)
+      if (res.ok) {
+        const data = await res.json()
+        setWorkflow(data.workflow)
+        setLogs(data.logs)
+      }
+    } catch {
+      // sessiz — timeline/aksiyon kartı yoksa sayfa yine de CV'yi gösterir
+    }
+  }
+
+  const requiresManager = !!txTarget && !!workflow?.requiresManagerTargets.includes(txTarget)
+  const requiresReason = !!txTarget && !!workflow?.requiresReasonTargets.includes(txTarget)
+
+  // Aksiyon butonuna basınca modalı hazırla — hedef ek girdi istiyorsa ilgili listeyi çek.
+  const openTransition = async (target: string) => {
+    setTxTarget(target)
+    setTxNote("")
+    setTxManagerId("")
+    setTxReasonId("")
+    if (workflow?.requiresManagerTargets.includes(target) && !managers) {
+      try {
+        const res = await fetch(`/api/recruitment/managers`)
+        if (res.ok) setManagers(await res.json())
+      } catch { /* modalda liste boş kalır, onay disabled */ }
+    }
+    if (workflow?.requiresReasonTargets.includes(target) && reasons.length === 0) {
+      try {
+        const res = await fetch(`/api/strategic-hr/recruitment/rejection-reasons?activeOnly=1`)
+        if (res.ok) setReasons(await res.json())
+      } catch { /* modalda liste boş kalır, onay disabled */ }
+    }
+  }
+
+  const closeTransition = () => {
+    if (txSubmitting) return
+    setTxTarget(null)
+  }
+
+  const submitTransition = async () => {
+    if (!txTarget) return
+    setTxSubmitting(true)
+    try {
+      const body: Record<string, unknown> = { toStatus: txTarget }
+      if (txNote.trim()) body.note = txNote.trim()
+      if (requiresManager && txManagerId) body.assignedManagerId = txManagerId
+      if (requiresReason && txReasonId) body.rejectionReasonId = txReasonId
+      const res = await fetch(`/api/recruitment/applications/${id}/transition`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify(body),
       })
       if (res.ok) {
-        setApp({ ...app, status: newStatus })
+        setTxTarget(null)
         toast.success("Durum guncellendi")
+        // Statü + timeline + izinli hedefler yeniden yüklensin (bayat kalmasın).
+        await Promise.all([fetchDetail(), fetchWorkflow()])
       } else {
-        const err = await res.json()
-        toast.error(err.error || "Durum guncellenemedi")
+        const err = await res.json().catch(() => ({}))
+        // API izin verilen hedefleri döndürdüyse kullanıcıya anlaşılır TR mesaj göster.
+        if (Array.isArray(err.allowedTargets)) {
+          const izinli = err.allowedTargets.map((t: string) => STATUS_LABELS_TR[t as keyof typeof STATUS_LABELS_TR] || t)
+          toast.error(
+            izinli.length
+              ? `Bu gecise izin yok. Izin verilen hedefler: ${izinli.join(", ")}`
+              : "Bu basvuru icin gecis yetkiniz yok"
+          )
+        } else {
+          toast.error(err.error || "Durum guncellenemedi")
+        }
       }
     } catch {
       toast.error("Bir hata olustu")
+    } finally {
+      setTxSubmitting(false)
     }
   }
 
@@ -295,9 +387,7 @@ export default function JobApplicationDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold">{app.fullName}</h1>
-              <Badge className={jobAppStatusColors[app.status] || "bg-gray-100 text-gray-800"}>
-                {jobAppStatusLabels[app.status] || app.status}
-              </Badge>
+              <JobApplicationStatusBadge status={app.status} />
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Basvuru No: {app.applicationNumber} | {format(new Date(app.createdAt), "d MMMM yyyy HH:mm", { locale: tr })}
@@ -353,7 +443,7 @@ export default function JobApplicationDetailPage() {
                   {app.mobilePhone && <div>Tel: {app.mobilePhone}</div>}
                   {app.email && <div>{app.email}</div>}
                   <div style={{ marginTop: "4px" }}>
-                    <strong>Durum: {jobAppStatusLabels[app.status] || app.status}</strong>
+                    <strong>Durum: {STATUS_LABELS_TR[app.status as keyof typeof STATUS_LABELS_TR] || app.status}</strong>
                   </div>
                 </div>
               </div>
@@ -751,20 +841,40 @@ export default function JobApplicationDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Durum Degistir</Label>
-                <Select value={app.status} onValueChange={handleStatusChange}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PENDING">Beklemede</SelectItem>
-                    <SelectItem value="REVIEWING">Inceleniyor</SelectItem>
-                    <SelectItem value="SHORTLISTED">On Eleme</SelectItem>
-                    <SelectItem value="INTERVIEW">Mulakat</SelectItem>
-                    <SelectItem value="ACCEPTED">Kabul Edildi</SelectItem>
-                    <SelectItem value="REJECTED">Reddedildi</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Islemler</Label>
+                {/* Butonlar SUNUCUDAN gelen izinli hedeflerden türetilir — client yetki hesaplamaz.
+                    Sabit buton listesi yok; allowedTargets değişince buton kümesi de değişir. */}
+                {workflow?.isTerminal ? (
+                  <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                    Bu basvuru sonuclandi. Yeni durum gecisi yapilamaz.
+                  </div>
+                ) : workflow && workflow.allowedTargets.length > 0 ? (
+                  <div className="mt-2 flex flex-col gap-2">
+                    {workflow.allowedTargets.map((target) => {
+                      const isReject = target === "REJECTED"
+                      return (
+                        <Button
+                          key={target}
+                          variant={isReject ? "destructive" : "outline"}
+                          size="sm"
+                          className="justify-start"
+                          onClick={() => openTransition(target)}
+                        >
+                          {isReject ? (
+                            <XCircle className="h-4 w-4 mr-2" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                          )}
+                          {STATUS_LABELS_TR[target as keyof typeof STATUS_LABELS_TR] || target}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    Bu durum icin islem yetkiniz yok.
+                  </div>
+                )}
               </div>
               <div>
                 <Label>IK Notlari</Label>
@@ -776,6 +886,50 @@ export default function JobApplicationDetailPage() {
                   className="mt-1"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Asama Gecmisi (Timeline) — stage-log ucundan */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Asama Gecmisi
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {logs.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Henuz asama gecisi yok.</div>
+              ) : (
+                <ol className="space-y-4">
+                  {logs.map((log) => (
+                    <li key={log.id} className="relative border-l-2 border-slate-200 pl-4">
+                      <div className="text-xs text-muted-foreground">
+                        {format(new Date(log.createdAt), "d MMM yyyy HH:mm", { locale: tr })}
+                        {log.changedByName && (
+                          <>
+                            {" · "}
+                            {log.changedByName}
+                            {log.changedByTitle ? ` (${log.changedByTitle})` : ""}
+                          </>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
+                        {log.fromStatus ? (
+                          <JobApplicationStatusBadge status={log.fromStatus} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Basvuru olusturuldu</span>
+                        )}
+                        <span className="text-muted-foreground">&rarr;</span>
+                        <JobApplicationStatusBadge status={log.toStatus} />
+                      </div>
+                      {log.note && (
+                        <div className="mt-1 text-xs text-slate-600 whitespace-pre-wrap">{log.note}</div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
             </CardContent>
           </Card>
 
@@ -825,6 +979,113 @@ export default function JobApplicationDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Gecis modalı — hedefe göre müdür / ret nedeni alanı + opsiyonel not */}
+      <Dialog open={!!txTarget} onOpenChange={(o) => { if (!o) closeTransition() }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {txTarget
+                ? `${STATUS_LABELS_TR[txTarget as keyof typeof STATUS_LABELS_TR] || txTarget} asamasina gecir`
+                : ""}
+            </DialogTitle>
+            <DialogDescription>
+              {requiresReason
+                ? "Ret nedeni secimi zorunludur."
+                : requiresManager
+                  ? "Degerlendirmeyi yapacak muduru secin."
+                  : "Gecisi onaylayin."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Müdür seçimi — iki grup ayrı gösterilir */}
+            {requiresManager && (
+              <div>
+                <Label>Mudur</Label>
+                <Select value={txManagerId} onValueChange={setTxManagerId}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Mudur secin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {managers && managers.onerilenler.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Onerilen mudurler</div>
+                        {managers.onerilenler.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name}{m.departmentName ? ` — ${m.departmentName}${m.isDeputy ? " (Yrd.)" : ""}` : ""}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {managers && managers.tumAktif.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Tum aktif kullanicilar</div>
+                        {managers.tumAktif.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+                {managers && managers.unmatchedManagers.length > 0 && (
+                  <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>
+                      Kullanici hesabi olmayan mudurler atanamaz:{" "}
+                      {managers.unmatchedManagers.map((u) => u.adSoyad || u.personnelId).join(", ")}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ret nedeni seçimi */}
+            {requiresReason && (
+              <div>
+                <Label>Ret Nedeni</Label>
+                <Select value={txReasonId} onValueChange={setTxReasonId}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Ret nedeni secin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {reasons.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div>
+              <Label>Not (opsiyonel)</Label>
+              <Textarea
+                value={txNote}
+                onChange={(e) => setTxNote(e.target.value)}
+                placeholder="Bu gecis hakkinda aciklama..."
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeTransition} disabled={txSubmitting}>
+              Vazgec
+            </Button>
+            <Button
+              onClick={submitTransition}
+              disabled={
+                txSubmitting ||
+                (requiresManager && !txManagerId) ||
+                (requiresReason && !txReasonId)
+              }
+            >
+              {txSubmitting ? "Kaydediliyor..." : "Onayla"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

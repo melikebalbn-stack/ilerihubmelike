@@ -17,6 +17,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const search = searchParams.get('search')
+    // "Bana atananlar": yalnız oturum sahibinin atanan müdür olduğu başvurular.
+    // Filtreleme SUNUCUDA (assignedManagerId = session.user.id); client'ta filtreleme yok.
+    const assignedToMe = searchParams.get('assignedToMe') === '1'
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
@@ -26,6 +29,10 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== 'all') {
       where.status = status
+    }
+
+    if (assignedToMe) {
+      where.assignedManagerId = session.user.id
     }
 
     if (search) {

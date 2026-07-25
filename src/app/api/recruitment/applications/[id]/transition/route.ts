@@ -7,8 +7,9 @@ import {
   allowedTargetsForRoles,
   canTransitionAny,
   requiresAssignedManager,
-  type TransitionRole,
+  requiresRejectionReason,
 } from "@/lib/recruitment/transitions";
+import { resolveTransitionRoles } from "@/lib/recruitment/resolve-roles";
 import { transitionApplicationStatus } from "@/lib/recruitment/stage-log";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ const BodySchema = z.object({
   toStatus: z.nativeEnum(JobApplicationStatus),
   note: z.string().trim().max(2000).optional(),
   assignedManagerId: z.string().trim().min(1).optional(),
+  rejectionReasonId: z.string().trim().min(1).optional(),
 });
 
 export async function POST(
@@ -41,7 +43,7 @@ export async function POST(
       { status: 400 },
     );
   }
-  const { toStatus, note, assignedManagerId } = parsed.data;
+  const { toStatus, note, assignedManagerId, rejectionReasonId } = parsed.data;
 
   // 2) Başvuruyu çek
   const application = await prisma.publicJobApplication.findUnique({
@@ -53,11 +55,12 @@ export async function POST(
   }
 
   // 3) Rol(ler): kullanıcı BİRDEN ÇOK role sahip olabilir (hem İK hem atanan müdür).
-  //    (session.user.id bu repoda DB User.id'dir.) Hiç rol yoksa 403.
-  const perms = session.user.permissions ?? [];
-  const roles: TransitionRole[] = [];
-  if (perms.includes("recruitment.admin") || perms.includes("hr.admin")) roles.push("IK");
-  if (application.assignedManagerId === session.user.id) roles.push("MUDUR");
+  //    Rol belirleme TEK KAYNAK'tan (resolve-roles) — stage-log route'u da aynısını kullanır.
+  const roles = resolveTransitionRoles({
+    permissions: session.user.permissions,
+    userId: session.user.id,
+    assignedManagerId: application.assignedManagerId,
+  });
   if (roles.length === 0) {
     return NextResponse.json(
       { error: "Bu başvuru için geçiş yetkiniz yok" },
@@ -91,6 +94,12 @@ export async function POST(
     );
   }
 
+  // 5b) REJECTED → ret nedeni zorunlu (kök-neden analizi). Sunucu-taraflı guard; UI disabled tek
+  //     başına yeterli değil. requiresRejectionReason TEK KAYNAK (transitions.ts).
+  if (requiresRejectionReason(toStatus) && !rejectionReasonId) {
+    return NextResponse.json({ error: "Ret nedeni zorunlu" }, { status: 400 });
+  }
+
   // 6) Geçiş (tx + commit sonrası bildirim, stage-log wrapper'ında)
   try {
     const updated = await transitionApplicationStatus({
@@ -101,6 +110,8 @@ export async function POST(
       // Yalnız yeni atama verildiyse yaz; verilmediyse mevcut korunur.
       assignedManagerId: assignedManagerId ?? undefined,
       actorName: session.user.name ?? null,
+      // REJECTED'da guard'dan geçti; helper AYNI tx'te rejectionReasonId yazar + note'a etiket ekler.
+      rejectionReasonId: rejectionReasonId ?? undefined,
     });
     // 7) Güncel kayıt
     return NextResponse.json(updated, { status: 200 });

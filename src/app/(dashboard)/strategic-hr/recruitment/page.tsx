@@ -55,7 +55,6 @@ import {
   UserPlus,
   Clock,
   CheckCircle2,
-  XCircle,
   FileText,
   HelpCircle,
   BookOpen,
@@ -82,6 +81,7 @@ import {
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
+import { JobApplicationStatusBadge } from "@/components/recruitment/JobApplicationStatusBadge"
 import RecruitmentDashboard from "./_components/RecruitmentDashboard"
 import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
 import CostPerHirePanel from "./_components/CostPerHirePanel"
@@ -333,43 +333,9 @@ const requestStatusColors: Record<string, string> = {
   CANCELLED: "bg-gray-100 text-gray-800"
 }
 
-// Public Job Application status labels
-const jobAppStatusLabels: Record<string, string> = {
-  PENDING: "Beklemede",
-  REVIEWING: "Inceleniyor",
-  SHORTLISTED: "On Eleme",
-  SINAV: "Sinav",
-  TELEFON_MULAKATI: "Telefon Mulakati",
-  IK_MULAKATI: "IK Mulakati",
-  TEKNIK_MULAKAT: "Teknik Mulakat",
-  INTERVIEW: "Mulakat",
-  TEKLIF: "Teklif",
-  TEKLIF_KABUL: "Teklif Kabul",
-  ISE_BASLADI: "Ise Basladi",
-  ACCEPTED: "Kabul Edildi",
-  REJECTED: "Reddedildi",
-  WITHDRAWN: "Geri Cekildi"
-}
-
-// İşe alım hunisi / dropdown sırası (mantıklı aşama sırası). Form-öncesi + terminal hariç.
-const ASAMA_SIRA = ["PENDING", "REVIEWING", "SHORTLISTED", "SINAV", "TELEFON_MULAKATI", "IK_MULAKATI", "TEKNIK_MULAKAT", "INTERVIEW", "TEKLIF", "TEKLIF_KABUL", "ISE_BASLADI"] as const
-
-// Ret (kök-neden) kategori etiketleri
-const RET_KATEGORI_ETIKET: Record<string, string> = {
-  TEKLIF_REDDI: "Teklif Reddi (aday kaynaklı)",
-  ISE_ALMAMA: "İşe Almama (şirket kaynaklı)",
-  SUREC_KAYBI: "Süreç Kaybı",
-}
-
-const jobAppStatusColors: Record<string, string> = {
-  PENDING: "bg-yellow-100 text-yellow-800",
-  REVIEWING: "bg-blue-100 text-blue-800",
-  SHORTLISTED: "bg-purple-100 text-purple-800",
-  INTERVIEW: "bg-indigo-100 text-indigo-800",
-  ACCEPTED: "bg-green-100 text-green-800",
-  REJECTED: "bg-red-100 text-red-800",
-  WITHDRAWN: "bg-gray-100 text-gray-800"
-}
+// Public Job Application statü rozeti: JobApplicationStatusBadge (TEK KAYNAK — etiket
+// STATUS_LABELS_TR'den). Bu sayfadaki eski jobAppStatusLabels/Colors + ASAMA_SIRA +
+// RET_KATEGORI_ETIKET, statü değişimi /transition'a taşındığı için kaldırıldı.
 
 const educationLevelLabels: Record<string, string> = {
   PRIMARY_SCHOOL: "Ilkogretim",
@@ -416,12 +382,8 @@ export default function RecruitmentPage() {
   const [selectedJobApp, setSelectedJobApp] = useState<PublicJobApplication | null>(null)
   const [isJobAppDetailOpen, setIsJobAppDetailOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("requests")
-  // Ret nedeni (kök-neden) modalı
-  const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
-  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null)
-  const [rejectReasonId, setRejectReasonId] = useState("")
-  const [rejectNotes, setRejectNotes] = useState("")
-  const [rejectReasons, setRejectReasons] = useState<{ id: string; category: string; name: string }[]>([])
+  // Başvuru listesi: "Bana atananlar" filtresi (sunucu tarafı — assignedManagerId = ben)
+  const [jobAppAssignedToMe, setJobAppAssignedToMe] = useState(false)
   // İK maaş/bütçe düzenleme (talep detayı — yalnız recruitment.admin)
   const [salaryForm, setSalaryForm] = useState<{ salaryMin: string; salaryMax: string; hasBudget: boolean }>({ salaryMin: "", salaryMax: "", hasBudget: false })
   // "Onaya Gönder" gerekçe uyarısı (Elif 2. tur)
@@ -493,6 +455,12 @@ export default function RecruitmentPage() {
     fetchJobApplications()
   }, [])
 
+  // "Bana atananlar" toggle değişince başvuruları sunucudan yeniden çek.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchJobApplications()
+  }, [jobAppAssignedToMe])
+
   const fetchOpenings = async () => {
     try {
       const res = await fetch("/api/strategic-hr/recruitment")
@@ -540,6 +508,11 @@ export default function RecruitmentPage() {
       if (searchTerm && activeTab === "job-applications") {
         params.set("search", searchTerm)
       }
+      // "Bana atananlar" — SUNUCU tarafı filtre (assignedManagerId = ben). assignedManagerId
+      // liste projeksiyonunda yok; client'ta filtrelenemez, bu yüzden sunucuda yapılır.
+      if (jobAppAssignedToMe) {
+        params.set("assignedToMe", "1")
+      }
       const res = await fetch(`/api/strategic-hr/recruitment/job-applications?${params}`)
       if (res.ok) {
         const data = await res.json()
@@ -564,62 +537,9 @@ export default function RecruitmentPage() {
     }
   }
 
-  const handleJobAppStatusChange = async (id: string, newStatus: string) => {
-    // REJECTED → ret nedeni ZORUNLU: doğrudan PATCH etme, önce ret modalını aç.
-    if (newStatus === "REJECTED") {
-      if (rejectReasons.length === 0) await fetchRejectReasons()
-      setRejectTargetId(id)
-      setRejectReasonId("")
-      setRejectNotes("")
-      setRejectDialogOpen(true)
-      return
-    }
-    try {
-      const res = await fetch(`/api/strategic-hr/recruitment/job-applications/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus })
-      })
-      if (res.ok) {
-        fetchJobApplications()
-        toast.success("Basvuru durumu guncellendi")
-      } else {
-        const error = await res.json()
-        toast.error(error.error || "Durum guncellenemedi")
-      }
-    } catch (error) {
-      console.error("Durum guncellenirken hata:", error)
-      toast.error("Bir hata olustu")
-    }
-  }
-
-  // Ret nedeni sözlüğü + ret modalı onayı
-  const fetchRejectReasons = async () => {
-    try {
-      const res = await fetch("/api/strategic-hr/recruitment/rejection-reasons?activeOnly=1")
-      if (res.ok) setRejectReasons(await res.json())
-    } catch (e) { console.error("Ret nedenleri yuklenemedi:", e) }
-  }
-  const confirmReject = async () => {
-    if (!rejectTargetId || !rejectReasonId) return
-    try {
-      const res = await fetch(`/api/strategic-hr/recruitment/job-applications/${rejectTargetId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "REJECTED", rejectionReasonId: rejectReasonId, ...(rejectNotes ? { notes: rejectNotes } : {}) })
-      })
-      if (res.ok) {
-        setRejectDialogOpen(false)
-        fetchJobApplications()
-        toast.success("Basvuru ret nedeniyle reddedildi")
-      } else {
-        const error = await res.json()
-        toast.error(error.error || "Reddedilemedi")
-      }
-    } catch (e) {
-      console.error("Ret hatasi:", e); toast.error("Bir hata olustu")
-    }
-  }
+  // NOT: Statü değişimi (ret dahil) bu listeden KALDIRILDI. Tek geçit: detay sayfası →
+  // POST /api/recruitment/applications/[id]/transition (izin matrisi + StageLog + bildirim +
+  // ret nedeni orada atomik). Liste yalnız görüntüleme + filtre + not günceller.
 
   const handleJobAppNotesUpdate = async (id: string, notes: string) => {
     try {
@@ -2693,13 +2613,26 @@ export default function RecruitmentPage() {
         <TabsContent value="job-applications">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5" />
-                Is Basvurulari
-              </CardTitle>
-              <CardDescription>
-                Web sitesi uzerinden gelen is basvurulari
-              </CardDescription>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardList className="h-5 w-5" />
+                    Is Basvurulari
+                  </CardTitle>
+                  <CardDescription>
+                    Web sitesi uzerinden gelen is basvurulari
+                  </CardDescription>
+                </div>
+                {/* "Bana atananlar" — sunucu tarafı filtre (assignedManagerId = ben) */}
+                <Button
+                  variant={jobAppAssignedToMe ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setJobAppAssignedToMe((v) => !v)}
+                >
+                  <User className="h-4 w-4 mr-2" />
+                  Bana atananlar
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {filteredJobApplications.length === 0 ? (
@@ -2759,9 +2692,7 @@ export default function RecruitmentPage() {
                           ) : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge className={jobAppStatusColors[app.status] || "bg-gray-100 text-gray-800"}>
-                            {jobAppStatusLabels[app.status] || app.status}
-                          </Badge>
+                          <JobApplicationStatusBadge status={app.status} />
                         </TableCell>
                         <TableCell>
                           {format(new Date(app.createdAt), "d MMM yyyy", { locale: tr })}
@@ -2779,27 +2710,11 @@ export default function RecruitmentPage() {
                                 <Eye className="h-4 w-4 mr-2" />
                                 Detay Gor (Inline)
                               </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuLabel>Durum Degistir</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleJobAppStatusChange(app.id, "REVIEWING")}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                Inceleniyor
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleJobAppStatusChange(app.id, "SHORTLISTED")}>
-                                <CheckCircle2 className="h-4 w-4 mr-2" />
-                                On Eleme
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleJobAppStatusChange(app.id, "INTERVIEW")}>
-                                <Users className="h-4 w-4 mr-2" />
-                                Mulakat
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleJobAppStatusChange(app.id, "ACCEPTED")}>
-                                <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
-                                Kabul Et
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleJobAppStatusChange(app.id, "REJECTED")}>
-                                <XCircle className="h-4 w-4 mr-2 text-red-600" />
-                                Reddet
+                              {/* Statü değişimi liste dropdown'ından KALDIRILDI — tek yol detay
+                                  sayfasındaki workflow aksiyonları (/transition). */}
+                              <DropdownMenuItem onClick={() => router.push(`/strategic-hr/recruitment/job-applications/${app.id}`)}>
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Detay & Islemler
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
@@ -2871,9 +2786,7 @@ export default function RecruitmentPage() {
                       <DialogTitle className="text-xl">{selectedJobApp.fullName}</DialogTitle>
                       <DialogDescription className="flex items-center gap-2 mt-1">
                         <span className="font-mono">{selectedJobApp.applicationNumber}</span>
-                        <Badge className={jobAppStatusColors[selectedJobApp.status] || "bg-gray-100 text-gray-800"}>
-                          {jobAppStatusLabels[selectedJobApp.status] || selectedJobApp.status}
-                        </Badge>
+                        <JobApplicationStatusBadge status={selectedJobApp.status} />
                       </DialogDescription>
                     </div>
                   </div>
@@ -2973,28 +2886,8 @@ export default function RecruitmentPage() {
                   />
                 </div>
 
-                {/* Durum Degistirme */}
-                <div>
-                  <Label>Durum Degistir</Label>
-                  <Select
-                    value={selectedJobApp.status}
-                    onValueChange={(v) => {
-                      handleJobAppStatusChange(selectedJobApp.id, v)
-                      setSelectedJobApp({ ...selectedJobApp, status: v })
-                    }}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ASAMA_SIRA.map((s) => (
-                        <SelectItem key={s} value={s}>{jobAppStatusLabels[s]}</SelectItem>
-                      ))}
-                      <SelectItem value="ACCEPTED">Kabul Edildi</SelectItem>
-                      <SelectItem value="REJECTED">Reddedildi</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Statü değişimi bu inline modalda YAPILMAZ — "Tam Detay" sayfasındaki
+                    workflow aksiyonlarından (/transition) yürütülür. Burada yalnız görüntüleme + not. */}
               </div>
 
               <DialogFooter className="gap-2">
@@ -3036,45 +2929,6 @@ export default function RecruitmentPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Ret Nedeni</DialogTitle>
-            <DialogDescription>Başvuruyu reddetmek için bir kök-neden seçin (zorunlu).</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Ret Nedeni</Label>
-              <Select value={rejectReasonId} onValueChange={setRejectReasonId}>
-                <SelectTrigger><SelectValue placeholder="Neden seçin…" /></SelectTrigger>
-                <SelectContent>
-                  {(["TEKLIF_REDDI", "ISE_ALMAMA", "SUREC_KAYBI"] as const).map((kat) => {
-                    const grup = rejectReasons.filter((r) => r.category === kat)
-                    if (grup.length === 0) return null
-                    return (
-                      <div key={kat}>
-                        <div className="px-2 py-1 text-xs font-semibold text-slate-400">{RET_KATEGORI_ETIKET[kat]}</div>
-                        {grup.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-                      </div>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-              {rejectReasons.length === 0 && (
-                <p className="text-xs text-amber-600 mt-1">Tanımlı ret nedeni yok — "Analiz → Ret Nedenleri" bölümünden ekleyin.</p>
-              )}
-            </div>
-            <div>
-              <Label>Detay Not (opsiyonel)</Label>
-              <Textarea value={rejectNotes} onChange={(e) => setRejectNotes(e.target.value)} placeholder="Serbest metin açıklama…" rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Vazgeç</Button>
-            <Button variant="destructive" disabled={!rejectReasonId} onClick={confirmReject}>Reddet</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

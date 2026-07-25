@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- FABRIKA HARITASI SURUM: v12 (durum plakalari + kose adlari + hover + zengin detay) -->
 <title>ILERIHub · Fabrika Haritası v3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -115,11 +116,17 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
 .kutu>.f-sag{right:0;top:0;transform-origin:right center;transform:rotateY(90deg)}
 
 /* zemin pedi — tezgahın PLC sinyali var mı, bir bakışta */
-.zeminPed{position:absolute;pointer-events:none;border-radius:8px;transition:background .3s,border-color .3s}
-.zeminPed.sinyalli{background:rgba(52,178,108,.14);border:1px solid rgba(52,178,108,.30)}
-.zeminPed.sinyalsiz{background:rgba(79,163,204,.13);border:1px solid rgba(79,163,204,.30)}
-.zeminPed.durus{background:rgba(224,74,79,.17);border:1px solid rgba(224,74,79,.40)}
-.zeminPed.sonuk{background:rgba(40,52,63,.16);border:1px solid rgba(40,52,63,.28)}
+.koseAd{position:absolute;pointer-events:none;transform:translateZ(1.6px);
+ font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.04em;color:#7d8b9b;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.koseAd.sonuk{color:#3c4854}
+.zeminPed{position:absolute;pointer-events:none;border-radius:10px;transition:background .4s,border-color .4s}
+/* durum isimasi: cok belirgin olmayan radial glow — referans dijital-ikiz dili */
+.zeminPed.st-cal{background:radial-gradient(ellipse at 50% 50%,rgba(52,178,108,.30) 0%,rgba(52,178,108,.12) 55%,rgba(52,178,108,0) 85%);border:1px solid rgba(52,178,108,.35)}
+.zeminPed.st-dur{background:radial-gradient(ellipse at 50% 50%,rgba(224,74,79,.34) 0%,rgba(224,74,79,.14) 55%,rgba(224,74,79,0) 85%);border:1px solid rgba(224,74,79,.5)}
+.zeminPed.st-bos{background:radial-gradient(ellipse at 50% 50%,rgba(222,168,52,.26) 0%,rgba(222,168,52,.11) 55%,rgba(222,168,52,0) 85%);border:1px solid rgba(222,168,52,.35)}
+.zeminPed.st-sin{background:rgba(60,72,86,.15);border:1px solid rgba(60,72,86,.32)}
+.zeminPed.sonuk{background:rgba(40,52,63,.14);border:1px solid rgba(40,52,63,.26)}
 
 .tzEtiket{position:absolute;transform-origin:0 0;pointer-events:none;
   transition:transform .75s cubic-bezier(.25,.7,.3,1);
@@ -260,7 +267,7 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
     <div class="ust">
       <div class="logo">İLERİ<span>HUB</span></div>
       <div class="baslikKutu"><div class="b" id="baslik">Tüm Fabrika</div><div class="a" id="altbaslik"></div></div>
-      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span>
+      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v12</span>
       <div class="saat"><span class="canli"><i></i>CANLI</span><span id="saat">--:--:--</span></div>
     </div>
     <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"><div class="dokular"></div></div></div></div>
@@ -275,6 +282,9 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
 <button id="duzenleBtn" onclick="duzenleToggle()" style="position:absolute;left:14px;bottom:52px;z-index:20;
  background:var(--pano,#1b2026);border:1px solid #2c3947;color:#c6ccd4;border-radius:8px;padding:7px 12px;
  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;cursor:pointer">DÜZENLE</button>
+<div id="hpop" style="display:none;position:fixed;z-index:60;pointer-events:none;
+ background:#141b23f2;border:1px solid #2c3947;border-radius:10px;padding:10px 13px;min-width:190px;
+ font-family:'IBM Plex Mono',monospace;font-size:11px;color:#c6ccd4;box-shadow:0 8px 24px rgba(0,0,0,.45)"></div>
 <div class="zoomKutu"><button id="dSol" title="45° sola döndür">⟲</button><button id="dSag" title="45° sağa döndür">⟳</button><button id="zIn">+</button><button id="zOut">−</button></div>
   </main>
 
@@ -416,7 +426,7 @@ let disiGorunur=false;
 function kapsamGorunum(){
   TEZGAHLAR.forEach(t=>{
     const g=(t.ipro||t.sabit||disiGorunur)?'':'none';
-    t.el.style.display=g;t.ped.style.display=g;t.lb.style.display=g;
+    t.el.style.display=g;t.ped.style.display=g;t.lb.style.display=g;if(t.ka)t.ka.style.display=g;
     if(!t.ipro&&!disiGorunur&&secili===t.kod){secili=null;cerceve.style.display='none';
       document.getElementById('detay').innerHTML=bosDetay||''}});
   BOLUMLER.forEach(b=>{
@@ -442,6 +452,10 @@ TEZGAHLAR.forEach(t=>{const k=konumDuzeltmeleri[t.kod];if(k){t.x=k[0];t.y=k[1]}}
 const cerceve=document.createElement('div');cerceve.className='secimCerceve';plan.appendChild(cerceve);
 
 TEZGAHLAR.forEach(t=>{
+  const ka=document.createElement('div');ka.className='koseAd';
+  ka.textContent=t.ad.split(' — ')[0];
+  ka.style.cssText=`left:${t.x-4}px;top:${t.y+t.ayH+2}px;max-width:${Math.max(t.ayW+40,120)}px`;
+  plan.appendChild(ka);t.ka=ka;
   const ped=document.createElement('div');
   ped.className='zeminPed';
   ped.style.cssText=`left:${t.x-9}px;top:${t.y-9}px;width:${t.ayW+18}px;height:${t.ayH+18}px;transform:translateZ(1px)`;
@@ -451,6 +465,9 @@ TEZGAHLAR.forEach(t=>{
   el.style.cssText=`left:${t.x}px;top:${t.y}px;width:${t.ayW}px;height:${t.ayH}px;animation-delay:${t.idx*16}ms`;
   el.innerHTML=(ARKETIP[t.bolum]||ARKETIP.VARSAYILAN).map(k=>kutuHTML(k,t.ayW/AYAK,t.ayH/AYAK)).join('');
   el.addEventListener('click',e=>{e.stopPropagation();if(!kaydi&&!tasindi)sec(t.kod)});
+  el.addEventListener('pointerenter',()=>hpopGoster(t));
+  el.addEventListener('pointermove',e=>hpopKonum(e));
+  el.addEventListener('pointerleave',hpopGizle);
   el.addEventListener('pointerdown',e=>{
     if(!duzenleModu||e.button!==0)return;
     e.stopPropagation();tasindi=false;kaydi=false;
@@ -557,6 +574,7 @@ function tezgahKonum(t,nx,ny){
   t.x=nx;t.y=ny;
   t.el.style.left=nx+'px';t.el.style.top=ny+'px';
   t.ped.style.left=(nx-9)+'px';t.ped.style.top=(ny-9)+'px';
+  if(t.ka){t.ka.style.left=(nx-4)+'px';t.ka.style.top=(ny+t.ayH+2)+'px'}
   t.lb.style.left=(nx+t.ayW/2)+'px';t.lb.style.top=(ny+t.ayH+4)+'px';
   const c=Math.max(t.ayW,t.ayH)*1.25;
   t.halka.style.left=(nx+t.ayW/2-c/2)+'px';t.halka.style.top=(ny+t.ayH/2-c/2)+'px';
@@ -655,6 +673,27 @@ function bolumSec(ad){
   miniOdak(b);miniYaz(null);tazele();
 }
 
+/* hover karti: o anki veriler */
+const hpop=()=>document.getElementById('hpop');
+function hpopGoster(t){
+  if(tasima||duzenleModu&&tasindi)return;
+  const p=hpop();const[dAd,dRenk]=DURUM[t.durum]||['—','#888'];
+  const sure=t.sure!=null?Math.floor(t.sure/60)+' dk':'—';
+  p.innerHTML=!t.ipro
+   ? `<b style="font-size:13px">${t.kod}</b> <span style="color:#8a6d2e">IPRO DIŞI</span>
+      <div style="color:#5d6b7d;margin-top:3px">${t.ad.split(' — ')[0]}</div>`
+   : `<b style="font-size:13px">${t.kod}</b> <span style="color:${dRenk}">●</span> ${dAd}
+      <div style="color:#5d6b7d;margin:3px 0 6px">${t.ad.split(' — ')[0]}</div>
+      <div>Operatör <span style="float:right">${t.opr||'—'}</span></div>
+      <div>İş emri <span style="float:right">${t.ie||'—'}</span></div>
+      <div>Sayaç <span style="float:right">${t.say==null?'—':t.say}</span></div>
+      <div>Bu durumda <span style="float:right">${sure}</span></div>`;
+  p.style.display='block';}
+function hpopKonum(e){const p=hpop();
+  p.style.left=Math.min(e.clientX+16,innerWidth-230)+'px';
+  p.style.top=Math.min(e.clientY+14,innerHeight-150)+'px';}
+function hpopGizle(){hpop().style.display='none';}
+
 function sec(kod){
   const t=TEZGAHLAR.find(x=>x.kod===kod);
   if(aktif!==t.bolum) bolumSec(t.bolum);   /* tezgaha tıklayınca bölüme odaklan */
@@ -681,9 +720,10 @@ function tazele(){
     }
     t.el.classList.toggle('kapali',!bolumGor);  /* tıklanabilirlik yalnız bölüm-dışında kapanır */
     t.ped.className='zeminPed '+(!gor?'sonuk'
-      : t.durum==='durusta' ? 'durus'
-      : t.sinyalli ? 'sinyalli' : 'sinyalsiz');
-    t.lb.classList.toggle('sonuk',!gor);
+      : t.durum==='calisiyor' ? 'st-cal'
+      : t.durum==='durusta' ? 'st-dur'
+      : t.durum==='bosta' ? 'st-bos' : 'st-sin');
+    t.lb.classList.toggle('sonuk',!gor);if(t.ka)t.ka.classList.toggle('sonuk',!gor);
     t.lb.querySelector('.sy').textContent = !t.ipro ? 'IPRO dışı' : !t.sinyalli ? 'PLC yok' : (t.say==null?'sinyal yok':t.say);
     t.halka.style.display=(t.durum==='durusta'&&gor)?'block':'none';
   });
@@ -735,6 +775,28 @@ function adlariIndir(){
     JSON.stringify({adlar:adDuzeltmeleri,konumlar:konumDuzeltmeleri,iproKapsam:iproDuzeltmeleri},null,1));
   a.download='harita-duzeltmeleri.json';a.click();}
 
+/* tiklamada izleme-panosu detayi: ./tezgah?kod=X — endpoint yoksa sessiz gecilir */
+async function zenginDetayCek(kod){
+  try{
+    const r=await fetch('./tezgah?kod='+encodeURIComponent(kod),{cache:'no-store'});
+    if(!r.ok)return;
+    const d=await r.json();if(!d||secili!==kod)return;
+    const kutu=document.createElement('div');kutu.id='zenginDetay';
+    kutu.style.cssText='margin-top:10px;padding-top:10px;border-top:1px solid #2c3947;font-size:11px';
+    const sd=d.sureDagilimi||{};
+    kutu.innerHTML=`
+      <div style="letter-spacing:.1em;color:#5d6b7d;font-size:9px;margin-bottom:5px">BUGÜN</div>
+      <div>Çalışma <span style="float:right;color:#34b26c">${sd.calisma??'—'} dk</span></div>
+      <div>Duruş <span style="float:right;color:#e04a4f">${sd.durus??'—'} dk</span></div>
+      <div>Boşta <span style="float:right;color:#dea834">${sd.bosta??'—'} dk</span></div>
+      <div style="margin-top:5px">Üretilen <span style="float:right">${d.uretilen??'—'} ad</span></div>
+      <div>Kapanan iş <span style="float:right">${d.kapananIs??'—'}</span></div>
+      <div>Duruş sayısı <span style="float:right">${d.durusSayisi??'—'}</span></div>
+      ${d.oee!=null?`<div style="margin-top:5px">OEE <span style="float:right">%${d.oee}</span></div>`:''}`;
+    const eski=document.getElementById('zenginDetay');if(eski)eski.remove();
+    document.getElementById('detay').appendChild(kutu);
+  }catch(_){}}
+
 function detay(){
   const t=TEZGAHLAR.find(x=>x.kod===secili);if(!t)return;
   if(!t.ipro){
@@ -748,6 +810,7 @@ function detay(){
       <div class="dsatir"><dt>PLC sinyali</dt><dd>yok</dd></div></dl></div>`;
     return;}
   const[ad,renk]=DURUM[t.durum];
+  zenginDetayCek(t.kod);  /* izleme panosu verisi: endpoint varsa panel altina eklenir */
   const sat=!t.sinyalli
     ?[['Bölüm',t.bolum],['PLC sinyali','yok — pin tanımlı değil'],['Operatör',t.opr],['İş emri',t.ie],
       ['Malzeme',t.mlz],['Sayaç','elle bildirim']]

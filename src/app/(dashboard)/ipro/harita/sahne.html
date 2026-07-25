@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- FABRIKA HARITASI SURUM: v12 (durum plakalari + kose adlari + hover + zengin detay) -->
+<!-- FABRIKA HARITASI SURUM: v23 (tezgaha tiklayinca tezgaha zoom) -->
 <title>ILERIHub · Fabrika Haritası v3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,6 +27,9 @@
   --bostaP:#6a7d8c;     --bostaP2:#475765;      --bostaP3:#36444f;
   --sinyalyok:#d0993c;  --sinyalyok-2:#8d6524;  --sinyalyok-3:#684a1a;
   --sinyalyokP:#eeb75a; --sinyalyokP2:#a97c30;  --sinyalyokP3:#845e22;
+  /* v13: govde NOTR — durum yalniz zemin plakasinda */
+  --gvd:#7d90a4;  --gvd2:#57697c;  --gvd3:#40515f;
+  --gvdP:#9db0c4; --gvdP2:#77899c; --gvdP3:#5a6b7d;
   --solukA:#1b242d;     --solukB:#141c24;       --solukC:#101821;
 
   --isoX:56deg; --isoZ:-45deg;
@@ -122,9 +125,9 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
 .koseAd.sonuk{color:#3c4854}
 .zeminPed{position:absolute;pointer-events:none;border-radius:10px;transition:background .4s,border-color .4s}
 /* durum isimasi: cok belirgin olmayan radial glow — referans dijital-ikiz dili */
-.zeminPed.st-cal{background:radial-gradient(ellipse at 50% 50%,rgba(52,178,108,.30) 0%,rgba(52,178,108,.12) 55%,rgba(52,178,108,0) 85%);border:1px solid rgba(52,178,108,.35)}
-.zeminPed.st-dur{background:radial-gradient(ellipse at 50% 50%,rgba(224,74,79,.34) 0%,rgba(224,74,79,.14) 55%,rgba(224,74,79,0) 85%);border:1px solid rgba(224,74,79,.5)}
-.zeminPed.st-bos{background:radial-gradient(ellipse at 50% 50%,rgba(222,168,52,.26) 0%,rgba(222,168,52,.11) 55%,rgba(222,168,52,0) 85%);border:1px solid rgba(222,168,52,.35)}
+.zeminPed.st-cal{background:radial-gradient(ellipse at 50% 50%,rgba(52,178,108,.42) 0%,rgba(52,178,108,.18) 55%,rgba(52,178,108,0) 88%);border:1px solid rgba(52,178,108,.55)}
+.zeminPed.st-dur{animation:pedNabiz 2.2s ease-in-out infinite;background:radial-gradient(ellipse at 50% 50%,rgba(224,74,79,.5) 0%,rgba(224,74,79,.22) 55%,rgba(224,74,79,0) 88%);border:1px solid rgba(224,74,79,.7)}
+.zeminPed.st-bos{background:radial-gradient(ellipse at 50% 50%,rgba(222,168,52,.4) 0%,rgba(222,168,52,.17) 55%,rgba(222,168,52,0) 88%);border:1px solid rgba(222,168,52,.55)}
 .zeminPed.st-sin{background:rgba(60,72,86,.15);border:1px solid rgba(60,72,86,.32)}
 .zeminPed.sonuk{background:rgba(40,52,63,.14);border:1px solid rgba(40,52,63,.26)}
 
@@ -159,8 +162,13 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
 .odaKapi.sag{right:-3px;top:38%;width:5px;height:24%}
 .secimCerceve{position:absolute;border:1.5px solid #cfe6f2;pointer-events:none;display:none;
   box-shadow:0 0 22px rgba(207,230,242,.35)}
-.halka{position:absolute;border:2px solid var(--durusta);border-radius:50%;pointer-events:none;animation:yay 2.6s ease-out infinite}
-@keyframes yay{0%{transform:scale(.3);opacity:.9}100%{transform:scale(1.9);opacity:0}}
+.huzme{background:linear-gradient(to bottom,rgba(255,240,196,.30) 0%,rgba(255,240,196,.12) 55%,rgba(255,240,196,0) 100%)!important;
+ box-shadow:none!important;border:0!important}
+.isik{position:absolute;pointer-events:none;border-radius:50%;
+ background:radial-gradient(ellipse at 50% 55%,rgba(255,240,198,.46) 0%,rgba(255,240,198,.20) 45%,rgba(255,240,198,0) 78%)}
+.halka{position:absolute;border:3px solid var(--durusta);border-radius:50%;pointer-events:none;animation:yay 2.4s ease-out infinite}
+@keyframes pedNabiz{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes yay{0%{transform:translateZ(3px) scale(.35);opacity:.95}100%{transform:translateZ(3px) scale(2.1);opacity:0}}
 .tezgah{animation:kalk .5s cubic-bezier(.2,.85,.3,1) backwards}
 @keyframes kalk{from{transform:translateZ(-46px)}to{transform:translateZ(0)}}
 
@@ -267,7 +275,7 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
     <div class="ust">
       <div class="logo">İLERİ<span>HUB</span></div>
       <div class="baslikKutu"><div class="b" id="baslik">Tüm Fabrika</div><div class="a" id="altbaslik"></div></div>
-      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v12</span>
+      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v23</span>
       <div class="saat"><span class="canli"><i></i>CANLI</span><span id="saat">--:--:--</span></div>
     </div>
     <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"><div class="dokular"></div></div></div></div>
@@ -324,20 +332,43 @@ const ARKETIP={
  'KILIT MONTAJ':[[8,16,0,68,50,14,0],[8,16,14,68,50,4,1],[8,50,18,68,10,20,1],[20,22,18,14,14,10,2]],
  'MEKANİK MONTAJ':[[8,16,0,68,50,14,0],[8,16,14,68,50,4,1],[46,20,18,20,20,16,1],[16,22,18,12,12,12,2]],
  'HAPPICH MONTAJ':[[10,18,0,64,46,14,0],[10,18,14,64,46,4,1],[10,48,18,64,8,24,1],[24,24,18,30,10,8,2]],
- 'KALIPHANE':[[10,14,0,64,50,14,1],[52,18,14,22,42,46,0],[22,26,40,32,16,14,0],[14,20,14,38,28,6,2]],
+ 'KALIPHANE':[
+ [2,18,0,80,48,8,1],           /* siyah kaide */
+ [4,16,2,20,6,4,1],            /* öne çıkık basamak */
+ [8,20,8,50,44,36,2],          /* beyaz ana kabin */
+ [8,20,8,12,44,40,1],          /* sol koyu panel bloğu (marka bölgesi) */
+ [24,20,22,30,3,16,1],         /* ön cam kapı şeridi */
+ [40,12,20,10,8,16,2],         /* öne asılı kumanda paneli */
+ [42,13,30,6,3,7,1],           /* kumanda ekranı */
+ [60,22,8,20,40,46,1],         /* sağ siyah kule (konveyör/hidrolik) */
+ [62,28,54,16,20,9,1],         /* kule üst ünitesi */
+],
  'VARSAYILAN':[[8,16,0,68,50,16,0],[8,16,16,68,50,4,1],[24,24,20,28,20,12,2]],
 };
 ARKETIP['CNC']=ARKETIP['CNC TORNA'];
 ARKETIP['DAIRE TESTERE']=ARKETIP['DAİRE TESTERE-BORU BÜKÜM'];
 ARKETIP['KAYNAKHANE']=ARKETIP['MANUEL KAYNAK'];
-ARKETIP['MONTAJ']=ARKETIP['MEKANİK MONTAJ'];
+ARKETIP['PAKETLEME']=ARKETIP['MONTAJ']=[            /* montaj masasi: pegboard + isik kanopili tezgah */
+ [2,30,0,80,40,4,1],            /* alt iskelet/taban */
+ [6,34,4,26,32,25,2],           /* sol dolap */
+ [52,34,4,24,32,25,2],          /* sag cekmece blogu */
+ [2,30,29,80,42,5,0],           /* tabla */
+ [2,66,29,5,6,46,0],            /* sol arka dikme */
+ [77,66,29,5,6,46,0],           /* sag arka dikme */
+ [6,68,36,72,4,26,2],           /* delikli takim paneli (pegboard) */
+ [8,62,55,68,7,3,0],            /* ara raf */
+ [2,48,74,80,22,4,0],           /* isik kanopisi (one uzanir) */
+ [8,52,71,68,12,3,3],           /* kanopi alti isik seridi -> parlak isik duzlemi */
+ [6,30,35,72,40,0,3],           /* tablaya düşen ışık havuzu */
+ [10,52,35,64,0,36,4],          /* kanopiden tablaya inen dikey hüzme */
+];
 ARKETIP['SASE']=ARKETIP['PUNTA KAYNAK'];
 ARKETIP['KUMLAMA']=ARKETIP['VARSAYILAN'];
 
 /* ═════════ GERÇEK YERLEŞİM — ALT_KAT_DÜZENLİ_MAKİNA_YERLEŞİMİ.pdf'den ═════════
    Koordinatlar plan pt × 10 (X0=155, Y0=140). Telemetri hâlâ TEMSİLİ. */
 const BOLUMLER=[{"ad": "LAZER", "pano": "—", "x": 127.0, "y": 177.0, "w": 2520.0, "h": 1378.0}, {"ad": "DAIRE TESTERE", "pano": "PANO-1", "x": 127.0, "y": 1547.5, "w": 2520.0, "h": 1260.8}, {"ad": "CNC", "pano": "PANO-1", "x": 127.0, "y": 2832.2, "w": 2520.0, "h": 1026.1}, {"ad": "PRESHANE", "pano": "PANO-1", "x": 127.0, "y": 3860.2, "w": 2520.0, "h": 839.8}, {"ad": "PUNTA KAYNAK", "pano": "PANO-3", "x": 127.0, "y": 4724.0, "w": 1456.0, "h": 361.0}, {"ad": "KUMLAMA", "pano": "PANO-1", "x": 127.0, "y": 5335.0, "w": 1456.0, "h": 180.0}, {"ad": "KAYNAKHANE", "pano": "PANO-1", "x": 127.0, "y": 5522.0, "w": 1456.0, "h": 867.0}, {"ad": "ROBOT KAYNAK", "pano": "PANO-1", "x": 1682.5, "y": 5062.5, "w": 964.5, "h": 1085.0}, {"ad": "SASE", "pano": "PANO-1", "x": 127.0, "y": 6455.0, "w": 1456.0, "h": 1322.0}, {"ad": "PAKETLEME", "pano": "PANO-2", "x": 2942.0, "y": 3757.0, "w": 2144.0, "h": 416.0}, {"ad": "MONTAJ", "pano": "PANO-2", "x": 2942.0, "y": 4190.0, "w": 2144.0, "h": 1237.5}, {"ad": "KALIPHANE", "pano": "—", "x": 2942.0, "y": 5451.5, "w": 2144.0, "h": 1378.5}];
-const MAKINELER=[{"kod": "LZ01", "bolum": "LAZER", "ad": "Lazer Kesim Makinesi", "x": 500.0, "y": 830.0}, {"kod": "LZ02", "bolum": "LAZER", "ad": "Lazer Kesim Makinesi", "x": 520.0, "y": 1390.0}, {"kod": "DT02", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 490.0, "y": 2180.0}, {"kod": "DT04", "bolum": "DAIRE TESTERE", "ad": "Kordon Makinesi", "x": 1250.0, "y": 1950.0}, {"kod": "DT05", "bolum": "DAIRE TESTERE", "ad": "Tel/Mil Cekme Makinesi", "x": 510.0, "y": 1630.0}, {"kod": "DT07", "bolum": "DAIRE TESTERE", "ad": "Boru Sekillendirme Mak.", "x": 490.0, "y": 2510.0}, {"kod": "DT08", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 480.0, "y": 2300.0}, {"kod": "DT10", "bolum": "DAIRE TESTERE", "ad": "Lama Kivirma", "x": 570.0, "y": 2180.0}, {"kod": "DT11", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 640.0, "y": 2610.0}, {"kod": "DT12", "bolum": "DAIRE TESTERE", "ad": "Boru Bukme Makinesi", "x": 590.0, "y": 2770.0}, {"kod": "DT056", "bolum": "DAIRE TESTERE", "ad": "Boru Bukme Makinesi — kod plandaki gibi: DT056", "x": 520.0, "y": 2740.0}, {"kod": "CN04", "bolum": "DAIRE TESTERE", "ad": "Serit Testere — CN kodlu ama DT bolgesinde", "x": 770.0, "y": 2760.0}, {"kod": "CN01", "bolum": "CNC", "ad": "CNC Torna", "x": 2420.0, "y": 3110.0}, {"kod": "CN02", "bolum": "CNC", "ad": "HAAS CNC Torna", "x": 2140.0, "y": 3350.0}, {"kod": "CN03", "bolum": "CNC", "ad": "CNC Torna — plan iki CN03 etiketi ust uste", "x": 2080.0, "y": 3040.0}, {"kod": "CN18", "bolum": "CNC", "ad": "Ovalama Tezgahi", "x": 1390.0, "y": 3380.0}, {"kod": "CN20", "bolum": "CNC", "ad": "Cift Aynali Torna", "x": 1490.0, "y": 2890.0}, {"kod": "CN22", "bolum": "CNC", "ad": "Matkap (hidrolik unite)", "x": 670.0, "y": 3290.0}, {"kod": "CN23", "bolum": "CNC", "ad": "Matkap (hidrolik unite)", "x": 670.0, "y": 3620.0}, {"kod": "ARES", "bolum": "CNC", "ad": "Ares Seiki Tapping Center", "x": 620.0, "y": 3500.0}, {"kod": "PM02", "bolum": "CNC", "ad": "Matkap", "x": 1840.0, "y": 3830.0}, {"kod": "PM05", "bolum": "CNC", "ad": "Matkap", "x": 2050.0, "y": 3830.0}, {"kod": "PM06", "bolum": "CNC", "ad": "Matkap", "x": 1950.0, "y": 3830.0}, {"kod": "PM07", "bolum": "CNC", "ad": "Matkap", "x": 1730.0, "y": 3830.0}, {"kod": "PM08", "bolum": "CNC", "ad": "Matkap", "x": 1650.0, "y": 3830.0}, {"kod": "PM09", "bolum": "CNC", "ad": "Matkap", "x": 1380.0, "y": 3640.0}, {"kod": "PM10", "bolum": "CNC", "ad": "Matkap", "x": 1540.0, "y": 3750.0}, {"kod": "PM13", "bolum": "CNC", "ad": "Rovelver Torna", "x": 1380.0, "y": 3800.0}, {"kod": "BROS", "bolum": "CNC", "ad": "Hidrolik Bros Cekme Presi — konum yaklasik — dogrulanacak", "x": 1480.0, "y": 3880.0}, {"kod": "KH31", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 350.0, "y": 4970.0}, {"kod": "KH28", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 580.0, "y": 4980.0}, {"kod": "KH26", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 780.0, "y": 5000.0}, {"kod": "KH32", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 930.0, "y": 5000.0}, {"kod": "KH37", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 1060.0, "y": 5010.0}, {"kod": "PM14", "bolum": "PUNTA KAYNAK", "ad": "Induksiyon Makinasi — punta bloku icinde", "x": 420.0, "y": 4760.0}, {"kod": "KH10", "bolum": "KUMLAMA", "ad": "Kumlama Makinesi", "x": 590.0, "y": 5420.0}, {"kod": "KUM-2", "bolum": "KUMLAMA", "ad": "Kumlama Makinesi", "x": 1050.0, "y": 5465.0}, {"kod": "KH05", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 630.0, "y": 5650.0}, {"kod": "KH07", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 890.0, "y": 5650.0}, {"kod": "KH17", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 1080.0, "y": 5650.0}, {"kod": "KH16", "bolum": "KAYNAKHANE", "ad": "Kaynak Istasyonu", "x": 820.0, "y": 6160.0}, {"kod": "KH18", "bolum": "KAYNAKHANE", "ad": "Kaynak Istasyonu", "x": 1000.0, "y": 6260.0}, {"kod": "KH14", "bolum": "KAYNAKHANE", "ad": "Taslama Istasyonu", "x": 1250.0, "y": 6140.0}, {"kod": "KH15", "bolum": "KAYNAKHANE", "ad": "Taslama Istasyonu", "x": 1080.0, "y": 6130.0}, {"kod": "KH01", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak.", "x": 740.0, "y": 6300.0}, {"kod": "KH02", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak.", "x": 390.0, "y": 6310.0}, {"kod": "KH05-B", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak. — IKINCI KH05 — cift etiket, teyit gerekli", "x": 900.0, "y": 6320.0}, {"kod": "KH06", "bolum": "KAYNAKHANE", "ad": "Kurt Agzi Acma Makinasi", "x": 1250.0, "y": 5550.0}, {"kod": "KH08", "bolum": "KAYNAKHANE", "ad": "Serit Zimpara 1", "x": 1300.0, "y": 5780.0}, {"kod": "KH09", "bolum": "KAYNAKHANE", "ad": "Serit Zimpara 2", "x": 1300.0, "y": 5660.0}, {"kod": "DTAP", "bolum": "KAYNAKHANE", "ad": "Doner Tabla Kaynak Aparati", "x": 890.0, "y": 6230.0}, {"kod": "KR01", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2390.0, "y": 6050.0}, {"kod": "KR02", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2390.0, "y": 5580.0}, {"kod": "KR03", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1920.0, "y": 6060.0}, {"kod": "KR04", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1920.0, "y": 5640.0}, {"kod": "KR06", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2280.0, "y": 5150.0}, {"kod": "KR07", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2090.0, "y": 5150.0}, {"kod": "KR10", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1770.0, "y": 5170.0}, {"kod": "PH01", "bolum": "PRESHANE", "ad": "160 Ton Hidrolik Pres", "x": 2050.0, "y": 4560.0}, {"kod": "PH02", "bolum": "PRESHANE", "ad": "80 Ton Hidrolik Pres", "x": 2240.0, "y": 3916.0}, {"kod": "PH03", "bolum": "PRESHANE", "ad": "75 Ton Hidrolik Pres", "x": 1320.0, "y": 4300.0}, {"kod": "PH04", "bolum": "PRESHANE", "ad": "60 Ton Eksantrik Pres", "x": 2140.0, "y": 4300.0}, {"kod": "PH06", "bolum": "PRESHANE", "ad": "35 Ton Eksantrik Pres", "x": 2520.0, "y": 4410.0}, {"kod": "PH07", "bolum": "PRESHANE", "ad": "30 Ton Eksantrik Pres", "x": 2390.0, "y": 4370.0}, {"kod": "PH08", "bolum": "PRESHANE", "ad": "60 Ton Eksantrik Pres", "x": 1940.0, "y": 4310.0}, {"kod": "PH11", "bolum": "PRESHANE", "ad": "150 Ton Hava Kav. Eks. Pres", "x": 1520.0, "y": 4310.0}, {"kod": "PH12", "bolum": "PRESHANE", "ad": "150 Ton Hava Kav. Eks. Pres", "x": 1730.0, "y": 4320.0}, {"kod": "PH15", "bolum": "PRESHANE", "ad": "30 Ton Eksantrik Pres", "x": 2580.0, "y": 4320.0}, {"kod": "PH19", "bolum": "PRESHANE", "ad": "Abkant Bukum Makinesi", "x": 790.0, "y": 3910.0}, {"kod": "PH10", "bolum": "PRESHANE", "ad": "15 Ton Eksantrik Pres", "x": 2280.0, "y": 4660.0}, {"kod": "PH21", "bolum": "PRESHANE", "ad": "Abkant Bukum Makinesi", "x": 750.0, "y": 4530.0}, {"kod": "SK01", "bolum": "SASE", "ad": "Punta", "x": 990.0, "y": 6530.0}, {"kod": "SK02", "bolum": "SASE", "ad": "Sase Hidrolik Delme Tezgahi", "x": 900.0, "y": 6950.0}, {"kod": "SK03", "bolum": "SASE", "ad": "Robot Punta", "x": 590.0, "y": 6960.0}, {"kod": "SK07", "bolum": "SASE", "ad": "Sase Uteleme Unitesi", "x": 1520.0, "y": 7040.0}, {"kod": "SK08", "bolum": "SASE", "ad": "Doner Tabla Unitesi", "x": 610.0, "y": 6730.0}, {"kod": "PK01", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3350.0, "y": 3990.0}, {"kod": "PK02", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3450.0, "y": 3990.0}, {"kod": "PK03", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3710.0, "y": 4000.0}, {"kod": "PK04", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3810.0, "y": 4000.0}, {"kod": "PK05", "bolum": "PAKETLEME", "ad": "Lazer Yazi Makinasi", "x": 4920.0, "y": 4110.0}, {"kod": "PK06", "bolum": "PAKETLEME", "ad": "Lazer Yazi Makinasi", "x": 4700.0, "y": 4110.0}, {"kod": "PK12", "bolum": "PAKETLEME", "ad": "Burc Cakma", "x": 3210.0, "y": 3820.0}, {"kod": "PK26", "bolum": "PAKETLEME", "ad": "Sirinkleme Makinesi", "x": 3130.0, "y": 3990.0}, {"kod": "PK31", "bolum": "PAKETLEME", "ad": "Rulman Cakma", "x": 3310.0, "y": 3820.0}, {"kod": "KR05", "bolum": "SASE", "ad": "Eksantrik Pres — robot kaynak kodlu ama yemekhane yakininda — teyit", "x": 1170.0, "y": 7710.0}, {"kod": "KP11", "bolum": "KALIPHANE", "ad": "Ajan Erezyon", "x": 3341.0, "y": 5625.0}, {"kod": "KP25", "bolum": "KALIPHANE", "ad": "CNC Erezyon", "x": 3494.0, "y": 5624.0}, {"kod": "KP01", "bolum": "KALIPHANE", "ad": "Freze", "x": 4205.0, "y": 5640.0}, {"kod": "KP07", "bolum": "KALIPHANE", "ad": "Freze", "x": 4455.0, "y": 5640.0}, {"kod": "KP22", "bolum": "KALIPHANE", "ad": "Pah Kirma", "x": 4690.0, "y": 5585.0}, {"kod": "KP24", "bolum": "KALIPHANE", "ad": "Taslama Masasi", "x": 4790.0, "y": 5480.0}, {"kod": "SATIH", "bolum": "KALIPHANE", "ad": "Satih Taslama", "x": 4882.0, "y": 5558.0}, {"kod": "FIRIN", "bolum": "KALIPHANE", "ad": "Firin", "x": 4997.0, "y": 5665.0}, {"kod": "KPT03", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3824.0, "y": 5750.0}, {"kod": "MARK", "bolum": "KALIPHANE", "ad": "Markalama Pleyti", "x": 3955.0, "y": 5752.0}, {"kod": "KPT02", "bolum": "KALIPHANE", "ad": "Pleyt", "x": 3480.0, "y": 5890.0}, {"kod": "TRN-1", "bolum": "KALIPHANE", "ad": "Torna Tezgahi (1)", "x": 4830.0, "y": 5844.0}, {"kod": "KP05", "bolum": "KALIPHANE", "ad": "Radyal Matkap", "x": 4200.0, "y": 5957.0}, {"kod": "KP13", "bolum": "KALIPHANE", "ad": "Serit Testere", "x": 4485.0, "y": 6005.0}, {"kod": "TRN-2", "bolum": "KALIPHANE", "ad": "Torna Tezgahi (2)", "x": 4850.0, "y": 6025.0}, {"kod": "KP02", "bolum": "KALIPHANE", "ad": "Tezsan Matkap", "x": 4205.0, "y": 6090.0}, {"kod": "KPT04", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3806.0, "y": 6135.0}, {"kod": "KP06", "bolum": "KALIPHANE", "ad": "Serit Testere", "x": 4440.0, "y": 6156.0}, {"kod": "KP21", "bolum": "KALIPHANE", "ad": "T.Motoru", "x": 4068.0, "y": 6199.0}, {"kod": "KP04", "bolum": "KALIPHANE", "ad": "Radyal Matkap", "x": 4315.0, "y": 6242.0}, {"kod": "KPT05", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3650.0, "y": 6303.0}, {"kod": "KP10", "bolum": "KALIPHANE", "ad": "CNC Tel Erezyon", "x": 3092.0, "y": 6537.0}, {"kod": "MAZAK", "bolum": "KALIPHANE", "ad": "MAZAK VTC-300C", "x": 4410.0, "y": 6665.0}, {"kod": "KP09", "bolum": "KALIPHANE", "ad": "CNC Isleme Merkezi", "x": 4810.0, "y": 6700.0}, {"kod": "KP21?", "bolum": "KALIPHANE", "ad": "KP21 (ikinci etiket) — ikinci etiket — teyit", "x": 4656.0, "y": 6724.0}, {"kod": "PK30", "bolum": "MONTAJ", "ad": "Direksiyon Bogma", "x": 3388.0, "y": 4480.0}, {"kod": "M02 T", "bolum": "MONTAJ", "ad": "M02 Taslama Motoru", "x": 5023.0, "y": 4710.0}, {"kod": "DIREKSIYON", "bolum": "MONTAJ", "ad": "DIREKSIYON MONTAJ HATTI", "x": 3420.0, "y": 4280.0}, {"kod": "2197H", "bolum": "MONTAJ", "ad": "2197 HATTI", "x": 3210.0, "y": 4434.0}, {"kod": "1410H", "bolum": "MONTAJ", "ad": "1410 HATTI", "x": 3268.0, "y": 4887.0}, {"kod": "MTJ-2", "bolum": "MONTAJ", "ad": "MONTAJ TEZGAH 2", "x": 3659.0, "y": 4869.0}, {"kod": "ELGAZI", "bolum": "MONTAJ", "ad": "EL GAZI KITLEK HT.", "x": 3940.0, "y": 4870.0}, {"kod": "KION", "bolum": "MONTAJ", "ad": "KION OTOMASYON HATTI", "x": 4450.0, "y": 4450.0}, {"kod": "JDEERE", "bolum": "MONTAJ", "ad": "JOHN DEERE EL FRENI HATTI", "x": 4775.0, "y": 4500.0}, {"kod": "2821", "bolum": "MONTAJ", "ad": "2821 KILIT HATTI", "x": 4745.0, "y": 4770.0}, {"kod": "KILIT-1", "bolum": "MONTAJ", "ad": "KILIT HATTI 1", "x": 4804.0, "y": 5333.0}, {"kod": "KILIT-2", "bolum": "MONTAJ", "ad": "KILIT HATTI 2", "x": 4558.0, "y": 5319.0}, {"kod": "KILIT-3", "bolum": "MONTAJ", "ad": "KILIT HATTI 3", "x": 4197.0, "y": 5256.0}, {"kod": "ELFREN-1", "bolum": "MONTAJ", "ad": "EL FREN HATTI 1", "x": 3355.0, "y": 5343.0}, {"kod": "ELFREN-2", "bolum": "MONTAJ", "ad": "EL FREN HATTI 2", "x": 3661.0, "y": 5342.0}, {"kod": "ELFREN-3", "bolum": "MONTAJ", "ad": "EL FREN HATTI 3", "x": 3938.0, "y": 5372.0}, {"kod": "K.KOL", "bolum": "MONTAJ", "ad": "kumanda kollari montaj bolumu", "x": 3640.0, "y": 5060.0}, {"kod": "OFIS-2", "bolum": "KALIPHANE", "ad": "Tezgah — adı düzeltilecek (tıklayıp düzenle)", "x": 3342.0, "y": 6537.0}, {"kod": "KALIP-3", "bolum": "KALIPHANE", "ad": "Tezgah — adı düzeltilecek (tıklayıp düzenle)", "x": 4610.0, "y": 6440.0}, {"kod": "DT06", "bolum": "DAIRE TESTERE", "ad": "CNC Boru Bukum (Safak Q42) — konumu düzenle modunda yerleştir", "x": 240.0, "y": 1640.0}, {"kod": "KH04", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak. — konumu düzenle modunda yerleştir", "x": 240.0, "y": 5600.0}, {"kod": "KH13", "bolum": "KAYNAKHANE", "ad": "Yari Oto. Robot Kaynak — konumu düzenle modunda yerleştir", "x": 360.0, "y": 5640.0}, {"kod": "KH27", "bolum": "PUNTA KAYNAK", "ad": "Punta (Schlatter 80kVA) — konumu düzenle modunda yerleştir", "x": 240.0, "y": 4840.0}, {"kod": "PH09", "bolum": "PRESHANE", "ad": "30 Ton Pres Eksantrik — konumu düzenle modunda yerleştir", "x": 200.0, "y": 3960.0}, {"kod": "PH13", "bolum": "PRESHANE", "ad": "Durmazlar Giyotin Makas — konumu düzenle modunda yerleştir", "x": 320.0, "y": 3960.0}, {"kod": "PK15", "bolum": "PAKETLEME", "ad": "Direksiyon Kolonu Paketleme 2 — konumu düzenle modunda yerleştir", "x": 3040.0, "y": 3840.0}, {"kod": "MM150", "bolum": "MONTAJ", "ad": "Mekanik Montaj 150 — konumu düzenle modunda yerleştir", "x": 3040.0, "y": 4280.0}, {"kod": "MM151", "bolum": "MONTAJ", "ad": "Mekanik Montaj 151 — konumu düzenle modunda yerleştir", "x": 3160.0, "y": 4280.0}, {"kod": "HM15", "bolum": "MONTAJ", "ad": "Happich Montaj 15 — konumu düzenle modunda yerleştir", "x": 3280.0, "y": 4280.0}, {"kod": "HM16", "bolum": "MONTAJ", "ad": "Happich Montaj 16 — konumu düzenle modunda yerleştir", "x": 3560.0, "y": 4280.0}];
+const MAKINELER=[{"kod": "LZ01", "bolum": "LAZER", "ad": "Lazer Kesim Makinesi", "x": 500.0, "y": 830.0}, {"kod": "LZ02", "bolum": "LAZER", "ad": "Lazer Kesim Makinesi", "x": 520.0, "y": 1390.0}, {"kod": "DT02", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 490.0, "y": 2180.0}, {"kod": "DT04", "bolum": "DAIRE TESTERE", "ad": "Kordon Makinesi", "x": 1250.0, "y": 1950.0}, {"kod": "DT05", "bolum": "DAIRE TESTERE", "ad": "Tel/Mil Cekme Makinesi", "x": 510.0, "y": 1630.0}, {"kod": "DT07", "bolum": "DAIRE TESTERE", "ad": "Boru Sekillendirme Mak.", "x": 490.0, "y": 2510.0}, {"kod": "DT08", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 480.0, "y": 2300.0}, {"kod": "DT10", "bolum": "DAIRE TESTERE", "ad": "Lama Kivirma", "x": 570.0, "y": 2180.0}, {"kod": "DT11", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 640.0, "y": 2610.0}, {"kod": "DT12", "bolum": "DAIRE TESTERE", "ad": "Boru Bukme Makinesi", "x": 590.0, "y": 2770.0}, {"kod": "DT056", "bolum": "DAIRE TESTERE", "ad": "Boru Bukme Makinesi — kod plandaki gibi: DT056", "x": 520.0, "y": 2740.0}, {"kod": "CN04", "bolum": "DAIRE TESTERE", "ad": "Serit Testere — CN kodlu ama DT bolgesinde", "x": 770.0, "y": 2760.0}, {"kod": "CN01", "bolum": "CNC", "ad": "CNC Torna", "x": 2420.0, "y": 3110.0}, {"kod": "CN02", "bolum": "CNC", "ad": "HAAS CNC Torna", "x": 2140.0, "y": 3350.0}, {"kod": "CN03", "bolum": "CNC", "ad": "CNC Torna — plan iki CN03 etiketi ust uste", "x": 2080.0, "y": 3040.0}, {"kod": "CN18", "bolum": "CNC", "ad": "Ovalama Tezgahi", "x": 1390.0, "y": 3380.0}, {"kod": "CN20", "bolum": "CNC", "ad": "Cift Aynali Torna", "x": 1490.0, "y": 2890.0}, {"kod": "CN22", "bolum": "CNC", "ad": "Matkap (hidrolik unite)", "x": 670.0, "y": 3290.0}, {"kod": "CN23", "bolum": "CNC", "ad": "Matkap (hidrolik unite)", "x": 670.0, "y": 3620.0}, {"kod": "ARES", "bolum": "CNC", "ad": "Ares Seiki Tapping Center", "x": 620.0, "y": 3500.0}, {"kod": "PM02", "bolum": "CNC", "ad": "Matkap", "x": 1840.0, "y": 3830.0}, {"kod": "PM05", "bolum": "CNC", "ad": "Matkap", "x": 2050.0, "y": 3830.0}, {"kod": "PM06", "bolum": "CNC", "ad": "Matkap", "x": 1950.0, "y": 3830.0}, {"kod": "PM07", "bolum": "CNC", "ad": "Matkap", "x": 1730.0, "y": 3830.0}, {"kod": "PM08", "bolum": "CNC", "ad": "Matkap", "x": 1650.0, "y": 3830.0}, {"kod": "PM09", "bolum": "CNC", "ad": "Matkap", "x": 1380.0, "y": 3640.0}, {"kod": "PM10", "bolum": "CNC", "ad": "Matkap", "x": 1540.0, "y": 3750.0}, {"kod": "PM13", "bolum": "CNC", "ad": "Rovelver Torna", "x": 1380.0, "y": 3800.0}, {"kod": "BROS", "bolum": "CNC", "ad": "Hidrolik Bros Cekme Presi — konum yaklasik — dogrulanacak", "x": 1480.0, "y": 3880.0}, {"kod": "KH31", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 350.0, "y": 4970.0}, {"kod": "KH28", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 580.0, "y": 4980.0}, {"kod": "KH26", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 780.0, "y": 5000.0}, {"kod": "KH32", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 930.0, "y": 5000.0}, {"kod": "KH37", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 1085.0, "y": 5010.0}, {"kod": "PM14", "bolum": "PUNTA KAYNAK", "ad": "Induksiyon Makinasi — punta bloku icinde", "x": 420.0, "y": 4760.0}, {"kod": "KH10", "bolum": "KUMLAMA", "ad": "Kumlama Makinesi", "x": 590.0, "y": 5420.0}, {"kod": "KUM-2", "bolum": "KUMLAMA", "ad": "Kumlama Makinesi", "x": 1050.0, "y": 5465.0}, {"kod": "KH05", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 630.0, "y": 5650.0}, {"kod": "KH07", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 890.0, "y": 5650.0}, {"kod": "KH17", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 1080.0, "y": 5650.0}, {"kod": "KH16", "bolum": "KAYNAKHANE", "ad": "Kaynak Istasyonu", "x": 820.0, "y": 6160.0}, {"kod": "KH18", "bolum": "KAYNAKHANE", "ad": "Kaynak Istasyonu", "x": 1000.0, "y": 6260.0}, {"kod": "KH14", "bolum": "KAYNAKHANE", "ad": "Taslama Istasyonu", "x": 1250.0, "y": 6140.0}, {"kod": "KH15", "bolum": "KAYNAKHANE", "ad": "Taslama Istasyonu", "x": 1080.0, "y": 6130.0}, {"kod": "KH01", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak.", "x": 740.0, "y": 6300.0}, {"kod": "KH02", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak.", "x": 390.0, "y": 6310.0}, {"kod": "KH05-B", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak. — IKINCI KH05 — cift etiket, teyit gerekli", "x": 900.0, "y": 6320.0}, {"kod": "KH06", "bolum": "KAYNAKHANE", "ad": "Kurt Agzi Acma Makinasi", "x": 1250.0, "y": 5550.0}, {"kod": "KH08", "bolum": "KAYNAKHANE", "ad": "Serit Zimpara 1", "x": 1300.0, "y": 5780.0}, {"kod": "KH09", "bolum": "KAYNAKHANE", "ad": "Serit Zimpara 2", "x": 1300.0, "y": 5660.0}, {"kod": "DTAP", "bolum": "KAYNAKHANE", "ad": "Doner Tabla Kaynak Aparati", "x": 890.0, "y": 6230.0}, {"kod": "KR01", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2390.0, "y": 6050.0}, {"kod": "KR02", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2390.0, "y": 5580.0}, {"kod": "KR03", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1920.0, "y": 6060.0}, {"kod": "KR04", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1920.0, "y": 5640.0}, {"kod": "KR06", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2280.0, "y": 5150.0}, {"kod": "KR07", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2090.0, "y": 5150.0}, {"kod": "KR10", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1770.0, "y": 5170.0}, {"kod": "PH01", "bolum": "PRESHANE", "ad": "160 Ton Hidrolik Pres", "x": 2050.0, "y": 4560.0}, {"kod": "PH02", "bolum": "PRESHANE", "ad": "80 Ton Hidrolik Pres", "x": 2240.0, "y": 3916.0}, {"kod": "PH03", "bolum": "PRESHANE", "ad": "75 Ton Hidrolik Pres", "x": 1320.0, "y": 4300.0}, {"kod": "PH04", "bolum": "PRESHANE", "ad": "60 Ton Eksantrik Pres", "x": 2140.0, "y": 4300.0}, {"kod": "PH06", "bolum": "PRESHANE", "ad": "35 Ton Eksantrik Pres", "x": 2520.0, "y": 4410.0}, {"kod": "PH07", "bolum": "PRESHANE", "ad": "30 Ton Eksantrik Pres", "x": 2390.0, "y": 4370.0}, {"kod": "PH08", "bolum": "PRESHANE", "ad": "60 Ton Eksantrik Pres", "x": 1940.0, "y": 4310.0}, {"kod": "PH11", "bolum": "PRESHANE", "ad": "150 Ton Hava Kav. Eks. Pres", "x": 1520.0, "y": 4310.0}, {"kod": "PH12", "bolum": "PRESHANE", "ad": "150 Ton Hava Kav. Eks. Pres", "x": 1730.0, "y": 4320.0}, {"kod": "PH15", "bolum": "PRESHANE", "ad": "30 Ton Eksantrik Pres", "x": 2580.0, "y": 4320.0}, {"kod": "PH19", "bolum": "PRESHANE", "ad": "Abkant Bukum Makinesi", "x": 790.0, "y": 3910.0}, {"kod": "PH10", "bolum": "PRESHANE", "ad": "15 Ton Eksantrik Pres", "x": 2280.0, "y": 4660.0}, {"kod": "PH21", "bolum": "PRESHANE", "ad": "Abkant Bukum Makinesi", "x": 750.0, "y": 4530.0}, {"kod": "SK01", "bolum": "SASE", "ad": "Punta", "x": 990.0, "y": 6530.0}, {"kod": "SK02", "bolum": "SASE", "ad": "Sase Hidrolik Delme Tezgahi", "x": 900.0, "y": 6950.0}, {"kod": "SK03", "bolum": "SASE", "ad": "Robot Punta", "x": 590.0, "y": 6960.0}, {"kod": "SK07", "bolum": "SASE", "ad": "Sase Uteleme Unitesi", "x": 1520.0, "y": 7040.0}, {"kod": "SK08", "bolum": "SASE", "ad": "Doner Tabla Unitesi", "x": 610.0, "y": 6730.0}, {"kod": "PK01", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3334.0, "y": 3990.0}, {"kod": "PK02", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3466.0, "y": 3990.0}, {"kod": "PK03", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3694.0, "y": 4000.0}, {"kod": "PK04", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3826.0, "y": 4000.0}, {"kod": "PK05", "bolum": "PAKETLEME", "ad": "Lazer Yazi Makinasi", "x": 4920.0, "y": 4110.0}, {"kod": "PK06", "bolum": "PAKETLEME", "ad": "Lazer Yazi Makinasi", "x": 4700.0, "y": 4110.0}, {"kod": "PK12", "bolum": "PAKETLEME", "ad": "Burc Cakma", "x": 3194.0, "y": 3820.0}, {"kod": "PK26", "bolum": "PAKETLEME", "ad": "Sirinkleme Makinesi", "x": 3130.0, "y": 3990.0}, {"kod": "PK31", "bolum": "PAKETLEME", "ad": "Rulman Cakma", "x": 3326.0, "y": 3820.0}, {"kod": "KR05", "bolum": "SASE", "ad": "Eksantrik Pres — robot kaynak kodlu ama yemekhane yakininda — teyit", "x": 1170.0, "y": 7710.0}, {"kod": "KP11", "bolum": "KALIPHANE", "ad": "Ajan Erezyon", "x": 3341.0, "y": 5625.0}, {"kod": "KP25", "bolum": "KALIPHANE", "ad": "CNC Erezyon", "x": 3494.0, "y": 5624.0}, {"kod": "KP01", "bolum": "KALIPHANE", "ad": "Freze", "x": 4205.0, "y": 5640.0}, {"kod": "KP07", "bolum": "KALIPHANE", "ad": "Freze", "x": 4455.0, "y": 5640.0}, {"kod": "KP22", "bolum": "KALIPHANE", "ad": "Pah Kirma", "x": 4690.0, "y": 5585.0}, {"kod": "KP24", "bolum": "KALIPHANE", "ad": "Taslama Masasi", "x": 4790.0, "y": 5480.0}, {"kod": "SATIH", "bolum": "KALIPHANE", "ad": "Satih Taslama", "x": 4882.0, "y": 5558.0}, {"kod": "FIRIN", "bolum": "KALIPHANE", "ad": "Firin", "x": 4997.0, "y": 5665.0}, {"kod": "KPT03", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3824.0, "y": 5750.0}, {"kod": "MARK", "bolum": "KALIPHANE", "ad": "Markalama Pleyti", "x": 3955.0, "y": 5752.0}, {"kod": "KPT02", "bolum": "KALIPHANE", "ad": "Pleyt", "x": 3480.0, "y": 5890.0}, {"kod": "TRN-1", "bolum": "KALIPHANE", "ad": "Torna Tezgahi (1)", "x": 4830.0, "y": 5844.0}, {"kod": "KP05", "bolum": "KALIPHANE", "ad": "Radyal Matkap", "x": 4200.0, "y": 5957.0}, {"kod": "KP13", "bolum": "KALIPHANE", "ad": "Serit Testere", "x": 4485.0, "y": 6005.0}, {"kod": "TRN-2", "bolum": "KALIPHANE", "ad": "Torna Tezgahi (2)", "x": 4850.0, "y": 6025.0}, {"kod": "KP02", "bolum": "KALIPHANE", "ad": "Tezsan Matkap", "x": 4205.0, "y": 6090.0}, {"kod": "KPT04", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3806.0, "y": 6135.0}, {"kod": "KP06", "bolum": "KALIPHANE", "ad": "Serit Testere", "x": 4440.0, "y": 6156.0}, {"kod": "KP21", "bolum": "KALIPHANE", "ad": "T.Motoru", "x": 4068.0, "y": 6199.0}, {"kod": "KP04", "bolum": "KALIPHANE", "ad": "Radyal Matkap", "x": 4315.0, "y": 6242.0}, {"kod": "KPT05", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3650.0, "y": 6303.0}, {"kod": "KP10", "bolum": "KALIPHANE", "ad": "CNC Tel Erezyon", "x": 3092.0, "y": 6537.0}, {"kod": "MAZAK", "bolum": "KALIPHANE", "ad": "MAZAK VTC-300C", "x": 4410.0, "y": 6665.0}, {"kod": "KP09", "bolum": "KALIPHANE", "ad": "CNC Isleme Merkezi", "x": 4810.0, "y": 6700.0}, {"kod": "KP21?", "bolum": "KALIPHANE", "ad": "KP21 (ikinci etiket) — ikinci etiket — teyit", "x": 4656.0, "y": 6724.0}, {"kod": "PK30", "bolum": "MONTAJ", "ad": "Direksiyon Bogma", "x": 3388.0, "y": 4480.0}, {"kod": "M02 T", "bolum": "MONTAJ", "ad": "M02 Taslama Motoru", "x": 5023.0, "y": 4710.0}, {"kod": "DIREKSIYON", "bolum": "MONTAJ", "ad": "DIREKSIYON MONTAJ HATTI", "x": 3420.0, "y": 4280.0}, {"kod": "2197H", "bolum": "MONTAJ", "ad": "2197 HATTI", "x": 3210.0, "y": 4434.0}, {"kod": "1410H", "bolum": "MONTAJ", "ad": "1410 HATTI", "x": 3268.0, "y": 4887.0}, {"kod": "MTJ-2", "bolum": "MONTAJ", "ad": "MONTAJ TEZGAH 2", "x": 3659.0, "y": 4869.0}, {"kod": "ELGAZI", "bolum": "MONTAJ", "ad": "EL GAZI KITLEK HT.", "x": 3940.0, "y": 4870.0}, {"kod": "KION", "bolum": "MONTAJ", "ad": "KION OTOMASYON HATTI", "x": 4450.0, "y": 4450.0}, {"kod": "JDEERE", "bolum": "MONTAJ", "ad": "JOHN DEERE EL FRENI HATTI", "x": 4775.0, "y": 4500.0}, {"kod": "2821", "bolum": "MONTAJ", "ad": "2821 KILIT HATTI", "x": 4745.0, "y": 4770.0}, {"kod": "KILIT-1", "bolum": "MONTAJ", "ad": "KILIT HATTI 1", "x": 4804.0, "y": 5333.0}, {"kod": "KILIT-2", "bolum": "MONTAJ", "ad": "KILIT HATTI 2", "x": 4558.0, "y": 5319.0}, {"kod": "KILIT-3", "bolum": "MONTAJ", "ad": "KILIT HATTI 3", "x": 4197.0, "y": 5256.0}, {"kod": "ELFREN-1", "bolum": "MONTAJ", "ad": "EL FREN HATTI 1", "x": 3355.0, "y": 5343.0}, {"kod": "ELFREN-2", "bolum": "MONTAJ", "ad": "EL FREN HATTI 2", "x": 3661.0, "y": 5342.0}, {"kod": "ELFREN-3", "bolum": "MONTAJ", "ad": "EL FREN HATTI 3", "x": 3938.0, "y": 5372.0}, {"kod": "K.KOL", "bolum": "MONTAJ", "ad": "kumanda kollari montaj bolumu", "x": 3640.0, "y": 5060.0}, {"kod": "OFIS-2", "bolum": "KALIPHANE", "ad": "Tezgah — adı düzeltilecek (tıklayıp düzenle)", "x": 3342.0, "y": 6537.0}, {"kod": "KALIP-3", "bolum": "KALIPHANE", "ad": "Tezgah — adı düzeltilecek (tıklayıp düzenle)", "x": 4610.0, "y": 6440.0}, {"kod": "DT06", "bolum": "DAIRE TESTERE", "ad": "CNC Boru Bukum (Safak Q42) — konumu düzenle modunda yerleştir", "x": 240.0, "y": 1640.0}, {"kod": "KH04", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak. — konumu düzenle modunda yerleştir", "x": 240.0, "y": 5600.0}, {"kod": "KH13", "bolum": "KAYNAKHANE", "ad": "Yari Oto. Robot Kaynak — konumu düzenle modunda yerleştir", "x": 360.0, "y": 5640.0}, {"kod": "KH27", "bolum": "PUNTA KAYNAK", "ad": "Punta (Schlatter 80kVA) — konumu düzenle modunda yerleştir", "x": 760.0, "y": 4790.0}, {"kod": "PH09", "bolum": "PRESHANE", "ad": "30 Ton Pres Eksantrik — konumu düzenle modunda yerleştir", "x": 200.0, "y": 3960.0}, {"kod": "PH13", "bolum": "PRESHANE", "ad": "Durmazlar Giyotin Makas — konumu düzenle modunda yerleştir", "x": 320.0, "y": 3960.0}, {"kod": "PK15", "bolum": "PAKETLEME", "ad": "Direksiyon Kolonu Paketleme 2 — konumu düzenle modunda yerleştir", "x": 3040.0, "y": 3840.0}, {"kod": "MM150", "bolum": "MONTAJ", "ad": "Mekanik Montaj 150 — konumu düzenle modunda yerleştir", "x": 3040.0, "y": 4280.0}, {"kod": "MM151", "bolum": "MONTAJ", "ad": "Mekanik Montaj 151 — konumu düzenle modunda yerleştir", "x": 3160.0, "y": 4280.0}, {"kod": "HM15", "bolum": "MONTAJ", "ad": "Happich Montaj 15 — konumu düzenle modunda yerleştir", "x": 3280.0, "y": 4280.0}, {"kod": "HM16", "bolum": "MONTAJ", "ad": "Happich Montaj 16 — konumu düzenle modunda yerleştir", "x": 3560.0, "y": 4280.0}];
 const ADLAR={};
 const SEBEP=['0154 MAKİNE BAKIM DURUŞU','0210 KALIP DEĞİŞİMİ','0308 MALZEME BEKLEME','0412 KALİTE KONTROL'];
 const OPR=['ILR-00184','ILR-00207','ILR-00219','ILR-00233','ILR-00241','ILR-00256'];
@@ -346,7 +377,7 @@ const DURUM={calisiyor:['Çalışıyor','var(--calisiyor)'],durusta:['Duruşta',
  bosta:['Boşta','var(--bosta)'],sinyalyok:['Sinyal yok','var(--sinyalyok)']};
 
 const AYAK=84;   /* varsayilan ayak izi */
-const AYAKLAR={"LZ01": [480, 260], "LZ02": [480, 260], "DT02": 66, "DT04": 56, "DT05": 95, "DT07": 56, "DT08": 66, "DT10": 56, "DT11": 66, "DT12": 56, "DT056": 56, "CN04": 66, "CN01": 95, "CN02": 95, "CN03": 95, "CN18": 95, "CN20": 95, "CN22": 55, "CN23": 55, "ARES": 125, "PM02": 55, "PM05": 55, "PM06": 55, "PM07": 55, "PM08": 55, "PM09": 55, "PM10": 55, "PM13": 95, "BROS": 64, "KH31": 80, "KH28": 80, "KH26": 80, "KH32": 80, "KH37": 80, "PM14": 56, "KH10": 100, "KUM-2": 100, "KH05": 68, "KH07": 68, "KH17": 68, "KH16": 68, "KH18": 68, "KH14": 60, "KH15": 60, "KH01": 68, "KH02": 68, "KH05-B": 68, "KH06": 56, "KH08": 56, "KH09": 56, "DTAP": 56, "KR01": 105, "KR02": 105, "KR03": 105, "KR04": 105, "KR06": 105, "KR07": 105, "KR10": 105, "PH01": 110, "PH02": 110, "PH03": 88, "PH04": 88, "PH06": 88, "PH07": 64, "PH08": 88, "PH11": 110, "PH12": 110, "PH15": 64, "PH19": 88, "PH21": 88, "SK01": 80, "SK02": 88, "SK03": 105, "SK07": 56, "SK08": 56, "PK01": 80, "PK02": 80, "PK03": 80, "PK04": 80, "PK05": 56, "PK06": 56, "PK12": 56, "PK26": 56, "PK31": 56, "KR05": 64, "KP11": 76, "KP25": 76, "KP01": 72, "KP07": 72, "KP22": 56, "KP24": 56, "SATIH": 60, "FIRIN": 72, "KPT03": 64, "MARK": 62, "KPT02": 62, "TRN-1": 95, "KP05": 55, "KP13": 66, "TRN-2": 95, "KP02": 55, "KPT04": 64, "KP06": 66, "KP21": 56, "KP04": 55, "KPT05": 64, "KP10": 170, "MAZAK": 190, "KP09": 190, "KP21?": 55, "PK30": 56, "M02 T": 56, "2197": 56, "DIREKSIYON": 110, "2197H": 110, "1410H": 110, "MTJ-2": 110, "ELGAZI": 110, "KION": 110, "JDEERE": 110, "2821": 110, "KILIT-1": 110, "KILIT-2": 110, "KILIT-3": 110, "ELFREN-1": 110, "ELFREN-2": 110, "ELFREN-3": 110, "K.KOL": 110, "OFIS-2": 170, "KALIP-3": 190, "PH10": 64, "DT06": 66, "KH04": 68, "KH13": 80, "KH27": 80, "PH09": 64, "PH13": 88, "PK15": 80, "MM150": 90, "MM151": 90, "HM15": 90, "HM16": 90};
+const AYAKLAR={"LZ01": [480, 260], "LZ02": [480, 260], "DT02": 66, "DT04": 56, "DT05": 95, "DT07": 56, "DT08": 66, "DT10": 56, "DT11": 66, "DT12": 56, "DT056": 56, "CN04": 66, "CN01": 95, "CN02": 95, "CN03": 95, "CN18": 95, "CN20": 95, "CN22": 55, "CN23": 55, "ARES": 125, "PM02": 55, "PM05": 55, "PM06": 55, "PM07": 55, "PM08": 55, "PM09": 55, "PM10": 55, "PM13": 95, "BROS": 64, "KH31": 80, "KH28": 80, "KH26": 80, "KH32": 80, "KH37": 80, "PM14": 56, "KH10": 100, "KUM-2": 100, "KH05": 68, "KH07": 68, "KH17": 68, "KH16": 68, "KH18": 68, "KH14": 60, "KH15": 60, "KH01": 68, "KH02": 68, "KH05-B": 68, "KH06": 56, "KH08": 56, "KH09": 56, "DTAP": 56, "KR01": 105, "KR02": 105, "KR03": 105, "KR04": 105, "KR06": 105, "KR07": 105, "KR10": 105, "PH01": 110, "PH02": 110, "PH03": 88, "PH04": 88, "PH06": 88, "PH07": 64, "PH08": 88, "PH11": 110, "PH12": 110, "PH15": 64, "PH19": 88, "PH21": 88, "SK01": 80, "SK02": 88, "SK03": 105, "SK07": 56, "SK08": 56, "PK01": 110, "PK02": 110, "PK03": 110, "PK04": 110, "PK05": 110, "PK06": 110, "PK12": 110, "PK26": 110, "PK31": 110, "KR05": 64, "KP11": 76, "KP25": 76, "KP01": 72, "KP07": 72, "KP22": 56, "KP24": 56, "SATIH": 60, "FIRIN": 72, "KPT03": 64, "MARK": 62, "KPT02": 62, "TRN-1": 95, "KP05": 55, "KP13": 66, "TRN-2": 95, "KP02": 55, "KPT04": 64, "KP06": 66, "KP21": 56, "KP04": 55, "KPT05": 64, "KP10": 170, "MAZAK": 190, "KP09": 190, "KP21?": 55, "PK30": 110, "M02 T": 110, "2197": 56, "DIREKSIYON": 110, "2197H": 110, "1410H": 110, "MTJ-2": 110, "ELGAZI": 110, "KION": 110, "JDEERE": 110, "2821": 110, "KILIT-1": 110, "KILIT-2": 110, "KILIT-3": 110, "ELFREN-1": 110, "ELFREN-2": 110, "ELFREN-3": 110, "K.KOL": 110, "OFIS-2": 170, "KALIP-3": 190, "PH10": 64, "DT06": 66, "KH04": 68, "KH13": 80, "KH27": 80, "PH09": 64, "PH13": 88, "PK15": 110, "MM150": 110, "MM151": 110, "HM15": 110, "HM16": 110};
 const TEZGAHLAR=[];
 MAKINELER.forEach((m,n)=>{
   const b=BOLUMLER.find(x=>x.ad===m.bolum), rn=(n*37)%100;
@@ -370,10 +401,24 @@ const plan=document.getElementById('plan'),dunya=document.getElementById('dunya'
 plan.style.width=PW+'px';plan.style.height=PH+'px';
 plan.style.left=(-PW/2)+'px';plan.style.top=(-PH/2)+'px';
 
-const kutuHTML=(k,sx=1,sy)=>{sy=sy??sx;const sz=(sx+sy)/2;const[x0,y0,z0,w0,d0,h0,t]=k;
-  /* 180° yansıma: arketiplerin ön yüzü açılış kamerasına baksın */
-  const xr=AYAK-x0-w0, yr=AYAK-y0-d0;
-  const x=xr*sx,y=yr*sy,z=z0*sz,w=w0*sx,d=d0*sy,h=h0*sz;
+const kutuHTML=(k,sx=1,sy,rot=0)=>{sy=sy??sx;const sz=(sx+sy)/2;const A=AYAK;
+  let[x0,y0,z0,w0,d0,h0,t]=k;
+  /* veri-düzeyi dönüş: 180° açılış yansıması + kullanıcı rot (hit-test bozulmaz) */
+  const R=(180+rot)%360;
+  let xr,yr,wr,dr;
+  if(R===0){xr=x0;yr=y0;wr=w0;dr=d0}
+  else if(R===90){xr=A-y0-d0;yr=x0;wr=d0;dr=w0}
+  else if(R===180){xr=A-x0-w0;yr=A-y0-d0;wr=w0;dr=d0}
+  else{xr=y0;yr=A-x0-w0;wr=d0;dr=w0}
+  const x=xr*sx,y=yr*sy,z=z0*sz,w=wr*sx,d=dr*sy,h=h0*sz;
+  if(t===3) /* ışık düzlemi: kanopiden düşen sıcak parıltı */
+    return `<i class="isik" style="left:${x}px;top:${y}px;width:${w}px;height:${d}px;transform:translateZ(${z}px)"></i>`;
+  if(t===4){ /* dikey ışık hüzmesi — dönüşte uygun yüz düzlemine geçer */
+    if(R%180===0)
+      return `<div class="kutu" style="left:${x}px;top:${y}px;width:${Math.max(w,d)}px;height:0px;transform:translateZ(${z}px)">
+        <i class="f-on huzme" style="width:${Math.max(w,d)}px;height:${h}px"></i></div>`;
+    return `<div class="kutu" style="left:${x}px;top:${y}px;width:0px;height:${Math.max(w,d)}px;transform:translateZ(${z}px)">
+      <i class="f-sag huzme" style="width:${h}px;height:${Math.max(w,d)}px"></i></div>`;}
   const f=t===0?['var(--D)','var(--D2)','var(--D3)']:t===1?['var(--D2)','var(--D3)','var(--D3)']:['#8d9aa6','#5d6b77','#4a5762'];
   return `<div class="kutu" style="left:${x}px;top:${y}px;width:${w}px;height:${d}px;transform:translateZ(${z}px)">
     <i class="f-ust" style="transform:translateZ(${h}px);background:${f[0]}"></i>
@@ -448,22 +493,28 @@ function iproToggle(kod){
 const KONUM_KEY='fabrikaHarita.konumDuzeltme';
 const konumDuzeltmeleri=JSON.parse(localStorage.getItem(KONUM_KEY)||'{}');
 TEZGAHLAR.forEach(t=>{const k=konumDuzeltmeleri[t.kod];if(k){t.x=k[0];t.y=k[1]}});
+const ROT_KEY='fabrikaHarita.rotDuzeltme';
+const rotDuzeltmeleri=JSON.parse(localStorage.getItem(ROT_KEY)||'{}');
+TEZGAHLAR.forEach(t=>{
+  t.rot=rotDuzeltmeleri[t.kod]||0;
+  if(t.rot%180===90){const cx=t.x+t.ayW/2,cy=t.y+t.ayH/2;
+    [t.ayW,t.ayH]=[t.ayH,t.ayW];t.x=cx-t.ayW/2;t.y=cy-t.ayH/2;t.ayak=Math.max(t.ayW,t.ayH)}});
 
 const cerceve=document.createElement('div');cerceve.className='secimCerceve';plan.appendChild(cerceve);
 
 TEZGAHLAR.forEach(t=>{
   const ka=document.createElement('div');ka.className='koseAd';
   ka.textContent=t.ad.split(' — ')[0];
-  ka.style.cssText=`left:${t.x-4}px;top:${t.y+t.ayH+2}px;max-width:${Math.max(t.ayW+40,120)}px`;
+  ka.style.cssText=`left:${t.x-18}px;top:${t.y+t.ayH+8}px;max-width:${Math.max(t.ayW+44,170)}px`;
   plan.appendChild(ka);t.ka=ka;
   const ped=document.createElement('div');
   ped.className='zeminPed';
-  ped.style.cssText=`left:${t.x-9}px;top:${t.y-9}px;width:${t.ayW+18}px;height:${t.ayH+18}px;transform:translateZ(1px)`;
+  ped.style.cssText=`left:${t.x-26}px;top:${t.y-26}px;width:${t.ayW+52}px;height:${t.ayH+52}px;transform:translateZ(1px)`;
   plan.appendChild(ped);t.ped=ped;
 
   const el=document.createElement('div');el.className='tezgah';
   el.style.cssText=`left:${t.x}px;top:${t.y}px;width:${t.ayW}px;height:${t.ayH}px;animation-delay:${t.idx*16}ms`;
-  el.innerHTML=(ARKETIP[t.bolum]||ARKETIP.VARSAYILAN).map(k=>kutuHTML(k,t.ayW/AYAK,t.ayH/AYAK)).join('');
+  el.innerHTML=(ARKETIP[t.bolum]||ARKETIP.VARSAYILAN).map(k=>kutuHTML(k,t.ayW/AYAK,t.ayH/AYAK,t.rot)).join('');
   el.addEventListener('click',e=>{e.stopPropagation();if(!kaydi&&!tasindi)sec(t.kod)});
   el.addEventListener('pointerenter',()=>hpopGoster(t));
   el.addEventListener('pointermove',e=>hpopKonum(e));
@@ -476,7 +527,7 @@ TEZGAHLAR.forEach(t=>{
   const lb=document.createElement('div');lb.className='tzEtiket';
   lb.style.cssText=`left:${t.x+t.ayW/2}px;top:${t.y+t.ayH+4}px;transform:translateZ(4px) rotateZ(var(--bz,45deg)) rotateX(-56deg) translateX(-50%)`;
   lb.innerHTML=`${t.kod}<small class="sy"></small>`;plan.appendChild(lb);t.lb=lb;
-  const h=document.createElement('div');h.className='halka';const c=Math.max(t.ayW,t.ayH)*1.25;
+  const h=document.createElement('div');h.className='halka';const c=Math.max(t.ayW,t.ayH)+76;
   h.style.cssText=`left:${t.x+t.ayW/2-c/2}px;top:${t.y+t.ayH/2-c/2}px;width:${c}px;height:${c}px;animation-delay:${(t.idx%5)*.5}s;display:none`;
   plan.appendChild(h);t.halka=h;
 });
@@ -573,12 +624,31 @@ const GRID=40;
 function tezgahKonum(t,nx,ny){
   t.x=nx;t.y=ny;
   t.el.style.left=nx+'px';t.el.style.top=ny+'px';
-  t.ped.style.left=(nx-9)+'px';t.ped.style.top=(ny-9)+'px';
-  if(t.ka){t.ka.style.left=(nx-4)+'px';t.ka.style.top=(ny+t.ayH+2)+'px'}
+  t.ped.style.left=(nx-26)+'px';t.ped.style.top=(ny-26)+'px';
+  if(t.ka){t.ka.style.left=(nx-18)+'px';t.ka.style.top=(ny+t.ayH+8)+'px'}
   t.lb.style.left=(nx+t.ayW/2)+'px';t.lb.style.top=(ny+t.ayH+4)+'px';
   const c=Math.max(t.ayW,t.ayH)*1.25;
   t.halka.style.left=(nx+t.ayW/2-c/2)+'px';t.halka.style.top=(ny+t.ayH/2-c/2)+'px';
   if(secili===t.kod){cerceve.style.left=(nx-8)+'px';cerceve.style.top=(ny-8)+'px'}}
+function tezgahDondur(kod){
+  const t=TEZGAHLAR.find(x=>x.kod===kod);if(!t)return;
+  const cx=t.x+t.ayW/2, cy=t.y+t.ayH/2;
+  t.rot=(t.rot+90)%360;
+  [t.ayW,t.ayH]=[t.ayH,t.ayW];t.ayak=Math.max(t.ayW,t.ayH);
+  t.x=Math.round((cx-t.ayW/2)/GRID)*GRID; t.y=Math.round((cy-t.ayH/2)/GRID)*GRID;
+  /* yeniden ciz */
+  t.el.style.width=t.ayW+'px';t.el.style.height=t.ayH+'px';
+  t.el.innerHTML=(ARKETIP[t.bolum]||ARKETIP.VARSAYILAN).map(k=>kutuHTML(k,t.ayW/AYAK,t.ayH/AYAK,t.rot)).join('');
+  t.ped.style.width=(t.ayW+52)+'px';t.ped.style.height=(t.ayH+52)+'px';
+  const c=Math.max(t.ayW,t.ayH)+76;
+  t.halka.style.width=c+'px';t.halka.style.height=c+'px';
+  t.ka.style.maxWidth=Math.max(t.ayW+44,170)+'px';
+  tezgahKonum(t,t.x,t.y);
+  rotDuzeltmeleri[kod]=t.rot;localStorage.setItem(ROT_KEY,JSON.stringify(rotDuzeltmeleri));
+  konumDuzeltmeleri[kod]=[t.x,t.y];localStorage.setItem(KONUM_KEY,JSON.stringify(konumDuzeltmeleri));
+  indirBtnGoster();}
+window.addEventListener('keydown',e=>{
+  if(e.key.toLowerCase()==='r'&&duzenleModu&&secili&&!e.target.matches('input'))tezgahDondur(secili);});
 function duzenleToggle(){
   duzenleModu=!duzenleModu;
   document.getElementById('duzenleBtn').classList.toggle('acik',duzenleModu);
@@ -696,7 +766,11 @@ function hpopGizle(){hpop().style.display='none';}
 
 function sec(kod){
   const t=TEZGAHLAR.find(x=>x.kod===kod);
-  if(aktif!==t.bolum) bolumSec(t.bolum);   /* tezgaha tıklayınca bölüme odaklan */
+  if(aktif!==t.bolum) bolumSec(t.bolum);   /* panel + mini harita bölüme geçer */
+  /* kamera tezgahın kendisine yakınlaşır */
+  KAM.x=-(t.x+t.ayW/2-PW/2); KAM.y=-(t.y+t.ayH/2-PH/2);
+  KAM.o=Math.max(.7,Math.min(1.35,340/Math.max(t.ayW,t.ayH)));
+  kamUygula(true);
   secili=kod;
   TEZGAHLAR.forEach(x=>x.el.classList.toggle('secili',x.kod===kod));
   cerceve.style.cssText=`display:block;left:${t.x-8}px;top:${t.y-8}px;width:${t.ayW+16}px;height:${t.ayH+16}px`;
@@ -712,8 +786,8 @@ function tazele(){
     const bolumGor=(aktif==='TÜM FABRİKA'||t.bolum===aktif);
     const gor=bolumGor&&t.ipro,D=t.durum,s=t.el.style;  /* renk: kapsam dışı soluk */
     if(gor){
-      s.setProperty('--D',`var(--${D})`);s.setProperty('--D2',`var(--${D}-2)`);s.setProperty('--D3',`var(--${D}-3)`);
-      s.setProperty('--DP',`var(--${D}P)`);s.setProperty('--DP2',`var(--${D}P2)`);s.setProperty('--DP3',`var(--${D}P3)`);
+      s.setProperty('--D','var(--gvd)');s.setProperty('--D2','var(--gvd2)');s.setProperty('--D3','var(--gvd3)');
+      s.setProperty('--DP','var(--gvdP)');s.setProperty('--DP2','var(--gvdP2)');s.setProperty('--DP3','var(--gvdP3)');
     }else{ /* opacity YOK — soluklaştırma renkle */
       s.setProperty('--D','var(--solukA)');s.setProperty('--D2','var(--solukB)');s.setProperty('--D3','var(--solukC)');
       s.setProperty('--DP','var(--solukA)');s.setProperty('--DP2','var(--solukB)');s.setProperty('--DP3','var(--solukC)');
@@ -768,11 +842,11 @@ function adDuzenle(kod){
   inp.addEventListener('keydown',e=>{if(e.key==='Enter')bitir(true);if(e.key==='Escape')bitir(false)});
   inp.addEventListener('blur',()=>bitir(true));}
 function indirBtnGoster(){document.getElementById('adIndir').style.display=
-  (Object.keys(adDuzeltmeleri).length||Object.keys(konumDuzeltmeleri).length||Object.keys(iproDuzeltmeleri).length)?'block':'none';}
+  (Object.keys(adDuzeltmeleri).length||Object.keys(konumDuzeltmeleri).length||Object.keys(iproDuzeltmeleri).length||Object.keys(rotDuzeltmeleri).length)?'block':'none';}
 function adlariIndir(){
   const a=document.createElement('a');
   a.href='data:application/json;charset=utf-8,'+encodeURIComponent(
-    JSON.stringify({adlar:adDuzeltmeleri,konumlar:konumDuzeltmeleri,iproKapsam:iproDuzeltmeleri},null,1));
+    JSON.stringify({adlar:adDuzeltmeleri,konumlar:konumDuzeltmeleri,iproKapsam:iproDuzeltmeleri,rotasyon:rotDuzeltmeleri},null,1));
   a.download='harita-duzeltmeleri.json';a.click();}
 
 /* tiklamada izleme-panosu detayi: ./tezgah?kod=X — endpoint yoksa sessiz gecilir */
@@ -821,7 +895,8 @@ function detay(){
       :[['Bölüm',t.bolum],['Pano',t.pano],['Operatör',t.opr],['İş emri',t.ie],['Malzeme',t.mlz],['PLC sayacı',t.say],['Çevrim',t.hiz+' adet/dk']];
   const yz=Math.round(t.uretilen/t.plan*100);
   document.getElementById('detay').innerHTML=`<div style="padding-top:14px">
-    <div class="dkod">${t.kod}${t.ipro?'':' <span class="disiRozet">IPRO DIŞI</span>'}</div>
+    <div class="dkod">${t.kod}${t.ipro?'':' <span class="disiRozet">IPRO DIŞI</span>'}
+      ${duzenleModu?`<button class="kapsamBtn" style="margin-left:8px" onclick="tezgahDondur('${t.kod}');detay()">⟳ 90°</button>`:''}</div>
     <button class="kapsamBtn" onclick="iproToggle('${t.kod}')">${t.ipro?'kapsam dışına al':'IPRO kapsamına al'}</button>
     <div class="dad"><span id="adSpan">${t.ad}</span>
       <button class="adDuzelt" onclick="adDuzenle('${t.kod}')" title="adı düzelt">✎</button> · ${t.bolum}</div>

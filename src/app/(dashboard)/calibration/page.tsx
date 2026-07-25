@@ -841,10 +841,8 @@ export default function CalibrationPage() {
   const handleAddHistory = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!historyDevice) return
-    if (!historyFormData.result) {
-      toast.error('Başarısız için Karar seçmelisiniz (Şartlı Kabul / Hurda)')
-      return
-    }
+    // Saf FAIL'e izin verilir: Sonuç=Başarısız + Karar boş (result='FAIL', tekrar
+    // kalibre edilecek). Karar dropdown'ı görünür ama zorunlu değil.
     if (historyFormData.result === 'CONDITIONAL' && !historyFormData.newProductionSection) {
       toast.error('Şartlı Kabul için yeni Bölüm seçmelisiniz')
       return
@@ -3007,7 +3005,7 @@ export default function CalibrationPage() {
                       <Select value={historyFormData.result === 'PASS' ? 'PASS' : 'FAIL'}
                         onChange={e => setHistoryFormData({
                           ...historyFormData,
-                          result: e.target.value === 'PASS' ? 'PASS' : '',
+                          result: e.target.value === 'PASS' ? 'PASS' : 'FAIL',
                           newProductionSection: "",
                         })}>
                         <option value="PASS">Başarılı</option>
@@ -3019,7 +3017,7 @@ export default function CalibrationPage() {
                         <Label>Karar</Label>
                         <Select value={historyFormData.result}
                           onChange={e => setHistoryFormData({...historyFormData, result: e.target.value, newProductionSection: ""})}>
-                          <option value="">Seçiniz</option>
+                          <option value="FAIL">Karar yok — tekrar kalibre edilecek</option>
                           <option value="CONDITIONAL">Şartlı Kabul</option>
                           <option value="HURDA">Hurda</option>
                         </Select>

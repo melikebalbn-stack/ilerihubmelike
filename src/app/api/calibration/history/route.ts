@@ -93,8 +93,9 @@ export async function POST(request: NextRequest) {
 
       const deviceUpdateData: Record<string, unknown> = {}
       // Son kalibrasyon sonucu her sonuçta (FAIL dahil) cihaza yazılır — liste
-      // rozeti "Başarısız" gösterebilsin. FAIL yalnız bu alanı etkiler (karar (a)):
-      // deviceCondition/status/tarihlere dokunmaz.
+      // rozeti "Başarısız" gösterebilsin. FAIL ayrıca deviceCondition='Şirkette' yapar
+      // (kalibrasyondan dönen cihaz şirkette; 'Kalibrasyonda'da kalıp rozeti gizlememesi
+      // için) — status/tarihlere DOKUNMAZ. Hurda cihazda deviceCondition korunur.
       deviceUpdateData.sonKalibrasyonSonucu = result as CalibrationResult
       if (result === 'PASS') {
         deviceUpdateData.lastCalibrationDate = calDate
@@ -125,6 +126,13 @@ export async function POST(request: NextRequest) {
         if (section?.department?.name) {
           deviceUpdateData.department = section.department.name
         }
+      }
+
+      // FAIL (saf başarısız): kalibrasyondan dönen cihaz fiilen şirkette — rozetin
+      // görünmesi için 'Kalibrasyonda'da bırakılmaz. Hurda cihaza sonradan FAIL
+      // girildiyse (nadir) Hurda ezilmez.
+      if (result === 'FAIL' && device.deviceCondition !== 'Hurda') {
+        deviceUpdateData.deviceCondition = 'Şirkette'
       }
 
       if (Object.keys(deviceUpdateData).length > 0) {

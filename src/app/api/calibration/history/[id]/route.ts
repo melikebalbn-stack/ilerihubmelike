@@ -98,7 +98,8 @@ export async function PUT(
       // bir kaydı Hurda'dan Başarılı'ya düzenlemek Cihaz Durumu'nu da Şirkette'ye döndürür).
       const deviceData: Record<string, unknown> = {}
       // Son kalibrasyon sonucu daima EN GÜNCEL kaydın result'ı (FAIL dahil) —
-      // liste rozeti "Başarısız" gösterebilsin. FAIL yalnız bu alanı etkiler.
+      // liste rozeti "Başarısız" gösterebilsin. FAIL ayrıca deviceCondition='Şirkette'
+      // yapar (Kalibrasyonda'da kalıp rozeti gizlememesi için); Hurda korunur.
       deviceData.sonKalibrasyonSonucu = latest.result
       if (latest.result === 'PASS') {
         deviceData.lastCalibrationDate = latest.calibrationDate
@@ -119,6 +120,9 @@ export async function PUT(
         deviceData.deviceCondition = 'Şirkette'
       } else if (latest.result === 'HURDA') {
         deviceData.deviceCondition = 'Hurda'
+      } else if (latest.result === 'FAIL' && existing.device.deviceCondition !== 'Hurda') {
+        // Saf başarısız: cihaz şirkette — 'Kalibrasyonda'da bırakma (rozet gizlenmesin).
+        deviceData.deviceCondition = 'Şirkette'
       }
 
       // Bölüm/Departman taşıma: bu düzenlemenin Karar'ına (finalResult) göre uygulanır —

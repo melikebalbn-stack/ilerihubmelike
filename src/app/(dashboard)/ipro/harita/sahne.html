@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ILERIHub · Fabrika Haritası v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ───────────────────────────────────────────────────────────
+   ÖNEMLİ: preserve-3d ağacının içinde filter / opacity KULLANILMAZ.
+   İkisi de 3B bağlamını düzleştirir (tezgah "kâğıda" döner).
+   Parlaklık ve soluklaştırma yalnız renk değişkenleriyle yapılır.
+   ─────────────────────────────────────────────────────────── */
+:root{
+  --zemin:#0b1016; --panel:#121a23; --panel-2:#18222d;
+  --cizgi:#22303c; --hat:#2c4658; --vurgu:#4fa3cc;
+  --metin:#dfe7ee; --metin-2:#7f92a2; --metin-3:#556676;
+
+  --calisiyor:#34b26c;  --calisiyor-2:#20734a;  --calisiyor-3:#175538;
+  --calisiyorP:#4fd68a; --calisiyorP2:#2d996a;  --calisiyorP3:#217a4f;
+  --durusta:#e04a4f;    --durusta-2:#992f34;    --durusta-3:#6f2226;
+  --durustaP:#ff6a6f;   --durustaP2:#bf4045;    --durustaP3:#8f2f34;
+  --bosta:#4a5b69;      --bosta-2:#33414d;      --bosta-3:#25303a;
+  --bostaP:#6a7d8c;     --bostaP2:#475765;      --bostaP3:#36444f;
+  --sinyalyok:#d0993c;  --sinyalyok-2:#8d6524;  --sinyalyok-3:#684a1a;
+  --sinyalyokP:#eeb75a; --sinyalyokP2:#a97c30;  --sinyalyokP3:#845e22;
+  --solukA:#1b242d;     --solukB:#141c24;       --solukC:#101821;
+
+  --isoX:56deg; --isoZ:-45deg;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 65%);
+  color:var(--metin);font-family:"IBM Plex Sans",system-ui,sans-serif;overflow:hidden}
+.duzen{display:grid;grid-template-columns:1fr 300px;grid-template-rows:1fr 104px;height:100vh}
+.duzen.tv{grid-template-columns:1fr 0;grid-template-rows:1fr 0}
+.duzen.tv .sag,.duzen.tv .alt{visibility:hidden}
+
+/* ───── sahne ───── */
+.sahne{position:relative;overflow:hidden;grid-row:1/2}
+.duzen.tv .sahne{grid-row:1/3;grid-column:1/3}
+.ust{position:absolute;top:0;left:0;right:0;z-index:6;padding:15px 22px;
+  display:flex;align-items:center;gap:18px;pointer-events:none;
+  background:linear-gradient(180deg,rgba(11,16,22,.96),transparent)}
+.logo{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:21px;letter-spacing:.06em;text-transform:uppercase;line-height:1}
+.logo span{color:var(--metin-3)}
+.baslikKutu{border-left:1px solid var(--cizgi);padding-left:18px}
+.baslikKutu .b{font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:17px;letter-spacing:.07em;text-transform:uppercase}
+.baslikKutu .a{font-size:11px;color:var(--metin-3);margin-top:2px;font-family:"IBM Plex Mono",monospace}
+.rozet{padding:3px 8px;border:1px solid #6a4c1c;background:#291d0b;color:#d0993c;
+  font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.13em}
+.saat{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--metin-2);display:flex;align-items:center;gap:10px}
+.canli{display:inline-flex;align-items:center;gap:6px;color:var(--calisiyor)}
+.canli i{width:6px;height:6px;border-radius:50%;background:var(--calisiyor);animation:np 2s infinite}
+@keyframes np{0%,100%{opacity:1}50%{opacity:.2}}
+.geri{position:absolute;left:22px;bottom:20px;z-index:6;background:var(--panel-2);
+  border:1px solid var(--hat);color:var(--metin-2);padding:8px 14px;cursor:pointer;
+  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  visibility:hidden}
+.geri.gorunur{visibility:visible}
+.geri:hover{background:#233443;color:var(--metin)}
+
+.tuval{position:absolute;inset:0;overflow:hidden;perspective:2600px;perspective-origin:50% 50%;
+  cursor:grab;touch-action:none}
+.tuval.suruklu{cursor:grabbing}
+.dunya{position:absolute;left:50%;top:50%;width:0;height:0;transform-style:preserve-3d;
+  transform:rotateX(var(--isoX)) rotateZ(var(--isoZ)) scale3d(var(--o,.42),var(--o,.42),var(--o,.42)) translate3d(var(--kx,0px),var(--ky,0px),0);
+  transition:transform .75s cubic-bezier(.25,.7,.3,1)}
+.dunya.anlik{transition:none}
+.dunya.anlik .tzEtiket{transition:none}
+.plan{position:absolute;transform-style:preserve-3d}
+
+.zoomKutu{position:absolute;right:20px;bottom:20px;z-index:6;display:flex;flex-direction:column;gap:6px}
+.zoomKutu button{width:34px;height:34px;background:rgba(24,34,45,.9);border:1px solid var(--hat);
+  color:var(--metin-2);font-size:17px;line-height:1;cursor:pointer;font-family:"IBM Plex Mono",monospace}
+.zoomKutu button:hover{background:#233443;color:var(--metin)}
+.ipucu{position:absolute;right:20px;bottom:130px;z-index:6;font-family:"IBM Plex Mono",monospace;
+  font-size:9.5px;letter-spacing:.1em;color:#33424f;text-align:right;pointer-events:none;line-height:1.7}
+.dokular{position:absolute;inset:-300px;
+  background:linear-gradient(rgba(44,70,88,.09) 1px,transparent 1px) 0 0/64px 64px,
+             linear-gradient(90deg,rgba(44,70,88,.09) 1px,transparent 1px) 0 0/64px 64px}
+
+/* ───── bölüm platformu ───── */
+.platform{position:absolute;transform-style:preserve-3d;transition:transform .4s}
+.platform .taban{position:absolute;inset:0;transform:translateZ(1px);background:linear-gradient(150deg,#16212c,#101922);
+  border:1px solid rgba(44,70,88,.75);box-shadow:0 26px 54px rgba(0,0,0,.55)}
+.platform .kn-on,.platform .kn-sag{position:absolute;background:#0a1017;border:1px solid rgba(44,70,88,.4)}
+.platform .kn-on{left:0;bottom:0;width:100%;height:14px;transform-origin:bottom center;transform:rotateX(-90deg)}
+.platform .kn-sag{right:0;top:0;width:14px;height:100%;transform-origin:right center;transform:rotateY(90deg)}
+.platform.sonuk .taban{background:#0d141b;border-color:rgba(44,70,88,.28);box-shadow:none}
+.platform.sonuk .kn-on,.platform.sonuk .kn-sag{background:#080d13;border-color:rgba(44,70,88,.2)}
+.platform.vurgu .taban{border-color:var(--vurgu);box-shadow:0 0 0 1px var(--vurgu),0 0 52px rgba(79,163,204,.3),0 26px 54px rgba(0,0,0,.55)}
+
+.plakaEtiket{position:absolute;transform-origin:center;text-align:center;
+  transform:translate(-50%,-50%) translateZ(2px);
+  white-space:nowrap;pointer-events:none;transition:color .3s}
+.plakaEtiket b{display:block;font-family:"Barlow Condensed",sans-serif;font-weight:700;
+  font-size:var(--pf,19px);letter-spacing:.14em;text-transform:uppercase;color:#3d4f61}
+.plakaEtiket small{font-size:calc(var(--pf,19px)*.34)!important}
+.plakaEtiket small{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;color:#33424f;margin-top:3px}
+.plakaEtiket.sonuk b{color:#28343f} .plakaEtiket.sonuk small{color:#1e2830} .plakaEtiket.sonuk em{color:#28343f!important}
+.plakaEtiket em{font-style:normal}
+
+/* ───── tezgah ───── */
+.tezgah{position:absolute;transform-style:preserve-3d;cursor:pointer;transition:transform .18s}
+.tezgah:hover{--D:var(--DP);--D2:var(--DP2);--D3:var(--DP3);transform:translateZ(5px)}
+.tezgah.secili{--D:var(--DP);--D2:var(--DP2);--D3:var(--DP3)}
+.tezgah.kapali{pointer-events:none}
+.kutu{position:absolute;transform-style:preserve-3d}
+.kutu>i{position:absolute;display:block;border:1px solid rgba(0,0,0,.3)}
+.kutu>.f-ust{inset:0}
+.kutu>.f-on{left:0;bottom:0;transform-origin:bottom center;transform:rotateX(-90deg)}
+.kutu>.f-sag{right:0;top:0;transform-origin:right center;transform:rotateY(90deg)}
+
+/* zemin pedi — tezgahın PLC sinyali var mı, bir bakışta */
+.zeminPed{position:absolute;pointer-events:none;border-radius:8px;transition:background .3s,border-color .3s}
+.zeminPed.sinyalli{background:rgba(52,178,108,.14);border:1px solid rgba(52,178,108,.30)}
+.zeminPed.sinyalsiz{background:rgba(79,163,204,.13);border:1px solid rgba(79,163,204,.30)}
+.zeminPed.durus{background:rgba(224,74,79,.17);border:1px solid rgba(224,74,79,.40)}
+.zeminPed.sonuk{background:rgba(40,52,63,.16);border:1px solid rgba(40,52,63,.28)}
+
+.tzEtiket{position:absolute;transform-origin:0 0;pointer-events:none;
+  transition:transform .75s cubic-bezier(.25,.7,.3,1);
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:#e8f1f7;
+  text-shadow:0 1px 4px rgba(0,0,0,.95);white-space:nowrap;transition:color .3s}
+.tzEtiket small{display:block;font-weight:400;font-size:9.5px;color:rgba(232,241,247,.5);margin-top:1px}
+.tzEtiket.sonuk{color:#222d37} .tzEtiket.sonuk small{color:#1a232b}
+
+#disiBtn.acik{background:#2a4059;border-color:#3d5a7d;color:#cfe0ea}
+.disiRozet{font:9px "IBM Plex Mono",monospace;letter-spacing:.1em;color:#8a6d2e;
+ border:1px solid #5c4a20;border-radius:4px;padding:1px 5px;vertical-align:middle}
+.kapsamBtn{background:none;border:1px solid #2c3947;color:#5d6b7d;border-radius:6px;
+ padding:2px 8px;font:9px "IBM Plex Mono",monospace;letter-spacing:.06em;cursor:pointer;margin-top:4px}
+.kapsamBtn:hover{color:#cfe0ea;border-color:#3d5a7d}
+#duzenleBtn.acik{background:#2a4059;border-color:#3d5a7d;color:#cfe0ea}
+#plan.izgara{background-image:
+ repeating-linear-gradient(0deg,rgba(80,110,145,.14) 0 1px,transparent 1px 40px),
+ repeating-linear-gradient(90deg,rgba(80,110,145,.14) 0 1px,transparent 1px 40px)}
+#plan.izgara .tezgah{cursor:move}
+.yol{position:absolute;transform:translateZ(.5px);pointer-events:none;background:#151d27}
+.yol.dikey{border-left:3px dashed rgba(214,178,64,.42);border-right:3px dashed rgba(214,178,64,.42)}
+.yol.yatay{border-top:3px dashed rgba(214,178,64,.42);border-bottom:3px dashed rgba(214,178,64,.42)}
+.yolAd{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+ font-family:"IBM Plex Mono",monospace;font-size:26px;letter-spacing:.3em;color:#3b4048;white-space:nowrap}
+.oda{position:absolute;transform:translateZ(1.5px);pointer-events:none;
+  background:#101820;border:3px solid #2c3947;border-radius:2px}
+.odaAd{position:absolute;left:50%;top:14px;transform:translateX(-50%);
+  font-family:"IBM Plex Mono",monospace;font-size:22px;letter-spacing:.22em;color:#39434f;white-space:nowrap}
+.odaKapi{position:absolute;background:#4a5966}
+.odaKapi.sag{right:-3px;top:38%;width:5px;height:24%}
+.secimCerceve{position:absolute;border:1.5px solid #cfe6f2;pointer-events:none;display:none;
+  box-shadow:0 0 22px rgba(207,230,242,.35)}
+.halka{position:absolute;border:2px solid var(--durusta);border-radius:50%;pointer-events:none;animation:yay 2.6s ease-out infinite}
+@keyframes yay{0%{transform:scale(.3);opacity:.9}100%{transform:scale(1.9);opacity:0}}
+.tezgah{animation:kalk .5s cubic-bezier(.2,.85,.3,1) backwards}
+@keyframes kalk{from{transform:translateZ(-46px)}to{transform:translateZ(0)}}
+
+/* ───── sağ sütun ───── */
+.sag{grid-row:1/3;grid-column:2/3;background:var(--panel);border-left:1px solid var(--cizgi);
+  display:flex;flex-direction:column;overflow:hidden}
+.kart{border-bottom:1px solid var(--cizgi)}
+.kart>h3{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--metin-3);padding:14px 16px 8px;font-weight:500}
+
+/* ── 3B bölüm haritası ── */
+.miniSahne{height:212px;position:relative;margin:0 12px 6px;background:#0d151d;
+  border:1px solid var(--cizgi);overflow:hidden;perspective:2000px;perspective-origin:50% 50%}
+.miniDunya{position:absolute;left:50%;top:50%;width:0;height:0;transform-style:preserve-3d;
+  transform:rotateX(var(--isoX)) rotateZ(var(--isoZ))
+            scale3d(var(--ms,.11),var(--ms,.11),var(--ms,.11)) translate3d(var(--mx,0px),var(--my,0px),0);
+  transition:transform .6s cubic-bezier(.25,.7,.3,1)}
+.miniPlan{position:absolute;transform-style:preserve-3d}
+
+/* BAĞLAM: diğer bölümler sessiz, düz, kabartmasız — referanstaki sokaklar gibi */
+.mPlaka{position:absolute;transform-style:preserve-3d;cursor:pointer;transition:transform .3s}
+.mPlaka>i{position:absolute;display:block}
+.mPlaka>.m-ust{inset:0;background:#161f28;border:2px solid #212e39;border-radius:14px;
+  transition:background .25s,border-color .25s}
+.mPlaka>.m-on,.mPlaka>.m-sag{display:none}
+.mPlaka.durusVar>.m-ust{border-color:#4a2427}
+.mPlaka:hover>.m-ust{background:#1e2a35;border-color:#3f5766}
+
+/* SEÇİLİ: tek büyük kabartmalı nesne — üst yüzey kalınlık kadar YUKARI taşınır,
+   yan duvarlar altını doldurur (yoksa içi boş tepsi gibi görünür) */
+.mPlaka.secili>.m-ust{
+  transform:translateZ(46px);
+  background:#37dc82;border:4px dashed rgba(5,26,15,.55);border-radius:20px;
+  box-shadow:0 0 0 3px rgba(9,30,18,.85),0 0 90px rgba(55,220,130,.45)}
+.mPlaka.secili>.m-on,.mPlaka.secili>.m-sag{display:block}
+.mPlaka.secili>.m-on{left:0;bottom:0;transform-origin:bottom center;transform:rotateX(-90deg);
+  background:linear-gradient(180deg,#1f8b4f,#0d4227)}
+.mPlaka.secili>.m-sag{right:0;top:0;transform-origin:right center;transform:rotateY(90deg);
+  background:linear-gradient(90deg,#0b3a22,#176b3e)}
+
+/* okunur etiket — 3B dünyanın dışında, sahne üstünde */
+.mPil{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  background:rgba(6,22,13,.88);border:1px solid rgba(120,235,175,.45);
+  color:#8ff0bb;font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;
+  padding:4px 10px;border-radius:11px;pointer-events:none;white-space:nowrap;display:none}
+.mPil.gorunur{display:block}
+.miniAlt{padding:0 16px 13px;display:flex;align-items:baseline;gap:8px;min-height:30px}
+.miniAlt b{font-family:"Barlow Condensed",sans-serif;font-size:14px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--metin)}
+.miniAlt span{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--metin-3);margin-left:auto}
+
+.bolumListe{max-height:210px;overflow:auto;padding:0 8px 10px}
+.bolumListe::-webkit-scrollbar{width:6px}
+.bolumListe::-webkit-scrollbar-thumb{background:#243342;border-radius:3px}
+.bSatir{width:100%;display:flex;align-items:center;gap:9px;padding:7px 9px;cursor:pointer;
+  background:none;border:1px solid transparent;border-radius:2px;color:var(--metin-2);
+  font-family:inherit;font-size:12px;text-align:left;transition:.15s}
+.bSatir:hover{background:var(--panel-2);color:var(--metin)}
+.bSatir.aktif{background:var(--panel-2);border-color:var(--hat);color:var(--metin)}
+.bSatir .ad{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bSatir .cz{display:flex;gap:2px;flex:none}
+.bSatir .cz i{width:4px;height:13px;border-radius:1px}
+.bSatir .n{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--metin-3);width:20px;text-align:right;flex:none}
+
+.detay{flex:1;overflow:auto;padding:0 16px 16px}
+.detay .bos{color:var(--metin-3);font-size:12px;padding:20px 0;line-height:1.6}
+.adDuzelt{background:none;border:0;color:#5d6b7d;cursor:pointer;font-size:13px;padding:0 3px}
+.adDuzelt:hover{color:#cfe0ea}
+.adInput{background:#0f151c;border:1px solid #3a4a5c;color:#cfe0ea;border-radius:4px;
+ padding:2px 6px;font:12px "IBM Plex Mono",monospace;width:200px}
+.dkod{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:30px;line-height:1}
+.dad{font-size:12px;color:var(--metin-2);margin:4px 0 12px}
+.dserit{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:12px;
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--cizgi);background:#0e161e}
+.nk{width:8px;height:8px;border-radius:1px;flex:none}
+.dsatir{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(34,48,60,.6);font-size:12px}
+.dsatir dt{color:var(--metin-3)}
+.dsatir dd{font-family:"IBM Plex Mono",monospace;text-align:right}
+.cubuk{height:5px;background:#0d151d;border:1px solid var(--cizgi);margin-top:6px;overflow:hidden}
+.cubuk i{display:block;height:100%;background:linear-gradient(90deg,#256b47,#3fbd7d)}
+.uyari{margin-top:14px;padding:9px 11px;border-left:2px solid var(--sinyalyok);
+  background:rgba(208,153,60,.07);font-size:11px;color:#c2a065;line-height:1.55}
+.altdugme{padding:12px 16px;border-top:1px solid var(--cizgi)}
+.dg{width:100%;background:var(--panel-2);border:1px solid var(--hat);color:var(--metin-2);
+  padding:8px;font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.13em;
+  text-transform:uppercase;cursor:pointer}
+.dg:hover{background:#233443;color:var(--metin)}
+
+.alt{grid-row:2/3;grid-column:1/2;background:var(--panel);border-top:1px solid var(--cizgi);
+  display:grid;grid-template-columns:repeat(5,1fr)}
+.gs{padding:15px 20px;border-right:1px solid var(--cizgi);display:flex;flex-direction:column;justify-content:center}
+.gs:last-child{border-right:none}
+.gs .k{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.14em;color:var(--metin-3);text-transform:uppercase}
+.gs .v{font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:32px;line-height:1;margin-top:6px}
+.gs .v small{font-size:13px;color:var(--metin-3);margin-left:4px}
+.g-c .v{color:var(--calisiyor)} .g-d .v{color:var(--durusta)} .g-s .v{color:var(--sinyalyok)} .g-o .v{color:var(--metin-3)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="duzen" id="duzen">
+  <main class="sahne">
+    <div class="ust">
+      <div class="logo">İLERİ<span>HUB</span></div>
+      <div class="baslikKutu"><div class="b" id="baslik">Tüm Fabrika</div><div class="a" id="altbaslik"></div></div>
+      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span>
+      <div class="saat"><span class="canli"><i></i>CANLI</span><span id="saat">--:--:--</span></div>
+    </div>
+    <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"><div class="dokular"></div></div></div></div>
+    <button class="geri" id="geri">← Tüm fabrika</button>
+    <div class="ipucu">SÜRÜKLE — KAYDIR<br>ORTA TUŞ — SERBEST DÖNDÜR<br>⟲⟳ — 45° / BASILI TUT<br>TEKERLEK — YAKINLAŞTIR<br>ÇİFT TIK — SIFIRLA</div>
+    <button id="adIndir" onclick="adlariIndir()" style="display:none;position:absolute;left:14px;bottom:14px;z-index:20;
+ background:var(--pano,#1b2026);border:1px solid #2c3947;color:#c6ccd4;border-radius:8px;padding:7px 12px;
+ font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;cursor:pointer">DÜZELTMELERİ İNDİR</button>
+<button id="disiBtn" onclick="disiToggle()" style="position:absolute;left:14px;bottom:90px;z-index:20;
+ background:var(--pano,#1b2026);border:1px solid #2c3947;color:#c6ccd4;border-radius:8px;padding:7px 12px;
+ font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;cursor:pointer">IPRO DIŞI: GİZLİ</button>
+<button id="duzenleBtn" onclick="duzenleToggle()" style="position:absolute;left:14px;bottom:52px;z-index:20;
+ background:var(--pano,#1b2026);border:1px solid #2c3947;color:#c6ccd4;border-radius:8px;padding:7px 12px;
+ font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;cursor:pointer">DÜZENLE</button>
+<div class="zoomKutu"><button id="dSol" title="45° sola döndür">⟲</button><button id="dSag" title="45° sağa döndür">⟳</button><button id="zIn">+</button><button id="zOut">−</button></div>
+  </main>
+
+  <aside class="sag">
+    <div class="kart">
+      <h3>Bölüm haritası</h3>
+      <div class="miniSahne"><div class="miniDunya" id="miniDunya"><div class="miniPlan" id="miniPlan"></div></div><div class="mPil" id="mPil"></div></div>
+      <div class="miniAlt"><b id="miniAd">Tüm fabrika</b><span id="miniBilgi"></span></div>
+    </div>
+    <div class="kart"><h3>Bölümler</h3><div class="bolumListe" id="bolumListe"></div></div>
+    <div class="detay" id="detay"><div class="bos">Haritadan bir tezgah seç — operatör, iş emri, sayaç ve duruş bilgisi burada görünür.</div></div>
+    <div class="altdugme"><button class="dg" id="tvdg">TV modu</button></div>
+  </aside>
+
+  <div class="alt">
+    <div class="gs g-c"><div class="k">Çalışıyor</div><div class="v" id="g-cal">0</div></div>
+    <div class="gs g-d"><div class="k">Duruşta</div><div class="v" id="g-dur">0</div></div>
+    <div class="gs g-s"><div class="k">Sinyal yok</div><div class="v" id="g-sin">0</div></div>
+    <div class="gs"><div class="k">Vardiya üretimi</div><div class="v" id="g-ure">0<small>ad</small></div></div>
+    <div class="gs g-o"><div class="k">OEE</div><div class="v">—<small>poller Faz 2</small></div></div>
+  </div>
+</div>
+
+<script>
+/* ═════════ ARKETİPLER — grup başına 3B siluet ═════════
+   kutu: [x,y,z,g,d,y,ton]  ·  ton 0=gövde 1=koyu 2=metal  ·  ayak izi 84×84 */
+const ARKETIP={
+ 'ROBOT KAYNAK':[[10,10,0,64,64,9,1],[34,34,9,22,22,24,0],[36,8,33,14,32,9,0],[34,2,26,18,10,12,2]],
+ 'PRESHANE':[[6,6,0,72,72,12,1],[8,52,12,68,22,52,0],[8,14,46,68,38,18,0],[16,18,12,52,30,6,2]],
+ 'CNC TORNA':[[4,20,0,76,48,12,1],[4,20,12,48,48,26,0],[4,14,12,22,60,34,0],[60,20,12,16,12,30,2]],
+ 'MANUEL KAYNAK':[[8,14,0,68,56,15,0],[54,18,15,20,20,20,1],[22,20,15,9,9,28,2],[20,17,41,14,7,5,2]],
+ 'PUNTA KAYNAK':[[8,14,0,68,56,15,0],[16,18,15,16,44,30,0],[34,30,32,32,10,10,2],[58,28,15,14,14,18,1]],
+ 'ENJEKSIYON':[[2,22,0,80,42,10,1],[2,18,10,38,50,30,0],[44,32,12,34,18,16,0],[54,26,28,16,16,20,2]],
+ 'DAİRE TESTERE-BORU BÜKÜM':[[10,18,0,64,48,12,1],[10,20,12,28,42,20,0],[40,36,16,5,32,32,2],[46,20,12,26,14,8,0]],
+ 'LAZER':[[2,10,0,80,64,12,1],[2,28,12,80,14,22,0],[32,30,12,14,10,18,2],[6,14,12,70,12,4,0]],
+ 'PAKETLEME':[[2,28,0,80,26,14,0],[2,24,14,80,4,7,1],[2,50,14,80,4,7,1],[32,32,20,18,18,14,2]],
+ 'KILIT MONTAJ':[[8,16,0,68,50,14,0],[8,16,14,68,50,4,1],[8,50,18,68,10,20,1],[20,22,18,14,14,10,2]],
+ 'MEKANİK MONTAJ':[[8,16,0,68,50,14,0],[8,16,14,68,50,4,1],[46,20,18,20,20,16,1],[16,22,18,12,12,12,2]],
+ 'HAPPICH MONTAJ':[[10,18,0,64,46,14,0],[10,18,14,64,46,4,1],[10,48,18,64,8,24,1],[24,24,18,30,10,8,2]],
+ 'KALIPHANE':[[10,14,0,64,50,14,1],[52,18,14,22,42,46,0],[22,26,40,32,16,14,0],[14,20,14,38,28,6,2]],
+ 'VARSAYILAN':[[8,16,0,68,50,16,0],[8,16,16,68,50,4,1],[24,24,20,28,20,12,2]],
+};
+ARKETIP['CNC']=ARKETIP['CNC TORNA'];
+ARKETIP['DAIRE TESTERE']=ARKETIP['DAİRE TESTERE-BORU BÜKÜM'];
+ARKETIP['KAYNAKHANE']=ARKETIP['MANUEL KAYNAK'];
+ARKETIP['MONTAJ']=ARKETIP['MEKANİK MONTAJ'];
+ARKETIP['SASE']=ARKETIP['PUNTA KAYNAK'];
+ARKETIP['KUMLAMA']=ARKETIP['VARSAYILAN'];
+
+/* ═════════ GERÇEK YERLEŞİM — ALT_KAT_DÜZENLİ_MAKİNA_YERLEŞİMİ.pdf'den ═════════
+   Koordinatlar plan pt × 10 (X0=155, Y0=140). Telemetri hâlâ TEMSİLİ. */
+const BOLUMLER=[{"ad": "LAZER", "pano": "—", "x": 127.0, "y": 177.0, "w": 2520.0, "h": 1378.0}, {"ad": "DAIRE TESTERE", "pano": "PANO-1", "x": 127.0, "y": 1547.5, "w": 2520.0, "h": 1260.8}, {"ad": "CNC", "pano": "PANO-1", "x": 127.0, "y": 2832.2, "w": 2520.0, "h": 1026.1}, {"ad": "PRESHANE", "pano": "PANO-1", "x": 127.0, "y": 3860.2, "w": 2520.0, "h": 839.8}, {"ad": "PUNTA KAYNAK", "pano": "PANO-3", "x": 127.0, "y": 4724.0, "w": 1456.0, "h": 361.0}, {"ad": "KUMLAMA", "pano": "PANO-1", "x": 127.0, "y": 5335.0, "w": 1456.0, "h": 180.0}, {"ad": "KAYNAKHANE", "pano": "PANO-1", "x": 127.0, "y": 5522.0, "w": 1456.0, "h": 867.0}, {"ad": "ROBOT KAYNAK", "pano": "PANO-1", "x": 1682.5, "y": 5062.5, "w": 964.5, "h": 1085.0}, {"ad": "SASE", "pano": "PANO-1", "x": 127.0, "y": 6455.0, "w": 1456.0, "h": 1322.0}, {"ad": "PAKETLEME", "pano": "PANO-2", "x": 2942.0, "y": 3757.0, "w": 2144.0, "h": 416.0}, {"ad": "MONTAJ", "pano": "PANO-2", "x": 2942.0, "y": 4190.0, "w": 2144.0, "h": 1237.5}, {"ad": "KALIPHANE", "pano": "—", "x": 2942.0, "y": 5451.5, "w": 2144.0, "h": 1378.5}];
+const MAKINELER=[{"kod": "LZ01", "bolum": "LAZER", "ad": "Lazer Kesim Makinesi", "x": 500.0, "y": 830.0}, {"kod": "LZ02", "bolum": "LAZER", "ad": "Lazer Kesim Makinesi", "x": 520.0, "y": 1390.0}, {"kod": "DT02", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 490.0, "y": 2180.0}, {"kod": "DT04", "bolum": "DAIRE TESTERE", "ad": "Kordon Makinesi", "x": 1250.0, "y": 1950.0}, {"kod": "DT05", "bolum": "DAIRE TESTERE", "ad": "Tel/Mil Cekme Makinesi", "x": 510.0, "y": 1630.0}, {"kod": "DT07", "bolum": "DAIRE TESTERE", "ad": "Boru Sekillendirme Mak.", "x": 490.0, "y": 2510.0}, {"kod": "DT08", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 480.0, "y": 2300.0}, {"kod": "DT10", "bolum": "DAIRE TESTERE", "ad": "Lama Kivirma", "x": 570.0, "y": 2180.0}, {"kod": "DT11", "bolum": "DAIRE TESTERE", "ad": "Daire Testere", "x": 640.0, "y": 2610.0}, {"kod": "DT12", "bolum": "DAIRE TESTERE", "ad": "Boru Bukme Makinesi", "x": 590.0, "y": 2770.0}, {"kod": "DT056", "bolum": "DAIRE TESTERE", "ad": "Boru Bukme Makinesi — kod plandaki gibi: DT056", "x": 520.0, "y": 2740.0}, {"kod": "CN04", "bolum": "DAIRE TESTERE", "ad": "Serit Testere — CN kodlu ama DT bolgesinde", "x": 770.0, "y": 2760.0}, {"kod": "CN01", "bolum": "CNC", "ad": "CNC Torna", "x": 2420.0, "y": 3110.0}, {"kod": "CN02", "bolum": "CNC", "ad": "HAAS CNC Torna", "x": 2140.0, "y": 3350.0}, {"kod": "CN03", "bolum": "CNC", "ad": "CNC Torna — plan iki CN03 etiketi ust uste", "x": 2080.0, "y": 3040.0}, {"kod": "CN18", "bolum": "CNC", "ad": "Ovalama Tezgahi", "x": 1390.0, "y": 3380.0}, {"kod": "CN20", "bolum": "CNC", "ad": "Cift Aynali Torna", "x": 1490.0, "y": 2890.0}, {"kod": "CN22", "bolum": "CNC", "ad": "Matkap (hidrolik unite)", "x": 670.0, "y": 3290.0}, {"kod": "CN23", "bolum": "CNC", "ad": "Matkap (hidrolik unite)", "x": 670.0, "y": 3620.0}, {"kod": "ARES", "bolum": "CNC", "ad": "Ares Seiki Tapping Center", "x": 620.0, "y": 3500.0}, {"kod": "PM02", "bolum": "CNC", "ad": "Matkap", "x": 1840.0, "y": 3830.0}, {"kod": "PM05", "bolum": "CNC", "ad": "Matkap", "x": 2050.0, "y": 3830.0}, {"kod": "PM06", "bolum": "CNC", "ad": "Matkap", "x": 1950.0, "y": 3830.0}, {"kod": "PM07", "bolum": "CNC", "ad": "Matkap", "x": 1730.0, "y": 3830.0}, {"kod": "PM08", "bolum": "CNC", "ad": "Matkap", "x": 1650.0, "y": 3830.0}, {"kod": "PM09", "bolum": "CNC", "ad": "Matkap", "x": 1380.0, "y": 3640.0}, {"kod": "PM10", "bolum": "CNC", "ad": "Matkap", "x": 1540.0, "y": 3750.0}, {"kod": "PM13", "bolum": "CNC", "ad": "Rovelver Torna", "x": 1380.0, "y": 3800.0}, {"kod": "BROS", "bolum": "CNC", "ad": "Hidrolik Bros Cekme Presi — konum yaklasik — dogrulanacak", "x": 1420.0, "y": 3818.0}, {"kod": "KH31", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 350.0, "y": 4970.0}, {"kod": "KH28", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 580.0, "y": 4980.0}, {"kod": "KH26", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 780.0, "y": 5000.0}, {"kod": "KH32", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 930.0, "y": 5000.0}, {"kod": "KH37", "bolum": "PUNTA KAYNAK", "ad": "Punta Kaynak Makinesi", "x": 1060.0, "y": 5010.0}, {"kod": "PM14", "bolum": "PUNTA KAYNAK", "ad": "Induksiyon Makinasi — punta bloku icinde", "x": 420.0, "y": 4760.0}, {"kod": "KH10", "bolum": "KUMLAMA", "ad": "Kumlama Makinesi", "x": 590.0, "y": 5420.0}, {"kod": "KUM-2", "bolum": "KUMLAMA", "ad": "Kumlama Makinesi", "x": 1050.0, "y": 5465.0}, {"kod": "KH05", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 630.0, "y": 5650.0}, {"kod": "KH07", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 890.0, "y": 5650.0}, {"kod": "KH17", "bolum": "KAYNAKHANE", "ad": "Gazalti Kay.Mak.", "x": 1080.0, "y": 5650.0}, {"kod": "KH16", "bolum": "KAYNAKHANE", "ad": "Kaynak Istasyonu", "x": 820.0, "y": 6160.0}, {"kod": "KH18", "bolum": "KAYNAKHANE", "ad": "Kaynak Istasyonu", "x": 1000.0, "y": 6260.0}, {"kod": "KH14", "bolum": "KAYNAKHANE", "ad": "Taslama Istasyonu", "x": 1250.0, "y": 6140.0}, {"kod": "KH15", "bolum": "KAYNAKHANE", "ad": "Taslama Istasyonu", "x": 1080.0, "y": 6130.0}, {"kod": "KH01", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak.", "x": 740.0, "y": 6300.0}, {"kod": "KH02", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak.", "x": 390.0, "y": 6310.0}, {"kod": "KH05-B", "bolum": "KAYNAKHANE", "ad": "Gaz Alti Kay.Mak. — IKINCI KH05 — cift etiket, teyit gerekli", "x": 900.0, "y": 6320.0}, {"kod": "KH06", "bolum": "KAYNAKHANE", "ad": "Kurt Agzi Acma Makinasi", "x": 1250.0, "y": 5550.0}, {"kod": "KH08", "bolum": "KAYNAKHANE", "ad": "Serit Zimpara 1", "x": 1300.0, "y": 5780.0}, {"kod": "KH09", "bolum": "KAYNAKHANE", "ad": "Serit Zimpara 2", "x": 1300.0, "y": 5660.0}, {"kod": "DTAP", "bolum": "KAYNAKHANE", "ad": "Doner Tabla Kaynak Aparati", "x": 890.0, "y": 6230.0}, {"kod": "KR01", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2390.0, "y": 6050.0}, {"kod": "KR02", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2390.0, "y": 5580.0}, {"kod": "KR03", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1920.0, "y": 6060.0}, {"kod": "KR04", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1920.0, "y": 5640.0}, {"kod": "KR06", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2280.0, "y": 5150.0}, {"kod": "KR07", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 2090.0, "y": 5150.0}, {"kod": "KR10", "bolum": "ROBOT KAYNAK", "ad": "Robot Kaynak", "x": 1770.0, "y": 5170.0}, {"kod": "PH01", "bolum": "PRESHANE", "ad": "160 Ton Hidrolik Pres", "x": 2050.0, "y": 4560.0}, {"kod": "PH02", "bolum": "PRESHANE", "ad": "80 Ton Hidrolik Pres", "x": 2240.0, "y": 3916.0}, {"kod": "PH03", "bolum": "PRESHANE", "ad": "75 Ton Hidrolik Pres", "x": 1320.0, "y": 4300.0}, {"kod": "PH04", "bolum": "PRESHANE", "ad": "60 Ton Eksantrik Pres", "x": 2140.0, "y": 4300.0}, {"kod": "PH06", "bolum": "PRESHANE", "ad": "35 Ton Eksantrik Pres", "x": 2520.0, "y": 4410.0}, {"kod": "PH07", "bolum": "PRESHANE", "ad": "30 Ton Eksantrik Pres", "x": 2390.0, "y": 4370.0}, {"kod": "PH08", "bolum": "PRESHANE", "ad": "60 Ton Eksantrik Pres", "x": 1940.0, "y": 4310.0}, {"kod": "PH11", "bolum": "PRESHANE", "ad": "150 Ton Hava Kav. Eks. Pres", "x": 1520.0, "y": 4310.0}, {"kod": "PH12", "bolum": "PRESHANE", "ad": "150 Ton Hava Kav. Eks. Pres", "x": 1730.0, "y": 4320.0}, {"kod": "PH15", "bolum": "PRESHANE", "ad": "30 Ton Eksantrik Pres", "x": 2580.0, "y": 4320.0}, {"kod": "PH19", "bolum": "PRESHANE", "ad": "Abkant Bukum Makinesi", "x": 790.0, "y": 3910.0}, {"kod": "PH20", "bolum": "PRESHANE", "ad": "15 Ton Eksantrik Pres", "x": 2280.0, "y": 4660.0}, {"kod": "PH21", "bolum": "PRESHANE", "ad": "Abkant Bukum Makinesi", "x": 750.0, "y": 4530.0}, {"kod": "SK01", "bolum": "SASE", "ad": "Punta", "x": 990.0, "y": 6530.0}, {"kod": "SK02", "bolum": "SASE", "ad": "Sase Hidrolik Delme Tezgahi", "x": 900.0, "y": 6950.0}, {"kod": "SK03", "bolum": "SASE", "ad": "Robot Punta", "x": 590.0, "y": 6960.0}, {"kod": "SK07", "bolum": "SASE", "ad": "Sase Uteleme Unitesi", "x": 1520.0, "y": 7040.0}, {"kod": "SK08", "bolum": "SASE", "ad": "Doner Tabla Unitesi", "x": 610.0, "y": 6730.0}, {"kod": "PK01", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3350.0, "y": 3990.0}, {"kod": "PK02", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3450.0, "y": 3990.0}, {"kod": "PK03", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3710.0, "y": 4000.0}, {"kod": "PK04", "bolum": "PAKETLEME", "ad": "Paketleme", "x": 3810.0, "y": 4000.0}, {"kod": "PK05", "bolum": "PAKETLEME", "ad": "Lazer Yazi Makinasi", "x": 4920.0, "y": 4110.0}, {"kod": "PK06", "bolum": "PAKETLEME", "ad": "Lazer Yazi Makinasi", "x": 4700.0, "y": 4110.0}, {"kod": "PK12", "bolum": "PAKETLEME", "ad": "Burc Cakma", "x": 3210.0, "y": 3820.0}, {"kod": "PK26", "bolum": "PAKETLEME", "ad": "Sirinkleme Makinesi", "x": 3130.0, "y": 3990.0}, {"kod": "PK31", "bolum": "PAKETLEME", "ad": "Rulman Cakma", "x": 3310.0, "y": 3820.0}, {"kod": "KR05", "bolum": "SASE", "ad": "Eksantrik Pres — robot kaynak kodlu ama yemekhane yakininda — teyit", "x": 1170.0, "y": 7710.0}, {"kod": "KP11", "bolum": "KALIPHANE", "ad": "Ajan Erezyon", "x": 3341.0, "y": 5625.0}, {"kod": "KP25", "bolum": "KALIPHANE", "ad": "CNC Erezyon", "x": 3494.0, "y": 5624.0}, {"kod": "KP01", "bolum": "KALIPHANE", "ad": "Freze", "x": 4205.0, "y": 5640.0}, {"kod": "KP07", "bolum": "KALIPHANE", "ad": "Freze", "x": 4455.0, "y": 5640.0}, {"kod": "KP22", "bolum": "KALIPHANE", "ad": "Pah Kirma", "x": 4690.0, "y": 5585.0}, {"kod": "KP24", "bolum": "KALIPHANE", "ad": "Taslama Masasi", "x": 4790.0, "y": 5480.0}, {"kod": "SATIH", "bolum": "KALIPHANE", "ad": "Satih Taslama", "x": 4882.0, "y": 5558.0}, {"kod": "FIRIN", "bolum": "KALIPHANE", "ad": "Firin", "x": 4997.0, "y": 5665.0}, {"kod": "KPT03", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3824.0, "y": 5750.0}, {"kod": "MARK", "bolum": "KALIPHANE", "ad": "Markalama Pleyti", "x": 3955.0, "y": 5752.0}, {"kod": "KPT02", "bolum": "KALIPHANE", "ad": "Pleyt", "x": 3480.0, "y": 5890.0}, {"kod": "TRN-1", "bolum": "KALIPHANE", "ad": "Torna Tezgahi (1)", "x": 4830.0, "y": 5844.0}, {"kod": "KP05", "bolum": "KALIPHANE", "ad": "Radyal Matkap", "x": 4200.0, "y": 5957.0}, {"kod": "KP13", "bolum": "KALIPHANE", "ad": "Serit Testere", "x": 4485.0, "y": 6005.0}, {"kod": "TRN-2", "bolum": "KALIPHANE", "ad": "Torna Tezgahi (2)", "x": 4850.0, "y": 6025.0}, {"kod": "KP02", "bolum": "KALIPHANE", "ad": "Tezsan Matkap", "x": 4205.0, "y": 6090.0}, {"kod": "KPT04", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3806.0, "y": 6135.0}, {"kod": "KP06", "bolum": "KALIPHANE", "ad": "Serit Testere", "x": 4440.0, "y": 6156.0}, {"kod": "KP21", "bolum": "KALIPHANE", "ad": "T.Motoru", "x": 4068.0, "y": 6199.0}, {"kod": "KP04", "bolum": "KALIPHANE", "ad": "Radyal Matkap", "x": 4315.0, "y": 6242.0}, {"kod": "KPT05", "bolum": "KALIPHANE", "ad": "Tesviye Tezgahi", "x": 3650.0, "y": 6303.0}, {"kod": "KP10", "bolum": "KALIPHANE", "ad": "CNC Tel Erezyon", "x": 3092.0, "y": 6537.0}, {"kod": "MAZAK", "bolum": "KALIPHANE", "ad": "MAZAK VTC-300C", "x": 4410.0, "y": 6665.0}, {"kod": "KP09", "bolum": "KALIPHANE", "ad": "CNC Isleme Merkezi", "x": 4810.0, "y": 6700.0}, {"kod": "KP21?", "bolum": "KALIPHANE", "ad": "KP21 (ikinci etiket) — ikinci etiket — teyit", "x": 4656.0, "y": 6724.0}, {"kod": "PK30", "bolum": "MONTAJ", "ad": "Direksiyon Bogma", "x": 3388.0, "y": 4480.0}, {"kod": "M02 T", "bolum": "MONTAJ", "ad": "M02 Taslama Motoru", "x": 5023.0, "y": 4710.0}, {"kod": "DIREKSIYON", "bolum": "MONTAJ", "ad": "DIREKSIYON MONTAJ HATTI", "x": 3420.0, "y": 4280.0}, {"kod": "2197H", "bolum": "MONTAJ", "ad": "2197 HATTI", "x": 3210.0, "y": 4434.0}, {"kod": "1410H", "bolum": "MONTAJ", "ad": "1410 HATTI", "x": 3268.0, "y": 4887.0}, {"kod": "MTJ-2", "bolum": "MONTAJ", "ad": "MONTAJ TEZGAH 2", "x": 3659.0, "y": 4869.0}, {"kod": "ELGAZI", "bolum": "MONTAJ", "ad": "EL GAZI KITLEK HT.", "x": 3940.0, "y": 4870.0}, {"kod": "KION", "bolum": "MONTAJ", "ad": "KION OTOMASYON HATTI", "x": 4450.0, "y": 4450.0}, {"kod": "JDEERE", "bolum": "MONTAJ", "ad": "JOHN DEERE EL FRENI HATTI", "x": 4775.0, "y": 4500.0}, {"kod": "2821", "bolum": "MONTAJ", "ad": "2821 KILIT HATTI", "x": 4745.0, "y": 4770.0}, {"kod": "KILIT-1", "bolum": "MONTAJ", "ad": "KILIT HATTI 1", "x": 4804.0, "y": 5333.0}, {"kod": "KILIT-2", "bolum": "MONTAJ", "ad": "KILIT HATTI 2", "x": 4558.0, "y": 5319.0}, {"kod": "KILIT-3", "bolum": "MONTAJ", "ad": "KILIT HATTI 3", "x": 4197.0, "y": 5256.0}, {"kod": "ELFREN-1", "bolum": "MONTAJ", "ad": "EL FREN HATTI 1", "x": 3355.0, "y": 5343.0}, {"kod": "ELFREN-2", "bolum": "MONTAJ", "ad": "EL FREN HATTI 2", "x": 3661.0, "y": 5342.0}, {"kod": "ELFREN-3", "bolum": "MONTAJ", "ad": "EL FREN HATTI 3", "x": 3938.0, "y": 5372.0}, {"kod": "K.KOL", "bolum": "MONTAJ", "ad": "kumanda kollari montaj bolumu", "x": 3640.0, "y": 5060.0}, {"kod": "OFIS-2", "bolum": "KALIPHANE", "ad": "Tezgah — adı düzeltilecek (tıklayıp düzenle)", "x": 3342.0, "y": 6537.0}, {"kod": "KALIP-3", "bolum": "KALIPHANE", "ad": "Tezgah — adı düzeltilecek (tıklayıp düzenle)", "x": 4610.0, "y": 6440.0}];
+const ADLAR={};
+const SEBEP=['0154 MAKİNE BAKIM DURUŞU','0210 KALIP DEĞİŞİMİ','0308 MALZEME BEKLEME','0412 KALİTE KONTROL'];
+const OPR=['ILR-00184','ILR-00207','ILR-00219','ILR-00233','ILR-00241','ILR-00256'];
+const MLZ=['ROK-4471-02','ROK-8820-11','ASL-1145-07','ROK-2290-04','ASL-6612-19'];
+const DURUM={calisiyor:['Çalışıyor','var(--calisiyor)'],durusta:['Duruşta','var(--durusta)'],
+ bosta:['Boşta','var(--bosta)'],sinyalyok:['Sinyal yok','var(--sinyalyok)']};
+
+const AYAK=84;   /* varsayilan ayak izi */
+const AYAKLAR={"LZ01": [480, 260], "LZ02": [480, 260], "DT02": 66, "DT04": 56, "DT05": 95, "DT07": 56, "DT08": 66, "DT10": 56, "DT11": 66, "DT12": 56, "DT056": 56, "CN04": 66, "CN01": 95, "CN02": 95, "CN03": 95, "CN18": 95, "CN20": 95, "CN22": 55, "CN23": 55, "ARES": 125, "PM02": 55, "PM05": 55, "PM06": 55, "PM07": 55, "PM08": 55, "PM09": 55, "PM10": 55, "PM13": 95, "BROS": 64, "KH31": 80, "KH28": 80, "KH26": 80, "KH32": 80, "KH37": 80, "PM14": 56, "KH10": 100, "KUM-2": 100, "KH05": 68, "KH07": 68, "KH17": 68, "KH16": 68, "KH18": 68, "KH14": 60, "KH15": 60, "KH01": 68, "KH02": 68, "KH05-B": 68, "KH06": 56, "KH08": 56, "KH09": 56, "DTAP": 56, "KR01": 105, "KR02": 105, "KR03": 105, "KR04": 105, "KR06": 105, "KR07": 105, "KR10": 105, "PH01": 110, "PH02": 110, "PH03": 88, "PH04": 88, "PH06": 88, "PH07": 64, "PH08": 88, "PH11": 110, "PH12": 110, "PH15": 64, "PH19": 88, "PH20": 64, "PH21": 88, "SK01": 80, "SK02": 88, "SK03": 105, "SK07": 56, "SK08": 56, "PK01": 80, "PK02": 80, "PK03": 80, "PK04": 80, "PK05": 56, "PK06": 56, "PK12": 56, "PK26": 56, "PK31": 56, "KR05": 64, "KP11": 76, "KP25": 76, "KP01": 72, "KP07": 72, "KP22": 56, "KP24": 56, "SATIH": 60, "FIRIN": 72, "KPT03": 64, "MARK": 62, "KPT02": 62, "TRN-1": 95, "KP05": 55, "KP13": 66, "TRN-2": 95, "KP02": 55, "KPT04": 64, "KP06": 66, "KP21": 56, "KP04": 55, "KPT05": 64, "KP10": 170, "MAZAK": 190, "KP09": 190, "KP21?": 55, "PK30": 56, "M02 T": 56, "2197": 56, "DIREKSIYON": 110, "2197H": 110, "1410H": 110, "MTJ-2": 110, "ELGAZI": 110, "KION": 110, "JDEERE": 110, "2821": 110, "KILIT-1": 110, "KILIT-2": 110, "KILIT-3": 110, "ELFREN-1": 110, "ELFREN-2": 110, "ELFREN-3": 110, "K.KOL": 110, "OFIS-2": 170, "KALIP-3": 190};
+const TEZGAHLAR=[];
+MAKINELER.forEach((m,n)=>{
+  const b=BOLUMLER.find(x=>x.ad===m.bolum), rn=(n*37)%100;
+  const sinyalli=b.pano!=='—'&&n%11!==5;
+  const av=AYAKLAR[m.kod]||AYAK;   /* tip-bazli gercek ayak izi; sayi=kare, [w,h]=dikdortgen */
+  const ayW=Array.isArray(av)?av[0]:av, ayH=Array.isArray(av)?av[1]:av;
+  TEZGAHLAR.push({kod:m.kod,bolum:m.bolum,pano:b.pano,ad:m.ad,sinyalli,
+    ayak:Math.max(ayW,ayH),ayW,ayH,
+    x:m.x-ayW/2, y:m.y-ayH/2,
+    durum: !sinyalli ? (rn<58?'calisiyor':rn<72?'durusta':'bosta')
+                     : (rn<54?'calisiyor':rn<68?'durusta':rn<90?'bosta':'sinyalyok'),
+    say:40+((n*173)%1900),hiz:2+((n*7)%9),opr:OPR[n%OPR.length],ie:'IE-'+(24100+((n*13)%400)),
+    mlz:MLZ[n%MLZ.length],plan:120+((n*29)%380),sure:60+((n*97)%2600),sebep:SEBEP[n%SEBEP.length],idx:n});
+});
+TEZGAHLAR.forEach(t=>{if(!t.sinyalli||t.durum==='sinyalyok')t.say=null;t.uretilen=Math.min(t.plan,10+((t.idx*61)%t.plan))});
+BOLUMLER.forEach(b=>{b.n=TEZGAHLAR.filter(t=>t.bolum===b.ad).length});
+const PW=5450.0, PH=7850.0;
+
+/* ═════════ ANA SAHNE ═════════ */
+const plan=document.getElementById('plan'),dunya=document.getElementById('dunya');
+plan.style.width=PW+'px';plan.style.height=PH+'px';
+plan.style.left=(-PW/2)+'px';plan.style.top=(-PH/2)+'px';
+
+const kutuHTML=(k,sx=1,sy)=>{sy=sy??sx;const sz=(sx+sy)/2;const[x0,y0,z0,w0,d0,h0,t]=k;
+  /* 180° yansıma: arketiplerin ön yüzü açılış kamerasına baksın */
+  const xr=AYAK-x0-w0, yr=AYAK-y0-d0;
+  const x=xr*sx,y=yr*sy,z=z0*sz,w=w0*sx,d=d0*sy,h=h0*sz;
+  const f=t===0?['var(--D)','var(--D2)','var(--D3)']:t===1?['var(--D2)','var(--D3)','var(--D3)']:['#8d9aa6','#5d6b77','#4a5762'];
+  return `<div class="kutu" style="left:${x}px;top:${y}px;width:${w}px;height:${d}px;transform:translateZ(${z}px)">
+    <i class="f-ust" style="transform:translateZ(${h}px);background:${f[0]}"></i>
+    <i class="f-on" style="width:${w}px;height:${h}px;background:${f[1]}"></i>
+    <i class="f-sag" style="width:${h}px;height:${d}px;background:${f[2]}"></i></div>`;};
+
+BOLUMLER.forEach(b=>{
+  const p=document.createElement('div');p.className='platform';p.dataset.bolum=b.ad;
+  p.style.cssText=`left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px`;
+  p.innerHTML=`<div class="taban"></div><div class="kn-on"></div><div class="kn-sag"></div>`;
+  p.addEventListener('click',()=>{if(!kaydi)bolumSec(b.ad)});
+  plan.appendChild(p);b.el=p;
+  const e=document.createElement('div');e.className='plakaEtiket';
+  const pf=Math.max(22,Math.min(120,b.h*0.24,(b.w*1.3)/Math.max(4,b.ad.length)));
+  e.style.cssText=`left:${b.x+b.w/2}px;top:${b.y+b.h/2}px;--pf:${pf}px`;
+  e.innerHTML=`<b>${b.ad}</b><small>${b.pano} · ${b.n} tezgah · <em class="ed"></em></small>`;
+  plan.appendChild(e);b.etiket=e;
+});
+
+/* yürüyüş yolları: statik sarı şeritli zemin (ISA-101: hareket yalnız anormalliğin) */
+const YOLLAR=[
+ {x:2672,y:200, w:245,h:7560,yon:'dikey',ad:''},                 /* ana orta koridor */
+ {x:1595,y:4750,w:75, h:1620,yon:'dikey',ad:''},                 /* kaynakhane–robot arası */
+ {x:2942,y:6890,w:2144,h:190,yon:'yatay',ad:'YÜRÜYÜŞ YOLU'},     /* kalıphane altı (plandan) */
+];
+YOLLAR.forEach(y=>{
+  const e=document.createElement('div');e.className='yol '+y.yon;
+  e.style.cssText=`left:${y.x}px;top:${y.y}px;width:${y.w}px;height:${y.h}px`;
+  if(y.ad)e.innerHTML=`<span class="yolAd">${y.ad}</span>`;
+  plan.appendChild(e);});
+
+/* kapali odalar: tabla ustunde ic bolme (kamera dogrulamasiyla) */
+const ODALAR=[{ad:'KALIPHANE OFİS',bolum:'KALIPHANE',x:2942.0,y:6180.0,w:560.0,h:650.0,kapi:'sag'}];
+ODALAR.forEach(o=>{
+  const e=document.createElement('div');e.className='oda';
+  e.style.cssText=`left:${o.x}px;top:${o.y}px;width:${o.w}px;height:${o.h}px`;
+  e.innerHTML=`<span class="odaAd">${o.ad}</span><i class="odaKapi ${o.kapi}"></i>`;
+  plan.appendChild(e);});
+
+/* ── IPRO KAPSAMI: iş emri açılan tezgahlar. Varsayılan: KALIPHANE dışı=kapsamda.
+   Detay panelinden tek tıkla düzeltilir, kalıcıdır, JSON'a girer. ── */
+const IPRO_KEY='fabrikaHarita.iproKapsam';
+const iproDuzeltmeleri=JSON.parse(localStorage.getItem(IPRO_KEY)||'{}');
+const SABIT_GORUNUR=new Set(['MAZAK','KP09','KALIP-3','KP10','OFIS-2']); /* büyük makineler: listede yok ama sahnede kalır */
+TEZGAHLAR.forEach(t=>{
+  t.ipro = t.bolum!=='KALIPHANE';
+  if(t.kod in iproDuzeltmeleri) t.ipro=iproDuzeltmeleri[t.kod];
+  t.sabit=SABIT_GORUNUR.has(t.kod);});
+let disiGorunur=false;
+function kapsamGorunum(){
+  TEZGAHLAR.forEach(t=>{
+    const g=(t.ipro||t.sabit||disiGorunur)?'':'none';
+    t.el.style.display=g;t.ped.style.display=g;t.lb.style.display=g;
+    if(!t.ipro&&!disiGorunur&&secili===t.kod){secili=null;cerceve.style.display='none';
+      document.getElementById('detay').innerHTML=bosDetay||''}});
+  BOLUMLER.forEach(b=>{
+    b.n=TEZGAHLAR.filter(t=>t.bolum===b.ad&&(t.ipro||t.sabit||disiGorunur)).length;
+    if(b.etiket)b.etiket.querySelector('small').firstChild.textContent=`${b.pano} · ${b.n} tezgah · `;});
+  tazele();}
+function disiToggle(){
+  disiGorunur=!disiGorunur;
+  const b=document.getElementById('disiBtn');
+  b.textContent='IPRO DIŞI: '+(disiGorunur?'GÖRÜNÜR':'GİZLİ');
+  b.classList.toggle('acik',disiGorunur);
+  kapsamGorunum();}
+function iproToggle(kod){
+  const t=TEZGAHLAR.find(x=>x.kod===kod);if(!t)return;
+  t.ipro=!t.ipro;iproDuzeltmeleri[kod]=t.ipro;
+  localStorage.setItem(IPRO_KEY,JSON.stringify(iproDuzeltmeleri));
+  indirBtnGoster();kapsamGorunum();if(t.ipro||disiGorunur)detay();}
+
+const KONUM_KEY='fabrikaHarita.konumDuzeltme';
+const konumDuzeltmeleri=JSON.parse(localStorage.getItem(KONUM_KEY)||'{}');
+TEZGAHLAR.forEach(t=>{const k=konumDuzeltmeleri[t.kod];if(k){t.x=k[0];t.y=k[1]}});
+
+const cerceve=document.createElement('div');cerceve.className='secimCerceve';plan.appendChild(cerceve);
+
+TEZGAHLAR.forEach(t=>{
+  const ped=document.createElement('div');
+  ped.className='zeminPed';
+  ped.style.cssText=`left:${t.x-9}px;top:${t.y-9}px;width:${t.ayW+18}px;height:${t.ayH+18}px;transform:translateZ(1px)`;
+  plan.appendChild(ped);t.ped=ped;
+
+  const el=document.createElement('div');el.className='tezgah';
+  el.style.cssText=`left:${t.x}px;top:${t.y}px;width:${t.ayW}px;height:${t.ayH}px;animation-delay:${t.idx*16}ms`;
+  el.innerHTML=(ARKETIP[t.bolum]||ARKETIP.VARSAYILAN).map(k=>kutuHTML(k,t.ayW/AYAK,t.ayH/AYAK)).join('');
+  el.addEventListener('click',e=>{e.stopPropagation();if(!kaydi&&!tasindi)sec(t.kod)});
+  el.addEventListener('pointerdown',e=>{
+    if(!duzenleModu||e.button!==0)return;
+    e.stopPropagation();tasindi=false;kaydi=false;
+    tasima={t,sx:e.clientX,sy:e.clientY,x0:t.x,y0:t.y};});
+  plan.appendChild(el);t.el=el;
+  const lb=document.createElement('div');lb.className='tzEtiket';
+  lb.style.cssText=`left:${t.x+t.ayW/2}px;top:${t.y+t.ayH+4}px;transform:translateZ(4px) rotateZ(var(--bz,45deg)) rotateX(-56deg) translateX(-50%)`;
+  lb.innerHTML=`${t.kod}<small class="sy"></small>`;plan.appendChild(lb);t.lb=lb;
+  const h=document.createElement('div');h.className='halka';const c=Math.max(t.ayW,t.ayH)*1.25;
+  h.style.cssText=`left:${t.x+t.ayW/2-c/2}px;top:${t.y+t.ayH/2-c/2}px;width:${c}px;height:${c}px;animation-delay:${(t.idx%5)*.5}s;display:none`;
+  plan.appendChild(h);t.halka=h;
+});
+
+/* ═════════ 3B BÖLÜM HARİTASI (sağ panel) ═════════ */
+const miniPlan=document.getElementById('miniPlan'),miniDunya=document.getElementById('miniDunya');
+miniPlan.style.width=PW+'px';miniPlan.style.height=PH+'px';
+miniPlan.style.left=(-PW/2)+'px';miniPlan.style.top=(-PH/2)+'px';
+const KAL=46;
+
+BOLUMLER.forEach(b=>{
+  const m=document.createElement('div');m.className='mPlaka';m.dataset.bolum=b.ad;
+  m.style.cssText=`left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px`;
+  m.innerHTML=`<i class="m-ust"></i>
+    <i class="m-on" style="width:${b.w}px;height:${KAL}px"></i>
+    <i class="m-sag" style="width:${KAL}px;height:${b.h}px"></i>`;
+  m.addEventListener('click',()=>bolumSec(b.ad));
+  m.addEventListener('mouseenter',()=>miniYaz(b));
+  m.addEventListener('mouseleave',()=>miniYaz(null));
+  miniPlan.appendChild(m);b.mini=m;
+});
+
+/* seçime göre mini haritayı ortala ve büyüt — seçili plaka baskın olsun */
+function miniOdak(b){
+  const pil=document.getElementById('mPil');
+  if(b){
+    const s=Math.min(.48, 178/((b.w+b.h)*.707));
+    miniDunya.style.setProperty('--ms',s.toFixed(4));
+    miniDunya.style.setProperty('--mx',(-(b.x+b.w/2-PW/2))+'px');
+    miniDunya.style.setProperty('--my',(-(b.y+b.h/2-PH/2))+'px');
+    pil.textContent=b.ad;
+    pil.classList.add('gorunur');
+  }else{
+    miniDunya.style.setProperty('--ms',(232/((PW+PH)*.707)).toFixed(4));
+    miniDunya.style.setProperty('--mx','0px');miniDunya.style.setProperty('--my','0px');
+    pil.classList.remove('gorunur');
+  }
+}
+function miniYaz(b){
+  const x=b||BOLUMLER.find(z=>z.ad===aktif);
+  document.getElementById('miniAd').textContent=x?x.ad:'Tüm fabrika';
+  if(!x){document.getElementById('miniBilgi').textContent=`${BOLUMLER.length} bölüm`;return}
+  const tz=TEZGAHLAR.filter(t=>t.bolum===x.ad),d=tz.filter(t=>t.durum==='durusta').length;
+  document.getElementById('miniBilgi').textContent=`${x.pano} · ${tz.length} tezgah${d?` · ${d} duruşta`:''}`;
+}
+
+/* ═════════ liste ═════════ */
+const liste=document.getElementById('bolumListe');
+[{ad:'TÜM FABRİKA'},...BOLUMLER].forEach(b=>{
+  const btn=document.createElement('button');btn.className='bSatir'+(b.ad==='TÜM FABRİKA'?' aktif':'');
+  btn.dataset.bolum=b.ad;
+  btn.innerHTML=`<span class="ad">${b.ad}</span><span class="cz"></span><span class="n"></span>`;
+  btn.addEventListener('click',()=>bolumSec(b.ad));liste.appendChild(btn);b.btn=btn;
+});
+
+/* ═════════ KAMERA — kaydırma + yakınlaştırma ═════════
+   İzometrik izdüşüm: bir dünya vektörü (x,y) ekranda
+   ( 0.7071·(x+y) , 0.3953·(y−x) ) · ölçek olarak görünür.
+   Ters çevirimi fare hareketini dünya koordinatına döndürmek için kullanıyoruz. */
+const KX=.70711, KY=.70711*Math.cos(56*Math.PI/180);   /* 0.3953 */
+const CT=Math.cos(56*Math.PI/180);
+const KAM={x:0,y:0,o:.42,az:-45};
+const tuval=document.querySelector('.tuval');
+
+function ekranaDunya(sx,sy){            /* ekran vektörü → dünya vektörü (açıya bağlı genel form) */
+  const A=KAM.az*Math.PI/180, c=Math.cos(A), si=Math.sin(A);
+  const u=sx, v=sy/CT;
+  return {x:u*c+v*si, y:-u*si+v*c};
+}
+function kamUygula(gecisli){
+  dunya.classList.toggle('anlik',!gecisli);
+  dunya.style.setProperty('--kx',KAM.x.toFixed(2)+'px');
+  dunya.style.setProperty('--ky',KAM.y.toFixed(2)+'px');
+  dunya.style.setProperty('--o',KAM.o.toFixed(4));
+  const r=document.documentElement.style;
+  r.setProperty('--isoZ',KAM.az.toFixed(1)+'deg');       /* sahne + mini harita birlikte döner */
+  r.setProperty('--bz',(-KAM.az).toFixed(1)+'deg');      /* dik tezgah etiketleri */
+  r.setProperty('--lz',(-(KAM.az+45)).toFixed(1)+'deg'); /* zemine yatık bölüm yazıları */
+}
+function yakinlastir(carpan,mx,my){
+  const eski=KAM.o, yeni=Math.max(.14,Math.min(2.6,eski*carpan));
+  if(yeni===eski) return;
+  if(mx!==undefined){                    /* imlecin altındaki nokta sabit kalsın */
+    const v=ekranaDunya(mx,my), f=(1/yeni-1/eski);
+    KAM.x+=v.x*f; KAM.y+=v.y*f;
+  }
+  KAM.o=yeni; kamUygula(false);
+}
+
+let suruk=null, don=null, kaydi=false, sonDon=0;
+/* ── DÜZENLE MODU: ızgaraya oturan sürükle-bırak konum düzeltme ── */
+let duzenleModu=false, tasima=null, tasindi=false;
+const GRID=40;
+function tezgahKonum(t,nx,ny){
+  t.x=nx;t.y=ny;
+  t.el.style.left=nx+'px';t.el.style.top=ny+'px';
+  t.ped.style.left=(nx-9)+'px';t.ped.style.top=(ny-9)+'px';
+  t.lb.style.left=(nx+t.ayW/2)+'px';t.lb.style.top=(ny+t.ayH+4)+'px';
+  const c=Math.max(t.ayW,t.ayH)*1.25;
+  t.halka.style.left=(nx+t.ayW/2-c/2)+'px';t.halka.style.top=(ny+t.ayH/2-c/2)+'px';
+  if(secili===t.kod){cerceve.style.left=(nx-8)+'px';cerceve.style.top=(ny-8)+'px'}}
+function duzenleToggle(){
+  duzenleModu=!duzenleModu;
+  document.getElementById('duzenleBtn').classList.toggle('acik',duzenleModu);
+  document.getElementById('duzenleBtn').textContent=duzenleModu?'DÜZENLE MODU: AÇIK':'DÜZENLE';
+  plan.classList.toggle('izgara',duzenleModu);}
+/* sağ tuş bırakıldığı AN döndürme biter:
+   - setPointerCapture: bırakma olayı imleç nerede olursa olsun garantili gelir
+   - pointerup/pointercancel/blur üçlüsü: hiçbir yolda mod açık kalmaz
+   - döndürme sonrası ilk contextmenu bastırılır (tarayıcı jesti/menü tetiklenmesin) */
+tuval.addEventListener('contextmenu',e=>e.preventDefault());
+tuval.addEventListener('pointerdown',e=>{
+  kaydi=false; tuval.classList.add('suruklu');
+  if(e.button===1){e.preventDefault();
+    try{tuval.setPointerCapture(e.pointerId)}catch(_){}   /* capture YALNIZ döndürmede —
+      sol tuşta capture click'i tuvale çalar, tezgah/platform seçimi ölür */
+    don={sx:e.clientX,az:KAM.az};return}
+  if(e.button!==0) return;
+  suruk={sx:e.clientX,sy:e.clientY,kx:KAM.x,ky:KAM.y};
+});
+tuval.addEventListener('auxclick',e=>{if(e.button===1)e.preventDefault()});
+window.addEventListener('pointermove',e=>{
+  if(tasima){
+    const v=ekranaDunya((e.clientX-tasima.sx)/KAM.o,(e.clientY-tasima.sy)/KAM.o);
+    const nx=Math.round((tasima.x0+v.x)/GRID)*GRID, ny=Math.round((tasima.y0+v.y)/GRID)*GRID;
+    if(nx!==tasima.t.x||ny!==tasima.t.y){tasindi=true;tezgahKonum(tasima.t,nx,ny)}
+    return}
+  if(don){KAM.az=don.az+(e.clientX-don.sx)*0.35;kaydi=true;kamUygula(false);return}
+  if(!suruk) return;
+  const dx=e.clientX-suruk.sx, dy=e.clientY-suruk.sy;
+  if(Math.abs(dx)+Math.abs(dy)>4) kaydi=true;
+  const v=ekranaDunya(dx/KAM.o,dy/KAM.o);
+  KAM.x=suruk.kx+v.x; KAM.y=suruk.ky+v.y; kamUygula(false);
+});
+function birak(){
+  if(tasima){
+    if(tasindi){konumDuzeltmeleri[tasima.t.kod]=[tasima.t.x,tasima.t.y];
+      localStorage.setItem(KONUM_KEY,JSON.stringify(konumDuzeltmeleri));indirBtnGoster();}
+    tasima=null;return}
+  suruk=null;if(don){don=null;sonDon=performance.now()}tuval.classList.remove('suruklu')}
+window.addEventListener('pointerup',birak);
+window.addEventListener('pointercancel',birak);
+window.addEventListener('blur',birak);
+tuval.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const r=tuval.getBoundingClientRect();
+  yakinlastir(e.deltaY<0?1.13:1/1.13, e.clientX-r.left-r.width/2, e.clientY-r.top-r.height/2);
+},{passive:false});
+tuval.addEventListener('dblclick',()=>{KAM.az=-45;bolumSec(aktif)});
+document.getElementById('zIn').addEventListener('click',()=>yakinlastir(1.25));
+document.getElementById('zOut').addEventListener('click',()=>yakinlastir(1/1.25));
+function donDugme(id,yon){
+  const el=document.getElementById(id);let raf=null,t0=0;
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();el.setPointerCapture(e.pointerId);t0=performance.now();
+    let son=t0;
+    const adim=ts=>{const dt=Math.min(34,ts-son);son=ts;
+      if(performance.now()-t0>220){KAM.az+=yon*dt*0.1;kamUygula(false)}
+      raf=requestAnimationFrame(adim)};
+    raf=requestAnimationFrame(adim);});
+  const dur=()=>{if(raf===null)return;cancelAnimationFrame(raf);raf=null;
+    if(performance.now()-t0<=220){KAM.az+=yon*45;kamUygula(true)}};
+  el.addEventListener('pointerup',dur);el.addEventListener('pointercancel',dur);
+}
+donDugme('dSol',-1);donDugme('dSag',1);
+
+/* ═════════ etkileşim ═════════ */
+let aktif='TÜM FABRİKA',secili=null;
+document.getElementById('geri').addEventListener('click',()=>bolumSec('TÜM FABRİKA'));
+document.getElementById('tvdg').addEventListener('click',()=>document.getElementById('duzen').classList.toggle('tv'));
+
+function bolumSec(ad){
+  aktif=ad;
+  document.querySelectorAll('.bSatir').forEach(b=>b.classList.toggle('aktif',b.dataset.bolum===ad));
+  const b=BOLUMLER.find(x=>x.ad===ad);
+  document.getElementById('baslik').textContent=b?b.ad:'Tüm Fabrika';
+  document.getElementById('altbaslik').textContent=b?`${b.pano} · ${b.n} tezgah`:`${BOLUMLER.length} bölüm · ${TEZGAHLAR.length} tezgah`;
+  document.getElementById('geri').classList.toggle('gorunur',!!b);
+  BOLUMLER.forEach(x=>{
+    x.el.classList.toggle('sonuk',!!b&&x.ad!==ad);
+    x.el.classList.toggle('vurgu',!!b&&x.ad===ad);
+    x.etiket.classList.toggle('sonuk',!!b&&x.ad!==ad);
+    x.mini.classList.toggle('secili',!!b&&x.ad===ad);
+  });
+  if(b){KAM.x=-(b.x+b.w/2-PW/2);KAM.y=-(b.y+b.h/2-PH/2);
+    KAM.o=Math.min(1.05,780/Math.max(b.w,b.h));
+  }else{KAM.x=0;KAM.y=0;
+    const r=tuval.getBoundingClientRect();
+    KAM.o=Math.max(.05,Math.min(.42,(r.width*.92)/((PW+PH)*KX),(r.height*.92)/((PW+PH)*KY)))}
+  kamUygula(true);
+  cerceve.style.display='none';secili=null;
+  document.getElementById('detay').innerHTML='<div class="bos">Haritadan bir tezgah seç — operatör, iş emri, sayaç ve duruş bilgisi burada görünür.</div>';
+  miniOdak(b);miniYaz(null);tazele();
+}
+
+function sec(kod){
+  const t=TEZGAHLAR.find(x=>x.kod===kod);
+  if(aktif!==t.bolum) bolumSec(t.bolum);   /* tezgaha tıklayınca bölüme odaklan */
+  secili=kod;
+  TEZGAHLAR.forEach(x=>x.el.classList.toggle('secili',x.kod===kod));
+  cerceve.style.cssText=`display:block;left:${t.x-8}px;top:${t.y-8}px;width:${t.ayW+16}px;height:${t.ayH+16}px`;
+  detay();
+}
+const sureM=s=>{const a=Math.floor(s/3600),d=Math.floor(s%3600/60);return a?`${a} sa ${d} dk`:`${d} dk`};
+
+function tazele(){
+  const say={calisiyor:0,durusta:0,bosta:0,sinyalyok:0};let ur=0;
+  let evren=0;
+  TEZGAHLAR.forEach(t=>{
+    if(t.ipro){say[t.durum]++;ur+=t.uretilen;evren++}
+    const bolumGor=(aktif==='TÜM FABRİKA'||t.bolum===aktif);
+    const gor=bolumGor&&t.ipro,D=t.durum,s=t.el.style;  /* renk: kapsam dışı soluk */
+    if(gor){
+      s.setProperty('--D',`var(--${D})`);s.setProperty('--D2',`var(--${D}-2)`);s.setProperty('--D3',`var(--${D}-3)`);
+      s.setProperty('--DP',`var(--${D}P)`);s.setProperty('--DP2',`var(--${D}P2)`);s.setProperty('--DP3',`var(--${D}P3)`);
+    }else{ /* opacity YOK — soluklaştırma renkle */
+      s.setProperty('--D','var(--solukA)');s.setProperty('--D2','var(--solukB)');s.setProperty('--D3','var(--solukC)');
+      s.setProperty('--DP','var(--solukA)');s.setProperty('--DP2','var(--solukB)');s.setProperty('--DP3','var(--solukC)');
+    }
+    t.el.classList.toggle('kapali',!bolumGor);  /* tıklanabilirlik yalnız bölüm-dışında kapanır */
+    t.ped.className='zeminPed '+(!gor?'sonuk'
+      : t.durum==='durusta' ? 'durus'
+      : t.sinyalli ? 'sinyalli' : 'sinyalsiz');
+    t.lb.classList.toggle('sonuk',!gor);
+    t.lb.querySelector('.sy').textContent = !t.ipro ? 'IPRO dışı' : !t.sinyalli ? 'PLC yok' : (t.say==null?'sinyal yok':t.say);
+    t.halka.style.display=(t.durum==='durusta'&&gor)?'block':'none';
+  });
+  document.getElementById('g-cal').innerHTML=say.calisiyor+`<small>/${evren}</small>`;
+  document.getElementById('g-dur').textContent=say.durusta;
+  document.getElementById('g-sin').textContent=say.sinyalyok;
+  document.getElementById('g-ure').innerHTML=ur.toLocaleString('tr-TR')+'<small>ad</small>';
+
+  BOLUMLER.forEach(b=>{
+    const tz=TEZGAHLAR.filter(t=>t.bolum===b.ad),
+          d=tz.filter(t=>t.durum==='durusta').length,
+          c=tz.filter(t=>t.durum==='calisiyor').length;
+    const ed=b.etiket.querySelector('.ed');
+    ed.textContent=d?`${d} duruşta`:`${c} çalışıyor`;
+    ed.style.color=d?'var(--durusta)':'var(--calisiyor)';
+    b.btn.querySelector('.n').textContent=tz.length;
+    b.btn.querySelector('.cz').innerHTML=tz.map(t=>`<i style="background:${DURUM[t.durum][1]}"></i>`).join('');
+    b.mini.classList.toggle('durusVar',d>0);
+  });
+  const th=document.querySelector('.bSatir[data-bolum="TÜM FABRİKA"] .n');
+  if(th)th.textContent=TEZGAHLAR.length;
+  if(secili)detay();
+}
+
+/* ── AD DÜZELTME: tıkla-düzelt, localStorage'da saklanır, JSON indirilebilir ── */
+const AD_KEY='fabrikaHarita.adDuzeltme';
+const adDuzeltmeleri=JSON.parse(localStorage.getItem(AD_KEY)||'{}');
+TEZGAHLAR.forEach(t=>{if(adDuzeltmeleri[t.kod])t.ad=adDuzeltmeleri[t.kod]});
+function adDuzenle(kod){
+  const t=TEZGAHLAR.find(x=>x.kod===kod);if(!t)return;
+  const sp=document.getElementById('adSpan');
+  const inp=document.createElement('input');inp.className='adInput';inp.value=t.ad;
+  sp.replaceWith(inp);inp.focus();inp.select();
+  let bitti=false;
+  const bitir=kaydet=>{
+    if(bitti)return;bitti=true;
+    if(kaydet&&inp.value.trim()&&inp.value.trim()!==t.ad){
+      t.ad=inp.value.trim();adDuzeltmeleri[kod]=t.ad;
+      localStorage.setItem(AD_KEY,JSON.stringify(adDuzeltmeleri));
+      indirBtnGoster();}
+    detay();};
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')bitir(true);if(e.key==='Escape')bitir(false)});
+  inp.addEventListener('blur',()=>bitir(true));}
+function indirBtnGoster(){document.getElementById('adIndir').style.display=
+  (Object.keys(adDuzeltmeleri).length||Object.keys(konumDuzeltmeleri).length||Object.keys(iproDuzeltmeleri).length)?'block':'none';}
+function adlariIndir(){
+  const a=document.createElement('a');
+  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(
+    JSON.stringify({adlar:adDuzeltmeleri,konumlar:konumDuzeltmeleri,iproKapsam:iproDuzeltmeleri},null,1));
+  a.download='harita-duzeltmeleri.json';a.click();}
+
+function detay(){
+  const t=TEZGAHLAR.find(x=>x.kod===secili);if(!t)return;
+  if(!t.ipro){
+    document.getElementById('detay').innerHTML=`<div style="padding-top:14px">
+      <div class="dkod">${t.kod} <span class="disiRozet">IPRO DIŞI</span></div>
+      <button class="kapsamBtn" onclick="iproToggle('${t.kod}')">IPRO kapsamına al</button>
+      <div class="dad"><span id="adSpan">${t.ad}</span>
+        <button class="adDuzelt" onclick="adDuzenle('${t.kod}')" title="adı düzelt">✎</button> · ${t.bolum}</div>
+      <dl><div class="dsatir"><dt>Bölüm</dt><dd>${t.bolum}</dd></div>
+      <div class="dsatir"><dt>İş emri</dt><dd>açılmıyor — IPRO kapsamı dışında</dd></div>
+      <div class="dsatir"><dt>PLC sinyali</dt><dd>yok</dd></div></dl></div>`;
+    return;}
+  const[ad,renk]=DURUM[t.durum];
+  const sat=!t.sinyalli
+    ?[['Bölüm',t.bolum],['PLC sinyali','yok — pin tanımlı değil'],['Operatör',t.opr],['İş emri',t.ie],
+      ['Malzeme',t.mlz],['Sayaç','elle bildirim']]
+    :t.durum==='sinyalyok'
+    ?[['Bölüm',t.bolum],['Pano',t.pano],['PLC sinyali','var'],['PLC sayacı','okunamıyor'],['Son okuma','—']]
+    :t.durum==='durusta'
+      ?[['Bölüm',t.bolum],['Pano',t.pano],['Duruş sebebi',t.sebep],['Operatör',t.opr],['İş emri',t.ie],['PLC sayacı',t.say]]
+      :[['Bölüm',t.bolum],['Pano',t.pano],['Operatör',t.opr],['İş emri',t.ie],['Malzeme',t.mlz],['PLC sayacı',t.say],['Çevrim',t.hiz+' adet/dk']];
+  const yz=Math.round(t.uretilen/t.plan*100);
+  document.getElementById('detay').innerHTML=`<div style="padding-top:14px">
+    <div class="dkod">${t.kod}${t.ipro?'':' <span class="disiRozet">IPRO DIŞI</span>'}</div>
+    <button class="kapsamBtn" onclick="iproToggle('${t.kod}')">${t.ipro?'kapsam dışına al':'IPRO kapsamına al'}</button>
+    <div class="dad"><span id="adSpan">${t.ad}</span>
+      <button class="adDuzelt" onclick="adDuzenle('${t.kod}')" title="adı düzelt">✎</button> · ${t.bolum}</div>
+    <div class="dserit"><span class="nk" style="background:${renk}"></span>
+      <span style="color:${renk}">${ad}</span>
+      <span style="margin-left:auto;color:var(--metin-3)">${sureM(t.sure)}</span></div>
+    <dl>${sat.map(([k,v])=>`<div class="dsatir"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+    ${t.durum==='sinyalyok'?'':`<div style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--metin-3)">
+        <span>ÜRETİM</span><span>${t.uretilen} / ${t.plan} · %${yz}</span></div>
+      <div class="cubuk"><i style="width:${yz}%"></i></div></div>`}
+    ${t.durum==='sinyalyok'?`<div class="uyari">Bu tezgah <b>/status</b> listesinde yok — poller taze veri sunmuyor. Kioskta iş başlatma <b>503</b> döner: sayaç bilinmeden iş açılmaz.</div>`:''}
+  </div>`;
+}
+
+/* ── CANLI VERİ KATMANI ──
+   ./durum (=/ipro/harita/durum) auth'lu endpoint'inden 30 sn'de bir durum çeker.
+   Sözleşme: {"tezgahlar":{"KOD":{"durum":"calisiyor|durusta|bosta|sinyalyok",
+     "say":123|null,"opr":"ILR-00184","ie":"IE-24100","mlz":"...","sebep":"...",
+     "sure":540,"uretilen":80,"plan":120,"hiz":4}}}
+   Yanıttaki alanlar kısmi olabilir; olmayan alan mevcut değeri korur.
+   Endpoint yoksa/hata verirse temsili simülasyon sürer (rozet değişmez). */
+let canliVeri=false, canliHata=0;
+async function canliCek(){
+  try{
+    const r=await fetch('./durum',{cache:'no-store'});
+    if(!r.ok)throw 0;
+    const d=await r.json();if(!d||!d.tezgahlar)throw 0;
+    canliVeri=true;canliHata=0;
+    const rz=document.querySelector('.rozet');
+    if(rz)rz.textContent='CANLI VERİ · '+new Date().toLocaleTimeString('tr-TR',{hour12:false});
+    TEZGAHLAR.forEach(t=>{
+      const v=d.tezgahlar[t.kod];
+      if(!v){if(t.ipro){t.durum='sinyalyok';t.say=null}return}
+      for(const k of['durum','say','opr','ie','mlz','sebep','sure','uretilen','plan','hiz'])
+        if(v[k]!==undefined)t[k]=v[k];});
+    tazele();
+  }catch(_){
+    if(canliVeri&&++canliHata>=3){canliVeri=false;
+      const rz=document.querySelector('.rozet');
+      if(rz)rz.textContent='VERİ KESİK · son bilinen durum';}
+  }}
+canliCek();setInterval(canliCek,30000);
+
+setInterval(()=>{if(canliVeri){document.getElementById('saat')&&0;return} /* canlıda simülasyon durur */
+  TEZGAHLAR.forEach(t=>{t.sure+=2;
+  if(t.durum==='calisiyor'){if(t.sinyalli&&Math.random()<t.hiz/28){t.say++;}
+    if(Math.random()<.006)t.uretilen=Math.min(t.plan,t.uretilen+1);
+    if(Math.random()<.004){t.durum='durusta';t.sure=0}}
+  else if(t.durum==='durusta'){if(Math.random()<.022){t.durum='calisiyor';t.sure=0}}
+  else if(t.durum==='bosta'){if(Math.random()<.007){t.durum='calisiyor';t.sure=0}}
+  else if(Math.random()<.012){t.durum='bosta';t.say=t.say??0;t.sure=0}});tazele()},2000);
+setInterval(()=>document.getElementById('saat').textContent=new Date().toLocaleTimeString('tr-TR',{hour12:false}),1000);
+
+let bosDetay=document.getElementById('detay').innerHTML;
+kapsamGorunum();tazele();bolumSec('TÜM FABRİKA');
+/* izleme ekranı: ?tv=1 ile açılışta TV modu (kiosk/duvar ekranında fare gerekmez) */
+if(new URLSearchParams(location.search).get('tv')==='1')
+  document.getElementById('duzen').classList.add('tv');
+</script>
+</body>
+</html>

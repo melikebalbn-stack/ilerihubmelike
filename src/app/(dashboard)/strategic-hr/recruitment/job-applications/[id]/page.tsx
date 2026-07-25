@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -121,7 +122,9 @@ type WorkflowCtx = {
   assignedManagerId: string | null
   requiresManagerTargets: string[]
   requiresReasonTargets: string[]
+  requiresAssessmentTargets: string[]
 }
+type AssessmentOption = { id: string; title: string; durationMin: number; passingScore: number; soruSayisi: number }
 type StageLogRow = {
   id: string
   fromStatus: string | null
@@ -154,6 +157,11 @@ export default function JobApplicationDetailPage() {
   const [txSubmitting, setTxSubmitting] = useState(false)
   const [managers, setManagers] = useState<ManagersResp | null>(null)
   const [reasons, setReasons] = useState<RejectionReasonOption[]>([])
+  const [assessments, setAssessments] = useState<AssessmentOption[]>([])
+  const [txAssessmentId, setTxAssessmentId] = useState("")
+  const [txAssessmentSearch, setTxAssessmentSearch] = useState("")
+  // SINAV geçişi sonrası aktif oturumun sinavLink'i — İK kopyalayıp adaya iletebilsin.
+  const [sinavLink, setSinavLink] = useState<string | null>(null)
 
   const id = params.id as string
 
@@ -197,6 +205,7 @@ export default function JobApplicationDetailPage() {
 
   const requiresManager = !!txTarget && !!workflow?.requiresManagerTargets.includes(txTarget)
   const requiresReason = !!txTarget && !!workflow?.requiresReasonTargets.includes(txTarget)
+  const requiresAssessment = !!txTarget && !!workflow?.requiresAssessmentTargets.includes(txTarget)
 
   // Aksiyon butonuna basınca modalı hazırla — hedef ek girdi istiyorsa ilgili listeyi çek.
   const openTransition = async (target: string) => {
@@ -204,6 +213,8 @@ export default function JobApplicationDetailPage() {
     setTxNote("")
     setTxManagerId("")
     setTxReasonId("")
+    setTxAssessmentId("")
+    setTxAssessmentSearch("")
     if (workflow?.requiresManagerTargets.includes(target) && !managers) {
       try {
         const res = await fetch(`/api/recruitment/managers`)
@@ -214,6 +225,12 @@ export default function JobApplicationDetailPage() {
       try {
         const res = await fetch(`/api/strategic-hr/recruitment/rejection-reasons?activeOnly=1`)
         if (res.ok) setReasons(await res.json())
+      } catch { /* modalda liste boş kalır, onay disabled */ }
+    }
+    if (workflow?.requiresAssessmentTargets.includes(target) && assessments.length === 0) {
+      try {
+        const res = await fetch(`/api/strategic-hr/recruitment/assessments/secilebilir`)
+        if (res.ok) setAssessments(await res.json())
       } catch { /* modalda liste boş kalır, onay disabled */ }
     }
   }
@@ -227,10 +244,12 @@ export default function JobApplicationDetailPage() {
     if (!txTarget) return
     setTxSubmitting(true)
     try {
+      const wasSinav = requiresAssessment
       const body: Record<string, unknown> = { toStatus: txTarget }
       if (txNote.trim()) body.note = txNote.trim()
       if (requiresManager && txManagerId) body.assignedManagerId = txManagerId
       if (requiresReason && txReasonId) body.rejectionReasonId = txReasonId
+      if (requiresAssessment && txAssessmentId) body.assessmentId = txAssessmentId
       const res = await fetch(`/api/recruitment/applications/${id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -241,6 +260,17 @@ export default function JobApplicationDetailPage() {
         toast.success("Durum guncellendi")
         // Statü + timeline + izinli hedefler yeniden yüklensin (bayat kalmasın).
         await Promise.all([fetchDetail(), fetchWorkflow()])
+        // SINAV'a geçildiyse aktif oturumun sinavLink'ini çek → İK adaya elle iletebilsin.
+        if (wasSinav) {
+          try {
+            const r = await fetch(`/api/strategic-hr/recruitment/assessments/sessions?publicJobApplicationId=${id}`)
+            if (r.ok) {
+              const oturumlar: { sinavLink: string | null }[] = await r.json()
+              const link = oturumlar.find((o) => o.sinavLink)?.sinavLink ?? null
+              setSinavLink(link)
+            }
+          } catch { /* link gösterilemezse sessiz — geçiş yine de başarılı */ }
+        }
       } else {
         const err = await res.json().catch(() => ({}))
         // API izin verilen hedefleri döndürdüyse kullanıcıya anlaşılır TR mesaj göster.
@@ -889,6 +919,23 @@ export default function JobApplicationDetailPage() {
                   </div>
                 )}
               </div>
+              {/* SINAV geçişi sonrası aktif oturum linki — aday gittiyse İK elle iletebilsin */}
+              {sinavLink && (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                  <Label className="text-emerald-800">Aday Sinav Linki</Label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <Input readOnly value={sinavLink} className="text-xs" onFocus={(e) => e.target.select()} />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { navigator.clipboard?.writeText(sinavLink); toast.success("Link kopyalandi") }}
+                    >
+                      Kopyala
+                    </Button>
+                  </div>
+                </div>
+              )}
               {/* İK notu yalnız İK — kısıtlı (müdür) görünümde gizli (PATCH zaten admin-only) */}
               {!app._restrictedView && (
                 <div>
@@ -1010,7 +1057,9 @@ export default function JobApplicationDetailPage() {
                 ? "Ret nedeni secimi zorunludur."
                 : requiresManager
                   ? "Degerlendirmeyi yapacak muduru secin."
-                  : "Gecisi onaylayin."}
+                  : requiresAssessment
+                    ? "Atanacak sinavi secin — gecisle birlikte aday sinav oturumu acilir."
+                    : "Gecisi onaylayin."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1073,6 +1122,39 @@ export default function JobApplicationDetailPage() {
               </div>
             )}
 
+            {/* Sınav seçimi — aranabilir liste; her satırda ad, soru sayısı, süre, geçme notu */}
+            {requiresAssessment && (
+              <div>
+                <Label>Sinav</Label>
+                <Input
+                  value={txAssessmentSearch}
+                  onChange={(e) => setTxAssessmentSearch(e.target.value)}
+                  placeholder="Sinav ara..."
+                  className="mt-1"
+                />
+                <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-slate-200 divide-y">
+                  {assessments.length === 0 && (
+                    <div className="p-3 text-sm text-muted-foreground">Aktif sinav bulunamadi.</div>
+                  )}
+                  {assessments
+                    .filter((a) => a.title.toLocaleLowerCase("tr").includes(txAssessmentSearch.toLocaleLowerCase("tr")))
+                    .map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => setTxAssessmentId(a.id)}
+                        className={`w-full text-left p-3 text-sm hover:bg-slate-50 ${txAssessmentId === a.id ? "bg-blue-50 ring-1 ring-inset ring-blue-300" : ""}`}
+                      >
+                        <div className="font-medium">{a.title}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {a.soruSayisi} soru · {a.durationMin} dk · gecme {a.passingScore}
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <Label>Not (opsiyonel)</Label>
               <Textarea
@@ -1094,7 +1176,8 @@ export default function JobApplicationDetailPage() {
               disabled={
                 txSubmitting ||
                 (requiresManager && !txManagerId) ||
-                (requiresReason && !txReasonId)
+                (requiresReason && !txReasonId) ||
+                (requiresAssessment && !txAssessmentId)
               }
             >
               {txSubmitting ? "Kaydediliyor..." : "Onayla"}

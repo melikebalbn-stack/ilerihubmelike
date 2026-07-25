@@ -123,6 +123,60 @@ async function main() {
 
   console.log(`✅ ${kayitlar.length} test başvurusu oluşturuldu.`)
   if (!ilkUser) console.warn('⚠️ Aktif User bulunamadı — MUDUR_DEGERLENDIRME kaydı müdürsüz (MÜDÜR rolü test edilemez).')
+
+  // ── Sınav akışı testi: 1 aktif CandidateAssessment (3 soru) ──────────────
+  // PENDING başvuru (TEST-BASVURU-0001) → detay sayfasından SINAV'a geçirilip bu sınav atanır.
+  // İdempotent: 'TEST-SINAV' ön ekli önceki test sınavı (+ oturumları) önce silinir.
+  const eskiSinavlar = await prisma.candidateAssessment.findMany({
+    where: { name: { startsWith: 'TEST-SINAV' } },
+    select: { id: true },
+  })
+  if (eskiSinavlar.length > 0) {
+    const sids = eskiSinavlar.map((s) => s.id)
+    // AssessmentSession FK'si onDelete RESTRICT → sınavdan önce oturumları sil (answers cascade).
+    await prisma.assessmentSession.deleteMany({ where: { assessmentId: { in: sids } } })
+    // Questions/options onDelete Cascade → sınavı silmek yeterli.
+    await prisma.candidateAssessment.deleteMany({ where: { id: { in: sids } } })
+    console.log(`  ${sids.length} eski test sınavı silindi.`)
+  }
+
+  const sinav = await prisma.candidateAssessment.create({
+    data: {
+      name: 'TEST-SINAV Genel Yetenek',
+      type: 'GENEL',
+      durationMin: 15,
+      passingScore: 60,
+      isActive: true,
+      questions: {
+        create: [
+          {
+            type: 'TEK_SECIM', text: '2 + 2 kaçtır?', order: 1,
+            options: { create: [
+              { text: '3', isCorrect: false, order: 1 },
+              { text: '4', isCorrect: true, order: 2 },
+              { text: '5', isCorrect: false, order: 3 },
+            ] },
+          },
+          {
+            type: 'DOGRU_YANLIS', text: 'Dünya Güneş’in etrafında döner.', order: 2,
+            options: { create: [
+              { text: 'Doğru', isCorrect: true, order: 1 },
+              { text: 'Yanlış', isCorrect: false, order: 2 },
+            ] },
+          },
+          {
+            type: 'TEK_SECIM', text: 'Türkiye’nin başkenti neresidir?', order: 3,
+            options: { create: [
+              { text: 'İstanbul', isCorrect: false, order: 1 },
+              { text: 'Ankara', isCorrect: true, order: 2 },
+              { text: 'İzmir', isCorrect: false, order: 3 },
+            ] },
+          },
+        ],
+      },
+    },
+  })
+  console.log(`  ✓ Test sınavı oluşturuldu: ${sinav.name} (3 soru, ${sinav.durationMin} dk, geçme ${sinav.passingScore})`)
 }
 
 main()

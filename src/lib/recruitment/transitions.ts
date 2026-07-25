@@ -139,6 +139,15 @@ export function requiresRejectionReason(to: JobApplicationStatus): boolean {
   return to === "REJECTED";
 }
 
+/**
+ * SINAV hedefine geçiş için sınav seçimi (assessmentId) ZORUNLUDUR — geçişle aynı anda
+ * aday sınav oturumu açılır. requiresAssignedManager / requiresRejectionReason ile aynı
+ * desende yapısal kural (matris-bağımsız, TEK KAYNAK).
+ */
+export function requiresAssessment(to: JobApplicationStatus): boolean {
+  return to === "SINAV";
+}
+
 /** (from, to, role) üçlüsü izin matrisinde var mı. */
 export function canTransition(
   from: JobApplicationStatus,

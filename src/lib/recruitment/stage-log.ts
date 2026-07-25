@@ -1,4 +1,6 @@
 import { Prisma, JobApplicationStatus } from "@/generated/prisma";
+import { prisma } from "@/lib/prisma";
+import { notifyApplicationStageChange } from "@/lib/hr-notifications";
 
 // Başvuru aşama/durum geçişleri için TEK GEÇİT.
 // Amaç: PublicJobApplication.status her değiştiğinde, aynı transaction içinde
@@ -57,6 +59,12 @@ export async function updateApplicationStatus(
     changedBy?: string | null;
     note?: string | null;
     data?: Prisma.PublicJobApplicationUpdateInput;
+    // Workflow: müdür ataması. Verilirse assignedManagerId + assignedAt AYNI tx'te yazılır.
+    // (relation connect ile — assignedManagerId scalar FK'si relation üzerinden yönetilir.)
+    assignedManagerId?: string | null;
+    // Yeniden atama gibi AYNI-durum geçişlerinde de StageLog yazılsın (aksi halde
+    // fromStatus === toStatus olduğundan log atlanır ve "müdür yeniden atandı" izi kaybolur).
+    forceLog?: boolean;
   },
 ) {
   const current = await tx.publicJobApplication.findUnique({
@@ -68,12 +76,18 @@ export async function updateApplicationStatus(
   }
   const fromStatus = current.status;
 
+  // Atama verilmişse aynı update data'sına ekle (aynı transaction, atomik).
+  const assignData: Prisma.PublicJobApplicationUpdateInput =
+    args.assignedManagerId !== undefined && args.assignedManagerId !== null
+      ? { assignedManager: { connect: { id: args.assignedManagerId } }, assignedAt: new Date() }
+      : {};
+
   const updated = await tx.publicJobApplication.update({
     where: { id: args.applicationId },
-    data: { ...(args.data ?? {}), status: args.toStatus },
+    data: { ...(args.data ?? {}), ...assignData, status: args.toStatus },
   });
 
-  if (fromStatus !== args.toStatus) {
+  if (fromStatus !== args.toStatus || args.forceLog) {
     await writeStageLog(tx, {
       applicationId: args.applicationId,
       fromStatus,
@@ -84,4 +98,87 @@ export async function updateApplicationStatus(
   }
 
   return updated;
+}
+
+// Workflow üst-geçit: status update + StageLog + (varsa) müdür ataması TEK transaction'da;
+// COMMIT'ten SONRA bildirim gönderilir. Bildirim hatası transaction'ı GERİ ALMAZ
+// (try/catch + console.error) — durum değişimi kalıcı, bildirim best-effort.
+// Mevcut updateApplicationStatus(tx, ...) çağıranları etkilemez (bu ayrı, üst-seviye API).
+export async function transitionApplicationStatus(args: {
+  applicationId: string;
+  toStatus: JobApplicationStatus;
+  changedBy?: string | null;
+  note?: string | null;
+  assignedManagerId?: string | null;
+  actorName?: string | null;
+}) {
+  // İşlem: önce mevcut durumu + başvuran adını oku (bildirim metni için), sonra güncelle.
+  const outcome = await prisma.$transaction(async (tx) => {
+    const before = await tx.publicJobApplication.findUnique({
+      where: { id: args.applicationId },
+      select: { status: true, fullName: true, assignedManagerId: true },
+    });
+    if (!before) {
+      throw new Error(`PublicJobApplication bulunamadı: ${args.applicationId}`);
+    }
+
+    // D4: MUDUR_DEGERLENDIRME → MUDUR_DEGERLENDIRME + müdür değişiyorsa (yeniden atama),
+    // StageLog note'una "eski → yeni müdür" bilgisini ekle (isimlerle).
+    let effectiveNote = args.note ?? null;
+    const isReassign =
+      before.status === "MUDUR_DEGERLENDIRME" &&
+      args.toStatus === "MUDUR_DEGERLENDIRME" &&
+      !!args.assignedManagerId &&
+      args.assignedManagerId !== before.assignedManagerId;
+    if (isReassign) {
+      const ids = [before.assignedManagerId, args.assignedManagerId].filter(
+        (x): x is string => !!x,
+      );
+      const users = await tx.user.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, name: true, firstName: true, lastName: true, email: true },
+      });
+      const nameOf = (id: string | null): string => {
+        if (!id) return "(atanmamış)";
+        const u = users.find((x) => x.id === id);
+        if (!u) return id;
+        return [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.name || u.email || id;
+      };
+      const reassignNote = `Müdür yeniden atandı: ${nameOf(before.assignedManagerId)} → ${nameOf(args.assignedManagerId!)}`;
+      effectiveNote = args.note ? `${args.note} | ${reassignNote}` : reassignNote;
+    }
+
+    const updated = await updateApplicationStatus(tx, {
+      applicationId: args.applicationId,
+      toStatus: args.toStatus,
+      changedBy: args.changedBy,
+      note: effectiveNote,
+      assignedManagerId: args.assignedManagerId,
+      // Yeniden atama (aynı durum) → log yine yazılsın.
+      forceLog: isReassign,
+    });
+    return {
+      updated,
+      fromStatus: before.status,
+      applicantName: before.fullName,
+      // Bildirim için etkin müdür: yeni atanan varsa o, yoksa mevcut.
+      effectiveManagerId: args.assignedManagerId ?? before.assignedManagerId ?? null,
+    };
+  });
+
+  // COMMIT sonrası — bildirim best-effort.
+  try {
+    await notifyApplicationStageChange({
+      applicationId: args.applicationId,
+      applicantName: outcome.applicantName,
+      fromStatus: outcome.fromStatus,
+      toStatus: args.toStatus,
+      assignedManagerId: outcome.effectiveManagerId,
+      actorName: args.actorName ?? null,
+    });
+  } catch (err) {
+    console.error("notifyApplicationStageChange başarısız (geçiş kalıcı):", err);
+  }
+
+  return outcome.updated;
 }

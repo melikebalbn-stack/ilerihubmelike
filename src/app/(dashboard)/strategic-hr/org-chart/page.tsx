@@ -900,29 +900,33 @@ export default function OrgChartPage() {
               <p className="text-sm text-muted-foreground mt-1">Yukaridaki "Yeni Birim" butonuna tiklayarak baslayabilirsiniz.</p>
             </div>
           ) : (
-            <>
-              <div className="flex justify-end mb-2">
-                <div className="w-full sm:w-auto sm:min-w-[380px] sm:max-w-md space-y-2">
-                  <SorumluTablosuPanel
-                    sorumluluklar={selectedUnit?.sorumluluklar}
-                    orgUnitCode={selectedUnit?.code}
-                    hasFullAccess={hasFullAccess}
-                    onRefresh={fetchUnits}
-                  />
-                  <PozisyonYonetimPanel
-                    departmanUnitlari={selectedDeptUnits}
-                    orgUnitCode={selectedUnit?.code}
-                    hasFullAccess={hasFullAccess}
-                    onRefresh={fetchUnits}
-                  />
-                </div>
+            <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+              {/* Ağaç ana kolon (sol): kart satırının hemen altından başlar, dikey büyür.
+                  Dar ekranda üstte; panel altına iner (aşağıdaki DOM sırası + flex-col). */}
+              <div className="flex-1 min-w-0">
+                <OrgChartTree
+                  units={selectedUnit ? [selectedUnit] : []}
+                  hasFullAccess={hasFullAccess}
+                  onRefresh={fetchUnits}
+                />
               </div>
-              <OrgChartTree
-                units={selectedUnit ? [selectedUnit] : []}
-                hasFullAccess={hasFullAccess}
-                onRefresh={fetchUnits}
-              />
-            </>
+              {/* Yönetim paneli (sağ yan): sabit dar genişlik, ağacın üstünü kapatmaz.
+                  lg altında ağacın ALTINA iner. */}
+              <div className="w-full lg:w-64 xl:w-72 shrink-0 space-y-2">
+                <SorumluTablosuPanel
+                  sorumluluklar={selectedUnit?.sorumluluklar}
+                  orgUnitCode={selectedUnit?.code}
+                  hasFullAccess={hasFullAccess}
+                  onRefresh={fetchUnits}
+                />
+                <PozisyonYonetimPanel
+                  departmanUnitlari={selectedDeptUnits}
+                  orgUnitCode={selectedUnit?.code}
+                  hasFullAccess={hasFullAccess}
+                  onRefresh={fetchUnits}
+                />
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

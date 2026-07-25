@@ -6,6 +6,7 @@ import {
   allowedTargetsForRoles,
   requiresAssignedManager,
   requiresRejectionReason,
+  requiresAssessment,
 } from "@/lib/recruitment/transitions";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +98,7 @@ export async function GET(
   const allowedTargets = allowedTargetsForRoles(application.status, roles);
   const requiresManagerTargets = allowedTargets.filter(requiresAssignedManager);
   const requiresReasonTargets = allowedTargets.filter(requiresRejectionReason);
+  const requiresAssessmentTargets = allowedTargets.filter(requiresAssessment);
 
   return NextResponse.json({
     logs,
@@ -108,6 +110,7 @@ export async function GET(
       assignedManagerId: application.assignedManagerId,
       requiresManagerTargets,
       requiresReasonTargets,
+      requiresAssessmentTargets,
     },
   });
 }

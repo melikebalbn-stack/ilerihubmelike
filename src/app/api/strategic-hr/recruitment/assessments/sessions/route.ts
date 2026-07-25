@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assessmentGuard } from "@/lib/assessment/guard";
-import { generateAssessmentToken } from "@/lib/assessment/token";
-
-// Token geçerlilik süresi: 72 saat.
-const GECERLILIK_MS = 72 * 60 * 60 * 1000;
+import {
+  ensureAssessmentSession,
+  AssessmentSessionError,
+  AKTIF_OTURUM_STATUS,
+  sinavUrl,
+} from "@/lib/recruitment/assessment-session";
 
 // Sınav ATANABİLİR başvuru statüleri: aktif pipeline. ACCEPTED/REJECTED (terminal) ve
-// taslak (CONSENT_PENDING/HEALTH_PENDING) hariç.
-const ATANABILIR_STATUS = new Set(["PENDING", "REVIEWING", "SHORTLISTED", "INTERVIEW"]);
-
-// Aktif (adayın hâlâ çözebileceği) oturum statüleri — link YALNIZ bunlarda gösterilir.
-// Terminal (TAMAMLANDI/SURESI_DOLDU/IPTAL) → link işe yaramaz, dönülmez.
-const AKTIF_STATUS = new Set(["ATANDI", "BASLADI"]);
+// taslak (CONSENT_PENDING/HEALTH_PENDING) hariç. SINAV dahil → statüsü zaten SINAV olan
+// başvuruya (yeniden) sınav atanabilsin (idempotent). /transition bu seti KULLANMAZ (matris karar verir).
+const ATANABILIR_STATUS = new Set(["PENDING", "REVIEWING", "SHORTLISTED", "INTERVIEW", "SINAV"]);
 
 // İK görünümü için oturum select'i. token DAHİL EDİLİR ama dışa HAM olarak açılmaz —
 // yalnız aktif oturumda tam sinavLink'e çevrilir, terminal oturumda null.
@@ -32,16 +31,11 @@ const OTURUM_SELECT = {
   assessment: { select: { id: true, name: true, type: true, passingScore: true } },
 } as const;
 
-// Base URL ortamdan (staging→staging, prod→prod). Hardcode YOK. env yoksa relative path.
-function sinavUrl(token: string): string {
-  const base = process.env.ILERIHUB_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "";
-  return base ? `${base}/sinav/${token}` : `/sinav/${token}`;
-}
-
 // Oturum → İK DTO: aktifse sinavLink, terminalde null. Ham token asla çıktıda değil.
+// (sinavUrl + AKTIF_OTURUM_STATUS ortak helper'dan — public başvuru-durum ucuyla tek kaynak.)
 function toOturumDto(o: { token: string; status: string } & Record<string, unknown>) {
   const { token, ...rest } = o;
-  return { ...rest, sinavLink: AKTIF_STATUS.has(o.status) ? sinavUrl(token) : null };
+  return { ...rest, sinavLink: AKTIF_OTURUM_STATUS.has(o.status) ? sinavUrl(token) : null };
 }
 
 // GET — bir başvurunun oturumları  (?publicJobApplicationId=...)
@@ -74,37 +68,32 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Bağların geçerliliği.
-  const [basvuru, sinav] = await Promise.all([
-    prisma.publicJobApplication.findUnique({
-      where: { id: publicJobApplicationId },
-      select: { id: true, status: true },
-    }),
-    prisma.candidateAssessment.findUnique({
-      where: { id: assessmentId },
-      select: { id: true, isActive: true },
-    }),
-  ]);
+  // Başvuru var mı + statü atanabilir mi (route politikası: ATANABILIR_STATUS).
+  const basvuru = await prisma.publicJobApplication.findUnique({
+    where: { id: publicJobApplicationId },
+    select: { id: true, status: true },
+  });
   if (!basvuru) return NextResponse.json({ error: "Başvuru bulunamadı" }, { status: 404 });
-  if (!sinav) return NextResponse.json({ error: "Sınav bulunamadı" }, { status: 404 });
-  if (!sinav.isActive) return NextResponse.json({ error: "Sınav pasif" }, { status: 400 });
   if (!ATANABILIR_STATUS.has(basvuru.status)) {
     return NextResponse.json(
-      { error: "Bu başvuru durumuna sınav atanamaz (yalnız aktif pipeline: PENDING/REVIEWING/SHORTLISTED/INTERVIEW)" },
+      { error: "Bu başvuru durumuna sınav atanamaz (yalnız aktif pipeline)" },
       { status: 400 },
     );
   }
 
-  const expiresAt = new Date(Date.now() + GECERLILIK_MS);
-
-  // Idempotent atama: varsa dokunma, yoksa crypto-random token ile oluştur.
-  // Token koddan üretilir (cuid DEĞİL) — public bearer token için tahmin-dirençli.
-  const oturum = await prisma.assessmentSession.upsert({
-    where: { publicJobApplicationId_assessmentId: { publicJobApplicationId, assessmentId } },
-    create: { publicJobApplicationId, assessmentId, expiresAt, token: generateAssessmentToken() },
-    update: {},
-    select: OTURUM_SELECT,
-  });
-  // Atama hemen ATANDI (aktif) → sinavLink döner; İK linki kopyalayıp adaya iletir.
-  return NextResponse.json(toOturumDto(oturum), { status: 201 });
+  // Oluşturma TEK KAYNAK: sınav geçerliliği + idempotent upsert helper'da (transition ile ortak).
+  try {
+    const { session } = await ensureAssessmentSession(prisma, {
+      publicJobApplicationId,
+      assessmentId,
+      select: OTURUM_SELECT,
+    });
+    // Atama hemen ATANDI (aktif) → sinavLink döner; İK linki kopyalayıp adaya iletir.
+    return NextResponse.json(toOturumDto(session), { status: 201 });
+  } catch (e) {
+    if (e instanceof AssessmentSessionError) {
+      return NextResponse.json({ error: e.message }, { status: e.httpStatus });
+    }
+    throw e;
+  }
 }

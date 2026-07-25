@@ -49,12 +49,53 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
   const [form, setForm] = useState<FormState>(initialFormState)
   const [currentStep, setCurrentStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState<{ applicationNumber: string } | null>(null)
+  // takipImzasi YALNIZ React state'te — paylaşımlı tablet, localStorage/sessionStorage YOK.
+  const [submitted, setSubmitted] = useState<{ applicationNumber: string; takipImzasi: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Gönderim sonrası sınav durumu (public yoklama sonucu) + 30 dk sonra yoklama durdu bayrağı.
+  const [sinavDurum, setSinavDurum] = useState<{ durum: string; sinavAdi?: string; sinavLink?: string } | null>(null)
+  const [yoklamaBitti, setYoklamaBitti] = useState(false)
 
   const totalSteps = SECTIONS.length
   const isFinalStep = currentStep === totalSteps - 1
   const ActiveSection = SECTIONS[currentStep].Component
+
+  // Gönderim sonrası: 10 sn'de bir sınav durumu yokla. Sınav hazır olunca ekran değişir.
+  // 30 dk sonra kendiliğinden dur. Hata SESSİZCE yutulur (aday paniklemesin). Cleanup zorunlu.
+  useEffect(() => {
+    if (!submitted) return
+    const { applicationNumber, takipImzasi } = submitted
+    let durduruldu = false
+
+    const yokla = async () => {
+      try {
+        const res = await fetch('/api/public/basvuru-durum', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ applicationNumber, takipImzasi }),
+        })
+        if (!res.ok) return
+        const data = await res.json().catch(() => null)
+        if (data && !durduruldu) setSinavDurum(data)
+      } catch {
+        // sessizce yut
+      }
+    }
+
+    yokla()
+    const interval = setInterval(yokla, 10_000)
+    const durdur = setTimeout(() => {
+      durduruldu = true
+      clearInterval(interval)
+      setYoklamaBitti(true)
+    }, 30 * 60 * 1000)
+
+    return () => {
+      durduruldu = true
+      clearInterval(interval)
+      clearTimeout(durdur)
+    }
+  }, [submitted])
 
   // KRİTİK: onChange identity stable olmalı — yoksa section component'leri
   // her keystroke'ta re-render olur (focus kaybetmez, sadece performans).
@@ -165,7 +206,7 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
         setError(data.error || 'Başvuru gönderilemedi.')
         return
       }
-      setSubmitted({ applicationNumber: data.applicationNumber ?? '' })
+      setSubmitted({ applicationNumber: data.applicationNumber ?? '', takipImzasi: data.takipImzasi ?? '' })
       onSubmitted?.(data.applicationNumber ?? '')
     } catch {
       setError('Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.')
@@ -177,15 +218,52 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
   if (submitted) {
     const handleNewApplication = () => {
       // PR-JOBAPP-CAMERA-AND-SUCCESS: Tablet senaryosu — bir sonraki aday için
-      // tüm form state'i sıfırla, ilk bölümden başla.
+      // tüm form state'i sıfırla, ilk bölümden başla. takipImzasi (submitted) da temizlenir.
       setForm(initialFormState)
       setCurrentStep(0)
       setSubmitted(null)
+      setSinavDurum(null)
+      setYoklamaBitti(false)
       setError(null)
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
     }
+
+    // Sınav hazır (aktif oturum ATANDI/BASLADI) → ekran değişir: sınav adı + büyük "Sınava Başla".
+    const sinavLink = sinavDurum?.sinavLink
+    if (sinavLink) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+          <div className="bg-white border border-emerald-200 rounded-2xl p-8 max-w-md w-full text-center">
+            <CheckCircle2 className="h-12 w-12 text-emerald-500 mx-auto mb-4" />
+            <h1 className="text-2xl font-medium text-slate-900 mb-2">Sınavınız Hazır</h1>
+            {sinavDurum?.sinavAdi && (
+              <p className="text-sm text-slate-600 mb-1">
+                Sınav: <strong className="text-slate-900">{sinavDurum.sinavAdi}</strong>
+              </p>
+            )}
+            <p className="text-xs text-slate-400 mb-6">
+              Hazır olduğunuzda aşağıdaki butona dokunun.
+            </p>
+            <a
+              href={sinavLink}
+              className="block w-full px-6 py-4 bg-emerald-600 text-white rounded-xl font-semibold text-lg hover:bg-emerald-700 transition-colors active:scale-[0.98]"
+            >
+              Sınava Başla
+            </a>
+            <button
+              type="button"
+              onClick={handleNewApplication}
+              className="mt-4 text-xs text-slate-400 hover:text-slate-600 underline"
+            >
+              Bu ben değilim · Yeni Başvuru
+            </button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full text-center">
@@ -200,9 +278,16 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
               </>
             )}
           </p>
-          <p className="text-xs text-slate-400 mt-4">
-            İnsan Varlıkları ekibimiz değerlendirme sonrası sizinle iletişime geçecektir.
-          </p>
+          {yoklamaBitti ? (
+            <p className="text-xs text-amber-600 mt-4">
+              Sınav ataması gelmedi. Lütfen İnsan Varlıkları ekibi ile görüşün.
+            </p>
+          ) : (
+            <p className="text-xs text-slate-400 mt-4">
+              İnsan Varlıkları ekibimiz değerlendirme sonrası sizinle iletişime geçecektir.
+              Sınav atanırsa bu ekranda görünecektir.
+            </p>
+          )}
           <div className="flex flex-col sm:flex-row gap-3 mt-6 justify-center">
             <button
               type="button"

@@ -1,6 +1,8 @@
 import { Prisma, JobApplicationStatus } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { notifyApplicationStageChange } from "@/lib/hr-notifications";
+import { ensureAssessmentSession, AssessmentSessionError } from "@/lib/recruitment/assessment-session";
+import { requiresAssessment } from "@/lib/recruitment/transitions";
 
 // Başvuru aşama/durum geçişleri için TEK GEÇİT.
 // Amaç: PublicJobApplication.status her değiştiğinde, aynı transaction içinde
@@ -114,7 +116,17 @@ export async function transitionApplicationStatus(args: {
   // REJECTED geçişinde ret nedeni. Verilirse PublicJobApplication.rejectionReasonId AYNI
   // tx'te yazılır ve StageLog note'una nedenin ETİKETİ (ham id değil) eklenir.
   rejectionReasonId?: string | null;
+  // SINAV geçişinde sınav. Verilirse AYNI tx'te AssessmentSession açılır (idempotent) +
+  // StageLog note'una sınav ADI eklenir. Oturum açılamazsa tüm geçiş geri alınır.
+  assessmentId?: string | null;
 }) {
+  // Güvenlik ağı (invariant): SINAV'a geçiş assessmentId olmadan yapılamaz — oturumsuz
+  // SINAV üretilemez. Tek çağıran (transition route) zaten guard'lı; bu, gelecekteki
+  // çağıranlar için de kapıyı kapatır. Tx'ten ÖNCE fast-fail (hiçbir yazma olmadan).
+  if (requiresAssessment(args.toStatus) && !args.assessmentId) {
+    throw new AssessmentSessionError("Sınav seçimi zorunlu", 400);
+  }
+
   // İşlem: önce mevcut durumu + başvuran adını oku (bildirim metni için), sonra güncelle.
   const outcome = await prisma.$transaction(async (tx) => {
     const before = await tx.publicJobApplication.findUnique({
@@ -165,6 +177,19 @@ export async function transitionApplicationStatus(args: {
       extraData.rejectionReason = { connect: { id: args.rejectionReasonId } };
       const reasonNote = `Ret nedeni: ${reason.name}`;
       effectiveNote = effectiveNote ? `${effectiveNote} | ${reasonNote}` : reasonNote;
+    }
+
+    // Sınav: verilmişse AYNI tx'te oturum aç (ORTAK helper, idempotent) + note'a sınav adı.
+    // Helper sınav geçerliliğini doğrular; başarısızsa fırlatır → tx GERİ ALINIR
+    // (statü SINAV olup oturumsuz kalmaz). Statü guard'ı matriste; helper statüye bakmaz.
+    if (args.assessmentId) {
+      const { assessmentName } = await ensureAssessmentSession(tx, {
+        publicJobApplicationId: args.applicationId,
+        assessmentId: args.assessmentId,
+        select: { id: true },
+      });
+      const sinavNote = `Sınava yönlendirildi: ${assessmentName}`;
+      effectiveNote = effectiveNote ? `${effectiveNote} | ${sinavNote}` : sinavNote;
     }
 
     const updated = await updateApplicationStatus(tx, {

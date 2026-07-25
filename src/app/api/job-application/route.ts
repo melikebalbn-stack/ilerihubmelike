@@ -10,6 +10,7 @@ import { sendEmail } from '@/lib/email'
 import { resolveHRRecipients } from '@/lib/hr-notifications'
 import { verifyConsentedDraft } from '@/lib/job-application/consent-guard'
 import { DRAFT_COOKIE_NAME } from '@/lib/job-application/draft-cookie'
+import { basvuruTakipImzasi } from '@/lib/recruitment/basvuru-takip'
 import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
 import { SERVER_SCALAR_REQUIRED } from '@/components/job-application/required-fields'
 
@@ -257,6 +258,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       applicationNumber: application.applicationNumber,
+      // Tablet teşekkür ekranı public durum yoklaması için imza (sır yanıtta DEĞİL, türev).
+      takipImzasi: basvuruTakipImzasi(application.id),
       message: 'Başvurunuz başarıyla kaydedildi'
     })
   } catch (error) {

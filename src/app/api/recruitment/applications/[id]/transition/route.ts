@@ -8,9 +8,11 @@ import {
   canTransitionAny,
   requiresAssignedManager,
   requiresRejectionReason,
+  requiresAssessment,
 } from "@/lib/recruitment/transitions";
 import { resolveTransitionRoles } from "@/lib/recruitment/resolve-roles";
 import { transitionApplicationStatus } from "@/lib/recruitment/stage-log";
+import { AssessmentSessionError } from "@/lib/recruitment/assessment-session";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ const BodySchema = z.object({
   note: z.string().trim().max(2000).optional(),
   assignedManagerId: z.string().trim().min(1).optional(),
   rejectionReasonId: z.string().trim().min(1).optional(),
+  assessmentId: z.string().trim().min(1).optional(),
 });
 
 export async function POST(
@@ -43,7 +46,7 @@ export async function POST(
       { status: 400 },
     );
   }
-  const { toStatus, note, assignedManagerId, rejectionReasonId } = parsed.data;
+  const { toStatus, note, assignedManagerId, rejectionReasonId, assessmentId } = parsed.data;
 
   // 2) Başvuruyu çek
   const application = await prisma.publicJobApplication.findUnique({
@@ -100,6 +103,12 @@ export async function POST(
     return NextResponse.json({ error: "Ret nedeni zorunlu" }, { status: 400 });
   }
 
+  // 5c) SINAV → sınav seçimi zorunlu (geçişle aynı anda oturum açılır). Sunucu-taraflı guard.
+  //     requiresAssessment TEK KAYNAK (transitions.ts).
+  if (requiresAssessment(toStatus) && !assessmentId) {
+    return NextResponse.json({ error: "Sınav seçimi zorunlu" }, { status: 400 });
+  }
+
   // 6) Geçiş (tx + commit sonrası bildirim, stage-log wrapper'ında)
   try {
     const updated = await transitionApplicationStatus({
@@ -112,10 +121,16 @@ export async function POST(
       actorName: session.user.name ?? null,
       // REJECTED'da guard'dan geçti; helper AYNI tx'te rejectionReasonId yazar + note'a etiket ekler.
       rejectionReasonId: rejectionReasonId ?? undefined,
+      // SINAV'da guard'dan geçti; helper AYNI tx'te AssessmentSession açar + note'a sınav adı ekler.
+      assessmentId: assessmentId ?? undefined,
     });
     // 7) Güncel kayıt
     return NextResponse.json(updated, { status: 200 });
   } catch (err) {
+    // Sınav oturumu açılamadı (sınav yok/pasif) → geçiş geri alındı, anlaşılır 400.
+    if (err instanceof AssessmentSessionError) {
+      return NextResponse.json({ error: err.message }, { status: err.httpStatus });
+    }
     console.error("Başvuru geçişi başarısız:", err);
     return NextResponse.json(
       { error: "Geçiş sırasında hata oluştu" },

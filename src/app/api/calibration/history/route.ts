@@ -92,6 +92,10 @@ export async function POST(request: NextRequest) {
       })
 
       const deviceUpdateData: Record<string, unknown> = {}
+      // Son kalibrasyon sonucu her sonuçta (FAIL dahil) cihaza yazılır — liste
+      // rozeti "Başarısız" gösterebilsin. FAIL yalnız bu alanı etkiler (karar (a)):
+      // deviceCondition/status/tarihlere dokunmaz.
+      deviceUpdateData.sonKalibrasyonSonucu = result as CalibrationResult
       if (result === 'PASS') {
         deviceUpdateData.lastCalibrationDate = calDate
         deviceUpdateData.nextCalibrationDate = nextDueDate

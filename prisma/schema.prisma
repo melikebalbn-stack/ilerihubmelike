@@ -474,6 +474,9 @@ model CalibrationDevice {
   // Durum
   status               CalibrationStatus @default(VALID)
   statusManualOverride Boolean           @default(false) // IN_PROCESS/OUT_OF_ORDER manuel override
+  // Son kalibrasyon geçmiş kaydının sonucu — liste rozetinde "Başarısız" (FAIL)
+  // gösterebilmek için denormalize edilir; her history POST/PUT'ta güncellenir.
+  sonKalibrasyonSonucu CalibrationResult? // null = hiç kalibrasyon geçmişi yok
   isActive             Boolean           @default(true)
   requiresResponsible  Boolean           @default(false) // Zorunlu zimmet
   notes                String?           @db.Text

@@ -59,6 +59,7 @@ type CalibrationDevice = {
   plannedVerificationDate?: string | null
   purchaseDate?: string | null
   status: string
+  sonKalibrasyonSonucu?: string | null
   statusManualOverride?: boolean
   deviceCondition?: string | null
   calibrationSentDate?: string | null
@@ -270,7 +271,7 @@ export default function CalibrationPage() {
     loadDropdownData()
   }, [])
 
-  const getStatusBadge = (status: string, deviceCondition?: string | null) => {
+  const getStatusBadge = (status: string, deviceCondition?: string | null, sonKalibrasyonSonucu?: string | null) => {
     // Hurda cihaz: geleceği yok — "Süresi Doldu" yerine gri "Hurda" rozeti göster
     if (deviceCondition === 'Hurda') {
       return (
@@ -286,6 +287,16 @@ export default function CalibrationPage() {
         <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
           <Wrench className="mr-1 h-3 w-3" />
           Kalibrasyonda
+        </Badge>
+      )
+    }
+    // Son kalibrasyonu başarısız (FAIL): Hurda/Kalibrasyonda override'larından SONRA,
+    // vade rozetinden ÖNCE — kırmızı "Başarısız".
+    if (sonKalibrasyonSonucu === 'FAIL') {
+      return (
+        <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
+          <XCircle className="mr-1 h-3 w-3" />
+          Başarısız
         </Badge>
       )
     }
@@ -2107,7 +2118,7 @@ export default function CalibrationPage() {
                           )
                         })() : "-"}
                       </TableCell>
-                      <TableCell>{getStatusBadge(device.status, device.deviceCondition)}</TableCell>
+                      <TableCell>{getStatusBadge(device.status, device.deviceCondition, device.sonKalibrasyonSonucu)}</TableCell>
                       <TableCell>
                         {attachmentCount > 0 ? (
                           <Badge

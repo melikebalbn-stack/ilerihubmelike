@@ -97,6 +97,9 @@ export async function PUT(
       // SADECE Başarılı ise; Cihaz Durumu her zaman en güncel kararı yansıtır — böylece
       // bir kaydı Hurda'dan Başarılı'ya düzenlemek Cihaz Durumu'nu da Şirkette'ye döndürür).
       const deviceData: Record<string, unknown> = {}
+      // Son kalibrasyon sonucu daima EN GÜNCEL kaydın result'ı (FAIL dahil) —
+      // liste rozeti "Başarısız" gösterebilsin. FAIL yalnız bu alanı etkiler.
+      deviceData.sonKalibrasyonSonucu = latest.result
       if (latest.result === 'PASS') {
         deviceData.lastCalibrationDate = latest.calibrationDate
         deviceData.nextCalibrationDate = latest.nextDueDate

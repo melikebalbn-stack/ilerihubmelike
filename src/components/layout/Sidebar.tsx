@@ -175,7 +175,7 @@ const teknikMenuItems = [
 // Roller ipro.view eşlemesiyle hizalı: super-admin/admin/it-admin/departman-muduru.
 const iproMenuItems = [
   { name: "İzleme Panosu", icon: Activity, href: "/ipro/izleme", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
-  { name: "Fabrika Haritası", icon: Map, href: "/ipro/harita", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"], note: "temsili veri" },
+  { name: "Fabrika Haritası", icon: Map, href: "/ipro/harita", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"], note: "canlı" },
   { name: "Tezgahlar", icon: Factory, href: "/ipro/tezgahlar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Operatör Eşlemeleri", icon: Users, href: "/ipro/operator-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Hurda / Duruş Sebepleri", icon: ClipboardList, href: "/ipro/sebepler", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
@@ -597,7 +597,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <Icon className="h-5 w-5" />
         <span className="flex-1">{item.name}</span>
         {note && (
-          <span className="rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-amber-300/80 bg-amber-400/10">
+          <span className="rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300/80 bg-emerald-400/10">
             {note}
           </span>
         )}

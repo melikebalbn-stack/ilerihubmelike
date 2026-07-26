@@ -112,7 +112,7 @@ export default function RecruitmentDashboard() {
         <CardContent>
           {d.pozisyonlar.length === 0 ? <p className="text-sm text-slate-500">Veri yok.</p> : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead><tr className="text-left text-slate-500 border-b"><th className="px-3 py-2">Pozisyon (serbest metin)</th><th className="px-3 py-2">Başvuru</th><th className="px-3 py-2">Ort. Time to Hire</th><th className="px-3 py-2">Cost per Hire</th></tr></thead>
                 <tbody>{d.pozisyonlar.map((p, i) => (
                   <tr key={i} className="border-b last:border-0"><td className="px-3 py-2 font-medium">{p.position}</td><td className="px-3 py-2">{p.basvuru}</td><td className="px-3 py-2">{gun(p.ortTimeToHire)}</td><td className="px-3 py-2 text-slate-400">-</td></tr>
@@ -129,7 +129,7 @@ export default function RecruitmentDashboard() {
         <CardContent>
           {d.kaynaklar.length === 0 ? <p className="text-sm text-slate-500">Kaynak verisi yok.</p> : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead><tr className="text-left text-slate-500 border-b"><th className="px-3 py-2">Kaynak</th><th className="px-3 py-2">Başvuru</th><th className="px-3 py-2">İşe Alınan</th><th className="px-3 py-2">Dönüşüm</th></tr></thead>
                 <tbody>{d.kaynaklar.map((k) => (
                   <tr key={k.source} className={`border-b last:border-0 ${k.source === "Belirtilmemiş" ? "text-slate-400" : ""}`}>

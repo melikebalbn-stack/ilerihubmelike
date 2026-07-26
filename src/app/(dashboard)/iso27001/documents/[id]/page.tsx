@@ -314,14 +314,14 @@ export default async function DocumentDetailPage({
                     </Badge>
                   </div>
                 </TableCell>
-                <TableCell className="text-sm">
+                <TableCell className="text-xs">
                   <div className="flex items-center gap-1">
                     <Clock className="h-3 w-3 text-muted-foreground" />
                     {format(doc.updatedAt, "dd MMM yyyy HH:mm", { locale: tr })}
                   </div>
                 </TableCell>
-                <TableCell className="text-sm">{doc.ownerName}</TableCell>
-                <TableCell className="text-sm text-muted-foreground italic">
+                <TableCell className="text-xs">{doc.ownerName}</TableCell>
+                <TableCell className="text-xs text-muted-foreground italic">
                   Mevcut yayında olan versiyon
                 </TableCell>
                 <TableCell className="text-right">
@@ -347,7 +347,7 @@ export default async function DocumentDetailPage({
                 doc.versions.map((v) => (
                   <TableRow key={v.id}>
                     <TableCell className="font-mono">{v.version}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-xs">
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Clock className="h-3 w-3" />
                         {format(v.createdAt, "dd MMM yyyy HH:mm", {
@@ -355,8 +355,8 @@ export default async function DocumentDetailPage({
                         })}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{v.changedByName}</TableCell>
-                    <TableCell className="text-sm whitespace-pre-wrap">
+                    <TableCell className="text-xs">{v.changedByName}</TableCell>
+                    <TableCell className="text-xs whitespace-pre-wrap">
                       {v.changeDescription || "—"}
                     </TableCell>
                     <TableCell className="text-right">

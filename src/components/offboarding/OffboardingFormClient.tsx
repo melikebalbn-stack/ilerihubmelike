@@ -544,7 +544,7 @@ export function OffboardingFormClient({ mode, id, canEdit, canApprove, canDelete
                   {assetItems.map((it, idx) => (
                     <TableRow key={it.id}>
                       <TableCell className="text-xs text-slate-500 tabular-nums">{it.sira}</TableCell>
-                      <TableCell className="font-medium text-sm">{it.label}</TableCell>
+                      <TableCell className="font-medium text-xs">{it.label}</TableCell>
                       <TableCell className="text-center">
                         <Switch
                           checked={it.returned}
@@ -594,7 +594,7 @@ export function OffboardingFormClient({ mode, id, canEdit, canApprove, canDelete
                   {accessItems.map((it, idx) => (
                     <TableRow key={it.id}>
                       <TableCell className="text-xs text-slate-500 tabular-nums">{it.sira}</TableCell>
-                      <TableCell className="font-medium text-sm">{it.label}</TableCell>
+                      <TableCell className="font-medium text-xs">{it.label}</TableCell>
                       <TableCell className="text-center">
                         <Switch
                           checked={it.revoked}

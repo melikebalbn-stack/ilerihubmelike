@@ -2288,7 +2288,7 @@ export default function RecruitmentPage() {
                   <TableBody>
                     {filteredRequests.map((req) => (
                       <TableRow key={req.id}>
-                        <TableCell className="font-mono text-sm">{req.requestNumber}</TableCell>
+                        <TableCell className="font-mono text-xs">{req.requestNumber}</TableCell>
                         <TableCell className="font-medium">{req.title}</TableCell>
                         <TableCell>{req.department}</TableCell>
                         <TableCell>{req.requesterName}</TableCell>
@@ -2403,7 +2403,7 @@ export default function RecruitmentPage() {
                   <TableBody>
                     {filteredOpenings.map((opening) => (
                       <TableRow key={opening.id}>
-                        <TableCell className="font-mono text-sm">{opening.code}</TableCell>
+                        <TableCell className="font-mono text-xs">{opening.code}</TableCell>
                         <TableCell className="font-medium">{opening.title}</TableCell>
                         <TableCell>{opening.department}</TableCell>
                         <TableCell>{employmentTypeLabels[opening.employmentType]}</TableCell>
@@ -2662,7 +2662,7 @@ export default function RecruitmentPage() {
                         className="cursor-pointer hover:bg-slate-50"
                         onClick={() => router.push(`/strategic-hr/recruitment/job-applications/${app.id}`)}
                       >
-                        <TableCell className="font-mono text-sm">{app.applicationNumber}</TableCell>
+                        <TableCell className="font-mono text-xs">{app.applicationNumber}</TableCell>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             {app.photoUrl ? (

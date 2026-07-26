@@ -99,7 +99,7 @@ export default function KoliListView({
 
       {/* Masaüstü: Tablo */}
       <div className="hidden md:block rounded-lg border border-slate-200 bg-white overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead className="bg-slate-50 text-slate-700">
             <KoliListHeader currentSort={sortKey} currentDir={sortDir} />
           </thead>

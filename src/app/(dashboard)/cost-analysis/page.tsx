@@ -1113,7 +1113,7 @@ export default function CostAnalysisPage() {
                       </TableHeader>
                       <TableBody>
                         {importData.materials.length === 0 ? (
-                          <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-4">Malzeme verisi bulunamadı</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-4">Malzeme verisi bulunamadı</TableCell></TableRow>
                         ) : importData.materials.map((m, i) => (
                           <TableRow key={i} className={!m.valid ? "bg-red-50" : ""}>
                             <TableCell className="text-xs">{i + 1}</TableCell>
@@ -1153,7 +1153,7 @@ export default function CostAnalysisPage() {
                       </TableHeader>
                       <TableBody>
                         {importData.laborItems.length === 0 ? (
-                          <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-4">İşçilik verisi bulunamadı</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-4">İşçilik verisi bulunamadı</TableCell></TableRow>
                         ) : importData.laborItems.map((l, i) => (
                           <TableRow key={i} className={!l.valid ? "bg-red-50" : ""}>
                             <TableCell className="text-xs">{i + 1}</TableCell>
@@ -1192,7 +1192,7 @@ export default function CostAnalysisPage() {
                       </TableHeader>
                       <TableBody>
                         {importData.externalServices.length === 0 ? (
-                          <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-4">Dış hizmet verisi bulunamadı</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-4">Dış hizmet verisi bulunamadı</TableCell></TableRow>
                         ) : importData.externalServices.map((s, i) => (
                           <TableRow key={i} className={!s.valid ? "bg-red-50" : ""}>
                             <TableCell className="text-xs">{i + 1}</TableCell>
@@ -1229,7 +1229,7 @@ export default function CostAnalysisPage() {
                       </TableHeader>
                       <TableBody>
                         {importData.otherCosts.length === 0 ? (
-                          <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-4">Diğer maliyet verisi bulunamadı</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-4">Diğer maliyet verisi bulunamadı</TableCell></TableRow>
                         ) : importData.otherCosts.map((o, i) => (
                           <TableRow key={i} className={!o.valid ? "bg-red-50" : ""}>
                             <TableCell className="text-xs">{i + 1}</TableCell>

@@ -516,13 +516,13 @@ export default function BackupsPage() {
           <table className="w-full">
             <thead className="bg-muted/50">
               <tr>
-                <th className="text-left p-3 text-sm font-medium">Yedek Adı</th>
-                <th className="text-left p-3 text-sm font-medium">Proje</th>
-                <th className="text-left p-3 text-sm font-medium">Tür</th>
-                <th className="text-left p-3 text-sm font-medium">Boyut</th>
-                <th className="text-left p-3 text-sm font-medium">Durum</th>
-                <th className="text-left p-3 text-sm font-medium">Tarih</th>
-                <th className="text-right p-3 text-sm font-medium">İşlemler</th>
+                <th className="text-left p-3 text-xs font-medium">Yedek Adı</th>
+                <th className="text-left p-3 text-xs font-medium">Proje</th>
+                <th className="text-left p-3 text-xs font-medium">Tür</th>
+                <th className="text-left p-3 text-xs font-medium">Boyut</th>
+                <th className="text-left p-3 text-xs font-medium">Durum</th>
+                <th className="text-left p-3 text-xs font-medium">Tarih</th>
+                <th className="text-right p-3 text-xs font-medium">İşlemler</th>
               </tr>
             </thead>
             <tbody>
@@ -544,18 +544,18 @@ export default function BackupsPage() {
                     <td className="p-3">
                       <ProjectBadge project={backup.projectName} />
                     </td>
-                    <td className="p-3 text-sm">
+                    <td className="p-3 text-xs">
                       {backup.backupType === "MANUAL" ? "Manuel" :
                        backup.backupType === "SCHEDULED" ? "Zamanlanmış" :
                        backup.backupType === "PRE_RESTORE" ? "Pre-Restore" : backup.backupType}
                     </td>
-                    <td className="p-3 text-sm">
+                    <td className="p-3 text-xs">
                       {backup.status === "COMPLETED" ? formatSize(Number(backup.fileSize)) : "-"}
                     </td>
                     <td className="p-3">
                       <StatusBadge status={backup.status} />
                     </td>
-                    <td className="p-3 text-sm text-muted-foreground">
+                    <td className="p-3 text-xs text-muted-foreground">
                       {format(new Date(backup.createdAt), "dd MMM yyyy HH:mm", { locale: tr })}
                     </td>
                     <td className="p-3 text-right">
@@ -615,13 +615,13 @@ export default function BackupsPage() {
           <table className="w-full">
             <thead className="bg-muted/50">
               <tr>
-                <th className="text-left p-3 text-sm font-medium">Ad</th>
-                <th className="text-left p-3 text-sm font-medium">Proje</th>
-                <th className="text-left p-3 text-sm font-medium">Sıklık</th>
-                <th className="text-left p-3 text-sm font-medium">Saat</th>
-                <th className="text-left p-3 text-sm font-medium">Sonraki Çalışma</th>
-                <th className="text-left p-3 text-sm font-medium">Durum</th>
-                <th className="text-right p-3 text-sm font-medium">İşlemler</th>
+                <th className="text-left p-3 text-xs font-medium">Ad</th>
+                <th className="text-left p-3 text-xs font-medium">Proje</th>
+                <th className="text-left p-3 text-xs font-medium">Sıklık</th>
+                <th className="text-left p-3 text-xs font-medium">Saat</th>
+                <th className="text-left p-3 text-xs font-medium">Sonraki Çalışma</th>
+                <th className="text-left p-3 text-xs font-medium">Durum</th>
+                <th className="text-right p-3 text-xs font-medium">İşlemler</th>
               </tr>
             </thead>
             <tbody>
@@ -634,15 +634,15 @@ export default function BackupsPage() {
               ) : (
                 schedules.map((schedule) => (
                   <tr key={schedule.id} className="border-t hover:bg-muted/30">
-                    <td className="p-3 font-medium text-sm">{schedule.name}</td>
+                    <td className="p-3 font-medium text-xs">{schedule.name}</td>
                     <td className="p-3">
                       <ProjectBadge project={schedule.projectName} />
                     </td>
-                    <td className="p-3 text-sm">
+                    <td className="p-3 text-xs">
                       {formatFrequency(schedule.frequency, schedule.dayOfWeek ?? undefined, schedule.dayOfMonth ?? undefined)}
                     </td>
-                    <td className="p-3 text-sm">{schedule.time}</td>
-                    <td className="p-3 text-sm text-muted-foreground">
+                    <td className="p-3 text-xs">{schedule.time}</td>
+                    <td className="p-3 text-xs text-muted-foreground">
                       {schedule.nextRunAt
                         ? format(new Date(schedule.nextRunAt), "dd MMM HH:mm", { locale: tr })
                         : "-"}

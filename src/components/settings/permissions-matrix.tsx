@@ -303,7 +303,7 @@ export function PermissionsMatrix({
 
         <Card>
           <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead className="sticky top-0 bg-background z-10">
                 <tr className="border-b">
                   <th className="text-left p-3 font-semibold min-w-[280px]">

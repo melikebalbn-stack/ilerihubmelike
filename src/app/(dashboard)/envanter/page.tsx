@@ -426,7 +426,7 @@ function DashboardContent() {
         </h2>
 
         <div className="mt-4 overflow-hidden rounded-xl border">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-3">Kod</th>
@@ -610,7 +610,7 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
       </div>
 
       <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-        <table className="w-full border-collapse text-sm">
+        <table className="w-full border-collapse text-xs">
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Kod</th>
@@ -1214,7 +1214,7 @@ async function handleSave() {
               </div>
 
               <div className="overflow-hidden rounded-2xl border">
-                <table className="w-full text-sm">
+                <table className="w-full text-xs">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
                       <th className="px-3 py-3">Varyant</th>
@@ -2325,7 +2325,7 @@ function UrunDetayModal({
                 <h3 className="font-semibold text-slate-900">Stoklar</h3>
 
                 <div className="mt-4 overflow-hidden rounded-xl border">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-xs">
                     <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                       <tr>
                         <th className="px-3 py-3">Varyant</th>
@@ -2533,7 +2533,7 @@ function StokYonetimi() {
 
           {!loading && urunDetay && (
             <div className="mt-6 overflow-hidden rounded-xl border">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-3">Seç</th>
@@ -3512,7 +3512,7 @@ function ParametrelerYonetimi() {
           <p className="text-sm text-slate-500">Henüz kategori tanımlanmamış.</p>
         ) : (
           <div className="overflow-hidden overflow-x-auto rounded-xl border">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-3">Ad</th>
@@ -3995,7 +3995,7 @@ function ImportRaporTablosu({
 
   return (
     <div className="mt-3 overflow-hidden overflow-x-auto rounded-xl border">
-      <table className="w-full text-sm">
+      <table className="w-full text-xs">
         <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
           <tr>
             <th className="px-3 py-3">Sayfa</th>
@@ -4023,7 +4023,7 @@ function ImportRaporTablosu({
 function ImportAtlananTablosu({ satirlar }: { satirlar: ImportAtlanan[] }) {
   return (
     <div className="mt-3 overflow-hidden overflow-x-auto rounded-xl border">
-      <table className="w-full text-sm">
+      <table className="w-full text-xs">
         <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
           <tr>
             <th className="px-3 py-3">Sayfa</th>
@@ -4286,7 +4286,7 @@ function RaporlarYonetimi() {
               <p className="mt-6 text-sm text-slate-500">Kayıt bulunamadı.</p>
             ) : (
               <div className="mt-6 overflow-hidden overflow-x-auto rounded-xl border">
-                <table className="w-full text-sm">
+                <table className="w-full text-xs">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
                       <th className="px-3 py-3">Sicil</th>
@@ -4938,7 +4938,7 @@ function SatinAlmaYonetimi() {
           <p className="text-sm text-slate-500">Kayıt bulunamadı.</p>
         ) : (
           <div className="overflow-hidden overflow-x-auto rounded-xl border">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-3">Form No</th>
@@ -5014,7 +5014,7 @@ function SatinAlmaYonetimi() {
               <div>
                 <h4 className="font-semibold text-slate-900">Kalemler</h4>
                 <div className="mt-2 overflow-hidden overflow-x-auto rounded-xl border">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-xs">
                     <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                       <tr>
                         <th className="px-3 py-3">Kod</th>
@@ -5918,7 +5918,7 @@ function SezonPlaniYonetimi() {
           <p className="text-sm text-slate-500">Henüz sezon planı yok.</p>
         ) : (
           <div className="overflow-hidden overflow-x-auto rounded-xl border">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                 <tr>
                   <th className="px-3 py-3">Ad</th>
@@ -6061,7 +6061,7 @@ function SezonPlaniYonetimi() {
               <div>
                 <h4 className="font-semibold text-slate-900">Kalemler</h4>
                 <div className="mt-2 overflow-hidden overflow-x-auto rounded-xl border">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-xs">
                     <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                       <tr>
                         <th className="px-3 py-3">Ürün</th>
@@ -6079,7 +6079,7 @@ function SezonPlaniYonetimi() {
                       ))}
                       {planDetay.kalemler.length === 0 && (
                         <tr>
-                          <td colSpan={2} className="px-3 py-3 text-sm text-slate-500">
+                          <td colSpan={2} className="px-3 py-3 text-xs text-slate-500">
                             Henüz kalem eklenmedi.
                           </td>
                         </tr>
@@ -6164,7 +6164,7 @@ function SezonPlaniYonetimi() {
                     </p>
 
                     <div className="mt-2 overflow-hidden overflow-x-auto rounded-xl border">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-xs">
                         <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                           <tr>
                             <th className="px-3 py-3">Ürün</th>
@@ -6301,7 +6301,7 @@ function SezonPlaniYonetimi() {
 
                 {bedenImportRapor.hatalar.length > 0 && (
                   <div className="overflow-hidden overflow-x-auto rounded-xl border">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs">
                       <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                         <tr>
                           <th className="px-3 py-2">Satır</th>
@@ -6418,7 +6418,7 @@ function SezonPlaniYonetimi() {
             <p className="text-sm text-slate-500">Henüz beden profili girilmedi.</p>
           ) : (
             <div className="overflow-hidden overflow-x-auto rounded-xl border">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-3">Sicil</th>

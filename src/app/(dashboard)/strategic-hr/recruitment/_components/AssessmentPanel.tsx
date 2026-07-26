@@ -112,7 +112,7 @@ export default function AssessmentPanel() {
             <p className="text-sm text-slate-500">Henüz sınav tanımı yok.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left text-slate-500 border-b">
                     <th className="px-3 py-2">Sınav</th>
@@ -539,7 +539,7 @@ function AtamaVeSonuc({ assessmentId }: { assessmentId: string }) {
         {mesaj && <p className="text-sm text-[#1B4F72]">{mesaj}</p>}
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-slate-500 border-b">
                 <th className="px-3 py-2">Sınav</th>

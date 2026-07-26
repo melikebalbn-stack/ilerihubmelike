@@ -658,7 +658,7 @@ export default function AuditsPage() {
               <TableBody>
                 {audits.map((audit) => (
                   <TableRow key={audit.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-mono text-sm" onClick={() => handleViewAudit(audit)}>
+                    <TableCell className="font-mono text-xs" onClick={() => handleViewAudit(audit)}>
                       {audit.auditNumber}
                     </TableCell>
                     <TableCell onClick={() => handleViewAudit(audit)}>

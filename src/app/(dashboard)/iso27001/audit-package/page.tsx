@@ -439,7 +439,7 @@ export default function AuditPackagePage() {
               <TableBody>
                 {complianceChecklist.items.map((item, index) => (
                   <TableRow key={index}>
-                    <TableCell className="font-mono text-sm">
+                    <TableCell className="font-mono text-xs">
                       {item.requirement.split(" ")[0]}
                     </TableCell>
                     <TableCell>{item.requirement.split(" ").slice(1).join(" ")}</TableCell>

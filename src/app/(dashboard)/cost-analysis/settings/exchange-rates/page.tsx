@@ -397,7 +397,7 @@ export default function ExchangeRatesSettingsPage() {
                     <TableCell className="text-gray-600">
                       {formatDate(rate.effectiveDate)}
                     </TableCell>
-                    <TableCell className="text-gray-500 text-sm">
+                    <TableCell className="text-gray-500 text-xs">
                       {formatDate(rate.createdAt)}
                     </TableCell>
                     <TableCell className="text-center">
@@ -508,10 +508,10 @@ export default function ExchangeRatesSettingsPage() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-xs">
                             ₺{currency.forexBuying.toFixed(4)}
                           </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
+                          <TableCell className="text-right font-mono text-xs">
                             ₺{currency.forexSelling.toFixed(4)}
                           </TableCell>
                           <TableCell className="text-right font-mono font-medium text-teal-600">

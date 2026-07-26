@@ -52,7 +52,7 @@ export default function SourceBreakdownPanel() {
           <p className="text-sm text-slate-500">Henüz başvuru kaynağı verisi yok.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-slate-500 border-b">
                   <th className="px-3 py-2">Kaynak</th>

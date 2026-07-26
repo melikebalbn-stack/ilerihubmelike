@@ -1110,7 +1110,7 @@ export default function SuppliersPage() {
 
                         return (
                           <TableRow key={c.id}>
-                            <TableCell className="font-mono text-sm">{c.code}</TableCell>
+                            <TableCell className="font-mono text-xs">{c.code}</TableCell>
                             <TableCell>
                               <div>
                                 <p className="font-medium text-sm">{c.name}</p>
@@ -1454,7 +1454,7 @@ export default function SuppliersPage() {
                               <TableCell>
                                 <span className="text-sm">{evaluation.period || "-"}</span>
                               </TableCell>
-                              <TableCell className="font-mono text-sm">
+                              <TableCell className="font-mono text-xs">
                                 {evaluation.evaluationNo}
                               </TableCell>
                               <TableCell>

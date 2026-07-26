@@ -165,7 +165,7 @@ export default function MaintenanceGuidePage() {
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b">
                       <th className="text-left p-2">KPI</th>
@@ -660,7 +660,7 @@ export default function MaintenanceGuidePage() {
             <li>Super Admin (Super Yonetici)</li>
           </ul>
           <h3 className="text-lg font-semibold mb-2 mt-6">Temel Kavramlar:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
+          <table className="w-full border-collapse border border-gray-300 text-xs">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Kavram</th>
@@ -709,7 +709,7 @@ export default function MaintenanceGuidePage() {
           <p className="text-sm italic mb-4">Not: Makine kodu otomatik olarak olusturulur (orn: TZG-001, TZG-002)</p>
 
           <h3 className="text-lg font-semibold mb-2 mt-6">Kritiklik Seviyeleri (ABC Analizi):</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm mb-4">
+          <table className="w-full border-collapse border border-gray-300 text-xs mb-4">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Seviye</th>
@@ -733,7 +733,7 @@ export default function MaintenanceGuidePage() {
           </table>
 
           <h3 className="text-lg font-semibold mb-2 mt-6">Makine Durumlari:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
+          <table className="w-full border-collapse border border-gray-300 text-xs">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Durum</th>
@@ -756,7 +756,7 @@ export default function MaintenanceGuidePage() {
           <h2 className="text-2xl font-bold mb-4 border-b-2 border-gray-300 pb-2">3. Bakim Planlari</h2>
 
           <h3 className="text-lg font-semibold mb-2">Bakim Tipleri:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm mb-4">
+          <table className="w-full border-collapse border border-gray-300 text-xs mb-4">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Tip</th>
@@ -821,7 +821,7 @@ export default function MaintenanceGuidePage() {
           <p className="text-sm italic mb-4">Not: "Ariza" tipinde is emri olusturuldigunda makine durumu otomatik olarak "Arizali" yapilir.</p>
 
           <h3 className="text-lg font-semibold mb-2 mt-6">Oncelik Seviyeleri:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm mb-4">
+          <table className="w-full border-collapse border border-gray-300 text-xs mb-4">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Oncelik</th>
@@ -840,7 +840,7 @@ export default function MaintenanceGuidePage() {
           <div className="p-4 bg-gray-100 rounded text-center mb-4">
             <p className="font-mono">ACIK → DEVAM EDIYOR → TAMAMLANDI → KAPANDI</p>
           </div>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
+          <table className="w-full border-collapse border border-gray-300 text-xs">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Durum</th>
@@ -866,7 +866,7 @@ export default function MaintenanceGuidePage() {
             <p className="text-lg font-bold">OEE = Kullanilabilirlik × Performans × Kalite</p>
           </div>
 
-          <table className="w-full border-collapse border border-gray-300 text-sm mb-4">
+          <table className="w-full border-collapse border border-gray-300 text-xs mb-4">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Bilesen</th>
@@ -894,7 +894,7 @@ export default function MaintenanceGuidePage() {
           </table>
 
           <h3 className="text-lg font-semibold mb-2 mt-6">OEE Degerlendirmesi:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm mb-4">
+          <table className="w-full border-collapse border border-gray-300 text-xs mb-4">
             <tbody>
               <tr><td className="border border-gray-300 p-2 font-medium">%85+</td><td className="border border-gray-300 p-2">World Class (Dunya Sinifi)</td></tr>
               <tr><td className="border border-gray-300 p-2 font-medium">%60-85</td><td className="border border-gray-300 p-2">Iyi</td></tr>
@@ -904,7 +904,7 @@ export default function MaintenanceGuidePage() {
           </table>
 
           <h3 className="text-lg font-semibold mb-2 mt-6">MTBF ve MTTR:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm mb-4">
+          <table className="w-full border-collapse border border-gray-300 text-xs mb-4">
             <thead>
               <tr className="bg-gray-100">
                 <th className="border border-gray-300 p-2 text-left">Metrik</th>

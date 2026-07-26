@@ -608,10 +608,10 @@ export default function PenetrationTestsPage() {
                             <ChevronDown className="h-4 w-4" />}
                         </Button>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{test.testNumber}</TableCell>
+                      <TableCell className="font-mono text-xs">{test.testNumber}</TableCell>
                       <TableCell className="font-medium max-w-[200px] truncate">{test.title}</TableCell>
-                      <TableCell className="text-sm">{testTypeLabels[test.testType] || test.testType}</TableCell>
-                      <TableCell className="text-sm">{fmtDate(test.testDate)}</TableCell>
+                      <TableCell className="text-xs">{testTypeLabels[test.testType] || test.testType}</TableCell>
+                      <TableCell className="text-xs">{fmtDate(test.testDate)}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
                           {test.criticalCount > 0 && <Badge variant="destructive" className="text-xs">{test.criticalCount}K</Badge>}
@@ -765,9 +765,9 @@ export default function PenetrationTestsPage() {
                                                     {f.title}
                                                   </button>
                                                 </TableCell>
-                                                <TableCell className="text-sm text-muted-foreground">{f.category || "-"}</TableCell>
-                                                <TableCell className="text-sm">{f.responsiblePerson || "-"}</TableCell>
-                                                <TableCell className="text-sm">{fmtDate(f.deadline)}</TableCell>
+                                                <TableCell className="text-xs text-muted-foreground">{f.category || "-"}</TableCell>
+                                                <TableCell className="text-xs">{f.responsiblePerson || "-"}</TableCell>
+                                                <TableCell className="text-xs">{fmtDate(f.deadline)}</TableCell>
                                                 <TableCell>
                                                   <Badge className={`text-xs ${actionStatusColors[f.actionStatus] || ""}`}>
                                                     {actionStatusLabels[f.actionStatus] || f.actionStatus}
@@ -835,17 +835,17 @@ export default function PenetrationTestsPage() {
                                           {signatures.map(sig => (
                                             <TableRow key={sig.id}>
                                               <TableCell className="font-medium">{sig.signerName}</TableCell>
-                                              <TableCell className="text-sm text-muted-foreground">
+                                              <TableCell className="text-xs text-muted-foreground">
                                                 {[sig.signerTitle, sig.signerDepartment].filter(Boolean).join(" / ") || "-"}
                                               </TableCell>
                                               <TableCell>
                                                 <Badge variant="outline">{signatureTypeLabels[sig.signatureType] || sig.signatureType}</Badge>
                                               </TableCell>
-                                              <TableCell className="text-sm">
+                                              <TableCell className="text-xs">
                                                 {format(new Date(sig.signedAt), "dd.MM.yyyy HH:mm", { locale: tr })}
                                               </TableCell>
                                               <TableCell className="font-mono text-xs">{sig.signatureCode}</TableCell>
-                                              <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                                              <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                                                 {sig.notes || "-"}
                                               </TableCell>
                                             </TableRow>

@@ -162,7 +162,7 @@ export default function CostPerHirePanel() {
               <div className="border rounded-md p-3"><p className="text-xs text-slate-500">Kişi Başı Maliyet</p><p className="text-xl font-bold text-[#1B4F72]">{analiz.costPerHire !== null ? TL(analiz.costPerHire) : "-"}</p><p className="text-[11px] text-slate-400">{analiz.iseAlinan === 0 ? "İşe alınan yok" : `${analiz.kayitSayisi} kayıt`}</p></div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead><tr className="text-left text-slate-500 border-b"><th className="px-3 py-2">Kalem</th><th className="px-3 py-2">Toplam</th></tr></thead>
                 <tbody>{analiz.kalemler.map((k, idx) => <tr key={idx} className="border-b last:border-0"><td className="px-3 py-2 font-medium">{k.name}</td><td className="px-3 py-2 font-semibold text-[#1B4F72]">{TL(k.total)}</td></tr>)}</tbody>
               </table>

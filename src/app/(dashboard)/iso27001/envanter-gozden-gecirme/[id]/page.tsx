@@ -432,10 +432,10 @@ export default async function InventoryReviewDetailPage({
               ) : (
                 aksiyonlar.map((a) => (
                   <TableRow key={a.no}>
-                    <TableCell className="font-mono text-sm">{a.no}</TableCell>
-                    <TableCell className="text-sm">{a.aksiyon}</TableCell>
-                    <TableCell className="text-sm">{a.sorumlu}</TableCell>
-                    <TableCell className="text-sm font-mono">
+                    <TableCell className="font-mono text-xs">{a.no}</TableCell>
+                    <TableCell className="text-xs">{a.aksiyon}</TableCell>
+                    <TableCell className="text-xs">{a.sorumlu}</TableCell>
+                    <TableCell className="text-xs font-mono">
                       {a.termin}
                     </TableCell>
                     <TableCell>

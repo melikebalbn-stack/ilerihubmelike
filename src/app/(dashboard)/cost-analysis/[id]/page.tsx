@@ -865,10 +865,10 @@ export default function CostAnalysisDetailPage({
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell className="text-xs">
                         {formatDate(rev.revisionDate || rev.createdAt)}
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600 max-w-[200px] truncate">
+                      <TableCell className="text-xs text-gray-600 max-w-[200px] truncate">
                         {rev.revisionNote || "-"}
                       </TableCell>
                       <TableCell>
@@ -880,10 +880,10 @@ export default function CostAnalysisDetailPage({
                           {statusConfig[rev.status]?.label || rev.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
+                      <TableCell className="text-right font-mono text-xs">
                         {formatCurrency(rev.totalCost, rev.currency)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
+                      <TableCell className="text-right font-mono text-xs">
                         {formatCurrency(rev.salesPrice, rev.currency)}
                       </TableCell>
                       <TableCell>
@@ -1231,7 +1231,7 @@ export default function CostAnalysisDetailPage({
                   {analysis.materials.map((material, index) => (
                     <TableRow key={material.id}>
                       <TableCell className="text-gray-500">{index + 1}</TableCell>
-                      <TableCell className="font-mono text-sm text-gray-600">{material.materialCode || "-"}</TableCell>
+                      <TableCell className="font-mono text-xs text-gray-600">{material.materialCode || "-"}</TableCell>
                       <TableCell className="font-medium">{material.name}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs">
@@ -1969,7 +1969,7 @@ export default function CostAnalysisDetailPage({
                           {analysis?.currency !== "TRY" && !tlRate && exchangeRatesLoaded && (
                             <TableRow className="border-t">
                               <TableCell className="font-medium text-amber-600">TL Karşılığı</TableCell>
-                              <TableCell colSpan={profitRates.length} className="text-center text-amber-600 text-sm">
+                              <TableCell colSpan={profitRates.length} className="text-center text-amber-600 text-xs">
                                 Döviz kuru bilgisi bulunamadı. Ayarlar sayfasından kur ekleyebilirsiniz.
                               </TableCell>
                             </TableRow>

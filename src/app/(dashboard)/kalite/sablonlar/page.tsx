@@ -109,7 +109,7 @@ export default async function TemplatesListPage() {
                     <TableCell className="font-medium">{t.partName}</TableCell>
                     <TableCell className="font-mono text-xs">{t.drawingNo}</TableCell>
                     <TableCell className="font-mono text-xs">{t.revision}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-xs">
                       {t.operation ? (
                         t.operation
                       ) : (

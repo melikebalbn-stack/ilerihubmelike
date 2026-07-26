@@ -29,7 +29,7 @@ function Pozisyonlar() {
   return (
     <div className="overflow-x-auto">
       <p className="text-xs text-slate-500 mb-2">Mevcut Position tablosu (IFS senkron). İK yaka/İngilizce/hedef süre/aktiflik alanlarını yönetir; kod/başlık senkrondan gelir. Kayıtlar silinmez, pasife çekilir.</p>
-      <table className="w-full text-sm">
+      <table className="w-full text-xs">
         <thead><tr className="text-left text-slate-500 border-b"><th className="px-2 py-2">Kod</th><th className="px-2 py-2">Pozisyon</th><th className="px-2 py-2">Departman</th><th className="px-2 py-2">Yaka</th><th className="px-2 py-2">İng.</th><th className="px-2 py-2">Hedef TtH</th><th className="px-2 py-2">Aktif</th><th className="px-2 py-2"></th></tr></thead>
         <tbody>
           {items.map((i) => (

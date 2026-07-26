@@ -429,7 +429,7 @@ export function MappingClient({ allRoles }: { allRoles: RoleSummary[] }) {
                           <TableCell className="font-mono text-xs">
                             {m.groupCN}
                           </TableCell>
-                          <TableCell className="text-sm">
+                          <TableCell className="text-xs">
                             {m.role.name}
                             <div className="text-xs text-muted-foreground font-mono">
                               {m.role.slug}

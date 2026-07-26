@@ -471,7 +471,7 @@ export function IfsEvaluationsTab() {
             className="rounded-lg overflow-hidden border bg-white"
             style={{ borderColor: "var(--ak-border-default)" }}
           >
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead style={{ background: "var(--ak-surface-secondary)" }}>
                 <tr>
                   <th className="text-left px-3 py-2 text-xs font-semibold uppercase">

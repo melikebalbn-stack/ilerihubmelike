@@ -104,7 +104,7 @@ export default function TimeToHirePanel() {
             <p className="text-sm text-slate-500">Henüz aşama verisi yok.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left text-slate-500 border-b">
                     <th className="px-3 py-2">Aşama</th>

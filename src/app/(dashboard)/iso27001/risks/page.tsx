@@ -1028,9 +1028,9 @@ export default function Iso27001RisksPage() {
                       filteredRisks.map(risk => (
                         <TableRow key={risk.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setSelectedRisk(risk); setIsDetailOpen(true) }}>
                           <TableCell className="font-mono text-xs">{risk.riskNumber}</TableCell>
-                          <TableCell className="max-w-[150px] truncate text-sm">{risk.assetName}</TableCell>
+                          <TableCell className="max-w-[150px] truncate text-xs">{risk.assetName}</TableCell>
                           <TableCell className="text-center font-bold">{risk.assetValue}</TableCell>
-                          <TableCell className="max-w-[150px] truncate text-sm">{risk.threatName}</TableCell>
+                          <TableCell className="max-w-[150px] truncate text-xs">{risk.threatName}</TableCell>
                           <TableCell className="text-center">{risk.likelihood}</TableCell>
                           <TableCell className="text-center">{risk.impact}</TableCell>
                           <TableCell className="text-center font-bold">{risk.riskScore}</TableCell>
@@ -1042,7 +1042,7 @@ export default function Iso27001RisksPage() {
                               <span className="text-xs text-muted-foreground">-</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-center text-sm">{risk.residualRiskScore ?? "-"}</TableCell>
+                          <TableCell className="text-center text-xs">{risk.residualRiskScore ?? "-"}</TableCell>
                           <TableCell>
                             {risk.residualRiskLevel ? (
                               <RiskLevelBadge level={risk.residualRiskLevel} />
@@ -1133,7 +1133,7 @@ export default function Iso27001RisksPage() {
                             <TableRow key={t.id}>
                               <TableCell className="font-mono text-xs font-bold">{t.code}</TableCell>
                               <TableCell className="font-medium">{t.name}</TableCell>
-                              <TableCell className="hidden md:table-cell text-sm text-muted-foreground max-w-[300px] truncate">
+                              <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[300px] truncate">
                                 {t.description || "-"}
                               </TableCell>
                               <TableCell className="text-center">{t.typicalLikelihood}</TableCell>
@@ -1200,15 +1200,15 @@ export default function Iso27001RisksPage() {
                       allTreatmentPlans.map((plan, idx) => (
                         <TableRow key={plan.id || idx}>
                           <TableCell className="font-mono text-xs">{plan.riskNumber}</TableCell>
-                          <TableCell className="max-w-[200px] truncate text-sm">{plan.riskTitle}</TableCell>
+                          <TableCell className="max-w-[200px] truncate text-xs">{plan.riskTitle}</TableCell>
                           <TableCell>
                             <StatusBadge status={plan.treatmentOption} map={TREATMENT_OPTIONS} />
                           </TableCell>
-                          <TableCell className="hidden md:table-cell text-sm max-w-[300px] truncate">
+                          <TableCell className="hidden md:table-cell text-xs max-w-[300px] truncate">
                             {plan.description}
                           </TableCell>
-                          <TableCell className="text-sm">{plan.responsibleName}</TableCell>
-                          <TableCell className="text-sm">
+                          <TableCell className="text-xs">{plan.responsibleName}</TableCell>
+                          <TableCell className="text-xs">
                             {plan.targetDate ? format(new Date(plan.targetDate), "dd.MM.yyyy", { locale: tr }) : "-"}
                           </TableCell>
                           <TableCell>

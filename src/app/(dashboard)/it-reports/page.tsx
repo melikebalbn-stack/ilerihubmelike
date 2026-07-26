@@ -744,10 +744,10 @@ export default function ITReportsPage() {
                                 <span className="text-xs">{resolutionRate}%</span>
                               </div>
                             </TableCell>
-                            <TableCell className="text-center text-sm">
+                            <TableCell className="text-center text-xs">
                               {formatDuration(person.avgResponseTime)}
                             </TableCell>
-                            <TableCell className="text-center text-sm">
+                            <TableCell className="text-center text-xs">
                               {formatDuration(person.avgResolutionTime)}
                             </TableCell>
                             <TableCell className="text-center">
@@ -866,10 +866,10 @@ export default function ITReportsPage() {
                             <TableCell className="text-center">
                               <div className={`w-2 h-2 rounded-full mx-auto ${priorityColors[ticket.priority]}`} />
                             </TableCell>
-                            <TableCell className="text-center text-sm">
+                            <TableCell className="text-center text-xs">
                               {new Date(ticket.createdAt).toLocaleDateString("tr-TR")}
                             </TableCell>
-                            <TableCell className="text-center text-sm">
+                            <TableCell className="text-center text-xs">
                               {ticket.resolvedAt
                                 ? new Date(ticket.resolvedAt).toLocaleDateString("tr-TR")
                                 : "-"

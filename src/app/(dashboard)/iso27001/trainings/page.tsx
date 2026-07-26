@@ -558,7 +558,7 @@ export default function TrainingsPage() {
 
                   return (
                     <TableRow key={training.id}>
-                      <TableCell className="font-mono text-sm">
+                      <TableCell className="font-mono text-xs">
                         {training.trainingNumber}
                       </TableCell>
                       <TableCell className="font-medium">{training.title}</TableCell>

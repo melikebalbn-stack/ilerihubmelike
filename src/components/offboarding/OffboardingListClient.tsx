@@ -185,10 +185,10 @@ export function OffboardingListClient() {
                   >
                     <TableCell className="font-mono text-xs">{r.formNo}</TableCell>
                     <TableCell className="font-medium">{r.adSoyad}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-xs">
                       {r.departman || <span className="text-slate-400">—</span>}
                     </TableCell>
-                    <TableCell className="text-sm">{PERSONNEL_TYPE_LABELS[r.personelTuru]}</TableCell>
+                    <TableCell className="text-xs">{PERSONNEL_TYPE_LABELS[r.personelTuru]}</TableCell>
                     <TableCell className="text-xs text-slate-600">
                       {new Date(r.ayrilisTarihi).toLocaleDateString('tr-TR')}
                     </TableCell>

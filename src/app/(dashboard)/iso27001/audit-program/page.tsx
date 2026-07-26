@@ -642,12 +642,12 @@ function ProgramCard({
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm text-gray-600 max-w-[200px] truncate">
+                    <TableCell className="text-xs text-gray-600 max-w-[200px] truncate">
                       {item.scope || "-"}
                     </TableCell>
-                    <TableCell className="text-sm">{item.plannedDate || "-"}</TableCell>
-                    <TableCell className="text-sm">{item.leadAuditorName}</TableCell>
-                    <TableCell className="text-center text-sm">{item.duration || "-"}</TableCell>
+                    <TableCell className="text-xs">{item.plannedDate || "-"}</TableCell>
+                    <TableCell className="text-xs">{item.leadAuditorName}</TableCell>
+                    <TableCell className="text-center text-xs">{item.duration || "-"}</TableCell>
                     <TableCell className="text-center">
                       <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${PLAN_STATUS_COLORS[item.status] || "bg-gray-100 text-gray-800"}`}>
                         {item.status}

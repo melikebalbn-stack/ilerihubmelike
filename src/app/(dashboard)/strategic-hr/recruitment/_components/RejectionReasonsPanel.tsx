@@ -102,7 +102,7 @@ export default function RejectionReasonsPanel() {
           <>
             <div className="text-sm text-slate-500">Toplam ret: {analiz.toplamRet} · nedeni girilen: {analiz.nedenliRet}</div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead><tr className="text-left text-slate-500 border-b"><th className="px-3 py-2">Ret Nedeni</th><th className="px-3 py-2">Kategori</th><th className="px-3 py-2">Sayı</th></tr></thead>
                 <tbody>
                   {analiz.satirlar.map((s, i) => (

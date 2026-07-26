@@ -265,7 +265,7 @@ export function ExcelViewerDialog({
                   className="flex-1 overflow-auto m-0 p-0 data-[state=inactive]:hidden"
                 >
                   <div className="overflow-auto max-h-full">
-                    <table className="w-full border-collapse text-sm">
+                    <table className="w-full border-collapse text-xs">
                       <thead className="sticky top-0 bg-muted z-10">
                         <tr>
                           <th className="border px-2 py-1.5 text-left text-xs font-semibold text-muted-foreground w-12">

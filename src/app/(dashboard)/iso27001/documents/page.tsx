@@ -688,7 +688,7 @@ export default function Iso27001DocumentsPage() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => router.push(`/iso27001/documents/${doc.id}`)}
                     >
-                      <TableCell className="font-mono text-sm">{doc.documentNumber}</TableCell>
+                      <TableCell className="font-mono text-xs">{doc.documentNumber}</TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">{doc.title}</div>

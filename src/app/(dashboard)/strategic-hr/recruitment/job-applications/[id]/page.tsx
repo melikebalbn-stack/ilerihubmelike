@@ -99,8 +99,8 @@ function InfoRow({ label, value }: { label: string; value: string | number | nul
   if (!value && value !== 0) return null
   return (
     <tr className="border-b border-gray-200 print:border-gray-300">
-      <td className="py-1.5 pr-4 text-sm text-muted-foreground print:text-gray-500 whitespace-nowrap align-top" style={{ width: "180px" }}>{label}</td>
-      <td className="py-1.5 text-sm font-medium print:text-black">{value}</td>
+      <td className="py-1.5 pr-4 text-xs text-muted-foreground print:text-gray-500 whitespace-nowrap align-top" style={{ width: "180px" }}>{label}</td>
+      <td className="py-1.5 text-xs font-medium print:text-black">{value}</td>
     </tr>
   )
 }
@@ -612,7 +612,7 @@ export default function JobApplicationDetailPage() {
                   {educationHistory && educationHistory.length > 0 && (
                     <div className="mt-3 print:mt-1">
                       <h4 className="text-sm font-semibold mb-2 print:text-black">Egitim Gecmisi</h4>
-                      <table className="w-full text-sm">
+                      <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-gray-300">
                             <th className="text-left py-1 font-semibold print:text-black">Okul</th>
@@ -646,7 +646,7 @@ export default function JobApplicationDetailPage() {
                     <SectionTitle icon={Briefcase} title="Is Tecrubesi" />
                   </CardHeader>
                   <CardContent className="print:p-0">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-gray-300">
                           <th className="text-left py-1 font-semibold print:text-black">Firma</th>
@@ -681,7 +681,7 @@ export default function JobApplicationDetailPage() {
                     <SectionTitle icon={Globe} title="Yabanci Dil Bilgisi" />
                   </CardHeader>
                   <CardContent className="print:p-0">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-gray-300">
                           <th className="text-left py-1 font-semibold print:text-black">Dil</th>
@@ -716,7 +716,7 @@ export default function JobApplicationDetailPage() {
                     <SectionTitle icon={Monitor} title="Bilgisayar Bilgisi" />
                   </CardHeader>
                   <CardContent className="print:p-0">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-gray-300">
                           <th className="text-left py-1 font-semibold print:text-black">Program</th>
@@ -747,7 +747,7 @@ export default function JobApplicationDetailPage() {
                     <SectionTitle icon={GraduationCap} title="Kurslar ve Seminerler" />
                   </CardHeader>
                   <CardContent className="print:p-0">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-gray-300">
                           <th className="text-left py-1 font-semibold print:text-black">Kurum</th>
@@ -780,7 +780,7 @@ export default function JobApplicationDetailPage() {
                     <SectionTitle icon={Users} title="Referanslar" />
                   </CardHeader>
                   <CardContent className="print:p-0">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-gray-300">
                           <th className="text-left py-1 font-semibold print:text-black">Ad Soyad</th>

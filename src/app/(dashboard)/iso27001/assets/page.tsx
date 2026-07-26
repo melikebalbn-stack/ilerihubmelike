@@ -1016,7 +1016,7 @@ export default function AssetsPage() {
                 ) : (
                   filteredAssets.map((asset) => (
                     <TableRow key={asset.id}>
-                      <TableCell className="font-mono text-sm">{asset.assetNumber}</TableCell>
+                      <TableCell className="font-mono text-xs">{asset.assetNumber}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {getCategoryIcon(asset.category)}

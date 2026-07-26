@@ -733,7 +733,7 @@ function MatrixInput({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-xs">
         <thead>
           <tr>
             <th className="border border-slate-300 bg-slate-50 p-2 text-left text-xs font-medium" />

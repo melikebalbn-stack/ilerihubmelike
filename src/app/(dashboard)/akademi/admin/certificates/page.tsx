@@ -126,7 +126,7 @@ export default function AdminCertificatesPage() {
           className="rounded-lg overflow-hidden border"
           style={{ borderColor: "var(--ak-border-default)" }}
         >
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead style={{ background: "var(--ak-surface-secondary)" }}>
               <tr>
                 <th

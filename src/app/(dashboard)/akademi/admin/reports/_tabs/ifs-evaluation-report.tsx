@@ -552,7 +552,7 @@ function KisiView({
           </div>
 
           <div className="ak-card-static overflow-hidden" style={{ padding: 0 }}>
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead style={{ background: "var(--ak-surface-2)" }}>
                 <tr className="text-xs uppercase tracking-wide" style={{ color: "var(--ak-text-tertiary)" }}>
                   <th className="text-left px-4 py-3">Kişi</th>

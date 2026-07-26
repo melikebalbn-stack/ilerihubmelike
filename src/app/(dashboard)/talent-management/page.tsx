@@ -2178,7 +2178,7 @@ export default function TalentManagementPage() {
                     <TableBody>
                       {adPositionPreviews.map((pos, index) => (
                         <TableRow key={index}>
-                          <TableCell className="font-mono text-sm">{pos.suggestedCode}</TableCell>
+                          <TableCell className="font-mono text-xs">{pos.suggestedCode}</TableCell>
                           <TableCell className="font-medium">{pos.title}</TableCell>
                           <TableCell>{pos.department}</TableCell>
                           <TableCell>

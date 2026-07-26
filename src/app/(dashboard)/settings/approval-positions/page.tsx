@@ -190,7 +190,7 @@ export default function ApprovalPositionsPage() {
       {/* Positions Table */}
       <div className="rounded-lg border bg-card">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead>
               <tr className="border-b bg-muted/50">
                 <th className="text-left py-3 px-4 font-medium text-muted-foreground w-12">#</th>

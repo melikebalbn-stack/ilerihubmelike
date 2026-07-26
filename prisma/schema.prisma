@@ -11692,3 +11692,546 @@ model OrgRevizyon {
   @@index([orgUnitId])
   @@unique([orgUnitId, revNo])
 }
+
+// ============================================================
+// İŞ ANALİZİ (Ia*) — Elif sandbox/elif'ten entegre (integ/elif-is-analizi)
+// 23 model + 16 enum. Rec* ALINMADI. Main modelleri değiştirilmedi;
+// Ia* modeller kendi aralarında relation kurar, main'e scalar id ile bağlanır.
+// ============================================================
+
+model IaPozisyon {
+  id            String   @id @default(cuid())
+  ad            String
+  bolum         String
+  yaka          IaYaka
+  ustPozisyonId String?
+  isAilesiId    String? // KATMAN 5 bağlantısı
+  ucretBandiId  String? // KATMAN 7 bağlantısı
+  aktif         Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ustPozisyon       IaPozisyon?           @relation("Hiyerarsi", fields: [ustPozisyonId], references: [id])
+  altPozisyonlar    IaPozisyon[]          @relation("Hiyerarsi")
+  isAilesi          IaIsAilesi?           @relation(fields: [isAilesiId], references: [id])
+  ucretBandi        IaUcretBandi?         @relation(fields: [ucretBandiId], references: [id])
+  pozisyonYetkinlik IaPozisyonYetkinlik[]
+  isAnalizleri      IaIsAnalizi[]
+  gorevTanimi       IaGorevTanimi?
+  kariyerKaynak     IaKariyerYolu[]       @relation("Kaynak")
+  kariyerHedef      IaKariyerYolu[]       @relation("Hedef")
+
+  @@unique([ad, bolum])
+  @@map("ia_pozisyon")
+}
+
+model IaYetkinlik {
+  id         String          @id @default(cuid())
+  tip        IaYetkinlikTipi @default(MESLEKI)
+  grup       String
+  ad         String
+  makineKodu String?
+  yakaTipi   IaYaka
+  bolum      String?
+  aciklama   String?
+  aktif      Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+
+  pozisyonYetkinlik  IaPozisyonYetkinlik[]
+  donemKayitlari     IaYetkinlikDonem[]
+  egitimIhtiyaclari  IaEgitimIhtiyaci[]
+  gelisimAksiyonlari IaGelisimAksiyonu[]
+
+  @@unique([grup, ad, bolum])
+  @@map("ia_yetkinlik")
+}
+
+model IaPozisyonYetkinlik {
+  id          String @id @default(cuid())
+  pozisyonId  String
+  yetkinlikId String
+  hedefSeviye Int    @default(3) // 1-4
+
+  pozisyon  IaPozisyon  @relation(fields: [pozisyonId], references: [id], onDelete: Cascade)
+  yetkinlik IaYetkinlik @relation(fields: [yetkinlikId], references: [id], onDelete: Cascade)
+
+  @@unique([pozisyonId, yetkinlikId])
+  @@map("ia_pozisyon_yetkinlik")
+}
+
+model IaIsAnalizi {
+  id               String  @id @default(cuid())
+  personelId       String
+  sicilNo          String
+  adSoyad          String
+  pozisyonId       String
+  bolum            String
+  amir             String?
+  amirPersonnelId  String?
+  oncekiVersiyonId String?
+  versiyon         Int     @default(1)
+  durum            IaDurum @default(TASLAK)
+  yaka             IaYaka
+
+  amirOnayTarihi   DateTime?
+  amirNotu         String?
+  ikOnayTarihi     DateTime?
+  ikNotu           String?
+  zorlukKonusu     String?
+  iyilestirmeOneri String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pozisyon       IaPozisyon          @relation(fields: [pozisyonId], references: [id])
+  yapilanIsler   IaYapilanIs[]
+  yetkinlikler   IaAnalizYetkinlik[]
+  kararYetkileri IaKararYetkisi[]
+  isIliskileri   IaIsIliskisi[]
+  esneklikler    IaEsneklik[]
+
+  @@map("ia_is_analizi")
+}
+
+model IaYapilanIs {
+  id          String   @id @default(cuid())
+  analizId    String
+  isAdi       String
+  tetikleyici String?
+  makineArac  String?
+  siklik      IaSiklik
+  sureDakika  Int?
+  zamanYuzde  Int?
+  sira        Int      @default(0)
+
+  analiz IaIsAnalizi @relation(fields: [analizId], references: [id], onDelete: Cascade)
+
+  @@map("ia_yapilan_is")
+}
+
+model IaAnalizYetkinlik {
+  id           String @id @default(cuid())
+  analizId     String
+  yetkinlikId  String
+  mevcutSeviye Int? // 1-4
+  hedefSeviye  Int? // 1-4
+
+  analiz IaIsAnalizi @relation(fields: [analizId], references: [id], onDelete: Cascade)
+
+  @@unique([analizId, yetkinlikId])
+  @@map("ia_analiz_yetkinlik")
+}
+
+model IaKararYetkisi {
+  id        String      @id @default(cuid())
+  analizId  String
+  konu      String
+  yetkiTipi IaYetkiTipi
+
+  analiz IaIsAnalizi @relation(fields: [analizId], references: [id], onDelete: Cascade)
+
+  @@map("ia_karar_yetkisi")
+}
+
+model IaIsIliskisi {
+  id       String       @id @default(cuid())
+  analizId String
+  tip      IaIliskiTipi
+  taraf    String
+  aciklama String?
+
+  analiz IaIsAnalizi @relation(fields: [analizId], references: [id], onDelete: Cascade)
+
+  @@map("ia_is_iliskisi")
+}
+
+model IaEsneklik {
+  id        String         @id @default(cuid())
+  analizId  String
+  tip       IaEsneklikTipi
+  kisiPozIs String
+
+  analiz IaIsAnalizi @relation(fields: [analizId], references: [id], onDelete: Cascade)
+
+  @@map("ia_esneklik")
+}
+
+model IaGorevTanimi {
+  id         String  @id @default(cuid())
+  pozisyonId String  @unique
+  versiyon   Int     @default(1)
+  durum      IaDurum @default(TASLAK)
+
+  amac              String?
+  anaSorumluluklar  String?
+  raporlamaIliskisi String?
+  arananYetkinlik   String?
+  egitimGereksinim  String?
+  kaliteSorumluluk  String?
+  isgSorumluluk     String?
+  performansKpi     String?
+  yetkiSinirlari    String?
+  kisilikProfili    String?
+  notlar            String?
+
+  // Resmi belge
+  dokumanNo           String?
+  isoMadde            String?  @default("7.3.2")
+  revizyonNo          Int      @default(0)
+  // İzlenebilirlik: hangi ONAYLANDI iş analizlerinden derlendi
+  kaynakAnalizIdler   String[]
+  // İmza hiyerarşisi (hazırlayan/yönetim temsilcisi/genel müdür)
+  hazirlayanId        String?
+  yonetimTemsilcisiId String?
+  genelMudurId        String?
+  // Çift dil (kademeli; EN boş başlar)
+  amacEn              String?
+  anaSorumluluklarEn  String?
+
+  onaylayanId String?
+  onayTarihi  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  pozisyon      IaPozisyon                @relation(fields: [pozisyonId], references: [id], onDelete: Cascade)
+  gorevler      IaGorevTanimiGorev[]
+  kpiler        IaGorevTanimiKpi[]
+  gereklilikler IaGorevTanimiGereklilik[]
+  imzalar       IaGorevTanimiImza[]
+
+  @@map("ia_gorev_tanimi")
+}
+
+model IaGorevTanimiGorev {
+  id                 String     @id @default(cuid())
+  gorevTanimiId      String
+  gorevAdi           String
+  gorevAdiEn         String?
+  tip                IaGorevTip @default(CEKIRDEK)
+  harcananZamanYuzde Int? // % (özellikle çekirdek için)
+  ilgiliProsedur     String? // referans no (belge sistemi sonra bağlanır)
+  kaynakSayisi       Int        @default(0) // kaç iş analizinde geçti (çekirdek/değişken dayanağı)
+  sira               Int        @default(0)
+  createdAt          DateTime   @default(now())
+
+  gorevTanimi IaGorevTanimi            @relation(fields: [gorevTanimiId], references: [id], onDelete: Cascade)
+  kisiler     IaGorevTanimiGorevKisi[]
+
+  @@index([gorevTanimiId])
+  @@map("ia_gorev_tanimi_gorev")
+}
+
+model IaGorevTanimiGorevKisi {
+  id         String  @id @default(cuid())
+  gorevId    String
+  personelId String
+  yedekMi    Boolean @default(false) // asıl mı yedek mi
+
+  gorev IaGorevTanimiGorev @relation(fields: [gorevId], references: [id], onDelete: Cascade)
+
+  @@unique([gorevId, personelId])
+  @@index([gorevId])
+  @@map("ia_gorev_tanimi_gorev_kisi")
+}
+
+model IaGorevTanimiKpi {
+  id            String  @id @default(cuid())
+  gorevTanimiId String
+  gorev         String // görev/sorumluluk
+  gosterge      String // performans göstergesi
+  gostergeEn    String?
+  sira          Int     @default(0)
+
+  gorevTanimi IaGorevTanimi @relation(fields: [gorevTanimiId], references: [id], onDelete: Cascade)
+
+  @@index([gorevTanimiId])
+  @@map("ia_gorev_tanimi_kpi")
+}
+
+model IaGorevTanimiGereklilik {
+  id            String          @id @default(cuid())
+  gorevTanimiId String
+  tip           IaGereklilikTip
+  deger         String // örn "Ön Lisans/Lisans", "Min 7 yıl"
+  degerEn       String?
+  sira          Int             @default(0)
+
+  gorevTanimi IaGorevTanimi @relation(fields: [gorevTanimiId], references: [id], onDelete: Cascade)
+
+  @@index([gorevTanimiId])
+  @@map("ia_gorev_tanimi_gereklilik")
+}
+
+model IaStandartBlok {
+  id        String            @id @default(cuid())
+  tip       IaStandartBlokTip
+  baslikTr  String
+  baslikEn  String?
+  icerikTr  String            @db.Text
+  icerikEn  String?           @db.Text
+  aktif     Boolean           @default(true)
+  sira      Int               @default(0)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@map("ia_standart_blok")
+}
+
+model IaGorevTanimiImza {
+  id             String      @id @default(cuid())
+  gorevTanimiId  String
+  personelId     String
+  durum          IaImzaDurum @default(BEKLIYOR)
+  imzaVerisi     String?     @db.Text // base64 çizim veya onay damgası
+  imzaTarihi     DateTime?
+  kepReferans    String? // KEP entegrasyonu için (şimdilik null)
+  gonderimTarihi DateTime    @default(now())
+
+  gorevTanimi IaGorevTanimi @relation(fields: [gorevTanimiId], references: [id], onDelete: Cascade)
+
+  @@index([gorevTanimiId])
+  @@index([personelId])
+  @@map("ia_gorev_tanimi_imza")
+}
+
+model IaYetkinlikDonem {
+  id           String   @id @default(cuid())
+  personelId   String
+  sicilNo      String
+  yetkinlikId  String
+  bolum        String
+  donem        String // "2026/1"
+  hedefSeviye  Int // 1-4
+  mevcutSeviye Int // 1-4
+  olcumTarihi  DateTime @default(now())
+  olcenKisi    String?
+
+  yetkinlik IaYetkinlik @relation(fields: [yetkinlikId], references: [id])
+
+  @@unique([personelId, yetkinlikId, donem])
+  @@map("ia_yetkinlik_donem")
+}
+
+model IaEgitimIhtiyaci {
+  id          String @id @default(cuid())
+  personelId  String
+  sicilNo     String
+  adSoyad     String
+  yetkinlikId String
+  bolum       String
+  donem       String
+
+  oncelik          IaEgitimOncelik @default(NORMAL) // ACIL (fark>=2) / NORMAL (fark=1)
+  egitimTipi       IaEgitimTipi    @default(IC)
+  durum            IaEgitimDurum   @default(PLANLANMADI)
+  planlananTarih   DateTime?
+  gerceklesenTarih DateTime?
+  notlar           String?
+  createdAt        DateTime        @default(now())
+
+  yetkinlik IaYetkinlik @relation(fields: [yetkinlikId], references: [id])
+
+  @@map("ia_egitim_ihtiyaci")
+}
+
+model IaGelisimAksiyonu {
+  id          String @id @default(cuid())
+  personelId  String
+  sicilNo     String
+  adSoyad     String
+  yetkinlikId String
+  bolum       String
+
+  mevcutSeviye Int // 1-4
+  hedefSeviye  Int // 1-4
+  // gap = hedef - mevcut (runtime hesaplanır)
+
+  aksiyon     String // "İK mevzuat sertifika programı"
+  model702010 IaGelisimModeli // IS_BASI / SOSYAL / FORMEL
+  yontem      String? // "Sertifika", "Mentorluk", "Proje"
+  baslangic   DateTime?
+  bitis       DateTime?
+  durum       IaAksiyonDurum  @default(PLANLANDI)
+  ilerleme    Int             @default(0) // 0-100
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  yetkinlik IaYetkinlik @relation(fields: [yetkinlikId], references: [id])
+
+  @@map("ia_gelisim_aksiyonu")
+}
+
+model IaIsAilesi {
+  id           String   @id @default(cuid())
+  ad           String   @unique // "Üretim Operatörleri", "Mühendislik"
+  aciklama     String?
+  kademeSayisi Int      @default(1) // Aile içi seviye/kademe sayısı
+  aktif        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  pozisyonlar IaPozisyon[]
+
+  @@map("ia_is_ailesi")
+}
+
+model IaPerformansDonem {
+  id         String @id @default(cuid())
+  personelId String
+  sicilNo    String
+  adSoyad    String
+  pozisyonId String
+  donem      String // "2026"
+
+  // Performans bileşenleri (görev tanımı KPI + yetkinlikten)
+  hedefPuani     Float? // KPI gerçekleşme
+  yetkinlikPuani Float? // Yetkinlik ortalaması
+  genelPuan      Float? // Birleşik skor
+  degerlendiren  String?
+  notlar         String?
+  durum          IaDurum @default(TASLAK)
+
+  createdAt DateTime @default(now())
+
+  @@unique([personelId, donem])
+  @@map("ia_performans_donem")
+}
+
+model IaKariyerYolu {
+  id               String  @id @default(cuid())
+  kaynakPozisyonId String // Mevcut pozisyon
+  hedefPozisyonId  String // İlerlenebilecek pozisyon
+  gerekenSure      Int? // Tahmini ay/yıl
+  gerekenYetkinlik String? // Geçiş için gereken
+  aciklama         String?
+
+  kaynak IaPozisyon @relation("Kaynak", fields: [kaynakPozisyonId], references: [id])
+  hedef  IaPozisyon @relation("Hedef", fields: [hedefPozisyonId], references: [id])
+
+  @@unique([kaynakPozisyonId, hedefPozisyonId])
+  @@map("ia_kariyer_yolu")
+}
+
+model IaUcretBandi {
+  id         String   @id @default(cuid())
+  ad         String // "Bant A", "Uzman Seviye 2"
+  isAilesi   String? // Hangi iş ailesi
+  kademe     Int      @default(1)
+  // Bant aralığı (rakamlar hassas — erişim loglanmalı)
+  altLimit   Float?
+  ustLimit   Float?
+  paraBirimi String   @default("TRY")
+  aktif      Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  pozisyonlar IaPozisyon[]
+
+  @@map("ia_ucret_bandi")
+}
+
+enum IaYaka {
+  MAVI
+  BEYAZ
+  GRI
+}
+
+enum IaYetkinlikTipi {
+  GENEL
+  MESLEKI
+}
+
+enum IaDurum {
+  TASLAK
+  AMIR_ONAYINDA
+  IK_INCELEMESINDE
+  ONAYLANDI
+  REVIZE_ISTENDI
+}
+
+enum IaSiklik {
+  GUNLUK
+  HAFTALIK
+  AYLIK
+  DONEMSEL
+  YILLIK
+}
+
+enum IaYetkiTipi {
+  TEK_BASINA
+  AMIR_ONAYI
+  MUDUR_ONAYI
+  GM_ONAYI
+}
+
+enum IaIliskiTipi {
+  IS_ALIR
+  IS_VERIR
+  RAPORLAR
+  KONTROL_EDEN
+  BIRLIKTE
+}
+
+enum IaEsneklikTipi {
+  YAPABILDIGIM_IS
+  YEDEGIM
+}
+
+enum IaEgitimOncelik {
+  ACIL // hedef - mevcut >= 2
+  NORMAL // hedef - mevcut == 1
+}
+
+enum IaEgitimTipi {
+  IC
+  DIS
+}
+
+enum IaEgitimDurum {
+  PLANLANMADI
+  PLANLANDI
+  TAMAMLANDI
+  IPTAL
+}
+
+enum IaGelisimModeli {
+  IS_BASI // 70 - iş başı uygulama, proje, rotasyon
+  SOSYAL // 20 - mentorluk, koçluk, geri bildirim
+  FORMEL // 10 - eğitim, sertifika, kurs
+}
+
+enum IaAksiyonDurum {
+  PLANLANDI
+  DEVAM_EDIYOR
+  TAMAMLANDI
+  IPTAL
+}
+
+enum IaGorevTip {
+  CEKIRDEK // pozisyondaki herkesten beklenen
+  DEGISKEN // bazı kişilerde, yedekleme kapsamında
+}
+
+enum IaGereklilikTip {
+  EGITIM_DUZEYI
+  EGITIM_ALANI
+  DENEYIM
+  YABANCI_DIL
+  ZORUNLU_BECERI
+  TERCIH_BECERI
+  GENEL_BECERI
+}
+
+enum IaStandartBlokTip {
+  KALITE
+  ISG
+  GIZLILIK
+  YONETMELIK
+}
+
+enum IaImzaDurum {
+  BEKLIYOR
+  IMZALANDI
+  REDDEDILDI
+}
+

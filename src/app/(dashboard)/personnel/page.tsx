@@ -259,7 +259,7 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table className="text-[10px] [&_td]:py-1">
+              <Table className="[&_td]:py-1">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10 sticky left-0 bg-background z-10">#</TableHead>

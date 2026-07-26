@@ -236,31 +236,31 @@ export function ReportsListTable({ templates }: Props) {
             <table className="w-full text-sm border-collapse min-w-[1000px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Rapor No
                   </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Parça
                   </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Resim No
                   </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Lot
                   </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Operatör
                   </th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Ölçüm Tarihi
                   </th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Karakter
                   </th>
-                  <th className="px-3 py-2 text-center text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Sonuç
                   </th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Eylem
                   </th>
                 </tr>

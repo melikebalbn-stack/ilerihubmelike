@@ -229,8 +229,8 @@ export default function LeaversListPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-600 uppercase text-xs tracking-wider">
                   <tr>
                     <th className="px-2 py-2 text-left">Sicil</th>
                     <th className="px-2 py-2 text-left">Ad Soyad</th>
@@ -253,7 +253,7 @@ export default function LeaversListPage() {
                       onClick={() => router.push(`/personnel/${l.personnelId}`)}
                       className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
                     >
-                      <td className="px-2 py-2 font-mono text-[11px] text-slate-500">{l.sicilNo}</td>
+                      <td className="px-2 py-2 font-mono text-xs text-slate-500">{l.sicilNo}</td>
                       <td className="px-2 py-2 font-medium text-slate-900">{l.adSoyad}</td>
                       <td className="px-2 py-2">{l.bolum ?? '-'}</td>
                       <td className="px-2 py-2 text-slate-600">{l.gorev ?? '-'}</td>
@@ -261,18 +261,18 @@ export default function LeaversListPage() {
                       <td className="px-2 py-2 text-slate-600">{workingPeriodText(l.workingPeriod)}</td>
                       <td className="px-2 py-2">
                         {l.status === 'REENTRY' ? (
-                          <Badge variant="outline" className="border-sky-300 text-sky-700 text-[10px] font-normal">
+                          <Badge variant="outline" className="border-sky-300 text-sky-700 text-xs font-normal">
                             Çıkış-Giriş
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="border-slate-300 text-slate-600 text-[10px] font-normal">
+                          <Badge variant="outline" className="border-slate-300 text-slate-600 text-xs font-normal">
                             Ayrıldı
                           </Badge>
                         )}
                       </td>
                       <td className="px-2 py-2">
                         {l.exitParty && (
-                          <Badge variant="outline" className="text-[10px] font-normal">
+                          <Badge variant="outline" className="text-xs font-normal">
                             {l.exitParty}
                           </Badge>
                         )}
@@ -284,8 +284,8 @@ export default function LeaversListPage() {
                             variant="outline"
                             className={
                               l.exitTurnoverType === 'İSTENMEYEN'
-                                ? 'border-rose-300 text-rose-700 text-[10px] font-normal'
-                                : 'border-emerald-300 text-emerald-700 text-[10px] font-normal'
+                                ? 'border-rose-300 text-rose-700 text-xs font-normal'
+                                : 'border-emerald-300 text-emerald-700 text-xs font-normal'
                             }
                           >
                             {l.exitTurnoverType}

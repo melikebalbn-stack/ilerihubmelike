@@ -126,7 +126,7 @@ function SortableRow({
           >
             <GripVertical className="h-4 w-4" />
           </button>
-          <span className="font-quality-mono text-[11px] font-semibold text-slate-500 tabular-nums w-4 text-center">
+          <span className="font-quality-mono text-xs font-semibold text-slate-500 tabular-nums w-4 text-center">
             {row.orderIndex}
           </span>
         </div>
@@ -298,27 +298,27 @@ export function CharacteristicsBuilder({ value, onChange, symbols }: BuilderProp
               <thead>
                 {/* 1. satır — gruplar (KRİTİK KARAKTER standalone; KARAKTER ÖZELLİKLERİ = Nom/Maks/Min) */}
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th rowSpan={2} className="px-2 py-2 w-16 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
+                  <th rowSpan={2} className="px-2 py-2 w-16 text-left text-xs font-semibold text-slate-600 uppercase tracking-[0.04em]">
                     #
                   </th>
-                  <th rowSpan={2} className="px-2 py-2 w-24 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
+                  <th rowSpan={2} className="px-2 py-2 w-24 text-left text-xs font-semibold text-slate-600 uppercase tracking-[0.04em]">
                     Bölüm
                   </th>
-                  <th rowSpan={2} className="px-2 py-2 w-36 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
+                  <th rowSpan={2} className="px-2 py-2 w-36 text-left text-xs font-semibold text-slate-600 uppercase tracking-[0.04em]">
                     Muayene Aracı
                   </th>
-                  <th rowSpan={2} className="px-2 py-2 w-28 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em]">
+                  <th rowSpan={2} className="px-2 py-2 w-28 text-left text-xs font-semibold text-slate-600 uppercase tracking-[0.04em]">
                     Numune / Sıklık
                   </th>
                   <th
                     rowSpan={2}
-                    className="bg-[#1B4F72]/[0.06] px-2 py-2 text-left text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] min-w-[280px] border-r border-slate-200"
+                    className="bg-[#1B4F72]/[0.06] px-2 py-2 text-left text-xs font-bold text-[#1B4F72] uppercase tracking-[0.04em] min-w-[280px] border-r border-slate-200"
                   >
                     Kritik Karakter
                   </th>
                   <th
                     colSpan={3}
-                    className="px-2 py-1.5 text-center text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
+                    className="px-2 py-1.5 text-center text-xs font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
                   >
                     Karakter Özellikleri
                   </th>
@@ -326,13 +326,13 @@ export function CharacteristicsBuilder({ value, onChange, symbols }: BuilderProp
                 </tr>
                 {/* 2. satır — KARAKTER ÖZELLİKLERİ alt başlıkları */}
                 <tr className="bg-[#1B4F72]/[0.04] border-b border-slate-200">
-                  <th className="px-2 py-2 w-24 text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
+                  <th className="px-2 py-2 w-24 text-center text-xs font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
                     Nominal
                   </th>
-                  <th className="px-2 py-2 w-24 text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
+                  <th className="px-2 py-2 w-24 text-center text-xs font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
                     Maksimum
                   </th>
-                  <th className="px-2 py-2 w-24 text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em] border-r border-slate-200">
+                  <th className="px-2 py-2 w-24 text-center text-xs font-semibold text-[#1B4F72] uppercase tracking-[0.04em] border-r border-slate-200">
                     Minimum
                   </th>
                 </tr>

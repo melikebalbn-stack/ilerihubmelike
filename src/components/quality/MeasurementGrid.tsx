@@ -183,7 +183,7 @@ export function MeasurementGrid({
   return (
     <div className="overflow-x-auto bg-white">
       <table
-        className="w-full border-collapse text-[12.5px] font-quality"
+        className="w-full border-collapse text-xs font-quality"
         style={{ minWidth: 'max-content' }}
       >
         <thead>
@@ -191,68 +191,68 @@ export function MeasurementGrid({
           <tr className="bg-slate-50 border-b border-slate-200">
             <th
               rowSpan={2}
-              className="sticky left-0 z-20 bg-slate-50 px-2 py-2 w-10 text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
+              className="sticky left-0 z-20 bg-slate-50 px-2 py-2 w-10 text-center text-xs font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
             >
               #
             </th>
             <th
               rowSpan={2}
-              className="bg-slate-50 px-2 py-2 w-20 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
+              className="bg-slate-50 px-2 py-2 w-20 text-left text-xs font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
             >
               Bölüm
             </th>
             <th
               rowSpan={2}
-              className="bg-slate-50 px-2 py-2 w-28 text-left text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
+              className="bg-slate-50 px-2 py-2 w-28 text-left text-xs font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
             >
               Muayene Aracı
             </th>
             <th
               rowSpan={2}
-              className="bg-slate-50 px-2 py-2 w-28 text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
+              className="bg-slate-50 px-2 py-2 w-28 text-center text-xs font-semibold text-slate-600 uppercase tracking-[0.04em] border-r border-slate-200"
             >
               Numune / Sıklık
             </th>
             <th
               rowSpan={2}
-              className="bg-[#1B4F72]/[0.06] px-2 py-2 text-left text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] min-w-[220px] border-r border-slate-200"
+              className="bg-[#1B4F72]/[0.06] px-2 py-2 text-left text-xs font-bold text-[#1B4F72] uppercase tracking-[0.04em] min-w-[220px] border-r border-slate-200"
             >
               Kritik Karakter
             </th>
             <th
               colSpan={3}
-              className="px-2 py-1.5 text-center text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
+              className="px-2 py-1.5 text-center text-xs font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15 border-r border-slate-200"
             >
               Karakter Özellikleri
             </th>
             <th
               colSpan={MEASUREMENT_COUNT}
-              className="px-2 py-1.5 text-center text-[10.5px] font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15"
+              className="px-2 py-1.5 text-center text-xs font-bold text-[#1B4F72] uppercase tracking-[0.04em] bg-[#1B4F72]/[0.06] border-b border-[#1B4F72]/15"
             >
               Numune Ölçümleri
             </th>
             <th
               rowSpan={2}
-              className="sticky right-0 z-20 bg-slate-50 px-2 py-2 w-[76px] text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] border-l border-slate-200"
+              className="sticky right-0 z-20 bg-slate-50 px-2 py-2 w-[76px] text-center text-xs font-semibold text-slate-600 uppercase tracking-[0.04em] border-l border-slate-200"
             >
               Sonuç
             </th>
           </tr>
           {/* 2. satır — KARAKTER ÖZELLİKLERİ alt başlıkları (Nominal/Maksimum/Minimum) + 10 ölçüm numarası */}
           <tr className="bg-[#1B4F72]/[0.04] border-b border-slate-200">
-            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
+            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-xs font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
               Nominal
             </th>
-            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
+            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-xs font-semibold text-[#1B4F72] uppercase tracking-[0.04em]">
               Maksimum
             </th>
-            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-[10.5px] font-semibold text-[#1B4F72] uppercase tracking-[0.04em] border-r border-slate-200">
+            <th className="bg-[#1B4F72]/[0.04] px-2 py-2 w-[70px] text-center text-xs font-semibold text-[#1B4F72] uppercase tracking-[0.04em] border-r border-slate-200">
               Minimum
             </th>
             {Array.from({ length: MEASUREMENT_COUNT }, (_, i) => (
               <th
                 key={i}
-                className="px-1 py-2 w-14 text-center text-[10.5px] font-semibold text-slate-600 uppercase tracking-[0.04em] tabular-nums font-quality-mono"
+                className="px-1 py-2 w-14 text-center text-xs font-semibold text-slate-600 uppercase tracking-[0.04em] tabular-nums font-quality-mono"
               >
                 {i + 1}
               </th>
@@ -276,20 +276,20 @@ export function MeasurementGrid({
               >
                 <td
                   className={cn(
-                    'sticky left-0 z-10 px-2 align-middle text-center text-[11px] font-semibold font-quality-mono text-slate-500 tabular-nums border-r border-slate-100',
+                    'sticky left-0 z-10 px-2 align-middle text-center text-xs font-semibold font-quality-mono text-slate-500 tabular-nums border-r border-slate-100',
                     stickyBg,
                   )}
                   style={{ height: '44px' }}
                 >
                   {row.orderIndex}
                 </td>
-                <td className="px-2 align-middle text-left text-[12px] font-quality-mono text-slate-700 border-r border-slate-100">
+                <td className="px-2 align-middle text-left text-xs font-quality-mono text-slate-700 border-r border-slate-100">
                   {row.department || ''}
                 </td>
-                <td className="px-2 align-middle text-left text-[12px] font-quality-mono text-slate-700 border-r border-slate-100">
+                <td className="px-2 align-middle text-left text-xs font-quality-mono text-slate-700 border-r border-slate-100">
                   {row.inspectionTool || ''}
                 </td>
-                <td className="px-2 align-middle text-center text-[12px] font-quality-mono text-slate-700 border-r border-slate-100">
+                <td className="px-2 align-middle text-center text-xs font-quality-mono text-slate-700 border-r border-slate-100">
                   {row.sampleFreq || ''}
                 </td>
 
@@ -313,13 +313,13 @@ export function MeasurementGrid({
                   />
                 </td>
 
-                <td className="px-2 align-middle text-center text-[12px] font-quality-mono text-slate-900 font-semibold tabular-nums">
+                <td className="px-2 align-middle text-center text-xs font-quality-mono text-slate-900 font-semibold tabular-nums">
                   {row.hasNumericRange ? row.nominal ?? '—' : '—'}
                 </td>
-                <td className="px-2 align-middle text-center text-[12px] font-quality-mono text-slate-700 tabular-nums">
+                <td className="px-2 align-middle text-center text-xs font-quality-mono text-slate-700 tabular-nums">
                   {row.hasNumericRange ? row.maxValue ?? '—' : '—'}
                 </td>
-                <td className="px-2 align-middle text-center text-[12px] font-quality-mono text-slate-700 tabular-nums border-r border-slate-200">
+                <td className="px-2 align-middle text-center text-xs font-quality-mono text-slate-700 tabular-nums border-r border-slate-200">
                   {row.hasNumericRange ? row.minValue ?? '—' : '—'}
                 </td>
 
@@ -345,7 +345,7 @@ export function MeasurementGrid({
                             : undefined
                         }
                         className={cn(
-                          'h-8 w-full text-center text-[12.5px] font-quality-mono tabular-nums px-1 transition-colors border-slate-200',
+                          'h-8 w-full text-center text-xs font-quality-mono tabular-nums px-1 transition-colors border-slate-200',
                           disabled && 'bg-slate-50 text-slate-400',
                           tolerance === 'in' &&
                             'bg-emerald-50 border-emerald-200 text-emerald-700 font-semibold focus-visible:ring-emerald-300',

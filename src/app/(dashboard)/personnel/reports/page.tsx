@@ -264,11 +264,11 @@ export default function PersonnelReportsPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Yaka Tipi</th>
-                <th className="text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Genel</th>
-                <th className="text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Erkek</th>
-                <th className="text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Kadın</th>
-                <th className="text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Engelli</th>
+                <th className="text-left text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Yaka Tipi</th>
+                <th className="text-center text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Genel</th>
+                <th className="text-center text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Erkek</th>
+                <th className="text-center text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Kadın</th>
+                <th className="text-center text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2.5">Engelli</th>
               </tr>
             </thead>
             <tbody>
@@ -277,27 +277,27 @@ export default function PersonnelReportsPage() {
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
                   BEYAZ YAKA
                 </td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono font-semibold text-slate-800">{yakaCinsiyetTablosu.beyaz.genel}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono text-teal-600">{yakaCinsiyetTablosu.beyaz.erkek}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono text-rose-500">{yakaCinsiyetTablosu.beyaz.kadin}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono text-amber-600">{yakaCinsiyetTablosu.beyaz.engelli}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono font-semibold text-slate-800">{yakaCinsiyetTablosu.beyaz.genel}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-teal-600">{yakaCinsiyetTablosu.beyaz.erkek}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-rose-500">{yakaCinsiyetTablosu.beyaz.kadin}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-amber-600">{yakaCinsiyetTablosu.beyaz.engelli}</td>
               </tr>
               <tr className="border-b border-slate-50 hover:bg-violet-50/30">
                 <td className="px-4 py-2.5 text-xs font-semibold text-violet-600 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-violet-600" />
                   MAVI YAKA
                 </td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono font-semibold text-slate-800">{yakaCinsiyetTablosu.mavi.genel}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono text-teal-600">{yakaCinsiyetTablosu.mavi.erkek}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono text-rose-500">{yakaCinsiyetTablosu.mavi.kadin}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono text-amber-600">{yakaCinsiyetTablosu.mavi.engelli}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono font-semibold text-slate-800">{yakaCinsiyetTablosu.mavi.genel}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-teal-600">{yakaCinsiyetTablosu.mavi.erkek}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-rose-500">{yakaCinsiyetTablosu.mavi.kadin}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-amber-600">{yakaCinsiyetTablosu.mavi.engelli}</td>
               </tr>
               <tr className="bg-slate-50 font-semibold">
                 <td className="px-4 py-2.5 text-xs font-bold text-slate-700">TOPLAM</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono font-bold text-slate-900">{yakaCinsiyetTablosu.toplam.genel}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono font-bold text-teal-700">{yakaCinsiyetTablosu.toplam.erkek}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono font-bold text-rose-600">{yakaCinsiyetTablosu.toplam.kadin}</td>
-                <td className="px-4 py-2.5 text-center text-sm font-mono font-bold text-amber-700">{yakaCinsiyetTablosu.toplam.engelli}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono font-bold text-slate-900">{yakaCinsiyetTablosu.toplam.genel}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono font-bold text-teal-700">{yakaCinsiyetTablosu.toplam.erkek}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono font-bold text-rose-600">{yakaCinsiyetTablosu.toplam.kadin}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono font-bold text-amber-700">{yakaCinsiyetTablosu.toplam.engelli}</td>
               </tr>
             </tbody>
           </table>
@@ -465,9 +465,9 @@ export default function PersonnelReportsPage() {
             <table className="w-full">
               <thead className="sticky top-0 bg-slate-50">
                 <tr className="border-b border-slate-100">
-                  <th className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">Bölüm</th>
-                  <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">Kişi</th>
-                  <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">%</th>
+                  <th className="text-left text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">Bölüm</th>
+                  <th className="text-right text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">Kişi</th>
+                  <th className="text-right text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">%</th>
                 </tr>
               </thead>
               <tbody>
@@ -498,9 +498,9 @@ export default function PersonnelReportsPage() {
             <table className="w-full">
               <thead className="sticky top-0 bg-slate-50">
                 <tr className="border-b border-slate-100">
-                  <th className="text-left text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">Bölüm</th>
-                  <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">Kişi</th>
-                  <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">%</th>
+                  <th className="text-left text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">Bölüm</th>
+                  <th className="text-right text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">Kişi</th>
+                  <th className="text-right text-xs font-semibold uppercase tracking-wide text-slate-400 px-4 py-2">%</th>
                 </tr>
               </thead>
               <tbody>

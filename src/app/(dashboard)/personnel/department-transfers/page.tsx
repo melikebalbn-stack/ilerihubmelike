@@ -159,8 +159,8 @@ export default function DepartmentTransfersListPage() {
             <p className="text-sm text-slate-500 text-center py-6">Filtrelerle eşleşen kayıt yok.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-600 uppercase text-xs tracking-wider">
                   <tr>
                     <th className="px-2 py-2 text-left">#</th>
                     <th className="px-2 py-2 text-left">Sicil / Ad Soyad</th>
@@ -188,13 +188,13 @@ export default function DepartmentTransfersListPage() {
                           {t.isHistorical && (
                             <Badge
                               variant="outline"
-                              className="text-[9px] font-normal bg-amber-50 text-amber-700 border-amber-200 px-1.5 py-0"
+                              className="text-xs font-normal bg-amber-50 text-amber-700 border-amber-200 px-1.5 py-0"
                             >
                               Historical
                             </Badge>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-mono">{t.personnel.sicilNo}</div>
+                        <div className="text-xs text-slate-500 font-mono">{t.personnel.sicilNo}</div>
                       </td>
                       <td className="px-2 py-2 tabular-nums">{t.talepTarihi ? formatTrDate(t.talepTarihi) : '-'}</td>
                       <td className="px-2 py-2">{t.talepEden ? talepEdenLabel(t.talepEden) : '-'}</td>
@@ -225,17 +225,17 @@ export default function DepartmentTransfersListPage() {
                       <td className="px-2 py-2">
                         <div className="flex flex-wrap gap-1 max-w-xs">
                           {t.gerekceler.map((g) => (
-                            <Badge key={g} variant="secondary" className="text-[10px] font-normal">
+                            <Badge key={g} variant="secondary" className="text-xs font-normal">
                               {gerekceLabel(g)}
                             </Badge>
                           ))}
                           {t.gerekceDigerKisi && (
-                            <Badge variant="secondary" className="text-[10px] font-normal">
+                            <Badge variant="secondary" className="text-xs font-normal">
                               Diğer (kişi)
                             </Badge>
                           )}
                           {t.gerekceDigerIs && (
-                            <Badge variant="secondary" className="text-[10px] font-normal">
+                            <Badge variant="secondary" className="text-xs font-normal">
                               Diğer (iş)
                             </Badge>
                           )}

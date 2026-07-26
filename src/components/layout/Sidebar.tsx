@@ -157,6 +157,8 @@ const formsMenuItems = [
   // layout guard + API'de (getBulkCardScanAccess). Statik dept filtresi GRI
   // yaka kullanıcıları yanlış gizleyeceğinden burada rol/dept ile daraltılmaz.
   { name: "Toplu Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"] },
+  // İş Analizi Formu: oturumu olan herkes kendi formunu doldurur (roles: "*").
+  { name: "İş Analizi Formu", icon: ClipboardList, href: "/strategic-hr/is-analizi", roles: ["*"] },
   // { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] }, // Şimdilik gizli
 ]
 
@@ -296,6 +298,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [formsOpen, setFormsOpen] = useState(false)
   const [sistemGelistirmeOpen, setSistemGelistirmeOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
+  // İş Analizi menü bayrakları — SUNUCUDAN (amir DB sorgusu + ik OR mantığı iaRolCozumle'de).
+  const [iaFlags, setIaFlags] = useState<{ amir: boolean; ik: boolean }>({ amir: false, ik: false })
 
   // Collapse/pin (yalnız masaüstü; mobil sheet'te isOpen=true → her zaman geniş)
   const { collapsed, pinned, hovering, setCollapsed, setPinned, setHovering } = useSidebar()
@@ -370,6 +374,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
   }, [session])
 
+  // İş Analizi menü bayraklarını sunucudan çek (amir/ik). Client'ta yetki HESAPLANMAZ.
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/strategic-hr/is-analizi/menu-bayrak')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setIaFlags({ amir: !!d.amir, ik: !!d.ik })
+      })
+      .catch(() => {})
+  }, [session])
+
   // Kullanıcı rolüne göre menü filtreleme
   const userRole = session?.user?.role || 'USER'
   const userDepartment = session?.user?.department || ''
@@ -425,9 +441,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredKaliteItems = filterItems(kaliteMenuItems)
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)
-  const filteredStrategicHrItems = filterStrategicHrItems(strategicHrMenuItems)
+  // İş Analizi koşullu öğeler — SUNUCU bayrağı (iaFlags) ile; client'ta yetki hesaplanmaz.
+  const iaAmirItem = { name: "Onayımdaki İş Analizleri", icon: UserCheck, href: "/strategic-hr/is-analizi/onaylarim", roles: ["*"] }
+  const iaIkItem = { name: "İş Analizi Onayları", icon: ClipboardCheck, href: "/strategic-hr/is-analizi/ik-onay", roles: ["*"] }
+
+  const filteredStrategicHrItems = [
+    ...filterStrategicHrItems(strategicHrMenuItems),
+    ...(iaFlags.ik ? [iaIkItem] : []),
+  ]
   const filteredOffboardingItems = filterItems(offboardingMenuItems)
-  const filteredFormsItems = filterItems(formsMenuItems)
+  const filteredFormsItems = [
+    ...filterItems(formsMenuItems),
+    ...(iaFlags.amir ? [iaAmirItem] : []),
+  ]
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 

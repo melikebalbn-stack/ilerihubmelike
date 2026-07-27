@@ -24,8 +24,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { iaRolCozumle } from "@/lib/is-analizi/ia-yetki";
 import { amirCozumle } from "@/lib/is-analizi/amir-cozumle";
+import { birincilKoltukBul } from "@/lib/is-analizi/birincil-koltuk";
 
-const MAX_HIYERARSI_DERINLIGI = 12;
 
 function normalizeAd(s: string | null | undefined): string {
   if (!s) return "";
@@ -50,29 +50,21 @@ export async function GET() {
       );
     }
 
-    // Kişinin tüm koltukları → birincil pozisyon (bölüm için)
-    const koltuklar = await prisma.orgEmployee.findMany({
-      where: { personnelId, isActive: true },
-      select: {
-        id: true,
-        displayName: true,
-        orgUnitId: true,
-        orgUnit: { select: { id: true, name: true, parentId: true, unitType: true, level: true } },
-      },
-    });
-    if (koltuklar.length === 0) {
+    // Birincil koltuk (ana pozisyon) — kurul eleme dahil TEK KAYNAK helper.
+    const koltuk = await birincilKoltukBul(personnelId);
+    if (!koltuk) {
+      // Ya hiç koltuk yok ya da yalnız kurul koltuğu var → ana pozisyon çözülemez.
       return NextResponse.json(
-        { error: "Organizasyon şemasında aktif kaydınız bulunamadı. İnsan Varlıkları ile iletişime geçin." },
+        {
+          error:
+            "Ana pozisyonunuz organizasyon şemasından belirlenemedi (yalnız kurul/komite üyeliğiniz olabilir). İnsan Varlıkları ile iletişime geçin.",
+        },
         { status: 404 }
       );
     }
-    const birincil = await secBirincilKoltuk(koltuklar);
-    if (!birincil || !birincil.orgUnit) {
-      return NextResponse.json({ error: "Birincil pozisyonunuz belirlenemedi." }, { status: 404 });
-    }
-
-    const pozisyonAd = birincil.orgUnit.name;
-    const bolum = await resolveBolum(birincil.orgUnitId);
+    const birincil = koltuk.secilen;
+    const pozisyonAd = birincil.orgUnitAd;
+    const bolum = { ad: birincil.departmanAd, orgUnitId: birincil.departmanOrgUnitId };
 
     // Personel: KVKK-güvenli alanlar + amir (birimSorumlusu)
     const p = await prisma.personnel.findUnique({
@@ -149,57 +141,5 @@ export async function GET() {
 }
 
 // ── Yardımcılar ────────────────────────────────────────────────────────
-
-// (amirIdBul kaldırıldı — amir hesabı artık amir-cozumle.ts TEK KAYNAK'ında.)
-
-async function secBirincilKoltuk<
-  T extends { orgUnitId: string; orgUnit: { level: number | null; parentId: string | null } | null }
->(koltuklar: T[]): Promise<T | null> {
-  if (koltuklar.length === 1) return koltuklar[0];
-  const skorlu: Array<{ k: T; departmanaBagli: boolean; level: number }> = [];
-  for (const k of koltuklar) {
-    const departmanaBagli = await zincirDepartmanaCikiyorMu(k.orgUnitId);
-    skorlu.push({ k, departmanaBagli, level: k.orgUnit?.level ?? 999 });
-  }
-  skorlu.sort((a, b) => {
-    if (a.departmanaBagli !== b.departmanaBagli) return a.departmanaBagli ? -1 : 1;
-    return a.level - b.level;
-  });
-  return skorlu[0]?.k ?? null;
-}
-
-async function zincirDepartmanaCikiyorMu(startUnitId: string): Promise<boolean> {
-  let currentId: string | null = startUnitId;
-  for (let i = 0; i < MAX_HIYERARSI_DERINLIGI; i++) {
-    if (!currentId) break;
-    const uid: string = currentId; // TS7022 döngüsel çıkarımı kır
-    const u = await prisma.orgUnit.findUnique({
-      where: { id: uid },
-      select: { parentId: true, unitType: true },
-    });
-    if (!u) return false;
-    if (u.unitType === "DEPARTMENT") return true;
-    currentId = u.parentId;
-  }
-  return false;
-}
-
-async function resolveBolum(
-  startUnitId: string
-): Promise<{ ad: string | null; orgUnitId: string | null }> {
-  let currentId: string | null = startUnitId;
-  let sonUlasilan: { ad: string | null; orgUnitId: string | null } = { ad: null, orgUnitId: null };
-  for (let i = 0; i < MAX_HIYERARSI_DERINLIGI; i++) {
-    if (!currentId) break;
-    const uid: string = currentId; // TS7022 döngüsel çıkarımı kır
-    const u = await prisma.orgUnit.findUnique({
-      where: { id: uid },
-      select: { id: true, name: true, parentId: true, unitType: true },
-    });
-    if (!u) break;
-    sonUlasilan = { ad: u.name, orgUnitId: u.id };
-    if (u.unitType === "DEPARTMENT") return { ad: u.name, orgUnitId: u.id };
-    currentId = u.parentId;
-  }
-  return sonUlasilan;
-}
+// Koltuk seçimi + kurul eleme + bölüm çözümleme → birincil-koltuk.ts TEK KAYNAK.
+// (amirIdBul da kaldırılmıştı; amir → amir-cozumle.ts.)

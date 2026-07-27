@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- FABRIKA HARITASI SURUM: v51 (hareket-LOD + parlak sari) -->
+<!-- FABRIKA HARITASI SURUM: v53 (hafif mod: ?lite=1 + TV otomatik) -->
 <title>ILERIHub · Fabrika Haritası v3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,7 +36,11 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 65%);
+html{background:#0b1016}  /* re-raster boşlukları koyu dolsun — beyaz patlama kökü */
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+ background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 65%);
+ will-change:transform}   /* vinyet kendi katmanında, kaydırmadan etkilenmez */
+body{background:var(--zemin);
   color:var(--metin);font-family:"IBM Plex Sans",system-ui,sans-serif;overflow:hidden}
 .duzen{display:grid;grid-template-columns:1fr 300px;grid-template-rows:1fr 104px;height:100vh}
 .duzen.tv{grid-template-columns:1fr 0;grid-template-rows:1fr 0}
@@ -273,6 +277,12 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .hrk .isik,.hrk .huzme,.hrk .koseAd,.hrk .tzEtiket,.hrk .halka{visibility:hidden}
 .hrk .zeminPed{border-color:transparent}
+/* HAFİF MOD: ?lite=1 ya da TV modu — minimum çizim yükü */
+body.lite .isik,body.lite .huzme,body.lite .koseAd{display:none}
+body.lite::before{display:none}                    /* vinyet yok */
+body.lite .zeminPed.st-dur{animation:none}         /* nabız yok */
+body.lite .halka{animation:none;transform:translateZ(3px) scale(1.15);opacity:.8}  /* statik halka */
+body.lite .tezgah{transition:none}
 </style>
 </head>
 <body>
@@ -281,7 +291,7 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
     <div class="ust">
       <div class="logo">İLERİ<span>HUB</span></div>
       <div class="baslikKutu"><div class="b" id="baslik">Tüm Fabrika</div><div class="a" id="altbaslik"></div></div>
-      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v51</span>
+      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v53</span>
       <div class="saat"><span class="canli"><i></i>CANLI</span><span id="saat">--:--:--</span></div>
     </div>
     <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"><div class="dokular"></div></div></div></div>
@@ -1004,7 +1014,9 @@ setInterval(()=>document.getElementById('saat').textContent=new Date().toLocaleT
 let bosDetay=document.getElementById('detay').innerHTML;
 kapsamGorunum();tazele();bolumSec('TÜM FABRİKA');
 /* izleme ekranı: ?tv=1 ile açılışta TV modu (kiosk/duvar ekranında fare gerekmez) */
-if(new URLSearchParams(location.search).get('tv')==='1')
+const _qs=new URLSearchParams(location.search);
+if(_qs.get('tv')==='1'||_qs.get('lite')==='1')document.body.classList.add('lite');
+if(_qs.get('tv')==='1')
   document.getElementById('duzen').classList.add('tv');
 </script>
 </body>

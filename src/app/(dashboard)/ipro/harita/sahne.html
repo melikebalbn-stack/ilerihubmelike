@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- FABRIKA HARITASI SURUM: v50 (performans: GPU katmani + sprite decode + duz plaka dolgusu) -->
+<!-- FABRIKA HARITASI SURUM: v51 (hareket-LOD + parlak sari) -->
 <title>ILERIHub · Fabrika Haritası v3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -127,7 +127,7 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
 /* durum isimasi: cok belirgin olmayan radial glow — referans dijital-ikiz dili */
 .zeminPed.st-cal{background:rgba(52,178,108,.20);border:1px solid rgba(52,178,108,.55)}
 .zeminPed.st-dur{animation:pedNabiz 2.2s ease-in-out infinite;background:rgba(224,74,79,.26);border:1px solid rgba(224,74,79,.7)}
-.zeminPed.st-bos{background:rgba(222,168,52,.18);border:1px solid rgba(222,168,52,.55)}
+.zeminPed.st-bos{background:rgba(255,206,64,.30);border:1px solid rgba(255,206,64,.85)}
 .zeminPed.st-sin{background:rgba(60,72,86,.15);border:1px solid rgba(60,72,86,.32)}
 .zeminPed.sonuk{background:rgba(40,52,63,.14);border:1px solid rgba(40,52,63,.26)}
 
@@ -271,6 +271,8 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
 .gs .v small{font-size:13px;color:var(--metin-3);margin-left:4px}
 .g-c .v{color:var(--calisiyor)} .g-d .v{color:var(--durusta)} .g-s .v{color:var(--sinyalyok)} .g-o .v{color:var(--metin-3)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.hrk .isik,.hrk .huzme,.hrk .koseAd,.hrk .tzEtiket,.hrk .halka{visibility:hidden}
+.hrk .zeminPed{border-color:transparent}
 </style>
 </head>
 <body>
@@ -279,7 +281,7 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
     <div class="ust">
       <div class="logo">İLERİ<span>HUB</span></div>
       <div class="baslikKutu"><div class="b" id="baslik">Tüm Fabrika</div><div class="a" id="altbaslik"></div></div>
-      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v50</span>
+      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v51</span>
       <div class="saat"><span class="canli"><i></i>CANLI</span><span id="saat">--:--:--</span></div>
     </div>
     <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"><div class="dokular"></div></div></div></div>
@@ -321,6 +323,10 @@ body{background:radial-gradient(1400px 800px at 45% 30%,#141e28 0%,var(--zemin) 
 </div>
 
 <script>
+var hrkT=null;
+function hrkBasla(sure){document.body.classList.add('hrk');
+  clearTimeout(hrkT);hrkT=setTimeout(function(){document.body.classList.remove('hrk')},sure);}
+
 /* ═════════ ARKETİPLER — grup başına 3B siluet ═════════
    kutu: [x,y,z,g,d,y,ton]  ·  ton 0=gövde 1=koyu 2=metal  ·  ayak izi 84×84 */
 const ARKETIP={
@@ -622,6 +628,7 @@ function ekranaDunya(sx,sy){            /* ekran vektörü → dünya vektörü 
   return {x:u*c+v*si, y:-u*si+v*c};
 }
 function kamUygula(gecisli){
+  if(gecisli)hrkBasla(650);
   dunya.classList.toggle('anlik',!gecisli);
   dunya.style.setProperty('--kx',KAM.x.toFixed(2)+'px');
   dunya.style.setProperty('--ky',KAM.y.toFixed(2)+'px');
@@ -700,7 +707,7 @@ window.addEventListener('pointermove',e=>{
     const nx=Math.round((tasima.x0+v.x)/GRID)*GRID, ny=Math.round((tasima.y0+v.y)/GRID)*GRID;
     if(nx!==tasima.t.x||ny!==tasima.t.y){tasindi=true;tezgahKonum(tasima.t,nx,ny)}
     return}
-  if(don){KAM.az=don.az+(e.clientX-don.sx)*0.35;kaydi=true;kamUygula(false);return}
+  if(don){hrkBasla(160);KAM.az=don.az+(e.clientX-don.sx)*0.35;kaydi=true;kamUygula(false);return}
   if(!suruk) return;
   const dx=e.clientX-suruk.sx, dy=e.clientY-suruk.sy;
   if(Math.abs(dx)+Math.abs(dy)>4) kaydi=true;
@@ -716,7 +723,7 @@ function birak(){
 window.addEventListener('pointerup',birak);
 window.addEventListener('pointercancel',birak);
 window.addEventListener('blur',birak);
-tuval.addEventListener('wheel',e=>{
+tuval.addEventListener('wheel',e=>{hrkBasla(200);
   e.preventDefault();
   const r=tuval.getBoundingClientRect();
   yakinlastir(e.deltaY<0?1.13:1/1.13, e.clientX-r.left-r.width/2, e.clientY-r.top-r.height/2);

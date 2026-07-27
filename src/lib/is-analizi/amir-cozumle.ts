@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { birincilKoltukBul } from "@/lib/is-analizi/birincil-koltuk";
 
 // İş Analizi — amir (yönetici) çözümleme TEK KAYNAK.
 // Öncelik: (1) ORG ağacı, (2) Personnel.birimSorumlusu ismi, (3) yok.
-// Not: Elif'in referans/route.ts'indeki isim-bazlı amirIdBul mantığı buraya taşındı;
-// Parça 2'de o route bu helper'a bağlanacak (iki yerde amir hesaplanmayacak).
+// Koltuk seçimi (kurul eleme dahil) birincil-koltuk.ts'te; burada tekrar hesaplanmaz →
+// amir de kurul koltuğundan çözülmez.
 
 export type AmirKaynak = "ORG" | "ISIM" | null;
 
@@ -32,56 +33,12 @@ async function isimdenPersonnelId(ad: string): Promise<string | null> {
   return eslesenler.length === 1 ? eslesenler[0].id : null;
 }
 
-type Koltuk = {
-  id: string;
-  orgUnitId: string;
-  reportsToId: string | null;
-  orgUnit: { level: number | null; parentId: string | null } | null;
-};
-
-// Kişinin birincil aktif koltuğu: departmana bağlı olanlar öncelikli, sonra en düşük level.
-async function birincilKoltuk(personnelId: string): Promise<Koltuk | null> {
-  const koltuklar = await prisma.orgEmployee.findMany({
-    where: { personnelId, isActive: true },
-    select: {
-      id: true,
-      orgUnitId: true,
-      reportsToId: true,
-      orgUnit: { select: { level: true, parentId: true } },
-    },
-  });
-  if (koltuklar.length === 0) return null;
-  if (koltuklar.length === 1) return koltuklar[0];
-
-  const skorlu: Array<{ k: Koltuk; departmanaBagli: boolean; level: number }> = [];
-  for (const k of koltuklar) {
-    skorlu.push({ k, departmanaBagli: await zincirDepartmanaCikiyorMu(k.orgUnitId), level: k.orgUnit?.level ?? 999 });
-  }
-  skorlu.sort((a, b) => {
-    if (a.departmanaBagli !== b.departmanaBagli) return a.departmanaBagli ? -1 : 1;
-    return a.level - b.level;
-  });
-  return skorlu[0]?.k ?? null;
-}
-
-async function zincirDepartmanaCikiyorMu(startUnitId: string): Promise<boolean> {
-  let currentId: string | null = startUnitId;
-  for (let i = 0; i < MAX_HIYERARSI_DERINLIGI; i++) {
-    if (!currentId) break;
-    const uid: string = currentId;
-    const u = await prisma.orgUnit.findUnique({ where: { id: uid }, select: { parentId: true, unitType: true } });
-    if (!u) return false;
-    if (u.unitType === "DEPARTMENT") return true;
-    currentId = u.parentId;
-  }
-  return false;
-}
-
 // ORG ağacından amir: önce doğrudan raporlama hattı (OrgEmployee.reportsToId), yoksa
 // parent zincirinde SAHİPLİ bir POSITION birimi (üstteki yönetici pozisyonun sahibi).
 // Her iki durumda da amirin Personnel.id + adı döner. Kendisi hariç tutulur.
+// seat = birincil-koltuk.ts'in seçtiği koltuk (kurul zaten elenmiş).
 async function orgdanAmir(
-  seat: Koltuk,
+  seat: { reportsToId: string | null; orgUnitParentId: string | null },
   kendiPersonnelId: string,
 ): Promise<{ id: string; ad: string | null } | null> {
   // 1) Doğrudan raporlama hattı
@@ -96,7 +53,7 @@ async function orgdanAmir(
     }
   }
   // 2) Parent zincirinde sahipli POSITION (üstteki yönetici pozisyonun sahibi)
-  let currentId: string | null = seat.orgUnit?.parentId ?? null;
+  let currentId: string | null = seat.orgUnitParentId;
   for (let i = 0; i < MAX_HIYERARSI_DERINLIGI; i++) {
     if (!currentId) break;
     const uid: string = currentId;
@@ -132,10 +89,10 @@ async function orgdanAmir(
  *   3. Hiçbiri → hepsi null, guvenilir=false
  */
 export async function amirCozumle(personnelId: string): Promise<AmirSonuc> {
-  // 1. ORG
-  const seat = await birincilKoltuk(personnelId);
-  if (seat) {
-    const org = await orgdanAmir(seat, personnelId);
+  // 1. ORG — birincil koltuk (kurul elenmiş) üzerinden amir
+  const koltuk = await birincilKoltukBul(personnelId);
+  if (koltuk) {
+    const org = await orgdanAmir(koltuk.secilen, personnelId);
     if (org?.id) {
       return { amirPersonnelId: org.id, amirAd: org.ad, kaynak: "ORG", guvenilir: true };
     }

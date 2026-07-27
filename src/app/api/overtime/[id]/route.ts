@@ -113,7 +113,46 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const currentUserCanEditTarget =
       isAdmin || normDept(meForTarget?.personnel?.gorev) === normDept('FABRİKA MÜDÜRÜ')
 
-    return apiSuccess({ ...form, currentUserAllowedDepts, currentUserCanEditTarget })
+    // Hedef adet değişiklik geçmişi — OVERTIME_TARGET_CHANGED audit'ini üretim satırına
+    // iliştir (tooltip için). Migration YOK (salt okuma). Sadece bu formun satırları.
+    const satirIds = form.personnel.flatMap((p) => p.uretimSatirlari.map((r) => r.id))
+    let personnelWithHistory: typeof form.personnel = form.personnel
+    if (satirIds.length > 0) {
+      const targetLogs = await prisma.permissionAuditLog.findMany({
+        where: { action: 'OVERTIME_TARGET_CHANGED', targetId: { in: satirIds } },
+        orderBy: { createdAt: 'asc' }, // kronolojik
+        select: { targetId: true, actorId: true, createdAt: true, details: true },
+      })
+      if (targetLogs.length > 0) {
+        // actorId → isim (User.name, yoksa Personnel.adSoyad, yoksa id). audit yalnız id tutar.
+        const actorIds = [...new Set(targetLogs.map((l) => l.actorId))]
+        const actors = await prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, name: true, personnel: { select: { adSoyad: true } } },
+        })
+        const actorName = new Map(actors.map((a) => [a.id, a.name || a.personnel?.adSoyad || a.id]))
+        // targetId (satır) → değişiklik listesi (details güvenli parse — eski/eksik alan çökmesin)
+        const bySatir = new Map<string, { eskiHedef: number | null; yeniHedef: number | null; degistiren: string; tarih: string; sebep: string | null }[]>()
+        for (const l of targetLogs) {
+          const d = (l.details ?? {}) as Record<string, unknown>
+          const arr = bySatir.get(l.targetId) ?? []
+          arr.push({
+            eskiHedef: typeof d.eskiHedef === 'number' ? d.eskiHedef : null,
+            yeniHedef: typeof d.yeniHedef === 'number' ? d.yeniHedef : null,
+            degistiren: actorName.get(l.actorId) ?? l.actorId,
+            tarih: l.createdAt.toISOString(),
+            sebep: typeof d.sebep === 'string' && d.sebep.trim() ? d.sebep : null,
+          })
+          bySatir.set(l.targetId, arr)
+        }
+        personnelWithHistory = form.personnel.map((p) => ({
+          ...p,
+          uretimSatirlari: p.uretimSatirlari.map((r) => ({ ...r, hedefDegisiklikleri: bySatir.get(r.id) ?? [] })),
+        }))
+      }
+    }
+
+    return apiSuccess({ ...form, personnel: personnelWithHistory, currentUserAllowedDepts, currentUserCanEditTarget })
   } catch (error) {
     return apiError('Mesai formu detayı alınırken bir hata oluştu', 500, {
       endpoint: 'GET /api/overtime/[id]',

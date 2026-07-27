@@ -33,6 +33,14 @@ interface UretimSatir {
   parcaKoduDuzeltmeNote: string | null
   duzeltmeTarihi: string | null
   duzelten: { id: string; name: string | null } | null
+  // Hedef adet değişiklik geçmişi (OVERTIME_TARGET_CHANGED audit — kronolojik).
+  hedefDegisiklikleri?: {
+    eskiHedef: number | null
+    yeniHedef: number | null
+    degistiren: string
+    tarih: string // ISO
+    sebep: string | null
+  }[]
 }
 
 interface Personnel {
@@ -939,7 +947,9 @@ export default function OvertimeDetailPage() {
                 const parcaContent = (r: UretimSatir | undefined, fallbackText: string) => {
                   const editable = rowEditable && !!r
                   const rv = r ? rowValues[r.id] : undefined
-                  const duzeltildi = !!r?.eskiParcaKodu
+                  const hedefGecmis = r?.hedefDegisiklikleri ?? []
+                  // Info ikonu: parça kodu düzeltmesi VEYA hedef değişikliği olursa.
+                  const duzeltildi = !!r?.eskiParcaKodu || hedefGecmis.length > 0
                   const changed = !!(editable && rv && rv.parcaKodu.trim() !== (r?.parcaKodu ?? ""))
                   return (
                     <>
@@ -962,11 +972,31 @@ export default function OvertimeDetailPage() {
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <div className="text-xs space-y-0.5">
-                                <div>Eski kod: <span className="font-mono">{r.eskiParcaKodu}</span></div>
-                                <div>Düzelten: {r.duzelten?.name || "—"}</div>
-                                <div>Tarih: {r.duzeltmeTarihi ? new Date(r.duzeltmeTarihi).toLocaleString("tr-TR") : "—"}</div>
-                                {r.parcaKoduDuzeltmeNote && <div>Gerekçe: {r.parcaKoduDuzeltmeNote}</div>}
+                              <div className="text-xs space-y-1.5">
+                                {/* Bölüm 1: parça kodu düzeltmesi (varsa) */}
+                                {r.eskiParcaKodu && (
+                                  <div className="space-y-0.5">
+                                    <div className="font-semibold">Parça kodu düzeltmesi</div>
+                                    <div>Eski kod: <span className="font-mono">{r.eskiParcaKodu}</span></div>
+                                    <div>Düzelten: {r.duzelten?.name || "—"}</div>
+                                    <div>Tarih: {r.duzeltmeTarihi ? new Date(r.duzeltmeTarihi).toLocaleString("tr-TR") : "—"}</div>
+                                    {r.parcaKoduDuzeltmeNote && <div>Gerekçe: {r.parcaKoduDuzeltmeNote}</div>}
+                                  </div>
+                                )}
+                                {/* Bölüm 2: hedef adet değişiklikleri (kronolojik, varsa) */}
+                                {hedefGecmis.length > 0 && (
+                                  <div className="space-y-0.5">
+                                    <div className="font-semibold">Hedef adet değişikliği</div>
+                                    {hedefGecmis.map((h, i) => (
+                                      <div key={i} className="border-t border-white/20 pt-0.5 first:border-t-0 first:pt-0">
+                                        <div>Eski hedef: {h.eskiHedef ?? "—"} → Yeni: {h.yeniHedef ?? "—"}</div>
+                                        <div>Değiştiren: {h.degistiren || "—"}</div>
+                                        <div>Tarih: {h.tarih ? new Date(h.tarih).toLocaleString("tr-TR") : "—"}</div>
+                                        <div>Gerekçe: {h.sebep || "(belirtilmemiş)"}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </TooltipContent>
                           </Tooltip>

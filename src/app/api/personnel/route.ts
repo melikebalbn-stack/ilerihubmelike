@@ -268,7 +268,20 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Personel oluşturulurken hata:', error)
     if (error?.code === 'P2002') {
-      return NextResponse.json({ error: 'Bu sicil numarası zaten kayıtlı' }, { status: 409 })
+      // Hangi benzersiz alan çakıştı? meta.target'a bak (sicilNo en olası).
+      const target = Array.isArray(error?.meta?.target)
+        ? error.meta.target.join(',')
+        : String(error?.meta?.target ?? '')
+      if (target.includes('sicilNo')) {
+        return NextResponse.json(
+          { error: 'Bu sicil numarası zaten kayıtlı (aktif veya ayrılmış bir personele ait olabilir). Farklı bir numara girin.' },
+          { status: 409 }
+        )
+      }
+      return NextResponse.json(
+        { error: 'Bu kayıt benzersiz bir alanda mevcut bir kayıtla çakışıyor.' },
+        { status: 409 }
+      )
     }
     return NextResponse.json({ error: 'Personel oluşturulurken bir hata oluştu' }, { status: 500 })
   }

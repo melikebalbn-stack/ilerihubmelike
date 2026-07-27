@@ -175,6 +175,13 @@ export default function NewPersonnelPage() {
       .then(r => r.ok ? r.json() : [])
       .then((data: { adSoyad: string }[]) => setPersonnelNames(data.map(p => p.adSoyad)))
       .catch(() => {})
+    // Sıradaki sicil no önerisi — yalnız kullanıcı henüz bir şey yazmadıysa doldur.
+    fetch("/api/personnel/next-sicil")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { nextSicil?: string } | null) => {
+        if (d?.nextSicil) setForm(prev => (prev.sicilNo ? prev : { ...prev, sicilNo: d.nextSicil! }))
+      })
+      .catch(() => {})
   }, [])
 
   const addMonths = (iso: string, months: number): string => {
@@ -265,7 +272,8 @@ export default function NewPersonnelPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || "Kayıt başarısız")
+        // Backend hata anahtarı `error` (bazı yerlerde `message`); ikisini de dene.
+        throw new Error(err.error || err.message || "Kayıt başarısız")
       }
 
       toast.success("Personel başarıyla oluşturuldu")
@@ -301,6 +309,7 @@ export default function NewPersonnelPage() {
               <div className="space-y-2">
                 <Label htmlFor="sicilNo">Sicil No *</Label>
                 <Input id="sicilNo" value={form.sicilNo} onChange={(e) => set("sicilNo", e.target.value)} required />
+                <p className="text-xs text-muted-foreground">Önerilen sıradaki numara. Ayrılıp dönen personel için eski sicil numarası girilebilir.</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="adSoyad">Ad Soyad *</Label>

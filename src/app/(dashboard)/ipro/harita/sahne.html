@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- FABRIKA HARITASI SURUM: v55 (katman butcesi: gorus-alani kirpma + detay seviyesi, composite-edilemez gecisler kaldirildi) -->
+<!-- FABRIKA HARITASI SURUM: v56 (kirpma duzeltmesi: perspektif hesabi + genis pay + yalniz yakin planda kirp) -->
 <title>ILERIHub · Fabrika Haritası v3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -291,7 +291,7 @@ body.lite .tezgah{transition:none}
     <div class="ust">
       <div class="logo">İLERİ<span>HUB</span></div>
       <div class="baslikKutu"><div class="b" id="baslik">Tüm Fabrika</div><div class="a" id="altbaslik"></div></div>
-      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v55</span>
+      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v56</span>
       <div class="saat"><span class="canli"><i></i>CANLI</span><span id="saat">--:--:--</span></div>
     </div>
     <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"><div class="dokular"></div></div></div></div>
@@ -673,24 +673,33 @@ function kamUygula(gecisli){
 /* ══ v55: GÖRÜŞ ALANI KIRPMA + DETAY SEVİYESİ ══
    sev 0 = DOM'dan düşük (görüş alanı dışı) · 1 = tek kutu silüet · 2 = tam arketip */
 let lodRaf=0, lodTam=false;
+const ST=Math.sin(56*Math.PI/180), PERSP=2600;   /* .tuval'deki perspective ile AYNI olmali */
 function ekranNokta(wx,wy){                 /* plan koordinatı → tuval merkezine göre ekran px */
   const A=KAM.az*Math.PI/180,c=Math.cos(A),si=Math.sin(A);
   const x=(wx-PW/2)+KAM.x, y=(wy-PH/2)+KAM.y;
-  return {sx:KAM.o*(x*c-y*si), sy:KAM.o*(x*si+y*c)*CT};
+  const U=KAM.o*(x*c-y*si), V=KAM.o*(x*si+y*c);
+  /* v56: perspective(2600px) noktayi merkezden UZAKLASTIRIR/YAKLASTIRIR.
+     v55 bunu hesaba katmiyordu — ekranda duran tezgah "disarida" sanilip siliniyordu. */
+  const k=1-(V*ST)/PERSP;
+  if(k<=.15)return {sx:1e9,sy:1e9};        /* goz duzleminin arkasi */
+  return {sx:U/k, sy:(V*CT)/k};
 }
 function lodPlanla(){if(lodRaf)return;lodRaf=requestAnimationFrame(function(){lodRaf=0;lodUygula()})}
 const TAM_BUTCE=32;   /* ayni anda en fazla kac tezgah tam arketiple cizilir (katman tavani) */
 function lodUygula(){
   const r=tuval.getBoundingClientRect();
-  const mx=r.width/2+320, my=r.height/2+320;   /* ekran kenari + comert pay (kutu yuksekligi, perspektif, etiket) */
+  const mx=r.width/2+r.width*.5+400, my=r.height/2+r.height*.5+400;   /* v56: cok genis pay */
   const hrkli=document.body.classList.contains('hrk');   /* hareket sirasinda yalniz kirp — govde yeniden cizilmez */
   lodTam=KAM.o>=(lodTam?.45:.55);
+  /* v56: KIRPMA YALNIZ YAKIN PLANDA. Genis planda zaten hepsi basit govde (~830 eleman),
+     kirpmanin kazanci yok ama kaybolma riski var. Kirpma ancak detay acikken anlamli. */
+  const kirp=KAM.o>=.50;
   const ic=[];
   for(let i=0;i<TEZGAHLAR.length;i++){
     const t=TEZGAHLAR[i];
     const p=ekranNokta(t.x+t.ayW/2,t.y+t.ayH/2);
     t._d=p.sx*p.sx+p.sy*p.sy;
-    t._dis=Math.abs(p.sx)>mx||Math.abs(p.sy)>my;
+    t._dis=kirp&&(Math.abs(p.sx)>mx||Math.abs(p.sy)>my);
     if(!t._dis)ic.push(t);
   }
   /* tam detay hakki: once aktif bolum, sonra ekran merkezine en yakinlar — butce kadar */

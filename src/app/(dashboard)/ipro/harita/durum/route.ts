@@ -9,28 +9,24 @@ import { prisma } from '@/lib/prisma'
 // Yanıt sözleşmesi tezgah KODU → durum nesnesi:
 //   { "tezgahlar": { "<KOD>": { "durum": "...", "say": null, ... } } }
 //
-// KAPSAM (v24): DB'deki TÜM aktif tezgahlar yanıta girer. Aktif iş varsa
-// "calisiyor", açık duruş varsa "durusta", hiçbiri yoksa "bosta" (bugün kaydı
-// şartı YOK). Böylece DB karşılığı olan her tezgah en az SARI (boşta) görünür;
-// gri "sinyal yok" yalnız DB'de kaydı OLMAYAN sahne kutularına kalır.
+// KAPSAM (v24): DB'deki TÜM aktif tezgahlar yanıta girer. FİZİKSEL AKTİVİTE KATMANI
+// (poller /status): iş kaydı yoksa PLC duruş biti + sayaç hareketiyle çalışıyor/durusta
+// türetilir. Poller erişilemezse bu katman ATLANIR, mevcut davranış aynen sürer.
 //
-// DÜRÜSTLÜK KURALI: bilinmeyen alan yanıta HİÇ konmaz (uydurma yok). Tek istisna
-// "say" (sayaç): poller/PLC entegrasyonu yokken null bırakılır.
+// DÜRÜSTLÜK KURALI: bilinmeyen alan yanıta HİÇ konmaz (uydurma yok). Fiziksel kaynaklı
+// kayıtlarda opr/ie KONMAZ (operatör bilinmiyor → sahne "—" gösterir). "say" poller
+// sayacı işi bağlamında olmadığından null bırakılır.
 //
-// Durum türetme, izleme panosuyla (izleme-service.ts) aynı kaynaklardan:
-//   açık duruş (IproMachineDowntime.bitis=null)      → "durusta" (duruş > çalışıyor)
-//   açık iş  (IproProductionLog.durum=ACIK)          → "calisiyor"
-//   ikisi de yok                                     → "bosta"
+// Öncelik (tezgah başına):
+//   a) Açık iş kaydı / açık duruş kaydı  → mevcut mantık AYNEN (kiosk verisi kazanır).
+//   b) Kayıt yok, tezgah /status'te taze → FİZİKSEL: duruş biti / sayaç hareketi.
+//   c) /status'te yok (bayat/sinyalsiz)  → mevcut fallback (bosta).
 //
 // Auth guard birebir sahne/route.ts ile aynı.
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // ── Alias katmanı: DB tezgah kodu → sahne kodu ──────────────────────────────
-// Onaylı eşleme turu. Anahtar = DB kodu, değer = sahnedeki kutu kodu. Yanıt
-// anahtarları SAHNE koduyla yazılır. Burada olmayan DB kodları kendi koduyla
-// geçer (DT06, KH04, KH13, KH27, PH09, PH13, PK15, MM150, MM151, HM15, HM16
-// artık sahnede birebir var → alias gerekmez).
 const DB2SAHNE: Record<string, string> = {
   CN19: 'ARES', CN16: 'PM13', MM210: 'ELGAZI', MM30: '1410H',
   PH20: 'BROS', // DB PH20 = Broş Çekme; sahnedeki eski PH20 kutusu PH10 oldu
@@ -46,11 +42,49 @@ const DB2SAHNE: Record<string, string> = {
 // Robot kaynak fan-out: KR01-1..KR04-6 kapı istasyonları → KR01..KR04 kutusu.
 const ROBOT_RE = /^(KR0[1-4])-\d+$/
 
+// ── Fiziksel aktivite (poller /status) ──────────────────────────────────────
+const POLLER_BASE = `http://127.0.0.1:${process.env.IPRO_POLLER_PORT ?? 3020}`
+const POLLER_TIMEOUT_MS = 1_500
+// Son sayaç hareketinden bu yana bu süre içinde ise "calisiyor". Çevrim süresi 5sn'den
+// uzun tezgahlar var; tek turda delta=0 "durdu" demek DEĞİL — pencere bunun için.
+const HAREKET_PENCERESI_MS = 180_000
+
+// Modül düzeyinde (istekler arası yaşar, Next node runtime): DB kodu → son görülen
+// sayaç + son hareket zamanı. Yeni istekte sayaç arttıysa hareket damgalanır.
+const hareketByKod = new Map<string, { sayac: number; sonHareketTs: number }>()
+
+type PollerStatusSatiri = { tezgahKod?: string; sayacToplam?: unknown; durusta?: unknown }
+
+/** Poller /status'ü çeker → DB kodu → {sayacToplam, durusta}. Hata/timeout → null (katman atlanır). */
+async function statusCek(): Promise<Map<string, { sayacToplam: number; durusta: boolean }> | null> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), POLLER_TIMEOUT_MS)
+  try {
+    const res = await fetch(`${POLLER_BASE}/status`, { signal: ctrl.signal, cache: 'no-store' })
+    if (!res.ok) return null
+    const list = (await res.json()) as PollerStatusSatiri[]
+    if (!Array.isArray(list)) return null
+    const m = new Map<string, { sayacToplam: number; durusta: boolean }>()
+    for (const s of list) {
+      if (typeof s.tezgahKod !== 'string') continue
+      m.set(s.tezgahKod, {
+        sayacToplam: typeof s.sayacToplam === 'number' ? s.sayacToplam : 0,
+        durusta: s.durusta === true,
+      })
+    }
+    return m
+  } catch {
+    return null
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 type DurumTip = 'calisiyor' | 'durusta' | 'bosta'
 
 type TezgahDurum = {
   durum: DurumTip
-  say: number | null // poller yok → null; uydurulmaz
+  say: number | null // poller sayacı iş bağlamında değil → null; uydurulmaz
   opr?: string
   ie?: string
   mlz?: string
@@ -61,7 +95,7 @@ type TezgahDurum = {
 }
 
 async function durumTuret(): Promise<Record<string, TezgahDurum>> {
-  const [tezgahlar, acikIsler, acikDuruslar] = await Promise.all([
+  const [tezgahlar, acikIsler, acikDuruslar, statusByKod] = await Promise.all([
     prisma.iproTezgah.findMany({
       where: { aktif: true },
       select: { id: true, kod: true },
@@ -85,6 +119,7 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
       orderBy: { baslangic: 'asc' },
       select: { tezgahId: true, baslangic: true, durusSebebi: { select: { ad: true } } },
     }),
+    statusCek(), // poller down → null → fiziksel katman atlanır
   ])
 
   const personIds = [...new Set(acikIsler.map((a) => a.personnelId))]
@@ -117,8 +152,31 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
     return e
   }
 
-  // Tek tezgah (fan-out dışı). v24: iş/duruş yoksa DAİMA "bosta" (kayıt şartı yok).
-  const entryFor = (tezgahId: string): TezgahDurum => {
+  // FİZİKSEL katman: DB kodu → 'calisiyor'|'durusta'|'bosta' | null(=/status'te yok).
+  // Sayaç hareketi 180sn penceresiyle değerlendirilir (module-level hareketByKod).
+  const fizikselDurum = (dbKod: string): DurumTip | null => {
+    if (!statusByKod) return null
+    const s = statusByKod.get(dbKod)
+    if (!s) return null // bayat/sinyalsiz → /status'te yok
+    if (s.durusta) return 'durusta'
+    const prev = hareketByKod.get(dbKod)
+    if (!prev) {
+      // İlk görülüş: hareket referansı yok → bu istekte bosta, sonrakinde oturur.
+      hareketByKod.set(dbKod, { sayac: s.sayacToplam, sonHareketTs: 0 })
+      return 'bosta'
+    }
+    const sonHareketTs = s.sayacToplam > prev.sayac ? now : prev.sonHareketTs
+    hareketByKod.set(dbKod, { sayac: s.sayacToplam, sonHareketTs })
+    return sonHareketTs && now - sonHareketTs < HAREKET_PENCERESI_MS ? 'calisiyor' : 'bosta'
+  }
+
+  const fizikselEntry = (fd: DurumTip): TezgahDurum =>
+    fd === 'durusta'
+      ? { durum: 'durusta', say: null, sebep: 'PLC duruş biti' }
+      : { durum: fd, say: null }
+
+  // Tek tezgah (fan-out dışı). Öncelik: iş/duruş kaydı → fiziksel → bosta.
+  const entryFor = (tezgahId: string, dbKod: string): TezgahDurum => {
     const durus = durusByTezgah.get(tezgahId)
     if (durus) {
       const e: TezgahDurum = { durum: 'durusta', say: null, sure: sn(durus.baslangic.getTime()) }
@@ -127,56 +185,64 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
     }
     const acik = acikByTezgah.get(tezgahId)
     if (acik && acik.baslatildiAt) return calisiyorEntry(acik)
+    const fd = fizikselDurum(dbKod)
+    if (fd) return fizikselEntry(fd)
     return { durum: 'bosta', say: null }
   }
 
   // Robot grubu (KR01..KR04) — istasyonları topla, tek kutuya indir.
-  //   herhangi biri calisiyor → calisiyor (sure=en güncel aktif, opr=ilk aktif)
-  //   değilse biri durusta → durusta (sebep=ilk duruş, sure=en güncel duruş)
-  //   değilse → bosta (v24: kayıt şartı yok)
-  const robotAgg = (stationIds: string[]): TezgahDurum => {
-    const aktifler = stationIds
-      .map((id) => acikByTezgah.get(id))
+  //   herhangi biri iş açık → calisiyor (sure=en güncel aktif, opr=ilk aktif)
+  //   değilse biri duruş kaydı → durusta (sebep=ilk duruş, sure=en güncel duruş)
+  //   değilse FİZİKSEL: biri hareketli → calisiyor; biri duruş biti → durusta; biri /status'te → bosta
+  //   değilse → bosta
+  const robotAgg = (stations: { id: string; kod: string }[]): TezgahDurum => {
+    const aktifler = stations
+      .map((s) => acikByTezgah.get(s.id))
       .filter((a): a is (typeof acikIsler)[number] => !!(a && a.baslatildiAt))
       .sort((x, y) => x.baslatildiAt!.getTime() - y.baslatildiAt!.getTime())
     if (aktifler.length) {
-      const ilk = aktifler[0] // ilk (en eski) aktif → tanımlayıcı alanlar
-      const enGuncel = aktifler[aktifler.length - 1] // en güncel (en yeni) → sure
+      const ilk = aktifler[0]
+      const enGuncel = aktifler[aktifler.length - 1]
       const e = calisiyorEntry(ilk)
       e.sure = sn(enGuncel.baslatildiAt!.getTime())
       return e
     }
-    const duruslar = stationIds
-      .map((id) => durusByTezgah.get(id))
+    const duruslar = stations
+      .map((s) => durusByTezgah.get(s.id))
       .filter((d): d is (typeof acikDuruslar)[number] => !!d)
       .sort((x, y) => x.baslangic.getTime() - y.baslangic.getTime())
     if (duruslar.length) {
-      const ilk = duruslar[0] // sebep = ilk duruş
-      const enGuncel = duruslar[duruslar.length - 1] // sure = en güncel duruş
+      const ilk = duruslar[0]
+      const enGuncel = duruslar[duruslar.length - 1]
       const e: TezgahDurum = { durum: 'durusta', say: null, sure: sn(enGuncel.baslangic.getTime()) }
       if (ilk.durusSebebi?.ad) e.sebep = ilk.durusSebebi.ad
       return e
     }
+    // Fiziksel katman: istasyon kodlarına göre.
+    const fds = stations.map((s) => fizikselDurum(s.kod)).filter((f): f is DurumTip => f !== null)
+    if (fds.some((f) => f === 'calisiyor')) return { durum: 'calisiyor', say: null }
+    if (fds.some((f) => f === 'durusta')) return { durum: 'durusta', say: null, sebep: 'PLC duruş biti' }
+    if (fds.length) return { durum: 'bosta', say: null }
     return { durum: 'bosta', say: null }
   }
 
   const out: Record<string, TezgahDurum> = {}
-  const robotGruplari = new Map<string, string[]>() // 'KR01' → [tezgahId, ...]
+  const robotGruplari = new Map<string, { id: string; kod: string }[]>() // 'KR01' → istasyonlar
 
   for (const t of tezgahlar) {
     const rm = ROBOT_RE.exec(t.kod)
     if (rm) {
       const g = rm[1]
       const arr = robotGruplari.get(g) ?? []
-      arr.push(t.id)
+      arr.push({ id: t.id, kod: t.kod })
       robotGruplari.set(g, arr)
       continue
     }
-    out[DB2SAHNE[t.kod] ?? t.kod] = entryFor(t.id)
+    out[DB2SAHNE[t.kod] ?? t.kod] = entryFor(t.id, t.kod)
   }
 
-  for (const [g, ids] of robotGruplari) {
-    out[g] = robotAgg(ids)
+  for (const [g, stations] of robotGruplari) {
+    out[g] = robotAgg(stations)
   }
 
   return out

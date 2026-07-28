@@ -26,7 +26,7 @@ export function SectionTercihEgitim({ form, onChange }: SectionProps) {
       <FormQuestionCard number={1} title="Başlayabileceğiniz tarih" isRequired={isRequiredField('availableStartDate')}>
         <FormDateInput value={form.availableStartDate} onChange={(v) => onChange({ availableStartDate: v })} />
       </FormQuestionCard>
-      <FormQuestionCard number={2} title="Maaş Beklentisi (₺/ay, net)" isRequired={isRequiredField('expectedSalary')}>
+      <FormQuestionCard number={2} title="Maaş Beklentisi (₺/ay, brüt)" isRequired={isRequiredField('expectedSalary')}>
         <FormNumberInput
           value={form.expectedSalary}
           onChange={(v) => onChange({ expectedSalary: v })}

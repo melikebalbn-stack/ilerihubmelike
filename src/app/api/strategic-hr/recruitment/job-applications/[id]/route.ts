@@ -60,10 +60,25 @@ export async function GET(
     }
 
     // İK → tam kayıt (mevcut davranış birebir korunur) + sınav oturum özeti (İK: aktif linkli).
+    // Onaylar kartı için KVKK onayı + sağlık beyanı varlığı/tarihi (mevcut ilişkilerden, yeni uç yok).
     if (roles.includes('IK')) {
-      const application = await prisma.publicJobApplication.findUnique({ where: { id } })
+      const application = await prisma.publicJobApplication.findUnique({
+        where: { id },
+        include: {
+          consent: { select: { signedAt: true, createdAt: true, documentCode: true, documentRev: true } },
+          health: { select: { createdAt: true } },
+        },
+      })
       const sinavlar = await oturumOzetiGetir(prisma, id, { ik: true })
-      return NextResponse.json({ ...application, sinavlar })
+      const onaylar = {
+        kvkkAlindi: !!application?.consent,
+        kvkkTarih: application?.consent?.signedAt ?? null,
+        saglikBeyaniAlindi: !!application?.health,
+        saglikTarih: application?.health?.createdAt ?? null,
+        beyanKabul: !!application?.declarationAccepted,
+        beyanTarih: application?.declarationDate ?? null,
+      }
+      return NextResponse.json({ ...application, onaylar, sinavlar })
     }
 
     // Saf müdür → whitelist alanlar + kısıtlı işaret + sınav özeti (müdür: puan/durum/tarih VAR,
@@ -73,7 +88,18 @@ export async function GET(
       select: MANAGER_SELECT,
     })
     const sinavlar = await oturumOzetiGetir(prisma, id, { ik: false })
-    return NextResponse.json({ ...application, _restrictedView: true, sinavlar })
+    // Müdür: yalnız "alındı/alınmadı" — sağlık İÇERİĞİ ve tarihleri GÖNDERİLMEZ (hassas alan kuralı).
+    const [consentSayi, healthSayi, beyan] = await Promise.all([
+      prisma.jobApplicationConsent.count({ where: { applicationId: id } }),
+      prisma.jobApplicationHealth.count({ where: { applicationId: id } }),
+      prisma.publicJobApplication.findUnique({ where: { id }, select: { declarationAccepted: true } }),
+    ])
+    const onaylar = {
+      kvkkAlindi: consentSayi > 0,
+      saglikBeyaniAlindi: healthSayi > 0,
+      beyanKabul: !!beyan?.declarationAccepted,
+    }
+    return NextResponse.json({ ...application, _restrictedView: true, onaylar, sinavlar })
   } catch (error) {
     console.error('Basvuru detayi alinirken hata:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

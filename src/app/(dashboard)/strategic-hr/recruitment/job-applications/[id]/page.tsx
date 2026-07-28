@@ -114,6 +114,22 @@ function SectionTitle({ icon: Icon, title }: { icon: any; title: string }) {
   )
 }
 
+// Onaylar kartı satırı. tarih verilmezse (müdür görünümü) yalnız Alındı/Alınmadı.
+function OnayRow({ label, alindi, tarih }: { label: string; alindi: boolean; tarih?: string | null }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-slate-600">{label}</span>
+      {alindi ? (
+        <span className="font-medium text-green-700">
+          Alındı{tarih ? ` · ${format(new Date(tarih), "d MMM yyyy", { locale: tr })}` : ""}
+        </span>
+      ) : (
+        <span className="font-medium text-slate-400">Alınmadı</span>
+      )}
+    </div>
+  )
+}
+
 // stage-log ucundan dönen workflow bağlamı (izinler SUNUCUDA hesaplanır; client türetmez).
 type WorkflowCtx = {
   currentStatus: string
@@ -970,6 +986,24 @@ export default function JobApplicationDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Onaylar — KVKK + sağlık beyanı + beyan kabulü. Müdür görünümünde yalnız
+              "Alındı/Alınmadı" (tarih/içerik SUNUCUDAN gelmez); İK'da tarihler de gösterilir. */}
+          {app.onaylar && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Onaylar
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <OnayRow label="KVKK Onayı" alindi={app.onaylar.kvkkAlindi} tarih={app.onaylar.kvkkTarih} />
+                <OnayRow label="Sağlık Beyanı" alindi={app.onaylar.saglikBeyaniAlindi} tarih={app.onaylar.saglikTarih} />
+                <OnayRow label="Beyan Kabulü" alindi={app.onaylar.beyanKabul} tarih={app.onaylar.beyanTarih} />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Sınav kartı — oturum yoksa hiç çıkmaz. sinavLink yalnız İK+aktif (sunucudan) */}
           {app.sinavlar && (app.sinavlar.aktif || app.sinavlar.gecmis.length > 0) && (

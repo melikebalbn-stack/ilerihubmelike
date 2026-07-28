@@ -41,34 +41,41 @@ export const ALLOWED_TRANSITIONS: Record<
     MUDUR: [],
   },
   TELEFON_MULAKATI: {
-    IK: ["IK_MULAKATI", "SINAV", "MUDUR_DEGERLENDIRME", "REJECTED"],
+    // İK geri alma: REVIEWING (süreci baştan yönetsin).
+    IK: ["IK_MULAKATI", "SINAV", "MUDUR_DEGERLENDIRME", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
   MUDUR_DEGERLENDIRME: {
-    // Müdür değerlendirir; İK her zaman geri alabilir/reddedebilir.
+    // Müdür değerlendirir; İK her zaman geri alabilir/reddedebilir/yeniden atayabilir.
     // D4: İK aynı duruma geçebilir → müdür yanlış atandıysa yeniden atama (assignedManagerId zorunlu).
+    // İK geri alma: REVIEWING, SINAV.
     MUDUR: ["MUDUR_MULAKATI", "SINAV", "REJECTED"],
-    IK: ["REJECTED", "MUDUR_DEGERLENDIRME"],
+    IK: ["REJECTED", "MUDUR_DEGERLENDIRME", "REVIEWING", "SINAV"],
   },
   MUDUR_MULAKATI: {
     MUDUR: ["SINAV", "REJECTED"],
-    IK: ["SINAV", "REJECTED"],
+    // İK geri alma: REVIEWING, MUDUR_DEGERLENDIRME.
+    IK: ["SINAV", "REJECTED", "REVIEWING", "MUDUR_DEGERLENDIRME"],
   },
   SINAV: {
     // 'SINAV' → 'SINAV': İK sınavı DEĞİŞTİREBİLİR (assessmentId zorunlu). Müdür değiştiremez.
-    IK: ["SINAV", "TEKNIK_MULAKAT", "IK_MULAKATI", "TEKLIF", "REJECTED"],
+    // İK geri alma: REVIEWING, MUDUR_DEGERLENDIRME.
+    IK: ["SINAV", "TEKNIK_MULAKAT", "IK_MULAKATI", "TEKLIF", "REVIEWING", "MUDUR_DEGERLENDIRME", "REJECTED"],
     MUDUR: [],
   },
   IK_MULAKATI: {
-    IK: ["TEKNIK_MULAKAT", "MUDUR_MULAKATI", "TEKLIF", "REJECTED"],
+    // İK geri alma: REVIEWING.
+    IK: ["TEKNIK_MULAKAT", "MUDUR_MULAKATI", "TEKLIF", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
   TEKNIK_MULAKAT: {
-    IK: ["TEKLIF", "MUDUR_MULAKATI", "REJECTED"],
+    // İK geri alma: REVIEWING.
+    IK: ["TEKLIF", "MUDUR_MULAKATI", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
   TEKLIF: {
-    IK: ["TEKLIF_KABUL", "REJECTED"],
+    // İK geri alma: IK_MULAKATI, REVIEWING (teklif geri çekilip sürece dönebilir).
+    IK: ["TEKLIF_KABUL", "IK_MULAKATI", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
   TEKLIF_KABUL: {
@@ -105,7 +112,7 @@ export const ALLOWED_TRANSITIONS: Record<
 export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
   CONSENT_PENDING: "KVKK Onayı Bekliyor",
   HEALTH_PENDING: "Sağlık Beyanı Bekliyor",
-  PENDING: "Beklemede",
+  PENDING: "İK İncelemesi Bekliyor",
   REVIEWED: "İncelendi",
   REVIEWING: "İnceleniyor",
   SHORTLISTED: "Ön Eleme",

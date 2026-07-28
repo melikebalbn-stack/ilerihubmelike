@@ -10805,6 +10805,9 @@ model IproDurusSebebi {
   yetkiliOnayGerekli         Boolean @default(false)
   durusAktifkenIsBitirilemez Boolean @default(false)
   uretimdeGosterilsin        Boolean @default(true)
+  // Bu sebeple duruş BAŞLAYINCA kalite birimine bilgilendirme maili gider (Melike #8).
+  // Veri güdümlü — hangi sebep tetikler yönetimden belirlenir (koda hardcode değil).
+  kaliteBildirim             Boolean @default(false)
   aktif                      Boolean @default(true)
 
   tezgahlar IproDurusTezgah[]

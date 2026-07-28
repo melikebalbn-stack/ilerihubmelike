@@ -13,6 +13,7 @@ let tezgahId = ''
 let sebepGorunurId = '' // aktif + uretimdeGosterilsin + !yetkiliOnay, bitir kilidi YOK
 let sebepKilitId = '' // durusAktifkenIsBitirilemez = true
 let sebepGizliId = '' // yetkiliOnayGerekli = true → kiosk listesinde GİZLİ
+let sebepKaliteId = '' // kaliteBildirim = true → duruş başlayınca mail (Melike #8)
 
 // requireKiosk mock — test tezgahını bağlı gösterir.
 vi.mock('@/lib/ipro/require-kiosk', () => ({
@@ -25,12 +26,19 @@ vi.mock('@/lib/ipro/require-kiosk', () => ({
   })),
 }))
 
+// email mock — GERÇEK SMTP'ye ÇIKMAZ. Kalite bildirimi çağrısı burada yakalanır.
+vi.mock('@/lib/email', () => ({
+  sendEmail: vi.fn(async () => ({ success: true })),
+}))
+
 import { prisma } from '@/lib/prisma'
 import { GET as SEBEPLER } from '@/app/api/ipro/kiosk/durus-sebepleri/route'
 import { POST as DURUS_BASLA } from '@/app/api/ipro/kiosk/durus-basla/route'
 import { POST as DURUS_BITIR } from '@/app/api/ipro/kiosk/durus-bitir/route'
 import { POST as DURUS_YORUM } from '@/app/api/ipro/kiosk/durus-yorum/route'
 import { yorumNormalize } from '@/lib/ipro/durus-yorum'
+import { sendEmail } from '@/lib/email'
+import { kaliteBildirimIcerik, kaliteAliciAdresi } from '@/lib/ipro/kalite-bildirim'
 import { POST as IS_BITIR } from '@/app/api/ipro/kiosk/is-bitir/route'
 import { tezgahDetay } from '@/lib/ipro/izleme-service'
 
@@ -48,11 +56,12 @@ beforeAll(async () => {
   sebepGorunurId = await mk('DRS-GORUNUR', { aktif: true, uretimdeGosterilsin: true, yetkiliOnayGerekli: false, durusAktifkenIsBitirilemez: false })
   sebepKilitId = await mk('DRS-KILIT', { aktif: true, uretimdeGosterilsin: true, yetkiliOnayGerekli: false, durusAktifkenIsBitirilemez: true })
   sebepGizliId = await mk('DRS-GIZLI', { aktif: true, uretimdeGosterilsin: true, yetkiliOnayGerekli: true })
+  sebepKaliteId = await mk('DRS-KALITE', { aktif: true, uretimdeGosterilsin: true, yetkiliOnayGerekli: false, kaliteBildirim: true })
 })
 
 afterAll(async () => {
   await prisma.iproMachineDowntime.deleteMany({ where: { tezgahId } })
-  await prisma.iproDurusSebebi.deleteMany({ where: { id: { in: [sebepGorunurId, sebepKilitId, sebepGizliId] } } })
+  await prisma.iproDurusSebebi.deleteMany({ where: { id: { in: [sebepGorunurId, sebepKilitId, sebepGizliId, sebepKaliteId] } } })
   await prisma.iproTezgah.deleteMany({ where: { id: tezgahId } })
   await prisma.$disconnect()
 })
@@ -194,5 +203,57 @@ describe('duruş yorumu (OPSİYONEL)', () => {
     expect(yorumNormalize(123)).toBeNull()
     expect(yorumNormalize(' not ')).toBe('not')
     expect(yorumNormalize('x'.repeat(250))).toHaveLength(200)
+  })
+})
+
+describe('kalite bildirimi (Melike #8)', () => {
+  const sendEmailMock = vi.mocked(sendEmail)
+
+  it('bayrak AÇIK → sendEmail çağrılır, doğru alıcı + içerik', async () => {
+    sendEmailMock.mockClear()
+    const r = await DURUS_BASLA(req({ tezgahId, personnelId: P1, durusSebebiId: sebepKaliteId }))
+    expect(r.status).toBe(201)
+    expect(sendEmailMock).toHaveBeenCalledTimes(1)
+    const [to, subject, body] = sendEmailMock.mock.calls[0]
+    expect(to[0].email).toBe(kaliteAliciAdresi())
+    expect(subject).toContain('Kalite Duruşu')
+    expect(subject).toContain(KOD) // tezgah kodu
+    expect(body).toContain('DRS-KALITE') // sebep adı
+    expect(body).toContain(P1) // operatör sicil
+    await DURUS_BITIR(req({ tezgahId }))
+  })
+
+  it('bayrak KAPALI → sendEmail çağrılmaz', async () => {
+    sendEmailMock.mockClear()
+    const r = await DURUS_BASLA(req({ tezgahId, personnelId: P1, durusSebebiId: sebepGorunurId }))
+    expect(r.status).toBe(201)
+    expect(sendEmailMock).not.toHaveBeenCalled()
+    await DURUS_BITIR(req({ tezgahId }))
+  })
+
+  it('KRİTİK: mail HATA fırlatsa da duruş 201 döner (bloklamama garantisi)', async () => {
+    sendEmailMock.mockClear()
+    sendEmailMock.mockRejectedValueOnce(new Error('SMTP down'))
+    const r = await DURUS_BASLA(req({ tezgahId, personnelId: P1, durusSebebiId: sebepKaliteId }))
+    expect(r.status).toBe(201) // mail patladı ama duruş yine başladı
+    expect(sendEmailMock).toHaveBeenCalledTimes(1)
+    await DURUS_BITIR(req({ tezgahId }))
+  })
+
+  it('içerik: yorumlu → Not satırı var; yorumsuz → Not satırı YOK', () => {
+    const ortak = { tezgahKod: 'KH01', tezgahAd: 'Kaynak', sebepAd: 'Kalite Onay', sicil: 'MM63', baslangic: new Date('2026-07-24T10:00:00Z') }
+    expect(kaliteBildirimIcerik({ ...ortak, yorum: 'rulman bekleniyor' }).body).toContain('Not: rulman bekleniyor')
+    const yorumsuz = kaliteBildirimIcerik({ ...ortak, yorum: null }).body
+    expect(yorumsuz).not.toContain('Not:')
+    expect(kaliteBildirimIcerik({ ...ortak, yorum: '   ' }).body).not.toContain('Not:') // boşluk da düşer
+  })
+
+  it('alıcı: IPRO_KALITE_MAIL varsa onu, yoksa fallback', () => {
+    const eski = process.env.IPRO_KALITE_MAIL
+    process.env.IPRO_KALITE_MAIL = 'kalite@ilerigroup.com'
+    expect(kaliteAliciAdresi()).toBe('kalite@ilerigroup.com')
+    delete process.env.IPRO_KALITE_MAIL
+    expect(kaliteAliciAdresi()).toContain('@ilerigroup.com') // fallback
+    if (eski !== undefined) process.env.IPRO_KALITE_MAIL = eski
   })
 })

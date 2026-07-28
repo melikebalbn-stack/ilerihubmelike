@@ -3,6 +3,7 @@ import { requireKiosk } from '@/lib/ipro/require-kiosk'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiForbidden, apiBadRequest } from '@/lib/api-response'
 import { yorumNormalize } from '@/lib/ipro/durus-yorum'
+import { gonderKaliteBildirimi } from '@/lib/ipro/kalite-bildirim'
 
 // POST /api/ipro/kiosk/durus-basla — body { tezgahId, personnelId, durusSebebiId }.
 // Tezgah duruşu (açık iş ŞART DEĞİL). Tezgah başına tek açık duruş — partial unique
@@ -20,13 +21,14 @@ export async function POST(req: NextRequest) {
   }
 
   // GUVENLIK: tezgah kiosk'un bagli tezgahlarindan biri OLMALI.
-  if (!kiosk.tezgahlar.some((k) => k.tezgah.id === tezgahId)) return apiForbidden()
+  const kt = kiosk.tezgahlar.find((k) => k.tezgah.id === tezgahId)
+  if (!kt) return apiForbidden()
 
   // Sebep OTORITER dogrulama — client'a guvenilmez. Kiosk'ta gosterilebilir sebep mi?
   // (aktif + uretimdeGosterilsin + yetkiliOnayGerekli=false — liste filtresiyle birebir.)
   const sebep = await prisma.iproDurusSebebi.findFirst({
     where: { id: durusSebebiId, aktif: true, uretimdeGosterilsin: true, yetkiliOnayGerekli: false },
-    select: { id: true, ad: true, durusAktifkenIsBitirilemez: true },
+    select: { id: true, ad: true, durusAktifkenIsBitirilemez: true, kaliteBildirim: true },
   })
   if (!sebep) return apiBadRequest('Geçersiz veya kioskta kullanılamaz duruş sebebi')
 
@@ -39,6 +41,20 @@ export async function POST(req: NextRequest) {
       data: { tezgahId, personnelId, durusSebebiId: sebep.id, baslangic: new Date(), kaynak: 'KIOSK', yorum },
       select: { id: true, baslangic: true, yorum: true },
     })
+
+    // Kalite bildirimi (Melike #8) — BLOKLAMAYAN: mail başarısız olsa da duruş 201 döner.
+    // is-bitir'deki IFS geri-yazım deseninin ikizi: yan etki response'u bozmaz/geciktirmez.
+    if (sebep.kaliteBildirim) {
+      void gonderKaliteBildirimi({
+        tezgahKod: kt.tezgah.kod,
+        tezgahAd: kt.tezgah.ad,
+        sebepAd: sebep.ad,
+        sicil: personnelId,
+        baslangic: durus.baslangic,
+        yorum: durus.yorum,
+      }).catch((e) => console.error('[ipro-durus-basla] kalite bildirim maili gönderilemedi (duruş yine başladı)', e))
+    }
+
     return apiSuccess(
       {
         id: durus.id,

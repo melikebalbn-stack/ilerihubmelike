@@ -57,9 +57,16 @@ async function runCheck() {
 
   let sent = 0
 
+  // İdempotensi: aynı kişi+tip için bu değerlendirme DÖNEMİNDE (son 14 gün) mail
+  // atıldıysa tekrar atma. Eskiden "sentAt >= today" (yalnız aynı gün) idi; telafili
+  // 7 günlük pencerede her gün tekrar atardı → 14 günlük geriye bakış cycle boyu tekler.
+  // (Tarih düzeltilip aylar sonra yeni döneme kayarsa eski log >14 gün → yeni mail çıkar.)
+  const dedupSince = new Date(today)
+  dedupSince.setUTCDate(dedupSince.getUTCDate() - 14)
+
   async function alreadySent(personnelId: string, type: string): Promise<boolean> {
     const log = await prisma.personnelEvaluationEmailLog.findFirst({
-      where: { personnelId, type, sentAt: { gte: today } },
+      where: { personnelId, type, sentAt: { gte: dedupSince } },
     })
     return !!log
   }
@@ -92,18 +99,24 @@ async function runCheck() {
   // 1. DEĞERLENDİRME TARİHLERİ (1 hafta önce)
   // ──────────────────────────────────────────
 
-  const evalTarget = new Date(today)
-  evalTarget.setUTCDate(evalTarget.getUTCDate() + 7)
-  const evalEnd = new Date(evalTarget)
-  evalEnd.setUTCDate(evalEnd.getUTCDate() + 1)
+  // Telafili pencere: değerlendirme gününe ≤7 gün kala (bugün..+7 gün, ikisi de dahil).
+  // Eskiden tam +7 (1 günlük pencere) → o tek gün cron koşmazsa kişi KALICI atlanırdı.
+  // Artık pencere boyunca her koşuda denenir; idempotensi (14 gün) çift göndermez.
+  const evalWindowEnd = new Date(today)
+  evalWindowEnd.setUTCDate(evalWindowEnd.getUTCDate() + 8) // [today, today+8) = today..+7 dahil
+
+  const gunKala = (d: Date) => {
+    const n = Math.round((d.getTime() - today.getTime()) / 86400000)
+    return n <= 0 ? 'bugün' : `${n} gün sonra`
+  }
 
   const [twoMonthList, sixMonthList] = await Promise.all([
     prisma.personnel.findMany({
-      where: { aktif: true, denemeDegerlendirme: { gte: evalTarget, lt: evalEnd } },
+      where: { aktif: true, denemeDegerlendirme: { gte: today, lt: evalWindowEnd } },
       select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, iseGirisTarihi: true, denemeDegerlendirme: true },
     }),
     prisma.personnel.findMany({
-      where: { aktif: true, altiAyDegerlendirme: { gte: evalTarget, lt: evalEnd } },
+      where: { aktif: true, altiAyDegerlendirme: { gte: today, lt: evalWindowEnd } },
       select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, iseGirisTarihi: true, altiAyDegerlendirme: true },
     }),
   ])
@@ -114,7 +127,7 @@ async function runCheck() {
       `⏰ Deneme Süresi (2 Ay) Değerlendirme Hatırlatması - ${twoMonthList.length} personel`,
       buildEvalBody('Deneme Süresi (2 Ay)', twoMonthList.map(p => ({
         sicilNo: p.sicilNo, adSoyad: p.adSoyad, bolum: p.bolum, gorev: p.gorev,
-        date: p.denemeDegerlendirme!, label: '1 hafta sonra',
+        date: p.denemeDegerlendirme!, label: gunKala(p.denemeDegerlendirme!),
       })))
     )
   }
@@ -125,7 +138,7 @@ async function runCheck() {
       `⏰ İlk 6 Ay Değerlendirme Hatırlatması - ${sixMonthList.length} personel`,
       buildEvalBody('İlk 6 Ay', sixMonthList.map(p => ({
         sicilNo: p.sicilNo, adSoyad: p.adSoyad, bolum: p.bolum, gorev: p.gorev,
-        date: p.altiAyDegerlendirme!, label: '1 hafta sonra',
+        date: p.altiAyDegerlendirme!, label: gunKala(p.altiAyDegerlendirme!),
       })))
     )
   }

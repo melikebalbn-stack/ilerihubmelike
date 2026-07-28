@@ -192,6 +192,8 @@ export default function OvertimeDetailPage() {
   const [savingActual, setSavingActual] = useState(false)
   // Hedef adet üst-kapısı (backend GET'ten): yalnız Fabrika Müdürü/admin hedefi düzenler.
   const [canEditTarget, setCanEditTarget] = useState(false)
+  // forms.admin (GET'ten) — reddedileni "Yeniden Aç" butonu için.
+  const [isFormsAdmin, setIsFormsAdmin] = useState(false)
 
   const fetchAllPersonnelItems = useCallback(async () => {
     if (allPersonnelItems.length > 0) return
@@ -376,6 +378,7 @@ export default function OvertimeDetailPage() {
       setForm(data)
       setAllowedDepts(data.currentUserAllowedDepts ?? null)
       setCanEditTarget(data.currentUserCanEditTarget ?? false)
+      setIsFormsAdmin(data.currentUserIsFormsAdmin ?? false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Form yüklenirken bir hata oluştu")
     } finally {
@@ -424,6 +427,26 @@ export default function OvertimeDetailPage() {
     }
   }
 
+  // Reddedilmiş formu düzenlemeye döndür (yalnız forms.admin; REJECTED → DRAFT).
+  async function handleReopen() {
+    if (!window.confirm("Form düzenlemeye döndürülecek, oluşturan yeniden düzenleyip gönderebilecek. Devam edilsin mi?")) return
+    try {
+      setSubmitting(true)
+      const res = await apiFetch(`/api/overtime/${id}/reopen`, { method: "POST" })
+      if (res.__authHandled) return
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Form yeniden açılamadı")
+      }
+      toast.success("Form düzenlemeye döndürüldü (taslak)")
+      fetchForm()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bir hata oluştu")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   async function handleApprovalAction(decision: "APPROVED" | "REJECTED" | "RETURNED") {
     // RETURNED (düzeltmeye iade) için açıklama zorunlu
     if (decision === "RETURNED" && !comment.trim()) {
@@ -432,7 +455,13 @@ export default function OvertimeDetailPage() {
     }
     const label =
       decision === "APPROVED" ? "onaylamak" : decision === "REJECTED" ? "reddetmek" : "düzeltmeye göndermek"
-    if (!window.confirm(`Bu formu ${label} istediğinize emin misiniz?`)) return
+    // REDDET terminal (REJECTED → kilitli). Kalıcılık uyarısı + "Düzeltme Gönder"
+    // yönlendirmesi. APPROVED/RETURNED dalları aynen korunur.
+    const confirmMsg =
+      decision === "REJECTED"
+        ? "⚠️ DİKKAT: Bu form KALICI olarak reddedilecek ve DÜZENLENEMEYECEK.\n\nFormun düzeltilip yeniden gönderilmesini istiyorsanız 'Düzeltme Gönder' kullanın.\n\nYine de kalıcı reddetmek istiyor musunuz?"
+        : `Bu formu ${label} istediğinize emin misiniz?`
+    if (!window.confirm(confirmMsg)) return
 
     try {
       setActionLoading(decision === "APPROVED" ? "approve" : decision === "REJECTED" ? "reject" : "return")
@@ -634,6 +663,17 @@ export default function OvertimeDetailPage() {
               Onaya Gönder
             </Button>
           </div>
+        )}
+        {/* Reddedileni kurtarma: yalnız forms.admin + REJECTED → düzenlemeye döndür. */}
+        {form.status === "REJECTED" && isFormsAdmin && (
+          <Button variant="outline" size="sm" onClick={handleReopen} disabled={submitting}>
+            {submitting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Pencil className="h-4 w-4 mr-2" />
+            )}
+            Yeniden Aç (Düzenlemeye Döndür)
+          </Button>
         )}
       </div>
 
@@ -1273,6 +1313,9 @@ export default function OvertimeDetailPage() {
               Düzeltme Gönder
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            <strong>Reddet</strong> = kalıcı ret (form kilitlenir) · <strong>Düzeltme Gönder</strong> = sahibine iade (düzeltilip yeniden gönderilir)
+          </p>
         </div>
       )}
 

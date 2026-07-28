@@ -152,7 +152,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    return apiSuccess({ ...form, personnel: personnelWithHistory, currentUserAllowedDepts, currentUserCanEditTarget })
+    return apiSuccess({ ...form, personnel: personnelWithHistory, currentUserAllowedDepts, currentUserCanEditTarget, currentUserIsFormsAdmin: isAdmin })
   } catch (error) {
     return apiError('Mesai formu detayı alınırken bir hata oluştu', 500, {
       endpoint: 'GET /api/overtime/[id]',

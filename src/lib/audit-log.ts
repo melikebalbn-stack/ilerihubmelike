@@ -43,6 +43,8 @@ export type AuditTargetType =
   | 'AKADEMI_CONTENT'
   // Mesai hedef adet değişikliği (yalnız Fabrika Müdürü/admin)
   | 'OVERTIME_TARGET'
+  // Mesai formu — reddedileni yeniden açma (admin)
+  | 'OVERTIME_FORM'
 
 export interface AuditLogParams {
   action: string

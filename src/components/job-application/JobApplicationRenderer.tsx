@@ -27,6 +27,7 @@ import { SectionDeneyimReferans } from './sections/SectionDeneyimReferans'
 import { SectionBeyanFotograf } from './sections/SectionBeyanFotograf'
 import { initialFormState, type FormState, type SectionProps } from './types'
 import { missingFieldsInStep, allRequiredFilled } from './required-fields'
+import { maasBeklentisiGecerliMi } from '@/lib/recruitment/salary'
 
 const SECTIONS: ReadonlyArray<{
   title: string
@@ -120,6 +121,14 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
     if (!canSubmit) {
       const eksik = SECTIONS.map((_, i) => missingFieldsInStep(form, i)).flat()
       setError(eksik.length ? `Eksik zorunlu alanlar: ${eksik.join(', ')}` : 'Zorunlu alanları doldurun.')
+      return
+    }
+    // Maaş beklentisi aralık doğrulaması (sunucu da doğrular — TEK KAYNAK sınırlar).
+    const maasKontrol = maasBeklentisiGecerliMi(
+      form.expectedSalary ? parseInt(form.expectedSalary, 10) : null
+    )
+    if (!maasKontrol.ok) {
+      setError(maasKontrol.hata ?? 'Maaş beklentisi geçersiz.')
       return
     }
     setSubmitting(true)

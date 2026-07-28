@@ -10,6 +10,7 @@ import { sendEmail } from '@/lib/email'
 import { resolveHRRecipients } from '@/lib/hr-notifications'
 import { verifyConsentedDraft } from '@/lib/job-application/consent-guard'
 import { DRAFT_COOKIE_NAME } from '@/lib/job-application/draft-cookie'
+import { maasBeklentisiGecerliMi } from '@/lib/recruitment/salary'
 import { basvuruTakipImzasi } from '@/lib/recruitment/basvuru-takip'
 import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
 import { SERVER_SCALAR_REQUIRED } from '@/components/job-application/required-fields'
@@ -216,6 +217,12 @@ export async function POST(request: NextRequest) {
       photoUrl,
       ipAddress,
       userAgent,
+    }
+
+    // Maaş beklentisi SUNUCU doğrulaması (client tek başına yeterli değil) — TEK KAYNAK sınırlar.
+    const maasKontrol = maasBeklentisiGecerliMi(applicationData.expectedSalary)
+    if (!maasKontrol.ok) {
+      return NextResponse.json({ error: maasKontrol.hata }, { status: 400 })
     }
 
     // Kaynak sözlüğü: form 'referralSource' alanında kaynak ADI gönderir → aktif

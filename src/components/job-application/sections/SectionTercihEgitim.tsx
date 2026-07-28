@@ -9,6 +9,7 @@ import { FormNumberInput } from '@/components/forms/multi-step/FormNumberInput'
 import { FormSegmentControl } from '@/components/forms/multi-step/FormSegmentControl'
 import { FormRepeatableSection } from '@/components/forms/multi-step/FormRepeatableSection'
 import { FormFixedKeyRecord } from '@/components/forms/multi-step/FormFixedKeyRecord'
+import { MAKS_MAAS_BEKLENTI_TL } from '@/lib/recruitment/salary'
 import {
   EDUCATION_LEVEL_OPTIONS,
   LANGUAGE_LEVEL_OPTIONS,
@@ -25,8 +26,15 @@ export function SectionTercihEgitim({ form, onChange }: SectionProps) {
       <FormQuestionCard number={1} title="Başlayabileceğiniz tarih" isRequired={isRequiredField('availableStartDate')}>
         <FormDateInput value={form.availableStartDate} onChange={(v) => onChange({ availableStartDate: v })} />
       </FormQuestionCard>
-      <FormQuestionCard number={2} title="Maaş Beklentisi (₺)" isRequired={isRequiredField('expectedSalary')}>
-        <FormNumberInput value={form.expectedSalary} onChange={(v) => onChange({ expectedSalary: v })} min={0} step={500} />
+      <FormQuestionCard number={2} title="Maaş Beklentisi (₺/ay, net)" isRequired={isRequiredField('expectedSalary')}>
+        <FormNumberInput
+          value={form.expectedSalary}
+          onChange={(v) => onChange({ expectedSalary: v })}
+          min={0}
+          max={MAKS_MAAS_BEKLENTI_TL}
+          step={500}
+          placeholder="örn. 45000"
+        />
       </FormQuestionCard>
       <FormQuestionCard number={3} title="Başvurulan Pozisyon" isRequired={isRequiredField('requestedPosition')}>
         <FormShortText value={form.requestedPosition} onChange={(v) => onChange({ requestedPosition: v })} />

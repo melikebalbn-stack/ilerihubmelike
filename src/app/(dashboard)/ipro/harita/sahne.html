@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- FABRIKA HARITASI SURUM: v56 (kirpma duzeltmesi: perspektif hesabi + genis pay + yalniz yakin planda kirp) -->
+<!-- FABRIKA HARITASI SURUM: v57 (GPU doku basincı: .dokular kaldirildi, izgara platform tabanina tasindi; hrk ped repaint firtinasi kaldirildi) -->
 <title>ILERIHub · Fabrika Haritası v3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -86,13 +86,18 @@ body{background:var(--zemin);
 .zoomKutu button:hover{background:#233443;color:var(--metin)}
 .ipucu{position:absolute;right:20px;bottom:130px;z-index:6;font-family:"IBM Plex Mono",monospace;
   font-size:9.5px;letter-spacing:.1em;color:#33424f;text-align:right;pointer-events:none;line-height:1.7}
-.dokular{position:absolute;inset:-300px;
-  background:linear-gradient(rgba(44,70,88,.09) 1px,transparent 1px) 0 0/64px 64px,
-             linear-gradient(90deg,rgba(44,70,88,.09) 1px,transparent 1px) 0 0/64px 64px}
+/* v57: .dokular KALDIRILDI. 6050x8450 px (51 megapiksel) tek yuzeydi; preserve-3d
+   agacinin icinde oldugu icin Chromium gorunur alani daraltamiyor ve tamamini karolara
+   ayirip GPU dokusunda tutmaya calisiyordu. Doku bellegi dolunca kabugun karolari
+   rasterize edilemiyor, bos kalan yer kok rengiyle (siyah) doluyordu — 29.07 saha teshisi.
+   Izgara artik platform tabanlarinda: yeni raster ALANI yok, yalniz piksel basi maliyet. */
 
 /* ───── bölüm platformu ───── */
 .platform{position:absolute;transform-style:preserve-3d;transition:transform .4s}
-.platform .taban{position:absolute;inset:0;transform:translateZ(1px);background:linear-gradient(150deg,#16212c,#101922);
+.platform .taban{position:absolute;inset:0;transform:translateZ(1px);
+  background:linear-gradient(rgba(44,70,88,.14) 1px,transparent 1px) 0 0/64px 64px,
+             linear-gradient(90deg,rgba(44,70,88,.14) 1px,transparent 1px) 0 0/64px 64px,
+             linear-gradient(150deg,#16212c,#101922);
   border:1px solid rgba(44,70,88,.75);box-shadow:0 26px 54px rgba(0,0,0,.55)}
 .platform .kn-on,.platform .kn-sag{position:absolute;background:#0a1017;border:1px solid rgba(44,70,88,.4)}
 .platform .kn-on{left:0;bottom:0;width:100%;height:14px;transform-origin:bottom center;transform:rotateX(-90deg)}
@@ -276,7 +281,9 @@ body{background:var(--zemin);
 /* v55: visibility:hidden katmani AYAKTA birakiyordu — display:none katmani yok eder */
 .hrk .isik,.hrk .huzme,.hrk .koseAd,.hrk .tzEtiket,.hrk .halka{display:none}
 body.hazir .tezgah{animation:none}   /* v55: acilis animasyonu bitince kapat — kirpmadan geri gelen tezgah ziplamasin */
-.hrk .zeminPed{border-color:transparent}
+/* v57: ".hrk .zeminPed{border-color:transparent}" KALDIRILDI — v55'te kaydirma da hrk'ya
+   girince bu kural her el hareketinde 141 pedin kenar rengini degistiriyor, en buyuk
+   boyama kaynagi oluyordu (trace: zeminPed 3.156 boyama). */
 /* HAFİF MOD: ?lite=1 ya da TV modu — minimum çizim yükü */
 body.lite .isik,body.lite .huzme,body.lite .koseAd{display:none}
 body.lite::before{display:none}                    /* vinyet yok */
@@ -291,10 +298,10 @@ body.lite .tezgah{transition:none}
     <div class="ust">
       <div class="logo">İLERİ<span>HUB</span></div>
       <div class="baslikKutu"><div class="b" id="baslik">Tüm Fabrika</div><div class="a" id="altbaslik"></div></div>
-      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v56</span>
+      <span class="rozet">PROTOTİP · TEMSİLİ VERİ</span><span class="rozet" style="margin-left:6px">v57</span>
       <div class="saat"><span class="canli"><i></i>CANLI</span><span id="saat">--:--:--</span></div>
     </div>
-    <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"><div class="dokular"></div></div></div></div>
+    <div class="tuval"><div class="dunya" id="dunya"><div class="plan" id="plan"></div></div></div>
     <button class="geri" id="geri">← Tüm fabrika</button>
     <div class="ipucu">SÜRÜKLE — KAYDIR<br>ORTA TUŞ — SERBEST DÖNDÜR<br>⟲⟳ — 45° / BASILI TUT<br>TEKERLEK — YAKINLAŞTIR<br>ÇİFT TIK — SIFIRLA</div>
     <button id="adIndir" onclick="adlariIndir()" style="display:none;position:absolute;left:14px;bottom:14px;z-index:20;

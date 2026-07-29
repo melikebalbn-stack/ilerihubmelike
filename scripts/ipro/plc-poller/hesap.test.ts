@@ -16,6 +16,7 @@ import {
   tazelikDamgasiGuncellensinMi,
   parcaPlani,
   pduParcaBoyutu,
+  faz2SatirSecimi,
   type PinOzet,
 } from './hesap'
 
@@ -622,5 +623,40 @@ describe('parcaPlani — blok parçalama', () => {
     let beklenen = 0
     for (const { off, len } of p) { expect(off).toBe(beklenen); beklenen += len }
     expect(beklenen).toBe(400)
+  })
+})
+
+// ── FAZ 2 delta satır seçimi (poller yazım filtresi, savunma) ──
+describe('faz2SatirSecimi — yalnız 0<delta<=ust yazılır', () => {
+  const g = (tezgahKod: string, sonDelta: number, sayacToplam = 100) => ({ tezgahKod, sonDelta, sayacToplam })
+
+  it('delta>0 ve makul → yazılacakta', () => {
+    const { yazilacak, atlanan } = faz2SatirSecimi([g('KH01', 2, 50)], 10000)
+    expect(yazilacak).toEqual([{ tezgahKod: 'KH01', delta: 2, mutlakSayac: 50 }])
+    expect(atlanan).toHaveLength(0)
+  })
+
+  it('delta=0 / negatif → atlanır (boşta tezgah yazılmaz)', () => {
+    const { yazilacak } = faz2SatirSecimi([g('KH01', 0), g('KH02', -1)], 10000)
+    expect(yazilacak).toHaveLength(0)
+  })
+
+  it('delta>ust → YAZILMAZ, atlanan\'a düşer (×256 bozuk okuma emniyeti)', () => {
+    const { yazilacak, atlanan } = faz2SatirSecimi([g('KR03-6', 273664, 273664)], 10000)
+    expect(yazilacak).toHaveLength(0)
+    expect(atlanan.map((t) => t.tezgahKod)).toEqual(['KR03-6'])
+  })
+
+  it('karışık: bir kısmı yazılır, şişik olan atlanır', () => {
+    const { yazilacak, atlanan } = faz2SatirSecimi(
+      [g('A', 1), g('B', 20000), g('C', 3), g('D', 0)], 10000,
+    )
+    expect(yazilacak.map((s) => s.tezgahKod)).toEqual(['A', 'C'])
+    expect(atlanan.map((t) => t.tezgahKod)).toEqual(['B'])
+  })
+
+  it('mutlakSayac aynen taşınır (audit)', () => {
+    const { yazilacak } = faz2SatirSecimi([g('KH01', 5, 999)], 10000)
+    expect(yazilacak[0].mutlakSayac).toBe(999)
   })
 })

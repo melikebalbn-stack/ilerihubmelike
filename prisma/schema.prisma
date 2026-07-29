@@ -10937,6 +10937,9 @@ model IproProductionLog {
   hurdaSebebiKod     String?
   plcSayacBaslangic  Int?
   plcSayacBitis      Int?
+  // FAZ 2 (IPRO_FAZ2_DELTA): kapanışta iş penceresindeki Σ delta özeti + hesabın kaynağı.
+  uretimAdet         Int? // makine sayacından gerçekleşen toplam (Σ delta veya çıkarma)
+  hesapKaynagi       String? // 'DELTA' (zaman serisi Σ) | 'CIKARMA' (bitiş−başlangıç) — audit marker
   // İş yaşam döngüsü: default KAPALI — mevcut/eski kayıtlar bitmiş sayılır.
   // "başla" endpoint'i ACIK üretir; "bitir"/"durdur" KAPALI'ya çeker.
   durum              IproIsDurum         @default(KAPALI)
@@ -10962,6 +10965,23 @@ model IproProductionLog {
   // Partial UNIQUE (açık iş tekilliği) Prisma @@unique ile ifade edilemez —
   // migration.sql'e ELLE eklenir: WHERE durum = 'ACIK'.
   @@map("ipro_production_log")
+}
+
+// FAZ 2 (IPRO_FAZ2_DELTA): poller sayaç delta ZAMAN SERİSİ. İş mantığı YOK — poller yalnız
+// delta>0 olan turu append eder (tezgahKod + delta + ham sayaç + zaman). is-bitir iş
+// penceresindeki (baslatildiAt..bitirildiAt) Σ delta'yı buradan hesaplar (çıkarma yerine —
+// sayaç iş ortasında sıfırlanabildiği için). FK YOK: /status sözleşmesiyle birebir tezgahKod,
+// yüksek-hacim append'te lock/overhead yok (poller personnelId deseni). Retention: kapanan
+// işin özeti IproProductionLog.uretimAdet'e yazıldıktan sonra ham satırlar ~30 gün sonra silinir.
+model IproSayacOkuma {
+  id          BigInt   @id @default(autoincrement())
+  tezgahKod   String
+  delta       Int // bu turdaki artış; YALNIZ delta>0 append edilir
+  mutlakSayac BigInt // o anki ham sayacToplam (reset teşhisi + audit)
+  ts          DateTime @default(now())
+
+  @@index([tezgahKod, ts])
+  @@map("ipro_sayac_okuma")
 }
 
 model IproMachineDowntime {

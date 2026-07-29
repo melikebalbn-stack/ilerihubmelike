@@ -3,6 +3,7 @@ import { requireKiosk } from '@/lib/ipro/require-kiosk'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiForbidden, apiBadRequest, apiNotFound } from '@/lib/api-response'
 import { birKaydiIfseYaz } from '@/lib/ipro/ifs-geri-yazim'
+import { faz2DeltaAktif, isPenceresiDeltaToplami } from '@/lib/ipro/faz2-delta'
 
 // POST /api/ipro/kiosk/is-bitir — body { tezgahId, personnelId, ifsOrderNo, ifsOperationNo,
 //   iyi, hurda, tamamlandi, hurdaSebebiKod? }. ACIK uretim satirini KAPALI'ya ceker (once bize yaz).
@@ -53,10 +54,11 @@ export async function POST(req: NextRequest) {
   // Acik satiri bul.
   const acik = await prisma.iproProductionLog.findFirst({
     where: { personnelId, tezgahId, ifsOrderNo, ifsOperationNo, durum: 'ACIK' },
-    select: { id: true, plcSayacBaslangic: true },
+    select: { id: true, plcSayacBaslangic: true, baslatildiAt: true },
   })
   if (!acik) return apiNotFound('Açık iş bulunamadı')
   const plcSayacBaslangic = acik.plcSayacBaslangic
+  const bitisAt = new Date() // hem delta penceresi üst sınırı hem bitirildiAt (tutarlı)
 
   // Sinyal tespiti — is-basla ile ayni sorgu.
   const sinyalli = (await prisma.iproPlcPin.count({
@@ -83,13 +85,32 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Model C dogrulamasi — yalniz sinyalli + iki sayac da varsa.
+  // Model C — makine sayacından gerçekleşen toplam. Kaynak flag'e ve seri varlığına bağlı:
+  //  - FAZ 2 açık + iş penceresinde delta serisi VAR → toplam = Σ delta ('DELTA').
+  //    (Sayaç iş ortasında sıfırlansa bile doğru; poller reset'i delta=cur olarak yutar.)
+  //  - Aksi hâlde (flag kapalı, ya da seri YOK: ısınmamış/eşsiz tezgah) → ÇIKARMAYA fallback
+  //    ('CIKARMA'). FALLBACK GUARD kritik: boş seriyle Σ=0 her işi "iyi+hurda>0 → 400" yapardı.
+  //  - Poller down + seri yok + çıkarma yapılamıyor → toplam null (KARAR B: bloklamaz).
   let toplam: number | null = null
-  if (sinyalli && plcSayacBaslangic != null && plcSayacBitis != null) {
-    toplam = plcSayacBitis - plcSayacBaslangic
-    if (toplam < 0) return apiBadRequest('Sayaç tutarsız (bitiş < başlangıç)')
-    if (iyi + hurda > toplam) return apiBadRequest(`İyi+hurda makine sayacını (${toplam}) aşamaz`)
-    // kalan (toplam - iyi - hurda) = ayar/deneme; ayri alan yok, turetilir.
+  let hesapKaynagi: string | null = null
+  if (sinyalli) {
+    if (faz2DeltaAktif() && acik.baslatildiAt) {
+      const { toplam: delta, seriVar } = await isPenceresiDeltaToplami(prisma, tezgahKod, acik.baslatildiAt, bitisAt)
+      if (seriVar) {
+        toplam = delta
+        hesapKaynagi = 'DELTA'
+      }
+    }
+    if (toplam == null && plcSayacBaslangic != null && plcSayacBitis != null) {
+      toplam = plcSayacBitis - plcSayacBaslangic
+      hesapKaynagi = 'CIKARMA'
+    }
+    // KORUNAN doğrulama (kaynak ne olursa olsun aynı):
+    if (toplam != null) {
+      if (toplam < 0) return apiBadRequest('Sayaç tutarsız (bitiş < başlangıç)')
+      if (iyi + hurda > toplam) return apiBadRequest(`İyi+hurda makine sayacını (${toplam}) aşamaz`)
+      // kalan (toplam - iyi - hurda) = ayar/deneme; ayri alan yok, turetilir.
+    }
   }
 
   // Kapat (atomik update). ifsYazildi false kalir (IFS geri-yazimi ayri adim).
@@ -97,12 +118,14 @@ export async function POST(req: NextRequest) {
     where: { id: acik.id },
     data: {
       durum: 'KAPALI',
-      bitirildiAt: new Date(),
+      bitirildiAt: bitisAt,
       qtyComplete: iyi,
       qtyScrap: hurda,
       hurdaSebebiKod: hurda > 0 ? sebep : null,
       plcSayacBitis,
       tamamlandi,
+      uretimAdet: toplam, // FAZ 2: makine sayacından toplam (Σ delta veya çıkarma); null olabilir
+      hesapKaynagi, // 'DELTA' | 'CIKARMA' | null — audit marker
     },
     select: { id: true, durum: true, qtyComplete: true, qtyScrap: true, tamamlandi: true },
   })
@@ -124,6 +147,7 @@ export async function POST(req: NextRequest) {
     qtyScrap: log.qtyScrap,
     tamamlandi: log.tamamlandi,
     toplam,
+    hesapKaynagi,
     ayarDeneme: toplam != null ? toplam - iyi - hurda : null,
     ifs: ifsDenendi.ok ? 'yazıldı' : 'kuyrukta',
   })

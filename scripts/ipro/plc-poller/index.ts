@@ -26,6 +26,7 @@ import {
   taze,
   kacisKapisiKarari,
   tazelikDamgasiGuncellensinMi,
+  faz2SatirSecimi,
   type PinOzet,
 } from './hesap'
 
@@ -40,6 +41,14 @@ const DEBUG = process.env.IPRO_POLLER_DEBUG === '1'
  * turu tolere eder, gereksiz 503 üretmez.
  */
 const BAYATLIK_MS = Number(process.env.IPRO_POLLER_BAYATLIK_MS ?? 20_000)
+/**
+ * FAZ 2 delta zaman serisi yazımı. false (varsayılan) → poller SALT OKUMA kalır (bugünkü
+ * davranış birebir). true → her turda delta>0 tezgahlar IproSayacOkuma'ya append edilir.
+ * YAZIM BLOKLAMAZ: hata yutulur+loglanır, polling ASLA durmaz.
+ */
+const FAZ2_DELTA = process.env.IPRO_FAZ2_DELTA === 'true'
+/** Savunma: tipik delta 1-2. Bundan büyük delta yazılmaz (×256 vb. bozuk okuma emniyeti). */
+const DELTA_MAKUL_UST = 10_000
 // NOT: kaçış kapısının SÜRE eşiği YOKTUR (env yok). Sıfır ancak sıfırdan gelen
 // gerçek artış kanıtıyla benimsenir — bkz. hesap.ts kacisKapisiKarari.
 /**
@@ -365,6 +374,25 @@ function aggregate() {
   }
 }
 
+/**
+ * FAZ 2 — delta>0 tezgahları IproSayacOkuma'ya append eder (flag açıkken).
+ * BLOKLAMAZ: kendi try/catch'i var, hata yutulur+loglanır; çağıran await ETMEZ →
+ * yazım gecikmesi/hatası polling turunu ASLA durdurmaz (kalite-mail/IFS deseni).
+ * DELTA_MAKUL_UST üstü delta yazılmaz (bozuk okuma emniyeti).
+ */
+async function faz2DeltaYaz(hareketli: TezgahState[]) {
+  const { yazilacak, atlanan } = faz2SatirSecimi(hareketli, DELTA_MAKUL_UST)
+  for (const t of atlanan) log(`⚠️ ${t.tezgahKod} delta=${t.sonDelta} > ${DELTA_MAKUL_UST} — makul dışı, YAZILMADI (bozuk okuma emniyeti)`)
+  if (!yazilacak.length) return
+  try {
+    await prisma.iproSayacOkuma.createMany({
+      data: yazilacak.map((s) => ({ tezgahKod: s.tezgahKod, delta: s.delta, mutlakSayac: BigInt(s.mutlakSayac) })),
+    })
+  } catch (e) {
+    log(`⚠️ FAZ2 delta yazımı başarısız (polling sürüyor): ${e instanceof Error ? e.message : e}`)
+  }
+}
+
 async function tick() {
   for (const g of plcGroups) for (const p of g.pins) p.lastDelta = 0 // okunmayan PLC deltayı tekrar saymasın
   await Promise.allSettled(plcGroups.map((g) => pollPlc(g))) // izole: biri düşse diğerleri devam
@@ -372,6 +400,8 @@ async function tick() {
   sonGlobalOkuma = now()
   const moved = [...tezgahState.values()].filter((t) => t.sonDelta > 0)
   if (moved.length) dbg(`Δ>0: ${moved.map((t) => `${t.tezgahKod}+${t.sonDelta}`).join(', ')}`)
+  // FAZ 2 (flag açıkken) — BLOKLAMADAN yaz (await YOK): yazım turu geciktirmez/durdurmaz.
+  if (FAZ2_DELTA && moved.length) void faz2DeltaYaz(moved)
 }
 
 function loop() {
@@ -473,6 +503,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'))
 async function main() {
   log(`IPRO PLC Poller başlıyor (interval=${POLL_INTERVAL_MS}ms, port=${HTTP_PORT})`)
   log(`⚙️ bayatlık=${BAYATLIK_MS}ms · kaçış kapısı: KANIT tabanlı (süre eşiği YOK)`)
+  log(`⚙️ FAZ2 delta yazımı: ${FAZ2_DELTA ? 'AÇIK (IproSayacOkuma append)' : 'KAPALI (salt okuma)'}`)
   await loadPins()
   server.listen(HTTP_PORT, () => log(`HTTP dinliyor :${HTTP_PORT} → /health, /status, /pins`))
   loop()

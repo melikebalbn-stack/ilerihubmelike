@@ -241,6 +241,38 @@ export function pduParcaBoyutu(pduLength: number, varsayilan = 200): number {
   return Math.floor((pduLength - 18) / 4) * 4
 }
 
+// ── FAZ 2 delta yazımı (saf seçim) ──
+
+export interface Faz2Girdi {
+  tezgahKod: string
+  sonDelta: number
+  sayacToplam: number
+}
+export interface Faz2Satir {
+  tezgahKod: string
+  delta: number
+  mutlakSayac: number
+}
+
+/**
+ * FAZ 2 — bu turda IproSayacOkuma'ya yazılacak satırları seçer. SAF (yan etkisiz).
+ * YALNIZ `0 < sonDelta <= ust` yazılır: delta≤0 boşta (atla), delta>ust bozuk okuma
+ * emniyeti (×256 vb. — tipik delta 1-2). `atlanan` = eşik aşan (loglanır).
+ */
+export function faz2SatirSecimi(
+  tezgahlar: Faz2Girdi[],
+  ust: number,
+): { yazilacak: Faz2Satir[]; atlanan: Faz2Girdi[] } {
+  const yazilacak: Faz2Satir[] = []
+  const atlanan: Faz2Girdi[] = []
+  for (const t of tezgahlar) {
+    if (t.sonDelta <= 0) continue
+    if (t.sonDelta > ust) { atlanan.push(t); continue }
+    yazilacak.push({ tezgahKod: t.tezgahKod, delta: t.sonDelta, mutlakSayac: t.sayacToplam })
+  }
+  return { yazilacak, atlanan }
+}
+
 // ── Yeniden bağlanma disiplini ──
 
 export interface OkumaHatasiKarar {

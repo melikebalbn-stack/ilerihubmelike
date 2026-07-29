@@ -61,6 +61,11 @@ export class PlcConnection {
   private sonParcaSayisi = 0
   /** Eksik bayt dönen (kısmi) parça kaç kez yakalandı (kümülatif telemetri). */
   private eksikBaytSayisi = 0
+  /** Uçuşta olan native işlem sayısı. >0 iken istemci DEĞİŞTİRİLMEZ / KAPATILMAZ. */
+  private ucusta = 0
+  /** Native çağrısı hâlâ süren, kapatılmayı bekleyen eski istemciler.
+      Referans burada tutulur — GC toplarsa native taraf serbest belleğe yazar. */
+  private terkEdilmis: S7Client[] = []
   lastReadAt: number | null = null
   lastError: string | null = null
 
@@ -88,19 +93,36 @@ export class PlcConnection {
     }
   }
 
-  private connect(): Promise<void> {
-    // TAZE İSTEMCİ: aynı S7Client üzerinde tekrar ConnectTo eski soketi bırakabilir
-    // (native kaynak + PLC tarafında yarım açık oturum = slot sızıntısı). Eskisini
-    // kapatıp yenisini yaratıyoruz.
-    try {
-      this.client.Disconnect()
-    } catch {
-      /* yoksay — zaten kopuk olabilir */
+  /** Uçuşta iş varsa istemciyi kapatma — park et, iş bitince kapatılır. */
+  private guvenliKapat(c: S7Client) {
+    if (this.ucusta > 0) {
+      this.terkEdilmis.push(c)
+      if (this.terkEdilmis.length > 8) {
+        this.log(`⚠️ ${this.kod} ${this.terkEdilmis.length} terk edilmiş istemci birikti — native çağrı dönmüyor olabilir`)
+      }
+      return
     }
+    try { c.Disconnect() } catch { /* yoksay */ }
+  }
+
+  private terkEdilmisTemizle() {
+    if (this.ucusta > 0 || this.terkEdilmis.length === 0) return
+    for (const c of this.terkEdilmis) {
+      try { c.Disconnect() } catch { /* yoksay */ }
+    }
+    this.terkEdilmis.length = 0
+  }
+
+  private connect(): Promise<void> {
+    this.guvenliKapat(this.client)   // uçuşta iş varsa eskisi canlı kalır
     this.client = new S7Client()
+    const c = this.client
     return withTimeout(
       new Promise<void>((resolve, reject) => {
-        this.client.ConnectTo(this.ip, this.rack, this.slot, (err) => {
+        this.ucusta++
+        c.ConnectTo(this.ip, this.rack, this.slot, (err) => {
+          this.ucusta--
+          this.terkEdilmisTemizle()
           if (err) reject(new Error(this.errText(err)))
           else resolve()
         })
@@ -148,9 +170,18 @@ export class PlcConnection {
 
   /** Tek MBRead (bir parça). Hata bağlantı kopması olabilir. */
   private mbReadTek(off: number, len: number): Promise<Buffer> {
+    // Aynı istemcide EŞZAMANLI native işlem yok: snap7 istemcisi thread-safe değil.
+    // Parçalar zaten ardışık okunuyor; bu kapı yalnız timeout sonrası sarkan çağrıyı yakalar.
+    if (this.ucusta > 0) {
+      return Promise.reject(new Error(`${this.kod} önceki native işlem hâlâ uçuşta — okuma atlandı`))
+    }
+    const c = this.client
     return withTimeout(
       new Promise<Buffer>((resolve, reject) => {
-        this.client.MBRead(off, len, (err, data) => {
+        this.ucusta++
+        c.MBRead(off, len, (err, data) => {
+          this.ucusta--
+          this.terkEdilmisTemizle()
           if (err) reject(new Error(this.errText(err)))
           else resolve(data)
         })
@@ -205,11 +236,8 @@ export class PlcConnection {
 
     // Eşiğe ulaşıldı: yarım açık oturumu KAPAT (PLC tarafındaki slot sızıntısını durdurur)
     // ve KOŞULSUZ backoff kur — ensureConnected bir sonraki turda gerçekten bağlanacak.
-    try {
-      this.client.Disconnect()
-    } catch {
-      /* yoksay */
-    }
+    this.guvenliKapat(this.client)
+    this.client = new S7Client()   // taze istemci → connected=false, ensureConnected devralır
     this.zorlaKopmaSayisi++
     this.ardArdaHata = 0
     this.nextAttemptAt = Date.now() + this.backoffMs
@@ -221,11 +249,7 @@ export class PlcConnection {
   }
 
   disconnect() {
-    try {
-      this.client.Disconnect()
-    } catch {
-      /* yoksay */
-    }
+    this.guvenliKapat(this.client)
   }
 
   status(): PlcStatus {

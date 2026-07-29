@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { CalibrationStatus } from '@/generated/prisma'
+import { computeCalibrationStatus } from '@/lib/calibration-status'
 import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
 
@@ -47,9 +48,9 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Durum güncellemelerini kontrol et (batch olarak)
+    // Durum güncellemelerini kontrol et (batch olarak). 30-gün eşiği artık
+    // computeCalibrationStatus helper'ında (çift yönlü) — burada gerekmez.
     const now = new Date()
-    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
     const devicesToUpdate: { id: string; status: CalibrationStatus }[] = []
 
@@ -69,15 +70,9 @@ export async function GET(request: NextRequest) {
 
       if (!refDate) continue
 
-      if (refDate < now && device.status !== CalibrationStatus.EXPIRED) {
-        newStatus = CalibrationStatus.EXPIRED
-      } else if (
-        refDate > now &&
-        refDate <= thirtyDaysFromNow &&
-        device.status === CalibrationStatus.VALID
-      ) {
-        newStatus = CalibrationStatus.EXPIRING
-      }
+      // ÇİFT YÖNLÜ durum: refDate geleceğe kayınca (periyot uzatma) EXPIRED→VALID
+      // GERİ döner. manualOverride + Hurda + refDate-yok yukarıda zaten atlandı.
+      newStatus = computeCalibrationStatus(refDate, now)
 
       if (newStatus !== device.status) {
         devicesToUpdate.push({ id: device.id, status: newStatus })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { CalibrationStatus } from '@/generated/prisma'
+import { computeCalibrationStatus } from '@/lib/calibration-status'
 import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
 
@@ -140,6 +141,16 @@ export async function PUT(
       statusManualOverride = false
     }
 
+    // Otomatik durum: manuel override YOKSA yeni nextDate'ten yeniden hesapla (liste ile
+    // AYNI helper). Böylece periyot/tarih değişince status ANINDA düzelir — liste
+    // yüklemesini beklemeden. Doğrulama tipinde nextVerificationDate baz alınır.
+    const effType = calibrationType ?? existingDevice.calibrationType
+    const refDateForStatus = effType === 'Doğrulama' && nextVerDate ? nextVerDate : nextCalDate
+    let finalStatus: CalibrationStatus | undefined = status as CalibrationStatus | undefined
+    if (!statusManualOverride && refDateForStatus) {
+      finalStatus = computeCalibrationStatus(refDateForStatus, new Date())
+    }
+
     const device = await prisma.calibrationDevice.update({
       where: { id },
       data: {
@@ -170,7 +181,7 @@ export async function PUT(
           ? (purchaseDate ? new Date(purchaseDate) : null)
           : undefined,
         notes,
-        status: status as CalibrationStatus | undefined,
+        status: finalStatus,
         statusManualOverride,
         imageUrl,
         attachments,

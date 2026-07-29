@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { canViewSensitive } from '@/lib/personnel-sensitive-access'
 
 export const dynamic = 'force-dynamic'
 
-const VIEW_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
 const UPDATE_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
 function maskValue(value: string | null | undefined): string | null {
@@ -40,11 +40,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    // PR-Y2.5-personnel: requireUser — accessLog yazımı + admin role
-    const { user, error } = await requireUser()
+    // PR-Y2.5-personnel: requireUser — accessLog yazımı + rol/permission kontrolü.
+    // RBAC-farkında: legacy role (ADMIN/HR_MANAGER/SUPER_ADMIN) VEYA RBAC "HR Yöneticisi"
+    // (calisanrehberi.admin) yeterli. İK Sorumlusu (legacy EMPLOYEE) artık RBAC'ten açılır.
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    if (!VIEW_ROLES.includes(user.role)) {
+    if (!canViewSensitive(user.role, session.user.permissions)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 

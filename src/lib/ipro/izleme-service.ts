@@ -1,5 +1,6 @@
 import 'server-only'
 import { prisma } from '@/lib/prisma'
+import { statusCek, fizikselDurum } from '@/lib/ipro/fiziksel-aktivite'
 
 /**
  * IPRO izleme panosu — SALT OKUMA veri katmanı (FAZ 2).
@@ -76,7 +77,7 @@ export async function panoData(): Promise<PanoData> {
   const bugun = gununBasi()
 
   // ── Tek turda topla: tezgahlar + açık işler + gün özeti + kuyruk + açık duruşlar ──
-  const [tezgahlar, acikIsler, acikDuruslar, kapananBugun, toplamlar, acikOturumlar, bekleyen, enEski, hatali] =
+  const [tezgahlar, acikIsler, acikDuruslar, kapananBugun, toplamlar, acikOturumlar, bekleyen, enEski, hatali, statusByKod] =
     await Promise.all([
     prisma.iproTezgah.findMany({
       where: { aktif: true },
@@ -123,6 +124,7 @@ export async function panoData(): Promise<PanoData> {
       select: { bitirildiAt: true },
     }),
     prisma.iproProductionLog.count({ where: { ifsCompleteHata: { not: null } } }),
+    statusCek(), // poller /status — CANLI fiziksel aktivite; down/timeout → null → katman atlanır (pano yine açılır)
   ])
 
   // ── Açık işlerdeki operatör adlarını ikinci sorguyla eşle (FK yok) ──
@@ -145,8 +147,16 @@ export async function panoData(): Promise<PanoData> {
     const durus = durusByTezgah.get(t.id)
     const person = acik ? personById.get(acik.personnelId) : null
     const calisiyor = !!(acik && acik.baslatildiAt)
-    // Duruş çalışmanın önüne geçer (kırmızı > yeşil): açık duruş varsa "durusta".
-    const durum: KartDurum = durus ? 'durusta' : calisiyor ? 'calisiyor' : 'bosta'
+    // Öncelik: KİOSK açık duruş → KİOSK açık iş → PLC FİZİKSEL (sayaç hareketi) → bosta.
+    // Kiosk kaydı KAZANIR (operatör esas). Fiziksel katman yalnız kayıt yokken devreye girer.
+    // SINIR: "çalışıyor" PLC sayaç hareketinden EKLENİR (yeşil canlanır); "duruşta" YALNIZ
+    // kiosk kaydından gelir — duruş biti sahada hiç 1 olmuyor (0/214), fiziksel 'durusta' ölü dal.
+    // Duruş bitinin otomatik gelmesi AYRI SAHA İŞİ (PLC bit set etmiyor).
+    const durum: KartDurum = durus
+      ? 'durusta'
+      : calisiyor
+        ? 'calisiyor'
+        : (fizikselDurum(t.kod, statusByKod) ?? 'bosta')
     return {
       id: t.id,
       kod: t.kod,

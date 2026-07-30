@@ -5,10 +5,18 @@
  * afterAll'da temizler; mevcut seed verisine dokunmaz. SALT OKUMA endpoint —
  * pano hiçbir yazma yapmaz, testler yalnız topladığı veriyi doğrular.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 
 const yetki = vi.hoisted(() => ({ keys: new Set<string>(['ipro.view']) }))
+// Fiziksel aktivite katmanı kontrollü — gerçek poller /status'e ÇIKMAZ. Varsayılan: KAPALI
+// (statusCek null, fizikselDurum null) → mevcut kiosk türetmesi aynen (regresyon güvencesi).
+const fiz = vi.hoisted(() => ({ status: null as unknown, durumByKod: {} as Record<string, string | null> }))
+vi.mock('@/lib/ipro/fiziksel-aktivite', () => ({
+  statusCek: vi.fn(async () => fiz.status),
+  fizikselDurum: vi.fn((kod: string) => fiz.durumByKod[kod] ?? null),
+  HAREKET_PENCERESI_MS: 180_000,
+}))
 
 vi.mock('@/lib/auth/require-permission', () => ({
   requirePermission: vi.fn(async (key: string | string[]) => {
@@ -26,7 +34,9 @@ import { GET as GET_DETAY } from '@/app/api/ipro/izleme/tezgah/[id]/route'
 import { panoData } from '@/lib/ipro/izleme-service'
 
 const KOD = 'IZL-TEST-TZ'
+const KOD_BOS = 'IZL-TEST-BOS' // kiosk kaydı YOK — fiziksel katman testleri için
 let tezgahId = ''
+let tezgahBosId = ''
 let sessionId = ''
 let logId = ''
 let personnelId = ''
@@ -38,6 +48,13 @@ beforeAll(async () => {
     select: { id: true },
   })
   tezgahId = t.id
+
+  // Kiosk kaydı OLMAYAN tezgah — durumu yalnız fiziksel katmandan gelir.
+  const tb = await prisma.iproTezgah.create({
+    data: { kod: KOD_BOS, ad: 'İZLEME BOŞ', aktif: true, masGrupAdi: 'TEST GRUP' },
+    select: { id: true },
+  })
+  tezgahBosId = tb.id
 
   const p = await prisma.personnel.findFirst({ where: { aktif: true, adSoyad: { not: '' } }, select: { id: true, adSoyad: true } })
   if (!p) throw new Error('Test personeli yok')
@@ -71,9 +88,12 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.iproProductionLog.deleteMany({ where: { id: logId } })
   await prisma.iproOperatorSession.deleteMany({ where: { id: sessionId } })
-  await prisma.iproTezgah.deleteMany({ where: { id: tezgahId } })
+  await prisma.iproTezgah.deleteMany({ where: { id: { in: [tezgahId, tezgahBosId] } } })
   await prisma.$disconnect()
 })
+
+// Her testten sonra fiziksel kontrolü VARSAYILANA döndür (KAPALI) — sızma olmasın.
+afterEach(() => { fiz.status = null; fiz.durumByKod = {} })
 
 describe('izleme yetki', () => {
   it('yetkisiz → 403', async () => {
@@ -197,5 +217,51 @@ describe('panoData toplama', () => {
     })
     expect(bekleyenBizim).toBe(0) // bizim kayıt artık bekleyende değil
     expect(d2.kuyruk).toBeTruthy()
+  })
+})
+
+describe('canlı fiziksel sinyal (poller /status katmanı)', () => {
+  const kartFor = async (kod: string) => (await panoData()).tezgahlar.find((t: { kod: string }) => t.kod === kod)
+
+  // KOD işini ACIK'e geri al — önceki IFS-kuyruğu testi KAPALI bırakmış olabilir.
+  const kodIsiAcikYap = () =>
+    prisma.iproProductionLog.update({ where: { id: logId }, data: { durum: 'ACIK', bitirildiAt: null, qtyComplete: 0, qtyScrap: 0, ifsCompleteYazildi: false } })
+
+  it('(a) poller DOWN (statusCek null) → kiosk türetmesi AYNEN, pano yine açılır', async () => {
+    await kodIsiAcikYap()
+    fiz.status = null // poller erişilemez
+    const kart = await kartFor(KOD) // ACIK iş kaydı var
+    expect(kart.durum).toBe('calisiyor') // kiosk kaydından, fiziksel katman atlanmış
+    const bos = await kartFor(KOD_BOS) // kayıt yok + poller yok
+    expect(bos.durum).toBe('bosta')
+  })
+
+  it('(b) kiosk kaydı YOK + fiziksel calisiyor → tezgah calisiyor (yeşil canlanır)', async () => {
+    fiz.status = [{ tezgahKod: KOD_BOS }] // statusCek non-null (mock döndürür)
+    fiz.durumByKod = { [KOD_BOS]: 'calisiyor' }
+    const bos = await kartFor(KOD_BOS)
+    expect(bos.durum).toBe('calisiyor')
+  })
+
+  it('(b2) kiosk kaydı YOK + fiziksel null (hareketsiz) → bosta', async () => {
+    fiz.status = [{ tezgahKod: KOD_BOS }]
+    fiz.durumByKod = { [KOD_BOS]: null }
+    expect((await kartFor(KOD_BOS)).durum).toBe('bosta')
+  })
+
+  it('(c) kiosk açık iş VAR + fiziksel "durusta"/"calisiyor" → KİOSK KAZANIR (öncelik)', async () => {
+    await kodIsiAcikYap()
+    fiz.status = [{ tezgahKod: KOD }]
+    fiz.durumByKod = { [KOD]: 'durusta' } // fiziksel duruşta dese bile
+    const kart = await kartFor(KOD)
+    expect(kart.durum).toBe('calisiyor') // kiosk açık işi kazanır, fiziksel EZİLMEZ
+  })
+
+  it('(d) fiziksel "durusta" ancak fizikselDurum döndürürse gelir — gerçekte bit 0/214 → pratikte gelmez', async () => {
+    // Bu test kod yolunun kiosk-önceliğini doğrular; "duruşta"nın kiosk-only olması
+    // fizikselDurum'un gerçekte 'durusta' üretmemesindendir (bkz. fiziksel-aktivite.test).
+    fiz.status = [{ tezgahKod: KOD_BOS }]
+    fiz.durumByKod = {} // fizikselDurum → null (gerçek davranış: durusta biti yok)
+    expect((await kartFor(KOD_BOS)).durum).toBe('bosta') // duruşta DEĞİL
   })
 })

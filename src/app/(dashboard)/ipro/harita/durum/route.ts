@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { prisma } from '@/lib/prisma'
+import { statusCek, fizikselDurum, type FizikselDurum } from '@/lib/ipro/fiziksel-aktivite'
 
 // Fabrika Haritası CANLI DURUM endpoint'i — SALT OKUMA.
 //
@@ -42,43 +43,9 @@ const DB2SAHNE: Record<string, string> = {
 // Robot kaynak fan-out: KR01-1..KR04-6 kapı istasyonları → KR01..KR04 kutusu.
 const ROBOT_RE = /^(KR0[1-4])-\d+$/
 
-// ── Fiziksel aktivite (poller /status) ──────────────────────────────────────
-const POLLER_BASE = `http://127.0.0.1:${process.env.IPRO_POLLER_PORT ?? 3020}`
-const POLLER_TIMEOUT_MS = 1_500
-// Son sayaç hareketinden bu yana bu süre içinde ise "calisiyor". Çevrim süresi 5sn'den
-// uzun tezgahlar var; tek turda delta=0 "durdu" demek DEĞİL — pencere bunun için.
-const HAREKET_PENCERESI_MS = 180_000
-
-// Modül düzeyinde (istekler arası yaşar, Next node runtime): DB kodu → son görülen
-// sayaç + son hareket zamanı. Yeni istekte sayaç arttıysa hareket damgalanır.
-const hareketByKod = new Map<string, { sayac: number; sonHareketTs: number }>()
-
-type PollerStatusSatiri = { tezgahKod?: string; sayacToplam?: unknown; durusta?: unknown }
-
-/** Poller /status'ü çeker → DB kodu → {sayacToplam, durusta}. Hata/timeout → null (katman atlanır). */
-async function statusCek(): Promise<Map<string, { sayacToplam: number; durusta: boolean }> | null> {
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), POLLER_TIMEOUT_MS)
-  try {
-    const res = await fetch(`${POLLER_BASE}/status`, { signal: ctrl.signal, cache: 'no-store' })
-    if (!res.ok) return null
-    const list = (await res.json()) as PollerStatusSatiri[]
-    if (!Array.isArray(list)) return null
-    const m = new Map<string, { sayacToplam: number; durusta: boolean }>()
-    for (const s of list) {
-      if (typeof s.tezgahKod !== 'string') continue
-      m.set(s.tezgahKod, {
-        sayacToplam: typeof s.sayacToplam === 'number' ? s.sayacToplam : 0,
-        durusta: s.durusta === true,
-      })
-    }
-    return m
-  } catch {
-    return null
-  } finally {
-    clearTimeout(t)
-  }
-}
+// Fiziksel aktivite katmanı (poller /status) ORTAK MODÜLE taşındı — izleme panosu da
+// aynı statusCek + hareket haritasını kullanır (src/lib/ipro/fiziksel-aktivite.ts).
+// Harita'ya ÖZGÜ olanlar (alias/DB2SAHNE, robot fan-out, sahne agg) BURADA kalır.
 
 type DurumTip = 'calisiyor' | 'durusta' | 'bosta'
 
@@ -152,25 +119,11 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
     return e
   }
 
-  // FİZİKSEL katman: DB kodu → 'calisiyor'|'durusta'|'bosta' | null(=/status'te yok).
-  // Sayaç hareketi 180sn penceresiyle değerlendirilir (module-level hareketByKod).
-  const fizikselDurum = (dbKod: string): DurumTip | null => {
-    if (!statusByKod) return null
-    const s = statusByKod.get(dbKod)
-    if (!s) return null // bayat/sinyalsiz → /status'te yok
-    if (s.durusta) return 'durusta'
-    const prev = hareketByKod.get(dbKod)
-    if (!prev) {
-      // İlk görülüş: hareket referansı yok → bu istekte bosta, sonrakinde oturur.
-      hareketByKod.set(dbKod, { sayac: s.sayacToplam, sonHareketTs: 0 })
-      return 'bosta'
-    }
-    const sonHareketTs = s.sayacToplam > prev.sayac ? now : prev.sonHareketTs
-    hareketByKod.set(dbKod, { sayac: s.sayacToplam, sonHareketTs })
-    return sonHareketTs && now - sonHareketTs < HAREKET_PENCERESI_MS ? 'calisiyor' : 'bosta'
-  }
+  // FİZİKSEL katman ORTAK MODÜLDEN (statusByKod ile). null = /status'te yok / hareketsiz
+  // (çağıran 'bosta' yapar). Sayaç hareketi 180sn penceresiyle, paylaşımlı hareket haritası.
+  const fd_ = (kod: string): FizikselDurum | null => fizikselDurum(kod, statusByKod)
 
-  const fizikselEntry = (fd: DurumTip): TezgahDurum =>
+  const fizikselEntry = (fd: FizikselDurum): TezgahDurum =>
     fd === 'durusta'
       ? { durum: 'durusta', say: null, sebep: 'PLC duruş biti' }
       : { durum: fd, say: null }
@@ -185,7 +138,7 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
     }
     const acik = acikByTezgah.get(tezgahId)
     if (acik && acik.baslatildiAt) return calisiyorEntry(acik)
-    const fd = fizikselDurum(dbKod)
+    const fd = fd_(dbKod)
     if (fd) return fizikselEntry(fd)
     return { durum: 'bosta', say: null }
   }
@@ -219,7 +172,7 @@ async function durumTuret(): Promise<Record<string, TezgahDurum>> {
       return e
     }
     // Fiziksel katman: istasyon kodlarına göre.
-    const fds = stations.map((s) => fizikselDurum(s.kod)).filter((f): f is DurumTip => f !== null)
+    const fds = stations.map((s) => fd_(s.kod)).filter((f): f is FizikselDurum => f !== null)
     if (fds.some((f) => f === 'calisiyor')) return { durum: 'calisiyor', say: null }
     if (fds.some((f) => f === 'durusta')) return { durum: 'durusta', say: null, sebep: 'PLC duruş biti' }
     if (fds.length) return { durum: 'bosta', say: null }

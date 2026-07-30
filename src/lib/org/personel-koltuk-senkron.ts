@@ -47,10 +47,13 @@ export async function personelPasiflestiginde(
   }
 
   // 3) İz kaydı (best-effort — audit hatası pasifleştirmeyi bozmasın; tx'e bağlamıyoruz).
-  if (koltuklar.length > 0 || vekaletler.length > 0) {
+  //    permission_audit_log.actorId User'a FK (nullable değil) → yalnız GEÇERLİ bir kullanıcı
+  //    aktörü varsa yazılır. Aktörsüz/sistem çağrılarında (opts.actorId yok) sessizce atlanır;
+  //    koltuğun kapanması yine gerçekleşir, çağıran (ör. script) kendi çıktısıyla iz bırakır.
+  if ((koltuklar.length > 0 || vekaletler.length > 0) && opts?.actorId) {
     await logAuditEvent({
       action: "ORG_KOLTUK_PASIF_SENKRON",
-      actorId: opts?.actorId ?? "system",
+      actorId: opts.actorId,
       targetType: "PERSONNEL",
       targetId: personnelId,
       details: {

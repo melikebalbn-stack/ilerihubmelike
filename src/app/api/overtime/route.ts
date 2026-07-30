@@ -284,6 +284,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // MADDE 1 — yazma kapsamı doğrulaması (frontend filtresine EK güvenlik katmanı):
+    // admin/İK/report.all (allowed===undefined) hariç, eklenen her personelin bölümü
+    // kullanıcının allowedDepts'i (kendi + alt ağaç) içinde olmalı. Okuma ile AYNI kaynak.
+    const allowedForCreate = await resolveAllowedDepts(user.id)
+    if (allowedForCreate !== undefined) {
+      const normDept = (s: string) => (s ?? '').trim().toLocaleUpperCase('tr-TR')
+      const allowedSet = new Set(allowedForCreate.map(normDept))
+      const disari = (personnel as { workDepartment: string }[]).find(
+        (p) => !allowedSet.has(normDept(p.workDepartment))
+      )
+      if (disari) {
+        return apiError('Sadece kendi bölümünüze (ve alt bölümlerinize) personel ekleyebilirsiniz', 403)
+      }
+    }
+
     // Vardiya: gece penceresi sabit (21:00→07:00); MESAI: mevcut saat-aralığı kuralı.
     const effIsFullDay = isVardiya ? false : isFullDay
     const effStartTime = isVardiya ? VARDIYA_START : startTime

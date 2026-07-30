@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { Link2 } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
@@ -12,7 +13,7 @@ export default async function IproIfsEslemeleriPage() {
 
   const canView = await hasPermission('ipro.view')
   const canEdit = await hasPermission('ipro.admin')
-  if (!canView && !canEdit) redirect('/dashboard')
+  if (!canView && !canEdit) return <YetkisizErisim permission="ipro.view" />
 
   return (
     <div className="container mx-auto max-w-7xl space-y-6 px-6 py-8">

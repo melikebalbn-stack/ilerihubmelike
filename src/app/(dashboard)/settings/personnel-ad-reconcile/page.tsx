@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import Link from 'next/link'
 import { ChevronRight, Link2 } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
@@ -7,7 +8,7 @@ import { ReconcileClient } from './reconcile-client'
 export default async function PersonnelAdReconcilePage() {
   const { user, error } = await requireUser()
   if (error) redirect('/login')
-  if (user.role !== 'SUPER_ADMIN') redirect('/dashboard')
+  if (user.role !== 'SUPER_ADMIN') return <YetkisizErisim />
 
   return (
     <div className="container mx-auto p-6 space-y-6 max-w-7xl">

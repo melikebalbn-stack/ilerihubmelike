@@ -1,4 +1,5 @@
 import { redirect, notFound } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { prisma } from '@/lib/prisma'
@@ -15,7 +16,7 @@ export default async function ZimmetOnayPage({
   if (error) redirect('/login')
 
   const canApprove = await hasPermission('zimmet-formu.approve')
-  if (!canApprove) redirect('/dashboard')
+  if (!canApprove) return <YetkisizErisim permission="zimmet-formu.approve" />
 
   const { id } = await params
 

@@ -1,4 +1,5 @@
 import { redirect, notFound } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import Link from 'next/link'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
@@ -29,7 +30,7 @@ interface PageProps {
 export default async function RoleDetailPage({ params }: PageProps) {
   const { user, error } = await requireUser()
   if (error) redirect('/login')
-  if (user.role !== 'SUPER_ADMIN') redirect('/dashboard')
+  if (user.role !== 'SUPER_ADMIN') return <YetkisizErisim />
 
   const { id } = await params
 

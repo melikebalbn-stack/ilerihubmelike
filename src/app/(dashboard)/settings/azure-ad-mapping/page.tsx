@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import Link from 'next/link'
 import { ChevronRight, Network } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
@@ -8,7 +9,7 @@ import { MappingClient } from './mapping-client'
 export default async function AzureAdMappingPage() {
   const { user, error } = await requireUser()
   if (error) redirect('/login')
-  if (user.role !== 'SUPER_ADMIN') redirect('/dashboard')
+  if (user.role !== 'SUPER_ADMIN') return <YetkisizErisim />
 
   const allRoles = await prisma.role.findMany({
     select: { id: true, slug: true, name: true, isSystem: true },

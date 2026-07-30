@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import Link from 'next/link'
 import { Plus, ClipboardList } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
@@ -27,7 +28,7 @@ export default async function TemplatesListPage() {
     'quality.template.manage',
     'quality.report.create',
   ])
-  if (!canRead) redirect('/dashboard')
+  if (!canRead) return <YetkisizErisim permission="quality.template.manage" />
 
   const templates = await prisma.measurementTemplate.findMany({
     orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],

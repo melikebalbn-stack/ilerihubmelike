@@ -3,7 +3,7 @@
 import { useSession } from "next-auth/react"
 import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { useEffect, useState } from "react"
-import { redirect } from "next/navigation"
+import { YetkisizErisim } from "@/components/YetkisizErisim"
 import {
   HardDrive,
   Download,
@@ -176,15 +176,9 @@ export default function BackupsPage() {
   // admin.backup.manage → it-admin, super-admin
   const hasAccess = session?.user?.permissions?.includes("admin.backup.manage") ?? false
 
-  useEffect(() => {
-    if (status === "authenticated" && !hasAccess) {
-      redirect("/dashboard")
-    }
-  }, [status, hasAccess])
-
   // Restore feature flag fetch (auth-gated endpoint)
   useEffect(() => {
-    if (!session?.user?.email) return
+    if (!session?.user?.email || !hasAccess) return
     fetch("/api/backups/config")
       .then((r) => (r.ok ? r.json() : { restoreEnabled: false }))
       .then((c) => setRestoreEnabled(c.restoreEnabled === true))
@@ -193,6 +187,7 @@ export default function BackupsPage() {
 
   // Verileri yükle (loading/auth-gate/timeout + 10sn polling artık useAuthenticatedData'da)
   const fetchData = async () => {
+    if (!hasAccess) return
     try {
       const [backupsRes, schedulesRes, statsRes] = await Promise.all([
         fetch("/api/backups"),
@@ -372,15 +367,7 @@ export default function BackupsPage() {
   }
 
   if (!hasAccess) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <AlertTriangle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold">Erişim Reddedildi</h2>
-          <p className="text-muted-foreground mt-2">Bu sayfaya erişim yetkiniz yok.</p>
-        </div>
-      </div>
-    )
+    return <YetkisizErisim permission="admin.backup.manage" />
   }
 
   return (

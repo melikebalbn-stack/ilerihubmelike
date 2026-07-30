@@ -61,7 +61,7 @@ import {
   Info,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
-import { redirect } from "next/navigation"
+import { YetkisizErisim } from "@/components/YetkisizErisim"
 import { toast } from "sonner"
 
 // Tip tanımları
@@ -334,12 +334,6 @@ export default function TalentManagementPage() {
     session?.user?.role === "SUPER_ADMIN" ||
     session?.user?.role === "HR_MANAGER"
 
-  useEffect(() => {
-    if (status === "authenticated" && !canAccess) {
-      redirect("/dashboard")
-    }
-  }, [status, canAccess])
-
   // Verileri yükle
   const fetchCompetencies = async () => {
     try {
@@ -555,10 +549,10 @@ export default function TalentManagementPage() {
   }
 
   useEffect(() => {
-    if (session) {
+    if (session && canAccess) {
       fetchAllData()
     }
-  }, [session])
+  }, [session, canAccess])
 
   // Yetkinlik kaydet
   const handleSaveCompetency = async () => {
@@ -746,7 +740,7 @@ export default function TalentManagementPage() {
   }
 
   if (!canAccess) {
-    return null
+    return <YetkisizErisim />
   }
 
   return (

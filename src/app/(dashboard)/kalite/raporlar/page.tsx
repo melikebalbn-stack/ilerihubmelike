@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import Link from 'next/link'
 import { Plus, ClipboardCheck } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
@@ -14,7 +15,7 @@ export default async function ReportsListPage() {
   if (error) redirect('/login')
 
   const canRead = await hasPermission('quality.report.read')
-  if (!canRead) redirect('/dashboard')
+  if (!canRead) return <YetkisizErisim permission="quality.report.read" />
 
   const canCreate = await hasPermission('quality.report.create')
 

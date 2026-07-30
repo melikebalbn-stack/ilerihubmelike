@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 
@@ -18,7 +19,7 @@ export default async function IproHaritaPage({
 
   const canView = await hasPermission('ipro.view')
   const canAdmin = await hasPermission('ipro.admin')
-  if (!canView && !canAdmin) redirect('/dashboard')
+  if (!canView && !canAdmin) return <YetkisizErisim permission="ipro.view" />
 
   const sp = await searchParams
   // ?tv=1 sahneye ulaşmalı (TV/duvar ekranı modu). iframe src'ine forward edilir.

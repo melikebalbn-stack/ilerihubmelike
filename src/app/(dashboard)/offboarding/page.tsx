@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import Link from 'next/link'
 import { Plus, LogOut } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
@@ -13,7 +14,7 @@ export default async function OffboardingListPage() {
   if (error) redirect('/login')
 
   const canView = await hasPermission('offboarding.view')
-  if (!canView) redirect('/dashboard')
+  if (!canView) return <YetkisizErisim permission="offboarding.view" />
 
   const canCreate = await hasPermission('offboarding.create')
 

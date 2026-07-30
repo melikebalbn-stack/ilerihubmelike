@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { prisma } from '@/lib/prisma'
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic'
 export default async function SymbolsAdminPage() {
   const { error } = await requireUser()
   if (error) redirect('/login')
-  if (!(await hasPermission('quality.symbol.manage'))) redirect('/dashboard')
+  if (!(await hasPermission('quality.symbol.manage'))) return <YetkisizErisim permission="quality.symbol.manage" />
 
   const symbols = await prisma.qualitySymbol.findMany({
     orderBy: [{ isSystem: 'desc' }, { displayOrder: 'asc' }],

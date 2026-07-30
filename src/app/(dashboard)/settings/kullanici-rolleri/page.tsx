@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import Link from 'next/link'
 import { ChevronRight, Users } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
@@ -12,7 +13,7 @@ interface PageProps {
 export default async function KullaniciRolleriPage({ searchParams }: PageProps) {
   const { user, error } = await requireUser()
   if (error) redirect('/login')
-  if (user.role !== 'SUPER_ADMIN') redirect('/dashboard')
+  if (user.role !== 'SUPER_ADMIN') return <YetkisizErisim />
 
   const params = await searchParams
 

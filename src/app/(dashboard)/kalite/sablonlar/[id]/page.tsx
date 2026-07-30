@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { prisma } from '@/lib/prisma'
@@ -19,7 +20,7 @@ export default async function TemplateDetailPage({ params }: Props) {
     'quality.template.manage',
     'quality.report.create',
   ])
-  if (!canRead) redirect('/dashboard')
+  if (!canRead) return <YetkisizErisim permission="quality.template.manage" />
 
   const { id } = await params
 

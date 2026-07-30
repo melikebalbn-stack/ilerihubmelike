@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import QRCode from 'qrcode'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
@@ -24,7 +25,7 @@ interface Props {
 export default async function ReportDetailPage({ params }: Props) {
   const { error } = await requireUser()
   if (error) redirect('/login')
-  if (!(await hasPermission('quality.report.read'))) redirect('/dashboard')
+  if (!(await hasPermission('quality.report.read'))) return <YetkisizErisim permission="quality.report.read" />
 
   const canFinalize = await hasPermission('quality.report.fill')
 

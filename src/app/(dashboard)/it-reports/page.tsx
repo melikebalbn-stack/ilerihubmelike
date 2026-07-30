@@ -47,7 +47,7 @@ import {
   Eye,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
-import { redirect } from "next/navigation"
+import { YetkisizErisim } from "@/components/YetkisizErisim"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -132,12 +132,6 @@ export default function ITReportsPage() {
   // (admin, bgys-sorumlusu, it-admin, super-admin)
   const canAccessReports = session?.user?.permissions?.includes("admin.audit.view") ?? false
 
-  useEffect(() => {
-    if (status === "authenticated" && !canAccessReports) {
-      redirect("/dashboard")
-    }
-  }, [status, canAccessReports])
-
   const fetchReport = async () => {
     setLoading(true)
     try {
@@ -154,10 +148,10 @@ export default function ITReportsPage() {
   }
 
   useEffect(() => {
-    if (session) {
+    if (session && canAccessReports) {
       fetchReport()
     }
-  }, [session, period])
+  }, [session, period, canAccessReports])
 
   const formatDuration = (hours: number) => {
     if (hours < 1) {
@@ -394,7 +388,7 @@ export default function ITReportsPage() {
   }
 
   if (!canAccessReports) {
-    return null
+    return <YetkisizErisim permission="admin.audit.view" />
   }
 
   return (

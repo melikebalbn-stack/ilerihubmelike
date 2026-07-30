@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { prisma } from '@/lib/prisma'
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic'
 export default async function NewReportPage() {
   const { error } = await requireUser()
   if (error) redirect('/login')
-  if (!(await hasPermission('quality.report.create'))) redirect('/dashboard')
+  if (!(await hasPermission('quality.report.create'))) return <YetkisizErisim permission="quality.report.create" />
 
   const templates = await prisma.measurementTemplate.findMany({
     where: { active: true },

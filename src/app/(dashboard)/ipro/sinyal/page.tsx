@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { Radio } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
@@ -18,7 +19,7 @@ export default async function IproSinyalPage() {
   if (error) redirect('/login')
 
   const canAdmin = await hasPermission('ipro.admin')
-  if (!canAdmin) redirect('/dashboard')
+  if (!canAdmin) return <YetkisizErisim permission="ipro.admin" />
 
   return (
     <div className="container mx-auto max-w-[1600px] space-y-4 px-6 py-8">

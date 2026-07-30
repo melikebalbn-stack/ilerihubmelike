@@ -77,24 +77,17 @@ async function main() {
   }
 
   // UYGULA — etkilenen her personnelId için helper (TEK KAYNAK). SİLME YOK.
-  // İz kaydı için gerçek bir admin aktörü çöz (permission_audit_log.actorId User'a FK).
-  // Bulunamazsa audit atlanır (koltuk yine kapanır; bu çıktı iz olur).
-  const adminUser = await prisma.user.findFirst({
-    where: { isActive: true, role: { in: ["SUPER_ADMIN", "ADMIN"] } },
-    select: { id: true },
-  });
-  const actorId = adminUser?.id;
-  console.log(`\nİz aktörü: ${actorId ? `admin ${actorId}` : "(yok — audit atlanacak)"}`);
-
+  // İz OrgRevizyon'a yazılır; `yapan` düz metin olduğu için sistem çağrısı da iz bırakır
+  // (aktör kullanıcı gerekmez — actorId geçilmez, yapanUserId null kalır).
   const etkilenen = Array.from(
     new Set([
       ...sarkanKoltuklar.map((k) => k.personnelId!),
       ...sarkanVekaletler.map((v) => v.vekilPersonnelId!),
     ])
   );
-  console.log(`UYGULANIYOR — ${etkilenen.length} personel:`);
+  console.log(`\nUYGULANIYOR — ${etkilenen.length} personel:`);
   for (const pid of etkilenen) {
-    const sonuc = await personelPasiflestiginde(prisma, pid, { sebep: "SARKMA_TEMIZLIK", actorId });
+    const sonuc = await personelPasiflestiginde(prisma, pid, { sebep: "SARKMA_TEMIZLIK" });
     console.log(`   ${pid}: ${sonuc.kapatilanKoltuklar.length} koltuk kapatıldı, ${sonuc.kaldirilanVekaletler.length} vekalet kaldırıldı`);
   }
   console.log(`\n${"=".repeat(60)}`);

@@ -4179,6 +4179,7 @@ model DailyMenu {
   id          String   @id @default(cuid())
   date        DateTime @unique @db.Date // Tarih (YYYY-MM-DD)
   items       String[] // Yemek listesi (çorba, ana yemek, yan yemek, içecek vb.)
+  calories    Int[]    @default([]) // items ile paralel kalori dizisi (indeks eşleşir)
   isHoliday   Boolean  @default(false) // Tatil günü mü?
   holidayName String? // Tatil adı (Cumartesi, Pazar, Resmi Tatil vb.)
   notes       String? // Ekstra notlar

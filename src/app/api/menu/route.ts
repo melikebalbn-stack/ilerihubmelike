@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { canManageMenu } from '@/lib/menu/can-manage-menu'
 import { prisma } from '@/lib/prisma'
 
 // GET - Haftalık menü getir
@@ -71,9 +72,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
     }
 
-    // Yetki kontrolü
-    const allowedRoles = ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(session.user.role)) {
+    // Yetki — rol (HR/Admin) VEYA İnsan Varlıkları bölümü (import ile aynı kural)
+    if (!(await canManageMenu(session.user.id))) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -127,9 +127,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
     }
 
-    // Yetki kontrolü
-    const allowedRoles = ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(session.user.role)) {
+    // Yetki — rol (HR/Admin) VEYA İnsan Varlıkları bölümü (import ile aynı kural)
+    if (!(await canManageMenu(session.user.id))) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

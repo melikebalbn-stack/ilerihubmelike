@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Settings, Gauge, Lightbulb, CalendarCheck, Flame, Mail, Megaphone, Headphones, Smartphone, LayoutDashboard, UserCheck, Clock, Plus, Trash2, Search, Loader2, RefreshCw, Users, CheckCircle2, AlertTriangle, Briefcase } from "lucide-react"
+import { Settings, Gauge, Lightbulb, CalendarCheck, Flame, Mail, Megaphone, Headphones, Smartphone, LayoutDashboard, UserCheck, Clock, Plus, Trash2, Search, Loader2, RefreshCw, Users, CheckCircle2, AlertTriangle, Briefcase, UtensilsCrossed } from "lucide-react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
@@ -26,7 +26,8 @@ import {
   ITTicketSettingsPanel,
   SuggestionSettingsPanel,
   TaskSettingsPanel,
-  EmailSettingsPanel
+  EmailSettingsPanel,
+  MenuSettingsPanel
 } from "@/components/settings/panels"
 import type {
   Location,
@@ -54,6 +55,10 @@ export default function SettingsPage() {
   const userDepartment = ((session?.user as any)?.department || '').toLowerCase()
   const userOu = ((session?.user as any)?.ou || '').toLowerCase()
   const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(userRole)
+  // Menü yönetimi: HR/Admin rolü VEYA İnsan Varlıkları bölümü (server canManageMenu ile aynı; API zaten 403 çift emniyet)
+  const canManageMenu =
+    ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole) ||
+    userDepartment.normalize('NFD').replace(/[̀-ͯ]/g, '').includes('insan varl')
   const isKaliteUser = !isAdmin && (
     userRole === 'QUALITY_MANAGER' ||
     userDepartment.includes('kalite') || userDepartment.includes('laboratuvar') ||
@@ -926,6 +931,20 @@ export default function SettingsPage() {
           onSaveSystemNotice={handleSaveSystemNotice}
         />
       </CollapsibleSection>
+
+      {/* Yemek Menüsü — yalnız yetkili (rol HR/Admin VEYA İnsan Varlıkları bölümü) */}
+      {canManageMenu && (
+        <CollapsibleSection
+          title="Yemek Menüsü"
+          description="Haftalık/aylık yemek menüsünü Excel ile yükleyin (kalori dahil)"
+          icon={UtensilsCrossed}
+          iconBgColor="bg-orange-100 dark:bg-orange-900"
+          iconColor="text-orange-600 dark:text-orange-400"
+          externalLink="/dashboard"
+        >
+          <MenuSettingsPanel />
+        </CollapsibleSection>
+      )}
 
       {/* Duyuru Sistemi Ayarları */}
       <CollapsibleSection

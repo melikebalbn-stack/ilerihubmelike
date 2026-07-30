@@ -28,6 +28,7 @@ interface DailyMenu {
   date: string // YYYY-MM-DD
   dayName: string
   items: string[]
+  calories?: number[] // items ile paralel; eski kayıtlarda yok/boş (geriye uyum)
   isHoliday?: boolean
   holidayName?: string
 }
@@ -337,10 +338,11 @@ export default function DashboardPage() {
           const emptyWeek = createEmptyWeekMenu(weekStart)
 
           // API'den gelen verileri map'e çevir
-          const menuMap = new Map<string, { items: string[], isHoliday?: boolean, holidayName?: string }>()
+          const menuMap = new Map<string, { items: string[], calories?: number[], isHoliday?: boolean, holidayName?: string }>()
           for (const menu of apiMenus) {
             menuMap.set(menu.date, {
               items: menu.items || [],
+              calories: menu.calories || [],
               isHoliday: menu.isHoliday,
               holidayName: menu.holidayName
             })
@@ -353,6 +355,7 @@ export default function DashboardPage() {
               return {
                 ...day,
                 items: apiData.items,
+                calories: apiData.calories ?? [],
                 isHoliday: apiData.isHoliday ?? day.isHoliday,
                 holidayName: apiData.holidayName ?? day.holidayName
               }
@@ -1218,12 +1221,19 @@ export default function DashboardPage() {
                     </div>
                   ) : selectedDayMenu.items.length > 0 ? (
                     <div className="space-y-1.5">
-                      {selectedDayMenu.items.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
-                          <p className="text-sm font-medium">{item}</p>
-                        </div>
-                      ))}
+                      {selectedDayMenu.items.map((item, idx) => {
+                        // Geriye uyum: eski kayıtlarda calories yok/kısa → optional chaining + ?? 0
+                        const kcal = selectedDayMenu.calories?.[idx] ?? 0
+                        return (
+                          <div key={idx} className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
+                            <p className="text-sm font-medium">{item}</p>
+                            {kcal > 0 && (
+                              <span className="ml-auto flex-shrink-0 text-xs text-muted-foreground">{kcal} kcal</span>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-3">

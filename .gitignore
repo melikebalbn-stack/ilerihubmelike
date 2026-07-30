@@ -33,3 +33,6 @@ public/uploads
 .venv-ipro/
 .env.bak*
 scripts/import-data/
+_test-menu.xlsx
+src/lib/menu/_test-parse.ts
+src/lib/menu/_test-import-payload.ts

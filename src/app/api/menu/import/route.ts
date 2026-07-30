@@ -4,6 +4,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
+import { canManageMenu } from '@/lib/menu/can-manage-menu'
+import { parseCateringMenu } from '@/lib/menu/parse-catering-menu'
 
 // POST - Excel dosyasından menü import et
 export async function POST(request: NextRequest) {
@@ -13,9 +15,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
     }
 
-    // Yetki kontrolü
-    const allowedRoles = ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN']
-    if (!allowedRoles.includes(session.user.role)) {
+    // Yetki kontrolü — rol (HR/Admin) VEYA İnsan Varlıkları bölümü
+    if (!(await canManageMenu(session.user.id))) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -30,6 +31,69 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
+    // Format algıla: üst satırlarda (r1-5, c1-14) 'YEMEK MENÜSÜ' başlığı → ŞİRKET (catering) formatı
+    let isCatering = false
+    try {
+      const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true })
+      const sh = wb.Sheets[wb.SheetNames[0]]
+      if (sh) {
+        const rng = XLSX.utils.decode_range(sh['!ref'] || 'A1')
+        for (let r = 0; r <= Math.min(4, rng.e.r) && !isCatering; r++) {
+          for (let c = 0; c <= Math.min(13, rng.e.c); c++) {
+            const cel = sh[XLSX.utils.encode_cell({ r, c })]
+            const s = cel ? String(cel.v).trim().toUpperCase() : ''
+            if (s.includes('YEMEK MENÜSÜ') || s.includes('YEMEK MENUSU')) { isCatering = true; break }
+          }
+        }
+      }
+    } catch {
+      return NextResponse.json({ error: 'Menü dosyası okunamadı: Excel açılamadı' }, { status: 400 })
+    }
+
+    const createdByName = session.user.name || session.user.email
+    const isoDate = (d: Date) => {
+      const pad = (n: number) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    }
+
+    // ── ŞİRKET (catering) FORMATI → parse-catering-menu ──
+    if (isCatering) {
+      let gunler
+      try {
+        gunler = parseCateringMenu(buffer)
+      } catch (e) {
+        return NextResponse.json(
+          { error: `Menü dosyası okunamadı: ${e instanceof Error ? e.message : 'format tanınmadı'}` },
+          { status: 400 }
+        )
+      }
+      const cat = {
+        success: 0,
+        failed: 0,
+        format: 'catering' as const,
+        warnings: [] as string[],
+        errors: [] as string[],
+      }
+      for (const g of gunler) {
+        try {
+          const d = new Date(g.date)
+          d.setHours(0, 0, 0, 0)
+          await prisma.dailyMenu.upsert({
+            where: { date: d },
+            update: { items: g.items, calories: g.calories, createdBy: session.user.email, createdByName },
+            create: { date: d, items: g.items, calories: g.calories, createdBy: session.user.email, createdByName },
+          })
+          cat.success++
+          for (const w of g.warnings) cat.warnings.push(`${isoDate(g.date)}: ${w}`)
+        } catch (err) {
+          cat.failed++
+          cat.errors.push(`${isoDate(g.date)}: ${err instanceof Error ? err.message : 'kayıt hatası'}`)
+        }
+      }
+      return NextResponse.json({ message: `${cat.success} günlük menü içe aktarıldı (şirket formatı)`, ...cat })
+    }
+
+    // ── LEGACY (düz-satır) FORMAT — mevcut mantık AYNEN korundu ──
     // Excel dosyasını oku
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true })
     const sheetName = workbook.SheetNames[0]
@@ -43,6 +107,8 @@ export async function POST(request: NextRequest) {
     const results = {
       success: 0,
       failed: 0,
+      format: 'legacy' as const,
+      warnings: [] as string[],
       errors: [] as string[]
     }
 

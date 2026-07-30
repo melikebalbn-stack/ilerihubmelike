@@ -6,6 +6,7 @@ import { logAuditEvent } from '@/lib/audit-log'
 import { computeTenure } from '@/lib/personnel-tenure'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
+import { personelPasiflestiginde } from '@/lib/org/personel-koltuk-senkron'
 
 export const dynamic = 'force-dynamic'
 
@@ -447,6 +448,8 @@ export async function PATCH(
               exitRecordedAt: recordedAt,
             },
           })
+          // Org senkronu: koltuk boşalt + vekalet kaldır (aynı transaction — atomik).
+          await personelPasiflestiginde(tx, id, { sebep: 'CIKIS', actorId: user.id })
           return u
         })
 
@@ -657,10 +660,14 @@ export async function DELETE(
       return NextResponse.json({ error: 'Personel bulunamadı' }, { status: 404 })
     }
 
-    // Soft delete: aktif = false
-    const updatedPersonnel = await prisma.personnel.update({
-      where: { id: delId },
-      data: { aktif: false },
+    // Soft delete: aktif = false + org koltuk/vekalet senkronu (aynı transaction — atomik).
+    const updatedPersonnel = await prisma.$transaction(async (tx) => {
+      const upd = await tx.personnel.update({
+        where: { id: delId },
+        data: { aktif: false },
+      })
+      await personelPasiflestiginde(tx, delId, { sebep: 'SOFT_DELETE', actorId: user.id })
+      return upd
     })
 
     return NextResponse.json({ message: 'Personel pasif duruma alındı', personnel: updatedPersonnel })

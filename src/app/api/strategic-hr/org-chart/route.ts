@@ -130,23 +130,40 @@ export async function GET(request: NextRequest) {
       )
     );
 
-    const cinsiyetMap = new Map<string, string>();
+    // Personnel'den TEK toplu okuma: cinsiyet (avatar) + aktif (G1 filtre) + adSoyad (G3 canlı ad).
+    const personnelMap = new Map<string, { aktif: boolean; adSoyad: string; cinsiyet: string }>();
     if (personnelIdler.length > 0) {
       const personeller = await prisma.personnel.findMany({
         where: { id: { in: personnelIdler } },
-        select: { id: true, cinsiyet: true },
+        select: { id: true, cinsiyet: true, aktif: true, adSoyad: true },
       });
       for (const p of personeller) {
-        cinsiyetMap.set(p.id, p.cinsiyet);
+        personnelMap.set(p.id, { aktif: p.aktif, adSoyad: p.adSoyad, cinsiyet: p.cinsiyet });
       }
     }
 
     const unitsWithCinsiyet = units.map((u) => ({
       ...u,
-      employees: u.employees.map((e) => ({
-        ...e,
-        cinsiyet: e.personnelId ? cinsiyetMap.get(e.personnelId) ?? null : null,
-      })),
+      employees: u.employees
+        // G1 — bağlı Personnel PASİF ise (aktif=false) koltuk BOŞ görünsün: kişi çıkarılır,
+        // pozisyon/kutu korunur (sayaçlar employees dizisinden türediği için otomatik güncellenir).
+        // personnelId NULL veya Personnel kaydı bulunamayan koltuklar mevcut davranışını korur.
+        .filter((e) => {
+          if (!e.personnelId) return true;
+          const p = personnelMap.get(e.personnelId);
+          if (!p) return true;
+          return p.aktif !== false;
+        })
+        .map((e) => {
+          const p = e.personnelId ? personnelMap.get(e.personnelId) : null;
+          return {
+            ...e,
+            // G3 — ad CANLI Personnel.adSoyad'dan (kopya bayat kalmasın); displayName yalnız
+            // personnelId NULL koltuklarda yedek.
+            displayName: p?.adSoyad ?? e.displayName,
+            cinsiyet: p?.cinsiyet ?? null,
+          };
+        }),
     }));
 
     // hasFullAccess SUNUCUDA hesaplanır (checkAccess) — client mükerrer hesaplamasın diye

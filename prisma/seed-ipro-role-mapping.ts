@@ -26,6 +26,8 @@ import { PrismaClient } from '../src/generated/prisma'
 const MAPPING: Record<string, string[]> = {
   'ipro.view': ['super-admin', 'admin', 'it-admin', 'departman-muduru'],
   'ipro.admin': ['super-admin', 'admin', 'it-admin'],
+  // Çalışma takvimi (İK) — IPRO'nun tamamı olmadan tatil/yarım gün girişi (Melike #5).
+  'ipro.takvim.yonet': ['super-admin', 'admin', 'hr-yoneticisi'],
 }
 
 async function main() {

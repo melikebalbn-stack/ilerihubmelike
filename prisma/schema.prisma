@@ -10985,6 +10985,40 @@ model IproSayacOkuma {
   @@map("ipro_sayac_okuma")
 }
 
+// Vardiya tanımları — OEE kullanılabilirlik/planlı-zaman hesabının 1. halkası (Melike #5).
+// SADECE VERİ GİRİŞİ: hesap/rapor bu modelde YOK. is-basla/is-bitir/poller dokunmaz.
+// Saatler string "HH:mm" (TZ tuzağı yok — hesap ileride dakikaya çevirir).
+model IproVardiya {
+  id              String   @id @default(cuid())
+  kod             String   @unique // VARDIYA-1, VARDIYA-2
+  ad              String // "1. Vardiya"
+  baslangicSaat   String // "07:00"
+  bitisSaat       String // "17:00"
+  ertesiGuneTasar Boolean  @default(false) // gece vardiyası: 21:00→07:00
+  sira            Int      @default(0)
+  aktif           Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("ipro_vardiya")
+}
+
+// İK çalışma takvimi — YALNIZ İSTİSNA günler. Pazar/Cumartesi vb. haftalık düzen KODDA
+// türetilir (tabloda tutulmaz); burada resmi tatil / yarım gün / normalde-kapalı-çalışılan gün.
+// tip: 'TATIL' | 'YARIM' | 'MESAI' (enum yerine string + validation — esnek). yil denormalize (filtre).
+model IproTatil {
+  id          String   @id @default(cuid())
+  tarih       DateTime @unique @db.Date // gün bazlı, tek kayıt/gün
+  tip         String // TATIL | YARIM | MESAI
+  aciklama    String
+  yil         Int // tarih'ten türetilir (filtre/özet)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([yil])
+  @@map("ipro_tatil")
+}
+
 model IproMachineDowntime {
   id            String           @id @default(cuid())
   tezgahId      String

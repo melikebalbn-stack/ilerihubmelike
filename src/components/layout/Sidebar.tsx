@@ -71,6 +71,7 @@ import {
   PinOff,
   PanelLeftClose,
   PanelLeftOpen,
+  CalendarDays,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, createContext, useContext } from "react"
@@ -181,6 +182,7 @@ const iproMenuItems = [
   { name: "Tezgahlar", icon: Factory, href: "/ipro/tezgahlar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Operatör Eşlemeleri", icon: Users, href: "/ipro/operator-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Hurda / Duruş Sebepleri", icon: ClipboardList, href: "/ipro/sebepler", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
+  { name: "Vardiya & Takvim", icon: CalendarDays, href: "/ipro/takvim", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "HR_MANAGER"] },
   { name: "Kiosk Cihazları", icon: MonitorSmartphone, href: "/ipro/kiosklar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
   { name: "IFS Eşlemeleri", icon: Link2, href: "/ipro/ifs-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
   { name: "Sinyal Takibi", icon: Radio, href: "/ipro/sinyal", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },

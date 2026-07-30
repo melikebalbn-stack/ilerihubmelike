@@ -126,6 +126,7 @@ export const PERMISSION_KEYS = {
   // === IPRO (MAS üretim takip — tanım ve kiosk yönetimi) ===
   IPRO_VIEW: 'ipro.view',
   IPRO_ADMIN: 'ipro.admin',
+  IPRO_TAKVIM_YONET: 'ipro.takvim.yonet',
 
   // === QDMS (Kalite Yönetim Sistemi) ===
   QDMS_VIEW: 'qdms.view',
@@ -250,6 +251,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'ipro.view': 'IPRO tanımlarını görüntüleme (tezgah/operatör/sebep/kiosk/IFS eşleme)',
   'ipro.admin': 'IPRO tam yönetim — tanım düzenleme + kiosk cihazı oluşturma (KIOSK rollü kullanıcı hesabı üretir)',
+  'ipro.takvim.yonet': 'IPRO çalışma takvimi yönetimi — İK tatil/yarım gün/mesai günü girişi (IPRO tamamı olmadan)',
 
   'uretim.bildirim': 'Üretim terminali — iş emri operasyonu bildirimi (IFS shop-floor)',
   'uretim.tezgah.manage': 'Tezgah tanımı ve personel atama',

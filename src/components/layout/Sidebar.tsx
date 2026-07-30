@@ -5,6 +5,7 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
+import { canAccessPersonnel } from "@/lib/auth/personnel-access"
 import {
   Home,
   Users,
@@ -389,6 +390,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Kullanıcı rolüne göre menü filtreleme
   const userRole = session?.user?.role || 'USER'
   const userDepartment = session?.user?.department || ''
+  // İV (Personel) menü görünürlüğü — sayfa guard'ıyla AYNI helper (personnel-access.ts):
+  // admin rol VEYA İnsan Varlıkları departmanı. "Görünüyorsa girebilir" tutarlılığı.
+  const canSeeIk = canAccessPersonnel(userRole, userDepartment)
   const userPermissions = session?.user?.permissions || []
 
   const filterItems = (items: typeof mainMenuItems) => items.filter(item => {
@@ -450,6 +454,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     ...(iaFlags.ik ? [iaIkItem] : []),
   ]
   const filteredOffboardingItems = filterItems(offboardingMenuItems)
+  // İV grubu görünürlüğü: en az bir alt öğe görünüyorsa başlık gösterilir
+  // (4 personnel öğesi canSeeIk ile; offboarding + strategicHr kendi kitleleriyle).
+  const showIkGroup =
+    canSeeIk || filteredOffboardingItems.length > 0 || filteredStrategicHrItems.length > 0
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(iaFlags.amir ? [iaAmirItem] : []),
@@ -834,6 +842,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
 
         {/* İK */}
+        {showIkGroup && (
         <button
           onClick={() => setIkOpen(!ikOpen)}
           className={cn(
@@ -851,12 +860,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <ChevronRight className="h-4 w-4" />
           )}
         </button>
-        {ikOpen && (
+        )}
+        {showIkGroup && ikOpen && (
           <div className="space-y-1 ml-4">
-            {renderMenuItem({ name: "Personel Yönetimi", icon: UserCog, href: "/personnel", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
-            {renderMenuItem({ name: "İK Raporları", icon: BarChart3, href: "/personnel/reports", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
-            {renderMenuItem({ name: "Bölüm Değişiklikleri", icon: ArrowRightLeft, href: "/personnel/department-transfers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
-            {renderMenuItem({ name: "Ayrılan Personel", icon: UserMinus, href: "/personnel/leavers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {canSeeIk && renderMenuItem({ name: "Personel Yönetimi", icon: UserCog, href: "/personnel", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {canSeeIk && renderMenuItem({ name: "İK Raporları", icon: BarChart3, href: "/personnel/reports", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {canSeeIk && renderMenuItem({ name: "Bölüm Değişiklikleri", icon: ArrowRightLeft, href: "/personnel/department-transfers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {canSeeIk && renderMenuItem({ name: "Ayrılan Personel", icon: UserMinus, href: "/personnel/leavers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
             {filteredOffboardingItems.map(item => renderMenuItem(item))}
             {/* {renderMenuItem({ name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"] })} */}
 

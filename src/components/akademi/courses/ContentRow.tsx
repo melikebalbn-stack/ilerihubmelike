@@ -33,16 +33,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 
-// Kursiyer görev durumu — rozet etiketi + renkleri (yeşil/gri/amber).
-const DURUM_ROZET: Record<
-  string,
-  { label: string; bg: string; color: string }
-> = {
-  ORNEK_YAPILDI: { label: "Örnek Yapıldı", bg: "var(--ak-green-glow)", color: "var(--ak-green)" },
-  FARKLI_DEPARTMAN: { label: "Farklı Departman", bg: "var(--ak-surface-secondary)", color: "var(--ak-text-secondary)" },
-  EGITIM_GEREKLI: { label: "Eğitim Gerekli", bg: "rgba(245,158,11,0.12)", color: "rgb(180,120,10)" },
-};
-
 // Açıklama modal'ı başlık/metni durum bazlı.
 const MODAL_METIN: Record<
   string,
@@ -67,6 +57,19 @@ const MODAL_METIN: Record<
     buton: "Eğitim Gerekli Olarak İşaretle",
   },
 };
+
+// Kursiyer durum butonları — üçü de görünür (dropdown'da gizli DEĞİL).
+// Aktif durumun butonu dolu (variant default), diğerleri outline.
+const DURUM_BUTONLAR: {
+  durum: string;
+  label: string;
+  renk: string;
+  Icon: typeof CheckCircle2;
+}[] = [
+  { durum: "ORNEK_YAPILDI", label: "Örnek Yaptım", renk: "var(--ak-green)", Icon: CheckCircle2 },
+  { durum: "FARKLI_DEPARTMAN", label: "Farklı Dept.", renk: "#64748b", Icon: Building2 },
+  { durum: "EGITIM_GEREKLI", label: "Eğitim Gerekli", renk: "#d97706", Icon: GraduationCap },
+];
 
 interface Props {
   content: ContentItem;
@@ -116,7 +119,6 @@ export function ContentRow({
   // Mevcut kursiyer durumu (completedByCurrentUser ile tutarlı fallback).
   const durum =
     content.kursiyerDurum ?? (isCompleted ? "ORNEK_YAPILDI" : "BEKLIYOR");
-  const rozet = DURUM_ROZET[durum];
 
   // Açıklama modal'ı — hangi durum için açıldığını da tutar.
   const [modalOpen, setModalOpen] = useState(false);
@@ -184,14 +186,6 @@ export function ContentRow({
           style={{ color: "var(--ak-text-tertiary)" }}
         >
           <span>{getContentTypeLabel(content.type)}</span>
-          {isGorev && rozet && (
-            <span
-              className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
-              style={{ background: rozet.bg, color: rozet.color }}
-            >
-              {rozet.label}
-            </span>
-          )}
           {isGorev && content.ifsMeta?.modul && (
             <>
               <span>•</span>
@@ -218,7 +212,7 @@ export function ContentRow({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {isGorev ? (
           <>
             {content.ifsMeta?.refDocUrl && (
@@ -251,61 +245,49 @@ export function ContentRow({
                 Video
               </a>
             )}
-            {/* Birincil: ORNEK_YAPILDI ise Geri Al, değilse Örnek Yaptım */}
-            {durum === "ORNEK_YAPILDI" ? (
-              <button
-                onClick={geriAl}
-                disabled={isMarking}
-                className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
-                style={{
-                  background: "var(--ak-surface-secondary)",
-                  color: "var(--ak-text-secondary)",
-                }}
-              >
-                {isMarking ? "..." : "Geri Al"}
-              </button>
-            ) : (
-              <button
-                onClick={() => openDurumModal("ORNEK_YAPILDI")}
-                disabled={isMarking}
-                className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
-                style={{ background: "var(--ak-green)", color: "#fff" }}
-              >
-                {isMarking ? "..." : "Örnek Yaptım"}
-              </button>
-            )}
-            {/* İkincil durumlar dropdown'da — satır taşmasın */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
+            {/* Üç durum da GÖRÜNÜR buton — aktif olan dolu, diğerleri outline. */}
+            {DURUM_BUTONLAR.map(({ durum: d, label, renk, Icon: BtnIcon }) => {
+              const aktif = durum === d;
+              return (
+                <Button
+                  key={d}
+                  size="sm"
+                  variant={aktif ? "default" : "outline"}
+                  onClick={() => openDurumModal(d)}
                   disabled={isMarking}
-                  aria-label="Diğer durumlar"
-                  className="px-2 py-1.5 rounded-[10px] transition-colors disabled:opacity-50"
-                  style={{
-                    background: "var(--ak-surface-secondary)",
-                    color: "var(--ak-text-secondary)",
-                  }}
+                  style={
+                    aktif
+                      ? { background: renk, color: "#fff", borderColor: renk }
+                      : { color: renk, borderColor: renk }
+                  }
                 >
-                  <MoreHorizontal className="w-4 h-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => openDurumModal("FARKLI_DEPARTMAN")}>
-                  <Building2 className="w-4 h-4 mr-2" />
-                  Farklı Departman
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openDurumModal("EGITIM_GEREKLI")}>
-                  <GraduationCap className="w-4 h-4 mr-2" />
-                  Eğitim Gerekli
-                </DropdownMenuItem>
-                {durum !== "BEKLIYOR" && (
+                  <BtnIcon className="w-3.5 h-3.5 mr-1" />
+                  {label}
+                </Button>
+              );
+            })}
+            {/* İkincil aksiyon: yalnız Geri Al dropdown'da (durum işaretliyse). */}
+            {durum !== "BEKLIYOR" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={isMarking}
+                    aria-label="Diğer"
+                    className="px-2"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={geriAl}>
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Geri Al (işareti kaldır)
                   </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </>
         ) : (
           <>

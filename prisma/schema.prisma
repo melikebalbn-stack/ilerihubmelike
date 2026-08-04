@@ -11019,6 +11019,50 @@ model IproTatil {
   @@map("ipro_tatil")
 }
 
+// OEE — ideal (en hızlı sürdürülebilir) çevrim süresi, tezgah+parça çifti başına.
+// Faz2 delta serisinden türetilir (isPenceresiDeltaToplami pencere-join). Parça (ifsPartNo)
+// birden çok tezgahta üretilebildiğinden anahtar TEZGAH+PARÇA. guvenilir=false iken performans
+// hesabına GİRMEZ (OEE kısmi kalır). Detay: [[oee-hesap]].
+model IproIdealCevrim {
+  id              String   @id @default(cuid())
+  tezgahKod       String
+  parcaKod        String // = ifsPartNo
+  idealSaniyeAdet Float // sn/adet, küçük = hızlı
+  ornekSayisi     Int      @default(0) // hesaba giren temiz gözlem adedi
+  guvenilir       Boolean  @default(false) // ornekSayisi eşiği geçti mi
+  hesaplananAt    DateTime @default(now())
+
+  @@unique([tezgahKod, parcaKod])
+  @@index([parcaKod])
+  @@map("ipro_ideal_cevrim")
+}
+
+// OEE — iş kapanınca hesaplanıp yazılan kayıt (1:1 kapalı iş). Sonradan değişmez (audit).
+// hesapKaynagi = TAM | PERF_YOK (ideal güvenilmez/yok) | PLANLI_YOK | CAKISMA_VAR (aynı tezgahta
+// zaman-örtüşen başka iş → atıf belirsiz, işaretlenir ama yine yazılır).
+model IproOeeKaydi {
+  id              String   @id @default(cuid())
+  productionLogId String   @unique // 1:1 kapalı iş
+  tezgahKod       String
+  parcaKod        String?
+  vardiyaId       String?
+  planliSaniye    Int
+  durusSaniye     Int      @default(0)
+  uretilenAdet    Int      @default(0)
+  iyiAdet         Int      @default(0)
+  idealSaniyeAdet Float? // hesap anındaki ideal snapshot
+  availability    Float?
+  performance     Float?
+  quality         Float?
+  oee             Float?
+  hesapKaynagi    String
+  hesaplananAt    DateTime @default(now())
+
+  @@index([tezgahKod, hesaplananAt])
+  @@index([vardiyaId])
+  @@map("ipro_oee_kaydi")
+}
+
 model IproMachineDowntime {
   id            String           @id @default(cuid())
   tezgahId      String

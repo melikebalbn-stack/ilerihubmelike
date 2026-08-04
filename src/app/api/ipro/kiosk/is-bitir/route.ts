@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiForbidden, apiBadRequest, apiNotFound } from '@/lib/api-response'
 import { birKaydiIfseYaz } from '@/lib/ipro/ifs-geri-yazim'
 import { faz2DeltaAktif, isPenceresiDeltaToplami } from '@/lib/ipro/faz2-delta'
+import { oeeKaydiHesaplaVeYaz } from '@/lib/ipro/oee-hesap'
 
 // POST /api/ipro/kiosk/is-bitir — body { tezgahId, personnelId, ifsOrderNo, ifsOperationNo,
 //   iyi, hurda, tamamlandi, hurdaSebebiKod? }. ACIK uretim satirini KAPALI'ya ceker (once bize yaz).
@@ -138,6 +139,13 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     // birKaydiIfseYaz kendi içinde catch'liyor; buradaki garanti, olası throw response'u bozmasın.
     ifsDenendi = { ok: false, hata: (e as Error)?.message ?? null }
+  }
+
+  // OEE motoru — iş kapanınca hesapla-yaz. BLOKLAMAZ: hata is-bitir'i 500 yapmaz (Faz2/mail deseni).
+  try {
+    await oeeKaydiHesaplaVeYaz(prisma, log.id)
+  } catch {
+    // OEE hesabı hatası response'u bozmaz (iş zaten kapandı). Ekran/rapor ayrı toparlar.
   }
 
   return apiSuccess({

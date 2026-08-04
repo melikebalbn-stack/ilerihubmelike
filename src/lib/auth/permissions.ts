@@ -126,6 +126,10 @@ export const PERMISSION_KEYS = {
   // === IPRO (MAS üretim takip — tanım ve kiosk yönetimi) ===
   IPRO_VIEW: 'ipro.view',
   IPRO_ADMIN: 'ipro.admin',
+
+  // === QDMS (Kalite Yönetim Sistemi) ===
+  QDMS_VIEW: 'qdms.view',
+  QDMS_MANAGE: 'qdms.manage',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -152,6 +156,7 @@ export const MODULE_LABELS: Record<string, string> = {
   uretim: 'Üretim',
   depo: 'Depo',
   ipro: 'IPRO Üretim Takip',
+  qdms: 'Kalite Yönetim Sistemi',
 };
 
 /**
@@ -249,4 +254,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'uretim.bildirim': 'Üretim terminali — iş emri operasyonu bildirimi (IFS shop-floor)',
   'uretim.tezgah.manage': 'Tezgah tanımı ve personel atama',
   'depo.terminal.use': 'Depo el terminali erişimi',
+
+  'qdms.view': 'Kalite Yönetim Sistemi görüntüleme (doküman/CAPA/denetim/risk/tedarikçi/eğitim/değişiklik/uygunsuzluk/şikayet)',
+  'qdms.manage': 'Kalite Yönetim Sistemi yönetim — oluşturma/düzenleme/doküman onayı',
 };

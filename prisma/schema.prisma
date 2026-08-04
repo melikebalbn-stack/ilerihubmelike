@@ -9353,6 +9353,16 @@ enum OrnekStatus {
   TEKRAR_GEREKLI
 }
 
+// Kursiyer-tarafı görev durumu (eğitmen ornekStatus'ından BAĞIMSIZ, birbirini dışlar).
+// BEKLIYOR: dokunulmadı · ORNEK_YAPILDI: örnek yaptı · FARKLI_DEPARTMAN: görev bu
+// kişiye ait değil (kurs paydasından düşer) · EGITIM_GEREKLI: eğitim talep etti (tamamlanmadı).
+enum KursiyerGorevDurum {
+  BEKLIYOR
+  ORNEK_YAPILDI
+  FARKLI_DEPARTMAN
+  EGITIM_GEREKLI
+}
+
 model IfsTaskEvaluation {
   id                String      @id @default(cuid())
   contentId         String
@@ -9360,6 +9370,8 @@ model IfsTaskEvaluation {
   egitimVerildi     Boolean     @default(false)
   uygulamaliYapildi Boolean     @default(false)
   ornekYapildi      Boolean     @default(false)
+  // Kursiyer görev durumu — ornekYapildi=true olduğunda ORNEK_YAPILDI'ya eşlenir (mirror korunur).
+  kursiyerDurum     KursiyerGorevDurum @default(BEKLIYOR)
   // Kursiyer-tarafı: "Örnek Yaptım" derken NE yaptığını yazdığı açıklama
   // (değerlendiren ekip okuyup ornekStatus verir). Nullable → eski kayıtlar null.
   ornekAciklama     String?     @db.Text

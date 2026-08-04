@@ -50,6 +50,8 @@ export interface ContentItem {
   completedByCurrentUser: boolean;
   // IFS: kursiyerin "Örnek Yaptım" açıklaması (varsa) — modal prefill için.
   ornekAciklama?: string | null;
+  // IFS-DURUM: kursiyer görev durumu (BEKLIYOR|ORNEK_YAPILDI|FARKLI_DEPARTMAN|EGITIM_GEREKLI).
+  kursiyerDurum?: string | null;
   // IFS-4: yalnız type=GOREV içeriklerde dolu.
   ifsMeta?: IfsTaskMetaView | null;
 }

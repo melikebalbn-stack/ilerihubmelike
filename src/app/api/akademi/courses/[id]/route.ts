@@ -31,7 +31,7 @@ export async function GET(
           ifsEvaluations: {
             where: { userId },
             take: 1,
-            select: { ornekAciklama: true },
+            select: { ornekAciklama: true, kursiyerDurum: true },
           },
           ifsMeta: true,
         },
@@ -83,6 +83,7 @@ export async function GET(
         order: c.order,
         completedByCurrentUser: Boolean(contentProg?.completed),
         ornekAciklama: c.ifsEvaluations[0]?.ornekAciklama ?? null,
+        kursiyerDurum: c.ifsEvaluations[0]?.kursiyerDurum ?? null,
         ifsMeta: c.ifsMeta
           ? {
               modul: c.ifsMeta.modul,

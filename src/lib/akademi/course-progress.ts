@@ -57,18 +57,38 @@ export async function recomputeCourseProgress(
       .map((c) => c.id);
     const totalGorev = gorevIds.length;
 
-    let selfMarkedCount = 0;
     if (totalGorev > 0) {
-      selfMarkedCount = await prisma.contentProgress.count({
+      // FARKLI_DEPARTMAN görevler o kullanıcının paydasından düşer (görev ona ait değil).
+      // EGITIM_GEREKLI paydada KALIR (tamamlanmadı) → completed=false olduğundan pay'a girmez.
+      const farkliDepartmanCount = await prisma.ifsTaskEvaluation.count({
         where: {
           userId,
           contentId: { in: gorevIds },
-          completed: true,
+          kursiyerDurum: "FARKLI_DEPARTMAN",
         },
       });
+      const applicableGorev = totalGorev - farkliDepartmanCount;
+
+      if (applicableGorev > 0) {
+        // Pay: ORNEK_YAPILDI (ContentProgress.completed=true; diğer durumlar completed=false)
+        const selfMarkedCount = await prisma.contentProgress.count({
+          where: {
+            userId,
+            contentId: { in: gorevIds },
+            completed: true,
+          },
+        });
+        percentage = Math.min(
+          100,
+          Math.round((selfMarkedCount / applicableGorev) * 100)
+        );
+      } else {
+        // Tüm görevler FARKLI_DEPARTMAN → kapsam dışı; %100 DEĞİL (kullanıcının bu kursta işi yok).
+        percentage = 0;
+      }
+    } else {
+      percentage = 0;
     }
-    percentage =
-      totalGorev > 0 ? Math.round((selfMarkedCount / totalGorev) * 100) : 0;
 
     const courseEval = await prisma.ifsCourseEvaluation.findUnique({
       where: { userId_courseId: { userId, courseId } },

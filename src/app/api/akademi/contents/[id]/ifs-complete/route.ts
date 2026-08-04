@@ -3,13 +3,37 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { recomputeCourseProgress } from "@/lib/akademi/course-progress";
+import { KursiyerGorevDurum } from "@/generated/prisma";
 import { NextResponse } from "next/server";
 
-// IFS-4: Kullanıcı GOREV görevini "Örnek Yaptım" işaretler (veya geri alır).
-// Tek doğruluk kaynağı ContentProgress'tir; IfsTaskEvaluation.ornekYapildi onu
-// mirror'lar. contents/[id]/progress pattern'i reuse — ek olarak evaluation upsert
-// ve ATAMA guard'ı. Diğer içerik tiplerinin tamamlama akışı (progress endpoint)
-// bu endpoint'ten etkilenmez.
+// IFS-4/IFS-DURUM: Kullanıcı GOREV görev durumunu işaretler.
+// Tek doğruluk kaynağı ContentProgress.completed'tir; IfsTaskEvaluation.ornekYapildi
+// (rapor + progress mirror) ve kursiyerDurum onu takip eder.
+//
+// Durumlar (birbirini dışlar):
+//   ORNEK_YAPILDI   → completed=true  (örnek yaptı; açıklama zorunlu)
+//   FARKLI_DEPARTMAN→ completed=false (görev bu kişiye ait değil → kurs paydasından düşer; açıklama zorunlu)
+//   EGITIM_GEREKLI  → completed=false (eğitim talep etti; açıklama zorunlu)
+//   BEKLIYOR        → completed=false (geri al; açıklama gerekmez, mevcut ornekAciklama SAKLANIR)
+
+// Açıklama zorunlu olan durumlar
+const ACIKLAMA_ZORUNLU: KursiyerGorevDurum[] = [
+  KursiyerGorevDurum.ORNEK_YAPILDI,
+  KursiyerGorevDurum.FARKLI_DEPARTMAN,
+  KursiyerGorevDurum.EGITIM_GEREKLI,
+];
+
+function resolveDurum(body: { durum?: unknown; done?: unknown }): KursiyerGorevDurum | null {
+  // Yeni client: durum. Geriye uyum: eski client { done } gönderiyor.
+  if (typeof body.durum === "string") {
+    const d = body.durum as KursiyerGorevDurum;
+    return (Object.values(KursiyerGorevDurum) as string[]).includes(d) ? d : null;
+  }
+  // Eski akış: done=true → ORNEK_YAPILDI, done=false → BEKLIYOR (undefined → true)
+  const done = body.done === undefined ? true : Boolean(body.done);
+  return done ? KursiyerGorevDurum.ORNEK_YAPILDI : KursiyerGorevDurum.BEKLIYOR;
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -22,18 +46,27 @@ export async function POST(
   const { id } = await params;
 
   const body = (await req.json().catch(() => ({}))) as {
+    durum?: unknown;
     done?: unknown;
     aciklama?: unknown;
   };
-  const done = body.done === undefined ? true : Boolean(body.done);
-  // Kursiyer açıklaması yalnız done=true akışında anlamlı; done=true ise ZORUNLU.
+
+  const durum = resolveDurum(body);
+  if (!durum) {
+    return NextResponse.json({ error: "Geçersiz durum" }, { status: 400 });
+  }
+  const done = durum === KursiyerGorevDurum.ORNEK_YAPILDI;
+
   const aciklama =
     typeof body.aciklama === "string" ? body.aciklama.trim() : "";
-  if (done && !aciklama) {
-    return NextResponse.json(
-      { error: "Lütfen ne yaptığınızı kısaca açıklayın." },
-      { status: 400 }
-    );
+  if (ACIKLAMA_ZORUNLU.includes(durum) && !aciklama) {
+    const mesaj =
+      durum === KursiyerGorevDurum.FARKLI_DEPARTMAN
+        ? "Lütfen neden farklı departman olduğunu açıklayın."
+        : durum === KursiyerGorevDurum.EGITIM_GEREKLI
+        ? "Lütfen hangi konuda eğitim gerektiğini açıklayın."
+        : "Lütfen ne yaptığınızı kısaca açıklayın.";
+    return NextResponse.json({ error: mesaj }, { status: 400 });
   }
 
   const content = await prisma.content.findFirst({
@@ -50,8 +83,7 @@ export async function POST(
     );
   }
 
-  // GUARD: kullanıcı yalnız KENDİNE ATANMIŞ görevi işaretleyebilir.
-  // (Kursa ait bir CourseAssignment'a UserCourseAssignment ile bağlıysa atanmış.)
+  // GUARD: kullanıcı yalnız KENDİNE ATANMIŞ görevi işaretleyebilir (DEĞİŞMEDİ).
   const assigned = await prisma.userCourseAssignment.findFirst({
     where: { userId, assignment: { courseId: content.courseId } },
     select: { id: true },
@@ -68,25 +100,28 @@ export async function POST(
     select: { completedAt: true },
   });
 
+  // Açıklama yalnız zorunlu durumlarda yazılır; BEKLIYOR'da mevcut açıklama SAKLANIR.
+  const aciklamaData = ACIKLAMA_ZORUNLU.includes(durum)
+    ? { ornekAciklama: aciklama }
+    : {};
+
   await prisma.$transaction(async (tx) => {
-    // IFS-özel değerlendirme: ornekYapildi (diğer alanlar IFS-5'te eğitmence).
-    // done=true → ornekAciklama'yı da yaz. done=false (Geri Al) → açıklamaya
-    // DOKUNMA (sakla; yeniden işaretlemede modal eski metni önceler).
     await tx.ifsTaskEvaluation.upsert({
       where: { userId_contentId: { userId, contentId: content.id } },
       create: {
         userId,
         contentId: content.id,
+        kursiyerDurum: durum,
         ornekYapildi: done,
-        ...(done ? { ornekAciklama: aciklama } : {}),
+        ...aciklamaData,
       },
       update: {
+        kursiyerDurum: durum,
         ornekYapildi: done,
-        ...(done ? { ornekAciklama: aciklama } : {}),
+        ...aciklamaData,
       },
     });
 
-    // Tek doğruluk kaynağı: ContentProgress.
     await tx.contentProgress.upsert({
       where: { userId_contentId: { userId, contentId: content.id } },
       create: {
@@ -102,11 +137,11 @@ export async function POST(
     });
   });
 
-  // Transaction dışında: kurs ilerlemesini yeniden hesapla → Departman Panosu yansır.
   const progress = await recomputeCourseProgress(userId, content.courseId);
 
   return NextResponse.json({
     success: true,
+    durum,
     ornekYapildi: done,
     percentage: progress?.percentage ?? 0,
     isCompleted: !!progress?.completedAt,

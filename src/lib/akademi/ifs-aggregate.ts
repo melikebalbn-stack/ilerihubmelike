@@ -51,12 +51,18 @@ export interface IfsKisiRow {
   pct: number;
   seviye: Seviye | null;
   not: string | null;
+  // IFS-DURUM: kursiyer-tarafı sayaçlar.
+  farkliDepartman: number;
+  egitimGerekli: number;
 }
 export interface IfsTotals {
   userCount: number;
   seviyeDist: IfsSeviyeDist;
   ornekStatusDist: IfsStatusDist;
   avgPct: number;
+  // IFS-DURUM: kapsamdaki toplam kursiyer-tarafı işaretler.
+  farkliDepartman: number;
+  egitimGerekli: number;
 }
 
 export interface IfsAggregateResult {
@@ -161,7 +167,7 @@ export async function computeIfsAggregate(
     gorevIds.length && uids.length
       ? prisma.ifsTaskEvaluation.findMany({
           where: { contentId: { in: gorevIds }, userId: { in: uids } },
-          select: { userId: true, ornekStatus: true },
+          select: { userId: true, ornekStatus: true, kursiyerDurum: true },
         })
       : [],
     uids.length
@@ -173,10 +179,17 @@ export async function computeIfsAggregate(
   ]);
 
   const basariliByUser = new Map<string, number>();
+  // IFS-DURUM: kursiyer-tarafı iki yeni sayaç (eğitmen ornekStatus'ından bağımsız).
+  const farkliByUser = new Map<string, number>();
+  const egitimByUser = new Map<string, number>();
   const statusByBolum = new Map<string, IfsStatusDist>();
   for (const r of taskRows) {
     if (r.ornekStatus === "BASARILI")
       basariliByUser.set(r.userId, (basariliByUser.get(r.userId) ?? 0) + 1);
+    if (r.kursiyerDurum === "FARKLI_DEPARTMAN")
+      farkliByUser.set(r.userId, (farkliByUser.get(r.userId) ?? 0) + 1);
+    else if (r.kursiyerDurum === "EGITIM_GEREKLI")
+      egitimByUser.set(r.userId, (egitimByUser.get(r.userId) ?? 0) + 1);
     const b = userBolum.get(r.userId);
     if (!b) continue;
     const d = statusByBolum.get(b) ?? emptyStatus();
@@ -204,6 +217,8 @@ export async function computeIfsAggregate(
         pct: gorevCount > 0 ? Math.round((bas / gorevCount) * 100) : 0,
         seviye: (ce?.seviye ?? null) as Seviye | null,
         not: ce?.not ?? null,
+        farkliDepartman: farkliByUser.get(u.id) ?? 0,
+        egitimGerekli: egitimByUser.get(u.id) ?? 0,
       };
     })
     .sort((a, b) => b.pct - a.pct || a.ad.localeCompare(b.ad, "tr"));
@@ -263,6 +278,9 @@ export async function computeIfsAggregate(
       seviyeDist: totalSeviye,
       ornekStatusDist: totalStatus,
       avgPct: totalUserCount > 0 ? Math.round(totalPctSum / totalUserCount) : 0,
+      // Kapsamdaki kullanıcılar üzerinden (boş bölümlerde bu işaretler zaten olmaz).
+      farkliDepartman: kisiRows.reduce((s, k) => s + k.farkliDepartman, 0),
+      egitimGerekli: kisiRows.reduce((s, k) => s + k.egitimGerekli, 0),
     },
   };
 }

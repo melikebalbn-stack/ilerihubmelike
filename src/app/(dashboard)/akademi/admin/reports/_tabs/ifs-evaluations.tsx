@@ -67,6 +67,7 @@ interface EvalCell {
   ornekYapildi: boolean;
   ornekAciklama: string | null;
   ornekStatus: OrnekStatus;
+  kursiyerDurum: string;
   projeEkibiYorum: string | null;
   danismanYorum: string | null;
 }
@@ -167,6 +168,7 @@ export function IfsEvaluationsTab() {
         ornekYapildi: false,
         ornekAciklama: null,
         ornekStatus: "PENDING",
+        kursiyerDurum: "BEKLIYOR",
         projeEkibiYorum: null,
         danismanYorum: null,
       };
@@ -545,20 +547,40 @@ export function IfsEvaluationsTab() {
                           <Flag on={Boolean(e?.uygulamaliYapildi)} />
                         )}
                       </td>
-                      {/* Kursiyer "Örnek Yaptım" — SALT-OKUNUR bilgi rozeti. */}
+                      {/* Kursiyer durumu — SALT-OKUNUR bilgi rozeti (Örnek Yapıldı / Farklı Departman / Eğitim Gerekli). */}
                       <td className="px-2 py-2 text-center">
-                        {e?.ornekYapildi ? (
-                          <Badge variant="secondary" title="Kursiyer denedi olarak işaretledi">
-                            Denedi
-                          </Badge>
-                        ) : (
-                          <span
-                            className="text-xs"
-                            style={{ color: "var(--ak-text-tertiary)" }}
-                          >
-                            —
-                          </span>
-                        )}
+                        {(() => {
+                          const kd = e?.kursiyerDurum ?? "BEKLIYOR";
+                          if (kd === "ORNEK_YAPILDI")
+                            return (
+                              <Badge variant="secondary" title="Kursiyer örnek yaptığını işaretledi">
+                                Denedi
+                              </Badge>
+                            );
+                          if (kd === "FARKLI_DEPARTMAN")
+                            return (
+                              <Badge
+                                title="Kursiyer bu görevi farklı departman olarak işaretledi (paydadan düşer)"
+                                style={{ background: "var(--ak-surface-secondary)", color: "var(--ak-text-secondary)" }}
+                              >
+                                Farklı Dept.
+                              </Badge>
+                            );
+                          if (kd === "EGITIM_GEREKLI")
+                            return (
+                              <Badge
+                                title="Kursiyer bu konuda eğitim gerektiğini işaretledi"
+                                style={{ background: "rgba(245,158,11,0.15)", color: "rgb(180,120,10)" }}
+                              >
+                                Eğitim Gerekli
+                              </Badge>
+                            );
+                          return (
+                            <span className="text-xs" style={{ color: "var(--ak-text-tertiary)" }}>
+                              —
+                            </span>
+                          );
+                        })()}
                       </td>
                       {/* Kursiyer açıklaması — SALT-OKUNUR; ekip okuyup statü verir. */}
                       <td className="px-3 py-2 align-top">

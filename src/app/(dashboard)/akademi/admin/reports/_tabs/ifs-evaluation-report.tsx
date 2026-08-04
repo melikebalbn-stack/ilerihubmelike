@@ -89,6 +89,8 @@ interface BolumData {
     seviyeDist: SeviyeDist;
     ornekStatusDist: StatusDist;
     avgPct: number;
+    farkliDepartman?: number;
+    egitimGerekli?: number;
   };
 }
 interface KisiData {
@@ -451,6 +453,8 @@ function BolumView({
         />
         <Card label="Ortalama Başarılı %" value={`%${t.avgPct}`} />
         <Card label="Tamamlayan (Başarılı)" value={t.seviyeDist.BASARILI} />
+        <Card label="Farklı Departman" value={t.farkliDepartman ?? 0} />
+        <Card label="Eğitim Gerekli" value={t.egitimGerekli ?? 0} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

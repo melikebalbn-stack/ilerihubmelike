@@ -9,6 +9,10 @@ import {
   ListChecks,
   Eye,
   CheckCircle2,
+  MoreHorizontal,
+  Building2,
+  GraduationCap,
+  RotateCcw,
 } from "lucide-react";
 import { getContentTypeLabel, formatDuration } from "@/lib/akademi-helpers";
 import type { ContentItem } from "@/types/akademi";
@@ -20,19 +24,60 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+
+// Kursiyer görev durumu — rozet etiketi + renkleri (yeşil/gri/amber).
+const DURUM_ROZET: Record<
+  string,
+  { label: string; bg: string; color: string }
+> = {
+  ORNEK_YAPILDI: { label: "Örnek Yapıldı", bg: "var(--ak-green-glow)", color: "var(--ak-green)" },
+  FARKLI_DEPARTMAN: { label: "Farklı Departman", bg: "var(--ak-surface-secondary)", color: "var(--ak-text-secondary)" },
+  EGITIM_GEREKLI: { label: "Eğitim Gerekli", bg: "rgba(245,158,11,0.12)", color: "rgb(180,120,10)" },
+};
+
+// Açıklama modal'ı başlık/metni durum bazlı.
+const MODAL_METIN: Record<
+  string,
+  { title: string; desc: string; placeholder: string; buton: string }
+> = {
+  ORNEK_YAPILDI: {
+    title: "Ne yaptınız? (kısa açıklama)",
+    desc: "Bu görevde örnek olarak ne yaptığınızı kısaca yazın. Değerlendiren ekip okuyacak.",
+    placeholder: "Örn. IFS ekranında ... kaydını oluşturdum / ... işlemini uyguladım.",
+    buton: "Örnek Yaptım",
+  },
+  FARKLI_DEPARTMAN: {
+    title: "Neden farklı departman?",
+    desc: "Bu görev sizin bölümünüze ait değilse kısaca nedenini yazın. Bu görev ilerlemenizden düşülür.",
+    placeholder: "Örn. Bu ekran satınalma bölümüne ait, benim görevim değil.",
+    buton: "Farklı Departman",
+  },
+  EGITIM_GEREKLI: {
+    title: "Hangi konuda eğitim gerekli?",
+    desc: "Bu görevi yapabilmek için hangi konuda eğitime ihtiyacınız olduğunu yazın.",
+    placeholder: "Örn. IFS ... modülünde eğitim almadım, uygulamalı destek gerekiyor.",
+    buton: "Eğitim Gerekli Olarak İşaretle",
+  },
+};
 
 interface Props {
   content: ContentItem;
   index: number;
   onOpen: (content: ContentItem) => void;
   onMarkComplete: (contentId: string) => Promise<void>;
-  // IFS-4: GOREV görevleri için "Örnek Yaptım" / geri al.
-  // "Örnek Yaptım" (done=true) artık zorunlu açıklama taşır.
-  onGorevDone?: (
+  // IFS-DURUM: GOREV görev durumu (ORNEK_YAPILDI / FARKLI_DEPARTMAN / EGITIM_GEREKLI / BEKLIYOR).
+  // Açıklama zorunlu durumlarda modal ile alınır.
+  onGorevDurum?: (
     contentId: string,
-    done: boolean,
+    durum: string,
     aciklama?: string
   ) => Promise<void>;
   isMarking: boolean;
@@ -59,7 +104,7 @@ export function ContentRow({
   index,
   onOpen,
   onMarkComplete,
-  onGorevDone,
+  onGorevDurum,
   isMarking,
 }: Props) {
   const Icon = ICONS[content.type];
@@ -68,21 +113,34 @@ export function ContentRow({
   const isGorev = content.type === "GOREV";
   const canView = Boolean(content.filePath || content.fileUrl);
 
-  // "Örnek Yaptım" zorunlu-açıklama modal'ı.
-  const [modalOpen, setModalOpen] = useState(false);
-  const [aciklama, setAciklama] = useState("");
+  // Mevcut kursiyer durumu (completedByCurrentUser ile tutarlı fallback).
+  const durum =
+    content.kursiyerDurum ?? (isCompleted ? "ORNEK_YAPILDI" : "BEKLIYOR");
+  const rozet = DURUM_ROZET[durum];
 
-  const openOrnekModal = () => {
+  // Açıklama modal'ı — hangi durum için açıldığını da tutar.
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalDurum, setModalDurum] = useState<string>("ORNEK_YAPILDI");
+  const [aciklama, setAciklama] = useState("");
+  const modalMetin = MODAL_METIN[modalDurum] ?? MODAL_METIN.ORNEK_YAPILDI;
+
+  const openDurumModal = (d: string) => {
+    setModalDurum(d);
     // Yeniden işaretlemede mevcut açıklamayı önele (düzenlenebilir).
     setAciklama(content.ornekAciklama ?? "");
     setModalOpen(true);
   };
 
-  const confirmOrnek = async () => {
+  const confirmDurum = async () => {
     const text = aciklama.trim();
     if (!text) return;
-    await onGorevDone?.(content.id, true, text);
+    await onGorevDurum?.(content.id, modalDurum, text);
     setModalOpen(false);
+  };
+
+  // Geri Al → BEKLIYOR (açıklama gerekmez; mevcut açıklama sunucuda saklanır).
+  const geriAl = async () => {
+    await onGorevDurum?.(content.id, "BEKLIYOR");
   };
 
   return (
@@ -126,6 +184,14 @@ export function ContentRow({
           style={{ color: "var(--ak-text-tertiary)" }}
         >
           <span>{getContentTypeLabel(content.type)}</span>
+          {isGorev && rozet && (
+            <span
+              className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+              style={{ background: rozet.bg, color: rozet.color }}
+            >
+              {rozet.label}
+            </span>
+          )}
           {isGorev && content.ifsMeta?.modul && (
             <>
               <span>•</span>
@@ -185,9 +251,10 @@ export function ContentRow({
                 Video
               </a>
             )}
-            {isCompleted ? (
+            {/* Birincil: ORNEK_YAPILDI ise Geri Al, değilse Örnek Yaptım */}
+            {durum === "ORNEK_YAPILDI" ? (
               <button
-                onClick={() => onGorevDone?.(content.id, false)}
+                onClick={geriAl}
                 disabled={isMarking}
                 className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
                 style={{
@@ -199,7 +266,7 @@ export function ContentRow({
               </button>
             ) : (
               <button
-                onClick={openOrnekModal}
+                onClick={() => openDurumModal("ORNEK_YAPILDI")}
                 disabled={isMarking}
                 className="px-3 py-1.5 text-xs font-semibold rounded-[10px] transition-colors disabled:opacity-50"
                 style={{ background: "var(--ak-green)", color: "#fff" }}
@@ -207,6 +274,38 @@ export function ContentRow({
                 {isMarking ? "..." : "Örnek Yaptım"}
               </button>
             )}
+            {/* İkincil durumlar dropdown'da — satır taşmasın */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  disabled={isMarking}
+                  aria-label="Diğer durumlar"
+                  className="px-2 py-1.5 rounded-[10px] transition-colors disabled:opacity-50"
+                  style={{
+                    background: "var(--ak-surface-secondary)",
+                    color: "var(--ak-text-secondary)",
+                  }}
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => openDurumModal("FARKLI_DEPARTMAN")}>
+                  <Building2 className="w-4 h-4 mr-2" />
+                  Farklı Departman
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openDurumModal("EGITIM_GEREKLI")}>
+                  <GraduationCap className="w-4 h-4 mr-2" />
+                  Eğitim Gerekli
+                </DropdownMenuItem>
+                {durum !== "BEKLIYOR" && (
+                  <DropdownMenuItem onClick={geriAl}>
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Geri Al (işareti kaldır)
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         ) : (
           <>
@@ -245,20 +344,19 @@ export function ContentRow({
       </div>
     </div>
 
-      {/* "Örnek Yaptım" — zorunlu kursiyer açıklaması (done=true). */}
+      {/* Durum açıklaması — ORNEK_YAPILDI / FARKLI_DEPARTMAN / EGITIM_GEREKLI (zorunlu). */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Ne yaptınız? (kısa açıklama)</DialogTitle>
+            <DialogTitle>{modalMetin.title}</DialogTitle>
             <DialogDescription>
-              {content.title} görevinde örnek olarak ne yaptığınızı kısaca
-              yazın. Değerlendiren ekip bu açıklamayı okuyacak.
+              <span className="font-medium">{content.title}</span> — {modalMetin.desc}
             </DialogDescription>
           </DialogHeader>
           <Textarea
             value={aciklama}
             onChange={(e) => setAciklama(e.target.value)}
-            placeholder="Örn. IFS ekranında ... kaydını oluşturdum / ... işlemini uyguladım."
+            placeholder={modalMetin.placeholder}
             rows={4}
             autoFocus
           />
@@ -271,10 +369,10 @@ export function ContentRow({
               Vazgeç
             </Button>
             <Button
-              onClick={confirmOrnek}
+              onClick={confirmDurum}
               disabled={isMarking || aciklama.trim() === ""}
             >
-              {isMarking ? "Kaydediliyor..." : "Örnek Yaptım"}
+              {isMarking ? "Kaydediliyor..." : modalMetin.buton}
             </Button>
           </DialogFooter>
         </DialogContent>

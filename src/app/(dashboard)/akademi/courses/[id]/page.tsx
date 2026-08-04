@@ -66,9 +66,9 @@ export default function AkademiCourseDetailPage() {
   };
 
   // IFS-4: GOREV "Örnek Yaptım" / geri al — ayrı endpoint (atama guard + evaluation).
-  const handleGorevDone = async (
+  const handleGorevDurum = async (
     contentId: string,
-    done: boolean,
+    durum: string,
     aciklama?: string
   ) => {
     if (markingId) return;
@@ -79,7 +79,9 @@ export default function AkademiCourseDetailPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(done ? { done, aciklama } : { done }),
+          body: JSON.stringify(
+            aciklama ? { durum, aciklama } : { durum }
+          ),
         }
       );
       if (!res.ok) {
@@ -170,7 +172,7 @@ export default function AkademiCourseDetailPage() {
               index={i}
               onOpen={setViewerContent}
               onMarkComplete={handleMarkComplete}
-              onGorevDone={handleGorevDone}
+              onGorevDurum={handleGorevDurum}
               isMarking={markingId === c.id}
             />
           ))}

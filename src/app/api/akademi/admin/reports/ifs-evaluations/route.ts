@@ -127,6 +127,7 @@ export async function GET(req: NextRequest) {
       ornekYapildi: boolean;
       ornekAciklama: string | null;
       ornekStatus: string;
+      kursiyerDurum: string;
       degerlendirildiAt: string | null;
       projeEkibiYorum: string | null;
       danismanYorum: string | null;
@@ -155,6 +156,7 @@ export async function GET(req: NextRequest) {
             ornekYapildi: true,
             ornekAciklama: true,
             ornekStatus: true,
+            kursiyerDurum: true,
             degerlendirildiAt: true,
             projeEkibiYorum: true,
             danismanYorum: true,
@@ -171,6 +173,7 @@ export async function GET(req: NextRequest) {
         ornekYapildi: e?.ornekYapildi ?? false,
         ornekAciklama: e?.ornekAciklama ?? null,
         ornekStatus: e?.ornekStatus ?? "PENDING",
+        kursiyerDurum: e?.kursiyerDurum ?? "BEKLIYOR",
         degerlendirildiAt: e?.degerlendirildiAt?.toISOString() ?? null,
         projeEkibiYorum: e?.projeEkibiYorum ?? null,
         danismanYorum: e?.danismanYorum ?? null,

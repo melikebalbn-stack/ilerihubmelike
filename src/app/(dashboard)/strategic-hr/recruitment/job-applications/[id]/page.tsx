@@ -163,6 +163,33 @@ type StageLogRow = {
   changedByName: string | null
   changedByTitle: string | null
 }
+
+// Aşama geçmişini "değerlendirme turlarına" böler (SALT GÖRÜNTÜLEME — veri değişmez).
+// Yeni tur: kapalı statüden (REJECTED/ACCEPTED/ISE_BASLADI/HIRED) aktif statüye
+// re-open geçişi. Amaç: aynı başvuruda birden çok tur olunca ileri-geri zıplama
+// görsel olarak "N. tur" halinde anlaşılsın. Tek turlu başvurularda tur başlığı gizli.
+const CLOSED_STATUSES = new Set(["REJECTED", "ACCEPTED", "ISE_BASLADI", "HIRED"])
+type StageRound = { round: number; reopenAt: string | null; logs: StageLogRow[] }
+
+function groupLogsIntoRounds(logs: StageLogRow[]): StageRound[] {
+  const sorted = [...logs].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  )
+  const rounds: StageRound[] = []
+  for (const log of sorted) {
+    const isReopen =
+      !!log.fromStatus && CLOSED_STATUSES.has(log.fromStatus) && !CLOSED_STATUSES.has(log.toStatus)
+    if (rounds.length === 0) {
+      rounds.push({ round: 1, reopenAt: null, logs: [log] })
+    } else if (isReopen) {
+      rounds.push({ round: rounds.length + 1, reopenAt: log.createdAt, logs: [log] })
+    } else {
+      rounds[rounds.length - 1].logs.push(log)
+    }
+  }
+  return rounds
+}
+
 type ManagerOption = { id: string; name: string; departmentName: string | null; isDeputy: boolean }
 type UnmatchedManager = { personnelId: string; adSoyad: string | null; departmentName: string | null; isDeputy: boolean }
 type ManagersResp = { onerilenler: ManagerOption[]; tumAktif: ManagerOption[]; unmatchedManagers: UnmatchedManager[] }
@@ -1066,36 +1093,69 @@ export default function JobApplicationDetailPage() {
             <CardContent>
               {logs.length === 0 ? (
                 <div className="text-sm text-muted-foreground">Henuz asama gecisi yok.</div>
-              ) : (
-                <ol className="space-y-4">
-                  {logs.map((log) => (
-                    <li key={log.id} className="relative border-l-2 border-slate-200 pl-4">
-                      <div className="text-xs text-muted-foreground">
-                        {format(new Date(log.createdAt), "d MMM yyyy HH:mm", { locale: tr })}
-                        {log.changedByName && (
-                          <>
-                            {" · "}
-                            {log.changedByName}
-                            {log.changedByTitle ? ` (${log.changedByTitle})` : ""}
-                          </>
+              ) : (() => {
+                // (a) kronolojik ASC + (b) turlara böl (saf fonksiyon, veri değişmez)
+                const rounds = groupLogsIntoRounds(logs)
+                const cokTur = rounds.length > 1 // (c) tek turda tur başlığı gizli
+                return (
+                  <div className="space-y-5">
+                    {rounds.map((r) => (
+                      <div key={r.round}>
+                        {cokTur && (
+                          <div className="mb-2 flex items-center gap-2">
+                            <span
+                              className={`text-xs font-semibold ${
+                                r.round === 1 ? "text-slate-500" : "text-amber-600"
+                              }`}
+                            >
+                              {r.round === 1
+                                ? "1. Değerlendirme Turu"
+                                : `🔄 ${r.round}. Değerlendirme Turu (yeniden açıldı · ${format(
+                                    new Date(r.reopenAt!),
+                                    "d MMM HH:mm",
+                                    { locale: tr },
+                                  )})`}
+                            </span>
+                            <div className="h-px flex-1 bg-slate-200" />
+                          </div>
                         )}
+                        <ol className="space-y-4">
+                          {r.logs.map((log) => (
+                            <li key={log.id} className="relative border-l-2 border-slate-200 pl-4">
+                              {/* (c) timeline noktası */}
+                              <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-slate-300" />
+                              <div className="text-xs text-muted-foreground">
+                                <span className="font-medium text-slate-700">
+                                  {format(new Date(log.createdAt), "d MMM yyyy HH:mm", { locale: tr })}
+                                </span>
+                                {log.changedByName && (
+                                  <>
+                                    {" · "}
+                                    <span className="font-medium text-slate-600">{log.changedByName}</span>
+                                    {log.changedByTitle ? ` (${log.changedByTitle})` : ""}
+                                  </>
+                                )}
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
+                                {log.fromStatus ? (
+                                  <JobApplicationStatusBadge status={log.fromStatus} />
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Basvuru olusturuldu</span>
+                                )}
+                                <span className="text-muted-foreground">&rarr;</span>
+                                <JobApplicationStatusBadge status={log.toStatus} />
+                              </div>
+                              {log.note && (
+                                <div className="mt-1 text-xs text-slate-600 whitespace-pre-wrap">{log.note}</div>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
-                        {log.fromStatus ? (
-                          <JobApplicationStatusBadge status={log.fromStatus} />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Basvuru olusturuldu</span>
-                        )}
-                        <span className="text-muted-foreground">&rarr;</span>
-                        <JobApplicationStatusBadge status={log.toStatus} />
-                      </div>
-                      {log.note && (
-                        <div className="mt-1 text-xs text-slate-600 whitespace-pre-wrap">{log.note}</div>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              )}
+                    ))}
+                  </div>
+                )
+              })()}
               {/* Sınav olayları — session'dan TÜRETİLİR (StageLog'a yazılmaz), bilgi satırı */}
               {app.sinavlar && (app.sinavlar.aktif || app.sinavlar.gecmis.length > 0) && (() => {
                 const oturumlar = [app.sinavlar.aktif, ...app.sinavlar.gecmis].filter(Boolean) as OturumOzeti[]

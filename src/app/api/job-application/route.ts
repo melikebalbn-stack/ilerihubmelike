@@ -8,8 +8,8 @@ import path from 'path'
 import { existsSync } from 'fs'
 import { sendEmail } from '@/lib/email'
 import { resolveHRRecipients } from '@/lib/hr-notifications'
-import { verifyConsentedDraft } from '@/lib/job-application/consent-guard'
-import { DRAFT_COOKIE_NAME } from '@/lib/job-application/draft-cookie'
+import { verifyConsentedDraft, isDraftStatus } from '@/lib/job-application/consent-guard'
+import { DRAFT_COOKIE_NAME, verifyDraftToken } from '@/lib/job-application/draft-cookie'
 import { maasBeklentisiGecerliMi } from '@/lib/recruitment/salary'
 import { basvuruTakipImzasi } from '@/lib/recruitment/basvuru-takip'
 import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
@@ -23,6 +23,22 @@ export async function POST(request: NextRequest) {
     const draftToken = request.cookies.get(DRAFT_COOKIE_NAME)?.value
     const consentedApplicationId = await verifyConsentedDraft(draftToken)
     if (!consentedApplicationId) {
+      // FIX 1: cookie+consent geçerli ama başvuru ARTIK taslak değilse (zaten
+      // gönderilmiş/işlenmiş) → NET 409. Cookie yeniden kullanımıyla reddedilmiş
+      // bir başvurunun yeni formla ezilmesini engeller (İzzet→Yaşar vakası).
+      const rawId = verifyDraftToken(draftToken)
+      if (rawId) {
+        const existing = await prisma.publicJobApplication.findUnique({
+          where: { id: rawId },
+          select: { status: true },
+        })
+        if (existing && !isDraftStatus(existing.status)) {
+          return NextResponse.json(
+            { error: 'Bu başvuru zaten gönderilmiş/işlenmiş' },
+            { status: 409 }
+          )
+        }
+      }
       return NextResponse.json(
         { error: 'Önce KVKK onayını tamamlamalısınız.' },
         { status: 403 }
@@ -262,13 +278,23 @@ export async function POST(request: NextRequest) {
       // Bildirim hatası başvuruyu engellemez
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       applicationNumber: application.applicationNumber,
       // Tablet teşekkür ekranı public durum yoklaması için imza (sır yanıtta DEĞİL, türev).
       takipImzasi: basvuruTakipImzasi(application.id),
       message: 'Başvurunuz başarıyla kaydedildi'
     })
+    // FIX 2: final submit tamamlandı → taslak cookie'sini geçersizleştir.
+    // Aynı tarayıcıda ikinci bir formun bu (artık PENDING) başvuruyu ezmesini önler.
+    res.cookies.set(DRAFT_COOKIE_NAME, '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+    })
+    return res
   } catch (error) {
     console.error('İş başvurusu kaydedilirken hata:', error)
     return NextResponse.json({ error: 'Sunucu hatası oluştu' }, { status: 500 })

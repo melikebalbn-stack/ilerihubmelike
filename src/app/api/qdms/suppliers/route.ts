@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
+import { qdmsAccessResult } from "@/lib/auth/qdms-access"
 import { prisma } from "@/lib/prisma"
-import { requireSession } from "@/lib/auth/require-session"
 
 // GET - Tedarikçileri listele
 export async function GET(request: NextRequest) {
   try {
-    // PR-Y2.5-qdms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // QDMS-RBAC: qdmsAccessResult (kalite ekibi/admin VEYA qdms.view|manage)
+    const { error } = await qdmsAccessResult('view')
     if (error) return error
 
     const { searchParams } = new URL(request.url)
@@ -50,8 +50,8 @@ export async function GET(request: NextRequest) {
 // POST - Yeni tedarikçi oluştur
 export async function POST(request: NextRequest) {
   try {
-    // PR-Y2.5-qdms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // QDMS-RBAC: qdmsAccessResult (kalite ekibi/admin VEYA qdms.view|manage)
+    const { error } = await qdmsAccessResult('manage')
     if (error) return error
 
     const body = await request.json()

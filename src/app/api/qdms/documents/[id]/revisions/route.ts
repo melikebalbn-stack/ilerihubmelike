@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { qdmsAccessResult } from "@/lib/auth/qdms-access"
 import { prisma } from "@/lib/prisma"
-import { requireSession } from "@/lib/auth/require-session"
 
 // GET - Revizyon geçmişini getir
 export async function GET(
@@ -8,8 +8,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-qdms: requireSession (userId JWT'de mevcut)
-    const { userId, error } = await requireSession()
+    // QDMS-RBAC: qdmsAccessResult (kalite ekibi/admin VEYA qdms.view|manage)
+    const { userId, error } = await qdmsAccessResult('view')
     if (error) return error
 
     const { id } = await params
@@ -49,8 +49,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-qdms: requireSession (userId JWT'de mevcut)
-    const { userId, error } = await requireSession()
+    // QDMS-RBAC: qdmsAccessResult (kalite ekibi/admin VEYA qdms.view|manage)
+    const { userId, error } = await qdmsAccessResult('manage')
     if (error) return error
 
     const { id } = await params

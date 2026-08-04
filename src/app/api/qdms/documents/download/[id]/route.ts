@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { qdmsAccessResult } from "@/lib/auth/qdms-access"
 import { prisma } from "@/lib/prisma"
 import { readdir } from "fs/promises"
 import { createReadStream, existsSync, statSync } from "fs"
 import path from "path"
 import { Readable } from "stream"
-import { requireSession } from "@/lib/auth/require-session"
 
 // Node.js stream'i Web ReadableStream'e dönüştür
 function nodeStreamToWebStream(nodeStream: Readable): ReadableStream<Uint8Array> {
@@ -47,8 +47,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-qdms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // QDMS-RBAC: qdmsAccessResult (kalite ekibi/admin VEYA qdms.view|manage)
+    const { error } = await qdmsAccessResult('view')
     if (error) return error
 
     const { id } = await params

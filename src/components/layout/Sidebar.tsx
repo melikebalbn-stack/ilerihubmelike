@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { canAccessPersonnel } from "@/lib/auth/personnel-access"
+import { canAccessKalite } from "@/lib/auth/kalite-access"
 import {
   Home,
   Users,
@@ -211,15 +212,15 @@ const offboardingMenuItems = [
 
 // Kalite Yönetim Sistemi (KYS) alt menüsü
 const qdmsMenuItems = [
-  { name: "Doküman Kontrolü", icon: FileCheck, href: "/qdms/documents", roles: ["*"] },
-  { name: "CAPA", icon: AlertTriangle, href: "/qdms/capa", roles: ["*"] },
-  { name: "İç Denetim", icon: ClipboardCheck, href: "/qdms/audits", roles: ["*"] },
-  { name: "Risk Yönetimi", icon: Scale, href: "/qdms/risks", roles: ["*"] },
-  { name: "Tedarikçi Yönetimi", icon: Truck, href: "/qdms/suppliers", roles: ["*"] },
-  { name: "Eğitim Yönetimi", icon: BookOpen, href: "/qdms/training", roles: ["*"] },
-  { name: "Değişiklik Yönetimi", icon: GitBranch, href: "/qdms/changes", roles: ["*"] },
-  { name: "Uygunsuzluk", icon: FileWarning, href: "/qdms/ncr", roles: ["*"] },
-  { name: "Müşteri Şikayetleri", icon: MessageCircle, href: "/qdms/complaints", roles: ["*"] },
+  { name: "Doküman Kontrolü", icon: FileCheck, href: "/qdms/documents", roles: [] },
+  { name: "CAPA", icon: AlertTriangle, href: "/qdms/capa", roles: [] },
+  { name: "İç Denetim", icon: ClipboardCheck, href: "/qdms/audits", roles: [] },
+  { name: "Risk Yönetimi", icon: Scale, href: "/qdms/risks", roles: [] },
+  { name: "Tedarikçi Yönetimi", icon: Truck, href: "/qdms/suppliers", roles: [] },
+  { name: "Eğitim Yönetimi", icon: BookOpen, href: "/qdms/training", roles: [] },
+  { name: "Değişiklik Yönetimi", icon: GitBranch, href: "/qdms/changes", roles: [] },
+  { name: "Uygunsuzluk", icon: FileWarning, href: "/qdms/ncr", roles: [] },
+  { name: "Müşteri Şikayetleri", icon: MessageCircle, href: "/qdms/complaints", roles: [] },
 ]
 
 // Kalite — ölçüm/kalibrasyon modülleri (İleri Teknik'ten taşındı, "Kalite" üst grubunun doğrudan altında)
@@ -394,6 +395,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // admin rol VEYA İnsan Varlıkları departmanı. "Görünüyorsa girebilir" tutarlılığı.
   const canSeeIk = canAccessPersonnel(userRole, userDepartment)
   const userPermissions = session?.user?.permissions || []
+  const userOu = session?.user?.ou || ''
+  // QDMS (Kalite Yönetim) menü görünürlüğü — layout + API guard'ıyla AYNI koşul:
+  // kalite ekibi/admin (canAccessKalite) VEYA qdms.view permission.
+  const canSeeQdms = canAccessKalite(userRole, userDepartment, userOu) || userPermissions.includes('qdms.view')
 
   const filterItems = (items: typeof mainMenuItems) => items.filter(item => {
     // Permission tabanlı erişim: item'da `permission` varsa TEK belirleyici
@@ -441,7 +446,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredMainItems = filterItems(mainMenuItems)
   const filteredTeknikItems = filterItems(teknikMenuItems)
   const filteredIproItems = filterItems(iproMenuItems)
-  const filteredQdmsItems = filterItems(qdmsMenuItems)
+  // QDMS öğeleri artık filterItems (roles) ile değil, canSeeQdms ile gate'lenir
+  // (koşul layout/API guard'ıyla birebir). roles alanı vestigial.
+  const filteredQdmsItems = canSeeQdms ? qdmsMenuItems : []
   const filteredKaliteItems = filterItems(kaliteMenuItems)
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)
@@ -734,8 +741,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </>
         )}
 
-        {/* Kalite Yönetim Sistemi */}
-        {filteredQdmsItems.length > 0 && (
+        {/* Kalite Yönetim Sistemi — dış grup: kalibrasyon (herkes) / KYS / ISO'dan biri görünüyorsa */}
+        {(filteredKaliteItems.length > 0 || filteredQdmsItems.length > 0 || filteredAuditsItems.length > 0) && (
           <>
             <button
               onClick={() => setQdmsOpen(!qdmsOpen)}
@@ -759,7 +766,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {/* Ölçüm/kalibrasyon modülleri (İleri Teknik'ten taşındı) */}
                 {filteredKaliteItems.map(item => renderMenuItem(item))}
 
-                {/* Kalite Yönetim alt-grubu */}
+                {/* Kalite Yönetim alt-grubu — başlık: KYS öğeleri (canSeeQdms) VEYA Denetimler görünüyorsa */}
+                {(filteredQdmsItems.length > 0 || filteredAuditsItems.length > 0) && (
+                <>
                 <button
                   onClick={() => setKaliteYonetimOpen(!kaliteYonetimOpen)}
                   className={cn(
@@ -835,6 +844,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   </>
                 )}
                   </div>
+                )}
+                </>
                 )}
               </div>
             )}

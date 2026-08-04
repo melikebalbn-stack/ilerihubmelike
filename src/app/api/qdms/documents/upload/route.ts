@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
+import { qdmsAccessResult } from "@/lib/auth/qdms-access"
 import { prisma } from "@/lib/prisma"
 import { writeFile, mkdir } from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
-import { requireSession } from "@/lib/auth/require-session"
 
 // İzin verilen dosya tipleri
 const ALLOWED_TYPES = [
@@ -26,8 +26,8 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024
 // POST - Dosya yükle
 export async function POST(request: NextRequest) {
   try {
-    // PR-Y2.5-qdms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // QDMS-RBAC: qdmsAccessResult (kalite ekibi/admin VEYA qdms.view|manage)
+    const { error } = await qdmsAccessResult('manage')
     if (error) return error
 
     const formData = await request.formData()

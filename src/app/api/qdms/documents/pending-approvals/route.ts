@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
+import { qdmsAccessResult } from "@/lib/auth/qdms-access"
 import { prisma } from "@/lib/prisma"
-import { requireUser } from "@/lib/auth/require-user"
 
 // GET - Onay bekleyen dokümanları listele (Kalite Müdürü için)
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-qdms: requireUser — role check icin
-    const { user: dbUser, error } = await requireUser()
+    const { user: dbUser, error } = await qdmsAccessResult('view')
     if (error) return error
 
     // Sadece QUALITY_MANAGER veya ADMIN görebilir

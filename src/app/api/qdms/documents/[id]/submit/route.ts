@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { qdmsAccessResult } from "@/lib/auth/qdms-access"
 import { prisma } from "@/lib/prisma"
-import { requireSession } from "@/lib/auth/require-session"
 
 // POST - Dokümanı onaya gönder
 export async function POST(
@@ -8,8 +8,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-qdms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // QDMS-RBAC: qdmsAccessResult (kalite ekibi/admin VEYA qdms.view|manage)
+    const { error } = await qdmsAccessResult('manage')
     if (error) return error
 
     const { id } = await params

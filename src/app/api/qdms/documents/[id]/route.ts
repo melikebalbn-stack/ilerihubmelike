@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { qdmsAccessResult } from "@/lib/auth/qdms-access"
 import { prisma } from "@/lib/prisma"
-import { requireSession } from "@/lib/auth/require-session"
-import { requireUser } from "@/lib/auth/require-user"
 
 // PR-OWNERSHIP-AUDIT: Doküman düzenleme/silme için owner veya QM yetkisi
 const QM_ROLES = ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] as const
@@ -12,8 +11,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-qdms: requireSession (basit auth gate)
-    const { error } = await requireSession()
+    // QDMS-RBAC: qdmsAccessResult (kalite ekibi/admin VEYA qdms.view|manage)
+    const { error } = await qdmsAccessResult('view')
     if (error) return error
 
     const { id } = await params
@@ -67,7 +66,7 @@ export async function PATCH(
 ) {
   try {
     // PR-OWNERSHIP-AUDIT: requireUser — owner ID karşılaştırması için
-    const { user, error } = await requireUser()
+    const { user, error } = await qdmsAccessResult('manage')
     if (error) return error
 
     const { id } = await params
@@ -133,7 +132,7 @@ export async function DELETE(
 ) {
   try {
     // PR-OWNERSHIP-AUDIT: requireUser — owner ID karşılaştırması için
-    const { user, error } = await requireUser()
+    const { user, error } = await qdmsAccessResult('manage')
     if (error) return error
 
     const { id } = await params

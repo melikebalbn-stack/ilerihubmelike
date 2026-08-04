@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
+import { qdmsAccessResult } from "@/lib/auth/qdms-access"
 import { prisma } from "@/lib/prisma"
 import * as crypto from "crypto"
 import { v4 as uuidv4 } from "uuid"
-import { requireUser } from "@/lib/auth/require-user"
 
 // Dijital imza hash'i oluştur
 function generateSignatureHash(
@@ -24,7 +24,7 @@ export async function POST(
 ) {
   try {
     // PR-Y2.5-qdms: requireUser — dijital imza için user.email/name gerek
-    const { user: dbUser, error } = await requireUser()
+    const { user: dbUser, error } = await qdmsAccessResult('manage')
     if (error) return error
 
     // Sadece QUALITY_MANAGER veya ADMIN onaylayabilir

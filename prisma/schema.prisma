@@ -10946,7 +10946,7 @@ model IproProductionLog {
   durum              IproIsDurum         @default(KAPALI)
   baslatildiAt       DateTime? // "başla" anı; açık iş için dolu
   bitirildiAt        DateTime? // "bitir"/"durdur" anı; kapanınca dolu
-  tamamlandi         Boolean             @default(true) // true = tam bitirildi; false = durduruldu/eksik. Eski kayıtlar true.
+  tamamlandi         Boolean             @default(false) // ACIK dogar false; kiosk "bitir" is-bitir'de true yazar. Eski kayitlar true.
   // IFS geri-yazım — çift bayrak. reportQuantityComplete (iyi) + reportQuantityScrap (hurda)
   // AYRI action'lar; biri başarıp biri başarısız olabilir → ayrı izlenir.
   // Eski ifsYazildi/ifsHata şimdilik dokunulmadan duruyor (ileride temizlenir — ayrı iş).

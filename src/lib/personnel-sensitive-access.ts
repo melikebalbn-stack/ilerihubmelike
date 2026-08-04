@@ -20,3 +20,27 @@ export function canViewSensitive(
   if (role && SENSITIVE_VIEW_ROLES.includes(role)) return true
   return !!permissions?.includes(SENSITIVE_VIEW_PERMISSION)
 }
+
+// ── DÜZENLEME yetkisi — TEK KAYNAK (buton + PUT aynı kuralı kullanır, asimetri olmaz).
+// Legacy rol ADMIN/SUPER_ADMIN VEYA İnsan Varlıkları bölümü.
+export const SENSITIVE_EDIT_ROLES = ['ADMIN', 'SUPER_ADMIN']
+
+// Bölüm İK mi? İki farklı kaynak yakalanır: Personnel.bolum ("İNSAN VARLIKLARI" /
+// "İNSAN VARLIKLARI MÜDÜRLÜĞÜ") ve User.department ("İnsan Varliklari Departmanı").
+// NFD-normalize + aksan-strip + lowercase → Türkçe İ/i + "Departmanı"/"Müdürlüğü"
+// eki toleransı (can-manage-menu deseni). 'insan varliklari' contains ile eşle.
+function normBolum(s: string | null | undefined): string {
+  return (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+}
+
+export function isIkBolum(bolum: string | null | undefined): boolean {
+  return normBolum(bolum).includes('insan varliklari')
+}
+
+export function canEditSensitive(
+  role: string | null | undefined,
+  bolum: string | null | undefined,
+): boolean {
+  if (role && SENSITIVE_EDIT_ROLES.includes(role)) return true
+  return isIkBolum(bolum)
+}

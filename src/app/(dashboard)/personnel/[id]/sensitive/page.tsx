@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
-import { canViewSensitive } from "@/lib/personnel-sensitive-access"
+import { canViewSensitive, canEditSensitive } from "@/lib/personnel-sensitive-access"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,7 +35,6 @@ type SensitiveData = {
   updatedAt: string | null
 }
 
-const EDIT_ROLES = ["ADMIN", "SUPER_ADMIN"]
 const NAVY = "#1B4F72"
 
 export default function SensitivePage() {
@@ -47,9 +46,12 @@ export default function SensitivePage() {
   // RBAC-farkında görüntüleme yetkisi (route ile AYNI helper): legacy role VEYA
   // "HR Yöneticisi" permission (calisanrehberi.admin). İK Sorumlusu artık açabilir.
   const perms = (session?.user as { permissions?: string[] } | undefined)?.permissions
+  // Düzenleme yetkisi: legacy rol VEYA İK bölümü (User.department session'dan gelir).
+  // PUT ile AYNI helper (canEditSensitive) — asimetri olmaz.
+  const userBolum = (session?.user as { department?: string } | undefined)?.department
 
   const isAdmin = canViewSensitive(userRole, perms)
-  const canEdit = EDIT_ROLES.includes(userRole)
+  const canEdit = canEditSensitive(userRole, userBolum)
 
   const [data, setData] = useState<SensitiveData | null>(null)
   const [form, setForm] = useState<Record<string, any>>({})

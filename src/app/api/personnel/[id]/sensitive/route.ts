@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { canViewSensitive } from '@/lib/personnel-sensitive-access'
+import { canViewSensitive, canEditSensitive } from '@/lib/personnel-sensitive-access'
 
 export const dynamic = 'force-dynamic'
-
-const UPDATE_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
 function maskValue(value: string | null | undefined): string | null {
   if (!value) return null
@@ -109,7 +107,12 @@ export async function PUT(
     const { user, error } = await requireUser()
     if (error) return error
 
-    if (!UPDATE_ROLES.includes(user.role)) {
+    // Düzenleme yetkisi (asıl güvenlik): legacy rol VEYA acting-user'ın İK bölümü.
+    // Buton (client) ile AYNI helper — bolum burada DB'den (Personnel.bolum) alınır.
+    const actorBolum = user.personnelId
+      ? (await prisma.personnel.findUnique({ where: { id: user.personnelId }, select: { bolum: true } }))?.bolum
+      : null
+    if (!canEditSensitive(user.role, actorBolum)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 

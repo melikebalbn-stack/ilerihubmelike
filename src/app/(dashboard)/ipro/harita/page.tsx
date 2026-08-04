@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
+import { HaritaCerceve } from '@/components/ipro/harita/HaritaCerceve'
 
 // Fabrika Haritası (izleme ekranı) — IPRO tezgahlarının izometrik temsili sahnesi.
 // Sahne tek dosyalık, kendi inline style/script'iyle çalışan bir HTML'dir; React'e
@@ -28,12 +29,8 @@ export default async function IproHaritaPage({
   // iframe: header hariç viewport'u kaplar. Dashboard <main> padding'ini (p-4/lg:p-6)
   // negatif margin ile geri alıp tam ekran veririz; border yok.
   return (
-    <div className="-m-4 lg:-m-6 h-[calc(100dvh-3.5rem)] lg:h-[calc(100dvh-4rem)]">
-      <iframe
-        src={src}
-        title="Fabrika Haritası"
-        className="h-full w-full border-0"
-      />
+    <div className="-m-4 h-[calc(100dvh-3.5rem)] lg:-m-6 lg:h-[calc(100dvh-4rem)]">
+      <HaritaCerceve src={src} />
     </div>
   )
 }

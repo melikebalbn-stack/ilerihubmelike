@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { ifsYuzde } from "./ifs-progress";
 
 // IFS değerlendirme AGGREGATE hesabı — ortak katman.
 // METRİK (route ve export ile AYNI): görev tamamlanma = ifsTaskEvaluation.ornek
@@ -214,7 +215,8 @@ export async function computeIfsAggregate(
         ad: u.name ?? u.email ?? u.id,
         basariliGorev: bas,
         gorevCount,
-        pct: gorevCount > 0 ? Math.round((bas / gorevCount) * 100) : 0,
+        // Pay = BASARILI (eğitmen); payda = ortak (gorevCount − FARKLI_DEPARTMAN).
+        pct: ifsYuzde(bas, gorevCount, farkliByUser.get(u.id) ?? 0),
         seviye: (ce?.seviye ?? null) as Seviye | null,
         not: ce?.not ?? null,
         farkliDepartman: farkliByUser.get(u.id) ?? 0,
@@ -237,7 +239,8 @@ export async function computeIfsAggregate(
     let pctSum = 0;
     for (const uid of list) {
       const bas = basariliByUser.get(uid) ?? 0;
-      pctSum += gorevCount > 0 ? (bas / gorevCount) * 100 : 0;
+      // Kişi bazlı: her kullanıcının kendi paydası (gorevCount − FARKLI), sonra ortalama.
+      pctSum += ifsYuzde(bas, gorevCount, farkliByUser.get(uid) ?? 0);
       const sev = seviyeByUser.get(uid);
       if (sev === "BASARILI" || sev === "EGITIM_GEREKLI" || sev === "BASARISIZ")
         seviyeDist[sev]++;

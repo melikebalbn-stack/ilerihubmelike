@@ -17,10 +17,10 @@ import { NextResponse } from "next/server";
 //   BEKLIYOR        → completed=false (geri al; açıklama gerekmez, mevcut ornekAciklama SAKLANIR)
 
 // Açıklama zorunlu olan durumlar
+// Açıklama YALNIZ ORNEK_YAPILDI'da zorunlu. FARKLI_DEPARTMAN / EGITIM_GEREKLI
+// tek tık (modal yok) → açıklama boş gelebilir, 400 dönmez; mevcut ornekAciklama korunur.
 const ACIKLAMA_ZORUNLU: KursiyerGorevDurum[] = [
   KursiyerGorevDurum.ORNEK_YAPILDI,
-  KursiyerGorevDurum.FARKLI_DEPARTMAN,
-  KursiyerGorevDurum.EGITIM_GEREKLI,
 ];
 
 function resolveDurum(body: { durum?: unknown; done?: unknown }): KursiyerGorevDurum | null {
@@ -60,13 +60,11 @@ export async function POST(
   const aciklama =
     typeof body.aciklama === "string" ? body.aciklama.trim() : "";
   if (ACIKLAMA_ZORUNLU.includes(durum) && !aciklama) {
-    const mesaj =
-      durum === KursiyerGorevDurum.FARKLI_DEPARTMAN
-        ? "Lütfen neden farklı departman olduğunu açıklayın."
-        : durum === KursiyerGorevDurum.EGITIM_GEREKLI
-        ? "Lütfen hangi konuda eğitim gerektiğini açıklayın."
-        : "Lütfen ne yaptığınızı kısaca açıklayın.";
-    return NextResponse.json({ error: mesaj }, { status: 400 });
+    // Yalnız ORNEK_YAPILDI açıklama ister.
+    return NextResponse.json(
+      { error: "Lütfen ne yaptığınızı kısaca açıklayın." },
+      { status: 400 }
+    );
   }
 
   const content = await prisma.content.findFirst({

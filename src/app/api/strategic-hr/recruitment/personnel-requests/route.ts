@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus, PersonnelRequestType, EmploymentType, JobPriority } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-request-alanlar";
 
 // Talep numarası oluştur
 async function generateRequestNumber(): Promise<string> {
@@ -129,6 +130,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // IV-FR-24 talep eden alanları — zod doğrulama (yaş min<=max dahil).
+    // İV kapanış alanları POST'ta ALINMAZ (maaş gibi; İK sonradan PUT ile girer).
+    const alanKontrol = talepAlanlariSchema.safeParse(body);
+    if (!alanKontrol.success) {
+      return NextResponse.json(
+        { error: alanKontrol.error.issues[0]?.message || "Geçersiz alan." },
+        { status: 400 }
+      );
+    }
+    const a = alanKontrol.data;
+
     const requestNumber = await generateRequestNumber();
 
     const personnelRequest = await prisma.personnelRequest.create({
@@ -154,7 +166,27 @@ export async function POST(request: NextRequest) {
         salaryMax: null,
         hasBudget: false,
         priority: (priority as JobPriority) || "MEDIUM",
-        status: (status as PersonnelRequestStatus) || "DRAFT"
+        status: (status as PersonnelRequestStatus) || "DRAFT",
+        // IV-FR-24 — talep eden alanları (İV kapanış alanları HARİÇ)
+        formHazirlanmaTarihi: tarihDon(a.formHazirlanmaTarihi),
+        ikTeslimTarihi: tarihDon(a.ikTeslimTarihi),
+        kisilikOzellikleri: a.kisilikOzellikleri ?? null,
+        egitimSeviyesi: a.egitimSeviyesi ?? null,
+        egitimDiger: a.egitimDiger ?? null,
+        tecrubeDurumu: a.tecrubeDurumu ?? null,
+        tecrubeSuresi: a.tecrubeSuresi ?? null,
+        yabanciDilGerekli: a.yabanciDilGerekli ?? null,
+        yabanciDiller: a.yabanciDiller ?? null,
+        bilgisayarBilgisi: a.bilgisayarBilgisi ?? null,
+        kaliteSistemBilgisi: a.kaliteSistemBilgisi ?? null,
+        ehliyetGerekli: a.ehliyetGerekli ?? null,
+        ehliyetSinifi: a.ehliyetSinifi ?? null,
+        digerBelgeIhtiyaci: a.digerBelgeIhtiyaci ?? null,
+        cinsiyetTercihi: a.cinsiyetTercihi ?? null,
+        yasAraligiMin: a.yasAraligiMin ?? null,
+        yasAraligiMax: a.yasAraligiMax ?? null,
+        askerlikGerekli: a.askerlikGerekli ?? null,
+        ayrilanPersonelAdi: a.ayrilanPersonelAdi ?? null,
       }
     });
 

@@ -40,6 +40,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TalepBilgisiEkSection } from "./_components/TalepBilgisiEkSection"
+import { ArananYetkinliklerSection } from "./_components/ArananYetkinliklerSection"
+import { InsanVarliklariSection } from "./_components/InsanVarliklariSection"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -202,6 +205,14 @@ interface PersonnelRequest {
     status: string
   } | null
   createdAt: string
+  // IV-FR-24 İnsan Varlıkları kapanış alanları (yalnız İK doldurur)
+  adayKaynaklari?: string[] | null
+  ilanPortallari?: string | null
+  adayKaynagiDiger?: string | null
+  kadroDoldurulmaTarihi?: string | null
+  iseBaslayanPersonelAdi?: string | null
+  ivOnayId?: string | null
+  ivOnayTarihi?: string | null
 }
 
 // Public Job Application - Dışarıdan gelen başvurular
@@ -445,8 +456,41 @@ export default function RecruitmentPage() {
     salaryMin: "",
     salaryMax: "",
     hasBudget: false,
-    priority: "MEDIUM"
+    priority: "MEDIUM",
+    // ── IV-FR-24 · Bölüm 1 ek + Bölüm 2 (Aranan Yetkinlikler) — talep eden doldurur ──
+    formHazirlanmaTarihi: "",
+    ikTeslimTarihi: "",
+    ayrilanPersonelAdi: "",
+    kisilikOzellikleri: "",
+    egitimSeviyesi: "",
+    egitimDiger: "",
+    tecrubeDurumu: "",
+    tecrubeSuresi: "",
+    yabanciDilGerekli: false,
+    yabanciDiller: "",
+    bilgisayarBilgisi: "",
+    kaliteSistemBilgisi: "",
+    ehliyetGerekli: false,
+    ehliyetSinifi: "",
+    digerBelgeIhtiyaci: "",
+    cinsiyetTercihi: "",
+    yasAraligiMin: "",
+    yasAraligiMax: "",
+    askerlikGerekli: false,
   })
+
+  // requestForm kısmi güncelleme yardımcısı (alt bileşenlere geçilir)
+  const setReq = (patch: Record<string, any>) => setRequestForm((f) => ({ ...f, ...patch }))
+
+  // İV kapanış formu (talep detayı — yalnız recruitment.admin doldurur/kaydeder)
+  const [ivForm, setIvForm] = useState<Record<string, any>>({
+    adayKaynaklari: [],
+    ilanPortallari: "",
+    adayKaynagiDiger: "",
+    kadroDoldurulmaTarihi: "",
+    iseBaslayanPersonelAdi: "",
+  })
+  const setIv = (patch: Record<string, any>) => setIvForm((f) => ({ ...f, ...patch }))
 
   useEffect(() => {
     fetchOpenings()
@@ -757,6 +801,12 @@ export default function RecruitmentPage() {
           salaryMin: requestForm.salaryMin ? parseInt(requestForm.salaryMin) : null,
           salaryMax: requestForm.salaryMax ? parseInt(requestForm.salaryMax) : null,
           preferredStartDate: requestForm.preferredStartDate || null,
+          // IV-FR-24: enum alanları boşsa null; yaş alanları number|null (zod bekliyor)
+          egitimSeviyesi: requestForm.egitimSeviyesi || null,
+          tecrubeDurumu: requestForm.tecrubeDurumu || null,
+          cinsiyetTercihi: requestForm.cinsiyetTercihi || null,
+          yasAraligiMin: requestForm.yasAraligiMin !== "" ? parseInt(requestForm.yasAraligiMin as any) : null,
+          yasAraligiMax: requestForm.yasAraligiMax !== "" ? parseInt(requestForm.yasAraligiMax as any) : null,
           status: submitForApproval ? "PENDING" : "DRAFT"
         })
       })
@@ -790,6 +840,26 @@ export default function RecruitmentPage() {
         }),
       })
       if (res.ok) { fetchRequests(); toast.success("Maas/butce bilgileri kaydedildi") }
+      else { const e = await res.json(); toast.error(e.error || "Kaydedilemedi") }
+    } catch { toast.error("Bir hata olustu") }
+  }
+
+  // İV kapanış bilgilerini kaydet (recruitment.admin). Sunucu ivOnay damgasını kendi atar.
+  const handleIvSave = async (requestId: string) => {
+    try {
+      const res = await fetch(`/api/strategic-hr/recruitment/personnel-requests/${requestId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          adayKaynaklari: Array.isArray(ivForm.adayKaynaklari) ? ivForm.adayKaynaklari : [],
+          ilanPortallari: ivForm.ilanPortallari || null,
+          adayKaynagiDiger: ivForm.adayKaynagiDiger || null,
+          kadroDoldurulmaTarihi: ivForm.kadroDoldurulmaTarihi || null,
+          iseBaslayanPersonelAdi: ivForm.iseBaslayanPersonelAdi || null,
+        }),
+      })
+      if (res.ok) { fetchRequests(); toast.success("Insan Varliklari bilgileri kaydedildi") }
       else { const e = await res.json(); toast.error(e.error || "Kaydedilemedi") }
     } catch { toast.error("Bir hata olustu") }
   }
@@ -861,7 +931,26 @@ export default function RecruitmentPage() {
       salaryMin: "",
       salaryMax: "",
       hasBudget: false,
-      priority: "MEDIUM"
+      priority: "MEDIUM",
+      formHazirlanmaTarihi: "",
+      ikTeslimTarihi: "",
+      ayrilanPersonelAdi: "",
+      kisilikOzellikleri: "",
+      egitimSeviyesi: "",
+      egitimDiger: "",
+      tecrubeDurumu: "",
+      tecrubeSuresi: "",
+      yabanciDilGerekli: false,
+      yabanciDiller: "",
+      bilgisayarBilgisi: "",
+      kaliteSistemBilgisi: "",
+      ehliyetGerekli: false,
+      ehliyetSinifi: "",
+      digerBelgeIhtiyaci: "",
+      cinsiyetTercihi: "",
+      yasAraligiMin: "",
+      yasAraligiMax: "",
+      askerlikGerekli: false,
     })
   }
 
@@ -1299,6 +1388,9 @@ export default function RecruitmentPage() {
                 </Select>
               </div>
 
+              {/* IV-FR-24 · Bölüm 1 ek alanları (form tarihleri, ayrılan personel, kişilik) */}
+              <TalepBilgisiEkSection form={requestForm} set={setReq} />
+
               {/* Maaş/bütçe TALEP FORMUNDAN çıkarıldı (Elif geri bildirimi) — birim müdürü
                   girmez; İK talep detayında girer. Alanlar şemada + İK görünümünde durur. */}
 
@@ -1324,7 +1416,7 @@ export default function RecruitmentPage() {
               </div>
 
               <div className="col-span-2">
-                <Label>Aranan Ozellikler</Label>
+                <Label>Aranan Ozellikler (serbest metin)</Label>
                 <Textarea
                   value={requestForm.requirements}
                   onChange={(e) => setRequestForm({ ...requestForm, requirements: e.target.value })}
@@ -1333,6 +1425,12 @@ export default function RecruitmentPage() {
                 />
               </div>
 
+            </div>
+
+            {/* IV-FR-24 · Bölüm 2: Aranan Yetkinlikler (yapılandırılmış alanlar) */}
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-3 text-[#1B4F72]">Aranan Yetkinlikler</h3>
+              <ArananYetkinliklerSection form={requestForm} set={setReq} />
             </div>
 
             <div className="flex justify-end gap-2">
@@ -1568,6 +1666,11 @@ export default function RecruitmentPage() {
                     </div>
                     <Button size="sm" className="mt-2 bg-[#1B4F72]" onClick={() => handleSalarySave(selectedRequest.id)}>Maaş/Bütçe Kaydet</Button>
                   </div>
+                )}
+
+                {/* IV-FR-24 · Bölüm 3: İnsan Varlıkları kapanış — YALNIZ recruitment.admin (İK) */}
+                {hasFullAccess && (
+                  <InsanVarliklariSection form={ivForm} set={setIv} onSave={() => handleIvSave(selectedRequest.id)} />
                 )}
 
                 <div>
@@ -2319,6 +2422,13 @@ export default function RecruitmentPage() {
                               <DropdownMenuItem onClick={() => {
                                 setSelectedRequest(req)
                                 setSalaryForm({ salaryMin: req.salaryMin != null ? String(req.salaryMin) : "", salaryMax: req.salaryMax != null ? String(req.salaryMax) : "", hasBudget: req.hasBudget })
+                                setIvForm({
+                                  adayKaynaklari: Array.isArray(req.adayKaynaklari) ? req.adayKaynaklari : [],
+                                  ilanPortallari: req.ilanPortallari || "",
+                                  adayKaynagiDiger: req.adayKaynagiDiger || "",
+                                  kadroDoldurulmaTarihi: req.kadroDoldurulmaTarihi ? String(req.kadroDoldurulmaTarihi).slice(0, 10) : "",
+                                  iseBaslayanPersonelAdi: req.iseBaslayanPersonelAdi || "",
+                                })
                                 setIsRequestDetailOpen(true)
                               }}>
                                 <Eye className="h-4 w-4 mr-2" />

@@ -89,6 +89,7 @@ export type EnvanterUrunListItem = {
   kritik: number
   durum: 'NORMAL' | 'KRITIK' | 'PASIF'
   varyantSayisi: number
+  varyantOzeti: string // Faz 2 — varyant kısa özeti (liste görünümü)
 }
 
 export type EnvanterUrunDetail = {
@@ -127,6 +128,8 @@ export type EnvanterUrunDetail = {
     raf: string | null
     durum: string
     varyantAdi: string | null
+    birimMaliyet: number | null // Faz 2 — birim maliyet
+    paraBirimi: string | null // Faz 2 — para birimi
   }[]
   hareketler: {
     id: string
@@ -136,5 +139,9 @@ export type EnvanterUrunDetail = {
     raf: string | null
     aciklama: string | null
     createdAt: string
+    bolum: string | null // Faz 2 — sarf dağıtım bölümü
+    alanPersonelAd: string | null // Faz 2 — alan personel
+    geriAlindi: boolean // Faz 2 — geri alma
+    hareketTipiRaw: string // Faz 2 — ham hareket tipi (enum değeri)
   }[]
 }

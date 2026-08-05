@@ -35,6 +35,8 @@ import {
   RefreshCw,
   Send,
   Clock,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -98,6 +100,18 @@ interface TicketStats {
   }
 }
 
+// ── Liste sıralama (client-side) ──
+type SortKey = "date" | "priority" | "wait" | "status"
+type SortState = { key: SortKey; dir: "asc" | "desc" }
+// Öncelik şiddet sırası (enum bildirim sırasıyla aynı; sıralama için sayısal rank)
+const PRIO_RANK: Record<string, number> = { TICKET_LOW: 0, NORMAL: 1, TICKET_HIGH: 2, TICKET_CRITICAL: 3 }
+// Durum iş-akışı sırası (görsel gruplama için)
+const STATUS_RANK: Record<string, number> = {
+  NEW: 0, REOPENED: 1, ASSIGNED: 2, IN_PROGRESS: 3, PENDING: 4, ON_HOLD: 5,
+  RESOLVED: 6, CLOSED: 7, CANCELLED: 8,
+}
+const ts = (d?: string | null) => (d ? new Date(d).getTime() : 0)
+
 export default function ITSupportPage() {
   const { data: session } = useSession()
   const router = useRouter()
@@ -109,6 +123,8 @@ export default function ITSupportPage() {
   const [activeTab, setActiveTab] = useState("my")
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  // Liste sıralaması — null iken grup-varsayılanı (açık: öncelik + en uzun bekleyen üstte)
+  const [sort, setSort] = useState<SortState | null>(null)
   const [priorityFilter, setPriorityFilter] = useState("all")
 
   // Yeni ticket dialog
@@ -519,6 +535,61 @@ export default function ITSupportPage() {
                     const acik = filteredTickets.filter((t) => acikSet.has(t.status))
                     const kapali = filteredTickets.filter((t) => !acikSet.has(t.status))
 
+                    // Client-side sıralama. sort===null → grup varsayılanı:
+                    //   açık: öncelik desc + en uzun bekleyen üstte (createdAt asc)
+                    //   kapalı: en son işlem göreni üstte (closedAt/resolvedAt/createdAt desc)
+                    const sortTickets = (list: Ticket[], isAcik: boolean): Ticket[] => {
+                      const arr = [...list]
+                      if (sort) {
+                        const mul = sort.dir === "asc" ? 1 : -1
+                        arr.sort((a, b) => {
+                          let d = 0
+                          if (sort.key === "date") d = ts(a.createdAt) - ts(b.createdAt)
+                          else if (sort.key === "priority") d = (PRIO_RANK[a.priority] ?? 1) - (PRIO_RANK[b.priority] ?? 1)
+                          else if (sort.key === "wait") d = ts(b.createdAt) - ts(a.createdAt) // uzun bekleyen = eski createdAt
+                          else if (sort.key === "status") d = (STATUS_RANK[a.status] ?? 99) - (STATUS_RANK[b.status] ?? 99)
+                          return d !== 0 ? d * mul : ts(a.createdAt) - ts(b.createdAt)
+                        })
+                        return arr
+                      }
+                      if (isAcik) {
+                        arr.sort((a, b) => {
+                          const p = (PRIO_RANK[b.priority] ?? 1) - (PRIO_RANK[a.priority] ?? 1)
+                          return p !== 0 ? p : ts(a.createdAt) - ts(b.createdAt)
+                        })
+                      } else {
+                        arr.sort((a, b) => ts(b.closedAt ?? b.resolvedAt ?? b.createdAt) - ts(a.closedAt ?? a.resolvedAt ?? a.createdAt))
+                      }
+                      return arr
+                    }
+                    const acikSorted = sortTickets(acik, true)
+                    const kapaliSorted = sortTickets(kapali, false)
+
+                    const toggleSort = (k: SortKey) =>
+                      setSort((s) => (s?.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "asc" }))
+                    // Tıklanabilir başlık (nested-component lint'i tetiklemesin diye fonksiyon çağrısı)
+                    const sortTh = (label: string, k?: SortKey, className?: string) => (
+                      <button
+                        type="button"
+                        onClick={k ? () => toggleSort(k) : undefined}
+                        className={`flex items-center gap-1 text-left ${k ? "hover:text-foreground" : "cursor-default"} ${className ?? ""}`}
+                      >
+                        {label}
+                        {k && sort?.key === k && (sort.dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                      </button>
+                    )
+                    const sortHeader = (
+                      <div className="grid items-center gap-3 px-3 py-1.5 text-xs font-semibold text-muted-foreground border-b bg-muted/20 grid-cols-[80px_minmax(0,1fr)_auto] md:grid-cols-[96px_minmax(0,1fr)_150px_140px_90px_80px_90px]">
+                        <span>No</span>
+                        <span>Konu</span>
+                        <span className="hidden md:block">Kategori</span>
+                        {sortTh("Bekleme", "wait", "hidden md:flex")}
+                        {sortTh("Durum", "status")}
+                        {sortTh("Öncelik", "priority", "hidden md:flex")}
+                        {sortTh("Tarih", "date", "hidden md:flex")}
+                      </div>
+                    )
+
                     const row = (ticket: Ticket, faded: boolean) => {
                       const open = isOpenStatus(ticket.status)
                       const age = open ? ticketAge(ticket.createdAt) : null
@@ -585,7 +656,8 @@ export default function ITSupportPage() {
                             <div className="px-3 py-2 text-xs font-semibold text-muted-foreground bg-muted/40 border-b">
                               Açık talepler ({acik.length})
                             </div>
-                            <div>{acik.map((t) => row(t, false))}</div>
+                            {sortHeader}
+                            <div>{acikSorted.map((t) => row(t, false))}</div>
                           </div>
                         )}
                         {kapali.length > 0 && (
@@ -593,7 +665,8 @@ export default function ITSupportPage() {
                             <div className="px-3 py-2 text-xs font-semibold text-muted-foreground bg-muted/40 border-b">
                               Çözülmüş / kapalı ({kapali.length})
                             </div>
-                            <div>{kapali.map((t) => row(t, false))}</div>
+                            {sortHeader}
+                            <div>{kapaliSorted.map((t) => row(t, false))}</div>
                           </div>
                         )}
                       </div>

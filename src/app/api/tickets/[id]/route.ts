@@ -76,7 +76,11 @@ export async function PUT(
     // Yetki kontrolü: Normal kullanıcılar sadece kendi ticket'larını güncelleyebilir
     // PR-EMAIL-NORMALIZE sonrası DB casing lowercase, user.email lowercase → match güvenli
     const isOwner = existingTicket.requesterEmail === user.email
-    if (!userIsITStaff && !isOwner) {
+    // İş 1: atanan teknisyen (assignedTo = e-posta) de ticket'ını yönetip KAPATABİLİR.
+    // Başkasının atanmadığı ticket'ta isAssignee false → yetki yok (eşleşme şart).
+    const isAssignee = !!existingTicket.assignedTo && existingTicket.assignedTo === user.email
+    const canChangeStatus = userIsITStaff || isAssignee
+    if (!userIsITStaff && !isOwner && !isAssignee) {
       return NextResponse.json({ error: 'Bu ticket\'ı güncelleme yetkiniz yok' }, { status: 403 })
     }
 
@@ -96,12 +100,14 @@ export async function PUT(
       satisfactionComment,
     } = body
 
-    // Normal kullanıcılar sadece belirli alanları güncelleyebilir
+    // Durum değiştirme: IT ekibi (helpdesk.admin) VEYA atanan teknisyen (İş 1).
+    // Diğerleri (yalnız owner/requester) sadece CANCELLED (iptal) yapabilir.
+    if (!canChangeStatus && status && !['CANCELLED'].includes(status)) {
+      return NextResponse.json({ error: 'Durum değiştirme yetkiniz yok' }, { status: 403 })
+    }
+
+    // Atama / öncelik / talep tipi yalnız IT ekibinde (atanan teknisyen bunları değiştiremez)
     if (!userIsITStaff) {
-      // Normal kullanıcı sadece memnuniyet puanı verebilir ve ticket'ı iptal edebilir
-      if (status && !['CANCELLED'].includes(status)) {
-        return NextResponse.json({ error: 'Durum değiştirme yetkiniz yok' }, { status: 403 })
-      }
       if (assignedTo !== undefined || assignedTeamId !== undefined) {
         return NextResponse.json({ error: 'Atama yapma yetkiniz yok' }, { status: 403 })
       }

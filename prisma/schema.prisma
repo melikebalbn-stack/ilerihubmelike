@@ -11221,6 +11221,17 @@ enum EnvanterZimmetDurum {
   IPTAL
 }
 
+// Faz 2 — bakım yönlendirme durum akışı
+enum BakimYonlendirmeDurum {
+  TESPIT_EDILDI
+  BAKIMA_YONLENDIRILDI
+  BAKIM_INCELEDI
+  KENDI_COZDU
+  SERVIS_TALEBI_ACILDI
+  TAMAMLANDI
+  IPTAL
+}
+
 model EnvanterUrun {
   id           String           @id @default(cuid())
   kod          String           @unique
@@ -11328,6 +11339,10 @@ model EnvanterStok {
   raf        String?
   durum      EnvanterStokDurum @default(EKSIK)
 
+  // Faz 2 — stok maliyet (nullable, additive)
+  birimMaliyet Float?
+  paraBirimi   String? @default("TL")
+
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   zimmetler EnvanterZimmet[]
@@ -11352,6 +11367,12 @@ model EnvanterStokHareket {
   depo        String?
   raf         String?
   aciklama    String?
+
+  // Faz 2 — sarf/dağıtım alan personeli + geri alma (nullable/default, additive)
+  alanPersonelAd String?
+  alanPersonelId String?
+  bolum          String?
+  geriAlindi     Boolean @default(false)
 
   personnelId String?
   createdById String?
@@ -11385,6 +11406,11 @@ model EnvanterZimmet {
 
   aciklama String?
 
+  // Faz 2 — KKD grup + verilme tarihi (nullable, additive)
+  kkdUstGrubu   String?
+  kkdAltGrubu   String?
+  verilmeTarihi DateTime?
+
   createdById String?
   createdAt   DateTime @default(now())
 
@@ -11393,6 +11419,30 @@ model EnvanterZimmet {
   @@index([urunId])
   @@index([durum])
   @@map("envanter_zimmet")
+}
+
+// Faz 2 — bakım yönlendirme (tespit → bakım/servis akışı). Yeni model, dış FK yok.
+model EnvanterBakimYonlendirme {
+  id      String @id @default(cuid())
+  kayitNo String @unique
+
+  tespitEdenId String?
+  tespitEdenAd String
+
+  konu               String
+  lokasyon           String?
+  aciklama           String?
+  yonlendirilenBirim String @default("Bakım")
+
+  durum           BakimYonlendirmeDurum @default(TESPIT_EDILDI)
+  servisReferansi String?
+  sonucNotu       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([durum])
+  @@map("envanter_bakim_yonlendirme")
 }
 
 model EnvanterUrunPersonelHedef {

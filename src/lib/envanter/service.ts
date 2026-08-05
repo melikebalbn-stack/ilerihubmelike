@@ -52,7 +52,8 @@ function mapUrunToListItem(urun: {
   bedenTipi: string
   olcuBirimi: string
   durum: string
-  varyantlar: { id: string }[]
+  varyantTipi: string
+  varyantlar: { id: string; beden?: string | null; numara?: string | null; renk?: string | null }[]
   stoklar: {
     mevcut: number
     minStok: number | null
@@ -103,7 +104,26 @@ function mapUrunToListItem(urun: {
     kritik: kritikDegerler.length > 0 ? Math.min(...kritikDegerler) : 0,
     durum: urun.durum === 'PASIF' ? 'PASIF' : stokDurum,
     varyantSayisi: urun.varyantlar.length,
+    varyantOzeti: buildVaryantOzeti(urun.varyantTipi, urun.varyantlar), // Faz 2
   }
+}
+
+// Faz 2 — varyantların beden/numara/renk değerlerinden kısa özet metni üretir.
+function buildVaryantOzeti(
+  varyantTipi: string,
+  varyantlar: { beden?: string | null; numara?: string | null; renk?: string | null }[],
+): string {
+  if (!varyantlar || varyantlar.length === 0 || varyantTipi === 'YOK') return ''
+  const uniq = (arr: (string | null | undefined)[]) =>
+    Array.from(new Set(arr.filter((x): x is string => Boolean(x))))
+  const bedenler = uniq(varyantlar.map((v) => v.beden))
+  const numaralar = uniq(varyantlar.map((v) => v.numara))
+  const renkler = uniq(varyantlar.map((v) => v.renk))
+  const parcalar: string[] = []
+  if (bedenler.length) parcalar.push(`Beden: ${bedenler.join(', ')}`)
+  if (numaralar.length) parcalar.push(`Numara: ${numaralar.join(', ')}`)
+  if (renkler.length) parcalar.push(`Renk: ${renkler.join(', ')}`)
+  return parcalar.join(' | ')
 }
 
 export async function listEnvanterUrunler(): Promise<EnvanterUrunListItem[]> {
@@ -115,6 +135,9 @@ export async function listEnvanterUrunler(): Promise<EnvanterUrunListItem[]> {
       varyantlar: {
         select: {
           id: true,
+          beden: true, // Faz 2 — varyantOzeti için
+          numara: true,
+          renk: true,
         },
       },
       stoklar: {
@@ -332,6 +355,8 @@ export async function getEnvanterUrunDetail(id: string) {
       raf: stok.raf,
       durum: stok.durum,
       varyantAdi: stok.varyant?.varyantAdi ?? null,
+      birimMaliyet: stok.birimMaliyet, // Faz 2
+      paraBirimi: stok.paraBirimi, // Faz 2
     })),
 
     hareketler: urun.hareketler.map((hareket) => ({
@@ -342,6 +367,10 @@ export async function getEnvanterUrunDetail(id: string) {
       raf: hareket.raf,
       aciklama: hareket.aciklama,
       createdAt: hareket.createdAt.toISOString(),
+      bolum: hareket.bolum, // Faz 2 — sarf dağıtım bölümü
+      alanPersonelAd: hareket.alanPersonelAd, // Faz 2 — alan personel
+      geriAlindi: hareket.geriAlindi, // Faz 2 — geri alma
+      hareketTipiRaw: hareket.hareketTipi, // Faz 2 — ham enum değeri
     })),
   }
 }
@@ -352,6 +381,10 @@ export async function createEnvanterStokHareket(input: {
   hareketTipi: 'GIRIS' | 'CIKIS' | 'ZIMMET' | 'IADE' | 'HURDA' | 'SAYIM_DUZELTME'
   miktar: number
   aciklama?: string
+  // Faz 2 — sarf/dağıtım alan personeli + bölüm (hepsi opsiyonel, additive)
+  bolum?: string
+  alanPersonelId?: string
+  alanPersonelAd?: string
 }) {
   if (!input.stokId) {
     throw new Error('Stok kaydı seçilmelidir.')
@@ -420,6 +453,10 @@ export async function createEnvanterStokHareket(input: {
         depo: stok.depo,
         raf: stok.raf,
         aciklama: input.aciklama || null,
+        // Faz 2 — sarf dağıtım alan personeli + bölüm
+        bolum: input.bolum || null,
+        alanPersonelId: input.alanPersonelId || null,
+        alanPersonelAd: input.alanPersonelAd || null,
       },
     })
 
@@ -613,5 +650,180 @@ export async function iadeZimmet(input: {
       stok: updatedStok,
       hareket,
     }
+  })
+}
+// ============ Faz 2 — yeni servis fonksiyonları ============
+
+export async function geriAlStokHareket(hareketId: string) {
+  const orijinal = await prisma.envanterStokHareket.findUnique({
+    where: { id: hareketId },
+  })
+
+  if (!orijinal) {
+    throw new Error('Hareket bulunamadı.')
+  }
+  if (orijinal.geriAlindi) {
+    throw new Error('Bu hareket zaten geri alınmış.')
+  }
+
+  const tersTip: Record<string, 'GIRIS' | 'CIKIS' | 'IADE'> = {
+    CIKIS: 'IADE',
+    GIRIS: 'CIKIS',
+    IADE: 'CIKIS',
+    ZIMMET: 'IADE',
+    HURDA: 'IADE',
+  }
+
+  const yeniTip = tersTip[orijinal.hareketTipi]
+  if (!yeniTip) {
+    throw new Error('Bu hareket tipi geri alınamaz (ör. sayım düzeltme).')
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // Orijinali işaretle
+    await tx.envanterStokHareket.update({
+      where: { id: orijinal.id },
+      data: { geriAlindi: true },
+    })
+
+    // Ters hareketi oluştur (stok mevcut buna göre güncellenir)
+    const stok = await tx.envanterStok.findFirst({
+      where: { urunId: orijinal.urunId, varyantId: orijinal.varyantId },
+    })
+    if (!stok) throw new Error('Stok kaydı bulunamadı.')
+
+    let yeniMevcut = stok.mevcut
+    if (yeniTip === 'IADE') yeniMevcut = stok.mevcut + orijinal.miktar
+    if (yeniTip === 'CIKIS') yeniMevcut = stok.mevcut - orijinal.miktar
+    if (yeniMevcut < 0) throw new Error('Geri alma stoğu eksiye düşürüyor.')
+
+    let durum: 'NORMAL' | 'MINIMUM' | 'KRITIK' | 'EKSIK' = 'NORMAL'
+    if (stok.minStok === null || stok.kritikStok === null) durum = 'EKSIK'
+    else if (yeniMevcut <= stok.kritikStok) durum = 'KRITIK'
+    else if (yeniMevcut <= stok.minStok) durum = 'MINIMUM'
+
+    const updatedStok = await tx.envanterStok.update({
+      where: { id: stok.id },
+      data: { mevcut: yeniMevcut, durum },
+    })
+
+    const tersHareket = await tx.envanterStokHareket.create({
+      data: {
+        urunId: orijinal.urunId,
+        varyantId: orijinal.varyantId,
+        hareketTipi: yeniTip,
+        miktar: orijinal.miktar,
+        depo: orijinal.depo,
+        raf: orijinal.raf,
+        aciklama: `Geri alma: ${orijinal.hareketTipi} hareketi iptal edildi`,
+        bolum: orijinal.bolum,
+        alanPersonelId: orijinal.alanPersonelId,
+        alanPersonelAd: orijinal.alanPersonelAd,
+        geriAlindi: true,
+      },
+    })
+
+    return { stok: updatedStok, tersHareket }
+  })
+}
+
+export async function addVaryantToUrun(input: {
+  urunId: string
+  tip: 'BEDEN' | 'NUMARA' | 'RENK'
+  deger: string
+}) {
+  const deger = input.deger.trim()
+  if (!deger) throw new Error('Varyant değeri boş olamaz.')
+
+  return prisma.$transaction(async (tx) => {
+    const urun = await tx.envanterUrun.findUnique({ where: { id: input.urunId } })
+    if (!urun) throw new Error('Ürün bulunamadı.')
+
+    // Mükerrer kontrol
+    const mevcut = await tx.envanterUrunVaryant.findFirst({
+      where: { urunId: input.urunId, varyantAdi: deger },
+    })
+    if (mevcut) throw new Error('Bu varyant zaten mevcut.')
+
+    // Varyantı oluştur
+    const varyant = await tx.envanterUrunVaryant.create({
+      data: {
+        urunId: input.urunId,
+        varyantAdi: deger,
+        beden: input.tip === 'BEDEN' ? deger : null,
+        numara: input.tip === 'NUMARA' ? deger : null,
+        renk: input.tip === 'RENK' ? deger : null,
+      },
+    })
+
+    // Ürünün varyantTipi'sini güncelle (YOK -> ilk eklenen tip; 
+    // farklı tip eklenirse karma tipe geç)
+    const yeniTip =
+      urun.varyantTipi === 'YOK'
+        ? input.tip
+        : urun.varyantTipi === input.tip
+          ? input.tip
+          : input.tip === 'RENK' || urun.varyantTipi === 'RENK'
+            ? (urun.varyantTipi === 'BEDEN' || input.tip === 'BEDEN' ? 'BEDEN_RENK' : 'NUMARA_RENK')
+            : urun.varyantTipi
+    if (yeniTip !== urun.varyantTipi) {
+      await tx.envanterUrun.update({
+        where: { id: input.urunId },
+        data: { varyantTipi: yeniTip as never },
+      })
+    }
+
+    // Stok kaydı aç (mevcut 0)
+    await tx.envanterStok.create({
+      data: {
+        urunId: input.urunId,
+        varyantId: varyant.id,
+        mevcut: 0,
+        minStok: null,
+        kritikStok: null,
+        maxStok: null,
+        depo: null,
+        raf: null,
+        durum: 'EKSIK',
+      },
+    })
+
+    return { varyant }
+  })
+}
+
+export async function updateStokEsik(input: {
+  stokId: string
+  minStok: number | null
+  kritikStok: number | null
+}) {
+  const stok = await prisma.envanterStok.findUnique({ where: { id: input.stokId } })
+  if (!stok) throw new Error('Stok kaydı bulunamadı.')
+
+  // Durumu yeni eşiklere göre yeniden hesapla
+  let durum: 'NORMAL' | 'MINIMUM' | 'KRITIK' | 'EKSIK' = 'NORMAL'
+  if (input.minStok === null || input.kritikStok === null) durum = 'EKSIK'
+  else if (stok.mevcut <= input.kritikStok) durum = 'KRITIK'
+  else if (stok.mevcut <= input.minStok) durum = 'MINIMUM'
+
+  return prisma.envanterStok.update({
+    where: { id: input.stokId },
+    data: { minStok: input.minStok, kritikStok: input.kritikStok, durum },
+  })
+}
+
+export async function updateStokMaliyet(input: {
+  stokId: string
+  birimMaliyet: number | null
+  paraBirimi: string | null
+}) {
+  const stok = await prisma.envanterStok.findUnique({ where: { id: input.stokId } })
+  if (!stok) throw new Error('Stok kaydı bulunamadı.')
+  return prisma.envanterStok.update({
+    where: { id: input.stokId },
+    data: {
+      birimMaliyet: input.birimMaliyet,
+      paraBirimi: input.paraBirimi || 'TL',
+    },
   })
 }

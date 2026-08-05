@@ -70,7 +70,7 @@ async function satirSayisi(tablo: string): Promise<number | null> {
 // EnvanterZimmet.personnelId FK'sının onDelete davranışı (r=RESTRICT, c=CASCADE, a=NO ACTION, n=SET NULL)
 async function zimmetPersonelOnDelete(): Promise<string> {
   const r = await prisma.$queryRaw<Array<{ confdeltype: string }>>`
-    SELECT c.confdeltype
+    SELECT c.confdeltype::text AS confdeltype
     FROM pg_constraint c
     JOIN pg_class t ON t.oid = c.conrelid
     JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)

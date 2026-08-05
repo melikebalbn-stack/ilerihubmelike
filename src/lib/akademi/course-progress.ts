@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { issueCertificateIfEligible } from "./certificate-issue";
+import { ifsYuzde } from "./ifs-progress";
 
 /**
  * Bir user'ın bir kurs için ilerlemesini yeniden hesaplar.
@@ -58,8 +59,8 @@ export async function recomputeCourseProgress(
     const totalGorev = gorevIds.length;
 
     if (totalGorev > 0) {
-      // FARKLI_DEPARTMAN görevler o kullanıcının paydasından düşer (görev ona ait değil).
-      // EGITIM_GEREKLI paydada KALIR (tamamlanmadı) → completed=false olduğundan pay'a girmez.
+      // Payda ORTAK helper'dan (ifsPayda): toplam GOREV − FARKLI_DEPARTMAN.
+      // EGITIM_GEREKLI paydada KALIR (completed=false → paya girmez).
       const farkliDepartmanCount = await prisma.ifsTaskEvaluation.count({
         where: {
           userId,
@@ -67,25 +68,15 @@ export async function recomputeCourseProgress(
           kursiyerDurum: "FARKLI_DEPARTMAN",
         },
       });
-      const applicableGorev = totalGorev - farkliDepartmanCount;
-
-      if (applicableGorev > 0) {
-        // Pay: ORNEK_YAPILDI (ContentProgress.completed=true; diğer durumlar completed=false)
-        const selfMarkedCount = await prisma.contentProgress.count({
-          where: {
-            userId,
-            contentId: { in: gorevIds },
-            completed: true,
-          },
-        });
-        percentage = Math.min(
-          100,
-          Math.round((selfMarkedCount / applicableGorev) * 100)
-        );
-      } else {
-        // Tüm görevler FARKLI_DEPARTMAN → kapsam dışı; %100 DEĞİL (kullanıcının bu kursta işi yok).
-        percentage = 0;
-      }
+      // PAY: bu ekran kursiyer görünümü → ORNEK_YAPILDI (ContentProgress.completed=true).
+      const selfMarkedCount = await prisma.contentProgress.count({
+        where: {
+          userId,
+          contentId: { in: gorevIds },
+          completed: true,
+        },
+      });
+      percentage = ifsYuzde(selfMarkedCount, totalGorev, farkliDepartmanCount);
     } else {
       percentage = 0;
     }

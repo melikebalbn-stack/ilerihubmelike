@@ -145,6 +145,22 @@ export function ContentRow({
     await onGorevDurum?.(content.id, "BEKLIYOR");
   };
 
+  // Buton tıklaması:
+  // - Zaten aktif durum → toggle → BEKLIYOR (ayrı "Geri Al" gerekmez).
+  // - ORNEK_YAPILDI (aktif değil) → modal + zorunlu açıklama.
+  // - FARKLI_DEPARTMAN / EGITIM_GEREKLI (aktif değil) → TEK TIK, modal YOK, açıklama İSTENMEZ.
+  const handleDurumClick = async (d: string) => {
+    if (durum === d) {
+      await geriAl();
+      return;
+    }
+    if (d === "ORNEK_YAPILDI") {
+      openDurumModal(d);
+    } else {
+      await onGorevDurum?.(content.id, d);
+    }
+  };
+
   return (
     <>
     <div
@@ -253,7 +269,7 @@ export function ContentRow({
                   key={d}
                   size="sm"
                   variant={aktif ? "default" : "outline"}
-                  onClick={() => openDurumModal(d)}
+                  onClick={() => handleDurumClick(d)}
                   disabled={isMarking}
                   style={
                     aktif

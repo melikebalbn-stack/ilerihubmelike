@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { type ElementType, type ReactNode, useEffect, useMemo, useState } from 'react'
 import type { EnvanterUrunDetail, EnvanterUrunListItem } from '@/types/envanter'
+import { AramaliSecim } from '@/components/envanter/AramaliSecim'
 import type { ExecuteSonuc, ImportAtlanan, ImportHata, ValidateSonuc } from '@/lib/envanter/import'
 import type { YenilemeDurum, YenilemeSatiri } from '@/lib/envanter/yenileme'
 import type { SatinAlmaAksiyonTip, SatinAlmaDurumTip } from '@/lib/envanter/satinalma'
@@ -357,6 +358,9 @@ function EnvanterPageInner() {
 function DashboardContent() {
   const [urunler, setUrunler] = useState<EnvanterUrunListItem[]>([])
   const [loading, setLoading] = useState(true)
+  // Faz 2 — kritik ürün bildirimi (alıcı yapılandırılmadığı için şu an 400 döner; sessiz hata YOK)
+  const [bildirimSaving, setBildirimSaving] = useState(false)
+  const [bildirimMesaj, setBildirimMesaj] = useState('')
 
   useEffect(() => {
     async function loadDashboard() {
@@ -374,6 +378,21 @@ function DashboardContent() {
 
     loadDashboard()
   }, [])
+
+  async function handleKritikBildir() {
+    setBildirimSaving(true)
+    setBildirimMesaj('')
+    try {
+      const res = await fetch('/api/envanter/kritik-bildirim', { method: 'POST' })
+      const json = await res.json()
+      // Başarı yanıtı 'mesaj', 400 (alıcı yok) 'message' döner — ikisini de göster.
+      setBildirimMesaj(json.mesaj || json.message || (json.ok ? 'Bildirim işlendi.' : 'Bildirim gönderilemedi.'))
+    } catch {
+      setBildirimMesaj('Bildirim gönderilemedi.')
+    } finally {
+      setBildirimSaving(false)
+    }
+  }
 
   const toplamUrun = urunler.length
   const toplamStok = urunler.reduce((total, urun) => total + urun.mevcut, 0)
@@ -418,6 +437,20 @@ function DashboardContent() {
           description="Mevcut stoğu sıfır olan ürünler"
           icon={Boxes}
         />
+      </div>
+
+      {/* Faz 2 — Kritik ürünleri bildir. Alıcı henüz yapılandırılmadığı için buton
+          şu an anlamlı bir uyarı döndürür (gerçek mail gitmez); sessiz hata YOK. */}
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border bg-white p-4 shadow-sm">
+        <button
+          type="button"
+          onClick={handleKritikBildir}
+          disabled={bildirimSaving}
+          className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+        >
+          {bildirimSaving ? 'Gönderiliyor...' : 'Kritik Ürünleri Bildir'}
+        </button>
+        {bildirimMesaj && <span className="text-sm text-slate-600">{bildirimMesaj}</span>}
       </div>
 
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
@@ -2393,10 +2426,35 @@ function StokYonetimi() {
   const [hareketTipi, setHareketTipi] = useState<'GIRIS' | 'CIKIS' | 'IADE' | 'HURDA' | 'SAYIM_DUZELTME'>('GIRIS')
   const [miktar, setMiktar] = useState('')
   const [aciklama, setAciklama] = useState('')
+  // Faz 2 — sarf/dağıtım (Stok Çıkışı) için bölüm + alan personel (opsiyonel)
+  const [secilenBolum, setSecilenBolum] = useState('')
+  const [secilenPersonelId, setSecilenPersonelId] = useState('')
+  const [sarfPersonelleri, setSarfPersonelleri] = useState<{ id: string; adSoyad: string; bolum: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    fetch('/api/envanter/personeller')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.ok) setSarfPersonelleri(json.data)
+      })
+      .catch(() => {})
+  }, [])
+
+  const sarfBolumleri = useMemo(
+    () =>
+      Array.from(new Set(sarfPersonelleri.map((p) => p.bolum).filter((b): b is string => Boolean(b)))).sort((a, b) =>
+        a.localeCompare(b, 'tr'),
+      ),
+    [sarfPersonelleri],
+  )
+  const sarfBolumPersonelleri = useMemo(
+    () => sarfPersonelleri.filter((p) => p.bolum === secilenBolum),
+    [sarfPersonelleri, secilenBolum],
+  )
 
   async function loadUrunler() {
     const response = await fetch('/api/envanter/urunler')
@@ -2476,6 +2534,10 @@ function StokYonetimi() {
           hareketTipi,
           miktar: miktarNumber,
           aciklama,
+          // Faz 2 — yalnız Stok Çıkışı'nda anlamlı; boşsa gönderilmez
+          bolum: secilenBolum || undefined,
+          alanPersonelId: secilenPersonelId || undefined,
+          alanPersonelAd: sarfPersonelleri.find((p) => p.id === secilenPersonelId)?.adSoyad || undefined,
         }),
       })
 
@@ -2488,6 +2550,8 @@ function StokYonetimi() {
       setMessage('Stok hareketi başarıyla kaydedildi.')
       setMiktar('')
       setAciklama('')
+      setSecilenBolum('')
+      setSecilenPersonelId('')
 
       await loadUrunler()
       await loadUrunDetay(selectedUrunId)
@@ -2497,6 +2561,26 @@ function StokYonetimi() {
       setError(err instanceof Error ? err.message : 'Stok hareketi kaydedilemedi.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Faz 2 — hareketi geri al (ters hareket oluşur; stok mevcut güncellenir).
+  async function geriAl(hareketId: string) {
+    if (!confirm('Bu hareketi geri almak istediğinize emin misiniz? Ters bir hareket oluşturulacak.')) return
+    try {
+      const res = await fetch('/api/envanter/stok-hareket/geri-al', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hareketId }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        alert(json.message || 'Geri alınamadı.')
+        return
+      }
+      if (selectedUrunId) await loadUrunDetay(selectedUrunId)
+    } catch {
+      alert('Geri alınamadı.')
     }
   }
 
@@ -2589,14 +2673,37 @@ function StokYonetimi() {
             <div>
               <div className="font-medium text-slate-900">
                 {hareket.hareketTipi} / {hareket.miktar}
+                {hareket.geriAlindi && (
+                  <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-600">geri alındı</span>
+                )}
               </div>
               <div className="text-xs text-slate-500">
                 {hareket.aciklama || 'Açıklama yok'}
               </div>
+              {/* Faz 2 — sarf dağıtım bölüm/alan personel gösterimi */}
+              {(hareket.bolum || hareket.alanPersonelAd) && (
+                <div className="text-xs text-slate-500">
+                  {hareket.bolum ? `Bölüm: ${hareket.bolum}` : ''}
+                  {hareket.bolum && hareket.alanPersonelAd ? ' · ' : ''}
+                  {hareket.alanPersonelAd ? `Alan: ${hareket.alanPersonelAd}` : ''}
+                </div>
+              )}
             </div>
 
-            <div className="text-xs text-slate-500">
-              {new Date(hareket.createdAt).toLocaleDateString('tr-TR')}
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-slate-500">
+                {new Date(hareket.createdAt).toLocaleDateString('tr-TR')}
+              </div>
+              {/* Faz 2 — Geri Al (SAYIM_DUZELTME hariç, zaten geri alınmamışsa) */}
+              {hareket.hareketTipiRaw !== 'SAYIM_DUZELTME' && !hareket.geriAlindi && (
+                <button
+                  type="button"
+                  onClick={() => geriAl(hareket.id)}
+                  className="rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                >
+                  Geri Al
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -2621,6 +2728,41 @@ function StokYonetimi() {
                 <option value="SAYIM_DUZELTME">Sayım Düzeltme</option>
               </select>
             </div>
+
+            {/* Faz 2 — Stok Çıkışı'nda opsiyonel bölüm + alan personel (sarf dağıtım izi) */}
+            {hareketTipi === 'CIKIS' && (
+              <>
+                <div>
+                  <label className="mb-2 block text-sm font-medium">Bölüm (opsiyonel)</label>
+                  <select
+                    value={secilenBolum}
+                    onChange={(event) => {
+                      setSecilenBolum(event.target.value)
+                      setSecilenPersonelId('')
+                    }}
+                    className="w-full rounded-xl border px-3 py-2 text-sm"
+                  >
+                    <option value="">— Bölüm seçin —</option>
+                    {sarfBolumleri.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {secilenBolum && (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">Alan Personel (opsiyonel)</label>
+                    <AramaliSecim
+                      secenekler={sarfBolumPersonelleri.map((p) => ({ id: p.id, etiket: p.adSoyad }))}
+                      deger={secilenPersonelId}
+                      onChange={setSecilenPersonelId}
+                      placeholder="Personel seçin"
+                    />
+                  </div>
+                )}
+              </>
+            )}
 
             <div>
               <label className="mb-2 block text-sm font-medium">Miktar</label>
@@ -2709,9 +2851,18 @@ function PersonelZimmeti() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  // Faz 2 — KKD Kategorisi (tek dropdown; kkdAltGrubu'na yazılır). kkdUstGrubu formda gösterilmez.
+  const [kkdAltGrubu, setKkdAltGrubu] = useState('')
+  const [kkdKategoriListesi, setKkdKategoriListesi] = useState<string[]>([])
 
   useEffect(() => {
     loadData()
+    fetch('/api/envanter/kategoriler?durum=AKTIF')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.ok) setKkdKategoriListesi((json.data as { ad: string }[]).map((k) => k.ad))
+      })
+      .catch(() => {})
   }, [])
 
   async function loadData() {
@@ -2824,6 +2975,7 @@ function PersonelZimmeti() {
           stokId: selectedStokId,
           miktar,
           aciklama,
+          kkdAltGrubu: kkdAltGrubu || undefined, // Faz 2 — seçilen KKD kategorisi
         }),
       })
 
@@ -2833,6 +2985,7 @@ function PersonelZimmeti() {
         setMessage('Zimmet oluşturuldu.')
         setAciklama('')
         setMiktar(1)
+        setKkdAltGrubu('')
         await loadUrunDetay(selectedUrun)
         await loadPersonelZimmetleri(selectedPersonel)
       } else {
@@ -2867,34 +3020,22 @@ function PersonelZimmeti() {
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Personel</label>
-                <select
-                  className="mt-1 w-full rounded-xl border p-2"
-                  value={selectedPersonel}
-                  onChange={(e) => setSelectedPersonel(e.target.value)}
-                >
-                  <option value="">Personel seçiniz</option>
-                  {personeller.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.sicilNo} - {p.adSoyad}
-                    </option>
-                  ))}
-                </select>
+                <AramaliSecim
+                  secenekler={personeller.map((p) => ({ id: p.id, etiket: `${p.sicilNo} - ${p.adSoyad}` }))}
+                  deger={selectedPersonel}
+                  onChange={setSelectedPersonel}
+                  placeholder="Personel seçiniz"
+                />
               </div>
 
               <div>
                 <label className="text-sm font-medium">Ürün</label>
-                <select
-                  className="mt-1 w-full rounded-xl border p-2"
-                  value={selectedUrun}
-                  onChange={(e) => setSelectedUrun(e.target.value)}
-                >
-                  <option value="">Ürün seçiniz</option>
-                  {urunler.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.kod} - {u.ad}
-                    </option>
-                  ))}
-                </select>
+                <AramaliSecim
+                  secenekler={urunler.map((u) => ({ id: u.id, etiket: `${u.kod} - ${u.ad}` }))}
+                  deger={selectedUrun}
+                  onChange={setSelectedUrun}
+                  placeholder="Ürün seçiniz"
+                />
               </div>
 
               {selectedUrun && (
@@ -2918,6 +3059,24 @@ function PersonelZimmeti() {
                   )}
                 </div>
               )}
+
+              {/* Faz 2 — KKD Kategorisi (tek dropdown; /kategoriler?durum=AKTIF'ten; kkdAltGrubu'na yazılır).
+                  kkdUstGrubu formda GÖSTERİLMEZ (şemada + import şablonunda duruyor). */}
+              <div>
+                <label className="text-sm font-medium">KKD Kategorisi</label>
+                <select
+                  className="mt-1 w-full rounded-xl border p-2 text-sm"
+                  value={kkdAltGrubu}
+                  onChange={(e) => setKkdAltGrubu(e.target.value)}
+                >
+                  <option value="">— Kategori seçin (opsiyonel) —</option>
+                  {kkdKategoriListesi.map((kat) => (
+                    <option key={kat} value={kat}>
+                      {kat}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div>
   <label className="text-sm font-medium">Miktar</label>

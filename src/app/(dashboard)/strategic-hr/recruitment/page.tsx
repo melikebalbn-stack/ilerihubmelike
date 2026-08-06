@@ -1783,6 +1783,29 @@ export default function RecruitmentPage() {
                           </div>
                         )
                       })}
+                      {/* Atlanan adımlar: talep sahibi o adımın onaycısı olduğu için
+                          adım hiç oluşturulmadı (kanonik 4 kademeden eksik olanlar). */}
+                      {(() => {
+                        const kademeLabels: Record<string, string> = {
+                          BOLUM_MUDURU: "Bölüm Müdürü",
+                          DEPUTY_GM: "Genel Müdür Yardımcısı",
+                          GM: "Genel Müdür",
+                          HR_MANAGER: "İK Müdürü",
+                        }
+                        const varOlan = new Set(selectedRequest.approvals?.map((a) => a.kademe))
+                        return Object.keys(kademeLabels)
+                          .filter((k) => !varOlan.has(k))
+                          .map((k) => (
+                            <div key={k} className="flex items-center justify-between text-sm opacity-70">
+                              <div>
+                                <span className="font-medium">{kademeLabels[k]}</span>
+                              </div>
+                              <Badge variant="secondary" className="bg-slate-100 text-slate-500">
+                                Talep sahibi olduğu için bu adım atlandı
+                              </Badge>
+                            </div>
+                          ))
+                      })()}
                     </div>
                   </div>
                 )}

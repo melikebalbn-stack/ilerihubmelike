@@ -26,12 +26,13 @@ type Sonuc =
   | { yetki: KadroTalepYetki; error: null }
   | { yetki: null; error: NextResponse };
 
-export async function kadroTalepYetkisi(): Promise<Sonuc> {
-  const { session, error } = await requireSession();
-  if (error) return { yetki: null, error };
-
-  const userId = session.user.id;
-  const perms = session.user.permissions ?? [];
+// Yetki çekirdeği — session'dan BAĞIMSIZ (userId + perms verilir). Hem API hem
+// server-component (page) buradan besleniyor; DepartmentDefinition mudur/mudurYrd
+// lookup + İK kontrolü TEK yerde. NextResponse döndürmez → page'de güvenle çağrılır.
+export async function kadroTalepYetkisiCore(
+  userId: string,
+  perms: string[]
+): Promise<KadroTalepYetki> {
   const ik = perms.includes("recruitment.admin") || perms.includes("hr.admin");
 
   const u = await prisma.user.findUnique({
@@ -55,10 +56,28 @@ export async function kadroTalepYetkisi(): Promise<Sonuc> {
 
   const talepAcabilir = ik || rol !== null;
 
-  return {
-    yetki: { userId, personnelId, talepAcabilir, rol, ik },
-    error: null,
-  };
+  return { userId, personnelId, talepAcabilir, rol, ik };
+}
+
+// Page-safe boolean kısayolu (server component'te getServerSession sonrası çağrılır).
+export async function talepAcabilirMi(
+  userId: string,
+  perms: string[]
+): Promise<boolean> {
+  const { talepAcabilir } = await kadroTalepYetkisiCore(userId, perms);
+  return talepAcabilir;
+}
+
+export async function kadroTalepYetkisi(): Promise<Sonuc> {
+  const { session, error } = await requireSession();
+  if (error) return { yetki: null, error };
+
+  const yetki = await kadroTalepYetkisiCore(
+    session.user.id,
+    session.user.permissions ?? []
+  );
+
+  return { yetki, error: null };
 }
 
 // Yetkisiz (403) — oturum var ama talep açma yetkisi yok.

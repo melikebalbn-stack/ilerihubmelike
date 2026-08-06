@@ -26,7 +26,7 @@ async function generateRequestNumber(): Promise<string> {
   return `${prefix}${nextNumber.toString().padStart(3, "0")}`;
 }
 
-// GET - Eleman taleplerini listele
+// GET - Personel taleplerini listele
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-strategic-hr: requireSession (role/department/email session'dan)
@@ -91,9 +91,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(requests);
   } catch (error) {
-    console.error("Eleman talepleri listesi hatası:", error);
+    console.error("Personel talepleri listesi hatası:", error);
     return NextResponse.json(
-      { error: "Eleman talepleri alınırken hata oluştu" },
+      { error: "Personel talepleri alınırken hata oluştu" },
       { status: 500 }
     );
   }
@@ -198,9 +198,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(personnelRequest, { status: 201 });
   } catch (error) {
-    console.error("Eleman talebi oluşturma hatası:", error);
+    console.error("Personel talebi oluşturma hatası:", error);
     return NextResponse.json(
-      { error: "Eleman talebi oluşturulurken hata oluştu" },
+      { error: "Personel talebi oluşturulurken hata oluştu" },
       { status: 500 }
     );
   }

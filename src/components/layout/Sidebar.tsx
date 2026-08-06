@@ -482,7 +482,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     canSeeIk || filteredOffboardingItems.length > 0 || filteredStrategicHrItems.length > 0
   // Kadro talep — SUNUCU bayrağı (kadroTalepAcabilir) ile; client'ta yetki hesaplanmaz.
   // Link recruitment sayfasına (varsayılan "requests"/kadro talep sekmesine düşer).
-  const kadroTalepItem = { name: "Personel Kadro İstek Formu", icon: FileText, href: "/strategic-hr/recruitment", roles: ["*"] }
+  const kadroTalepItem = { name: "Personel Talep Formu", icon: FileText, href: "/strategic-hr/kadro-talep", roles: ["*"] }
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(iaFlags.amir ? [iaAmirItem] : []),

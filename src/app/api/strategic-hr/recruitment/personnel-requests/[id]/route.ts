@@ -24,7 +24,7 @@ async function notifyHrTeam(requestNumber: string, title: string) {
       `<p>${mesaj}</p>`,
     );
     for (const a of alicilar) {
-      if (a.id) await sendPushToUser(prisma, a.id, { title: "Personel Talebi Onaylandı", body: mesaj, url: "/strategic-hr/recruitment", tag: `pr-approved-${requestNumber}` });
+      if (a.id) await sendPushToUser(prisma, a.id, { title: "Personel Talebi Onaylandı", body: mesaj, url: "/strategic-hr/kadro-talep", tag: `pr-approved-${requestNumber}` });
     }
   } catch {
     // İK bildirimi best-effort
@@ -48,7 +48,7 @@ async function notifyApprover(
     await sendPushToUser(prisma, userId, {
       title: "Personel Talebi Onayı",
       body: mesaj,
-      url: "/strategic-hr/recruitment",
+      url: "/strategic-hr/kadro-talep",
       tag: `personnel-request-${requestNumber}`,
     });
     const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });

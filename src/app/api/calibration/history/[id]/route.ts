@@ -50,6 +50,16 @@ export async function PUT(
     const interval = existing.device.calibrationInterval || 365
     const nextDueDate = new Date(calDate.getTime() + interval * 24 * 60 * 60 * 1000)
 
+    // result bu istekte gönderildiyse PASS/CONDITIONAL/HURDA dışında olamaz (ör. eski "FAIL"
+    // değeri) — aksi halde cihaz senkronu (deviceCondition/tarih) hiç tetiklenmez. Alan hiç
+    // gönderilmediyse (başka bir şey düzenleniyorsa) mevcut değer dokunulmadan korunur.
+    if (result !== undefined && !['PASS', 'CONDITIONAL', 'HURDA'].includes(result)) {
+      return NextResponse.json(
+        { error: 'Geçersiz Sonuç/Karar. Başarılı, Şartlı Kabul veya Hurda seçilmeli.' },
+        { status: 400 }
+      )
+    }
+
     const finalResult: CalibrationResult = (result as CalibrationResult) ?? existing.result
 
     // Karar: Hurda için hedef bölüm Ayarlar > Kalibrasyon > Bölümler'den (isHurdaTarget)

@@ -802,12 +802,15 @@ export default function CalibrationPage() {
   const startEditHistory = (record: CalibrationHistoryRecord) => {
     setEditingHistoryId(record.id)
     setShowAddHistoryForm(true)
+    // Eski/geçersiz Sonuç değerleri (ör. Karar mekanizmasından önceki "FAIL") '' yapılır —
+    // aksi halde Karar seçilmeden kaydedilip cihaz senkronu hiç tetiklenmeden kalabilir.
+    const validResults = ['PASS', 'CONDITIONAL', 'HURDA']
     setHistoryFormData({
       calibrationDate: new Date(record.calibrationDate).toISOString().split('T')[0],
       certificateNumber: record.certificateNumber || "",
       calibratedBy: record.calibratedBy || "",
       cost: record.cost != null ? String(record.cost) : "",
-      result: record.result || "PASS",
+      result: validResults.includes(record.result) ? record.result : "",
       notes: record.notes || "",
       newProductionSection: "",
     })

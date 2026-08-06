@@ -29,6 +29,15 @@ export async function POST(request: NextRequest) {
       newProductionSection,
     } = body
 
+    // Yeni kayıt PASS/CONDITIONAL/HURDA dışında bir Sonuç ile oluşturulamaz (ör. eski
+    // "FAIL" değeri) — aksi halde cihaz senkronu (deviceCondition/tarih) hiç tetiklenmez.
+    if (!['PASS', 'CONDITIONAL', 'HURDA'].includes(result)) {
+      return NextResponse.json(
+        { error: 'Geçersiz Sonuç/Karar. Başarılı, Şartlı Kabul veya Hurda seçilmeli.' },
+        { status: 400 }
+      )
+    }
+
     // Cihazın var olup olmadığını kontrol et
     const device = await prisma.calibrationDevice.findUnique({
       where: { id: deviceId },

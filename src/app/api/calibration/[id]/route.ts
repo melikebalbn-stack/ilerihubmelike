@@ -140,6 +140,28 @@ export async function PUT(
       statusManualOverride = false
     }
 
+    // Durum: manuel override (Kalibrasyonda/Arızalı) DEĞİLSE, güncel referans tarihine göre
+    // yeniden hesaplanır. Aksi halde interval/tarih değişince "status" eskisi (stale) kalırdı
+    // (ör. periyot 1 yıldan 2 yıla çıkınca tarih ileri gider ama "Süresi Doldu" takılı kalırdı
+    // — çünkü Cihaz Düzenle formu "status" alanını hiç göndermiyor, backend eskiyi koruyordu).
+    let computedStatus: CalibrationStatus | undefined
+    if (statusManualOverride) {
+      computedStatus = status as CalibrationStatus | undefined
+    } else {
+      const now = new Date()
+      const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+      const referenceDate = nextCalDate || nextVerDate
+      if (referenceDate) {
+        computedStatus = referenceDate < now
+          ? CalibrationStatus.EXPIRED
+          : referenceDate <= thirtyDaysFromNow
+            ? CalibrationStatus.EXPIRING
+            : CalibrationStatus.VALID
+      } else {
+        computedStatus = CalibrationStatus.VALID
+      }
+    }
+
     const device = await prisma.calibrationDevice.update({
       where: { id },
       data: {
@@ -170,7 +192,7 @@ export async function PUT(
           ? (purchaseDate ? new Date(purchaseDate) : null)
           : undefined,
         notes,
-        status: status as CalibrationStatus | undefined,
+        status: computedStatus,
         statusManualOverride,
         imageUrl,
         attachments,

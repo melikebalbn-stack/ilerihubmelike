@@ -1599,6 +1599,21 @@ export default function RecruitmentPage() {
                       </Badge>
                     </DialogDescription>
                   </div>
+                  {/* IV-FR-24 PDF çıktısı */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mr-6 shrink-0"
+                    onClick={() =>
+                      window.open(
+                        `/api/strategic-hr/recruitment/personnel-requests/${selectedRequest.id}/pdf`,
+                        "_blank",
+                      )
+                    }
+                  >
+                    <FileText className="h-4 w-4 mr-1" />
+                    PDF İndir
+                  </Button>
                 </div>
               </DialogHeader>
 
@@ -2361,10 +2376,29 @@ export default function RecruitmentPage() {
         <TabsContent value="requests">
           <Card>
             <CardHeader>
-              <CardTitle>Eleman Talepleri</CardTitle>
-              <CardDescription>
-                Departmanlardan gelen eleman talepleri
-              </CardDescription>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle>Eleman Talepleri</CardTitle>
+                  <CardDescription>
+                    Departmanlardan gelen eleman talepleri
+                  </CardDescription>
+                </div>
+                {/* Elle doldurulabilir boş IV-FR-24 formu */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() =>
+                    window.open(
+                      "/api/strategic-hr/recruitment/personnel-requests/bos-form/pdf",
+                      "_blank",
+                    )
+                  }
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  Boş Form (IV-FR-24)
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {filteredRequests.length === 0 ? (
@@ -2433,6 +2467,17 @@ export default function RecruitmentPage() {
                               }}>
                                 <Eye className="h-4 w-4 mr-2" />
                                 Detay Gor
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  window.open(
+                                    `/api/strategic-hr/recruitment/personnel-requests/${req.id}/pdf`,
+                                    "_blank",
+                                  )
+                                }
+                              >
+                                <FileText className="h-4 w-4 mr-2" />
+                                PDF İndir (IV-FR-24)
                               </DropdownMenuItem>
                               {req.status === "DRAFT" && req.requesterEmail === session?.user?.email && (
                                 <>

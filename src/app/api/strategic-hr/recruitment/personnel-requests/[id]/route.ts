@@ -16,15 +16,15 @@ async function notifyHrTeam(requestNumber: string, title: string) {
   try {
     const alicilar = await resolveHRRecipients();
     if (!alicilar.length) return;
-    const mesaj = `${requestNumber} numaralı "${title}" eleman talebi tüm onaylardan geçti (İK Müdürü onayı) ve APPROVED oldu.`;
+    const mesaj = `${requestNumber} numaralı "${title}" personel talebi tüm onaylardan geçti (İK Müdürü onayı) ve APPROVED oldu.`;
     await sendEmail(
       alicilar.map((a) => ({ email: a.email ?? "", name: a.name ?? a.email ?? "" })).filter((a) => a.email),
-      "Eleman Talebi Onaylandı",
+      "Personel Talebi Onaylandı",
       mesaj,
       `<p>${mesaj}</p>`,
     );
     for (const a of alicilar) {
-      if (a.id) await sendPushToUser(prisma, a.id, { title: "Eleman Talebi Onaylandı", body: mesaj, url: "/strategic-hr/recruitment", tag: `pr-approved-${requestNumber}` });
+      if (a.id) await sendPushToUser(prisma, a.id, { title: "Personel Talebi Onaylandı", body: mesaj, url: "/strategic-hr/kadro-talep", tag: `pr-approved-${requestNumber}` });
     }
   } catch {
     // İK bildirimi best-effort
@@ -41,19 +41,19 @@ async function notifyApprover(
   try {
     const mesaj =
       tur === "SIRA"
-        ? `${requestNumber} numaralı "${title}" eleman talebi onayınızı bekliyor.`
+        ? `${requestNumber} numaralı "${title}" personel talebi onayınızı bekliyor.`
         : tur === "ONAYLANDI"
-          ? `${requestNumber} numaralı "${title}" eleman talebiniz onaylandı.`
-          : `${requestNumber} numaralı "${title}" eleman talebiniz reddedildi.`;
+          ? `${requestNumber} numaralı "${title}" personel talebiniz onaylandı.`
+          : `${requestNumber} numaralı "${title}" personel talebiniz reddedildi.`;
     await sendPushToUser(prisma, userId, {
-      title: "Eleman Talebi Onayı",
+      title: "Personel Talebi Onayı",
       body: mesaj,
-      url: "/strategic-hr/recruitment",
+      url: "/strategic-hr/kadro-talep",
       tag: `personnel-request-${requestNumber}`,
     });
     const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
     if (u?.email) {
-      await sendEmail([{ email: u.email, name: u.name || "" }], "Eleman Talebi Onayı", mesaj, `<p>${mesaj}</p>`);
+      await sendEmail([{ email: u.email, name: u.name || "" }], "Personel Talebi Onayı", mesaj, `<p>${mesaj}</p>`);
     }
   } catch {
     // bildirim best-effort

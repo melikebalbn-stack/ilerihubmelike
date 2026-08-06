@@ -4988,6 +4988,27 @@ enum PersonnelRequestType {
   INTERN // Stajyer
 }
 
+// IV-FR-24 — aranan yetkinlikler enumları
+enum EgitimSeviyesi {
+  LISE
+  TEKNIK_LISE
+  ON_LISANS
+  LISANS
+  YUKSEK_LISANS
+  DIGER
+}
+
+enum TecrubeDurumu {
+  TECRUBELI
+  YENI_MEZUN
+}
+
+enum CinsiyetTercihi {
+  BAY
+  BAYAN
+  FARKETMEZ
+}
+
 // Eleman Talebi (Personnel Request)
 model PersonnelRequest {
   id String @id @default(cuid())
@@ -5043,6 +5064,43 @@ model PersonnelRequest {
   // İlişkili ilan (onaylandığında)
   jobOpeningId String?
   jobOpening   JobOpening? @relation(fields: [jobOpeningId], references: [id])
+
+  // ── IV-FR-24 alanları (hepsi nullable, additive) ──────────────────────────
+  // Talep bilgisi
+  formHazirlanmaTarihi DateTime?
+  ikTeslimTarihi       DateTime?
+  kisilikOzellikleri   String?
+
+  // Aranan yetkinlikler
+  egitimSeviyesi      EgitimSeviyesi?
+  egitimDiger         String?
+  tecrubeDurumu       TecrubeDurumu?
+  tecrubeSuresi       String?
+  yabanciDilGerekli   Boolean?
+  yabanciDiller       Json? // [{dil, seviye}]
+  bilgisayarBilgisi   String?
+  kaliteSistemBilgisi String?
+  ehliyetGerekli      Boolean?
+  ehliyetSinifi       String?
+  digerBelgeIhtiyaci  String?
+  // AYRIMCILIK KORUMASI: cinsiyetTercihi + yasAraligi* yalnız İÇ kadro planlaması.
+  // JobOpening'e (iş ilanı) ASLA taşınmaz — bkz. personnel-requests/[id]/route.ts convert bloğu.
+  cinsiyetTercihi CinsiyetTercihi?
+  yasAraligiMin   Int?
+  yasAraligiMax   Int?
+  askerlikGerekli Boolean?
+
+  // Talep nedeni detayı
+  ayrilanPersonelAdi String? // boşalan kadro / eleman değişikliği için
+
+  // İnsan Varlıkları kapanış bölümü (yalnız İK doldurur — API'de yetki gate'i)
+  adayKaynaklari         Json? // çoklu seçim kod dizisi
+  ilanPortallari         String?
+  adayKaynagiDiger       String?
+  kadroDoldurulmaTarihi  DateTime?
+  iseBaslayanPersonelAdi String?
+  ivOnayId               String? // İK onaylayan userId (approvedById deseni gibi düz alan; FK değil)
+  ivOnayTarihi           DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

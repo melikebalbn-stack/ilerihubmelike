@@ -4,6 +4,9 @@ import { useSession } from 'next-auth/react'
 import { type ElementType, type ReactNode, useEffect, useMemo, useState } from 'react'
 import type { EnvanterUrunDetail, EnvanterUrunListItem } from '@/types/envanter'
 import { AramaliSecim } from '@/components/envanter/AramaliSecim'
+import { BakimYonlendirmeYonetimi } from '@/components/envanter/BakimYonlendirme'
+import { SarfTuketimRaporu, MaliyetRaporu } from '@/components/envanter/EnvanterRaporlar'
+import { KullanimKilavuzu } from '@/components/envanter/KullanimKilavuzu'
 import type { ExecuteSonuc, ImportAtlanan, ImportHata, ValidateSonuc } from '@/lib/envanter/import'
 import type { YenilemeDurum, YenilemeSatiri } from '@/lib/envanter/yenileme'
 import type { SatinAlmaAksiyonTip, SatinAlmaDurumTip } from '@/lib/envanter/satinalma'
@@ -33,6 +36,7 @@ import {
   Plus,
   Search,
   ShoppingCart,
+  Wrench,
   Upload,
   UserCheck,
   Warehouse,
@@ -263,6 +267,15 @@ export default function EnvanterPage() {
 function EnvanterPageInner() {
   const [activeTab, setActiveTab] = useState<EnvanterTab>('dashboard')
   const [showNewProductWizard, setShowNewProductWizard] = useState(false)
+  // F6 — Dashboard "Talep Aç": Satın Alma sekmesini o ürünle ön-dolu aç
+  const [satinAlmaPrefill, setSatinAlmaPrefill] = useState<{ malzemeKodu: string; malzemeAdi: string } | null>(null)
+  // F12 — Kullanım kılavuzu modalı
+  const [kilavuzAcik, setKilavuzAcik] = useState(false)
+
+  function handleTalepAc(u: { malzemeKodu: string; malzemeAdi: string }) {
+    setSatinAlmaPrefill(u)
+    setActiveTab('satin-alma')
+  }
 
   return (
     <div className="space-y-6">
@@ -270,8 +283,16 @@ function EnvanterPageInner() {
         <p className="text-sm font-medium text-teal-700">
           İnsan Varlıkları / İdari İşler
         </p>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+        <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold text-slate-900">
           Envanter Yönetimi
+          <button
+            type="button"
+            onClick={() => setKilavuzAcik(true)}
+            className="text-slate-400 transition hover:text-teal-700"
+            title="Kullanım Kılavuzu"
+          >
+            <HelpCircle className="h-5 w-5" />
+          </button>
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">
           Stok, personel zimmeti, KKD teslimi, sezonluk kıyafet dağıtımı ve satın
@@ -295,7 +316,7 @@ function EnvanterPageInner() {
       </Tabs>
 
       <main className="space-y-6">
-  {activeTab === 'dashboard' && <DashboardContent />}
+  {activeTab === 'dashboard' && <DashboardContent onTalepAc={handleTalepAc} />}
 
   {activeTab === 'urunler' && (
     <UrunYonetimi onNewProduct={() => setShowNewProductWizard(true)} />
@@ -322,11 +343,14 @@ function EnvanterPageInner() {
 )}
 
 {activeTab === 'raporlar' && (
-  <RaporlarYonetimi />
+  <RaporlarVeSarfTuketim />
 )}
 
 {activeTab === 'satin-alma' && (
-  <SatinAlmaYonetimi />
+  <SatinAlmaVeYonlendirme
+    prefill={satinAlmaPrefill}
+    onPrefillConsumed={() => setSatinAlmaPrefill(null)}
+  />
 )}
 
 {activeTab === 'sezon' && (
@@ -351,11 +375,17 @@ function EnvanterPageInner() {
       {showNewProductWizard && (
         <YeniUrunWizard onClose={() => setShowNewProductWizard(false)} />
       )}
+
+      {kilavuzAcik && <KullanimKilavuzu onClose={() => setKilavuzAcik(false)} />}
     </div>
   )
 }
 
-function DashboardContent() {
+function DashboardContent({
+  onTalepAc,
+}: {
+  onTalepAc: (u: { malzemeKodu: string; malzemeAdi: string }) => void
+}) {
   const [urunler, setUrunler] = useState<EnvanterUrunListItem[]>([])
   const [loading, setLoading] = useState(true)
   // Faz 2 — kritik ürün bildirimi (alıcı yapılandırılmadığı için şu an 400 döner; sessiz hata YOK)
@@ -399,6 +429,20 @@ function DashboardContent() {
   const kritikUrun = urunler.filter((urun) => urun.durum === 'KRITIK').length
   const eksikUrun = urunler.filter((urun) => urun.mevcut === 0).length
 
+  // F5 — "Sipariş Açılmalı": eşiğin altına düşmüş (KRITIK/MINIMUM) ürünler.
+  // EKSIK (mevcut=0, henüz eşik/stok tanımsız) GİRMEZ; PASIF GİRMEZ.
+  // NOT: Kaynak /api/envanter/urunler (ürün-granülaritesi). Backend'de per-stok
+  // "tum-stoklar" ucu bulunmadığından varyant kırılımı yerine ürün seviyesi gösterilir.
+  const siparisListesi = urunler
+    .filter((u) => u.durum !== 'PASIF' && u.mevcut > 0)
+    .map((u) => {
+      const kritikSeviye = u.durum === 'KRITIK' || (u.kritik > 0 && u.mevcut <= u.kritik)
+      const minimumSeviye = u.min > 0 && u.mevcut <= u.min
+      const durum = kritikSeviye ? 'KRITIK' : minimumSeviye ? 'MINIMUM' : null
+      return { urun: u, durum }
+    })
+    .filter((row): row is { urun: EnvanterUrunListItem; durum: 'KRITIK' | 'MINIMUM' } => row.durum !== null)
+
   if (loading) {
     return (
       <div className="rounded-2xl border bg-white p-6 shadow-sm text-sm text-slate-600">
@@ -439,18 +483,73 @@ function DashboardContent() {
         />
       </div>
 
-      {/* Faz 2 — Kritik ürünleri bildir. Alıcı henüz yapılandırılmadığı için buton
-          şu an anlamlı bir uyarı döndürür (gerçek mail gitmez); sessiz hata YOK. */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border bg-white p-4 shadow-sm">
-        <button
-          type="button"
-          onClick={handleKritikBildir}
-          disabled={bildirimSaving}
-          className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-        >
-          {bildirimSaving ? 'Gönderiliyor...' : 'Kritik Ürünleri Bildir'}
-        </button>
-        {bildirimMesaj && <span className="text-sm text-slate-600">{bildirimMesaj}</span>}
+      {/* F5 — Sipariş Açılmalı. Kritik/minimum eşiğin altına düşen ürünler.
+          Kritik bildir butonu (alıcı yapılandırılmadıysa anlamlı uyarı döner; sessiz hata YOK). */}
+      <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900">Sipariş Açılmalı</h3>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-slate-500">{siparisListesi.length} ürün</span>
+            <button
+              type="button"
+              onClick={handleKritikBildir}
+              disabled={bildirimSaving || siparisListesi.length === 0}
+              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-60"
+            >
+              {bildirimSaving ? 'Gönderiliyor...' : 'Kritik Ürünleri Bildir'}
+            </button>
+          </div>
+        </div>
+        {bildirimMesaj && <p className="mt-2 text-sm text-slate-600">{bildirimMesaj}</p>}
+        <p className="mt-1 text-sm text-slate-500">
+          Kritik veya minimum stok seviyesinin altına düşen, sipariş açılması gereken ürünler.
+        </p>
+        {siparisListesi.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">Şu an sipariş gerektiren ürün yok.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto rounded-xl border">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-3">Kod</th>
+                  <th className="px-3 py-3">Ürün</th>
+                  <th className="px-3 py-3">Varyant</th>
+                  <th className="px-3 py-3 text-right">Mevcut</th>
+                  <th className="px-3 py-3 text-right">Min</th>
+                  <th className="px-3 py-3 text-right">Kritik</th>
+                  <th className="px-3 py-3">Durum</th>
+                  <th className="px-3 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {siparisListesi.map(({ urun, durum }) => (
+                  <tr key={urun.id} className="hover:bg-slate-50">
+                    <td className="px-3 py-2.5 font-medium text-slate-700">{urun.kod}</td>
+                    <td className="px-3 py-2.5">{urun.ad}</td>
+                    <td className="px-3 py-2.5 text-slate-600">{urun.varyantOzeti || 'Ana Ürün'}</td>
+                    <td className="px-3 py-2.5 text-right font-medium">{urun.mevcut}</td>
+                    <td className="px-3 py-2.5 text-right">{urun.min || '-'}</td>
+                    <td className="px-3 py-2.5 text-right">{urun.kritik || '-'}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        durum === 'KRITIK' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
+                      }`}>{durum}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onTalepAc({ malzemeKodu: urun.kod, malzemeAdi: urun.ad })}
+                        className="rounded-lg bg-teal-700 px-3 py-1 text-xs font-medium text-white hover:bg-teal-800"
+                      >
+                        Talep Aç
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
@@ -650,6 +749,7 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
               <th className="px-4 py-3">Ürün</th>
               <th className="px-4 py-3">Kategori</th>
               <th className="px-4 py-3">Tip</th>
+              <th className="px-4 py-3">Varyant</th>
               <th className="px-4 py-3">Beden Tipi</th>
               <th className="px-4 py-3 text-right">Mevcut</th>
               <th className="px-4 py-3 text-right">Min.</th>
@@ -669,6 +769,11 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
                 </td>
                 <td className="px-4 py-3 text-slate-600">{urun.kategori}</td>
                 <td className="px-4 py-3 text-slate-600">{urun.tip}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {urun.varyantOzeti
+                    ? <span title={urun.varyantOzeti}>{urun.varyantOzeti}</span>
+                    : <span className="text-slate-400">Ana Ürün</span>}
+                </td>
                 <td className="px-4 py-3">
                   <select
                     value={urun.bedenTipi}
@@ -738,6 +843,27 @@ function YeniUrunWizard({ onClose }: { onClose: () => void }) {
   const [wizardStep, setWizardStep] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+
+  // F7 — kategori listesi DB'den (Parametreler'deki aktif kategoriler). Sabit liste kaldırıldı.
+  const [kategoriListesi, setKategoriListesi] = useState<{ value: string; label: string }[]>([])
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('/api/envanter/kategoriler?durum=AKTIF')
+        const json = await res.json()
+        const arr = json.data ?? json.kategoriler ?? json
+        if (Array.isArray(arr)) {
+          setKategoriListesi(
+            arr
+              .map((k: { ad?: string; name?: string }) => k.ad ?? k.name ?? '')
+              .filter(Boolean)
+              .sort((a: string, b: string) => a.localeCompare(b, 'tr'))
+              .map((ad: string) => ({ value: ad, label: ad })),
+          )
+        }
+      } catch {}
+    })()
+  }, [])
 
   const [urunForm, setUrunForm] = useState<UrunForm>({
     kod: '',
@@ -999,14 +1125,7 @@ async function handleSave() {
                 label="Kategori"
                 value={urunForm.kategori}
                 onChange={(value) => updateForm('kategori', value)}
-                options={[
-                  { value: '', label: 'Seçiniz' },
-                  { value: 'KKD', label: 'KKD' },
-                  { value: 'IS_KIYAFETI', label: 'İş Kıyafeti' },
-                  { value: 'KIRTASIYE', label: 'Kırtasiye' },
-                  { value: 'TEMIZLIK', label: 'Temizlik' },
-                  { value: 'SARF', label: 'Sarf' },
-                ]}
+                options={[{ value: '', label: 'Seçiniz' }, ...kategoriListesi]}
               />
 
               <FormSelect
@@ -2271,6 +2390,114 @@ function UrunDetayModal({
   const [urun, setUrun] = useState<EnvanterUrunDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // F2 — mevcut ürüne varyant ekleme
+  const [varyantTip, setVaryantTip] = useState<'RENK' | 'BEDEN' | 'NUMARA'>('RENK')
+  const [varyantDeger, setVaryantDeger] = useState('')
+  const [varyantSaving, setVaryantSaving] = useState(false)
+  const [varyantHata, setVaryantHata] = useState('')
+
+  async function handleVaryantEkle() {
+    if (!varyantDeger.trim()) return
+    setVaryantSaving(true)
+    setVaryantHata('')
+    try {
+      const res = await fetch('/api/envanter/urunler/varyant-ekle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urunId, tip: varyantTip, deger: varyantDeger.trim() }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setVaryantHata(json.message || 'Varyant eklenemedi.')
+        return
+      }
+      setVaryantDeger('')
+      setRefreshKey((k) => k + 1)
+    } catch {
+      setVaryantHata('Varyant eklenemedi.')
+    } finally {
+      setVaryantSaving(false)
+    }
+  }
+
+  // F3 — stok bazında min/kritik eşik
+  const [esikTaslak, setEsikTaslak] = useState<Record<string, { min: string; kritik: string }>>({})
+  const [esikSaving, setEsikSaving] = useState<Record<string, boolean>>({})
+
+  function esikDeger(stok: { id: string; minStok: number | null; kritikStok: number | null }, alan: 'min' | 'kritik') {
+    const t = esikTaslak[stok.id]
+    if (t && t[alan] !== undefined) return t[alan]
+    return alan === 'min' ? (stok.minStok ?? '').toString() : (stok.kritikStok ?? '').toString()
+  }
+  function setEsik(stokId: string, alan: 'min' | 'kritik', deger: string, stok: { minStok: number | null; kritikStok: number | null }) {
+    setEsikTaslak((prev) => ({
+      ...prev,
+      [stokId]: {
+        min: alan === 'min' ? deger : (prev[stokId]?.min ?? (stok.minStok ?? '').toString()),
+        kritik: alan === 'kritik' ? deger : (prev[stokId]?.kritik ?? (stok.kritikStok ?? '').toString()),
+      },
+    }))
+  }
+  async function handleEsikKaydet(stokId: string) {
+    const t = esikTaslak[stokId]
+    if (!t) return
+    setEsikSaving((p) => ({ ...p, [stokId]: true }))
+    try {
+      const res = await fetch('/api/envanter/stok/esik', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stokId, minStok: t.min, kritikStok: t.kritik }),
+      })
+      const json = await res.json()
+      if (json.ok) {
+        setEsikTaslak((prev) => {
+          const y = { ...prev }
+          delete y[stokId]
+          return y
+        })
+        setRefreshKey((k) => k + 1)
+      }
+    } finally {
+      setEsikSaving((p) => ({ ...p, [stokId]: false }))
+    }
+  }
+
+  // F4 — stok bazında birim maliyet + para birimi (TL/EUR/USD)
+  const [maliyetTaslak, setMaliyetTaslak] = useState<Record<string, { maliyet: string; pb: string }>>({})
+
+  function maliyetDeger(stok: { id: string; birimMaliyet: number | null; paraBirimi: string | null }, alan: 'maliyet' | 'pb') {
+    const t = maliyetTaslak[stok.id]
+    if (t && t[alan] !== undefined) return t[alan]
+    return alan === 'maliyet' ? (stok.birimMaliyet ?? '').toString() : (stok.paraBirimi ?? 'TL')
+  }
+  function setMaliyet(stok: { id: string; birimMaliyet: number | null; paraBirimi: string | null }, alan: 'maliyet' | 'pb', deger: string) {
+    setMaliyetTaslak((prev) => ({
+      ...prev,
+      [stok.id]: {
+        maliyet: alan === 'maliyet' ? deger : (prev[stok.id]?.maliyet ?? (stok.birimMaliyet ?? '').toString()),
+        pb: alan === 'pb' ? deger : (prev[stok.id]?.pb ?? (stok.paraBirimi ?? 'TL')),
+      },
+    }))
+  }
+  async function handleMaliyetKaydet(stokId: string) {
+    const t = maliyetTaslak[stokId]
+    if (!t) return
+    try {
+      await fetch('/api/envanter/stok/maliyet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stokId, birimMaliyet: t.maliyet, paraBirimi: t.pb }),
+      })
+      setMaliyetTaslak((prev) => {
+        const y = { ...prev }
+        delete y[stokId]
+        return y
+      })
+      setRefreshKey((k) => k + 1)
+    } catch {}
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -2306,7 +2533,7 @@ function UrunDetayModal({
     return () => {
       cancelled = true
     }
-  }, [urunId])
+  }, [urunId, refreshKey])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
@@ -2365,27 +2592,132 @@ function UrunDetayModal({
                         <th className="px-3 py-3 text-right">Mevcut</th>
                         <th className="px-3 py-3 text-right">Min</th>
                         <th className="px-3 py-3 text-right">Kritik</th>
+                        <th className="px-3 py-3 text-right">Maliyet</th>
+                        <th className="px-3 py-3">Para Br.</th>
                         <th className="px-3 py-3">Depo</th>
                         <th className="px-3 py-3">Raf</th>
                         <th className="px-3 py-3">Durum</th>
+                        <th className="px-3 py-3"></th>
                       </tr>
                     </thead>
 
                     <tbody className="divide-y divide-slate-100">
-                      {urun.stoklar.map((stok) => (
-                        <tr key={stok.id}>
-                          <td className="px-3 py-3">{stok.varyantAdi || 'Ana Ürün'}</td>
-                          <td className="px-3 py-3 text-right">{stok.mevcut}</td>
-                          <td className="px-3 py-3 text-right">{stok.minStok ?? '-'}</td>
-                          <td className="px-3 py-3 text-right">{stok.kritikStok ?? '-'}</td>
-                          <td className="px-3 py-3">{stok.depo || '-'}</td>
-                          <td className="px-3 py-3">{stok.raf || '-'}</td>
-                          <td className="px-3 py-3">{stok.durum}</td>
-                        </tr>
-                      ))}
+                      {urun.stoklar
+                        .filter((stok) => {
+                          // Varyantı olan üründe "Ana Ürün" satırı gizlenir (F3)
+                          const varyantliVar = urun.stoklar.some((s) => s.varyantAdi)
+                          return varyantliVar ? Boolean(stok.varyantAdi) : true
+                        })
+                        .map((stok) => {
+                          const degisti = Boolean(esikTaslak[stok.id])
+                          const maliyetDegisti = Boolean(maliyetTaslak[stok.id])
+                          return (
+                            <tr key={stok.id}>
+                              <td className="px-3 py-3">{stok.varyantAdi || 'Ana Ürün'}</td>
+                              <td className="px-3 py-3 text-right">{stok.mevcut}</td>
+                              <td className="px-3 py-2 text-right">
+                                <input
+                                  type="number"
+                                  value={esikDeger(stok, 'min')}
+                                  onChange={(e) => setEsik(stok.id, 'min', e.target.value, stok)}
+                                  className="w-16 rounded-lg border px-2 py-1 text-right text-xs"
+                                  placeholder="-"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <input
+                                  type="number"
+                                  value={esikDeger(stok, 'kritik')}
+                                  onChange={(e) => setEsik(stok.id, 'kritik', e.target.value, stok)}
+                                  className="w-16 rounded-lg border px-2 py-1 text-right text-xs"
+                                  placeholder="-"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <input
+                                  type="number"
+                                  value={maliyetDeger(stok, 'maliyet')}
+                                  onChange={(e) => setMaliyet(stok, 'maliyet', e.target.value)}
+                                  className="w-20 rounded-lg border px-2 py-1 text-right text-xs"
+                                  placeholder="-"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <select
+                                  value={maliyetDeger(stok, 'pb')}
+                                  onChange={(e) => setMaliyet(stok, 'pb', e.target.value)}
+                                  className="rounded-lg border px-2 py-1 text-xs"
+                                >
+                                  <option value="TL">TL</option>
+                                  <option value="EUR">EUR</option>
+                                  <option value="USD">USD</option>
+                                </select>
+                              </td>
+                              <td className="px-3 py-3">{stok.depo || '-'}</td>
+                              <td className="px-3 py-3">{stok.raf || '-'}</td>
+                              <td className="px-3 py-3">{stok.durum}</td>
+                              <td className="px-3 py-3">
+                                {(degisti || maliyetDegisti) && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (degisti) await handleEsikKaydet(stok.id)
+                                      if (maliyetDegisti) await handleMaliyetKaydet(stok.id)
+                                    }}
+                                    disabled={esikSaving[stok.id]}
+                                    className="rounded-lg bg-teal-700 px-2 py-1 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+                                  >
+                                    {esikSaving[stok.id] ? '...' : 'Kaydet'}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-5">
+                <h3 className="font-semibold text-slate-900">Varyant Ekle</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Mevcut ürüne renk, beden veya numara varyantı ekleyin. Eklenen varyant için stok kaydı otomatik açılır (mevcut 0).
+                </p>
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="text-sm font-medium">Tip</label>
+                    <select
+                      value={varyantTip}
+                      onChange={(e) => setVaryantTip(e.target.value as 'RENK' | 'BEDEN' | 'NUMARA')}
+                      className="mt-1 block rounded-xl border p-2 text-sm"
+                    >
+                      <option value="RENK">Renk</option>
+                      <option value="BEDEN">Beden</option>
+                      <option value="NUMARA">Numara</option>
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-sm font-medium">Değer</label>
+                    <input
+                      value={varyantDeger}
+                      onChange={(e) => setVaryantDeger(e.target.value)}
+                      placeholder="Örn: Kırmızı / M / 42"
+                      className="mt-1 block w-full max-w-xs rounded-xl border p-2 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleVaryantEkle}
+                    disabled={varyantSaving || !varyantDeger.trim()}
+                    className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+                  >
+                    {varyantSaving ? 'Ekleniyor...' : 'Ekle'}
+                  </button>
+                </div>
+                {varyantHata && (
+                  <p className="mt-2 text-sm text-rose-600">{varyantHata}</p>
+                )}
               </div>
 
               <div className="rounded-2xl border bg-white p-5">
@@ -4245,6 +4577,46 @@ function YenilemeDurumBadge({ durum }: { durum: YenilemeDurum }) {
   )
 }
 
+// F9/F10/F13 — Raporlar sekmesi alt görünümleri: KKD Yenileme (mevcut, KORUNUR) +
+// Sarf Tüketim + Maliyet. KKD raporu (RaporlarYonetimi) üzerine yazılmaz, yanına eklenir.
+function RaporlarVeSarfTuketim() {
+  const [gorunum, setGorunum] = useState<'yenileme' | 'sarf' | 'maliyet'>('yenileme')
+  return (
+    <div className="space-y-6">
+      <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+        <button
+          type="button"
+          onClick={() => setGorunum('yenileme')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            gorunum === 'yenileme' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          KKD Yenileme
+        </button>
+        <button
+          type="button"
+          onClick={() => setGorunum('sarf')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            gorunum === 'sarf' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Sarf Tüketim
+        </button>
+        <button
+          type="button"
+          onClick={() => setGorunum('maliyet')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            gorunum === 'maliyet' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Maliyet
+        </button>
+      </div>
+      {gorunum === 'yenileme' ? <RaporlarYonetimi /> : gorunum === 'sarf' ? <SarfTuketimRaporu /> : <MaliyetRaporu />}
+    </div>
+  )
+}
+
 function RaporlarYonetimi() {
   const [veriler, setVeriler] = useState<YenilemeSatiri[]>([])
   const [loading, setLoading] = useState(true)
@@ -4602,7 +4974,61 @@ type YeniKalemSatiri = {
   aciklama: string
 }
 
-function SatinAlmaYonetimi() {
+// F11 — Satın Alma sekmesi: Doğrudan Talepler + Bakım Yönlendirme alt sekmeleri
+function SatinAlmaVeYonlendirme({
+  prefill,
+  onPrefillConsumed,
+}: {
+  prefill?: { malzemeKodu: string; malzemeAdi: string } | null
+  onPrefillConsumed?: () => void
+}) {
+  const [gorunum, setGorunum] = useState<'dogrudan' | 'yonlendirme'>('dogrudan')
+
+  return (
+    <div className="space-y-6">
+      <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+        <button
+          type="button"
+          onClick={() => setGorunum('dogrudan')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            gorunum === 'dogrudan'
+              ? 'bg-white text-teal-700 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <ShoppingCart className="h-4 w-4" />
+          Doğrudan Talepler
+        </button>
+        <button
+          type="button"
+          onClick={() => setGorunum('yonlendirme')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            gorunum === 'yonlendirme'
+              ? 'bg-white text-teal-700 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Wrench className="h-4 w-4" />
+          Bakım Yönlendirme
+        </button>
+      </div>
+
+      {gorunum === 'dogrudan' ? (
+        <SatinAlmaYonetimi prefill={prefill} onPrefillConsumed={onPrefillConsumed} />
+      ) : (
+        <BakimYonlendirmeYonetimi />
+      )}
+    </div>
+  )
+}
+
+function SatinAlmaYonetimi({
+  prefill,
+  onPrefillConsumed,
+}: {
+  prefill?: { malzemeKodu: string; malzemeAdi: string } | null
+  onPrefillConsumed?: () => void
+}) {
   const [talepler, setTalepler] = useState<SatinAlmaTalepListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -4640,6 +5066,9 @@ function SatinAlmaYonetimi() {
 
   const [stogaSaving, setStogaSaving] = useState(false)
 
+  // F8 — Kategori dropdown kaynağı (Masraf Yeri yerine). Değer masrafYeri alanına yazılır.
+  const [kategoriListesi, setKategoriListesi] = useState<string[]>([])
+
   useEffect(() => {
     loadTalepler(durumFiltre || undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4647,6 +5076,40 @@ function SatinAlmaYonetimi() {
 
   useEffect(() => {
     loadBolumler()
+  }, [])
+
+  // F6 — Dashboard "Talep Aç" ile gelen ön-dolu malzeme: formu aç, ilk kalemi doldur
+  useEffect(() => {
+    if (prefill) {
+      setShowNewForm(true)
+      setYeniKalemler([
+        {
+          malzemeKodu: prefill.malzemeKodu,
+          malzemeAdi: prefill.malzemeAdi,
+          talepMiktar: '1',
+          aciklama: '',
+        },
+      ])
+      onPrefillConsumed?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill])
+
+  // F8 — Aktif kategorileri çek (Kategori dropdown)
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('/api/envanter/kategoriler?durum=AKTIF')
+        const json = await res.json()
+        const arr = json.data ?? []
+        setKategoriListesi(
+          arr
+            .map((k: { ad?: string }) => k.ad ?? '')
+            .filter(Boolean)
+            .sort((a: string, b: string) => a.localeCompare(b, 'tr')),
+        )
+      } catch {}
+    })()
   }, [])
 
   async function loadBolumler() {
@@ -4953,7 +5416,7 @@ function SatinAlmaYonetimi() {
           <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="grid gap-4 md:grid-cols-3">
               <div>
-                <label className="text-sm font-medium">Bölüm</label>
+                <label className="text-sm font-medium">İhtiyaç Duyan Bölüm</label>
                 <select
                   value={yeniBolum}
                   onChange={(e) => setYeniBolum(e.target.value)}
@@ -4969,12 +5432,19 @@ function SatinAlmaYonetimi() {
               </div>
 
               <div>
-                <label className="text-sm font-medium">Masraf Yeri</label>
-                <input
+                <label className="text-sm font-medium">Kategori</label>
+                <select
                   value={yeniMasrafYeri}
                   onChange={(e) => setYeniMasrafYeri(e.target.value)}
                   className="mt-1 w-full rounded-xl border p-2 text-sm"
-                />
+                >
+                  <option value="">Seçiniz</option>
+                  {kategoriListesi.map((kat) => (
+                    <option key={kat} value={kat}>
+                      {kat}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

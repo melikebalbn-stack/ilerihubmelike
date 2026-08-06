@@ -47,6 +47,7 @@ interface Ticket {
   resolvedAt?: string | null
   category?: { name: string; color: string | null; icon: string | null } | null
   comments?: TicketComment[]
+  timeline?: TicketTimelineEntry[]
 }
 
 interface TicketComment {
@@ -56,6 +57,27 @@ interface TicketComment {
   isInternal: boolean
   isResolution: boolean
   createdAt: string
+}
+
+// GET /api/tickets/[id] → timeline: sistem olayları (atama, durum, öncelik…).
+interface TicketTimelineEntry {
+  id: string
+  action: string
+  description: string
+  performedByName: string
+  createdAt: string
+}
+
+// Yorum + sistem olayını tek kronolojik akışta birleştirmek için ayrık union.
+type ActivityItem =
+  | { kind: "comment"; id: string; createdAt: string; comment: TicketComment }
+  | { kind: "event"; id: string; createdAt: string; event: TicketTimelineEntry }
+
+function eventIcon(action: string) {
+  if (action === "assigned") return <UserPlus className="h-3 w-3" />
+  if (action === "status_changed") return <CheckCircle2 className="h-3 w-3" />
+  if (action === "priority_changed") return <AlertTriangle className="h-3 w-3" />
+  return <Settings2 className="h-3 w-3" />
 }
 
 interface AssignableUser {
@@ -107,6 +129,7 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
 
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [comments, setComments] = useState<TicketComment[]>([])
+  const [timeline, setTimeline] = useState<TicketTimelineEntry[]>([])
   const [updatingTicket, setUpdatingTicket] = useState(false)
   const [newComment, setNewComment] = useState("")
   const [sendingComment, setSendingComment] = useState(false)
@@ -122,6 +145,7 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
     const data: Ticket = await res.json()
     setTicket(data)
     setComments(data.comments ?? [])
+    setTimeline(data.timeline ?? [])
   }
 
   const fetchAssignableUsers = async () => {
@@ -243,6 +267,15 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
   const open = isOpenStatus(ticket.status)
   const age = ticketAge(ticket.createdAt)
   const resolved = !open ? resolutionTime(ticket.createdAt, ticket.closedAt, ticket.resolvedAt) : null
+
+  // Yorumlar + sistem olayları tek kronolojik akışta (eski→yeni). 'comment_added'
+  // olayları elenir: yorumun kendisi zaten ayrı kart olarak gösteriliyor (çift kayıt olmasın).
+  const activity: ActivityItem[] = [
+    ...comments.map((c) => ({ kind: "comment" as const, id: `c_${c.id}`, createdAt: c.createdAt, comment: c })),
+    ...timeline
+      .filter((t) => t.action !== "comment_added")
+      .map((t) => ({ kind: "event" as const, id: `t_${t.id}`, createdAt: t.createdAt, event: t })),
+  ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 
   return (
     <Card className="border-0 shadow-none">
@@ -416,32 +449,48 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
         <div>
           <h4 className="font-medium mb-3">Yorumlar & Aktivite</h4>
           <ScrollArea className="h-[240px] mb-4">
-            {comments.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Henuz yorum yok</p>
+            {activity.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Henuz hareket yok</p>
             ) : (
               <div className="space-y-3">
-                {comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className={`p-3 rounded-lg ${
-                      comment.isInternal
-                        ? "bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800"
-                        : comment.isResolution
-                        ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800"
-                        : "bg-muted/30"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm">{comment.authorName}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: tr })}
+                {activity.map((item) =>
+                  item.kind === "event" ? (
+                    // Sistem olayı: kompakt satır, yuvarlak ikon, soluk stil (yorumdan görsel ayrım).
+                    <div key={item.id} className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                        {eventIcon(item.event.action)}
+                      </span>
+                      <span className="flex-1">
+                        <span className="font-medium text-foreground/70">{item.event.description}</span>
+                        {item.event.performedByName && <span> · {item.event.performedByName}</span>}
+                      </span>
+                      <span className="shrink-0">
+                        {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true, locale: tr })}
                       </span>
                     </div>
-                    <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
-                    {comment.isInternal && <Badge variant="outline" className="mt-2 text-yellow-600">Dahili Not</Badge>}
-                    {comment.isResolution && <Badge variant="outline" className="mt-2 text-green-600">Cozum</Badge>}
-                  </div>
-                ))}
+                  ) : (
+                    <div
+                      key={item.id}
+                      className={`p-3 rounded-lg ${
+                        item.comment.isInternal
+                          ? "bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800"
+                          : item.comment.isResolution
+                          ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800"
+                          : "bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-sm">{item.comment.authorName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(item.comment.createdAt), { addSuffix: true, locale: tr })}
+                        </span>
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap">{item.comment.content}</p>
+                      {item.comment.isInternal && <Badge variant="outline" className="mt-2 text-yellow-600">Dahili Not</Badge>}
+                      {item.comment.isResolution && <Badge variant="outline" className="mt-2 text-green-600">Cozum</Badge>}
+                    </div>
+                  )
+                )}
               </div>
             )}
           </ScrollArea>

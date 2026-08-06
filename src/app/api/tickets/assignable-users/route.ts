@@ -16,12 +16,12 @@ export async function GET() {
     return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
   }
 
-  // IT ekibi = 'it-admin' ROLÜ (izin değil): helpdesk.admin izni super-admin'de de var
-  // ve yönetimi listeye sokar. Gerçek IT ekibi it-admin rolüyle tanımlı.
+  // IT ekibi = 'it-admin' VEYA 'helpdesk-agent' ROLÜ. helpdesk.admin izni super-admin'de
+  // de var ama üst yönetimi listeye sokar → super-admin BİLİNÇLİ hariç.
   const users = await prisma.user.findMany({
     where: {
       isActive: true,
-      userRoles: { some: { role: { slug: 'it-admin' } } },
+      userRoles: { some: { role: { slug: { in: ['it-admin', 'helpdesk-agent'] } } } },
     },
     select: { id: true, name: true, email: true },
     orderBy: { name: 'asc' },

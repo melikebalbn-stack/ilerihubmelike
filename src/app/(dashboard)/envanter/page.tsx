@@ -326,10 +326,6 @@ function EnvanterPageInner() {
     <StokYonetimi />
   )}
 
-  {activeTab === 'stok' && (
-  <StokYonetimi />
-)}
-
 {activeTab === 'zimmetler' && (
   <PersonelZimmeti />
 )}
@@ -392,6 +388,21 @@ function DashboardContent({
   const [bildirimSaving, setBildirimSaving] = useState(false)
   const [bildirimMesaj, setBildirimMesaj] = useState('')
 
+  // F5 (tam fidelite) — "Sipariş Açılmalı" per-stok/varyant granülaritesinde.
+  // Kaynak: /api/envanter/tum-stoklar (durum KRITIK/MINIMUM/NORMAL/EKSIK per stok).
+  const [siparisListesi, setSiparisListesi] = useState<{
+    stokId: string
+    urunId: string
+    urunKodu: string
+    urunAdi: string
+    kategori: string
+    varyantAdi: string | null
+    mevcut: number
+    minStok: number | null
+    kritikStok: number | null
+    durum: string
+  }[]>([])
+
   useEffect(() => {
     async function loadDashboard() {
       try {
@@ -407,6 +418,24 @@ function DashboardContent({
     }
 
     loadDashboard()
+  }, [])
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('/api/envanter/tum-stoklar')
+        const json = await res.json()
+        if (json.ok) {
+          // Yalnız KRITIK + MINIMUM. EKSIK (eşik tanımsız) ve NORMAL girmez; PASIF
+          // ürün-seviyesi bir durumdur, tum-stoklar stok durumunda yer almaz.
+          setSiparisListesi(
+            json.data.filter(
+              (s: { durum: string }) => s.durum === 'KRITIK' || s.durum === 'MINIMUM',
+            ),
+          )
+        }
+      } catch {}
+    })()
   }, [])
 
   async function handleKritikBildir() {
@@ -428,20 +457,6 @@ function DashboardContent({
   const toplamStok = urunler.reduce((total, urun) => total + urun.mevcut, 0)
   const kritikUrun = urunler.filter((urun) => urun.durum === 'KRITIK').length
   const eksikUrun = urunler.filter((urun) => urun.mevcut === 0).length
-
-  // F5 — "Sipariş Açılmalı": eşiğin altına düşmüş (KRITIK/MINIMUM) ürünler.
-  // EKSIK (mevcut=0, henüz eşik/stok tanımsız) GİRMEZ; PASIF GİRMEZ.
-  // NOT: Kaynak /api/envanter/urunler (ürün-granülaritesi). Backend'de per-stok
-  // "tum-stoklar" ucu bulunmadığından varyant kırılımı yerine ürün seviyesi gösterilir.
-  const siparisListesi = urunler
-    .filter((u) => u.durum !== 'PASIF' && u.mevcut > 0)
-    .map((u) => {
-      const kritikSeviye = u.durum === 'KRITIK' || (u.kritik > 0 && u.mevcut <= u.kritik)
-      const minimumSeviye = u.min > 0 && u.mevcut <= u.min
-      const durum = kritikSeviye ? 'KRITIK' : minimumSeviye ? 'MINIMUM' : null
-      return { urun: u, durum }
-    })
-    .filter((row): row is { urun: EnvanterUrunListItem; durum: 'KRITIK' | 'MINIMUM' } => row.durum !== null)
 
   if (loading) {
     return (
@@ -489,7 +504,7 @@ function DashboardContent({
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-slate-900">Sipariş Açılmalı</h3>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500">{siparisListesi.length} ürün</span>
+            <span className="text-sm text-slate-500">{siparisListesi.length} kalem</span>
             <button
               type="button"
               onClick={handleKritikBildir}
@@ -522,23 +537,29 @@ function DashboardContent({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {siparisListesi.map(({ urun, durum }) => (
-                  <tr key={urun.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2.5 font-medium text-slate-700">{urun.kod}</td>
-                    <td className="px-3 py-2.5">{urun.ad}</td>
-                    <td className="px-3 py-2.5 text-slate-600">{urun.varyantOzeti || 'Ana Ürün'}</td>
-                    <td className="px-3 py-2.5 text-right font-medium">{urun.mevcut}</td>
-                    <td className="px-3 py-2.5 text-right">{urun.min || '-'}</td>
-                    <td className="px-3 py-2.5 text-right">{urun.kritik || '-'}</td>
+                {siparisListesi.map((s) => (
+                  <tr key={s.stokId} className="hover:bg-slate-50">
+                    <td className="px-3 py-2.5 font-medium text-slate-700">{s.urunKodu}</td>
+                    <td className="px-3 py-2.5">{s.urunAdi}</td>
+                    <td className="px-3 py-2.5 text-slate-600">{s.varyantAdi || 'Ana Ürün'}</td>
+                    <td className="px-3 py-2.5 text-right font-medium">{s.mevcut}</td>
+                    <td className="px-3 py-2.5 text-right">{s.minStok ?? '-'}</td>
+                    <td className="px-3 py-2.5 text-right">{s.kritikStok ?? '-'}</td>
                     <td className="px-3 py-2.5">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                        durum === 'KRITIK' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
-                      }`}>{durum}</span>
+                        s.durum === 'KRITIK' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
+                      }`}>{s.durum}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <button
                         type="button"
-                        onClick={() => onTalepAc({ malzemeKodu: urun.kod, malzemeAdi: urun.ad })}
+                        onClick={() =>
+                          onTalepAc({
+                            malzemeKodu: s.urunKodu,
+                            // Varyant bilgisini de taşı: talep formundaki kalem adına ekle
+                            malzemeAdi: s.varyantAdi ? `${s.urunAdi} — ${s.varyantAdi}` : s.urunAdi,
+                          })
+                        }
                         className="rounded-lg bg-teal-700 px-3 py-1 text-xs font-medium text-white hover:bg-teal-800"
                       >
                         Talep Aç

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { dispatchTicketAssigned } from '@/lib/ticket-notifications'
 
 // GET - Ticket detayı
 export async function GET(
@@ -284,6 +285,31 @@ export async function PUT(
           performedByName: user.name ?? user.email,
         }))
       })
+    }
+
+    // Atama bildirimi (best-effort): yeni bir KİŞİYE atandıysa SADECE o kişiye in-app + push.
+    // Atama kaldırma (boş) ve kendine atama → bildirim yok. Bildirim düşse de PUT başarısız olmaz.
+    if (
+      assignedTo !== undefined &&
+      assignedTo !== existingTicket.assignedTo &&
+      assignedTo &&
+      assignedTo !== user.email
+    ) {
+      try {
+        const assignee = await prisma.user.findUnique({
+          where: { email: assignedTo },
+          select: { id: true },
+        })
+        if (assignee) {
+          await dispatchTicketAssigned(
+            { id: ticket.id, ticketNumber: ticket.ticketNumber, subject: ticket.subject },
+            assignee.id,
+            user.name ?? user.email,
+          )
+        }
+      } catch (err) {
+        console.error('[ticket-assign-notify] dispatch failed:', err)
+      }
     }
 
     return NextResponse.json(ticket)

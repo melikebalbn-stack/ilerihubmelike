@@ -237,3 +237,54 @@ export async function dispatchTicketCreated(ticket: TicketForDispatch): Promise<
     `[ticket-notify] dispatch finished for ${ticket.ticketNumber} in ${Date.now() - startedAt}ms`,
   )
 }
+
+// ════════════════════════════════════════════════════════════
+// PUBLIC: TICKET ATAMA BİLDİRİMİ
+// ════════════════════════════════════════════════════════════
+
+export type TicketAssignedInfo = {
+  id: string
+  ticketNumber: string
+  subject: string
+}
+
+/**
+ * Ticket bir kişiye atandığında SADECE o kişiye bildirim gönderir.
+ *   - In-app: prisma.notification.create (atanan kullanıcı)
+ *   - Push: sendPushToUser (abonelik yoksa 0 döner, sorun değil)
+ * Mail YOK, durum değişikliği YOK, dept/unaccent araması YOK (atanan id ile belli).
+ *
+ * Best-effort: her kanal kendi try/catch'inde; fonksiyon throw ETMEZ →
+ * caller (PUT) await etse bile atama bildirimden dolayı başarısız olmaz.
+ */
+export async function dispatchTicketAssigned(
+  ticket: TicketAssignedInfo,
+  assignedUserId: string,
+  assignerName: string,
+): Promise<void> {
+  const link = `/it-support?ticket=${ticket.ticketNumber}`
+  const title = `Size ticket atandı: ${ticket.ticketNumber}`
+  const message = `${assignerName}: ${ticket.subject}`
+
+  // Kanal 1: in-app
+  try {
+    await prisma.notification.create({
+      data: { userId: assignedUserId, title, message, type: 'INFO' as const, link },
+    })
+  } catch (err) {
+    console.error('[ticket-assign-notify] in-app failed:', err)
+  }
+
+  // Kanal 2: push (abonelik yoksa sendPushToUser 0 döner)
+  try {
+    await sendPushToUser(prisma, assignedUserId, {
+      title,
+      body: ticket.subject,
+      url: link,
+      tag: `ticket-${ticket.id}`,
+      data: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber },
+    })
+  } catch (err) {
+    console.error('[ticket-assign-notify] push failed:', err)
+  }
+}

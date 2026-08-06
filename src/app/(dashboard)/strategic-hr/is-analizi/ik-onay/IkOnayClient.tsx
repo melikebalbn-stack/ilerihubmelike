@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Check, Undo2, ChevronLeft, Inbox, ShieldCheck } from "lucide-react";
+import { Check, Undo2, ChevronLeft, Inbox, ShieldCheck, Download } from "lucide-react";
 
 const BRAND = "#1B4F72";
 
@@ -69,6 +69,22 @@ export default function IkOnayClient() {
   }
 
   useEffect(() => { listeYukle(); }, []);
+
+  async function disaAktar() {
+    try {
+      const r = await fetch("/api/strategic-hr/is-analizi/export?liste=ik");
+      if (!r.ok) { setHata("Excel export başarısız."); return; }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `is-analizi-ik-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setHata("Excel export sırasında hata oluştu.");
+    }
+  }
 
   async function detayAc(id: string) {
     setSeciliId(id);
@@ -246,14 +262,19 @@ export default function IkOnayClient() {
   /* ── Liste ── */
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ backgroundColor: `${BRAND}14` }}>
-          <ShieldCheck className="h-5 w-5" style={{ color: BRAND }} />
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ backgroundColor: `${BRAND}14` }}>
+            <ShieldCheck className="h-5 w-5" style={{ color: BRAND }} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">İş Analizi Onayları (İK)</h1>
+            <p className="text-sm text-slate-500">Amir onayından geçmiş, İK incelemesini bekleyen formlar.</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">İş Analizi Onayları (İK)</h1>
-          <p className="text-sm text-slate-500">Amir onayından geçmiş, İK incelemesini bekleyen formlar.</p>
-        </div>
+        <Button variant="outline" onClick={disaAktar} disabled={liste.length === 0} className="gap-1 shrink-0">
+          <Download className="h-4 w-4" /> Excel'e Aktar
+        </Button>
       </div>
 
       {yukleniyor && <p className="text-slate-400">Yükleniyor...</p>}

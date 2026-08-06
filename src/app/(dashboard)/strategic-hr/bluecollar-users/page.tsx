@@ -326,34 +326,32 @@ export default function BlueCollarUsersPage() {
 
   const handleExcelDownload = async () => {
     try {
-      // Tüm kullanıcıları çek (sayfalama olmadan)
-      const res = await fetch(`/api/bluecollar-users?limit=10000&sortBy=employeeId&sortOrder=asc`)
+      // Sunucu tarafı, audit'li export — aktif filtreleri taşı (görünen = aktarılan)
+      const params = new URLSearchParams({
+        sortBy,
+        sortOrder,
+        ...(debouncedSearch && { search: debouncedSearch }),
+        ...(filterDepartment && { department: filterDepartment }),
+        ...(filterServiceRoute && { serviceRoute: filterServiceRoute }),
+        ...(filterIsActive && { isActive: filterIsActive }),
+      })
+      const res = await fetch(`/api/bluecollar-users/export?${params}`)
+      if (res.status === 403) {
+        toast.error("Bu işlem için yetkiniz yok")
+        return
+      }
       if (!res.ok) {
         toast.error("Kullanıcılar alınamadı")
         return
       }
-      const { users: allUsers } = await res.json()
-      const data = allUsers.map((u: BlueCollarUser) => ({
-        "Sicil No": u.employeeId || "",
-        "Ad Soyad": u.name || "",
-        "TC Son 4": u.tcLastFour || "",
-        Departman: u.department || "",
-        Pozisyon: u.jobTitle || "",
-        "Görev": u.duty || "",
-        "Bölüm": u.section || "",
-        Servis: u.serviceRoute || "",
-        "Servis Durak": u.serviceStop || "",
-        Durum: u.isActive ? "Aktif" : "Pasif",
-      }))
-      const ws = XLSX.utils.json_to_sheet(data)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, "Mavi Yaka Kullanıcılar")
-      ws["!cols"] = [
-        { wch: 10 }, { wch: 25 }, { wch: 8 }, { wch: 20 }, { wch: 15 },
-        { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 8 },
-      ]
-      XLSX.writeFile(wb, `mavi-yaka-kullanicilar-${new Date().toISOString().slice(0, 10)}.xlsx`)
-      toast.success(`${allUsers.length} kullanıcı Excel'e aktarıldı`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `mavi-yaka-kullanicilar-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Excel dosyası indirildi")
     } catch {
       toast.error("Excel indirme sırasında hata oluştu")
     }
@@ -494,7 +492,7 @@ export default function BlueCollarUsersPage() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleExcelDownload} disabled={users.length === 0}>
             <Download className="h-4 w-4 mr-2" />
-            Excel İndir
+            Excel'e Aktar
           </Button>
           <Button variant="outline" disabled={uploading} onClick={() => document.getElementById("excel-upload-input")?.click()}>
             {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}

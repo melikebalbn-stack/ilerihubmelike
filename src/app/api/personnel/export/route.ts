@@ -15,7 +15,8 @@ import {
 export const dynamic = 'force-dynamic'
 
 const ALLOWED_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
-const FULL_SENSITIVE_ROLES = ['ADMIN', 'SUPER_ADMIN']
+// Banka bilgisi (hesap/IBAN) tam görüntüleme: ADMIN/SUPER_ADMIN + İK Müdürü (HR_MANAGER).
+const FULL_SENSITIVE_ROLES = ['ADMIN', 'SUPER_ADMIN', 'HR_MANAGER']
 
 function isHRDepartment(dept: string | undefined | null): boolean {
   return isInsanVarliklari(dept)
@@ -254,6 +255,21 @@ export async function GET(request: NextRequest) {
         filters: { bolum, yakaRengi, aktif, search: search ? '<filtered>' : null },
       },
     })
+
+    // KVKK erişim izi: hassas/banka içeren toplu export'ta PersonnelAccessLog'a kişi
+    // başı kayıt (mevcut _SENSITIVE deseni). Hassas alan içermeyen export'ta yazılmaz.
+    if (includeSensitive || includeBank) {
+      const ipAddress =
+        request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null
+      await prisma.personnelAccessLog.createMany({
+        data: personnel.map((p: any) => ({
+          personnelId: p.id,
+          accessedBy: user.id,
+          accessType: 'EXPORT_SENSITIVE',
+          ipAddress,
+        })),
+      })
+    }
 
     return new NextResponse(buffer, {
       status: 200,

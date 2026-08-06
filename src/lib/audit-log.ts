@@ -45,6 +45,13 @@ export type AuditTargetType =
   | 'OVERTIME_TARGET'
   // Mesai formu — reddedileni yeniden açma (admin)
   | 'OVERTIME_FORM'
+  // İV Excel export'ları (feat/iv-export-import)
+  | 'BLUECOLLAR_USER'
+  | 'SUCCESSION_PLAN'
+  | 'PERFORMANCE_REVIEW'
+  | 'PERSONNEL_REQUEST'
+  | 'IS_ANALIZI'
+  | 'JOB_CANDIDATE'
 
 export interface AuditLogParams {
   action: string

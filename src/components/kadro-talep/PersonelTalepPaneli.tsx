@@ -53,6 +53,7 @@ import {
   Eye,
   Trash2,
   Play,
+  Download,
 } from "lucide-react"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -378,6 +379,27 @@ export function PersonelTalepPaneli() {
     }
   }
 
+  const handleExport = async () => {
+    try {
+      const res = await fetch("/api/strategic-hr/recruitment/personnel-requests/export")
+      if (res.status === 403) {
+        toast.error("Bu işlem için yetkiniz yok")
+        return
+      }
+      if (!res.ok) throw new Error("Export hatası")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `personel-talepleri-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Excel dosyası indirildi")
+    } catch (error: any) {
+      toast.error(error.message || "Export başarısız")
+    }
+  }
+
   const resetRequestForm = () => {
     setRequestForm({
       title: "",
@@ -449,6 +471,10 @@ export function PersonelTalepPaneli() {
               <Button size="sm" onClick={() => setIsRequestDialogOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" />
                 Personel Talebi
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExport} disabled={filteredRequests.length === 0}>
+                <Download className="h-4 w-4 mr-1" />
+                Excel'e Aktar
               </Button>
               {/* Elle doldurulabilir boş IV-FR-24 formu */}
               <Button

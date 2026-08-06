@@ -70,10 +70,33 @@ export async function POST(request: NextRequest) {
 
   const previousPersonnelId = targetUser.personnelId
 
+  // employeeId propagation: bağlarken User.employeeId'yi de Personnel.sicilNo ile
+  // doldur (IFS EmployeeId=sicilNo + mavi-yaka login bu alana bağlı).
+  // GÜVENLİK:
+  //  - sicilNo NULL/boş ise employeeId'ye DOKUNMA (mevcut değeri koru, null'a düşürme).
+  //  - employeeId @unique: aynı sicilNo başka bir user'da zaten employeeId ise
+  //    employeeId ATLANIR, bağlama yine de personnelId ile tamamlanır + uyarı loglanır
+  //    (bind tamamen patlamasın — P2002 ile 500 vermek yerine).
+  const data: { personnelId: string; employeeId?: string } = { personnelId }
+  if (personnel.sicilNo) {
+    const empIdConflict = await prisma.user.findFirst({
+      where: { employeeId: personnel.sicilNo, NOT: { id: userId } },
+      select: { id: true, email: true },
+    })
+    if (empIdConflict) {
+      console.warn(
+        `[personnel-ad-reconcile/bind] employeeId atlandı — sicilNo ${personnel.sicilNo} ` +
+          `zaten ${empIdConflict.email} kullanıcısında employeeId. Bağlama personnelId ile devam etti.`
+      )
+    } else {
+      data.employeeId = personnel.sicilNo
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
-      data: { personnelId },
+      data,
     })
     await tx.permissionAuditLog.create({
       data: {

@@ -47,6 +47,24 @@ export async function POST() {
   })
   const bySicilNo = new Map(personnels.map((p) => [p.sicilNo, p]))
 
+  // employeeId @unique: hangi hedef sicilNo'ların BAŞKA bir user'da zaten employeeId
+  // olduğunu önceden çıkar → o satırlarda employeeId atlanır (bind yine yapılır).
+  // NOT: try/catch ile döngü-içi P2002 yakalamak MÜMKÜN DEĞİL — tek $transaction
+  // içinde tek bir statement hata verirse tüm transaction abort olur; bu yüzden
+  // çakışma ÖNCEDEN elenir (aynı sonuç: employeeId atlanır, bağlama patlamaz).
+  const targetSicils = personnels
+    .map((p) => p.sicilNo)
+    .filter((s): s is string => !!s)
+  const cakisanEmpIds = new Set(
+    (targetSicils.length
+      ? await prisma.user.findMany({
+          where: { employeeId: { in: targetSicils } },
+          select: { employeeId: true },
+        })
+      : []
+    ).map((u) => u.employeeId as string)
+  )
+
   const results: Array<{
     userId: string
     userEmail: string
@@ -68,9 +86,22 @@ export async function POST() {
         })
         continue
       }
+      // employeeId propagation: bağlarken User.employeeId'yi de Personnel.sicilNo
+      // ile doldur (IFS EmployeeId=sicilNo ve mavi-yaka login bu alana bağlı).
+      // GÜVENLİK: sicilNo boşsa DOKUNMA; başka user'da employeeId olarak varsa ATLA
+      // (bağlama personnelId ile devam eder, uyarı loglanır).
+      const data: { personnelId: string; employeeId?: string } = { personnelId: p.id }
+      if (p.sicilNo && !cakisanEmpIds.has(p.sicilNo)) {
+        data.employeeId = p.sicilNo
+      } else if (p.sicilNo && cakisanEmpIds.has(p.sicilNo)) {
+        console.warn(
+          `[auto-bind-bluecollar] employeeId atlandı — sicilNo ${p.sicilNo} zaten ` +
+            `başka bir user'da employeeId. Bağlama personnelId ile devam etti.`
+        )
+      }
       await tx.user.update({
         where: { id: c.user.id },
-        data: { personnelId: p.id },
+        data,
       })
       await tx.permissionAuditLog.create({
         data: {

@@ -45,6 +45,10 @@ const SECTIONS: { name: string; departmentName: string }[] = [
   { name: 'BORU BÜKÜM', departmentName: 'Üretim' },
   { name: 'LAZER', departmentName: 'Üretim' },
   { name: 'ENJEKSİYON', departmentName: 'Üretim' },
+  { name: 'BAKIMHANE', departmentName: 'Üretim' },
+  // Kalıphane, ayrı bir Department kaydı değil (prod Department listesinde yok) —
+  // ana yapı bozulmadan Mühendislik'in bir Bölümü olarak eklendi.
+  { name: 'KALIPHANE', departmentName: 'Mühendislik' },
 ]
 
 async function main() {

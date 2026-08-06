@@ -420,10 +420,19 @@ export function generateKadroTalepPdfBuffer(
       setText(RED)
       doc.text("[ ELEKTRONİK ORTAMDA İMZALANMIŞTIR ]", bx + 1.5, boxY + bh - 1)
     } else if (!bos) {
+      // Zincir kurulduysa (submit sonrası) ve bu kademenin kaydı yoksa → adım atlandı
+      // (talep sahibi o adımın onaycısı; kendi kendini onaylama engeli). Boş imza kutusu kalmaz.
+      const zincirKuruldu = data != null && data.approvals.length > 0
       doc.setFont("Poppins", "normal")
-      doc.setFontSize(6.4)
       setText(GRAY)
-      doc.text("Onay bekleniyor", bx + 1.5, boxY + bh - 3)
+      if (zincirKuruldu && ap == null) {
+        doc.setFontSize(6.2)
+        const sl = doc.splitTextToSize("Talep sahibi olduğu için bu adım atlandı", bw - 3)
+        doc.text(sl, bx + 1.5, boxY + bh - (sl.length > 1 ? 5 : 3))
+      } else {
+        doc.setFontSize(6.4)
+        doc.text("Onay bekleniyor", bx + 1.5, boxY + bh - 3)
+      }
     } else {
       setDraw(LINE)
       doc.setLineWidth(0.2)

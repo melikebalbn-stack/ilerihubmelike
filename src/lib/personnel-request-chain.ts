@@ -59,13 +59,28 @@ export async function resolveApprovers(db: Db, requesterId: string): Promise<Coz
     HR_MANAGER: userIdByCode.get("HR_MANAGER") ?? null,
   };
 
-  const adimlar: CozulenAdim[] = [];
+  const adimlarHam: CozulenAdim[] = [];
   for (const k of PERSONNEL_REQUEST_CHAIN) {
     const approverId = approverByKademe[k.kademe];
     if (!approverId) {
       return { ok: false, error: `${k.label} pozisyonu sistemde atanmamış. İK ile iletişime geçin.` };
     }
-    adimlar.push({ step: k.step, kademe: k.kademe, role: k.role, approverId });
+    adimlarHam.push({ step: k.step, kademe: k.kademe, role: k.role, approverId });
   }
+
+  // KENDİ KENDİNİ ONAYLAMA ENGELİ (A seçeneği): talep eden bir adımın onaycısıysa
+  // O ADIM HİÇ OLUŞTURULMAZ (otomatik onaylı damgalama YOK — sahte onay kaydı kalmaz).
+  // Genel kural — müdür/müdür yrd/GMY/GM fark etmez: approverId === requesterId → atla.
+  let adimlarSuzulu = adimlarHam.filter((a) => a.approverId !== requesterId);
+
+  // Zincir boş kalırsa (ör. tüm adımların onaycısı talep edenin kendisi) en az
+  // İK Müdürü adımı kalsın — onaysız talep OLMASIN.
+  if (adimlarSuzulu.length === 0) {
+    const hr = adimlarHam.find((a) => a.kademe === "HR_MANAGER");
+    if (hr) adimlarSuzulu = [hr];
+  }
+
+  // Step numaralarını yeniden sırala (1..n, boşluksuz) — UNIQUE(request, step) için.
+  const adimlar: CozulenAdim[] = adimlarSuzulu.map((a, i) => ({ ...a, step: i + 1 }));
   return { ok: true, adimlar };
 }

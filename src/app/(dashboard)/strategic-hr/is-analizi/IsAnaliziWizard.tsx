@@ -15,7 +15,7 @@
 import { useMemo, useState, useEffect } from "react";
 import {
   ListChecks, Gauge, GitBranch, Users, Shuffle, Lightbulb, ClipboardCheck,
-  Plus, Trash2, Check, ChevronLeft, ChevronRight, Send, AlertTriangle, type LucideIcon,
+  Plus, Trash2, Check, ChevronLeft, ChevronRight, Send, AlertTriangle, Download, type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -175,6 +175,22 @@ export default function IsAnaliziWizard() {
     }
   }
 
+  async function oncekiFormlariAktar() {
+    try {
+      const r = await fetch("/api/strategic-hr/is-analizi/export?liste=calisan");
+      if (!r.ok) { setHata("Excel export başarısız."); return; }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `is-analizlerim-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setHata("Excel export sırasında hata oluştu.");
+    }
+  }
+
   const totalSteps = ADIMLAR.length;
   const progress = Math.round((step / totalSteps) * 100);
   const toplamZaman = isler.reduce((s, i) => s + (Number(i.zamanYuzde) || 0), 0);
@@ -317,7 +333,12 @@ export default function IsAnaliziWizard() {
         {/* Önceki İş Analizlerim */}
         {oncekiFormlar.length > 0 && (
           <div className="mt-8">
-            <h2 className="text-lg font-semibold text-slate-800 mb-3">Önceki İş Analizlerim</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-slate-800">Önceki İş Analizlerim</h2>
+              <Button variant="outline" size="sm" onClick={oncekiFormlariAktar} className="gap-1 shrink-0">
+                <Download className="h-4 w-4" /> Excel'e Aktar
+              </Button>
+            </div>
             <div className="space-y-3">
               {oncekiFormlar.map((f) => {
                 const d = DURUM_ETIKET[f.durum] ?? { label: f.durum, renk: "#64748b", bg: "#f1f5f9" };

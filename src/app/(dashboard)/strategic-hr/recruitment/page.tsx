@@ -77,7 +77,8 @@ import {
   Building2,
   ClipboardList,
   User,
-  ExternalLink
+  ExternalLink,
+  Download
 } from "lucide-react"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -606,6 +607,30 @@ export default function RecruitmentPage() {
     } catch (error) {
       console.error("Ilan silinirken hata:", error)
       toast.error("Bir hata olustu")
+    }
+  }
+
+  const handleExportCandidates = async () => {
+    try {
+      const params = new URLSearchParams()
+      if (candidateSourceFilter !== "all") params.set("source", candidateSourceFilter)
+      if (searchTerm) params.set("search", searchTerm)
+      const res = await fetch(`/api/strategic-hr/recruitment/candidates/export?${params}`)
+      if (res.status === 403) {
+        toast.error("Bu işlem için yetkiniz yok")
+        return
+      }
+      if (!res.ok) throw new Error("Export hatası")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `aday-havuzu-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Excel dosyası indirildi")
+    } catch (error: any) {
+      toast.error(error.message || "Export başarısız")
     }
   }
 
@@ -1684,20 +1709,26 @@ export default function RecruitmentPage() {
                     Tum adaylar ve basvuru gecmisleri
                   </CardDescription>
                 </div>
-                <Select value={candidateSourceFilter} onValueChange={setCandidateSourceFilter}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Kaynak" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tum Kaynaklar</SelectItem>
-                    <SelectItem value="DIRECT">Direkt Basvuru</SelectItem>
-                    <SelectItem value="REFERRAL">Referans</SelectItem>
-                    <SelectItem value="LINKEDIN">LinkedIn</SelectItem>
-                    <SelectItem value="JOB_BOARD">Is Ilani Sitesi</SelectItem>
-                    <SelectItem value="AGENCY">Ajans</SelectItem>
-                    <SelectItem value="OTHER">Diger</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={candidateSourceFilter} onValueChange={setCandidateSourceFilter}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Kaynak" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tum Kaynaklar</SelectItem>
+                      <SelectItem value="DIRECT">Direkt Basvuru</SelectItem>
+                      <SelectItem value="REFERRAL">Referans</SelectItem>
+                      <SelectItem value="LINKEDIN">LinkedIn</SelectItem>
+                      <SelectItem value="JOB_BOARD">Is Ilani Sitesi</SelectItem>
+                      <SelectItem value="AGENCY">Ajans</SelectItem>
+                      <SelectItem value="OTHER">Diger</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" onClick={handleExportCandidates} disabled={filteredCandidates.length === 0}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Excel'e Aktar
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>

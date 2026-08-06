@@ -51,10 +51,12 @@ import {
   BookOpen,
   ArrowRight,
   Lightbulb,
-  Star
+  Star,
+  Download
 } from "lucide-react"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { toast } from "sonner"
 
 interface PerformanceCycle {
   id: string
@@ -219,6 +221,27 @@ export default function PerformanceManagementPage() {
     }
   }
 
+  const handleExport = async () => {
+    try {
+      const res = await fetch("/api/strategic-hr/performance/export")
+      if (res.status === 403) {
+        toast.error("Bu işlem için yetkiniz yok")
+        return
+      }
+      if (!res.ok) throw new Error("Export hatası")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `performans-donguleri-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Excel dosyası indirildi")
+    } catch (err: any) {
+      toast.error(err.message || "Export başarısız")
+    }
+  }
+
   // Stats
   const activeCycles = cycles.filter(c => c.isActive).length
   const totalReviews = reviews.length
@@ -247,6 +270,10 @@ export default function PerformanceManagementPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="h-4 w-4 mr-2" />
+            Excel'e Aktar
+          </Button>
           <Button variant="outline" onClick={() => setIsGuideOpen(true)}>
             <HelpCircle className="h-4 w-4 mr-2" />
             Kilavuz

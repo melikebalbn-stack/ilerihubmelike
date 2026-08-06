@@ -1,11 +1,21 @@
 import { getTumStoklar } from '@/lib/envanter/tum-stoklar'
 import { sendEmail } from '@/lib/email'
 
-// Kritik stok bildirimi. GERÇEK ALICILAR HENÜZ YAPILANDIRILMADI:
-// alıcı listesi + periyodik cron tetiklemesi ayrı bir kararla (Melih) bağlanacak.
-// Liste BOŞ kaldığı sürece mail GÖNDERİLMEZ — sendEmail hiç çağrılmaz (kazara gönderim yok).
-// Gerçek alıcılar tanımlandığında aşağıdaki gönderim yolu olduğu gibi devreye girer.
-const ALICILAR: { email: string; name: string }[] = []
+// Kritik stok bildirimi alıcıları — ENV değişkeninden okunur (koda GÖMÜLMEZ):
+//   ENVANTER_KRITIK_BILDIRIM_ALICI  (virgülle çoklu adres). Önerilen değer:
+//   insan.varliklari@ilerigroup.com  (.env.example'da belge olarak yazılı).
+// Env TANIMSIZSA liste boş kalır → mail GÖNDERİLMEZ, route 400 "alıcı tanımlanmamış" döner
+// (kazara gönderim yok). Staging'de MAIL_RECIPIENT_OVERRIDE guard'ı sendEmail içinde
+// devrededir → gerçek İK adresine değil, override adresine gider. Cron ayrı bir karar.
+function bildirimAlicilari(): { email: string; name: string }[] {
+  const raw = process.env.ENVANTER_KRITIK_BILDIRIM_ALICI?.trim()
+  if (!raw) return []
+  return raw
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .map((email) => ({ email, name: 'İnsan Varlıkları' }))
+}
 
 export async function kritikUrunBildirimGonder(): Promise<{
   gonderildi: boolean
@@ -14,6 +24,7 @@ export async function kritikUrunBildirimGonder(): Promise<{
   mesaj: string
 }> {
   // Alıcı yapılandırılmadıysa hiç gönderme (route 400 döner). Stok sorgusuna bile gerek yok.
+  const ALICILAR = bildirimAlicilari()
   if (ALICILAR.length === 0) {
     return {
       gonderildi: false,

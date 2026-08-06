@@ -304,6 +304,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [unreadMessages, setUnreadMessages] = useState(0)
   // İş Analizi menü bayrakları — SUNUCUDAN (amir DB sorgusu + ik OR mantığı iaRolCozumle'de).
   const [iaFlags, setIaFlags] = useState<{ amir: boolean; ik: boolean }>({ amir: false, ik: false })
+  const [kadroTalepAcabilir, setKadroTalepAcabilir] = useState(false)
 
   // Collapse/pin (yalnız masaüstü; mobil sheet'te isOpen=true → her zaman geniş)
   const { collapsed, pinned, hovering, setCollapsed, setPinned, setHovering } = useSidebar()
@@ -390,6 +391,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       .catch(() => {})
   }, [session])
 
+  // Kadro talep menü bayrağını sunucudan çek (müdür/müdür-yrd/İK). Client'ta yetki HESAPLANMAZ.
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/kadro-talep/menu-bayrak')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setKadroTalepAcabilir(!!d.talepAcabilir)
+      })
+      .catch(() => {})
+  }, [session])
+
   // Kullanıcı rolüne göre menü filtreleme
   const userRole = session?.user?.role || 'USER'
   const userDepartment = session?.user?.department || ''
@@ -467,9 +480,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // (4 personnel öğesi canSeeIk ile; offboarding + strategicHr kendi kitleleriyle).
   const showIkGroup =
     canSeeIk || filteredOffboardingItems.length > 0 || filteredStrategicHrItems.length > 0
+  // Kadro talep — SUNUCU bayrağı (kadroTalepAcabilir) ile; client'ta yetki hesaplanmaz.
+  // Link recruitment sayfasına (varsayılan "requests"/kadro talep sekmesine düşer).
+  const kadroTalepItem = { name: "Personel Kadro İstek Formu", icon: FileText, href: "/strategic-hr/recruitment", roles: ["*"] }
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(iaFlags.amir ? [iaAmirItem] : []),
+    ...(kadroTalepAcabilir ? [kadroTalepItem] : []),
   ]
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)

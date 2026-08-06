@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus, PersonnelRequestType, EmploymentType, JobPriority } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-request-alanlar";
+import { kadroTalepYetkisi, kadroTalepYetkisiz } from "@/lib/kadro-talep/kadro-talep-yetki";
 
 // Talep numarası oluştur
 async function generateRequestNumber(): Promise<string> {
@@ -105,7 +106,12 @@ export async function POST(request: NextRequest) {
     const { session, userId, error } = await requireSession();
     if (error) return error;
 
-    // Tüm kullanıcılar talep oluşturabilir (kendi departmanları için)
+    // Talep açma yetkisi SUNUCUDA zorlanır (menüde gizlemek yeterli değil):
+    // müdür / müdür yardımcısı / İK dışındakiler 403. Tek kaynak: kadroTalepYetkisi.
+    const { yetki, error: yetkiError } = await kadroTalepYetkisi();
+    if (yetkiError) return yetkiError;
+    if (!yetki.talepAcabilir) return kadroTalepYetkisiz();
+
     const body = await request.json();
     const {
       title,

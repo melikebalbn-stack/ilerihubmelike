@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { resolveApprovers } from "@/lib/personnel-request-chain";
+import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-request-alanlar";
 import { sendPushToUser } from "@/lib/push-notifications";
 import { sendEmail } from "@/lib/email";
 import { resolveHRRecipients } from "@/lib/hr-notifications";
@@ -276,6 +277,22 @@ export async function PUT(
         if (existingRequest.status !== "DRAFT" && !hasFullAccess) {
           return NextResponse.json({ error: "Sadece taslak talepler güncellenebilir" }, { status: 400 });
         }
+        // IV-FR-24 alan doğrulama (yaş min<=max dahil). Şemadaki yeni alanları kapsar.
+        const upKontrol = talepAlanlariSchema.safeParse(body);
+        if (!upKontrol.success) {
+          return NextResponse.json(
+            { error: upKontrol.error.issues[0]?.message || "Geçersiz alan." },
+            { status: 400 }
+          );
+        }
+        // yardımcı: undefined ise mevcut değeri koru
+        const koru = (yeni: unknown, mevcut: unknown) => (yeni !== undefined ? yeni : mevcut);
+        // İV kapanış bölümü İK tarafından dolduruldu mu? (onay damgası için)
+        const ivKapanisGonderildi =
+          hasFullAccess &&
+          ["adayKaynaklari", "ilanPortallari", "adayKaynagiDiger", "kadroDoldurulmaTarihi", "iseBaslayanPersonelAdi"].some(
+            (k) => body[k] !== undefined
+          );
         updateData = {
           title: body.title ?? existingRequest.title,
           requestType: body.requestType ?? existingRequest.requestType,
@@ -294,7 +311,38 @@ export async function PUT(
           salaryMin: hasFullAccess && body.salaryMin !== undefined ? body.salaryMin : existingRequest.salaryMin,
           salaryMax: hasFullAccess && body.salaryMax !== undefined ? body.salaryMax : existingRequest.salaryMax,
           hasBudget: hasFullAccess && body.hasBudget !== undefined ? body.hasBudget : existingRequest.hasBudget,
-          priority: body.priority ?? existingRequest.priority
+          priority: body.priority ?? existingRequest.priority,
+          // ── IV-FR-24 talep eden alanları (undefined ise mevcut korunur) ──
+          formHazirlanmaTarihi: body.formHazirlanmaTarihi !== undefined ? tarihDon(body.formHazirlanmaTarihi) : existingRequest.formHazirlanmaTarihi,
+          ikTeslimTarihi: body.ikTeslimTarihi !== undefined ? tarihDon(body.ikTeslimTarihi) : existingRequest.ikTeslimTarihi,
+          kisilikOzellikleri: koru(body.kisilikOzellikleri, existingRequest.kisilikOzellikleri),
+          egitimSeviyesi: koru(body.egitimSeviyesi, existingRequest.egitimSeviyesi),
+          egitimDiger: koru(body.egitimDiger, existingRequest.egitimDiger),
+          tecrubeDurumu: koru(body.tecrubeDurumu, existingRequest.tecrubeDurumu),
+          tecrubeSuresi: koru(body.tecrubeSuresi, existingRequest.tecrubeSuresi),
+          yabanciDilGerekli: koru(body.yabanciDilGerekli, existingRequest.yabanciDilGerekli),
+          yabanciDiller: koru(body.yabanciDiller, existingRequest.yabanciDiller),
+          bilgisayarBilgisi: koru(body.bilgisayarBilgisi, existingRequest.bilgisayarBilgisi),
+          kaliteSistemBilgisi: koru(body.kaliteSistemBilgisi, existingRequest.kaliteSistemBilgisi),
+          ehliyetGerekli: koru(body.ehliyetGerekli, existingRequest.ehliyetGerekli),
+          ehliyetSinifi: koru(body.ehliyetSinifi, existingRequest.ehliyetSinifi),
+          digerBelgeIhtiyaci: koru(body.digerBelgeIhtiyaci, existingRequest.digerBelgeIhtiyaci),
+          cinsiyetTercihi: koru(body.cinsiyetTercihi, existingRequest.cinsiyetTercihi),
+          yasAraligiMin: koru(body.yasAraligiMin, existingRequest.yasAraligiMin),
+          yasAraligiMax: koru(body.yasAraligiMax, existingRequest.yasAraligiMax),
+          askerlikGerekli: koru(body.askerlikGerekli, existingRequest.askerlikGerekli),
+          ayrilanPersonelAdi: koru(body.ayrilanPersonelAdi, existingRequest.ayrilanPersonelAdi),
+          // ── İnsan Varlıkları KAPANIŞ alanları — YALNIZ recruitment.admin (İK). Talep
+          //    eden (birim müdürü) body'de gönderse bile YOKSAYILIR (mevcut değer korunur). ──
+          adayKaynaklari: hasFullAccess && body.adayKaynaklari !== undefined ? body.adayKaynaklari : existingRequest.adayKaynaklari,
+          ilanPortallari: hasFullAccess && body.ilanPortallari !== undefined ? body.ilanPortallari : existingRequest.ilanPortallari,
+          adayKaynagiDiger: hasFullAccess && body.adayKaynagiDiger !== undefined ? body.adayKaynagiDiger : existingRequest.adayKaynagiDiger,
+          kadroDoldurulmaTarihi: hasFullAccess && body.kadroDoldurulmaTarihi !== undefined ? tarihDon(body.kadroDoldurulmaTarihi) : existingRequest.kadroDoldurulmaTarihi,
+          iseBaslayanPersonelAdi: hasFullAccess && body.iseBaslayanPersonelAdi !== undefined ? body.iseBaslayanPersonelAdi : existingRequest.iseBaslayanPersonelAdi,
+          // ivOnay: İV kapanışını dolduran İK kullanıcısı SUNUCU tarafında damgalanır.
+          // Kimlik client'tan ALINMAZ (body.ivOnayId yoksayılır) — userId + server saati.
+          ivOnayId: ivKapanisGonderildi ? userId : existingRequest.ivOnayId,
+          ivOnayTarihi: ivKapanisGonderildi ? new Date() : existingRequest.ivOnayTarihi,
         };
         break;
 
@@ -322,6 +370,9 @@ export async function PUT(
         const jobCode = `${codePrefix}${nextNum.toString().padStart(3, "0")}`;
 
         // İlanı oluştur
+        // ⚠️ AYRIMCILIK KORUMASI: cinsiyetTercihi, yasAraligiMin, yasAraligiMax alanları
+        // BİLİNÇLİ OLARAK taşınmaz. Bunlar yalnız İÇ kadro planlaması içindir; iş ilanına
+        // (JobOpening) çıkarsa ayrımcı ilan olur. SONRADAN buraya EKLEMEYİN.
         const jobOpening = await prisma.jobOpening.create({
           data: {
             code: jobCode,

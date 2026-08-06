@@ -16,6 +16,14 @@ import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { ticketAge, resolutionTime, isOpenStatus } from "../_lib/ticket-age"
 import { CategoryBadge } from "./category-badge"
+import { toast } from "sonner"
+
+// Durum okunaklı TR etiketleri — toast geri bildiriminde kullanılır.
+const STATUS_TR: Record<string, string> = {
+  NEW: "Yeni", ASSIGNED: "Atandı", IN_PROGRESS: "İşlemde", PENDING: "Beklemede",
+  ON_HOLD: "Askıda", RESOLVED: "Çözüldü", CLOSED: "Kapatıldı", CANCELLED: "İptal",
+  REOPENED: "Yeniden Açıldı",
+}
 
 interface Ticket {
   id: string
@@ -156,9 +164,20 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
       if (res.ok) {
         const updated = await res.json()
         setTicket((cur) => (cur ? { ...cur, ...updated } : cur))
+        // Geri bildirim: durum değişikliğinde okunaklı etiket, diğerlerinde genel.
+        if (typeof updates.status === "string") {
+          toast.success(`Durum güncellendi: ${STATUS_TR[updates.status] ?? updates.status}`)
+        } else {
+          toast.success("Güncellendi")
+        }
+      } else {
+        // Sessiz yutma YOK: backend hata mesajını göster (403 "yetkiniz yok" vb.).
+        // ticket.status değişmediği için <Select value={ticket.status}> eski değere döner.
+        const data = await res.json().catch(() => null)
+        toast.error(data?.error || "İşlem başarısız")
       }
     } catch {
-      // sessiz
+      toast.error("İşlem başarısız — bağlantı hatası")
     } finally {
       setUpdatingTicket(false)
     }

@@ -21,6 +21,10 @@ export interface KoltukSenkronSonuc {
   kaldirilanVekaletler: { orgUnitId: string; vekilAdi: string | null }[];
 }
 
+export interface KoltukAcmaSonuc {
+  acilanKoltuklar: { orgEmployeeId: string; orgUnitId: string; displayName: string }[];
+}
+
 // Birimden parentId zinciriyle en üst köke çık (pozisyon-cikar'daki kokeCik ile aynı).
 async function kokeCik(db: DbClient, unitId: string): Promise<{ id: string; name: string } | null> {
   let cur = await db.orgUnit.findUnique({
@@ -141,5 +145,58 @@ export async function personelPasiflestiginde(
       displayName: k.displayName,
     })),
     kaldirilanVekaletler: vekaletler.map((v) => ({ orgUnitId: v.id, vekilAdi: v.vekilAdi })),
+  };
+}
+
+// personelPasiflestiginde'nin SİMETRİĞİ — personel aktife geri alındığında kapanan
+// koltuğu yeniden açar. Simetri olmadan çıkış → geri alma döngüsünde koltuk kapalı
+// kalıyordu: kişi org şemasında görünüyor (G1 filtresi Personnel.aktif'e bakar) ama
+// OrgEmployee.isActive=false olduğu için isActive üzerinden çalışan sorgular onu kaçırıyordu.
+//
+// KAPSAM: yalnız koltuk. Vekalet GERİ ALINMAZ — vekalet ayrı bir yönetim kararıdır,
+//   pasifleşmeyle otomatik kalkar ama dönüşte otomatik geri verilmez.
+export async function personelAktiflestiginde(
+  db: DbClient,
+  personnelId: string,
+  opts?: { sebep?: string; actorId?: string }
+): Promise<KoltukAcmaSonuc> {
+  const koltuklar = await db.orgEmployee.findMany({
+    where: { personnelId, isActive: false },
+    select: { id: true, orgUnitId: true, displayName: true, orgUnit: { select: { name: true } } },
+  });
+  if (koltuklar.length === 0) return { acilanKoltuklar: [] };
+
+  await db.orgEmployee.updateMany({
+    where: { personnelId, isActive: false },
+    data: { isActive: true },
+  });
+
+  // İz — pasifleşme ile AYNI desen: etkilenen KÖK departman başına bir OrgRevizyon satırı.
+  const koke = new Map<string, { name: string; parcalar: string[] }>();
+  for (const k of koltuklar) {
+    const root = await kokeCik(db, k.orgUnitId);
+    if (!root) continue;
+    const g = koke.get(root.id) ?? { name: root.name, parcalar: [] };
+    g.parcalar.push(`koltuk yeniden açıldı: ${k.orgUnit?.name ?? "?"} (${k.displayName})`);
+    koke.set(root.id, g);
+  }
+  const yapan = `Sistem — ${opts?.sebep ?? "aktif senkron"}`;
+  for (const [rootId, g] of koke) {
+    await revizyonYaz(
+      db,
+      rootId,
+      g.name,
+      `Aktife alma senkronu — ${g.parcalar.join("; ")}`,
+      yapan,
+      opts?.actorId ?? null
+    );
+  }
+
+  return {
+    acilanKoltuklar: koltuklar.map((k) => ({
+      orgEmployeeId: k.id,
+      orgUnitId: k.orgUnitId,
+      displayName: k.displayName,
+    })),
   };
 }

@@ -6,7 +6,7 @@ import { logAuditEvent } from '@/lib/audit-log'
 import { computeTenure } from '@/lib/personnel-tenure'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
-import { personelPasiflestiginde } from '@/lib/org/personel-koltuk-senkron'
+import { personelPasiflestiginde, personelAktiflestiginde } from '@/lib/org/personel-koltuk-senkron'
 
 export const dynamic = 'force-dynamic'
 
@@ -539,6 +539,9 @@ export async function PATCH(
               entryRecordedAt: new Date(),
             },
           })
+          // Org koltuk senkronu — pasifleşmede kapanan koltuğu geri aç (simetri).
+          // personelPasiflestiginde ile AYNI transaction deseni; SİLME YOK.
+          await personelAktiflestiginde(tx, id, { sebep: 'REENTRY', actorId: user.id })
           return { updated: u, newPeriodId: np.id }
         })
 

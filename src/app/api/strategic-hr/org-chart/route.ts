@@ -166,9 +166,32 @@ export async function GET(request: NextRequest) {
         }),
     }));
 
+    // Şemada yeri olmayan personel — koltuk açılamamış aktif kişiler görünür olsun,
+    // İK elle bağlayabilsin. YALNIZ hasFullAccess (İK/admin): org-chart GET her
+    // oturuma açık olduğundan, şemada GÖRÜNMEYEN kişilerin ad/bölüm/görev listesi
+    // yetkisiz kullanıcıya YENİ bir PII yüzeyi açmasın.
+    let koltuksuzPersonel: { id: string; sicilNo: string | null; adSoyad: string; bolum: string; gorev: string }[] = [];
+    if (hasFullAccess) {
+      const koltuklu = await prisma.orgEmployee.findMany({
+        where: { isActive: true, personnelId: { not: null } },
+        select: { personnelId: true },
+      });
+      const koltukluIds = [...new Set(koltuklu.map((k) => k.personnelId!))];
+      koltuksuzPersonel = await prisma.personnel.findMany({
+        where: { aktif: true, ...(koltukluIds.length ? { id: { notIn: koltukluIds } } : {}) },
+        select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true },
+        orderBy: [{ bolum: "asc" }, { adSoyad: "asc" }],
+      });
+    }
+
     // hasFullAccess SUNUCUDA hesaplanır (checkAccess) — client mükerrer hesaplamasın diye
     // yanıtta döner. Düzenleme butonlarının görünürlüğü bu bayrağa bağlanır (güvenlik yine 403).
-    return NextResponse.json({ units: unitsWithCinsiyet, hasFullAccess });
+    return NextResponse.json({
+      units: unitsWithCinsiyet,
+      hasFullAccess,
+      koltuksuzPersonel,
+      koltuksuzPersonelSayisi: koltuksuzPersonel.length,
+    });
   } catch (error) {
     console.error("Organizasyon birimleri listesi hatası:", error);
     return NextResponse.json(

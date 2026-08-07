@@ -4,6 +4,8 @@
 //   2) TERS   — aktif personel + KAPALI koltuk (çıkış→geri alma döngüsünde koltuk
 //               yeniden açılmamış). Senkron simetrisi personelAktiflestiginde ile
 //               kapatıldı; bu bölüm eski kayıtları ve kaçakları yakalar.
+//   4) KOLTUKSUZ — aktif personel ama hiç açık koltuğu yok (yeni girenlerde
+//               koltuk açılmamışsa). Onarım: scripts/org-koltuk-olustur.ts
 //   3) BAĞSIZ — OrgEmployee.personnelId = NULL olan AÇIK koltuklar. KÖR NOKTA:
 //               1 ve 2 personnelId üzerinden JOIN yaptığı için bu koltuklar onlara
 //               yapısal olarak görünmez. displayName ile Personnel'de karşılığı
@@ -12,7 +14,7 @@
 //
 // VARSAYILAN DRY-RUN: yalnız listeler. --uygula YALNIZ 1. yöndeki sarkmayı temizler
 //   (koltuk kapat + vekalet kaldır, personel-koltuk-senkron helper'ı üzerinden —
-//   SİLME YOK). 2 ve 3 rapor amaçlıdır, --uygula onlara dokunmaz.
+//   SİLME YOK). 2, 3 ve 4 rapor amaçlıdır, --uygula onlara dokunmaz.
 // Prod-guard DEĞİL (bilinçli çalıştırılır) ama hangi DB'ye bağlandığını yazar.
 //
 // Çalıştırma:
@@ -194,12 +196,43 @@ async function main() {
     console.log(`     ardından bu script'i --uygula ile tekrar çalıştır.`);
   }
 
+  // ── YÖN 4: KOLTUKSUZ — aktif personel, hiç açık koltuğu yok ──────────────
+  // Yeni işe girenlerde koltuk açılmazsa buraya düşer. Onarım:
+  // scripts/org-koltuk-olustur.ts (aynı eşleştirme kuralı).
+  const aktifPersoneller = await prisma.personnel.findMany({
+    where: { aktif: true },
+    select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true },
+    orderBy: [{ bolum: "asc" }, { adSoyad: "asc" }],
+  });
+  const koltukluPids = new Set(
+    (
+      await prisma.orgEmployee.findMany({
+        where: { isActive: true, personnelId: { not: null } },
+        select: { personnelId: true },
+      })
+    ).map((k) => k.personnelId!),
+  );
+  const koltuksuzlar = aktifPersoneller.filter((p) => !koltukluPids.has(p.id));
+
+  console.log(`\n── YÖN 4: KOLTUKSUZ PERSONEL ─────────────────────────────────`);
+  console.log(`4) Aktif personel ama hiç açık koltuğu yok: ${koltuksuzlar.length} / ${aktifPersoneller.length}`);
+  for (const p of koltuksuzlar) {
+    console.log(
+      `   · ${(p.sicilNo ?? "-").padEnd(11)} ${p.adSoyad.slice(0, 26).padEnd(26)} ` +
+        `${p.bolum.slice(0, 24).padEnd(24)} ${p.gorev}`,
+    );
+  }
+  if (koltuksuzlar.length > 0) {
+    console.log(`\n   → Onarım: npx tsx --env-file=.env scripts/org-koltuk-olustur.ts`);
+    console.log(`     (eşleşmeyenler org şemasındaki uyarıdan İK tarafından elle bağlanır)`);
+  }
+
   console.log(`\n${"=".repeat(62)}`);
-  console.log(`ÖZET  ileri:${sarkanKoltuklar.length} vekalet:${sarkanVekaletler.length} ters:${tersSarkma.length} gizli:${bagsizPasif.length}`);
+  console.log(`ÖZET  ileri:${sarkanKoltuklar.length} vekalet:${sarkanVekaletler.length} ters:${tersSarkma.length} gizli:${bagsizPasif.length} koltuksuz:${koltuksuzlar.length}`);
 
   if (!UYGULA) {
     console.log("💡 DRY-RUN — değişiklik yapılmadı. Kapatmak için: --uygula");
-    console.log("   (--uygula YALNIZ yön 1'i temizler; yön 2 ve 3 rapor amaçlıdır.)");
+    console.log("   (--uygula YALNIZ yön 1'i temizler; yön 2/3/4 rapor amaçlıdır.)");
     return;
   }
 

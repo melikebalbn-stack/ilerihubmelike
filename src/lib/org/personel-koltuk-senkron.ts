@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
+import { eslesmeIndeksiYukle, pozisyonEslesmesiBul } from "./koltuk-eslesme";
 
 // Org şeması — personel pasifleştiğinde koltuk/vekalet senkronu TEK KAYNAK.
 // Personnel.aktif=false yapan HER akış (personel çıkış, soft-delete) bu helper'ı çağırır;
@@ -19,6 +20,13 @@ const MAX_DERINLIK = 15;
 export interface KoltukSenkronSonuc {
   kapatilanKoltuklar: { orgEmployeeId: string; orgUnitId: string; displayName: string }[];
   kaldirilanVekaletler: { orgUnitId: string; vekilAdi: string | null }[];
+}
+
+export interface YeniPersonelSonuc {
+  koltukAcildi: boolean;
+  orgUnitId?: string;
+  orgUnitAdi?: string;
+  sebep?: string;
 }
 
 export interface KoltukAcmaSonuc {
@@ -199,4 +207,107 @@ export async function personelAktiflestiginde(
       displayName: k.displayName,
     })),
   };
+}
+
+// ─── Tekil koltuk işlemleri (script'ler için; iz yazımı burada TEK KAYNAK) ───
+
+// Belirli bir koltuğu kapatır (SİLME YOK) + OrgRevizyon izi.
+// Mükerrer temizliğinde kullanılır: personelPasiflestiginde kişinin TÜM koltuklarını
+// kapattığı için orada kullanılamaz — burada yalnız verilen koltuk kapanır.
+export async function koltukKapat(
+  db: DbClient,
+  orgEmployeeId: string,
+  opts: { sebep: string; aciklama: string; actorId?: string },
+): Promise<boolean> {
+  const koltuk = await db.orgEmployee.findUnique({
+    where: { id: orgEmployeeId },
+    select: { id: true, orgUnitId: true, displayName: true, isActive: true, orgUnit: { select: { name: true } } },
+  });
+  if (!koltuk || !koltuk.isActive) return false;
+
+  await db.orgEmployee.update({ where: { id: orgEmployeeId }, data: { isActive: false } });
+
+  const root = await kokeCik(db, koltuk.orgUnitId);
+  if (root) {
+    await revizyonYaz(
+      db,
+      root.id,
+      root.name,
+      `${opts.aciklama} — ${koltuk.displayName}`,
+      `Sistem — ${opts.sebep}`,
+      opts.actorId ?? null,
+    );
+  }
+  return true;
+}
+
+// Yeni koltuk açar (personnelId dolu, isActive=true) + OrgRevizyon izi.
+export async function koltukAc(
+  db: DbClient,
+  input: { personnelId: string; orgUnitId: string; displayName: string },
+  opts: { sebep: string; actorId?: string },
+): Promise<string> {
+  const olusan = await db.orgEmployee.create({
+    data: {
+      orgUnitId: input.orgUnitId,
+      personnelId: input.personnelId,
+      displayName: input.displayName,
+      employmentStatus: "ACTIVE",
+      isActive: true,
+    },
+    select: { id: true, orgUnit: { select: { name: true } } },
+  });
+
+  const root = await kokeCik(db, input.orgUnitId);
+  if (root) {
+    await revizyonYaz(
+      db,
+      root.id,
+      root.name,
+      `Koltuk açıldı: ${olusan.orgUnit?.name ?? "?"} (${input.displayName})`,
+      `Sistem — ${opts.sebep}`,
+      opts.actorId ?? null,
+    );
+  }
+  return olusan.id;
+}
+
+// ─── Yeni personel → koltuk (otomatik) ───
+//
+// Personel oluşturan HER akış bunu çağırır. Eşleştirme mantığı burada DEĞİL,
+// src/lib/org/koltuk-eslesme.ts'te (script'lerle TEK KAYNAK).
+//
+// ⚠️ KOLTUK İKİNCİL: eşleşme bulunamazsa koltuk AÇILMAZ ama personel kaydı yine de
+//    oluşur. Bu fonksiyon ASLA throw etmez — çağıran akışı düşürmez.
+export async function personelEklendiginde(
+  db: DbClient,
+  personnelId: string,
+  opts?: { actorId?: string },
+): Promise<YeniPersonelSonuc> {
+  try {
+    const p = await db.personnel.findUnique({
+      where: { id: personnelId },
+      select: { id: true, adSoyad: true, bolum: true, gorev: true, aktif: true },
+    });
+    if (!p) return { koltukAcildi: false, sebep: "personel bulunamadi" };
+    if (!p.aktif) return { koltukAcildi: false, sebep: "personel pasif" };
+
+    const mevcut = await db.orgEmployee.count({ where: { personnelId, isActive: true } });
+    if (mevcut > 0) return { koltukAcildi: false, sebep: "zaten acik koltugu var" };
+
+    const ix = await eslesmeIndeksiYukle(db);
+    const sonuc = pozisyonEslesmesiBul(ix, { bolum: p.bolum, gorev: p.gorev });
+    if (!sonuc.eslesti) return { koltukAcildi: false, sebep: sonuc.sebep };
+
+    await koltukAc(
+      db,
+      { personnelId, orgUnitId: sonuc.orgUnitId, displayName: p.adSoyad },
+      { sebep: "YENI_PERSONEL", actorId: opts?.actorId },
+    );
+    return { koltukAcildi: true, orgUnitId: sonuc.orgUnitId, orgUnitAdi: sonuc.name };
+  } catch (e) {
+    // Koltuk açılamaması personel kaydını DÜŞÜRMEZ — sessizce raporla.
+    console.error("personelEklendiginde koltuk acilamadi:", e);
+    return { koltukAcildi: false, sebep: "beklenmeyen hata" };
+  }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { personelEklendiginde } from '@/lib/org/personel-koltuk-senkron'
 import { getAllADUsers } from '@/lib/azure-ad'
 import { requireUser } from '@/lib/auth/require-user'
 
@@ -119,6 +120,9 @@ export async function POST(request: NextRequest) {
                   entryRecordedAt: new Date(),
                 },
               })
+              // Org koltugu — AD'den gelen jobTitle/department cogu zaman serbest metin
+              // oldugu icin eslesme nadir; eslesmezse koltuk acilmaz, kayit yine de olusur.
+              await personelEklendiginde(tx, createdP.id, { actorId: user.id })
             })
             created++
           }

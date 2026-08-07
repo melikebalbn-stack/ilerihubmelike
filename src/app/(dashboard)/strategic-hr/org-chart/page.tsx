@@ -6,6 +6,7 @@ import Image from "next/image"
 import OrgChartTree from "./OrgChartTree"
 import RevizyonPanel from "./RevizyonPanel"
 import BosKadroModal, { BosKadro } from "./BosKadroModal"
+import KoltuksuzPersonelModal, { KoltuksuzPersonel } from "./KoltuksuzPersonelModal"
 import SorumluTablosuPanel from "./SorumluTablosuPanel"
 import PozisyonYonetimPanel from "./PozisyonYonetimPanel"
 import {
@@ -174,6 +175,9 @@ export default function OrgChartPage() {
   const [isGuideOpen, setIsGuideOpen] = useState(false)
   const [isRevizyonDialogOpen, setIsRevizyonDialogOpen] = useState(false)
   const [isBosKadroModalOpen, setIsBosKadroModalOpen] = useState(false)
+  // Şemada yeri olmayan personel — SUNUCUDAN gelir (yalnız hasFullAccess dolu döner).
+  const [koltuksuzPersonel, setKoltuksuzPersonel] = useState<KoltuksuzPersonel[]>([])
+  const [isKoltuksuzModalOpen, setIsKoltuksuzModalOpen] = useState(false)
   const [selectedDeptId, setSelectedDeptId] = useState<string>("")
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -204,6 +208,7 @@ export default function OrgChartPage() {
       if (res.ok) {
         const data = await res.json()
         setHasFullAccess(!!data.hasFullAccess)
+        setKoltuksuzPersonel(data.koltuksuzPersonel ?? [])
         const roots = buildTree(data.units ?? [])
         setUnits(roots)
       }
@@ -684,6 +689,12 @@ export default function OrgChartPage() {
           varsayilanYapan={varsayilanYapan}
         />
 
+        <KoltuksuzPersonelModal
+          open={isKoltuksuzModalOpen}
+          onOpenChange={setIsKoltuksuzModalOpen}
+          personeller={koltuksuzPersonel}
+        />
+
         <BosKadroModal
           open={isBosKadroModalOpen}
           onOpenChange={setIsBosKadroModalOpen}
@@ -865,6 +876,23 @@ export default function OrgChartPage() {
             <div className="text-2xl font-bold text-amber-600">{bosPozisyonSayisi}</div>
           </CardContent>
         </Card>
+
+        {/* Şemada yeri olmayan personel — yalnız İK/admin (sunucu boş dizi döner). */}
+        {hasFullAccess && koltuksuzPersonel.length > 0 && (
+          <Card
+            className="cursor-pointer transition-colors hover:bg-rose-50"
+            onClick={() => setIsKoltuksuzModalOpen(true)}
+          >
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Semada Yeri Yok</CardTitle>
+              <AlertCircle className="h-4 w-4 text-rose-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-rose-600">{koltuksuzPersonel.length}</div>
+              <p className="mt-1 text-xs text-muted-foreground">personelin semada koltugu yok</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Org Chart Tree */}

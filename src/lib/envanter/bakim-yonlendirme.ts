@@ -118,3 +118,5 @@ export async function updateYonlendirme(id: string, input: UpdateYonlendirmeInpu
     data,
   })
 }
+
+// smoke test 2026-08-07 — self-service deploy zinciri doğrulaması

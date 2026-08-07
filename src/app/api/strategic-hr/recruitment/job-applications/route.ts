@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { bekleyenTaraf, kullaniciAdi } from '@/lib/recruitment/bekleyen'
 
 // GET - Tüm iş başvurularını listele
 export async function GET(request: NextRequest) {
@@ -71,13 +72,36 @@ export async function GET(request: NextRequest) {
           digitalSignature: true,
           signatureDate: true,
           createdAt: true,
+          // "Bekleyen" sütunu icin — musteri adi asagida TEK toplu sorguyla cozulur.
+          assignedManagerId: true,
         }
       }),
       prisma.publicJobApplication.count({ where })
     ])
 
+    // "Bekleyen" — SUNUCUDA hesaplanir; client basvuru basina fetch YAPMAZ.
+    // Sayfadaki tum assignedManagerId'ler TEK findMany ile cozulur (N+1 yok).
+    const managerIds = [
+      ...new Set(applications.map((a) => a.assignedManagerId).filter((x): x is string => !!x)),
+    ]
+    const managers = managerIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: managerIds } },
+          select: { id: true, name: true, firstName: true, lastName: true, email: true },
+        })
+      : []
+    const managerById = new Map(managers.map((u) => [u.id, u]))
+
+    const withBekleyen = applications.map((a) => ({
+      ...a,
+      bekleyen: bekleyenTaraf(
+        a.status,
+        kullaniciAdi(a.assignedManagerId ? managerById.get(a.assignedManagerId) : undefined),
+      ),
+    }))
+
     return NextResponse.json({
-      applications,
+      applications: withBekleyen,
       pagination: {
         page,
         limit,

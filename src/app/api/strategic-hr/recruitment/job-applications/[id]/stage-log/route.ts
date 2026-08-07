@@ -8,6 +8,7 @@ import {
   requiresRejectionReason,
   requiresAssessment,
 } from "@/lib/recruitment/transitions";
+import { bekleyenTaraf, kullaniciAdi } from "@/lib/recruitment/bekleyen";
 
 export const dynamic = "force-dynamic";
 
@@ -17,17 +18,6 @@ export const dynamic = "force-dynamic";
 // Yetki: İK (recruitment.admin / hr.admin) VEYA atanan müdür. İkisi de değilse 403.
 // İzin hesabı yalnız SUNUCUDA (resolveTransitionRoles + allowedTargetsForRoles) — client
 // yetki hesaplamaz; butonlarını buradan dönen allowedTargets'tan türetir.
-
-function userName(u: {
-  name: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-} | undefined): string | null {
-  if (!u) return null;
-  const composed = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
-  return composed || u.name || u.email || null;
-}
 
 export async function GET(
   _request: NextRequest,
@@ -72,7 +62,14 @@ export async function GET(
     },
   });
 
-  const userIds = [...new Set(rows.map((r) => r.changedBy).filter((x): x is string => !!x))];
+  // changedBy id'leri + atanan müdür TEK sorguda çözülür (ayrı fetch yok).
+  const userIds = [
+    ...new Set(
+      [...rows.map((r) => r.changedBy), application.assignedManagerId].filter(
+        (x): x is string => !!x,
+      ),
+    ),
+  ];
   const users = userIds.length
     ? await prisma.user.findMany({
         where: { id: { in: userIds } },
@@ -89,7 +86,7 @@ export async function GET(
       toStatus: r.toStatus,
       note: r.note,
       createdAt: r.createdAt,
-      changedByName: userName(u),
+      changedByName: kullaniciAdi(u),
       changedByTitle: u?.jobTitle ?? null,
     };
   });
@@ -100,8 +97,17 @@ export async function GET(
   const requiresReasonTargets = allowedTargets.filter(requiresRejectionReason);
   const requiresAssessmentTargets = allowedTargets.filter(requiresAssessment);
 
+  // "Kimde bekliyor" — kural src/lib/recruitment/bekleyen.ts (liste ucuyla TEK KAYNAK).
+  // beri: son geçişin zamanı; terminal statüde bekleyen null döner (satır gösterilmez).
+  const bekleyen = bekleyenTaraf(
+    application.status,
+    kullaniciAdi(application.assignedManagerId ? userById.get(application.assignedManagerId) : undefined),
+  );
+  const sonGecis = rows.length > 0 ? rows[rows.length - 1].createdAt : null;
+
   return NextResponse.json({
     logs,
+    bekleyen: bekleyen ? { ...bekleyen, beri: sonGecis } : null,
     workflow: {
       currentStatus: application.status,
       roles,

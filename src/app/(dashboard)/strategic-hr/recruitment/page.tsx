@@ -180,6 +180,8 @@ interface PublicJobApplication {
   digitalSignature: string | null
   signatureDate: string | null
   createdAt: string
+  // Sunucuda hesaplanir (src/lib/recruitment/bekleyen.ts) — client fetch yapmaz.
+  bekleyen: { tip: "MUDUR" | "IK"; ad: string; kisa: string } | null
 }
 
 const employmentTypeLabels: Record<string, string> = {
@@ -1869,6 +1871,7 @@ export default function RecruitmentPage() {
                       <TableHead>Egitim</TableHead>
                       <TableHead>Kaynak</TableHead>
                       <TableHead>Durum</TableHead>
+                      <TableHead>Bekleyen</TableHead>
                       <TableHead>Tarih</TableHead>
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
@@ -1911,6 +1914,21 @@ export default function RecruitmentPage() {
                         </TableCell>
                         <TableCell>
                           <JobApplicationStatusBadge status={app.status} />
+                        </TableCell>
+                        <TableCell>
+                          {app.bekleyen ? (
+                            <span
+                              className={
+                                app.bekleyen.tip === "MUDUR"
+                                  ? "text-amber-700 font-medium"
+                                  : "text-slate-600"
+                              }
+                            >
+                              {app.bekleyen.kisa}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {format(new Date(app.createdAt), "d MMM yyyy", { locale: tr })}

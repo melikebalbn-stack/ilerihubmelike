@@ -40,8 +40,9 @@ import {
   ClipboardList,
   XCircle,
   AlertTriangle,
+  Clock,
 } from "lucide-react"
-import { format } from "date-fns"
+import { format, differenceInCalendarDays } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { JobApplicationSensitiveSections } from "@/components/job-application/JobApplicationSensitiveSections"
@@ -141,6 +142,8 @@ type WorkflowCtx = {
   requiresReasonTargets: string[]
   requiresAssessmentTargets: string[]
 }
+// "Kimde bekliyor" — SUNUCUDAN gelir (src/lib/recruitment/bekleyen.ts). Client kural yürütmez.
+type BekleyenCtx = { tip: "MUDUR" | "IK"; ad: string; kisa: string; beri: string | null }
 type AssessmentOption = { id: string; title: string; durationMin: number; passingScore: number; soruSayisi: number }
 type OturumOzeti = {
   id: string; assessmentId: string; assessmentTitle: string; durum: string; puan: number | null; gecmeNotu: number
@@ -204,6 +207,7 @@ export default function JobApplicationDetailPage() {
   // Workflow: aşama geçmişi + izin bağlamı (stage-log ucundan).
   const [workflow, setWorkflow] = useState<WorkflowCtx | null>(null)
   const [logs, setLogs] = useState<StageLogRow[]>([])
+  const [bekleyen, setBekleyen] = useState<BekleyenCtx | null>(null)
 
   // Geçiş modalı state'i.
   const [txTarget, setTxTarget] = useState<string | null>(null)
@@ -253,6 +257,7 @@ export default function JobApplicationDetailPage() {
         const data = await res.json()
         setWorkflow(data.workflow)
         setLogs(data.logs)
+        setBekleyen(data.bekleyen ?? null)
       }
     } catch {
       // sessiz — timeline/aksiyon kartı yoksa sayfa yine de CV'yi gösterir
@@ -940,6 +945,47 @@ export default function JobApplicationDetailPage() {
               <CardTitle className="text-lg">Durum Yonetimi</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Aşama şeridi — GEÇİLMİŞ yeşil / ŞU ANKİ amber / SIRADAKİ gri, REJECTED kırmızı.
+                  Sabit aşama sırası GÖMÜLMEZ: geçilmişler StageLog'dan (o statüye bir kez
+                  girilmişse geçilmiş), sıradakiler sunucudan gelen allowedTargets'tan türetilir.
+                  Geçiş matrisi doğrusal değil (geri alma kenarları var), bu yüzden "ileriki
+                  aşamalar" = bu durumdan gidilebilecek hedefler. */}
+              {workflow && (() => {
+                const gecilmis: string[] = []
+                for (const l of logs) {
+                  if (l.toStatus === workflow.currentStatus) continue
+                  if (!gecilmis.includes(l.toStatus)) gecilmis.push(l.toStatus)
+                }
+                const siradaki = workflow.allowedTargets.filter((t) => t !== "REJECTED")
+                const reddedildi = workflow.currentStatus === "REJECTED"
+                const chip = (etiket: string, sinif: string, key: string) => (
+                  <span key={key} className={`rounded px-2 py-0.5 text-xs font-medium ${sinif}`}>
+                    {etiket}
+                  </span>
+                )
+                const etiketle = (t: string) => STATUS_LABELS_TR[t as keyof typeof STATUS_LABELS_TR] || t
+                return (
+                  <div>
+                    <Label>Asamalar</Label>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {gecilmis.map((t) =>
+                        chip(etiketle(t), "bg-emerald-100 text-emerald-800", `g-${t}`),
+                      )}
+                      {chip(
+                        etiketle(workflow.currentStatus),
+                        reddedildi
+                          ? "bg-red-100 text-red-800 ring-1 ring-red-300"
+                          : "bg-amber-100 text-amber-800 ring-1 ring-amber-300",
+                        `c-${workflow.currentStatus}`,
+                      )}
+                      {siradaki.map((t) =>
+                        chip(etiketle(t), "bg-slate-100 text-slate-500", `s-${t}`),
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+
               <div>
                 <Label>Islemler</Label>
                 {/* Butonlar SUNUCUDAN gelen izinli hedeflerden türetilir — client yetki hesaplamaz.
@@ -1180,6 +1226,52 @@ export default function JobApplicationDetailPage() {
                   </div>
                 )
               })()}
+
+              {/* "Kimde bekliyor" — SUNUCUDAN gelen bekleyen bağlamı (kural: bekleyen.ts).
+                  Terminal statüde (işe başladı / reddedildi) sunucu null döner, satır çıkmaz. */}
+              {bekleyen && (
+                <div
+                  className={`mt-4 rounded-md border p-3 ${
+                    bekleyen.tip === "MUDUR"
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <Clock
+                      className={`h-4 w-4 shrink-0 mt-0.5 ${
+                        bekleyen.tip === "MUDUR" ? "text-amber-600" : "text-slate-500"
+                      }`}
+                    />
+                    <div className="text-sm">
+                      <div
+                        className={`font-medium ${
+                          bekleyen.tip === "MUDUR" ? "text-amber-900" : "text-slate-700"
+                        }`}
+                      >
+                        {bekleyen.tip === "MUDUR"
+                          ? `Su an ${bekleyen.ad}'da bekliyor`
+                          : `Su an ${bekleyen.ad}'nda bekliyor`}
+                      </div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {workflow
+                          ? STATUS_LABELS_TR[workflow.currentStatus as keyof typeof STATUS_LABELS_TR] ||
+                            workflow.currentStatus
+                          : ""}
+                        {bekleyen.beri && (
+                          <>
+                            {" · "}
+                            {(() => {
+                              const gun = differenceInCalendarDays(new Date(), new Date(bekleyen.beri))
+                              return gun <= 0 ? "bugun" : `${gun} gundur`
+                            })()}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

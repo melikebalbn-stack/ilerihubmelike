@@ -211,6 +211,21 @@ export async function personelAktiflestiginde(
 
 // ─── Tekil koltuk işlemleri (script'ler için; iz yazımı burada TEK KAYNAK) ───
 
+// Bir birimin KÖK departmanına serbest metinli revizyon satırı yazar.
+// Koltuk dışı org değişiklikleri (ör. yeni pozisyon açma) için; revizyon numarası
+// ve OrgBolumMeta güncellemesi tek yerde kalsın diye dışarı bu sarmalayıcıyla açılır.
+export async function orgRevizyonYaz(
+  db: DbClient,
+  orgUnitId: string,
+  aciklama: string,
+  opts: { sebep: string; actorId?: string },
+): Promise<void> {
+  const root = await kokeCik(db, orgUnitId);
+  if (!root) return;
+  await revizyonYaz(db, root.id, root.name, aciklama, `Sistem — ${opts.sebep}`, opts.actorId ?? null);
+}
+
+
 // Belirli bir koltuğu kapatır (SİLME YOK) + OrgRevizyon izi.
 // Mükerrer temizliğinde kullanılır: personelPasiflestiginde kişinin TÜM koltuklarını
 // kapattığı için orada kullanılamaz — burada yalnız verilen koltuk kapanır.

@@ -20,6 +20,11 @@ const STATUS_COLORS: Record<JobApplicationStatus, string> = {
   SHORTLISTED: "bg-purple-100 text-purple-800",
   MUDUR_DEGERLENDIRME: "bg-amber-100 text-amber-800",
   MUDUR_MULAKATI: "bg-orange-100 text-orange-800",
+  // Mavi yaka zinciri — onay kademesi yükseldikçe koyulaşan tek renk ailesi (amber→orange),
+  // müdür kademesiyle akraba ama ayırt edilebilir kalsın diye rose ile taçlanır.
+  DEGERLENDIRICI: "bg-amber-50 text-amber-700",
+  URETIM_MUDUR_YRD: "bg-orange-100 text-orange-800",
+  FABRIKA_MUDURU: "bg-rose-100 text-rose-800",
   INTERVIEW: "bg-indigo-100 text-indigo-800",
   SINAV: "bg-cyan-100 text-cyan-800",
   TELEFON_MULAKATI: "bg-sky-100 text-sky-800",

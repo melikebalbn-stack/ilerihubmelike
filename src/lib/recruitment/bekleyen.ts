@@ -10,21 +10,31 @@
 // doğru davranır.
 
 import type { JobApplicationStatus } from "@/generated/prisma";
-import { ALLOWED_TRANSITIONS } from "./transitions";
+import { ALLOWED_TRANSITIONS, TUM_ROLLER } from "./transitions";
 
 export const IK_ETIKET = "İnsan Varlıkları";
 export const IK_KISA = "İV";
 
-// Müdürün geçiş yapabildiği statüler = topun müdürde olduğu statüler.
+// "Atanan kişi" rolleri = yetkisi İK iznine değil, başvurunun ATANDIĞI kişiye bağlı olanlar.
+// TUM_ROLLER'dan türetilir — yeni rol eklenince burası kendiliğinden kapsar (sabit liste yok).
+const ATANAN_ROLLER = TUM_ROLLER.filter((r) => r !== "IK");
+
+// Atanan kişinin geçiş yapabildiği statüler = topun o kişide olduğu statüler.
+// (MUDUR'a ek olarak mavi yaka zinciri rolleri de sayılır; aksi halde yeni statülerde
+//  "kimde bekliyor" yanlışlıkla İK gösterirdi.)
 export function mudurKademesiMi(status: JobApplicationStatus): boolean {
-  return (ALLOWED_TRANSITIONS[status]?.MUDUR.length ?? 0) > 0;
+  const t = ALLOWED_TRANSITIONS[status];
+  if (!t) return false;
+  return ATANAN_ROLLER.some((r) => (t[r]?.length ?? 0) > 0);
 }
 
 // Hiçbir rolün geçiş yapamadığı statü = terminal (süreç bitti).
+// TÜM roller taranır — yeni bir rol tek çıkış yolu olsa bile statü yanlışlıkla
+// "terminal" sayılmaz.
 export function terminalMi(status: JobApplicationStatus): boolean {
   const t = ALLOWED_TRANSITIONS[status];
   if (!t) return false;
-  return t.IK.length === 0 && t.MUDUR.length === 0;
+  return TUM_ROLLER.every((r) => (t[r]?.length ?? 0) === 0);
 }
 
 export type BekleyenTaraf =

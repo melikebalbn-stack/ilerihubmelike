@@ -6,19 +6,38 @@
 
 import type { JobApplicationStatus } from "@/generated/prisma";
 
-export type TransitionRole = "IK" | "MUDUR";
+export type TransitionRole =
+  | "IK"
+  | "MUDUR"
+  // Mavi yaka zinciri rolleri (additive — MUDUR akışı aynen korunur).
+  | "DEGERLENDIRICI"
+  | "URETIM_MUDUR_YRD"
+  | "FABRIKA_MUDURU";
 
-// from durum → { IK: izinli hedefler, MUDUR: izinli hedefler }
+/** Tüm roller — bekleyen.ts gibi türetim yapan modüller sabit liste gömmesin diye TEK KAYNAK. */
+export const TUM_ROLLER: readonly TransitionRole[] = [
+  "IK",
+  "MUDUR",
+  "DEGERLENDIRICI",
+  "URETIM_MUDUR_YRD",
+  "FABRIKA_MUDURU",
+] as const;
+
+// Matris satırı: IK ve MUDUR ZORUNLU (mevcut 18 satır olduğu gibi kalır — hiçbiri
+// dokunulmadan derlenir), mavi yaka rolleri OPSİYONEL (yalnız ilgili satırlarda yazılır).
+// Böylece yeni rol eklemek 18 satırı şişirmez; okunmayan rol için `?? []` zaten devrede.
+type GecisSatiri = { IK: JobApplicationStatus[]; MUDUR: JobApplicationStatus[] } & Partial<
+  Record<Exclude<TransitionRole, "IK" | "MUDUR">, JobApplicationStatus[]>
+>;
+
+// from durum → { IK: izinli hedefler, MUDUR: izinli hedefler, (opsiyonel yeni roller) }
 //
-// EXHAUSTIVENESS GUARD: `satisfies Record<JobApplicationStatus, ...>` — her statü için anahtar
+// EXHAUSTIVENESS GUARD: `Record<JobApplicationStatus, ...>` — her statü için anahtar
 // ZORUNLU (eksik statü = derleme hatası) ve hedefler JobApplicationStatus[] (geçersiz enum =
 // derleme hatası). Böylece enum'a statü eklendiğinde matris güncellenmesi unutulamaz.
 // Terminal durumlar boş dizi ({IK:[], MUDUR:[]}) ile açıkça işaretlenir — donmuş kayıt kalmaz.
 // Rol belirtilmeyen hedefler İK'ya aittir; MUDUR satırları workflow tasarımıyla korunur.
-export const ALLOWED_TRANSITIONS: Record<
-  JobApplicationStatus,
-  { IK: JobApplicationStatus[]; MUDUR: JobApplicationStatus[] }
-> = {
+export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
   // Intake (matris-öncesi) durumlar — İK bayat/askıda kayıtları ileri taşıyabilir.
   CONSENT_PENDING: {
     IK: ["PENDING", "REJECTED"],
@@ -29,15 +48,17 @@ export const ALLOWED_TRANSITIONS: Record<
     MUDUR: [],
   },
   PENDING: {
-    IK: ["REVIEWING", "MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
+    IK: ["REVIEWING", "MUDUR_DEGERLENDIRME", "DEGERLENDIRICI", "SINAV", "REJECTED"],
     MUDUR: [],
   },
   REVIEWING: {
-    IK: ["SHORTLISTED", "MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
+    // FABRIKA_MUDURU: İK'nın üst onaya gönderme yolu (müdür yrd. onayından dönen başvuruyu
+    // gerekli görürse fabrika müdürüne çıkarır). Atama otomatiktir (otomatik-atama.ts).
+    IK: ["SHORTLISTED", "MUDUR_DEGERLENDIRME", "DEGERLENDIRICI", "FABRIKA_MUDURU", "SINAV", "REJECTED"],
     MUDUR: [],
   },
   SHORTLISTED: {
-    IK: ["MUDUR_DEGERLENDIRME", "TELEFON_MULAKATI", "SINAV", "REJECTED"],
+    IK: ["MUDUR_DEGERLENDIRME", "DEGERLENDIRICI", "TELEFON_MULAKATI", "SINAV", "REJECTED"],
     MUDUR: [],
   },
   TELEFON_MULAKATI: {
@@ -56,6 +77,28 @@ export const ALLOWED_TRANSITIONS: Record<
     MUDUR: ["SINAV", "REJECTED"],
     // İK geri alma: REVIEWING, MUDUR_DEGERLENDIRME.
     IK: ["SINAV", "REJECTED", "REVIEWING", "MUDUR_DEGERLENDIRME"],
+  },
+  // ——— Mavi yaka değerlendirme zinciri ———
+  // İK → DEGERLENDIRICI → (otomatik) URETIM_MUDUR_YRD → üç yol → (gerekirse) FABRIKA_MUDURU → İK.
+  // Her satırda İK'nın geri alma/ret yolu VAR — hiçbiri donmuş statü değil.
+  DEGERLENDIRICI: {
+    // Değerlendirici karar verir: onaylarsa üretim müdür yrd.'na düşer (atama OTOMATİK), ya da reddeder.
+    DEGERLENDIRICI: ["URETIM_MUDUR_YRD", "REJECTED"],
+    // İK geri alma / ret. Aynı-statü yeniden atama: değerlendirici yanlış seçildiyse değiştirilebilir.
+    IK: ["REVIEWING", "DEGERLENDIRICI", "REJECTED"],
+    MUDUR: [],
+  },
+  URETIM_MUDUR_YRD: {
+    // Üç yol: İK'ya onay (REVIEWING) / fabrika müdürüne üst onay (atama OTOMATİK) / ret.
+    URETIM_MUDUR_YRD: ["REVIEWING", "FABRIKA_MUDURU", "REJECTED"],
+    IK: ["REVIEWING", "REJECTED"],
+    MUDUR: [],
+  },
+  FABRIKA_MUDURU: {
+    // Onaylarsa İK'ya döner, ya da reddeder.
+    FABRIKA_MUDURU: ["REVIEWING", "REJECTED"],
+    IK: ["REVIEWING", "REJECTED"],
+    MUDUR: [],
   },
   SINAV: {
     // 'SINAV' → 'SINAV': İK sınavı DEĞİŞTİREBİLİR (assessmentId zorunlu). Müdür değiştiremez.
@@ -128,14 +171,21 @@ export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
   REJECTED: "Reddedildi",
   MUDUR_DEGERLENDIRME: "Müdür Değerlendirmesi",
   MUDUR_MULAKATI: "Müdür Mülakatı",
+  DEGERLENDIRICI: "Değerlendirici İncelemesi",
+  URETIM_MUDUR_YRD: "Üretim Müdür Yrd. Onayı",
+  FABRIKA_MUDURU: "Fabrika Müdürü Onayı",
 };
 
 /**
- * MUDUR_DEGERLENDIRME hedefine geçiş için atanan müdür (assignedManagerId) ZORUNLUDUR.
- * Bu, matris-bağımsız yapısal bir kuraldır (kime atandığı belli olmadan müdür kademesi başlayamaz).
+ * Hedefe geçiş için atanan kişi (assignedManagerId) ZORUNLUDUR — ve bu kişiyi İK SEÇER.
+ * Matris-bağımsız yapısal kural (kime atandığı belli olmadan kademe başlayamaz).
+ *
+ * DİKKAT — bu, "atama gerekli mi" DEĞİL, "İK'nın kişi seçmesi gerekli mi" sorusudur:
+ * URETIM_MUDUR_YRD / FABRIKA_MUDURU da atanır, ama atamayı İK değil sistem yapar
+ * (bkz. otomatik-atama.ts). O yüzden burada YER ALMAZLAR — UI modalı da kişi sormaz.
  */
 export function requiresAssignedManager(to: JobApplicationStatus): boolean {
-  return to === "MUDUR_DEGERLENDIRME";
+  return to === "MUDUR_DEGERLENDIRME" || to === "DEGERLENDIRICI";
 }
 
 /**

@@ -65,6 +65,9 @@ export async function POST(request: NextRequest) {
       stokId: body.stokId,
       miktar: Number(body.miktar),
       aciklama: body.aciklama,
+      kkdUstGrubu: body.kkdUstGrubu || undefined,
+      kkdAltGrubu: body.kkdAltGrubu || undefined,
+      verilmeTarihi: body.verilmeTarihi ? new Date(body.verilmeTarihi) : undefined,
       createdById: user.id,
     })
 

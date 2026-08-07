@@ -472,6 +472,11 @@ export async function createZimmet(input: {
   stokId: string
   miktar: number
   aciklama?: string
+  // KKD grubu + verilme tarihi: teslim takip listesi (getTeslimListesi) bu iki
+  // alandan besleniyor; yazılmazsa zimmet listede görünmez.
+  kkdUstGrubu?: string
+  kkdAltGrubu?: string
+  verilmeTarihi?: Date
   createdById?: string
 }) {
   if (!input.personnelId) {
@@ -518,6 +523,9 @@ export async function createZimmet(input: {
         personnelId: input.personnelId,
         miktar: input.miktar,
         aciklama: input.aciklama || null,
+        kkdUstGrubu: input.kkdUstGrubu || null,
+        kkdAltGrubu: input.kkdAltGrubu || null,
+        verilmeTarihi: input.verilmeTarihi || null,
         createdById: input.createdById || null,
       },
       include: {

@@ -6064,6 +6064,12 @@ enum JobApplicationStatus {
   // Başvuru Değerlendirme Workflow — müdür kademesi (additive)
   MUDUR_DEGERLENDIRME // Bölüm müdürüne değerlendirme için atandı
   MUDUR_MULAKATI // Müdür mülakatı aşaması
+  // Mavi yaka değerlendirme zinciri — additive, müdür kademesinin YANINA eklenir.
+  // Akış: İK → DEGERLENDIRICI (İK'nın seçtiği aktif kişi; mavi/gri yaka da olabilir)
+  //       → URETIM_MUDUR_YRD (otomatik) → FABRIKA_MUDURU (üst onay, otomatik) → İK.
+  DEGERLENDIRICI // İK'nın seçtiği değerlendiriciye atandı
+  URETIM_MUDUR_YRD // Üretim (Fabrika) müdür yardımcısı onayında
+  FABRIKA_MUDURU // Fabrika müdürü üst onayında
 }
 
 // Ret (kök-neden) kategorileri — sabit 3 kategori (İK yalnız ad'ları yönetir).

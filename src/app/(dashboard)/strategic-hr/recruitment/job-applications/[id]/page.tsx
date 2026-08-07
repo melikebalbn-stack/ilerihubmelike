@@ -41,6 +41,7 @@ import {
   XCircle,
   AlertTriangle,
   Clock,
+  UserCheck,
 } from "lucide-react"
 import { format, differenceInCalendarDays } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -141,6 +142,9 @@ type WorkflowCtx = {
   requiresManagerTargets: string[]
   requiresReasonTargets: string[]
   requiresAssessmentTargets: string[]
+  // Otomatik atamalı hedefler: kişi SORULMAZ, kime gideceği bilgi olarak gösterilir.
+  // hazir=false → departman/kişi tanımsız; geçiş denenirse sunucu 400 döner.
+  otomatikAtamaHedefleri?: Record<string, { ad: string | null; hazir: boolean }>
 }
 // "Kimde bekliyor" — SUNUCUDAN gelir (src/lib/recruitment/bekleyen.ts). Client kural yürütmez.
 type BekleyenCtx = { tip: "MUDUR" | "IK"; ad: string; kisa: string; beri: string | null }
@@ -267,6 +271,11 @@ export default function JobApplicationDetailPage() {
   const requiresManager = !!txTarget && !!workflow?.requiresManagerTargets.includes(txTarget)
   const requiresReason = !!txTarget && !!workflow?.requiresReasonTargets.includes(txTarget)
   const requiresAssessment = !!txTarget && !!workflow?.requiresAssessmentTargets.includes(txTarget)
+  // Otomatik atanan kademe (Üretim Müdür Yrd. / Fabrika Müdürü) — modal kişi sormaz.
+  const otomatikAtama = txTarget ? workflow?.otomatikAtamaHedefleri?.[txTarget] : undefined
+  // Kişi seçimi etiketi: mavi yaka zincirinde seçilen kişi müdür OLMAYABİLİR (mavi/gri yaka
+  // çalışan da olabilir), o yüzden "Mudur" yerine hedefe göre etiket.
+  const secimEtiketi = txTarget === "DEGERLENDIRICI" ? "Degerlendirici" : "Mudur"
 
   // Aksiyon butonuna basınca modalı hazırla — hedef ek girdi istiyorsa ilgili listeyi çek.
   const openTransition = async (target: string) => {
@@ -1335,21 +1344,44 @@ export default function JobApplicationDetailPage() {
               {requiresReason
                 ? "Ret nedeni secimi zorunludur."
                 : requiresManager
-                  ? "Degerlendirmeyi yapacak muduru secin."
+                  ? "Degerlendirmeyi yapacak kisiyi secin."
                   : requiresAssessment
                     ? "Atanacak sinavi secin — gecisle birlikte aday sinav oturumu acilir."
-                    : "Gecisi onaylayin."}
+                    : otomatikAtama
+                      ? "Bu asamada atama otomatik yapilir — kisi secmeniz gerekmez."
+                      : "Gecisi onaylayin."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Otomatik atama — kişi seçimi YOK, yalnız kime gideceği bilgisi.
+                hazir=false ise geçiş sunucuda 400 döner; kullanıcı sebebini önden görsün. */}
+            {otomatikAtama && (
+              otomatikAtama.hazir ? (
+                <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
+                  <UserCheck className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>
+                    Basvuru otomatik olarak <strong>{otomatikAtama.ad}</strong> kisisine atanacak.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>
+                    Bu asama icin otomatik atanacak kisi bulunamadi. Departman tanimindaki
+                    mudur/mudur yardimcisi ve aktif kullanici hesabi kontrol edilmeli — gecis su an basarisiz olur.
+                  </span>
+                </div>
+              )
+            )}
+
             {/* Müdür seçimi — iki grup ayrı gösterilir */}
             {requiresManager && (
               <div>
-                <Label>Mudur</Label>
+                <Label>{secimEtiketi}</Label>
                 <Select value={txManagerId} onValueChange={setTxManagerId}>
                   <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Mudur secin" />
+                    <SelectValue placeholder={`${secimEtiketi} secin`} />
                   </SelectTrigger>
                   <SelectContent>
                     {managers && managers.onerilenler.length > 0 && (

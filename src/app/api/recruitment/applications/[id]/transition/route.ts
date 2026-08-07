@@ -10,9 +10,14 @@ import {
   requiresRejectionReason,
   requiresAssessment,
 } from "@/lib/recruitment/transitions";
-import { resolveTransitionRoles } from "@/lib/recruitment/resolve-roles";
+import { resolveTransitionRolesFull } from "@/lib/recruitment/resolve-roles";
 import { transitionApplicationStatus } from "@/lib/recruitment/stage-log";
 import { AssessmentSessionError } from "@/lib/recruitment/assessment-session";
+import {
+  otomatikAtamaliMi,
+  otomatikAtananKullanici,
+  OtomatikAtamaError,
+} from "@/lib/recruitment/otomatik-atama";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +64,9 @@ export async function POST(
 
   // 3) Rol(ler): kullanıcı BİRDEN ÇOK role sahip olabilir (hem İK hem atanan müdür).
   //    Rol belirleme TEK KAYNAK'tan (resolve-roles) — stage-log route'u da aynısını kullanır.
-  const roles = resolveTransitionRoles({
+  //    Full sürüm: izin/atama tabanlı rollere ek olarak DEPARTMAN tabanlı zincir rollerini
+  //    (URETIM_MUDUR_YRD, FABRIKA_MUDURU) de çözer.
+  const roles = await resolveTransitionRolesFull({
     permissions: session.user.permissions,
     userId: session.user.id,
     assignedManagerId: application.assignedManagerId,
@@ -87,23 +94,50 @@ export async function POST(
     );
   }
 
-  // 5) MUDUR_DEGERLENDIRME → atanan müdür zorunlu.
-  //    (mevcut atama varsa ve yeni verilmediyse onu kullan; ikisi de yoksa 400.)
+  // 5) Atama gerektiren hedefler — İK'nın seçtiği (requiresAssignedManager) vs sistemin
+  //    atadığı (otomatikAtamaliMi) ayrımı. İkisi ASLA aynı hedefte olmaz.
+  //
+  // 5a) OTOMATİK atama: hedef zincir kademesiyse kişiyi sistem belirler; istemciden gelen
+  //     assignedManagerId YOK SAYILIR (İK araya girmesin). Çözülemezse 400 — sessizce
+  //     atamasız geçiş YAPILMAZ.
+  let otomatikAtanan: { userId: string; ad: string | null } | null = null;
+  if (otomatikAtamaliMi(toStatus)) {
+    try {
+      otomatikAtanan = await otomatikAtananKullanici(toStatus);
+    } catch (err) {
+      if (err instanceof OtomatikAtamaError) {
+        return NextResponse.json({ error: err.message }, { status: err.httpStatus });
+      }
+      throw err;
+    }
+  }
+
+  // 5b) İK'nın kişi seçtiği hedefler (MUDUR_DEGERLENDIRME / DEGERLENDIRICI).
+  //     (mevcut atama varsa ve yeni verilmediyse onu kullan; ikisi de yoksa 400.)
   const efektifManagerId = assignedManagerId ?? application.assignedManagerId ?? null;
   if (requiresAssignedManager(toStatus) && !efektifManagerId) {
     return NextResponse.json(
-      { error: "MUDUR_DEGERLENDIRME için assignedManagerId zorunludur" },
+      { error: `${toStatus} için assignedManagerId zorunludur` },
       { status: 400 },
     );
   }
 
-  // 5b) REJECTED → ret nedeni zorunlu (kök-neden analizi). Sunucu-taraflı guard; UI disabled tek
+  // Devir izi: StageLog'da atama ALANI yok (yalnız from/to/changedBy/note). Otomatik devirde
+  // assignedManagerId ÜZERİNE YAZILDIĞI için, kime devredildiği not'a yazılmazsa iz kaybolur.
+  // Ayrılan taraf zaten changedBy olarak kayıtlı; burada devralan tarafı ekliyoruz.
+  const efektifNote = otomatikAtanan
+    ? [note, `Otomatik atandı: ${otomatikAtanan.ad ?? otomatikAtanan.userId}`]
+        .filter(Boolean)
+        .join(" | ")
+    : (note ?? null);
+
+  // 5c) REJECTED → ret nedeni zorunlu (kök-neden analizi). Sunucu-taraflı guard; UI disabled tek
   //     başına yeterli değil. requiresRejectionReason TEK KAYNAK (transitions.ts).
   if (requiresRejectionReason(toStatus) && !rejectionReasonId) {
     return NextResponse.json({ error: "Ret nedeni zorunlu" }, { status: 400 });
   }
 
-  // 5c) SINAV → sınav seçimi zorunlu (geçişle aynı anda oturum açılır). Sunucu-taraflı guard.
+  // 5d) SINAV → sınav seçimi zorunlu (geçişle aynı anda oturum açılır). Sunucu-taraflı guard.
   //     requiresAssessment TEK KAYNAK (transitions.ts).
   if (requiresAssessment(toStatus) && !assessmentId) {
     return NextResponse.json({ error: "Sınav seçimi zorunlu" }, { status: 400 });
@@ -114,10 +148,11 @@ export async function POST(
     const updated = await transitionApplicationStatus({
       applicationId: id,
       toStatus,
-      note: note ?? null,
+      note: efektifNote,
       changedBy: session.user.id,
-      // Yalnız yeni atama verildiyse yaz; verilmediyse mevcut korunur.
-      assignedManagerId: assignedManagerId ?? undefined,
+      // Otomatik kademede sistem atar; diğerlerinde yalnız yeni atama verildiyse yaz
+      // (verilmediyse mevcut korunur).
+      assignedManagerId: otomatikAtanan?.userId ?? assignedManagerId ?? undefined,
       actorName: session.user.name ?? null,
       // REJECTED'da guard'dan geçti; helper AYNI tx'te rejectionReasonId yazar + note'a etiket ekler.
       rejectionReasonId: rejectionReasonId ?? undefined,

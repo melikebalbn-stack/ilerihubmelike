@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
-import { resolveTransitionRoles } from "@/lib/recruitment/resolve-roles";
+import { resolveTransitionRolesFull } from "@/lib/recruitment/resolve-roles";
+import { otomatikAtamaOnizleme } from "@/lib/recruitment/otomatik-atama";
 import {
   allowedTargetsForRoles,
   requiresAssignedManager,
@@ -38,7 +39,7 @@ export async function GET(
   }
 
   // Rol(ler) — TEK KAYNAK (transition route ile aynı helper).
-  const roles = resolveTransitionRoles({
+  const roles = await resolveTransitionRolesFull({
     permissions: session.user.permissions,
     userId: session.user.id,
     assignedManagerId: application.assignedManagerId,
@@ -96,6 +97,9 @@ export async function GET(
   const requiresManagerTargets = allowedTargets.filter(requiresAssignedManager);
   const requiresReasonTargets = allowedTargets.filter(requiresRejectionReason);
   const requiresAssessmentTargets = allowedTargets.filter(requiresAssessment);
+  // Otomatik atamalı hedefler: modal kişi SORMAZ, bunun yerine kime gideceğini gösterir.
+  // hazir=false → atama yapılamayacak (departman/kişi eksik); UI uyarır, geçiş 400 döner.
+  const otomatikAtamaHedefleri = await otomatikAtamaOnizleme(allowedTargets);
 
   // "Kimde bekliyor" — kural src/lib/recruitment/bekleyen.ts (liste ucuyla TEK KAYNAK).
   // beri: son geçişin zamanı; terminal statüde bekleyen null döner (satır gösterilmez).
@@ -117,6 +121,7 @@ export async function GET(
       requiresManagerTargets,
       requiresReasonTargets,
       requiresAssessmentTargets,
+      otomatikAtamaHedefleri,
     },
   });
 }

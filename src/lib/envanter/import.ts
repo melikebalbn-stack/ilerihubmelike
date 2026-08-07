@@ -106,6 +106,9 @@ type ZimmetSatiri = {
   miktar: number | null
   teslimTarihi: string
   aciklama: string
+  kkdUstGrubu: string
+  kkdAltGrubu: string
+  verilmeTarihi: string
 }
 
 function upper(v: string) {
@@ -300,6 +303,9 @@ function parseWorkbook(buffer: Buffer): ParsedWorkbook {
     miktar: col(zimmetSheet.headers, 'miktar'),
     teslimTarihi: col(zimmetSheet.headers, 'teslimTarihi'),
     aciklama: col(zimmetSheet.headers, 'aciklama'),
+    kkdUstGrubu: col(zimmetSheet.headers, 'kkdUstGrubu'),
+    kkdAltGrubu: col(zimmetSheet.headers, 'kkdAltGrubu'),
+    verilmeTarihi: col(zimmetSheet.headers, 'verilmeTarihi'),
   }
 
   const zimmetSatirlari: ZimmetSatiri[] = []
@@ -314,6 +320,9 @@ function parseWorkbook(buffer: Buffer): ParsedWorkbook {
       miktar: cellToNumber(hucreler[zimmetIdx.miktar]),
       teslimTarihi: cellToString(hucreler[zimmetIdx.teslimTarihi]),
       aciklama: cellToString(hucreler[zimmetIdx.aciklama]),
+      kkdUstGrubu: cellToString(hucreler[zimmetIdx.kkdUstGrubu]),
+      kkdAltGrubu: cellToString(hucreler[zimmetIdx.kkdAltGrubu]),
+      verilmeTarihi: cellToString(hucreler[zimmetIdx.verilmeTarihi]),
     })
   }
 
@@ -925,6 +934,9 @@ export async function executeImport(
               durum: 'AKTIF',
               teslimTarihi: tarih,
               aciklama,
+              kkdUstGrubu: satir.kkdUstGrubu || null,
+              kkdAltGrubu: satir.kkdAltGrubu || null,
+              verilmeTarihi: parseTarih(satir.verilmeTarihi) ?? tarih,
             },
           })
 

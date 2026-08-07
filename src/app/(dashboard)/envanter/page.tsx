@@ -7,6 +7,8 @@ import { AramaliSecim } from '@/components/envanter/AramaliSecim'
 import { BakimYonlendirmeYonetimi } from '@/components/envanter/BakimYonlendirme'
 import { SarfTuketimRaporu, MaliyetRaporu } from '@/components/envanter/EnvanterRaporlar'
 import { KullanimKilavuzu } from '@/components/envanter/KullanimKilavuzu'
+import { TumStoklarTablosu } from '@/components/envanter/TumStoklarTablosu'
+import { ZimmetVeTeslimListesi } from '@/components/envanter/ZimmetVeTeslimListesi'
 import type { ExecuteSonuc, ImportAtlanan, ImportHata, ValidateSonuc } from '@/lib/envanter/import'
 import type { YenilemeDurum, YenilemeSatiri } from '@/lib/envanter/yenileme'
 import type { SatinAlmaAksiyonTip, SatinAlmaDurumTip } from '@/lib/envanter/satinalma'
@@ -327,7 +329,7 @@ function EnvanterPageInner() {
   )}
 
 {activeTab === 'zimmetler' && (
-  <PersonelZimmeti />
+  <ZimmetVeTeslimListesi zimmetSlot={<PersonelZimmeti />} />
 )}
 
 {activeTab === 'parametreler' && (
@@ -634,6 +636,8 @@ function UrunYonetimi({
   onNewProduct: () => void
 }) {
   const [search, setSearch] = useState('')
+  const [kategoriFiltre, setKategoriFiltre] = useState('')
+  const [durumFiltre, setDurumFiltre] = useState('')
   const [urunler, setUrunler] = useState<EnvanterUrunListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedUrunId, setSelectedUrunId] = useState<string | null>(null)
@@ -668,17 +672,28 @@ useEffect(() => {
   }
 }, [])
 
+// Kategori seçenekleri sabit liste değil, listedeki ürünlerden türetilir.
+const kategoriSecenekleri = useMemo<string[]>(() => {
+  const set = new Set(urunler.map((u) => u.kategori).filter((k): k is string => Boolean(k)))
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'))
+}, [urunler])
+
 const filtered = useMemo<EnvanterUrunListItem[]>(() => {
   const value = search.trim().toLowerCase()
-  if (!value) return urunler
 
-  return urunler.filter((urun) =>
-    [urun.kod, urun.ad, urun.kategori, urun.tip]
-      .join(' ')
-      .toLowerCase()
-      .includes(value),
-  )
-}, [search, urunler])
+  return urunler.filter((urun) => {
+    if (kategoriFiltre && urun.kategori !== kategoriFiltre) return false
+    if (durumFiltre && urun.durum !== durumFiltre) return false
+    if (value) {
+      const hit = [urun.kod, urun.ad, urun.kategori, urun.tip]
+        .join(' ')
+        .toLowerCase()
+        .includes(value)
+      if (!hit) return false
+    }
+    return true
+  })
+}, [search, kategoriFiltre, durumFiltre, urunler])
 
 async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
   setBedenTipiSaving((prev) => ({ ...prev, [urunId]: true }))
@@ -745,19 +760,31 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
             />
           </div>
 
-          <select className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700">
-            <option>Tüm Kategoriler</option>
-            <option>İş Kıyafeti</option>
-            <option>İş Ayakkabısı</option>
-            <option>KKD / Eldiven</option>
-            <option>Kırtasiye</option>
+          <select
+            value={kategoriFiltre}
+            onChange={(e) => setKategoriFiltre(e.target.value)}
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+          >
+            <option value="">Tüm Kategoriler</option>
+            {kategoriSecenekleri.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
           </select>
 
-          <select className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700">
-            <option>Tüm Durumlar</option>
-            <option>Normal</option>
-            <option>Kritik</option>
-            <option>Pasif</option>
+          <select
+            value={durumFiltre}
+            onChange={(e) => setDurumFiltre(e.target.value)}
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+          >
+            {/* Ürün listesinde durum yalnız NORMAL/KRITIK/PASIF olabilir
+                (service.ts → getOverallStockStatus); MINIMUM/EKSIK stok satırı
+                seviyesinde kalır, Tüm Stoklar tablosundan filtrelenir. */}
+            <option value="">Tüm Durumlar</option>
+            <option value="NORMAL">Normal</option>
+            <option value="KRITIK">Kritik</option>
+            <option value="PASIF">Pasif</option>
           </select>
         </div>
       </div>
@@ -3160,6 +3187,8 @@ function StokYonetimi() {
           </div>
         </div>
       </div>
+
+      <TumStoklarTablosu onUrunSec={(urunId) => setSelectedUrunId(urunId)} />
     </div>
   )
 }
@@ -3207,6 +3236,9 @@ function PersonelZimmeti() {
   // Faz 2 — KKD Kategorisi (tek dropdown; kkdAltGrubu'na yazılır). kkdUstGrubu formda gösterilmez.
   const [kkdAltGrubu, setKkdAltGrubu] = useState('')
   const [kkdKategoriListesi, setKkdKategoriListesi] = useState<string[]>([])
+  // Verilme tarihi: boş bırakılırsa teslimTarihi (kayıt anı) esas alınır.
+  // Teslim takip listesi bu tarihten "son verilme" hücresini üretir.
+  const [verilmeTarihi, setVerilmeTarihi] = useState('')
 
   useEffect(() => {
     loadData()
@@ -3329,6 +3361,7 @@ function PersonelZimmeti() {
           miktar,
           aciklama,
           kkdAltGrubu: kkdAltGrubu || undefined, // Faz 2 — seçilen KKD kategorisi
+          verilmeTarihi: verilmeTarihi || undefined,
         }),
       })
 
@@ -3339,6 +3372,7 @@ function PersonelZimmeti() {
         setAciklama('')
         setMiktar(1)
         setKkdAltGrubu('')
+        setVerilmeTarihi('')
         await loadUrunDetay(selectedUrun)
         await loadPersonelZimmetleri(selectedPersonel)
       } else {
@@ -3429,6 +3463,16 @@ function PersonelZimmeti() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Verilme Tarihi</label>
+                <input
+                  type="date"
+                  value={verilmeTarihi}
+                  onChange={(e) => setVerilmeTarihi(e.target.value)}
+                  className="mt-1 w-full rounded-xl border p-2 text-sm"
+                />
               </div>
 
               <div>
@@ -4259,6 +4303,40 @@ function VeriAktarimi() {
     setError('')
   }
 
+  // Boş import şablonu: 4 sayfa, başlık + ZORUNLU/opsiyonel satırı + örnek satır.
+  // Örnek satır içeri aktarımda atlanır (ornekMi kontrolü, src/lib/envanter/import.ts).
+  function handleSablonIndir() {
+    const sayfalar: Record<string, string[][]> = {
+      Urunler: [
+        ['urunKodu', 'urunAdi', 'kategori', 'tip', 'olcuBirimi', 'varyantTipi', 'paketIciAdet', 'barkod', 'tedarikci', 'marka', 'hedefBolum', 'aciklama'],
+        ['ZORUNLU', 'ZORUNLU', 'ZORUNLU', 'ZORUNLU', 'opsiyonel', 'opsiyonel', 'opsiyonel', 'opsiyonel', 'opsiyonel', 'opsiyonel', 'opsiyonel', 'opsiyonel'],
+        ['ORN-001', 'Örnek Ürün - bu satırı silin', 'GENEL', 'STANDART_STOK', 'ADET', 'YOK', '', '', '', '', '', 'Örnek satır - içeri aktarımda atlanır'],
+      ],
+      Varyantlar: [
+        ['urunKodu', 'varyantAdi', 'beden', 'numara', 'renk'],
+        ['ZORUNLU', 'ZORUNLU', 'opsiyonel', 'opsiyonel', 'opsiyonel'],
+        ['ORN-001', 'Örnek Varyant', '', '', ''],
+      ],
+      Stoklar: [
+        ['urunKodu', 'varyantAdi', 'depo', 'raf', 'mevcut', 'minStok', 'kritikStok', 'maxStok'],
+        ['ZORUNLU', 'opsiyonel', 'opsiyonel', 'opsiyonel', 'ZORUNLU', 'opsiyonel', 'opsiyonel', 'opsiyonel'],
+        ['ORN-001', '', 'IDARI_ISLER', '', '0', '', '', ''],
+      ],
+      ZimmetGecmisi: [
+        ['sicilNo', 'urunKodu', 'varyantAdi', 'miktar', 'teslimTarihi', 'aciklama', 'kkdUstGrubu', 'kkdAltGrubu', 'verilmeTarihi'],
+        ['ZORUNLU', 'ZORUNLU', 'opsiyonel', 'ZORUNLU', 'opsiyonel (GG.AA.YYYY)', 'opsiyonel', 'opsiyonel', 'opsiyonel', 'opsiyonel (GG.AA.YYYY)'],
+        ['ILR-00001', 'ORN-001', '', '1', '01.01.2025', 'Örnek satır - silin', 'KORUYUCU EKİPMAN', 'KORUYUCU AYAKKABI', '01.01.2025'],
+      ],
+    }
+
+    const wb = XLSX.utils.book_new()
+    for (const [ad, aoa] of Object.entries(sayfalar)) {
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      XLSX.utils.book_append_sheet(wb, ws, ad)
+    }
+    XLSX.writeFile(wb, 'ILERIHUB_Envanter_Import_Sablonu.xlsx')
+  }
+
   async function handleDogrula() {
     if (!file) {
       setError('Önce bir .xlsx dosyası seçiniz.')
@@ -4356,6 +4434,15 @@ function VeriAktarimi() {
             />
             ZimmetGecmisi sayfasını da aktar
           </label>
+
+          <button
+            type="button"
+            onClick={handleSablonIndir}
+            className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            <Download className="h-4 w-4" />
+            Örnek Şablon İndir
+          </button>
 
           <button
             type="button"

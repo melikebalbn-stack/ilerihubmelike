@@ -22,16 +22,22 @@ export function satirDoluMu(r: UretimSatirInput): boolean {
   return r.parcaKodu.trim() !== "" || r.hedefAdet.trim() !== ""
 }
 
-/** Geçerli satır: parça kodu dolu + hedefAdet > 0. */
+/**
+ * Geçerli satır: parça kodu dolu + hedefAdet >= 0 (0 KASITLI hedef — "üretim beklenmiyor").
+ * DİKKAT: Number("") === 0 — boş alan kazara "geçerli 0" sayılmasın diye trim kontrolü ŞART.
+ * Boş = "henüz girilmedi" (geçersiz), "0" = kasıtlı sıfır (geçerli).
+ */
 export function satirGecerliMi(r: UretimSatirInput): boolean {
-  const n = Number(r.hedefAdet)
-  return r.parcaKodu.trim() !== "" && Number.isFinite(n) && n > 0
+  const s = r.hedefAdet.trim()
+  if (s === "") return false
+  const n = Number(s)
+  return r.parcaKodu.trim() !== "" && Number.isFinite(n) && n >= 0
 }
 
 /**
  * Personelin üretim satırları geçerli mi?
  * - MESAI: en az 1 geçerli satır + kısmen doldurulmuş her satır geçerli olmalı.
- * - VARDIYA: satırlar opsiyonel; doldurulmuş her satır geçerli olmalı (0 geçerli OK).
+ * - VARDIYA: satırlar opsiyonel; doldurulmuş her satır geçerli olmalı.
  */
 export function personelSatirlariGecerli(rows: UretimSatirInput[], isVardiya: boolean): boolean {
   const doluSatirlarGecerli = rows.every((r) => !satirDoluMu(r) || satirGecerliMi(r))
@@ -86,7 +92,8 @@ export default function UretimSatirlariEditor({ rows, onChange, isVardiya = fals
       {rowsSafe.map((row, i) => {
         const parcaBos = !row.parcaKodu.trim()
         const hedefNum = Number(row.hedefAdet)
-        const hedefGecersiz = row.hedefAdet.trim() === "" || !Number.isFinite(hedefNum) || hedefNum <= 0
+        // 0 geçerli (kasıtlı "üretim beklenmiyor"); boş ve negatif geçersiz.
+        const hedefGecersiz = row.hedefAdet.trim() === "" || !Number.isFinite(hedefNum) || hedefNum < 0
         // Hata gösterimi: satır kısmen doluysa (kullanıcı dokunmuş) her iki alanı da denetle;
         // MESAI'de 1. satır zorunlu → boşsa da işaretle.
         const dokunulmus = satirDoluMu(row)
@@ -108,7 +115,7 @@ export default function UretimSatirlariEditor({ rows, onChange, isVardiya = fals
               <Input
                 type="number"
                 inputMode="numeric"
-                min="1"
+                min="0"
                 placeholder="Ör: 50"
                 value={row.hedefAdet}
                 disabled={disabled}

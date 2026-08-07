@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
       id: true,
       formNo: true,
       createdById: true,
-      personnel: { select: { hedefAdet: true, gerceklesenAdet: true, workDepartment: true } },
+      // Satır bazlı: tekil OvertimePersonnel alanları yalnız 1. satırı temsil eder →
+      // çok satırlı kayıtta yarım giriş hatırlatma üretmiyordu.
+      personnel: { select: { workDepartment: true, uretimSatirlari: { select: { hedefAdet: true, gerceklesenAdet: true } } } },
     },
   })
   if (forms.length === 0) {
@@ -80,7 +82,10 @@ export async function POST(req: NextRequest) {
   let bekleyenForm = 0
   for (const f of forms) {
     const pendingDepts = new Set(
-      f.personnel.filter((p) => p.hedefAdet != null && p.gerceklesenAdet == null).map((p) => normDept(p.workDepartment)),
+      f.personnel
+        // hedefAdet 0 → üretim beklenmiyor, gerçekleşen girilmesi de beklenmez → hatırlatma yok.
+        .filter((p) => p.uretimSatirlari.some((u) => u.hedefAdet != null && u.hedefAdet > 0 && u.gerceklesenAdet == null))
+        .map((p) => normDept(p.workDepartment)),
     )
     if (pendingDepts.size === 0) continue // hepsi girilmiş → bildirim yok
     bekleyenForm++

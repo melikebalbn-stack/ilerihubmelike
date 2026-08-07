@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
-import { buildSingles, buildUretimRows, buildBackfillRow, coerceIntNonNeg, coerceHedefPozitif, buildParcaKoduDuzeltme, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { buildSingles, buildUretimRows, buildBackfillRow, coerceIntNonNeg, coerceHedefAdet, buildParcaKoduDuzeltme, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 import { logAuditEvent } from '@/lib/audit-log'
 
 // Bölüm adı normalize: workDepartment ↔ omurga (getDeptSubtreeNames) adları güvenli
@@ -344,7 +344,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (Array.isArray(p.uretimSatirlari) && p.uretimSatirlari.length > 0) {
         // Satır-bazlı: yalnız bu personele ait satırları id ile güncelle. KISMİ güncelleme
         // — sadece payload'da GELEN alanlar yazılır (hedefAdet-only doldurma gerceklesen'i
-        // silmez). hedefAdet API kuralı: yalnız > 0 ise yazılır (geçersiz → yok say).
+        // silmez). hedefAdet API kuralı: >= 0 yazılır (0 KASITLI hedef); boş/negatif → yok say
+        // (mevcut değer korunur, "henüz girilmedi" ile karışmaz).
         const ownRows = new Map(uretimRows.map((r) => [r.id, r]))
         // Tekil (OvertimePersonnel) senkron alanları — 1. satırdan biriktirilir, sonda 1 update.
         const singleData: Record<string, unknown> = {}
@@ -357,7 +358,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           if ('gerceklesenNote' in r) data.gerceklesenNote = r.gerceklesenNote?.trim() || null
           if ('hurdaAdet' in r) data.hurdaAdet = coerceIntNonNeg(r.hurdaAdet)
           if ('hedefAdet' in r) {
-            const yeniHedef = coerceHedefPozitif(r.hedefAdet)
+            const yeniHedef = coerceHedefAdet(r.hedefAdet)
             const eskiHedef = existingRow.hedefAdet
             // Üst-kapı YALNIZ gerçek değişimde: aynı değer/boş gelirse dokunma (birim
             // sorumlusu gerçekleşeni girerken hedefi aynı gönderebilir → 403'e düşürme).

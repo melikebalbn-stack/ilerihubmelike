@@ -308,7 +308,7 @@ export default function EditOvertimeFormPage() {
       toast.error(
         isVardiya
           ? "Doldurulan üretim satırlarında parça kodu ve geçerli hedef adet girilmelidir."
-          : "Her seçili personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir."
+          : "Her seçili personel için en az bir parça kodu ve hedef adet (0 veya daha büyük) girilmelidir."
       )
       return
     }

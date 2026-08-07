@@ -5,7 +5,7 @@ import {
   buildBackfillRow,
   buildParcaKoduDuzeltme,
   coerceIntNonNeg,
-  coerceHedefPozitif,
+  coerceHedefAdet,
 } from './overtime-uretim'
 
 describe('coerceIntNonNeg', () => {
@@ -34,25 +34,36 @@ describe('coerceIntNonNeg', () => {
   })
 })
 
-describe('coerceHedefPozitif', () => {
-  it('0/negatif/null → null (API satır hedefAdet > 0 zorunlu)', () => {
-    expect(coerceHedefPozitif(0)).toBeNull()
-    expect(coerceHedefPozitif('0')).toBeNull()
-    expect(coerceHedefPozitif(-3)).toBeNull()
-    expect(coerceHedefPozitif(null)).toBeNull()
-    expect(coerceHedefPozitif('')).toBeNull()
+describe('coerceHedefAdet', () => {
+  // SIFIR ≠ BOŞ: 0 kasıtlı hedef ("üretim beklenmiyor"), boş "henüz girilmedi".
+  it('0 → 0 (kasıtlı hedef, null DEĞİL)', () => {
+    expect(coerceHedefAdet(0)).toBe(0)
+    expect(coerceHedefAdet('0')).toBe(0)
+  })
+
+  it('boş/null → null ("henüz girilmedi" — 0 ile karışmaz)', () => {
+    expect(coerceHedefAdet(null)).toBeNull()
+    expect(coerceHedefAdet(undefined)).toBeNull()
+    expect(coerceHedefAdet('')).toBeNull()
+    expect(coerceHedefAdet('   ')).toBeNull()
+  })
+
+  it('negatif/geçersiz → null', () => {
+    expect(coerceHedefAdet(-3)).toBeNull()
+    expect(coerceHedefAdet('-1')).toBeNull()
+    expect(coerceHedefAdet('abc')).toBeNull()
   })
 
   it('pozitif → trunc', () => {
-    expect(coerceHedefPozitif(5)).toBe(5)
-    expect(coerceHedefPozitif('180')).toBe(180)
-    expect(coerceHedefPozitif(3.7)).toBe(3)
+    expect(coerceHedefAdet(5)).toBe(5)
+    expect(coerceHedefAdet('180')).toBe(180)
+    expect(coerceHedefAdet(3.7)).toBe(3)
   })
 })
 
 // ── API BAĞLAMI (buildUretimRows / buildSingles) ──
 // parcaKodu <- mesaiNedeni (prod'da parça kodu buraya girilmiş; targetProduction retired).
-// hedefAdet > 0 ZORUNLU — sağlanamayan satır oluşmaz.
+// hedefAdet >= 0 ZORUNLU (0 GEÇERLİ) — sağlanamayan satır oluşmaz.
 describe('buildUretimRows (API bağlamı)', () => {
   describe('geçersiz satır oluşmaz', () => {
     it('parcaKodu (mesaiNedeni) boş → satır yok', () => {
@@ -67,12 +78,49 @@ describe('buildUretimRows (API bağlamı)', () => {
       expect(buildUretimRows({ mesaiNedeni: '8048', hedefAdet: null })).toEqual([])
     })
 
-    it('hedefAdet 0 → satır yok', () => {
-      expect(buildUretimRows({ mesaiNedeni: '8048', hedefAdet: 0 })).toEqual([])
+    it('hedefAdet boş string → satır yok ("henüz girilmedi")', () => {
+      expect(buildUretimRows({ mesaiNedeni: '8048', hedefAdet: '' })).toEqual([])
     })
 
     it('hedefAdet negatif → satır yok', () => {
       expect(buildUretimRows({ mesaiNedeni: '8048', hedefAdet: -5 })).toEqual([])
+    })
+  })
+
+  // Fabrika Müdürü senaryosu: gelmeyen operatörün hedefi 0 → satır OLUŞUR, 0 yazılır.
+  describe('hedefAdet 0 GEÇERLİ (kasıtlı "üretim beklenmiyor")', () => {
+    it('legacy payload hedefAdet 0 → satır oluşur, hedefAdet 0', () => {
+      const rows = buildUretimRows({ mesaiNedeni: '8041', hedefAdet: 0 })
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ parcaKodu: '8041', hedefAdet: 0 })
+    })
+
+    it("string '0' → satır oluşur, hedefAdet 0", () => {
+      expect(buildUretimRows({ uretimSatirlari: [{ parcaKodu: '8042', hedefAdet: '0' }] })[0]).toMatchObject({
+        parcaKodu: '8042',
+        hedefAdet: 0,
+      })
+    })
+
+    it('çok satırlı: 0 olan satır KORUNUR, boş olan atlanır', () => {
+      const rows = buildUretimRows({
+        uretimSatirlari: [
+          { parcaKodu: 'A', hedefAdet: 0 }, // kasıtlı sıfır → kalır
+          { parcaKodu: 'B', hedefAdet: '' }, // henüz girilmedi → atlanır
+          { parcaKodu: 'C', hedefAdet: 12 },
+        ],
+      })
+      expect(rows.map((r) => [r.parcaKodu, r.hedefAdet])).toEqual([
+        ['A', 0],
+        ['C', 12],
+      ])
+    })
+
+    it('buildSingles: 1. satır hedefAdet 0 → tekil 0 (null DEĞİL)', () => {
+      expect(buildSingles({ uretimSatirlari: [{ parcaKodu: 'A', hedefAdet: 0 }] })).toEqual({
+        mesaiNedeni: 'A',
+        hedefAdet: 0,
+      })
     })
   })
 
@@ -127,7 +175,7 @@ describe('buildUretimRows (API bağlamı)', () => {
       const rows = buildUretimRows({
         uretimSatirlari: [
           { parcaKodu: '', hedefAdet: 10 }, // parcaKodu boş → atla
-          { parcaKodu: 'B', hedefAdet: 0 }, // hedefAdet 0 → atla
+          { parcaKodu: 'B', hedefAdet: -2 }, // hedefAdet negatif → atla (0 GEÇERLİ, ayrı testte)
           { parcaKodu: 'C', hedefAdet: 5, hurdaAdet: 3, gerceklesenAdet: 4, mesaiNedeni: 'acil' },
         ],
       })
@@ -203,7 +251,7 @@ describe('buildSingles (API bağlamı)', () => {
 
 // ── BACKFILL BAĞLAMI (buildBackfillRow) ──
 // parcaKodu <- mesaiNedeni; hedefAdet null ise NULL TAŞINIR (satır yine oluşur).
-// API'nin hedefAdet > 0 kuralından KASITLI olarak farklı.
+// API'nin hedefAdet >= 0 kuralından KASITLI olarak farklı (API'de null satırı düşürür).
 describe('buildBackfillRow (backfill bağlamı)', () => {
   it('parcaKodu (mesaiNedeni) boş/whitespace → null (kayıt atlanır)', () => {
     expect(buildBackfillRow({ mesaiNedeni: null })).toBeNull()

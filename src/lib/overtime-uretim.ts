@@ -6,16 +6,20 @@
  * `targetProduction` %100 boş ve retired. Eşleme:
  *   parcaKodu        <- mesaiNedeni          (satırın ana alanı, NOT NULL)
  *   mesaiNedeni(yeni)<- (ayrı gerekçe alanı; current UI'da yok → null)
- *   hedefAdet        <- hedefAdet            (nullable; API'de > 0 zorunlu, backfill null taşır)
+ *   hedefAdet        <- hedefAdet            (nullable; API'de >= 0 zorunlu, backfill null taşır)
  *   gerceklesenAdet  <- gerceklesenAdet
  *   gerceklesenNote  <- gerceklesenNote
  *   hurdaAdet        -> (tekil karşılığı yok, yalnız satırda)
  *
  * İKİ BAĞLAM — hedefAdet kuralı farklı:
- *   - API create/update (buildUretimRows/buildSingles): hedefAdet > 0 zorunlu
- *     (coerceHedefPozitif); satır ancak parcaKodu + hedefAdet(>0) ile oluşur.
+ *   - API create/update (buildUretimRows/buildSingles): hedefAdet >= 0 zorunlu
+ *     (coerceHedefAdet); satır ancak parcaKodu + hedefAdet(>=0) ile oluşur.
  *   - Backfill (buildBackfillRow): parcaKodu doluysa satır oluşur; hedefAdet null ise
  *     null taşınır (tarihsel kayıtlar satırsız kalmasın; Faz 3 drop'ta kayıp olmasın).
+ *
+ * SIFIR ≠ BOŞ: hedefAdet 0 KASITLI bir hedeftir ("üretim beklenmiyor" — ör. operatör
+ * gelmedi) ve DB'ye 0 yazılır; null "henüz girilmedi" demektir. Boş string → null.
+ * Performans hesabı 0 hedefli satırı yok sayar (0'a bölme yok) — overtime-performance.ts.
  *
  * Geri uyumluluk: UI (Faz 2) henüz `uretimSatirlari` göndermiyor. Payload'da yoksa
  * tekil alanlardan 1 satır türetilir; varsa satırlar esas, 1. satır tekil alanlara yansır.
@@ -63,10 +67,15 @@ export function coerceIntNonNeg(v: unknown): number | null {
   return Math.trunc(n)
 }
 
-/** API satır hedefAdet: > 0 zorunlu. Aksi halde null. */
-export function coerceHedefPozitif(v: unknown): number | null {
-  const n = coerceIntNonNeg(v)
-  return n != null && n > 0 ? n : null
+/**
+ * API satır hedefAdet: >= 0 kabul edilir.
+ *   0            → 0    (KASITLI "üretim beklenmiyor"; yazılır, performansta yok sayılır)
+ *   ''/null/'  ' → null ("henüz girilmedi"; yazılmaz, mevcut değer korunur)
+ *   negatif/NaN  → null (geçersiz)
+ * hedefAdet kuralı TEK YER — değişirse burası değişir.
+ */
+export function coerceHedefAdet(v: unknown): number | null {
+  return coerceIntNonNeg(v)
 }
 
 function trimOrNull(v: unknown): string | null {
@@ -82,7 +91,7 @@ function hasExplicitRows(p: OvertimePersonnelInput): boolean {
 
 /**
  * API (create/update) için geçerli üretim satırları. Zorunlu alanlar: parcaKodu (boş
- * olamaz) + hedefAdet (> 0). Legacy payload'da parcaKodu mesaiNedeni'den gelir.
+ * olamaz) + hedefAdet (>= 0; 0 geçerli). Legacy payload'da parcaKodu mesaiNedeni'den gelir.
  */
 export function buildUretimRows(p: OvertimePersonnelInput): NormalizedUretimRow[] {
   const raw: UretimRowInput[] = hasExplicitRows(p)
@@ -101,8 +110,8 @@ export function buildUretimRows(p: OvertimePersonnelInput): NormalizedUretimRow[
   const rows: NormalizedUretimRow[] = []
   raw.forEach((r, i) => {
     const parcaKodu = String(r.parcaKodu ?? '').trim()
-    const hedefAdet = coerceHedefPozitif(r.hedefAdet)
-    if (parcaKodu === '' || hedefAdet == null) return // API bağlamı: parcaKodu + hedefAdet(>0) zorunlu
+    const hedefAdet = coerceHedefAdet(r.hedefAdet)
+    if (parcaKodu === '' || hedefAdet == null) return // API bağlamı: parcaKodu + hedefAdet(>=0) zorunlu
     const siraNum = Number(r.sira)
     rows.push({
       parcaKodu,

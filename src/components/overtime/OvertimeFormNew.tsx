@@ -241,7 +241,7 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
   // Helpers
   const canProceedStep1 = overtimeType !== "" && date !== ""
   // Faz 2: her seçili personel için üretim satırları geçerli olmalı. MESAI'de en az 1
-  // geçerli satır (parça kodu + hedef adet > 0); VARDIYA'da opsiyonel (doldurulmuş satır
+  // geçerli satır (parça kodu + hedef adet >= 0); VARDIYA'da opsiyonel (doldurulmuş satır
   // geçerli olmalı). Eski "Mesai Nedeni zorunlu" kuralının yerini alır.
   const allMesaiNedeniFilled = selectedPersonnel.every((p) =>
     personelSatirlariGecerli(personnelDetails[p.id]?.uretimSatirlari ?? [], isVardiya)
@@ -298,7 +298,7 @@ export default function OvertimeFormNew({ formTipi = "MESAI" }: { formTipi?: Ove
       toast.error(
         isVardiya
           ? "Doldurulan üretim satırlarında parça kodu ve geçerli hedef adet girilmelidir."
-          : "Her seçili personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir."
+          : "Her seçili personel için en az bir parça kodu ve hedef adet (0 veya daha büyük) girilmelidir."
       )
       return
     }

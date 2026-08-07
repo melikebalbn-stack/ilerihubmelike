@@ -233,10 +233,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         if (!p.personnelId || !p.workDepartment) {
           return apiBadRequest('Her personel için personnelId ve workDepartment alanları zorunludur')
         }
-        // Faz 2: MESAI'de en az 1 geçerli üretim satırı (parça kodu + hedefAdet > 0) zorunlu.
+        // Faz 2: MESAI'de en az 1 geçerli üretim satırı (parça kodu + hedefAdet >= 0) zorunlu.
         // VARDIYA formunda opsiyonel. buildUretimRows uretimSatirlari[] veya legacy'den türetir.
         if (!isVardiyaForm && buildUretimRows(p).length === 0) {
-          return apiBadRequest('Her personel için en az bir parça kodu ve hedef adet (> 0) girilmelidir')
+          return apiBadRequest('Her personel için en az bir parça kodu ve hedef adet (0 veya daha büyük) girilmelidir')
         }
       }
     }

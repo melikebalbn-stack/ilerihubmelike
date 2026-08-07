@@ -49,7 +49,14 @@ async function fetchOverlappingForms(from: Date, to: Date) {
       ],
     },
     include: {
-      personnel: { include: { personnel: { select: { adSoyad: true, sicilNo: true } } } },
+      personnel: {
+        include: {
+          personnel: { select: { adSoyad: true, sicilNo: true } },
+          // TEK KAYNAK: hedef/gerçekleşen üretim satırlarından okunur (tekil
+          // OvertimePersonnel alanları bayat — aşağıdaki nota bak).
+          uretimSatirlari: { select: { hedefAdet: true, gerceklesenAdet: true, gerceklesenNote: true } },
+        },
+      },
     },
   })
 }
@@ -86,17 +93,37 @@ async function aggregate(from: Date, to: Date, allowedDepts: string[] | undefine
     const factor = inRange / total // tek gün → 1
 
     for (const op of f.personnel) {
-      if (op.hedefAdet == null || op.gerceklesenAdet == null) continue
       const dept = op.workDepartment || '—'
       if (deptFilter && !deptFilter.has(dept)) continue
+      // Üretim satırları TEK KAYNAK. Tekil OvertimePersonnel.hedefAdet/gerceklesenAdet
+      // KULLANILMAZ: (a) hedef düzeltmesi yalnız satıra yazılır (personnel PUT singleData'ya
+      // hedefAdet koymaz) → tekil bayat kalır; (b) tekil alan yalnız 1. satırı temsil eder →
+      // çok satırlı kayıtta 2..N satırı sayılmazdı.
+      // Sayılan satır = hedefAdet VE gerceklesenAdet dolu olan (eski kişi-bazlı kuralın satır
+      // granülündeki karşılığı). Hiç sayılan satır yoksa kişi atlanır — eskisiyle aynı davranış.
+      // hedefAdet === 0 (KASITLI "üretim beklenmiyor") satırı sayılmaz: 0'a bölme olmaz ve
+      // kişiyi/bölümü %0'a çekmez — performansa hiç girmez, sadece yok sayılır.
+      let hedefTop = 0
+      let gercTop = 0
+      let sayilanSatir = 0
+      const notlar: string[] = []
+      for (const u of op.uretimSatirlari) {
+        if (u.hedefAdet == null || u.hedefAdet <= 0 || u.gerceklesenAdet == null) continue
+        hedefTop += u.hedefAdet
+        gercTop += u.gerceklesenAdet
+        sayilanSatir++
+        const n = u.gerceklesenNote?.trim()
+        if (n && !notlar.includes(n)) notlar.push(n)
+      }
+      if (sayilanSatir === 0) continue
       if (!byDept.has(dept)) byDept.set(dept, [])
       byDept.get(dept)!.push({
         ad: op.personnel?.adSoyad ?? '—',
         sicil: op.personnel?.sicilNo ?? '—',
-        hedef: op.hedefAdet * factor, // prorate (float; yüzdeyi bozmaz)
-        gerceklesen: op.gerceklesenAdet * factor,
-        yuzde: pct(op.gerceklesenAdet, op.hedefAdet), // ORİJİNAL orandan → factor etkisiz
-        not: op.gerceklesenNote ?? null,
+        hedef: hedefTop * factor, // prorate (float; yüzdeyi bozmaz)
+        gerceklesen: gercTop * factor,
+        yuzde: pct(gercTop, hedefTop), // ORİJİNAL orandan → factor etkisiz
+        not: notlar.length > 0 ? notlar.join(' | ') : null,
       })
     }
   }
@@ -190,7 +217,13 @@ export async function getMissingDataReport(from: Date, to: Date, allowedDepts?: 
     where: { status: 'APPROVED', OR: [{ periodStart: { lte: to }, periodEnd: { gte: from } }, { periodStart: null, date: { gte: from, lte: to } }] },
     select: {
       formNo: true,
-      personnel: { select: { hedefAdet: true, gerceklesenAdet: true, workDepartment: true, personnel: { select: { adSoyad: true, sicilNo: true } } } },
+      personnel: {
+        select: {
+          workDepartment: true,
+          personnel: { select: { adSoyad: true, sicilNo: true } },
+          uretimSatirlari: { select: { hedefAdet: true, gerceklesenAdet: true } },
+        },
+      },
     },
   })
   const byDept = new Map<string, MissingKisi[]>()
@@ -199,8 +232,13 @@ export async function getMissingDataReport(from: Date, to: Date, allowedDepts?: 
       const dept = op.workDepartment || '—'
       if (nonUretim.has(dept)) continue // üretim-dışı bölüm → DIŞLA (doğal boş)
       if (deptFilter && !deptFilter.has(dept)) continue
-      const hedefBos = op.hedefAdet == null
-      const gercBos = op.gerceklesenAdet == null
+      // Satır bazlı: HERHANGİ bir satırda eksik varsa kişi eksik sayılır. Çok satırlıda
+      // yarım giriş (1. satır dolu, 2. boş) tekil alandan görünmüyordu — artık görünür.
+      // Satırsız kayıt (tarihsel, parça kodu boş) → ikisi de eksik.
+      // hedefAdet 0 EKSİK DEĞİLDİR (kasıtlı girilmiş hedef) — yalnız null eksik sayılır.
+      const rows = op.uretimSatirlari
+      const hedefBos = rows.length === 0 || rows.some((u) => u.hedefAdet == null)
+      const gercBos = rows.length === 0 || rows.some((u) => u.gerceklesenAdet == null)
       if (!hedefBos && !gercBos) continue // tam → eksik değil
       const eksik: EksikTip = hedefBos && gercBos ? 'ikisi' : hedefBos ? 'hedef' : 'gerceklesen'
       if (!byDept.has(dept)) byDept.set(dept, [])
@@ -224,16 +262,34 @@ export async function getDataHygieneWarnings(from: Date, to: Date, allowedDepts?
   const deptFilter = allowedDepts === undefined ? null : new Set(allowedDepts)
   const forms = await prisma.overtimeForm.findMany({
     where: { status: 'APPROVED', OR: [{ periodStart: { lte: to }, periodEnd: { gte: from } }, { periodStart: null, date: { gte: from, lte: to } }] },
-    select: { formNo: true, personnel: { select: { hedefAdet: true, workDepartment: true, personnel: { select: { adSoyad: true, sicilNo: true } } } } },
+    select: {
+      formNo: true,
+      personnel: {
+        select: {
+          workDepartment: true,
+          personnel: { select: { adSoyad: true, sicilNo: true } },
+          uretimSatirlari: { select: { hedefAdet: true } },
+        },
+      },
+    },
   })
   const out: HygieneWarning[] = []
   for (const f of forms) {
     for (const op of f.personnel) {
       const dept = op.workDepartment || '—'
       if (!nonUretim.has(dept)) continue // yalnız üretim-DIŞI bölüm
-      if (op.hedefAdet == null) continue // hedef girilmemiş → sorun yok
       if (deptFilter && !deptFilter.has(dept)) continue
-      out.push({ bolum: dept, ad: op.personnel?.adSoyad ?? '—', sicil: op.personnel?.sicilNo ?? '—', formNo: f.formNo, hedefAdet: op.hedefAdet })
+      // Satır bazlı toplam hedef (tekil alan yalnız 1. satırı gösteriyordu → eksik uyarı).
+      // hedefAdet 0 uyarı ÜRETMEZ: üretim-dışı bölüme 0 hedef girmek zararsız, gürültü olur.
+      let hedefTop = 0
+      let dolu = false
+      for (const u of op.uretimSatirlari) {
+        if (u.hedefAdet == null || u.hedefAdet <= 0) continue
+        hedefTop += u.hedefAdet
+        dolu = true
+      }
+      if (!dolu) continue // hedef girilmemiş → sorun yok
+      out.push({ bolum: dept, ad: op.personnel?.adSoyad ?? '—', sicil: op.personnel?.sicilNo ?? '—', formNo: f.formNo, hedefAdet: hedefTop })
     }
   }
   return out

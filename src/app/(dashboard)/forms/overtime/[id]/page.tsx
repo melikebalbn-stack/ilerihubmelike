@@ -222,8 +222,8 @@ export default function OvertimeDetailPage() {
           personnelId: personnelItemId,
           workDepartment: addWorkDept,
           serviceRoute: targetPerson?.serviceRoute || null,
-          // FIX: sonradan eklenen personel için hedef adet (boşsa null).
-          hedefAdet: addHedefAdet ? Number(addHedefAdet) : null,
+          // FIX: sonradan eklenen personel için hedef adet (boşsa null; "0" kasıtlı hedef).
+          hedefAdet: addHedefAdet.trim() !== "" ? Number(addHedefAdet) : null,
           // Faz 2: parça kodu (mesaiNedeni) → API buradan 1. üretim satırını türetir.
           mesaiNedeni: addParcaKodu.trim() || null,
         }),
@@ -785,7 +785,7 @@ export default function OvertimeDetailPage() {
               <Input
                 type="number"
                 inputMode="numeric"
-                min="1"
+                min="0"
                 placeholder="Hedef Adet"
                 value={addHedefAdet}
                 onChange={(e) => setAddHedefAdet(e.target.value)}
@@ -918,8 +918,9 @@ export default function OvertimeDetailPage() {
                         {editable && canEditTarget ? (
                           <div className="flex flex-col gap-1">
                             <Input
-                              type="number" inputMode="numeric" min="1"
-                              value={rv?.hedefAdet || ""}
+                              type="number" inputMode="numeric" min="0"
+                              // ?? (|| DEĞİL): "0" kasıtlı hedef, boşa düşmemeli.
+                              value={rv?.hedefAdet ?? ""}
                               onChange={(e) => updateRowValue(r!.id, "hedefAdet", e.target.value)}
                               placeholder="—"
                               className="h-8 w-20 text-sm"

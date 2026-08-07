@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { personelEklendiginde } from '@/lib/org/personel-koltuk-senkron'
 import * as XLSX from 'xlsx'
 import { EXCEL_COLUMN_MAP, YAKA_DETAY_MAP } from '@/lib/personnel-constants'
 import { requireUser } from '@/lib/auth/require-user'
@@ -358,6 +359,10 @@ export async function POST(request: NextRequest) {
           })
           personnelId = createdRecord.id
           created++
+          // Org koltugu — toplu ice aktarimda da yeni personel semada yer bulsun.
+          // NOT: bu akista satir basina $transaction YOK (mevcut desen); helper
+          // dogrudan prisma ile cagrilir. Eslesme yoksa koltuk acilmaz, import DEVAM eder.
+          await personelEklendiginde(prisma, personnelId, { actorId: user.id })
         }
 
         // Handle sensitive fields

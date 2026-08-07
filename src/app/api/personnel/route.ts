@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { personelEklendiginde } from '@/lib/org/personel-koltuk-senkron'
 import { requireUser } from '@/lib/auth/require-user'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
@@ -208,6 +209,10 @@ export async function POST(request: NextRequest) {
           data: { personnelId: created.id, ...bedenData, updatedById: user.id },
         })
       }
+      // Org koltugu — bolum+gorev tek kesin pozisyona esleserse acilir.
+      // KOLTUK IKINCIL: eslesme yoksa koltuk acilmaz, personel kaydi YINE DE olusur
+      // (helper throw etmez). Eslesmeyenler org semasindaki uyaridan elle baglanir.
+      await personelEklendiginde(tx, created.id, { actorId: user.id })
       return created
     })
 

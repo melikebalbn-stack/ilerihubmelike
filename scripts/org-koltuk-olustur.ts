@@ -51,13 +51,13 @@ async function main() {
 
   const ix = await eslesmeIndeksiYukle();
 
-  const acilacak: { p: (typeof koltuksuz)[number]; orgUnitId: string; code: string; name: string }[] = [];
+  const acilacak: { p: (typeof koltuksuz)[number]; orgUnitId: string; code: string; name: string; kural?: string }[] = [];
   const eslesmeyen: { p: (typeof koltuksuz)[number]; sebep: string; adaylar: string[] }[] = [];
 
   for (const p of koltuksuz) {
     const r = pozisyonEslesmesiBul(ix, { bolum: p.bolum, gorev: p.gorev });
     if (r.eslesti) {
-      acilacak.push({ p, orgUnitId: r.orgUnitId, code: r.code, name: r.name });
+      acilacak.push({ p, orgUnitId: r.orgUnitId, code: r.code, name: r.name, kural: r.kural });
     } else {
       eslesmeyen.push({ p, sebep: r.sebep, adaylar: r.adaylar.map((a) => `${a.code} ${a.name}`) });
     }
@@ -69,7 +69,8 @@ async function main() {
     for (const a of acilacak) {
       console.log(
         `   ${(a.p.sicilNo ?? "-").padEnd(11)} ${a.p.adSoyad.slice(0, 26).padEnd(26)} ` +
-          `${a.p.bolum.slice(0, 24).padEnd(24)} ${a.name.slice(0, 34).padEnd(34)} ${a.code}`,
+          `${a.p.bolum.slice(0, 24).padEnd(24)} ${a.name.slice(0, 34).padEnd(34)} ${a.code}` +
+          (a.kural ? `  [${a.kural}]` : ""),
       );
     }
   }

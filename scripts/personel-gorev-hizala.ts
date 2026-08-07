@@ -42,7 +42,16 @@ const GOREV_ESLEME: { eski: string; bolum: string; yeni: string; beklenen: numbe
   { eski: "PRES OPERATÖRÜ", bolum: "PRESHANE", yeni: "Preshane Operatörü", beklenen: 1 },
   { eski: "CNC TORNA OPERATÖRÜ", bolum: "TALAŞLI İMALAT", yeni: "Talaşlı İmalat Operatörü", beklenen: 1 },
   { eski: "CNC OPERATÖRÜ", bolum: "TALAŞLI İMALAT", yeni: "Talaşlı İmalat Operatörü", beklenen: 1 },
+  { eski: "İDARİ İŞLER PERSONELİ", bolum: "İDARİ İŞLER", yeni: "İdari İşler", beklenen: 1 },
 ];
+
+// EKLENMEDİ — "YENİ İŞ GELİŞTİRME UZMAN" → "Yeni İş Geliştirme Uzmanı" (NEVZAT ONUR KIRAN,
+// ILR-00253). Görev adını düzeltmek TEK BAŞINA yetmiyor: hedef ORG-ST-P06'nın üst zinciri
+// "Satış & Pazarlama Müdürlüğü", personelin bölümü ise "SATIŞ VE PAZ.MÜDÜRLÜĞÜ" — ikisi
+// birbirini kapsamadığı için eşleştirme bölüm doğrulamasında düşüyor (doğrudan test edildi).
+// Satır eklenseydi görev metni değişir ama koltuk yine açılmazdı. Çözüm ayrı bir karar:
+// (a) personelin bolum değerini şemadaki adla hizalamak, (b) bölüm karşılaştırmasını
+// gevşetmek (ortak eşleştiriciyi etkiler), veya (c) İK'nın org şemasından elle bağlaması.
 
 // (2) Depo: aynı görev metni ("DEPO OPERATÖRÜ") farklı depolara ait — ayrım bolumDetay'da.
 const DEPO_ESLEME: { bolumDetay: string[]; yeni: string; beklenen: number }[] = [

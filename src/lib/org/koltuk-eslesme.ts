@@ -8,7 +8,10 @@ import { Prisma } from "@/generated/prisma";
 // KURAL (sırayla):
 //   1. Personnel.gorev ↔ OrgUnit.name TAM eşleşme (Türkçe normalize)
 //   2. Adayın üst zinciri Personnel.bolum ile uyuşmalı
-//   3. Tek kesin aday yoksa eslesmedi (belirsizlikte koltuk AÇILMAZ)
+//   3. Tek kesin aday yoksa eslesmedi (belirsizlikte koltuk AÇILMAZ).
+//      TEK İSTİSNA: aynı unvanda birden çok kutu varsa ve bunlardan YALNIZ BİRİ boşsa
+//      o seçilir — dolu kutuya oturtmak zaten yanlış olacağı için hedef belirsiz değildir.
+//      Boş aday 0 ise (hepsi dolu) veya 2+ ise yine eşleşme YOK.
 //   4. Kurul birimleri (ORG-KR-*) asla eşleşme sonucu olamaz
 //   5. Yalnız "canlı" ağaçlar hedef olabilir — hiç açık koltuğu olmayan kök
 //      yerleşim hedefi değildir. Prod'da ORG-TF ("İleri Group (Tüm Firma)")
@@ -40,7 +43,15 @@ export function normalizeAd(input: string): string {
 }
 
 export type EslesmeSonuc =
-  | { eslesti: true; orgUnitId: string; code: string; name: string; ustZincir: string[] }
+  | {
+      eslesti: true;
+      orgUnitId: string;
+      code: string;
+      name: string;
+      ustZincir: string[];
+      /** Tek tam eşleşme dışında bir kuralla seçildiyse hangi kural olduğu (rapor için). */
+      kural?: string;
+    }
   | { eslesti: false; sebep: string; adaylar: { code: string; name: string }[] };
 
 export type PersonelGirdi = { bolum: string; gorev: string };
@@ -59,6 +70,8 @@ export type EslesmeIndeksi = {
   unitById: Map<string, UnitRow>;
   adayaGoreIsim: Map<string, UnitRow[]>;
   canliKokler: Set<string>;
+  /** orgUnitId → o birimdeki AÇIK koltuk sayısı (yoksa 0). Boş-aday tercihi buna bakar. */
+  acikKoltukSayisi: Map<string, number>;
 };
 
 export async function eslesmeIndeksiYukle(db: DbClient = prisma): Promise<EslesmeIndeksi> {
@@ -84,7 +97,9 @@ export async function eslesmeIndeksiYukle(db: DbClient = prisma): Promise<Eslesm
     _count: { _all: true },
   });
   const canliKokler = new Set<string>();
+  const acikKoltukSayisi = new Map<string, number>();
   for (const k of koltuklu) {
+    acikKoltukSayisi.set(k.orgUnitId, k._count._all);
     const u = unitById.get(k.orgUnitId);
     if (u) canliKokler.add(kokBul(u));
   }
@@ -99,7 +114,7 @@ export async function eslesmeIndeksiYukle(db: DbClient = prisma): Promise<Eslesm
     adayaGoreIsim.set(key, arr);
   }
 
-  return { unitById, adayaGoreIsim, canliKokler };
+  return { unitById, adayaGoreIsim, canliKokler, acikKoltukSayisi };
 }
 
 function ustZincir(ix: EslesmeIndeksi, u: UnitRow): UnitRow[] {
@@ -162,21 +177,36 @@ export function pozisyonEslesmesiBul(
       adaylar: canli.map(k),
     };
   }
+  let secilen = bolumluk[0];
+  let kural: string | null = null;
+
   if (bolumluk.length > 1) {
-    return {
-      eslesti: false,
-      sebep: `birden fazla aday (${bolumluk.length})`,
-      adaylar: bolumluk.map(k),
-    };
+    // Aynı unvanda birden çok kutu olması normaldir (kadro sayısı kadar kutu açılmış).
+    // Kişi zaten DOLU bir kutuya oturtulmamalı; adaylardan yalnız BİRİ boşsa hedef
+    // aslında belirsiz değildir. Kural veriden türer (açık koltuk sayısı), pozisyon
+    // kodu/adı gömülmez.
+    const bos = bolumluk.filter((u) => (ix.acikKoltukSayisi.get(u.id) ?? 0) === 0);
+    if (bos.length !== 1) {
+      return {
+        eslesti: false,
+        sebep:
+          bos.length === 0
+            ? `birden fazla aday (${bolumluk.length}), hepsi dolu`
+            : `birden fazla aday (${bolumluk.length}), ${bos.length} tanesi bos`,
+        adaylar: bolumluk.map(k),
+      };
+    }
+    secilen = bos[0];
+    kural = "ayni adli adaylardan bos olan";
   }
 
-  const secilen = bolumluk[0];
   return {
     eslesti: true,
     orgUnitId: secilen.id,
     code: secilen.code,
     name: secilen.name,
     ustZincir: ustZincir(ix, secilen).map((z) => z.name),
+    ...(kural ? { kural } : {}),
   };
 }
 

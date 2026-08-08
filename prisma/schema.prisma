@@ -10478,7 +10478,7 @@ model RmaKayit {
   irsaliyeNo      String?
   musteriId       String
   musteri         CostCustomer @relation(fields: [musteriId], references: [id], onDelete: Restrict)
-  iadeTuru        RmaIadeTuru
+  iadeTuru        RmaIadeTuru? // geçmiş kayıtlarda çoğu boş; DB opsiyonel — yeni kayıtta Zod zorunlu tutar
   sorumluId       String?
   sorumlu         Personnel?   @relation(fields: [sorumluId], references: [id], onDelete: SetNull)
   termin          DateTime?

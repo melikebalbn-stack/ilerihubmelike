@@ -38,7 +38,7 @@ export interface RmaDetay {
   irsaliyeTarihi: string | null
   irsaliyeNo: string | null
   musteri: { id: string; code: string; name: string } | null
-  iadeTuru: string
+  iadeTuru: string | null
   sorumluId: string | null
   sorumlu?: { adSoyad: string; sicilNo: string | null } | null
   termin: string | null
@@ -73,7 +73,8 @@ export function RmaFormClient({ initial, canManage }: Props) {
   const [irsaliyeTarihi, setIt] = useState(isoToDateInput(initial?.irsaliyeTarihi ?? null))
   const [irsaliyeNo, setIno] = useState(initial?.irsaliyeNo ?? '')
   const [musteri, setMusteri] = useState<MusteriOption | null>(initial?.musteri ?? null)
-  const [iadeTuru, setIadeTuru] = useState(initial?.iadeTuru ?? 'GIRIS_KALITE')
+  // Yeni kayıt → varsayılan GIRIS_KALITE; mevcut kayıt → değeri (geçmiş boşsa '' = seçilmemiş, "—")
+  const [iadeTuru, setIadeTuru] = useState(initial ? (initial.iadeTuru ?? '') : 'GIRIS_KALITE')
   const [sorumlu, setSorumlu] = useState<MusteriOption | null>(
     initial?.sorumluId && initial.sorumlu
       ? { id: initial.sorumluId, code: initial.sorumlu.sicilNo ?? '—', name: initial.sorumlu.adSoyad }
@@ -112,6 +113,7 @@ export function RmaFormClient({ initial, canManage }: Props) {
   async function kaydet() {
     // Client ön-kontrol
     if (!musteri) { toast.error('Müşteri seçin'); return }
+    if (!iadeTuru) { toast.error('İade türü seçin'); return } // DB opsiyonel ama yeni/güncel kayıtta zorunlu
     if (satirlar.length === 0) { toast.error('En az bir ürün satırı gerekli'); return }
     for (let i = 0; i < satirlar.length; i++) {
       const s = satirlar[i]
@@ -199,8 +201,8 @@ export function RmaFormClient({ initial, canManage }: Props) {
         </div>
         <div>
           <Label className="text-xs text-slate-600">İade Türü</Label>
-          <Select value={iadeTuru} onValueChange={setIadeTuru} disabled={ro}>
-            <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+          <Select value={iadeTuru || undefined} onValueChange={setIadeTuru} disabled={ro}>
+            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="—" /></SelectTrigger>
             <SelectContent>{RMA_IADE_TURU_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>

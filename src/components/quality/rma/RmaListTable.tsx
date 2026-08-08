@@ -21,7 +21,7 @@ interface RmaRow {
   no: number
   tip: 'RMA' | 'SMA'
   irsaliyeTarihi: string | null
-  iadeTuru: keyof typeof RMA_IADE_TURU_LABELS
+  iadeTuru: keyof typeof RMA_IADE_TURU_LABELS | null
   durum: 'ACIK' | 'KAPALI'
   satirSayisi: number
   toplamMiktar: number
@@ -193,7 +193,7 @@ export function RmaListTable() {
                     <td className="px-3 py-2"><Link href={`/kalite/rma/${r.id}`} className="block">{RMA_TIP_LABELS[r.tip]}</Link></td>
                     <td className="px-3 py-2 text-xs text-slate-600"><Link href={`/kalite/rma/${r.id}`} className="block">{r.irsaliyeTarihi ? new Date(r.irsaliyeTarihi).toLocaleDateString('tr-TR') : '—'}</Link></td>
                     <td className="px-3 py-2"><Link href={`/kalite/rma/${r.id}`} className="block"><span className="font-mono text-xs text-slate-500">{r.musteri?.code}</span> {r.musteri?.name}</Link></td>
-                    <td className="px-3 py-2 text-xs"><Link href={`/kalite/rma/${r.id}`} className="block">{RMA_IADE_TURU_LABELS[r.iadeTuru]}</Link></td>
+                    <td className="px-3 py-2 text-xs"><Link href={`/kalite/rma/${r.id}`} className="block">{r.iadeTuru ? RMA_IADE_TURU_LABELS[r.iadeTuru] : '—'}</Link></td>
                     <td className="px-3 py-2 tabular-nums"><Link href={`/kalite/rma/${r.id}`} className="block">{r.satirSayisi}</Link></td>
                     <td className="px-3 py-2 tabular-nums"><Link href={`/kalite/rma/${r.id}`} className="block">{r.toplamMiktar}</Link></td>
                     <td className="px-3 py-2"><Link href={`/kalite/rma/${r.id}`} className="block">

@@ -134,6 +134,17 @@ export const PERMISSION_KEYS = {
 
   // === RMA/SMA İade Formu (KAL-KYT-16) ===
   RMA_MANAGE: 'rma.manage',
+
+  // === YILLIK ÇALIŞMA TAKVİMİ ===
+  YILLIK_TAKVIM_VIEW: 'yilliktakvim.view',
+  YILLIK_TAKVIM_CREATE: 'yilliktakvim.create',
+  YILLIK_TAKVIM_EDIT: 'yilliktakvim.edit',
+  YILLIK_TAKVIM_CANCEL: 'yilliktakvim.cancel',
+  YILLIK_TAKVIM_COMPLETE: 'yilliktakvim.complete',
+  YILLIK_TAKVIM_APPROVE: 'yilliktakvim.approve',
+  YILLIK_TAKVIM_ATTACHMENT_MANAGE: 'yilliktakvim.attachment.manage',
+  YILLIK_TAKVIM_NOTIFICATION_MANAGE: 'yilliktakvim.notification.manage',
+  YILLIK_TAKVIM_ADMIN: 'yilliktakvim.admin',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -162,6 +173,7 @@ export const MODULE_LABELS: Record<string, string> = {
   ipro: 'IPRO Üretim Takip',
   qdms: 'Kalite Yönetim Sistemi',
   rma: 'RMA/SMA İade Formu',
+  yilliktakvim: 'Yıllık Çalışma Takvimi',
 };
 
 /**
@@ -264,4 +276,14 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'qdms.view': 'Kalite Yönetim Sistemi görüntüleme (doküman/CAPA/denetim/risk/tedarikçi/eğitim/değişiklik/uygunsuzluk/şikayet)',
   'qdms.manage': 'Kalite Yönetim Sistemi yönetim — oluşturma/düzenleme/doküman onayı',
   'rma.manage': 'RMA/SMA iade formu yönetim — oluştur/düzenle/sil',
+
+  'yilliktakvim.view': 'Yıllık çalışma takvimini görüntüleme',
+  'yilliktakvim.create': 'Yıllık çalışma takvimi kaydı oluşturma',
+  'yilliktakvim.edit': 'Yıllık çalışma takvimi kaydı ve checklist düzenleme',
+  'yilliktakvim.cancel': 'Yıllık çalışma takvimi kaydını iptal etme',
+  'yilliktakvim.complete': 'Yıllık çalışma takvimi kaydını tamamlamaya gönderme',
+  'yilliktakvim.approve': 'Yıllık çalışma takvimi kaydını onaylama veya revizyon isteme',
+  'yilliktakvim.attachment.manage': 'Yıllık çalışma takvimi ek ve kanıtlarını yönetme',
+  'yilliktakvim.notification.manage': 'Yıllık çalışma takvimi bildirim kurallarını yönetme ve çalıştırma',
+  'yilliktakvim.admin': 'Yıllık çalışma takvimi tam yönetim',
 };

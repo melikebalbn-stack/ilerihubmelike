@@ -865,22 +865,28 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               const Icon = item.icon
               const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
               return (
+                /* İKİ SATIR: üstte ikon + ad (tam genişlik, KESİLMEZ — uzun ad
+                   satır sarar ve öğe yükselir), altta grup adı. Grup rozeti adın
+                   sağında YER YARIŞMIYOR; dar sidebar'da ad artık kırpılmıyor.
+                   Tıklama alanı <Link> olduğu için iki satırı da kapsıyor. */
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={onClose}
                   className={cn(
-                    "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                    "flex flex-col rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
                     isActive
                       ? "bg-teal-500/15 text-teal-300"
                       : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
                   )}
                 >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  <span className="flex-1 min-w-0 truncate">{item.name}</span>
-                  <span className="flex-shrink-0 text-[9px] uppercase tracking-wider text-white/25">
-                    {item.group}
+                  {/* items-start: ad birden fazla satıra sararsa ikon ilk satırla hizalı kalır */}
+                  <span className="flex items-start space-x-3">
+                    <Icon className="h-5 w-5 flex-shrink-0" />
+                    <span className="min-w-0 break-words">{item.name}</span>
                   </span>
+                  {/* Girinti ikon (h-5 w-5 = 1.25rem) + space-x-3 (0.75rem) = 2rem → ad ile hizalı */}
+                  <span className="ml-8 text-xs text-white/25">{item.group}</span>
                 </Link>
               )
             })

@@ -1,18 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Plus, Trash2, Loader2, ArrowLeft, Save } from 'lucide-react'
+import { Plus, Trash2, Loader2, ArrowLeft, Save, ChevronDown, Copy, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { MusteriSecici, type MusteriOption } from './MusteriSecici'
-import { RMA_TIP_OPTIONS, RMA_IADE_TURU_OPTIONS, RMA_KARAR_OPTIONS } from '@/lib/quality/rma-labels'
+import { RMA_TIP_OPTIONS, RMA_IADE_TURU_OPTIONS, RMA_KARAR_OPTIONS, RMA_KARAR_LABELS } from '@/lib/quality/rma-labels'
 
 // ── Tipler ──
 interface SatirState {
@@ -64,6 +66,18 @@ const yeniSatir = (): SatirState => ({
   ilkIncelemeSonucu: '', karar: '', kararAciklama: '', hurdaAdedi: '', reworkAdedi: '', kokNeden: '', aksiyon: '',
 })
 
+// Karar rozeti tint'leri — portalın mevcut badge tint paleti (bkz. RmaListTable Açık/Kapalı).
+const KARAR_BADGE: Record<string, string> = {
+  HURDA: 'bg-red-100 text-red-800 border-red-200',
+  TAMIR: 'bg-teal-100 text-teal-800 border-teal-200',
+  REWORK: 'bg-amber-100 text-amber-800 border-amber-200',
+  TEDARIKCIYE_IADE: 'bg-pink-100 text-pink-800 border-pink-200',
+  MUSTERIYE_IADE: 'bg-pink-100 text-pink-800 border-pink-200',
+  DEPOYA_KABUL: 'bg-blue-100 text-blue-800 border-blue-200',
+  URUN_BIZE_AIT_DEGIL: 'bg-slate-100 text-slate-600 border-slate-200',
+}
+const KARAR_LABELS = RMA_KARAR_LABELS as Record<string, string>
+
 export function RmaFormClient({ initial, canManage }: Props) {
   const router = useRouter()
   const ro = !canManage // read-only
@@ -96,6 +110,42 @@ export function RmaFormClient({ initial, canManage }: Props) {
       : [yeniSatir()],
   )
   const [saving, setSaving] = useState(false)
+  const [triedSave, setTriedSave] = useState(false)
+
+  // Accordion açık kart anahtarları — yeni kayıtta tek satır açık; mevcut kayıtta hepsi kapalı.
+  const [openKeys, setOpenKeys] = useState<Set<string>>(
+    () => (initial && initial.satirlar.length ? new Set<string>() : new Set(satirlar.map((s) => s.key))),
+  )
+
+  // Yeni/kopyalanan satırda ürün koduna odaklanmak için.
+  const inputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map())
+  const focusKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (focusKeyRef.current) {
+      inputRefs.current.get(focusKeyRef.current)?.focus()
+      focusKeyRef.current = null
+    }
+  })
+
+  // ── Kaydedilmemiş değişiklik (beforeunload) — üst blok setter'larına dokunmadan
+  //    tüm form durumunu ilk anlık görüntüyle karşılaştırarak türetilir. ──
+  // satır key'leri mount'ta stabildir (alan düzenlemesi key'i değiştirmez); doğrudan dahil.
+  const snapshot = JSON.stringify({
+    tip, urunGelisTarihi, irsaliyeTarihi, irsaliyeNo, musteriId: musteri?.id ?? null, iadeTuru,
+    sorumluId: sorumlu?.id ?? null, termin, kapanisTarihi, maliyet, satirlar,
+  })
+  const ilkSnapshot = useRef<string | null>(null)
+  if (ilkSnapshot.current === null) ilkSnapshot.current = snapshot
+  const dirty = !saving && snapshot !== ilkSnapshot.current
+  useEffect(() => {
+    if (!dirty) return
+    function handler(e: BeforeUnloadEvent) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty])
 
   const kapali = kapanisTarihi !== ''
 
@@ -109,8 +159,55 @@ export function RmaFormClient({ initial, canManage }: Props) {
     if (s.iadeMiktari && iade >= 1 && h + r > iade) return `hurda+rework (${h + r}) > iade (${iade})`
     return null
   }
+  // Zorunlu-alan + çelişki: kapalı kartta hata göstergesi + kaydette otomatik-açma için.
+  function satirGecersizMi(s: SatirState): boolean {
+    if (!s.urunKodu.trim()) return true
+    if (!s.iadeMiktari || Number(s.iadeMiktari) < 1) return true
+    if (!s.musteriIadeSebebi.trim()) return true
+    if (satirHatasi(s)) return true
+    return false
+  }
+  // Kapalı kart kırmızı: hurda/rework çelişkisi HER ZAMAN; zorunlu-alan eksikliği yalnız kaydet denemesinden sonra.
+  function kartHataliMi(s: SatirState): boolean {
+    if (satirHatasi(s)) return true
+    if (triedSave && satirGecersizMi(s)) return true
+    return false
+  }
+
+  function toggleOpen(key: string) {
+    setOpenKeys((prev) => {
+      const n = new Set(prev)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
+  }
+  function satirEkle() {
+    const ns = yeniSatir()
+    setSatirlar((p) => [...p, ns])
+    setOpenKeys((prev) => new Set(prev).add(ns.key))
+    focusKeyRef.current = ns.key
+  }
+  function sonSatiriKopyala() {
+    const son = satirlar[satirlar.length - 1]
+    if (!son) return
+    const ns: SatirState = { ...son, key: `s${keySeq++}` }
+    setSatirlar((p) => [...p, ns])
+    setOpenKeys((prev) => new Set(prev).add(ns.key))
+    focusKeyRef.current = ns.key
+  }
+  function satirSil(i: number) {
+    const key = satirlar[i].key
+    setSatirlar((p) => p.filter((_, idx) => idx !== i))
+    setOpenKeys((prev) => { const n = new Set(prev); n.delete(key); return n })
+  }
 
   async function kaydet() {
+    // Hatalı satırları otomatik aç + hata göstergesini etkinleştir (kaydet mantığı değişmez).
+    setTriedSave(true)
+    const hataliKeys = satirlar.filter(satirGecersizMi).map((s) => s.key)
+    if (hataliKeys.length) setOpenKeys((prev) => new Set([...prev, ...hataliKeys]))
+
     // Client ön-kontrol
     if (!musteri) { toast.error('Müşteri seçin'); return }
     if (!iadeTuru) { toast.error('İade türü seçin'); return } // DB opsiyonel ama yeni/güncel kayıtta zorunlu
@@ -172,6 +269,8 @@ export function RmaFormClient({ initial, canManage }: Props) {
   }
 
   const inputCls = 'h-9'
+  const kartLabel = 'text-xs text-slate-600'
+  const bolumBaslik = 'text-xs font-semibold uppercase tracking-wide text-slate-500'
   return (
     <div className="container mx-auto px-6 py-8 max-w-7xl space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -222,60 +321,147 @@ export function RmaFormClient({ initial, canManage }: Props) {
         <div><Label className="text-xs text-slate-600">Maliyet</Label><Input type="number" step="0.01" min="0" value={maliyet} onChange={(e) => setMaliyet(e.target.value)} disabled={ro} className={`mt-1 ${inputCls}`} /></div>
       </div>
 
-      {/* Ürün satırları */}
+      {/* Ürün satırları — kart listesi */}
       <div className="rounded-md border bg-white p-4 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="font-semibold text-slate-700">Ürün Satırları ({satirlar.length})</h2>
-          {!ro && <Button type="button" variant="outline" size="sm" onClick={() => setSatirlar((p) => [...p, yeniSatir()])}><Plus className="h-4 w-4 mr-1" />Satır Ekle</Button>}
+          {!ro && (
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={sonSatiriKopyala} disabled={satirlar.length === 0}>
+                <Copy className="h-4 w-4 mr-1" />Son satırı kopyala
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={satirEkle}>
+                <Plus className="h-4 w-4 mr-1" />Satır Ekle
+              </Button>
+            </div>
+          )}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse min-w-[1400px]">
-            <thead className="bg-slate-50">
-              <tr>
-                {['#', 'Ürün Kodu *', 'Lot No', 'İade Mik. *', 'Müşteri İade Sebebi *', 'İlk İnceleme', 'Karar', 'Karar Açıklaması', 'Hurda', 'Rework', 'Kök Neden', 'Aksiyon', ''].map((h, i) => (
-                  <th key={i} className="px-2 py-2 text-left text-[11px] font-semibold text-slate-600 uppercase">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {satirlar.map((s, i) => {
-                const he = satirHatasi(s)
-                return (
-                  <tr key={s.key} className="border-t border-slate-100 align-top">
-                    <td className="px-2 py-2 tabular-nums text-slate-500">{i + 1}</td>
-                    <td className="px-2 py-2"><Input value={s.urunKodu} onChange={(e) => updSatir(i, { urunKodu: e.target.value })} disabled={ro} className="h-8 w-28 font-mono" /></td>
-                    <td className="px-2 py-2"><Input value={s.lotNo} onChange={(e) => updSatir(i, { lotNo: e.target.value })} disabled={ro} className="h-8 w-24" /></td>
-                    <td className="px-2 py-2"><Input type="number" min="1" value={s.iadeMiktari} onChange={(e) => updSatir(i, { iadeMiktari: e.target.value })} disabled={ro} className={`h-8 w-20 ${he ? 'border-red-400' : ''}`} /></td>
-                    <td className="px-2 py-2"><textarea value={s.musteriIadeSebebi} onChange={(e) => updSatir(i, { musteriIadeSebebi: e.target.value })} disabled={ro} rows={2} className="w-48 rounded border px-2 py-1 text-sm disabled:bg-slate-50" /></td>
-                    <td className="px-2 py-2"><textarea value={s.ilkIncelemeSonucu} onChange={(e) => updSatir(i, { ilkIncelemeSonucu: e.target.value })} disabled={ro} rows={2} className="w-48 rounded border px-2 py-1 text-sm disabled:bg-slate-50" /></td>
-                    <td className="px-2 py-2">
-                      <Select value={s.karar || 'none'} onValueChange={(v) => updSatir(i, { karar: v === 'none' ? '' : v })} disabled={ro}>
-                        <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">—</SelectItem>
-                          {RMA_KARAR_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-2 py-2"><textarea value={s.kararAciklama} onChange={(e) => updSatir(i, { kararAciklama: e.target.value })} disabled={ro} rows={2} className="w-48 rounded border px-2 py-1 text-sm disabled:bg-slate-50" /></td>
-                    <td className="px-2 py-2"><Input type="number" min="0" value={s.hurdaAdedi} onChange={(e) => updSatir(i, { hurdaAdedi: e.target.value })} disabled={ro} className={`h-8 w-20 ${he ? 'border-red-400' : ''}`} /></td>
-                    <td className="px-2 py-2"><Input type="number" min="0" value={s.reworkAdedi} onChange={(e) => updSatir(i, { reworkAdedi: e.target.value })} disabled={ro} className={`h-8 w-20 ${he ? 'border-red-400' : ''}`} /></td>
-                    <td className="px-2 py-2"><textarea value={s.kokNeden} onChange={(e) => updSatir(i, { kokNeden: e.target.value })} disabled={ro} rows={2} className="w-48 rounded border px-2 py-1 text-sm disabled:bg-slate-50" /></td>
-                    <td className="px-2 py-2"><textarea value={s.aksiyon} onChange={(e) => updSatir(i, { aksiyon: e.target.value })} disabled={ro} rows={2} className="w-48 rounded border px-2 py-1 text-sm disabled:bg-slate-50" /></td>
-                    <td className="px-2 py-2">
-                      {!ro && satirlar.length > 1 && (
-                        <button type="button" onClick={() => setSatirlar((p) => p.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600" aria-label="Satırı sil"><Trash2 className="h-4 w-4" /></button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+
+        <div className="space-y-2">
+          {satirlar.map((s, i) => {
+            const acik = openKeys.has(s.key)
+            const hatali = kartHataliMi(s)
+            const he = satirHatasi(s)
+            const kararLabel = s.karar ? KARAR_LABELS[s.karar] : null
+            return (
+              <div key={s.key} className={`rounded-md border overflow-hidden ${hatali ? 'border-red-300' : 'border-slate-200'}`}>
+                {/* Kapalı başlık — tıklanınca aç/kapa */}
+                <button
+                  type="button"
+                  onClick={() => toggleOpen(s.key)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50"
+                  aria-expanded={acik}
+                >
+                  <span className="tabular-nums text-slate-400 text-sm w-6 shrink-0">{i + 1}</span>
+                  <span className="font-mono text-sm text-slate-800 shrink-0 truncate max-w-[8rem]">{s.urunKodu || '—'}</span>
+                  <span className="text-sm text-slate-600 shrink-0 tabular-nums">{s.iadeMiktari ? `${s.iadeMiktari} adet` : '— adet'}</span>
+                  <span className="text-sm text-slate-500 truncate min-w-0 flex-1">{s.musteriIadeSebebi || '—'}</span>
+                  {hatali ? (
+                    <Badge variant="outline" className="shrink-0 gap-1 bg-red-100 text-red-800 border-red-200">
+                      <AlertTriangle className="h-3 w-3" />Hata
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className={`shrink-0 ${kararLabel ? KARAR_BADGE[s.karar] : 'bg-slate-100 text-slate-500 border-slate-200'}`}
+                    >
+                      {kararLabel ?? 'Karar bekliyor'}
+                    </Badge>
+                  )}
+                  <ChevronDown className={`h-4 w-4 text-slate-400 shrink-0 transition-transform ${acik ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Açık içerik */}
+                {acik && (
+                  <div className="border-t border-slate-200 px-3 py-3 space-y-4">
+                    {/* Giriş bilgileri */}
+                    <div className="space-y-3">
+                      <h3 className={bolumBaslik}>Giriş bilgileri</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <Label className={kartLabel}>Ürün Kodu *</Label>
+                          <Input
+                            ref={(el) => { if (el) inputRefs.current.set(s.key, el); else inputRefs.current.delete(s.key) }}
+                            value={s.urunKodu} onChange={(e) => updSatir(i, { urunKodu: e.target.value })}
+                            disabled={ro} className="mt-1 h-9 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <Label className={kartLabel}>Lot No</Label>
+                          <Input value={s.lotNo} onChange={(e) => updSatir(i, { lotNo: e.target.value })} disabled={ro} className="mt-1 h-9" />
+                        </div>
+                        <div>
+                          <Label className={kartLabel}>İade Miktarı *</Label>
+                          <Input type="number" min="1" value={s.iadeMiktari} onChange={(e) => updSatir(i, { iadeMiktari: e.target.value })} disabled={ro} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className={kartLabel}>Müşteri İade Sebebi *</Label>
+                        <Textarea value={s.musteriIadeSebebi} onChange={(e) => updSatir(i, { musteriIadeSebebi: e.target.value })} disabled={ro} rows={2} className="mt-1" />
+                      </div>
+                    </div>
+
+                    {/* İnceleme sonucu */}
+                    <div className="space-y-3 border-t border-slate-200 pt-3">
+                      <h3 className={bolumBaslik}>İnceleme sonucu</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <Label className={kartLabel}>Karar</Label>
+                          <Select value={s.karar || 'none'} onValueChange={(v) => updSatir(i, { karar: v === 'none' ? '' : v })} disabled={ro}>
+                            <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">—</SelectItem>
+                              {RMA_KARAR_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className={kartLabel}>Hurda Adedi</Label>
+                          <Input type="number" min="0" value={s.hurdaAdedi} onChange={(e) => updSatir(i, { hurdaAdedi: e.target.value })} disabled={ro} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
+                        </div>
+                        <div>
+                          <Label className={kartLabel}>Rework Adedi</Label>
+                          <Input type="number" min="0" value={s.reworkAdedi} onChange={(e) => updSatir(i, { reworkAdedi: e.target.value })} disabled={ro} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
+                        </div>
+                      </div>
+                      {he && <p className="text-xs text-red-600">{he} — kaydetmeden düzeltin.</p>}
+                      <div>
+                        <Label className={kartLabel}>Karar Açıklaması</Label>
+                        <Textarea value={s.kararAciklama} onChange={(e) => updSatir(i, { kararAciklama: e.target.value })} disabled={ro} rows={2} className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className={kartLabel}>İlk İnceleme Sonucu</Label>
+                        <Textarea value={s.ilkIncelemeSonucu} onChange={(e) => updSatir(i, { ilkIncelemeSonucu: e.target.value })} disabled={ro} rows={2} className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className={kartLabel}>Kök Neden</Label>
+                        <Textarea value={s.kokNeden} onChange={(e) => updSatir(i, { kokNeden: e.target.value })} disabled={ro} rows={2} className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className={kartLabel}>Aksiyon</Label>
+                        <Textarea value={s.aksiyon} onChange={(e) => updSatir(i, { aksiyon: e.target.value })} disabled={ro} rows={2} className="mt-1" />
+                      </div>
+                    </div>
+
+                    {/* Alt: sil (sol) · kapat (sağ) */}
+                    <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+                      {!ro ? (
+                        <Button
+                          type="button" variant="ghost" size="sm" onClick={() => satirSil(i)}
+                          disabled={satirlar.length <= 1}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-40"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />Satırı sil
+                        </Button>
+                      ) : <span />}
+                      <Button type="button" variant="outline" size="sm" onClick={() => toggleOpen(s.key)}>Kapat</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
-        {satirlar.some((s) => satirHatasi(s)) && (
-          <p className="text-xs text-red-600">Kırmızı satırlarda hurda+rework iade miktarını aşıyor — kaydetmeden düzeltin.</p>
-        )}
       </div>
 
       {!ro && (

@@ -67,6 +67,7 @@ import {
   ArrowRightLeft,
   UserMinus,
   Shapes,
+  Search,
   Pin,
   PinOff,
   PanelLeftClose,
@@ -215,6 +216,16 @@ const offboardingMenuItems = [
   { name: "İlişik Kesme", icon: LogOut, href: "/offboarding", roles: ["SUPER_ADMIN", "HR_MANAGER", "IT_MANAGER", "DEPT_HEAD", "SUPERVISOR"] },
 ]
 
+// Personel yönetimi öğeleri — hepsi canSeeIk kapısıyla gösterilir. Önceden JSX
+// içinde satır satır gömülüydü; menü aramasında da çıkabilmeleri için diziye
+// alındı (render davranışı birebir aynı: aynı sırada, aynı canSeeIk koşuluyla).
+const personnelMenuItems = [
+  { name: "Personel Yönetimi", icon: UserCog, href: "/personnel", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+  { name: "İK Raporları", icon: BarChart3, href: "/personnel/reports", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+  { name: "Bölüm Değişiklikleri", icon: ArrowRightLeft, href: "/personnel/department-transfers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+  { name: "Ayrılan Personel", icon: UserMinus, href: "/personnel/leavers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+]
+
 // Kalite Yönetim Sistemi (KYS) alt menüsü
 const qdmsMenuItems = [
   { name: "Doküman Kontrolü", icon: FileCheck, href: "/qdms/documents", roles: [] },
@@ -286,6 +297,52 @@ const bottomMenuItems = [
   { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN", "QUALITY_MANAGER"], departments: ["Kalite", "Laboratuvar"] },
 ]
 
+// ── Menü araması ────────────────────────────────────────────────────────────
+// Saf yardımcılar: bileşene bağımlı değil, ileride ⌘K komut paletine olduğu gibi
+// taşınabilsin diye modül seviyesinde ve export edilebilir halde tutuldu.
+
+/** Türkçe-duyarlı normalize: "İş Analizi" ↔ "is analizi", "Ölçüm" ↔ "olcum",
+ *  "Çalışan" ↔ "calisan".
+ *  1) toLocaleLowerCase('tr-TR') — İ→i, I→ı eşlemesini doğru yapar.
+ *  2) ı→i — DİKKAT: noktasız ı (U+0131) AYRI bir harftir, NFD ile AYRIŞMAZ,
+ *     dolayısıyla (3)'teki diakritik strip ona dokunmaz. Bu satır olmadan
+ *     "calisan"/"sizma"/"yangin" aramaları "Çalışan"/"Sızma"/"Yangın" ile
+ *     eşleşmiyordu (gerçek menü etiketleriyle test edildi).
+ *  3) NFD + combining-mark strip — ç/ğ/ü/ş/ö diakritiğini düşürür. */
+export function normalizeTr(s: string): string {
+  return s
+    .toLocaleLowerCase('tr-TR')
+    .replace(/\u0131/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+type SearchableItem = {
+  name: string
+  icon: typeof Home
+  href: string
+  /** Sonuç satırında gösterilen küçük grup etiketi ("Formlar", "IPRO" …) */
+  group: string
+}
+
+/** Yetki filtresinden GEÇMİŞ listeleri düz tek listeye indirger.
+ *  href'e göre tekilleştirir (ör. /iso27001 hem "Denetimler" hem "ISO 27001"
+ *  altında geçiyor); ilk görülen grup etiketi kazanır. */
+function flattenForSearch(
+  groups: { group: string; items: { name: string; icon: typeof Home; href: string }[] }[]
+): SearchableItem[] {
+  const seen = new Set<string>()
+  const out: SearchableItem[] = []
+  for (const g of groups) {
+    for (const it of g.items) {
+      if (seen.has(it.href)) continue
+      seen.add(it.href)
+      out.push({ name: it.name, icon: it.icon, href: it.href, group: g.group })
+    }
+  }
+  return out
+}
+
 interface SidebarProps {
   isOpen?: boolean
   onClose?: () => void
@@ -305,6 +362,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [formsOpen, setFormsOpen] = useState(false)
   const [sistemGelistirmeOpen, setSistemGelistirmeOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
+  // Menü araması. Boşken normal grup ağacı render edilir (hiçbir şey değişmez);
+  // doluyken ağaç gizlenip düz sonuç listesi gösterilir. Grupların açık/kapalı
+  // durumu bu yüzden korunur — ağaca dokunulmuyor, sadece gösterilmiyor.
+  const [searchQuery, setSearchQuery] = useState("")
   // İş Analizi menü bayrakları — SUNUCUDAN (amir DB sorgusu + ik OR mantığı iaRolCozumle'de).
   const [iaFlags, setIaFlags] = useState<{ amir: boolean; ik: boolean }>({ amir: false, ik: false })
   const [kadroTalepAcabilir, setKadroTalepAcabilir] = useState(false)
@@ -500,6 +561,41 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (item.ownerEmail && session?.user?.email?.toLowerCase() === item.ownerEmail.toLowerCase()) return true
     return false
   })
+
+  // Personel öğeleri — tümü canSeeIk kapısında (JSX'teki eski satır-satır
+  // `canSeeIk && renderMenuItem(...)` ile birebir aynı sonuç).
+  const filteredPersonnelItems = canSeeIk ? personnelMenuItems : []
+
+  // ── Menü araması ──────────────────────────────────────────────────────────
+  // KAYNAK: yalnızca YETKİ FİLTRESİNDEN GEÇMİŞ listeler. Böylece kullanıcının
+  // ağaçta göremediği bir öğe aramada da çıkmaz. QDMS (canSeeQdms), Stratejik İK
+  // (filterStrategicHrItems), Sandbox (ownerEmail) ve İK (canSeeIk) özel
+  // kapılarının çıktıları olduğu gibi kullanılıyor — kural burada TEKRARLANMIYOR.
+  const searchableItems = flattenForSearch([
+    { group: "Ana Menü", items: filteredMainItems },
+    { group: "Formlar", items: filteredFormsItems },
+    { group: "İnsan Varlıkları", items: filteredPersonnelItems },
+    { group: "İnsan Varlıkları", items: filteredOffboardingItems },
+    { group: "Stratejik İK", items: filteredStrategicHrItems },
+    { group: "Kalite", items: filteredKaliteItems },
+    { group: "Kalite Yönetim Sistemi", items: filteredQdmsItems },
+    { group: "Denetimler", items: filteredAuditsItems },
+    { group: "ISO 27001", items: filteredIso27001Items },
+    { group: "İleri Teknik", items: filteredTeknikItems },
+    { group: "IPRO", items: filteredIproItems },
+    { group: "Sistem Geliştirme", items: filteredSistemGelistirmeItems },
+    { group: "Diğer", items: filteredBottomItems },
+    { group: "Sandbox", items: filteredSandboxItems },
+  ])
+
+  const normalizedQuery = normalizeTr(searchQuery.trim())
+  // `expanded` şartı: dar modda arama kutusu render edilmiyor. O şart olmasaydı
+  // kullanıcı arama yapıp sidebar'ı daraltınca input kaybolur, arama aktif kalır
+  // ve ağaç gizli olduğu için menü kilitlenirdi. Dar mod = her zaman normal ağaç.
+  const isSearching = expanded && normalizedQuery.length > 0
+  const searchResults = isSearching
+    ? searchableItems.filter(item => normalizeTr(item.name).includes(normalizedQuery))
+    : []
 
   // Teknik menüsünde aktif sayfa var mı kontrol et (IT Raporları dahil)
   const isTeknikActive = teknikMenuItems.some(item =>
@@ -730,8 +826,69 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </div>
       </div>
 
+      {/* Menü araması — <nav>'ın DIŞINDA: liste kayarken sabit kalır.
+          Yalnız geniş modda; dar moda (ikon-only) sığmaz. */}
+      {expanded && (
+        <div className="px-4 pt-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Menüde ara..."
+              aria-label="Menüde ara"
+              className="w-full rounded-lg border border-white/10 bg-white/[0.06] py-2 pl-8 pr-8 text-sm text-white placeholder:text-white/30 focus:border-teal-400/40 focus:bg-white/[0.09] focus:outline-none"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                title="Aramayı temizle"
+                aria-label="Aramayı temizle"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-white/40 hover:text-white hover:bg-white/10"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-4 sidebar-dark-nav">
+        {isSearching ? (
+          /* Arama modu: gruplama/collapse mantığına DOKUNULMAZ — ağaç yalnızca
+             gizlenir, eşleşenler düz liste olarak gösterilir. */
+          searchResults.length > 0 ? (
+            searchResults.map(item => {
+              const Icon = item.icon
+              const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                    isActive
+                      ? "bg-teal-500/15 text-teal-300"
+                      : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+                  )}
+                >
+                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  <span className="flex-1 min-w-0 truncate">{item.name}</span>
+                  <span className="flex-shrink-0 text-[9px] uppercase tracking-wider text-white/25">
+                    {item.group}
+                  </span>
+                </Link>
+              )
+            })
+          ) : (
+            <p className="px-3 py-6 text-center text-sm text-white/30">Sonuç bulunamadı</p>
+          )
+        ) : (
+        <>
         {/* Ana Menü Öğeleri */}
         {filteredMainItems.map(item => renderMenuItem(item))}
 
@@ -896,10 +1053,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
         {showIkGroup && ikOpen && (
           <div className="space-y-1 ml-4">
-            {canSeeIk && renderMenuItem({ name: "Personel Yönetimi", icon: UserCog, href: "/personnel", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
-            {canSeeIk && renderMenuItem({ name: "İK Raporları", icon: BarChart3, href: "/personnel/reports", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
-            {canSeeIk && renderMenuItem({ name: "Bölüm Değişiklikleri", icon: ArrowRightLeft, href: "/personnel/department-transfers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
-            {canSeeIk && renderMenuItem({ name: "Ayrılan Personel", icon: UserMinus, href: "/personnel/leavers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] })}
+            {filteredPersonnelItems.map(item => renderMenuItem(item))}
             {filteredOffboardingItems.map(item => renderMenuItem(item))}
             {/* {renderMenuItem({ name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"] })} */}
 
@@ -1026,6 +1180,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <p className="px-3 py-1 text-[9px] font-semibold uppercase tracking-widest text-white/20">Sandbox</p>
             {filteredSandboxItems.map(item => renderMenuItem(item))}
           </div>
+        )}
+        </>
         )}
       </nav>
 

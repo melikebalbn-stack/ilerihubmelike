@@ -22,7 +22,7 @@ export default async function RmaListPage() {
   return (
     <div className="container mx-auto px-6 py-8 max-w-7xl space-y-6">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-[#1B4F72] flex items-center gap-2">
             <PackageOpen className="h-6 w-6" />
             RMA/SMA İade Formu
@@ -32,9 +32,9 @@ export default async function RmaListPage() {
           </p>
         </div>
         {canManage && (
-          <Button asChild className="bg-[#1B4F72] hover:bg-[#1B4F72]/90">
-            <Link href="/kalite/rma/yeni">
-              <Plus className="h-4 w-4 mr-1" />
+          <Button asChild className="bg-[#1B4F72] hover:bg-[#1B4F72]/90 shrink-0">
+            <Link href="/kalite/rma/yeni" className="inline-flex items-center gap-1 whitespace-nowrap shrink-0">
+              <Plus className="h-4 w-4 shrink-0" />
               Yeni Kayıt
             </Link>
           </Button>

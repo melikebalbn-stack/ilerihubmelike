@@ -8197,6 +8197,8 @@ model CostCustomer {
   updatedAt DateTime @updatedAt
 
   analyses CostAnalysis[]
+  // RMA/SMA iade kayıtları (KAL-KYT-16) — back-relation (DB kolonu eklemez).
+  rmaKayitlar RmaKayit[]
 
   @@index([isActive])
 }
@@ -9056,6 +9058,8 @@ model Personnel {
   envanterZimmetleri            EnvanterZimmet[]
   // Toplu Kart Okutamama formları
   bulkCardScanFailures          BulkCardScanFailure[]
+  // RMA/SMA iade kayıtlarında sorumlu (KAL-KYT-16) — back-relation (DB kolonu eklemez).
+  rmaSorumluluklar              RmaKayit[]
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -10437,6 +10441,82 @@ enum MeasurementReportResult {
   PENDING
   OK
   RED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RMA/SMA İade Formu (KAL-KYT-16) — PR-1 veri modeli
+// ─────────────────────────────────────────────────────────────────────────────
+enum RmaTip {
+  RMA
+  SMA
+}
+
+enum RmaIadeTuru {
+  GIRIS_KALITE
+  HAT
+  GARANTI
+}
+
+enum RmaKarar {
+  HURDA
+  REWORK
+  TAMIR
+  TEDARIKCIYE_IADE
+  MUSTERIYE_IADE
+  DEPOYA_KABUL
+  URUN_BIZE_AIT_DEGIL
+}
+
+/// RMA/SMA iade başlık kaydı. Durum ALANI YOK: kapanisTarihi doluysa KAPALI,
+/// boşsa AÇIK (türetilmiş; API yanıtında hesaplanır, DB'de tutulmaz).
+model RmaKayit {
+  id              String       @id @default(cuid())
+  tip             RmaTip
+  no              Int          @unique // 3623'ten devam eden tek kesintisiz seri (RMA+SMA ortak)
+  urunGelisTarihi DateTime?
+  irsaliyeTarihi  DateTime?
+  irsaliyeNo      String?
+  musteriId       String
+  musteri         CostCustomer @relation(fields: [musteriId], references: [id], onDelete: Restrict)
+  iadeTuru        RmaIadeTuru
+  sorumluId       String?
+  sorumlu         Personnel?   @relation(fields: [sorumluId], references: [id], onDelete: SetNull)
+  termin          DateTime?
+  kapanisTarihi   DateTime?
+  maliyet         Decimal?     @db.Decimal(12, 2)
+
+  // Audit — userId string (User FK/back-ref eklemez; mevcut audit deseni)
+  olusturanId      String?
+  olusturmaTarihi  DateTime  @default(now())
+  guncelleyenId    String?
+  guncellemeTarihi DateTime  @updatedAt
+
+  satirlar RmaSatir[]
+
+  @@index([musteriId])
+  @@index([kapanisTarihi])
+  @@index([irsaliyeTarihi])
+}
+
+/// RMA/SMA ürün satırı. Başlık silinince cascade.
+model RmaSatir {
+  id                String    @id @default(cuid())
+  rmaKayitId        String
+  rmaKayit          RmaKayit  @relation(fields: [rmaKayitId], references: [id], onDelete: Cascade)
+  siraNo            Int
+  urunKodu          String // serbest metin (IFS parça kartı henüz yok)
+  lotNo             String?
+  iadeMiktari       Int
+  musteriIadeSebebi String    @db.Text
+  ilkIncelemeSonucu String?   @db.Text
+  karar             RmaKarar?
+  kararAciklama     String?   @db.Text
+  hurdaAdedi        Int?
+  reworkAdedi       Int?
+  kokNeden          String?   @db.Text
+  aksiyon           String?   @db.Text
+
+  @@index([rmaKayitId])
 }
 
 model MeasurementReport {

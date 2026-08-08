@@ -131,6 +131,9 @@ export const PERMISSION_KEYS = {
   // === QDMS (Kalite Yönetim Sistemi) ===
   QDMS_VIEW: 'qdms.view',
   QDMS_MANAGE: 'qdms.manage',
+
+  // === RMA/SMA İade Formu (KAL-KYT-16) ===
+  RMA_MANAGE: 'rma.manage',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -158,6 +161,7 @@ export const MODULE_LABELS: Record<string, string> = {
   depo: 'Depo',
   ipro: 'IPRO Üretim Takip',
   qdms: 'Kalite Yönetim Sistemi',
+  rma: 'RMA/SMA İade Formu',
 };
 
 /**
@@ -259,4 +263,5 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'qdms.view': 'Kalite Yönetim Sistemi görüntüleme (doküman/CAPA/denetim/risk/tedarikçi/eğitim/değişiklik/uygunsuzluk/şikayet)',
   'qdms.manage': 'Kalite Yönetim Sistemi yönetim — oluşturma/düzenleme/doküman onayı',
+  'rma.manage': 'RMA/SMA iade formu yönetim — oluştur/düzenle/sil',
 };

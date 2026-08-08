@@ -60,6 +60,8 @@ export async function GET(request: NextRequest) {
       take: pageSize,
       include: {
         musteri: { select: { id: true, name: true, code: true } },
+        sorumlu: { select: { adSoyad: true } },
+        satirlar: { select: { iadeMiktari: true } },
         _count: { select: { satirlar: true } },
       },
     }),
@@ -69,6 +71,9 @@ export async function GET(request: NextRequest) {
     ...r,
     durum: r.kapanisTarihi ? 'KAPALI' : 'ACIK',
     satirSayisi: r._count.satirlar,
+    toplamMiktar: r.satirlar.reduce((s, x) => s + x.iadeMiktari, 0),
+    sorumluAd: r.sorumlu?.adSoyad ?? null,
+    satirlar: undefined,
     _count: undefined,
   }))
 

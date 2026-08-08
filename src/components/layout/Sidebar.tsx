@@ -162,6 +162,8 @@ const formsMenuItems = [
   { name: "Toplu Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"] },
   // İş Analizi Formu: oturumu olan herkes kendi formunu doldurur (roles: "*").
   { name: "İş Analizi Formu", icon: ClipboardList, href: "/strategic-hr/is-analizi", roles: ["*"] },
+  // RMA/SMA İade Formu (KAL-KYT-16): herkes görür; yazma yetkisi sayfa/API'de (canManageRma).
+  { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"] },
   // { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] }, // Şimdilik gizli
 ]
 

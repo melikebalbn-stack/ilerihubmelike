@@ -41,7 +41,7 @@ export default async function RmaListPage() {
         )}
       </div>
 
-      <RmaListTable />
+      <RmaListTable canManage={canManage} />
     </div>
   )
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, Search, X } from 'lucide-react'
+import { Download, Loader2, Search, Upload, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { MusteriSecici, type MusteriOption } from './MusteriSecici'
+import { RmaImportDialog } from './RmaImportDialog'
 import { RMA_TIP_LABELS, RMA_IADE_TURU_LABELS } from '@/lib/quality/rma-labels'
 
 interface RmaRow {
@@ -31,11 +32,12 @@ interface RmaRow {
 
 const PAGE_SIZE = 20
 
-export function RmaListTable() {
+export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
   const [items, setItems] = useState<RmaRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
 
   const [tip, setTip] = useState('all')
   const [musteri, setMusteri] = useState<MusteriOption | null>(null)
@@ -45,21 +47,27 @@ export function RmaListTable() {
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
 
+  // Liste ucu + Excel export AYNI filtre string'ini kullansın (ıraksamasın).
+  const buildFilterParams = useCallback(() => {
+    const p = new URLSearchParams()
+    if (tip !== 'all') p.set('tip', tip)
+    if (musteri) p.set('musteriId', musteri.id)
+    if (durum !== 'all') p.set('durum', durum)
+    if (from) p.set('from', new Date(from).toISOString())
+    if (to) {
+      const e = new Date(to)
+      e.setHours(23, 59, 59, 999)
+      p.set('to', e.toISOString())
+    }
+    if (q.trim()) p.set('q', q.trim())
+    return p
+  }, [tip, musteri, durum, from, to, q])
+
   const fetchList = useCallback(async () => {
     setLoading(true)
     setErr(null)
     try {
-      const p = new URLSearchParams()
-      if (tip !== 'all') p.set('tip', tip)
-      if (musteri) p.set('musteriId', musteri.id)
-      if (durum !== 'all') p.set('durum', durum)
-      if (from) p.set('from', new Date(from).toISOString())
-      if (to) {
-        const e = new Date(to)
-        e.setHours(23, 59, 59, 999)
-        p.set('to', e.toISOString())
-      }
-      if (q.trim()) p.set('q', q.trim())
+      const p = buildFilterParams()
       p.set('page', String(page))
       p.set('pageSize', String(PAGE_SIZE))
       const res = await fetch(`/api/quality/rma?${p.toString()}`)
@@ -73,7 +81,13 @@ export function RmaListTable() {
     } finally {
       setLoading(false)
     }
-  }, [tip, musteri, durum, from, to, q, page])
+  }, [buildFilterParams, page])
+
+  function handleExport() {
+    const p = buildFilterParams()
+    const qs = p.toString()
+    window.location.href = `/api/quality/rma/export${qs ? `?${qs}` : ''}`
+  }
 
   useEffect(() => {
     fetchList()
@@ -101,6 +115,36 @@ export function RmaListTable() {
 
   return (
     <div className="space-y-4">
+      {/* Araç çubuğu — Excel aktar/yükle */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={handleExport} className="shrink-0">
+          <Download className="h-4 w-4 mr-1 shrink-0" />
+          Excel&apos;e Aktar
+        </Button>
+        {canManage && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setImportOpen(true)}
+            className="shrink-0"
+          >
+            <Upload className="h-4 w-4 mr-1 shrink-0" />
+            Excel&apos;den Yükle
+          </Button>
+        )}
+      </div>
+
+      {canManage && (
+        <RmaImportDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onImported={() => {
+            setPage(1)
+            fetchList()
+          }}
+        />
+      )}
+
       {/* Filtre bar */}
       <div className="rounded-md border bg-white p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

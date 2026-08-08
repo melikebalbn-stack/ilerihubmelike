@@ -4,7 +4,7 @@ import { requireSession } from '@/lib/auth/require-session'
 import { canManageRma } from '@/lib/quality/rma-access'
 import { rmaKayitInput } from '@/lib/quality/rma-validators'
 import { generateNextRmaNo } from '@/lib/quality/rma-no'
-import { RmaTip, Prisma } from '@/generated/prisma'
+import { buildRmaWhere } from '@/lib/quality/rma-query'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,36 +17,7 @@ export async function GET(request: NextRequest) {
   if (error) return error
 
   const sp = request.nextUrl.searchParams
-  const where: Prisma.RmaKayitWhereInput = {}
-
-  const tip = sp.get('tip')
-  if (tip && (tip === 'RMA' || tip === 'SMA')) where.tip = tip as RmaTip
-
-  const musteriId = sp.get('musteriId')
-  if (musteriId) where.musteriId = musteriId
-
-  const durum = sp.get('durum')
-  if (durum === 'acik') where.kapanisTarihi = null
-  else if (durum === 'kapali') where.kapanisTarihi = { not: null }
-
-  const from = sp.get('from')
-  const to = sp.get('to')
-  if (from || to) {
-    where.irsaliyeTarihi = {}
-    if (from) (where.irsaliyeTarihi as Prisma.DateTimeNullableFilter).gte = new Date(from)
-    if (to) (where.irsaliyeTarihi as Prisma.DateTimeNullableFilter).lte = new Date(to)
-  }
-
-  const q = sp.get('q')?.trim()
-  if (q) {
-    const or: Prisma.RmaKayitWhereInput[] = [
-      { satirlar: { some: { urunKodu: { contains: q, mode: 'insensitive' } } } },
-      { musteri: { name: { contains: q, mode: 'insensitive' } } },
-    ]
-    const asNo = Number.parseInt(q, 10)
-    if (Number.isInteger(asNo) && String(asNo) === q) or.push({ no: asNo })
-    where.OR = or
-  }
+  const where = buildRmaWhere(sp)
 
   const page = Math.max(1, Number.parseInt(sp.get('page') ?? '1', 10) || 1)
   const pageSize = Math.min(100, Math.max(1, Number.parseInt(sp.get('pageSize') ?? '20', 10) || 20))

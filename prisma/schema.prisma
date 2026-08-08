@@ -243,6 +243,17 @@ model User {
   // Başvuru Değerlendirme Workflow — bu kullanıcıya atanan başvurular
   assignedApplications PublicJobApplication[] @relation("AssignedApplications")
 
+  // Yıllık Çalışma Takvimi (back-relations)
+  yctOlusturduklari      YillikTakvimKaydi[]        @relation("YctOlusturan")
+  yctGuncelledikleri     YillikTakvimKaydi[]        @relation("YctGuncelleyen")
+  yctKatilimciliklari    YillikTakvimKatilimci[]    @relation("YctKatilimci")
+  yctChecklistSorumlu    YillikTakvimChecklist[]    @relation("YctChecklistSorumlu")
+  yctChecklistTamamlayan YillikTakvimChecklist[]    @relation("YctChecklistTamamlayan")
+  yctEkYukledikleri      YillikTakvimEk[]           @relation("YctEkYukleyen")
+  yctIslemleri           YillikTakvimIslemGecmisi[] @relation("YctIslemYapan")
+  yctOnayAdimlari        YillikTakvimOnayAdimi[]    @relation("YctOnayAdimiOnaylayan")
+  yctOnayKademeleri      YillikTakvimOnayKademesi[] @relation("YctOnayKademesiUser")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -304,6 +315,9 @@ model Department {
 
   // Calendar Relations
   calendarEvents CalendarEvent[]
+
+  // Yıllık Çalışma Takvimi
+  yctKayitlari YillikTakvimKaydi[] @relation("YctDepartman")
 
   @@index([isActive, sortOrder])
 }
@@ -12543,3 +12557,293 @@ enum IaImzaDurum {
   REDDEDILDI
 }
 
+// ============================================================
+// Yıllık Çalışma Takvimi
+// ============================================================
+
+enum YillikTakvimDurum {
+  TASLAK
+  PLANLANDI
+  DEVAM_EDIYOR
+  YAKLASIYOR
+  GECIKTI
+  TAMAMLANDI
+  TAMAMLANDI_ONAY_BEKLIYOR
+  ONAYLANDI
+  REVIZYON_ISTENDI
+  ERTELENDI
+  IPTAL_EDILDI
+  ASKIYA_ALINDI
+}
+
+enum YillikTakvimKayitTuru {
+  SON_TARIH
+  TUM_GUN_ETKINLIK
+  SAATLI_ETKINLIK
+  TOPLANTI
+  TEAMS_TOPLANTISI
+  EGITIM
+  DENETIM
+  KONTROL
+  HATIRLATMA
+}
+
+enum YillikTakvimOncelik {
+  DUSUK
+  ORTA
+  YUKSEK
+  KRITIK
+}
+
+enum YillikTakvimPeriyot {
+  TEK_SEFERLIK
+  GUNLUK
+  HAFTALIK
+  IKI_HAFTADA_BIR
+  AYLIK
+  IKI_AYDA_BIR
+  UC_AYLIK
+  ALTI_AYLIK
+  YILLIK
+  IKI_YILDA_BIR
+  UC_YILDA_BIR
+  BELIRLI_AYLAR
+  BELIRLI_TARIHLER
+  OZEL
+}
+
+enum YillikTakvimKatilimciRol {
+  ANA_SORUMLU
+  YEDEK_SORUMLU
+  DESTEK
+  ONAYLAYAN
+  IKINCI_ONAYLAYAN
+  BILGILENDIRILECEK
+  GOZLEMCI
+}
+
+enum YillikTakvimGerceklesmeDurumu {
+  BEKLIYOR
+  GERCEKLESTI
+  GERCEKLESMEDI
+  DEVREDILDI
+  PLANDISI
+}
+
+enum YillikTakvimOnayKarari {
+  ONAYLANDI
+  REVIZYON_ISTENDI
+}
+
+model YillikTakvimKaydi {
+  id  String @id @default(cuid())
+  yil Int
+
+  departmentId String?
+  department   Department? @relation("YctDepartman", fields: [departmentId], references: [id])
+
+  anaKonu    String
+  surec      String
+  kisaBaslik String?
+  aciklama   String? @db.Text
+
+  oncelik   YillikTakvimOncelik   @default(ORTA)
+  kayitTuru YillikTakvimKayitTuru @default(SON_TARIH)
+  periyot   YillikTakvimPeriyot   @default(YILLIK)
+  durum     YillikTakvimDurum     @default(TASLAK)
+
+  etiketler       String[] @default([])
+  lokasyon        String?
+  mevzuatStandart String?
+  disKurum        String?
+  referansNo      String?
+
+  tumGunMu             Boolean   @default(true)
+  baslangicTarihi      DateTime?
+  bitisTarihi          DateTime?
+  hatirlatmaBaslangici DateTime?
+  plananUygulamaTarihi DateTime?
+  nihaiSonTarih        DateTime?
+  sonrakiKontrolTarihi DateTime?
+  gecerlilikBaslangici DateTime?
+  gecerlilikBitisi     DateTime?
+
+  onayGerekli  Boolean @default(false)
+  kanitZorunlu Boolean @default(false)
+  iptalMi      Boolean @default(false)
+  arsivMi      Boolean @default(false)
+
+  kaynakModul   String?
+  kaynakKayitId String?
+
+  gerceklesmeTarihi   DateTime?
+  gerceklesmeDurumu   YillikTakvimGerceklesmeDurumu @default(BEKLIYOR)
+  gerceklesmemeNedeni String?                       @db.Text
+
+  oncekiKayitId   String?
+  oncekiKayit     YillikTakvimKaydi?  @relation("YctDonemZinciri", fields: [oncekiKayitId], references: [id])
+  sonrakiKayitlar YillikTakvimKaydi[] @relation("YctDonemZinciri")
+
+  createdById String
+  createdBy   User    @relation("YctOlusturan", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?   @relation("YctGuncelleyen", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  katilimcilar      YillikTakvimKatilimci[]
+  checklist         YillikTakvimChecklist[]
+  ekler             YillikTakvimEk[]
+  bildirimKurallari YillikTakvimBildirimKurali[]
+  bildirimLoglari   YillikTakvimBildirimLog[]
+  islemGecmisi      YillikTakvimIslemGecmisi[]
+  onayAdimlari      YillikTakvimOnayAdimi[]
+
+  @@unique([kaynakModul, kaynakKayitId])
+  @@index([yil, departmentId])
+  @@index([durum])
+  @@index([nihaiSonTarih])
+}
+
+model YillikTakvimKatilimci {
+  id      String                   @id @default(cuid())
+  kayitId String
+  kayit   YillikTakvimKaydi        @relation(fields: [kayitId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User                     @relation("YctKatilimci", fields: [userId], references: [id])
+  rol     YillikTakvimKatilimciRol
+
+  createdAt DateTime @default(now())
+
+  @@unique([kayitId, userId, rol])
+  @@index([userId])
+}
+
+model YillikTakvimChecklist {
+  id      String            @id @default(cuid())
+  kayitId String
+  kayit   YillikTakvimKaydi @relation(fields: [kayitId], references: [id], onDelete: Cascade)
+
+  baslik   String
+  aciklama String?
+  sira     Int     @default(0)
+
+  sorumluId String?
+  sorumlu   User?   @relation("YctChecklistSorumlu", fields: [sorumluId], references: [id])
+
+  sonTarih     DateTime?
+  zorunlu      Boolean   @default(false)
+  kanitGerekli Boolean   @default(false)
+
+  tamamlandi       Boolean   @default(false)
+  tamamlayanId     String?
+  tamamlayan       User?     @relation("YctChecklistTamamlayan", fields: [tamamlayanId], references: [id])
+  tamamlanmaTarihi DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([kayitId])
+}
+
+model YillikTakvimEk {
+  id      String            @id @default(cuid())
+  kayitId String
+  kayit   YillikTakvimKaydi @relation(fields: [kayitId], references: [id], onDelete: Cascade)
+
+  dosyaTuru   String
+  dosyaAdi    String
+  saklamaYolu String
+  boyut       Int?
+
+  yukleyenId String
+  yukleyen   User   @relation("YctEkYukleyen", fields: [yukleyenId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([kayitId])
+}
+
+model YillikTakvimBildirimKurali {
+  id      String            @id @default(cuid())
+  kayitId String
+  kayit   YillikTakvimKaydi @relation(fields: [kayitId], references: [id], onDelete: Cascade)
+
+  tetik       String
+  aliciRoller YillikTakvimKatilimciRol[] @default([])
+  kanal       String[]                   @default([])
+  aktif       Boolean                    @default(true)
+
+  @@index([kayitId])
+}
+
+model YillikTakvimBildirimLog {
+  id      String            @id @default(cuid())
+  kayitId String
+  kayit   YillikTakvimKaydi @relation(fields: [kayitId], references: [id], onDelete: Cascade)
+
+  tetik        String
+  aliciUserId  String?
+  aliciEposta  String?
+  kanal        String
+  sonuc        String
+  hataMesaji   String?
+  gonderimGunu DateTime @db.Date
+
+  createdAt DateTime @default(now())
+
+  @@unique([kayitId, tetik, aliciEposta, gonderimGunu])
+  @@index([kayitId])
+}
+
+model YillikTakvimIslemGecmisi {
+  id      String            @id @default(cuid())
+  kayitId String
+  kayit   YillikTakvimKaydi @relation(fields: [kayitId], references: [id], onDelete: Cascade)
+
+  islemTuru String
+  alan      String?
+  eskiDeger String? @db.Text
+  yeniDeger String? @db.Text
+
+  yapanId String
+  yapan   User   @relation("YctIslemYapan", fields: [yapanId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([kayitId])
+}
+
+model YillikTakvimOnayKademesi {
+  id    String @id @default(cuid())
+  sira  Int    @unique
+  unvan String
+
+  userId String
+  user   User   @relation("YctOnayKademesiUser", fields: [userId], references: [id])
+
+  aktif Boolean @default(true)
+
+  createdAt DateTime @default(now())
+}
+
+model YillikTakvimOnayAdimi {
+  id      String            @id @default(cuid())
+  kayitId String
+  kayit   YillikTakvimKaydi @relation(fields: [kayitId], references: [id], onDelete: Cascade)
+
+  tur      Int    @default(1)
+  adimSira Int
+  unvan    String
+
+  onaylayanId String?
+  onaylayan   User?   @relation("YctOnayAdimiOnaylayan", fields: [onaylayanId], references: [id])
+
+  karar       YillikTakvimOnayKarari?
+  yorum       String?                 @db.Text
+  kararTarihi DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([kayitId])
+}

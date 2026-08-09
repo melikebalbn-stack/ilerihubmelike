@@ -52,6 +52,9 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
  * Güncellenebilir: ad, aktif, siraNo, aciklama, ustKodId.
  * `kod` DEĞİŞTİRİLEMEZ — Zod şemasında yok, istekte gelirse yok sayılır
  * (873 geçmiş kayıt kod değerine bağlı).
+ * `tip` de DEĞİŞTİRİLEMEZ — aynı şekilde şemada yok, gövdede gelse bile
+ * yok sayılır. Tür değişimi hiyerarşiyi bozar (BOLUM→KOD olan bir kaydın
+ * altları sahipsiz kalır); ayrı bir iş olarak ele alınacak.
  */
 export async function PATCH(request: NextRequest, { params }: Ctx) {
   const { session, error } = await requireSession()

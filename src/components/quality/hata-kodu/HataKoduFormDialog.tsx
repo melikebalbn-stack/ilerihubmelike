@@ -26,6 +26,12 @@ type Props = {
   kayit: HataKoduRow | null
   /** Tüm kayıtlar — üst kod adayları ve mükerrer kontrolü buradan türetilir */
   tumKayitlar: HataKoduRow[]
+  /**
+   * Bölüm modu: yeni ANA BAŞLIK açar. Üst kod alanı gösterilmez ve kayıt
+   * her hâlükârda `ustKodId = null` gider. Yalnız yeni kayıtta anlamlı —
+   * düzenlemede yok sayılır (mevcut bir kaydın üstü hâlâ değiştirilebilir).
+   */
+  bolumModu?: boolean
   onKaydedildi: () => void
 }
 
@@ -70,9 +76,12 @@ export function HataKoduFormDialog({
   onOpenChange,
   kayit,
   tumKayitlar,
+  bolumModu = false,
   onKaydedildi,
 }: Props) {
   const duzenleme = kayit !== null
+  /** Bölüm modu yalnız YENİ kayıtta geçerli. */
+  const bolum = bolumModu && !duzenleme
   const [form, setForm] = useState<HataKoduFormState>(() => bosForm())
   const [submitting, setSubmitting] = useState(false)
 
@@ -118,7 +127,8 @@ export function HataKoduFormDialog({
     if (submitting) return
     setSubmitting(true)
     try {
-      const ustKodId = form.ustKodId === '' ? null : form.ustKodId
+      // Bölüm modunda üst kod alanı hiç gösterilmez → her hâlükârda null gider.
+      const ustKodId = bolum || form.ustKodId === '' ? null : form.ustKodId
       const aciklama = form.aciklama.trim() === '' ? null : form.aciklama.trim()
 
       const res = await fetch(
@@ -138,6 +148,9 @@ export function HataKoduFormDialog({
               : {
                   kod: kodSayi,
                   ad: form.ad.trim(),
+                  // Yeni kayıtta tür açıkça gönderilir. Düzenlemede GÖNDERİLMEZ —
+                  // PATCH şemasında `tip` yok, zod zaten soyar.
+                  tip: bolum ? 'BOLUM' : 'KOD',
                   ustKodId,
                   aciklama,
                 },
@@ -169,11 +182,15 @@ export function HataKoduFormDialog({
       <DialogContent className="max-w-lg">
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>{duzenleme ? `Hata Kodu Düzenle` : 'Yeni Hata Kodu'}</DialogTitle>
+            <DialogTitle>
+              {duzenleme ? 'Hata Kodu Düzenle' : bolum ? 'Yeni Bölüm' : 'Yeni Hata Kodu'}
+            </DialogTitle>
             <DialogDescription>
               {duzenleme
                 ? 'Kod değeri değiştirilemez; geçmiş kalite kayıtları bu değere bağlıdır.'
-                : 'Kod bir kez kaydedildikten sonra DEĞİŞTİRİLEMEZ — geçmiş kayıtlar bu değere bağlanır.'}
+                : bolum
+                  ? 'Ana başlık açar — üst kodu olmaz. Kod bir kez kaydedildikten sonra DEĞİŞTİRİLEMEZ.'
+                  : 'Kod bir kez kaydedildikten sonra DEĞİŞTİRİLEMEZ — geçmiş kayıtlar bu değere bağlanır.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -225,6 +242,7 @@ export function HataKoduFormDialog({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {!bolum && (
             <div className={duzenleme ? 'sm:col-span-2' : 'sm:col-span-3'}>
               <Label className="text-xs text-slate-600">Üst kod</Label>
               <div className="mt-1">
@@ -241,6 +259,7 @@ export function HataKoduFormDialog({
                 </p>
               )}
             </div>
+            )}
 
             {duzenleme && (
               <div>

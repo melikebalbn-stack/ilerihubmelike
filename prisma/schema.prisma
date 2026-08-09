@@ -10541,27 +10541,41 @@ model RmaSatir {
 /// altlarının olmaması. Ayırt etmek için ek bayrak alanı KASITLI açılmadı
 /// (ust'u olmayan + altı olmayan kayıt = genel uygunsuzluk).
 ///
+/// 2026-08-09 GÜNCELLEME — `tip` alanı AÇILDI: yukarıdaki türetilmiş ayrım,
+/// bir bölümün ALT KODU OLMADAN var olabilmesini imkânsız kılıyordu. Yeni açılan
+/// bir bölüm, ilk alt kodu bağlanana kadar "genel uygunsuzluk" olarak görünüyordu.
+/// Artık tür kaydın kendi alanında: `tip = BOLUM` altı boş olsa da bölümdür.
+/// (ustKodId hiyerarşiyi taşımaya devam ediyor; `tip` onun yerine geçmez.)
+///
 /// TARİHÇE: hiyerarşi 2026-08-09'da `54a8e77` ile kaldırılmış, aynı gün geri alındı —
 /// istenen yalnız satır içi "Alt kod ekle" kısayolunun kaldırılmasıydı.
 ///
 /// kod DEĞİŞMEZ (873 geçmiş kayıt bu değere bağlı).
 /// Silme YOK — API tarafında tamamen kapalı (koşulsuz 409); kod pasifleştirilir.
+/// Kayıt türü — bölüm başlığı mı, hata kodu mu. Altı boş bir bölüm de BOLUM'dur.
+enum HataKoduTip {
+  BOLUM
+  KOD
+}
+
 model HataKodu {
-  id       String     @id @default(cuid())
-  kod      Int        @unique // 1..956 — DEĞİŞMEZ (873 geçmiş kayıt bu değere bağlı)
+  id       String      @id @default(cuid())
+  kod      Int         @unique // 1..956 — DEĞİŞMEZ (873 geçmiş kayıt bu değere bağlı)
   ad       String
+  tip      HataKoduTip @default(KOD)
   ustKodId String?
-  ust      HataKodu?  @relation("HataKoduAgac", fields: [ustKodId], references: [id], onDelete: Restrict)
-  altlar   HataKodu[] @relation("HataKoduAgac")
-  aktif    Boolean    @default(true)
+  ust      HataKodu?   @relation("HataKoduAgac", fields: [ustKodId], references: [id], onDelete: Restrict)
+  altlar   HataKodu[]  @relation("HataKoduAgac")
+  aktif    Boolean     @default(true)
   siraNo   Int // görüntüleme sırası (kod ile aynı olabilir)
-  aciklama String?    @db.Text
+  aciklama String?     @db.Text
 
   olusturmaTarihi  DateTime @default(now())
   guncellemeTarihi DateTime @updatedAt
 
   @@index([ustKodId])
   @@index([aktif])
+  @@index([tip])
 }
 
 model MeasurementReport {

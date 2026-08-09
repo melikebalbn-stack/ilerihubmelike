@@ -5,12 +5,17 @@
  * ama kod hiçbir yerde 2 seviye VARSAYMAZ — keyfi derinlik desteklenir.
  */
 import { prisma } from '@/lib/prisma'
+import type { HataKoduTip } from '@/generated/prisma'
 
-/** GET/POST/PATCH yanıtlarında kullanılan ortak alan seti. */
+/**
+ * GET/POST/PATCH yanıtlarında kullanılan ortak alan seti.
+ * Ağaç ve `?duz=1` aynı select'i kullanır → `tip` her iki yanıtta da döner.
+ */
 export const hataKoduSelect = {
   id: true,
   kod: true,
   ad: true,
+  tip: true,
   ustKodId: true,
   aktif: true,
   siraNo: true,
@@ -23,6 +28,7 @@ export type HataKoduDuz = {
   id: string
   kod: number
   ad: string
+  tip: HataKoduTip
   ustKodId: string | null
   aktif: boolean
   siraNo: number

@@ -5,6 +5,7 @@
  * (873 geçmiş kayıt kod değerine bağlı).
  */
 import { z } from 'zod'
+import { HataKoduTip } from '@/generated/prisma'
 
 /** Boş/whitespace metni null'a çevirir, dolu metni trim'ler. */
 const bosStr = z
@@ -26,6 +27,11 @@ export const hataKoduCreateInput = z.object({
     .min(1, 'Kod en az 1 olmalı')
     .max(9999, 'Kod en fazla 9999 olabilir'),
   ad,
+  /**
+   * Kayıt türü. Verilmezse KOD.
+   * BOLUM gönderilirse API `ustKodId`'yi ZORLA null yapar — bölümün üstü olmaz.
+   */
+  tip: z.nativeEnum(HataKoduTip).optional(),
   ustKodId: z.string().min(1).optional().nullable(),
   aktif: z.boolean().optional(),
   /** Verilmezse API `kod` değerini kullanır. */
@@ -38,6 +44,9 @@ export type HataKoduCreateInput = z.infer<typeof hataKoduCreateInput>
 /**
  * PATCH — kısmi güncelleme. Gönderilmeyen alan DEĞİŞMEZ.
  * `kod` kasıtlı olarak yok; istekte gelirse sessizce yok sayılır.
+ * `tip` de kasıtlı olarak YOK — tür değişimi hiyerarşiyi bozar (BOLUM→KOD olan
+ *   bir kaydın altları sahipsiz kalır), ayrı bir iş olarak ele alınacak.
+ *   Gövdede gelse bile zod bilinmeyen anahtarı soyar, DB'ye geçmez.
  * ustKodId: null göndermek kaydı köke taşır (başlık/genel yapar).
  */
 export const hataKoduUpdateInput = z

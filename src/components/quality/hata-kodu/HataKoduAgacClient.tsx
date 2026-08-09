@@ -7,7 +7,6 @@ import {
   Loader2,
   Pencil,
   Plus,
-  Search,
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -138,10 +137,10 @@ function KodSatiri({
  * bu kenar durum hiç oluşmuyor. Küme 126 satır — tamamı tek istekte gelir,
  * arama/filtre yeniden istek atmaz.
  *
- * Üç grup, veri modelindeki tanımla birebir:
- *   • Genel uygunsuzluklar → üstü YOK **ve** altı YOK
- *   • Bölüm başlıkları     → üstü YOK **ve** altı VAR (kendileri de seçilebilir kod)
- *   • Alt kodlar           → üstü VAR
+ * Gruplama `tip` alanından gelir (türetme DEĞİL):
+ *   • Bölümler     → tip = BOLUM (altı boş olsa da bölümdür)
+ *   • Hata Kodları → tip = KOD ve üstü YOK
+ *   • Alt kodlar   → üstü VAR; bölümün altında nested çizilir
  */
 export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
   const [rows, setRows] = useState<HataKoduRow[]>([])
@@ -155,6 +154,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
 
   const [formAcik, setFormAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<HataKoduRow | null>(null)
+  const [bolumModu, setBolumModu] = useState(false)
 
   const fetchList = useCallback(async () => {
     setLoading(true)
@@ -179,7 +179,14 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
 
   const sirala = (a: HataKoduRow, b: HataKoduRow) => a.siraNo - b.siraNo || a.kod - b.kod
 
-  const { genel, basliklar, altlarByUst } = useMemo(() => {
+  /**
+   * Gruplama artık `tip` alanından geliyor, "altı var mı" türetmesinden DEĞİL.
+   * Böylece altı boş bir bölüm de Bölümler listesinde durur — eskiden ilk alt
+   * kodu bağlanana kadar "Genel uygunsuzluklar"a düşüyordu.
+   *
+   * `altlarByUst` hiyerarşiyi taşımaya devam ediyor: bölümün altları oradan gelir.
+   */
+  const { genel, bolumler, altlarByUst } = useMemo(() => {
     const altlarByUst = new Map<string, HataKoduRow[]>()
     for (const r of rows) {
       if (!r.ustKodId) continue
@@ -189,10 +196,9 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
     }
     for (const list of altlarByUst.values()) list.sort(sirala)
 
-    const kokler = rows.filter((r) => !r.ustKodId)
     return {
-      genel: kokler.filter((r) => !altlarByUst.has(r.id)).sort(sirala),
-      basliklar: kokler.filter((r) => altlarByUst.has(r.id)).sort(sirala),
+      bolumler: rows.filter((r) => r.tip === 'BOLUM').sort(sirala),
+      genel: rows.filter((r) => r.tip === 'KOD' && r.ustKodId === null).sort(sirala),
       altlarByUst,
     }
   }, [rows])
@@ -218,7 +224,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
    * olarak gösterilir (pasifse zaten soluk çizilir) — aksi halde alt kod erişilemez olurdu.
    */
   const gorunurBasliklar = useMemo(() => {
-    return basliklar
+    return bolumler
       .map((b) => {
         const tumAltlar = altlarByUst.get(b.id) ?? []
         const baslikEsler = durumGecer(b) && aramaGecer(b)
@@ -228,7 +234,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
         return { baslik: b, altlar, baslikEsler }
       })
       .filter((g) => g.baslikEsler || g.altlar.length > 0)
-  }, [basliklar, altlarByUst, durumGecer, aramaGecer, aramaAktif])
+  }, [bolumler, altlarByUst, durumGecer, aramaGecer, aramaAktif])
 
   const gorunurGenel = useMemo(
     () => genel.filter((r) => durumGecer(r) && aramaGecer(r)),
@@ -272,24 +278,24 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
 
   function yeniAc() {
     setDuzenlenen(null)
+    setBolumModu(false)
+    setFormAcik(true)
+  }
+  /** Yeni ANA BAŞLIK — form üst kod alanı olmadan açılır, kayıt ustKodId = null gider. */
+  function yeniBolumAc() {
+    setDuzenlenen(null)
+    setBolumModu(true)
     setFormAcik(true)
   }
   function duzenleAc(r: HataKoduRow) {
     setDuzenlenen(r)
+    setBolumModu(false)
     setFormAcik(true)
   }
 
 
   return (
     <div className="space-y-4">
-      {canManage && (
-        <div className="flex items-center justify-end">
-          <Button onClick={yeniAc} className="bg-[#1B4F72] hover:bg-[#1B4F72]/90">
-            <Plus className="h-4 w-4 mr-2" /> Yeni Kod Ekle
-          </Button>
-        </div>
-      )}
-
       {/* Filtre bar */}
       <div className="rounded-md border bg-white p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -343,47 +349,29 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
         <div className="rounded-md border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">
           Hata: {err}
         </div>
-      ) : toplamGorunur === 0 ? (
-        <div className="rounded-md border border-dashed bg-slate-50 p-12 text-center">
-          <Search className="h-10 w-10 mx-auto text-slate-300 mb-2" />
-          <p className="text-slate-600">
-            {aramaAktif || durum !== 'aktif' ? 'Filtrelere uyan kod yok' : 'Henüz kod yok'}
-          </p>
-        </div>
       ) : (
+        /* İki kutu HER ZAMAN render edilir (boşken de): ekleme butonları kutu
+           başlığında durduğu için, kutu gizlenirse ilk bölümü/kodu eklemek
+           imkânsız olurdu. Boş kutu kendi satırında durumunu yazar. */
         <div className="space-y-4">
-          {gorunurGenel.length > 0 && (
-            <div className="rounded-md border bg-white overflow-hidden">
-              <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
-                <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Genel uygunsuzluklar
-                </h2>
-                <p className="text-[11px] text-slate-500 mt-0.5">Bölüme bağlı olmayan kodlar</p>
-              </div>
-              {gorunurGenel.map((r) => (
-                <KodSatiri
-                  key={r.id}
-                  r={r}
-                  seviye={0}
-                  canManage={canManage}
-                  acik={false}
-                  gecisBekliyor={geciyor === r.id}
-                  onKatla={() => {}}
-                  onDuzenle={() => duzenleAc(r)}
-                  onAktifDegistir={(v) => aktifDegistir(r, v)}
-                />
-              ))}
+          {/* ── Bölümler ── */}
+          <div className="rounded-md border bg-white overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+              <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                Bölümler
+              </h2>
+              {canManage && (
+                <Button variant="outline" size="sm" onClick={yeniBolumAc} className="h-7 text-xs">
+                  <Plus className="h-3 w-3 mr-1" /> Yeni Bölüm Ekle
+                </Button>
+              )}
             </div>
-          )}
-
-          {gorunurBasliklar.length > 0 && (
-            <div className="rounded-md border bg-white overflow-hidden">
-              <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
-                <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Bölümler
-                </h2>
-              </div>
-              {gorunurBasliklar.map(({ baslik, altlar }) => (
+            {gorunurBasliklar.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-slate-500">
+                {aramaAktif || durum !== 'aktif' ? 'Filtrelere uyan bölüm yok' : 'Henüz bölüm yok'}
+              </p>
+            ) : (
+              gorunurBasliklar.map(({ baslik, altlar }) => (
                 <div key={baslik.id}>
                   <KodSatiri
                     r={baslik}
@@ -411,9 +399,49 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
                       />
                     ))}
                 </div>
-              ))}
+              ))
+            )}
+          </div>
+
+          {/* ── Hata Kodları (bölüme bağlı olmayan KOD satırları) ── */}
+          <div className="rounded-md border bg-white overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  Hata Kodları
+                </h2>
+                <p className="text-[11px] text-slate-500 mt-0.5">Bölüme bağlı olmayan kodlar</p>
+              </div>
+              {canManage && (
+                <Button
+                  size="sm"
+                  onClick={yeniAc}
+                  className="h-7 text-xs bg-[#1B4F72] hover:bg-[#1B4F72]/90 shrink-0"
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Yeni Kod Ekle
+                </Button>
+              )}
             </div>
-          )}
+            {gorunurGenel.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-slate-500">
+                {aramaAktif || durum !== 'aktif' ? 'Filtrelere uyan kod yok' : 'Henüz kod yok'}
+              </p>
+            ) : (
+              gorunurGenel.map((r) => (
+                <KodSatiri
+                  key={r.id}
+                  r={r}
+                  seviye={0}
+                  canManage={canManage}
+                  acik={false}
+                  gecisBekliyor={geciyor === r.id}
+                  onKatla={() => {}}
+                  onDuzenle={() => duzenleAc(r)}
+                  onAktifDegistir={(v) => aktifDegistir(r, v)}
+                />
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -423,6 +451,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
           onOpenChange={setFormAcik}
           kayit={duzenlenen}
           tumKayitlar={rows}
+          bolumModu={bolumModu}
           onKaydedildi={fetchList}
         />
       )}

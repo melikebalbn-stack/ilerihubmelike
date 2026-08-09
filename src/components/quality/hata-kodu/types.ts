@@ -5,10 +5,16 @@
  * tek dosyada tutulsa import döngüsü oluşurdu. `src/lib/quality/hata-kodu-tree.ts`
  * KULLANILAMAZ — o dosya prisma import ediyor, istemciye sızar.
  */
+// `import type` ŞART: değer olarak import edilirse generated client istemci
+// paketine sızar. Tip silinir, karşılaştırmalar string literal ile yapılır.
+import type { HataKoduTip } from '@/generated/prisma'
+
 export type HataKoduRow = {
   id: string
   kod: number
   ad: string
+  /** BOLUM | KOD — kaydın türü artık veriden gelir, altı olup olmamasından türetilmez. */
+  tip: HataKoduTip
   ustKodId: string | null
   aktif: boolean
   siraNo: number

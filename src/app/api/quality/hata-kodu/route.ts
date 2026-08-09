@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/auth/require-session'
 import { canManageHataKodu } from '@/lib/quality/hata-kodu-access'
 import { hataKoduCreateInput } from '@/lib/quality/hata-kodu-validators'
 import { agacKur, hataKoduSelect } from '@/lib/quality/hata-kodu-tree'
+import { HataKoduTip } from '@/generated/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,8 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/quality/hata-kodu — yeni kod. Auth: canManageHataKodu (quality.hatakodu.manage).
  * siraNo verilmezse kod değeri kullanılır.
+ * tip verilmezse KOD. tip=BOLUM ise ustKodId zorla null (bölümün üstü olmaz);
+ * tip=KOD'da ustKodId davranışı değişmedi.
  */
 export async function POST(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -59,9 +62,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `${d.kod} kodu zaten kayıtlı` }, { status: 409 })
   }
 
+  const tip = d.tip ?? HataKoduTip.KOD
+  // BOLUM'ün üstü OLMAZ: gövdede ustKodId gelse bile zorla null'lanır (sessizce,
+  // hata değil — istemci bölüm modunda o alanı zaten göstermiyor).
+  const ustKodId = tip === HataKoduTip.BOLUM ? null : (d.ustKodId ?? null)
+
   // Üst kod var mı? (yeni kayıt henüz yok → döngü imkânsız, yalnız varlık kontrolü)
-  if (d.ustKodId) {
-    const ust = await prisma.hataKodu.findUnique({ where: { id: d.ustKodId }, select: { id: true } })
+  if (ustKodId) {
+    const ust = await prisma.hataKodu.findUnique({ where: { id: ustKodId }, select: { id: true } })
     if (!ust) return NextResponse.json({ error: 'Üst kod bulunamadı' }, { status: 400 })
   }
 
@@ -69,7 +77,8 @@ export async function POST(request: NextRequest) {
     data: {
       kod: d.kod,
       ad: d.ad,
-      ustKodId: d.ustKodId ?? null,
+      tip,
+      ustKodId,
       aktif: d.aktif ?? true,
       siraNo: d.siraNo ?? d.kod,
       aciklama: d.aciklama ?? null,

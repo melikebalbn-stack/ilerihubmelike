@@ -10533,6 +10533,33 @@ model RmaSatir {
   @@index([rmaKayitId])
 }
 
+/// Kalite hata kodu ağacı (KAL-KYT-15 Bölüm 1).
+///
+/// Bölüm başlıkları AYRI tabloda DEĞİL — onlar da HataKodu kaydıdır (ustKodId = null)
+/// ve SEÇİLEBİLİR: 873 geçmiş kayıt doğrudan başlık kodlarını kullanıyor.
+/// 1..9 arası genel uygunsuzlukların da ustKodId'si null; başlıktan farkları
+/// altlarının olmaması. Ayırt etmek için ek bayrak alanı KASITLI açılmadı
+/// (ust'u olmayan + altı olmayan kayıt = genel uygunsuzluk).
+///
+/// Silme YOK: kullanımdaki kod silinmez, yalnız aktif = false yapılır.
+model HataKodu {
+  id       String     @id @default(cuid())
+  kod      Int        @unique // 1..956 — DEĞİŞMEZ (873 geçmiş kayıt bu değere bağlı)
+  ad       String
+  ustKodId String?
+  ust      HataKodu?  @relation("HataKoduAgac", fields: [ustKodId], references: [id], onDelete: Restrict)
+  altlar   HataKodu[] @relation("HataKoduAgac")
+  aktif    Boolean    @default(true)
+  siraNo   Int // görüntüleme sırası (kod ile aynı olabilir)
+  aciklama String?    @db.Text
+
+  olusturmaTarihi  DateTime @default(now())
+  guncellemeTarihi DateTime @updatedAt
+
+  @@index([ustKodId])
+  @@index([aktif])
+}
+
 model MeasurementReport {
   id         String              @id @default(cuid())
   reportNo   String              @unique

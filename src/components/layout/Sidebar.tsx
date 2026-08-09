@@ -68,6 +68,7 @@ import {
   ArrowRightLeft,
   UserMinus,
   Shapes,
+  ListTree,
   Search,
   Pin,
   PinOff,
@@ -247,6 +248,11 @@ const kaliteMenuItems = [
   { name: "Ölçüm Raporları", icon: ClipboardCheck, href: "/kalite/raporlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Semboller", icon: Shapes, href: "/kalite/semboller", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
 ]
+
+// Hata Kodları (KAL-KYT-15) — "Kalite" grubunun sonuna, canSeeHataKodu ile eklenir.
+// kaliteMenuItems içine KONULMADI: o liste filterItems (roles) ile süzülüyor,
+// bu kalemin koşulu ise canAccessKalite VEYA quality.hatakodu.manage.
+const hataKoduMenuItem = { name: "Hata Kodları", icon: ListTree, href: "/kalite/hata-kodlari", roles: [] as string[] }
 
 // Denetimler alt menüsü (ISO 27001 dahil)
 // Kalite Sistem Departmanı tüm ISO 27001 modülünü görebilir (Sızma Testleri hariç)
@@ -513,7 +519,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // QDMS öğeleri artık filterItems (roles) ile değil, canSeeQdms ile gate'lenir
   // (koşul layout/API guard'ıyla birebir). roles alanı vestigial.
   const filteredQdmsItems = canSeeQdms ? qdmsMenuItems : []
-  const filteredKaliteItems = filterItems(kaliteMenuItems)
+  // Hata Kodları — kalite AYAR ekranı. Görünürlük canSeeQdms ile aynı desende
+  // gate'lenir (roles listesi canAccessKalite'nin dept/ou substring kolunu ifade
+  // edemiyor). RMA'dan FARKLI: RMA menüde herkese açıktı, bu değil.
+  const canSeeHataKodu =
+    canAccessKalite(userRole, userDepartment, userOu) ||
+    userPermissions.includes('quality.hatakodu.manage')
+  const filteredKaliteItems = [
+    ...filterItems(kaliteMenuItems),
+    ...(canSeeHataKodu ? [hataKoduMenuItem] : []),
+  ]
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   // İş Analizi koşullu öğeler — SUNUCU bayrağı (iaFlags) ile; client'ta yetki hesaplanmaz.

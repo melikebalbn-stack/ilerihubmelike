@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -16,31 +16,47 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { UstKodSecici } from './UstKodSecici'
 import type { HataKoduFormState, HataKoduRow } from './types'
-
-const UST_YOK = '__yok__'
 
 type Props = {
   open: boolean
   onOpenChange: (v: boolean) => void
   /** null → yeni kayıt; dolu → düzenleme */
   kayit: HataKoduRow | null
-  /** Üst kod seçeneği olarak sunulacak bölüm başlıkları */
-  basliklar: HataKoduRow[]
-  /** Mükerrer kod uyarısını anlık vermek için mevcut tüm kodlar */
-  mevcutKodlar: number[]
+  /** Tüm kayıtlar — üst kod adayları ve mükerrer kontrolü buradan türetilir */
+  tumKayitlar: HataKoduRow[]
+  /** Yeni kayıt açılırken ön-seçili üst kod ("Alt kod ekle" kısayolu) */
+  ustKodOn?: string | null
   onKaydedildi: () => void
 }
 
-function bosForm(): HataKoduFormState {
-  return { kod: '', ad: '', ustKodId: '', siraNo: '', aciklama: '', aktif: true }
+function bosForm(ustKodId = ''): HataKoduFormState {
+  return { kod: '', ad: '', ustKodId, siraNo: '', aciklama: '', aktif: true }
+}
+
+/**
+ * `kokId`'nin alt ağacındaki tüm id'ler (kendisi HARİÇ).
+ * Üst kod listesinden çıkarmak için — bir kayıt kendi altına bağlanamaz.
+ * API'de de döngü kontrolü var; bu, kullanıcıya en baştan göstermemek için.
+ */
+function altAgacIdleri(kokId: string, rows: HataKoduRow[]): Set<string> {
+  const cocuklar = new Map<string, string[]>()
+  for (const r of rows) {
+    if (!r.ustKodId) continue
+    const l = cocuklar.get(r.ustKodId)
+    if (l) l.push(r.id)
+    else cocuklar.set(r.ustKodId, [r.id])
+  }
+  const sonuc = new Set<string>()
+  const kuyruk = [...(cocuklar.get(kokId) ?? [])]
+  while (kuyruk.length > 0) {
+    const id = kuyruk.pop()!
+    if (sonuc.has(id)) continue // bozuk veriye karşı sonsuz döngü koruması
+    sonuc.add(id)
+    kuyruk.push(...(cocuklar.get(id) ?? []))
+  }
+  return sonuc
 }
 
 /**
@@ -55,12 +71,12 @@ export function HataKoduFormDialog({
   open,
   onOpenChange,
   kayit,
-  basliklar,
-  mevcutKodlar,
+  tumKayitlar,
+  ustKodOn,
   onKaydedildi,
 }: Props) {
   const duzenleme = kayit !== null
-  const [form, setForm] = useState<HataKoduFormState>(bosForm)
+  const [form, setForm] = useState<HataKoduFormState>(() => bosForm())
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -75,17 +91,31 @@ export function HataKoduFormDialog({
             aciklama: kayit.aciklama ?? '',
             aktif: kayit.aktif,
           }
-        : bosForm(),
+        : // Yeni kayıtta varsayılan BOŞ (ana başlık); yalnız "Alt kod ekle"
+          // kısayolundan gelindiyse o kayıt ön-seçili olur.
+          bosForm(ustKodOn ?? ''),
     )
-  }, [open, kayit])
+  }, [open, kayit, ustKodOn])
 
   // Mükerrer kod uyarısı — API 409'unu beklemeden, yazarken.
   const kodSayi = Number.parseInt(form.kod, 10)
   const kodGecerli = Number.isInteger(kodSayi) && kodSayi >= 1 && kodSayi <= 9999
-  const mukerrer = !duzenleme && kodGecerli && mevcutKodlar.includes(kodSayi)
+  const mukerrer =
+    !duzenleme && kodGecerli && tumKayitlar.some((r) => r.kod === kodSayi)
 
-  // Kendi kendinin üstü olamaz — API de reddeder, listede hiç göstermiyoruz.
-  const ustSecenekleri = basliklar.filter((b) => b.id !== kayit?.id)
+  /**
+   * Üst kod adayları: ustKodId'si NULL olan TÜM kayıtlar — yalnız "altı olanlar"
+   * değil. Aksi halde yeni açılan bir ana başlık (henüz altı yok) listede
+   * çıkmaz ve altına kod bağlanamazdı; bölüm hiç açılamazdı.
+   * Kendisi ve kendi alt ağacı çıkarılır (döngü koruması).
+   */
+  const ustSecenekleri = useMemo(() => {
+    const haric = kayit ? altAgacIdleri(kayit.id, tumKayitlar) : new Set<string>()
+    if (kayit) haric.add(kayit.id)
+    return tumKayitlar
+      .filter((r) => r.ustKodId === null && !haric.has(r.id))
+      .sort((a, b) => a.siraNo - b.siraNo || a.kod - b.kod)
+  }, [kayit, tumKayitlar])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -201,24 +231,19 @@ export function HataKoduFormDialog({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className={duzenleme ? 'sm:col-span-2' : 'sm:col-span-3'}>
               <Label className="text-xs text-slate-600">Üst kod</Label>
-              <Select
-                value={form.ustKodId === '' ? UST_YOK : form.ustKodId}
-                onValueChange={(v) =>
-                  setForm((f) => ({ ...f, ustKodId: v === UST_YOK ? '' : v }))
-                }
-              >
-                <SelectTrigger className="mt-1 h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={UST_YOK}>Üst yok (bölüm başlığı / genel)</SelectItem>
-                  {ustSecenekleri.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.kod} — {b.ad}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="mt-1">
+                <UstKodSecici
+                  value={form.ustKodId === '' ? null : form.ustKodId}
+                  onChange={(id) => setForm((f) => ({ ...f, ustKodId: id ?? '' }))}
+                  secenekler={ustSecenekleri}
+                />
+              </div>
+              {form.ustKodId === '' && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Üst kod seçilmezse bu kayıt ana başlık olur. Altına kod eklendiğinde ağaçta
+                  bölüm olarak görünür.
+                </p>
+              )}
             </div>
 
             {duzenleme && (

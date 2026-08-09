@@ -1,7 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  CornerDownRight,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -44,6 +54,8 @@ type SatirProps = {
   onDuzenle: () => void
   onSil: () => void
   onAktifDegistir: (yeni: boolean) => void
+  /** Yalnız kök satırlarda (üst kod olabilecek kayıtlar) verilir. */
+  onAltKodEkle?: () => void
 }
 
 /**
@@ -64,6 +76,7 @@ function KodSatiri({
   onDuzenle,
   onSil,
   onAktifDegistir,
+  onAltKodEkle,
 }: SatirProps) {
   const baslik = altSayisi !== undefined
   return (
@@ -118,6 +131,18 @@ function KodSatiri({
 
       {canManage && (
         <div className="shrink-0 inline-flex items-center gap-1">
+          {onAltKodEkle && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onAltKodEkle}
+              title="Bu kodun altına yeni kod ekle"
+              className="text-slate-500 hover:text-[#1B4F72]"
+            >
+              <CornerDownRight className="h-4 w-4 mr-1" />
+              <span className="text-xs">Alt kod ekle</span>
+            </Button>
+          )}
           <Switch
             checked={r.aktif}
             disabled={gecisBekliyor}
@@ -169,6 +194,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
 
   const [formAcik, setFormAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<HataKoduRow | null>(null)
+  const [ustKodOn, setUstKodOn] = useState<string | null>(null)
   const [silinecek, setSilinecek] = useState<HataKoduRow | null>(null)
 
   const fetchList = useCallback(async () => {
@@ -304,10 +330,18 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
 
   function yeniAc() {
     setDuzenlenen(null)
+    setUstKodOn(null)
+    setFormAcik(true)
+  }
+  /** "Alt kod ekle" kısayolu — yeni kayıt, üst kod o satır olarak ön-seçili. */
+  function altKodEkleAc(ust: HataKoduRow) {
+    setDuzenlenen(null)
+    setUstKodOn(ust.id)
     setFormAcik(true)
   }
   function duzenleAc(r: HataKoduRow) {
     setDuzenlenen(r)
+    setUstKodOn(null)
     setFormAcik(true)
   }
 
@@ -390,6 +424,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
                 <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
                   Genel uygunsuzluklar
                 </h2>
+                <p className="text-[11px] text-slate-500 mt-0.5">Bölüme bağlı olmayan kodlar</p>
               </div>
               {gorunurGenel.map((r) => (
                 <KodSatiri
@@ -403,6 +438,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
                   onDuzenle={() => duzenleAc(r)}
                   onSil={() => setSilinecek(r)}
                   onAktifDegistir={(v) => aktifDegistir(r, v)}
+                  onAltKodEkle={() => altKodEkleAc(r)}
                 />
               ))}
             </div>
@@ -428,6 +464,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
                     onDuzenle={() => duzenleAc(baslik)}
                     onSil={() => setSilinecek(baslik)}
                     onAktifDegistir={(v) => aktifDegistir(baslik, v)}
+                    onAltKodEkle={() => altKodEkleAc(baslik)}
                   />
                   {acikMi(baslik.id) &&
                     altlar.map((c) => (
@@ -456,8 +493,8 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
           open={formAcik}
           onOpenChange={setFormAcik}
           kayit={duzenlenen}
-          basliklar={basliklar}
-          mevcutKodlar={rows.map((r) => r.kod)}
+          tumKayitlar={rows}
+          ustKodOn={ustKodOn}
           onKaydedildi={fetchList}
         />
       )}

@@ -288,3 +288,70 @@ export async function dispatchTicketAssigned(
     console.error('[ticket-assign-notify] push failed:', err)
   }
 }
+
+// ════════════════════════════════════════════════════════════
+// PUBLIC: HAVUZ — TAKIMA DÜŞEN TICKET BİLDİRİMİ (Faz 4)
+// ════════════════════════════════════════════════════════════
+
+/**
+ * Ticket bir TAKIMA düştüğünde (havuz: assignedTeamId dolu, assignedTo boş)
+ * takımın TÜM aktif üyelerine bildirim gönderir.
+ *
+ *   - In-app: prisma.notification.create (üye başına)
+ *   - Push:   sendPushToUser (abonelik yoksa 0 döner)
+ *   - Mail YOK (dispatchTicketAssigned ile aynı desen)
+ *
+ * KURALLAR:
+ *   - `excludeEmail` (ticket'ı açan) üyeyse ONA GİTMEZ — kendi açtığı talebi
+ *     kendine haber vermenin anlamı yok.
+ *   - E-postası User tablosunda bulunmayan veya pasif olan üye SESSİZCE atlanır.
+ *   - Her üye kendi try/catch'inde: birinin push'u patlarsa diğerleri gider.
+ *   - Fonksiyon throw ETMEZ → caller (ticket create) bildirimden dolayı bozulmaz.
+ */
+export async function dispatchTicketToTeam(
+  ticket: TicketAssignedInfo,
+  teamName: string,
+  memberEmails: string[],
+  excludeEmail: string | null,
+): Promise<void> {
+  const haric = (excludeEmail ?? '').toLowerCase().trim()
+  const alicilar = memberEmails.map((e) => e.toLowerCase().trim()).filter((e) => e !== '' && e !== haric)
+  if (alicilar.length === 0) return
+
+  let users: { id: string }[] = []
+  try {
+    users = await prisma.user.findMany({
+      where: { email: { in: alicilar }, isActive: true },
+      select: { id: true },
+    })
+  } catch (err) {
+    console.error('[ticket-team-notify] üye çözümleme başarısız:', err)
+    return
+  }
+  if (users.length === 0) return
+
+  const link = `/it-support?ticket=${ticket.ticketNumber}`
+  const title = `Takımınıza yeni ticket: ${ticket.ticketNumber}`
+  const message = `${teamName} havuzunda: ${ticket.subject}`
+
+  for (const u of users) {
+    try {
+      await prisma.notification.create({
+        data: { userId: u.id, title, message, type: 'INFO' as const, link },
+      })
+    } catch (err) {
+      console.error('[ticket-team-notify] in-app failed:', err)
+    }
+    try {
+      await sendPushToUser(prisma, u.id, {
+        title,
+        body: ticket.subject,
+        url: link,
+        tag: `ticket-${ticket.id}`,
+        data: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber },
+      })
+    } catch (err) {
+      console.error('[ticket-team-notify] push failed:', err)
+    }
+  }
+}

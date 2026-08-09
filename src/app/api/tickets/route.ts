@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { dispatchTicketCreated } from '@/lib/ticket-notifications'
+import { dispatchTicketCreated, dispatchTicketAssigned, dispatchTicketToTeam } from '@/lib/ticket-notifications'
+import { parseMembers } from '@/lib/tickets/team-members'
 import { requireUser } from '@/lib/auth/require-user'
 import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
 
@@ -258,6 +259,51 @@ export async function POST(request: NextRequest) {
         performedByName: user.name ?? user.email,
       }
     })
+
+    // ── Faz 4: CREATE'te ATAMA bildirimi ────────────────────────
+    // Boşluk şuydu: dispatchTicketAssigned YALNIZ sonradan atama yapılan PUT
+    // yolunda çağrılıyordu. Kategoriden gelen OTOMATİK atama (kişi) ve HAVUZA
+    // düşme (takım) hiç kimseye haber vermiyordu.
+    //
+    // İki dal birbirini dışlar (create'teki öncelik kuralı: takım > kişi):
+    //   assignedTo dolu  → kişiye atandı  → tek kişilik dispatchTicketAssigned
+    //   assignedTeamId dolu & assignedTo boş → havuz → tüm üyelere
+    //
+    // Best-effort: tüm blok try/catch içinde, bildirim ticket'ı bozmaz.
+    // Ticket zaten oluştu; buradaki hata yalnız loglanır.
+    try {
+      if (ticket.assignedTo) {
+        // Kendi kendine atama → bildirim yok (PUT yolundaki kuralla aynı).
+        if (ticket.assignedTo !== user.email) {
+          const assignee = await prisma.user.findUnique({
+            where: { email: ticket.assignedTo },
+            select: { id: true },
+          })
+          if (assignee) {
+            await dispatchTicketAssigned(
+              { id: ticket.id, ticketNumber: ticket.ticketNumber, subject: ticket.subject },
+              assignee.id,
+              user.name ?? user.email,
+            )
+          }
+        }
+      } else if (ticket.assignedTeamId) {
+        const team = await prisma.ticketTeam.findUnique({
+          where: { id: ticket.assignedTeamId },
+          select: { name: true, members: true },
+        })
+        if (team) {
+          await dispatchTicketToTeam(
+            { id: ticket.id, ticketNumber: ticket.ticketNumber, subject: ticket.subject },
+            team.name,
+            parseMembers(team.members).map((m) => m.email),
+            user.email, // açan kişi üyeyse ona gitmesin
+          )
+        }
+      }
+    } catch (err) {
+      console.error('[ticket-create-assign-notify] dispatch failed:', err)
+    }
 
     // ── Bildirim dispatcher (PR-TKT-NTF-1A) ─────────────────────
     // Fire-and-forget: response'u bloklamaz. Hata olursa loglanır.

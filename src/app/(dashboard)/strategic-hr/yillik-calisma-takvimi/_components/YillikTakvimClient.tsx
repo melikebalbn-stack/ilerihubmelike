@@ -1,7 +1,8 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { CalendarX2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { CalendarX2, ChevronLeft, ChevronRight, Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AY_ISIMLERI, DURUM_META } from './constants'
@@ -9,13 +10,19 @@ import { AylikTakvim } from './AylikTakvim'
 import { YillikTakvimListView } from './YillikTakvimListView'
 import { BOS_FILTRE, YillikTakvimFilterBar, type YillikTakvimFilters } from './YillikTakvimFilterBar'
 import { getAnaSorumluAdi, getKayitTarihi, type YillikTakvimKaydiRow } from './types'
+import { YillikTakvimCreateDialog } from './YillikTakvimCreateDialog'
 
 export function YillikTakvimClient() {
+  const { data: session } = useSession()
   const [yil, setYil] = useState(new Date().getFullYear())
   const [rows, setRows] = useState<YillikTakvimKaydiRow[]>([])
   const [filters, setFilters] = useState<YillikTakvimFilters>(BOS_FILTRE)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [createOpen, setCreateOpen] = useState(false)
+  const permissions = session?.user?.permissions ?? []
+  const canCreate = permissions.includes('yilliktakvim.create') || permissions.includes('yilliktakvim.admin')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -29,7 +36,7 @@ export function YillikTakvimClient() {
       .catch(reason => { if (reason.name !== 'AbortError') setError(reason.message || 'Kayıtlar alınamadı') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [yil])
+  }, [yil, refreshKey])
 
   const filtered = useMemo(() => rows.filter(row =>
     (!filters.anaKonu || row.anaKonu === filters.anaKonu) &&
@@ -47,10 +54,14 @@ export function YillikTakvimClient() {
   }, [filtered])
 
   return <div className="space-y-4">
-    <div className="flex items-center justify-center gap-3">
-      <Button variant="outline" size="icon" onClick={() => setYil(value => value - 1)} aria-label="Önceki yıl"><ChevronLeft className="h-4 w-4" /></Button>
-      <span className="min-w-20 text-center text-xl font-bold text-[#1B4F72]">{yil}</span>
-      <Button variant="outline" size="icon" onClick={() => setYil(value => value + 1)} aria-label="Sonraki yıl"><ChevronRight className="h-4 w-4" /></Button>
+    <div className="grid grid-cols-3 items-center gap-3">
+      <div />
+      <div className="flex items-center justify-center gap-3">
+        <Button variant="outline" size="icon" onClick={() => setYil(value => value - 1)} aria-label="Önceki yıl"><ChevronLeft className="h-4 w-4" /></Button>
+        <span className="min-w-20 text-center text-xl font-bold text-[#1B4F72]">{yil}</span>
+        <Button variant="outline" size="icon" onClick={() => setYil(value => value + 1)} aria-label="Sonraki yıl"><ChevronRight className="h-4 w-4" /></Button>
+      </div>
+      <div className="flex justify-end">{canCreate && <Button type="button" onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" />Yeni Kayıt</Button>}</div>
     </div>
     <YillikTakvimFilterBar value={filters} anaKonular={anaKonular} sorumlular={sorumlular} onChange={setFilters} />
     {loading && <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}
@@ -76,5 +87,6 @@ export function YillikTakvimClient() {
       <TabsContent value="liste" className="mt-4"><YillikTakvimListView rows={filtered} /></TabsContent>
       <TabsContent value="aylik" className="mt-4"><AylikTakvim rows={filtered} yil={yil} /></TabsContent>
     </Tabs>}
+    <YillikTakvimCreateDialog open={createOpen} onOpenChange={setCreateOpen} yil={yil} onCreated={() => setRefreshKey(value => value + 1)} />
   </div>
 }

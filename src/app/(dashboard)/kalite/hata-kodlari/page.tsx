@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { Info, ListTree } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
 import { canManageHataKodu } from '@/lib/quality/hata-kodu-access'
-import { HataKoduListeClient } from '@/components/quality/hata-kodu/HataKoduListeClient'
+import { HataKoduAgacClient } from '@/components/quality/hata-kodu/HataKoduAgacClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +28,7 @@ export default async function HataKodlariPage() {
           Hata Kodları
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Kalite hata kodu listesi (KAL-KYT-15 Bölüm 1).
+          Kalite hata kodu ağacı (KAL-KYT-15 Bölüm 1) — bölüm başlıkları ve alt kodlar.
         </p>
       </div>
 
@@ -40,7 +40,7 @@ export default async function HataKodlariPage() {
         </span>
       </div>
 
-      <HataKoduListeClient canManage={canManage} />
+      <HataKoduAgacClient canManage={canManage} />
     </div>
   )
 }

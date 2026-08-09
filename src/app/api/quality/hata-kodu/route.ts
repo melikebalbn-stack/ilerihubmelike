@@ -3,29 +3,34 @@ import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { canManageHataKodu } from '@/lib/quality/hata-kodu-access'
 import { hataKoduCreateInput } from '@/lib/quality/hata-kodu-validators'
+import { agacKur, hataKoduSelect } from '@/lib/quality/hata-kodu-tree'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * GET /api/quality/hata-kodu — DÜZ hata kodu listesi. Auth: oturum (herkes okur).
+ * GET /api/quality/hata-kodu — hata kodu listesi. Auth: oturum (herkes okur).
  *
+ * ?duz=1   → düz liste (varsayılan: ağaç)
  * ?aktif=1 → yalnız aktif kodlar (varsayılan: hepsi)
  *
- * Hiyerarşi YOK: ağaç yanıtı ve `?duz` parametresi 2026-08-09'da kaldırıldı.
- * Sıralama kod artan. Sayfalama YOK — küme küçük (~126 satır).
+ * Sıralama siraNo, eşitlikte kod. Sayfalama YOK — küme küçük (~126 satır) ve
+ * ağaç kurmak için tamamı gerekli.
  */
 export async function GET(request: NextRequest) {
   const { error } = await requireSession()
   if (error) return error
 
-  const yalnizAktif = request.nextUrl.searchParams.get('aktif') === '1'
+  const sp = request.nextUrl.searchParams
+  const yalnizAktif = sp.get('aktif') === '1'
+  const duz = sp.get('duz') === '1'
 
-  const items = await prisma.hataKodu.findMany({
+  const rows = await prisma.hataKodu.findMany({
     where: yalnizAktif ? { aktif: true } : undefined,
-    orderBy: { kod: 'asc' },
+    orderBy: [{ siraNo: 'asc' }, { kod: 'asc' }],
+    select: hataKoduSelect,
   })
 
-  return NextResponse.json({ items, total: items.length })
+  return NextResponse.json({ items: duz ? rows : agacKur(rows), total: rows.length })
 }
 
 /**
@@ -54,14 +59,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `${d.kod} kodu zaten kayıtlı` }, { status: 409 })
   }
 
+  // Üst kod var mı? (yeni kayıt henüz yok → döngü imkânsız, yalnız varlık kontrolü)
+  if (d.ustKodId) {
+    const ust = await prisma.hataKodu.findUnique({ where: { id: d.ustKodId }, select: { id: true } })
+    if (!ust) return NextResponse.json({ error: 'Üst kod bulunamadı' }, { status: 400 })
+  }
+
   const created = await prisma.hataKodu.create({
     data: {
       kod: d.kod,
       ad: d.ad,
+      ustKodId: d.ustKodId ?? null,
       aktif: d.aktif ?? true,
       siraNo: d.siraNo ?? d.kod,
       aciklama: d.aciklama ?? null,
     },
+    select: hataKoduSelect,
   })
 
   return NextResponse.json(created, { status: 201 })

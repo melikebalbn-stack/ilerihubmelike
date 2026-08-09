@@ -13,13 +13,16 @@ interface ITTicketSettingsPanelProps {
     description: string
     color: string
     defaultPriority: string
+    defaultTeamId: string
   }
-  setNewTicketCategory: (cat: { name: string; description: string; color: string; defaultPriority: string }) => void
+  setNewTicketCategory: (cat: { name: string; description: string; color: string; defaultPriority: string; defaultTeamId: string }) => void
   addingTicketCategory: boolean
   ticketCategorySearch: string
   setTicketCategorySearch: (search: string) => void
   onAddCategory: () => void
   onDeleteCategory: (id: string) => void
+  /** Mevcut kategoriyi bir takıma bağla / bağı kaldır (PUT ?id=) */
+  onUpdateCategoryTeam: (id: string, teamId: string | null) => void
 
   // ── IT Takımları (Faz 1: takım verisi + CRUD; ticket akışı Faz 2-4) ──
   ticketTeams: TicketTeam[]
@@ -57,6 +60,7 @@ export function ITTicketSettingsPanel({
   setTicketCategorySearch,
   onAddCategory,
   onDeleteCategory,
+  onUpdateCategoryTeam,
   ticketTeams,
   assignableUsers,
   newTicketTeam,
@@ -112,6 +116,18 @@ export function ITTicketSettingsPanel({
                 <option value="TICKET_HIGH">Yüksek</option>
                 <option value="TICKET_CRITICAL">Kritik</option>
               </select>
+              {/* Havuz: kategori bir takıma bağlanırsa ticket o takıma düşer */}
+              <select
+                value={newTicketCategory.defaultTeamId}
+                onChange={(e) => setNewTicketCategory({ ...newTicketCategory, defaultTeamId: e.target.value })}
+                className="h-9 px-3 rounded-md border bg-background text-sm"
+                title="Bu kategoride açılan ticket hangi takıma düşsün?"
+              >
+                <option value="">Takım yok</option>
+                {ticketTeams.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
               <Button
                 onClick={onAddCategory}
                 disabled={addingTicketCategory || !newTicketCategory.name}
@@ -166,14 +182,29 @@ export function ITTicketSettingsPanel({
                         </span>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onDeleteCategory(cat.id)}
-                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-100"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Mevcut kategoriyi takıma bağla — asıl ihtiyaç bu:
+                          kategoriler zaten var, takım bağı sonradan kuruluyor. */}
+                      <select
+                        value={cat.defaultTeamId ?? ""}
+                        onChange={(e) => onUpdateCategoryTeam(cat.id, e.target.value || null)}
+                        className="h-8 px-2 rounded-md border bg-background text-xs max-w-[11rem]"
+                        title="Bu kategoride açılan ticket hangi takıma düşsün?"
+                      >
+                        <option value="">Takım yok</option>
+                        {ticketTeams.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDeleteCategory(cat.id)}
+                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-100"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 )
               })}

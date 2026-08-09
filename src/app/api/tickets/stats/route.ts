@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
 
 // GET - Ticket istatistikleri
 export async function GET(request: NextRequest) {
@@ -20,10 +21,14 @@ export async function GET(request: NextRequest) {
     // Temel filtre
     const baseWhere: Record<string, unknown> = { isActive: true }
 
+    // HAVUZ: "bana atanan" = kişisel atama VEYA üyesi olduğum takımın havuzu.
+    // Liste API'siyle (tickets/route.ts viewMode=assigned) AYNI kural.
+    const myTeamIds = await getMyTeamIds(userEmail)
+
     if (viewMode === 'my') {
       baseWhere.requesterEmail = userEmail
     } else if (viewMode === 'assigned') {
-      baseWhere.assignedTo = userEmail
+      baseWhere.AND = [assignedToMeFilter(userEmail, myTeamIds)]
     }
 
     // İstatistikleri paralel olarak çek
@@ -87,11 +92,11 @@ export async function GET(request: NextRequest) {
           status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
         }
       }),
-      // Bana atanan ticket'lar
+      // Bana atanan ticket'lar (havuz dahil: takımıma düşmüş, henüz üstlenilmemiş olanlar da)
       prisma.ticket.count({
         where: {
           isActive: true,
-          assignedTo: userEmail,
+          ...assignedToMeFilter(userEmail, myTeamIds),
           status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
         }
       }),

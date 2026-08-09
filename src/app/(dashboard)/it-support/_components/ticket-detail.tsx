@@ -46,6 +46,12 @@ interface Ticket {
   closedAt?: string | null
   resolvedAt?: string | null
   category?: { name: string; color: string | null; icon: string | null } | null
+  // HAVUZ (Faz 3): ticket bir takıma düşmüşse. Bayraklar SUNUCUDA hesaplanır
+  // (üye e-postaları istemciye gönderilmez).
+  assignedTeamId?: string | null
+  assignedTeam?: { id: string; name: string } | null
+  currentUserIsTeamMember?: boolean
+  currentUserCanClaim?: boolean
   comments?: TicketComment[]
   timeline?: TicketTimelineEntry[]
 }
@@ -212,6 +218,17 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
     handleUpdateTicket({ assignedTo: session.user.email, assignedToName: session.user.name } as Partial<Ticket>)
   }
 
+  // HAVUZ: takım üyesi havuzdaki ticket'ı üstlenir → kendisine atanır, ASSIGNED olur.
+  // Mevcut PUT /api/tickets/[id] kullanılır, yeni endpoint yok.
+  const handleClaim = () => {
+    if (!session?.user?.email) return
+    handleUpdateTicket({
+      assignedTo: session.user.email,
+      assignedToName: session.user.name ?? session.user.email,
+      status: "ASSIGNED",
+    } as Partial<Ticket>)
+  }
+
   const handleAssignToUser = (userId: string) => {
     const u = assignableUsers.find((x) => x.id === userId)
     if (!u) return
@@ -359,6 +376,29 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
           <h4 className="font-medium mb-2">Aciklama</h4>
           <p className="text-sm whitespace-pre-wrap bg-muted/30 p-4 rounded-lg">{ticket.description}</p>
         </div>
+
+        {/* HAVUZ — "Üstlen": ticket bir takıma düşmüş, henüz kimse üstlenmemiş ve
+            ben o takımın üyesiyim. isITStaff bloğunun DIŞINDA: takım üyesi
+            helpdesk-agent rolünde olabilir ve helpdesk.admin iznine sahip değildir
+            (o izin yalnız it-admin/super-admin'de) — aksi halde butonu göremezdi. */}
+        {ticket.currentUserCanClaim && (
+          <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="font-medium text-sm">
+                  Bu talep {ticket.assignedTeam?.name ?? "takımınızın"} havuzunda
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Henüz kimse üstlenmedi. Üstlenirsen sana atanır ve durumu &quot;Atandı&quot; olur.
+                </p>
+              </div>
+              <Button onClick={handleClaim} disabled={updatingTicket}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Üstlen
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* IT Ekibi Kontrolleri */}
         {isITStaff && (

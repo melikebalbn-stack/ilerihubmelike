@@ -121,7 +121,7 @@ export default function SettingsPage() {
   const [addingTaskEmail, setAddingTaskEmail] = useState(false)
   const [newAnnouncementCategory, setNewAnnouncementCategory] = useState({ name: '', color: '#3b82f6' })
   const [addingAnnouncementCategory, setAddingAnnouncementCategory] = useState(false)
-  const [newTicketCategory, setNewTicketCategory] = useState({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL' })
+  const [newTicketCategory, setNewTicketCategory] = useState({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL', defaultTeamId: '' })
   // IT Takımları (Faz 1) — havuz modeli takım verisi
   const [ticketTeams, setTicketTeams] = useState<TicketTeam[]>([])
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([])
@@ -645,7 +645,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/tickets/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newTicketCategory) })
       if (res.ok) {
         toast.success('Kategori eklendi')
-        setNewTicketCategory({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL' })
+        setNewTicketCategory({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL', defaultTeamId: '' })
         loadData()
       } else {
         const error = await res.json()
@@ -675,6 +675,27 @@ export default function SettingsPage() {
   }
 
   // Survey handlers
+
+  // Mevcut kategoriyi bir takıma bağla / bağı kaldır (PUT ?id=).
+  // teamId null → "Takım yok" (bağ kaldırılır; API null'ı geçerli değer sayar).
+  const handleUpdateCategoryTeam = async (id: string, teamId: string | null) => {
+    try {
+      const res = await fetch(`/api/tickets/categories?id=${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultTeamId: teamId }),
+      })
+      if (res.ok) {
+        toast.success(teamId ? 'Kategori takıma bağlandı' : 'Kategori takım bağı kaldırıldı')
+        loadData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Kategori güncellenirken hata oluştu')
+      }
+    } catch {
+      toast.error('Kategori güncellenirken hata oluştu')
+    }
+  }
 
   // ── IT Takımları (Faz 1) ──────────────────────────────────────────────
   // Tümü loadData() ile listeyi tazeler; API members'ı parse edilmiş döner.
@@ -1097,6 +1118,7 @@ export default function SettingsPage() {
           setTicketCategorySearch={setTicketCategorySearch}
           onAddCategory={handleAddTicketCategory}
           onDeleteCategory={handleDeleteTicketCategory}
+          onUpdateCategoryTeam={handleUpdateCategoryTeam}
           ticketTeams={ticketTeams}
           assignableUsers={assignableUsers}
           newTicketTeam={newTicketTeam}

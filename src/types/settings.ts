@@ -112,6 +112,10 @@ export interface TicketCategory {
   slaResolutionMinutes: number | null
   isActive: boolean
   sortOrder: number
+  /** Havuz modeli: kategori bir takıma bağlıysa ticket o takıma düşer (takım > kişi). */
+  defaultTeamId?: string | null
+  defaultTeam?: { id: string; name: string } | null
+  defaultAssigneeEmail?: string | null
   _count?: { tickets: number }
 }
 

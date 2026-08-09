@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { dispatchTicketAssigned } from '@/lib/ticket-notifications'
+import { parseMembers, isTeamMember } from '@/lib/tickets/team-members'
 
 // GET - Ticket detayı
 export async function GET(
@@ -20,7 +21,9 @@ export async function GET(
       where: { id },
       include: {
         category: true,
-        assignedTeam: true,
+        // `assignedTeam: true` idi → ham `members` JSON'ı talebi açan HERKESE
+        // gidiyordu. Üyelik bilgisi sunucuda hesaplanıp bayrak olarak dönüyor.
+        assignedTeam: { select: { id: true, name: true, members: true } },
         parentTicket: {
           select: { id: true, ticketNumber: true, subject: true }
         },
@@ -45,7 +48,20 @@ export async function GET(
       return NextResponse.json({ error: 'Ticket bulunamadı' }, { status: 404 })
     }
 
-    return NextResponse.json(ticket)
+    // HAVUZ: üyelik bayragi + "Üstlen" gösterilsin mi. members istemciye SIZMAZ.
+    const takimUyeleri = ticket.assignedTeam ? parseMembers(ticket.assignedTeam.members) : []
+    const currentUserIsTeamMember = isTeamMember(takimUyeleri, user.email)
+    const currentUserCanClaim =
+      currentUserIsTeamMember && !!ticket.assignedTeamId && !ticket.assignedTo
+
+    return NextResponse.json({
+      ...ticket,
+      assignedTeam: ticket.assignedTeam
+        ? { id: ticket.assignedTeam.id, name: ticket.assignedTeam.name }
+        : null,
+      currentUserIsTeamMember,
+      currentUserCanClaim,
+    })
   } catch (error) {
     console.error('Ticket detay hatası:', error)
     return NextResponse.json({ error: 'İşlem başarısız' }, { status: 500 })
@@ -67,7 +83,9 @@ export async function PUT(
     const userIsITStaff = session.user.permissions?.includes('helpdesk.admin') ?? false
 
     const existingTicket = await prisma.ticket.findUnique({
-      where: { id }
+      where: { id },
+      // HAVUZ: takım üyeliği yetki kontrolü için gerekli (aşağıda isTicketTeamMember)
+      include: { assignedTeam: { select: { members: true } } },
     })
 
     if (!existingTicket) {
@@ -80,8 +98,15 @@ export async function PUT(
     // İş 1: atanan teknisyen (assignedTo = e-posta) de ticket'ını yönetip KAPATABİLİR.
     // Başkasının atanmadığı ticket'ta isAssignee false → yetki yok (eşleşme şart).
     const isAssignee = !!existingTicket.assignedTo && existingTicket.assignedTo === user.email
-    const canChangeStatus = userIsITStaff || isAssignee
-    if (!userIsITStaff && !isOwner && !isAssignee) {
+    // HAVUZ (Faz 3): ticket bir takıma düşmüşse o takımın ÜYELERİ de yönetip
+    // KAPATABİLİR — henüz kimse üstlenmemiş olsa bile (küçük iş için üstlenme
+    // zorunlu değil). Üyelik `members` JSON'ından, tek kaynak team-members.ts.
+    const isTicketTeamMember = isTeamMember(
+      parseMembers(existingTicket.assignedTeam?.members ?? null),
+      user.email,
+    )
+    const canChangeStatus = userIsITStaff || isAssignee || isTicketTeamMember
+    if (!userIsITStaff && !isOwner && !isAssignee && !isTicketTeamMember) {
       return NextResponse.json({ error: 'Bu ticket\'ı güncelleme yetkiniz yok' }, { status: 403 })
     }
 

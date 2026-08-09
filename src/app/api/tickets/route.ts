@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { dispatchTicketCreated } from '@/lib/ticket-notifications'
 import { requireUser } from '@/lib/auth/require-user'
+import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
 
 // Ticket numarası oluştur
 async function generateTicketNumber(): Promise<string> {
@@ -71,11 +72,18 @@ export async function GET(request: NextRequest) {
       // Benim açtığım ticket'lar
       where.requesterEmail = userEmail
     } else if (viewMode === 'assigned') {
-      // Bana atanan ticket'lar (sadece IT ekibi)
-      if (!userIsITStaff) {
-        where.requesterEmail = userEmail // IT değilse kendi ticket'larını görsün
+      // HAVUZ: "bana atanan" = kişiye atanmış VEYA üyesi olduğum takıma düşmüş.
+      // helpdesk.admin ŞART DEĞİL: takım üyesi helpdesk-agent rolünde olabilir
+      // (helpdesk.admin yalnız it-admin/super-admin'de) — kendi takımının havuzunu
+      // görebilmeli. Ne IT ekibi ne de herhangi bir takımın üyesiyse eski davranış:
+      // kendi açtıklarına düşer.
+      const myTeamIds = await getMyTeamIds(userEmail)
+      if (!userIsITStaff && myTeamIds.length === 0) {
+        where.requesterEmail = userEmail
       } else {
-        where.assignedTo = userEmail
+        // AND ile ekleniyor: `where.OR` aşağıda ARAMA filtresi tarafından
+        // kullanılıyor, doğrudan atansaydı arama bu koşulu ezerdi.
+        where.AND = [assignedToMeFilter(userEmail, myTeamIds)]
       }
     } else if (viewMode === 'all') {
       // Tüm ticket'lar (sadece IT ekibi)
@@ -197,12 +205,17 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      if (category?.defaultAssigneeEmail) {
-        assignedTo = category.defaultAssigneeEmail
-        // LDAP'tan isim alınabilir
-      }
+      // HAVUZ MODELİ — ÖNCELİK: takım > kişi.
+      // Kategori bir TAKIMA bağlıysa ticket takıma düşer ve `assignedTo` BOŞ kalır:
+      // kimseye özel atanmamıştır, üyelerden biri üstlenene kadar havuzda bekler
+      // (üstlenme akışı Faz 3). Bu yüzden status da ASSIGNED değil NEW olur —
+      // aşağıdaki `status: assignedTo ? 'ASSIGNED' : 'NEW'` bunu kendiliğinden verir.
+      // Takım yoksa eski davranış aynen sürer: defaultAssigneeEmail varsa kişiye atanır.
       if (category?.defaultTeamId) {
         assignedTeamId = category.defaultTeamId
+      } else if (category?.defaultAssigneeEmail) {
+        assignedTo = category.defaultAssigneeEmail
+        // LDAP'tan isim alınabilir
       }
     }
 

@@ -2,9 +2,9 @@
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Tag, Layers, Trash2 } from "lucide-react"
+import { Plus, Tag, Layers, Trash2, Users, X, Crown } from "lucide-react"
 import { Subsection } from "../CollapsibleSection"
-import type { TicketCategory } from "@/types/settings"
+import type { TicketCategory, TicketTeam, AssignableUser } from "@/types/settings"
 
 interface ITTicketSettingsPanelProps {
   ticketCategories: TicketCategory[]
@@ -20,6 +20,19 @@ interface ITTicketSettingsPanelProps {
   setTicketCategorySearch: (search: string) => void
   onAddCategory: () => void
   onDeleteCategory: (id: string) => void
+
+  // ── IT Takımları (Faz 1: takım verisi + CRUD; ticket akışı Faz 2-4) ──
+  ticketTeams: TicketTeam[]
+  assignableUsers: AssignableUser[]
+  newTicketTeam: { name: string; description: string; memberEmails: string[] }
+  setNewTicketTeam: (team: { name: string; description: string; memberEmails: string[] }) => void
+  addingTicketTeam: boolean
+  onAddTeam: () => void
+  onDeleteTeam: (id: string) => void
+  /** Üye ekle/çıkar → PUT (members tam liste olarak gönderilir) */
+  onUpdateTeamMembers: (id: string, memberEmails: string[]) => void
+  /** Ekip lideri ata/kaldır → PUT */
+  onSetTeamLead: (id: string, email: string | null) => void
 }
 
 const getPriorityBadge = (priority: string) => {
@@ -43,7 +56,16 @@ export function ITTicketSettingsPanel({
   ticketCategorySearch,
   setTicketCategorySearch,
   onAddCategory,
-  onDeleteCategory
+  onDeleteCategory,
+  ticketTeams,
+  assignableUsers,
+  newTicketTeam,
+  setNewTicketTeam,
+  addingTicketTeam,
+  onAddTeam,
+  onDeleteTeam,
+  onUpdateTeamMembers,
+  onSetTeamLead,
 }: ITTicketSettingsPanelProps) {
   const filteredCategories = ticketCategories.filter(item =>
     item.name.toLowerCase().includes(ticketCategorySearch.toLowerCase()) ||
@@ -152,6 +174,185 @@ export function ITTicketSettingsPanel({
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Subsection>
+
+      {/* IT Takımları — HAVUZ modeli: ticket takıma düşer, üyelerden biri
+          devralana kadar havuzda kalır. Faz 1'de yalnız takım/üye verisi
+          yönetilir; ticket akışı (havuz ataması, görünürlük, kapatma, bildirim)
+          Faz 2-4'te eklenecek. */}
+      <Subsection title="IT Takımları" icon={Users} count={ticketTeams.length}>
+        <div className="p-3 border-b bg-background">
+          <p className="text-sm text-muted-foreground mb-3">
+            Ticket&apos;ın tek kişi yerine bir ekibe düşmesi için takım tanımlayın (örn: IFS/ERP Ekibi).
+            Üyeler yalnız IT ekibi kullanıcıları arasından seçilir.
+          </p>
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Takım adı *"
+                value={newTicketTeam.name}
+                onChange={(e) => setNewTicketTeam({ ...newTicketTeam, name: e.target.value })}
+                className="flex-1"
+              />
+              <Button
+                onClick={onAddTeam}
+                disabled={addingTicketTeam || !newTicketTeam.name.trim()}
+                size="sm"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Ekle
+              </Button>
+            </div>
+            <Input
+              placeholder="Açıklama (isteğe bağlı)"
+              value={newTicketTeam.description}
+              onChange={(e) => setNewTicketTeam({ ...newTicketTeam, description: e.target.value })}
+            />
+            <div className="rounded-md border p-2">
+              <p className="text-xs text-muted-foreground mb-1.5">Üyeler</p>
+              {assignableUsers.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-1">Atanabilir IT kullanıcısı bulunamadı.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {assignableUsers.map((u) => {
+                    const secili = newTicketTeam.memberEmails.includes(u.email)
+                    return (
+                      <button
+                        key={u.email}
+                        type="button"
+                        onClick={() =>
+                          setNewTicketTeam({
+                            ...newTicketTeam,
+                            memberEmails: secili
+                              ? newTicketTeam.memberEmails.filter((e) => e !== u.email)
+                              : [...newTicketTeam.memberEmails, u.email],
+                          })
+                        }
+                        className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                          secili
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background hover:bg-accent"
+                        }`}
+                        title={u.email}
+                      >
+                        {u.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="p-3 max-h-72 overflow-y-auto">
+          {ticketTeams.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Henüz takım eklenmemiş</p>
+          ) : (
+            <div className="space-y-2">
+              {ticketTeams.map((team) => {
+                const uyeEmails = team.members.map((m) => m.email)
+                const eklenebilir = assignableUsers.filter((u) => !uyeEmails.includes(u.email))
+                return (
+                  <div key={team.id} className="rounded-lg border bg-background p-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium">{team.name}</span>
+                        {team.description && (
+                          <p className="text-xs text-muted-foreground">{team.description}</p>
+                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
+                            {team.members.length} üye
+                          </span>
+                          {team._count && team._count.categories > 0 && (
+                            <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
+                              {team._count.categories} kategori
+                            </span>
+                          )}
+                          {team._count && team._count.tickets > 0 && (
+                            <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
+                              {team._count.tickets} ticket
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDeleteTeam(team.id)}
+                        className="h-8 w-8 p-0 shrink-0 text-red-600 hover:text-red-700 hover:bg-red-100"
+                        title="Takımı sil"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    {/* Üye rozetleri — çıkarma (×) + lider atama (taç) */}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {team.members.map((m) => {
+                        const lider = team.leadEmail === m.email
+                        return (
+                          <span
+                            key={m.email}
+                            className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border ${
+                              lider ? "bg-amber-50 border-amber-300 text-amber-900" : "bg-background"
+                            }`}
+                            title={m.email}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => onSetTeamLead(team.id, lider ? null : m.email)}
+                              title={lider ? "Ekip liderliğini kaldır" : "Ekip lideri yap"}
+                              className="hover:text-amber-600"
+                            >
+                              <Crown className={`h-3 w-3 ${lider ? "fill-amber-400" : ""}`} />
+                            </button>
+                            {m.name}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateTeamMembers(
+                                  team.id,
+                                  uyeEmails.filter((e) => e !== m.email),
+                                )
+                              }
+                              title="Üyeyi çıkar"
+                              className="hover:text-red-600"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        )
+                      })}
+                      {team.members.length === 0 && (
+                        <span className="text-xs text-muted-foreground">Üye yok</span>
+                      )}
+                    </div>
+
+                    {/* Üye ekleme */}
+                    {eklenebilir.length > 0 && (
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (!e.target.value) return
+                          onUpdateTeamMembers(team.id, [...uyeEmails, e.target.value])
+                        }}
+                        className="mt-2 h-8 px-2 rounded-md border bg-background text-xs"
+                      >
+                        <option value="">+ Üye ekle…</option>
+                        {eklenebilir.map((u) => (
+                          <option key={u.email} value={u.email}>
+                            {u.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )
               })}

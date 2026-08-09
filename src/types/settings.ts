@@ -115,6 +115,30 @@ export interface TicketCategory {
   _count?: { tickets: number }
 }
 
+/** TicketTeam üyesi — API members'ı parse edilmiş dizi olarak döner (Text değil). */
+export interface TicketTeamMember {
+  email: string
+  name: string
+}
+
+export interface TicketTeam {
+  id: string
+  name: string
+  description: string | null
+  leadEmail: string | null
+  leadName: string | null
+  members: TicketTeamMember[]
+  isActive: boolean
+  _count?: { tickets: number; categories: number }
+}
+
+/** Takıma üye eklerken seçilebilecek kullanıcı (GET /api/tickets/assignable-users). */
+export interface AssignableUser {
+  id: string
+  name: string
+  email: string
+}
+
 export interface Survey {
   id: string
   surveyNumber: string

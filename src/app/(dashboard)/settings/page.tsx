@@ -42,6 +42,8 @@ import type {
   SuggestionBoardMember,
   AnnouncementCategory,
   TicketCategory,
+  TicketTeam,
+  AssignableUser,
   Survey,
   SystemNotice,
   EditingType,
@@ -120,6 +122,11 @@ export default function SettingsPage() {
   const [newAnnouncementCategory, setNewAnnouncementCategory] = useState({ name: '', color: '#3b82f6' })
   const [addingAnnouncementCategory, setAddingAnnouncementCategory] = useState(false)
   const [newTicketCategory, setNewTicketCategory] = useState({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL' })
+  // IT Takımları (Faz 1) — havuz modeli takım verisi
+  const [ticketTeams, setTicketTeams] = useState<TicketTeam[]>([])
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([])
+  const [newTicketTeam, setNewTicketTeam] = useState<{ name: string; description: string; memberEmails: string[] }>({ name: '', description: '', memberEmails: [] })
+  const [addingTicketTeam, setAddingTicketTeam] = useState(false)
   const [addingTicketCategory, setAddingTicketCategory] = useState(false)
   const [newBoardMember, setNewBoardMember] = useState({ email: '', name: '', department: '', role: '' })
   const [addingBoardMember, setAddingBoardMember] = useState(false)
@@ -197,7 +204,7 @@ export default function SettingsPage() {
         if (rulesRes.ok) setNotificationRules(await rulesRes.json())
         if (realDeptsRes.ok) setRealDepartments(await realDeptsRes.json())
       } else {
-        const [locsRes, typesRes, modelsRes, namesRes, deptsRes, prodSectionsRes, expiringEmailsRes, expiredEmailsRes, rulesRes, realDeptsRes, categoriesRes, taskEmailsRes, boardMembersRes, systemRes, annCategoriesRes, surveysRes, ticketCategoriesRes] = await Promise.all([
+        const [locsRes, typesRes, modelsRes, namesRes, deptsRes, prodSectionsRes, expiringEmailsRes, expiredEmailsRes, rulesRes, realDeptsRes, categoriesRes, taskEmailsRes, boardMembersRes, systemRes, annCategoriesRes, surveysRes, ticketCategoriesRes, ticketTeamsRes, assignableUsersRes] = await Promise.all([
           ...calibrationFetches,
           fetch('/api/tasks/categories'),
           fetch('/api/tasks/notification-emails'),
@@ -206,6 +213,8 @@ export default function SettingsPage() {
           fetch('/api/announcements/categories'),
           fetch('/api/surveys?limit=100'),
           fetch('/api/tickets/categories'),
+          fetch('/api/tickets/teams'),
+          fetch('/api/tickets/assignable-users'),
         ])
 
         if (locsRes.ok) setLocations(await locsRes.json())
@@ -223,6 +232,9 @@ export default function SettingsPage() {
         if (boardMembersRes.ok) setSuggestionBoardMembers(await boardMembersRes.json())
         if (annCategoriesRes.ok) setAnnouncementCategories(await annCategoriesRes.json())
         if (ticketCategoriesRes.ok) setTicketCategories(await ticketCategoriesRes.json())
+        if (ticketTeamsRes.ok) setTicketTeams(await ticketTeamsRes.json())
+        // assignable-users yalnız helpdesk.admin'e açık → yetkisizde 403, sessiz geç
+        if (assignableUsersRes.ok) setAssignableUsers(await assignableUsersRes.json())
         if (surveysRes.ok) {
           const data = await surveysRes.json()
           setSurveys(data.surveys || [])
@@ -663,6 +675,102 @@ export default function SettingsPage() {
   }
 
   // Survey handlers
+
+  // ── IT Takımları (Faz 1) ──────────────────────────────────────────────
+  // Tümü loadData() ile listeyi tazeler; API members'ı parse edilmiş döner.
+  const handleAddTicketTeam = async () => {
+    if (!newTicketTeam.name.trim()) {
+      toast.error('Takım adı zorunludur')
+      return
+    }
+    setAddingTicketTeam(true)
+    try {
+      const members = newTicketTeam.memberEmails.map((email) => {
+        const u = assignableUsers.find((a) => a.email === email)
+        return { email, name: u?.name ?? email }
+      })
+      const res = await fetch('/api/tickets/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newTicketTeam.name,
+          description: newTicketTeam.description,
+          members,
+        }),
+      })
+      if (res.ok) {
+        toast.success('Takım oluşturuldu')
+        setNewTicketTeam({ name: '', description: '', memberEmails: [] })
+        loadData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Takım oluşturulurken hata oluştu')
+      }
+    } catch {
+      toast.error('Takım oluşturulurken hata oluştu')
+    } finally {
+      setAddingTicketTeam(false)
+    }
+  }
+
+  const handleDeleteTicketTeam = async (id: string) => {
+    if (!confirm('Bu takımı silmek istediğinizden emin misiniz?')) return
+    try {
+      const res = await fetch(`/api/tickets/teams/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast.success('Takım silindi')
+        loadData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Takım silinirken hata oluştu')
+      }
+    } catch {
+      toast.error('Takım silinirken hata oluştu')
+    }
+  }
+
+  // members TAM liste olarak gönderilir (PUT kısmi güncelleme yapar; members
+  // verilirse listenin tamamı o istekle değişir).
+  const handleUpdateTeamMembers = async (id: string, memberEmails: string[]) => {
+    try {
+      const members = memberEmails.map((email) => {
+        const u = assignableUsers.find((a) => a.email === email)
+        return { email, name: u?.name ?? email }
+      })
+      const res = await fetch(`/api/tickets/teams/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ members }),
+      })
+      if (res.ok) {
+        loadData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Üye güncellenirken hata oluştu')
+      }
+    } catch {
+      toast.error('Üye güncellenirken hata oluştu')
+    }
+  }
+
+  const handleSetTeamLead = async (id: string, email: string | null) => {
+    try {
+      const res = await fetch(`/api/tickets/teams/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadEmail: email }),
+      })
+      if (res.ok) {
+        loadData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Ekip lideri güncellenirken hata oluştu')
+      }
+    } catch {
+      toast.error('Ekip lideri güncellenirken hata oluştu')
+    }
+  }
+
   const handleDeleteSurvey = async (id: string) => {
     if (!confirm('Bu anketi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) return
     try {
@@ -989,6 +1097,15 @@ export default function SettingsPage() {
           setTicketCategorySearch={setTicketCategorySearch}
           onAddCategory={handleAddTicketCategory}
           onDeleteCategory={handleDeleteTicketCategory}
+          ticketTeams={ticketTeams}
+          assignableUsers={assignableUsers}
+          newTicketTeam={newTicketTeam}
+          setNewTicketTeam={setNewTicketTeam}
+          addingTicketTeam={addingTicketTeam}
+          onAddTeam={handleAddTicketTeam}
+          onDeleteTeam={handleDeleteTicketTeam}
+          onUpdateTeamMembers={handleUpdateTeamMembers}
+          onSetTeamLead={handleSetTeamLead}
         />
       </CollapsibleSection>
 

@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { canAccessPersonnel } from "@/lib/auth/personnel-access"
 import { canAccessKalite } from "@/lib/auth/kalite-access"
+import { normalizeTr } from "@/lib/normalize-tr"
 import {
   Home,
   Users,
@@ -299,23 +300,7 @@ const bottomMenuItems = [
 
 // ── Menü araması ────────────────────────────────────────────────────────────
 // Saf yardımcılar: bileşene bağımlı değil, ileride ⌘K komut paletine olduğu gibi
-// taşınabilsin diye modül seviyesinde ve export edilebilir halde tutuldu.
-
-/** Türkçe-duyarlı normalize: "İş Analizi" ↔ "is analizi", "Ölçüm" ↔ "olcum",
- *  "Çalışan" ↔ "calisan".
- *  1) toLocaleLowerCase('tr-TR') — İ→i, I→ı eşlemesini doğru yapar.
- *  2) ı→i — DİKKAT: noktasız ı (U+0131) AYRI bir harftir, NFD ile AYRIŞMAZ,
- *     dolayısıyla (3)'teki diakritik strip ona dokunmaz. Bu satır olmadan
- *     "calisan"/"sizma"/"yangin" aramaları "Çalışan"/"Sızma"/"Yangın" ile
- *     eşleşmiyordu (gerçek menü etiketleriyle test edildi).
- *  3) NFD + combining-mark strip — ç/ğ/ü/ş/ö diakritiğini düşürür. */
-export function normalizeTr(s: string): string {
-  return s
-    .toLocaleLowerCase('tr-TR')
-    .replace(/\u0131/g, 'i')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-}
+// taşınabilir. Türkçe normalize ortak kaynağa taşındı → @/lib/normalize-tr.
 
 type SearchableItem = {
   name: string

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { normalizeTr } from '@/lib/normalize-tr'
 
 export interface TemplateChoice {
   id: string
@@ -21,17 +22,6 @@ interface Props {
   templates: TemplateChoice[]
   value: string | null
   onChange: (id: string | null) => void
-}
-
-function normalizeTr(s: string): string {
-  return s
-    .toLocaleLowerCase('tr-TR')
-    .replace(/ı/g, 'i')
-    .replace(/ğ/g, 'g')
-    .replace(/ü/g, 'u')
-    .replace(/ş/g, 's')
-    .replace(/ö/g, 'o')
-    .replace(/ç/g, 'c')
 }
 
 export function TemplateSelector({ templates, value, onChange }: Props) {

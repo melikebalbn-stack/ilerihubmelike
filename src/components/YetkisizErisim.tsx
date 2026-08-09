@@ -16,6 +16,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { PERMISSION_DESCRIPTIONS } from '@/lib/auth/permissions'
+import { normalizeTr } from '@/lib/normalize-tr'
 
 interface YetkisizErisimProps {
   /** Guard'da kontrol edilen permission key — verilirse "Gerekli yetki" satırı gösterilir. */
@@ -82,14 +83,19 @@ export function YetkisizErisim({
         }
       }
 
-      // 2) Kategori id'sini isimle bul (hardcode yok); bulunamazsa categoryId'siz gönder
+      // 2) Kategori id'sini isimle bul; bulunamazsa categoryId'siz gönder.
+      //    Eşleştirme normalizeTr ile: kategori adı DB'de yönetiliyor ve Türkçe
+      //    karakterli/karaktersiz iki biçimde de yazılabiliyor ("Erişim Talepleri"
+      //    ↔ "Erisim Talepleri"). Düz string karşılaştırması ad değişince sessizce
+      //    kopuyor ve ticket'lar kategorisiz açılıyordu.
+      const ERISIM_KATEGORI = normalizeTr('Erişim Talepleri')
       let categoryId: string | undefined
       try {
         const catRes = await fetch('/api/tickets/categories')
         if (catRes.ok) {
           const kategoriler = await catRes.json()
           const kat = Array.isArray(kategoriler)
-            ? kategoriler.find((c: { name?: string }) => c.name === 'Erisim Talepleri')
+            ? kategoriler.find((c: { name?: string }) => normalizeTr(c.name ?? '') === ERISIM_KATEGORI)
             : null
           categoryId = kat?.id
         }

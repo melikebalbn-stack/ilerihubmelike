@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Tag, Layers, Trash2, Users, X, Crown } from "lucide-react"
+import { Plus, Tag, Layers, Trash2, Users, X, Crown, UserCheck } from "lucide-react"
 import { Subsection } from "../CollapsibleSection"
 import type { TicketCategory, TicketTeam, AssignableUser } from "@/types/settings"
 
@@ -14,8 +14,9 @@ interface ITTicketSettingsPanelProps {
     color: string
     defaultPriority: string
     defaultTeamId: string
+    defaultAssigneeEmail: string
   }
-  setNewTicketCategory: (cat: { name: string; description: string; color: string; defaultPriority: string; defaultTeamId: string }) => void
+  setNewTicketCategory: (cat: { name: string; description: string; color: string; defaultPriority: string; defaultTeamId: string; defaultAssigneeEmail: string }) => void
   addingTicketCategory: boolean
   ticketCategorySearch: string
   setTicketCategorySearch: (search: string) => void
@@ -23,6 +24,8 @@ interface ITTicketSettingsPanelProps {
   onDeleteCategory: (id: string) => void
   /** Mevcut kategoriyi bir takıma bağla / bağı kaldır (PUT ?id=) */
   onUpdateCategoryTeam: (id: string, teamId: string | null) => void
+  /** Mevcut kategoriyi bir KİŞİYE ata / atamayı kaldır (PUT ?id=) */
+  onUpdateCategoryAssignee: (id: string, email: string | null) => void
 
   // ── IT Takımları (Faz 1: takım verisi + CRUD; ticket akışı Faz 2-4) ──
   ticketTeams: TicketTeam[]
@@ -61,6 +64,7 @@ export function ITTicketSettingsPanel({
   onAddCategory,
   onDeleteCategory,
   onUpdateCategoryTeam,
+  onUpdateCategoryAssignee,
   ticketTeams,
   assignableUsers,
   newTicketTeam,
@@ -128,6 +132,19 @@ export function ITTicketSettingsPanel({
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
+              {/* Tek kişi: takım seçilmediyse ticket doğrudan bu kişiye atanır.
+                  İkisi de seçilirse create'te TAKIM önceliklidir. */}
+              <select
+                value={newTicketCategory.defaultAssigneeEmail}
+                onChange={(e) => setNewTicketCategory({ ...newTicketCategory, defaultAssigneeEmail: e.target.value })}
+                className="h-9 px-3 rounded-md border bg-background text-sm"
+                title="Takım yoksa ticket doğrudan bu kişiye atansın"
+              >
+                <option value="">Kişi yok</option>
+                {assignableUsers.map((u) => (
+                  <option key={u.email} value={u.email}>{u.name}</option>
+                ))}
+              </select>
               <Button
                 onClick={onAddCategory}
                 disabled={addingTicketCategory || !newTicketCategory.name}
@@ -181,6 +198,34 @@ export function ITTicketSettingsPanel({
                           {cat._count.tickets} ticket
                         </span>
                       )}
+                      {/* Bu kategoride açılan ticket KİME gidiyor — tek bakışta.
+                          Takım varsa havuza düşer (takım > kişi önceliği), yoksa kişiye
+                          atanır, ikisi de yoksa sahipsiz kalır. */}
+                      {(() => {
+                        const takim = ticketTeams.find((t) => t.id === cat.defaultTeamId)
+                        if (takim) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                              <Users className="h-3 w-3" />
+                              {takim.name} havuzu
+                            </span>
+                          )
+                        }
+                        if (cat.defaultAssigneeEmail) {
+                          const kisi = assignableUsers.find((u) => u.email === cat.defaultAssigneeEmail)
+                          return (
+                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+                              <UserCheck className="h-3 w-3" />
+                              {kisi?.name ?? cat.defaultAssigneeEmail}
+                            </span>
+                          )
+                        }
+                        return (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            sahipsiz
+                          </span>
+                        )
+                      })()}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {/* Mevcut kategoriyi takıma bağla — asıl ihtiyaç bu:
@@ -195,6 +240,27 @@ export function ITTicketSettingsPanel({
                         {ticketTeams.map((t) => (
                           <option key={t.id} value={t.id}>{t.name}</option>
                         ))}
+                      </select>
+                      {/* Tek kişi ataması. DİKKAT: mevcut deger assignableUsers'ta
+                          olmayabilir (ör. super-admin rolündeki biri SQL ile atanmışsa)
+                          — o durumda e-posta ayrı bir seçenek olarak eklenir ki
+                          seçici boş görünüp atamayı gizlemesin. */}
+                      <select
+                        value={cat.defaultAssigneeEmail ?? ""}
+                        onChange={(e) => onUpdateCategoryAssignee(cat.id, e.target.value || null)}
+                        className="h-8 px-2 rounded-md border bg-background text-xs max-w-[11rem]"
+                        title="Takım yoksa ticket doğrudan bu kişiye atansın"
+                      >
+                        <option value="">Kişi yok</option>
+                        {assignableUsers.map((u) => (
+                          <option key={u.email} value={u.email}>{u.name}</option>
+                        ))}
+                        {cat.defaultAssigneeEmail &&
+                          !assignableUsers.some((u) => u.email === cat.defaultAssigneeEmail) && (
+                            <option value={cat.defaultAssigneeEmail}>
+                              {cat.defaultAssigneeEmail} (liste dışı)
+                            </option>
+                          )}
                       </select>
                       <Button
                         variant="ghost"

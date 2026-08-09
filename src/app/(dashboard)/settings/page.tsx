@@ -121,7 +121,7 @@ export default function SettingsPage() {
   const [addingTaskEmail, setAddingTaskEmail] = useState(false)
   const [newAnnouncementCategory, setNewAnnouncementCategory] = useState({ name: '', color: '#3b82f6' })
   const [addingAnnouncementCategory, setAddingAnnouncementCategory] = useState(false)
-  const [newTicketCategory, setNewTicketCategory] = useState({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL', defaultTeamId: '' })
+  const [newTicketCategory, setNewTicketCategory] = useState({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL', defaultTeamId: '', defaultAssigneeEmail: '' })
   // IT Takımları (Faz 1) — havuz modeli takım verisi
   const [ticketTeams, setTicketTeams] = useState<TicketTeam[]>([])
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([])
@@ -645,7 +645,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/tickets/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newTicketCategory) })
       if (res.ok) {
         toast.success('Kategori eklendi')
-        setNewTicketCategory({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL', defaultTeamId: '' })
+        setNewTicketCategory({ name: '', description: '', color: '#3b82f6', defaultPriority: 'NORMAL', defaultTeamId: '', defaultAssigneeEmail: '' })
         loadData()
       } else {
         const error = await res.json()
@@ -687,6 +687,28 @@ export default function SettingsPage() {
       })
       if (res.ok) {
         toast.success(teamId ? 'Kategori takıma bağlandı' : 'Kategori takım bağı kaldırıldı')
+        loadData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Kategori güncellenirken hata oluştu')
+      }
+    } catch {
+      toast.error('Kategori güncellenirken hata oluştu')
+    }
+  }
+
+  // Mevcut kategoriyi bir KİŞİYE ata / atamayı kaldır (PUT ?id=).
+  // onUpdateCategoryTeam ile birebir aynı desen; API defaultAssigneeEmail'i
+  // zaten kabul ediyordu (POST+PUT), eksik olan yalnızca arayüzdü.
+  const handleUpdateCategoryAssignee = async (id: string, email: string | null) => {
+    try {
+      const res = await fetch(`/api/tickets/categories?id=${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultAssigneeEmail: email }),
+      })
+      if (res.ok) {
+        toast.success(email ? 'Kategori kişiye atandı' : 'Kategori kişi ataması kaldırıldı')
         loadData()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -1119,6 +1141,7 @@ export default function SettingsPage() {
           onAddCategory={handleAddTicketCategory}
           onDeleteCategory={handleDeleteTicketCategory}
           onUpdateCategoryTeam={handleUpdateCategoryTeam}
+          onUpdateCategoryAssignee={handleUpdateCategoryAssignee}
           ticketTeams={ticketTeams}
           assignableUsers={assignableUsers}
           newTicketTeam={newTicketTeam}

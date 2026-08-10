@@ -9074,6 +9074,7 @@ model Personnel {
   bulkCardScanFailures          BulkCardScanFailure[]
   // RMA/SMA iade kayıtlarında sorumlu (KAL-KYT-16) — back-relation (DB kolonu eklemez).
   rmaSorumluluklar              RmaKayit[]
+  uygunsuzlukSorumluluklari      KaliteUygunsuzluk[]
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -10533,6 +10534,73 @@ model RmaSatir {
   @@index([rmaKayitId])
 }
 
+/// Uygunsuzluk satırı kararı (KAL-KYT-15 Bölüm 2).
+enum UygunsuzlukKarar {
+  HURDA
+  IADE
+  TAMIR
+}
+
+/// Kalite uygunsuzluk kaydı (KAL-KYT-15 Bölüm 2).
+///
+/// Desen RmaKayit'in birebir aynısı: `no` tek kesintisiz seri (@unique),
+/// audit dörtlüsü String? (User'a FK YOK — mevcut audit deseni), satırlar Cascade.
+///
+/// Bölüm/hata kodu alanları HataKodu'ya bakar ve hepsi Restrict: kullanımdaki
+/// bir kod silinemez. `tespitEdenBolum` başlık (tip=BOLUM) beklenir ama şema
+/// bunu ZORLAMAZ — tip kontrolü uygulama katmanında.
+///
+/// redOrani ALANI YOK — hesaplanır (redAdeti / isEmriAdeti), saklanmaz.
+model KaliteUygunsuzluk {
+  id                String    @id @default(cuid())
+  no                Int       @unique // tek kesintisiz seri (RmaKayit deseni)
+  tarih             DateTime
+  mamulUrunKodu     String
+  isEmriNo          String
+  isEmriAdeti       Int?
+  tespitEdenBolumId String?
+  tespitEdenBolum   HataKodu? @relation("UygunsuzlukTespitEdenBolum", fields: [tespitEdenBolumId], references: [id], onDelete: Restrict)
+  kokNeden          String?   @db.Text
+  duzelticiFaaliyet String?   @db.Text
+  sorumluId         String?
+  sorumlu           Personnel? @relation(fields: [sorumluId], references: [id], onDelete: SetNull)
+  termin            DateTime?
+  kapanisTarihi     DateTime?
+
+  // Audit — userId string (User FK/back-ref eklemez; mevcut audit deseni)
+  olusturanId      String?
+  olusturmaTarihi  DateTime  @default(now())
+  guncelleyenId    String?
+  guncellemeTarihi DateTime  @updatedAt
+
+  satirlar KaliteUygunsuzlukSatir[]
+
+  @@index([isEmriNo])
+  @@index([tarih])
+  @@index([kapanisTarihi])
+}
+
+/// Uygunsuzluk ürün satırı. Başlık silinince cascade.
+model KaliteUygunsuzlukSatir {
+  id             String            @id @default(cuid())
+  uygunsuzlukId  String
+  uygunsuzluk    KaliteUygunsuzluk @relation(fields: [uygunsuzlukId], references: [id], onDelete: Cascade)
+  siraNo         Int
+  yariMamulKodu  String?
+  malzemeAdi     String?
+  redAdeti       Int
+  reworkAdedi    Int?
+  olusanBolumId  String?
+  olusanBolum    HataKodu?         @relation("UygunsuzlukSatirOlusanBolum", fields: [olusanBolumId], references: [id], onDelete: Restrict)
+  hataKoduId     String?
+  hataKodu       HataKodu?         @relation("UygunsuzlukSatirHataKodu", fields: [hataKoduId], references: [id], onDelete: Restrict)
+  hataDetayi     String?           @db.Text
+  karar          UygunsuzlukKarar?
+
+  @@index([uygunsuzlukId])
+  @@index([hataKoduId])
+}
+
 /// Kalite hata kodu ağacı (KAL-KYT-15 Bölüm 1).
 ///
 /// Bölüm başlıkları AYRI tabloda DEĞİL — onlar da HataKodu kaydıdır (ustKodId = null)
@@ -10572,6 +10640,13 @@ model HataKodu {
 
   olusturmaTarihi  DateTime @default(now())
   guncellemeTarihi DateTime @updatedAt
+
+  // Uygunsuzluk (KAL-KYT-15 Bölüm 2) back-ref'leri — ÜÇ AYRI ilişki, adları
+  // ayrı olmak ZORUNDA (aynı model çifti arasında birden fazla ilişki var).
+  // Hepsi Restrict: kullanımdaki bir hata kodu/bölüm silinemez.
+  tespitEdilenUygunsuzluklar KaliteUygunsuzluk[]      @relation("UygunsuzlukTespitEdenBolum")
+  olusanUygunsuzlukSatirlari KaliteUygunsuzlukSatir[] @relation("UygunsuzlukSatirOlusanBolum")
+  uygunsuzlukSatirlari       KaliteUygunsuzlukSatir[] @relation("UygunsuzlukSatirHataKodu")
 
   @@index([ustKodId])
   @@index([aktif])

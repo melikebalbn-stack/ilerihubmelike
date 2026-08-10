@@ -330,7 +330,16 @@ export default function ITSupportPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowGuide(true)}>
+          {/* SEÇENEK B — yumuşak amber (nazik vurgu).
+              Açık: amber-100 zemin + amber-800 metin = 6.37:1.
+              Karanlık: amber-900 zemin + amber-100 metin = 8.15:1 (dark: varyantı
+              ŞART — amber-100 zemin karanlık temada göz alırdı). */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowGuide(true)}
+            className="bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200 hover:text-amber-900 dark:bg-amber-900 dark:text-amber-100 dark:border-amber-700 dark:hover:bg-amber-800"
+          >
             <Info className="h-4 w-4 mr-2" />
             Kullanım Kılavuzu
           </Button>

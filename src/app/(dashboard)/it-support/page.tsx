@@ -38,6 +38,7 @@ import {
   ChevronUp,
   ChevronDown,
   X,
+  BarChart3,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -47,6 +48,7 @@ import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { TicketDetail } from "./_components/ticket-detail"
 import { CategoryBadge } from "./_components/category-badge"
+import { KpiDashboard } from "./_components/kpi-dashboard"
 import { ticketAge, resolutionTime, isOpenStatus } from "./_lib/ticket-age"
 
 interface TicketCategory {
@@ -154,13 +156,17 @@ export default function ITSupportPage() {
   // Verileri yukle (loading/error/timeout artık useAuthenticatedData'da)
   const fetchData = async () => {
     try {
+      // KPI sekmesi bir LİSTE görünümü değil — kendi verisini
+      // /api/tickets/reports'tan çeker. `viewMode=kpi` diye anlamsız bir istek
+      // atılmasın diye ticket listesi bu sekmede hiç istenmez.
+      const kpiSekmesi = activeTab === "kpi"
       const [ticketsRes, categoriesRes, statsRes] = await Promise.all([
-        fetch(`/api/tickets?viewMode=${activeTab}`),
+        kpiSekmesi ? Promise.resolve(null) : fetch(`/api/tickets?viewMode=${activeTab}`),
         fetch("/api/tickets/categories"),
         fetch("/api/tickets/stats"),
       ])
 
-      if (ticketsRes.ok) {
+      if (ticketsRes && ticketsRes.ok) {
         setTickets(await ticketsRes.json())
       }
       if (categoriesRes.ok) {
@@ -529,6 +535,10 @@ export default function ITSupportPage() {
                         <TabsTrigger value="assigned">Bana Atanan</TabsTrigger>
                         <TabsTrigger value="all">Tumu</TabsTrigger>
                         <TabsTrigger value="open">Aciklar</TabsTrigger>
+                        <TabsTrigger value="kpi">
+                          <BarChart3 className="h-3.5 w-3.5 mr-1" />
+                          KPI
+                        </TabsTrigger>
                       </>
                     )}
                   </TabsList>
@@ -576,7 +586,11 @@ export default function ITSupportPage() {
             </CardHeader>
 
             <CardContent>
-              {loading ? (
+              {/* KPI sekmesi kendi verisini ve kendi yükleniyor/hata durumunu
+                  yönetir; liste filtreleri ve sayfanın loading'i onu ilgilendirmez. */}
+              {activeTab === "kpi" ? (
+                <KpiDashboard />
+              ) : loading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>

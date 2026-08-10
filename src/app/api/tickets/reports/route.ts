@@ -32,6 +32,10 @@ export async function GET(request: NextRequest) {
         ticketType: true,
         assignedTo: true,
         assignedToName: true,
+        // HAVUZ: takım bazlı iş yükü için. Ek SORGU YOK — aynı findMany'nin
+        // select'ine eklenip aşağıda bellekte gruplanıyor.
+        assignedTeamId: true,
+        assignedTeam: { select: { name: true } },
         categoryId: true,
         category: { select: { name: true, color: true } },
         createdAt: true,
@@ -44,9 +48,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // AÇIK durum kümesi — tek kaynak (openTickets, kişi yükü ve takım havuzu
+    // aynı tanımı kullansın; biri değişirse hepsi değişsin).
+    const ACIK_DURUMLAR = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED']
+    const acikMi = (status: string) => ACIK_DURUMLAR.includes(status)
+
     // Genel İstatistikler
     const totalTickets = allTickets.length
-    const openTickets = allTickets.filter(t => ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'].includes(t.status)).length
+    const openTickets = allTickets.filter(t => acikMi(t.status)).length
     const resolvedTickets = allTickets.filter(t => t.status === 'RESOLVED').length
     const closedTickets = allTickets.filter(t => t.status === 'CLOSED').length
     const slaBreached = allTickets.filter(t => t.slaResponseBreached || t.slaResolutionBreached).length
@@ -129,6 +138,8 @@ export async function GET(request: NextRequest) {
       email: string
       name: string
       totalAssigned: number
+      /** Şu an ÜZERİNDE olan açık ticket sayısı (mevcut yük) */
+      openCount: number
       resolved: number
       closed: number
       avgResponseTime: number // saat
@@ -147,6 +158,7 @@ export async function GET(request: NextRequest) {
             email: t.assignedTo,
             name: t.assignedToName || t.assignedTo,
             totalAssigned: 0,
+            openCount: 0,
             resolved: 0,
             closed: 0,
             avgResponseTime: 0,
@@ -158,6 +170,7 @@ export async function GET(request: NextRequest) {
         }
 
         assignee.totalAssigned++
+        if (acikMi(t.status)) assignee.openCount++
 
         if (t.status === 'RESOLVED') assignee.resolved++
         if (t.status === 'CLOSED') assignee.closed++
@@ -199,6 +212,43 @@ export async function GET(request: NextRequest) {
     const individualPerformance = Array.from(assigneeMap.values())
       .sort((a, b) => b.totalAssigned - a.totalAssigned)
 
+    // ── HAVUZ: takım bazlı açık iş yükü ────────────────────────────────
+    // individualPerformance yalnız `assignedTo` üzerinden gruplar; takıma
+    // düşmüş ama HENÜZ ÜSTLENİLMEMİŞ ticket'ta o alan BOŞ olduğu için bu
+    // ticket'lar iş yükü dağılımında hiç görünmüyordu. Havuz modelinde
+    // (kategori → takım) taleplerin tamamı bu durumda başlıyor.
+    //   poolCount    : havuzda bekliyor (assignedTo boş) — kimse üstlenmedi
+    //   claimedCount : bir üye üstlendi ama henüz kapanmadı
+    // Yalnız AÇIK ticket'lar sayılır; takımsızlar bu bloğa girmez.
+    const teamMap = new Map<string, {
+      teamId: string
+      name: string
+      poolCount: number
+      claimedCount: number
+      totalOpen: number
+    }>()
+
+    allTickets.forEach(t => {
+      if (!t.assignedTeamId || !acikMi(t.status)) return
+      let team = teamMap.get(t.assignedTeamId)
+      if (!team) {
+        team = {
+          teamId: t.assignedTeamId,
+          name: t.assignedTeam?.name ?? '(bilinmeyen takım)',
+          poolCount: 0,
+          claimedCount: 0,
+          totalOpen: 0,
+        }
+        teamMap.set(t.assignedTeamId, team)
+      }
+      if (t.assignedTo) team.claimedCount++
+      else team.poolCount++
+      team.totalOpen++
+    })
+
+    const teamPerformance = Array.from(teamMap.values())
+      .sort((a, b) => b.totalOpen - a.totalOpen)
+
     // Günlük trend (son 7 gün)
     const dailyTrend: { date: string; created: number; resolved: number }[] = []
     for (let i = 6; i >= 0; i--) {
@@ -232,12 +282,21 @@ export async function GET(request: NextRequest) {
         avgResponseTime: Math.round(avgResponseTime * 10) / 10,
         avgSatisfaction: Math.round(avgSatisfaction * 10) / 10,
         resolutionRate: totalTickets > 0 ? Math.round(((resolvedTickets + closedTickets) / totalTickets) * 100) : 0,
+        // ÖRNEKLEM SAYILARI — ortalamalar kaç kayıttan hesaplandı.
+        // Ortalamalar veri yokken 0 dönüyor ve bu "hepsi 0" ile karışıyor
+        // (özellikle avgSatisfaction: puan 1-5 aralığında, 0 mümkün değil).
+        // Frontend bu sayılara bakıp "yeterli veri yok" veya "1 kayıttan"
+        // diyebilsin diye açıkça taşınıyor.
+        respondedCount: respondedTickets.length,
+        resolvedCountForAvg: resolvedWithTime.length,
+        ratedCount: ratedTickets.length,
       },
       byPriority,
       byType,
       byStatus,
       byCategory,
       individualPerformance,
+      teamPerformance,
       dailyTrend,
     })
   } catch (error) {

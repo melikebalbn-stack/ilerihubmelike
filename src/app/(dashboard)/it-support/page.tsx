@@ -39,6 +39,7 @@ import {
   ChevronDown,
   X,
   BarChart3,
+  Info,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -49,6 +50,7 @@ import { tr } from "date-fns/locale"
 import { TicketDetail } from "./_components/ticket-detail"
 import { CategoryBadge } from "./_components/category-badge"
 import { KpiDashboard } from "./_components/kpi-dashboard"
+import { KullanimKilavuzu } from "./_components/kullanim-kilavuzu"
 import { ticketAge, resolutionTime, isOpenStatus } from "./_lib/ticket-age"
 
 interface TicketCategory {
@@ -133,6 +135,8 @@ export default function ITSupportPage() {
 
   // Yeni ticket dialog
   const [showNewTicket, setShowNewTicket] = useState(false)
+  // Kullanım kılavuzu — HERKESE açık (helpdesk.admin koşulu YOK)
+  const [showGuide, setShowGuide] = useState(false)
   // Ticket eki: seçilen dosyalar Gönder'e basılana kadar İSTEMCİDE tutulur;
   // yükleme create'ten hemen önce yapılır (iptal edilirse sunucuda çöp kalmaz).
   const [ekDosyalar, setEkDosyalar] = useState<File[]>([])
@@ -326,6 +330,11 @@ export default function ITSupportPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowGuide(true)}>
+            <Info className="h-4 w-4 mr-2" />
+            Kullanım Kılavuzu
+          </Button>
+
           <Button variant="outline" size="sm" onClick={retry} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Yenile
@@ -767,6 +776,9 @@ export default function ITSupportPage() {
           </Card>
         </div>
       </div>
+
+      {/* Kullanım kılavuzu — Maliyet Kılavuzu deseni (shadcn Dialog, renkli bölümler) */}
+      <KullanimKilavuzu open={showGuide} onOpenChange={setShowGuide} />
 
       {/* Detay modal — inline overlay div (portal/Dialog değil). URL değişmez. */}
       {selectedTicketId && (

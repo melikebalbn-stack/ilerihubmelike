@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, X, AlertTriangle, Loader2, Send, UserPlus, Settings2, Headphones, Clock, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, X, AlertTriangle, Loader2, Send, UserPlus, Settings2, Headphones, Clock, CheckCircle2, Paperclip, FileText } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { ticketAge, resolutionTime, isOpenStatus } from "../_lib/ticket-age"
@@ -48,12 +48,21 @@ interface Ticket {
   category?: { name: string; color: string | null; icon: string | null } | null
   // HAVUZ (Faz 3): ticket bir takıma düşmüşse. Bayraklar SUNUCUDA hesaplanır
   // (üye e-postaları istemciye gönderilmez).
+  /** JSON metin: [{url,name,size,type}] — DB'de Text, istemcide parse edilir. */
+  attachments?: string | null
   assignedTeamId?: string | null
   assignedTeam?: { id: string; name: string } | null
   currentUserIsTeamMember?: boolean
   currentUserCanClaim?: boolean
   comments?: TicketComment[]
   timeline?: TicketTimelineEntry[]
+}
+
+interface TicketEk {
+  url: string
+  name: string
+  size: number
+  type: string
 }
 
 interface TicketComment {
@@ -137,6 +146,7 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
   const [comments, setComments] = useState<TicketComment[]>([])
   const [timeline, setTimeline] = useState<TicketTimelineEntry[]>([])
   const [updatingTicket, setUpdatingTicket] = useState(false)
+  const [ekYukleniyor, setEkYukleniyor] = useState(false)
   const [newComment, setNewComment] = useState("")
   const [sendingComment, setSendingComment] = useState(false)
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([])
@@ -227,6 +237,41 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
       assignedToName: session.user.name ?? session.user.email,
       status: "ASSIGNED",
     } as Partial<Ticket>)
+  }
+
+  // ── Ekler ────────────────────────────────────────────────────────────
+  // DB'de JSON metin; bozuk veri gelirse boş liste (ekran patlamasın).
+  const ekler: TicketEk[] = (() => {
+    if (!ticket?.attachments) return []
+    try {
+      const p = JSON.parse(ticket.attachments)
+      return Array.isArray(p) ? (p as TicketEk[]).filter((e) => e && typeof e.url === "string") : []
+    } catch {
+      return []
+    }
+  })()
+
+  // Yeni ek: upload → mevcut listeye EKLE → PUT ile tam listeyi gönder.
+  const handleEkYukle = async (files: File[]) => {
+    if (files.length === 0 || !ticket) return
+    setEkYukleniyor(true)
+    try {
+      const fd = new FormData()
+      files.forEach((f) => fd.append("files", f))
+      const up = await fetch("/api/tickets/upload", { method: "POST", body: fd })
+      if (!up.ok) {
+        const err = await up.json().catch(() => ({}))
+        toast.error(err.error || "Dosya yüklenemedi")
+        return
+      }
+      const yeni: TicketEk[] = (await up.json()).files ?? []
+      await handleUpdateTicket({ attachments: [...ekler, ...yeni] } as unknown as Partial<Ticket>)
+      toast.success(yeni.length > 1 ? `${yeni.length} ek eklendi` : "Ek eklendi")
+    } catch {
+      toast.error("Dosya yüklenemedi — bağlantı hatası")
+    } finally {
+      setEkYukleniyor(false)
+    }
   }
 
   const handleAssignToUser = (userId: string) => {
@@ -375,6 +420,58 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
         <div>
           <h4 className="font-medium mb-2">Aciklama</h4>
           <p className="text-sm whitespace-pre-wrap bg-muted/30 p-4 rounded-lg">{ticket.description}</p>
+        </div>
+
+        {/* Ekler — boşsa ve ekleme yapılamıyorsa hiç render edilmez */}
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h4 className="font-medium text-sm">Ekler{ekler.length > 0 ? ` (${ekler.length})` : ""}</h4>
+            <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer rounded-md border px-2 py-1 hover:bg-accent">
+              <Paperclip className="h-3.5 w-3.5" />
+              {ekYukleniyor ? "Yükleniyor..." : "Ek Ekle"}
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                className="hidden"
+                disabled={ekYukleniyor || updatingTicket}
+                onChange={(e) => {
+                  const secilen = Array.from(e.target.files ?? [])
+                  e.target.value = ""
+                  handleEkYukle(secilen)
+                }}
+              />
+            </label>
+          </div>
+          {ekler.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Ek yok</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {ekler.map((ek) => {
+                const resimMi = ek.type?.startsWith("image/")
+                return (
+                  <a
+                    key={ek.url}
+                    href={ek.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`${ek.name} — ${(ek.size / 1024 / 1024).toFixed(2)} MB`}
+                    className="group rounded-lg border overflow-hidden hover:border-primary transition-colors"
+                  >
+                    {resimMi ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={ek.url} alt={ek.name} className="h-20 w-20 object-cover" />
+                    ) : (
+                      <div className="h-20 w-20 flex flex-col items-center justify-center gap-1 bg-muted/40 p-1">
+                        <FileText className="h-6 w-6 text-muted-foreground" />
+                        <span className="text-[10px] text-center truncate w-full px-1">{ek.name}</span>
+                      </div>
+                    )}
+                  </a>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* HAVUZ — "Üstlen": ticket bir takıma düşmüş, henüz kimse üstlenmemiş ve

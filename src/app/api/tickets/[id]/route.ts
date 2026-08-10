@@ -124,6 +124,7 @@ export async function PUT(
       rootCause,
       satisfactionRating,
       satisfactionComment,
+      attachments,
     } = body
 
     // Durum değiştirme: IT ekibi (helpdesk.admin) VEYA atanan teknisyen (İş 1).
@@ -132,9 +133,28 @@ export async function PUT(
       return NextResponse.json({ error: 'Durum değiştirme yetkiniz yok' }, { status: 403 })
     }
 
+    // HAVUZ "Üstlen" muafiyeti (dar kapsam): takım üyesi, KENDİ takımının HENÜZ
+    // ATANMAMIŞ ticket'ını KENDİSİNE alabilir. Üç koşul birden aranır:
+    //   1) isTicketTeamMember — bu ticket'ın assignedTeam.members'ında (herhangi
+    //      bir takım değil; ticket takımsızsa members boş → false)
+    //   2) !existingTicket.assignedTo — havuzda; atanmışı BAŞKASINDAN ALAMAZ
+    //   3) assignedTo === user.email — yalnız KENDİNE; başkasına atayamaz
+    // E-posta karşılaştırması normalize: DB lowercase invariant'ı bozulursa
+    // meşru üstlenme sessizce 403'e düşmesin.
+    const kendineUstleniyor =
+      isTicketTeamMember &&
+      !existingTicket.assignedTo &&
+      typeof assignedTo === 'string' &&
+      assignedTo.toLowerCase().trim() === (user.email ?? '').toLowerCase().trim()
+
     // Atama / öncelik / talep tipi yalnız IT ekibinde (atanan teknisyen bunları değiştiremez)
     if (!userIsITStaff) {
-      if (assignedTo !== undefined || assignedTeamId !== undefined) {
+      // Takım DEĞİŞTİRME muafiyet DIŞI: üstlenme yalnız kişiye atamadır, ticket'ı
+      // başka takıma taşımak her zaman IT ekibine özeldir.
+      if (assignedTeamId !== undefined) {
+        return NextResponse.json({ error: 'Atama yapma yetkiniz yok' }, { status: 403 })
+      }
+      if (assignedTo !== undefined && !kendineUstleniyor) {
         return NextResponse.json({ error: 'Atama yapma yetkiniz yok' }, { status: 403 })
       }
       if (priority !== undefined) {
@@ -161,6 +181,18 @@ export async function PUT(
         description: 'Konu değiştirildi',
         oldValue: existingTicket.subject,
         newValue: subject,
+      })
+    }
+
+    // Ekler: istemci TAM listeyi gönderir (mevcut + yeni). DB'de JSON metin.
+    // Erişim kapısı yukarıdaki 403 ile aynı — talep sahibi de kendi ticket'ına ek koyabilir.
+    if (attachments !== undefined) {
+      updateData.attachments = Array.isArray(attachments) && attachments.length > 0
+        ? JSON.stringify(attachments)
+        : null
+      timelineEntries.push({
+        action: 'attachments_changed',
+        description: 'Ekler güncellendi',
       })
     }
 

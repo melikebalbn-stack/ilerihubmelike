@@ -37,9 +37,11 @@ import {
   Clock,
   ChevronUp,
   ChevronDown,
+  X,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -129,6 +131,10 @@ export default function ITSupportPage() {
 
   // Yeni ticket dialog
   const [showNewTicket, setShowNewTicket] = useState(false)
+  // Ticket eki: seçilen dosyalar Gönder'e basılana kadar İSTEMCİDE tutulur;
+  // yükleme create'ten hemen önce yapılır (iptal edilirse sunucuda çöp kalmaz).
+  const [ekDosyalar, setEkDosyalar] = useState<File[]>([])
+  const [ekYukleniyor, setEkYukleniyor] = useState(false)
   const [newTicket, setNewTicket] = useState({
     subject: "",
     description: "",
@@ -203,10 +209,28 @@ export default function ITSupportPage() {
 
     setSubmitting(true)
     try {
+      // 1) Ekler önce yüklenir. Yükleme başarısızsa TICKET AÇILMAZ — kullanıcı
+      //    ekini kaybettiğini fark etmeden talep göndermiş olmasın.
+      let attachments: { url: string; name: string; size: number; type: string }[] = []
+      if (ekDosyalar.length > 0) {
+        setEkYukleniyor(true)
+        const fd = new FormData()
+        ekDosyalar.forEach((f) => fd.append("files", f))
+        const up = await fetch("/api/tickets/upload", { method: "POST", body: fd })
+        setEkYukleniyor(false)
+        if (!up.ok) {
+          const err = await up.json().catch(() => ({}))
+          toast.error(err.error || "Dosya yüklenemedi")
+          return
+        }
+        attachments = (await up.json()).files ?? []
+      }
+
+      // 2) Ticket oluştur (attachments create'te JSON'a çevrilip yazılıyor)
       const response = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newTicket),
+        body: JSON.stringify({ ...newTicket, attachments }),
       })
 
       if (response.ok) {
@@ -218,11 +242,17 @@ export default function ITSupportPage() {
           location: "",
           assetInfo: "",
         })
+        setEkDosyalar([])
         retry()
+      } else {
+        const err = await response.json().catch(() => ({}))
+        toast.error(err.error || "Talep oluşturulamadı")
       }
     } catch (error) {
       console.error("Ticket olusturulamadi:", error)
+      toast.error("Talep oluşturulamadı — bağlantı hatası")
     } finally {
+      setEkYukleniyor(false)
       setSubmitting(false)
     }
   }
@@ -368,6 +398,51 @@ export default function ITSupportPage() {
                     value={newTicket.description}
                     onChange={(e) => setNewTicket({ ...newTicket, description: e.target.value })}
                   />
+                </div>
+
+                {/* Ekler — telefonda accept="image/*" kamera+galeri sunar.
+                    capture KULLANILMIYOR: eklenirse galeriden seçme kaybolur. */}
+                <div className="grid gap-2">
+                  <Label htmlFor="ticket-ekler">Ekler (resim veya PDF, en fazla 10MB)</Label>
+                  <Input
+                    id="ticket-ekler"
+                    type="file"
+                    accept="image/*,application/pdf"
+                    multiple
+                    disabled={submitting}
+                    onChange={(e) => {
+                      const secilen = Array.from(e.target.files ?? [])
+                      if (secilen.length > 0) setEkDosyalar((o) => [...o, ...secilen])
+                      // input'u sıfırla ki aynı dosya tekrar seçilebilsin
+                      e.target.value = ""
+                    }}
+                  />
+                  {ekDosyalar.length > 0 && (
+                    <div className="space-y-1">
+                      {ekDosyalar.map((f, i) => (
+                        <div
+                          key={`${f.name}-${i}`}
+                          className="flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs"
+                        >
+                          <span className="truncate">{f.name}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-muted-foreground">
+                              {(f.size / 1024 / 1024).toFixed(2)} MB
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setEkDosyalar((o) => o.filter((_, j) => j !== i))}
+                              className="text-red-600 hover:text-red-700"
+                              aria-label="Eki kaldır"
+                              disabled={submitting}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-2">

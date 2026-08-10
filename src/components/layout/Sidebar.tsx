@@ -76,6 +76,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CalendarDays,
+  Gauge,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, createContext, useContext } from "react"
@@ -184,6 +185,7 @@ const teknikMenuItems = [
 // Roller ipro.view eşlemesiyle hizalı: super-admin/admin/it-admin/departman-muduru.
 const iproMenuItems = [
   { name: "İzleme Panosu", icon: Activity, href: "/ipro/izleme", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
+  { name: "OEE Pano", icon: Gauge, href: "/ipro/oee", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"], note: "canlı" },
   { name: "Fabrika Haritası", icon: Map, href: "/ipro/harita", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"], note: "canlı" },
   { name: "Tezgahlar", icon: Factory, href: "/ipro/tezgahlar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
   { name: "Operatör Eşlemeleri", icon: Users, href: "/ipro/operator-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },

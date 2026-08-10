@@ -109,16 +109,19 @@ export function HataKoduFormDialog({
     !duzenleme && kodGecerli && tumKayitlar.some((r) => r.kod === kodSayi)
 
   /**
-   * Üst kod adayları: ustKodId'si NULL olan TÜM kayıtlar — yalnız "altı olanlar"
-   * değil. Aksi halde yeni açılan bir ana başlık (henüz altı yok) listede
-   * çıkmaz ve altına kod bağlanamazdı; bölüm hiç açılamazdı.
+   * Üst kod adayları: `tip = BOLUM` olan TÜM kayıtlar — altı boş olanlar dahil.
+   *
+   * Eskiden koşul `ustKodId === null` idi; o eksen yanlıştı çünkü 9 genel
+   * uygunsuzluk (kod 1..9) da köktedir ve listeye sızıyordu — bir hata kodu
+   * "İş emri yok"un altına bağlanabiliyordu. Artık yalnız gerçek bölümler.
+   *
    * Kendisi ve kendi alt ağacı çıkarılır (döngü koruması).
    */
   const ustSecenekleri = useMemo(() => {
     const haric = kayit ? altAgacIdleri(kayit.id, tumKayitlar) : new Set<string>()
     if (kayit) haric.add(kayit.id)
     return tumKayitlar
-      .filter((r) => r.ustKodId === null && !haric.has(r.id))
+      .filter((r) => r.tip === 'BOLUM' && !haric.has(r.id))
       .sort((a, b) => a.siraNo - b.siraNo || a.kod - b.kod)
   }, [kayit, tumKayitlar])
 

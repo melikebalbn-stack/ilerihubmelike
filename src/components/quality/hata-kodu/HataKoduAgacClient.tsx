@@ -1,14 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  Pencil,
-  Plus,
-  X,
-} from 'lucide-react'
+import { Loader2, Pencil, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,20 +23,19 @@ type Durum = 'aktif' | 'pasif' | 'tumu'
 
 type SatirProps = {
   r: HataKoduRow
-  /** 0 = başlık/genel, 1 = alt kod (girintili) */
-  seviye: 0 | 1
-  /** Dolu ise satır bir bölüm başlığıdır (katlanabilir + rozet). */
+  /** Bölüm satırında: alt kod sayısı rozeti — BİLGİ amaçlı, tıklanmaz. */
   altSayisi?: number
+  /** Hata kodu satırında: ait olduğu bölüm ("100 Satış") ya da "Genel". */
+  bolumEtiketi?: string
   canManage: boolean
-  acik: boolean
   gecisBekliyor: boolean
-  onKatla: () => void
   onDuzenle: () => void
   onAktifDegistir: (yeni: boolean) => void
 }
 
 /**
- * Tek satır — başlık ve alt kod aynı görsel dili paylaşır, girinti seviyeye bağlı.
+ * Tek satır — bölüm ve hata kodu aynı görsel dili paylaşır. Girinti YOK, katlama YOK;
+ * fark yalnız yan sütunlarda: bölümde alt kod rozeti, kodda ait olduğu bölüm etiketi.
  *
  * Modül seviyesinde: ana bileşenin İÇİNDE tanımlansaydı her render'da yeni bir
  * bileşen tipi üretilir ve 126 satırın tamamı (Switch'ler dahil) yeniden mount
@@ -51,49 +43,43 @@ type SatirProps = {
  */
 function KodSatiri({
   r,
-  seviye,
   altSayisi,
+  bolumEtiketi,
   canManage,
-  acik,
   gecisBekliyor,
-  onKatla,
   onDuzenle,
   onAktifDegistir,
 }: SatirProps) {
-  const baslik = altSayisi !== undefined
+  const bolum = altSayisi !== undefined
   return (
     <div
       className={`flex items-center gap-3 px-3 py-2 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 ${
-        seviye === 1 ? 'pl-11' : ''
-      } ${!r.aktif ? 'opacity-60' : ''}`}
+        !r.aktif ? 'opacity-60' : ''
+      }`}
     >
-      {baslik ? (
-        <button
-          type="button"
-          onClick={onKatla}
-          className="shrink-0 text-slate-400 hover:text-slate-600"
-          aria-label={acik ? 'Kapat' : 'Aç'}
-          aria-expanded={acik}
-        >
-          {acik ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        </button>
-      ) : null}
-
       <span
         className={`font-quality-mono tabular-nums text-sm shrink-0 w-12 ${
-          baslik ? 'font-semibold text-[#1B4F72]' : 'text-slate-500'
+          bolum ? 'font-semibold text-[#1B4F72]' : 'text-slate-500'
         }`}
       >
         {r.kod}
       </span>
 
       <span
-        className={`min-w-0 flex-1 text-sm ${baslik ? 'font-semibold text-slate-800' : 'text-slate-700'}`}
+        className={`min-w-0 flex-1 text-sm ${bolum ? 'font-semibold text-slate-800' : 'text-slate-700'}`}
       >
         {r.ad}
       </span>
 
-      {baslik && (
+      {/* Hata kodu satırında ait olduğu bölüm */}
+      {bolumEtiketi !== undefined && (
+        <span className="shrink-0 text-xs text-slate-500 max-w-[14rem] truncate" title={bolumEtiketi}>
+          {bolumEtiketi}
+        </span>
+      )}
+
+      {/* Bölüm satırında alt kod sayısı — salt bilgi, tıklanmaz */}
+      {bolum && (
         <Badge variant="outline" className="shrink-0 bg-slate-50 text-slate-600 border-slate-200">
           {altSayisi} alt kod
         </Badge>
@@ -137,10 +123,13 @@ function KodSatiri({
  * bu kenar durum hiç oluşmuyor. Küme 126 satır — tamamı tek istekte gelir,
  * arama/filtre yeniden istek atmaz.
  *
- * Gruplama `tip` alanından gelir (türetme DEĞİL):
- *   • Bölümler     → tip = BOLUM (altı boş olsa da bölümdür)
- *   • Hata Kodları → tip = KOD ve üstü YOK
- *   • Alt kodlar   → üstü VAR; bölümün altında nested çizilir
+ * İKİ AYRI DÜZ LİSTE — iç içe render YOK:
+ *   • Bölümler     → tip = BOLUM, tek seviye, katlama yok
+ *   • Hata Kodları → tip = KOD'un TAMAMI (bölüme bağlı olan da olmayan da),
+ *                    her satırda ait olduğu bölüm sütunu ("100 Satış" / "Genel")
+ *
+ * `ustKodId` hiyerarşiyi taşımaya devam ediyor ama artık yalnız iki şey için
+ * kullanılıyor: bölüm sütunu etiketi ve bölüm satırındaki alt kod sayısı rozeti.
  */
 export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
   const [rows, setRows] = useState<HataKoduRow[]>([])
@@ -149,7 +138,6 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
 
   const [q, setQ] = useState('')
   const [durum, setDurum] = useState<Durum>('aktif')
-  const [acik, setAcik] = useState<Set<string>>(new Set())
   const [geciyor, setGeciyor] = useState<string | null>(null)
 
   const [formAcik, setFormAcik] = useState(false)
@@ -180,26 +168,25 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
   const sirala = (a: HataKoduRow, b: HataKoduRow) => a.siraNo - b.siraNo || a.kod - b.kod
 
   /**
-   * Gruplama artık `tip` alanından geliyor, "altı var mı" türetmesinden DEĞİL.
-   * Böylece altı boş bir bölüm de Bölümler listesinde durur — eskiden ilk alt
-   * kodu bağlanana kadar "Genel uygunsuzluklar"a düşüyordu.
-   *
-   * `altlarByUst` hiyerarşiyi taşımaya devam ediyor: bölümün altları oradan gelir.
+   * `rowById`: bölüm sütunu etiketini çözmek için.
+   * `altSayisiById`: bölüm satırındaki bilgi rozeti için (tıklanmaz).
    */
-  const { genel, bolumler, altlarByUst } = useMemo(() => {
-    const altlarByUst = new Map<string, HataKoduRow[]>()
+  const { bolumler, kodlar, rowById, altSayisiById } = useMemo(() => {
+    const rowById = new Map<string, HataKoduRow>()
+    for (const r of rows) rowById.set(r.id, r)
+
+    const altSayisiById = new Map<string, number>()
     for (const r of rows) {
       if (!r.ustKodId) continue
-      const list = altlarByUst.get(r.ustKodId)
-      if (list) list.push(r)
-      else altlarByUst.set(r.ustKodId, [r])
+      altSayisiById.set(r.ustKodId, (altSayisiById.get(r.ustKodId) ?? 0) + 1)
     }
-    for (const list of altlarByUst.values()) list.sort(sirala)
 
     return {
       bolumler: rows.filter((r) => r.tip === 'BOLUM').sort(sirala),
-      genel: rows.filter((r) => r.tip === 'KOD' && r.ustKodId === null).sort(sirala),
-      altlarByUst,
+      // ustKodId koşulu YOK — bölüme bağlı kodlar da bu listede.
+      kodlar: rows.filter((r) => r.tip === 'KOD'),
+      rowById,
+      altSayisiById,
     }
   }, [rows])
 
@@ -218,43 +205,41 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
     [aramaAktif, aranan, nq],
   )
 
-  /**
-   * Görünür başlıklar + her birinin görünür altları.
-   * Başlık kendisi filtreden düşse bile görünür bir altı varsa yapısal bağlam
-   * olarak gösterilir (pasifse zaten soluk çizilir) — aksi halde alt kod erişilemez olurdu.
-   */
-  const gorunurBasliklar = useMemo(() => {
-    return bolumler
-      .map((b) => {
-        const tumAltlar = altlarByUst.get(b.id) ?? []
-        const baslikEsler = durumGecer(b) && aramaGecer(b)
-        const altlar = tumAltlar.filter(
-          (c) => durumGecer(c) && (!aramaAktif || aramaGecer(c) || aramaGecer(b)),
-        )
-        return { baslik: b, altlar, baslikEsler }
-      })
-      .filter((g) => g.baslikEsler || g.altlar.length > 0)
-  }, [bolumler, altlarByUst, durumGecer, aramaGecer, aramaAktif])
-
-  const gorunurGenel = useMemo(
-    () => genel.filter((r) => durumGecer(r) && aramaGecer(r)),
-    [genel, durumGecer, aramaGecer],
+  /** Bölüm sütunu etiketi: üstü varsa "kod ad", yoksa "Genel". */
+  const bolumEtiketi = useCallback(
+    (r: HataKoduRow) => {
+      if (!r.ustKodId) return 'Genel'
+      const p = rowById.get(r.ustKodId)
+      return p ? `${p.kod} ${p.ad}` : 'Genel'
+    },
+    [rowById],
+  )
+  /** Sıralama anahtarı: bölüm kodu; Genel (üstsüz) en sona. */
+  const bolumSiraKodu = useCallback(
+    (r: HataKoduRow) => {
+      if (!r.ustKodId) return Number.POSITIVE_INFINITY
+      const p = rowById.get(r.ustKodId)
+      return p ? p.kod : Number.POSITIVE_INFINITY
+    },
+    [rowById],
   )
 
-  const toplamGorunur =
-    gorunurGenel.length + gorunurBasliklar.reduce((s, g) => s + 1 + g.altlar.length, 0)
+  // Arama ve durum filtresi artık her listeye DOĞRUDAN uygulanır —
+  // başlık/alt bağlam kuralı (altı görünür diye başlığı göster) kalktı.
+  const gorunurBolumler = useMemo(
+    () => bolumler.filter((r) => durumGecer(r) && aramaGecer(r)),
+    [bolumler, durumGecer, aramaGecer],
+  )
 
-  function toggleAcik(id: string) {
-    setAcik((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  const gorunurKodlar = useMemo(
+    () =>
+      kodlar
+        .filter((r) => durumGecer(r) && aramaGecer(r))
+        .sort((a, b) => bolumSiraKodu(a) - bolumSiraKodu(b) || a.kod - b.kod),
+    [kodlar, durumGecer, aramaGecer, bolumSiraKodu],
+  )
 
-  /** Aramada eşleşen alt kodun üst başlığı otomatik açılır. */
-  const acikMi = (id: string) => aramaAktif || acik.has(id)
+  const toplamGorunur = gorunurBolumler.length + gorunurKodlar.length
 
   async function aktifDegistir(r: HataKoduRow, yeni: boolean) {
     setGeciyor(r.id)
@@ -354,7 +339,7 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
            başlığında durduğu için, kutu gizlenirse ilk bölümü/kodu eklemek
            imkânsız olurdu. Boş kutu kendi satırında durumunu yazar. */
         <div className="space-y-4">
-          {/* ── Bölümler ── */}
+          {/* ── KUTU 1: Bölümler (düz, tek seviye) ── */}
           <div className="rounded-md border bg-white overflow-hidden">
             <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
               <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
@@ -366,52 +351,31 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
                 </Button>
               )}
             </div>
-            {gorunurBasliklar.length === 0 ? (
+            {gorunurBolumler.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-slate-500">
                 {aramaAktif || durum !== 'aktif' ? 'Filtrelere uyan bölüm yok' : 'Henüz bölüm yok'}
               </p>
             ) : (
-              gorunurBasliklar.map(({ baslik, altlar }) => (
-                <div key={baslik.id}>
-                  <KodSatiri
-                    r={baslik}
-                    seviye={0}
-                    altSayisi={altlar.length}
-                    canManage={canManage}
-                    acik={acikMi(baslik.id)}
-                    gecisBekliyor={geciyor === baslik.id}
-                    onKatla={() => toggleAcik(baslik.id)}
-                    onDuzenle={() => duzenleAc(baslik)}
-                    onAktifDegistir={(v) => aktifDegistir(baslik, v)}
-                  />
-                  {acikMi(baslik.id) &&
-                    altlar.map((c) => (
-                      <KodSatiri
-                        key={c.id}
-                        r={c}
-                        seviye={1}
-                        canManage={canManage}
-                        acik={false}
-                        gecisBekliyor={geciyor === c.id}
-                        onKatla={() => {}}
-                        onDuzenle={() => duzenleAc(c)}
-                        onAktifDegistir={(v) => aktifDegistir(c, v)}
-                      />
-                    ))}
-                </div>
+              gorunurBolumler.map((r) => (
+                <KodSatiri
+                  key={r.id}
+                  r={r}
+                  altSayisi={altSayisiById.get(r.id) ?? 0}
+                  canManage={canManage}
+                  gecisBekliyor={geciyor === r.id}
+                  onDuzenle={() => duzenleAc(r)}
+                  onAktifDegistir={(v) => aktifDegistir(r, v)}
+                />
               ))
             )}
           </div>
 
-          {/* ── Hata Kodları (bölüme bağlı olmayan KOD satırları) ── */}
+          {/* ── KUTU 2: Hata Kodları (TÜM tip=KOD, düz, bölüm sütunlu) ── */}
           <div className="rounded-md border bg-white overflow-hidden">
             <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Hata Kodları
-                </h2>
-                <p className="text-[11px] text-slate-500 mt-0.5">Bölüme bağlı olmayan kodlar</p>
-              </div>
+              <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                Hata Kodları
+              </h2>
               {canManage && (
                 <Button
                   size="sm"
@@ -422,20 +386,18 @@ export function HataKoduAgacClient({ canManage }: { canManage: boolean }) {
                 </Button>
               )}
             </div>
-            {gorunurGenel.length === 0 ? (
+            {gorunurKodlar.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-slate-500">
                 {aramaAktif || durum !== 'aktif' ? 'Filtrelere uyan kod yok' : 'Henüz kod yok'}
               </p>
             ) : (
-              gorunurGenel.map((r) => (
+              gorunurKodlar.map((r) => (
                 <KodSatiri
                   key={r.id}
                   r={r}
-                  seviye={0}
+                  bolumEtiketi={bolumEtiketi(r)}
                   canManage={canManage}
-                  acik={false}
                   gecisBekliyor={geciyor === r.id}
-                  onKatla={() => {}}
                   onDuzenle={() => duzenleAc(r)}
                   onAktifDegistir={(v) => aktifDegistir(r, v)}
                 />

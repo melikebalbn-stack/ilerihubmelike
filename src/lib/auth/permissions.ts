@@ -138,6 +138,9 @@ export const PERMISSION_KEYS = {
   // === Kalite Hata Kodları (KAL-KYT-15 Bölüm 1) ===
   QUALITY_HATAKODU_MANAGE: 'quality.hatakodu.manage',
 
+  // === Kalite Uygunsuzluk (KAL-KYT-15 Bölüm 2) ===
+  UYGUNSUZLUK_MANAGE: 'uygunsuzluk.manage',
+
   // === YILLIK ÇALIŞMA TAKVİMİ ===
   YILLIK_TAKVIM_VIEW: 'yilliktakvim.view',
   YILLIK_TAKVIM_CREATE: 'yilliktakvim.create',
@@ -280,6 +283,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'qdms.manage': 'Kalite Yönetim Sistemi yönetim — oluşturma/düzenleme/doküman onayı',
   'rma.manage': 'RMA/SMA iade formu yönetim — oluştur/düzenle/sil',
   'quality.hatakodu.manage': 'Kalite hata kodları (KAL-KYT-15) yönetim — oluştur/düzenle/pasifleştir',
+  'uygunsuzluk.manage': 'Kalite uygunsuzluk formu (KAL-KYT-15) yönetim — oluştur/düzenle/sil',
 
   'yilliktakvim.view': 'Yıllık çalışma takvimini görüntüleme',
   'yilliktakvim.create': 'Yıllık çalışma takvimi kaydı oluşturma',

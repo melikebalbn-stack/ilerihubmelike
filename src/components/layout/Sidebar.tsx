@@ -69,6 +69,7 @@ import {
   UserMinus,
   Shapes,
   ListTree,
+  ClipboardX,
   Search,
   Pin,
   PinOff,
@@ -253,6 +254,9 @@ const kaliteMenuItems = [
 // kaliteMenuItems içine KONULMADI: o liste filterItems (roles) ile süzülüyor,
 // bu kalemin koşulu ise canAccessKalite VEYA quality.hatakodu.manage.
 const hataKoduMenuItem = { name: "Hata Kodları", icon: ListTree, href: "/kalite/hata-kodlari", roles: [] as string[] }
+
+// Uygunsuzluk (KAL-KYT-15 Bölüm 2) — hata kodlarıyla AYNI kitle (canSeeHataKodu).
+const uygunsuzlukMenuItem = { name: "Uygunsuzluk Kayıtları", icon: ClipboardX, href: "/kalite/uygunsuzluk", roles: [] as string[] }
 
 // Denetimler alt menüsü (ISO 27001 dahil)
 // Kalite Sistem Departmanı tüm ISO 27001 modülünü görebilir (Sızma Testleri hariç)
@@ -525,9 +529,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const canSeeHataKodu =
     canAccessKalite(userRole, userDepartment, userOu) ||
     userPermissions.includes('quality.hatakodu.manage')
+  // Uygunsuzluk — hata kodları kitlesi + canManageUygunsuzluk'un kendi kolu.
+  // (canManageUygunsuzluk = 'uygunsuzluk.manage' VEYA canAccessKalite; ikinci
+  //  kol zaten canSeeHataKodu içinde, o yüzden yalnız izin kolu ekleniyor.)
+  const canSeeUygunsuzluk = canSeeHataKodu || userPermissions.includes('uygunsuzluk.manage')
   const filteredKaliteItems = [
     ...filterItems(kaliteMenuItems),
     ...(canSeeHataKodu ? [hataKoduMenuItem] : []),
+    ...(canSeeUygunsuzluk ? [uygunsuzlukMenuItem] : []),
   ]
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)

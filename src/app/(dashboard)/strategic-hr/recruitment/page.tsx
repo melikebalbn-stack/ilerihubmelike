@@ -290,7 +290,7 @@ const referralSourceLabels: Record<string, string> = {
 }
 
 export default function RecruitmentPage() {
-  const { data: session } = useSession()
+  const { data: session, status: sessionStatus } = useSession()
   const router = useRouter()
   const [openings, setOpenings] = useState<JobOpening[]>([])
   const [candidates, setCandidates] = useState<Candidate[]>([])
@@ -351,6 +351,15 @@ export default function RecruitmentPage() {
     coverLetter: ""
   })
 
+  // İK yetkisi (recruitment.admin) yoksa başvuru listesi ucu YALNIZ ?assignedToMe=1 ile
+  // açılır (atanan müdür kendi kuyruğu). Bu yüzden filtre o kullanıcılarda ZORUNLU:
+  // toggle kilitli ve her istekte açık gider. Oturum henüz yüklenmemişken (loading)
+  // zorlama YAPILMAZ — böylece İK kullanıcısının ilk isteği eskisiyle birebir aynı kalır
+  // (ekstra tur yok, davranış değişmez).
+  const ikYetkili = session?.user?.permissions?.includes("recruitment.admin") ?? false
+  const sadeceBanaZorunlu = sessionStatus === "authenticated" && !ikYetkili
+  const assignedToMeEfektif = sadeceBanaZorunlu || jobAppAssignedToMe
+
   useEffect(() => {
     fetchOpenings()
     fetchCandidates()
@@ -361,7 +370,7 @@ export default function RecruitmentPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchJobApplications()
-  }, [jobAppAssignedToMe])
+  }, [assignedToMeEfektif])
 
   const fetchOpenings = async () => {
     try {
@@ -400,7 +409,8 @@ export default function RecruitmentPage() {
       }
       // "Bana atananlar" — SUNUCU tarafı filtre (assignedManagerId = ben). assignedManagerId
       // liste projeksiyonunda yok; client'ta filtrelenemez, bu yüzden sunucuda yapılır.
-      if (jobAppAssignedToMe) {
+      // İK yetkisi olmayan atanan müdürde bu parametre ZORUNLU (bkz. assignedToMeEfektif).
+      if (assignedToMeEfektif) {
         params.set("assignedToMe", "1")
       }
       const res = await fetch(`/api/strategic-hr/recruitment/job-applications?${params}`)
@@ -1843,10 +1853,18 @@ export default function RecruitmentPage() {
                     Web sitesi uzerinden gelen is basvurulari
                   </CardDescription>
                 </div>
-                {/* "Bana atananlar" — sunucu tarafı filtre (assignedManagerId = ben) */}
+                {/* "Bana atananlar" — sunucu tarafı filtre (assignedManagerId = ben).
+                    İK yetkisi olmayan atanan müdürde kapatılamaz: uç zaten yalnız bu
+                    filtreyle açılıyor, kapalı hâli 403 döner. */}
                 <Button
-                  variant={jobAppAssignedToMe ? "default" : "outline"}
+                  variant={assignedToMeEfektif ? "default" : "outline"}
                   size="sm"
+                  disabled={sadeceBanaZorunlu}
+                  title={
+                    sadeceBanaZorunlu
+                      ? "Size atanan başvurular gösteriliyor"
+                      : undefined
+                  }
                   onClick={() => setJobAppAssignedToMe((v) => !v)}
                 >
                   <User className="h-4 w-4 mr-2" />

@@ -17,6 +17,7 @@
 import { prisma } from '@/lib/prisma'
 import type { JobApplicationStatus } from '@/generated/prisma'
 import { STATUS_LABELS_TR } from '@/lib/recruitment/transitions'
+import { mudurKademesiMi } from '@/lib/recruitment/bekleyen'
 
 export type HRRecipient = {
   id: string
@@ -106,6 +107,8 @@ const APPLICATION_LINK = (id: string) => `/strategic-hr/recruitment/job-applicat
 /**
  * Başvuru aşama değişiminde Notification üretir (in-app).
  * - toStatus === MUDUR_DEGERLENDIRME: SADECE atanan müdüre ("Değerlendirmeniz bekleniyor").
+ * - TOP ATANAN KİŞİDE OLAN diğer aşamalar (mudurKademesiMi): İK bildirimi AYNEN kalır,
+ *   ÜSTÜNE atanan kişiye ayrı bir "sizi bekliyor" bildirimi eklenir.
  * - diğer tüm geçişler: resolveHRRecipients() ile İK ekibine.
  * Notification'lar createMany ile tek seferde. Metinlerde STATUS_LABELS_TR (ham enum yazılmaz).
  * Alıcı yoksa sessizce çıkar (hata fırlatmaz — çağıran best-effort bekler).
@@ -142,16 +145,46 @@ export async function notifyApplicationStageChange(args: {
 
   // Diğer tüm geçişler: İK ekibine.
   const recipients = await resolveHRRecipients()
-  if (recipients.length === 0) return
-  await prisma.notification.createMany({
-    data: recipients.map((r) => ({
+
+  // Topun atanan kişide olduğu aşamalar (MUDUR_MULAKATI, DEGERLENDIRICI, URETIM_MUDUR_YRD,
+  // FABRIKA_MUDURU): İK bildirimi kaldırılmaz, atanan kişiye AYRICA "sizi bekliyor" gider.
+  // Hangi statülerin bu kapsamda olduğu SABİT LİSTE DEĞİL — mudurKademesiMi() ile matristen
+  // türetilir (bekleyen.ts TEK KAYNAK). Matrise yeni bir atanan-kişi kademesi eklendiğinde
+  // burası kendiliğinden kapsar.
+  //
+  // MUDUR_DEGERLENDIRME yukarıda erken dönüşle ayrıldığı için buraya hiç gelmez —
+  // o aşamanın "yalnız müdüre" davranışı değişmedi.
+  const ikIds = new Set(recipients.map((r) => r.id))
+  const atananaGitsin =
+    !!args.assignedManagerId &&
+    mudurKademesiMi(args.toStatus) &&
+    // Kişi zaten İK alıcısıysa çift bildirim üretme; İK satırı korunur.
+    !ikIds.has(args.assignedManagerId)
+
+  const data = [
+    ...recipients.map((r) => ({
       userId: r.id,
       title: `Başvuru durumu: ${toLabel}`,
       message: `${args.applicantName} — ${fromLabel} → ${toLabel}${actor}`,
       type: 'INFO' as const,
       link,
     })),
-  })
+    ...(atananaGitsin
+      ? [
+          {
+            userId: args.assignedManagerId!,
+            // MUDUR_DEGERLENDIRME metniyle aynı desen: "ne bekleniyor" + aday adı + aktör.
+            title: `${toLabel} sizi bekliyor`,
+            message: `${args.applicantName} adlı adayın başvurusu ${toLabel} aşamasında size atandı${actor}.`,
+            type: 'INFO' as const,
+            link,
+          },
+        ]
+      : []),
+  ]
+
+  if (data.length === 0) return
+  await prisma.notification.createMany({ data })
 }
 
 /**

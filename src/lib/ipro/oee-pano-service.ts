@@ -65,7 +65,7 @@ const IDEAL_ESIK = 50
 export async function oeePanoData(): Promise<OeePanoData> {
   const simdi = new Date()
 
-  const [tezgahlar, acikIsler, acikDuruslar, statusByKod, vardiyalar, tatiller] = await Promise.all([
+  const [tezgahlar, acikIsler, acikDuruslar, statusByKod, vardiyalar, tatiller, faz2Rows] = await Promise.all([
     prisma.iproTezgah.findMany({
       where: { aktif: true },
       orderBy: { kod: 'asc' },
@@ -94,10 +94,20 @@ export async function oeePanoData(): Promise<OeePanoData> {
       select: { baslangicSaat: true, bitisSaat: true, ertesiGuneTasar: true },
     }),
     prisma.iproTatil.findMany({ select: { tarih: true, tip: true } }),
+    // SOĞUK-BAŞLANGIÇ FIX: Faz 2 serisinden (disk, kalıcı) son-hareket. Restart'ta sıfırlanan
+    // fizikselDurum bellek Map'inin aksine deploy'dan ETKİLENMEZ. delta>0 değişmez (poller yalnız
+    // delta>0 yazar) → son 180sn (HAREKET_PENCERESI_MS) satırı olan tezgah = çalışıyor. Mevcut
+    // (tezgahKod, ts) index → Index-Only-Scan (~21ms, yeni index yok).
+    prisma.$queryRaw<{ tezgahKod: string }[]>`
+      SELECT DISTINCT "tezgahKod" FROM ipro_sayac_okuma WHERE ts > now() - interval '180 seconds'
+    `,
   ])
 
   const tatilMap = new Map<string, IproTatilTip>()
   for (const t of tatiller) if (gecerliTatilTip(t.tip)) tatilMap.set(tarihAnahtari(t.tarih), t.tip)
+
+  // Faz2 son-180sn hareketli tezgah kodları — fizikselDurum'a EK 'calisiyor' kaynağı (soğuk-başlangıç-bağışık).
+  const faz2SonHareket = new Set(faz2Rows.map((r) => r.tezgahKod))
 
   const kodById = new Map(tezgahlar.map((t) => [t.id, t.kod]))
   const acikByTezgah = new Map(acikIsler.map((a) => [a.tezgahId, a]))
@@ -155,13 +165,18 @@ export async function oeePanoData(): Promise<OeePanoData> {
     const acikDurus = durusByTezgah.has(t.id)
     const person = acik ? personById.get(acik.personnelId) : null
     const calisiyor = !!(acik && acik.baslatildiAt)
-    // Öncelik: kiosk açık duruş → kiosk açık iş → PLC fiziksel hareket → boşta.
+    // Öncelik: kiosk açık duruş → kiosk açık iş → PLC fiziksel hareket VEYA Faz2-son-180sn → boşta.
     // 'durusta' YALNIZ kiosk kaydından (duruş biti 0/214 ölü dal — bilinen sınır).
+    // fizikselDurum (bellek, ısınma ister) ile faz2SonHareket (disk, ısınmasız) AYNI sayaç sinyalinden
+    // türer → çelişmez; Faz2 soğuk-başlangıçta 2-poll ısınmayı atlar (restart sonrası anında yeşil).
+    const fiz = fizikselDurum(t.kod, statusByKod)
     const durum: OeeDurum = acikDurus
       ? 'durusta'
       : calisiyor
         ? 'calisiyor'
-        : (fizikselDurum(t.kod, statusByKod) ?? 'bosta')
+        : fiz === 'calisiyor' || faz2SonHareket.has(t.kod)
+          ? 'calisiyor'
+          : (fiz ?? 'bosta')
     if (durum === 'calisiyor') calisiyorN++
     else if (durum === 'durusta') durustaN++
     else bostaN++

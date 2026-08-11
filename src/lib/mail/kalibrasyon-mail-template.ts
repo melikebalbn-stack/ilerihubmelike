@@ -11,8 +11,8 @@
 export interface KalibrasyonDevice {
   cihazId: string;                   // "Kod" — Cihaz ID (örn. "C 1019")
   cihazTipi?: string | null;         // "Cihaz Tipi" — device.name (örn. "Dijital Kumpas")
-  departman?: string | null;         // "Cihaz Yeri" = departman + yer
-  uretimBolumu?: string | null;      // "Cihaz Yeri" ikinci parça (location)
+  departman?: string | null;         // "Cihaz Yeri" = departman + bölüm
+  uretimBolumu?: string | null;      // "Cihaz Yeri" ikinci parça (device.productionSection - Bölüm)
   seriNo?: string | null;            // "Seri Numarası"
   model: string;                     // "Cihaz Detayı" — model
   sorumluKisi?: string | null;       // "Zimmet Sorumlusu"
@@ -33,7 +33,7 @@ const fmtDate = (d: Date | string): string => {
   return `${p(dt.getDate())}.${p(dt.getMonth() + 1)}.${dt.getFullYear()}`;
 };
 
-// Cihaz Yeri = departman + yer (boş olanlar atlanır).
+// Cihaz Yeri = departman + bölüm (boş olanlar atlanır).
 const cihazYeri = (d: KalibrasyonDevice): string =>
   [d.departman, d.uretimBolumu].map((x) => (x ?? "").trim()).filter(Boolean).join(" · ");
 

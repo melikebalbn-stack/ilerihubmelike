@@ -186,6 +186,7 @@ export default function CalibrationPage() {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(new Set())
   const itemsPerPage = 10
 
   // Sorting
@@ -910,9 +911,12 @@ export default function CalibrationPage() {
     }
   }
 
-  // Excel'e aktar
+  // Excel'e aktar - satır seçiliyse sadece seçilenler, aksi halde tümü
   const handleExportToExcel = () => {
-    const exportData = devices.map(device => ({
+    const devicesToExport = selectedDeviceIds.size > 0
+      ? devices.filter(device => selectedDeviceIds.has(device.id))
+      : devices
+    const exportData = devicesToExport.map(device => ({
       'Cihaz ID': device.deviceId,
       'Cihaz Adı': device.name,
       'Cihaz Tipi': device.type,
@@ -1305,7 +1309,7 @@ export default function CalibrationPage() {
           )}
           <Button variant="outline" onClick={handleExportToExcel}>
             <Download className="mr-2 h-4 w-4" />
-            Excel'e Aktar
+            {selectedDeviceIds.size > 0 ? `Excel'e Aktar (${selectedDeviceIds.size} seçili)` : "Excel'e Aktar"}
           </Button>
           {canEdit && (
             <>
@@ -1892,6 +1896,23 @@ export default function CalibrationPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      checked={paginatedDevices.length > 0 && paginatedDevices.every((d) => selectedDeviceIds.has(d.id))}
+                      onChange={(e) => {
+                        setSelectedDeviceIds((prev) => {
+                          const next = new Set(prev)
+                          paginatedDevices.forEach((d) => {
+                            if (e.target.checked) next.add(d.id)
+                            else next.delete(d.id)
+                          })
+                          return next
+                        })
+                      }}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                  </TableHead>
                   <TableHead
                     className="cursor-pointer select-none hover:bg-accent"
                     onClick={() => handleSort('deviceId')}
@@ -2042,7 +2063,7 @@ export default function CalibrationPage() {
               <TableBody>
                 {paginatedDevices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14} className="text-center text-muted-foreground">
+                    <TableCell colSpan={15} className="text-center text-muted-foreground">
                       {searchTerm ? 'Arama sonucu bulunamadı' : 'Henüz cihaz eklenmemiş'}
                     </TableCell>
                   </TableRow>
@@ -2053,6 +2074,21 @@ export default function CalibrationPage() {
 
                     return (
                     <TableRow key={device.id}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedDeviceIds.has(device.id)}
+                          onChange={(e) => {
+                            setSelectedDeviceIds((prev) => {
+                              const next = new Set(prev)
+                              if (e.target.checked) next.add(device.id)
+                              else next.delete(device.id)
+                              return next
+                            })
+                          }}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                      </TableCell>
                       <TableCell
                         className="font-medium cursor-pointer hover:underline text-blue-600"
                         onClick={() => openHistoryDialog(device)}

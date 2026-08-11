@@ -42,12 +42,15 @@ import {
   AlertTriangle,
   Clock,
   UserCheck,
+  Pencil,
 } from "lucide-react"
 import { format, differenceInCalendarDays } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { JobApplicationSensitiveSections } from "@/components/job-application/JobApplicationSensitiveSections"
 import { JobApplicationStatusBadge } from "@/components/recruitment/JobApplicationStatusBadge"
+import { BasvuruDuzeltmeDialog } from "@/components/recruitment/BasvuruDuzeltmeDialog"
+import { BasvuruDuzeltmeGecmisi } from "@/components/recruitment/BasvuruDuzeltmeGecmisi"
 import { STATUS_LABELS_TR } from "@/lib/recruitment/transitions"
 
 const educationLevelLabels: Record<string, string> = {
@@ -207,6 +210,10 @@ export default function JobApplicationDetailPage() {
   const router = useRouter()
   const [app, setApp] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+
+  // İK düzeltme modu + kaydet sonrası geçmişi tazeleme sayacı.
+  const [duzeltmeAcik, setDuzeltmeAcik] = useState(false)
+  const [gecmisTazele, setGecmisTazele] = useState(0)
 
   // Workflow: aşama geçmişi + izin bağlamı (stage-log ucundan).
   const [workflow, setWorkflow] = useState<WorkflowCtx | null>(null)
@@ -500,6 +507,15 @@ export default function JobApplicationDetailPage() {
             <Printer className="h-4 w-4 mr-2" />
             Yazdir
           </Button>
+          {/* Düzeltme yalnız İK — PATCH zaten recruitment.admin; müdür görünümünde gizli.
+              Aday gönderimden sonra kendi kaydına dokunamıyor (consent-guard DRAFT_STATUSES),
+              bu buton o boşluğun tek meşru kapağı. */}
+          {!app._restrictedView && (
+            <Button variant="outline" size="sm" onClick={() => setDuzeltmeAcik(true)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Duzelt
+            </Button>
+          )}
           {/* Silme yalnız İK — kısıtlı (müdür) görünümde gizli */}
           {!app._restrictedView && (
             <Button variant="destructive" size="sm" onClick={handleDelete}>
@@ -1069,6 +1085,12 @@ export default function JobApplicationDetailPage() {
             </CardContent>
           </Card>
 
+          {/* Düzeltme geçmişi — yalnız İK (uç 403 döner, bileşen kendini gizler).
+              Kayıt yoksa hiç render edilmez. */}
+          {!app._restrictedView && (
+            <BasvuruDuzeltmeGecmisi applicationId={id} yenile={gecmisTazele} />
+          )}
+
           {/* Onaylar — KVKK + sağlık beyanı + beyan kabulü. Müdür görünümünde yalnız
               "Alındı/Alınmadı" (tarih/içerik SUNUCUDAN gelmez); İK'da tarihler de gösterilir. */}
           {app.onaylar && (
@@ -1496,6 +1518,21 @@ export default function JobApplicationDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* İK düzeltme modu — beyaz listedeki alanlar. Kaydet sonrası kayıt yeniden
+          çekilir ve düzeltme geçmişi tazelenir. */}
+      {!app._restrictedView && (
+        <BasvuruDuzeltmeDialog
+          open={duzeltmeAcik}
+          onOpenChange={setDuzeltmeAcik}
+          applicationId={id}
+          app={app}
+          onSaved={() => {
+            fetchDetail()
+            setGecmisTazele((v) => v + 1)
+          }}
+        />
+      )}
     </>
   )
 }

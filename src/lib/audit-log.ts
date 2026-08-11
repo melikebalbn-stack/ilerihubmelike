@@ -52,6 +52,9 @@ export type AuditTargetType =
   | 'PERSONNEL_REQUEST'
   | 'IS_ANALIZI'
   | 'JOB_CANDIDATE'
+  // İş başvurusu — İK'nın aday verisinde yaptığı düzeltmeler (beyaz liste alanları).
+  // action: JOB_APPLICATION_UPDATED, details.degisiklikler = [{alan,etiket,eski,yeni}]
+  | 'JOB_APPLICATION'
 
 export interface AuditLogParams {
   action: string

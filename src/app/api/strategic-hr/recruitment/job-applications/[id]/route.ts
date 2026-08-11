@@ -4,6 +4,12 @@ import { Prisma } from '@/generated/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { resolveTransitionRoles } from '@/lib/recruitment/resolve-roles'
 import { oturumOzetiGetir } from '@/lib/recruitment/assessment-session'
+import { logAuditEvent } from '@/lib/audit-log'
+import {
+  basvuruDuzeltmeSchema,
+  degisiklikleriCikar,
+  DUZENLENEBILIR_ALANLAR,
+} from '@/lib/recruitment/basvuru-duzeltme-alanlari'
 
 // PR-RECRUIT-RBAC: PublicJobApplication — İK (recruitment.admin/hr.admin) tam erişim;
 // atanan müdür (assignedManagerId) yalnız değerlendirme için gereken NON-hassas alanlar.
@@ -127,10 +133,68 @@ export async function PATCH(
     const body = await request.json()
     const { notes } = body
 
+    // ── 1) İK notu — MEVCUT DAVRANIŞ AYNEN. Denetime girmez (aday verisi değil, iç not).
     const updateData: Prisma.PublicJobApplicationUpdateInput = {}
     if (notes !== undefined) updateData.notes = notes
 
-    const application = await prisma.publicJobApplication.update({ where: { id }, data: updateData })
+    // ── 2) Aday verisi düzeltmesi — BEYAZ LİSTE (basvuru-duzeltme-alanlari.ts TEK KAYNAK).
+    // Zod nesnesi `.strict()` DEĞİL: beyaz liste dışı alan gövdede gelirse hata dönmez,
+    // sessizce düşer ve YAZILMAZ. Statü kısıtı YOK — yanlış telefon her aşamada düzeltilebilir
+    // olmalı; statü değişimi zaten bu uçtan yapılamıyor (tek geçit transition ucu).
+    const parsed = basvuruDuzeltmeSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: 'Doğrulama hatası',
+          alanHatalari: parsed.error.issues.map((i) => ({
+            alan: i.path.join('.'),
+            mesaj: i.message,
+          })),
+        },
+        { status: 400 },
+      )
+    }
+
+    // Değişiklikleri hesaplamak için ÖNCEKİ değerler — yalnız beyaz listedeki alanlar.
+    const oncekiSelect = Object.fromEntries(DUZENLENEBILIR_ALANLAR.map((a) => [a, true]))
+    const onceki = await prisma.publicJobApplication.findUnique({
+      where: { id },
+      select: oncekiSelect as Prisma.PublicJobApplicationSelect,
+    })
+    if (!onceki) {
+      return NextResponse.json({ error: 'Basvuru bulunamadi' }, { status: 404 })
+    }
+
+    const degisiklikler = degisiklikleriCikar(
+      onceki as Record<string, unknown>,
+      parsed.data,
+    )
+    for (const d of degisiklikler) {
+      // Alan adı beyaz listeden geldi (degisiklikleriCikar yalnız onları üretir).
+      ;(updateData as Record<string, unknown>)[d.alan] = d.yeni
+    }
+
+    // ── 3) Yazma + denetim AYNI transaction'da. Denetim kaydı yazılamazsa düzeltme de
+    // geri alınır (logAuditEvent'e `tx` verilince hata FIRLATIR — bkz. audit-log.ts).
+    // Gerekçe: "kim neyi değiştirdi" izi olmadan düzeltme kalıcı olmamalı.
+    const application = await prisma.$transaction(async (tx) => {
+      const guncel = await tx.publicJobApplication.update({ where: { id }, data: updateData })
+      if (degisiklikler.length > 0) {
+        await logAuditEvent({
+          action: 'JOB_APPLICATION_UPDATED',
+          actorId: session.user.id,
+          targetType: 'JOB_APPLICATION',
+          targetId: id,
+          details: {
+            applicationNumber: guncel.applicationNumber,
+            // Alan başına eski/yeni — denetim geçmişi ekranı bunu okur.
+            degisiklikler,
+          },
+          tx,
+        })
+      }
+      return guncel
+    })
 
     return NextResponse.json(application)
   } catch (error) {

@@ -16,7 +16,7 @@ type DeviceAlert = {
   alertType: 'calibration' | 'verification' // Kalibrasyon mu doğrulama mı
   // ERP-stili HTML tablo kolonları (gövde için; alıcı/zamanlama/tetiklemeyi etkilemez)
   department?: string | null
-  location?: string | null
+  productionSection?: string | null
   serialNumber?: string | null
   deviceModel?: string | null
   deviceCondition?: string | null
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
                 daysRemaining,
                 alertType: 'calibration',
                 department: device.department,
-                location: device.location,
+                productionSection: device.productionSection,
                 serialNumber: device.serialNumber,
                 deviceModel: device.model,
                 deviceCondition: device.deviceCondition,
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
                 daysRemaining,
                 alertType: 'verification',
                 department: device.department,
-                location: device.location,
+                productionSection: device.productionSection,
                 serialNumber: device.serialNumber,
                 deviceModel: device.model,
                 deviceCondition: device.deviceCondition,
@@ -414,7 +414,7 @@ function toMailDevice(d: DeviceAlert): KalibrasyonDevice {
     cihazId: d.deviceId,
     cihazTipi: d.deviceType,
     departman: d.department,
-    uretimBolumu: d.location,
+    uretimBolumu: d.productionSection,
     seriNo: d.serialNumber,
     model: d.deviceModel || d.deviceName,
     sorumluKisi: d.responsiblePerson,

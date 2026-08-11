@@ -41,7 +41,7 @@ export default async function UygunsuzlukListPage() {
         )}
       </div>
 
-      <UygunsuzlukListTable />
+      <UygunsuzlukListTable canManage={canManage} />
     </div>
   )
 }

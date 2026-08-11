@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, Search, X } from 'lucide-react'
+import { Download, Loader2, Search, Upload, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { redOrani, formatOran } from '@/lib/quality/uygunsuzluk-labels'
+import { UygunsuzlukImportDialog } from './UygunsuzlukImportDialog'
 
 type BolumSecenek = { id: string; kod: number; ad: string }
 
@@ -33,7 +34,7 @@ type UygunsuzlukRow = {
 
 const PAGE_SIZE = 20
 
-export function UygunsuzlukListTable() {
+export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolean }) {
   const [items, setItems] = useState<UygunsuzlukRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -49,6 +50,7 @@ export function UygunsuzlukListTable() {
   const [to, setTo] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
+  const [importOpen, setImportOpen] = useState(false)
 
   // Tespit eden bölüm filtresi için yalnız tip=BOLUM kayıtları
   useEffect(() => {
@@ -106,6 +108,12 @@ export function UygunsuzlukListTable() {
     fetchList()
   }, [fetchList])
 
+  /** Export ucu liste ile AYNI filtreyi alır (sunucuda da aynı buildUygunsuzlukWhere). */
+  function handleExport() {
+    const qs = buildFilterParams().toString()
+    window.location.href = `/api/quality/uygunsuzluk/export${qs ? `?${qs}` : ''}`
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const hasFilters =
     isEmriNo !== '' ||
@@ -135,6 +143,36 @@ export function UygunsuzlukListTable() {
 
   return (
     <div className="space-y-4">
+      {/* Araç çubuğu — Excel aktar/yükle */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={handleExport} className="shrink-0">
+          <Download className="h-4 w-4 mr-1 shrink-0" />
+          Excel&apos;e Aktar
+        </Button>
+        {canManage && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setImportOpen(true)}
+            className="shrink-0"
+          >
+            <Upload className="h-4 w-4 mr-1 shrink-0" />
+            Excel&apos;den Yükle
+          </Button>
+        )}
+      </div>
+
+      {canManage && (
+        <UygunsuzlukImportDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onImported={() => {
+            setPage(1)
+            fetchList()
+          }}
+        />
+      )}
+
       {/* Filtre bar */}
       <div className="rounded-md border bg-white p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

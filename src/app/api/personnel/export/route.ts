@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { requireUser } from '@/lib/auth/require-user'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
+import { canViewSensitive, SENSITIVE_VIEW_ROLES } from '@/lib/personnel-sensitive-access'
 import { logAuditEvent } from '@/lib/audit-log'
 import {
   KAN_GRUBU_LABELS,
@@ -14,16 +15,22 @@ import {
 
 export const dynamic = 'force-dynamic'
 
-const ALLOWED_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
-// Banka bilgisi (hesap/IBAN) tam görüntüleme: ADMIN/SUPER_ADMIN + İK Müdürü (HR_MANAGER).
-const FULL_SENSITIVE_ROLES = ['ADMIN', 'SUPER_ADMIN', 'HR_MANAGER']
+// Hassas alan yetkisi burada KOPYALANMAZ — tek kaynak personnel-sensitive-access.ts
+// (canViewSensitive: legacy rol VEYA RBAC `calisanrehberi.admin`). Eskiden bu dosyada
+// ALLOWED_ROLES / FULL_SENSITIVE_ROLES adında iki ayrı dizi vardı ve YALNIZ legacy
+// User.role'e bakıyordu; İK Sorumlusu (legacy EMPLOYEE + RBAC "HR Yöneticisi") ekranda
+// gördüğü veriyi export'ta BOŞ alıyordu. Sapmanın kaynağı o kopya listelerdi.
 
 function isHRDepartment(dept: string | undefined | null): boolean {
   return isInsanVarliklari(dept)
 }
 
+// DIŞ GUARD (dosyayı indirebilme) — davranış AYNEN korunur: hassas veriyi göremeyen
+// İV çalışanı da listeyi indirmeye devam eder (hassas kolonlar boş gelir).
+// SENSITIVE_VIEW_ROLES, kaldırılan ALLOWED_ROLES ile birebir aynı üç legacy rolü içerir
+// (ADMIN / HR_MANAGER / SUPER_ADMIN) → kimse erişim kaybetmez.
 function hasPersonnelAccess(role: string, department?: string | null): boolean {
-  return ALLOWED_ROLES.includes(role) || isHRDepartment(department)
+  return SENSITIVE_VIEW_ROLES.includes(role) || isHRDepartment(department)
 }
 
 function formatDate(date: Date | null | undefined): string {
@@ -44,7 +51,9 @@ function boolToStr(val: boolean | null | undefined): string {
 export async function GET(request: NextRequest) {
   try {
     // PR-Y2.5-personnel: requireUser — admin role + sensitive data export check
-    const { user, error } = await requireUser()
+    // session da alınır: RBAC permission'ları session.user.permissions'ta
+    // (personnel/[id]/sensitive GET ucuyla AYNI desen).
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     if (!hasPersonnelAccess(user.role, user.department)) {
@@ -70,13 +79,17 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    const includeSensitive = ALLOWED_ROLES.includes(user.role)
-    const includeBank = FULL_SENSITIVE_ROLES.includes(user.role)
+    // TEK KADEME: hassas alanların tamamı (TC/SGK/doğum + banka şube/hesap/IBAN) aynı
+    // yetkiye bağlıdır. Eski includeSensitive/includeBank ikili kademesi KALDIRILDI —
+    // ekranda tek kapı (canViewSensitive) varken export'ta iki kapı olması sapma üretiyordu.
+    const hassasGorebilir = canViewSensitive(user.role, session.user.permissions)
 
     // PR-1: banka kolonları primary PersonnelBankAccount'tan gelir (sensitive.banka* yerine).
     const includeObj: any = {}
-    if (includeSensitive) includeObj.sensitive = true
-    if (includeBank) includeObj.bankAccounts = { where: { isPrimary: true }, take: 1 }
+    if (hassasGorebilir) {
+      includeObj.sensitive = true
+      includeObj.bankAccounts = { where: { isPrimary: true }, take: 1 }
+    }
 
     const personnel = await prisma.personnel.findMany({
       where,
@@ -87,9 +100,11 @@ export async function GET(request: NextRequest) {
     // Build Excel data
     // Excel sırasıyla birebir aynı sütun düzeni
     const data = personnel.map((p: any, idx: number) => {
-      const s = (includeSensitive && p.sensitive) ? p.sensitive : null
-      // PR-1: primary banka hesabı (yetki gate'i: includeBank). Yoksa boş.
-      const primaryBank = (includeBank && p.bankAccounts && p.bankAccounts.length) ? p.bankAccounts[0] : null
+      const s = (hassasGorebilir && p.sensitive) ? p.sensitive : null
+      // PR-1: primary banka hesabı — hassas alanlarla AYNI yetki kapısı. Yoksa boş.
+      // Yetkili için hesapNo/ibanNo TAM yazılır (ekrandaki unmask=true karşılığı);
+      // yetkisizde alan tamamen boş kalır (maskeli ara değer YOK).
+      const primaryBank = (hassasGorebilir && p.bankAccounts && p.bankAccounts.length) ? p.bankAccounts[0] : null
 
       const row: Record<string, any> = {
         'NO': idx + 1,
@@ -250,15 +265,18 @@ export async function GET(request: NextRequest) {
       details: {
         actorEmail: user.email,
         recordCount: personnel.length,
-        includeSensitive,
-        includeBank,
+        // Tek kademe: hassas veri dolu mu indirildi. Eski includeSensitive/includeBank
+        // alanları aynı değerle KORUNUR (geçmiş kayıtlarla ve log okuyan araçlarla uyum).
+        includeSensitive: hassasGorebilir,
+        includeBank: hassasGorebilir,
+        sensitiveIncluded: hassasGorebilir,
         filters: { bolum, yakaRengi, aktif, search: search ? '<filtered>' : null },
       },
     })
 
     // KVKK erişim izi: hassas/banka içeren toplu export'ta PersonnelAccessLog'a kişi
     // başı kayıt (mevcut _SENSITIVE deseni). Hassas alan içermeyen export'ta yazılmaz.
-    if (includeSensitive || includeBank) {
+    if (hassasGorebilir) {
       const ipAddress =
         request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null
       await prisma.personnelAccessLog.createMany({

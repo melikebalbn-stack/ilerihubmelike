@@ -62,14 +62,21 @@ sudo systemctl reload cron
 ```
 
 ### Manuel tetikleme (test için)
-```bash
-# Lokal test
-curl -sX POST http://localhost:3000/api/personnel/check-evaluations
 
-# Sertifika kontrolü (secret gerekli)
+> Adres DOMAIN olmalı — `localhost:3000` doğrudan BLUE slotunu çağırır ve o slot
+> pasifken (ya da kapalıyken) yanlış/eksik sonuç verir. `--resolve` ile domain
+> 127.0.0.1'e çözülür; istek nginx'ten geçip HER ZAMAN aktif slota gider.
+
+```bash
 SECRET=$(grep ^CRON_SECRET /home/rokunet/projects/ilerihub/.env | cut -d= -f2)
-curl -sX POST -H "x-cron-secret: $SECRET" \
-  http://localhost:3000/api/akademi/cron/check-deadlines
+
+curl -sS --fail-with-body -X POST -H "x-cron-secret: $SECRET" \
+  --resolve hub.ilerigroup.com:443:127.0.0.1 \
+  https://hub.ilerigroup.com/api/personnel/check-evaluations
+
+curl -sS --fail-with-body -X POST -H "x-cron-secret: $SECRET" \
+  --resolve hub.ilerigroup.com:443:127.0.0.1 \
+  https://hub.ilerigroup.com/api/akademi/cron/check-deadlines
 ```
 
 ## Yeni Cron Job Ekleme

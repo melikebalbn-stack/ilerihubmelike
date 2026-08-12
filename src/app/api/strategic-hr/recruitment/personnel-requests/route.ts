@@ -4,6 +4,7 @@ import { PersonnelRequestStatus, PersonnelRequestType, EmploymentType, JobPriori
 import { requireSession } from "@/lib/auth/require-session";
 import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-request-alanlar";
 import { kadroTalepYetkisi, kadroTalepYetkisiz } from "@/lib/kadro-talep/kadro-talep-yetki";
+import { kadroTalepGorunurluk, maasKapisi } from "@/lib/kadro-talep/kadro-talep-gorunurluk";
 
 // Talep numarası oluştur
 async function generateRequestNumber(): Promise<string> {
@@ -33,41 +34,10 @@ export async function GET(request: NextRequest) {
     const { session, error } = await requireSession();
     if (error) return error;
 
-    const userEmail = (session.user.email || "").toLowerCase();
-    const userDepartment = session.user.department || "";
-
+    // PR-RECRUIT-RBAC kapsamı TEK KAYNAK: kadro-talep-gorunurluk.ts.
+    // (Kural burada tekrarlanmaz — export ucu da aynı yerden besleniyor, ıraksamasınlar.)
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get("status") as PersonnelRequestStatus | null;
-    const department = searchParams.get("department");
-    const myRequests = searchParams.get("myRequests") === "true";
-
-    // PR-RECRUIT-RBAC: hasFullAccess=admin; canViewByDept=departman müdürü
-    // (kendi departmanı + kendi açtığı talepler görür)
-    const perms = session.user.permissions ?? [];
-    const hasFullAccess = perms.includes("recruitment.admin");
-    const canViewByDept = perms.includes("recruitment.view");
-
-    if (!hasFullAccess && !canViewByDept) {
-      // Hiç recruitment yetkisi yok: sadece kendi açtığı talepleri görür
-      // (talep oluşturma herkese açık olduğu için, kendi takip edebilsin)
-    }
-
-    const where: any = {};
-
-    if (myRequests) {
-      where.requesterEmail = userEmail;
-    } else if (!hasFullAccess && canViewByDept) {
-      // Departman müdürü: kendi departmanı VEYA kendi açtığı
-      where.OR = [
-        { department: userDepartment },
-        { requesterEmail: userEmail },
-      ];
-    } else if (!hasFullAccess) {
-      where.requesterEmail = userEmail;
-    }
-
-    if (status) where.status = status;
-    if (department && hasFullAccess) where.department = department;
+    const { hasFullAccess, where } = kadroTalepGorunurluk(session, searchParams);
 
     const requests = await prisma.personnelRequest.findMany({
       where,
@@ -89,7 +59,8 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    return NextResponse.json(requests);
+    // Bütçe alanları yalnız admin'e (maasKapisi) — admin olmayanda anahtar HİÇ YOK.
+    return NextResponse.json(maasKapisi(requests, hasFullAccess));
   } catch (error) {
     console.error("Personel talepleri listesi hatası:", error);
     return NextResponse.json(

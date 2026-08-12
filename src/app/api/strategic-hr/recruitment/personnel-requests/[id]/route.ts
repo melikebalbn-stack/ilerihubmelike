@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import {
+  kadroTalepGorunurluk,
+  kadroTalepGorebilirMi,
+  maasAlanlariniAyikla,
+} from "@/lib/kadro-talep/kadro-talep-gorunurluk";
 import { resolveApprovers } from "@/lib/personnel-request-chain";
 import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-request-alanlar";
 import { sendPushToUser } from "@/lib/push-notifications";
@@ -70,11 +75,8 @@ export async function GET(
     if (error) return error;
 
     const { id } = await params;
-    const perms = session.user.permissions ?? [];
-    const isAdmin = perms.includes("recruitment.admin");
-    const canViewByDept = perms.includes("recruitment.view");
-    const userEmail = (session.user.email || "").toLowerCase();
-    const userDepartment = session.user.department || "";
+    // Kapsam TEK KAYNAK — liste/export ile aynı modül (kadro-talep-gorunurluk.ts).
+    const kapsam = kadroTalepGorunurluk(session);
 
     const personnelRequest = await prisma.personnelRequest.findUnique({
       where: { id },
@@ -101,14 +103,16 @@ export async function GET(
     }
 
     // PR-RECRUIT-RBAC: admin herşeyi; departman müdürü kendi dept VEYA owner;
-    // hiçbir yetkisi yoksa sadece kendi açtığı talep
-    const isOwner = personnelRequest.requesterEmail.toLowerCase() === userEmail;
-    const deptMatch = canViewByDept && personnelRequest.department === userDepartment;
-    if (!isAdmin && !isOwner && !deptMatch) {
+    // hiçbir yetkisi yoksa sadece kendi açtığı talep. Kural liste `where`'inin
+    // kayıt bazlı karşılığı — TEK KAYNAK (kadroTalepGorebilirMi).
+    if (!kadroTalepGorebilirMi(kapsam, personnelRequest)) {
       return NextResponse.json({ error: "Bu talebi görüntüleme yetkiniz yok" }, { status: 403 });
     }
 
-    return NextResponse.json(personnelRequest);
+    // Bütçe alanları yalnız admin'e — admin olmayanda anahtar HİÇ YOK.
+    return NextResponse.json(
+      kapsam.hasFullAccess ? personnelRequest : maasAlanlariniAyikla(personnelRequest),
+    );
   } catch (error) {
     console.error("Talep detay hatası:", error);
     return NextResponse.json(

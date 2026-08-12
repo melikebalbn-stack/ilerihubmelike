@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { kadroTalepGorunurluk } from "@/lib/kadro-talep/kadro-talep-gorunurluk";
 import * as XLSX from "xlsx";
 import { logAuditEvent } from "@/lib/audit-log";
 
@@ -37,30 +38,13 @@ export async function GET(request: NextRequest) {
     const { session, error } = await requireSession();
     if (error) return error;
 
-    const userEmail = (session.user.email || "").toLowerCase();
-    const userDepartment = session.user.department || "";
-
+    // Kapsam TEK KAYNAK: liste ucuyla AYNI fonksiyon (kadro-talep-gorunurluk.ts).
+    // Eskiden bu zincir elle kopyalanmıştı; iki uç ıraksamasın diye çıkarıldı.
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get("status") as PersonnelRequestStatus | null;
+    const { hasFullAccess, canViewByDept, where } = kadroTalepGorunurluk(session, searchParams);
+    const status = searchParams.get("status");
     const department = searchParams.get("department");
     const myRequests = searchParams.get("myRequests") === "true";
-
-    const perms = session.user.permissions ?? [];
-    const hasFullAccess = perms.includes("recruitment.admin");
-    const canViewByDept = perms.includes("recruitment.view");
-
-    const where: any = {};
-
-    if (myRequests) {
-      where.requesterEmail = userEmail;
-    } else if (!hasFullAccess && canViewByDept) {
-      where.OR = [{ department: userDepartment }, { requesterEmail: userEmail }];
-    } else if (!hasFullAccess) {
-      where.requesterEmail = userEmail;
-    }
-
-    if (status) where.status = status;
-    if (department && hasFullAccess) where.department = department;
 
     const requests = await prisma.personnelRequest.findMany({
       where,

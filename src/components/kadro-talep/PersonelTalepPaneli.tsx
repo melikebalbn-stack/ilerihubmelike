@@ -78,9 +78,12 @@ export interface PersonnelRequest {
   preferredStartDate: string | null
   location: string | null
   workModel: string | null
-  salaryMin: number | null
-  salaryMax: number | null
-  hasBudget: boolean
+  // Bütçe alanları OPSİYONEL: sunucu bunları yalnız `recruitment.admin` için gönderiyor
+  // (bkz. lib/kadro-talep/kadro-talep-gorunurluk.ts → maasKapisi). Admin olmayanda alan
+  // HİÇ GELMEZ (null değil, yok) — tip bunu yansıtsın, yalan söylemesin.
+  salaryMin?: number | null
+  salaryMax?: number | null
+  hasBudget?: boolean
   status: string
   priority: string
   approvedByName: string | null
@@ -548,7 +551,9 @@ export function PersonelTalepPaneli() {
                           <DropdownMenuLabel>Islemler</DropdownMenuLabel>
                           <DropdownMenuItem onClick={() => {
                             setSelectedRequest(req)
-                            setSalaryForm({ salaryMin: req.salaryMin != null ? String(req.salaryMin) : "", salaryMax: req.salaryMax != null ? String(req.salaryMax) : "", hasBudget: req.hasBudget })
+                            // `?? false`: alan yalnız admin'e geliyor; bu menü zaten İK'ya
+                            // görünür, admin'de değer daima dolu → davranış değişmez.
+                            setSalaryForm({ salaryMin: req.salaryMin != null ? String(req.salaryMin) : "", salaryMax: req.salaryMax != null ? String(req.salaryMax) : "", hasBudget: req.hasBudget ?? false })
                             setIvForm({
                               adayKaynaklari: Array.isArray(req.adayKaynaklari) ? req.adayKaynaklari : [],
                               ilanPortallari: req.ilanPortallari || "",

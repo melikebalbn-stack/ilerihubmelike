@@ -14,6 +14,7 @@ import { maasBeklentisiGecerliMi } from '@/lib/recruitment/salary'
 import { basvuruTakipImzasi } from '@/lib/recruitment/basvuru-takip'
 import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
 import { SERVER_SCALAR_REQUIRED } from '@/components/job-application/required-fields'
+import { alanBuyut } from '@/lib/job-application/buyuk-harf'
 
 // POST - İş başvurusu kaydet
 export async function POST(request: NextRequest) {
@@ -151,12 +152,21 @@ export async function POST(request: NextRequest) {
       photoUrl = `/api/files/uploads/job-applications/${yearMonth}/${fileName}`
     }
 
+    // BÜYÜK HARF NORMALİZASYONU — ASIL KAPI burasıdır (istemci yalnız görsel).
+    // metin(): trim + alan hariç listede değilse toLocaleUpperCase('tr-TR').
+    // Hariç liste TEK KAYNAK: src/lib/job-application/buyuk-harf.ts
+    const metin = (key: string): string | null => {
+      const ham = (formData.get(key) as string)?.trim() || ''
+      if (!ham) return null
+      return alanBuyut(key, ham)
+    }
+
     // Form verilerini hazırla
     const applicationData = {
-      fullName: fullName.trim(),
-      birthPlace: (formData.get('birthPlace') as string)?.trim() || null,
+      fullName: alanBuyut('fullName', fullName.trim()),
+      birthPlace: metin('birthPlace'),
       birthDate: formData.get('birthDate') ? new Date(formData.get('birthDate') as string) : null,
-      nationality: (formData.get('nationality') as string)?.trim() || null,
+      nationality: metin('nationality'),
       tcKimlikNo: (formData.get('tcKimlikNo') as string)?.trim() || null,
       gender: formData.get('gender') as string || null,
       bloodType: formData.get('bloodType') as string || null,
@@ -165,9 +175,9 @@ export async function POST(request: NextRequest) {
       maritalStatus: normalizeMaritalStatus(formData.get('maritalStatus')),
       numberOfChildren: formData.get('numberOfChildren') ? parseInt(formData.get('numberOfChildren') as string) : null,
       spouseWorking: formData.get('spouseWorking') === 'true' ? true : formData.get('spouseWorking') === 'false' ? false : null,
-      spouseOccupation: (formData.get('spouseOccupation') as string)?.trim() || null,
-      homeAddress: (formData.get('homeAddress') as string)?.trim() || null,
-      dependents: (formData.get('dependents') as string)?.trim() || null,
+      spouseOccupation: metin('spouseOccupation'),
+      homeAddress: metin('homeAddress'),
+      dependents: metin('dependents'),
       mobilePhone: (formData.get('mobilePhone') as string)?.trim() || null,
       workPhone: (formData.get('workPhone') as string)?.trim() || null,
       homePhone: (formData.get('homePhone') as string)?.trim() || null,
@@ -175,15 +185,15 @@ export async function POST(request: NextRequest) {
       // Kaynak artık sözlükten (ReferralSourceDef). Form 'referralSource' alanında kaynak
       // ADINI gönderir; aşağıda ada göre referralSourceId çözülür. Eski enum kolonu yeni
       // kayıtlarda null bırakılır (geriye dönük 20 başvuruda duruyor).
-      referralSourceOther: (formData.get('referralSourceOther') as string)?.trim() || null,
-      memberships: (formData.get('memberships') as string)?.trim() || null,
+      referralSourceOther: metin('referralSourceOther'),
+      memberships: metin('memberships'),
       hasDriverLicense: formData.get('hasDriverLicense') === 'true' ? true : formData.get('hasDriverLicense') === 'false' ? false : null,
-      driverLicenseClass: (formData.get('driverLicenseClass') as string)?.trim() || null,
+      driverLicenseClass: metin('driverLicenseClass'),
       driverLicenseDate: formData.get('driverLicenseDate') ? new Date(formData.get('driverLicenseDate') as string) : null,
       // Adli Sicil ve Hukuki Durum
       hasCriminalRecord: formData.get('hasCriminalRecord') === 'true' ? true : formData.get('hasCriminalRecord') === 'false' ? false : null,
       hasConviction: formData.get('hasConviction') === 'true' ? true : formData.get('hasConviction') === 'false' ? false : null,
-      convictionDetails: (formData.get('convictionDetails') as string)?.trim() || null,
+      convictionDetails: metin('convictionDetails'),
       hasOngoingCase: formData.get('hasOngoingCase') === 'true' ? true : formData.get('hasOngoingCase') === 'false' ? false : null,
       // Fiziksel Özellikler
       height: formData.get('height') ? parseInt(formData.get('height') as string) : null,
@@ -195,11 +205,11 @@ export async function POST(request: NextRequest) {
       hasTravelRestriction: formData.get('hasTravelRestriction') === 'true' ? true : formData.get('hasTravelRestriction') === 'false' ? false : null,
       canWorkShifts: formData.get('canWorkShifts') === 'true' ? true : formData.get('canWorkShifts') === 'false' ? false : null,
       // Hobiler
-      hobbies: (formData.get('hobbies') as string)?.trim() || null,
+      hobbies: metin('hobbies'),
       // İş Tercihleri
       availableStartDate: formData.get('availableStartDate') ? new Date(formData.get('availableStartDate') as string) : null,
       expectedSalary: formData.get('expectedSalary') ? parseInt(formData.get('expectedSalary') as string) : null,
-      requestedPosition: (formData.get('requestedPosition') as string)?.trim() || null,
+      requestedPosition: metin('requestedPosition'),
       previouslyWorkedHere: formData.get('previouslyWorkedHere') === 'true' ? true : formData.get('previouslyWorkedHere') === 'false' ? false : null,
       // Öğrenim Durumu
       educationLevel: formData.get('educationLevel') as string || null,
@@ -215,11 +225,11 @@ export async function POST(request: NextRequest) {
       workExperience: formData.get('workExperience') ? JSON.parse(formData.get('workExperience') as string) : null,
       // Firma bünyesinde akraba/tanıdık
       hasRelativesInCompany: formData.get('hasRelativesInCompany') === 'true' ? true : formData.get('hasRelativesInCompany') === 'false' ? false : null,
-      relativeName: (formData.get('relativeName') as string)?.trim() || null,
+      relativeName: metin('relativeName'),
       // İletişim Tercihi
       preferredContactGsm: formData.get('preferredContactGsm') === 'true' ? true : null,
       preferredContactEmail: formData.get('preferredContactEmail') === 'true' ? true : null,
-      preferredContactOther: (formData.get('preferredContactOther') as string)?.trim() || null,
+      preferredContactOther: metin('preferredContactOther'),
       // Son işveren ile temasa geçilebilir mi?
       canContactLastEmployer: formData.get('canContactLastEmployer') === 'true' ? true : formData.get('canContactLastEmployer') === 'false' ? false : null,
       // Referanslar

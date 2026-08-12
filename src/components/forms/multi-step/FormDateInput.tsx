@@ -1,6 +1,14 @@
 'use client'
 
-// PR-JOBAPP-RENDERER: Tek tarih input'u. ISO YYYY-MM-DD format (HTML date input).
+// PR-JOBAPP-RENDERER: Tek tarih input'u. ISO YYYY-MM-DD format.
+//
+// 2026-08: native `<input type="date">` yerine DateField'a delege edildi — maskeli
+// GG.AA.YYYY metin girişi + yıl/ay AÇILIR LİSTELİ takvim (doğum tarihi gibi uzak
+// tarihlerde aydan aya tıklatmak yerine yıl doğrudan seçilir).
+// SÖZLEŞME DEĞİŞMEDİ: value/onChange hâlâ ISO `YYYY-MM-DD` (veya boş string);
+// min/max/disabled aynen geçer. Bu bileşeni YALNIZ iş başvuru formu kullanır.
+
+import { DateField } from '@/components/ui/date-field'
 
 interface Props {
   value: string
@@ -8,18 +16,19 @@ interface Props {
   disabled?: boolean
   min?: string
   max?: string
+  /** Değer yokken takvimin açılacağı yıl (ör. doğum tarihinde bugünden uzak bir yıl). */
+  acilisYili?: number
 }
 
-export function FormDateInput({ value, onChange, disabled, min, max }: Props) {
+export function FormDateInput({ value, onChange, disabled, min, max, acilisYili }: Props) {
   return (
-    <input
-      type="date"
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value)}
+    <DateField
+      value={value}
+      onChange={onChange}
       disabled={disabled}
       min={min}
       max={max}
-      className="w-full px-3 py-2.5 text-sm bg-white border border-slate-200 rounded-lg focus:border-[#1B4F72] focus:ring-0 outline-none transition-colors"
+      acilisYili={acilisYili}
     />
   )
 }

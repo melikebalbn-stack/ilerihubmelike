@@ -19,6 +19,11 @@ import {
 import { isRequiredField } from '../required-fields'
 import type { SectionProps } from '../types'
 
+// Doğum tarihi: gelecek seçilemez; takvim varsayılan olarak ~25 yaş civarından açılır
+// (bugünden açılınca aday her seferinde yıl listesini onlarca yıl geri sarıyordu).
+const BUGUN_ISO = new Date().toISOString().slice(0, 10)
+const DOGUM_ACILIS_YILI = new Date().getFullYear() - 25
+
 export function SectionKisiselAile({ form, onChange }: SectionProps) {
   return (
     <>
@@ -32,7 +37,13 @@ export function SectionKisiselAile({ form, onChange }: SectionProps) {
         <FormShortText value={form.birthPlace} onChange={(v) => onChange({ birthPlace: v })} />
       </FormQuestionCard>
       <FormQuestionCard number={4} title="Doğum Tarihi" isRequired={isRequiredField('birthDate')}>
-        <FormDateInput value={form.birthDate} onChange={(v) => onChange({ birthDate: v })} />
+        {/* Takvim BUGÜNDEN değil, makul bir doğum yılından açılır (aday yıl listesinden seçer). */}
+        <FormDateInput
+          value={form.birthDate}
+          onChange={(v) => onChange({ birthDate: v })}
+          max={BUGUN_ISO}
+          acilisYili={DOGUM_ACILIS_YILI}
+        />
       </FormQuestionCard>
       <FormQuestionCard number={5} title="Uyruğu" isRequired={isRequiredField('nationality')}>
         <FormShortText value={form.nationality} onChange={(v) => onChange({ nationality: v })} />

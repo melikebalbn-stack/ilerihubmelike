@@ -149,7 +149,7 @@ export const initialFormState: FormState = {
   fullName: '',
   birthPlace: '',
   birthDate: '',
-  nationality: '',
+  nationality: 'T.C.',
   tcKimlikNo: '',
   gender: '',
   bloodType: '',

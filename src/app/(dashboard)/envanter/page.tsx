@@ -26,6 +26,7 @@ import type {
 } from '@/lib/envanter/beden-profili-import'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import * as XLSX from 'xlsx'
+import { UST_BEDENLER } from '@/lib/envanter/beden-referans'
 import {
   AlertTriangle,
   Boxes,
@@ -188,7 +189,9 @@ const demoUrunler: DemoUrun[] = [
   },
 ]
 
-const bedenSecenekleri = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL']
+// Beden ölçeği TEK KAYNAK: src/lib/envanter/beden-referans.ts (UST_BEDENLER).
+// Buradaki yerel dizi TUTARSIZDI ('XXL' vs '2XL'; 4XL/5XL eksikti) — kaldırıldı.
+const bedenSecenekleri: string[] = [...UST_BEDENLER]
 
 const numaraSecenekleri = [
   '35',

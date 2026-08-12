@@ -1,6 +1,12 @@
 // F13.37 Sağlık Beyan Formu (26 madde) + F13.56 Astım Anketi içeriği.
 // NOT: Astım soru metinleri ECRHS standardı temel alınarak yazıldı; F13.56 xlsx ile
 // birebir doğrulanmalı (metinler oradan gelecekse güncellenir).
+//
+// 2026-08 — YAZIM DÜZENİ: madde/soru metinleri TAMAMI-BÜYÜK yazımdan cümle düzenine
+// alındı (okunabilirlik; tamamı büyük metin uzun listede yorucu). Düzeltme ELLE yapıldı,
+// programatik dönüşüm KULLANILMADI — özel adlar ("Hepatit A/B/C", "AIDS", "HIV", "MS")
+// ve kısaltmalar korunacaktı. Madde numaraları, key'ler, parent ilişkileri ve
+// itemNo/no değerleri DEĞİŞMEDİ; astım sorularının KELİMELERİ de değişmedi.
 
 export interface SaglikMaddesi {
   itemNo: number;
@@ -12,32 +18,32 @@ export const F13_37 = {
   baslik: "Sağlık Beyan Formu",
   // 1-25: VAR/YOK, 26: EVET/HAYIR (ameliyat).
   maddeler: [
-    { itemNo: 1, itemLabel: "DOĞUŞTAN GELEN HASTALIK (DOĞUŞTAN BERİ OLAN HASTALIK)" },
-    { itemNo: 2, itemLabel: "KALITSAL HASTALIK (AİLEDEN GELEN HASTALIKLAR)" },
-    { itemNo: 3, itemLabel: "UZUV KAYBI (EL, AYAK, PARMAK, KULAK, BURUN, CİNSEL ORGAN vb.)" },
-    { itemNo: 4, itemLabel: "KALP HASTALIĞI (KALP KAPAK HASTALIĞI, KALP DAMAR HASTALIĞI vb.)" },
-    { itemNo: 5, itemLabel: "TANSİYON HASTALIĞI (HİPERTANSİYON, TANSİYON DÜŞÜKLÜĞÜ vb.)" },
-    { itemNo: 6, itemLabel: "ŞEKER HASTALIĞI (DİYABET)" },
-    { itemNo: 7, itemLabel: "BÖBREK HASTALIĞI (BÖBREK TAŞI, KİST, TEK BÖBREK, YETERSİZLİK vb.)" },
-    { itemNo: 8, itemLabel: "EPİLEPSİ HASTALIĞI (SARA HASTALIĞI)" },
-    { itemNo: 9, itemLabel: "BAŞ DÖNMESİ İLE İLGİLİ HASTALIKLAR (VERTİGO, MENİERE HAST. vb.)" },
-    { itemNo: 10, itemLabel: "SİNİR SİSTEMİ HASTALIĞI (MİGREN, MS, TÜMÖR vb.)" },
-    { itemNo: 11, itemLabel: "PSİKOLOJİK HASTALIK (DEPRESYON, PANİK ATAK, ŞİZOFRENİ vb.)" },
-    { itemNo: 12, itemLabel: "DERİ HASTALIĞI (DÖKÜNTÜLÜ DERİ, SEDEF, EGZAMA vb.)" },
-    { itemNo: 13, itemLabel: "HORMONAL BOZUKLUKLAR VE HASTALIKLAR (GUATR, HİPOTİROİDİ vb.)" },
-    { itemNo: 14, itemLabel: "GÖRME BOZUKLUĞU (MİYOP, HİPERMETROP, ASTİGMAT vb.)" },
-    { itemNo: 15, itemLabel: "DUYMA BOZUKLUĞU (İŞİTME AZLIĞI, SÜREKLİ ÇINLAMA, UĞULTU vb.)" },
-    { itemNo: 16, itemLabel: "ALERJİ ve/veya ALERJİK HASTALIKLAR" },
-    { itemNo: 17, itemLabel: "BULAŞICI HASTALIK (PARAZİT HASTALIKLARI, MANTAR ENFEKSİYONU vb.)" },
-    { itemNo: 18, itemLabel: "SARILIK (HEPATİT) (Hepatit A, Hepatit B, Hepatit C vb.)" },
-    { itemNo: 19, itemLabel: "AIDS HASTALIĞI (HIV)" },
-    { itemNo: 20, itemLabel: "TÜBERKÜLOZ HASTALIĞI (VEREM)" },
-    { itemNo: 21, itemLabel: "KORKU (YÜKSEKLİK KORKUSU, KAPALI ALAN KORKUSU vb.)" },
-    { itemNo: 22, itemLabel: "SİGARA KULLANIMI" },
-    { itemNo: 23, itemLabel: "FİZİKSEL ENGEL" },
-    { itemNo: 24, itemLabel: "SÜREKLİ KULLANILAN İLAÇ" },
-    { itemNo: 25, itemLabel: "MADDE BAĞIMLILIĞI" },
-    { itemNo: 26, itemLabel: "HİÇ AMELİYAT OLDUNUZ MU?" },
+    { itemNo: 1, itemLabel: "Doğuştan gelen hastalık (doğuştan beri olan hastalık)" },
+    { itemNo: 2, itemLabel: "Kalıtsal hastalık (aileden gelen hastalıklar)" },
+    { itemNo: 3, itemLabel: "Uzuv kaybı (el, ayak, parmak, kulak, burun, cinsel organ vb.)" },
+    { itemNo: 4, itemLabel: "Kalp hastalığı (kalp kapak hastalığı, kalp damar hastalığı vb.)" },
+    { itemNo: 5, itemLabel: "Tansiyon hastalığı (hipertansiyon, tansiyon düşüklüğü vb.)" },
+    { itemNo: 6, itemLabel: "Şeker hastalığı (diyabet)" },
+    { itemNo: 7, itemLabel: "Böbrek hastalığı (böbrek taşı, kist, tek böbrek, yetersizlik vb.)" },
+    { itemNo: 8, itemLabel: "Epilepsi hastalığı (sara hastalığı)" },
+    { itemNo: 9, itemLabel: "Baş dönmesi ile ilgili hastalıklar (vertigo, Meniere hast. vb.)" },
+    { itemNo: 10, itemLabel: "Sinir sistemi hastalığı (migren, MS, tümör vb.)" },
+    { itemNo: 11, itemLabel: "Psikolojik hastalık (depresyon, panik atak, şizofreni vb.)" },
+    { itemNo: 12, itemLabel: "Deri hastalığı (döküntülü deri, sedef, egzama vb.)" },
+    { itemNo: 13, itemLabel: "Hormonal bozukluklar ve hastalıklar (guatr, hipotiroidi vb.)" },
+    { itemNo: 14, itemLabel: "Görme bozukluğu (miyop, hipermetrop, astigmat vb.)" },
+    { itemNo: 15, itemLabel: "Duyma bozukluğu (işitme azlığı, sürekli çınlama, uğultu vb.)" },
+    { itemNo: 16, itemLabel: "Alerji ve/veya alerjik hastalıklar" },
+    { itemNo: 17, itemLabel: "Bulaşıcı hastalık (parazit hastalıkları, mantar enfeksiyonu vb.)" },
+    { itemNo: 18, itemLabel: "Sarılık (hepatit) (Hepatit A, Hepatit B, Hepatit C vb.)" },
+    { itemNo: 19, itemLabel: "AIDS hastalığı (HIV)" },
+    { itemNo: 20, itemLabel: "Tüberküloz hastalığı (verem)" },
+    { itemNo: 21, itemLabel: "Korku (yükseklik korkusu, kapalı alan korkusu vb.)" },
+    { itemNo: 22, itemLabel: "Sigara kullanımı" },
+    { itemNo: 23, itemLabel: "Fiziksel engel" },
+    { itemNo: 24, itemLabel: "Sürekli kullanılan ilaç" },
+    { itemNo: 25, itemLabel: "Madde bağımlılığı" },
+    { itemNo: 26, itemLabel: "Hiç ameliyat oldunuz mu?" },
   ] as SaglikMaddesi[],
   AMELIYAT_ITEM_NO: 26,
   gecmisHastalikNotuLabel:
@@ -51,7 +57,7 @@ export const F13_56 = {
   documentCode: "F13.56",
   baslik: "Astım Değerlendirme Anketi",
   ustNot:
-    'SORULARI CEVAPLAMAK İÇİN UYGUN KUTUYA İŞARET KOYUNUZ. EĞER CEVAPTAN EMİN DEĞİLSENİZ "HAYIR" KUTUSUNU İŞARETLEYİNİZ.',
+    'Soruları cevaplamak için uygun kutuya işaret koyunuz. Eğer cevaptan emin değilseniz "Hayır" kutusunu işaretleyiniz.',
   telefonAciklama:
     "Evde ya da işyeri ortamındayken İş Sağlığı Birimi tarafından size telefon ile ulaşabilmemiz için telefon numaranızı yazınız.",
   sorular: [

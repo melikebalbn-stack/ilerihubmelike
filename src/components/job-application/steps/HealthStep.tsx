@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { NativeSelect as Select } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { F13_37, F13_56 } from "@/content/f13-37-56";
+import { DateField } from "@/components/ui/date-field";
 
 const NAVY = "#1B4F72";
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -113,7 +114,7 @@ export function HealthStep({ onDone }: { onDone: () => void }) {
     }
   }
 
-  const YesNoToggle = ({ value, onChange, yesLabel = "VAR", noLabel = "YOK" }: {
+  const YesNoToggle = ({ value, onChange, yesLabel = "Var", noLabel = "Yok" }: {
     value: YesNo; onChange: (v: YesNo) => void; yesLabel?: string; noLabel?: string;
   }) => (
     <RadioGroup
@@ -157,8 +158,8 @@ export function HealthStep({ onDone }: { onDone: () => void }) {
               <YesNoToggle
                 value={items[m.itemNo] ?? ""}
                 onChange={(v) => setItem(m.itemNo, v)}
-                yesLabel={isAmeliyat ? "EVET" : "VAR"}
-                noLabel={isAmeliyat ? "HAYIR" : "YOK"}
+                yesLabel={isAmeliyat ? "Evet" : "Var"}
+                noLabel={isAmeliyat ? "Hayır" : "Yok"}
               />
             </div>
           );
@@ -210,8 +211,8 @@ export function HealthStep({ onDone }: { onDone: () => void }) {
               <YesNoToggle
                 value={astim[s.key] ?? ""}
                 onChange={(v) => setAstimQ(s.key, v)}
-                yesLabel="EVET"
-                noLabel="HAYIR"
+                yesLabel="Evet"
+                noLabel="Hayır"
               />
             </div>
           );
@@ -223,7 +224,12 @@ export function HealthStep({ onDone }: { onDone: () => void }) {
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Doğum Tarihi <span className="text-red-500">*</span>
           </label>
-          <Input type="date" value={dogumTarihi} onChange={(e) => setDogumTarihi(e.target.value)} />
+          <DateField
+            value={dogumTarihi}
+            onChange={setDogumTarihi}
+            max={todayISO()}
+            acilisYili={new Date().getFullYear() - 25}
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Test Tarihi</label>

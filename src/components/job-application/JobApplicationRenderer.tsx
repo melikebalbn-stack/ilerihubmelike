@@ -25,6 +25,8 @@ import { SectionFizikselCalisma } from './sections/SectionFizikselCalisma'
 import { SectionTercihEgitim } from './sections/SectionTercihEgitim'
 import { SectionDeneyimReferans } from './sections/SectionDeneyimReferans'
 import { SectionBeyanFotograf } from './sections/SectionBeyanFotograf'
+import { alanBuyut } from '@/lib/job-application/buyuk-harf'
+import { OnayYenileme } from './OnayYenileme'
 import { initialFormState, type FormState, type SectionProps } from './types'
 import { missingFieldsInStep, allRequiredFilled } from './required-fields'
 import { maasBeklentisiGecerliMi } from '@/lib/recruitment/salary'
@@ -56,6 +58,9 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
   // Gönderim sonrası sınav durumu (public yoklama sonucu) + 30 dk sonra yoklama durdu bayrağı.
   const [sinavDurum, setSinavDurum] = useState<{ durum: string; sinavAdi?: string; sinavLink?: string } | null>(null)
   const [yoklamaBitti, setYoklamaBitti] = useState(false)
+  // Akış guard'ı 403 verdi (taslak cookie'si düştü / onay eksik) → onay yenileme katmanı.
+  // Form state'e DOKUNULMAZ; onay bitince submit AYNI form ile tekrar denenir.
+  const [onayYenileme, setOnayYenileme] = useState<string | null>(null)
 
   const totalSteps = SECTIONS.length
   const isFinalStep = currentStep === totalSteps - 1
@@ -101,7 +106,15 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
   // KRİTİK: onChange identity stable olmalı — yoksa section component'leri
   // her keystroke'ta re-render olur (focus kaybetmez, sadece performans).
   const onChange = useCallback((patch: Partial<FormState>) => {
-    setForm((prev) => ({ ...prev, ...patch }))
+    // BÜYÜK HARF görsel geri bildirimi — aday yazarken alan büyük görünür.
+    // Karar TEK KAYNAK'tan (buyuk-harf.ts) gelir; sunucu aynı listeyi kullanır, sapma olmaz.
+    // Yalnız STRING değerler dokunulur: File (photo), boolean, dizi/nesne (tekrarlanan
+    // satırlar) olduğu gibi geçer.
+    const normalize: Partial<FormState> = {}
+    for (const [k, v] of Object.entries(patch)) {
+      ;(normalize as Record<string, unknown>)[k] = typeof v === 'string' ? alanBuyut(k, v) : v
+    }
+    setForm((prev) => ({ ...prev, ...normalize }))
   }, [])
 
   // PR-JOBAPP-UX-FIXES: Bölüm değişiminde üste smooth scroll.
@@ -212,6 +225,13 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
       const res = await fetch('/api/job-application', { method: 'POST', body: fd, credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
+        // 403 = akış guard'ı (KVKK onayı ve/veya sağlık beyanı yok/düşmüş).
+        // DESTRÜKTİF DEĞİL: form state'e dokunmadan onay yenileme katmanı açılır;
+        // tamamlanınca AYNI doldurulmuş formla submit tekrar denenir.
+        if (res.status === 403) {
+          setOnayYenileme(typeof data.error === 'string' ? data.error : null)
+          return
+        }
         setError(data.error || 'Başvuru gönderilemedi.')
         return
       }
@@ -319,6 +339,25 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Onay yenileme katmanı — form state'in ÜSTÜNDE açılır, altındaki veriye dokunmaz. */}
+      {onayYenileme !== null && (
+        <OnayYenileme
+          sunucuMesaji={onayYenileme}
+          onTamamlandi={() => {
+            setOnayYenileme(null)
+            setError(null)
+            // AYNI form ile tekrar dene — kullanıcı hiçbir şeyi yeniden yazmaz.
+            void handleSubmit()
+          }}
+          onVazgec={() => {
+            setOnayYenileme(null)
+            setError(
+              'Başvuruyu göndermek için onay adımlarının yenilenmesi gerekiyor. Bilgileriniz ekranda duruyor.'
+            )
+          }}
+        />
+      )}
+
       <FormProgressBar
         current={currentStep}
         total={totalSteps}

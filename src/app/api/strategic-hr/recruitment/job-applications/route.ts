@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { bekleyenTaraf, kullaniciAdi } from '@/lib/recruitment/bekleyen'
+import { TASLAK_STATULER } from '@/lib/recruitment/taslak-statuler'
 
 // GET - Tüm iş başvurularını listele
 export async function GET(request: NextRequest) {
@@ -36,7 +37,15 @@ export async function GET(request: NextRequest) {
     const where: any = {}
 
     if (status && status !== 'all') {
+      // Kullanıcı AÇIKÇA bir statü seçtiyse (taslak statüleri dahil) onu göster.
       where.status = status
+    } else {
+      // VARSAYILAN: taslaklar (form GÖNDERİLMEMİŞ kayıtlar) listede ÇIKMAZ.
+      // Eskiden çıkıyordu ve İK yarım kalmış bir kaydı tamamlanmış başvuru sanabiliyordu;
+      // ayrıca liste sayısı dashboard'la (taslakları zaten hariç tutuyordu) ayrışıyordu.
+      // Küme TEK KAYNAK: src/lib/recruitment/taslak-statuler.ts
+      // NOT: `total` aşağıda AYNI `where` ile sayılır → sayfalama toplamı da tutarlı.
+      where.status = { notIn: TASLAK_STATULER }
     }
 
     if (search) {

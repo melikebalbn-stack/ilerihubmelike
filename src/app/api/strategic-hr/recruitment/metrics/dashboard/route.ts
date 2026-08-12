@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { TASLAK } from "@/lib/recruitment/taslak-statuler";
 
 function recruitAccess(session: { user: { permissions?: string[] } }) {
   const perms = session.user.permissions ?? [];
@@ -12,7 +13,6 @@ const ortala = (d: number[]): number | null => (d.length ? Math.round((d.reduce(
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 // Form-öncesi (taslak) ve terminal durumlar
-const TASLAK = new Set(["CONSENT_PENDING", "HEALTH_PENDING"]);
 const ISE_ALINDI = new Set(["ACCEPTED", "TEKLIF_KABUL", "ISE_BASLADI"]);
 const TERMINAL = new Set(["ACCEPTED", "REJECTED", "TEKLIF_KABUL", "ISE_BASLADI"]);
 // Huni sırası (form tamamlanan → işe başladı). Terminal REJECTED ayrı.

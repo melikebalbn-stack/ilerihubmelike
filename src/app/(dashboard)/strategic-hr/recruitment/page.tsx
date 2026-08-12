@@ -89,6 +89,8 @@ import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
 import CostPerHirePanel from "./_components/CostPerHirePanel"
 import TanimlarPanel from "./_components/TanimlarPanel"
 import AssessmentPanel from "./_components/AssessmentPanel"
+import { TASLAK_STATULER } from "@/lib/recruitment/taslak-statuler"
+import { STATUS_LABELS_TR } from "@/lib/recruitment/transitions"
 
 interface JobOpening {
   id: string
@@ -1572,6 +1574,14 @@ export default function RecruitmentPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tum Durumlar</SelectItem>
+              {/* Taslaklar (form GÖNDERİLMEMİŞ) varsayılan listede ÇIKMAZ; İK yarım kalan
+                  başvuruları takip etmek isterse buradan açıkça seçer. Etiketler TEK KAYNAK
+                  STATUS_LABELS_TR (transitions.ts) — burada yeni metin yazılmaz. */}
+              {TASLAK_STATULER.map((st) => (
+                <SelectItem key={st} value={st}>
+                  {STATUS_LABELS_TR[st]}
+                </SelectItem>
+              ))}
               <SelectItem value="PENDING">Beklemede</SelectItem>
               <SelectItem value="REVIEWING">Inceleniyor</SelectItem>
               <SelectItem value="SHORTLISTED">On Eleme</SelectItem>

@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/auth/require-session'
 import { resolveTransitionRoles } from '@/lib/recruitment/resolve-roles'
 import { oturumOzetiGetir } from '@/lib/recruitment/assessment-session'
 import { logAuditEvent } from '@/lib/audit-log'
+import { fotoDosyasiniSil } from '@/lib/job-application/foto-dosya'
 import {
   basvuruDuzeltmeSchema,
   degisiklikleriCikar,
@@ -218,9 +219,43 @@ export async function DELETE(
 
     const { id } = await params
 
+    // 1) Silmeden ÖNCE photoUrl'ü oku — kayıt gidince URL'e ulaşılamaz.
+    const oncesi = await prisma.publicJobApplication.findUnique({
+      where: { id },
+      select: { applicationNumber: true, photoUrl: true },
+    })
+    if (!oncesi) {
+      return NextResponse.json({ error: 'Basvuru bulunamadi' }, { status: 404 })
+    }
+
+    // 2) DB kaydını sil (bağlı tablolar Cascade ile gider; RecruitmentCost SetNull — kasıtlı).
     await prisma.publicJobApplication.delete({ where: { id } })
 
-    return NextResponse.json({ success: true })
+    // 3) Diskteki fotoğrafı sil. SIRA ÖNEMLİ: DB silmesi başarılı olduktan SONRA.
+    //    Dosya silme BAŞARISIZ olsa bile DB silmesi GERİ ALINMAZ — "kayıt gitti, dosya kaldı"
+    //    durumu tersinden (kayıt duruyor, dosya yok) daha az zararlı. Helper throw ETMEZ;
+    //    kapsam dışı yol SİLİNMEZ (path traversal koruması) ve aşağıda denetime yazılır.
+    const fotoSonuc = await fotoDosyasiniSil(oncesi.photoUrl)
+    if (!fotoSonuc.silindi && fotoSonuc.sebep !== 'url-yok' && fotoSonuc.sebep !== 'dosya-yok') {
+      console.error('[job-application DELETE] fotograf silinemedi:', fotoSonuc)
+    }
+
+    // 4) Denetim — mevcut logAuditEvent deseni (tx YOK: DB silmesi zaten tamamlandı,
+    //    denetim hatası silmeyi geri alamaz/almamalı).
+    await logAuditEvent({
+      action: 'JOB_APPLICATION_DELETED',
+      actorId: session.user.id,
+      targetType: 'JOB_APPLICATION',
+      targetId: id,
+      details: {
+        applicationNumber: oncesi.applicationNumber,
+        photoUrl: oncesi.photoUrl,
+        fotoSilindi: fotoSonuc.silindi,
+        fotoSonuc: fotoSonuc.silindi ? 'silindi' : fotoSonuc.sebep,
+      },
+    })
+
+    return NextResponse.json({ success: true, fotoSilindi: fotoSonuc.silindi })
   } catch (error) {
     console.error('Basvuru silinirken hata:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

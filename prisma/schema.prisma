@@ -5539,6 +5539,34 @@ model LoginLog {
   @@index([createdAt])
 }
 
+// ── Mavi yaka OTP girişi (Faz 1: altyapı; SMS gönderimi Faz 2/NetGSM) ────────
+// Tek faktör: sicil no girilir → telefona 6 haneli kod → kod ile giriş.
+// Mevcut TC-son-4 doğrulamasının yerini alır (ölçüm: telefon kapsaması 178/179,
+// tcLastFour kapsaması yalnız 121/179 → 58 aktif kullanıcı BUGÜN giremiyor).
+model OtpChallenge {
+  id String @id @default(cuid())
+
+  // Kullanicinin GIRDIGI haliyle sicil no ("00740" veya "ILR-00740").
+  // Normalize edilmis hali telefon cozumlemede kullanilir, burada ham tutulur
+  // ki denemeler girildigi gibi izlenebilsin.
+  employeeId String
+
+  // OTP'nin gonderildigi numara — maskeli gosterim icin ("*** ** 4512").
+  phone String
+
+  // SHA-256 hash. DUZ KOD DB'DE ASLA DURMAZ.
+  codeHash String
+
+  expiresAt DateTime // +5 dakika
+  usedAt    DateTime? // dolduysa TEK KULLANIM tuketildi
+  attempts  Int       @default(0) // yanlis kod denemesi (>=3 -> gecersiz)
+
+  createdAt DateTime @default(now())
+
+  @@index([employeeId, createdAt])
+  @@index([expiresAt])
+}
+
 enum LoginStatus {
   SUCCESS
   FAILED

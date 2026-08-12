@@ -12,4 +12,4 @@ SHELL=/bin/bash
 PATH=/usr/bin:/bin
 MAILTO=""
 
-30 11 * * * rokunet curl -fsS -X POST -H "x-cron-secret: 5a33f10568fc064976151f6a8b5804ed" https://hub.ilerigroup.com/api/acme/check-expiry >> /var/log/ilerihub-cron.log 2>&1
+30 11 * * * rokunet curl -fsS -X POST -H "x-cron-secret: <CRON_SECRET>" https://hub.ilerigroup.com/api/acme/check-expiry >> /var/log/ilerihub-cron.log 2>&1

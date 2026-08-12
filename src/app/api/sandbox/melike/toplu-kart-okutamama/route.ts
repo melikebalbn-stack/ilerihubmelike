@@ -5,7 +5,7 @@ import { getBulkCardScanAccess } from './_lib/access'
 import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from './_lib/notify-hr'
 import { VALID_NEDEN } from './_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from './_lib/duplicate-check'
-import { resolveApprovers } from './_lib/approvers'
+import { resolveApprovers, getManagedPersonnelIds } from './_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,20 +70,20 @@ export async function GET(request: NextRequest) {
     if (ivDurum === 'onaylandi') where.ivOnaylandi = true
     else if (ivDurum === 'bekliyor') where.ivOnaylandi = false
 
-    // Full (Eski Kayıtlar): müdür onayı BEKLIYOR durumundaki kayıtlar (Self/Sistem
-    // Geliştirme kendi kaydı akışı) müdür onaylamadan burada görünmez. GRI/SELF
-    // kendi kayıtlarını (durumu ne olursa olsun) her zaman görebilir.
+    // Full (Eski Kayıtlar): onay BEKLIYOR durumundaki kayıtlar (kendi adına giriş
+    // onay akışı) onaylanmadan burada görünmez. GRI/SELF kendi girdiği kayıtları
+    // (kendi + ekibi, durumu ne olursa olsun) her zaman görebilir.
     if (access.level === 'FULL') {
       where.onayDurumu = { not: 'BEKLIYOR' }
     }
 
-    if (access.level === 'GRI') {
-      where.personnel = { bolum: access.bolum }
-    } else if (access.level === 'SELF') {
-      // SELF sadece kendi kayıtlarını görebilir — bölüm/arama parametreleri göz ardı edilir.
-      where.personnelId = access.personnelId ?? '__none__'
+    if (access.level === 'GRI' || access.level === 'SELF') {
+      // Kendi girdiği tüm kayıtlar: kendi adına + ekibi (Personel Yönetimi'nde
+      // 1./2./3. Sorumlusu olduğu kişiler) için girdikleri — bölüm/arama
+      // parametreleri göz ardı edilir.
+      where.createdById = user.id
     } else if (bolum) {
-      // Bölüm filtresi sadece FULL erişimde anlamlı — GRI zaten kendi bölümüne kilitli.
+      // Bölüm filtresi sadece FULL erişimde anlamlı.
       where.personnel = { bolum }
     }
 
@@ -108,7 +108,8 @@ export async function GET(request: NextRequest) {
           createdBy: { select: { id: true, name: true, email: true } },
           personnel: { select: { id: true, bolum: true, gorev: true } },
         },
-        orderBy: buildOrderBy(sortBy, sortOrder),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        orderBy: buildOrderBy(sortBy, sortOrder) as any,
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -153,24 +154,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Geçersiz neden' }, { status: 400 })
     }
 
-    // SELF (Beyaz Yaka, kendisi için giriş) sadece kendi personnelId'si için kayıt açabilir.
-    if (access.level === 'SELF' && personnelId !== access.personnelId) {
-      return NextResponse.json({ error: 'Sadece kendi adınıza kayıt girebilirsiniz' }, { status: 403 })
+    // GRI/SELF: kendi adına, ya da (varsa) 1./2./3. Sorumlusu olduğu kişiler
+    // için kayıt açabilir — başkası için açamaz. Full'da kısıtlama yok.
+    if ((access.level === 'GRI' || access.level === 'SELF') && personnelId !== access.personnelId) {
+      const managedIds = access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
+      if (!managedIds.includes(personnelId)) {
+        return NextResponse.json({ error: 'Sadece kendi adınıza veya ekibiniz için kayıt girebilirsiniz' }, { status: 403 })
+      }
     }
 
     // Sicil No / Ad Soyad her zaman Personnel (İV) kaydından alınır — client'tan
     // gelen isim/sicil değeri güvenilmez, sadece seçim (personnelId) kabul edilir.
     const personnel = await prisma.personnel.findUnique({
       where: { id: personnelId },
-      select: { id: true, sicilNo: true, adSoyad: true, aktif: true, bolum: true },
+      select: { id: true, sicilNo: true, adSoyad: true, aktif: true },
     })
 
     if (!personnel || !personnel.aktif) {
       return NextResponse.json({ error: 'Seçilen personel bulunamadı veya pasif' }, { status: 400 })
-    }
-
-    if (access.level === 'GRI' && personnel.bolum !== access.bolum) {
-      return NextResponse.json({ error: 'Sadece kendi bölümünüzdeki personel için kayıt açabilirsiniz' }, { status: 403 })
     }
 
     const isDuplicate = await hasDuplicateRecord({
@@ -183,23 +184,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: DUPLICATE_ERROR_MESSAGE }, { status: 409 })
     }
 
-    // SELF akışı her zaman, FULL akışı ise sadece selfApprovalRequired olan bir
-    // bölümdeyken (örn. Sistem Geliştirme) VE kendi adına giriyorsa onay akışına
-    // girer. Onaylayıcı 1. Sorumlu / 2. Sorumlu'dan çözülür — ikisi de yoksa/
-    // eşleşmezse onay adımı atlanır, kayıt direkt onaylı sayılır.
-    const requiresSelfApproval =
-      access.level === 'SELF' || (access.selfApprovalRequired && personnel.id === access.personnelId)
+    // Onay akışı SADECE kişi KENDİ ADINA kayıt girdiğinde devreye girer (GRI
+    // dahil, herkes için aynı kural) — ekibi için giriyorsa onay gerekmez,
+    // direkt onaylı sayılır (Full'un başkası için girmesi gibi). Onaylayıcı
+    // 1./2./3. Sorumlu'dan çözülür — üçünden biri onaylarsa/reddederse geçerli
+    // olur, sıra yok. Hiçbiri çözülemezse kayıt kimseye atanmadan BEKLIYOR kalır.
+    const isSelfEntry = (access.level === 'GRI' || access.level === 'SELF') && personnel.id === access.personnelId
 
     let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
     let approverId: string | null = null
     let approverId2: string | null = null
-    if (requiresSelfApproval) {
+    let approverId3: string | null = null
+    if (isSelfEntry) {
+      onayDurumu = 'BEKLIYOR'
       const resolved = await resolveApprovers(personnel.id)
-      if (resolved.approverId || resolved.approverId2) {
-        onayDurumu = 'BEKLIYOR'
-        approverId = resolved.approverId
-        approverId2 = resolved.approverId2
-      }
+      approverId = resolved.approverId
+      approverId2 = resolved.approverId2
+      approverId3 = resolved.approverId3
     }
 
     const record = await prisma.bulkCardScanFailure.create({
@@ -215,6 +216,7 @@ export async function POST(request: NextRequest) {
         onayDurumu,
         approverId,
         approverId2,
+        approverId3,
       },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },
@@ -227,7 +229,7 @@ export async function POST(request: NextRequest) {
       notifyHrOfBulkCardScanRecords([{ sicilNo: record.sicilNo, adSoyad: record.adSoyad }], user.name || user.email)
     } else {
       notifyApproverOfPendingRecord(
-        [record.approverId, record.approverId2].filter((id): id is string => !!id),
+        [record.approverId, record.approverId2, record.approverId3].filter((id): id is string => !!id),
         { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
         user.name || user.email
       )

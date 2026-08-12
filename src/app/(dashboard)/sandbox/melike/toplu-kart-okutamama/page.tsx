@@ -203,7 +203,7 @@ export default function TopluKartOkutamamaPage() {
 
   const [showOldRecords, setShowOldRecords] = useState(false)
 
-  // SELF: Beyaz Yaka kendisi için giriş yapar — sadece kendi Personnel kaydı.
+  // GRI/SELF: herkes girişte önce kendi kaydını görür/girer.
   const [selfPersonnel, setSelfPersonnel] = useState<PickedPersonnel | null>(null)
   const [selfTarih, setSelfTarih] = useState("")
   const [selfGiris, setSelfGiris] = useState("")
@@ -211,6 +211,11 @@ export default function TopluKartOkutamamaPage() {
   const [selfNeden, setSelfNeden] = useState("")
   const [selfSaving, setSelfSaving] = useState(false)
   const [selfError, setSelfError] = useState<string | null>(null)
+
+  // GRI/SELF: Personel Yönetimi'nde 1./2./3. Sorumlusu olduğu kişiler (ekibi) —
+  // varsa üstte bir butonla bu panele geçilir, yoksa buton hiç görünmez.
+  const [myTeam, setMyTeam] = useState<PickedPersonnel[]>([])
+  const [showTeamPanel, setShowTeamPanel] = useState(false)
 
   // Onayınızı bekleyen kayıtlar — formun kendi accessLevel'ından bağımsız:
   // herhangi bir kullanıcı birinin müdürüyse burada onun bekleyen kayıtlarını görür.
@@ -331,25 +336,22 @@ export default function TopluKartOkutamamaPage() {
     if (status === "authenticated") loadRecords()
   }, [status, loadRecords])
 
-  // Panel GRI'ya özel değil — Personnel kaydı olan (bolum'u bilinen) herkes
-  // (FULL/admin dahil) kendi bölümündeki ekibi burada görür. FULL için bolum
-  // parametresi elle geçiliyor (GRI'da sunucu zaten kendi bölümüne zorluyor).
-  // SELF hariç — o "Kendi Kaydım" bölümünü kullanır, ekip paneli ona gösterilmez.
+  // GRI/SELF: kendi Personnel kaydını (id/sicilNo/adSoyad) çek — "Kendi
+  // Kaydım" bölümünde gösterilir. Full için gerekmez (o herkesi yönetir).
   useEffect(() => {
-    if (!myBolum || accessLevel === "SELF") return
-    const params = new URLSearchParams({ bolum: myBolum })
-    fetch(`/api/sandbox/melike/toplu-kart-okutamama/personnel-search?${params.toString()}`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: PickedPersonnel[]) => setTeam(data))
-  }, [myBolum])
-
-  // SELF: kendi Personnel kaydını (id/sicilNo/adSoyad) çek — personnel-search
-  // SELF için zaten sadece kendi kaydını döndürüyor, ekstra parametre gerekmez.
-  useEffect(() => {
-    if (accessLevel !== "SELF") return
+    if (accessLevel !== "GRI" && accessLevel !== "SELF") return
     fetch("/api/sandbox/melike/toplu-kart-okutamama/personnel-search")
       .then((res) => (res.ok ? res.json() : []))
       .then((data: PickedPersonnel[]) => setSelfPersonnel(data[0] || null))
+  }, [accessLevel])
+
+  // GRI/SELF: Personel Yönetimi'nde 1./2./3. Sorumlusu olduğu ekip (varsa) —
+  // sadece varlığını bilmek için önceden çekilir, buton bu listeye göre gösterilir.
+  useEffect(() => {
+    if (accessLevel !== "GRI" && accessLevel !== "SELF") return
+    fetch("/api/sandbox/melike/toplu-kart-okutamama/personnel-search?scope=team")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: PickedPersonnel[]) => setMyTeam(data))
   }, [accessLevel])
 
   // Bölüm listesi — sadece FULL erişimde: Eski Kayıtlar filtresi ve
@@ -661,7 +663,7 @@ export default function TopluKartOkutamamaPage() {
     )
   }
 
-  // Süper Admin / İV / Sistem Geliştirme: bölümden bağımsız herkesi elle ekleyip çıkarabilir.
+  // Süper Admin / İV: bölümden bağımsız herkesi elle ekleyip çıkarabilir.
   const canManageAnyone = accessLevel === "FULL"
 
   // "Kaldır" o günkü listeden gerçekten çıkarır (excludedIds) — Tümüne
@@ -670,7 +672,11 @@ export default function TopluKartOkutamamaPage() {
   const visibleTeam = sortItems(team.filter((p) => !excludedIds.has(p.id)), teamSortKey, teamSortOrder)
   const hiddenTeam = team.filter((p) => excludedIds.has(p.id))
   const sortedPendingApprovals = sortItems(pendingApprovals, approvalsSortKey, approvalsSortOrder)
-  const sortedSelfRecords = sortItems(records, selfSortKey, selfSortOrder)
+  // GRI/SELF için "records" artık kendi + ekip kayıtlarının tamamı (createdById
+  // bazlı) — "Kendi Kaydım" bunun içinden sadece kendi personelini süzer.
+  const ownRecords = records.filter((r) => r.personnel?.id === selfPersonnel?.id)
+  const sortedSelfRecords = sortItems(ownRecords, selfSortKey, selfSortOrder)
+  const sortedMyTeam = sortItems(myTeam, teamSortKey, teamSortOrder)
 
   const editableRowContent = (
     <>
@@ -736,7 +742,7 @@ export default function TopluKartOkutamamaPage() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold">Toplu Kart Okutamama</h1>
+        <h1 className="text-xl font-bold">Kart Okutamama</h1>
         {!forbidden && (
           <div className="flex flex-wrap gap-2">
             <input
@@ -755,6 +761,11 @@ export default function TopluKartOkutamamaPage() {
             {canManageAnyone && (
               <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
                 {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
+              </Button>
+            )}
+            {(accessLevel === "GRI" || accessLevel === "SELF") && myTeam.length > 0 && (
+              <Button variant="outline" onClick={() => setShowTeamPanel((v) => !v)}>
+                {showTeamPanel ? "Kendi Kaydıma Dön" : `Ekibim İçin Gir (${myTeam.length})`}
               </Button>
             )}
           </div>
@@ -832,7 +843,7 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {!forbidden && accessLevel === "SELF" && (
+      {!forbidden && !showTeamPanel && (accessLevel === "SELF" || accessLevel === "GRI") && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">Kendi Kaydım</div>
           <div className="flex flex-wrap items-end gap-3 px-4 py-3">
@@ -865,7 +876,8 @@ export default function TopluKartOkutamamaPage() {
           </div>
           {selfError && <div className="border-t px-4 py-2 text-sm text-red-600">{selfError}</div>}
           <p className="border-t px-4 py-2 text-xs text-muted-foreground">
-            Kaydınız müdürünüzün onayına gönderilir, onaylandıktan sonra İnsan Varlıkları&apos;na iletilir.
+            Kaydınız Personel Yönetimi&apos;ndeki 1./2./3. Sorumlunuzdan birinin onayına gönderilir, onaylandıktan
+            sonra İnsan Varlıkları&apos;na iletilir.
           </p>
 
           <Table>
@@ -881,7 +893,7 @@ export default function TopluKartOkutamamaPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {records.length === 0 && (
+              {ownRecords.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground">
                     Henüz kaydınız yok
@@ -921,7 +933,96 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {!forbidden && !showOldRecords && accessLevel !== "SELF" && (myBolum || canManageAnyone) && (
+      {!forbidden && showTeamPanel && (accessLevel === "GRI" || accessLevel === "SELF") && (
+        <div className="rounded-md border">
+          <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
+            Ekibim {myTeam.length > 0 && `(${myTeam.length})`}
+          </div>
+          <p className="border-b bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
+            Bu kişiler için girdiğiniz kayıtlar onay gerektirmeden direkt onaylı olarak kaydedilir.
+          </p>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <SortableHead label="Sicil No" active={teamSortKey === "sicilNo"} order={teamSortOrder} onClick={() => toggleTeamSort("sicilNo")} />
+                <SortableHead label="Ad Soyad" active={teamSortKey === "adSoyad"} order={teamSortOrder} onClick={() => toggleTeamSort("adSoyad")} />
+                <TableHead>Tarih</TableHead>
+                <TableHead>Giriş Saati</TableHead>
+                <TableHead>Çıkış Saati</TableHead>
+                <TableHead>Neden</TableHead>
+                <TableHead>İşlem</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedMyTeam.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    Ekibinizde kayıtlı personel bulunamadı
+                  </TableCell>
+                </TableRow>
+              )}
+              {sortedMyTeam.map((p) => {
+                const draft = teamDrafts[p.id] || EMPTY_DRAFT
+                const rowError = teamErrors[p.id]
+                return (
+                  <Fragment key={p.id}>
+                    <TableRow>
+                      <TableCell>{p.sicilNo || "-"}</TableCell>
+                      <TableCell>{p.adSoyad}</TableCell>
+                      <TableCell>
+                        <Input
+                          type="date"
+                          value={draft.tarih}
+                          onChange={(e) => updateTeamDraft(p.id, "tarih", e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="time"
+                          value={draft.giris}
+                          onChange={(e) => updateTeamDraft(p.id, "giris", e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="time"
+                          value={draft.cikis}
+                          onChange={(e) => updateTeamDraft(p.id, "cikis", e.target.value)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <NedenSelect
+                          value={draft.neden}
+                          onChange={(v) => updateTeamDraft(p.id, "neden", v)}
+                        />
+                      </TableCell>
+                      <TableCell className="space-x-2 whitespace-nowrap">
+                        <Button
+                          size="sm"
+                          disabled={!draft.tarih || teamSavingId === p.id}
+                          onClick={() => handleTeamSave(p)}
+                        >
+                          {teamSavingId === p.id ? "Kaydediliyor..." : "Kaydet"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {rowError && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-1 text-xs text-red-600">
+                          {rowError}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {!forbidden && !showOldRecords && canManageAnyone && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Bana Bağlı Personel {visibleTeam.length > 0 && `(${visibleTeam.length})`}
@@ -1017,7 +1118,7 @@ export default function TopluKartOkutamamaPage() {
               {team.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground">
-                    Bölümünüzde kayıtlı personel bulunamadı
+                    Listede henüz kimse yok — bölüme göre veya tek tek ekleyin
                   </TableCell>
                 </TableRow>
               )}
@@ -1118,7 +1219,7 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {((showOldRecords && canManageAnyone) || accessLevel === "GRI") && (
+      {((showOldRecords && canManageAnyone) || accessLevel === "GRI" || accessLevel === "SELF") && (
         <>
       <h2 className="text-sm font-medium text-muted-foreground">
         {canManageAnyone ? "Eski Kayıtlar" : "Geçmiş Kayıtlarım"}
@@ -1231,9 +1332,14 @@ export default function TopluKartOkutamamaPage() {
               </TableRow>
             )}
             {records.map((r) => {
+              const isOwnRecord = r.createdById === session?.user?.id
+              const isSelfEntry = r.personnel?.id === selfPersonnel?.id
               const canEdit =
                 accessLevel === "FULL" ||
-                (accessLevel === "GRI" && r.createdById === session?.user?.id && !r.ivOnaylandi)
+                ((accessLevel === "GRI" || accessLevel === "SELF") &&
+                  isOwnRecord &&
+                  !r.ivOnaylandi &&
+                  (!isSelfEntry || r.onayDurumu === "BEKLIYOR"))
               if (editingId === r.id) {
                 return <TableRow key={r.id}>{editableRowContent}</TableRow>
               }

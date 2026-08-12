@@ -19,7 +19,7 @@ function formatDate(date: Date): string {
 
 /**
  * GET /api/sandbox/melike/toplu-kart-okutamama/export
- * FULL (Beyaz Yaka) tüm kayıtları, GRI sadece kendi oluşturduklarını export eder.
+ * FULL tüm kayıtları, GRI/SELF sadece kendi oluşturduklarını (kendi + ekibi) export eder.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -41,10 +41,9 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = {}
     if (ivDurum === 'onaylandi') where.ivOnaylandi = true
     else if (ivDurum === 'bekliyor') where.ivOnaylandi = false
-    if (access.level === 'GRI') {
+    if (access.level === 'GRI' || access.level === 'SELF') {
+      // Kendi girdiği tüm kayıtlar: kendi adına + ekibi için girdikleri.
       where.createdById = user.id
-    } else if (access.level === 'SELF') {
-      where.personnelId = access.personnelId ?? '__none__'
     } else if (bolum) {
       where.personnel = { bolum }
     }
@@ -84,7 +83,7 @@ export async function GET(request: NextRequest) {
     worksheet['!cols'] = headers.map((key) => ({ wch: Math.max(key.length + 2, 15) }))
 
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Toplu Kart Okutamama')
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Kart Okutamama')
 
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
 
@@ -92,7 +91,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="toplu_kart_okutamama_${new Date().toISOString().slice(0, 10)}.xlsx"`,
+        'Content-Disposition': `attachment; filename="kart_okutamama_${new Date().toISOString().slice(0, 10)}.xlsx"`,
       },
     })
   } catch (error) {

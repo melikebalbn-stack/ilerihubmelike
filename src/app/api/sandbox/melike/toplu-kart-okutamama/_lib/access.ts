@@ -5,45 +5,26 @@ export type BulkCardScanAccessLevel = 'NONE' | 'FULL' | 'GRI' | 'SELF'
 export interface BulkCardScanAccess {
   level: BulkCardScanAccessLevel
   personnelId: string | null
-  /** GRI kullanıcının kendi Personnel.bolum değeri — bağlı personel kapsamı bunun üzerinden kurulur. */
+  /** Personel Yönetimi'ndeki Personnel.bolum değeri (görüntüleme amaçlı). */
   bolum: string | null
-  /**
-   * FULL erişimi olsa bile KENDİ kaydı için müdür onayından geçmesi gereken
-   * bölümler için true (örn. Sistem Geliştirme). İV bu kuraldan muaftır —
-   * İK zaten onay bildirimlerinin nihai alıcısı, kendi onayını kendine
-   * vermesi anlamsız olurdu. SELF seviyesinde bu alan her zaman true'dur
-   * (SELF zaten daima onaydan geçer) ama route'lar SELF'i level üzerinden
-   * ayrıca kontrol ettiği için pratikte sadece FULL+bu bayrak kombinasyonu anlamlıdır.
-   */
-  selfApprovalRequired: boolean
 }
 
 const FULL_ACCESS_ROLES = ['SUPER_ADMIN', 'ADMIN']
 
-// Beyaz Yaka'nın TAMAMI değil, sadece bu bölümlerdeki personel FULL erişim alır.
-const FULL_ACCESS_BOLUMLER = ['İNSAN VARLIKLARI', 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ']
-
-// FULL erişimi olan bu bölümler, kendi adlarına girdikleri kayıtta yine de
-// müdür onayından geçer (başkaları için girdiklerinde onay gerekmez).
-const SELF_APPROVAL_REQUIRED_BOLUMLER = ['SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ']
+// Beyaz Yaka'nın TAMAMI değil, sadece İnsan Varlıkları FULL erişim alır.
+const FULL_ACCESS_BOLUMLER = ['İNSAN VARLIKLARI']
 
 /**
- * Toplu Kart Okutamama yetki seviyesi:
- *   - Personnel.bolum İnsan Varlıkları veya Sistem Geliştirme Müdürlüğü ise -> FULL
- *     (Beyaz Yaka'nın TAMAMI değil, sadece bu bölümler — diğer beyaz yaka bölümleri
- *     bu forma erişemez)
- *   - MAVI  -> NONE (forma hiç erişemez)
- *   - GRI   -> GRI  (formu doldurabilir; kendi bölümündeki (Personnel.bolum) personel
- *                    ve kayıtlar üzerinde çalışır)
- *   - BEYAZ (FULL_ACCESS_BOLUMLER dışında) + Personnel kaydı var -> SELF
- *                    (formu SADECE kendisi için doldurabilir, müdür onayından geçer)
- * Ayrıca SUPER_ADMIN/ADMIN (legacy UserRoleEnum) Personnel bağlantısından
- * bağımsız olarak FULL sayılır (diğer formlardaki admin-her-zaman-erişir
- * kuralıyla tutarlı).
- *
- * "Bana bağlı personel" kapsamı BİRİM SORUMLUSU alanlarından (isim eşleştirmesi)
- * TÜRETİLMİYOR (bu yöntem yanlış bulundu) — bunun yerine GRI kullanıcının kendi
- * Personnel.bolum'u ile aynı bölümdeki personel esas alınır.
+ * Kart Okutamama yetki seviyesi:
+ *   - SUPER_ADMIN/ADMIN (legacy UserRoleEnum) veya İnsan Varlıkları bölümü -> FULL
+ *     (herkesi bölümden bağımsız yönetir, toplu işlem yapar, Eski Kayıtlar'ı görür,
+ *     İV onayı verir)
+ *   - MAVI  -> NONE (forma hiç erişemez — ama başkasının kaydına konu olabilir)
+ *   - GRI ve BEYAZ (FULL dışında) + Personnel kaydı var -> aynı davranış:
+ *     kendi adına kayıt girer (kendi 1./2./3. Sorumlusu'ndan onay ister),
+ *     Personel Yönetimi'nde kendisinin 1./2./3. Sorumlu olarak tanımlandığı
+ *     kişiler varsa (yaka rengi fark etmez) onlar için de onaysız kayıt açabilir.
+ *     GRI/SELF ayrımı sadece Excel import yetkisi gibi ikincil farklar için korunur.
  */
 export async function getBulkCardScanAccess(userId: string): Promise<BulkCardScanAccess> {
   const user = await prisma.user.findUnique({
@@ -56,21 +37,21 @@ export async function getBulkCardScanAccess(userId: string): Promise<BulkCardSca
   const bolum = user?.personnel?.bolum ?? null
 
   if (user && FULL_ACCESS_ROLES.includes(user.role)) {
-    return { level: 'FULL', personnelId, bolum, selfApprovalRequired: false }
+    return { level: 'FULL', personnelId, bolum }
   }
   if (bolum && FULL_ACCESS_BOLUMLER.includes(bolum)) {
-    return { level: 'FULL', personnelId, bolum, selfApprovalRequired: SELF_APPROVAL_REQUIRED_BOLUMLER.includes(bolum) }
+    return { level: 'FULL', personnelId, bolum }
   }
   if (yakaRengi === 'MAVI') {
-    return { level: 'NONE', personnelId, bolum, selfApprovalRequired: false }
+    return { level: 'NONE', personnelId, bolum }
   }
-  if (yakaRengi === 'GRI') {
-    return { level: 'GRI', personnelId, bolum, selfApprovalRequired: false }
+  if (yakaRengi === 'GRI' && personnelId) {
+    return { level: 'GRI', personnelId, bolum }
   }
   if (yakaRengi === 'BEYAZ' && personnelId) {
-    return { level: 'SELF', personnelId, bolum, selfApprovalRequired: true }
+    return { level: 'SELF', personnelId, bolum }
   }
 
   // Personnel kaydı/yakaRengi hiç yok -> erişim yok.
-  return { level: 'NONE', personnelId, bolum, selfApprovalRequired: false }
+  return { level: 'NONE', personnelId, bolum }
 }

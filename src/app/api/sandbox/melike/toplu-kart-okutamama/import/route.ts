@@ -6,7 +6,7 @@ import { getBulkCardScanAccess } from '../_lib/access'
 import { VALID_NEDEN, NEDEN_LABELS, type KartOkutamamaNedeni } from '../_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
 import { notifyApproverOfPendingRecord } from '../_lib/notify-hr'
-import { resolveApprovers } from '../_lib/approvers'
+import { resolveApprovers, getManagedPersonnelIds } from '../_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,8 +72,9 @@ interface PersonnelLite {
  * Excel dosyasından toplu kayıt oluşturur. Her satır SİCİL NO ile
  * Personnel (İV) tablosunda eşleştirilir — isim/sicil client'tan güvenilmez,
  * sadece gerçek Personnel kaydına bağlanan satırlar kabul edilir.
- * GRİ kullanıcı yalnızca kendi bölümündeki personel için kayıt açabilir
- * (POST /toplu-kart-okutamama route'undaki 403 kuralıyla birebir aynı).
+ * GRİ kullanıcı yalnızca kendi adına veya ekibi (1./2./3. Sorumlusu olduğu
+ * kişiler) için kayıt açabilir (POST /toplu-kart-okutamama route'undaki
+ * kuralla birebir aynı).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -206,8 +207,14 @@ export async function POST(request: NextRequest) {
       onayDurumu: 'BEKLIYOR' | 'ONAYLANDI'
       approverId: string | null
       approverId2: string | null
+      approverId3: string | null
     }
     const toCreate: ToCreate[] = []
+
+    // GRI: kendi adına veya (varsa) 1./2./3. Sorumlusu olduğu kişiler için kayıt
+    // açabilir — bölüm eşleşmesi yerine bu esas alınır (Full'da kısıtlama yok).
+    const managedIds =
+      access.level === 'GRI' && access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
 
     for (const p of parsed) {
       const personnel = p.sicilNo ? bySicil.get(p.sicilNo) : byAdSoyad.get(p.adSoyad.toLowerCase())
@@ -220,10 +227,10 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      if (access.level === 'GRI' && personnel.bolum !== access.bolum) {
+      if (access.level === 'GRI' && personnel.id !== access.personnelId && !managedIds.includes(personnel.id)) {
         results.errors.push({
           row: p.rowIndex,
-          message: `Yetki dışı bölüm — sadece kendi bölümünüzdeki personel için kayıt açabilirsiniz (Sicil No: ${personnel.sicilNo || '-'}, Ad Soyad: ${personnel.adSoyad})`,
+          message: `Yetki dışı — sadece kendi adınıza veya ekibiniz için kayıt açabilirsiniz (Sicil No: ${personnel.sicilNo || '-'}, Ad Soyad: ${personnel.adSoyad})`,
         })
         continue
       }
@@ -242,13 +249,13 @@ export async function POST(request: NextRequest) {
       let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
       let approverId: string | null = null
       let approverId2: string | null = null
-      if (access.selfApprovalRequired && personnel.id === access.personnelId) {
+      let approverId3: string | null = null
+      if (access.level === 'GRI' && personnel.id === access.personnelId) {
+        onayDurumu = 'BEKLIYOR'
         const resolved = await resolveApprovers(personnel.id)
-        if (resolved.approverId || resolved.approverId2) {
-          onayDurumu = 'BEKLIYOR'
-          approverId = resolved.approverId
-          approverId2 = resolved.approverId2
-        }
+        approverId = resolved.approverId
+        approverId2 = resolved.approverId2
+        approverId3 = resolved.approverId3
       }
 
       toCreate.push({
@@ -262,6 +269,7 @@ export async function POST(request: NextRequest) {
         onayDurumu,
         approverId,
         approverId2,
+        approverId3,
       })
     }
 
@@ -281,6 +289,7 @@ export async function POST(request: NextRequest) {
               onayDurumu: c.onayDurumu,
               approverId: c.approverId,
               approverId2: c.approverId2,
+              approverId3: c.approverId3,
             },
           }),
         ),
@@ -290,7 +299,7 @@ export async function POST(request: NextRequest) {
       for (const record of created) {
         if (record.onayDurumu === 'BEKLIYOR') {
           notifyApproverOfPendingRecord(
-            [record.approverId, record.approverId2].filter((id): id is string => !!id),
+            [record.approverId, record.approverId2, record.approverId3].filter((id): id is string => !!id),
             { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
             user.name || user.email
           )

@@ -7,11 +7,11 @@ export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/sandbox/melike/toplu-kart-okutamama/[id]/decision
- * Onay/red — SELF akışında (Beyaz Yaka kendisi için giriş) kaydın approverId
- * VEYA approverId2'si (1. Sorumlu / 2. Sorumlu) olan kişi karar verir —
- * hangisi önce davranırsa geçerli olur, sıra yok. Bu yetki formun genel
- * accessLevel'ından BAĞIMSIZDIR: onaylayıcı kendisi formu kullanamıyor olsa
- * bile (örn. NONE) kendisine atanmış bekleyen kaydı onaylayıp reddedebilir.
+ * Onay/red — kişinin kendi adına girdiği kayıtta approverId/2/3'ten (1./2./3.
+ * Sorumlu) biri olan kişi karar verir — hangisi önce davranırsa geçerli olur,
+ * sıra yok. Bu yetki formun genel accessLevel'ından BAĞIMSIZDIR: onaylayıcı
+ * kendisi formu kullanamıyor olsa bile (örn. NONE) kendisine atanmış bekleyen
+ * kaydı onaylayıp reddedebilir.
  * Body: { decision: 'APPROVE' | 'REJECT' }
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -32,6 +32,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         id: true,
         approverId: true,
         approverId2: true,
+        approverId3: true,
         onayDurumu: true,
         sicilNo: true,
         adSoyad: true,
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 })
     }
 
-    if (record.approverId !== user.id && record.approverId2 !== user.id) {
+    if (record.approverId !== user.id && record.approverId2 !== user.id && record.approverId3 !== user.id) {
       return NextResponse.json({ error: 'Bu kaydı onaylama/reddetme yetkiniz yok' }, { status: 403 })
     }
 

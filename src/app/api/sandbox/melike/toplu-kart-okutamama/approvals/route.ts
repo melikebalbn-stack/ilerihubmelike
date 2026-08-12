@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/sandbox/melike/toplu-kart-okutamama/approvals
- * Kendisine approver (1. Sorumlu) VEYA approver2 (2. Sorumlu) olarak atanmış,
+ * Kendisine approver/approver2/approver3 (1./2./3. Sorumlu) olarak atanmış,
  * henüz karara bağlanmamış kayıtları döner. Formun genel accessLevel'ından
  * BAĞIMSIZ — herhangi bir kullanıcı, birinin sorumlusuysa burada onun bekleyen
  * kayıtlarını görür.
@@ -19,7 +19,7 @@ export async function GET() {
     const records = await prisma.bulkCardScanFailure.findMany({
       where: {
         onayDurumu: 'BEKLIYOR',
-        OR: [{ approverId: user.id }, { approverId2: user.id }],
+        OR: [{ approverId: user.id }, { approverId2: user.id }, { approverId3: user.id }],
       },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },

@@ -52,7 +52,7 @@ export default function MelikeSandboxPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <ClipboardList className="h-4 w-4 text-teal-600" />
-              Toplu Kart Okutamama
+              Kart Okutamama
             </CardTitle>
             <CardDescription className="text-xs">
               Sicil No / Ad Soyad seçimli, Excel export/import destekli liste

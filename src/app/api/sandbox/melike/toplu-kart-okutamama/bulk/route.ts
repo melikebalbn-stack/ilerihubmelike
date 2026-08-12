@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
-import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from '../_lib/notify-hr'
+import { notifyHrOfBulkCardScanRecords } from '../_lib/notify-hr'
 import { VALID_NEDEN } from '../_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
-import { resolveApprovers } from '../_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,8 +30,8 @@ export async function POST(request: NextRequest) {
     if (error) return error
 
     const access = await getBulkCardScanAccess(user.id)
-    // Toplu tarih/saat girme yetkisi sadece FULL'da (Süper Admin/İV/Sistem
-    // Geliştirme) — GRI tek tek kayıt açar, bu endpoint'i kullanamaz.
+    // Toplu tarih/saat girme yetkisi sadece FULL'da (Süper Admin/İV) — GRI/SELF
+    // tek tek kayıt açar, bu endpoint'i kullanamaz.
     if (access.level !== 'FULL') {
       return NextResponse.json({ error: 'Toplu kayıt girme yetkiniz yok' }, { status: 403 })
     }
@@ -81,19 +80,9 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
-      let approverId: string | null = null
-      let approverId2: string | null = null
-      if (access.selfApprovalRequired && personnel.id === access.personnelId) {
-        const resolved = await resolveApprovers(personnel.id)
-        if (resolved.approverId || resolved.approverId2) {
-          onayDurumu = 'BEKLIYOR'
-          approverId = resolved.approverId
-          approverId2 = resolved.approverId2
-        }
-      }
-
-      const record = await prisma.bulkCardScanFailure.create({
+      // Full her zaman direkt onaylı oluşturur (kendisi için girse bile) — onay
+      // akışı sadece GRI/SELF'in kendi adına girdiği kayıtlarda geçerlidir.
+      await prisma.bulkCardScanFailure.create({
         data: {
           personnelId: personnel.id,
           sicilNo: personnel.sicilNo,
@@ -103,21 +92,10 @@ export async function POST(request: NextRequest) {
           cikisSaati: item.cikisSaati || null,
           neden: (item.neden as 'UNUTMA' | 'BOZULMA' | 'KAYBETME' | 'VAZIFE') || null,
           createdById: user.id,
-          onayDurumu,
-          approverId,
-          approverId2,
         },
       })
       created++
-      if (onayDurumu === 'ONAYLANDI') {
-        createdSummaries.push({ sicilNo: personnel.sicilNo, adSoyad: personnel.adSoyad })
-      } else {
-        notifyApproverOfPendingRecord(
-          [record.approverId, record.approverId2].filter((id): id is string => !!id),
-          { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
-          user.name || user.email
-        )
-      }
+      createdSummaries.push({ sicilNo: personnel.sicilNo, adSoyad: personnel.adSoyad })
     }
 
     // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok) — sadece

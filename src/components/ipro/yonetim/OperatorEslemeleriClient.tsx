@@ -1,13 +1,19 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronsUpDown, Plus, Search, Trash2, UserX } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus, Search, Trash2, UserX, Users } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { iproNormalize } from '@/lib/ipro/metin'
 import {
@@ -43,6 +49,7 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
   const [arama, setArama] = useState('')
   const [silinecek, setSilinecek] = useState<Esleme | null>(null)
   const [ekleAcik, setEkleAcik] = useState(false)
+  const [topluAcik, setTopluAcik] = useState(false)
   const [eslemeDurum, setEslemeDurum] = useState<'hepsi' | 'aktif' | 'pasif'>('hepsi')
   const [ayrilmis, setAyrilmis] = useState<'goster' | 'gizle'>('goster')
 
@@ -181,13 +188,27 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
           <TezgahSecici tezgahlar={tezgahlar} secili={secili ?? null} onSec={setTezgahId} />
         </div>
         {tezgahId && canEdit && (
-          <Button onClick={() => setEkleAcik((a) => !a)}>
-            <Plus className="mr-1 h-4 w-4" /> Operatör ekle
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setEkleAcik((a) => !a)}>
+              <Plus className="mr-1 h-4 w-4" /> Operatör ekle
+            </Button>
+            <Button variant="outline" onClick={() => setTopluAcik(true)}>
+              <Users className="mr-1 h-4 w-4" /> Toplu ekle
+            </Button>
+          </div>
         )}
       </div>
 
       {ekleAcik && tezgahId && <PersonelSecici onSec={personelEkle} />}
+
+      {tezgahId && (
+        <TopluEkleDialog
+          tezgahId={tezgahId}
+          acik={topluAcik}
+          onKapat={() => setTopluAcik(false)}
+          onEklendi={() => void eslemeleriYukle(tezgahId)}
+        />
+      )}
 
       {tezgahId && (
         <>
@@ -263,6 +284,140 @@ export function OperatorEslemeleriClient({ canEdit }: { canEdit: boolean }) {
  * Personel arayıcı. Mevcut `PersonnelAutocomplete` isim string'i döndürdüğü için
  * (id değil) burada kendi ucumuz kullanılıyor: /api/ipro/yonetim/personel-ara.
  */
+type Aday = { id: string; adSoyad: string | null; sicilNo: string | null; bolum: string | null }
+
+// Toplu operatör ekleme — bölüm filtresi + çoklu-seçim (Melike #4). "Görünenleri seç" = bölümden çekme.
+// Aday listesi: aktif personel − zaten aktif eşli olanlar (server hesaplar).
+function TopluEkleDialog({
+  tezgahId,
+  acik,
+  onKapat,
+  onEklendi,
+}: {
+  tezgahId: string
+  acik: boolean
+  onKapat: () => void
+  onEklendi: () => void
+}) {
+  const [adaylar, setAdaylar] = useState<Aday[]>([])
+  const [secililer, setSecililer] = useState<Set<string>>(new Set())
+  const [bolum, setBolum] = useState<string>('hepsi')
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+
+  useEffect(() => {
+    if (!acik) return
+    setSecililer(new Set())
+    setBolum('hepsi')
+    void (async () => {
+      setYukleniyor(true)
+      const { ok, data } = await iproFetch<{ adaylar: Aday[] }>(
+        `/api/ipro/yonetim/operator-eslemeleri/toplu?tezgahId=${tezgahId}`,
+      )
+      if (ok) setAdaylar(data.adaylar)
+      setYukleniyor(false)
+    })()
+  }, [acik, tezgahId])
+
+  const bolumler = useMemo(
+    () => [...new Set(adaylar.map((a) => a.bolum).filter((b): b is string => !!b))].sort((a, b) => a.localeCompare(b, 'tr')),
+    [adaylar],
+  )
+  const gosterilen = useMemo(
+    () => (bolum === 'hepsi' ? adaylar : adaylar.filter((a) => a.bolum === bolum)),
+    [adaylar, bolum],
+  )
+
+  function toggle(id: string) {
+    setSecililer((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
+  async function gonder() {
+    const ids = [...secililer]
+    if (ids.length === 0) return
+    setGonderiliyor(true)
+    try {
+      const { ok, data } = await iproFetch<{ eklenen: number; reaktiveEdilen: number; zatenAktif: number; error?: string }>(
+        '/api/ipro/yonetim/operator-eslemeleri/toplu',
+        { method: 'POST', body: JSON.stringify({ tezgahId, personnelIds: ids }) },
+      )
+      if (!ok) {
+        toast.error(data?.error ?? 'Toplu eşleme başarısız')
+        return
+      }
+      toast.success(`${data.eklenen} eklendi, ${data.reaktiveEdilen} yeniden aktifleştirildi`)
+      onEklendi()
+      onKapat()
+    } finally {
+      setGonderiliyor(false)
+    }
+  }
+
+  return (
+    <Dialog open={acik} onOpenChange={(o) => !o && onKapat()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Toplu Operatör Ekle</DialogTitle>
+          <DialogDescription>Bölüm seçip operatörleri işaretleyin. Zaten eşli olanlar listede yoktur.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={bolum} onValueChange={setBolum}>
+              <SelectTrigger className="w-56"><SelectValue placeholder="Bölüm" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hepsi">Tüm bölümler</SelectItem>
+                {bolumler.map((b) => (
+                  <SelectItem key={b} value={b}>{b}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSecililer((s) => new Set([...s, ...gosterilen.map((a) => a.id)]))}
+              disabled={gosterilen.length === 0}
+            >
+              Görünenleri seç
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSecililer(new Set())} disabled={secililer.size === 0}>
+              Temizle
+            </Button>
+          </div>
+
+          <div className="max-h-72 space-y-1 overflow-y-auto rounded border p-2">
+            {yukleniyor ? (
+              <p className="py-4 text-center text-sm text-slate-400">Yükleniyor…</p>
+            ) : gosterilen.length === 0 ? (
+              <p className="py-4 text-center text-sm text-slate-400">Eklenebilecek operatör yok.</p>
+            ) : (
+              gosterilen.map((a) => (
+                <label key={a.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 hover:bg-slate-50">
+                  <Checkbox checked={secililer.has(a.id)} onCheckedChange={() => toggle(a.id)} />
+                  <span className="flex-1 text-sm">{a.adSoyad ?? '—'}</span>
+                  <span className="text-xs text-slate-400">{a.sicilNo ?? '—'} · {a.bolum ?? '—'}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onKapat}>Vazgeç</Button>
+          <Button onClick={gonder} disabled={secililer.size === 0 || gonderiliyor}>
+            {gonderiliyor ? 'Ekleniyor…' : `Ekle (${secililer.size})`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PersonelSecici({ onSec }: { onSec: (personnelId: string) => void }) {
   const [q, setQ] = useState('')
   const [sonuclar, setSonuclar] = useState<

@@ -153,6 +153,54 @@ export async function addOperatorEsleme(tezgahId: string, personnelId: string) {
   })
 }
 
+/** Bir tezgaha TOPLU eklenebilecek adaylar: aktif personel − o tezgaha ZATEN AKTİF eşli olanlar. */
+export async function eklenebilirOperatorler(tezgahId: string) {
+  const mevcutAktif = await prisma.iproOperatorTezgah.findMany({
+    where: { tezgahId, aktif: true },
+    select: { personnelId: true },
+  })
+  const haric = new Set(mevcutAktif.map((m) => m.personnelId))
+  const aktifler = await prisma.personnel.findMany({
+    where: { aktif: true },
+    select: { id: true, adSoyad: true, sicilNo: true, bolum: true },
+    orderBy: { adSoyad: 'asc' },
+  })
+  return aktifler.filter((p) => !haric.has(p.id))
+}
+
+/**
+ * Bir tezgaha çok personeli TOPLU eşler. Var olan pasif eşlemeyi REAKTİVE eder (yeni satır AÇMAZ),
+ * yeni olanı ekler (kaynak='TOPLU' — MAS_IMPORT/MANUEL'den ayırt edilir), zaten aktifi atlar.
+ * Tek transaction; @@unique(personnelId,tezgahId) çakışması upsert/skipDuplicates ile temiz.
+ */
+export async function topluOperatorEsleme(tezgahId: string, personnelIds: string[]) {
+  const uniq = [...new Set(personnelIds.filter((x) => typeof x === 'string' && x))]
+  if (uniq.length === 0) return { eklenen: 0, reaktiveEdilen: 0, zatenAktif: 0, toplam: 0 }
+
+  const mevcut = await prisma.iproOperatorTezgah.findMany({
+    where: { tezgahId, personnelId: { in: uniq } },
+    select: { id: true, personnelId: true, aktif: true },
+  })
+  const byPid = new Map(mevcut.map((m) => [m.personnelId, m]))
+  const yeni = uniq.filter((pid) => !byPid.has(pid))
+  const reaktive = mevcut.filter((m) => !m.aktif)
+  const zatenAktif = mevcut.filter((m) => m.aktif).length
+
+  await prisma.$transaction([
+    ...(yeni.length
+      ? [
+          prisma.iproOperatorTezgah.createMany({
+            data: yeni.map((pid) => ({ personnelId: pid, tezgahId, aktif: true, kaynak: 'TOPLU' })),
+            skipDuplicates: true,
+          }),
+        ]
+      : []),
+    ...reaktive.map((m) => prisma.iproOperatorTezgah.update({ where: { id: m.id }, data: { aktif: true } })),
+  ])
+
+  return { eklenen: yeni.length, reaktiveEdilen: reaktive.length, zatenAktif, toplam: uniq.length }
+}
+
 export async function setOperatorEslemeAktif(id: string, aktif: boolean) {
   return prisma.iproOperatorTezgah.update({ where: { id }, data: { aktif }, select: { id: true } })
 }

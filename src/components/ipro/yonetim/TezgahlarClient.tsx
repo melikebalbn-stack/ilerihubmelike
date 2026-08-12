@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, Signal } from 'lucide-react'
+import { Pencil, RefreshCw, Signal } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,6 +33,7 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
   const [durum, setDurum] = useState<Durum>('hepsi')
   const [sinyal, setSinyal] = useState<Sinyal>('hepsi')
   const [duzenlenen, setDuzenlenen] = useState<Tezgah | null>(null)
+  const [senkronlaniyor, setSenkronlaniyor] = useState(false)
 
   async function yukle() {
     setYukleniyor(true)
@@ -40,6 +42,29 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
       if (ok) setTezgahlar(data.tezgahlar)
     } finally {
       setYukleniyor(false)
+    }
+  }
+
+  // Melike #15 — IFS'ten tezgahları ELLE senkronla (ipro.admin route; cron beklemeden).
+  // Sync PASİFLEME yapmaz (yalnız ekle/güncelle) → güvenli. Özet toast + liste tazelenir.
+  async function senkronla() {
+    setSenkronlaniyor(true)
+    try {
+      const { ok, data } = await iproFetch<{
+        taranan: number; eklenen: number; guncellenen: number; atlanan: number
+        mukerrerRidler: Array<{ rid: string; wcler: string[] }>
+      }>('/api/ipro/sync/tezgah', { method: 'POST' })
+      if (!ok) {
+        toast.error(data?.error ?? 'Senkron başarısız')
+        return
+      }
+      toast.success(`${data.eklenen} eklendi, ${data.guncellenen} güncellendi (${data.taranan} tarandı)`)
+      if (data.mukerrerRidler?.length > 0) {
+        toast.warning(`${data.mukerrerRidler.length} mükerrer IFS ResourceId atlandı`)
+      }
+      await yukle()
+    } finally {
+      setSenkronlaniyor(false)
     }
   }
 
@@ -107,6 +132,15 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
+      {canEdit ? (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={senkronla} disabled={senkronlaniyor}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${senkronlaniyor ? 'animate-spin' : ''}`} />
+            {senkronlaniyor ? 'Senkronlanıyor…' : "IFS'ten Tezgahları Senkronla"}
+          </Button>
+        </div>
+      ) : null}
+
       <ListeAracCubugu
         arama={arama}
         onArama={setArama}

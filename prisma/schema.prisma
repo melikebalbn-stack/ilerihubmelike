@@ -12912,7 +12912,7 @@ model YillikTakvimBildirimLog {
 
   createdAt DateTime @default(now())
 
-  @@unique([kayitId, tetik, aliciEposta, gonderimGunu])
+  @@unique([kayitId, tetik, aliciEposta, gonderimGunu, kanal])
   @@index([kayitId])
 }
 

@@ -18,9 +18,10 @@ interface Props {
   placeholder: string
   searchPlaceholder: string
   minSearchLength?: number
+  disabled?: boolean
 }
 
-export function AsyncCombobox({ value, onChange, loadOptions, placeholder, searchPlaceholder, minSearchLength = 0 }: Props) {
+export function AsyncCombobox({ value, onChange, loadOptions, placeholder, searchPlaceholder, minSearchLength = 0, disabled = false }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [options, setOptions] = useState<AsyncComboboxOption[]>([])
@@ -53,9 +54,9 @@ export function AsyncCombobox({ value, onChange, loadOptions, placeholder, searc
   }, [loadOptions, minSearchLength, open, query])
 
   return <div className="relative">
-    <Button type="button" variant="outline" className="w-full justify-between font-normal" onClick={() => setOpen(current => !current)}>
+    <Button type="button" variant="outline" className="w-full justify-between font-normal" disabled={disabled} onClick={() => setOpen(current => !current)}>
       <span className={value ? undefined : 'text-muted-foreground'}>{value?.label ?? placeholder}</span>
-      {value ? <X className="h-4 w-4" onClick={event => { event.stopPropagation(); onChange(null) }} /> : <Search className="h-4 w-4" />}
+      {value ? <X className="h-4 w-4" onClick={event => { event.stopPropagation(); if (!disabled) onChange(null) }} /> : <Search className="h-4 w-4" />}
     </Button>
     {open && <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-2 shadow-md">
       <Input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder={searchPlaceholder} />

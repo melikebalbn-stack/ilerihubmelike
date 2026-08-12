@@ -1,0 +1,19 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { NextRequest, NextResponse } from 'next/server'
+const guard = vi.fn(), find = vi.fn(), transaction = vi.fn(), update = vi.fn(), audit = vi.fn()
+const lock = vi.fn()
+vi.mock('@/lib/auth/require-permission', () => ({ requirePermission: (...a: unknown[]) => guard(...a) }))
+vi.mock('@/lib/prisma', () => ({ prisma: { yillikTakvimKaydi: { findUnique: (...a: unknown[]) => find(...a) }, $transaction: (...a: unknown[]) => transaction(...a) } }))
+import { POST } from './route'
+const ctx = { params: Promise.resolve({ id: 'r1' }) }, req = new NextRequest('http://local/tamamla', { method: 'POST' })
+const record = { id: 'r1', durum: 'DEVAM_EDIYOR', iptalMi: false, arsivMi: false, kanitZorunlu: false, katilimcilar: [{ userId: 'owner' }], checklist: [], _count: { ekler: 0 } }
+beforeEach(() => { vi.clearAllMocks(); lock.mockResolvedValue([{ id: 'r1', durum: 'DEVAM_EDIYOR', iptalMi: false, arsivMi: false, kaynakModul: null }]); transaction.mockImplementation(async cb => cb({ $queryRaw: lock, yillikTakvimKaydi: { findUnique: find, update }, yillikTakvimIslemGecmisi: { create: audit } })) })
+describe('tamamlamaya gönder', () => {
+  it('yetkisiz istekte 403 ve DB yok', async () => { guard.mockResolvedValue({ error: NextResponse.json({}, { status: 403 }) }); expect((await POST(req, ctx)).status).toBe(403); expect(find).not.toHaveBeenCalled() })
+  it('ana sorumlu olmayan complete kullanıcısını engeller', async () => { guard.mockResolvedValue({ error: null, userId: 'other', session: { user: { permissions: ['yilliktakvim.complete'] } } }); find.mockResolvedValue(record); expect((await POST(req, ctx)).status).toBe(403) })
+  it('eksik checklist ve kanıt koşullarını engeller', async () => { guard.mockResolvedValue({ error: null, userId: 'owner', session: { user: { permissions: ['yilliktakvim.complete'] } } }); find.mockResolvedValueOnce({ ...record, checklist: [{ id: 'c1', baslik: 'Eksik' }] }); expect((await POST(req, ctx)).status).toBe(400); find.mockResolvedValueOnce({ ...record, kanitZorunlu: true }); expect((await POST(req, ctx)).status).toBe(400) })
+  it('iptal/arşiv kaydı engeller ve olmayan kayıt 404 döner', async () => { guard.mockResolvedValue({ error: null, userId: 'owner', session: { user: { permissions: ['yilliktakvim.complete'] } } }); find.mockResolvedValueOnce(null); expect((await POST(req, ctx)).status).toBe(404); find.mockResolvedValueOnce({ ...record, iptalMi: true }); expect((await POST(req, ctx)).status).toBe(400) })
+  it('uygun kaydı onay bekleyen stateine atomik geçirir ve audit yazar', async () => { guard.mockResolvedValue({ error: null, userId: 'owner', session: { user: { permissions: ['yilliktakvim.complete'] } } }); find.mockResolvedValue(record); const response = await POST(req, ctx); expect(response.status).toBe(200); expect(update).toHaveBeenCalledWith({ where: { id: 'r1' }, data: { durum: 'TAMAMLANDI_ONAY_BEKLIYOR', updatedById: 'owner' } }); expect(audit).toHaveBeenCalledWith({ data: expect.objectContaining({ islemTuru: 'TAMAMLAMAYA_GONDER' }) }) })
+  it('audit hatasında 500 döner', async () => { guard.mockResolvedValue({ error: null, userId: 'owner', session: { user: { permissions: ['yilliktakvim.complete'] } } }); find.mockResolvedValue(record); audit.mockRejectedValue(new Error('audit failed')); expect((await POST(req, ctx)).status).toBe(500) })
+  it('lock beklerken iptal edilen kaydı 409 ile reddeder ve audit yazmaz', async () => { guard.mockResolvedValue({ error: null, userId: 'owner', session: { user: { permissions: ['yilliktakvim.complete'] } } }); find.mockResolvedValueOnce(record).mockResolvedValueOnce({ ...record, iptalMi: true }); expect((await POST(req, ctx)).status).toBe(409); expect(update).not.toHaveBeenCalled(); expect(audit).not.toHaveBeenCalled() })
+})

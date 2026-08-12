@@ -9,7 +9,7 @@ function tarih(value: string | null): string {
   return value ? new Intl.DateTimeFormat('tr-TR').format(new Date(value)) : '—'
 }
 
-export function YillikTakvimListView({ rows }: { rows: YillikTakvimKaydiRow[] }) {
+export function YillikTakvimListView({ rows, onRowClick }: { rows: YillikTakvimKaydiRow[]; onRowClick: (id: string) => void }) {
   return (
     <div className="overflow-hidden rounded-lg border">
       <Table>
@@ -19,7 +19,7 @@ export function YillikTakvimListView({ rows }: { rows: YillikTakvimKaydiRow[] })
           <TableHead>Son Tarih</TableHead><TableHead>Durum</TableHead>
         </TableRow></TableHeader>
         <TableBody>
-          {rows.map(row => <TableRow key={row.id} className={row.iptalMi ? 'opacity-50' : undefined}>
+          {rows.map(row => <TableRow key={row.id} className={`cursor-pointer ${row.iptalMi ? 'opacity-50' : ''}`} onClick={() => onRowClick(row.id)}>
             <TableCell className="font-medium">{row.anaKonu}</TableCell>
             <TableCell>{row.kisaBaslik || row.surec}</TableCell>
             <TableCell>{getAnaSorumluAdi(row)}</TableCell><TableCell>{row.department?.name ?? '—'}</TableCell>

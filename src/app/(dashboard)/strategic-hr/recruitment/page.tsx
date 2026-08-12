@@ -360,6 +360,16 @@ export default function RecruitmentPage() {
   const sadeceBanaZorunlu = sessionStatus === "authenticated" && !ikYetkili
   const assignedToMeEfektif = sadeceBanaZorunlu || jobAppAssignedToMe
 
+  // SEKME GÖRÜNÜRLÜĞÜ — İK yetkisi olmayan kullanıcı yalnız "İş Başvuruları"nı görür.
+  // Koşul `sadeceBanaZorunlu` ile AYNI (bilerek): her ikisine de `recruitment.admin`
+  // karar veriyor — biri listeyi kendi kuyruğuna kısıtlıyor, diğeri geri kalan sekmeleri
+  // kaldırıyor. Oturum yüklenirken (loading) gizleme YAPILMAZ; aksi halde İK kullanıcısında
+  // sekmeler bir an kaybolup geri gelirdi.
+  const sadeceBasvuruSekmesi = sadeceBanaZorunlu
+  // Varsayılan sekme "requests" (Personel Talepleri). O sekme gizlendiğinde kullanıcı
+  // görünmeyen bir sekmede kalırdı → efektif sekme başvurulara sabitlenir.
+  const efektifTab = sadeceBasvuruSekmesi ? "job-applications" : activeTab
+
   useEffect(() => {
     fetchOpenings()
     fetchCandidates()
@@ -401,10 +411,11 @@ export default function RecruitmentPage() {
   const fetchJobApplications = async () => {
     try {
       const params = new URLSearchParams()
-      if (statusFilter !== "all" && activeTab === "job-applications") {
+      // efektifTab: müdürde sekme başvurulara sabit; İK'da activeTab ile AYNI değer.
+      if (statusFilter !== "all" && efektifTab === "job-applications") {
         params.set("status", statusFilter)
       }
-      if (searchTerm && activeTab === "job-applications") {
+      if (searchTerm && efektifTab === "job-applications") {
         params.set("search", searchTerm)
       }
       // "Bana atananlar" — SUNUCU tarafı filtre (assignedManagerId = ben). assignedManagerId
@@ -1539,7 +1550,7 @@ export default function RecruitmentPage() {
             className="pl-10"
           />
         </div>
-        {activeTab === "openings" && (
+        {efektifTab === "openings" && (
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Durum filtrele" />
@@ -1554,7 +1565,7 @@ export default function RecruitmentPage() {
             </SelectContent>
           </Select>
         )}
-        {activeTab === "job-applications" && (
+        {efektifTab === "job-applications" && (
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Durum filtrele" />
@@ -1573,272 +1584,282 @@ export default function RecruitmentPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex-wrap h-auto gap-1">
-          <TabsTrigger value="job-applications">
-            Is Basvurulari ({filteredJobApplications.length})
-            {pendingJobApps > 0 && (
-              <Badge className="ml-2 bg-orange-500">{pendingJobApps}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="requests">
-            Personel Talepleri
-          </TabsTrigger>
-          <TabsTrigger value="openings">Acik Pozisyonlar ({filteredOpenings.length})</TabsTrigger>
-          <TabsTrigger value="candidates">Aday Havuzu ({filteredCandidates.length})</TabsTrigger>
-          <TabsTrigger value="analiz">Analiz</TabsTrigger>
-          <TabsTrigger value="sinavlar">Sınavlar</TabsTrigger>
-          <TabsTrigger value="tanimlar">Tanımlar</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="requests">
-          <PersonelTalepPaneli />
-        </TabsContent>
-
-        <TabsContent value="openings">
-          <Card>
-            <CardHeader>
-              <CardTitle>Is Ilanlari</CardTitle>
-              <CardDescription>
-                Tum acik pozisyonlar ve basvuru durumlari
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {filteredOpenings.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {searchTerm || statusFilter !== "all" ? "Aramanizla eslesen ilan bulunamadi." : "Henuz is ilani olusturulmamis."}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                <Table className="text-xs">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Kod</TableHead>
-                      <TableHead>Pozisyon</TableHead>
-                      <TableHead>Departman</TableHead>
-                      <TableHead>Tip</TableHead>
-                      <TableHead>Oncelik</TableHead>
-                      <TableHead>Durum</TableHead>
-                      <TableHead>Basvuru</TableHead>
-                      <TableHead>Kadro</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredOpenings.map((opening) => (
-                      <TableRow key={opening.id}>
-                        <TableCell className="font-mono text-xs">{opening.code}</TableCell>
-                        <TableCell className="font-medium">{opening.title}</TableCell>
-                        <TableCell>{opening.department}</TableCell>
-                        <TableCell>{employmentTypeLabels[opening.employmentType]}</TableCell>
-                        <TableCell>
-                          <Badge className={priorityColors[opening.priority]}>
-                            {priorityLabels[opening.priority]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={statusColors[opening.status]}>
-                            {statusLabels[opening.status]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{opening._count.applications}</TableCell>
-                        <TableCell>
-                          {opening.filledCount}/{opening.headcount}
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Islemler</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => fetchOpeningDetail(opening.id)}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                Detay Gor
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuLabel>Durum Degistir</DropdownMenuLabel>
-                              {opening.status === "DRAFT" && (
-                                <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "OPEN")}>
-                                  <Play className="h-4 w-4 mr-2" />
-                                  Yayinla
-                                </DropdownMenuItem>
-                              )}
-                              {opening.status === "OPEN" && (
-                                <>
-                                  <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "ON_HOLD")}>
-                                    <Pause className="h-4 w-4 mr-2" />
-                                    Beklet
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "FILLED")}>
-                                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                                    Dolduruldu
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                              {opening.status === "ON_HOLD" && (
-                                <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "OPEN")}>
-                                  <Play className="h-4 w-4 mr-2" />
-                                  Tekrar Ac
-                                </DropdownMenuItem>
-                              )}
-                              {["DRAFT", "OPEN", "ON_HOLD"].includes(opening.status) && (
-                                <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "CANCELLED")}>
-                                  <Ban className="h-4 w-4 mr-2" />
-                                  Iptal Et
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => handleDeleteOpening(opening.id)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Sil
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                </div>
+      <Tabs value={efektifTab} onValueChange={setActiveTab}>
+        {/* İK yetkisi olmayanda TEK sekme kalıyor → çubuk hiç çizilmez.
+            Sekmeler disabled DEĞİL, HİÇ RENDER EDİLMEZ. */}
+        {!sadeceBasvuruSekmesi && (
+          <TabsList className="flex-wrap h-auto gap-1">
+            <TabsTrigger value="job-applications">
+              Is Basvurulari ({filteredJobApplications.length})
+              {pendingJobApps > 0 && (
+                <Badge className="ml-2 bg-orange-500">{pendingJobApps}</Badge>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </TabsTrigger>
+            <TabsTrigger value="requests">
+              Personel Talepleri
+            </TabsTrigger>
+            <TabsTrigger value="openings">Acik Pozisyonlar ({filteredOpenings.length})</TabsTrigger>
+            <TabsTrigger value="candidates">Aday Havuzu ({filteredCandidates.length})</TabsTrigger>
+            <TabsTrigger value="analiz">Analiz</TabsTrigger>
+            <TabsTrigger value="sinavlar">Sınavlar</TabsTrigger>
+            <TabsTrigger value="tanimlar">Tanımlar</TabsTrigger>
+          </TabsList>
+        )}
 
-        <TabsContent value="candidates">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Aday Havuzu</CardTitle>
-                  <CardDescription>
-                    Tum adaylar ve basvuru gecmisleri
-                  </CardDescription>
+        {!sadeceBasvuruSekmesi && (
+          <TabsContent value="requests">
+            <PersonelTalepPaneli />
+          </TabsContent>
+        )}
+
+        {!sadeceBasvuruSekmesi && (
+          <TabsContent value="openings">
+            <Card>
+              <CardHeader>
+                <CardTitle>Is Ilanlari</CardTitle>
+                <CardDescription>
+                  Tum acik pozisyonlar ve basvuru durumlari
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {filteredOpenings.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {searchTerm || statusFilter !== "all" ? "Aramanizla eslesen ilan bulunamadi." : "Henuz is ilani olusturulmamis."}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                  <Table className="text-xs">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Kod</TableHead>
+                        <TableHead>Pozisyon</TableHead>
+                        <TableHead>Departman</TableHead>
+                        <TableHead>Tip</TableHead>
+                        <TableHead>Oncelik</TableHead>
+                        <TableHead>Durum</TableHead>
+                        <TableHead>Basvuru</TableHead>
+                        <TableHead>Kadro</TableHead>
+                        <TableHead className="w-12"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredOpenings.map((opening) => (
+                        <TableRow key={opening.id}>
+                          <TableCell className="font-mono text-xs">{opening.code}</TableCell>
+                          <TableCell className="font-medium">{opening.title}</TableCell>
+                          <TableCell>{opening.department}</TableCell>
+                          <TableCell>{employmentTypeLabels[opening.employmentType]}</TableCell>
+                          <TableCell>
+                            <Badge className={priorityColors[opening.priority]}>
+                              {priorityLabels[opening.priority]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={statusColors[opening.status]}>
+                              {statusLabels[opening.status]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{opening._count.applications}</TableCell>
+                          <TableCell>
+                            {opening.filledCount}/{opening.headcount}
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Islemler</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={() => fetchOpeningDetail(opening.id)}>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Detay Gor
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>Durum Degistir</DropdownMenuLabel>
+                                {opening.status === "DRAFT" && (
+                                  <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "OPEN")}>
+                                    <Play className="h-4 w-4 mr-2" />
+                                    Yayinla
+                                  </DropdownMenuItem>
+                                )}
+                                {opening.status === "OPEN" && (
+                                  <>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "ON_HOLD")}>
+                                      <Pause className="h-4 w-4 mr-2" />
+                                      Beklet
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "FILLED")}>
+                                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                                      Dolduruldu
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                {opening.status === "ON_HOLD" && (
+                                  <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "OPEN")}>
+                                    <Play className="h-4 w-4 mr-2" />
+                                    Tekrar Ac
+                                  </DropdownMenuItem>
+                                )}
+                                {["DRAFT", "OPEN", "ON_HOLD"].includes(opening.status) && (
+                                  <DropdownMenuItem onClick={() => handleStatusChange(opening.id, "CANCELLED")}>
+                                    <Ban className="h-4 w-4 mr-2" />
+                                    Iptal Et
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-red-600"
+                                  onClick={() => handleDeleteOpening(opening.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Sil
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {!sadeceBasvuruSekmesi && (
+          <TabsContent value="candidates">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Aday Havuzu</CardTitle>
+                    <CardDescription>
+                      Tum adaylar ve basvuru gecmisleri
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select value={candidateSourceFilter} onValueChange={setCandidateSourceFilter}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Kaynak" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tum Kaynaklar</SelectItem>
+                        <SelectItem value="DIRECT">Direkt Basvuru</SelectItem>
+                        <SelectItem value="REFERRAL">Referans</SelectItem>
+                        <SelectItem value="LINKEDIN">LinkedIn</SelectItem>
+                        <SelectItem value="JOB_BOARD">Is Ilani Sitesi</SelectItem>
+                        <SelectItem value="AGENCY">Ajans</SelectItem>
+                        <SelectItem value="OTHER">Diger</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" onClick={handleExportCandidates} disabled={filteredCandidates.length === 0}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Excel'e Aktar
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Select value={candidateSourceFilter} onValueChange={setCandidateSourceFilter}>
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue placeholder="Kaynak" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tum Kaynaklar</SelectItem>
-                      <SelectItem value="DIRECT">Direkt Basvuru</SelectItem>
-                      <SelectItem value="REFERRAL">Referans</SelectItem>
-                      <SelectItem value="LINKEDIN">LinkedIn</SelectItem>
-                      <SelectItem value="JOB_BOARD">Is Ilani Sitesi</SelectItem>
-                      <SelectItem value="AGENCY">Ajans</SelectItem>
-                      <SelectItem value="OTHER">Diger</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" onClick={handleExportCandidates} disabled={filteredCandidates.length === 0}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Excel'e Aktar
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {filteredCandidates.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {searchTerm ? "Aramanizla eslesen aday bulunamadi." : "Henuz aday kaydedilmemis."}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                <Table className="text-xs">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Ad Soyad</TableHead>
-                      <TableHead>E-posta</TableHead>
-                      <TableHead>Mevcut Pozisyon</TableHead>
-                      <TableHead>Sirket</TableHead>
-                      <TableHead>Deneyim</TableHead>
-                      <TableHead>Kaynak</TableHead>
-                      <TableHead>Basvuru</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredCandidates.map((candidate) => (
-                      <TableRow key={candidate.id}>
-                        <TableCell className="font-medium">
-                          {candidate.firstName} {candidate.lastName}
-                        </TableCell>
-                        <TableCell>{candidate.email}</TableCell>
-                        <TableCell>{candidate.currentTitle || "-"}</TableCell>
-                        <TableCell>{candidate.currentCompany || "-"}</TableCell>
-                        <TableCell>
-                          {candidate.yearsOfExperience
-                            ? `${candidate.yearsOfExperience} yil`
-                            : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {sourceLabels[candidate.source]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{candidate._count.applications}</TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Islemler</DropdownMenuLabel>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedCandidate(candidate)
-                                  setIsCandidateDetailOpen(true)
-                                }}
-                              >
-                                <Eye className="h-4 w-4 mr-2" />
-                                Detay Goruntule
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {candidate.phone && (
+              </CardHeader>
+              <CardContent>
+                {filteredCandidates.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {searchTerm ? "Aramanizla eslesen aday bulunamadi." : "Henuz aday kaydedilmemis."}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                  <Table className="text-xs">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Ad Soyad</TableHead>
+                        <TableHead>E-posta</TableHead>
+                        <TableHead>Mevcut Pozisyon</TableHead>
+                        <TableHead>Sirket</TableHead>
+                        <TableHead>Deneyim</TableHead>
+                        <TableHead>Kaynak</TableHead>
+                        <TableHead>Basvuru</TableHead>
+                        <TableHead className="w-12"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredCandidates.map((candidate) => (
+                        <TableRow key={candidate.id}>
+                          <TableCell className="font-medium">
+                            {candidate.firstName} {candidate.lastName}
+                          </TableCell>
+                          <TableCell>{candidate.email}</TableCell>
+                          <TableCell>{candidate.currentTitle || "-"}</TableCell>
+                          <TableCell>{candidate.currentCompany || "-"}</TableCell>
+                          <TableCell>
+                            {candidate.yearsOfExperience
+                              ? `${candidate.yearsOfExperience} yil`
+                              : "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {sourceLabels[candidate.source]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{candidate._count.applications}</TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Islemler</DropdownMenuLabel>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedCandidate(candidate)
+                                    setIsCandidateDetailOpen(true)
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Detay Goruntule
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                {candidate.phone && (
+                                  <DropdownMenuItem>
+                                    <Phone className="h-4 w-4 mr-2" />
+                                    {candidate.phone}
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem>
-                                  <Phone className="h-4 w-4 mr-2" />
-                                  {candidate.phone}
+                                  <Mail className="h-4 w-4 mr-2" />
+                                  E-posta Gonder
                                 </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem>
-                                <Mail className="h-4 w-4 mr-2" />
-                                E-posta Gonder
-                              </DropdownMenuItem>
-                              {candidate.linkedinUrl && (
-                                <DropdownMenuItem asChild>
-                                  <a href={candidate.linkedinUrl} target="_blank" rel="noopener noreferrer">
-                                    LinkedIn Profili
-                                  </a>
+                                {candidate.linkedinUrl && (
+                                  <DropdownMenuItem asChild>
+                                    <a href={candidate.linkedinUrl} target="_blank" rel="noopener noreferrer">
+                                      LinkedIn Profili
+                                    </a>
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-red-600"
+                                  onClick={() => handleDeleteCandidate(candidate.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Sil
                                 </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => handleDeleteCandidate(candidate.id)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Sil
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="job-applications">
           <Card>
@@ -1991,30 +2012,36 @@ export default function RecruitmentPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="analiz">
-          <div className="space-y-6">
-            {/* Tek sayfa KPI dashboard (Elif düzeni): 8 kart + huni/pareto + pozisyon + kaynak */}
-            <RecruitmentDashboard />
+        {!sadeceBasvuruSekmesi && (
+          <TabsContent value="analiz">
+            <div className="space-y-6">
+              {/* Tek sayfa KPI dashboard (Elif düzeni): 8 kart + huni/pareto + pozisyon + kaynak */}
+              <RecruitmentDashboard />
 
-            {/* Veri yönetimi (İK): ret nedeni tanımları + maliyet kalemi/girişi.
-                Analitik dashboard'da; bu paneller yalnızca Tanımlar/giriş için korunur. */}
-            <div>
-              <h3 className="text-sm font-semibold text-slate-500 mb-2">Veri Yönetimi (İK)</h3>
-              <div className="space-y-4">
-                <RejectionReasonsPanel />
-                <CostPerHirePanel />
+              {/* Veri yönetimi (İK): ret nedeni tanımları + maliyet kalemi/girişi.
+                  Analitik dashboard'da; bu paneller yalnızca Tanımlar/giriş için korunur. */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-500 mb-2">Veri Yönetimi (İK)</h3>
+                <div className="space-y-4">
+                  <RejectionReasonsPanel />
+                  <CostPerHirePanel />
+                </div>
               </div>
             </div>
-          </div>
-        </TabsContent>
+          </TabsContent>
+        )}
 
-        <TabsContent value="sinavlar">
-          <AssessmentPanel />
-        </TabsContent>
+        {!sadeceBasvuruSekmesi && (
+          <TabsContent value="sinavlar">
+            <AssessmentPanel />
+          </TabsContent>
+        )}
 
-        <TabsContent value="tanimlar">
-          <TanimlarPanel />
-        </TabsContent>
+        {!sadeceBasvuruSekmesi && (
+          <TabsContent value="tanimlar">
+            <TanimlarPanel />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Is Basvurusu Detay Modal */}

@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { assessmentGuard } from "@/lib/assessment/guard";
 
 // GET — sınav detayı (soruları + şıkları ile)
+//
+// CEVAP ANAHTARI YALNIZ ADMIN'E: guard `recruitment.admin` VEYA `recruitment.view` kabul
+// eder; sınavı yönetemeyen (yalnız view) departman müdürü doğru şıkkı GÖRMEMELİ.
+// Şıklar `include` ile çekilirse Prisma TÜM sütunları döndürür ve `isCorrect` sessizce
+// yanıta girer — bu yüzden AÇIK `select` kullanılır (aday ucundaki desenin aynısı,
+// bkz. api/public/sinav/[token]/route.ts). Admin olmayanda alan null/false DEĞİL, HİÇ YOK.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const g = await assessmentGuard();
   if (g.error) return g.error;
@@ -13,7 +19,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     include: {
       questions: {
         orderBy: { order: "asc" },
-        include: { options: { orderBy: { order: "asc" } } },
+        include: {
+          options: {
+            orderBy: { order: "asc" },
+            // isCorrect YALNIZ admin'de seçilir — view kullanıcısında alan hiç gelmez.
+            select: { id: true, text: true, order: true, ...(g.isAdmin ? { isCorrect: true } : {}) },
+          },
+        },
       },
       _count: { select: { sessions: true } },
     },

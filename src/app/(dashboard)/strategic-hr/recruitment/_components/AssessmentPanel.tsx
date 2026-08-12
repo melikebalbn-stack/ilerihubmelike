@@ -18,7 +18,10 @@ type Assessment = {
   isActive: boolean
   _count?: { questions: number; sessions: number }
 }
-type Option = { id: string; text: string; isCorrect: boolean; order: number }
+// isCorrect OPSİYONEL: sunucu doğru şıkkı yalnız `recruitment.admin` için gönderiyor
+// (bkz. api/.../assessments/[id]/route.ts). Yalnız `recruitment.view` olan kullanıcıda
+// alan HİÇ GELMEZ; aşağıdaki gösterim de o durumda "doğru" işareti basmaz.
+type Option = { id: string; text: string; isCorrect?: boolean; order: number }
 type Question = {
   id: string
   type: "TEK_SECIM" | "COKLU_SECIM" | "DOGRU_YANLIS"

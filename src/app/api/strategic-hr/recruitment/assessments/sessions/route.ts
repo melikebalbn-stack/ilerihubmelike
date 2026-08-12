@@ -33,9 +33,18 @@ const OTURUM_SELECT = {
 
 // Oturum → İK DTO: aktifse sinavLink, terminalde null. Ham token asla çıktıda değil.
 // (sinavUrl + AKTIF_OTURUM_STATUS ortak helper'dan — public başvuru-durum ucuyla tek kaynak.)
-function toOturumDto(o: { token: string; status: string } & Record<string, unknown>) {
+//
+// SINAV LİNKİ YALNIZ ADMIN'E (`isAdmin`): link adayın sınav yüzeyinin TEK anahtarıdır
+// (public uç yalnız token'a bakar), yani linki gören sınavı adayın yerine çözebilir.
+// Sınav ATAMAK zaten admin işi; yalnız `recruitment.view` olan müdür oturumun DURUMUNU
+// görsün diye diğer alanlar (statü, tarihler, skor, sonuç) aynen döner — sadece link null.
+function toOturumDto(
+  o: { token: string; status: string } & Record<string, unknown>,
+  isAdmin: boolean,
+) {
   const { token, ...rest } = o;
-  return { ...rest, sinavLink: AKTIF_OTURUM_STATUS.has(o.status) ? sinavUrl(token) : null };
+  const aktif = AKTIF_OTURUM_STATUS.has(o.status);
+  return { ...rest, sinavLink: isAdmin && aktif ? sinavUrl(token) : null };
 }
 
 // GET — bir başvurunun oturumları  (?publicJobApplicationId=...)
@@ -50,7 +59,7 @@ export async function GET(req: NextRequest) {
     orderBy: { assignedAt: "desc" },
     select: OTURUM_SELECT,
   });
-  return NextResponse.json(oturumlar.map(toOturumDto));
+  return NextResponse.json(oturumlar.map((o) => toOturumDto(o, g.isAdmin)));
 }
 
 // POST — sınav ata (admin). Idempotent: (publicJobApplicationId, assessmentId) tekildir.
@@ -89,7 +98,8 @@ export async function POST(req: NextRequest) {
       select: OTURUM_SELECT,
     });
     // Atama hemen ATANDI (aktif) → sinavLink döner; İK linki kopyalayıp adaya iletir.
-    return NextResponse.json(toOturumDto(session), { status: 201 });
+    // POST zaten requireAdmin guard'inda — atayan kisi linki gorur (adaya iletecek olan o).
+    return NextResponse.json(toOturumDto(session, true), { status: 201 });
   } catch (e) {
     if (e instanceof AssessmentSessionError) {
       return NextResponse.json({ error: e.message }, { status: e.httpStatus });

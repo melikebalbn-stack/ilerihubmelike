@@ -4,6 +4,12 @@ import { useSession } from 'next-auth/react'
 import { type ElementType, type ReactNode, useEffect, useMemo, useState } from 'react'
 import type { EnvanterUrunDetail, EnvanterUrunListItem } from '@/types/envanter'
 import { AramaliSecim } from '@/components/envanter/AramaliSecim'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { BakimYonlendirmeYonetimi } from '@/components/envanter/BakimYonlendirme'
 import { SarfTuketimRaporu, MaliyetRaporu } from '@/components/envanter/EnvanterRaporlar'
 import { KullanimKilavuzu } from '@/components/envanter/KullanimKilavuzu'
@@ -12,6 +18,7 @@ import { ZimmetVeTeslimListesi } from '@/components/envanter/ZimmetVeTeslimListe
 import type { ExecuteSonuc, ImportAtlanan, ImportHata, ValidateSonuc } from '@/lib/envanter/import'
 import type { YenilemeDurum, YenilemeSatiri } from '@/lib/envanter/yenileme'
 import type { SatinAlmaAksiyonTip, SatinAlmaDurumTip } from '@/lib/envanter/satinalma'
+import { BEDEN_TIPI_SECENEKLERI } from '@/lib/envanter/beden-tipi-sabitleri'
 import type {
   IhtiyacOzet,
   IhtiyacSatiri,
@@ -837,11 +844,11 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
                         : 'border-slate-200',
                     ].join(' ')}
                   >
-                    <option value="YOK">Yok</option>
-                    <option value="UST">Üst</option>
-                    <option value="ALT">Alt</option>
-                    <option value="AYAKKABI">Ayakkabı</option>
-                    <option value="ELDIVEN">Eldiven</option>
+                    {BEDEN_TIPI_SECENEKLERI.map((secenek) => (
+                      <option key={secenek.value} value={secenek.value}>
+                        {secenek.label}
+                      </option>
+                    ))}
                   </select>
                   {bedenTipiSaving[urun.id] && (
                     <div className="mt-1 text-xs text-slate-400">Kaydediliyor...</div>
@@ -1255,13 +1262,7 @@ async function handleSave() {
                 label="Beden Tipi"
                 value={urunForm.bedenTipi}
                 onChange={(value) => updateForm('bedenTipi', value)}
-                options={[
-                  { value: 'YOK', label: 'Yok' },
-                  { value: 'UST', label: 'Üst Beden' },
-                  { value: 'ALT', label: 'Alt Beden' },
-                  { value: 'AYAKKABI', label: 'Ayakkabı' },
-                  { value: 'ELDIVEN', label: 'Eldiven' },
-                ]}
+                options={[...BEDEN_TIPI_SECENEKLERI]}
               />
               <p className="-mt-4 text-xs text-slate-500">
                 Sezon planı ihtiyaç hesabında personelin hangi beden profili alanıyla
@@ -2443,9 +2444,113 @@ function UrunDetayModal({
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // Madde 3 — kategori değiştirme
+  const [kategoriListesiDetay, setKategoriListesiDetay] = useState<{ value: string; label: string }[]>([])
+  const [kategoriSaving, setKategoriSaving] = useState(false)
+  const [kategoriHata, setKategoriHata] = useState('')
+
+  // Madde 4 — varyant düzenleme/silme
+  const [pasifleriGoster, setPasifleriGoster] = useState(false)
+  const [duzenlenenVaryantId, setDuzenlenenVaryantId] = useState<string | null>(null)
+  const [duzenleAdi, setDuzenleAdi] = useState('')
+  const [varyantIslemSaving, setVaryantIslemSaving] = useState<Record<string, boolean>>({})
+  const [varyantIslemMesaj, setVaryantIslemMesaj] = useState<Record<string, string>>({})
+
+  function duzenlemeyiBaslat(stok: { varyantId: string | null; varyantAdi: string | null }) {
+    if (!stok.varyantId) return
+    setDuzenlenenVaryantId(stok.varyantId)
+    setDuzenleAdi(stok.varyantAdi || '')
+  }
+
+  async function handleVaryantDuzenleKaydet(varyantId: string) {
+    if (!duzenleAdi.trim()) return
+    setVaryantIslemSaving((p) => ({ ...p, [varyantId]: true }))
+    setVaryantIslemMesaj((p) => ({ ...p, [varyantId]: '' }))
+    try {
+      const res = await fetch(`/api/envanter/urunler/varyant/${varyantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ varyantAdi: duzenleAdi.trim() }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setVaryantIslemMesaj((p) => ({ ...p, [varyantId]: json.message || 'Güncellenemedi.' }))
+        return
+      }
+      setDuzenlenenVaryantId(null)
+      setRefreshKey((k) => k + 1)
+    } catch {
+      setVaryantIslemMesaj((p) => ({ ...p, [varyantId]: 'Güncellenemedi.' }))
+    } finally {
+      setVaryantIslemSaving((p) => ({ ...p, [varyantId]: false }))
+    }
+  }
+
+  async function handleVaryantSil(varyantId: string) {
+    if (!confirm('Bu varyantı silmek istediğinize emin misiniz?')) return
+    setVaryantIslemSaving((p) => ({ ...p, [varyantId]: true }))
+    setVaryantIslemMesaj((p) => ({ ...p, [varyantId]: '' }))
+    try {
+      const res = await fetch(`/api/envanter/urunler/varyant/${varyantId}`, {
+        method: 'DELETE',
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setVaryantIslemMesaj((p) => ({ ...p, [varyantId]: json.message || 'Silinemedi.' }))
+        return
+      }
+      setVaryantIslemMesaj((p) => ({ ...p, [varyantId]: json.mesaj || 'İşlem tamamlandı.' }))
+      setRefreshKey((k) => k + 1)
+    } catch {
+      setVaryantIslemMesaj((p) => ({ ...p, [varyantId]: 'Silinemedi.' }))
+    } finally {
+      setVaryantIslemSaving((p) => ({ ...p, [varyantId]: false }))
+    }
+  }
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('/api/envanter/kategoriler?durum=AKTIF')
+        const json = await res.json()
+        const arr = json.data ?? []
+        setKategoriListesiDetay(
+          arr.map((k: { ad?: string; value?: string; label?: string }) => ({
+            value: k.value ?? k.ad ?? '',
+            label: k.label ?? k.ad ?? '',
+          })).filter((k: { value: string }) => k.value),
+        )
+      } catch {}
+    })()
+  }, [])
+
+  async function handleKategoriDegistir(yeniDeger: string) {
+    if (!urunId || !yeniDeger) return
+    setKategoriSaving(true)
+    setKategoriHata('')
+    try {
+      const res = await fetch(`/api/envanter/urunler/${urunId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kategori: yeniDeger }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setKategoriHata(json.message || 'Kategori güncellenemedi.')
+        return
+      }
+      setRefreshKey((k) => k + 1)
+    } catch {
+      setKategoriHata('Kategori güncellenemedi.')
+    } finally {
+      setKategoriSaving(false)
+    }
+  }
+
   // F2 — mevcut ürüne varyant ekleme
   const [varyantTip, setVaryantTip] = useState<'RENK' | 'BEDEN' | 'NUMARA'>('RENK')
   const [varyantDeger, setVaryantDeger] = useState('')
+  const [varyantDepo, setVaryantDepo] = useState('')
   const [varyantSaving, setVaryantSaving] = useState(false)
   const [varyantHata, setVaryantHata] = useState('')
 
@@ -2457,7 +2562,7 @@ function UrunDetayModal({
       const res = await fetch('/api/envanter/urunler/varyant-ekle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urunId, tip: varyantTip, deger: varyantDeger.trim() }),
+        body: JSON.stringify({ urunId, tip: varyantTip, deger: varyantDeger.trim(), depo: varyantDepo.trim() || null }),
       })
       const json = await res.json()
       if (!json.ok) {
@@ -2624,7 +2729,28 @@ function UrunDetayModal({
               <div className="grid grid-cols-2 gap-4 rounded-2xl border bg-slate-50 p-5 text-sm">
                 <SummaryItem label="Ürün Kodu" value={urun.kod} />
                 <SummaryItem label="Ürün Adı" value={urun.ad} />
-                <SummaryItem label="Kategori" value={urun.kategori || 'Yok'} />
+                <div>
+                  <label className="text-xs font-medium uppercase text-slate-500">Kategori</label>
+                  <select
+                    value={urun.kategori || ''}
+                    onChange={(e) => handleKategoriDegistir(e.target.value)}
+                    disabled={kategoriSaving}
+                    className="mt-1 block w-full rounded-lg border p-2 text-sm disabled:opacity-60"
+                  >
+                    <option value="">Seçiniz</option>
+                    {kategoriListesiDetay.map((k) => (
+                      <option key={k.value} value={k.value}>
+                        {k.label}
+                      </option>
+                    ))}
+                  </select>
+                  {kategoriSaving && (
+                    <p className="mt-1 text-xs text-slate-500">Kaydediliyor...</p>
+                  )}
+                  {kategoriHata && (
+                    <p className="mt-1 text-xs text-rose-600">{kategoriHata}</p>
+                  )}
+                </div>
                 <SummaryItem label="Ürün Tipi" value={urun.tip} />
                 <SummaryItem label="Ölçü Birimi" value={urun.olcuBirimi} />
                 <SummaryItem label="Tedarikçi" value={urun.tedarikci || 'Yok'} />
@@ -2633,7 +2759,17 @@ function UrunDetayModal({
               </div>
 
               <div className="rounded-2xl border bg-white p-5">
-                <h3 className="font-semibold text-slate-900">Stoklar</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-slate-900">Stoklar</h3>
+                  <label className="flex items-center gap-2 text-xs text-slate-500">
+                    <input
+                      type="checkbox"
+                      checked={pasifleriGoster}
+                      onChange={(e) => setPasifleriGoster(e.target.checked)}
+                    />
+                    Pasifleri göster
+                  </label>
+                </div>
 
                 <div className="mt-4 overflow-hidden rounded-xl border">
                   <table className="w-full text-xs">
@@ -2659,12 +2795,30 @@ function UrunDetayModal({
                           const varyantliVar = urun.stoklar.some((s) => s.varyantAdi)
                           return varyantliVar ? Boolean(stok.varyantAdi) : true
                         })
+                        .filter((stok) => pasifleriGoster || stok.varyantAktif !== false)
                         .map((stok) => {
                           const degisti = Boolean(esikTaslak[stok.id])
                           const maliyetDegisti = Boolean(maliyetTaslak[stok.id])
+                          const duzenleniyor = duzenlenenVaryantId === stok.varyantId
                           return (
-                            <tr key={stok.id}>
-                              <td className="px-3 py-3">{stok.varyantAdi || 'Ana Ürün'}</td>
+                            <tr key={stok.id} className={stok.varyantAktif === false ? 'opacity-50' : ''}>
+                              <td className="px-3 py-3">
+                                {duzenleniyor ? (
+                                  <input
+                                    value={duzenleAdi}
+                                    onChange={(e) => setDuzenleAdi(e.target.value)}
+                                    className="w-24 rounded-lg border px-2 py-1 text-xs"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <>
+                                    {stok.varyantAdi || 'Ana Ürün'}
+                                    {stok.varyantAktif === false && (
+                                      <span className="ml-1 text-xs text-slate-400">(pasif)</span>
+                                    )}
+                                  </>
+                                )}
+                              </td>
                               <td className="px-3 py-3 text-right">{stok.mevcut}</td>
                               <td className="px-3 py-2 text-right">
                                 <input
@@ -2708,18 +2862,72 @@ function UrunDetayModal({
                               <td className="px-3 py-3">{stok.raf || '-'}</td>
                               <td className="px-3 py-3">{stok.durum}</td>
                               <td className="px-3 py-3">
-                                {(degisti || maliyetDegisti) && (
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      if (degisti) await handleEsikKaydet(stok.id)
-                                      if (maliyetDegisti) await handleMaliyetKaydet(stok.id)
-                                    }}
-                                    disabled={esikSaving[stok.id]}
-                                    className="rounded-lg bg-teal-700 px-2 py-1 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                                  >
-                                    {esikSaving[stok.id] ? '...' : 'Kaydet'}
-                                  </button>
+                                <div className="flex items-center justify-end gap-1">
+                                  {duzenleniyor ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleVaryantDuzenleKaydet(stok.varyantId!)}
+                                        disabled={varyantIslemSaving[stok.varyantId!]}
+                                        className="rounded-lg bg-teal-700 px-2 py-1 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+                                      >
+                                        {varyantIslemSaving[stok.varyantId!] ? '...' : 'Kaydet'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setDuzenlenenVaryantId(null)}
+                                        className="rounded-lg border px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                      >
+                                        Vazgeç
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      {(degisti || maliyetDegisti) && (
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            if (degisti) await handleEsikKaydet(stok.id)
+                                            if (maliyetDegisti) await handleMaliyetKaydet(stok.id)
+                                          }}
+                                          disabled={esikSaving[stok.id]}
+                                          className="rounded-lg bg-teal-700 px-2 py-1 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+                                        >
+                                          {esikSaving[stok.id] ? '...' : 'Kaydet'}
+                                        </button>
+                                      )}
+                                      {stok.varyantId && (
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <button
+                                              type="button"
+                                              className="rounded-lg border px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                            >
+                                              ⋯
+                                            </button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem
+                                              onClick={() => duzenlemeyiBaslat(stok)}
+                                            >
+                                              Düzenle
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => handleVaryantSil(stok.varyantId!)}
+                                              className="text-rose-600"
+                                            >
+                                              Sil
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                                {varyantIslemMesaj[stok.varyantId ?? ''] && (
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {varyantIslemMesaj[stok.varyantId ?? '']}
+                                  </p>
                                 )}
                               </td>
                             </tr>
@@ -2756,6 +2964,21 @@ function UrunDetayModal({
                       placeholder="Örn: Kırmızı / M / 42"
                       className="mt-1 block w-full max-w-xs rounded-xl border p-2 text-sm"
                     />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Depo (opsiyonel)</label>
+                    <input
+                      value={varyantDepo}
+                      onChange={(e) => setVaryantDepo(e.target.value)}
+                      placeholder="Örn: Ana Depo"
+                      list="varyant-depo-list"
+                      className="mt-1 block rounded-xl border p-2 text-sm"
+                    />
+                    <datalist id="varyant-depo-list">
+                      <option value="ANA DEPO" />
+                      <option value="İDARİ İŞLER" />
+                      <option value="ÜRETİM" />
+                    </datalist>
                   </div>
                   <button
                     type="button"
@@ -2899,7 +3122,11 @@ function StokYonetimi() {
       return
     }
 
-    if (!Number.isFinite(miktarNumber) || miktarNumber <= 0) {
+    if (!Number.isFinite(miktarNumber) || miktarNumber < 0) {
+      setError('Miktar negatif olamaz.')
+      return
+    }
+    if (hareketTipi !== 'SAYIM_DUZELTME' && miktarNumber <= 0) {
       setError('Miktar sıfırdan büyük olmalıdır.')
       return
     }

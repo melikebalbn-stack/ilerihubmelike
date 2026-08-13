@@ -128,6 +128,8 @@ export type EnvanterUrunDetail = {
     raf: string | null
     durum: string
     varyantAdi: string | null
+    varyantId: string | null
+    varyantAktif: boolean
     birimMaliyet: number | null // Faz 2 — birim maliyet
     paraBirimi: string | null // Faz 2 — para birimi
   }[]

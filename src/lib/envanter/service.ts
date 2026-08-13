@@ -309,7 +309,9 @@ export async function getEnvanterUrunDetail(id: string) {
         include: {
           varyant: {
             select: {
+              id: true,
               varyantAdi: true,
+              aktif: true,
             },
           },
         },
@@ -355,6 +357,8 @@ export async function getEnvanterUrunDetail(id: string) {
       raf: stok.raf,
       durum: stok.durum,
       varyantAdi: stok.varyant?.varyantAdi ?? null,
+      varyantId: stok.varyant?.id ?? null,
+      varyantAktif: stok.varyant?.aktif ?? true,
       birimMaliyet: stok.birimMaliyet, // Faz 2
       paraBirimi: stok.paraBirimi, // Faz 2
     })),
@@ -739,6 +743,7 @@ export async function addVaryantToUrun(input: {
   urunId: string
   tip: 'BEDEN' | 'NUMARA' | 'RENK'
   deger: string
+  depo?: string | null
 }) {
   const deger = input.deger.trim()
   if (!deger) throw new Error('Varyant değeri boş olamaz.')
@@ -790,7 +795,7 @@ export async function addVaryantToUrun(input: {
         minStok: null,
         kritikStok: null,
         maxStok: null,
-        depo: null,
+        depo: input.depo?.trim() || null,
         raf: null,
         durum: 'EKSIK',
       },
@@ -834,4 +839,77 @@ export async function updateStokMaliyet(input: {
       paraBirimi: input.paraBirimi || 'TL',
     },
   })
+}
+
+export async function updateVaryant(input: {
+  varyantId: string
+  varyantAdi?: string
+  beden?: string | null
+  numara?: string | null
+  renk?: string | null
+}) {
+  const varyant = await prisma.envanterUrunVaryant.findUnique({ where: { id: input.varyantId } })
+  if (!varyant) throw new Error('Varyant bulunamadı.')
+
+  const data: Record<string, unknown> = {}
+  if (input.varyantAdi !== undefined && input.varyantAdi.trim()) {
+    data.varyantAdi = input.varyantAdi.trim()
+  }
+  if (input.beden !== undefined) data.beden = input.beden
+  if (input.numara !== undefined) data.numara = input.numara
+  if (input.renk !== undefined) data.renk = input.renk
+
+  if (Object.keys(data).length === 0) {
+    throw new Error('Güncellenecek alan gönderilmedi.')
+  }
+
+  return prisma.envanterUrunVaryant.update({
+    where: { id: input.varyantId },
+    data,
+  })
+}
+
+export async function deleteVaryant(varyantId: string) {
+  const varyant = await prisma.envanterUrunVaryant.findUnique({
+    where: { id: varyantId },
+    include: { stoklar: { select: { id: true } } },
+  })
+  if (!varyant) throw new Error('Varyant bulunamadı.')
+  if (!varyant.aktif) {
+    return { pasifleştirildi: false, silindi: false, mesaj: 'Varyant zaten pasif.' }
+  }
+
+  const stokIdleri = varyant.stoklar.map((s) => s.id)
+
+  const hareketSayisi = await prisma.envanterStokHareket.count({
+    where: { varyantId },
+  })
+
+  const zimmetSayisi =
+    stokIdleri.length > 0
+      ? await prisma.envanterZimmet.count({
+          where: { stokId: { in: stokIdleri } },
+        })
+      : 0
+
+  if (hareketSayisi > 0 || zimmetSayisi > 0) {
+    // Geçmişi var — hard-delete edilemez, pasifleştir.
+    await prisma.envanterUrunVaryant.update({
+      where: { id: varyantId },
+      data: { aktif: false },
+    })
+    return {
+      pasifleştirildi: true,
+      silindi: false,
+      mesaj: `Varyantın ${hareketSayisi} hareket ve ${zimmetSayisi} zimmet geçmişi var, bu yüzden pasifleştirildi (silinmedi).`,
+    }
+  }
+
+  // Geçmişi yok — hard-delete (varyant + boş stok kayıtları).
+  await prisma.$transaction([
+    prisma.envanterStok.deleteMany({ where: { varyantId } }),
+    prisma.envanterUrunVaryant.delete({ where: { id: varyantId } }),
+  ])
+
+  return { pasifleştirildi: false, silindi: true, mesaj: 'Varyant silindi.' }
 }

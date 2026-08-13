@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { getEnvanterUrunDetail } from '@/lib/envanter/service'
 
-const GECERLI_BEDEN_TIPLERI = ['YOK', 'UST', 'ALT', 'AYAKKABI', 'ELDIVEN']
+import { GECERLI_BEDEN_TIPLERI } from '@/lib/envanter/beden-tipi-sabitleri'
 
 export async function GET(
   _request: Request,
@@ -53,18 +53,35 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    if (!GECERLI_BEDEN_TIPLERI.includes(body.bedenTipi)) {
-      throw new Error(
-        `"${body.bedenTipi}" geçerli bir beden tipi değil. Geçerli değerler: ${GECERLI_BEDEN_TIPLERI.join(', ')}`,
-      )
+    const data: Record<string, unknown> = {}
+
+    if (body.bedenTipi !== undefined) {
+      if (!GECERLI_BEDEN_TIPLERI.includes(body.bedenTipi)) {
+        throw new Error(
+          `"${body.bedenTipi}" geçerli bir beden tipi değil. Geçerli değerler: ${GECERLI_BEDEN_TIPLERI.join(', ')}`,
+        )
+      }
+      data.bedenTipi = body.bedenTipi
+    }
+
+    if (body.kategori !== undefined) {
+      const kategoriDeger = String(body.kategori).trim()
+      if (!kategoriDeger) {
+        throw new Error('Kategori boş olamaz.')
+      }
+      data.kategori = kategoriDeger
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new Error('Güncellenecek alan gönderilmedi.')
     }
 
     const urun = await prisma.envanterUrun.update({
       where: { id },
-      data: { bedenTipi: body.bedenTipi as never },
+      data: data as never,
     })
 
-    return NextResponse.json({ ok: true, message: 'Beden tipi güncellendi.', data: urun })
+    return NextResponse.json({ ok: true, message: 'Ürün güncellendi.', data: urun })
   } catch (err) {
     return NextResponse.json(
       { ok: false, message: err instanceof Error ? err.message : 'Beden tipi güncellenemedi.' },

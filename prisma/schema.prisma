@@ -11502,11 +11502,11 @@ enum EnvanterVaryantTipi {
 }
 
 enum EnvanterBedenTipi {
-  YOK
-  UST
-  ALT
-  AYAKKABI
-  ELDIVEN
+  STANDART
+  UST_BEDEN
+  ALT_BEDEN
+  AYAKKABI_NO
+  ELDIVEN_NO
 }
 
 enum EnvanterStokDurum {
@@ -11554,7 +11554,7 @@ model EnvanterUrun {
   aciklama     String?
 
   varyantTipi EnvanterVaryantTipi @default(YOK)
-  bedenTipi   EnvanterBedenTipi   @default(YOK)
+  bedenTipi   EnvanterBedenTipi   @default(STANDART)
   durum       EnvanterDurum       @default(AKTIF)
 
   tedarikci         String?

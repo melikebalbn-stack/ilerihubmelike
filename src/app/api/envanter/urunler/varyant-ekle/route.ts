@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
       urunId: body.urunId,
       tip: body.tip,
       deger: body.deger,
+      depo: body.depo ?? null,
     })
     return NextResponse.json({ ok: true, message: 'Varyant eklendi.', data: result })
   } catch (err) {

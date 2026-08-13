@@ -8,7 +8,14 @@ import path from 'path'
 import { existsSync } from 'fs'
 import { sendEmail } from '@/lib/email'
 import { resolveHRRecipients } from '@/lib/hr-notifications'
-import { verifyConsentedDraft, isDraftStatus } from '@/lib/job-application/consent-guard'
+import {
+  verifyConsentedDraft,
+  isDraftStatus,
+  isDuzeltmeStatus,
+  duzeltmeOnayDurumu,
+} from '@/lib/job-application/consent-guard'
+import { imzaDogrula } from '@/lib/recruitment/basvuru-takip'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { DRAFT_COOKIE_NAME, verifyDraftToken } from '@/lib/job-application/draft-cookie'
 import { maasBeklentisiGecerliMi } from '@/lib/recruitment/salary'
 import { basvuruTakipImzasi } from '@/lib/recruitment/basvuru-takip'
@@ -23,7 +30,54 @@ export async function POST(request: NextRequest) {
     // (Adım atlanamaz — consent/health yoksa 403. Mevcut form davranışı korunur.)
     const draftToken = request.cookies.get(DRAFT_COOKIE_NAME)?.value
     const consentedApplicationId = await verifyConsentedDraft(draftToken)
-    if (!consentedApplicationId) {
+
+    // ── Faz 1: ADAYA_GERI_GONDERILDI → aday düzeltme gönderimi ──────────────────
+    // Taslak cookie'si burada YOKTUR: ilk gönderimde bilerek geçersizleştiriliyor
+    // (aşağıdaki FIX 2). Bu yüzden yetki, mevcut public capability deseninden gelir:
+    // applicationNumber + takipImzasi = HMAC(applicationId, NEXTAUTH_SECRET) — aynı
+    // çift /api/public/basvuru-durum'da da kullanılıyor (basvuru-takip.ts).
+    //
+    // Neden BAŞLIK (header), gövde/query değil:
+    //   · query → imza erişim loglarına düşer (basvuru-durum bilerek POST gövdesi kullanıyor)
+    //   · gövde → yetkiyi doğrulamak için multipart body'yi ÖNCE parse etmek gerekirdi;
+    //     mevcut sıra (auth → parse) korunsun diye başlık tercih edildi.
+    let hedefApplicationId: string | null = consentedApplicationId
+    let duzeltmeModu = false
+
+    if (!hedefApplicationId) {
+      const basvuruNo = request.headers.get('x-basvuru-no')?.trim()
+      const takipImzasi = request.headers.get('x-takip-imzasi')?.trim()
+      if (basvuruNo && takipImzasi) {
+        // Rate-limit: IP DEĞİL, (no + imza) bazlı — basvuru-durum ile aynı gerekçe
+        // (paylaşımlı tablet/NAT tek IP görünür). Gönderim seyrek: 5/dk yeterli.
+        const rl = checkRateLimit(`basvuru-duzeltme:${basvuruNo}:${takipImzasi}`, {
+          windowMs: 60 * 1000,
+          maxAttempts: 5,
+        })
+        if (!rl.success) {
+          return NextResponse.json(
+            { error: `Çok fazla istek. ${rl.resetIn} sn sonra tekrar deneyin.` },
+            { status: 429 }
+          )
+        }
+        const kayit = await prisma.publicJobApplication.findUnique({
+          where: { applicationNumber: basvuruNo },
+          select: { id: true, status: true },
+        })
+        // Sabit-zaman imza doğrulaması (imzaDogrula → timingSafeEqual).
+        if (kayit && imzaDogrula(kayit.id, takipImzasi) && isDuzeltmeStatus(kayit.status)) {
+          // KVKK/sağlık KORUNUR; yalnız belge revizyonu eskiyse yeniden onay istenir.
+          const onay = await duzeltmeOnayDurumu(kayit.id)
+          if (!onay.ok) {
+            return NextResponse.json({ error: onay.mesaj, kod: onay.kod }, { status: 403 })
+          }
+          hedefApplicationId = kayit.id
+          duzeltmeModu = true
+        }
+      }
+    }
+
+    if (!hedefApplicationId) {
       // FIX 1: cookie+consent geçerli ama başvuru ARTIK taslak değilse (zaten
       // gönderilmiş/işlenmiş) → NET 409. Cookie yeniden kullanımıyla reddedilmiş
       // bir başvurunun yeni formla ezilmesini engeller (İzzet→Yaşar vakası).
@@ -46,7 +100,7 @@ export async function POST(request: NextRequest) {
       )
     }
     const healthDone = await prisma.jobApplicationHealth.findUnique({
-      where: { applicationId: consentedApplicationId },
+      where: { applicationId: hedefApplicationId },
       select: { id: true },
     })
     if (!healthDone) {
@@ -264,10 +318,16 @@ export async function POST(request: NextRequest) {
     // consent+health bu final başvuruyla ilişkili kalır.
     // Tek geçit: status + aşama logu aynı transaction'da (from=HEALTH_PENDING → PENDING).
     // Public form → changedBy null. Diğer form alanları helper'ın data'sında güncellenir.
+    //
+    // DÜZELTME MODU: aynı çağrı, from=ADAYA_GERI_GONDERILDI → PENDING. Bu geçiş izin
+    // MATRİSİNDEN GEÇMEZ — aday bir User değil, TransitionRole alamaz. Public geçişlerin
+    // matris dışı olması mevcut desen (ilk kayıt da logInitialStage ile matrissiz yazılıyor).
+    // Önceki form hâli SAKLANMAZ: alanlar üzerine yazılır (karar 2).
     const application = await prisma.$transaction((tx) =>
       updateApplicationStatus(tx, {
-        applicationId: consentedApplicationId,
+        applicationId: hedefApplicationId,
         toStatus: 'PENDING',
+        note: duzeltmeModu ? 'Aday düzeltme gönderdi' : undefined,
         data: applicationData as Prisma.PublicJobApplicationUpdateInput,
       }),
     )

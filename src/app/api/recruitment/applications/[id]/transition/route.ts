@@ -18,6 +18,11 @@ import {
   otomatikAtananKullanici,
   OtomatikAtamaError,
 } from "@/lib/recruitment/otomatik-atama";
+import {
+  bayragaGoreSuz,
+  geriGondermeEngeli,
+  geriGondermeNotu,
+} from "@/lib/recruitment/adaya-geri-gonder";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +36,10 @@ const BodySchema = z.object({
   assignedManagerId: z.string().trim().min(1).optional(),
   rejectionReasonId: z.string().trim().min(1).optional(),
   assessmentId: z.string().trim().min(1).optional(),
+  // Faz 1 — ADAYA_GERI_GONDERILDI hedefinde İK'nın işaretlediği alanlar. Alan ADLARI gelir;
+  // etikete çevirme ve beyaz liste süzmesi SUNUCUDA (adaya-geri-gonder.ts). Client'tan gelen
+  // liste doğrudan not'a yazılmaz — beyaz liste dışı ad sessizce düşer.
+  duzeltilecekAlanlar: z.array(z.string().trim().min(1)).max(60).optional(),
 });
 
 export async function POST(
@@ -51,7 +60,8 @@ export async function POST(
       { status: 400 },
     );
   }
-  const { toStatus, note, assignedManagerId, rejectionReasonId, assessmentId } = parsed.data;
+  const { toStatus, note, assignedManagerId, rejectionReasonId, assessmentId, duzeltilecekAlanlar } =
+    parsed.data;
 
   // 2) Başvuruyu çek
   const application = await prisma.publicJobApplication.findUnique({
@@ -88,10 +98,19 @@ export async function POST(
         from: current,
         to: toStatus,
         roles,
-        allowedTargets: allowedTargetsForRoles(current, roles),
+        allowedTargets: bayragaGoreSuz(allowedTargetsForRoles(current, roles)),
       },
       { status: 400 },
     );
+  }
+
+  // 4b) Faz 1 KILL SWITCH — matris izin verse bile bayrak kapalıysa ADAYA_GERI_GONDERILDI'ya
+  //     geçilemez. UI'da buton zaten çizilmez (stage-log ucu hedefi süzüyor); bu, doğrudan
+  //     API çağrısına karşı sunucu-taraflı kapı. 403: yetki değil, ÖZELLİK kapalı.
+  //     Gerekçe (blue-green rollback penceresi) → adaya-geri-gonder.ts.
+  const bayrakEngeli = geriGondermeEngeli(toStatus);
+  if (bayrakEngeli) {
+    return NextResponse.json({ error: bayrakEngeli }, { status: 403 });
   }
 
   // 5) Atama gerektiren hedefler — İK'nın seçtiği (requiresAssignedManager) vs sistemin
@@ -125,11 +144,18 @@ export async function POST(
   // Devir izi: StageLog'da atama ALANI yok (yalnız from/to/changedBy/note). Otomatik devirde
   // assignedManagerId ÜZERİNE YAZILDIĞI için, kime devredildiği not'a yazılmazsa iz kaybolur.
   // Ayrılan taraf zaten changedBy olarak kayıtlı; burada devralan tarafı ekliyoruz.
-  const efektifNote = otomatikAtanan
-    ? [note, `Otomatik atandı: ${otomatikAtanan.ad ?? otomatikAtanan.userId}`]
-        .filter(Boolean)
-        .join(" | ")
-    : (note ?? null);
+  //
+  // ADAYA_GERI_GONDERILDI: not FORMATLI kurulur — "Eksik alanlar: <etiket...> | <İK notu>".
+  // Solu adaya gider (yalnız etiket), sağı İK iç notudur. Biçim TEK KAYNAK
+  // (adaya-geri-gonder.ts); public uç aynı modülle geri ayrıştırır.
+  const efektifNote =
+    toStatus === "ADAYA_GERI_GONDERILDI"
+      ? geriGondermeNotu({ alanlar: duzeltilecekAlanlar ?? [], ikNotu: note ?? null }) || null
+      : otomatikAtanan
+        ? [note, `Otomatik atandı: ${otomatikAtanan.ad ?? otomatikAtanan.userId}`]
+            .filter(Boolean)
+            .join(" | ")
+        : (note ?? null);
 
   // 5c) REJECTED → ret nedeni zorunlu (kök-neden analizi). Sunucu-taraflı guard; UI disabled tek
   //     başına yeterli değil. requiresRejectionReason TEK KAYNAK (transitions.ts).

@@ -43,6 +43,7 @@ import {
   Clock,
   UserCheck,
   Pencil,
+  RotateCcw,
 } from "lucide-react"
 import { format, differenceInCalendarDays } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -50,6 +51,9 @@ import { toast } from "sonner"
 import { JobApplicationSensitiveSections } from "@/components/job-application/JobApplicationSensitiveSections"
 import { JobApplicationStatusBadge } from "@/components/recruitment/JobApplicationStatusBadge"
 import { BasvuruDuzeltmeDialog } from "@/components/recruitment/BasvuruDuzeltmeDialog"
+// Geri gönderme modalındaki alan seçimi BEYAZ LİSTEDEN gelir — liste burada KOPYALANMAZ.
+// (Sunucu da aynı listeyle süzer: adaya-geri-gonder.ts)
+import { ALAN_ETIKETLERI, DUZENLENEBILIR_ALANLAR } from "@/lib/recruitment/basvuru-duzeltme-alanlari"
 import { BasvuruDuzeltmeGecmisi } from "@/components/recruitment/BasvuruDuzeltmeGecmisi"
 import { STATUS_LABELS_TR } from "@/lib/recruitment/transitions"
 
@@ -150,7 +154,7 @@ type WorkflowCtx = {
   otomatikAtamaHedefleri?: Record<string, { ad: string | null; hazir: boolean }>
 }
 // "Kimde bekliyor" — SUNUCUDAN gelir (src/lib/recruitment/bekleyen.ts). Client kural yürütmez.
-type BekleyenCtx = { tip: "MUDUR" | "IK"; ad: string; kisa: string; beri: string | null }
+type BekleyenCtx = { tip: "MUDUR" | "IK" | "ADAY"; ad: string; kisa: string; beri: string | null }
 type AssessmentOption = { id: string; title: string; durationMin: number; passingScore: number; soruSayisi: number }
 type OturumOzeti = {
   id: string; assessmentId: string; assessmentTitle: string; durum: string; puan: number | null; gecmeNotu: number
@@ -231,6 +235,9 @@ export default function JobApplicationDetailPage() {
   const [assessments, setAssessments] = useState<AssessmentOption[]>([])
   const [txAssessmentId, setTxAssessmentId] = useState("")
   const [txAssessmentSearch, setTxAssessmentSearch] = useState("")
+  // Adaya geri gönderme: İK'nın işaretlediği alan ADLARI (etikete çevirme SUNUCUDA).
+  const [txAlanlar, setTxAlanlar] = useState<string[]>([])
+  const [txAlanAra, setTxAlanAra] = useState("")
   // SINAV geçişi sonrası aktif oturumun sinavLink'i — İK kopyalayıp adaya iletebilsin.
   const [sinavLink, setSinavLink] = useState<string | null>(null)
 
@@ -283,6 +290,10 @@ export default function JobApplicationDetailPage() {
   // Kişi seçimi etiketi: mavi yaka zincirinde seçilen kişi müdür OLMAYABİLİR (mavi/gri yaka
   // çalışan da olabilir), o yüzden "Mudur" yerine hedefe göre etiket.
   const secimEtiketi = txTarget === "DEGERLENDIRICI" ? "Degerlendirici" : "Mudur"
+  // Adaya geri gönderme modalı mı? (hedef bayrak kapalıyken zaten allowedTargets'ta yok)
+  const isGeriGonder = txTarget === "ADAYA_GERI_GONDERILDI"
+  // Kaçıncı kez geri gönderiliyor — StageLog'dan TÜRETİLİR, yeni kolon YOK.
+  const geriGondermeSayisi = logs.filter((l) => l.toStatus === "ADAYA_GERI_GONDERILDI").length
 
   // Aksiyon butonuna basınca modalı hazırla — hedef ek girdi istiyorsa ilgili listeyi çek.
   const openTransition = async (target: string) => {
@@ -293,6 +304,8 @@ export default function JobApplicationDetailPage() {
     // Sınav değiştirme: aktif oturumun sınavı seçili gelsin (yoksa boş).
     setTxAssessmentId(target === "SINAV" ? (app.sinavlar?.aktif?.assessmentId ?? "") : "")
     setTxAssessmentSearch("")
+    setTxAlanlar([])
+    setTxAlanAra("")
     if (workflow?.requiresManagerTargets.includes(target) && !managers) {
       try {
         const res = await fetch(`/api/recruitment/managers`)
@@ -328,6 +341,8 @@ export default function JobApplicationDetailPage() {
       if (requiresManager && txManagerId) body.assignedManagerId = txManagerId
       if (requiresReason && txReasonId) body.rejectionReasonId = txReasonId
       if (requiresAssessment && txAssessmentId) body.assessmentId = txAssessmentId
+      // Alan ADLARI gider; etikete çevirme + beyaz liste süzmesi SUNUCUDA yapılır.
+      if (isGeriGonder && txAlanlar.length) body.duzeltilecekAlanlar = txAlanlar
       const res = await fetch(`/api/recruitment/applications/${id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1265,24 +1280,36 @@ export default function JobApplicationDetailPage() {
                   className={`mt-4 rounded-md border p-3 ${
                     bekleyen.tip === "MUDUR"
                       ? "border-amber-200 bg-amber-50"
-                      : "border-slate-200 bg-slate-50"
+                      : bekleyen.tip === "ADAY"
+                        ? "border-sky-200 bg-sky-50"
+                        : "border-slate-200 bg-slate-50"
                   }`}
                 >
                   <div className="flex items-start gap-2">
                     <Clock
                       className={`h-4 w-4 shrink-0 mt-0.5 ${
-                        bekleyen.tip === "MUDUR" ? "text-amber-600" : "text-slate-500"
+                        bekleyen.tip === "MUDUR"
+                          ? "text-amber-600"
+                          : bekleyen.tip === "ADAY"
+                            ? "text-sky-600"
+                            : "text-slate-500"
                       }`}
                     />
                     <div className="text-sm">
                       <div
                         className={`font-medium ${
-                          bekleyen.tip === "MUDUR" ? "text-amber-900" : "text-slate-700"
+                          bekleyen.tip === "MUDUR"
+                            ? "text-amber-900"
+                            : bekleyen.tip === "ADAY"
+                              ? "text-sky-900"
+                              : "text-slate-700"
                         }`}
                       >
                         {bekleyen.tip === "MUDUR"
                           ? `Su an ${bekleyen.ad}'da bekliyor`
-                          : `Su an ${bekleyen.ad}'nda bekliyor`}
+                          : bekleyen.tip === "ADAY"
+                            ? "Su an adayda bekliyor (duzeltme gonderecek)"
+                            : `Su an ${bekleyen.ad}'nda bekliyor`}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
                         {workflow
@@ -1301,6 +1328,27 @@ export default function JobApplicationDetailPage() {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* Geri gönderme sayacı — StageLog'dan TÜRETİLİR (yeni kolon yok).
+                  Sert sınır YOK; 2 ve üzeri için uyarı tonu. */}
+              {geriGondermeSayisi > 0 && (
+                <div
+                  className={`mt-2 flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
+                    geriGondermeSayisi >= 2
+                      ? "border-amber-200 bg-amber-50 text-amber-800"
+                      : "border-sky-200 bg-sky-50 text-sky-800"
+                  }`}
+                >
+                  {geriGondermeSayisi >= 2 ? (
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                  )}
+                  <span>
+                    Adaya <strong>{geriGondermeSayisi} kez</strong> geri gonderildi
+                  </span>
                 </div>
               )}
             </CardContent>
@@ -1363,19 +1411,87 @@ export default function JobApplicationDetailPage() {
                 : ""}
             </DialogTitle>
             <DialogDescription>
-              {requiresReason
-                ? "Ret nedeni secimi zorunludur."
-                : requiresManager
-                  ? "Degerlendirmeyi yapacak kisiyi secin."
-                  : requiresAssessment
-                    ? "Atanacak sinavi secin — gecisle birlikte aday sinav oturumu acilir."
-                    : otomatikAtama
-                      ? "Bu asamada atama otomatik yapilir — kisi secmeniz gerekmez."
-                      : "Gecisi onaylayin."}
+              {isGeriGonder
+                ? "Duzeltilecek alanlari isaretleyin. Aday YALNIZ alan adlarini gorur; notunuz ic kayittir."
+                : requiresReason
+                  ? "Ret nedeni secimi zorunludur."
+                  : requiresManager
+                    ? "Degerlendirmeyi yapacak kisiyi secin."
+                    : requiresAssessment
+                      ? "Atanacak sinavi secin — gecisle birlikte aday sinav oturumu acilir."
+                      : otomatikAtama
+                        ? "Bu asamada atama otomatik yapilir — kisi secmeniz gerekmez."
+                        : "Gecisi onaylayin."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* ── Adaya geri gönder: alan işaretleme ──────────────────────────────
+                Seçenekler DUZENLENEBILIR_ALANLAR beyaz listesinden gelir; etiketler
+                ALAN_ETIKETLERI'nden. Sunucu aynı listeyle tekrar süzer — buradan
+                beyaz liste dışı bir ad gönderilse bile not'a yazılmaz. */}
+            {isGeriGonder && (
+              <>
+                {geriGondermeSayisi >= 2 && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>
+                      Bu basvuru daha once <strong>{geriGondermeSayisi} kez</strong> adaya geri
+                      gonderildi. Sert sinir yok, ama aday ile dogrudan iletisim daha hizli olabilir.
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <Label>
+                    Duzeltilecek alanlar{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      ({txAlanlar.length} secili)
+                    </span>
+                  </Label>
+                  <Input
+                    placeholder="Alan ara..."
+                    value={txAlanAra}
+                    onChange={(e) => setTxAlanAra(e.target.value)}
+                    className="mt-1 mb-2"
+                  />
+                  <div className="max-h-56 overflow-y-auto rounded-md border divide-y">
+                    {DUZENLENEBILIR_ALANLAR.filter((a) =>
+                      ALAN_ETIKETLERI[a]
+                        .toLocaleLowerCase("tr")
+                        .includes(txAlanAra.toLocaleLowerCase("tr")),
+                    ).map((a) => {
+                      const secili = txAlanlar.includes(a)
+                      return (
+                        <button
+                          key={a}
+                          type="button"
+                          onClick={() =>
+                            setTxAlanlar((prev) =>
+                              prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a],
+                            )
+                          }
+                          className={`flex w-full items-center gap-2 p-2 text-left text-sm hover:bg-slate-50 ${
+                            secili ? "bg-sky-50" : ""
+                          }`}
+                        >
+                          <span
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                              secili ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300"
+                            }`}
+                          >
+                            {secili && <CheckCircle2 className="h-3 w-3" />}
+                          </span>
+                          {ALAN_ETIKETLERI[a]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Alan secilmezse adaya yalnizca &quot;duzeltme bekleniyor&quot; bilgisi gider.
+                  </p>
+                </div>
+              </>
+            )}
             {/* Otomatik atama — kişi seçimi YOK, yalnız kime gideceği bilgisi.
                 hazir=false ise geçiş sunucuda 400 döner; kullanıcı sebebini önden görsün. */}
             {otomatikAtama && (
@@ -1489,14 +1605,25 @@ export default function JobApplicationDetailPage() {
             )}
 
             <div>
-              <Label>Not (opsiyonel)</Label>
+              <Label>
+                {isGeriGonder ? "Ic not (adaya GITMEZ, opsiyonel)" : "Not (opsiyonel)"}
+              </Label>
               <Textarea
                 value={txNote}
                 onChange={(e) => setTxNote(e.target.value)}
-                placeholder="Bu gecis hakkinda aciklama..."
+                placeholder={
+                  isGeriGonder
+                    ? "Ornek: telefonu okunmuyor, teyit edilecek — bu metin yalniz IV kaydinda kalir"
+                    : "Bu gecis hakkinda aciklama..."
+                }
                 rows={3}
                 className="mt-1"
               />
+              {isGeriGonder && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Adaya yalnizca isaretledigin alan adlari gonderilir; bu not asama gecmisinde kalir.
+                </p>
+              )}
             </div>
           </div>
 

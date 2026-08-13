@@ -15,6 +15,8 @@ const STATUS_COLORS: Record<JobApplicationStatus, string> = {
   CONSENT_PENDING: "bg-gray-100 text-gray-700",
   HEALTH_PENDING: "bg-gray-100 text-gray-700",
   PENDING: "bg-yellow-100 text-yellow-800",
+  // Top adayda — İV/müdür kademelerinden ayrışsın diye sky (bekleyen.ts ADAY rengiyle aynı aile).
+  ADAYA_GERI_GONDERILDI: "bg-sky-100 text-sky-800",
   REVIEWING: "bg-blue-100 text-blue-800",
   REVIEWED: "bg-blue-100 text-blue-800",
   SHORTLISTED: "bg-purple-100 text-purple-800",

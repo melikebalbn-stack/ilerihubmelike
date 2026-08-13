@@ -10,6 +10,7 @@ import {
   requiresAssessment,
 } from "@/lib/recruitment/transitions";
 import { bekleyenTaraf, kullaniciAdi } from "@/lib/recruitment/bekleyen";
+import { bayragaGoreSuz } from "@/lib/recruitment/adaya-geri-gonder";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,9 @@ export async function GET(
   });
 
   // Workflow bağlamı: bu durumdan rollerin geçebileceği hedefler + hangi hedef ek girdi ister.
-  const allowedTargets = allowedTargetsForRoles(application.status, roles);
+  // Faz 1 bayrağı: RECRUITMENT_ADAYA_GERI_GONDER_ENABLED kapalıyken ADAYA_GERI_GONDERILDI
+  // hedefi listeden DÜŞER → UI butonu hiç çizmez. Gerçek engelleme geçiş ucunda (403).
+  const allowedTargets = bayragaGoreSuz(allowedTargetsForRoles(application.status, roles));
   const requiresManagerTargets = allowedTargets.filter(requiresAssignedManager);
   const requiresReasonTargets = allowedTargets.filter(requiresRejectionReason);
   const requiresAssessmentTargets = allowedTargets.filter(requiresAssessment);

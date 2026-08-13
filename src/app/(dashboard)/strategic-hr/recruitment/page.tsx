@@ -90,7 +90,7 @@ import CostPerHirePanel from "./_components/CostPerHirePanel"
 import TanimlarPanel from "./_components/TanimlarPanel"
 import AssessmentPanel from "./_components/AssessmentPanel"
 import { TASLAK_STATULER } from "@/lib/recruitment/taslak-statuler"
-import { STATUS_LABELS_TR } from "@/lib/recruitment/transitions"
+import { STATUS_LABELS_TR, emekliMi } from "@/lib/recruitment/transitions"
 
 interface JobOpening {
   id: string
@@ -183,7 +183,7 @@ interface PublicJobApplication {
   signatureDate: string | null
   createdAt: string
   // Sunucuda hesaplanir (src/lib/recruitment/bekleyen.ts) — client fetch yapmaz.
-  bekleyen: { tip: "MUDUR" | "IK"; ad: string; kisa: string } | null
+  bekleyen: { tip: "MUDUR" | "IK" | "ADAY"; ad: string; kisa: string } | null
 }
 
 const employmentTypeLabels: Record<string, string> = {
@@ -1582,12 +1582,27 @@ export default function RecruitmentPage() {
                   {STATUS_LABELS_TR[st]}
                 </SelectItem>
               ))}
-              <SelectItem value="PENDING">Beklemede</SelectItem>
-              <SelectItem value="REVIEWING">Inceleniyor</SelectItem>
-              <SelectItem value="SHORTLISTED">On Eleme</SelectItem>
-              <SelectItem value="INTERVIEW">Mulakat</SelectItem>
-              <SelectItem value="ACCEPTED">Kabul Edildi</SelectItem>
-              <SelectItem value="REJECTED">Reddedildi</SelectItem>
+              {/* Faz 1: seçenekler EMEKLI_STATULER ile süzülür — emekliye ayrılan statü
+                  (INTERVIEW/ACCEPTED/REVIEWED + mavi yaka zinciri) burada GÖRÜNMEZ.
+                  Sabit liste kopyalanmaz; ileride bir statü daha emekli olursa kendiliğinden
+                  düşer. Etiketler yine TEK KAYNAK STATUS_LABELS_TR. */}
+              {(
+                [
+                  "PENDING",
+                  "ADAYA_GERI_GONDERILDI",
+                  "REVIEWING",
+                  "SHORTLISTED",
+                  "INTERVIEW",
+                  "ACCEPTED",
+                  "REJECTED",
+                ] as const
+              )
+                .filter((st) => !emekliMi(st))
+                .map((st) => (
+                  <SelectItem key={st} value={st}>
+                    {STATUS_LABELS_TR[st]}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
         )}
@@ -1970,7 +1985,9 @@ export default function RecruitmentPage() {
                               className={
                                 app.bekleyen.tip === "MUDUR"
                                   ? "text-amber-700 font-medium"
-                                  : "text-slate-600"
+                                  : app.bekleyen.tip === "ADAY"
+                                    ? "text-sky-700 font-medium"
+                                    : "text-slate-600"
                               }
                             >
                               {app.bekleyen.kisa}

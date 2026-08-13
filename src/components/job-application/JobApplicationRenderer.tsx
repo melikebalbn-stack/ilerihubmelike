@@ -56,8 +56,20 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
   const [submitted, setSubmitted] = useState<{ applicationNumber: string; takipImzasi: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Gönderim sonrası sınav durumu (public yoklama sonucu) + 30 dk sonra yoklama durdu bayrağı.
-  const [sinavDurum, setSinavDurum] = useState<{ durum: string; sinavAdi?: string; sinavLink?: string } | null>(null)
+  const [sinavDurum, setSinavDurum] = useState<{
+    durum: string
+    sinavAdi?: string
+    sinavLink?: string
+    // İK'nın işaretlediği alanların ETİKETLERİ. Sunucu yalnız bunu döner; İK'nın serbest
+    // notu (iç kayıt) yanıtta HİÇ yer almaz — bkz. adaya-geri-gonder.ts.
+    duzeltilecekAlanlar?: string[]
+  } | null>(null)
   const [yoklamaBitti, setYoklamaBitti] = useState(false)
+  // Düzeltme modu: dolu olduğunda form YENİDEN açılır ve submit capability başlığıyla gider.
+  // Önceki form hâli SAKLANMAZ (karar 2) — aday boş formu baştan doldurur.
+  const [duzeltme, setDuzeltme] = useState<{ applicationNumber: string; takipImzasi: string } | null>(
+    null,
+  )
   // Akış guard'ı 403 verdi (taslak cookie'si düştü / onay eksik) → onay yenileme katmanı.
   // Form state'e DOKUNULMAZ; onay bitince submit AYNI form ile tekrar denenir.
   const [onayYenileme, setOnayYenileme] = useState<string | null>(null)
@@ -222,7 +234,21 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
 
     try {
       // credentials: taslak cookie'si (jobapp_draft) gönderilsin — akış guard'ı buna bakar.
-      const res = await fetch('/api/job-application', { method: 'POST', body: fd, credentials: 'same-origin' })
+      //
+      // DÜZELTME MODU: taslak cookie'si ilk gönderimde silindiği için sunucu yetkiyi
+      // (başvuru no + takip imzası) capability'sinden çözer. İkisi de yalnız React
+      // state'te duruyor (paylaşımlı tablet → storage YOK), başlıkla gönderilir.
+      const headers: Record<string, string> = {}
+      if (duzeltme) {
+        headers['x-basvuru-no'] = duzeltme.applicationNumber
+        headers['x-takip-imzasi'] = duzeltme.takipImzasi
+      }
+      const res = await fetch('/api/job-application', {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+        headers,
+      })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         // 403 = akış guard'ı (KVKK onayı ve/veya sağlık beyanı yok/düşmüş).
@@ -235,6 +261,8 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
         setError(data.error || 'Başvuru gönderilemedi.')
         return
       }
+      // Düzeltme gönderildi → düzenleme modundan çık, teşekkür/yoklama ekranına dön.
+      setDuzeltme(null)
       setSubmitted({ applicationNumber: data.applicationNumber ?? '', takipImzasi: data.takipImzasi ?? '' })
       onSubmitted?.(data.applicationNumber ?? '')
     } catch {
@@ -244,7 +272,8 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
     }
   }
 
-  if (submitted) {
+  // duzeltme doluyken teşekkür ekranı GÖSTERİLMEZ → aşağıdaki form render edilir.
+  if (submitted && !duzeltme) {
     const handleNewApplication = () => {
       // PR-JOBAPP-CAMERA-AND-SUCCESS: Tablet senaryosu — bir sonraki aday için
       // tüm form state'i sıfırla, ilk bölümden başla. takipImzasi (submitted) da temizlenir.
@@ -257,6 +286,62 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
       if (typeof window !== 'undefined') {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }
+    }
+
+    // ── DÜZELTME BEKLENİYOR — sınav ekranından ÖNCE gelir (sunucu da bu sırayı uygular) ──
+    // Aday YALNIZ alan adlarını görür; İK'nın serbest notu buraya HİÇ gelmez.
+    if (sinavDurum?.durum === 'DUZELTME_BEKLENIYOR') {
+      const alanlar = sinavDurum.duzeltilecekAlanlar ?? []
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+          <div className="bg-white border border-sky-200 rounded-2xl p-8 max-w-md w-full text-center">
+            <AlertCircle className="h-12 w-12 text-sky-500 mx-auto mb-4" />
+            <h1 className="text-xl font-medium text-slate-900 mb-2">
+              Formunuzda düzeltme bekleniyor
+            </h1>
+            <p className="text-sm text-slate-500">
+              İnsan Varlıkları ekibi başvurunuzu geri gönderdi.
+              {alanlar.length > 0
+                ? ' Aşağıdaki alanları kontrol edip formu yeniden gönderin.'
+                : ' Lütfen formu gözden geçirip yeniden gönderin.'}
+            </p>
+
+            {alanlar.length > 0 && (
+              <ul className="mt-4 text-left inline-block">
+                {alanlar.map((a) => (
+                  <li key={a} className="flex items-start gap-2 text-sm text-slate-700 py-0.5">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                // Önceki form hâli SAKLANMAZ (karar 2) — boş formla baştan doldurulur.
+                setForm(initialFormState)
+                setCurrentStep(0)
+                setError(null)
+                setDuzeltme({
+                  applicationNumber: submitted.applicationNumber,
+                  takipImzasi: submitted.takipImzasi,
+                })
+                if (typeof window !== 'undefined') {
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }
+              }}
+              className="mt-6 block w-full px-6 py-4 bg-[#1B4F72] text-white rounded-xl font-semibold text-lg hover:bg-[#1B4F72]/90 transition-colors active:scale-[0.98]"
+            >
+              Formu Düzenle
+            </button>
+            <p className="mt-3 text-xs text-slate-400">
+              Form baştan doldurulur; önceki bilgileriniz saklanmaz.
+            </p>
+          </div>
+        </div>
+      )
     }
 
     // Sınav hazır (aktif oturum ATANDI/BASLADI) → ekran değişir: sınav adı + büyük "Sınava Başla".
@@ -366,12 +451,34 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
       />
 
       <div className="max-w-2xl mx-auto px-4 pt-6 pb-24">
+        {/* Düzeltme modu bandı — her adımda görünür (aday hangi bağlamda olduğunu unutmasın).
+            İşaretlenen alan etiketleri burada da tekrarlanır; İK'nın iç notu GÖSTERİLMEZ. */}
+        {duzeltme && (
+          <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-sky-600" />
+              <div className="text-sm text-sky-900">
+                <div className="font-medium">Düzeltme gönderiyorsunuz</div>
+                <div className="mt-0.5 text-xs text-sky-800">
+                  Başvuru no: <strong>{duzeltme.applicationNumber}</strong>
+                  {(sinavDurum?.duzeltilecekAlanlar?.length ?? 0) > 0 && (
+                    <> · Kontrol edilecek: {sinavDurum!.duzeltilecekAlanlar!.join(', ')}</>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {currentStep === 0 && (
           <div className="mb-6 text-center">
-            <h1 className="text-2xl font-medium text-slate-900">İş Başvuru Formu</h1>
+            <h1 className="text-2xl font-medium text-slate-900">
+              {duzeltme ? 'İş Başvuru Formu — Düzeltme' : 'İş Başvuru Formu'}
+            </h1>
             <p className="mt-2 text-sm text-slate-500 leading-relaxed max-w-xl mx-auto">
-              Lütfen aşağıdaki bilgileri eksiksiz doldurun. İnsan Varlıkları ekibimiz
-              değerlendirme sonrası sizinle iletişime geçecektir.
+              {duzeltme
+                ? 'Formu baştan doldurun. Önceki bilgileriniz saklanmadı; gönderdiğinizde başvurunuz yeniden incelemeye alınır.'
+                : 'Lütfen aşağıdaki bilgileri eksiksiz doldurun. İnsan Varlıkları ekibimiz değerlendirme sonrası sizinle iletişime geçecektir.'}
             </p>
           </div>
         )}

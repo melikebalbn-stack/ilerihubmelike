@@ -40,7 +40,14 @@ export function terminalMi(status: JobApplicationStatus): boolean {
 export type BekleyenTaraf =
   | { tip: "MUDUR"; ad: string; kisa: string }
   | { tip: "IK"; ad: string; kisa: string }
+  | { tip: "ADAY"; ad: string; kisa: string }
   | null; // terminal — bekleme satırı gösterilmez
+
+// ADAYA_GERI_GONDERILDI'da top ADAYDA. Matristen türetilemez: matriste yalnız İK satırı var
+// (İK vazgeçip geri alabilir), adayın kendi gönderimi matris DIŞI bir public geçiş
+// (api/job-application/route.ts). Bu yüzden tek istisna olarak statü adıyla kontrol edilir.
+const ADAY_ETIKET = "Aday";
+const ADAY_KISA = "Aday";
 
 // mudurAdi: assignedManagerId çözülmüş ad. Müdür kademesindeyiz ama atama yoksa
 // (bayat kayıt) İK'ya düşer — "atanmamış" göstermek yerine sahibi belli olsun.
@@ -49,6 +56,9 @@ export function bekleyenTaraf(
   mudurAdi: string | null,
 ): BekleyenTaraf {
   if (terminalMi(status)) return null;
+  if (status === "ADAYA_GERI_GONDERILDI") {
+    return { tip: "ADAY", ad: ADAY_ETIKET, kisa: ADAY_KISA };
+  }
   if (mudurKademesiMi(status) && mudurAdi) {
     return { tip: "MUDUR", ad: mudurAdi, kisa: mudurAdi };
   }

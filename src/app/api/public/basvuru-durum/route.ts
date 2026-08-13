@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { imzaDogrula } from "@/lib/recruitment/basvuru-takip";
 import { aktifOturumBul, sinavUrl } from "@/lib/recruitment/assessment-session";
+import { notundanAdayEtiketleri } from "@/lib/recruitment/adaya-geri-gonder";
 
 export const dynamic = "force-dynamic";
 
@@ -43,15 +44,38 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Başvuruyu bul — yalnız id (başka alan çekilmez). Yoksa jenerik 404.
+  // Başvuruyu bul — yalnız id + status (başka alan çekilmez). Yoksa jenerik 404.
+  // status EKLENDİ: aday düzeltmesi bekleniyorsa sınav akışına HİÇ girilmez (aşağıya bkz.).
   const basvuru = await prisma.publicJobApplication.findUnique({
     where: { applicationNumber },
-    select: { id: true },
+    select: { id: true, status: true },
   });
   if (!basvuru) return reddet(404);
 
   // İmza doğrula (sabit-zaman). Yanlışsa aynı jenerik 403.
   if (!imzaDogrula(basvuru.id, takipImzasi)) return reddet(403);
+
+  // ── DÜZELTME BEKLENİYOR — SIRA KRİTİK: sınav kontrolünden ÖNCE ────────────────
+  // Aday düzeltme göndermeden sınava girmemeli; aksi halde aktif bir oturum varsa
+  // (ör. daha önce sınav atanmışsa) burada sınav linki dönerdi ve düzeltme gölgede kalırdı.
+  //
+  // duzeltilecekAlanlar: YALNIZ etiket dizisi. Son geri gönderme geçişinin StageLog
+  // note'undan türetilir; ayrıştırma ALAN_ETIKETLERI'ne karşı doğrulanır, İK'nın serbest
+  // metni (ayracın sağı) HİÇ okunmaz — bkz. adaya-geri-gonder.ts.
+  if (basvuru.status === "ADAYA_GERI_GONDERILDI") {
+    const sonGecis = await prisma.publicJobApplicationStageLog.findFirst({
+      where: { applicationId: basvuru.id, toStatus: "ADAYA_GERI_GONDERILDI" },
+      orderBy: { createdAt: "desc" },
+      select: { note: true },
+    });
+    return NextResponse.json(
+      {
+        durum: "DUZELTME_BEKLENIYOR",
+        duzeltilecekAlanlar: notundanAdayEtiketleri(sonGecis?.note),
+      },
+      { headers: HEADERS },
+    );
+  }
 
   // Aktif oturum TEK KAYNAK (aktifOturumBul) — link yalnız aktif+süresi geçmemişte.
   const aktif = await aktifOturumBul(prisma, basvuru.id, {

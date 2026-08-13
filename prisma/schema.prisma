@@ -6112,6 +6112,10 @@ enum JobApplicationStatus {
   DEGERLENDIRICI // İK'nın seçtiği değerlendiriciye atandı
   URETIM_MUDUR_YRD // Üretim (Fabrika) müdür yardımcısı onayında
   FABRIKA_MUDURU // Fabrika müdürü üst onayında
+  // Faz 1 — aday düzeltmesi. İK formda eksik/hata görünce başvuruyu adaya geri gönderir;
+  // aday TÜM formu yeniden doldurup gönderince statü PENDING'e döner (public geçiş,
+  // matris dışı — bkz. api/job-application/route.ts). Önceki form hâli SAKLANMAZ.
+  ADAYA_GERI_GONDERILDI // Aday düzeltmesi bekleniyor
 }
 
 // Ret (kök-neden) kategorileri — sabit 3 kategori (İK yalnız ad'ları yönetir).

@@ -47,18 +47,24 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     IK: ["PENDING", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
+  // PENDING = "İV Ön İnceleme". ADAYA_GERI_GONDERILDI: formda eksik/hata varsa İK adaya
+  // geri gönderir (bkz. adaya-geri-gonder.ts — env bayrağı kapalıyken hedef listelenmez).
   PENDING: {
-    IK: ["REVIEWING", "MUDUR_DEGERLENDIRME", "DEGERLENDIRICI", "SINAV", "REJECTED"],
+    IK: ["REVIEWING", "ADAYA_GERI_GONDERILDI", "MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
     MUDUR: [],
   },
   REVIEWING: {
-    // FABRIKA_MUDURU: İK'nın üst onaya gönderme yolu (müdür yrd. onayından dönen başvuruyu
-    // gerekli görürse fabrika müdürüne çıkarır). Atama otomatiktir (otomatik-atama.ts).
-    IK: ["SHORTLISTED", "MUDUR_DEGERLENDIRME", "DEGERLENDIRICI", "FABRIKA_MUDURU", "SINAV", "REJECTED"],
+    IK: ["SHORTLISTED", "ADAYA_GERI_GONDERILDI", "MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
+    MUDUR: [],
+  },
+  // Aday düzeltme bekliyor. İK vazgeçip geri alabilir ya da reddedebilir; adayın kendi
+  // gönderimi bu matristen GEÇMEZ (public geçiş — api/job-application/route.ts).
+  ADAYA_GERI_GONDERILDI: {
+    IK: ["PENDING", "REJECTED"],
     MUDUR: [],
   },
   SHORTLISTED: {
-    IK: ["MUDUR_DEGERLENDIRME", "DEGERLENDIRICI", "TELEFON_MULAKATI", "SINAV", "REJECTED"],
+    IK: ["MUDUR_DEGERLENDIRME", "TELEFON_MULAKATI", "SINAV", "REJECTED"],
     MUDUR: [],
   },
   TELEFON_MULAKATI: {
@@ -78,26 +84,31 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     // İK geri alma: REVIEWING, MUDUR_DEGERLENDIRME.
     IK: ["SINAV", "REJECTED", "REVIEWING", "MUDUR_DEGERLENDIRME"],
   },
-  // ——— Mavi yaka değerlendirme zinciri ———
-  // İK → DEGERLENDIRICI → (otomatik) URETIM_MUDUR_YRD → üç yol → (gerekirse) FABRIKA_MUDURU → İK.
-  // Her satırda İK'nın geri alma/ret yolu VAR — hiçbiri donmuş statü değil.
+  // ——— Mavi yaka değerlendirme zinciri — EMEKLİ (Faz 1) ———
+  // Zincirin giriş koşulu YAKA AYRIMI idi; işe alım akışında yaka ayrımı kaldırıldı
+  // (yaka artık yalnız işbaşında Personnel.yakaRengi olarak girilir). Zincire giren yol
+  // kalmadığı için üç statü de ULAŞILAMAZ. Aynı işi Teknik Mülakat iki kademe GENEL olarak
+  // yapacak (kişi seçimi + otomatik üst amir).
+  //
+  // ENUM'DAN SİLİNMEDİ: FABRIKA_MUDURU'nun PublicJobApplicationStageLog'da 2 satırı var
+  // (REVIEWING→FABRIKA_MUDURU ve FABRIKA_MUDURU→REVIEWING); enum daraltma bu tarihsel
+  // satırları cast edemez → veri kaybı. Ayrıca blue-green'de pasif slotun Prisma client'ı
+  // DB ile uyumsuz kalır ve rollback yolu kapanır.
+  //
+  // DİKKAT — boş satırın sonucu: terminalMi() bu statüler için true döner (bekleyen.ts:34-38),
+  // yani bu statülere kayıt düşerse DONAR (çıkış yolu yok). Bugün etkisiz: DEGERLENDIRICI 0,
+  // URETIM_MUDUR_YRD 0, FABRIKA_MUDURU 0 kayıt (StageLog'daki 2 satır geçmiş, açık kayıt değil).
+  // Zincir yeniden açılacaksa satırlar geri doldurulmalı.
   DEGERLENDIRICI: {
-    // Değerlendirici karar verir: onaylarsa üretim müdür yrd.'na düşer (atama OTOMATİK), ya da reddeder.
-    DEGERLENDIRICI: ["URETIM_MUDUR_YRD", "REJECTED"],
-    // İK geri alma / ret. Aynı-statü yeniden atama: değerlendirici yanlış seçildiyse değiştirilebilir.
-    IK: ["REVIEWING", "DEGERLENDIRICI", "REJECTED"],
+    IK: [],
     MUDUR: [],
   },
   URETIM_MUDUR_YRD: {
-    // Üç yol: İK'ya onay (REVIEWING) / fabrika müdürüne üst onay (atama OTOMATİK) / ret.
-    URETIM_MUDUR_YRD: ["REVIEWING", "FABRIKA_MUDURU", "REJECTED"],
-    IK: ["REVIEWING", "REJECTED"],
+    IK: [],
     MUDUR: [],
   },
   FABRIKA_MUDURU: {
-    // Onaylarsa İK'ya döner, ya da reddeder.
-    FABRIKA_MUDURU: ["REVIEWING", "REJECTED"],
-    IK: ["REVIEWING", "REJECTED"],
+    IK: [],
     MUDUR: [],
   },
   SINAV: {
@@ -135,17 +146,23 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     IK: [],
     MUDUR: [],
   },
-  // Eski enum kaçış yolları — yalnız bayat kayıtlar sıkışmasın diye (İK).
+  // ——— Eski enum artıkları — EMEKLİ (Faz 1) ———
+  // Matriste hiçbir geçişin hedefi değiller ve prod'da 0 kayıt taşıyorlar; StageLog'un
+  // 143 satırında da hiç geçmiyorlar. Kaçış yolları da kaldırıldı → tamamen ulaşılamaz.
+  // ENUM'DAN SİLİNMEDİ (yukarıdaki gerekçenin aynısı: blue-green rollback + cast riski).
+  //
+  // DİKKAT: boş satır → terminalMi() true (bekleyen.ts:34-38). Bu statülere kayıt düşerse
+  // DONAR. Bugün etkisiz — üçünde de 0 kayıt var.
   REVIEWED: {
-    IK: ["REVIEWING", "REJECTED"],
+    IK: [],
     MUDUR: [],
   },
   INTERVIEW: {
-    IK: ["IK_MULAKATI", "REJECTED"],
+    IK: [],
     MUDUR: [],
   },
   ACCEPTED: {
-    IK: ["TEKLIF_KABUL", "REJECTED"],
+    IK: [],
     MUDUR: [],
   },
 };
@@ -155,26 +172,48 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
 export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
   CONSENT_PENDING: "KVKK Onayı Bekliyor",
   HEALTH_PENDING: "Sağlık Beyanı Bekliyor",
-  PENDING: "İK İncelemesi Bekliyor",
-  REVIEWED: "İncelendi",
-  REVIEWING: "İnceleniyor",
+  PENDING: "İV Ön İnceleme",
+  REVIEWING: "İV Havuzu",
+  ADAYA_GERI_GONDERILDI: "Aday Düzeltmesi Bekleniyor",
   SHORTLISTED: "Ön Eleme",
-  INTERVIEW: "Mülakata Çağrıldı",
   SINAV: "Sınav",
   TELEFON_MULAKATI: "Telefon Mülakatı",
   IK_MULAKATI: "İK Mülakatı",
-  TEKNIK_MULAKAT: "Teknik Mülakat",
+  TEKNIK_MULAKAT: "Teknik Mülakat (1. Kademe)",
   TEKLIF: "Teklif",
   TEKLIF_KABUL: "Teklif Kabul Edildi",
   ISE_BASLADI: "İşe Başladı",
-  ACCEPTED: "Kabul Edildi",
   REJECTED: "Reddedildi",
   MUDUR_DEGERLENDIRME: "Müdür Değerlendirmesi",
   MUDUR_MULAKATI: "Müdür Mülakatı",
-  DEGERLENDIRICI: "Değerlendirici İncelemesi",
-  URETIM_MUDUR_YRD: "Üretim Müdür Yrd. Onayı",
-  FABRIKA_MUDURU: "Fabrika Müdürü Onayı",
+  // ——— EMEKLİ statüler (Faz 1) — matris satırları boş, ulaşılamaz. Etiketler yalnız
+  // geçmiş StageLog satırları okunabilsin diye duruyor.
+  REVIEWED: "İncelendi (kullanımdan kaldırıldı)",
+  INTERVIEW: "Mülakata Çağrıldı (kullanımdan kaldırıldı)",
+  ACCEPTED: "Kabul Edildi (kullanımdan kaldırıldı)",
+  DEGERLENDIRICI: "Değerlendirici İncelemesi (kullanımdan kaldırıldı)",
+  URETIM_MUDUR_YRD: "Üretim Müdür Yrd. Onayı (kullanımdan kaldırıldı)",
+  FABRIKA_MUDURU: "Fabrika Müdürü Onayı (kullanımdan kaldırıldı)",
 };
+
+/**
+ * EMEKLİ statüler — TEK KAYNAK. Matris satırları boş, hiçbir geçişin hedefi değiller.
+ * UI statü filtresi bu kümeyi hariç tutar (sabit liste kopyalanmaz).
+ * Enum'dan SİLİNMEDİLER — gerekçe ALLOWED_TRANSITIONS içindeki yorumlarda.
+ */
+export const EMEKLI_STATULER: JobApplicationStatus[] = [
+  "REVIEWED",
+  "INTERVIEW",
+  "ACCEPTED",
+  "DEGERLENDIRICI",
+  "URETIM_MUDUR_YRD",
+  "FABRIKA_MUDURU",
+];
+
+/** Statü emekli mi (UI seçeneklerinden çıkarılır). */
+export function emekliMi(status: string | null | undefined): boolean {
+  return !!status && (EMEKLI_STATULER as string[]).includes(status);
+}
 
 /**
  * Hedefe geçiş için atanan kişi (assignedManagerId) ZORUNLUDUR — ve bu kişiyi İK SEÇER.

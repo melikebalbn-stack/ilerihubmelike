@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { ZimmetOnayDurumu } from '@/generated/prisma'
 
@@ -18,7 +19,14 @@ export async function GET(request: NextRequest) {
   const where: {
     durum?: ZimmetOnayDurumu
     OR?: Array<Record<string, unknown>>
-  } = {}
+    // silindiMi?: boolean
+  } = {
+    // PENDING migration (prisma/migrations/PENDING_zimmet_silme_alanlari)
+    // uygulanana kadar GEÇİCİ olarak devre dışı - DB'de/generated client'ta
+    // silindiMi henüz yok, where'de kullanmak "Unknown argument" hatası verir.
+    // Migration çalışınca aşağıdaki satırı geri aç:
+    // silindiMi: false,
+  }
 
   if (durumParam && DURUM_VALUES.includes(durumParam)) {
     where.durum = durumParam as ZimmetOnayDurumu
@@ -35,7 +43,7 @@ export async function GET(request: NextRequest) {
     where,
     orderBy: { createdAt: 'desc' },
     include: {
-      zimmetSahibi: { select: { name: true, email: true } },
+      zimmetSahibi: { select: { name: true, email: true, employeeId: true } },
       createdBy: { select: { name: true, email: true } },
     },
   })

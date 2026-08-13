@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
+import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { zimmetBelgesiniKaydet } from '../../_lib/zimmet-belge-storage'
 

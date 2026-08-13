@@ -2,11 +2,17 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Download, Laptop, Package, PenLine, Smartphone } from 'lucide-react'
+import { Download, Laptop, Package, PenLine, Printer, Smartphone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ZimmetDurumBadge } from '../ZimmetDurumBadge'
 import { getZimmetDurumRozeti } from '@/lib/zimmet/constants'
+
+// NOT: Bu ekranda şu an bir arama kutusu yok (kişinin kendi zimmetleri zaten
+// az sayıda). İleride eklenirse src/lib/sandbox/zimmet-arama.ts'teki
+// cokluAlandaAra/metinEslesiyorMu kullanılmalı - ZimmetListesi.tsx ve
+// PersonelCombobox.tsx ile aynı Türkçe karakter katlamalı arama mantığı.
 
 // ── Tipler ───────────────────────────────────────────────────────────────────
 
@@ -196,7 +202,32 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
-            <ZimmetDurumBadge zimmet={zimmet} />
+            <div className="flex items-center gap-1.5">
+              <ZimmetDurumBadge zimmet={zimmet} />
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="PDF indir"
+                        disabled={durum !== 'tamamlandi' || pdfStatus === 'loading'}
+                        onClick={handlePdfIndir}
+                      >
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {durum !== 'tamamlandi' && (
+                    <TooltipContent>Onaylanıp imzalanınca aktif olur.</TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            {pdfHata && <p className="text-[11px] text-rose-600 whitespace-nowrap">{pdfHata}</p>}
             {durum === 'belge_bekleniyor' && (
               <p className="text-[11px] text-slate-400 whitespace-nowrap">IT ekibi tarafından yüklenecektir</p>
             )}
@@ -220,7 +251,8 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
         </div>
 
         {/* Aksiyon butonları */}
-        {(durum === 'tamamlandi' || durum === 'imza_bekliyor') && (
+        {(durum === 'imza_bekliyor' ||
+          (durum === 'tamamlandi' && zimmet.imzaModu === 'ISLAK' && zimmet.islakImzaDosyasi)) && (
           <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
             {durum === 'tamamlandi' && (
               <div className="flex flex-col items-end gap-1">
@@ -228,30 +260,14 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={pdfStatus === 'loading'}
-                  onClick={handlePdfIndir}
-                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  disabled={belgeStatus === 'loading'}
+                  onClick={handleBelgeIndir}
+                  className="border-slate-300 text-slate-700 hover:bg-slate-50"
                 >
                   <Download className="w-3.5 h-3.5 mr-1" />
-                  {pdfStatus === 'loading' ? 'İndiriliyor...' : 'PDF indir'}
+                  {belgeStatus === 'loading' ? 'İndiriliyor...' : 'Islak imza belgesi'}
                 </Button>
-                {pdfHata && <p className="text-xs text-rose-600">{pdfHata}</p>}
-                {zimmet.imzaModu === 'ISLAK' && zimmet.islakImzaDosyasi && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={belgeStatus === 'loading'}
-                      onClick={handleBelgeIndir}
-                      className="border-slate-300 text-slate-700 hover:bg-slate-50"
-                    >
-                      <Download className="w-3.5 h-3.5 mr-1" />
-                      {belgeStatus === 'loading' ? 'İndiriliyor...' : 'Islak imza belgesi'}
-                    </Button>
-                    {belgeHata && <p className="text-xs text-rose-600">{belgeHata}</p>}
-                  </>
-                )}
+                {belgeHata && <p className="text-xs text-rose-600">{belgeHata}</p>}
               </div>
             )}
             {durum === 'imza_bekliyor' && (

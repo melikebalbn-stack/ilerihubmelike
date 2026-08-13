@@ -15,16 +15,14 @@ export const ZIMMET_TUR_OPTIONS = [
 export type ZimmetTuru = (typeof ZIMMET_TUR_OPTIONS)[number]
 
 // Backend (Prisma enum) karşılıkları — UI'daki Türkçe etiketler değişmeden kalır.
-// "Yazıcı" için Prisma ZimmetTuru enum'unda karşılık YOK (şemaya dokunulmuyor,
-// bkz. görev notu) — "Diğer" ile aynı DIGER kovasına düşer. Gerçek kayıtta
-// turGosterim mantığı (tur===DIGER ? turDiger : ...) zaten bunu "Yazıcı" olarak
-// göstermeye hazır; turDiger'ın ayrıca doldurulması gerekir (bkz. buildSubmitPayload).
+// "Yazıcı" artık gerçek ZimmetTuru.YAZICI enum değerine sahip (bkz. schema.prisma) -
+// eskiden DIGER kaçış kapısına düşüyordu, PENDING migration uygulanınca bu geçerli olur.
 const ZIMMET_TUR_TO_ENUM: Record<ZimmetTuru, string> = {
   'Notebook Bilgisayar': 'NOTEBOOK_BILGISAYAR',
   'Desktop Bilgisayar': 'DESKTOP_BILGISAYAR',
   'Cep Telefonu': 'CEP_TELEFONU',
   'El Terminali': 'EL_TERMINALI',
-  Yazıcı: 'DIGER',
+  Yazıcı: 'YAZICI',
   'Office 365': 'OFFICE_365',
   Diğer: 'DIGER',
 }
@@ -34,11 +32,16 @@ export interface PersonelHit {
   name: string | null
   email: string
   department?: string | null
+  jobTitle?: string | null
+  // Sicil No — /api/users?source=db zaten döndürüyor (User.employeeId),
+  // yeni bir alan/route değişikliği gerekmedi.
+  employeeId?: string | null
 }
 
 export interface ZimmetFormuStep1Data {
   zimmetSahibiId: string
   departman: string
+  unvan: string
   altZimmetSahibi: string
   tur: ZimmetTuru | ''
   turDiger: string
@@ -57,9 +60,33 @@ export interface ZimmetFormuStep1Data {
   imeiNumarasi: string
 }
 
+// Zorunlu alanlar — sunucu tarafındaki (route.ts, preview-pdf/route.ts) kontrolle
+// AYNI dört alan. Adım 1→2 geçişi, önizleme ve imzalama butonları HEPSİ bu tek
+// fonksiyondan geçer - tek yerden değişir, kontrol çakışmaz/eksik kalmaz.
+const ZORUNLU_ALAN_ETIKETLERI = {
+  zimmetSahibiId: 'Zimmet sahibi',
+  tur: 'Tür',
+  seriNumarasi: 'Seri numarası',
+  aciklama: 'Açıklama',
+} as const
+
+export function zimmetEksikZorunluAlanlar(step1: ZimmetFormuStep1Data): string[] {
+  const eksik: string[] = []
+  if (!step1.zimmetSahibiId.trim()) eksik.push(ZORUNLU_ALAN_ETIKETLERI.zimmetSahibiId)
+  if (!step1.tur) eksik.push(ZORUNLU_ALAN_ETIKETLERI.tur)
+  if (!step1.seriNumarasi.trim()) eksik.push(ZORUNLU_ALAN_ETIKETLERI.seriNumarasi)
+  if (!step1.aciklama.trim()) eksik.push(ZORUNLU_ALAN_ETIKETLERI.aciklama)
+  return eksik
+}
+
+export function zimmetZorunluAlanlarDolu(step1: ZimmetFormuStep1Data): boolean {
+  return zimmetEksikZorunluAlanlar(step1).length === 0
+}
+
 const INITIAL_STEP1: ZimmetFormuStep1Data = {
   zimmetSahibiId: '',
   departman: '',
+  unvan: '',
   altZimmetSahibi: '',
   tur: '',
   turDiger: '',
@@ -243,15 +270,26 @@ export function useZimmetFormu() {
     []
   )
 
-  // Zimmet sahibi seçilince departmanı gerçek personel listesinden otomatik doldurur
+  // Zimmet sahibi seçilince departman + ünvanı gerçek personel listesinden
+  // otomatik doldurur. Bölüm değişirse, önceden seçilmiş alt zimmet sahibi
+  // farklı bölümdeyse (Alt zimmet sahibi artık aynı bölümle sınırlı olduğu
+  // için) temizlenir.
   const selectZimmetSahibi = useCallback(
     (personelId: string) => {
       const personel = personelListesi.find((p) => p.id === personelId)
-      setStep1((prev) => ({
-        ...prev,
-        zimmetSahibiId: personelId,
-        departman: personel?.department ?? '',
-      }))
+      const yeniDepartman = personel?.department ?? ''
+      setStep1((prev) => {
+        const altSahibiPersonel = personelListesi.find((p) => p.name === prev.altZimmetSahibi)
+        const altSahibiFarkliBolumde =
+          prev.altZimmetSahibi && altSahibiPersonel?.department !== yeniDepartman
+        return {
+          ...prev,
+          zimmetSahibiId: personelId,
+          departman: yeniDepartman,
+          unvan: personel?.jobTitle ?? '',
+          altZimmetSahibi: altSahibiFarkliBolumde ? '' : prev.altZimmetSahibi,
+        }
+      })
     },
     [personelListesi]
   )
@@ -300,9 +338,7 @@ export function useZimmetFormu() {
       altZimmetSahibi: step1.altZimmetSahibi,
       departman: step1.departman,
       tur: step1.tur ? ZIMMET_TUR_TO_ENUM[step1.tur] : '',
-      // "Yazıcı" gerçek enum'da yok (DIGER'e map'leniyor) — turDiger boşsa
-      // gerçek kayıtta "Diğer: —" görünmesin diye tür adı otomatik yazılır.
-      turDiger: step1.tur === 'Yazıcı' ? step1.turDiger || 'Yazıcı' : step1.turDiger,
+      turDiger: step1.turDiger,
       marka: step1.marka,
       model: step1.model,
       seriNumarasi: step1.seriNumarasi,
@@ -350,9 +386,16 @@ export function useZimmetFormu() {
   }, [buildSubmitPayload])
 
   // Taslak PDF önizleme — kaydetmez, yeni sekmede PDF açar.
+  //
+  // Sekme, tıklama anında SENKRON açılıyor (await'lerden ÖNCE) - fetch/blob
+  // bittikten sonra window.open() çağırmak çoğu tarayıcıda "user activation"
+  // süresi dolmuş sayılıp sessizce (hatasız, görünür bir belirti olmadan)
+  // engelleniyordu. Boş sekme kullanıcı jesti sayıldığı için hemen açılıyor,
+  // içeriği (blob URL) hazır olunca aynı sekmeye yazılıyor.
   const previewPdf = useCallback(async () => {
     setPreviewStatus('loading')
     setPreviewError(null)
+    const yeniSekme = window.open('', '_blank')
     try {
       const res = await fetch('/api/zimmet-formu/preview-pdf', {
         method: 'POST',
@@ -367,10 +410,16 @@ export function useZimmetFormu() {
 
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
-      window.open(url, '_blank')
+      if (yeniSekme) {
+        yeniSekme.location.href = url
+      } else {
+        // Senkron açma da engellenmişse (çok sıkı popup ayarı) - son çare.
+        window.open(url, '_blank')
+      }
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
       setPreviewStatus('idle')
     } catch (err) {
+      yeniSekme?.close()
       setPreviewError(err instanceof Error ? err.message : 'Önizleme oluşturulamadı')
       setPreviewStatus('error')
     }

@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { ZimmetTuru, ZimmetCihazDurumu } from '@/generated/prisma'
 import { generateZimmetPdf, type ZimmetPdfData } from '@/lib/zimmet/pdf'
+import { APPROVER_USER_ID, APPROVER_NAME } from '@/lib/zimmet/constants'
 
 const TUR_VALUES: string[] = Object.values(ZimmetTuru)
 const CIHAZ_DURUMU_VALUES: string[] = Object.values(ZimmetCihazDurumu)
@@ -15,25 +16,58 @@ function optionalString(value: unknown): string | null {
 }
 
 // POST - Taslak PDF önizleme: henüz kaydedilmemiş form verisiyle PDF üretir.
-// Gerçek POST'un aksine TOLERANSLI doğrulama yapar (taslak önizleme, eksik/
-// geçersiz alan formu reddetmez — sadece "—" olarak gösterilir).
+// Alan bazında gerçek POST'a göre daha TOLERANSLI (örn. geçersiz Tür DIGER'e
+// düşer, hata vermez) — ama zorunlu alanlar (Zimmet Sahibi, Tür, Seri No,
+// Açıklama) yine de boş olamaz; istemci taraflı buton disable'ı UI için,
+// asıl güvenlik/tutarlılık katmanı burasıdır (buton bypass edilip API'ye
+// doğrudan istek atılsa bile boş önizleme üretilemez).
 export async function POST(request: NextRequest) {
   try {
     const { error: permError } = await requirePermission('zimmet-formu.create')
     if (permError) return permError
 
-    // `user` önizleme PDF'inde "teslim eden" adı için gerekli.
     const { user, error } = await requireUser()
     if (error) return error
 
     const body = await request.json()
 
+    const zorunluAlanlar = {
+      zimmetSahibiId: body.zimmetSahibiId,
+      tur: body.tur,
+      seriNumarasi: body.seriNumarasi,
+      aciklama: body.aciklama,
+    }
+    const eksikAlanlar = Object.entries(zorunluAlanlar)
+      .filter(([, deger]) => !deger || (typeof deger === 'string' && deger.trim() === ''))
+      .map(([anahtar]) => anahtar)
+
+    if (eksikAlanlar.length > 0) {
+      return NextResponse.json(
+        { error: 'Zorunlu alanlar eksik', eksikAlanlar },
+        { status: 400 }
+      )
+    }
+
     const zimmetSahibiId = optionalString(body.zimmetSahibiId)
     let zimmetSahibiAdi = '—'
+    let unvan: string | undefined
+    let sicilNo: string | undefined
     if (zimmetSahibiId) {
       const zimmetSahibi = await prisma.user.findUnique({ where: { id: zimmetSahibiId } })
-      if (zimmetSahibi) zimmetSahibiAdi = zimmetSahibi.name ?? zimmetSahibi.email
+      if (zimmetSahibi) {
+        zimmetSahibiAdi = zimmetSahibi.name ?? zimmetSahibi.email
+        unvan = zimmetSahibi.jobTitle ?? undefined
+        sicilNo = zimmetSahibi.employeeId ?? undefined
+      }
     }
+
+    // Onaylayan tek kişi (Melih Dilben) - önizlemede henüz onay yokken bile
+    // ismi/ünvanı gösterilir (bkz. zimmet-pdf.ts). Ünvan değişebileceği için
+    // sabit yazmak yerine DB'den her seferinde çekiliyor.
+    const approver = await prisma.user.findUnique({
+      where: { id: APPROVER_USER_ID },
+      select: { name: true, email: true, jobTitle: true },
+    })
 
     const turRaw = typeof body.tur === 'string' ? body.tur : ''
     const tur = TUR_VALUES.includes(turRaw) ? (turRaw as ZimmetTuru) : ZimmetTuru.DIGER
@@ -50,6 +84,8 @@ export async function POST(request: NextRequest) {
     const pdfData: ZimmetPdfData = {
       id: 'Önizleme',
       zimmetSahibiAdi,
+      unvan,
+      sicilNo,
       altZimmetSahibi: optionalString(body.altZimmetSahibi),
       departman: optionalString(body.departman),
       tur,
@@ -74,6 +110,10 @@ export async function POST(request: NextRequest) {
       durum: 'ONAY_BEKLIYOR',
       teslimNotu: optionalString(body.teslimNotu),
       teslimEdenAdi: user.name ?? user.email,
+      teslimEdenUnvan: user.jobTitle,
+      teslimEdenBolum: user.department,
+      onaylayanAdi: approver?.name ?? approver?.email ?? APPROVER_NAME,
+      onaylayanUnvan: approver?.jobTitle ?? undefined,
       createdAt: new Date(),
     }
 

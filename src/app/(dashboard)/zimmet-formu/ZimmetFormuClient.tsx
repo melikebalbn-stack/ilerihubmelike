@@ -3,7 +3,8 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { useZimmetFormu } from './useZimmetFormu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useZimmetFormu, zimmetEksikZorunluAlanlar } from './useZimmetFormu'
 import { ZimmetFormuStep1 } from './ZimmetFormuStep1'
 import { ZimmetFormuStep2 } from './ZimmetFormuStep2'
 import { ZimmetFormuStep3 } from './ZimmetFormuStep3'
@@ -42,6 +43,14 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
 
   const progressPct = Math.round(((step + 1) / totalSteps) * 100)
   const isLastStep = step === totalSteps - 1
+
+  // Adım 1 (Zimmet bilgileri) zorunlu alanları dolmadan Adım 2'ye geçilemez -
+  // sunucu tarafı (route.ts, preview-pdf/route.ts) zaten aynı dört alanı
+  // kontrol ediyor; bu adım-bazlı kontrol o kontrolün YERİNE değil, ÖNÜNE geçer
+  // (kullanıcı boş formla ilerleyip Adım 4'te imzalayamasın diye).
+  const step1EksikAlanlar = zimmetEksikZorunluAlanlar(step1)
+  const step1IlerlemeEngelli = step === 0 && step1EksikAlanlar.length > 0
+  const ileriDisabled = isLastStep || step1IlerlemeEngelli
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -87,6 +96,7 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
         )}
         {step === 3 && (
           <ZimmetFormuStep4
+            step1={step1}
             onSubmit={handleSubmit}
             submitStatus={submitStatus}
             submitError={submitError}
@@ -106,15 +116,26 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
             <ChevronLeft className="w-4 h-4 mr-1" />
             Geri
           </Button>
-          <Button
-            type="button"
-            onClick={nextStep}
-            disabled={isLastStep}
-            className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
-          >
-            İleri
-            <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={step1IlerlemeEngelli ? 'cursor-not-allowed' : ''}>
+                  <Button
+                    type="button"
+                    onClick={nextStep}
+                    disabled={ileriDisabled}
+                    className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
+                  >
+                    İleri
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {step1IlerlemeEngelli && (
+                <TooltipContent>Eksik: {step1EksikAlanlar.join(', ')}</TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
     </div>

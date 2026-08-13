@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic'
 /**
  * GET: Islak imza belgesini indirir. Dosya public/ DIŞINDA tutulur (bkz.
  * _lib/zimmet-belge-storage.ts) — bu route TEK okuma yolu.
- * Yetki: zimmet sahibi kendi belgesini, zimmet-formu.view yetkilisi hepsini
- * indirebilir. Diğer herkese 403. Dosya sistemi yolu response'a
+ * Yetki: zimmet sahibi kendi belgesini, zimmet-formu.view yetkilisi
+ * hepsini indirebilir. Diğer herkese 403. Dosya sistemi yolu response'a
  * (header/hata mesajı) hiçbir şekilde sızmaz.
  */
 export async function GET(

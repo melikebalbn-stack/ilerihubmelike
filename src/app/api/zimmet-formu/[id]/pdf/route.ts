@@ -22,8 +22,9 @@ export async function GET(
     const zimmet = await prisma.zimmetFormu.findUnique({
       where: { id },
       include: {
-        zimmetSahibi: { select: { name: true, email: true } },
-        createdBy: { select: { name: true, email: true } },
+        zimmetSahibi: { select: { name: true, email: true, jobTitle: true, employeeId: true } },
+        createdBy: { select: { name: true, email: true, jobTitle: true, department: true } },
+        onaylayan: { select: { name: true, email: true, jobTitle: true } },
       },
     })
 
@@ -31,7 +32,6 @@ export async function GET(
       return NextResponse.json({ error: 'Zimmet formu bulunamadı' }, { status: 404 })
     }
 
-    // Sahip kendi tutanağını, zimmet-formu.view yetkilisi hepsini indirebilir.
     const yetkili =
       zimmet.zimmetSahibiId === user.id || (await hasPermission('zimmet-formu.view'))
     if (!yetkili) {
@@ -42,13 +42,20 @@ export async function GET(
       return NextResponse.json({ error: 'Onay bekleniyor' }, { status: 403 })
     }
 
+    // zimmetSahibiId boş olabilir (Excel'den serbest metinle gelip Toplu
+    // Bağlama ile henüz eşleştirilmemiş kayıt) - o durumda orijinal metni
     const pdfBytes = await generateZimmetPdf({
       id: zimmet.id,
-      zimmetSahibiAdi: zimmet.zimmetSahibi.name ?? zimmet.zimmetSahibi.email,
+      zimmetSahibiAdi:
+        zimmet.zimmetSahibi?.name ?? zimmet.zimmetSahibi?.email ?? '—',
+      unvan: zimmet.zimmetSahibi?.jobTitle,
+      sicilNo: zimmet.zimmetSahibi?.employeeId,
       altZimmetSahibi: zimmet.altZimmetSahibi,
       departman: zimmet.departman,
       tur: zimmet.tur,
       turDiger: zimmet.turDiger,
+      marka: zimmet.marka ?? undefined,
+      model: zimmet.model ?? undefined,
       seriNumarasi: zimmet.seriNumarasi,
       aciklama: zimmet.aciklama,
       ozellik: zimmet.ozellik,
@@ -60,6 +67,8 @@ export async function GET(
       durum: zimmet.durum,
       teslimNotu: zimmet.teslimNotu,
       teslimEdenAdi: zimmet.createdBy.name ?? zimmet.createdBy.email,
+      teslimEdenUnvan: zimmet.createdBy.jobTitle,
+      teslimEdenBolum: zimmet.createdBy.department,
       createdAt: zimmet.createdAt,
       teslimEdenImzalandi: mod === 'dijital',
       teslimEdenImzaTarihi:
@@ -68,6 +77,9 @@ export async function GET(
           : undefined,
       zimmetSahibiImzalandi: zimmet.zimmetSahibiImzaTarihi !== null,
       zimmetSahibiImzaTarihi: zimmet.zimmetSahibiImzaTarihi?.toISOString() ?? undefined,
+      onaylayanAdi: zimmet.onaylayan?.name ?? zimmet.onaylayan?.email ?? undefined,
+      onaylayanUnvan: zimmet.onaylayan?.jobTitle,
+      onayTarihi: zimmet.onayTarihi?.toISOString() ?? undefined,
     })
 
     const fileName = `zimmet-${id.slice(0, 8)}-${mod}.pdf`

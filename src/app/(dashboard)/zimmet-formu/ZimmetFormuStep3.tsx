@@ -41,7 +41,10 @@ export function ZimmetFormuStep3({ step1, step2, teslimEdenAdi, onEditStep, pers
           </p>
           <p className="text-sm">
             <span className="text-slate-500">Zimmet sahibi: </span>
-            <span className="font-semibold text-[#1B4F72]">{zimmetSahibi?.name ?? '—'}</span>
+            <span className="font-semibold text-[#1B4F72]">
+              {zimmetSahibi?.name ?? '—'}
+              {step1.unvan && ` — ${step1.unvan}`}
+            </span>
           </p>
           <p className="text-sm">
             <span className="text-slate-500">İmza: </span>

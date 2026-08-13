@@ -12,7 +12,7 @@ type ZimmetKisi = { name: string | null; email: string }
 
 export type ZimmetImzalaData = {
   id: string
-  zimmetSahibi: ZimmetKisi
+  zimmetSahibi: ZimmetKisi | null
   tur: string
   turDiger: string | null
   seriNumarasi: string | null
@@ -58,6 +58,10 @@ export function ZimmetImzalaClient({ zimmet }: { zimmet: ZimmetImzalaData }) {
 
   const isImzalandi = imzaTarihi !== null
   const turLabel = TUR_LABELS[zimmet.tur] ?? zimmet.tur
+  // Excel import'tan serbest metinle gelip henüz Toplu Bağlama ile eşleştirilmemiş
+  // kayıtlarda zimmetSahibi yok - o durumda orijinal metni göster.
+  const zimmetSahibiAdi =
+    zimmet.zimmetSahibi?.name ?? zimmet.zimmetSahibi?.email ?? '—'
 
   async function handleImzala() {
     setImzalaniyor(true)
@@ -147,7 +151,7 @@ export function ZimmetImzalaClient({ zimmet }: { zimmet: ZimmetImzalaData }) {
               <div>
                 <dt className="text-xs text-slate-400 mb-0.5">Zimmet Sahibi</dt>
                 <dd className="text-sm font-medium text-slate-800">
-                  {zimmet.zimmetSahibi.name ?? zimmet.zimmetSahibi.email}
+                  {zimmetSahibiAdi}
                 </dd>
               </div>
               <div>
@@ -184,7 +188,7 @@ export function ZimmetImzalaClient({ zimmet }: { zimmet: ZimmetImzalaData }) {
               {isImzalandi ? (
                 <Badge className="bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-100">
                   <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                  E-İmzalandı: {zimmet.zimmetSahibi.name ?? zimmet.zimmetSahibi.email} —{' '}
+                  E-İmzalandı: {zimmetSahibiAdi} —{' '}
                   {fmtDateTime(imzaTarihi)}
                 </Badge>
               ) : (

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
+import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
 
 export const dynamic = 'force-dynamic'
@@ -11,6 +12,9 @@ const TUR_LABELS: Record<string, string> = {
   CEP_TELEFONU: 'Cep Telefonu',
   EL_TERMINALI: 'El Terminali',
   OFFICE_365: 'Office 365',
+  YAZICI: 'Yazıcı',
+  MONITOR: 'Monitör',
+  MIKROFON: 'Mikrofon',
   DIGER: 'Diğer',
 }
 
@@ -35,7 +39,7 @@ export async function GET() {
 
     const sheetData = zimmetler.map((z) => ({
       'Zimmet No': z.id.slice(0, 8),
-      'Zimmet Sahibi': z.zimmetSahibi.name ?? '-',
+      'Zimmet Sahibi': z.zimmetSahibi?.name ?? '-',
       'Departman': z.departman ?? '-',
       'Tür': TUR_LABELS[z.tur] ?? z.tur,
       'Marka/Açıklama': z.aciklama ?? '-',

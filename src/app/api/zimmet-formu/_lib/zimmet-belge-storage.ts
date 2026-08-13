@@ -2,15 +2,10 @@ import fs from 'fs/promises'
 import path from 'path'
 
 /**
- * Islak imza belgeleri KVKK kapsamında kişisel veri — public/uploads AĞACINA
- * YAZILMAZ. İki ayrı sebep:
- *   1) Next.js public/ içeriğini auth'suz statik servis eder.
- *   2) /api/files/[...path] uploads/ altındaki HER dosyayı yalnızca "oturum
- *      var mı" kontrolüyle servis ediyor — oraya yazarsak bu modüldeki
- *      sahiplik kontrolü (bkz. [id]/belge/route.ts) bypass edilir.
- * Bu yüzden kök, uploads/ ağacından TAMAMEN ayrı tutulur ve dosyalar sadece
- * auth+sahiplik korumalı /belge route'u üzerinden okunur.
- * UPLOAD_DIR env'i ile override edilebilir.
+ * Islak imza belgeleri KVKK kapsamında kişisel veri — public/ ALTINDA
+ * TUTULMAZ (Next.js public/ içindeki her şeyi auth'suz statik servis eder).
+ * Varsayılan konum proje kökü dışında; UPLOAD_DIR env'i ile override
+ * edilebilir (.env dosyasına dokunmadan da çalışsın diye default var).
  */
 const UPLOAD_ROOT = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)

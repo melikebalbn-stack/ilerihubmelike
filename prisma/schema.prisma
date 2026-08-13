@@ -12055,6 +12055,9 @@ enum ZimmetTuru {
   CEP_TELEFONU
   EL_TERMINALI
   OFFICE_365
+  YAZICI
+  MONITOR
+  MIKROFON
   DIGER
 }
 
@@ -12079,6 +12082,9 @@ model ZimmetFormu {
 
   tur      ZimmetTuru
   turDiger String?
+
+  marka String?
+  model String?
 
   seriNumarasi String?
   aciklama     String? @db.Text
@@ -12110,8 +12116,27 @@ model ZimmetFormu {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Soft-delete: yalnız ONAY_BEKLIYOR hatalı kayıtlar için (bkz. [id]/route.ts DELETE).
+  silindiMi     Boolean   @default(false)
+  silinmeTarihi DateTime?
+  silenId       String? // User.id - KASITLI olarak relation değil (User modeline dokunmamak için)
+
   @@index([zimmetSahibiId])
   @@index([durum])
+}
+
+// Zimmet durum değişikliği audit log (append-only). ZimmetFormu'dan AYRI;
+// User'a relation YOK (islemYapanId ayrı sorguyla çözülür).
+model ZimmetDurumGecmisi {
+  id           String   @id @default(cuid())
+  zimmetId     String
+  eskiDurum    String?
+  yeniDurum    String
+  islemYapanId String
+  not          String? // örn. "Kayıt düzenlendi: seri no değişti"
+  createdAt    DateTime @default(now())
+
+  @@index([zimmetId])
 }
 
 // ===== ORG ŞEMASI DEVRİ (F1/R1/R4) — Elif =====

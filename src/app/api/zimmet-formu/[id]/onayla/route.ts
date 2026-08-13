@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { requirePermission } from '@/lib/auth/require-permission'
 import { ZimmetOnayDurumu } from '@/generated/prisma'
 import { dispatchZimmetSahibiImzaIstegi } from '@/lib/zimmet/notifications'
+import { requirePermission } from '@/lib/auth/require-permission'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +45,19 @@ export async function PATCH(
           : { durum: ZimmetOnayDurumu.REDDEDILDI },
     })
 
-    if (karar === 'ONAYLANDI') {
+    await prisma.zimmetDurumGecmisi.create({
+      data: {
+        zimmetId: id,
+        eskiDurum: mevcut.durum,
+        yeniDurum: guncellendi.durum,
+        islemYapanId: user.id,
+      },
+    })
+
+    // zimmetSahibiId boş olabilir (Excel'den serbest metinle gelip Toplu
+    // Bağlama ile henüz eşleştirilmemiş kayıt) - bu durumda bildirilecek
+    // gerçek bir kullanıcı yok, sessizce atla.
+    if (karar === 'ONAYLANDI' && guncellendi.zimmetSahibiId) {
       const zimmetSahibi = await prisma.user.findUnique({
         where: { id: guncellendi.zimmetSahibiId },
         select: { id: true, email: true, name: true },

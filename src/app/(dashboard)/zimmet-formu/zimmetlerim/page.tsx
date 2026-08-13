@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation'
-import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { ZimmetlerimListesi } from './ZimmetlerimListesi'
@@ -11,7 +10,7 @@ export default async function ZimmetlerimPage() {
   if (error) redirect('/login')
 
   const canView = await hasPermission('zimmet-formu.view')
-  if (!canView) return <YetkisizErisim permission="zimmet-formu.view" />
+  if (!canView) redirect('/dashboard')
 
   return <ZimmetlerimListesi />
 }

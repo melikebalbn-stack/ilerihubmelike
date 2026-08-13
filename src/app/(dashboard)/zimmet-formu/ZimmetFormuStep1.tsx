@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { PersonelCombobox } from './PersonelCombobox'
 import {
   ZIMMET_TUR_OPTIONS,
   type PersonelHit,
@@ -47,6 +48,20 @@ export function ZimmetFormuStep1({
   const isYazici = data.tur === 'Yazıcı'
   const isElTerminali = data.tur === 'El Terminali'
   const isLisans = data.tur === 'Office 365' // ileride başka lisans türü eklenirse buraya eklenir
+  // "Diğer" seçilince tür belirsiz olduğu için hangi özel alanın gerekebileceği
+  // bilinmiyor - hiçbiri zorunlu olmadan hepsi görünür yapılıyor (bkz. aşağıdaki
+  // || isDiger'ler). zimmetEksikZorunluAlanlar bu alanları içermiyor, değişmedi.
+  const isDiger = data.tur === 'Diğer'
+
+  // Alt zimmet sahibi, ana zimmet sahibiyle aynı bölümdeki personelle sınırlı
+  // (kendisi hariç). altZimmetSahibi bir isim string'i olarak tutuluyor (FK
+  // değil, mevcut schema alanı) - id'yi combobox'ın value'su için ismden geri
+  // çözüyoruz.
+  const aynıBolumdekiPersonel = data.departman
+    ? personelListesi.filter((p) => p.department === data.departman && p.id !== data.zimmetSahibiId)
+    : []
+  const altZimmetSahibiId =
+    aynıBolumdekiPersonel.find((p) => (p.name ?? p.email) === data.altZimmetSahibi)?.id ?? ''
 
   return (
     <Card>
@@ -63,20 +78,13 @@ export function ZimmetFormuStep1({
           <Label htmlFor="zimmetSahibi">
             Zimmet sahibi <RequiredMark />
           </Label>
-          <Select value={data.zimmetSahibiId} onValueChange={onSelectZimmetSahibi}>
-            <SelectTrigger id="zimmetSahibi">
-              <SelectValue
-                placeholder={personelYukleniyor ? 'Personel listesi yükleniyor...' : 'Personel seçin'}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {personelListesi.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name ?? p.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PersonelCombobox
+            personelListesi={personelListesi}
+            value={data.zimmetSahibiId}
+            onSelect={onSelectZimmetSahibi}
+            placeholder={personelYukleniyor ? 'Personel listesi yükleniyor...' : 'Personel seçin'}
+            className={!data.zimmetSahibiId ? 'border-rose-300 ring-1 ring-rose-200' : ''}
+          />
         </div>
 
         <div className="space-y-2">
@@ -91,13 +99,30 @@ export function ZimmetFormuStep1({
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor="unvan">Ünvan</Label>
+          <Input
+            id="unvan"
+            value={data.unvan}
+            readOnly
+            placeholder="Zimmet sahibi seçilince otomatik dolar"
+            className="bg-slate-50 text-slate-600"
+          />
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="altZimmetSahibi">
             Alt zimmet sahibi <OptionalMark />
           </Label>
-          <Input
-            id="altZimmetSahibi"
-            value={data.altZimmetSahibi}
-            onChange={(e) => setField('altZimmetSahibi', e.target.value)}
+          <PersonelCombobox
+            personelListesi={aynıBolumdekiPersonel}
+            value={altZimmetSahibiId}
+            onSelect={(personelId) => {
+              const secilen = personelListesi.find((p) => p.id === personelId)
+              setField('altZimmetSahibi', secilen?.name ?? secilen?.email ?? '')
+            }}
+            placeholder={data.zimmetSahibiId ? 'Personel seçin' : 'Önce zimmet sahibi seçin'}
+            emptyText="Bu bölümde başka personel yok."
+            disabled={!data.zimmetSahibiId}
           />
         </div>
 
@@ -109,7 +134,10 @@ export function ZimmetFormuStep1({
             value={data.tur}
             onValueChange={(v) => setField('tur', v as ZimmetFormuStep1Data['tur'])}
           >
-            <SelectTrigger id="tur">
+            <SelectTrigger
+              id="tur"
+              className={!data.tur ? 'border-rose-300 ring-1 ring-rose-200' : ''}
+            >
               <SelectValue placeholder="Tür seçin" />
             </SelectTrigger>
             <SelectContent>
@@ -166,6 +194,7 @@ export function ZimmetFormuStep1({
             id="seriNumarasi"
             value={data.seriNumarasi}
             onChange={(e) => setField('seriNumarasi', e.target.value)}
+            className={!data.seriNumarasi.trim() ? 'border-rose-300 ring-1 ring-rose-200' : ''}
           />
         </div>
 
@@ -177,6 +206,7 @@ export function ZimmetFormuStep1({
             id="aciklama"
             value={data.aciklama}
             onChange={(e) => setField('aciklama', e.target.value)}
+            className={!data.aciklama.trim() ? 'border-rose-300 ring-1 ring-rose-200' : ''}
           />
         </div>
 
@@ -192,7 +222,7 @@ export function ZimmetFormuStep1({
           />
         </div>
 
-        {isBilgisayar && (
+        {(isBilgisayar || isDiger) && (
           <div className="space-y-2">
             <Label htmlFor="ram">
               RAM <OptionalMark />
@@ -206,7 +236,7 @@ export function ZimmetFormuStep1({
           </div>
         )}
 
-        {isYazici && (
+        {(isYazici || isDiger) && (
           <div className="space-y-2">
             <Label htmlFor="ipAdresi">
               IP adresi <OptionalMark />
@@ -220,7 +250,7 @@ export function ZimmetFormuStep1({
           </div>
         )}
 
-        {isElTerminali && (
+        {(isElTerminali || isDiger) && (
           <div className="space-y-2">
             <Label htmlFor="parcaNo">
               P/N <OptionalMark />
@@ -233,7 +263,7 @@ export function ZimmetFormuStep1({
           </div>
         )}
 
-        {isLisans && (
+        {(isLisans || isDiger) && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="lisansBaslangic">
@@ -260,7 +290,7 @@ export function ZimmetFormuStep1({
           </div>
         )}
 
-        {isBilgisayar && (
+        {(isBilgisayar || isDiger) && (
           <>
             <div className="space-y-2">
               <Label htmlFor="macAdresi">
@@ -286,7 +316,7 @@ export function ZimmetFormuStep1({
           </>
         )}
 
-        {isCepTelefonu && (
+        {(isCepTelefonu || isDiger) && (
           <div className="space-y-2">
             <Label htmlFor="imeiNumarasi">
               IMEI numarası <OptionalMark />

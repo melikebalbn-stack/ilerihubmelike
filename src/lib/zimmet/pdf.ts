@@ -20,6 +20,8 @@ import type { ZimmetTuru, ZimmetCihazDurumu, ZimmetOnayDurumu } from '@/generate
 export interface ZimmetPdfData {
   id: string
   zimmetSahibiAdi: string
+  unvan?: string | null
+  sicilNo?: string | null
   altZimmetSahibi: string | null
   departman: string | null
   tur: ZimmetTuru
@@ -47,6 +49,11 @@ export interface ZimmetPdfData {
   teslimEdenImzaTarihi?: string
   zimmetSahibiImzalandi?: boolean
   zimmetSahibiImzaTarihi?: string
+  onaylayanAdi?: string
+  onayTarihi?: string
+  teslimEdenUnvan?: string | null
+  teslimEdenBolum?: string | null
+  onaylayanUnvan?: string | null
 }
 
 const TUR_LABELS: Record<ZimmetTuru, string> = {
@@ -55,7 +62,15 @@ const TUR_LABELS: Record<ZimmetTuru, string> = {
   CEP_TELEFONU: 'Cep Telefonu',
   EL_TERMINALI: 'El Terminali',
   OFFICE_365: 'Office 365',
+  YAZICI: 'Yazıcı',
+  MONITOR: 'Monitör',
+  MIKROFON: 'Mikrofon',
   DIGER: 'Diğer',
+}
+
+const CIHAZ_DURUMU_LABELS: Record<ZimmetCihazDurumu, string> = {
+  AKTIF: 'Aktif',
+  PASIF: 'Pasif',
 }
 
 const LOGO_PATH = path.join(process.cwd(), 'public', 'images', 'zimmet', 'ileri-group-logo.png')
@@ -86,6 +101,10 @@ const SLATE = rgb(0.28, 0.32, 0.36)
 const BORDER = rgb(0.7, 0.74, 0.78)
 const GREY = hexToRgb('#F2F3F4')
 const WHITE = rgb(1, 1, 1)
+// Onaylandı rozeti — UI'daki ZimmetDurumBadge'in "yesil" rengiyle aynı (emerald-100/emerald-700)
+const EMERALD_BG = hexToRgb('#D1FAE5')
+const EMERALD_TEXT = hexToRgb('#047857')
+const MUTED = rgb(0.4, 0.4, 0.4)
 
 const A4 = PageSizes.A4
 const PAGE_W = A4[0]
@@ -176,13 +195,22 @@ export async function generateZimmetPdf(data: ZimmetPdfData): Promise<Uint8Array
 
   // ── İki kolonlu bilgi tablosu ──
   const turGosterim = data.tur === 'DIGER' ? data.turDiger || '—' : TUR_LABELS[data.tur]
-  const infoRows: [string, string][] = [
-    ['Zimmet Sahibi', data.zimmetSahibiAdi || '—'],
+  const zimmetSahibiAdiGosterim =
+    (data.zimmetSahibiAdi || '—') + (data.sicilNo ? ` (Sicil: ${data.sicilNo})` : '')
+  // Üçüncü eleman (varsa) - deger satirinin ALTINDA kucuk gri "alt satir" olarak
+  // cizilir (bkz. render loop). Sadece Zimmet Sahibi'nde (unvan) kullaniliyor -
+  // eskiden "Ad Soyad — Unvan" tek satirda birlestiriliyordu, uzun unvanlarda
+  // hucre tasmasi/hizasizlik yaratiyordu.
+  const infoRows: [string, string, string?][] = [
+    ['Zimmet Sahibi', zimmetSahibiAdiGosterim, data.unvan || undefined],
     ['Departman', data.departman || '—'],
+    ...(data.altZimmetSahibi ? [['Alt Zimmet Sahibi', data.altZimmetSahibi] as [string, string]] : []),
     ['Tür', turGosterim],
+    ['Cihaz Durumu', CIHAZ_DURUMU_LABELS[data.cihazDurumu]],
     ...(data.marka ? [['Marka', data.marka] as [string, string]] : []),
     ...(data.model ? [['Model', data.model] as [string, string]] : []),
     ['Seri Numarası', data.seriNumarasi || '—'],
+    ...(data.imeiNumarasi ? [['IMEI Numarası', data.imeiNumarasi] as [string, string]] : []),
     ['Açıklama', data.aciklama || '—'],
     ['Özellik', data.ozellik || '—'],
     ...(data.ram ? [['RAM', data.ram] as [string, string]] : []),
@@ -199,17 +227,31 @@ export async function generateZimmetPdf(data: ZimmetPdfData): Promise<Uint8Array
       : []),
   ]
   const colW = CONTENT_W / 2
+  const ROW_H = 18
+  const SUB_LINE_H = 10
+  const SUB_SIZE = 7
   for (let i = 0; i < infoRows.length; i += 2) {
-    ensure(18)
+    const rowCells: [typeof infoRows[number] | undefined, typeof infoRows[number] | undefined] = [
+      infoRows[i],
+      infoRows[i + 1],
+    ]
+    // Satırdaki İKİ hücreden biri alt satır (ünvan gibi) taşıyorsa, satır
+    // yüksekliği ikisi için de büyür - aksi halde aynı satırdaki komşu hücrenin
+    // çerçevesi kısa kalır, dikey hizası bozulur.
+    const rowH = rowCells.some((c) => c?.[2]) ? ROW_H + SUB_LINE_H : ROW_H
+    ensure(rowH)
     for (let c = 0; c < 2; c++) {
-      const cell = infoRows[i + c]
+      const cell = rowCells[c]
       if (!cell) continue
       const cx = MARGIN + c * colW
-      page.drawRectangle({ x: cx, y: y - 18, width: colW, height: 18, borderColor: BORDER, borderWidth: 0.6 })
+      page.drawRectangle({ x: cx, y: y - rowH, width: colW, height: rowH, borderColor: BORDER, borderWidth: 0.6 })
       text(cell[0], cx + 6, y - 12, 8, bold, NAVY)
       text(cell[1], cx + 120, y - 12, 8, reg, SLATE)
+      if (cell[2]) {
+        text(cell[2], cx + 120, y - 12 - SUB_LINE_H, SUB_SIZE, reg, MUTED)
+      }
     }
-    y -= 18
+    y -= rowH
   }
   y -= 10
 
@@ -245,32 +287,116 @@ export async function generateZimmetPdf(data: ZimmetPdfData): Promise<Uint8Array
   })
   y -= noteH + 16
 
-  // ── İmza kutuları ──
-  const sigW = CONTENT_W / 2
-  const sigH = 56
-  ensure(sigH)
-  const sigBoxes: { role: string; name: string }[] = [
-    { role: 'Zimmeti Veren', name: data.teslimEdenAdi || '—' },
-    { role: 'Zimmet Sahibi', name: data.zimmetSahibiAdi || '—' },
+  // ── İmza kutuları (Zimmeti Veren / Zimmet Sahibi / Onaylayan) ──
+  // Kutu icindeki sabit noktalar (imza cizgisi, isim) yukseklikten bagimsiz -
+  // sadece durum metni (statusLines) uzun/kisa oldugunda kutu YUKSEKLIGI
+  // degisir, taşma olmadan tum kutular ayni satirda hizali kalir.
+  const sigW = CONTENT_W / 3
+  const STATUS_SIZE = 7
+  const STATUS_LINE_H = 9
+  // Ünvan/bölüm isimden görsel olarak ayrışsın diye: küçük punto + gri renk
+  // (MUTED) + isimden (bold, SLATE) belirgin şekilde farklı. Satır aralığı
+  // punto boyutunun ~1.4 katı - iki satır (ünvan/bölüm) birbirine yapışmasın.
+  const TITLE_SIZE = 8
+  const TITLE_LINE_H = 11
+  const fmtDateTime = (d: string) =>
+    new Date(d).toLocaleString('tr-TR', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    })
+
+  type SigBox = {
+    role: string
+    name: string
+    unvan?: string
+    bolum?: string
+    statusLines: string[]
+    statusColor: RGB
+    statusBadge: boolean
+  }
+
+  function bosStatus(etiket: string): Pick<SigBox, 'statusLines' | 'statusColor' | 'statusBadge'> {
+    return { statusLines: [etiket], statusColor: BORDER, statusBadge: false }
+  }
+  function doluStatus(
+    onek: string,
+    tarih: string,
+    rozet: boolean
+  ): Pick<SigBox, 'statusLines' | 'statusColor' | 'statusBadge'> {
+    // İsim üstteki başlık satırında zaten var - durum satırında tekrar etmesin.
+    const satir = `${onek} — ${fmtDateTime(tarih)}`
+    return {
+      statusLines: wrap(satir, reg, STATUS_SIZE, sigW - 12),
+      statusColor: rozet ? EMERALD_TEXT : SLATE,
+      statusBadge: rozet,
+    }
+  }
+
+  const sigBoxes: SigBox[] = [
+    {
+      role: 'Zimmeti Veren',
+      name: data.teslimEdenAdi || '—',
+      unvan: data.teslimEdenUnvan || undefined,
+      bolum: data.teslimEdenBolum || undefined,
+      ...(data.teslimEdenImzalandi && data.teslimEdenImzaTarihi
+        ? doluStatus('E-İmzalandı', data.teslimEdenImzaTarihi, false)
+        : bosStatus('Ad Soyad / İmza')),
+    },
+    {
+      role: 'Zimmet Sahibi',
+      name: data.zimmetSahibiAdi || '—',
+      unvan: data.unvan || undefined,
+      bolum: data.departman || undefined,
+      ...(data.zimmetSahibiImzalandi && data.zimmetSahibiImzaTarihi
+        ? doluStatus('E-İmzalandı', data.zimmetSahibiImzaTarihi, false)
+        : bosStatus('Ad Soyad / İmza')),
+    },
+    {
+      // Onaylayan tek kişi (Melih Dilben) olduğu için ismi/ünvanı onay
+      // beklenirken de her zaman gösterilir - sadece altındaki durum satırı
+      // onay anına göre değişir (bkz. data.onayTarihi kontrolü).
+      role: 'Onaylayan',
+      name: data.onaylayanAdi || '—',
+      unvan: data.onaylayanUnvan || undefined,
+      ...(data.onayTarihi
+        ? doluStatus('Onaylandı', data.onayTarihi, true)
+        : { statusLines: [''], statusColor: BORDER, statusBadge: false }),
+    },
   ]
+
+  // Ünvan + bölüm için HER ZAMAN iki satırlık sabit yer ayrılır (biri boşsa
+  // o satır çizilmez ama yer kalır) - üç kutu da aynı yükseklikte başlasın,
+  // status alanı satır hizası bozulmasın.
+  const TITLE_BLOCK_H = 2 * TITLE_LINE_H
+  const maxStatusLines = Math.max(...sigBoxes.map((sb) => sb.statusLines.length))
+  const sigH = 54 + TITLE_BLOCK_H + (maxStatusLines - 1) * STATUS_LINE_H + 8
+  ensure(sigH)
+
   sigBoxes.forEach((sb, i) => {
     const sx = MARGIN + i * sigW
     text(sb.role, sx + 4, y - 10, 8.5, bold, NAVY)
-    page.drawLine({ start: { x: sx + 4, y: y - sigH + 22 }, end: { x: sx + sigW - 16, y: y - sigH + 22 }, color: BORDER, thickness: 0.8 })
-    text(sb.name, sx + 4, y - sigH + 12, 8.5, bold, SLATE)
-    if (i === 0 && data.teslimEdenImzalandi && data.teslimEdenImzaTarihi) {
-      const imzaStr = new Date(data.teslimEdenImzaTarihi).toLocaleString('tr-TR', {
-        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-      })
-      text(`E-İmzalandı: ${data.teslimEdenAdi} — ${imzaStr}`, sx + 4, y - sigH + 2, 8, reg, SLATE)
-    } else if (i === 1 && data.zimmetSahibiImzalandi && data.zimmetSahibiImzaTarihi) {
-      const imzaStr = new Date(data.zimmetSahibiImzaTarihi).toLocaleString('tr-TR', {
-        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-      })
-      text(`E-İmzalandı: ${data.zimmetSahibiAdi} — ${imzaStr}`, sx + 4, y - sigH + 2, 8, reg, SLATE)
-    } else {
-      text('Ad Soyad / İmza', sx + 4, y - sigH + 2, 6.5, reg, BORDER)
+    page.drawLine({ start: { x: sx + 4, y: y - 34 }, end: { x: sx + sigW - 16, y: y - 34 }, color: BORDER, thickness: 0.8 })
+    text(sb.name, sx + 4, y - 44, 8.5, bold, SLATE)
+    if (sb.unvan) {
+      text(sb.unvan, sx + 4, y - 44 - TITLE_LINE_H, TITLE_SIZE, reg, MUTED)
     }
+    if (sb.bolum) {
+      text(sb.bolum, sx + 4, y - 44 - 2 * TITLE_LINE_H, TITLE_SIZE, reg, MUTED)
+    }
+
+    const statusY0 = y - 44 - TITLE_BLOCK_H - 10
+    if (sb.statusBadge) {
+      const badgeH = sb.statusLines.length * STATUS_LINE_H + 6
+      page.drawRectangle({
+        x: sx + 2,
+        y: statusY0 - badgeH + STATUS_LINE_H - 2,
+        width: sigW - 12,
+        height: badgeH,
+        color: EMERALD_BG,
+      })
+    }
+    sb.statusLines.forEach((ln, li) => {
+      text(ln, sx + 6, statusY0 - li * STATUS_LINE_H, STATUS_SIZE, sb.statusBadge ? bold : reg, sb.statusColor)
+    })
   })
   y -= sigH
 

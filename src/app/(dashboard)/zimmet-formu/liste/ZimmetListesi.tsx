@@ -2,18 +2,68 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Download, Eye, Plus, Printer } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Boxes,
+  Cloud,
+  Cpu,
+  Download,
+  Eye,
+  FileDown,
+  Laptop,
+  Mic,
+  Package,
+  Pencil,
+  Plus,
+  Printer,
+  ScanLine,
+  Shapes,
+  Smartphone,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { getZimmetDurumRozeti } from '@/lib/zimmet/constants'
+import { cokluAlandaAra } from '@/lib/zimmet/arama'
 import { ZimmetDurumBadge } from '../ZimmetDurumBadge'
 import { IslakImzaYukleDialog } from '../IslakImzaYukleDialog'
 
 // ── Tipler ──────────────────────────────────────────────────────────────────
 
-type ZimmetKisi = { name: string | null; email: string }
+type ZimmetKisi = { name: string | null; email: string; employeeId?: string | null }
 
 type ZimmetItem = {
   id: string
@@ -22,7 +72,14 @@ type ZimmetItem = {
   departman: string | null
   tur: string
   turDiger: string | null
+  marka?: string | null
+  model: string | null
   seriNumarasi: string | null
+  aciklama: string | null
+  ozellik: string | null
+  macAdresi: string | null
+  pcAdi: string | null
+  imeiNumarasi: string | null
   verilisTarihi: string | null
   cihazDurumu: string
   durum: string
@@ -33,6 +90,30 @@ type ZimmetItem = {
   createdAt: string
 }
 
+// ── Düzenleme formu ──────────────────────────────────────────────────────────
+
+type DuzenleFormData = {
+  seriNumarasi: string
+  aciklama: string
+  ozellik: string
+  macAdresi: string
+  pcAdi: string
+  imeiNumarasi: string
+  marka: string
+  model: string
+}
+
+const BOS_DUZENLE_FORM: DuzenleFormData = {
+  seriNumarasi: '',
+  aciklama: '',
+  ozellik: '',
+  macAdresi: '',
+  pcAdi: '',
+  imeiNumarasi: '',
+  marka: '',
+  model: '',
+}
+
 // ── Sabitler ────────────────────────────────────────────────────────────────
 
 const TUR_LABELS: Record<string, string> = {
@@ -41,7 +122,17 @@ const TUR_LABELS: Record<string, string> = {
   CEP_TELEFONU: 'Cep Telefonu',
   EL_TERMINALI: 'El Terminali',
   OFFICE_365: 'Office 365',
+  YAZICI: 'Yazıcı',
+  MONITOR: 'Monitör',
+  MIKROFON: 'Mikrofon',
   DIGER: 'Diğer',
+}
+
+// Model doluysa "Tür / Model" formatında gosterilir (PENDING migration'dan once
+// yazilmis eski kayitlarda model olmayabilir).
+function turGosterim(zimmet: Pick<ZimmetItem, 'tur' | 'turDiger' | 'model'>): string {
+  const tur = zimmet.tur === 'DIGER' && zimmet.turDiger ? zimmet.turDiger : (TUR_LABELS[zimmet.tur] ?? zimmet.tur)
+  return zimmet.model ? `${tur} / ${zimmet.model}` : tur
 }
 
 const FILTRELER = [
@@ -55,20 +146,164 @@ const FILTRELER = [
 
 type FiltreKey = (typeof FILTRELER)[number]['key']
 
+// ── İstatistik kartları ──────────────────────────────────────────────────────
+// Yazıcı/Monitör/Mikrofon artık schema.prisma'da gerçek enum değeri (bkz.
+// PENDING migration), ama uygulanana kadar DB'de hâlâ DIGER + turDiger metni
+// olarak duruyor - hem eski (turDiger sniff) hem yeni (dogrudan tur) kayıtları
+// dogru saymak icin asagida ikisi de kontrol ediliyor.
+type StatKey =
+  | 'toplam'
+  | 'NOTEBOOK_BILGISAYAR'
+  | 'DESKTOP_BILGISAYAR'
+  | 'CEP_TELEFONU'
+  | 'EL_TERMINALI'
+  | 'YAZICI'
+  | 'LOGO'
+  | 'MIKROFON'
+  | 'OFFICE_365'
+  | 'DIGER'
+
+const STAT_KARTLARI: { key: StatKey; title: string; icon: typeof Package; color: string; bgColor: string }[] = [
+  { key: 'toplam', title: 'Toplam Zimmet', icon: Package, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  { key: 'NOTEBOOK_BILGISAYAR', title: 'Notebook Bilgisayar', icon: Laptop, color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
+  { key: 'DESKTOP_BILGISAYAR', title: 'Desktop Bilgisayar', icon: Cpu, color: 'text-violet-600', bgColor: 'bg-violet-100' },
+  { key: 'CEP_TELEFONU', title: 'Cep Telefonu', icon: Smartphone, color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
+  { key: 'EL_TERMINALI', title: 'El Terminali', icon: ScanLine, color: 'text-sky-600', bgColor: 'bg-sky-100' },
+  { key: 'YAZICI', title: 'Yazıcı', icon: Printer, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  { key: 'LOGO', title: 'LOGO', icon: Boxes, color: 'text-cyan-600', bgColor: 'bg-cyan-100' },
+  { key: 'MIKROFON', title: 'Mikrofon', icon: Mic, color: 'text-rose-600', bgColor: 'bg-rose-100' },
+  { key: 'OFFICE_365', title: 'Office 365', icon: Cloud, color: 'text-teal-600', bgColor: 'bg-teal-100' },
+  { key: 'DIGER', title: 'Diğer', icon: Shapes, color: 'text-slate-600', bgColor: 'bg-slate-100' },
+]
+
+// Bir zimmetin hangi istatistik/filtre kovasına düştüğünü belirler - hem
+// hesaplaIstatistik hem de kart tıklamasıyla gelen tür filtresi (eslesirTurFiltresi)
+// AYNI mantığı kullanır (tek yerden, duplike edilmeden).
+// "LOGO" kovası diğerlerinden farklı: tam eşleşme değil, turDiger "logo" ile
+// BAŞLIYORSA (LOGO Tiger3, LOGO Connect, LOGO Bordro Plus...) bu kovaya düşer.
+function turKovasi(zimmet: Pick<ZimmetItem, 'tur' | 'turDiger'>): Exclude<StatKey, 'toplam'> {
+  if (zimmet.tur === 'DIGER') {
+    const td = (zimmet.turDiger ?? '').trim().toLocaleLowerCase('tr-TR')
+    if (td === 'yazıcı' || td === 'yazici') return 'YAZICI'
+    if (td === 'mikrofon') return 'MIKROFON'
+    if (td.startsWith('logo')) return 'LOGO'
+    return 'DIGER'
+  }
+  if (
+    zimmet.tur === 'NOTEBOOK_BILGISAYAR' ||
+    zimmet.tur === 'DESKTOP_BILGISAYAR' ||
+    zimmet.tur === 'CEP_TELEFONU' ||
+    zimmet.tur === 'EL_TERMINALI' ||
+    zimmet.tur === 'OFFICE_365' ||
+    zimmet.tur === 'YAZICI' ||
+    zimmet.tur === 'MIKROFON'
+  ) {
+    return zimmet.tur
+  }
+  return 'DIGER'
+}
+
+function hesaplaIstatistik(zimmetler: ZimmetItem[]): Record<StatKey, number> {
+  const sayac: Record<StatKey, number> = {
+    toplam: zimmetler.length,
+    NOTEBOOK_BILGISAYAR: 0,
+    DESKTOP_BILGISAYAR: 0,
+    CEP_TELEFONU: 0,
+    EL_TERMINALI: 0,
+    YAZICI: 0,
+    LOGO: 0,
+    MIKROFON: 0,
+    OFFICE_365: 0,
+    DIGER: 0,
+  }
+  for (const z of zimmetler) sayac[turKovasi(z)]++
+  return sayac
+}
+
+// İstatistik kartına tıklayınca uygulanan tür filtresi - 'toplam' = filtre yok.
+function eslesirTurFiltresi(z: ZimmetItem, turFiltresi: StatKey): boolean {
+  if (turFiltresi === 'toplam') return true
+  return turKovasi(z) === turFiltresi
+}
+
+// ── Arama (substring, tr-TR duyarlı) ────────────────────────────────────────
+// Türkçe karakter katlamalı (ş→s, ğ→g vb.) ortak arama mantığı artık
+// src/lib/sandbox/zimmet-arama.ts'te - PersonelCombobox ile aynı fonksiyonu
+// kullanıyor, kod tekrarı yok.
+function eslesirArama(z: ZimmetItem, aramaMetni: string): boolean {
+  return cokluAlandaAra(
+    [z.zimmetSahibi.name ?? z.zimmetSahibi.email, z.zimmetSahibi.employeeId, z.departman, z.seriNumarasi],
+    aramaMetni
+  )
+}
+
 // Sunucuya gönderilecek "durum" query param'ı — onaylandi/imza_bekleniyor/belge_bekliyor
 // üçü de ONAYLANDI kayıtları çeker, aralarındaki ayrım client tarafında getZimmetDurumRozeti() ile yapılır.
-const FILTRE_DURUM_PARAM: Record<FiltreKey, string> = {
-  tumu: '',
-  onay_bekliyor: 'ONAY_BEKLIYOR',
-  onaylandi: 'ONAYLANDI',
-  imza_bekleniyor: 'ONAYLANDI',
-  belge_bekliyor: 'ONAYLANDI',
-  reddedildi: 'REDDEDILDI',
+function eslesirFiltre(z: ZimmetItem, filtre: FiltreKey): boolean {
+  switch (filtre) {
+    case 'tumu':
+      return true
+    case 'onay_bekliyor':
+      return z.durum === 'ONAY_BEKLIYOR'
+    case 'reddedildi':
+      return z.durum === 'REDDEDILDI'
+    case 'belge_bekliyor':
+      return z.durum === 'ONAYLANDI' && getZimmetDurumRozeti(z).label === 'Belge Yüklenmesi Gerekmektedir'
+    case 'imza_bekleniyor':
+      return z.durum === 'ONAYLANDI' && getZimmetDurumRozeti(z).label === 'İmza Bekleniyor'
+    case 'onaylandi':
+      return z.durum === 'ONAYLANDI' && getZimmetDurumRozeti(z).label === 'Tamamlandı'
+    default:
+      return true
+  }
+}
+
+// ── Sıralama ─────────────────────────────────────────────────────────────────
+
+type SortField = 'zimmetNo' | 'zimmetSahibi' | 'tur' | 'departman' | 'verilisTarihi' | 'durum'
+
+// Durum sıralaması alfabetik DEĞİL, iş akışı sırasına göre - rozet etiketleri
+// (getZimmetDurumRozeti) üzerinden, çünkü tabloda gösterilen de bu etiketler
+// (ham durum enum'u değil - ONAYLANDI kendi içinde Belge/İmza/Tamamlandı'ya ayrılıyor).
+const DURUM_SIRA: Record<string, number> = {
+  'Onay Bekliyor': 0,
+  'Belge Yüklenmesi Gerekmektedir': 1,
+  'İmza Bekleniyor': 2,
+  'Tamamlandı': 3,
+  'Reddedildi': 4,
+}
+
+function karsilastir(a: ZimmetItem, b: ZimmetItem, field: SortField): number {
+  switch (field) {
+    case 'zimmetNo':
+      return a.id.localeCompare(b.id, 'tr-TR')
+    case 'zimmetSahibi': {
+      const an = a.zimmetSahibi.name ?? a.zimmetSahibi.email
+      const bn = b.zimmetSahibi.name ?? b.zimmetSahibi.email
+      return an.localeCompare(bn, 'tr-TR')
+    }
+    case 'tur':
+      return turGosterim(a).localeCompare(turGosterim(b), 'tr-TR')
+    case 'departman':
+      return (a.departman ?? '').localeCompare(b.departman ?? '', 'tr-TR')
+    case 'verilisTarihi': {
+      const at = a.verilisTarihi ? new Date(a.verilisTarihi).getTime() : 0
+      const bt = b.verilisTarihi ? new Date(b.verilisTarihi).getTime() : 0
+      return at - bt
+    }
+    case 'durum': {
+      const as = DURUM_SIRA[getZimmetDurumRozeti(a).label] ?? 99
+      const bs = DURUM_SIRA[getZimmetDurumRozeti(b).label] ?? 99
+      return as - bs
+    }
+    default:
+      return 0
+  }
 }
 
 // ── Yardımcı bileşenler ──────────────────────────────────────────────────────
 
-function Avatarlar({ name }: { name: string | null | undefined }) {
+function Avatar({ name }: { name: string | null | undefined }) {
   const initials = (name ?? '?')
     .trim()
     .split(/\s+/)
@@ -76,7 +311,7 @@ function Avatarlar({ name }: { name: string | null | undefined }) {
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('') || '?'
   return (
-    <div className="w-9 h-9 rounded-full bg-[#1B4F72] text-white text-sm font-semibold flex items-center justify-center shrink-0">
+    <div className="w-8 h-8 rounded-full bg-[#1B4F72] text-white text-xs font-semibold flex items-center justify-center shrink-0">
       {initials}
     </div>
   )
@@ -88,41 +323,7 @@ function fmtDate(d: string | null | undefined) {
     : '—'
 }
 
-// ── Skeleton (animate-pulse, shadcn Skeleton yokken) ────────────────────────
-
-function SkelBlock({ className }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-slate-200 ${className ?? ''}`} />
-}
-
-function ZimmetSkeleton() {
-  return (
-    <Card>
-      <CardContent className="pt-4 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <SkelBlock className="w-9 h-9 rounded-full" />
-            <div className="space-y-1.5">
-              <SkelBlock className="h-4 w-32" />
-              <SkelBlock className="h-3 w-20" />
-            </div>
-          </div>
-          <SkelBlock className="h-5 w-20 rounded-full" />
-        </div>
-        <div className="grid grid-cols-4 gap-3">
-          {[...Array(4)].map((_, i) => (
-            <SkelBlock key={i} className="h-8" />
-          ))}
-        </div>
-        <div className="flex justify-end gap-2">
-          <SkelBlock className="h-8 w-16 rounded-md" />
-          <SkelBlock className="h-8 w-16 rounded-md" />
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ── PDF indirme ─────────────────────────────────────────────────────────────
+// ── PDF / belge indirme ──────────────────────────────────────────────────────
 
 async function indirlePdf(id: string, durum: string) {
   if (durum !== 'ONAYLANDI') {
@@ -146,8 +347,6 @@ async function indirlePdf(id: string, durum: string) {
   }
 }
 
-// ── Islak imza belgesi indirme ──────────────────────────────────────────────
-
 async function indirBelge(id: string) {
   try {
     const res = await fetch(`/api/zimmet-formu/${id}/belge`)
@@ -169,95 +368,24 @@ async function indirBelge(id: string) {
   }
 }
 
-// ── Zimmet kartı ─────────────────────────────────────────────────────────────
-
-function ZimmetKart({ zimmet, onUploaded }: { zimmet: ZimmetItem; onUploaded: () => void }) {
-  const turLabel = TUR_LABELS[zimmet.tur] ?? zimmet.tur
-  const rozet = getZimmetDurumRozeti(zimmet)
-
-  return (
-    <Card>
-      <CardContent className="pt-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <Avatarlar name={zimmet.zimmetSahibi.name} />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900 truncate">
-                {zimmet.zimmetSahibi.name ?? zimmet.zimmetSahibi.email}
-              </p>
-              <p className="text-xs text-slate-500 truncate">{zimmet.departman ?? '—'}</p>
-            </div>
-          </div>
-          <ZimmetDurumBadge zimmet={zimmet} />
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-xs">
-          <div>
-            <span className="text-slate-400 block mb-0.5">Tür</span>
-            <span className="font-medium text-slate-700">{turLabel}</span>
-          </div>
-          <div>
-            <span className="text-slate-400 block mb-0.5">Seri no</span>
-            <span className="font-medium text-slate-700">{zimmet.seriNumarasi ?? '—'}</span>
-          </div>
-          <div>
-            <span className="text-slate-400 block mb-0.5">Teslim tarihi</span>
-            <span className="font-medium text-slate-700">{fmtDate(zimmet.verilisTarihi)}</span>
-          </div>
-          <div>
-            <span className="text-slate-400 block mb-0.5">Oluşturan</span>
-            <span className="font-medium text-slate-700 truncate block">
-              {zimmet.createdBy.name ?? zimmet.createdBy.email}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
-          {rozet.label === 'Belge Yüklenmesi Gerekmektedir' && (
-            <IslakImzaYukleDialog zimmetId={zimmet.id} onUploaded={onUploaded} />
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => indirlePdf(zimmet.id, zimmet.durum)}
-          >
-            <Printer className="w-3.5 h-3.5 mr-1" />
-            PDF
-          </Button>
-          {zimmet.imzaModu === 'ISLAK' && zimmet.islakImzaDosyasi && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => indirBelge(zimmet.id)}
-            >
-              <Download className="w-3.5 h-3.5 mr-1" />
-              Islak imza belgesi
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" asChild>
-            <Link href={`/zimmet-formu/${zimmet.id}/onayla`}>
-              <Eye className="h-4 w-4 mr-1" />
-              Detay
-            </Link>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 // ── Ana bileşen ──────────────────────────────────────────────────────────────
 
 export function ZimmetListesi() {
   const [filtre, setFiltre] = useState<FiltreKey>('tumu')
+  const [turFiltresi, setTurFiltresi] = useState<StatKey>('toplam')
   const [aramaText, setAramaText] = useState('')
   const [aramaDebounced, setAramaDebounced] = useState('')
   const [zimmetler, setZimmetler] = useState<ZimmetItem[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [silinecekId, setSilinecekId] = useState<string | null>(null)
+  const [siliniyor, setSiliniyor] = useState(false)
+  const [duzenlenecek, setDuzenlenecek] = useState<ZimmetItem | null>(null)
+  const [duzenleForm, setDuzenleForm] = useState<DuzenleFormData>(BOS_DUZENLE_FORM)
+  const [kaydediliyor, setKaydediliyor] = useState(false)
 
   // Debounce 300ms
   useEffect(() => {
@@ -265,42 +393,64 @@ export function ZimmetListesi() {
     return () => clearTimeout(t)
   }, [aramaText])
 
+  // Durum/tür/arama filtreleri tamamen client tarafında uygulanıyor (bkz.
+  // eslesirFiltre/eslesirTurFiltresi/eslesirArama) - liste bir kere çekilip
+  // tamamı tutuluyor. Önceden arama sunucuya "ara" param'ıyla gidiyordu; bu
+  // makinede /liste endpoint'i bazen 5-19 saniye gecikebiliyor (pm2 loglarında
+  // doğrulandı, paylaşılan host/DB yükünden - kod hatası değil), bu da her
+  // tuşta yeni bir yavaş istek tetikleyip aramayı "donmuş" gösteriyordu.
+  // Client-side filtreleme bu gecikmeyi tamamen ortadan kaldırır.
   const fetchZimmetler = useCallback(() => {
     setYukleniyor(true)
     setHata(null)
 
-    const params = new URLSearchParams()
-    const durumParam = FILTRE_DURUM_PARAM[filtre]
-    if (durumParam) params.set('durum', durumParam)
-    if (aramaDebounced) params.set('ara', aramaDebounced)
-
-    return fetch(`/api/zimmet-formu/liste?${params.toString()}`)
+    return fetch('/api/zimmet-formu/liste')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Liste yüklenemedi'))))
       .then((data: ZimmetItem[]) => setZimmetler(data))
       .catch((e: unknown) => setHata(e instanceof Error ? e.message : 'Bilinmeyen hata'))
       .finally(() => setYukleniyor(false))
-  }, [filtre, aramaDebounced])
+  }, [])
 
-  // Fetch (filtre veya arama değişince yeniden çeker)
   useEffect(() => {
     fetchZimmetler()
   }, [fetchZimmetler])
 
-  // 'onaylandi', 'imza_bekleniyor' ve 'belge_bekliyor' aynı ONAYLANDI durumunu paylaşıyor — ayrım burada yapılır.
+  const istatistik = useMemo(() => hesaplaIstatistik(zimmetler), [zimmetler])
+
   const zimmetlerGorunen = useMemo(() => {
-    if (filtre === 'belge_bekliyor') {
-      return zimmetler.filter(
-        (z) => getZimmetDurumRozeti(z).label === 'Belge Yüklenmesi Gerekmektedir',
-      )
+    const filtreli = zimmetler.filter(
+      (z) =>
+        eslesirFiltre(z, filtre) &&
+        eslesirTurFiltresi(z, turFiltresi) &&
+        eslesirArama(z, aramaDebounced)
+    )
+    if (!sortField) return filtreli
+    const sirali = [...filtreli].sort((a, b) => karsilastir(a, b, sortField))
+    return sortDirection === 'asc' ? sirali : sirali.reverse()
+  }, [zimmetler, filtre, turFiltresi, aramaDebounced, sortField, sortDirection])
+
+  // Karta tekrar tıklayınca (toggle) veya "Toplam Zimmet"e tıklayınca filtre temizlenir.
+  function handleTurFiltresiClick(key: StatKey) {
+    setTurFiltresi((prev) => (key === 'toplam' || prev === key ? 'toplam' : key))
+  }
+
+  function handleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
     }
-    if (filtre === 'imza_bekleniyor') {
-      return zimmetler.filter((z) => getZimmetDurumRozeti(z).label === 'İmza Bekleniyor')
-    }
-    if (filtre === 'onaylandi') {
-      return zimmetler.filter((z) => getZimmetDurumRozeti(z).label === 'Tamamlandı')
-    }
-    return zimmetler
-  }, [zimmetler, filtre])
+  }
+
+  function SortIcon({ field }: { field: SortField }) {
+    if (sortField !== field) return <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />
+    return sortDirection === 'asc' ? (
+      <ArrowUp className="h-3.5 w-3.5" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5" />
+    )
+  }
 
   function handleExcelExport() {
     setExporting(true)
@@ -308,13 +458,77 @@ export function ZimmetListesi() {
     setTimeout(() => setExporting(false), 2000)
   }
 
+  // Yalnızca ONAY_BEKLIYOR durumundaki hatalı kayıtlar silinebilir - bkz.
+  // [id]/route.ts DELETE (durum kontrolü sunucu tarafında da tekrarlanıyor).
+  async function handleSil() {
+    if (!silinecekId) return
+    setSiliniyor(true)
+    try {
+      const res = await fetch(`/api/zimmet-formu/${silinecekId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string })
+        throw new Error((data as { error?: string }).error || 'Kayıt silinemedi')
+      }
+      toast.success('Kayıt silindi')
+      setSilinecekId(null)
+      await fetchZimmetler()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Kayıt silinemedi')
+    } finally {
+      setSiliniyor(false)
+    }
+  }
+
+  // Kayıt hangi durumda olursa olsun düzenlenebilir, durum değişmez - bkz.
+  // [id]/route.ts PATCH.
+  function acDuzenle(z: ZimmetItem) {
+    setDuzenlenecek(z)
+    setDuzenleForm({
+      seriNumarasi: z.seriNumarasi ?? '',
+      aciklama: z.aciklama ?? '',
+      ozellik: z.ozellik ?? '',
+      macAdresi: z.macAdresi ?? '',
+      pcAdi: z.pcAdi ?? '',
+      imeiNumarasi: z.imeiNumarasi ?? '',
+      marka: z.marka ?? '',
+      model: z.model ?? '',
+    })
+  }
+
+  function setDuzenleAlan<K extends keyof DuzenleFormData>(alan: K, deger: DuzenleFormData[K]) {
+    setDuzenleForm((prev) => ({ ...prev, [alan]: deger }))
+  }
+
+  async function handleDuzenleKaydet() {
+    if (!duzenlenecek) return
+    setKaydediliyor(true)
+    try {
+      const res = await fetch(`/api/zimmet-formu/${duzenlenecek.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(duzenleForm),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string })
+        throw new Error((data as { error?: string }).error || 'Kayıt güncellenemedi')
+      }
+      toast.success('Kayıt güncellendi')
+      setDuzenlenecek(null)
+      await fetchZimmetler()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Kayıt güncellenemedi')
+    } finally {
+      setKaydediliyor(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-3xl mx-auto px-4 pt-6 pb-24 space-y-5">
+      <div className="max-w-6xl mx-auto px-4 pt-6 pb-24 space-y-5">
         {/* Başlık */}
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="text-2xl font-medium text-slate-900">Zimmet geçmişi</h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={handleExcelExport}
@@ -334,9 +548,39 @@ export function ZimmetListesi() {
           </div>
         </div>
 
+        {/* İstatistik kartları */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {STAT_KARTLARI.map((stat) => {
+            const Icon = stat.icon
+            const aktif = turFiltresi === stat.key
+            return (
+              <Card
+                key={stat.key}
+                onClick={() => handleTurFiltresiClick(stat.key)}
+                title={aktif ? 'Filtreyi kaldır' : `${stat.title} olarak filtrele`}
+                className={`shadow-none cursor-pointer transition-all hover:shadow-md ${
+                  aktif ? 'border-2 border-[#1B4F72] ring-2 ring-[#1B4F72]/20' : ''
+                }`}
+              >
+                <CardContent className="p-3 flex items-center gap-3">
+                  <div className={`rounded-md p-1.5 ${stat.bgColor}`}>
+                    <Icon className={`h-4 w-4 ${stat.color}`} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-slate-500 truncate">{stat.title}</p>
+                    <p className="text-lg font-semibold text-slate-900 leading-tight">
+                      {istatistik[stat.key]}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+
         {/* Arama */}
         <Input
-          placeholder="Zimmet sahibi adı veya seri no ara..."
+          placeholder="Zimmet sahibi adı, departmanı, sicil no veya seri no ara..."
           value={aramaText}
           onChange={(e) => setAramaText(e.target.value)}
         />
@@ -360,29 +604,306 @@ export function ZimmetListesi() {
         </div>
 
         {/* Hata */}
-        {hata && (
-          <p className="text-sm text-rose-600">{hata}</p>
-        )}
+        {hata && <p className="text-sm text-rose-600">{hata}</p>}
 
-        {/* İçerik */}
-        {yukleniyor ? (
-          <div className="space-y-3">
-            <ZimmetSkeleton />
-            <ZimmetSkeleton />
-            <ZimmetSkeleton />
-          </div>
-        ) : zimmetlerGorunen.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 text-sm">
-            Henüz zimmet kaydı yok
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {zimmetlerGorunen.map((z) => (
-              <ZimmetKart key={z.id} zimmet={z} onUploaded={fetchZimmetler} />
-            ))}
-          </div>
-        )}
+        {/* Tablo */}
+        <Card>
+          <CardContent className="p-0">
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead
+                      className="cursor-pointer select-none hover:bg-accent"
+                      onClick={() => handleSort('zimmetNo')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Zimmet No
+                        <SortIcon field="zimmetNo" />
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer select-none hover:bg-accent"
+                      onClick={() => handleSort('zimmetSahibi')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Zimmet Sahibi
+                        <SortIcon field="zimmetSahibi" />
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer select-none hover:bg-accent"
+                      onClick={() => handleSort('tur')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Tür / Model
+                        <SortIcon field="tur" />
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer select-none hover:bg-accent"
+                      onClick={() => handleSort('departman')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Departman
+                        <SortIcon field="departman" />
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer select-none hover:bg-accent"
+                      onClick={() => handleSort('verilisTarihi')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Teslim Tarihi
+                        <SortIcon field="verilisTarihi" />
+                      </div>
+                    </TableHead>
+                    <TableHead
+                      className="cursor-pointer select-none hover:bg-accent"
+                      onClick={() => handleSort('durum')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Durum
+                        <SortIcon field="durum" />
+                      </div>
+                    </TableHead>
+                    <TableHead>Ekler</TableHead>
+                    <TableHead className="text-right">İşlemler</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {yukleniyor && (
+                    [...Array(4)].map((_, i) => (
+                      <TableRow key={i}>
+                        {[...Array(8)].map((__, j) => (
+                          <TableCell key={j}>
+                            <Skeleton className="h-5 w-full" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  )}
+                  {!yukleniyor && zimmetlerGorunen.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+                        Henüz zimmet kaydı yok
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {!yukleniyor &&
+                    zimmetlerGorunen.map((z) => {
+                      const rozet = getZimmetDurumRozeti(z)
+                      return (
+                        <TableRow key={z.id}>
+                          <TableCell className="font-mono text-xs text-slate-500">
+                            {z.id.slice(0, 8)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar name={z.zimmetSahibi.name} />
+                              <div className="min-w-0">
+                                <span className="block truncate font-medium text-slate-900">
+                                  {z.zimmetSahibi.name ?? z.zimmetSahibi.email}
+                                </span>
+                                {z.zimmetSahibi.employeeId && (
+                                  <span className="block text-xs text-slate-400">
+                                    Sicil: {z.zimmetSahibi.employeeId}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-slate-600">{turGosterim(z)}</TableCell>
+                          <TableCell className="text-slate-600">{z.departman ?? '—'}</TableCell>
+                          <TableCell className="text-slate-600">{fmtDate(z.verilisTarihi)}</TableCell>
+                          <TableCell>
+                            <ZimmetDurumBadge zimmet={z} />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              {rozet.label === 'Belge Yüklenmesi Gerekmektedir' && (
+                                <IslakImzaYukleDialog zimmetId={z.id} onUploaded={fetchZimmetler} />
+                              )}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                title="PDF indir"
+                                onClick={() => indirlePdf(z.id, z.durum)}
+                              >
+                                <Printer className="h-4 w-4" />
+                              </Button>
+                              {z.imzaModu === 'ISLAK' && z.islakImzaDosyasi && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Islak imza belgesini indir"
+                                  onClick={() => indirBelge(z.id)}
+                                >
+                                  <FileDown className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="sm" asChild>
+                                <Link href={`/zimmet-formu/${z.id}/onayla`}>
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  Detay
+                                </Link>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                title="Kaydı düzenle"
+                                onClick={() => acDuzenle(z)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              {z.durum === 'ONAY_BEKLIYOR' && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Kaydı sil"
+                                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                  onClick={() => setSilinecekId(z.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      <AlertDialog open={silinecekId !== null} onOpenChange={(open) => !open && setSilinecekId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bu kaydı silmek istediğinize eminmisiniz?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Örn. yanlış seri numarası gibi bir hata için. Bu işlem geri alınamaz.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={siliniyor}>Vazgeç</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleSil}
+              disabled={siliniyor}
+              className={buttonVariants({ variant: 'destructive' })}
+            >
+              {siliniyor ? 'Siliniyor…' : 'Sil'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={duzenlenecek !== null} onOpenChange={(open) => !open && setDuzenlenecek(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Zimmet Kaydını Düzenle</DialogTitle>
+            <DialogDescription>
+              Kayıt hangi durumda olursa olsun düzenlenebilir, durumu değişmez. Kaydettiğinizde aynı kayıt güncellenir, yeni bir kayıt oluşmaz.
+            </DialogDescription>
+          </DialogHeader>
+          {duzenlenecek && (
+            <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+              Zimmet Sahibi: <span className="font-medium text-slate-900">{duzenlenecek.zimmetSahibi.name ?? duzenlenecek.zimmetSahibi.email}</span>
+              {duzenlenecek.zimmetSahibi.employeeId && ` (Sicil: ${duzenlenecek.zimmetSahibi.employeeId})`}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="duzenle-seriNo">Seri Numarası</Label>
+              <Input
+                id="duzenle-seriNo"
+                value={duzenleForm.seriNumarasi}
+                onChange={(e) => setDuzenleAlan('seriNumarasi', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="duzenle-marka">Marka</Label>
+              <Input
+                id="duzenle-marka"
+                value={duzenleForm.marka}
+                onChange={(e) => setDuzenleAlan('marka', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="duzenle-model">Model</Label>
+              <Input
+                id="duzenle-model"
+                value={duzenleForm.model}
+                onChange={(e) => setDuzenleAlan('model', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="duzenle-mac">MAC Adresi</Label>
+              <Input
+                id="duzenle-mac"
+                value={duzenleForm.macAdresi}
+                onChange={(e) => setDuzenleAlan('macAdresi', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="duzenle-pcAdi">PC Adı</Label>
+              <Input
+                id="duzenle-pcAdi"
+                value={duzenleForm.pcAdi}
+                onChange={(e) => setDuzenleAlan('pcAdi', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="duzenle-imei">IMEI Numarası</Label>
+              <Input
+                id="duzenle-imei"
+                value={duzenleForm.imeiNumarasi}
+                onChange={(e) => setDuzenleAlan('imeiNumarasi', e.target.value)}
+              />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="duzenle-ozellik">Özellik</Label>
+              <Input
+                id="duzenle-ozellik"
+                value={duzenleForm.ozellik}
+                onChange={(e) => setDuzenleAlan('ozellik', e.target.value)}
+              />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="duzenle-aciklama">Açıklama</Label>
+              <Textarea
+                id="duzenle-aciklama"
+                rows={3}
+                value={duzenleForm.aciklama}
+                onChange={(e) => setDuzenleAlan('aciklama', e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDuzenlenecek(null)} disabled={kaydediliyor}>
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
+              onClick={handleDuzenleKaydet}
+              disabled={kaydediliyor}
+            >
+              {kaydediliyor ? 'Kaydediliyor…' : 'Kaydet'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

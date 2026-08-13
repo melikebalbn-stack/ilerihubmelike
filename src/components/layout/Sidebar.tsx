@@ -77,6 +77,7 @@ import {
   PanelLeftOpen,
   CalendarDays,
   Gauge,
+  Laptop,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, createContext, useContext } from "react"
@@ -152,6 +153,11 @@ const mainMenuItems = [
   // { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] }, // Şimdilik gizli
   { name: "Akademi", icon: GraduationCap, href: "/akademi", roles: ["*"] },
   { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+  // Zimmet Teslim Formu — cihaz teslim tutanağı (offboarding "Zimmet İade" ve
+  // envanter zimmetinden AYRI). Görünürlük zimmet-formu.view iznine bağlı;
+  // prod'da açılana kadar hiçbir rolde izin yok → menüde görünmez.
+  { name: "Zimmet Teslim Formu", icon: Laptop, href: "/zimmet-formu/liste", roles: [] as string[], permission: "zimmet-formu.view" },
+  { name: "Zimmetlerim", icon: Laptop, href: "/zimmet-formu/zimmetlerim", roles: [] as string[], permission: "zimmet-formu.view" },
 ]
 
 // Formlar alt menüsü

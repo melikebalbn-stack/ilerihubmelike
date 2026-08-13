@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { ZimmetDurumGecmisiTimeline } from '../../ZimmetDurumGecmisiTimeline'
 
 // ── Tipler ───────────────────────────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ type ZimmetKisi = { name: string | null; email: string }
 
 export type ZimmetOnayData = {
   id: string
-  zimmetSahibi: ZimmetKisi
+  zimmetSahibi: ZimmetKisi | null
   departman: string | null
   tur: string
   turDiger: string | null
@@ -76,6 +77,10 @@ export function ZimmetOnayClient({ zimmet }: { zimmet: ZimmetOnayData }) {
   const [hata, setHata] = useState<string | null>(null)
 
   const turLabel = TUR_LABELS[zimmet.tur] ?? zimmet.tur
+  // Excel import'tan serbest metinle gelip henüz Toplu Bağlama ile eşleştirilmemiş
+  // kayıtlarda zimmetSahibi yok - o durumda orijinal metni göster.
+  const zimmetSahibiAdi =
+    zimmet.zimmetSahibi?.name ?? zimmet.zimmetSahibi?.email ?? '—'
 
   async function islemYap(karar: 'ONAYLANDI' | 'REDDEDILDI') {
     setYukleniyor(true)
@@ -142,7 +147,7 @@ export function ZimmetOnayClient({ zimmet }: { zimmet: ZimmetOnayData }) {
           </CardHeader>
           <CardContent className="pt-0">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-              <InfoRow label="Zimmet Sahibi" value={zimmet.zimmetSahibi.name ?? zimmet.zimmetSahibi.email} />
+              <InfoRow label="Zimmet Sahibi" value={zimmetSahibiAdi} />
               <InfoRow label="Departman" value={zimmet.departman ?? '—'} />
               <InfoRow label="Tür" value={turLabel} />
               <InfoRow label="Seri Numarası" value={zimmet.seriNumarasi ?? '—'} />
@@ -222,6 +227,8 @@ export function ZimmetOnayClient({ zimmet }: { zimmet: ZimmetOnayData }) {
             </div>
           </>
         )}
+
+        <ZimmetDurumGecmisiTimeline zimmetId={zimmet.id} />
 
       </div>
     </div>

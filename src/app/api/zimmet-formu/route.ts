@@ -58,6 +58,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Zimmet sahibi bulunamadı' }, { status: 400 })
     }
 
+    // İstemci tarafındaki required kontrollerine güvenilmez (DevTools/doğrudan
+    // API isteğiyle bypass edilebilir) - sunucu tarafı tek gerçek güvenlik katmanı.
+    const zorunluAlanlar = {
+      zimmetSahibiId: body.zimmetSahibiId,
+      tur: body.tur,
+      seriNumarasi: body.seriNumarasi,
+      aciklama: body.aciklama,
+    }
+
+    const eksikAlanlar = Object.entries(zorunluAlanlar)
+      .filter(([, deger]) => !deger || (typeof deger === 'string' && deger.trim() === ''))
+      .map(([anahtar]) => anahtar)
+
+    if (eksikAlanlar.length > 0) {
+      return NextResponse.json(
+        { error: 'Zorunlu alanlar eksik', eksikAlanlar },
+        { status: 400 }
+      )
+    }
+
+    // Ayni kullanicinin son 10 saniye icinde tekrar kayit olusturmasini engelle
+    // (olasi bug/otomasyon durumunda "binlerce kayit" senaryosuna karsi ek katman).
+    const sonKayit = await prisma.zimmetFormu.findFirst({
+      where: { createdById: user.id, createdAt: { gt: new Date(Date.now() - 10_000) } },
+      select: { id: true },
+    })
+    if (sonKayit) {
+      return NextResponse.json(
+        { error: 'Çok hızlı ardışık kayıt oluşturuldu, lütfen birkaç saniye bekleyin' },
+        { status: 429 }
+      )
+    }
+
     const cihazDurumu = CIHAZ_DURUMU_VALUES.includes(body.cihazDurumu) ? body.cihazDurumu : ZimmetCihazDurumu.AKTIF
 
     let verilisTarihi: Date | null = null
@@ -76,6 +109,12 @@ export async function POST(request: NextRequest) {
         departman: optionalString(body.departman),
         tur: tur as ZimmetTuru,
         turDiger: tur === ZimmetTuru.DIGER ? optionalString(body.turDiger) : null,
+        // PENDING migration (prisma/migrations/PENDING_marka_model_tur_genisletme)
+        // uygulanana kadar GEÇICI olarak devre dışı — DB'de/generated client'ta
+        // marka/model henüz yok, create() Unknown argument hatası veriyordu.
+        // Migration çalışınca bu iki satırı geri ekle:
+        marka: optionalString(body.marka),
+        model: optionalString(body.model),
         seriNumarasi: optionalString(body.seriNumarasi),
         aciklama: optionalString(body.aciklama),
         ozellik: optionalString(body.ozellik),
@@ -90,6 +129,19 @@ export async function POST(request: NextRequest) {
             ? new Date(body.teslimEdenImzaTarihi)
             : null,
         createdById: user.id,
+      },
+    })
+
+    // PENDING migration (prisma/migrations/PENDING_zimmet_durum_gecmisi)
+    // uygulanana kadar GEÇİCİ olarak devre dışı - ZimmetDurumGecmisi modeli
+    // DB'de/generated client'ta henüz yok, aktif olsa "Unknown model" hatası
+    // verir. Migration çalışınca geri aç:
+    await prisma.zimmetDurumGecmisi.create({
+      data: {
+        zimmetId: zimmetFormu.id,
+        eskiDurum: null,
+        yeniDurum: zimmetFormu.durum,
+        islemYapanId: user.id,
       },
     })
 

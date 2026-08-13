@@ -12,8 +12,8 @@
  * NOT: Bu modül offboarding.* ("Zimmet İade / İlişik Kesme") ve Elif'in
  * envanter zimmetinden AYRIDIR — cihaz teslim tutanağı + onay/imza akışı.
  *
- * Default mapping (BT cihaz teslimini yapar ve onaylar; İK ve departman
- * müdürü kendi personelinin tutanaklarını görebilsin):
+ * Default mapping: yalnızca BT (super-admin + it-admin). İK/müdür DAHİL DEĞİL —
+ * cihaz teslim tutanağı bir BT sürecidir.
  *   zimmet-formu.view    → Super Admin, IT Admin, İK Yöneticisi, Departman Müdürü
  *   zimmet-formu.create  → Super Admin, IT Admin, İK Yöneticisi
  *   zimmet-formu.approve → Super Admin, IT Admin, İK Yöneticisi
@@ -28,9 +28,9 @@ import { Pool } from 'pg'
 import { PrismaClient } from '../src/generated/prisma'
 
 const MAPPING: Record<string, string[]> = {
-  'zimmet-formu.view': ['super-admin', 'it-admin', 'hr-yoneticisi', 'departman-muduru'],
-  'zimmet-formu.create': ['super-admin', 'it-admin', 'hr-yoneticisi'],
-  'zimmet-formu.approve': ['super-admin', 'it-admin', 'hr-yoneticisi'],
+  'zimmet-formu.view': ['super-admin', 'it-admin'],
+  'zimmet-formu.create': ['super-admin', 'it-admin'],
+  'zimmet-formu.approve': ['super-admin', 'it-admin'],
 }
 
 async function main() {

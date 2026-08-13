@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { bekleyenTaraf, kullaniciAdi } from '@/lib/recruitment/bekleyen'
 import { TASLAK_STATULER } from '@/lib/recruitment/taslak-statuler'
+import { efektifOturumDurumu, type SinavRozeti } from '@/lib/recruitment/assessment-session'
 
 // GET - Tüm iş başvurularını listele
 export async function GET(request: NextRequest) {
@@ -28,6 +29,9 @@ export async function GET(request: NextRequest) {
     if (!ikYetkili && !atananMudurYolu) {
       return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
     }
+
+    // Sınav sonucu filtresi: 'GECTI' | 'KALDI' | 'YOK' (sonuçlanmamış) | yok/'all' (tümü)
+    const sinavSonuc = searchParams.get('sinavSonuc')
 
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
@@ -58,7 +62,18 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    // KISIT EN SON ve KOŞULSUZ yazılır — yukarıdaki hiçbir filtre (status/search) bunu
+    // SINAV SONUCU filtresi — SUNUCU tarafında. Aynı `where` hem findMany hem count'ta
+    // kullanıldığı için sayfalama toplamı da tutarlı kalır (status filtresiyle aynı ilke).
+    // Küme TAM: Geçti / Kaldı / Sonuçlanmamış birleşimi tüm başvuruları kapsar.
+    //   GECTI/KALDI       → sonuçlanmış (result dolu) EN AZ BİR oturum var
+    //   YOK (sonuçlanmamış) → sonuçlanmış HİÇBİR oturum yok (oturumu olmayanlar dahil)
+    if (sinavSonuc === 'GECTI' || sinavSonuc === 'KALDI') {
+      where.assessmentSessions = { some: { result: sinavSonuc } }
+    } else if (sinavSonuc === 'YOK') {
+      where.assessmentSessions = { none: { result: { not: null } } }
+    }
+
+    // KISIT EN SON ve KOŞULSUZ yazılır — yukarıdaki hiçbir filtre (status/search/sınav) bunu
     // gevşetemez veya üzerine yazamaz. Atanan müdür yolunda kısıt ZORUNLUdur (atananMudurYolu
     // zaten assignedToMe=1 demek); İK için davranış eskisi gibi opsiyonel toggle.
     if (assignedToMe || atananMudurYolu) {
@@ -111,12 +126,48 @@ export async function GET(request: NextRequest) {
       : []
     const managerById = new Map(managers.map((u) => [u.id, u]))
 
+    // SINAV ROZETİ — sayfadaki TÜM başvuruların oturumları TEK findMany ile çekilir (N+1 yok,
+    // "bekleyen" sütunuyla aynı desen). Her başvuru için EN YENİ oturum rozeti belirler:
+    // sıralama createdAt DESC olduğundan Map'e ilk düşen zaten en yenisidir.
+    //
+    // token/sinavLink BU SORGUYA HİÇ GİRMEZ — rozet hiçbir role link sızdıramaz (İK dahil;
+    // İK linki detay ucundan, oturumOzetiGetir({ik:true}) ile alır).
+    const appIds = applications.map((a) => a.id)
+    const oturumlar = appIds.length
+      ? await prisma.assessmentSession.findMany({
+          where: { publicJobApplicationId: { in: appIds } },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            publicJobApplicationId: true,
+            status: true,
+            score: true,
+            result: true,
+            expiresAt: true,
+            assessment: { select: { passingScore: true } },
+          },
+        })
+      : []
+    const simdi = Date.now()
+    const rozetById = new Map<string, SinavRozeti>()
+    for (const o of oturumlar) {
+      if (rozetById.has(o.publicJobApplicationId)) continue // en yenisi zaten alındı
+      rozetById.set(o.publicJobApplicationId, {
+        // Lazy expiry TEK KAYNAK (assessment-session.ts) — liste ile detay aynı durumu gösterir.
+        durum: efektifOturumDurumu(o.status, o.expiresAt, simdi),
+        puan: o.score,
+        gecmeNotu: o.assessment.passingScore,
+        gecti: o.result === null ? null : o.result === 'GECTI',
+      })
+    }
+
     const withBekleyen = applications.map((a) => ({
       ...a,
       bekleyen: bekleyenTaraf(
         a.status,
         kullaniciAdi(a.assignedManagerId ? managerById.get(a.assignedManagerId) : undefined),
       ),
+      // Oturum yoksa null → client rozeti HİÇ çizmez.
+      sinavRozeti: rozetById.get(a.id) ?? null,
     }))
 
     // Saf müdür (İK yetkisi yok) görünürlüğü: detay ucundaki MANAGER_SELECT ile AYNI ilke —
@@ -135,6 +186,9 @@ export async function GET(request: NextRequest) {
           createdAt: a.createdAt,
           assignedManagerId: a.assignedManagerId,
           bekleyen: a.bekleyen,
+          // Müdür puanı/durumu GÖREBİLİR (mevcut davranış — oturumOzetiGetir({ik:false}) ile
+          // aynı ilke). Rozet zaten token/link taşımıyor, bu yüzden aynen geçer.
+          sinavRozeti: a.sinavRozeti,
         }))
 
     return NextResponse.json({

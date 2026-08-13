@@ -93,6 +93,39 @@ const OZET_SELECT = {
   assessment: { select: { name: true, passingScore: true } },
 } satisfies Prisma.AssessmentSessionSelect;
 
+/**
+ * LAZY EXPIRY — TEK KAYNAK.
+ * DB'de hâlâ ATANDI/BASLADI ama expiresAt geçmişse GÖRÜNEN durum SURESI_DOLDU'dur.
+ * (Kayıt güncellenmez; süre dolumu ilk erişimde public sınav ucunda yazılır.)
+ *
+ * İki çağıran: detay DTO'su (oturumOzetiGetir) ve liste rozeti (job-applications listesi).
+ * Kural burada TEK yerde durur — liste ile detay ASLA farklı durum göstermez.
+ */
+export function efektifOturumDurumu(
+  status: string,
+  expiresAt: Date,
+  now: number = Date.now(),
+): string {
+  return (status === "ATANDI" || status === "BASLADI") && expiresAt.getTime() < now
+    ? "SURESI_DOLDU"
+    : status;
+}
+
+/**
+ * Liste rozeti için sınav özeti — TEK KAYNAK.
+ * Detay DTO'su (OturumOzeti) çok alan taşıyor; liste yalnız rozet için gerekeni alır.
+ * sinavLink/token BURADA HİÇ YOK — rozet hiçbir role token sızdırmaz.
+ */
+export type SinavRozeti = {
+  /** Lazy expiry uygulanmış durum: ATANDI | BASLADI | TAMAMLANDI | SURESI_DOLDU | IPTAL */
+  durum: string;
+  /** Yüzde puan — yalnız tamamlanmış oturumda dolu. */
+  puan: number | null;
+  gecmeNotu: number;
+  /** null = sonuçlanmadı (henüz result yok). */
+  gecti: boolean | null;
+};
+
 export async function oturumOzetiGetir(
   client: Prisma.TransactionClient,
   publicJobApplicationId: string,
@@ -107,11 +140,7 @@ export async function oturumOzetiGetir(
   const now = Date.now();
 
   const toOzet = (o: (typeof hepsi)[number], aktifMi: boolean): OturumOzeti => {
-    // Lazy expiry: DB'de hâlâ ATANDI/BASLADI ama süresi geçmişse görünen durum SURESI_DOLDU.
-    const durum =
-      (o.status === "ATANDI" || o.status === "BASLADI") && o.expiresAt.getTime() < now
-        ? "SURESI_DOLDU"
-        : o.status;
+    const durum = efektifOturumDurumu(o.status, o.expiresAt, now);
     return {
       id: o.id,
       assessmentId: o.assessmentId,

@@ -49,7 +49,7 @@ import { format, differenceInCalendarDays } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { JobApplicationSensitiveSections } from "@/components/job-application/JobApplicationSensitiveSections"
-import { JobApplicationStatusBadge } from "@/components/recruitment/JobApplicationStatusBadge"
+import { JobApplicationStatusBadge, SinavSonucBadge } from "@/components/recruitment/JobApplicationStatusBadge"
 import { BasvuruDuzeltmeDialog } from "@/components/recruitment/BasvuruDuzeltmeDialog"
 // Geri gönderme modalındaki alan seçimi BEYAZ LİSTEDEN gelir — liste burada KOPYALANMAZ.
 // (Sunucu da aynı listeyle süzer: adaya-geri-gonder.ts)
@@ -292,6 +292,17 @@ export default function JobApplicationDetailPage() {
   const secimEtiketi = txTarget === "DEGERLENDIRICI" ? "Degerlendirici" : "Mudur"
   // Adaya geri gönderme modalı mı? (hedef bayrak kapalıyken zaten allowedTargets'ta yok)
   const isGeriGonder = txTarget === "ADAYA_GERI_GONDERILDI"
+  // Başlık rozeti: aktif oturum varsa o, yoksa EN YENİ geçmiş oturum (gecmis zaten
+  // createdAt DESC sıralı — assessment-session.ts). Yeni uç çağrılmaz, mevcut DTO kullanılır.
+  const rozetOturumu = app?.sinavlar?.aktif ?? app?.sinavlar?.gecmis?.[0] ?? null
+  const basliktakiSinavRozeti = rozetOturumu
+    ? {
+        durum: rozetOturumu.durum,
+        puan: rozetOturumu.puan,
+        gecmeNotu: rozetOturumu.gecmeNotu,
+        gecti: rozetOturumu.gecti,
+      }
+    : null
   // Kaçıncı kez geri gönderiliyor — StageLog'dan TÜRETİLİR, yeni kolon YOK.
   const geriGondermeSayisi = logs.filter((l) => l.toStatus === "ADAYA_GERI_GONDERILDI").length
 
@@ -511,6 +522,10 @@ export default function JobApplicationDetailPage() {
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold">{app.fullName}</h1>
               <JobApplicationStatusBadge status={app.status} />
+              {/* Sınav rozeti — başlıkta, statünün yanında. İV kartı açmadan sonucu görür.
+                  Liste ile AYNI bileşen ve AYNI kaynak alanlar (aktif oturum yoksa en yeni
+                  geçmiş oturum). Oturum hiç yoksa bileşen null döner. */}
+              <SinavSonucBadge rozet={basliktakiSinavRozeti} />
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Basvuru No: {app.applicationNumber} | {format(new Date(app.createdAt), "d MMMM yyyy HH:mm", { locale: tr })}

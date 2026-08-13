@@ -165,9 +165,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       assignedManagerId: oturum.publicJobApplication.assignedManagerId,
       requestedPosition: oturum.publicJobApplication.requestedPosition,
       applicationNumber: oturum.publicJobApplication.applicationNumber,
-      // yeniDurum: BUGÜN otomatik ilerleme YOK (Faz 3'te gelecek). O zaman burada
-      // transitionApplicationStatus({ otomatikSinavGecisi: true }) çağrılıp dönen
-      // statü buraya verilecek → aşama bildirimi atlanır, tek mail gider.
+      // yeniDurum VERİLMEZ — OTOMATİK AŞAMA GEÇİŞİ YOK (Faz 3 kararı).
+      // Sınav bitince başvurunun STATÜSÜ DEĞİŞMEZ; bir sonraki aşamayı her zaman İV seçer.
+      // Sistem yalnız sonucu görünür yapar (liste/detay sınav rozeti).
+      // notifyApplicationStageChange'deki otomatikSinavGecisi bayrağı bu yüzden şu an
+      // KULLANILMIYOR — ileride otomatik ilerleme istenirse kapı hazır duruyor.
     });
   } catch (err) {
     console.error("notifyAssessmentCompleted başarısız (sınav sonucu kalıcı):", err);

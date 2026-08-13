@@ -51,3 +51,59 @@ export function JobApplicationStatusBadge({
   const label = STATUS_LABELS_TR[known] ?? status
   return <Badge className={cn(color, className)}>{label}</Badge>
 }
+
+// ── Sınav sonucu rozeti ──────────────────────────────────────────────────────
+// Statü rozetiyle AYNI desende (renk haritası + <Badge>), ayrı bir bileşen dosyası
+// açılmadan yanına konuldu. Liste ve detay AYNI bileşeni kullanır → iki yerde farklı
+// renk/metin oluşamaz.
+//
+// Kaynak alanlar MEVCUT: AssessmentSession.result/score + CandidateAssessment.passingScore.
+// Yeni alan/tablo YOK. `durum` lazy-expiry uygulanmış hâldedir (assessment-session.ts).
+//
+// NOT — otomatik geçiş YOK: sınav bitince başvurunun STATÜSÜ değişmez. Bu rozet yalnız
+// sonucu GÖRÜNÜR yapar; bir sonraki aşamayı her zaman İV seçer.
+
+export type SinavRozetiVeri = {
+  durum: string
+  puan: number | null
+  gecmeNotu: number
+  gecti: boolean | null
+}
+
+// Sonuçlanmamış oturum durumları için renk + metin. Sonuçlananlar (gecti true/false)
+// aşağıda ayrı ele alınır — onlarda puan da gösterilir.
+const OTURUM_GORUNUM: Record<string, { renk: string; metin: string }> = {
+  ATANDI: { renk: "bg-slate-100 text-slate-700", metin: "Sinav: Atandi" },
+  BASLADI: { renk: "bg-slate-100 text-slate-700", metin: "Sinav: Devam ediyor" },
+  SURESI_DOLDU: { renk: "bg-slate-100 text-slate-700", metin: "Sinav: Suresi doldu" },
+  IPTAL: { renk: "bg-slate-100 text-slate-700", metin: "Sinav: Iptal" },
+}
+
+export function SinavSonucBadge({
+  rozet,
+  className,
+}: {
+  rozet: SinavRozetiVeri | null | undefined
+  className?: string
+}) {
+  // Oturum yoksa rozet HİÇ çizilmez.
+  if (!rozet) return null
+
+  // Sonuçlanmış: geçti/kaldı + puan/geçme notu.
+  if (rozet.gecti !== null) {
+    const renk = rozet.gecti
+      ? "bg-green-100 text-green-800"
+      : "bg-red-100 text-red-800"
+    const puanKismi = rozet.puan !== null ? ` · ${rozet.puan}/${rozet.gecmeNotu}` : ""
+    return (
+      <Badge className={cn(renk, className)}>
+        {`Sinav: ${rozet.gecti ? "Gecti" : "Kaldi"}${puanKismi}`}
+      </Badge>
+    )
+  }
+
+  // Sonuçlanmamış: nötr rozet, puan yok.
+  const g = OTURUM_GORUNUM[rozet.durum]
+  if (!g) return null
+  return <Badge className={cn(g.renk, className)}>{g.metin}</Badge>
+}

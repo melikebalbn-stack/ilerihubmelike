@@ -23,6 +23,7 @@ import { prisma } from '@/lib/prisma'
 import type { JobApplicationStatus } from '@/generated/prisma'
 import { STATUS_LABELS_TR } from '@/lib/recruitment/transitions'
 import { mudurKademesiMi } from '@/lib/recruitment/bekleyen'
+import { otomatikAtamaliMi } from '@/lib/recruitment/otomatik-atama'
 import { sendEmail } from '@/lib/email'
 import {
   asamaDegisikligiMaili,
@@ -130,6 +131,21 @@ const APPLICATION_LINK = (id: string) => `/strategic-hr/recruitment/job-applicat
  * edilirse aşama bildirimi HİÇ üretilmez; yeni durum sınav sonucu bildiriminin/mailinin
  * içinde gösterilir (notifyAssessmentCompleted → yeniDurum). Tek olay = tek bildirim.
  * Bayrak GEÇİŞİ engellemez, yalnız BİLDİRİMİ atlar — StageLog satırı yine yazılır.
+ *
+ * ── MAİL KAPSAMI (bilinçli olarak DAR) ───────────────────────────────────────
+ * Bir başvuru 6-8 aşamadan geçiyor. Her geçişte İV'nin 3 kişisine mail atmak posta
+ * kutusunu doldurur ve önemli maili gömer. Bu yüzden AŞAMA DEĞİŞİKLİĞİNDE mail
+ * YALNIZCA hedef ATAMALI bir statü olduğunda ve YALNIZCA ATANAN KİŞİYE gider —
+ * o kişinin aksiyon alması gerekiyor, kutusunda görmesi lazım.
+ *
+ * İV ekibine aşama maili GİTMEZ; onlara UYGULAMA İÇİ bildirim gider (her geçişte,
+ * aynen). İV'nin mail aldığı iki olay ayrı fonksiyonlarda: yeni başvuru
+ * (api/job-application) ve sınav sonucu (notifyAssessmentCompleted).
+ *
+ * "Atamalı statü" SABİT LİSTE DEĞİL — mudurKademesiMi() (matristen) ve
+ * otomatikAtamaliMi() (otomatik atama tablosundan) ile TÜRETİLİR. Matrise yeni bir
+ * atanan-kişi kademesi eklendiğinde (ör. Faz 4 TEKNIK_MULAKAT_UST_ONAY) burası
+ * kendiliğinden kapsar; bu dosyada statü adı yazılmaz.
  */
 export async function notifyApplicationStageChange(args: {
   applicationId: string
@@ -151,6 +167,12 @@ export async function notifyApplicationStageChange(args: {
   const fromLabel = STATUS_LABELS_TR[args.fromStatus] ?? args.fromStatus
   const actor = args.actorName ? ` (${args.actorName})` : ''
 
+  // Hedef ATAMALI bir statü mü? İki türetim kaynağı, sabit statü listesi YOK:
+  //   · mudurKademesiMi   → matriste "atanan kişi" rolünün geçiş yapabildiği statüler
+  //   · otomatikAtamaliMi → sistemin kişi atadığı statüler (otomatik-atama.ts tablosu)
+  // Aşama maili YALNIZ bu statülerde ve YALNIZ atanan kişiye gider.
+  const atamaliHedef = mudurKademesiMi(args.toStatus) || otomatikAtamaliMi(args.toStatus)
+
   // Müdür değerlendirmesi: yalnız atanan müdüre.
   if (args.toStatus === 'MUDUR_DEGERLENDIRME') {
     if (!args.assignedManagerId) return // müdür atanmamışsa bildirim yok
@@ -165,6 +187,7 @@ export async function notifyApplicationStageChange(args: {
         },
       ],
     })
+    await atananaAtamaMaili(args, fromLabel, toLabel)
     return
   }
 
@@ -211,10 +234,40 @@ export async function notifyApplicationStageChange(args: {
   if (data.length === 0) return
   await prisma.notification.createMany({ data })
 
-  // E-posta — ortak şablon (hr-basvuru.ts). Alıcı: İK ekibi (atanan müdüre mail GİTMEZ;
-  // ona uygulama içi bildirim yeterli, mail yükü artmasın). Best-effort: mail hatası
-  // uygulama içi bildirimi geri almaz, çağıran zaten try/catch ile sarar.
-  if (recipients.length > 0) {
+  // MAİL: yalnız ATAMALI hedeflerde, yalnız ATANAN KİŞİYE. İV ekibine aşama maili
+  // GİTMEZ (yukarıdaki uygulama içi bildirim onlara zaten gitti).
+  if (atamaliHedef) {
+    await atananaAtamaMaili(args, fromLabel, toLabel)
+  }
+}
+
+/**
+ * Atama maili — TEK alıcı: başvurunun atandığı kişi. İV ekibine KOPYA GİTMEZ.
+ *
+ * Alıcının e-postası User kaydından okunur (resolveHRRecipients İK kümesini döner,
+ * atanan kişi o kümede olmayabilir). E-postası yoksa sessizce atlanır.
+ * Best-effort: mail hatası uygulama içi bildirimi geri almaz — çağıran try/catch'li.
+ */
+async function atananaAtamaMaili(
+  args: {
+    applicationId: string
+    applicantName: string
+    assignedManagerId?: string | null
+    actorName?: string | null
+    requestedPosition?: string | null
+    applicationNumber?: string | null
+  },
+  fromLabel: string,
+  toLabel: string,
+): Promise<void> {
+  if (!args.assignedManagerId) return
+  try {
+    const u = await prisma.user.findUnique({
+      where: { id: args.assignedManagerId },
+      select: { email: true, name: true, firstName: true, lastName: true, isActive: true },
+    })
+    if (!u?.email || !u.isActive) return
+    const ad = [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.name || u.email
     const mail = asamaDegisikligiMaili({
       applicationId: args.applicationId,
       applicationNumber: args.applicationNumber ?? '—',
@@ -224,16 +277,9 @@ export async function notifyApplicationStageChange(args: {
       yeniDurumEtiketi: toLabel,
       aktorAdi: args.actorName,
     })
-    try {
-      await sendEmail(
-        recipients.map((r) => ({ email: r.email, name: r.name })),
-        mail.subject,
-        mail.text,
-        mail.html,
-      )
-    } catch (err) {
-      console.error('[hr-notify] aşama değişikliği maili gönderilemedi:', err)
-    }
+    await sendEmail([{ email: u.email, name: ad }], mail.subject, mail.text, mail.html)
+  } catch (err) {
+    console.error('[hr-notify] atama maili gönderilemedi:', err)
   }
 }
 

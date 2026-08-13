@@ -53,7 +53,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       status: true,
       expiresAt: true,
       startedAt: true,
-      publicJobApplication: { select: { id: true, fullName: true, assignedManagerId: true } },
+      // requestedPosition + applicationNumber: sınav sonucu MAİLİNİN aday bloğu/meta
+      // satırları için (KVKK: ad/pozisyon/no/tarih/durum dışında alan maile girmez).
+      publicJobApplication: {
+        select: {
+          id: true,
+          fullName: true,
+          assignedManagerId: true,
+          requestedPosition: true,
+          applicationNumber: true,
+        },
+      },
       assessment: {
         select: {
           name: true,
@@ -153,6 +163,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       gecmeNotu: oturum.assessment.passingScore,
       gecti,
       assignedManagerId: oturum.publicJobApplication.assignedManagerId,
+      requestedPosition: oturum.publicJobApplication.requestedPosition,
+      applicationNumber: oturum.publicJobApplication.applicationNumber,
+      // yeniDurum: BUGÜN otomatik ilerleme YOK (Faz 3'te gelecek). O zaman burada
+      // transitionApplicationStatus({ otomatikSinavGecisi: true }) çağrılıp dönen
+      // statü buraya verilecek → aşama bildirimi atlanır, tek mail gider.
     });
   } catch (err) {
     console.error("notifyAssessmentCompleted başarısız (sınav sonucu kalıcı):", err);

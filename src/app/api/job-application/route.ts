@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/generated/prisma'
+import type { JobApplicationStatus } from '@/generated/prisma'
+import { STATUS_LABELS_TR } from '@/lib/recruitment/transitions'
+import { yeniBasvuruMaili } from '@/lib/email-templates/hr-basvuru'
 import { updateApplicationStatus } from '@/lib/recruitment/stage-log'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { writeFile, mkdir } from 'fs/promises'
@@ -372,58 +375,37 @@ export async function POST(request: NextRequest) {
 }
 
 // E-posta gönderme fonksiyonu - Basit bildirim
+// Yeni başvuru maili — ORTAK ŞABLON (email-templates/hr-basvuru.ts).
+// Eskiden buradaki satır-içi HTML kullanılıyordu; üç bildirim tipi tek iskelete taşındı.
+// Ayrıca eski çağrı HTML'i `body` (düz metin) parametresine veriyordu ve sendEmail
+// html'i body'den türetiyordu (email.ts:218) — artık text ve html AYRI veriliyor.
 async function sendJobApplicationEmail(application: {
   id: string
+  applicationNumber: string
   fullName: string
   requestedPosition?: string | null
+  status?: JobApplicationStatus
+  createdAt?: Date
 }) {
-  const viewUrl = `https://hub.ilerigroup.com/strategic-hr/recruitment?tab=job-applications&id=${application.id}`
-
-  const emailContent = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;font-family:Arial,sans-serif;">
-<table cellpadding="0" cellspacing="0" border="0" width="400" align="center" style="border:2px solid #1e40af;">
-<tr>
-<td style="padding:12px 15px;border-bottom:1px solid #e5e7eb;font-family:Arial,sans-serif;">
-<span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">İLERİ GROUP</span><br>
-<span style="font-size:16px;font-weight:bold;color:#1e40af;">Yeni İş Başvurusu</span>
-</td>
-</tr>
-<tr>
-<td style="padding:15px;font-family:Arial,sans-serif;font-size:13px;color:#374151;line-height:20px;">
-<b style="color:#111827;">${application.fullName}</b>${application.requestedPosition ? '<br><span style="color:#6b7280;font-size:12px;">' + application.requestedPosition + ' pozisyonu için</span>' : ''}<br><br>
-iş başvurusunda bulundu.
-</td>
-</tr>
-<tr>
-<td style="padding:10px 15px;border-top:1px solid #e5e7eb;">
-<table cellpadding="0" cellspacing="0" border="0">
-<tr>
-<td style="border:2px solid #1e40af;padding:8px 16px;">
-<a href="${viewUrl}" style="color:#1e40af;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;text-decoration:none;">Başvuruyu İncele &rarr;</a>
-</td>
-</tr>
-</table>
-</td>
-</tr>
-<tr>
-<td style="padding:10px 15px;border-top:1px solid #e5e7eb;font-family:Arial,sans-serif;font-size:10px;color:#9ca3af;">İnsan Varlıkları Departmanı</td>
-</tr>
-</table>
-</body>
-</html>`
-
   // Hat 1 fix (PR-HR-NOTIF): gerçek İK ekibine email gönder, hardcoded recipient yerine
   const recipients = await resolveHRRecipients()
   if (recipients.length === 0) {
     console.warn('[job-application] HR recipient bulunamadı, email gönderilmedi')
     return
   }
+  const mail = yeniBasvuruMaili({
+    applicationId: application.id,
+    applicationNumber: application.applicationNumber,
+    adayAdi: application.fullName,
+    pozisyon: application.requestedPosition,
+    tarih: application.createdAt,
+    durumEtiketi: STATUS_LABELS_TR[application.status ?? 'PENDING'] ?? 'İV Ön İnceleme',
+  })
   await sendEmail(
     recipients.map(r => ({ email: r.email, name: r.name })),
-    `Yeni İş Başvurusu - ${application.fullName}`,
-    emailContent
+    mail.subject,
+    mail.text,
+    mail.html
   )
 }
 

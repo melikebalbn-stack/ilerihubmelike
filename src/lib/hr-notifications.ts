@@ -4,11 +4,16 @@
  * Hat 1 (iş başvurusu), Hat 3 (performans review) için ortak İK recipient
  * resolver. ticket-notifications.ts pattern'inin İK departmanı için karşılığı.
  *
- * Resolver kuralı:
+ * Resolver kuralı (KODUN GERÇEKTE YAPTIĞI — aşağıdaki SQL ile birebir):
  *   isActive = true VE
- *     (department adında "insan varliklari" / "ik" / "hr" geçen) VEYA
- *     (role = HR_MANAGER) VEYA
- *     (User.permissions içinde 'recruitment.admin' veya 'hr.admin')
+ *     (department adında "insan varliklari" geçen) VEYA
+ *     (department tam olarak "ik" / "hr" / "human resources") VEYA
+ *     (role = HR_MANAGER)
+ *
+ * İZİN (permission) KOŞULU YOKTUR. Bu yorum eskiden "recruitment.admin / hr.admin
+ * izni olanlar da alır" diyordu; SQL'de böyle bir koşul hiç olmadı — yorum yanlıştı,
+ * kod doğru. Alıcı kümesi DEPARTMAN + ROL ile belirlenir ve bilerek DARDIR
+ * (izin tabanlı genişletme İV'nin istediği davranış değil).
  *
  * Türkçe karakter normalize: unaccent extension'ı varsa raw SQL,
  * yoksa Türkçeli + Türkçesiz iki varyant fallback.
@@ -18,6 +23,11 @@ import { prisma } from '@/lib/prisma'
 import type { JobApplicationStatus } from '@/generated/prisma'
 import { STATUS_LABELS_TR } from '@/lib/recruitment/transitions'
 import { mudurKademesiMi } from '@/lib/recruitment/bekleyen'
+import { sendEmail } from '@/lib/email'
+import {
+  asamaDegisikligiMaili,
+  sinavSonucuMaili,
+} from '@/lib/email-templates/hr-basvuru'
 
 export type HRRecipient = {
   id: string
@@ -39,8 +49,9 @@ function toRecipient(u: {
 }
 
 /**
- * İK departmanındaki + HR_MANAGER role + recruitment.admin permission'lı
- * aktif kullanıcıları döner. Email'siz kullanıcı atlanır.
+ * İK departmanındaki + HR_MANAGER rollü aktif kullanıcıları döner.
+ * (Permission tabanlı bir koşul YOKTUR — bkz. dosya başı.)
+ * Email'siz kullanıcı atlanır.
  *
  * Dedup: aynı user_id birden fazla kez gelmez.
  */
@@ -112,6 +123,13 @@ const APPLICATION_LINK = (id: string) => `/strategic-hr/recruitment/job-applicat
  * - diğer tüm geçişler: resolveHRRecipients() ile İK ekibine.
  * Notification'lar createMany ile tek seferde. Metinlerde STATUS_LABELS_TR (ham enum yazılmaz).
  * Alıcı yoksa sessizce çıkar (hata fırlatmaz — çağıran best-effort bekler).
+ *
+ * ÇİFT BİLDİRİM KAPISI (otomatikSinavGecisi):
+ * Sınav sonucu OTOMATİK bir aşama geçişi tetiklediğinde İV iki bildirim alırdı:
+ * (1) "sınav sonucu", (2) "aşama değişti". İkisi aynı olayı anlatıyor. Bu bayrak set
+ * edilirse aşama bildirimi HİÇ üretilmez; yeni durum sınav sonucu bildiriminin/mailinin
+ * içinde gösterilir (notifyAssessmentCompleted → yeniDurum). Tek olay = tek bildirim.
+ * Bayrak GEÇİŞİ engellemez, yalnız BİLDİRİMİ atlar — StageLog satırı yine yazılır.
  */
 export async function notifyApplicationStageChange(args: {
   applicationId: string
@@ -120,7 +138,14 @@ export async function notifyApplicationStageChange(args: {
   toStatus: JobApplicationStatus
   assignedManagerId?: string | null
   actorName?: string | null
+  requestedPosition?: string | null
+  applicationNumber?: string | null
+  /** Sınav sonucu tetikledi → bu bildirim ATLANIR (tek mail sınav sonucundan gider). */
+  otomatikSinavGecisi?: boolean
 }): Promise<void> {
+  // Çift bildirim kapısı — en başta, hiçbir alıcı çözümlemesi yapılmadan çık.
+  if (args.otomatikSinavGecisi) return
+
   const link = APPLICATION_LINK(args.applicationId)
   const toLabel = STATUS_LABELS_TR[args.toStatus] ?? args.toStatus
   const fromLabel = STATUS_LABELS_TR[args.fromStatus] ?? args.fromStatus
@@ -185,12 +210,41 @@ export async function notifyApplicationStageChange(args: {
 
   if (data.length === 0) return
   await prisma.notification.createMany({ data })
+
+  // E-posta — ortak şablon (hr-basvuru.ts). Alıcı: İK ekibi (atanan müdüre mail GİTMEZ;
+  // ona uygulama içi bildirim yeterli, mail yükü artmasın). Best-effort: mail hatası
+  // uygulama içi bildirimi geri almaz, çağıran zaten try/catch ile sarar.
+  if (recipients.length > 0) {
+    const mail = asamaDegisikligiMaili({
+      applicationId: args.applicationId,
+      applicationNumber: args.applicationNumber ?? '—',
+      adayAdi: args.applicantName,
+      pozisyon: args.requestedPosition,
+      eskiDurumEtiketi: fromLabel,
+      yeniDurumEtiketi: toLabel,
+      aktorAdi: args.actorName,
+    })
+    try {
+      await sendEmail(
+        recipients.map((r) => ({ email: r.email, name: r.name })),
+        mail.subject,
+        mail.text,
+        mail.html,
+      )
+    } catch (err) {
+      console.error('[hr-notify] aşama değişikliği maili gönderilemedi:', err)
+    }
+  }
 }
 
 /**
- * Aday sınavı tamamlanınca in-app bildirim. Alıcılar: İK ekibi (resolveHRRecipients) +
- * varsa atanan müdür — TEK createMany (userId tekilleştirilir). Başlık geçti/kaldı ayrımı,
- * mesajda puan + geçme notu. Süreci BOZMAZ (çağıran try/catch ile sarar).
+ * Aday sınavı tamamlanınca bildirim (in-app + e-posta). Alıcılar: İK ekibi
+ * (resolveHRRecipients) + varsa atanan müdür — TEK createMany (userId tekilleştirilir).
+ * Başlık geçti/kaldı ayrımı, mesajda puan + geçme notu. Süreci BOZMAZ (çağıran try/catch).
+ *
+ * yeniDurum: sınav sonucu OTOMATİK bir aşama geçişi tetiklediyse yeni statü buraya verilir.
+ * Böylece "sonuç + yeni durum" TEK bildirimde/mailde çıkar ve aşama bildirimi ayrıca
+ * üretilmez (bkz. notifyApplicationStageChange → otomatikSinavGecisi).
  */
 export async function notifyAssessmentCompleted(args: {
   applicationId: string
@@ -200,12 +254,21 @@ export async function notifyAssessmentCompleted(args: {
   gecmeNotu: number
   gecti: boolean
   assignedManagerId?: string | null
+  requestedPosition?: string | null
+  applicationNumber?: string | null
+  /** Otomatik ilerleme olduysa yeni statü — tek bildirimde gösterilir. */
+  yeniDurum?: JobApplicationStatus | null
 }): Promise<void> {
   const link = APPLICATION_LINK(args.applicationId)
+  const yeniDurumEtiketi = args.yeniDurum
+    ? (STATUS_LABELS_TR[args.yeniDurum] ?? args.yeniDurum)
+    : null
   const title = `Sınav sonucu: ${args.gecti ? 'Geçti' : 'Kaldı'}`
   const message =
     `${args.applicantName} — ${args.assessmentTitle}: ${args.puan} puan ` +
-    `(geçme notu ${args.gecmeNotu}) — ${args.gecti ? 'geçti' : 'kaldı'}.`
+    `(geçme notu ${args.gecmeNotu}) — ${args.gecti ? 'geçti' : 'kaldı'}.` +
+    // Aşama bildirimi ATLANDIĞI için yeni durum BU mesajda görünmeli.
+    (yeniDurumEtiketi ? ` Yeni durum: ${yeniDurumEtiketi}.` : '')
 
   // İK + (varsa) atanan müdür; Set ile tekilleştir (aynı kişi iki bildirim almasın).
   const recipients = await resolveHRRecipients()
@@ -222,4 +285,29 @@ export async function notifyAssessmentCompleted(args: {
       link,
     })),
   })
+
+  // E-posta — ortak şablon. Alıcı: İK ekibi (mail adresi olanlar).
+  if (recipients.length > 0) {
+    const mail = sinavSonucuMaili({
+      applicationId: args.applicationId,
+      applicationNumber: args.applicationNumber ?? '—',
+      adayAdi: args.applicantName,
+      pozisyon: args.requestedPosition,
+      sinavAdi: args.assessmentTitle,
+      puan: args.puan,
+      gecmeNotu: args.gecmeNotu,
+      gecti: args.gecti,
+      yeniDurumEtiketi,
+    })
+    try {
+      await sendEmail(
+        recipients.map((r) => ({ email: r.email, name: r.name })),
+        mail.subject,
+        mail.text,
+        mail.html,
+      )
+    } catch (err) {
+      console.error('[hr-notify] sınav sonucu maili gönderilemedi:', err)
+    }
+  }
 }

@@ -119,6 +119,10 @@ export async function transitionApplicationStatus(args: {
   // SINAV geçişinde sınav. Verilirse AYNI tx'te AssessmentSession açılır (idempotent) +
   // StageLog note'una sınav ADI eklenir. Oturum açılamazsa tüm geçiş geri alınır.
   assessmentId?: string | null;
+  // ÇİFT BİLDİRİM KAPISI: geçişi SINAV SONUCU tetiklediyse (otomatik ilerleme) aşama
+  // bildirimi üretilmez — yeni durum sınav sonucu bildiriminde/mailinde gösterilir.
+  // Geçişin kendisi ve StageLog satırı ETKİLENMEZ, yalnız bildirim atlanır.
+  otomatikSinavGecisi?: boolean;
 }) {
   // Güvenlik ağı (invariant): SINAV'a geçiş assessmentId olmadan yapılamaz — oturumsuz
   // SINAV üretilemez. Tek çağıran (transition route) zaten guard'lı; bu, gelecekteki
@@ -131,7 +135,15 @@ export async function transitionApplicationStatus(args: {
   const outcome = await prisma.$transaction(async (tx) => {
     const before = await tx.publicJobApplication.findUnique({
       where: { id: args.applicationId },
-      select: { status: true, fullName: true, assignedManagerId: true },
+      // requestedPosition + applicationNumber: bildirim MAİLİNİN aday bloğu ve meta
+      // satırları için. KVKK: mailde yalnız ad/pozisyon/no/tarih/durum geçer.
+      select: {
+        status: true,
+        fullName: true,
+        assignedManagerId: true,
+        requestedPosition: true,
+        applicationNumber: true,
+      },
     });
     if (!before) {
       throw new Error(`PublicJobApplication bulunamadı: ${args.applicationId}`);
@@ -243,12 +255,16 @@ export async function transitionApplicationStatus(args: {
       updated,
       fromStatus: before.status,
       applicantName: before.fullName,
+      requestedPosition: before.requestedPosition,
+      applicationNumber: before.applicationNumber,
       // Bildirim için etkin müdür: yeni atanan varsa o, yoksa mevcut.
       effectiveManagerId: args.assignedManagerId ?? before.assignedManagerId ?? null,
     };
   });
 
   // COMMIT sonrası — bildirim best-effort.
+  // otomatikSinavGecisi=true ise helper hiçbir bildirim üretmeden erken döner
+  // (tek olay = tek bildirim; yeni durum sınav sonucu bildiriminde çıkar).
   try {
     await notifyApplicationStageChange({
       applicationId: args.applicationId,
@@ -257,6 +273,9 @@ export async function transitionApplicationStatus(args: {
       toStatus: args.toStatus,
       assignedManagerId: outcome.effectiveManagerId,
       actorName: args.actorName ?? null,
+      requestedPosition: outcome.requestedPosition,
+      applicationNumber: outcome.applicationNumber,
+      otomatikSinavGecisi: args.otomatikSinavGecisi,
     });
   } catch (err) {
     console.error("notifyApplicationStageChange başarısız (geçiş kalıcı):", err);

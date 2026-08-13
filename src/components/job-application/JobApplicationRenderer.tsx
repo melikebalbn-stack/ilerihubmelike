@@ -383,23 +383,34 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
         <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full text-center">
           <CheckCircle2 className="h-12 w-12 text-emerald-500 mx-auto mb-4" />
           <h1 className="text-xl font-medium text-slate-900 mb-2">Başvurunuz Alındı</h1>
-          <p className="text-sm text-slate-500">
-            Başvurunuz başarıyla kaydedildi.
-            {submitted.applicationNumber && (
-              <>
-                {' '}Başvuru numaranız:{' '}
-                <strong className="text-slate-900">{submitted.applicationNumber}</strong>.
-              </>
-            )}
-          </p>
+          <p className="text-sm text-slate-500">Başvurunuz başarıyla kaydedildi.</p>
+
+          {/* Faz 2: aday bu ekranı kapattıktan sonra başvurusuna YALNIZ bu numara +
+              TC ile dönebiliyor (takip imzası storage'a yazılmıyor). Numara bu yüzden
+              vurgulu bir kutuda ve "not edin" uyarısıyla veriliyor. */}
+          {submitted.applicationNumber && (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Başvuru Numaranız</p>
+              <p className="mt-0.5 text-sm font-semibold text-slate-900 break-all">
+                {submitted.applicationNumber}
+              </p>
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                Bu numarayı not edin — durum sorgulamak için gerekli.
+              </p>
+            </div>
+          )}
+
           {yoklamaBitti ? (
             <p className="text-xs text-amber-600 mt-4">
-              Sınav ataması gelmedi. Lütfen İnsan Varlıkları ekibi ile görüşün.
+              Sınav ataması gelmedi. Lütfen İnsan Varlıkları ekibi ile görüşün. Daha sonra
+              durumunuzu <strong>/basvuru-sorgula</strong> adresinden sorgulayabilirsiniz.
             </p>
           ) : (
             <p className="text-xs text-slate-400 mt-4">
               İnsan Varlıkları ekibimiz değerlendirme sonrası sizinle iletişime geçecektir.
-              Sınav atanırsa bu ekranda görünecektir.
+              Sınav atanırsa bu ekranda görünecektir. Daha sonra durumunuzu başvuru numaranız
+              ve T.C. kimlik numaranızla <strong className="text-slate-600">/basvuru-sorgula</strong>{' '}
+              adresinden sorgulayabilirsiniz.
             </p>
           )}
           <div className="flex flex-col sm:flex-row gap-3 mt-6 justify-center">

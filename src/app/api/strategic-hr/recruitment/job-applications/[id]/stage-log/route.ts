@@ -9,7 +9,7 @@ import {
   requiresRejectionReason,
   requiresAssessment,
 } from "@/lib/recruitment/transitions";
-import { bekleyenTaraf, kullaniciAdi } from "@/lib/recruitment/bekleyen";
+import { bekleyenTaraf, kararSizdeMi, terminalMi, kullaniciAdi } from "@/lib/recruitment/bekleyen";
 import { bayragaGoreSuz } from "@/lib/recruitment/adaya-geri-gonder";
 import { ikiKademeSuz } from "@/lib/recruitment/teknik-mulakat-bayrak";
 
@@ -115,6 +115,10 @@ export async function GET(
   );
   const sonGecis = rows.length > 0 ? rows[rows.length - 1].createdAt : null;
 
+  // FAZ 5 — "karar SENDE" bilgisi SUNUCUDA hesaplanır (client rol/statü kuralı yürütmez).
+  // Kural bekleyen.ts'te matristen türer; müdür, teknik mülakatçı ve üst amiri birden kapsar.
+  const kararSizde = kararSizdeMi(application.status, roles);
+
   // FAZ 4 — teknik mülakat onay zinciri görünümü: kim, hangi kademe, karar, yorum, tarih.
   // Onaycı adı manuel join (User relation'ı select'te alınıyor) — ham id dışa verilmez.
   const onaylar = await prisma.publicJobApplicationApproval.findMany({
@@ -145,12 +149,17 @@ export async function GET(
   return NextResponse.json({
     logs,
     onayZinciri,
-    bekleyen: bekleyen ? { ...bekleyen, beri: sonGecis } : null,
+    bekleyen: bekleyen ? { ...bekleyen, beri: sonGecis, siz: kararSizde } : null,
     workflow: {
       currentStatus: application.status,
       roles,
       allowedTargets,
+      // isTerminal: "BU KULLANICININ yapabilecegi islem yok" (hedef listesi bos).
+      // surecBitti: "SURECIN KENDISI bitti" — hicbir rolun cikisi yok (bekleyen.ts · terminalMi).
+      // Faz 5'ten sonra müdür olumsuz görüş verip REVIEWING'e döndüğünde ilki TRUE, ikincisi
+      // FALSE olur; ekran "başvuru sonuçlandı" DEMEMELİ — süreç İV'de devam ediyor.
       isTerminal: allowedTargets.length === 0,
+      surecBitti: terminalMi(application.status),
       assignedManagerId: application.assignedManagerId,
       requiresManagerTargets,
       requiresReasonTargets,

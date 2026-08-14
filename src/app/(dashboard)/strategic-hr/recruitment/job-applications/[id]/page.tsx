@@ -56,7 +56,8 @@ import { BasvuruDuzeltmeDialog } from "@/components/recruitment/BasvuruDuzeltmeD
 // (Sunucu da aynı listeyle süzer: adaya-geri-gonder.ts)
 import { ALAN_ETIKETLERI, DUZENLENEBILIR_ALANLAR } from "@/lib/recruitment/basvuru-duzeltme-alanlari"
 import { BasvuruDuzeltmeGecmisi } from "@/components/recruitment/BasvuruDuzeltmeGecmisi"
-import { STATUS_LABELS_TR } from "@/lib/recruitment/transitions"
+import { STATUS_LABELS_TR, roluKademedeMi } from "@/lib/recruitment/transitions"
+import type { JobApplicationStatus } from "@/generated/prisma"
 
 const educationLevelLabels: Record<string, string> = {
   PRIMARY_SCHOOL: "Ilkogretim",
@@ -146,6 +147,8 @@ type WorkflowCtx = {
   roles: string[]
   allowedTargets: string[]
   isTerminal: boolean
+  // Faz 5 — isTerminal "benim islemim yok", surecBitti "surec bitti" demektir (bkz. stage-log ucu).
+  surecBitti?: boolean
   assignedManagerId: string | null
   requiresManagerTargets: string[]
   requiresReasonTargets: string[]
@@ -155,7 +158,14 @@ type WorkflowCtx = {
   otomatikAtamaHedefleri?: Record<string, { ad: string | null; hazir: boolean }>
 }
 // "Kimde bekliyor" — SUNUCUDAN gelir (src/lib/recruitment/bekleyen.ts). Client kural yürütmez.
-type BekleyenCtx = { tip: "MUDUR" | "IK" | "ADAY"; ad: string; kisa: string; beri: string | null }
+// siz: karar ŞU AN bu kullanıcıda mı (Faz 5) — sunucuda hesaplanır (bekleyen.ts · kararSizdeMi).
+type BekleyenCtx = {
+  tip: "MUDUR" | "IK" | "ADAY"
+  ad: string
+  kisa: string
+  beri: string | null
+  siz?: boolean
+}
 type AssessmentOption = { id: string; title: string; durationMin: number; passingScore: number; soruSayisi: number }
 type OturumOzeti = {
   id: string; assessmentId: string; assessmentTitle: string; durum: string; puan: number | null; gecmeNotu: number
@@ -315,7 +325,15 @@ export default function JobApplicationDetailPage() {
     !!workflow &&
     ((workflow.roles.includes("TEKNIK_MULAKATCI") && workflow.currentStatus === "TEKNIK_MULAKAT") ||
       (workflow.roles.includes("TEKNIK_UST_AMIR") && workflow.currentStatus === "TEKNIK_MULAKAT_UST_ONAY"))
-  const olumsuzGorus = teknikKademe && txTarget === "REVIEWING"
+  // Faz 5 — müdür kademe kararı. Statü listesi GÖMÜLMEZ: sunucudaki guard ile AYNI
+  // türetim (roluKademedeMi, transitions.ts) burada da kullanılır.
+  const mudurKademe =
+    !!workflow &&
+    workflow.roles.includes("MUDUR") &&
+    roluKademedeMi(workflow.currentStatus as JobApplicationStatus, "MUDUR")
+  // Karar yorumu isteyen her kademe (teknik + müdür) — olumsuz görüşte yorum ZORUNLU.
+  const kademeKarari = teknikKademe || mudurKademe
+  const olumsuzGorus = kademeKarari && txTarget === "REVIEWING"
   // Seçilen mülakatçının üst amir önizlemesi (2. kademe atlanacak mı).
   const secilenMulakatci =
     txTarget === "TEKNIK_MULAKAT" && txManagerId
@@ -386,7 +404,7 @@ export default function JobApplicationDetailPage() {
       if (requiresAssessment && txAssessmentId) body.assessmentId = txAssessmentId
       // Alan ADLARI gider; etikete çevirme + beyaz liste süzmesi SUNUCUDA yapılır.
       if (isGeriGonder && txAlanlar.length) body.duzeltilecekAlanlar = txAlanlar
-      if (teknikKademe && txKademeYorumu.trim()) body.kademeYorumu = txKademeYorumu.trim()
+      if (kademeKarari && txKademeYorumu.trim()) body.kademeYorumu = txKademeYorumu.trim()
       const res = await fetch(`/api/recruitment/applications/${id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1080,7 +1098,9 @@ export default function JobApplicationDetailPage() {
                     Sabit buton listesi yok; allowedTargets değişince buton kümesi de değişir. */}
                 {workflow?.isTerminal ? (
                   <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                    Bu basvuru sonuclandi. Yeni durum gecisi yapilamaz.
+                    {workflow.surecBitti === false
+                      ? `Bu asamada sizin yapabileceginiz bir islem yok. Karar simdi ${bekleyen?.ad ?? "Insan Varliklari"}'nda.`
+                      : "Bu basvuru sonuclandi. Yeni durum gecisi yapilamaz."}
                   </div>
                 ) : workflow && workflow.allowedTargets.length > 0 ? (
                   <div className="mt-2 flex flex-col gap-2">
@@ -1088,9 +1108,14 @@ export default function JobApplicationDetailPage() {
                       const isReject = target === "REJECTED"
                       // SINAV hedefi + zaten aktif oturum varsa: "Sınavı Değiştir" (aynı-statü değişim).
                       const sinavDegistir = target === "SINAV" && !!app.sinavlar?.aktif
+                      // Faz 5 — karar kademesindeki kişi için REVIEWING "geri alma" değil
+                      // OLUMSUZ GÖRÜŞ'tür. "İV Havuzu" ham etiketi bu kişiye anlamsız gelir.
+                      const olumsuzButonu = kademeKarari && target === "REVIEWING"
                       const label = sinavDegistir
                         ? "Sınavı Değiştir"
-                        : STATUS_LABELS_TR[target as keyof typeof STATUS_LABELS_TR] || target
+                        : olumsuzButonu
+                          ? "Olumsuz gorus (IV'ye dondur)"
+                          : STATUS_LABELS_TR[target as keyof typeof STATUS_LABELS_TR] || target
                       return (
                         <Button
                           key={target}
@@ -1099,7 +1124,7 @@ export default function JobApplicationDetailPage() {
                           className="justify-start"
                           onClick={() => openTransition(target)}
                         >
-                          {isReject ? (
+                          {isReject || olumsuzButonu ? (
                             <XCircle className="h-4 w-4 mr-2" />
                           ) : (
                             <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -1397,6 +1422,8 @@ export default function JobApplicationDetailPage() {
               {bekleyen && (
                 <div
                   className={`mt-4 rounded-md border p-3 ${
+                    bekleyen.siz ? "ring-2 ring-amber-400 " : ""
+                  }${
                     bekleyen.tip === "MUDUR"
                       ? "border-amber-200 bg-amber-50"
                       : bekleyen.tip === "ADAY"
@@ -1424,11 +1451,16 @@ export default function JobApplicationDetailPage() {
                               : "text-slate-700"
                         }`}
                       >
-                        {bekleyen.tip === "MUDUR"
-                          ? `Su an ${bekleyen.ad}'da bekliyor`
-                          : bekleyen.tip === "ADAY"
-                            ? "Su an adayda bekliyor (duzeltme gonderecek)"
-                            : `Su an ${bekleyen.ad}'nda bekliyor`}
+                        {/* Faz 5 — karar BU kullanıcıdaysa vurgulanır. Bilgi SUNUCUDAN
+                            gelir (bekleyen.siz → kararSizdeMi); client rol/statü kuralı
+                            yürütmez, sabit statü listesi tutmaz. */}
+                        {bekleyen.siz
+                          ? "Bu basvuru SIZIN kararinizi bekliyor"
+                          : bekleyen.tip === "MUDUR"
+                            ? `Su an ${bekleyen.ad}'da bekliyor`
+                            : bekleyen.tip === "ADAY"
+                              ? "Su an adayda bekliyor (duzeltme gonderecek)"
+                              : `Su an ${bekleyen.ad}'nda bekliyor`}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
                         {workflow
@@ -1525,22 +1557,26 @@ export default function JobApplicationDetailPage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {txTarget
-                ? `${STATUS_LABELS_TR[txTarget as keyof typeof STATUS_LABELS_TR] || txTarget} asamasina gecir`
-                : ""}
+              {!txTarget
+                ? ""
+                : olumsuzGorus
+                  ? "Olumsuz gorus bildir"
+                  : `${STATUS_LABELS_TR[txTarget as keyof typeof STATUS_LABELS_TR] || txTarget} asamasina gecir`}
             </DialogTitle>
             <DialogDescription>
-              {isGeriGonder
-                ? "Duzeltilecek alanlari isaretleyin. Aday YALNIZ alan adlarini gorur; notunuz ic kayittir."
-                : requiresReason
-                  ? "Ret nedeni secimi zorunludur."
-                  : requiresManager
-                    ? "Degerlendirmeyi yapacak kisiyi secin."
-                    : requiresAssessment
-                      ? "Atanacak sinavi secin — gecisle birlikte aday sinav oturumu acilir."
-                      : otomatikAtama
-                        ? "Bu asamada atama otomatik yapilir — kisi secmeniz gerekmez."
-                        : "Gecisi onaylayin."}
+              {olumsuzGorus
+                ? "Basvuru IV Havuzu'na doner. Nihai reddi yalnizca IV verebilir; gerekce ZORUNLU."
+                : isGeriGonder
+                  ? "Duzeltilecek alanlari isaretleyin. Aday YALNIZ alan adlarini gorur; notunuz ic kayittir."
+                  : requiresReason
+                    ? "Ret nedeni secimi zorunludur."
+                    : requiresManager
+                      ? "Degerlendirmeyi yapacak kisiyi secin."
+                      : requiresAssessment
+                        ? "Atanacak sinavi secin — gecisle birlikte aday sinav oturumu acilir."
+                        : otomatikAtama
+                          ? "Bu asamada atama otomatik yapilir — kisi secmeniz gerekmez."
+                          : "Gecisi onaylayin."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1699,7 +1735,7 @@ export default function JobApplicationDetailPage() {
             )}
 
             {/* Faz 4 — kademe karar yorumu. Olumsuz goruste ZORUNLU (sunucu da dogruluyor). */}
-            {teknikKademe && (
+            {kademeKarari && (
               <div>
                 <Label>
                   {olumsuzGorus ? "Olumsuz gorus gerekcesi (ZORUNLU)" : "Degerlendirme notu (opsiyonel)"}

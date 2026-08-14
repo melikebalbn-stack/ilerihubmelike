@@ -78,15 +78,21 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     IK: ["IK_MULAKATI", "SINAV", "MUDUR_DEGERLENDIRME", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
+  // ——— Müdür kademesi (Faz 5) ———
+  // MÜDÜR REJECTED VEREMEZ: nihai ret yalnız İV'nin (rejectionReasonId + kök-neden sözlüğü
+  // İV'de). Atanan müdür olumsuz görüşünü REVIEWING'e dönerek bildirir; dönüşte YORUM
+  // ZORUNLU (transition route'daki olumsuz-görüş guard'ı — teknik mülakat kademeleriyle
+  // AYNI kural). İK satırları DEĞİŞMEDİ: İV her iki statüden de reddedebilir.
   MUDUR_DEGERLENDIRME: {
     // Müdür değerlendirir; İK her zaman geri alabilir/reddedebilir/yeniden atayabilir.
     // D4: İK aynı duruma geçebilir → müdür yanlış atandıysa yeniden atama (assignedManagerId zorunlu).
     // İK geri alma: REVIEWING, SINAV.
-    MUDUR: ["MUDUR_MULAKATI", "SINAV", "REJECTED"],
+    MUDUR: ["MUDUR_MULAKATI", "SINAV", "REVIEWING"],
     IK: ["REJECTED", "MUDUR_DEGERLENDIRME", "REVIEWING", "SINAV"],
   },
   MUDUR_MULAKATI: {
-    MUDUR: ["SINAV", "REJECTED"],
+    // Mülakat olumlu → TEKLIF (müdür kendi kademesini sonuçlandırabilsin), olumsuz → REVIEWING.
+    MUDUR: ["TEKLIF", "SINAV", "REVIEWING"],
     // İK geri alma: REVIEWING, MUDUR_DEGERLENDIRME.
     IK: ["SINAV", "REJECTED", "REVIEWING", "MUDUR_DEGERLENDIRME"],
   },
@@ -275,6 +281,21 @@ export function canTransition(
   role: TransitionRole,
 ): boolean {
   return ALLOWED_TRANSITIONS[from]?.[role]?.includes(to) ?? false;
+}
+
+/**
+ * Bu rol, bu statüde geçiş yapabiliyor mu? = "karar bu roldedir".
+ *
+ * "Kimin kademesindeyiz" sorusunu soran her yer (transition guard'ı, detay ekranı,
+ * bekleyen.ts) AYNI kaynağı kullansın diye export edilir — sabit statü listesi
+ * (`["MUDUR_DEGERLENDIRME","MUDUR_MULAKATI"]` gibi) hiçbir yere gömülmez, matrise
+ * satır eklenince çağıranlar kendiliğinden doğru davranır.
+ */
+export function roluKademedeMi(
+  status: JobApplicationStatus,
+  role: TransitionRole,
+): boolean {
+  return (ALLOWED_TRANSITIONS[status]?.[role]?.length ?? 0) > 0;
 }
 
 /** Bir durumdan, verilen rolün geçebileceği hedeflerin listesi (boş olabilir). */

@@ -10,7 +10,7 @@
 // doğru davranır.
 
 import type { JobApplicationStatus } from "@/generated/prisma";
-import { ALLOWED_TRANSITIONS, TUM_ROLLER } from "./transitions";
+import { ALLOWED_TRANSITIONS, TUM_ROLLER, roluKademedeMi } from "./transitions";
 
 export const IK_ETIKET = "İnsan Varlıkları";
 export const IK_KISA = "İV";
@@ -23,9 +23,18 @@ const ATANAN_ROLLER = TUM_ROLLER.filter((r) => r !== "IK");
 // (MUDUR'a ek olarak mavi yaka zinciri rolleri de sayılır; aksi halde yeni statülerde
 //  "kimde bekliyor" yanlışlıkla İK gösterirdi.)
 export function mudurKademesiMi(status: JobApplicationStatus): boolean {
-  const t = ALLOWED_TRANSITIONS[status];
-  if (!t) return false;
-  return ATANAN_ROLLER.some((r) => (t[r]?.length ?? 0) > 0);
+  return ATANAN_ROLLER.some((r) => roluKademedeMi(status, r));
+}
+
+// Faz 5 — "top ŞU AN bu kullanıcıda mı?" Kullanıcının İK DIŞI rollerinden biri bu statüde
+// geçiş yapabiliyorsa karar ondadır (müdür, teknik mülakatçı, üst amir... hepsi kapsanır).
+// İK rolü SAYILMAZ: İK her statüde bir şeyler yapabilir, o yüzden "sıra sende" anlamı taşımaz.
+// Sabit statü/rol listesi YOK — matristen türer.
+export function kararSizdeMi(
+  status: JobApplicationStatus,
+  roller: readonly string[],
+): boolean {
+  return ATANAN_ROLLER.some((r) => roller.includes(r) && roluKademedeMi(status, r));
 }
 
 // Hiçbir rolün geçiş yapamadığı statü = terminal (süreç bitti).

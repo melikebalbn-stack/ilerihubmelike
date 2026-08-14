@@ -9,6 +9,7 @@ import {
   requiresAssignedManager,
   requiresRejectionReason,
   requiresAssessment,
+  roluKademedeMi,
 } from "@/lib/recruitment/transitions";
 import { resolveTransitionRolesFull } from "@/lib/recruitment/resolve-roles";
 import { transitionApplicationStatus } from "@/lib/recruitment/stage-log";
@@ -168,8 +169,20 @@ export async function POST(
     current === "TEKNIK_MULAKAT" &&
     toStatus === "TEKNIK_MULAKAT_UST_ONAY";
 
+  // ── FAZ 5: MÜDÜR DEĞERLENDİRMESİ ───────────────────────────────────────────
+  // Atanan müdür artık REJECTED VEREMEZ (matris satırından çıkarıldı); olumsuz görüşünü
+  // REVIEWING'e dönerek bildirir. "Müdür kademesindeyiz" bilgisi matristen TÜRETİLİR
+  // (roluKademedeMi) — sabit statü listesi gömülmez.
+  //
+  // Kullanıcı hem İK hem atanan müdür olabilir: bu durumda da yorum istenir. Bilinçli —
+  // rol birleşimi geçiş HAKKINI genişletir, ama kararı veren yine atanan kişidir.
+  const mudurKarari = roles.includes("MUDUR") && roluKademedeMi(current, "MUDUR");
+
   // OLUMSUZ görüş = kademeden REVIEWING'e dönüş. Yorum ZORUNLU (İV neden döndüğünü görsün).
-  const olumsuzGorus = teknikKademeKarari && toStatus === "REVIEWING";
+  // Teknik mülakat (Faz 4) ve müdür (Faz 5) kademeleri AYNI kuralı paylaşır.
+  const teknikOlumsuz = teknikKademeKarari && toStatus === "REVIEWING";
+  const mudurOlumsuz = mudurKarari && toStatus === "REVIEWING";
+  const olumsuzGorus = teknikOlumsuz || mudurOlumsuz;
   if (olumsuzGorus && !kademeYorumu) {
     return NextResponse.json(
       { error: "Olumsuz görüş için yorum zorunludur" },
@@ -232,21 +245,28 @@ export async function POST(
   // ADAYA_GERI_GONDERILDI: not FORMATLI kurulur — "Eksik alanlar: <etiket...> | <İK notu>".
   // Solu adaya gider (yalnız etiket), sağı İK iç notudur. Biçim TEK KAYNAK
   // (adaya-geri-gonder.ts); public uç aynı modülle geri ayrıştırır.
-  // FAZ 4 not parçaları — mevcut " | " ayraçlı zenginleştirme deseni.
-  const teknikNotParcalari: string[] = [];
-  if (olumsuzGorus) {
+  // FAZ 4/5 not parçaları — mevcut " | " ayraçlı zenginleştirme deseni.
+  const kademeNotParcalari: string[] = [];
+  if (teknikOlumsuz) {
     const kademeAdi = current === "TEKNIK_MULAKAT" ? "1. kademe" : "2. kademe";
-    teknikNotParcalari.push(`Teknik mülakat ${kademeAdi} olumsuz: ${kademeYorumu}`);
+    kademeNotParcalari.push(`Teknik mülakat ${kademeAdi} olumsuz: ${kademeYorumu}`);
   } else if (teknikKademeKarari && kademeYorumu) {
     const kademeAdi = current === "TEKNIK_MULAKAT" ? "1. kademe" : "2. kademe";
-    teknikNotParcalari.push(`Teknik mülakat ${kademeAdi} olumlu: ${kademeYorumu}`);
+    kademeNotParcalari.push(`Teknik mülakat ${kademeAdi} olumlu: ${kademeYorumu}`);
+  }
+  // FAZ 5 — müdür görüşü. Hangi müdür statüsünden dönüldüğü StageLog.fromStatus'ta zaten
+  // kayıtlı; not tek biçimli kalsın diye kademe adı ayrıca yazılmaz.
+  if (mudurOlumsuz) {
+    kademeNotParcalari.push(`Müdür değerlendirmesi olumsuz: ${kademeYorumu}`);
+  } else if (mudurKarari && kademeYorumu) {
+    kademeNotParcalari.push(`Müdür değerlendirmesi olumlu: ${kademeYorumu}`);
   }
   if (ivAtlamasi) {
-    teknikNotParcalari.push("1. kademe İV tarafından atlandı — mülakatçı görüşü alınmadı");
+    kademeNotParcalari.push("1. kademe İV tarafından atlandı — mülakatçı görüşü alınmadı");
   }
-  if (kademeAtlandi) teknikNotParcalari.push(`2. kademe atlandı: ${kademeAtlandi}`);
+  if (kademeAtlandi) kademeNotParcalari.push(`2. kademe atlandı: ${kademeAtlandi}`);
   if (ustAmir) {
-    teknikNotParcalari.push(
+    kademeNotParcalari.push(
       `Üst amire atandı: ${ustAmir.ad} (${ustAmir.yol === "MUDUR_YRD" ? "müdür yardımcısı" : "müdür"})`,
     );
   }
@@ -254,8 +274,8 @@ export async function POST(
   const efektifNote =
     toStatus === "ADAYA_GERI_GONDERILDI"
       ? geriGondermeNotu({ alanlar: duzeltilecekAlanlar ?? [], ikNotu: note ?? null }) || null
-      : teknikNotParcalari.length > 0
-        ? [note, ...teknikNotParcalari].filter(Boolean).join(" | ")
+      : kademeNotParcalari.length > 0
+        ? [note, ...kademeNotParcalari].filter(Boolean).join(" | ")
         : otomatikAtanan
           ? [note, `Otomatik atandı: ${otomatikAtanan.ad ?? otomatikAtanan.userId}`]
               .filter(Boolean)
@@ -302,7 +322,7 @@ export async function POST(
         await prisma.publicJobApplicationApproval.updateMany({
           where: { applicationId: id, step, decision: null },
           data: {
-            decision: olumsuzGorus ? "REJECTED" : "APPROVED",
+            decision: teknikOlumsuz ? "REJECTED" : "APPROVED",
             comment: kademeYorumu ?? null,
             decidedAt: new Date(),
           },

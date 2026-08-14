@@ -11,6 +11,7 @@ import {
 } from "@/lib/recruitment/transitions";
 import { bekleyenTaraf, kullaniciAdi } from "@/lib/recruitment/bekleyen";
 import { bayragaGoreSuz } from "@/lib/recruitment/adaya-geri-gonder";
+import { ikiKademeSuz } from "@/lib/recruitment/teknik-mulakat-bayrak";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,8 @@ export async function GET(
     permissions: session.user.permissions,
     userId: session.user.id,
     assignedManagerId: application.assignedManagerId,
+    // Faz 4: teknik mülakat rolleri bekleyen approval satırından çözülür.
+    applicationId: id,
   });
   if (roles.length === 0) {
     return NextResponse.json({ error: "Bu başvuruyu görüntüleme yetkiniz yok" }, { status: 403 });
@@ -96,7 +99,7 @@ export async function GET(
   // Workflow bağlamı: bu durumdan rollerin geçebileceği hedefler + hangi hedef ek girdi ister.
   // Faz 1 bayrağı: RECRUITMENT_ADAYA_GERI_GONDER_ENABLED kapalıyken ADAYA_GERI_GONDERILDI
   // hedefi listeden DÜŞER → UI butonu hiç çizmez. Gerçek engelleme geçiş ucunda (403).
-  const allowedTargets = bayragaGoreSuz(allowedTargetsForRoles(application.status, roles));
+  const allowedTargets = ikiKademeSuz(bayragaGoreSuz(allowedTargetsForRoles(application.status, roles)));
   const requiresManagerTargets = allowedTargets.filter(requiresAssignedManager);
   const requiresReasonTargets = allowedTargets.filter(requiresRejectionReason);
   const requiresAssessmentTargets = allowedTargets.filter(requiresAssessment);
@@ -112,8 +115,36 @@ export async function GET(
   );
   const sonGecis = rows.length > 0 ? rows[rows.length - 1].createdAt : null;
 
+  // FAZ 4 — teknik mülakat onay zinciri görünümü: kim, hangi kademe, karar, yorum, tarih.
+  // Onaycı adı manuel join (User relation'ı select'te alınıyor) — ham id dışa verilmez.
+  const onaylar = await prisma.publicJobApplicationApproval.findMany({
+    where: { applicationId: id },
+    orderBy: { step: "asc" },
+    select: {
+      step: true,
+      kademe: true,
+      role: true,
+      decision: true,
+      comment: true,
+      decidedAt: true,
+      createdAt: true,
+      approver: { select: { name: true, firstName: true, lastName: true, email: true } },
+    },
+  });
+  const onayZinciri = onaylar.map((o) => ({
+    step: o.step,
+    kademe: o.kademe,
+    role: o.role,
+    onaycıAdi: kullaniciAdi(o.approver),
+    decision: o.decision,
+    comment: o.comment,
+    decidedAt: o.decidedAt,
+    createdAt: o.createdAt,
+  }));
+
   return NextResponse.json({
     logs,
+    onayZinciri,
     bekleyen: bekleyen ? { ...bekleyen, beri: sonGecis } : null,
     workflow: {
       currentStatus: application.status,

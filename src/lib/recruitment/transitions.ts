@@ -9,10 +9,14 @@ import type { JobApplicationStatus } from "@/generated/prisma";
 export type TransitionRole =
   | "IK"
   | "MUDUR"
-  // Mavi yaka zinciri rolleri (additive — MUDUR akışı aynen korunur).
+  // Mavi yaka zinciri rolleri — EMEKLİ (Faz 1). Kod'da kalır, matriste hedefi yok.
   | "DEGERLENDIRICI"
   | "URETIM_MUDUR_YRD"
-  | "FABRIKA_MUDURU";
+  | "FABRIKA_MUDURU"
+  // Faz 4 — teknik mülakat iki kademe. Rol, BEKLEYEN approval satırından çözülür
+  // (step + decision IS NULL + approverId === session.user.id) — bkz. resolve-roles.ts.
+  | "TEKNIK_MULAKATCI"
+  | "TEKNIK_UST_AMIR";
 
 /** Tüm roller — bekleyen.ts gibi türetim yapan modüller sabit liste gömmesin diye TEK KAYNAK. */
 export const TUM_ROLLER: readonly TransitionRole[] = [
@@ -21,6 +25,8 @@ export const TUM_ROLLER: readonly TransitionRole[] = [
   "DEGERLENDIRICI",
   "URETIM_MUDUR_YRD",
   "FABRIKA_MUDURU",
+  "TEKNIK_MULAKATCI",
+  "TEKNIK_UST_AMIR",
 ] as const;
 
 // Matris satırı: IK ve MUDUR ZORUNLU (mevcut 18 satır olduğu gibi kalır — hiçbiri
@@ -122,9 +128,21 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     IK: ["TEKNIK_MULAKAT", "MUDUR_MULAKATI", "TEKLIF", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
+  // ——— Teknik mülakat iki kademe (Faz 4) ———
+  // 1. kademe: İV'nin seçtiği mülakatçı. Olumlu → 2. kademe (üst amir OTOMATİK atanır),
+  // olumsuz → REVIEWING (İV'ye döner). MÜLAKATÇI REJECTED VEREMEZ: nihai ret yalnız İV'nin
+  // (rejectionReasonId zorunlu, kök-neden sözlüğü İV'nin). Olumsuz görüş approval satırında
+  // decision=REJECTED + comment olarak KALIR, silinmez.
   TEKNIK_MULAKAT: {
-    // İK geri alma: REVIEWING.
-    IK: ["TEKLIF", "MUDUR_MULAKATI", "REVIEWING", "REJECTED"],
+    TEKNIK_MULAKATCI: ["TEKNIK_MULAKAT_UST_ONAY", "REVIEWING"],
+    // İK: yeniden atama (aynı statü), üst onaya elle çıkarma, geri alma, ilerletme, ret.
+    IK: ["TEKNIK_MULAKAT", "TEKNIK_MULAKAT_UST_ONAY", "TEKLIF", "MUDUR_MULAKATI", "REVIEWING", "REJECTED"],
+    MUDUR: [],
+  },
+  // 2. kademe: üst amir. Onaylarsa teklife, olumsuzsa İV'ye döner. REJECTED YOK.
+  TEKNIK_MULAKAT_UST_ONAY: {
+    TEKNIK_UST_AMIR: ["TEKLIF", "REVIEWING"],
+    IK: ["REVIEWING", "TEKLIF", "TEKNIK_MULAKAT", "REJECTED"],
     MUDUR: [],
   },
   TEKLIF: {
@@ -180,6 +198,7 @@ export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
   TELEFON_MULAKATI: "Telefon Mülakatı",
   IK_MULAKATI: "İK Mülakatı",
   TEKNIK_MULAKAT: "Teknik Mülakat (1. Kademe)",
+  TEKNIK_MULAKAT_UST_ONAY: "Teknik Mülakat (2. Kademe)",
   TEKLIF: "Teklif",
   TEKLIF_KABUL: "Teklif Kabul Edildi",
   ISE_BASLADI: "İşe Başladı",
@@ -224,7 +243,11 @@ export function emekliMi(status: string | null | undefined): boolean {
  * (bkz. otomatik-atama.ts). O yüzden burada YER ALMAZLAR — UI modalı da kişi sormaz.
  */
 export function requiresAssignedManager(to: JobApplicationStatus): boolean {
-  return to === "MUDUR_DEGERLENDIRME" || to === "DEGERLENDIRICI";
+  // TEKNIK_MULAKAT: İV mülakatçıyı SEÇER (2. kademenin üst amiri ise sistemce çözülür —
+  // otomatikAtamaliMi). DEGERLENDIRICI emekli olsa da satır korunur (ulaşılamaz).
+  return (
+    to === "MUDUR_DEGERLENDIRME" || to === "DEGERLENDIRICI" || to === "TEKNIK_MULAKAT"
+  );
 }
 
 /**

@@ -25,6 +25,8 @@ type RolArgs = {
   permissions: string[] | undefined;
   userId: string;
   assignedManagerId: string | null;
+  /** Faz 4: teknik mülakat rollerini approval satırından çözmek için (opsiyonel). */
+  applicationId?: string;
 };
 
 export function resolveTransitionRoles(args: RolArgs): TransitionRole[] {
@@ -53,6 +55,24 @@ export async function resolveTransitionRolesFull(
   db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<TransitionRole[]> {
   const roles = resolveTransitionRoles(args);
+
+  // FAZ 4 — teknik mülakat kademeleri. Rol, BEKLEYEN approval satırından çözülür:
+  // aynı başvuruda decision IS NULL olan ve approverId'si bu kullanıcı olan satırın
+  // kademesi ne ise rol odur. Böylece "sıradaki adımın onaycısı" dışında kimse
+  // (admin dahil) o kademenin geçişini yapamaz — per-step guard'ın rol ayağı.
+  //
+  // applicationId olmadan bu rol çözülemez; çağıran vermiyorsa (başvuru-bağımsız
+  // kullanım) atlanır — mevcut davranış bozulmaz.
+  if (args.applicationId) {
+    const bekleyen = await db.publicJobApplicationApproval.findMany({
+      where: { applicationId: args.applicationId, decision: null, approverId: args.userId },
+      select: { kademe: true },
+    });
+    for (const b of bekleyen) {
+      if (b.kademe === "TEKNIK_MULAKATCI") roles.push("TEKNIK_MULAKATCI");
+      if (b.kademe === "TEKNIK_UST_AMIR") roles.push("TEKNIK_UST_AMIR");
+    }
+  }
 
   const dep = await uretimDepartmaniCozOrNull(db);
   if (!dep) return roles;

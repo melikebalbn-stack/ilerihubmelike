@@ -20,6 +20,14 @@ type ManagerOption = {
   name: string;
   departmentName: string | null;
   isDeputy: boolean;
+  /**
+   * FAZ 4 — teknik mülakat 2. kademe ÖNİZLEMESİ. Bu kişi mülakatçı seçilirse üst amiri
+   * kim olur? `atlanir: true` ise üst amir kendisi çıkıyor demektir → 2. kademe atlanır,
+   * karar İV'ye döner. UI bunu SEÇİM ANINDA uyarı olarak gösterir (geçiş anında değil).
+   * Sunucuda TEK sorgu kümesiyle hesaplanır (N+1 yok) — zincir mantığı
+   * teknik-mulakat-zinciri.ts ile AYNI kuraldır; burada yalnız önizleme yapılır.
+   */
+  ustAmir: { atlanir: boolean; ad: string | null; yol: "MUDUR_YRD" | "MUDUR" | null };
 };
 
 function userName(u: {
@@ -62,10 +70,18 @@ export async function GET() {
   // 2) Bu Personnel'lere bağlı aktif User'lar (öneri grubu).
   const onerilenler: ManagerOption[] = [];
   const oneriUserIds = new Set<string>();
+  // userId → { personnelId, bolum } — üst amir önizlemesi için (iki grup da doldurur).
+  const bolumByUserId = new Map<string, { personnelId: string | null; bolum: string | null }>();
   const matchedPersonnelIds = new Set<string>();
   if (personnelMeta.size > 0) {
     const users = await prisma.user.findMany({
-      where: { isActive: true, personnelId: { in: [...personnelMeta.keys()] } },
+      // Faz 4: aynı süzme öneri grubunda da geçerli — pasif personel kaydına bağlı bir
+      // müdür seçilirse üst amir zinciri kurulamaz (bkz. aşağıdaki tumAktif yorumu).
+      where: {
+        isActive: true,
+        personnelId: { in: [...personnelMeta.keys()] },
+        personnel: { is: { aktif: true } },
+      },
       select: {
         id: true,
         name: true,
@@ -73,6 +89,7 @@ export async function GET() {
         lastName: true,
         email: true,
         personnelId: true,
+        personnel: { select: { bolum: true } },
       },
     });
     for (const u of users) {
@@ -82,7 +99,10 @@ export async function GET() {
         name: userName(u),
         departmentName: meta?.departmentName ?? null,
         isDeputy: meta?.isDeputy ?? false,
+        // ustAmir aşağıda TEK yerde doldurulur (önizleme verisi henüz yüklenmedi).
+        ustAmir: { atlanir: true, ad: null, yol: null },
       });
+      bolumByUserId.set(u.id, { personnelId: u.personnelId, bolum: u.personnel?.bolum ?? null });
       oneriUserIds.add(u.id);
       if (u.personnelId) matchedPersonnelIds.add(u.personnelId);
     }
@@ -111,14 +131,77 @@ export async function GET() {
   }
 
   // 3) Tüm aktif User'lar (ikinci grup — öneride olanlar hariç, dropdown'da tekrar olmasın).
+  //
+  // FAZ 4 SÜZMESİ (zorunlu): yalnız personel kaydı OLAN ve o kaydı AKTİF olan kullanıcılar.
+  // Gerekçe: teknik mülakat 2. kademesinde üst amir zinciri
+  //   User → personnelId → Personnel.bolum → DepartmentDefinition → md.yrd/müdür
+  // yolundan çözülüyor. personnelId'si olmayan (keşif: 8 aktif User — 1 kiosk, 2 istasyon,
+  // 5 çalışan hesabı) veya pasif Personnel'e bağlı (17 User) biri seçilirse zincir
+  // KURULAMAZ ve hata ancak GEÇİŞ ANINDA çıkar — geç ve kafa karıştırıcı.
+  // Süzmeyi burada yaparak seçilemez hâle getiriyoruz.
   const allUsers = await prisma.user.findMany({
-    where: { isActive: true },
-    select: { id: true, name: true, firstName: true, lastName: true, email: true },
+    where: { isActive: true, personnel: { is: { aktif: true } } },
+    select: {
+      id: true, name: true, firstName: true, lastName: true, email: true,
+      // Faz 4 önizlemesi için: kişinin bölümü + personnelId (üst amir karşılaştırması).
+      personnelId: true,
+      personnel: { select: { bolum: true } },
+    },
     orderBy: { name: "asc" },
   });
+
+  // ── FAZ 4 — üst amir ÖNİZLEMESİ (N+1 YOK) ──────────────────────────────────
+  // Aktif departmanlar + koltuk sahiplerinin adları TEK sorguda; sonra JS'te eşleme.
+  // Kural teknik-mulakat-zinciri.ts ile AYNI: md.yrd varsa o, yoksa müdür; kendisiyse
+  // müdüre çık; o da kendisiyse ATLANIR.
+  const aktifDeptler = await prisma.departmentDefinition.findMany({
+    where: { isActive: true },
+    select: { name: true, mudurId: true, mudurYardimcisiId: true },
+  });
+  const deptByName = new Map(aktifDeptler.map((d) => [d.name, d]));
+  const koltukPidler = [
+    ...new Set(aktifDeptler.flatMap((d) => [d.mudurId, d.mudurYardimcisiId]).filter((x): x is string => !!x)),
+  ];
+  const koltukPersonel = koltukPidler.length
+    ? await prisma.personnel.findMany({
+        where: { id: { in: koltukPidler } },
+        select: { id: true, adSoyad: true },
+      })
+    : [];
+  const adByPersonnelId = new Map(koltukPersonel.map((p) => [p.id, p.adSoyad]));
+
+  function ustAmirOnizle(personnelId: string | null, bolum: string | null | undefined): ManagerOption["ustAmir"] {
+    if (!personnelId || !bolum) return { atlanir: true, ad: null, yol: null };
+    const d = deptByName.get(bolum.trim());
+    if (!d) return { atlanir: true, ad: null, yol: null };
+    const birinci = d.mudurYardimcisiId ?? d.mudurId;
+    if (!birinci) return { atlanir: true, ad: null, yol: null };
+    if (birinci !== personnelId) {
+      return {
+        atlanir: false,
+        ad: adByPersonnelId.get(birinci) ?? null,
+        yol: d.mudurYardimcisiId ? "MUDUR_YRD" : "MUDUR",
+      };
+    }
+    // 1. adım kendisi → müdüre çık
+    if (!d.mudurId || d.mudurId === personnelId) return { atlanir: true, ad: null, yol: null };
+    return { atlanir: false, ad: adByPersonnelId.get(d.mudurId) ?? null, yol: "MUDUR" };
+  }
   const tumAktif: ManagerOption[] = allUsers
     .filter((u) => !oneriUserIds.has(u.id))
-    .map((u) => ({ id: u.id, name: userName(u), departmentName: null, isDeputy: false }));
+    .map((u) => ({
+      id: u.id,
+      name: userName(u),
+      departmentName: null,
+      isDeputy: false,
+      ustAmir: ustAmirOnizle(u.personnelId, u.personnel?.bolum),
+    }));
+
+  // Öneri grubunun ustAmir alanı burada doldurulur (önizleme verisi artık hazır).
+  for (const o of onerilenler) {
+    const b = bolumByUserId.get(o.id);
+    o.ustAmir = ustAmirOnizle(b?.personnelId ?? null, b?.bolum);
+  }
 
   return NextResponse.json({ onerilenler, tumAktif, unmatchedManagers });
 }

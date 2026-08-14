@@ -50,6 +50,7 @@ import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { JobApplicationSensitiveSections } from "@/components/job-application/JobApplicationSensitiveSections"
 import { JobApplicationStatusBadge, SinavSonucBadge } from "@/components/recruitment/JobApplicationStatusBadge"
+import { Badge } from "@/components/ui/badge"
 import { BasvuruDuzeltmeDialog } from "@/components/recruitment/BasvuruDuzeltmeDialog"
 // Geri gönderme modalındaki alan seçimi BEYAZ LİSTEDEN gelir — liste burada KOPYALANMAZ.
 // (Sunucu da aynı listeyle süzer: adaya-geri-gonder.ts)
@@ -204,10 +205,21 @@ function groupLogsIntoRounds(logs: StageLogRow[]): StageRound[] {
   return rounds
 }
 
-type ManagerOption = { id: string; name: string; departmentName: string | null; isDeputy: boolean }
+type ManagerOption = {
+  id: string; name: string; departmentName: string | null; isDeputy: boolean
+  // Faz 4 — bu kişi mülakatçı seçilirse üst amiri kim olur? atlanir=true ise 2. kademe
+  // ATLANIR ve karar İV'ye döner (sunucuda hesaplanır — managers ucu).
+  ustAmir?: { atlanir: boolean; ad: string | null; yol: "MUDUR_YRD" | "MUDUR" | null }
+}
 type UnmatchedManager = { personnelId: string; adSoyad: string | null; departmentName: string | null; isDeputy: boolean }
 type ManagersResp = { onerilenler: ManagerOption[]; tumAktif: ManagerOption[]; unmatchedManagers: UnmatchedManager[] }
 type RejectionReasonOption = { id: string; category: string; name: string }
+// Faz 4 — teknik mülakat onay zinciri satırı (sunucudan; ham approver id dönmez).
+type OnayAdimi = {
+  step: number; kademe: string; role: string; onaycıAdi: string | null
+  decision: "APPROVED" | "REJECTED" | "RETURNED" | "FORWARDED" | null
+  comment: string | null; decidedAt: string | null; createdAt: string
+}
 
 export default function JobApplicationDetailPage() {
   const params = useParams()
@@ -223,6 +235,8 @@ export default function JobApplicationDetailPage() {
   const [workflow, setWorkflow] = useState<WorkflowCtx | null>(null)
   const [logs, setLogs] = useState<StageLogRow[]>([])
   const [bekleyen, setBekleyen] = useState<BekleyenCtx | null>(null)
+  // Faz 4 — teknik mülakat onay zinciri (stage-log ucundan gelir).
+  const [onayZinciri, setOnayZinciri] = useState<OnayAdimi[]>([])
 
   // Geçiş modalı state'i.
   const [txTarget, setTxTarget] = useState<string | null>(null)
@@ -238,6 +252,8 @@ export default function JobApplicationDetailPage() {
   // Adaya geri gönderme: İK'nın işaretlediği alan ADLARI (etikete çevirme SUNUCUDA).
   const [txAlanlar, setTxAlanlar] = useState<string[]>([])
   const [txAlanAra, setTxAlanAra] = useState("")
+  // Faz 4 — kademe kararı yorumu. OLUMSUZ görüşte ZORUNLU (sunucu da doğruluyor).
+  const [txKademeYorumu, setTxKademeYorumu] = useState("")
   // SINAV geçişi sonrası aktif oturumun sinavLink'i — İK kopyalayıp adaya iletebilsin.
   const [sinavLink, setSinavLink] = useState<string | null>(null)
 
@@ -276,6 +292,7 @@ export default function JobApplicationDetailPage() {
         setWorkflow(data.workflow)
         setLogs(data.logs)
         setBekleyen(data.bekleyen ?? null)
+        setOnayZinciri(data.onayZinciri ?? [])
       }
     } catch {
       // sessiz — timeline/aksiyon kartı yoksa sayfa yine de CV'yi gösterir
@@ -289,7 +306,21 @@ export default function JobApplicationDetailPage() {
   const otomatikAtama = txTarget ? workflow?.otomatikAtamaHedefleri?.[txTarget] : undefined
   // Kişi seçimi etiketi: mavi yaka zincirinde seçilen kişi müdür OLMAYABİLİR (mavi/gri yaka
   // çalışan da olabilir), o yüzden "Mudur" yerine hedefe göre etiket.
-  const secimEtiketi = txTarget === "DEGERLENDIRICI" ? "Degerlendirici" : "Mudur"
+  const secimEtiketi =
+    txTarget === "DEGERLENDIRICI" ? "Degerlendirici"
+    : txTarget === "TEKNIK_MULAKAT" ? "Teknik mulakatci"
+    : "Mudur"
+  // Faz 4 — teknik kademe kararı mı veriliyor? (rol sunucudan geliyor)
+  const teknikKademe =
+    !!workflow &&
+    ((workflow.roles.includes("TEKNIK_MULAKATCI") && workflow.currentStatus === "TEKNIK_MULAKAT") ||
+      (workflow.roles.includes("TEKNIK_UST_AMIR") && workflow.currentStatus === "TEKNIK_MULAKAT_UST_ONAY"))
+  const olumsuzGorus = teknikKademe && txTarget === "REVIEWING"
+  // Seçilen mülakatçının üst amir önizlemesi (2. kademe atlanacak mı).
+  const secilenMulakatci =
+    txTarget === "TEKNIK_MULAKAT" && txManagerId
+      ? [...(managers?.onerilenler ?? []), ...(managers?.tumAktif ?? [])].find((m) => m.id === txManagerId)
+      : undefined
   // Adaya geri gönderme modalı mı? (hedef bayrak kapalıyken zaten allowedTargets'ta yok)
   const isGeriGonder = txTarget === "ADAYA_GERI_GONDERILDI"
   // Başlık rozeti: aktif oturum varsa o, yoksa EN YENİ geçmiş oturum (gecmis zaten
@@ -317,6 +348,7 @@ export default function JobApplicationDetailPage() {
     setTxAssessmentSearch("")
     setTxAlanlar([])
     setTxAlanAra("")
+    setTxKademeYorumu("")
     if (workflow?.requiresManagerTargets.includes(target) && !managers) {
       try {
         const res = await fetch(`/api/recruitment/managers`)
@@ -354,6 +386,7 @@ export default function JobApplicationDetailPage() {
       if (requiresAssessment && txAssessmentId) body.assessmentId = txAssessmentId
       // Alan ADLARI gider; etikete çevirme + beyaz liste süzmesi SUNUCUDA yapılır.
       if (isGeriGonder && txAlanlar.length) body.duzeltilecekAlanlar = txAlanlar
+      if (teknikKademe && txKademeYorumu.trim()) body.kademeYorumu = txKademeYorumu.trim()
       const res = await fetch(`/api/recruitment/applications/${id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1139,6 +1172,69 @@ export default function JobApplicationDetailPage() {
             </Card>
           )}
 
+          {/* Faz 4 — TEKNİK MÜLAKAT ONAY ZİNCİRİ. Satır yoksa kart hiç çıkmaz.
+              Olumsuz görüş satırı SİLİNMEZ; İV neden döndüğünü burada görür. */}
+          {onayZinciri.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4" />
+                  Teknik Mulakat Onay Zinciri
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {onayZinciri.map((o) => {
+                  const bekliyor = o.decision === null
+                  const olumsuz = o.decision === "REJECTED"
+                  return (
+                    <div
+                      key={o.step}
+                      className={`rounded-md border p-3 ${
+                        bekliyor
+                          ? "border-slate-200 bg-slate-50"
+                          : olumsuz
+                            ? "border-red-200 bg-red-50"
+                            : "border-green-200 bg-green-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium text-slate-900">
+                          {o.step}. Kademe ·{" "}
+                          {o.kademe === "TEKNIK_MULAKATCI" ? "Teknik Mulakatci" : "Ust Amir"}
+                        </div>
+                        <Badge
+                          className={
+                            bekliyor
+                              ? "bg-slate-100 text-slate-700"
+                              : olumsuz
+                                ? "bg-red-100 text-red-800"
+                                : "bg-green-100 text-green-800"
+                          }
+                        >
+                          {bekliyor ? "Bekliyor" : olumsuz ? "Olumsuz" : "Olumlu"}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 text-sm text-slate-700">
+                        {o.onaycıAdi ?? "(atanmamis)"}
+                        {o.role ? <span className="text-muted-foreground"> · {o.role}</span> : null}
+                      </div>
+                      {o.comment && (
+                        <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">
+                          {o.comment}
+                        </div>
+                      )}
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {o.decidedAt
+                          ? `Karar: ${format(new Date(o.decidedAt), "d MMMM yyyy HH:mm", { locale: tr })}`
+                          : `Atandi: ${format(new Date(o.createdAt), "d MMMM yyyy HH:mm", { locale: tr })}`}
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Sınav kartı — oturum yoksa hiç çıkmaz. sinavLink yalnız İK+aktif (sunucudan) */}
           {app.sinavlar && (app.sinavlar.aktif || app.sinavlar.gecmis.length > 0) && (
             <Card>
@@ -1569,6 +1665,56 @@ export default function JobApplicationDetailPage() {
               </div>
             )}
 
+            {/* Faz 4 — seçilen mülakatçının ÜST AMİRİ önizlemesi. Uyarı SEÇİM ANINDA
+                çıkar; geçiş anında sürpriz olmasın. */}
+            {txTarget === "TEKNIK_MULAKAT" && secilenMulakatci && (
+              secilenMulakatci.ustAmir?.atlanir ? (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Ust amir bulunamadi, karar IV&apos;ye donecek.</strong> Secilen kisi kendi
+                    boluminde ust amir konumunda; kendisini onaylayamaz. 1. kademe olumlu
+                    sonuclanirsa 2. kademe ATLANIR ve basvuru IV Havuzu&apos;na doner.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
+                  <UserCheck className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>
+                    1. kademe olumlu sonuclanirsa 2. kademe{" "}
+                    <strong>{secilenMulakatci.ustAmir?.ad ?? "ust amir"}</strong>
+                    {secilenMulakatci.ustAmir?.yol === "MUDUR_YRD" ? " (mudur yardimcisi)" : " (mudur)"}
+                    {" "}kisisine otomatik atanacak.
+                  </span>
+                </div>
+              )
+            )}
+
+            {/* Faz 4 — kademe karar yorumu. Olumsuz goruste ZORUNLU (sunucu da dogruluyor). */}
+            {teknikKademe && (
+              <div>
+                <Label>
+                  {olumsuzGorus ? "Olumsuz gorus gerekcesi (ZORUNLU)" : "Degerlendirme notu (opsiyonel)"}
+                </Label>
+                <Textarea
+                  value={txKademeYorumu}
+                  onChange={(e) => setTxKademeYorumu(e.target.value)}
+                  placeholder={
+                    olumsuzGorus
+                      ? "Neden olumsuz? Bu metin onay zincirinde ve asama gecmisinde kalir."
+                      : "Degerlendirmeniz hakkinda kisa not"
+                  }
+                  rows={3}
+                  className="mt-1"
+                />
+                {olumsuzGorus && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Olumsuz gorus adayi REDDETMEZ — basvuru IV Havuzu&apos;na doner, nihai karari IV verir.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Ret nedeni seçimi */}
             {requiresReason && (
               <div>
@@ -1652,7 +1798,8 @@ export default function JobApplicationDetailPage() {
                 txSubmitting ||
                 (requiresManager && !txManagerId) ||
                 (requiresReason && !txReasonId) ||
-                (requiresAssessment && !txAssessmentId)
+                (requiresAssessment && !txAssessmentId) ||
+                (olumsuzGorus && !txKademeYorumu.trim())
               }
             >
               {txSubmitting ? "Kaydediliyor..." : "Onayla"}

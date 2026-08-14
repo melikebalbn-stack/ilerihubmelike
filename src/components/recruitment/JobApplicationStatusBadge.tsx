@@ -32,6 +32,9 @@ const STATUS_COLORS: Record<JobApplicationStatus, string> = {
   TELEFON_MULAKATI: "bg-sky-100 text-sky-800",
   IK_MULAKATI: "bg-indigo-100 text-indigo-800",
   TEKNIK_MULAKAT: "bg-teal-100 text-teal-800",
+  // 2. kademe: 1. kademeyle aynı renk ailesi, bir ton koyu (kademe yükseldikçe koyulaşır —
+  // müdür kademesindeki amber→orange deseninin karşılığı).
+  TEKNIK_MULAKAT_UST_ONAY: "bg-teal-200 text-teal-900",
   TEKLIF: "bg-emerald-100 text-emerald-800",
   TEKLIF_KABUL: "bg-green-100 text-green-800",
   ISE_BASLADI: "bg-green-100 text-green-800",

@@ -44,9 +44,19 @@ const OTOMATIK_ATAMA: Partial<Record<JobApplicationStatus, Koltuk>> = {
   FABRIKA_MUDURU: "MUDUR",
 };
 
-/** Bu hedefe geçişte atamayı sistem mi yapıyor (İK kişi seçmeyecek)? */
+// FAZ 4 — atamayı sistem yapar AMA koltuk bu departman tablosundan ÇÖZÜLMEZ:
+// teknik mülakat 2. kademesinde üst amir, seçilen MÜLAKATÇININ bölümünden bulunur
+// (teknik-mulakat-zinciri.ts). Bu yüzden OTOMATIK_ATAMA'ya EKLENMEZ — eklenirse
+// otomatikAtananKullanici yanlış yerden (üretim departmanı env'i) çözmeye çalışırdı.
+const ZINCIRDEN_ATANAN: JobApplicationStatus[] = ["TEKNIK_MULAKAT_UST_ONAY"];
+
+/**
+ * Bu hedefe geçişte atamayı sistem mi yapıyor (İK kişi SEÇMEYECEK)?
+ * İki kaynak: departman koltuğu tablosu + zincirden çözülen kademeler.
+ * requiresAssignedManager ile ASLA kesişmez — biri "İK seçer", diğeri "sistem atar".
+ */
 export function otomatikAtamaliMi(to: JobApplicationStatus): boolean {
-  return to in OTOMATIK_ATAMA;
+  return to in OTOMATIK_ATAMA || ZINCIRDEN_ATANAN.includes(to);
 }
 
 export type UretimKoltugu = {
@@ -150,7 +160,10 @@ export async function otomatikAtamaOnizleme(
   hedefler: JobApplicationStatus[],
   db: DbClient = prisma,
 ): Promise<Record<string, { ad: string | null; hazir: boolean }>> {
-  const otomatikler = hedefler.filter(otomatikAtamaliMi);
+  // Yalnız DEPARTMAN koltuğundan çözülenler önizlenebilir. Zincirden atananlarda
+  // (TEKNIK_MULAKAT_UST_ONAY) kime gideceği mülakatçı seçilmeden BİLİNMEZ — önizleme
+  // üretilmez, aksi halde UI yanlışlıkla "atanacak kişi yok" uyarısı gösterirdi.
+  const otomatikler = hedefler.filter((t) => t in OTOMATIK_ATAMA);
   if (otomatikler.length === 0) return {};
 
   const dep = await uretimDepartmaniCozOrNull(db);

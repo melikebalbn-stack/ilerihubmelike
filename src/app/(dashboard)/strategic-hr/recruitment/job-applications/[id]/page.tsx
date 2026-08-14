@@ -1186,15 +1186,21 @@ export default function JobApplicationDetailPage() {
                 {onayZinciri.map((o) => {
                   const bekliyor = o.decision === null
                   const olumsuz = o.decision === "REJECTED"
+                  // FORWARDED = İV 1. kademeyi atladı; mülakatçı görüşü ALINMADI.
+                  // "Bekliyor"dan da "Olumlu"dan da AYRI gösterilir — kimse beklemiyor,
+                  // ama kimse olumlu da demedi.
+                  const atlandi = o.decision === "FORWARDED"
                   return (
                     <div
                       key={o.step}
                       className={`rounded-md border p-3 ${
                         bekliyor
                           ? "border-slate-200 bg-slate-50"
-                          : olumsuz
-                            ? "border-red-200 bg-red-50"
-                            : "border-green-200 bg-green-50"
+                          : atlandi
+                            ? "border-amber-200 bg-amber-50"
+                            : olumsuz
+                              ? "border-red-200 bg-red-50"
+                              : "border-green-200 bg-green-50"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1206,12 +1212,14 @@ export default function JobApplicationDetailPage() {
                           className={
                             bekliyor
                               ? "bg-slate-100 text-slate-700"
-                              : olumsuz
-                                ? "bg-red-100 text-red-800"
-                                : "bg-green-100 text-green-800"
+                              : atlandi
+                                ? "bg-amber-100 text-amber-800"
+                                : olumsuz
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-green-100 text-green-800"
                           }
                         >
-                          {bekliyor ? "Bekliyor" : olumsuz ? "Olumsuz" : "Olumlu"}
+                          {bekliyor ? "Bekliyor" : atlandi ? "Atlandi" : olumsuz ? "Olumsuz" : "Olumlu"}
                         </Badge>
                       </div>
                       <div className="mt-1 text-sm text-slate-700">
@@ -1225,7 +1233,7 @@ export default function JobApplicationDetailPage() {
                       )}
                       <div className="mt-1 text-xs text-muted-foreground">
                         {o.decidedAt
-                          ? `Karar: ${format(new Date(o.decidedAt), "d MMMM yyyy HH:mm", { locale: tr })}`
+                          ? `${atlandi ? "Atlandi" : "Karar"}: ${format(new Date(o.decidedAt), "d MMMM yyyy HH:mm", { locale: tr })}`
                           : `Atandi: ${format(new Date(o.createdAt), "d MMMM yyyy HH:mm", { locale: tr })}`}
                       </div>
                     </div>

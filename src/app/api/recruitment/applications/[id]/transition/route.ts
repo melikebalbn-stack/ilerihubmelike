@@ -158,6 +158,16 @@ export async function POST(
     (roles.includes("TEKNIK_MULAKATCI") && current === "TEKNIK_MULAKAT") ||
     (roles.includes("TEKNIK_UST_AMIR") && current === "TEKNIK_MULAKAT_UST_ONAY");
 
+  // İV OVERRIDE: İK, 1. kademeyi ATLAYARAK doğrudan 2. kademeye geçiriyor.
+  // (Matriste İK'nın TEKNIK_MULAKAT → TEKNIK_MULAKAT_UST_ONAY yolu var.) Bu durumda
+  // mülakatçı görüşü ALINMAMIŞTIR — satır "Bekliyor" kalmamalı, ama İK mülakatçı adına
+  // APPROVED da yazmamalı. FORWARDED ("bir sonraki aşamaya iletildi") tam bu anlam;
+  // ApprovalDecision enum'unda ZATEN VAR, migration gerekmiyor.
+  const ivAtlamasi =
+    !teknikKademeKarari &&
+    current === "TEKNIK_MULAKAT" &&
+    toStatus === "TEKNIK_MULAKAT_UST_ONAY";
+
   // OLUMSUZ görüş = kademeden REVIEWING'e dönüş. Yorum ZORUNLU (İV neden döndüğünü görsün).
   const olumsuzGorus = teknikKademeKarari && toStatus === "REVIEWING";
   if (olumsuzGorus && !kademeYorumu) {
@@ -231,6 +241,9 @@ export async function POST(
     const kademeAdi = current === "TEKNIK_MULAKAT" ? "1. kademe" : "2. kademe";
     teknikNotParcalari.push(`Teknik mülakat ${kademeAdi} olumlu: ${kademeYorumu}`);
   }
+  if (ivAtlamasi) {
+    teknikNotParcalari.push("1. kademe İV tarafından atlandı — mülakatçı görüşü alınmadı");
+  }
   if (kademeAtlandi) teknikNotParcalari.push(`2. kademe atlandı: ${kademeAtlandi}`);
   if (ustAmir) {
     teknikNotParcalari.push(
@@ -291,6 +304,20 @@ export async function POST(
           data: {
             decision: olumsuzGorus ? "REJECTED" : "APPROVED",
             comment: kademeYorumu ?? null,
+            decidedAt: new Date(),
+          },
+        });
+      }
+
+      // (a2) İV OVERRIDE — step 1 bekleyen satırı FORWARDED ile işaretlenir.
+      //      approverId DEĞİŞMEZ (seçilen mülakatçı kayıtta kalır); yalnız kararın
+      //      alınmadığı, İV'nin ilettiği bilgisi yazılır. Mülakatçı adına APPROVED YAZILMAZ.
+      if (ivAtlamasi) {
+        await prisma.publicJobApplicationApproval.updateMany({
+          where: { applicationId: id, step: 1, decision: null },
+          data: {
+            decision: "FORWARDED",
+            comment: "İV tarafından atlandı — mülakatçı görüşü alınmadı",
             decidedAt: new Date(),
           },
         });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assessmentGuard } from "@/lib/assessment/guard";
+import { resolveTransitionRoles } from "@/lib/recruitment/resolve-roles";
 import {
   ensureAssessmentSession,
   AssessmentSessionError,
@@ -47,15 +48,54 @@ function toOturumDto(
   return { ...rest, sinavLink: isAdmin && aktif ? sinavUrl(token) : null };
 }
 
-// GET — bir başvurunun oturumları  (?publicJobApplicationId=...)
+// GET — sınav oturumları. KAPSAM ROLE GÖRE:
+//   · İK (recruitment.admin) → `publicJobApplicationId` OPSİYONEL. Verilirse o başvuru,
+//     verilmezse TÜMÜ. Bu davranış KORUNUYOR çünkü AssessmentPanel'in "Atama ve Sonuçlar"
+//     tablosu ucu parametresiz çağırıp tüm oturumları listeliyor (İK'nın işi bu).
+//   · Yalnız `recruitment.view` (departman müdürü) → parametre ZORUNLU (yoksa 400) ve
+//     çağıran O BAŞVURUNUN atanan kişisi olmalı (değilse 403).
+//
+// ESKİDEN kapsam HİÇ YOKTU: `view` olan herkes parametresiz çağırıp şirketteki her adayın
+// sınav PUANINI ve GEÇTİ/KALDI sonucunu tek istekte çekebiliyordu (sinavLink admin'e
+// kısıtlıydı ama skor değildi). Müdürün kendi adayının sonucunu görme yolu AÇIK KALIR.
+//
+// Yetki kuralı TEK KAYNAK `resolveTransitionRoles` — job-applications/[id] GET ile AYNI desen.
 export async function GET(req: NextRequest) {
   const g = await assessmentGuard();
   if (g.error) return g.error;
 
   const publicJobApplicationId = req.nextUrl.searchParams.get("publicJobApplicationId");
-  const where = publicJobApplicationId ? { publicJobApplicationId } : {};
+
+  if (!g.isAdmin) {
+    // Müdür yolu: başvuru zorunlu + o başvuruda yetkili olmalı.
+    if (!publicJobApplicationId) {
+      return NextResponse.json(
+        { error: "publicJobApplicationId zorunlu" },
+        { status: 400 },
+      );
+    }
+    // Yetki için önce YALNIZ atama bilgisi okunur (oturum verisi çekilmeden).
+    const basvuru = await prisma.publicJobApplication.findUnique({
+      where: { id: publicJobApplicationId },
+      select: { id: true, assignedManagerId: true },
+    });
+    if (!basvuru) return NextResponse.json({ error: "Başvuru bulunamadı" }, { status: 404 });
+
+    const roles = resolveTransitionRoles({
+      permissions: g.session.user.permissions,
+      userId: g.session.user.id,
+      assignedManagerId: basvuru.assignedManagerId,
+    });
+    if (roles.length === 0) {
+      return NextResponse.json(
+        { error: "Bu başvuruyu görüntüleme yetkiniz yok" },
+        { status: 403 },
+      );
+    }
+  }
+
   const oturumlar = await prisma.assessmentSession.findMany({
-    where,
+    where: publicJobApplicationId ? { publicJobApplicationId } : {},
     orderBy: { assignedAt: "desc" },
     select: OTURUM_SELECT,
   });

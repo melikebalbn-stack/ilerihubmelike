@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ornekliDeger } from "@/lib/recruitment/ornek-esigi";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 
@@ -12,8 +13,13 @@ function recruitAccess(session: { user: { permissions?: string[] } }) {
 export async function GET() {
   const { session, error } = await requireSession();
   if (error) return error;
-  const { isAdmin, canView } = recruitAccess(session);
-  if (!isAdmin && !canView) return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
+  const { isAdmin } = recruitAccess(session);
+  // YALNIZ ADMIN (recruitment.view YETMEZ). Gerekçe: bu uç şirket geneli YÖNETİM
+  // metriği döndürür ve kapsam daraltması TEKNİK OLARAK MÜMKÜN DEĞİL — başvuruda
+  // departman ekseni yok (PublicJobApplication'da departman alanı ve JobOpening bağı
+  // yok, JobOpening tablosu boş, requestedPosition serbest metin). UI'da Analiz/Tanımlar
+  // sekmesi zaten `recruitment.admin`'e gizli; bu değişiklik kapı ile API'yi eşitler.
+  if (!isAdmin) return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
 
   // Toplam maliyet + kalem bazlı kırılım
   const kayitlar = await prisma.recruitmentCost.findMany({
@@ -43,7 +49,11 @@ export async function GET() {
     basvuruBazliMaliyet: Math.round(basvuruBazli * 100) / 100,
     genelMaliyet: Math.round(genel * 100) / 100,
     iseAlinan,
-    costPerHire,
+    // costPerHire TÜRETİLMİŞ metrik → küçük örneklem eşiğinden geçer (ornek-esigi.ts).
+    // Örneklem = işe alınan kişi sayısı; n=1 iken bu rakam TEK kişinin toplam işe alım
+    // maliyetidir. Ham tutarlar (toplamMaliyet/basvuruBazli/genel) ortalama olmadığı
+    // için dokunulmadan kalır.
+    costPerHire: ornekliDeger(costPerHire, iseAlinan),
     kayitSayisi: kayitlar.length,
     kalemler,
   });

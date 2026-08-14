@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { CandidateSource, Prisma } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { departmanKapsamiVarMi, departmanTanimsizYaniti } from "@/lib/recruitment/departman-kapsami";
 import * as XLSX from "xlsx";
 import { logAuditEvent } from "@/lib/audit-log";
 
@@ -57,6 +58,17 @@ export async function GET(request: NextRequest) {
     }
     if (source) where.source = source;
     if (skills) where.skills = { hasSome: skills.split(",") };
+
+    // FAIL-CLOSED — liste ucuyla AYNI kapı (departman-kapsami.ts). Burada ayrıca kritik:
+    // denetim kaydı `scope: "department"` yazıyordu; departman boşken dönen veri org-geneli
+    // olduğu için log GERÇEĞİ YANLIŞ ANLATIYORDU.
+    if (!departmanKapsamiVarMi({
+      isAdmin: ctx.isAdmin || ctx.canViewCandidate,
+      canViewByDept: ctx.canViewByDept,
+      userDepartment: ctx.userDepartment,
+    })) {
+      return departmanTanimsizYaniti();
+    }
 
     // Departman müdürü: kendi departmanı pozisyonlarına başvuran adaylar (liste ile aynı)
     if (!ctx.isAdmin && !ctx.canViewCandidate && ctx.canViewByDept) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { departmanKapsamiVarMi, departmanTanimsizYaniti } from "@/lib/recruitment/departman-kapsami";
 
 // POST - Yeni başvuru oluştur
 export async function POST(request: NextRequest) {
@@ -119,7 +120,14 @@ export async function GET(request: NextRequest) {
     const where: any = {};
 
     // Departman müdürü: sadece kendi departmanı pozisyonlarına başvurular
-    if (!isAdmin && canViewByDept && userDepartment) {
+    // FAIL-CLOSED: departman boşsa daraltma dalı hiç çalışmaz ve `where` DARALTILMADAN
+    // sorguya giderdi → org-geneli sızıntı. Kapı TEK KAYNAK (departman-kapsami.ts);
+    // detay uçlarındaki canSeeOpening/canSeeCandidate ile aynı kural.
+    if (!departmanKapsamiVarMi({ isAdmin, canViewByDept, userDepartment })) {
+      return departmanTanimsizYaniti();
+    }
+
+    if (!isAdmin && canViewByDept) {
       where.jobOpening = {
         department: { contains: userDepartment, mode: "insensitive" },
       };

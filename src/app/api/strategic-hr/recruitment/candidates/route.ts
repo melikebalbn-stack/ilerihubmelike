@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { CandidateSource, Prisma } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { departmanKapsamiVarMi, departmanTanimsizYaniti } from "@/lib/recruitment/departman-kapsami";
 
 // PR-RECRUIT-RBAC: permissions tabanlı; aday detayını sadece admin veya
 // kendi departmanı pozisyonlarına başvuran adayları görür.
@@ -45,6 +46,18 @@ export async function GET(request: NextRequest) {
 
     if (source) where.source = source;
     if (skills) where.skills = { hasSome: skills.split(",") };
+
+    // FAIL-CLOSED: `contains: ""` HER satırla eşleşir — departman boşken kapsam sessizce
+    // kalkıyordu (tüm aday havuzu). Kapı TEK KAYNAK (departman-kapsami.ts); canSeeCandidate
+    // detayda zaten `if (!ctx.userDepartment) return false` diyordu, liste artık aynı dilde.
+    // `canViewCandidate` (recruitment.candidate.view) ayrı ve AÇIK bir izin → admin gibi geçer.
+    if (!departmanKapsamiVarMi({
+      isAdmin: ctx.isAdmin || ctx.canViewCandidate,
+      canViewByDept: ctx.canViewByDept,
+      userDepartment: ctx.userDepartment,
+    })) {
+      return departmanTanimsizYaniti();
+    }
 
     // Departman müdürü: sadece kendi departmanı pozisyonlarına başvuran adaylar
     if (!ctx.isAdmin && !ctx.canViewCandidate && ctx.canViewByDept) {

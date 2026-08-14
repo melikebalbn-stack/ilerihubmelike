@@ -24,8 +24,13 @@ export async function GET() {
   const { session, error } = await requireSession();
   if (error) return error;
 
-  const { isAdmin, canViewByDept } = recruitAccess(session);
-  if (!isAdmin && !canViewByDept) {
+  const { isAdmin } = recruitAccess(session);
+  // YALNIZ ADMIN (recruitment.view YETMEZ). Gerekçe: bu uç şirket geneli YÖNETİM
+  // metriği döndürür ve kapsam daraltması TEKNİK OLARAK MÜMKÜN DEĞİL — başvuruda
+  // departman ekseni yok (PublicJobApplication'da departman alanı ve JobOpening bağı
+  // yok, JobOpening tablosu boş, requestedPosition serbest metin). UI'da Analiz/Tanımlar
+  // sekmesi zaten `recruitment.admin`'e gizli; bu değişiklik kapı ile API'yi eşitler.
+  if (!isAdmin) {
     return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
   }
 

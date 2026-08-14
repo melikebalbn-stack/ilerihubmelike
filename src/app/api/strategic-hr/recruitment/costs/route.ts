@@ -7,20 +7,15 @@ function recruitAccess(session: { user: { permissions?: string[] } }) {
   return { isAdmin: perms.includes("recruitment.admin"), canView: perms.includes("recruitment.view") };
 }
 
-// GET — maliyet kayıtları. ?publicJobApplicationId= ile başvuru bazlı, yoksa tümü.
-export async function GET(req: NextRequest) {
-  const { session, error } = await requireSession();
-  if (error) return error;
-  const { isAdmin, canView } = recruitAccess(session);
-  if (!isAdmin && !canView) return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
-  const appId = req.nextUrl.searchParams.get("publicJobApplicationId");
-  const costs = await prisma.recruitmentCost.findMany({
-    where: appId ? { publicJobApplicationId: appId } : {},
-    orderBy: { createdAt: "desc" },
-    include: { item: { select: { name: true, type: true, unitRate: true } } },
-  });
-  return NextResponse.json(costs);
-}
+// GET HANDLER'I KALDIRILDI (bilinçli).
+// Neydi: `?publicJobApplicationId=` opsiyonel — parametre verilmezse TÜM maliyet kayıtları,
+// verilirse başkasının başvurusunun kayıtları; sahiplik kontrolü YOKTU. `include` kullandığı
+// için satır bazlı ham veri dönüyordu: amount, quantity, note (serbest metin), enteredByEmail
+// (İK kullanıcısının e-postası), publicJobApplicationId (adaya join anahtarı), item.unitRate.
+// UI bu ucun GET'ini HİÇ çağırmıyordu (yalnız POST) — kullanılmayan ama açık bir yüzeydi.
+// Maliyet özeti gerekiyorsa metrics/cost-per-hire kullanılır (toplu, kişi bazlı değil).
+// Başvuru bazlı döküm ihtiyacı doğarsa: publicJobApplicationId ZORUNLU + açık `select`
+// (enteredByEmail/note HARİÇ) + çağıranın o başvuruyu görme yetkisi kontrolü ile yeniden açılır.
 
 // POST — maliyet kaydı ekle (admin). Tutar SUNUCUDA hesaplanır ve SNAPSHOT yazılır.
 // SAATLIK: amount = quantity × item.unitRate. SABIT: amount = body.amount (miktar=1).

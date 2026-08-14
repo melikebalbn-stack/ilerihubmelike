@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ornekliDeger } from "@/lib/recruitment/ornek-esigi";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { TASLAK } from "@/lib/recruitment/taslak-statuler";
@@ -28,8 +29,13 @@ const KATEGORI_ETIKET: Record<string, string> = {
 export async function GET() {
   const { session, error } = await requireSession();
   if (error) return error;
-  const { isAdmin, canView } = recruitAccess(session);
-  if (!isAdmin && !canView) return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
+  const { isAdmin } = recruitAccess(session);
+  // YALNIZ ADMIN (recruitment.view YETMEZ). Gerekçe: bu uç şirket geneli YÖNETİM
+  // metriği döndürür ve kapsam daraltması TEKNİK OLARAK MÜMKÜN DEĞİL — başvuruda
+  // departman ekseni yok (PublicJobApplication'da departman alanı ve JobOpening bağı
+  // yok, JobOpening tablosu boş, requestedPosition serbest metin). UI'da Analiz/Tanımlar
+  // sekmesi zaten `recruitment.admin`'e gizli; bu değişiklik kapı ile API'yi eşitler.
+  if (!isAdmin) return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
 
   const basvurular = await prisma.publicJobApplication.findMany({
     select: {
@@ -66,15 +72,21 @@ export async function GET() {
   const toplamMaliyet = r2(kayitlar.reduce((a, k) => a + k.amount, 0));
   const costPerHire = iseBaslayan > 0 ? r2(toplamMaliyet / iseBaslayan) : null;
 
+  // KÜÇÜK ÖRNEKLEM EŞİĞİ (ornek-esigi.ts — IT KPI panosu deseni).
+  // Ortalama/türetilmiş metrikler `{deger, ornek, not}` paketiyle döner; eşiğin altında
+  // `deger: null` olur. HAM SAYIMLAR (toplamBasvuru/surecte/iseBaslayan/toplamMaliyet)
+  // ortalama olmadığı için DOKUNULMADAN kalır.
   const kpi = {
     toplamBasvuru,
     surecte,
     iseBaslayan,
     hedefAsimi: null as number | null, // başvuru↔pozisyon bağı yok → hesaplanamaz "-"
-    ortTimeToHire, // gün (yoksa null)
-    ortTimeToFill: null as number | null, // ilan↔başvuru bağı yok → hesaplanamaz "-"
+    // Örneklem = işe alım logu bulunan başvuru sayısı (ortalamanın gerçek paydası).
+    ortTimeToHire: ornekliDeger(ortTimeToHire, tthGun.length),
+    ortTimeToFill: ornekliDeger(null, 0), // ilan↔başvuru bağı yok → hesaplanamaz "-"
     toplamMaliyet,
-    costPerHire, // null → "-"
+    // Örneklem = işe alınan kişi sayısı (costPerHire'ın paydası).
+    costPerHire: ornekliDeger(costPerHire, iseBaslayan),
   };
 
   // ---- İşe Alım Hunisi (aşama bazlı, mevcut status dağılımı) ----
@@ -112,7 +124,14 @@ export async function GET() {
     posMap.set(p, e);
   }
   const pozisyonlar = [...posMap.entries()]
-    .map(([position, v]) => ({ position, basvuru: v.basvuru, ortTimeToHire: ortala(v.tthGun), costPerHire: null as number | null }))
+    // basvuru HAM SAYIM → aynen. ortTimeToHire ORTALAMA → eşikten geçer (2026-08 ölçümünde
+    // 13 pozisyonun HEPSİ n=1'di, yani pozisyon ortalaması tek kişinin süresiydi).
+    .map(([position, v]) => ({
+      position,
+      basvuru: v.basvuru,
+      ortTimeToHire: ornekliDeger(ortala(v.tthGun), v.tthGun.length),
+      costPerHire: null as number | null,
+    }))
     .sort((a, b) => b.basvuru - a.basvuru);
 
   // ---- Kaynak Kırılımı (sözlükten: referralSourceDef.name; bağı yok → "Belirtilmemiş") ----

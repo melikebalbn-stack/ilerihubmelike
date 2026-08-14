@@ -4,8 +4,12 @@ import { assessmentGuard } from "@/lib/assessment/guard";
 import type { AssessmentType } from "@/generated/prisma";
 
 // GET — sınav tanımları listesi (soru sayısı ile)
+// YALNIZ ADMIN (recruitment.view YETMEZ). Gerekçe: soru bankası SINAV BÜTÜNLÜĞÜ
+// meselesidir — sorulari gören, adaya sınav öncesi verebilir. Müdürün soru görmeye
+// ihtiyacı yok; adayının SONUCUNU görmesi yeterli ve o yol açık kalıyor
+// (assessments/sessions?publicJobApplicationId= → atanan müdür yetkili).
 export async function GET() {
-  const g = await assessmentGuard();
+  const g = await assessmentGuard({ requireAdmin: true });
   if (g.error) return g.error;
 
   const sinavlar = await prisma.candidateAssessment.findMany({

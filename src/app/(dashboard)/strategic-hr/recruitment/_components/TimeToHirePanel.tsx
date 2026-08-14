@@ -17,14 +17,18 @@ const ASAMA_ETIKET: Record<string, string> = {
   REJECTED: "Reddedildi",
 }
 
+type Ornekli = { deger: number | null; ornek: number; not: string }
+
 type Asama = {
   status: string
   bekleyen: number
-  ortBekleme: number | null
-  ortGecis: number | null
+  // Sunucu küçük-örneklem paketi döndürüyor (lib/recruitment/ornek-esigi.ts):
+  // eşiğin altında `deger` null olur, `not` nedenini söyler.
+  ortBekleme: Ornekli
+  ortGecis: Ornekli
 }
 type Metrik = {
-  ozet: { ortalamaTimeToHire: number | null; iseAlinanSayisi: number; toplamBasvuru: number }
+  ozet: { ortalamaTimeToHire: Ornekli; iseAlinanSayisi: number; toplamBasvuru: number }
   beklemeEsikGun: number
   asamalar: Asama[]
 }
@@ -67,7 +71,7 @@ export default function TimeToHirePanel() {
             <div>
               <p className="text-xs text-slate-500">Ort. İşe Alım Süresi</p>
               <p className="text-2xl font-bold text-[#1B4F72]">
-                {ozet.ortalamaTimeToHire !== null ? `${ozet.ortalamaTimeToHire} gün` : "-"}
+                {ozet.ortalamaTimeToHire.deger !== null ? `${ozet.ortalamaTimeToHire.deger} gün` : "-"}
               </p>
               <p className="text-[11px] text-slate-400">
                 {ozet.iseAlinanSayisi > 0
@@ -115,16 +119,16 @@ export default function TimeToHirePanel() {
                 </thead>
                 <tbody>
                   {asamalar.map((a) => {
-                    const darbogaz = a.ortBekleme !== null && a.ortBekleme > beklemeEsikGun
+                    const darbogaz = a.ortBekleme.deger !== null && a.ortBekleme.deger > beklemeEsikGun
                     return (
                       <tr key={a.status} className="border-b last:border-0">
                         <td className="px-3 py-2 font-medium">{ASAMA_ETIKET[a.status] ?? a.status}</td>
                         <td className="px-3 py-2">{a.bekleyen}</td>
                         <td className={`px-3 py-2 font-semibold ${darbogaz ? "text-red-600" : "text-slate-700"}`}>
-                          {a.ortBekleme !== null ? a.ortBekleme : "-"}
+                          {a.ortBekleme.deger !== null ? a.ortBekleme.deger : "-"}
                         </td>
                         <td className="px-3 py-2 text-slate-600">
-                          {a.ortGecis !== null ? a.ortGecis : "-"}
+                          {a.ortGecis.deger !== null ? a.ortGecis.deger : "-"}
                         </td>
                       </tr>
                     )

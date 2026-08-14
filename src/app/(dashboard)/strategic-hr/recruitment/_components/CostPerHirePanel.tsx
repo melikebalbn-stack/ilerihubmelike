@@ -14,7 +14,8 @@ type Analiz = {
   basvuruBazliMaliyet: number
   genelMaliyet: number
   iseAlinan: number
-  costPerHire: number | null
+  // Küçük-örneklem paketi (lib/recruitment/ornek-esigi.ts): eşiğin altında deger null.
+  costPerHire: { deger: number | null; ornek: number; not: string }
   kayitSayisi: number
   kalemler: { name: string; total: number }[]
 }
@@ -159,7 +160,7 @@ export default function CostPerHirePanel() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="border rounded-md p-3"><p className="text-xs text-slate-500">Toplam Maliyet</p><p className="text-xl font-bold text-[#1B4F72]">{TL(analiz.toplamMaliyet)}</p><p className="text-[11px] text-slate-400">başvuru {TL(analiz.basvuruBazliMaliyet)} · genel {TL(analiz.genelMaliyet)}</p></div>
               <div className="border rounded-md p-3 flex items-center gap-2"><Users className="h-5 w-5 text-slate-400" /><div><p className="text-xs text-slate-500">İşe Alınan</p><p className="text-xl font-bold text-[#1B4F72]">{analiz.iseAlinan}</p></div></div>
-              <div className="border rounded-md p-3"><p className="text-xs text-slate-500">Kişi Başı Maliyet</p><p className="text-xl font-bold text-[#1B4F72]">{analiz.costPerHire !== null ? TL(analiz.costPerHire) : "-"}</p><p className="text-[11px] text-slate-400">{analiz.iseAlinan === 0 ? "İşe alınan yok" : `${analiz.kayitSayisi} kayıt`}</p></div>
+              <div className="border rounded-md p-3"><p className="text-xs text-slate-500">Kişi Başı Maliyet</p><p className="text-xl font-bold text-[#1B4F72]">{analiz.costPerHire.deger !== null ? TL(analiz.costPerHire.deger) : "-"}</p><p className="text-[11px] text-slate-400">{analiz.costPerHire.not}</p></div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">

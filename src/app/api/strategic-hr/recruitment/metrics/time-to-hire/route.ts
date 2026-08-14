@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { ornekliDeger } from "@/lib/recruitment/ornek-esigi";
 
 // Recruitment modülünün mevcut yetki deseni (recruitAccess) — yeni izin icat edilmez.
 function recruitAccess(session: {
@@ -40,8 +41,13 @@ export async function GET() {
   const { session, error } = await requireSession();
   if (error) return error;
 
-  const { isAdmin, canViewByDept } = recruitAccess(session);
-  if (!isAdmin && !canViewByDept) {
+  const { isAdmin } = recruitAccess(session);
+  // YALNIZ ADMIN (recruitment.view YETMEZ). Gerekçe: bu uç şirket geneli YÖNETİM
+  // metriği döndürür ve kapsam daraltması TEKNİK OLARAK MÜMKÜN DEĞİL — başvuruda
+  // departman ekseni yok (PublicJobApplication'da departman alanı ve JobOpening bağı
+  // yok, JobOpening tablosu boş, requestedPosition serbest metin). UI'da Analiz/Tanımlar
+  // sekmesi zaten `recruitment.admin`'e gizli; bu değişiklik kapı ile API'yi eşitler.
+  if (!isAdmin) {
     return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
   }
 
@@ -103,16 +109,24 @@ export async function GET() {
     }
   }
 
-  const asamalar = ASAMA_SIRA.filter((s) => bekleme.has(s) || gecis.has(s)).map((s) => ({
-    status: s,
-    bekleyen: bekleme.get(s)?.length ?? 0,
-    ortBekleme: ortala(bekleme.get(s) ?? []),
-    ortGecis: ortala(gecis.get(s) ?? []),
-  }));
+  // KÜÇÜK ÖRNEKLEM EŞİĞİ (ornek-esigi.ts) — ORTALAMALAR pakete girer, HAM SAYIM (bekleyen)
+  // aynen kalır. Aşama başına örneklem çok küçük olabiliyor (tek kişilik kuyruk = tek kişi).
+  const asamalar = ASAMA_SIRA.filter((s) => bekleme.has(s) || gecis.has(s)).map((s) => {
+    const bekArr = bekleme.get(s) ?? [];
+    const gecArr = gecis.get(s) ?? [];
+    return {
+      status: s,
+      bekleyen: bekArr.length,
+      ortBekleme: ornekliDeger(ortala(bekArr), bekArr.length),
+      ortGecis: ornekliDeger(ortala(gecArr), gecArr.length),
+    };
+  });
 
   return NextResponse.json({
     ozet: {
-      ortalamaTimeToHire,
+      // ORTALAMA → eşikten geçer. Örneklem = işe alınan sayısı; n=1 iken bu rakam
+      // TEK kişinin süreç süresidir (2026-08 ölçümünde durum tam olarak buydu).
+      ortalamaTimeToHire: ornekliDeger(ortalamaTimeToHire, tthGunler.length),
       iseAlinanSayisi: tthGunler.length,
       toplamBasvuru: basvurular.length,
     },

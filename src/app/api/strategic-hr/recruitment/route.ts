@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { JobOpeningStatus, JobPriority, EmploymentType, Prisma } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { departmanKapsamiVarMi, departmanTanimsizYaniti } from "@/lib/recruitment/departman-kapsami";
 
 // PR-RECRUIT-RBAC: fullAccessRoles enum + isHrDepartment string fallback
 // kaldırıldı, permissions tabanlı:
@@ -43,6 +44,13 @@ export async function GET(request: NextRequest) {
     if (priority) where.priority = priority;
     if (department) where.department = { contains: department, mode: "insensitive" };
     if (employmentType) where.employmentType = employmentType;
+
+    // FAIL-CLOSED: `contains: ""` her ilanla eşleşir → departman boşken kapsam kalkıyordu.
+    // Kapı TEK KAYNAK (departman-kapsami.ts); [id] ucundaki canSeeOpening zaten
+    // `ctx.userDepartment.length > 0` şartını koşuyordu — liste artık onunla aynı.
+    if (!departmanKapsamiVarMi({ isAdmin, canViewByDept, userDepartment })) {
+      return departmanTanimsizYaniti();
+    }
 
     // Departman müdürü: kendi departmanı VEYA hiring manager olduğu pozisyonlar
     if (!isAdmin && canViewByDept) {

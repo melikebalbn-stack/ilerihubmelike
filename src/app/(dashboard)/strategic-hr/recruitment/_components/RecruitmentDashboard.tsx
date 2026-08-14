@@ -21,12 +21,16 @@ const KAYNAK_ETIKET: Record<string, string> = {
 const TL = (n: number) => `₺${n.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}`
 const gun = (n: number | null) => (n !== null ? `${n} gün` : "-")
 
+// Sunucudan gelen küçük-örneklem paketi (lib/recruitment/ornek-esigi.ts).
+// deger null → eşiğin altında ya da hesaplanamadı; `not` nedenini söyler.
+type Ornekli = { deger: number | null; ornek: number; not: string }
+
 type Dash = {
-  kpi: { toplamBasvuru: number; surecte: number; iseBaslayan: number; hedefAsimi: number | null; ortTimeToHire: number | null; ortTimeToFill: number | null; toplamMaliyet: number; costPerHire: number | null }
+  kpi: { toplamBasvuru: number; surecte: number; iseBaslayan: number; hedefAsimi: number | null; ortTimeToHire: Ornekli; ortTimeToFill: Ornekli; toplamMaliyet: number; costPerHire: Ornekli }
   huni: { status: string; count: number; yuzde: number }[]
   reddedilen: number
   pareto: { name: string; category: string; categoryLabel: string; count: number }[]
-  pozisyonlar: { position: string; basvuru: number; ortTimeToHire: number | null; costPerHire: number | null }[]
+  pozisyonlar: { position: string; basvuru: number; ortTimeToHire: Ornekli; costPerHire: number | null }[]
   kaynaklar: { source: string; basvuru: number; iseAlinan: number; donusum: number }[]
 }
 
@@ -69,10 +73,10 @@ export default function RecruitmentDashboard() {
         <Kart icon={<Activity className="h-6 w-6" />} baslik="Süreçte" deger={String(d.kpi.surecte)} />
         <Kart icon={<UserCheck className="h-6 w-6" />} baslik="İşe Başlayan" deger={String(d.kpi.iseBaslayan)} />
         <Kart icon={<AlertTriangle className="h-6 w-6" />} baslik="Hedef Aşımı" deger={d.kpi.hedefAsimi !== null ? String(d.kpi.hedefAsimi) : "-"} alt={d.kpi.hedefAsimi === null ? "pozisyon bağı yok" : undefined} />
-        <Kart icon={<Gauge className="h-6 w-6" />} baslik="Ort. Time to Hire" deger={gun(d.kpi.ortTimeToHire)} />
-        <Kart icon={<Timer className="h-6 w-6" />} baslik="Ort. Time to Fill" deger={gun(d.kpi.ortTimeToFill)} alt={d.kpi.ortTimeToFill === null ? "ilan bağı yok" : undefined} />
+        <Kart icon={<Gauge className="h-6 w-6" />} baslik="Ort. Time to Hire" deger={gun(d.kpi.ortTimeToHire.deger)} alt={d.kpi.ortTimeToHire.not} />
+        <Kart icon={<Timer className="h-6 w-6" />} baslik="Ort. Time to Fill" deger={gun(d.kpi.ortTimeToFill.deger)} alt="ilan bağı yok" />
         <Kart icon={<Banknote className="h-6 w-6" />} baslik="Toplam İşe Alım Maliyeti" deger={TL(d.kpi.toplamMaliyet)} />
-        <Kart icon={<TrendingDown className="h-6 w-6" />} baslik="Genel Cost per Hire" deger={d.kpi.costPerHire !== null ? TL(d.kpi.costPerHire) : "-"} />
+        <Kart icon={<TrendingDown className="h-6 w-6" />} baslik="Genel Cost per Hire" deger={d.kpi.costPerHire.deger !== null ? TL(d.kpi.costPerHire.deger) : "-"} alt={d.kpi.costPerHire.not} />
       </div>
 
       {/* Huni + Pareto yan yana */}
@@ -115,7 +119,7 @@ export default function RecruitmentDashboard() {
               <table className="w-full text-xs">
                 <thead><tr className="text-left text-slate-500 border-b"><th className="px-3 py-2">Pozisyon (serbest metin)</th><th className="px-3 py-2">Başvuru</th><th className="px-3 py-2">Ort. Time to Hire</th><th className="px-3 py-2">Cost per Hire</th></tr></thead>
                 <tbody>{d.pozisyonlar.map((p, i) => (
-                  <tr key={i} className="border-b last:border-0"><td className="px-3 py-2 font-medium">{p.position}</td><td className="px-3 py-2">{p.basvuru}</td><td className="px-3 py-2">{gun(p.ortTimeToHire)}</td><td className="px-3 py-2 text-slate-400">-</td></tr>
+                  <tr key={i} className="border-b last:border-0"><td className="px-3 py-2 font-medium">{p.position}</td><td className="px-3 py-2">{p.basvuru}</td><td className="px-3 py-2" title={p.ortTimeToHire.not}>{gun(p.ortTimeToHire.deger)}</td><td className="px-3 py-2 text-slate-400">-</td></tr>
                 ))}</tbody>
               </table>
             </div>

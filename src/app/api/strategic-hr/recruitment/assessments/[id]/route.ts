@@ -4,13 +4,12 @@ import { assessmentGuard } from "@/lib/assessment/guard";
 
 // GET — sınav detayı (soruları + şıkları ile)
 //
-// CEVAP ANAHTARI YALNIZ ADMIN'E: guard `recruitment.admin` VEYA `recruitment.view` kabul
-// eder; sınavı yönetemeyen (yalnız view) departman müdürü doğru şıkkı GÖRMEMELİ.
-// Şıklar `include` ile çekilirse Prisma TÜM sütunları döndürür ve `isCorrect` sessizce
-// yanıta girer — bu yüzden AÇIK `select` kullanılır (aday ucundaki desenin aynısı,
-// bkz. api/public/sinav/[token]/route.ts). Admin olmayanda alan null/false DEĞİL, HİÇ YOK.
+// YALNIZ ADMIN (recruitment.view YETMEZ). Gerekçe: soru bankası SINAV BÜTÜNLÜĞÜ
+// meselesidir — sorulari gören, adaya sınav öncesi verebilir. Müdürün soru görmeye
+// ihtiyacı yok; adayının SONUCUNU görmesi yeterli ve o yol açık kalıyor
+// (assessments/sessions?publicJobApplicationId= → atanan müdür yetkili).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const g = await assessmentGuard();
+  const g = await assessmentGuard({ requireAdmin: true });
   if (g.error) return g.error;
   const { id } = await params;
 
@@ -23,6 +22,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           options: {
             orderBy: { order: "asc" },
             // isCorrect YALNIZ admin'de seçilir — view kullanıcısında alan hiç gelmez.
+            // Şıklar `include` ile çekilirse Prisma TÜM sütunları döndürür ve `isCorrect`
+            // sessizce yanıta girer — bu yüzden AÇIK `select` (aday ucundaki desenin aynısı,
+            // bkz. api/public/sinav/[token]/route.ts). Guard artık admin-only olduğu için
+            // koşul bugün hep doğru; SAVUNMA AMAÇLI duruyor — kapı ileride gevşetilirse
+            // cevap anahtarı yine kendiliğinden dışarı çıkmaz.
             select: { id: true, text: true, order: true, ...(g.isAdmin ? { isCorrect: true } : {}) },
           },
         },

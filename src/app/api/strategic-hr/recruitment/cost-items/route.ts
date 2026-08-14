@@ -12,8 +12,13 @@ function recruitAccess(session: { user: { permissions?: string[] } }) {
 export async function GET(req: NextRequest) {
   const { session, error } = await requireSession();
   if (error) return error;
-  const { isAdmin, canView } = recruitAccess(session);
-  if (!isAdmin && !canView) return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
+  const { isAdmin } = recruitAccess(session);
+  // YALNIZ ADMIN (recruitment.view YETMEZ). Gerekçe: bu uç şirket geneli YÖNETİM
+  // metriği döndürür ve kapsam daraltması TEKNİK OLARAK MÜMKÜN DEĞİL — başvuruda
+  // departman ekseni yok (PublicJobApplication'da departman alanı ve JobOpening bağı
+  // yok, JobOpening tablosu boş, requestedPosition serbest metin). UI'da Analiz/Tanımlar
+  // sekmesi zaten `recruitment.admin`'e gizli; bu değişiklik kapı ile API'yi eşitler.
+  if (!isAdmin) return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
   const activeOnly = req.nextUrl.searchParams.get("activeOnly") === "1";
   const items = await prisma.recruitmentCostItem.findMany({
     where: activeOnly ? { isActive: true } : {},

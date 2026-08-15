@@ -5,6 +5,7 @@ import { resolveTransitionRolesFull } from "@/lib/recruitment/resolve-roles";
 import { otomatikAtamaOnizleme } from "@/lib/recruitment/otomatik-atama";
 import {
   allowedTargetsForRoles,
+  formGerektirenleriSuz,
   requiresAssignedManager,
   requiresRejectionReason,
   requiresAssessment,
@@ -12,6 +13,7 @@ import {
 import { bekleyenTaraf, kararSizdeMi, terminalMi, kullaniciAdi } from "@/lib/recruitment/bekleyen";
 import { bayragaGoreSuz } from "@/lib/recruitment/adaya-geri-gonder";
 import { ikiKademeSuz } from "@/lib/recruitment/teknik-mulakat-bayrak";
+import { donusturSuz } from "@/lib/recruitment/personele-donustur-bayrak";
 
 export const dynamic = "force-dynamic";
 
@@ -99,7 +101,12 @@ export async function GET(
   // Workflow bağlamı: bu durumdan rollerin geçebileceği hedefler + hangi hedef ek girdi ister.
   // Faz 1 bayrağı: RECRUITMENT_ADAYA_GERI_GONDER_ENABLED kapalıyken ADAYA_GERI_GONDERILDI
   // hedefi listeden DÜŞER → UI butonu hiç çizmez. Gerçek engelleme geçiş ucunda (403).
-  const allowedTargets = ikiKademeSuz(bayragaGoreSuz(allowedTargetsForRoles(application.status, roles)));
+  // Faz 6 bayrağı da aynı zincire eklenir: kapalıyken EVRAK_HAZIRLIK butonu hiç çizilmez.
+  // formGerektirenleriSuz: ISE_BASLADI genel geçiş butonu olarak ÇİZİLMEZ — o statüye
+  // yalnız "Personele Dönüştür" formundan gidilir (transitions.ts · SADECE_FORMLA).
+  const allowedTargets = formGerektirenleriSuz(
+    donusturSuz(ikiKademeSuz(bayragaGoreSuz(allowedTargetsForRoles(application.status, roles)))),
+  );
   const requiresManagerTargets = allowedTargets.filter(requiresAssignedManager);
   const requiresReasonTargets = allowedTargets.filter(requiresRejectionReason);
   const requiresAssessmentTargets = allowedTargets.filter(requiresAssessment);

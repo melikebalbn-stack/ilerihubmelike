@@ -35,6 +35,9 @@ const STATUS_COLORS: Record<JobApplicationStatus, string> = {
   // 2. kademe: 1. kademeyle aynı renk ailesi, bir ton koyu (kademe yükseldikçe koyulaşır —
   // müdür kademesindeki amber→orange deseninin karşılığı).
   TEKNIK_MULAKAT_UST_ONAY: "bg-teal-200 text-teal-900",
+  // Faz 6 — işbaşı öncesi evrak aşaması. Teklif/işbaşı ailesiyle akraba (emerald→green)
+  // ama arada bir bekleme adımı olduğu için amber gövdeli.
+  EVRAK_HAZIRLIK: "bg-amber-100 text-amber-800",
   TEKLIF: "bg-emerald-100 text-emerald-800",
   TEKLIF_KABUL: "bg-green-100 text-green-800",
   ISE_BASLADI: "bg-green-100 text-green-800",

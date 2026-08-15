@@ -103,6 +103,9 @@ type PersonnelData = {
   altiAyDegerlendirme: string | null
   // PR-4a: Personnel.exit* + workingPeriod artık API'den dönmüyor — çıkış verisi
   // lastClosedPeriod'dan (aşağıda). Alanlar 4b'de DROP edilecek.
+  // Faz 6 — bu kart bir başvurudan doğduysa dolu (1412 eski kayıtta null).
+  jobApplicationId: string | null
+  jobApplication: { id: string; applicationNumber: string; createdAt: string } | null
   // PR-C
   employmentPeriods: EmploymentPeriodItem[]
   employmentSummary: {
@@ -918,6 +921,35 @@ export default function PersonnelDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Faz 6 — Başvuru Dosyası. YALNIZ bu kart bir başvurudan doğduysa çıkar;
+          eski kayıtlarda jobApplication null olduğu için hiç render edilmez.
+          Sayfanın mevcut yetki guard'ı (canAccessPersonnel) geçerli — yeni anahtar YOK. */}
+      {data.jobApplication && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Başvuru Dosyası</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              <div>
+                <p className="text-sm text-muted-foreground">Başvuru No</p>
+                <p className="font-medium">{data.jobApplication.applicationNumber}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Başvuru Tarihi</p>
+                <p className="font-medium">{formatDate(data.jobApplication.createdAt)}</p>
+              </div>
+              <Link
+                href={`/strategic-hr/recruitment/job-applications/${data.jobApplication.id}`}
+                className="text-blue-600 hover:underline"
+              >
+                Başvuru dosyasını aç →
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Beden Bilgileri (envanter/zimmet) */}
       <Card>

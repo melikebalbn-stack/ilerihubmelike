@@ -156,8 +156,18 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     IK: ["TEKLIF_KABUL", "IK_MULAKATI", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
+  // ——— İşbaşı öncesi evrak aşaması (Faz 6) ———
+  // ISE_BASLADI artık BURADAN çıkarıldı: işbaşı, personel kaydı oluşturulmadan
+  // işaretlenemez. Yol: TEKLIF_KABUL → EVRAK_HAZIRLIK → (Personele Dönüştür formu) → ISE_BASLADI.
   TEKLIF_KABUL: {
-    IK: ["ISE_BASLADI", "REJECTED"],
+    IK: ["EVRAK_HAZIRLIK", "REJECTED"],
+    MUDUR: [],
+  },
+  EVRAK_HAZIRLIK: {
+    // ISE_BASLADI matriste DURUR (yetkiyi bu matris tanımlar) ama /transition ucundan
+    // GEÇİLEMEZ — dönüşüm ucu bu satırı canTransition ile doğrular ve statüyü personel
+    // kaydıyla AYNI transaction'da yazar (personele-donustur.ts).
+    IK: ["ISE_BASLADI", "TEKLIF_KABUL", "REJECTED"],
     MUDUR: [],
   },
   ISE_BASLADI: {
@@ -207,6 +217,7 @@ export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
   TEKNIK_MULAKAT_UST_ONAY: "Teknik Mülakat (2. Kademe)",
   TEKLIF: "Teklif",
   TEKLIF_KABUL: "Teklif Kabul Edildi",
+  EVRAK_HAZIRLIK: "Evrak Hazırlık",
   ISE_BASLADI: "İşe Başladı",
   REJECTED: "Reddedildi",
   MUDUR_DEGERLENDIRME: "Müdür Değerlendirmesi",
@@ -281,6 +292,26 @@ export function canTransition(
   role: TransitionRole,
 ): boolean {
   return ALLOWED_TRANSITIONS[from]?.[role]?.includes(to) ?? false;
+}
+
+/**
+ * Faz 6 — genel /transition ucundan GEÇİLEMEYEN hedefler: kendi FORMU olan statüler.
+ * Matriste satırları vardır (yetkiyi matris tanımlar) ama geçiş, formun açtığı
+ * transaction içinde yapılır. Hem UI süzmesi hem sunucu guard'ı BURAYI okur — liste
+ * iki yerde ayrı ayrı yazılmaz.
+ *   ISE_BASLADI → Personele Dönüştür formu (personele-donustur.ts)
+ */
+export const SADECE_FORMLA: JobApplicationStatus[] = ["ISE_BASLADI"];
+
+export function sadeceFormlaMi(to: JobApplicationStatus): boolean {
+  return SADECE_FORMLA.includes(to);
+}
+
+/** Genel geçiş butonları için hedef listesini süzer (form gerektirenler düşer). */
+export function formGerektirenleriSuz(
+  hedefler: JobApplicationStatus[],
+): JobApplicationStatus[] {
+  return hedefler.filter((h) => !SADECE_FORMLA.includes(h));
 }
 
 /**

@@ -52,6 +52,7 @@ import { JobApplicationSensitiveSections } from "@/components/job-application/Jo
 import { JobApplicationStatusBadge, SinavSonucBadge } from "@/components/recruitment/JobApplicationStatusBadge"
 import { Badge } from "@/components/ui/badge"
 import { BasvuruDuzeltmeDialog } from "@/components/recruitment/BasvuruDuzeltmeDialog"
+import { PersoneleDonusturDialog } from "@/components/recruitment/PersoneleDonusturDialog"
 // Geri gönderme modalındaki alan seçimi BEYAZ LİSTEDEN gelir — liste burada KOPYALANMAZ.
 // (Sunucu da aynı listeyle süzer: adaya-geri-gonder.ts)
 import { ALAN_ETIKETLERI, DUZENLENEBILIR_ALANLAR } from "@/lib/recruitment/basvuru-duzeltme-alanlari"
@@ -239,6 +240,8 @@ export default function JobApplicationDetailPage() {
 
   // İK düzeltme modu + kaydet sonrası geçmişi tazeleme sayacı.
   const [duzeltmeAcik, setDuzeltmeAcik] = useState(false)
+  // Faz 6 — Personele Dönüştür formu (yalnız EVRAK_HAZIRLIK statüsünde açılır).
+  const [donusumAcik, setDonusumAcik] = useState(false)
   const [gecmisTazele, setGecmisTazele] = useState(0)
 
   // Workflow: aşama geçmişi + izin bağlamı (stage-log ucundan).
@@ -1096,6 +1099,19 @@ export default function JobApplicationDetailPage() {
                 <Label>Islemler</Label>
                 {/* Butonlar SUNUCUDAN gelen izinli hedeflerden türetilir — client yetki hesaplamaz.
                     Sabit buton listesi yok; allowedTargets değişince buton kümesi de değişir. */}
+                {/* Faz 6 — Personele Dönüştür. Statü EVRAK_HAZIRLIK ise ve kullanıcı İK
+                    hedeflerini görebiliyorsa çıkar. Bayrak kapalıyken bu statüye HİÇ
+                    gelinemez (EVRAK_HAZIRLIK hedefi allowedTargets'tan düşer). */}
+                {workflow?.currentStatus === "EVRAK_HAZIRLIK" && workflow.roles.includes("IK") && (
+                  <Button
+                    size="sm"
+                    className="mt-2 w-full justify-start"
+                    onClick={() => setDonusumAcik(true)}
+                  >
+                    <UserCheck className="h-4 w-4 mr-2" />
+                    Personele Donustur
+                  </Button>
+                )}
                 {workflow?.isTerminal ? (
                   <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                     {workflow.surecBitti === false
@@ -1851,6 +1867,13 @@ export default function JobApplicationDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PersoneleDonusturDialog
+        open={donusumAcik}
+        onOpenChange={setDonusumAcik}
+        applicationId={id}
+        onDone={() => { fetchDetail(); fetchWorkflow() }}
+      />
 
       {/* İK düzeltme modu — beyaz listedeki alanlar. Kaydet sonrası kayıt yeniden
           çekilir ve düzeltme geçmişi tazelenir. */}

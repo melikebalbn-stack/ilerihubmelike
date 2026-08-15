@@ -10,6 +10,7 @@ import {
   requiresRejectionReason,
   requiresAssessment,
   roluKademedeMi,
+  sadeceFormlaMi,
 } from "@/lib/recruitment/transitions";
 import { resolveTransitionRolesFull } from "@/lib/recruitment/resolve-roles";
 import { transitionApplicationStatus } from "@/lib/recruitment/stage-log";
@@ -29,6 +30,7 @@ import {
   ikiKademeEngeli,
 } from "@/lib/recruitment/teknik-mulakat-bayrak";
 import { ustAmirCoz, TEKNIK_MULAKAT_CHAIN } from "@/lib/recruitment/teknik-mulakat-zinciri";
+import { donusturSuz, donusturEngeli } from "@/lib/recruitment/personele-donustur-bayrak";
 
 export const dynamic = "force-dynamic";
 
@@ -108,7 +110,7 @@ export async function POST(
         from: current,
         to: toStatus,
         roles,
-        allowedTargets: ikiKademeSuz(bayragaGoreSuz(allowedTargetsForRoles(current, roles))),
+        allowedTargets: donusturSuz(ikiKademeSuz(bayragaGoreSuz(allowedTargetsForRoles(current, roles)))),
       },
       { status: 400 },
     );
@@ -127,6 +129,26 @@ export async function POST(
   const ikiKademeEngel = ikiKademeEngeli(toStatus);
   if (ikiKademeEngel) {
     return NextResponse.json({ error: ikiKademeEngel }, { status: 403 });
+  }
+
+  // 4d) FAZ 6 KILL SWITCH — aynı desen, EVRAK_HAZIRLIK için.
+  const donusturEngel = donusturEngeli(toStatus);
+  if (donusturEngel) {
+    return NextResponse.json({ error: donusturEngel }, { status: 403 });
+  }
+
+  // 4e) FAZ 6 — ISE_BASLADI bu uçtan GEÇİLEMEZ. Matriste satırı vardır (yetkiyi matris
+  //     tanımlar) ama işbaşı, personel kaydı oluşturulmadan işaretlenemez: dönüşüm ve statü
+  //     AYNI transaction'da yazılır (personele-donustur.ts). Bayraktan BAĞIMSIZ kural.
+  if (sadeceFormlaMi(toStatus)) {
+    return NextResponse.json(
+      {
+        error:
+          "İşe başladı işaretlemesi yalnız 'Personele Dönüştür' formuyla yapılır (personel kaydı ile aynı işlemde).",
+        kod: "DONUSUM_FORMU_GEREKLI",
+      },
+      { status: 400 },
+    );
   }
 
   // 5) Atama gerektiren hedefler — İK'nın seçtiği (requiresAssignedManager) vs sistemin

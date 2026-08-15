@@ -116,6 +116,10 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         createdBy: true,
+        // Faz 6 — bu kart hangi başvurudan doğdu (varsa). Yalnız numara + id döner;
+        // başvurunun İÇERİĞİ buradan SIZMAZ (detay ayrı uçta, kendi yetkisiyle).
+        jobApplicationId: true,
+        jobApplication: { select: { id: true, applicationNumber: true, createdAt: true } },
         // Envanter: personel beden profili (1-1, opsiyonel)
         bedenProfili: {
           select: {

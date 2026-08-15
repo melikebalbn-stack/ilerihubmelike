@@ -5901,6 +5901,8 @@ model PublicJobApplication {
 
   // Faz 4 — teknik mülakat onay zinciri (2 kademe). Yalnız back-relation, DB kolonu doğurmaz.
   teknikOnaylar PublicJobApplicationApproval[]
+  // Faz 6 — bu başvurudan doğan personel kaydı (varsa). Tek yön: Personnel sahibi.
+  personel      Personnel?                     @relation("BasvurudanPersonel")
 
   // İşe alım aday sınav oturumları (Faz 1) — yalnız ilişki, DB kolonu değil.
   assessmentSessions AssessmentSession[]
@@ -6159,6 +6161,9 @@ enum JobApplicationStatus {
   // müdür — teknik-mulakat-zinciri.ts). Üst amir bulunamazsa kademe ATLANIR ve karar
   // İV'ye (REVIEWING) döner. Olumsuz görüş REJECTED değil REVIEWING'e gider.
   TEKNIK_MULAKAT_UST_ONAY // Teknik mülakat 2. kademe (üst amir onayında)
+  // Faz 6 — teklif kabul edildikten SONRA, işbaşından ÖNCEKİ evrak aşaması. ISE_BASLADI'ya
+  // geçiş artık yalnız "Personele Dönüştür" formuyla olur (dönüşüm + statü AYNI transaction).
+  EVRAK_HAZIRLIK // Evrak hazırlık (işbaşı öncesi)
 }
 
 // Ret (kök-neden) kategorileri — sabit 3 kategori (İK yalnız ad'ları yönetir).
@@ -9109,6 +9114,12 @@ model Personnel {
 
   // PR-4b: Personnel.exit* alanları DROP edildi — çıkış verisi tek kaynak olarak
   // EmploymentPeriod'da (kapalı dönem). Detay/leavers/HR denetimi oradan besleniyor.
+
+  // Faz 6 — bu personel kaydı hangi başvurudan doğdu. NULLABLE (mevcut 1412 kayıt
+  // etkilenmez), @unique (iki personel aynı başvuruya bağlanamaz). Başvuru silinirse
+  // personel kaydı KALIR, bağ kopar (SetNull) — istihdam kaydı başvuruya bağımlı değil.
+  jobApplicationId String?               @unique
+  jobApplication   PublicJobApplication? @relation("BasvurudanPersonel", fields: [jobApplicationId], references: [id], onDelete: SetNull)
 
   // Azure AD bağlantısı
   azureAdId    String? @unique

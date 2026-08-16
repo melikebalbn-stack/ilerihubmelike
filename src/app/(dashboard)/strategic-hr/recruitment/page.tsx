@@ -83,7 +83,7 @@ import {
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
-import { JobApplicationStatusBadge, SinavSonucBadge, type SinavRozetiVeri } from "@/components/recruitment/JobApplicationStatusBadge"
+import { JobApplicationStatusBadge, SinavSonucBadge, MukerrerBasvuruBadge, type SinavRozetiVeri, type MukerrerRozetVeri } from "@/components/recruitment/JobApplicationStatusBadge"
 import RecruitmentDashboard from "./_components/RecruitmentDashboard"
 import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
 import CostPerHirePanel from "./_components/CostPerHirePanel"
@@ -186,6 +186,9 @@ interface PublicJobApplication {
   bekleyen: { tip: "MUDUR" | "IK" | "ADAY"; ad: string; kisa: string } | null
   // Sunucuda turetilir (AssessmentSession.result/score + passingScore). Oturum yoksa null.
   sinavRozeti: SinavRozetiVeri | null
+  // Tekrar başvuru rozeti — sunucudan gelir; tek başvuruda null (rozet çizilmez).
+  // Müdür yanıtında bu alan HİÇ yok (adayın geçmişi İV'nin bilgisi).
+  mukerrer?: MukerrerRozetVeri | null
 }
 
 const employmentTypeLabels: Record<string, string> = {
@@ -318,6 +321,7 @@ export default function RecruitmentPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   // Sinav sonucu filtresi — SUNUCU tarafinda uygulanir (sayfalama toplamiyla tutarli).
   const [sinavFilter, setSinavFilter] = useState("all")
+  const [tekrarFilter, setTekrarFilter] = useState("all")
   const [candidateSourceFilter, setCandidateSourceFilter] = useState("all")
 
   // Form state - Ilan
@@ -394,6 +398,12 @@ export default function RecruitmentPage() {
     fetchJobApplications()
   }, [sinavFilter])
 
+  // Tekrar basvuru filtresi de SUNUCU tarafinda — ayni desen.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchJobApplications()
+  }, [tekrarFilter])
+
   const fetchOpenings = async () => {
     try {
       const res = await fetch("/api/strategic-hr/recruitment")
@@ -426,6 +436,9 @@ export default function RecruitmentPage() {
       // efektifTab: müdürde sekme başvurulara sabit; İK'da activeTab ile AYNI değer.
       if (statusFilter !== "all" && efektifTab === "job-applications") {
         params.set("status", statusFilter)
+      }
+      if (tekrarFilter !== "all" && efektifTab === "job-applications") {
+        params.set("tekrar", tekrarFilter)
       }
       if (sinavFilter !== "all" && efektifTab === "job-applications") {
         params.set("sinavSonuc", sinavFilter)
@@ -1596,6 +1609,21 @@ export default function RecruitmentPage() {
             </SelectContent>
           </Select>
         )}
+        {/* Tekrar basvuranlar filtresi — sinav filtresiyle AYNI ilke: SUNUCU tarafinda
+            uygulanir, ayni `where` findMany + count'ta kullanilir (sayfalama tutarli).
+            Kume TAM: Evet ∪ Hayir = tum basvurular (TC'si bos kayitlar Hayir tarafinda). */}
+        {efektifTab === "job-applications" && (
+          <Select value={tekrarFilter} onValueChange={setTekrarFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Tekrar basvuru" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tumu (tekrar farketmez)</SelectItem>
+              <SelectItem value="EVET">Tekrar basvuranlar</SelectItem>
+              <SelectItem value="HAYIR">Ilk kez basvuranlar</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         {efektifTab === "job-applications" && (
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-48">
@@ -2007,7 +2035,12 @@ export default function RecruitmentPage() {
                           ) : "-"}
                         </TableCell>
                         <TableCell>
-                          <JobApplicationStatusBadge status={app.status} />
+                          <div className="flex flex-wrap items-center gap-1">
+                            <JobApplicationStatusBadge status={app.status} />
+                            {/* Tek başvuruda sunucu null döner → rozet hiç çizilmez.
+                                Tooltip'te "Son başvuru: <tarih> — <statü>". */}
+                            <MukerrerBasvuruBadge rozet={app.mukerrer} />
+                          </div>
                         </TableCell>
                         <TableCell>
                           {/* Oturum yoksa sunucu null döner → rozet hiç çizilmez. */}

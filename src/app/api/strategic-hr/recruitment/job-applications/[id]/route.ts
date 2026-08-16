@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@/generated/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { resolveTransitionRoles } from '@/lib/recruitment/resolve-roles'
+import { digerBasvurular } from '@/lib/recruitment/mukerrer-basvuru'
 import { oturumOzetiGetir } from '@/lib/recruitment/assessment-session'
 import { logAuditEvent } from '@/lib/audit-log'
 import { fotoDosyasiniSil } from '@/lib/job-application/foto-dosya'
@@ -77,6 +78,15 @@ export async function GET(
         },
       })
       const sinavlar = await oturumOzetiGetir(prisma, id, { ik: true })
+      // Aynı adayın DİĞER başvuruları — YALNIZ İK yolunda. Saf müdür dalında bu çağrı
+      // HİÇ yapılmaz (aşağıya bakınız): adayın geçmişi İV'nin bilgisidir.
+      const oncekiBasvurular = application
+        ? await digerBasvurular(prisma, {
+            id: application.id,
+            tcKimlikNo: application.tcKimlikNo,
+            createdAt: application.createdAt,
+          })
+        : []
       const onaylar = {
         kvkkAlindi: !!application?.consent,
         kvkkTarih: application?.consent?.signedAt ?? null,
@@ -85,7 +95,7 @@ export async function GET(
         beyanKabul: !!application?.declarationAccepted,
         beyanTarih: application?.declarationDate ?? null,
       }
-      return NextResponse.json({ ...application, onaylar, sinavlar })
+      return NextResponse.json({ ...application, onaylar, sinavlar, oncekiBasvurular })
     }
 
     // Saf müdür → whitelist alanlar + kısıtlı işaret + sınav özeti (müdür: puan/durum/tarih VAR,

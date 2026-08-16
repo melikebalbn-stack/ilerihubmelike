@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -140,6 +141,17 @@ function OnayRow({ label, alindi, tarih }: { label: string; alindi: boolean; tar
       )}
     </div>
   )
+}
+
+// Aynı adayın diğer başvuruları — sunucudan gelir (mukerrer-basvuru.ts · digerBasvurular).
+// Yalnız İK yanıtında bulunur; müdür yanıtında alan HİÇ yok.
+type DigerBasvuruSatiri = {
+  id: string
+  applicationNumber: string
+  status: string
+  createdAt: string
+  rejectionReason: string | null
+  onceki: boolean
 }
 
 // stage-log ucundan dönen workflow bağlamı (izinler SUNUCUDA hesaplanır; client türetmez).
@@ -1209,6 +1221,47 @@ export default function JobApplicationDetailPage() {
                 <OnayRow label="KVKK Onayı" alindi={app.onaylar.kvkkAlindi} tarih={app.onaylar.kvkkTarih} />
                 <OnayRow label="Sağlık Beyanı" alindi={app.onaylar.saglikBeyaniAlindi} tarih={app.onaylar.saglikTarih} />
                 <OnayRow label="Beyan Kabulü" alindi={app.onaylar.beyanKabul} tarih={app.onaylar.beyanTarih} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Aynı adayın DİĞER başvuruları. Kart YALNIZ sunucu bu alanı gönderdiyse
+              çıkar; atanan müdür yanıtında alan HİÇ YOK (adayın geçmişi İV'nin bilgisi),
+              tek başvurulu adayda ise dizi boş → kart çizilmez. */}
+          {Array.isArray(app.oncekiBasvurular) && app.oncekiBasvurular.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <History className="h-4 w-4" />
+                  Bu adayin diger basvurulari ({app.oncekiBasvurular.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {(app.oncekiBasvurular as DigerBasvuruSatiri[]).map((o) => (
+                  <Link
+                    key={o.id}
+                    href={`/strategic-hr/recruitment/job-applications/${o.id}`}
+                    className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm hover:bg-slate-50"
+                  >
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {o.applicationNumber}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(o.createdAt).toLocaleDateString("tr-TR")}
+                    </span>
+                    <JobApplicationStatusBadge status={o.status} />
+                    <Badge variant="outline" className="text-xs">
+                      {o.onceki ? "onceki" : "sonraki"}
+                    </Badge>
+                    {o.rejectionReason && (
+                      <span className="text-xs text-red-700">Ret: {o.rejectionReason}</span>
+                    )}
+                  </Link>
+                ))}
+                <p className="text-xs text-muted-foreground">
+                  Ayni TC ile gonderilmis, taslak olmayan basvurular. Tekrar basvuru
+                  ENGELLENMEZ — bu liste yalniz bilgi amaclidir.
+                </p>
               </CardContent>
             </Card>
           )}

@@ -113,3 +113,42 @@ export function SinavSonucBadge({
   if (!g) return null
   return <Badge className={cn(g.renk, className)}>{g.metin}</Badge>
 }
+
+// ── Mükerrer (tekrar) başvuru rozeti ────────────────────────────────────────
+// Statü/sınav rozetleriyle AYNI desen (renk + <Badge>), ayrı bileşen dosyası açılmadan
+// yanlarına konuldu. Veri SUNUCUDAN gelir (mukerrer-basvuru.ts) — client kural yürütmez.
+//
+// NEDEN EN ESKİ KAYITTA DA ÇIKAR: rozetin işi "bu adayın birden fazla başvurusu var"
+// bilgisini vermek. En eski kayıtta gizlense, İV eski bir dosyayı (örn. reddedilmiş bir
+// başvuruyu) açtığında adayın yeniden başvurduğunu GÖREMEZDİ — en çok ihtiyaç duyulan an
+// tam da orası. Sıra numarası kronolojiyi okunur tutar; "Son başvuru" bilgisi en yeni
+// kayda işaret eder.
+
+export type MukerrerRozetVeri = {
+  toplam: number
+  sira: number
+  sonBasvuruTarihi: string
+  sonBasvuruStatus: string
+}
+
+export function MukerrerBasvuruBadge({
+  rozet,
+  className,
+}: {
+  rozet: MukerrerRozetVeri | null | undefined
+  className?: string
+}) {
+  // Tek başvurusu olan adayda sunucu null döner → rozet HİÇ çizilmez.
+  if (!rozet || rozet.toplam < 2) return null
+  const sonTarih = new Date(rozet.sonBasvuruTarihi).toLocaleDateString("tr-TR")
+  const sonStatu =
+    STATUS_LABELS_TR[rozet.sonBasvuruStatus as JobApplicationStatus] ?? rozet.sonBasvuruStatus
+  return (
+    <Badge
+      className={cn("bg-violet-100 text-violet-800", className)}
+      title={`Bu adayin ${rozet.toplam} basvurusu var. Son basvuru: ${sonTarih} — ${sonStatu}`}
+    >
+      {`${rozet.sira}. basvuru / ${rozet.toplam}`}
+    </Badge>
+  )
+}

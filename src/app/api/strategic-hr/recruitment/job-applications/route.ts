@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/auth/require-session'
 import { bekleyenTaraf, kullaniciAdi } from '@/lib/recruitment/bekleyen'
 import { TASLAK_STATULER } from '@/lib/recruitment/taslak-statuler'
 import { efektifOturumDurumu, type SinavRozeti } from '@/lib/recruitment/assessment-session'
+import { mukerrerRozetleri, mukerrerTcListesi } from '@/lib/recruitment/mukerrer-basvuru'
 
 // GET - Tüm iş başvurularını listele
 export async function GET(request: NextRequest) {
@@ -32,6 +33,8 @@ export async function GET(request: NextRequest) {
 
     // Sınav sonucu filtresi: 'GECTI' | 'KALDI' | 'YOK' (sonuçlanmamış) | yok/'all' (tümü)
     const sinavSonuc = searchParams.get('sinavSonuc')
+    // Tekrar başvuranlar filtresi: 'EVET' | 'HAYIR' | yok/'all' (tümü)
+    const tekrar = searchParams.get('tekrar')
 
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
@@ -73,6 +76,25 @@ export async function GET(request: NextRequest) {
       where.assessmentSessions = { none: { result: { not: null } } }
     }
 
+    // TEKRAR BAŞVURANLAR filtresi — SUNUCU tarafında, sınav filtresiyle AYNI ilke:
+    // aynı `where` hem findMany hem count'ta kullanılır → sayfalama toplamı tutarlı.
+    // Mükerrer TC kümesi tek groupBy ile çözülür (yalnız filtre AÇIKKEN sorgulanır).
+    // Küme TAM: EVET ∪ HAYIR = tüm başvurular (TC'si boş kayıtlar HAYIR tarafında).
+    if (tekrar === 'EVET' || tekrar === 'HAYIR') {
+      const mukerrerTcler = await mukerrerTcListesi(prisma)
+      if (tekrar === 'EVET') {
+        where.tcKimlikNo = { in: mukerrerTcler }
+      } else {
+        // `notIn` tek başına NULL'ları da eler (SQL NULL semantiği) — TC'si olmayan
+        // kayıt "tekrar başvuran değil"dir, düşmemeli. AND ile OR bloğu eklenir;
+        // where.OR arama filtresine ait olduğu için ÜZERINE YAZILMAZ.
+        where.AND = [
+          ...(Array.isArray(where.AND) ? where.AND : []),
+          { OR: [{ tcKimlikNo: null }, { tcKimlikNo: { notIn: mukerrerTcler } }] },
+        ]
+      }
+    }
+
     // KISIT EN SON ve KOŞULSUZ yazılır — yukarıdaki hiçbir filtre (status/search/sınav) bunu
     // gevşetemez veya üzerine yazamaz. Atanan müdür yolunda kısıt ZORUNLUdur (atananMudurYolu
     // zaten assignedToMe=1 demek); İK için davranış eskisi gibi opsiyonel toggle.
@@ -108,6 +130,9 @@ export async function GET(request: NextRequest) {
           createdAt: true,
           // "Bekleyen" sütunu icin — musteri adi asagida TEK toplu sorguyla cozulur.
           assignedManagerId: true,
+          // Mükerrer rozeti SUNUCUDA hesaplansın diye çekilir; yanıtta HİÇ dönmez
+          // (aşağıda `tcKimlikNo` alanı ayrıştırılıp atılıyor — İK yolunda da).
+          tcKimlikNo: true,
         }
       }),
       prisma.publicJobApplication.count({ where })
@@ -160,7 +185,15 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const withBekleyen = applications.map((a) => ({
+    // MÜKERRER ROZETİ — sayfadaki TÜM başvurular için TEK findMany (N+1 yok, sınav
+    // rozetiyle aynı desen). Rozet yalnız aynı TC'de birden fazla taslak-olmayan
+    // başvuru varsa üretilir. Kural TEK KAYNAK: mukerrer-basvuru.ts
+    const mukerrerById = await mukerrerRozetleri(
+      prisma,
+      applications.map((a) => ({ id: a.id, tcKimlikNo: a.tcKimlikNo })),
+    )
+
+    const withBekleyen = applications.map(({ tcKimlikNo: _tc, ...a }) => ({
       ...a,
       bekleyen: bekleyenTaraf(
         a.status,
@@ -168,6 +201,8 @@ export async function GET(request: NextRequest) {
       ),
       // Oturum yoksa null → client rozeti HİÇ çizmez.
       sinavRozeti: rozetById.get(a.id) ?? null,
+      // Tek başvurusu olan adayda null → rozet çizilmez.
+      mukerrer: mukerrerById.get(a.id) ?? null,
     }))
 
     // Saf müdür (İK yetkisi yok) görünürlüğü: detay ucundaki MANAGER_SELECT ile AYNI ilke —
@@ -189,6 +224,8 @@ export async function GET(request: NextRequest) {
           // Müdür puanı/durumu GÖREBİLİR (mevcut davranış — oturumOzetiGetir({ik:false}) ile
           // aynı ilke). Rozet zaten token/link taşımıyor, bu yüzden aynen geçer.
           sinavRozeti: a.sinavRozeti,
+          // `mukerrer` BİLEREK YOK: adayın geçmiş başvuruları İV'nin bilgisi. Müdürün işi
+          // önündeki güncel başvuru. (Alan listesi açık yazıldığı için sızma da olamaz.)
         }))
 
     return NextResponse.json({

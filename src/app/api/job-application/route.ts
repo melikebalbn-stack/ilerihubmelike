@@ -26,6 +26,17 @@ import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
 import { SERVER_SCALAR_REQUIRED } from '@/components/job-application/required-fields'
 import { alanBuyut } from '@/lib/job-application/buyuk-harf'
 
+// Public form gönderimindeki denetim kayıtlarının aktörü. Oturum YOK (public uç),
+// bu yüzden basvuru-sorgula'daki sentinel deseni kullanılır (PUBLIC_BASVURU_SORGULA).
+const PUBLIC_FORM_AKTOR = 'PUBLIC_BASVURU_FORM'
+
+/** TC karşılaştırması için normalize: yalnız boşluk ve tire temizlenir.
+ *  "123 456 789 01" ve "123-456-789-01" → "12345678901". Başka dönüşüm YOK;
+ *  karşılaştırma TAM eşitliktir (kısmi/ilk-hane eşleşmesi kabul edilmez). */
+function kimlikNormalize(v: string | null | undefined): string {
+  return (v ?? '').replace(/[\s-]/g, '')
+}
+
 // POST - İş başvurusu kaydet
 export async function POST(request: NextRequest) {
   try {
@@ -155,6 +166,60 @@ export async function POST(request: NextRequest) {
 
     if (missing.length > 0) {
       return NextResponse.json({ error: `Eksik zorunlu alanlar: ${missing.join(', ')}` }, { status: 400 })
+    }
+
+    // ── KVKK ONAYI ↔ FORM KİMLİĞİ EŞLEŞMESİ ─────────────────────────────────
+    // Paylaşımlı tablette bir aday KVKK onayını verip kalkıyor, SONRAKİ aday aynı
+    // taslak üzerinden formu dolduruyordu → başvuru, BAŞKASININ imzaladığı onaya
+    // bağlı kalıyordu. Prod ölçümü (2026-08-16): 15 başvurunun 2'sinde bu durum var;
+    // birinde KVKK imzası ile form beyanı arasında 252 dk vardı (normal ortalama 18 dk).
+    //
+    // Guard YALNIZ yeni gönderimlere uygulanır — mevcut kayıtlara DOKUNULMAZ.
+    // Karşılaştırma boşluk/tire temizliği sonrası TAM eşitlik; kısmi/ilk-hane eşleşmesi YOK.
+    //
+    // KONUM: zorunlu alan kontrolünün hemen ardında, FOTOĞRAF YAZIMINDAN ÖNCE.
+    // Böylece reddedilen gönderimde ne disk'e dosya yazılır ne de DB'ye satır düşer
+    // (statü de değişmez — güncelleme aşağıdaki tek transaction'da yapılır).
+    //
+    // Consent satırı YOKSA buraya HİÇ gelinmez: verifyConsentedDraft (consent-guard.ts)
+    // consent yoksa null döner ve yukarıdaki akış guard'ı 403 verir. Düzeltme modunda
+    // da duzeltmeOnayDurumu aynı kaydı doğrular. Yani o davranış DEĞİŞMEDİ.
+    const formTc = ((formData.get('tcKimlikNo') as string) || '').trim()
+    const consentKaydi = await prisma.jobApplicationConsent.findUnique({
+      where: { applicationId: hedefApplicationId },
+      select: { tcKimlikNo: true },
+    })
+    if (consentKaydi && kimlikNormalize(formTc) !== kimlikNormalize(consentKaydi.tcKimlikNo)) {
+      // Denetim izi — mevcut public desen (basvuru-sorgula/route.ts): JobApplicationAccessLog,
+      // sentinel aktör + try/catch (denetim yazımı ana akışı ENGELLEMEZ).
+      // NOT: bu satır "yarım kayıt" DEĞİL, bilinçli güvenlik kaydıdır; başvurunun
+      // kendi tablolarına (PublicJobApplication/Consent/Health) hiçbir şey yazılmaz.
+      try {
+        await prisma.jobApplicationAccessLog.create({
+          data: {
+            applicationId: hedefApplicationId,
+            accessedBy: PUBLIC_FORM_AKTOR,
+            accessType: 'TC_KVKK_UYUSMAZLIK',
+            ipAddress:
+              request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+              request.headers.get('x-real-ip') ||
+              null,
+          },
+        })
+      } catch {
+        // denetim yazılamasa da gönderim REDDEDİLİR (kapı denetime bağlı değil)
+      }
+      // HTTP 400 — bu route'un diğer validasyon hatalarıyla AYNI kod.
+      // `kod`: istemci bu hataya özel "Yeni Başvuru Başlat" yolunu gösterebilsin diye
+      // (mevcut desen — duzeltmeOnayDurumu da {error, kod} döndürüyor).
+      return NextResponse.json(
+        {
+          error:
+            'Kimlik bilgileriniz KVKK onayindaki bilgilerle uyusmuyor. Lutfen basvuruya bastan baslayin.',
+          kod: 'KVKK_TC_UYUSMAZ',
+        },
+        { status: 400 },
+      )
     }
 
     const fullName = formData.get('fullName') as string

@@ -55,6 +55,10 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
   // takipImzasi YALNIZ React state'te — paylaşımlı tablet, localStorage/sessionStorage YOK.
   const [submitted, setSubmitted] = useState<{ applicationNumber: string; takipImzasi: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Sunucunun döndürdüğü hata KODU (mevcut {error, kod} deseni). Şu an yalnız
+  // 'KVKK_TC_UYUSMAZ' kullanılıyor: aday, başkasının KVKK onayı üzerinden form
+  // doldurmuş demektir; tek çıkış yolu başvuruya BAŞTAN başlamaktır.
+  const [errorKod, setErrorKod] = useState<string | null>(null)
   // Gönderim sonrası sınav durumu (public yoklama sonucu) + 30 dk sonra yoklama durdu bayrağı.
   const [sinavDurum, setSinavDurum] = useState<{
     durum: string
@@ -158,6 +162,7 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
     }
     setSubmitting(true)
     setError(null)
+    setErrorKod(null)
 
     const fd = new FormData()
     const append = (k: string, v: string | boolean | null) => {
@@ -259,6 +264,7 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
           return
         }
         setError(data.error || 'Başvuru gönderilemedi.')
+        setErrorKod(typeof data.kod === 'string' ? data.kod : null)
         return
       }
       // Düzeltme gönderildi → düzenleme modundan çık, teşekkür/yoklama ekranına dön.
@@ -508,7 +514,26 @@ export function JobApplicationRenderer({ onSubmitted }: Props = {}) {
         {error && (
           <div className="mt-4 flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-xl p-4 text-sm text-rose-700">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <span>{error}</span>
+            <div className="flex-1">
+              <span>{error}</span>
+              {/* KVKK onayı BAŞKA birine ait → adayın yapabileceği tek şey başvuruya
+                  baştan başlamak. Yeni ekran KURULMAZ, mevcut hata kutusuna buton eklenir.
+                  Neden reload: bu ekrandaki `handleNewApplication` yalnız FORM state'ini
+                  sıfırlar ve zaten "başvuru alındı" dalının içinde tanımlı; buradaki sorun
+                  ise taslak ÇEREZİNİN başkasının onayına bağlı olması. Sayfa yenilenince
+                  JobApplicationFlow 1. adımdan (KVKK) başlar, onay ucu YENİ bir taslak +
+                  consent oluşturup çerezi tazeler (api/job-application/consent) → sonraki
+                  gönderimde kimlikler eşleşir. */}
+              {errorKod === 'KVKK_TC_UYUSMAZ' && (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-3 block rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 transition-colors"
+                >
+                  Yeni Başvuru Başlat
+                </button>
+              )}
+            </div>
           </div>
         )}
 

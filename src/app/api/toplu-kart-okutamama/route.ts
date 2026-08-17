@@ -125,8 +125,7 @@ export async function GET(request: NextRequest) {
           createdBy: { select: { id: true, name: true, email: true } },
           personnel: { select: { id: true, bolum: true, gorev: true } },
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        orderBy: buildOrderBy(sortBy, sortOrder) as any,
+        orderBy: buildOrderBy(sortBy, sortOrder),
         skip: (page - 1) * limit,
         take: limit,
       }),

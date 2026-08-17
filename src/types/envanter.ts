@@ -110,6 +110,8 @@ export type EnvanterUrunDetail = {
   teslimYetkisi: string | null
   sureSonuAksiyonu: string | null
   dagitimKurali: string | null
+  hedefYaka: string | null
+  hedefBolum: string | null
   createdAt: string
   varyantlar: {
     id: string

@@ -41,7 +41,11 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as EnvanterUrunForm
 
-    const data = await createEnvanterUrun(body)
+    const data = await createEnvanterUrun(
+      body,
+      session.user.id,
+      session.user.name || session.user.email || 'Bilinmiyor',
+    )
 
     return NextResponse.json(
       {

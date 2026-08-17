@@ -10,6 +10,7 @@ const REQUIRED_GENERAL_FIELDS: Array<keyof EnvanterUrunForm> = [
   'ad',
   'kategori',
   'tip',
+  'bedenTipi',
   'olcuBirimi',
 ]
 

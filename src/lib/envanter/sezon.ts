@@ -260,6 +260,9 @@ export type IhtiyacSatiri = {
   mevcutStok: number
   netEksik: number
   bedenBilinmeyenSayisi: number
+  // Faz C — kullanimOmruGun set edilmis urunlerde: hedef kitlede olup suresi
+  // henuz dolmadigi icin bu sezon ihtiyaca dahil edilmeyen kisi sayisi.
+  zatenUzerindeSayisi: number
 }
 
 export type IhtiyacOzet = {
@@ -285,10 +288,10 @@ export type HesaplaIhtiyacSonuc = {
 function profilAlaniSec(
   bedenTipi: string,
 ): 'ustBeden' | 'altBeden' | 'ayakkabiNo' | 'eldivenNo' | null {
-  if (bedenTipi === 'UST') return 'ustBeden'
-  if (bedenTipi === 'ALT') return 'altBeden'
-  if (bedenTipi === 'AYAKKABI') return 'ayakkabiNo'
-  if (bedenTipi === 'ELDIVEN') return 'eldivenNo'
+  if (bedenTipi === 'UST_BEDEN') return 'ustBeden'
+  if (bedenTipi === 'ALT_BEDEN') return 'altBeden'
+  if (bedenTipi === 'AYAKKABI_NO') return 'ayakkabiNo'
+  if (bedenTipi === 'ELDIVEN_NO') return 'eldivenNo'
   return null
 }
 
@@ -322,6 +325,78 @@ function dagitOrantili(gruplar: { sayi: number }[], ek: number): number[] {
   return tabanlar
 }
 
+// Urunun hedefYaka/hedefBolum alanlarina gore hedef personel kitlesini suzer.
+// Her ikisi de bossa (hedefleme yoksa) tum aktif personel hedef kitle olur — eski
+// davranisla tam geriye donuk uyumlu.
+function hedefKitleyiSuz(
+  personeller: { id: string; yakaRengi: string; bolum: string }[],
+  hedefYaka: string | null,
+  hedefBolum: string | null,
+): { id: string; yakaRengi: string; bolum: string }[] {
+  // Virgulle ayrilmis coklu deger destegi (ör. "MAVI,GRI") - tek deger de calisir
+  // (tek elemanli liste gibi davranir). Bos/null ise o boyutta filtre uygulanmaz.
+  const yakaListesi = hedefYaka
+    ? hedefYaka.split(',').map((v) => upper(v.trim())).filter(Boolean)
+    : []
+  const bolumListesi = hedefBolum
+    ? hedefBolum.split(',').map((v) => upper(v.trim())).filter(Boolean)
+    : []
+  return personeller.filter((p) => {
+    if (yakaListesi.length > 0 && !yakaListesi.includes(upper(p.yakaRengi))) return false
+    if (bolumListesi.length > 0 && !bolumListesi.includes(upper(p.bolum))) return false
+    return true
+  })
+}
+
+// Plan geneli bir toplami (ör. planlananAlim), hedef kitlenin plan genel personel
+// sayisina orani kadar olceklendirir. Hedefleme yoksa (pay === genelToplam) sonuc
+// degismeden toplami dondurur.
+function oranliYuvarla(toplam: number, pay: number, genelToplam: number): number {
+  if (genelToplam <= 0) return 0
+  return Math.round((toplam * pay) / genelToplam)
+}
+
+// Faz C — urun bazli kullanim omru/yenileme dongusu. yenileme.ts'teki kategori+ay
+// bazli KKD Yenileme raporundan BAGIMSIZDIR (o rapora dokunulmaz) — burada urunun
+// kendi kullanimOmruGun'u (gun) + en son AKTIF zimmet tarihi karsilastirilir.
+// Hic zimmeti olmayan personel de "yenileme gerekiyor" sayilir (ilk kez veriliyor).
+async function yenilemeGerekenleriBelirle(
+  urunId: string,
+  hedefPersonelIdler: string[],
+  kullanimOmruGun: number,
+): Promise<Set<string>> {
+  if (hedefPersonelIdler.length === 0) return new Set()
+
+  const zimmetler = await prisma.envanterZimmet.findMany({
+    where: {
+      urunId,
+      durum: 'AKTIF',
+      personnelId: { in: hedefPersonelIdler },
+    },
+    select: { personnelId: true, teslimTarihi: true },
+  })
+
+  const enSonTeslimByPersonel = new Map<string, Date>()
+  for (const z of zimmetler) {
+    const mevcut = enSonTeslimByPersonel.get(z.personnelId)
+    if (!mevcut || z.teslimTarihi > mevcut) {
+      enSonTeslimByPersonel.set(z.personnelId, z.teslimTarihi)
+    }
+  }
+
+  const simdi = new Date()
+  const gunFarki = (t: Date) => Math.floor((simdi.getTime() - t.getTime()) / (1000 * 60 * 60 * 24))
+
+  const yenilemeGerekenler = new Set<string>()
+  for (const pid of hedefPersonelIdler) {
+    const sonTeslim = enSonTeslimByPersonel.get(pid)
+    if (!sonTeslim || gunFarki(sonTeslim) >= kullanimOmruGun) {
+      yenilemeGerekenler.add(pid)
+    }
+  }
+  return yenilemeGerekenler
+}
+
 export async function hesaplaIhtiyac(planId: string): Promise<HesaplaIhtiyacSonuc> {
   const plan = await prisma.envanterSezonPlan.findUnique({
     where: { id: planId },
@@ -342,7 +417,10 @@ export async function hesaplaIhtiyac(planId: string): Promise<HesaplaIhtiyacSonu
 
   const [parametre, aktifPersoneller, bedenProfilleri] = await Promise.all([
     getSezonParametre(),
-    prisma.personnel.findMany({ where: { aktif: true }, select: { id: true } }),
+    prisma.personnel.findMany({
+      where: { aktif: true },
+      select: { id: true, yakaRengi: true, bolum: true },
+    }),
     prisma.envanterPersonelBedenProfili.findMany(),
   ])
 
@@ -377,9 +455,32 @@ export async function hesaplaIhtiyac(planId: string): Promise<HesaplaIhtiyacSonu
     const urun = kalem.urun
     const alan = profilAlaniSec(urun.bedenTipi)
 
+    // Hedef kitle: urunun hedefYaka/hedefBolum alanina gore filtrelenmis personel.
+    // Ikisi de bossa hedefPersoneller === aktifPersoneller (eski davranisla ayni).
+    const hedefPersoneller = hedefKitleyiSuz(aktifPersoneller, urun.hedefYaka, urun.hedefBolum)
+
+    // Faz C — kullanimOmruGun set edilmisse, hedef kitleden sadece suresi dolmus
+    // (veya hic almamis) personel bu sezonun ihtiyacina dahil edilir. Bossa
+    // davranis Faz B ile birebir ayni (herkes dahil).
+    let hesapPersonelleri = hedefPersoneller
+    let zatenUzerindeSayisi = 0
+    if (urun.kullanimOmruGun != null && urun.kullanimOmruGun > 0) {
+      const yenilemeGerekenler = await yenilemeGerekenleriBelirle(
+        urun.id,
+        hedefPersoneller.map((p) => p.id),
+        urun.kullanimOmruGun,
+      )
+      hesapPersonelleri = hedefPersoneller.filter((p) => yenilemeGerekenler.has(p.id))
+      zatenUzerindeSayisi = hedefPersoneller.length - hesapPersonelleri.length
+    }
+
+    const bazPersonelKalem = hesapPersonelleri.length
+    const turnoverKisiKalem = Math.ceil((bazPersonelKalem * turnoverOrani) / 100)
+    const yeniAlimKalem = oranliYuvarla(planlananAlim, bazPersonelKalem, bazPersonel)
+
     if (alan === null) {
       // bedenTipi=YOK → beden kırılımı yapılmaz, düz kişi sayısı × kişiBaşı adet.
-      const bazIhtiyac = (bazPersonel + planlananAlim + turnoverKisi) * kalem.kisiBasiAdet
+      const bazIhtiyac = (bazPersonelKalem + yeniAlimKalem + turnoverKisiKalem) * kalem.kisiBasiAdet
       const emniyetAdet = Math.ceil((bazIhtiyac * emniyetOrani) / 100)
       const toplamIhtiyac = bazIhtiyac + emniyetAdet
       const mevcutStok = urun.stoklar.reduce((toplam, stok) => toplam + stok.mevcut, 0)
@@ -389,15 +490,16 @@ export async function hesaplaIhtiyac(planId: string): Promise<HesaplaIhtiyacSonu
         urunKod: urun.kod,
         urunAd: urun.ad,
         beden: null,
-        mevcutPersonelSayisi: bazPersonel,
-        yeniAlimSayisi: planlananAlim,
-        turnoverSayisi: turnoverKisi,
+        mevcutPersonelSayisi: bazPersonelKalem,
+        yeniAlimSayisi: yeniAlimKalem,
+        turnoverSayisi: turnoverKisiKalem,
         bazIhtiyac,
         emniyetAdet,
         toplamIhtiyac,
         mevcutStok,
         netEksik: Math.max(0, toplamIhtiyac - mevcutStok),
         bedenBilinmeyenSayisi: 0,
+        zatenUzerindeSayisi,
       })
       continue
     }
@@ -408,7 +510,7 @@ export async function hesaplaIhtiyac(planId: string): Promise<HesaplaIhtiyacSonu
     const bedenSayaci = new Map<string, number>()
     let bedenBilinmeyenSayisi = 0
 
-    for (const personel of aktifPersoneller) {
+    for (const personel of hesapPersonelleri) {
       const profil = profilByPersonnelId.get(personel.id)
       const deger = (profil?.[alan] ?? '').trim()
 
@@ -428,8 +530,8 @@ export async function hesaplaIhtiyac(planId: string): Promise<HesaplaIhtiyacSonu
       gruplar.push({ beden: null, sayi: bedenBilinmeyenSayisi })
     }
 
-    const yeniAlimDagitim = dagitOrantili(gruplar, planlananAlim)
-    const turnoverDagitim = dagitOrantili(gruplar, turnoverKisi)
+    const yeniAlimDagitim = dagitOrantili(gruplar, yeniAlimKalem)
+    const turnoverDagitim = dagitOrantili(gruplar, turnoverKisiKalem)
 
     gruplar.forEach((grup, i) => {
       const yeniAlimSayisi = yeniAlimDagitim[i]
@@ -454,6 +556,7 @@ export async function hesaplaIhtiyac(planId: string): Promise<HesaplaIhtiyacSonu
           mevcutStok: 0,
           netEksik: toplamIhtiyac,
           bedenBilinmeyenSayisi: grup.sayi,
+          zatenUzerindeSayisi: 0,
         })
         return
       }
@@ -482,6 +585,7 @@ export async function hesaplaIhtiyac(planId: string): Promise<HesaplaIhtiyacSonu
         mevcutStok,
         netEksik: Math.max(0, toplamIhtiyac - mevcutStok),
         bedenBilinmeyenSayisi: 0,
+        zatenUzerindeSayisi: 0,
       })
     })
   }

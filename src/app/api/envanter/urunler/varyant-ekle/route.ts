@@ -18,8 +18,10 @@ export async function POST(request: NextRequest) {
       urunId: body.urunId,
       tip: body.tip,
       deger: body.deger,
-      depo: body.depo ?? null,
-    })
+        depo: body.depo ?? null,
+        actorId: session.user.id,
+        actorAd: session.user.name || session.user.email || 'Bilinmiyor',
+      })
     return NextResponse.json({ ok: true, message: 'Varyant eklendi.', data: result })
   } catch (err) {
     return NextResponse.json(

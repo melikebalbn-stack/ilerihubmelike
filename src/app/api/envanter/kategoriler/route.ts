@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { logEnvanterIslem } from '@/lib/envanter/service'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -125,6 +126,67 @@ export async function PATCH(request: NextRequest) {
         ok: false,
         message: err instanceof Error ? err.message : 'Kategori güncellenemedi.',
       },
+      { status: 400 },
+    )
+  }
+}
+
+// Sil/Pasifleştir — kategori.ad string olarak urunlerde (kategori alani, FK degil)
+// kullanildigi icin, hangi urunlerin bu adi tasidigi kontrol edilir. Kullanan urun
+// yoksa kalici silinir; varsa denetim/rapor butunlugu icin pasiflestirilir.
+export async function DELETE(request: NextRequest) {
+  const { session, error } = await requireSession()
+  if (error) return error
+  if (!session.user.permissions?.includes('envanter.admin')) {
+    return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
+  }
+
+  const id = request.nextUrl.searchParams.get('id')
+
+  try {
+    if (!id) {
+      throw new Error('Kategori id zorunludur.')
+    }
+
+    const kategori = await prisma.envanterKategori.findUnique({ where: { id } })
+    if (!kategori) {
+      return NextResponse.json({ ok: false, message: 'Kategori bulunamadı.' }, { status: 404 })
+    }
+
+    const kullananUrunSayisi = await prisma.envanterUrun.count({ where: { kategori: kategori.ad } })
+
+    const aktorId = session.user.id
+    const aktorAd = session.user.name || session.user.email || 'Bilinmiyor'
+
+    if (kullananUrunSayisi === 0) {
+      await prisma.envanterKategori.delete({ where: { id } })
+      await logEnvanterIslem({
+        actorId: aktorId,
+        actorAd: aktorAd,
+        islemTipi: 'KATEGORI_SIL',
+        hedefTip: 'EnvanterKategori',
+        hedefId: id,
+        detay: { ad: kategori.ad, aktorAd },
+      })
+      return NextResponse.json({ ok: true, message: 'Kategori kalıcı olarak silindi.' })
+    }
+
+    await prisma.envanterKategori.update({ where: { id }, data: { durum: 'PASIF' } })
+    await logEnvanterIslem({
+      actorId: aktorId,
+      actorAd: aktorAd,
+      islemTipi: 'KATEGORI_PASIFLESTIR',
+      hedefTip: 'EnvanterKategori',
+      hedefId: id,
+      detay: { ad: kategori.ad, kullananUrunSayisi, aktorAd },
+    })
+    return NextResponse.json({
+      ok: true,
+      message: `Bu kategoriyi kullanan ${kullananUrunSayisi} ürün olduğu için kalıcı silinemedi, pasifleştirildi.`,
+    })
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, message: err instanceof Error ? err.message : 'Kategori silinemedi.' },
       { status: 400 },
     )
   }

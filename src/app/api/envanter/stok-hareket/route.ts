@@ -16,7 +16,12 @@ export async function POST(request: NextRequest) {
       hareketTipi: body.hareketTipi,
       miktar: Number(body.miktar),
       aciklama: body.aciklama,
-    })
+      bolum: body.bolum,
+        alanPersonelId: body.alanPersonelId,
+        alanPersonelAd: body.alanPersonelAd,
+        actorId: session.user.id,
+        actorAd: session.user.name || session.user.email || 'Bilinmiyor',
+      })
 
     return NextResponse.json({
       ok: true,

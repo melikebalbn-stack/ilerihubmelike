@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
-import { createEnvanterStokHareket } from './service'
+import { createEnvanterStokHareket, logEnvanterIslem } from './service'
 
 export type SatinAlmaDurumTip =
   | 'TASLAK'
@@ -355,6 +355,48 @@ export async function onayAksiyon(
   return guncelTalep
 }
 
+export async function iptalEt(talepId: string, yapan: Yapan, sebep?: string) {
+  const guncelTalep = await prisma.$transaction(async (tx) => {
+    const mevcut = await tx.envanterSatinAlmaTalep.findUnique({ where: { id: talepId } })
+    if (!mevcut) {
+      throw new Error('Talep bulunamadı.')
+    }
+    if (TERMINAL_DURUMLAR.has(mevcut.durum as SatinAlmaDurumTip)) {
+      throw new Error('Bu talep bulunduğu aşamada iptal edilemez.')
+    }
+
+    const guncel = await tx.envanterSatinAlmaTalep.update({
+      where: { id: talepId },
+      data: { durum: 'IPTAL' },
+    })
+
+    await tx.envanterSatinAlmaGecmis.create({
+      data: {
+        talepId,
+        durum: 'IPTAL',
+        yapanId: yapan.id || null,
+        yapanAd: yapan.ad,
+        not: sebep?.trim() || 'Talep iptal edildi.',
+      },
+    })
+
+    return guncel
+  })
+
+  await logEnvanterIslem({
+    actorId: yapan.id,
+    actorAd: yapan.ad,
+    islemTipi: 'SATINALMA_IPTAL',
+    hedefTip: 'EnvanterSatinAlmaTalep',
+    hedefId: talepId,
+    detay: { formNo: guncelTalep.formNo, sebep: sebep || null },
+  })
+
+  await bildirGecis(guncelTalep as never)
+
+  return guncelTalep
+}
+
 export async function terminGir(talepId: string, tarih: Date, yapan: Yapan) {
   const guncelTalep = await prisma.$transaction(async (tx) => {
     const mevcut = await tx.envanterSatinAlmaTalep.findUnique({ where: { id: talepId } })
@@ -493,12 +535,14 @@ export async function stogaIsle(talepId: string, yapan: Yapan) {
       })
     }
 
-    await createEnvanterStokHareket({
-      stokId: stok.id,
-      hareketTipi: 'GIRIS',
-      miktar: kalem.teslimAlinanMiktar,
-      aciklama: `Satın alma talebi ${talep.formNo} - stoğa işlendi.`,
-    })
+      await createEnvanterStokHareket({
+        stokId: stok.id,
+        hareketTipi: 'GIRIS',
+        miktar: kalem.teslimAlinanMiktar,
+        aciklama: `Satın alma talebi ${talep.formNo} - stoğa işlendi.`,
+        actorId: yapan.id || undefined,
+        actorAd: yapan.ad,
+      })
   }
 
   const guncel = await prisma.envanterSatinAlmaTalep.update({

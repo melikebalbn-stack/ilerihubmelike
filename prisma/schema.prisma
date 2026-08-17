@@ -11786,6 +11786,29 @@ model EnvanterZimmet {
   @@map("envanter_zimmet")
 }
 
+// Madde 8 — envanter islem audit log. aktorId kasitli olarak User'a formal iliski
+// (foreign key) degil; kullanici silinse bile log kaydi bozulmadan kalsin diye.
+model EnvanterIslemLog {
+  id String @id @default(cuid())
+
+  aktorId String?
+  aktorAd String?
+
+  islemTipi String
+  hedefTip  String
+  hedefId   String?
+
+  detay Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([aktorId])
+  @@index([islemTipi])
+  @@index([hedefTip, hedefId])
+  @@index([createdAt])
+  @@map("envanter_islem_log")
+}
+
 // Faz 2 — bakım yönlendirme (tespit → bakım/servis akışı). Yeni model, dış FK yok.
 model EnvanterBakimYonlendirme {
   id      String @id @default(cuid())

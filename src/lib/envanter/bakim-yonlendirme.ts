@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { logEnvanterIslem } from './service'
 
 // satinalma.ts ile aynı desen: durum tipi lib'de export edilir, UI type-import eder.
 export type BakimYonlendirmeDurumTip =
@@ -87,7 +88,7 @@ export async function getYonlendirme(id: string) {
   return prisma.envanterBakimYonlendirme.findUnique({ where: { id } })
 }
 
-export async function updateYonlendirme(id: string, input: UpdateYonlendirmeInput, _yapan: Yapan) {
+export async function updateYonlendirme(id: string, input: UpdateYonlendirmeInput, yapan: Yapan) {
   const mevcut = await prisma.envanterBakimYonlendirme.findUnique({ where: { id } })
   if (!mevcut) {
     throw new Error('Kayıt bulunamadı.')
@@ -113,9 +114,44 @@ export async function updateYonlendirme(id: string, input: UpdateYonlendirmeInpu
   if (input.servisReferansi !== undefined) data.servisReferansi = input.servisReferansi?.trim() || null
   if (input.sonucNotu !== undefined) data.sonucNotu = input.sonucNotu?.trim() || null
 
-  return prisma.envanterBakimYonlendirme.update({
+  const guncel = await prisma.envanterBakimYonlendirme.update({
     where: { id },
     data,
+  })
+
+  await logEnvanterIslem({
+    actorId: yapan.id,
+    actorAd: yapan.ad,
+    islemTipi: 'BAKIM_YONLENDIRME_GUNCELLE',
+    hedefTip: 'BAKIM_YONLENDIRME',
+    hedefId: id,
+    detay: { oncekiDurum: mevcut.durum, yeniDurum: input.durum ?? mevcut.durum },
+  })
+
+  return guncel
+}
+
+export async function silYonlendirme(id: string, actorId?: string, actorAd?: string) {
+  const mevcut = await prisma.envanterBakimYonlendirme.findUnique({ where: { id } })
+  if (!mevcut) {
+    throw new Error('Kayıt bulunamadı.')
+  }
+
+  if (mevcut.durum !== 'TESPIT_EDILDI' || mevcut.servisReferansi || mevcut.sonucNotu) {
+    throw new Error(
+      'Sadece hiç işlem görmemiş (Tespit Edildi durumunda, servis referansı ve sonuç notu boş) kayıtlar silinebilir. Bu kayıt için durumu İptal olarak güncelleyin.',
+    )
+  }
+
+  await prisma.envanterBakimYonlendirme.delete({ where: { id } })
+
+  await logEnvanterIslem({
+    actorId,
+    actorAd,
+    islemTipi: 'BAKIM_YONLENDIRME_SIL',
+    hedefTip: 'BAKIM_YONLENDIRME',
+    hedefId: id,
+    detay: { kayitNo: mevcut.kayitNo, konu: mevcut.konu },
   })
 }
 

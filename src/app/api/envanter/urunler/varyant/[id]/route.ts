@@ -19,8 +19,10 @@ export async function PATCH(
       varyantAdi: body.varyantAdi,
       beden: body.beden,
       numara: body.numara,
-      renk: body.renk,
-    })
+        renk: body.renk,
+        actorId: session.user.id,
+        actorAd: session.user.name || session.user.email || 'Bilinmiyor',
+      })
     return NextResponse.json({ ok: true, message: 'Varyant güncellendi.', data: result })
   } catch (err) {
     return NextResponse.json(
@@ -41,7 +43,11 @@ export async function DELETE(
   }
   try {
     const { id } = await params
-    const result = await deleteVaryant(id)
+    const result = await deleteVaryant(
+      id,
+      session.user.id,
+      session.user.name || session.user.email || 'Bilinmiyor',
+    )
     return NextResponse.json({ ok: true, ...result })
   } catch (err) {
     return NextResponse.json(

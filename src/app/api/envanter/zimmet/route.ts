@@ -67,9 +67,10 @@ export async function POST(request: NextRequest) {
       aciklama: body.aciklama,
       kkdUstGrubu: body.kkdUstGrubu || undefined,
       kkdAltGrubu: body.kkdAltGrubu || undefined,
-      verilmeTarihi: body.verilmeTarihi ? new Date(body.verilmeTarihi) : undefined,
-      createdById: user.id,
-    })
+        verilmeTarihi: body.verilmeTarihi ? new Date(body.verilmeTarihi) : undefined,
+        createdById: user.id,
+        createdByAd: user.name || user.email || 'Bilinmiyor',
+      })
 
     return NextResponse.json({
       ok: true,

@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { type ElementType, type ReactNode, useEffect, useMemo, useState } from 'react'
 import type { EnvanterUrunDetail, EnvanterUrunListItem } from '@/types/envanter'
+import { HEDEF_YAKA_SECENEKLERI } from '@/lib/envanter/yaka-sabitleri'
 import { AramaliSecim } from '@/components/envanter/AramaliSecim'
 import {
   DropdownMenu,
@@ -11,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { BakimYonlendirmeYonetimi } from '@/components/envanter/BakimYonlendirme'
-import { SarfTuketimRaporu, MaliyetRaporu } from '@/components/envanter/EnvanterRaporlar'
+import { SarfTuketimRaporu, MaliyetRaporu, PersonelRaporu, IslemKaydiRaporu } from '@/components/envanter/EnvanterRaporlar'
 import { KullanimKilavuzu } from '@/components/envanter/KullanimKilavuzu'
 import { TumStoklarTablosu } from '@/components/envanter/TumStoklarTablosu'
 import { ZimmetVeTeslimListesi } from '@/components/envanter/ZimmetVeTeslimListesi'
@@ -27,13 +28,9 @@ import type {
   SezonTipiTip,
   TurnoverOranOnerisi,
 } from '@/lib/envanter/sezon'
-import type {
-  BedenProfilExecuteSonuc,
-  BedenProfilValidateSonuc,
-} from '@/lib/envanter/beden-profili-import'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import * as XLSX from 'xlsx'
-import { UST_BEDENLER } from '@/lib/envanter/beden-referans'
+import { UST_BEDENLER, AYAKKABI_NOLARI } from '@/lib/envanter/beden-referans'
 import {
   AlertTriangle,
   Boxes,
@@ -117,8 +114,8 @@ type UrunForm = {
   aciklamaZorunlu: boolean
   fotoZorunlu: boolean
   imzaZorunlu: boolean
-  hedefYaka: string
-  hedefBolum: string
+  hedefYaka: string[]
+  hedefBolum: string[]
   hedefPozisyon: string
   hedefLokasyon: string
   hedefVardiya: string
@@ -200,20 +197,9 @@ const demoUrunler: DemoUrun[] = [
 // Buradaki yerel dizi TUTARSIZDI ('XXL' vs '2XL'; 4XL/5XL eksikti) — kaldırıldı.
 const bedenSecenekleri: string[] = [...UST_BEDENLER]
 
-const numaraSecenekleri = [
-  '35',
-  '36',
-  '37',
-  '38',
-  '39',
-  '40',
-  '41',
-  '42',
-  '43',
-  '44',
-  '45',
-  '46',
-]
+// Numara ölçeği TEK KAYNAK: src/lib/envanter/beden-referans.ts (AYAKKABI_NOLARI).
+// Buradaki yerel dizi eksikti (35-46, 47/48 yoktu) — kaldırıldı.
+const numaraSecenekleri: string[] = [...AYAKKABI_NOLARI]
 
 const renkSecenekleri = [
   'Siyah',
@@ -923,6 +909,20 @@ function YeniUrunWizard({ onClose }: { onClose: () => void }) {
     })()
   }, [])
 
+  // Hedef Bolum coklu secimi - gercek personel bolum listesinden (satin alma ile ayni kaynak).
+  const [bolumSecenekleriYeniUrun, setBolumSecenekleriYeniUrun] = useState<string[]>([])
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('/api/envanter/satinalma/bolumler')
+        const json = await res.json()
+        if (json.ok && Array.isArray(json.data)) {
+          setBolumSecenekleriYeniUrun(json.data)
+        }
+      } catch {}
+    })()
+  }, [])
+
   const [urunForm, setUrunForm] = useState<UrunForm>({
     kod: '',
     ad: '',
@@ -953,8 +953,8 @@ function YeniUrunWizard({ onClose }: { onClose: () => void }) {
     aciklamaZorunlu: false,
     fotoZorunlu: false,
     imzaZorunlu: false,
-    hedefYaka: '',
-    hedefBolum: '',
+    hedefYaka: [],
+    hedefBolum: [],
     hedefPozisyon: '',
     hedefLokasyon: '',
     hedefVardiya: '',
@@ -1021,7 +1021,9 @@ function YeniUrunWizard({ onClose }: { onClose: () => void }) {
   | 'renkler'
   | 'talepEdenRoller'
   | 'onayAkisi'
-  | 'seciliPersoneller',
+  | 'seciliPersoneller'
+  | 'hedefYaka'
+  | 'hedefBolum',
     value: string,
   ) => {
     setUrunForm((current) => {
@@ -1097,7 +1099,11 @@ async function handleSave() {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(urunForm),
+      body: JSON.stringify({
+        ...urunForm,
+        hedefYaka: urunForm.hedefYaka.join(',') || null,
+        hedefBolum: urunForm.hedefBolum.join(',') || null,
+      }),
     })
 
     const result = await response.json()
@@ -1818,29 +1824,33 @@ async function handleSave() {
     </div>
 
     <div className="grid grid-cols-2 gap-6">
-      <FormSelect
-        label="Hedef Yaka"
-        value={urunForm.hedefYaka}
-        onChange={(value) => updateForm('hedefYaka', value)}
-        options={[
-          { value: '', label: 'Tümü' },
-          { value: 'MAVI', label: 'Mavi Yaka' },
-          { value: 'BEYAZ', label: 'Beyaz Yaka' },
-        ]}
-      />
-
-      <FormSelect
-        label="Hedef Bölüm"
-        value={urunForm.hedefBolum}
-        onChange={(value) => updateForm('hedefBolum', value)}
-        options={[
-          { value: '', label: 'Tümü' },
-          { value: 'URETIM', label: 'Üretim' },
-          { value: 'KALITE', label: 'Kalite' },
-          { value: 'BAKIM', label: 'Bakım' },
-          { value: 'IDARI_ISLER', label: 'İdari İşler' },
-        ]}
-      />
+      <div>
+        <EtiketliCheckboxGrup
+          title="Hedef Yaka (boş = tümü)"
+          options={[...HEDEF_YAKA_SECENEKLERI]}
+          selected={urunForm.hedefYaka}
+          onToggle={(value) => toggleArrayValue('hedefYaka', value)}
+        />
+        <p className="mt-2 text-xs text-slate-500">
+          Giyim gibi yaka rengine göre dağıtılan ürünlerde kullanılır. Hiçbiri seçilmezse tüm yaka renkleri hedef kitleye dahil olur.
+        </p>
+      </div>
+      <div>
+        <VaryantCheckboxGroup
+          title="Hedef Bölüm (boş = tümü)"
+          options={bolumSecenekleriYeniUrun}
+          selected={urunForm.hedefBolum}
+          onToggle={(value) => toggleArrayValue('hedefBolum', value)}
+        />
+        {bolumSecenekleriYeniUrun.length === 0 && (
+          <p className="mt-2 text-xs text-slate-400">
+            Şu an seçilebilecek bölüm yok — sistemde bölüm bilgisi girilmiş aktif personel kaydı bulunmuyor.
+          </p>
+        )}
+        <p className="mt-2 text-xs text-slate-500">
+          Kıyafet dışındaki (eldiven vb.) ürünlerde belirli bölümleri hedeflemek için kullanılır. Hiçbiri seçilmezse tüm bölümler hedef kitleye dahil olur.
+        </p>
+      </div>
 
       <FormSelect
         label="Hedef Pozisyon"
@@ -2218,6 +2228,44 @@ function VaryantCheckboxGroup({
   )
 }
 
+function EtiketliCheckboxGrup({
+  title,
+  options,
+  selected,
+  onToggle,
+}: {
+  title: string
+  options: readonly { value: string; label: string }[]
+  selected: string[]
+  onToggle: (value: string) => void
+}) {
+  return (
+    <div>
+      <h4 className="mb-3 text-sm font-semibold text-slate-700">{title}</h4>
+      <div className="grid grid-cols-4 gap-3">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className={[
+              'flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm',
+              selected.includes(option.value)
+                ? 'border-teal-600 bg-teal-50 text-teal-800'
+                : 'border-slate-200 bg-white text-slate-700',
+            ].join(' ')}
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(option.value)}
+              onChange={() => onToggle(option.value)}
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function BulkApplyInput({
   label,
   value,
@@ -2443,11 +2491,33 @@ function UrunDetayModal({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [silSaving, setSilSaving] = useState(false)
 
   // Madde 3 — kategori değiştirme
   const [kategoriListesiDetay, setKategoriListesiDetay] = useState<{ value: string; label: string }[]>([])
   const [kategoriSaving, setKategoriSaving] = useState(false)
   const [kategoriHata, setKategoriHata] = useState('')
+  // Sezon plani Faz B — hedef yaka/bolum duzenleme (mevcut urunler icin)
+  const [hedefYakaSaving, setHedefYakaSaving] = useState(false)
+  const [hedefYakaHata, setHedefYakaHata] = useState('')
+  const [hedefBolumSaving, setHedefBolumSaving] = useState(false)
+  const [hedefBolumHata, setHedefBolumHata] = useState('')
+  const [bolumSecenekleriDetay, setBolumSecenekleriDetay] = useState<string[]>([])
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/envanter/satinalma/bolumler')
+        const json = await res.json()
+        if (!cancelled && json.ok && Array.isArray(json.data)) {
+          setBolumSecenekleriDetay(json.data)
+        }
+      } catch {}
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Madde 4 — varyant düzenleme/silme
   const [pasifleriGoster, setPasifleriGoster] = useState(false)
@@ -2524,6 +2594,16 @@ function UrunDetayModal({
     })()
   }, [])
 
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('/api/envanter/satinalma/bolumler')
+        const json = await res.json()
+        if (json.ok) setBolumSecenekleriDetay(json.data ?? [])
+      } catch {}
+    })()
+  }, [])
+
   async function handleKategoriDegistir(yeniDeger: string) {
     if (!urunId || !yeniDeger) return
     setKategoriSaving(true)
@@ -2547,9 +2627,74 @@ function UrunDetayModal({
     }
   }
 
+  async function handleHedefYakaDegistir(yeniListe: string[]) {
+    if (!urunId) return
+    setHedefYakaSaving(true)
+    setHedefYakaHata('')
+    try {
+      const res = await fetch(`/api/envanter/urunler/${urunId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hedefYaka: yeniListe.join(',') || null }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setHedefYakaHata(json.message || 'Hedef yaka güncellenemedi.')
+        return
+      }
+      setRefreshKey((k) => k + 1)
+    } catch {
+      setHedefYakaHata('Hedef yaka güncellenemedi.')
+    } finally {
+      setHedefYakaSaving(false)
+    }
+  }
+  function toggleHedefYaka(deger: string) {
+    const mevcut = urun?.hedefYaka
+      ? urun.hedefYaka.split(',').map((v) => v.trim()).filter(Boolean)
+      : []
+    const yeni = mevcut.includes(deger)
+      ? mevcut.filter((v) => v !== deger)
+      : [...mevcut, deger]
+    handleHedefYakaDegistir(yeni)
+  }
+
+  async function handleHedefBolumDegistir(yeniListe: string[]) {
+    if (!urunId) return
+    setHedefBolumSaving(true)
+    setHedefBolumHata('')
+    try {
+      const res = await fetch(`/api/envanter/urunler/${urunId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hedefBolum: yeniListe.join(',') || null }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setHedefBolumHata(json.message || 'Hedef bölüm güncellenemedi.')
+        return
+      }
+      setRefreshKey((k) => k + 1)
+    } catch {
+      setHedefBolumHata('Hedef bölüm güncellenemedi.')
+    } finally {
+      setHedefBolumSaving(false)
+    }
+  }
+  function toggleHedefBolum(deger: string) {
+    const mevcut = urun?.hedefBolum
+      ? urun.hedefBolum.split(',').map((v) => v.trim()).filter(Boolean)
+      : []
+    const yeni = mevcut.includes(deger)
+      ? mevcut.filter((v) => v !== deger)
+      : [...mevcut, deger]
+    handleHedefBolumDegistir(yeni)
+  }
+
   // F2 — mevcut ürüne varyant ekleme
   const [varyantTip, setVaryantTip] = useState<'RENK' | 'BEDEN' | 'NUMARA'>('RENK')
   const [varyantDeger, setVaryantDeger] = useState('')
+  const [varyantDegerManuel, setVaryantDegerManuel] = useState(false)
   const [varyantDepo, setVaryantDepo] = useState('')
   const [varyantSaving, setVaryantSaving] = useState(false)
   const [varyantHata, setVaryantHata] = useState('')
@@ -2691,6 +2836,33 @@ function UrunDetayModal({
     }
   }, [urunId, refreshKey])
 
+  async function handleUrunSil() {
+    if (!urun) return
+    if (
+      !window.confirm(
+        `"${urun.kod} - ${urun.ad}" ürününü silmek istiyor musunuz? Stok hareketi/zimmet geçmişi yoksa kalıcı silinir, geçmişi varsa pasifleştirilir (listeden gizlenir).`,
+      )
+    ) {
+      return
+    }
+    setSilSaving(true)
+    try {
+      const res = await fetch(`/api/envanter/urunler/${urunId}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.ok) {
+        window.dispatchEvent(new Event('envanter-urun-kaydedildi'))
+        alert(json.message)
+        onClose()
+      } else {
+        alert(json.message || 'Silinemedi.')
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Silinemedi.')
+    } finally {
+      setSilSaving(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
       <div className="max-h-[88vh] w-full max-w-5xl overflow-auto rounded-2xl bg-white shadow-2xl">
@@ -2702,13 +2874,23 @@ function UrunDetayModal({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border p-2 hover:bg-slate-100"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleUrunSil}
+              disabled={silSaving || !urun}
+              className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+            >
+              {silSaving ? 'Siliniyor...' : 'Sil'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border p-2 hover:bg-slate-100"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-6 p-6">
@@ -2756,6 +2938,62 @@ function UrunDetayModal({
                 <SummaryItem label="Tedarikçi" value={urun.tedarikci || 'Yok'} />
                 <SummaryItem label="Dağıtım Şekli" value={urun.dagitimSekli || 'Yok'} />
                 <SummaryItem label="Periyot" value={urun.periyot || 'Yok'} />
+                <div className="col-span-2">
+                  <label className="text-xs font-medium uppercase text-slate-500">
+                    Hedef Yaka (Sezon Planı) — boş bırakılırsa tüm yaka renkleri dahil olur
+                  </label>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {HEDEF_YAKA_SECENEKLERI.map((y) => {
+                      const secili = (urun.hedefYaka || '')
+                        .split(',')
+                        .map((v) => v.trim())
+                        .includes(y.value)
+                      return (
+                        <label key={y.value} className={[
+                          'flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                          secili ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-700',
+                        ].join(' ')}>
+                          <input type="checkbox" checked={secili} disabled={hedefYakaSaving} onChange={() => toggleHedefYaka(y.value)} />
+                          {y.label}
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {hedefYakaSaving && (
+                    <p className="mt-1 text-xs text-slate-500">Kaydediliyor...</p>
+                  )}
+                  {hedefYakaHata && (
+                    <p className="mt-1 text-xs text-rose-600">{hedefYakaHata}</p>
+                  )}
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium uppercase text-slate-500">
+                    Hedef Bölüm (Sezon Planı) — boş bırakılırsa tüm bölümler dahil olur
+                  </label>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {bolumSecenekleriDetay.map((b) => {
+                      const secili = (urun.hedefBolum || '').split(',').map((v) => v.trim()).includes(b)
+                      return (
+                        <label key={b} className={[
+                          'flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                          secili ? 'border-teal-600 bg-teal-50 text-teal-800' : 'border-slate-200 bg-white text-slate-700',
+                        ].join(' ')}>
+                          <input type="checkbox" checked={secili} disabled={hedefBolumSaving} onChange={() => toggleHedefBolum(b)} />
+                          {b}
+                        </label>
+                      )
+                    })}
+                    {bolumSecenekleriDetay.length === 0 && (
+                      <p className="col-span-3 text-xs text-slate-400">Bölüm listesi yükleniyor veya tanımlı personel bölümü yok.</p>
+                    )}
+                  </div>
+                  {hedefBolumSaving && (
+                    <p className="mt-1 text-xs text-slate-500">Kaydediliyor...</p>
+                  )}
+                  {hedefBolumHata && (
+                    <p className="mt-1 text-xs text-rose-600">{hedefBolumHata}</p>
+                  )}
+                </div>
               </div>
 
               <div className="rounded-2xl border bg-white p-5">
@@ -2948,7 +3186,11 @@ function UrunDetayModal({
                     <label className="text-sm font-medium">Tip</label>
                     <select
                       value={varyantTip}
-                      onChange={(e) => setVaryantTip(e.target.value as 'RENK' | 'BEDEN' | 'NUMARA')}
+                      onChange={(e) => {
+                        setVaryantTip(e.target.value as 'RENK' | 'BEDEN' | 'NUMARA')
+                        setVaryantDeger('')
+                        setVaryantDegerManuel(false)
+                      }}
                       className="mt-1 block rounded-xl border p-2 text-sm"
                     >
                       <option value="RENK">Renk</option>
@@ -2958,12 +3200,52 @@ function UrunDetayModal({
                   </div>
                   <div className="flex-1">
                     <label className="text-sm font-medium">Değer</label>
-                    <input
-                      value={varyantDeger}
-                      onChange={(e) => setVaryantDeger(e.target.value)}
-                      placeholder="Örn: Kırmızı / M / 42"
-                      className="mt-1 block w-full max-w-xs rounded-xl border p-2 text-sm"
-                    />
+                    {!varyantDegerManuel ? (
+                      <select
+                        value={varyantDeger}
+                        onChange={(e) => {
+                          if (e.target.value === '__manuel__') {
+                            setVaryantDegerManuel(true)
+                            setVaryantDeger('')
+                          } else {
+                            setVaryantDeger(e.target.value)
+                          }
+                        }}
+                        className="mt-1 block w-full max-w-xs rounded-xl border p-2 text-sm"
+                      >
+                        <option value="">Seçiniz</option>
+                        {(varyantTip === 'BEDEN'
+                          ? bedenSecenekleri
+                          : varyantTip === 'NUMARA'
+                            ? numaraSecenekleri
+                            : renkSecenekleri
+                        ).map((deger) => (
+                          <option key={deger} value={deger}>
+                            {deger}
+                          </option>
+                        ))}
+                        <option value="__manuel__">Diğer (elle yaz)</option>
+                      </select>
+                    ) : (
+                      <div className="mt-1 flex items-center gap-2">
+                        <input
+                          value={varyantDeger}
+                          onChange={(e) => setVaryantDeger(e.target.value)}
+                          placeholder="Örn: Bordo"
+                          className="block w-full max-w-xs rounded-xl border p-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVaryantDegerManuel(false)
+                            setVaryantDeger('')
+                          }}
+                          className="whitespace-nowrap text-xs font-medium text-teal-700 underline"
+                        >
+                          Listeden seç
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-sm font-medium">Depo (opsiyonel)</label>
@@ -3783,7 +4065,7 @@ function PersonelZimmeti() {
                 ) : (
                   <div className="mt-3 space-y-2">
                     {gecmisZimmetler.map((zimmet) => (
-                      <ZimmetSatiri key={zimmet.id} zimmet={zimmet} />
+                      <ZimmetSatiri key={zimmet.id} zimmet={zimmet} onIadeAlindi={handleIadeSonrasi} />
                     ))}
                   </div>
                 )}
@@ -3837,6 +4119,11 @@ function ZimmetSatiri({
   const [iadeSaving, setIadeSaving] = useState(false)
   const [iadeError, setIadeError] = useState('')
   const [iadeMessage, setIadeMessage] = useState('')
+  const [silSaving, setSilSaving] = useState(false)
+  const [silError, setSilError] = useState('')
+  const [iptalSaving, setIptalSaving] = useState(false)
+  const [iptalError, setIptalError] = useState('')
+  const [iptalMessage, setIptalMessage] = useState('')
 
   useEffect(() => {
     setIadeMiktar(zimmet.miktar)
@@ -3882,6 +4169,68 @@ function ZimmetSatiri({
     }
   }
 
+  async function handleSil() {
+    if (
+      !window.confirm(
+        `"${zimmet.urun.kod} - ${zimmet.urun.ad}" zimmet kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz, ${zimmet.miktar} adet stoğa geri eklenecektir.`,
+      )
+    ) {
+      return
+    }
+    setSilError('')
+    setSilSaving(true)
+    try {
+      const res = await fetch('/api/envanter/zimmet/sil', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ zimmetId: zimmet.id }),
+      })
+      const json = await res.json()
+      if (json.ok) {
+        alert(json.message)
+        await onIadeAlindi?.()
+      } else {
+        setSilError(json.message || 'Zimmet silinemedi.')
+      }
+    } catch (err) {
+      setSilError(err instanceof Error ? err.message : 'Zimmet silinemedi.')
+    } finally {
+      setSilSaving(false)
+    }
+  }
+
+  async function handleIptal() {
+    if (!window.confirm('Bu zimmet kaydını iptal etmek istediğinize emin misiniz?')) {
+      return
+    }
+    const sebep = window.prompt('İptal sebebi (opsiyonel):') || undefined
+    setIptalError('')
+    setIptalMessage('')
+    setIptalSaving(true)
+    try {
+      const res = await fetch('/api/envanter/zimmet/iptal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ zimmetId: zimmet.id, sebep }),
+      })
+      const json = await res.json()
+      if (json.ok) {
+        setIptalMessage('İptal edildi.')
+        await onIadeAlindi?.()
+      } else {
+        setIptalError(json.message || 'İptal edilemedi.')
+      }
+    } catch (err) {
+      setIptalError(err instanceof Error ? err.message : 'İptal edilemedi.')
+    } finally {
+      setIptalSaving(false)
+    }
+  }
+
   return (
     <div className="rounded-xl border bg-slate-50 p-3 text-sm">
       <div className="flex items-start justify-between gap-2">
@@ -3909,14 +4258,27 @@ function ZimmetSatiri({
 
       {zimmet.durum === 'AKTIF' && (
         <div className="mt-2">
+          {silError && (
+            <div className="mb-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{silError}</div>
+          )}
           {!iadeAcik ? (
-            <button
-              type="button"
-              onClick={() => setIadeAcik(true)}
-              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-            >
-              İade Al
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setIadeAcik(true)}
+                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                İade Al
+              </button>
+              <button
+                type="button"
+                onClick={handleSil}
+                disabled={silSaving}
+                className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+              >
+                {silSaving ? 'Siliniyor...' : 'Sil'}
+              </button>
+            </div>
           ) : (
             <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-3">
               <div>
@@ -3975,6 +4337,26 @@ function ZimmetSatiri({
           )}
         </div>
       )}
+      {zimmet.durum === 'IADE_EDILDI' && (
+        <div className="mt-2">
+          {iptalError && (
+            <div className="mb-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{iptalError}</div>
+          )}
+          {iptalMessage && (
+            <div className="mb-2 rounded-lg bg-green-50 p-2 text-xs text-green-700">
+              {iptalMessage}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleIptal}
+            disabled={iptalSaving}
+            className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+          >
+            {iptalSaving ? 'İptal ediliyor...' : 'İptal Et'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -4008,6 +4390,7 @@ function ParametrelerYonetimi() {
   const [editNot, setEditNot] = useState('')
   const [editDurum, setEditDurum] = useState<KategoriItem['durum']>('AKTIF')
   const [editSaving, setEditSaving] = useState(false)
+  const [kategoriSilSaving, setKategoriSilSaving] = useState<Record<string, boolean>>({})
 
   const [sezonParamLoading, setSezonParamLoading] = useState(true)
   const [sezonParamError, setSezonParamError] = useState('')
@@ -4145,6 +4528,33 @@ function ParametrelerYonetimi() {
       setError(err instanceof Error ? err.message : 'Kategori oluşturulamadı.')
     } finally {
       setNewSaving(false)
+    }
+  }
+
+  async function handleKategoriSil(kategori: KategoriItem) {
+    if (
+      !window.confirm(
+        `"${kategori.ad}" kategorisini silmek istiyor musunuz? Bu kategoriyi kullanan ürün yoksa kalıcı silinir, varsa pasifleştirilir.`,
+      )
+    ) {
+      return
+    }
+    setKategoriSilSaving((prev) => ({ ...prev, [kategori.id]: true }))
+    try {
+      const res = await fetch(`/api/envanter/kategoriler?id=${encodeURIComponent(kategori.id)}`, {
+        method: 'DELETE',
+      })
+      const json = await res.json()
+      if (json.ok) {
+        await loadKategoriler()
+        setMessage(json.message)
+      } else {
+        setError(json.message || 'Kategori silinemedi.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kategori silinemedi.')
+    } finally {
+      setKategoriSilSaving((prev) => ({ ...prev, [kategori.id]: false }))
     }
   }
 
@@ -4409,13 +4819,23 @@ function ParametrelerYonetimi() {
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <button
-                          type="button"
-                          onClick={() => startEdit(kategori)}
-                          className="rounded-lg border px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                        >
-                          Düzenle
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(kategori)}
+                            className="rounded-lg border px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                          >
+                            Düzenle
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleKategoriSil(kategori)}
+                            disabled={kategoriSilSaving[kategori.id]}
+                            className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                          >
+                            {kategoriSilSaving[kategori.id] ? 'Siliniyor...' : 'Sil'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -4918,7 +5338,7 @@ function YenilemeDurumBadge({ durum }: { durum: YenilemeDurum }) {
 // F9/F10/F13 — Raporlar sekmesi alt görünümleri: KKD Yenileme (mevcut, KORUNUR) +
 // Sarf Tüketim + Maliyet. KKD raporu (RaporlarYonetimi) üzerine yazılmaz, yanına eklenir.
 function RaporlarVeSarfTuketim() {
-  const [gorunum, setGorunum] = useState<'yenileme' | 'sarf' | 'maliyet'>('yenileme')
+  const [gorunum, setGorunum] = useState<'yenileme' | 'sarf' | 'maliyet' | 'personel' | 'islemkaydi'>('yenileme')
   return (
     <div className="space-y-6">
       <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
@@ -4949,8 +5369,26 @@ function RaporlarVeSarfTuketim() {
         >
           Maliyet
         </button>
+        <button
+          type="button"
+          onClick={() => setGorunum('personel')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            gorunum === 'personel' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Personel Raporu
+        </button>
+        <button
+          type="button"
+          onClick={() => setGorunum('islemkaydi')}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+            gorunum === 'islemkaydi' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Islem Kaydi
+        </button>
       </div>
-      {gorunum === 'yenileme' ? <RaporlarYonetimi /> : gorunum === 'sarf' ? <SarfTuketimRaporu /> : <MaliyetRaporu />}
+      {gorunum === 'yenileme' ? <RaporlarYonetimi /> : gorunum === 'sarf' ? <SarfTuketimRaporu /> : gorunum === 'maliyet' ? <MaliyetRaporu /> : gorunum === 'personel' ? <PersonelRaporu /> : <IslemKaydiRaporu />}
     </div>
   )
 }
@@ -5306,10 +5744,12 @@ const ONAY_ZINCIRI_DURUMLARI: SatinAlmaDurumTip[] = [
 ]
 
 type YeniKalemSatiri = {
+  urunId: string
   malzemeKodu: string
   malzemeAdi: string
   talepMiktar: string
   aciklama: string
+  manuelGiris: boolean
 }
 
 // F11 — Satın Alma sekmesi: Doğrudan Talepler + Bakım Yönlendirme alt sekmeleri
@@ -5374,6 +5814,7 @@ function SatinAlmaYonetimi({
   const [durumFiltre, setDurumFiltre] = useState<SatinAlmaDurumTip | ''>('')
 
   const [bolumler, setBolumler] = useState<string[]>([])
+  const [urunler, setUrunler] = useState<EnvanterUrunListItem[]>([])
 
   const [showNewForm, setShowNewForm] = useState(false)
   const [yeniBolum, setYeniBolum] = useState('')
@@ -5381,12 +5822,14 @@ function SatinAlmaYonetimi({
   const [yeniAsansorMekanik, setYeniAsansorMekanik] = useState('')
   const [yeniAciklama, setYeniAciklama] = useState('')
   const [yeniKalemler, setYeniKalemler] = useState<YeniKalemSatiri[]>([
-    { malzemeKodu: '', malzemeAdi: '', talepMiktar: '1', aciklama: '' },
+    { urunId: '', malzemeKodu: '', malzemeAdi: '', talepMiktar: '1', aciklama: '', manuelGiris: false },
   ])
   const [yeniSaving, setYeniSaving] = useState(false)
 
   const [selectedTalepId, setSelectedTalepId] = useState('')
   const [talepDetay, setTalepDetay] = useState<SatinAlmaTalepDetay | null>(null)
+  const [talepSilSaving, setTalepSilSaving] = useState<Record<string, boolean>>({})
+  const [talepIptalSaving, setTalepIptalSaving] = useState(false)
   const [detayLoading, setDetayLoading] = useState(false)
 
   const [aksiyonAcik, setAksiyonAcik] = useState<SatinAlmaAksiyonTip | ''>('')
@@ -5414,7 +5857,18 @@ function SatinAlmaYonetimi({
 
   useEffect(() => {
     loadBolumler()
+    loadUrunler()
   }, [])
+
+  async function loadUrunler() {
+    try {
+      const res = await fetch('/api/envanter/urunler')
+      const json = await res.json()
+      if (json.ok) setUrunler(json.data)
+    } catch {
+      // sessiz gec -- urun listesi yuklenemezse "elle yaz" secenegi calismaya devam eder
+    }
+  }
 
   // F6 — Dashboard "Talep Aç" ile gelen ön-dolu malzeme: formu aç, ilk kalemi doldur
   useEffect(() => {
@@ -5422,10 +5876,12 @@ function SatinAlmaYonetimi({
       setShowNewForm(true)
       setYeniKalemler([
         {
+          urunId: '',
           malzemeKodu: prefill.malzemeKodu,
           malzemeAdi: prefill.malzemeAdi,
           talepMiktar: '1',
           aciklama: '',
+          manuelGiris: true,
         },
       ])
       onPrefillConsumed?.()
@@ -5508,7 +5964,7 @@ function SatinAlmaYonetimi({
   }
 
   function kalemEkle() {
-    setYeniKalemler((prev) => [...prev, { malzemeKodu: '', malzemeAdi: '', talepMiktar: '1', aciklama: '' }])
+    setYeniKalemler((prev) => [...prev, { urunId: '', malzemeKodu: '', malzemeAdi: '', talepMiktar: '1', aciklama: '', manuelGiris: false }])
   }
 
   function kalemSil(index: number) {
@@ -5519,6 +5975,38 @@ function SatinAlmaYonetimi({
     setYeniKalemler((prev) => prev.map((k, i) => (i === index ? { ...k, [alan]: deger } : k)))
   }
 
+  function kalemUrunSec(index: number, urunId: string) {
+    const urun = urunler.find((u) => u.id === urunId)
+    setYeniKalemler((prev) =>
+      prev.map((k, i) =>
+        i === index
+          ? {
+              ...k,
+              urunId,
+              malzemeKodu: urun?.kod || '',
+              malzemeAdi: urun?.ad || '',
+            }
+          : k,
+      ),
+    )
+  }
+
+  function kalemManuelToggle(index: number) {
+    setYeniKalemler((prev) =>
+      prev.map((k, i) =>
+        i === index
+          ? {
+              ...k,
+              manuelGiris: !k.manuelGiris,
+              urunId: '',
+              malzemeKodu: '',
+              malzemeAdi: '',
+            }
+          : k,
+      ),
+    )
+  }
+
   async function handleYeniTalepOlustur() {
     setError('')
     setMessage('')
@@ -5526,6 +6014,7 @@ function SatinAlmaYonetimi({
     const kalemler = yeniKalemler
       .filter((k) => k.malzemeAdi.trim())
       .map((k) => ({
+        urunId: k.urunId || undefined,
         malzemeKodu: k.malzemeKodu || undefined,
         malzemeAdi: k.malzemeAdi,
         talepMiktar: Number(k.talepMiktar),
@@ -5561,7 +6050,7 @@ function SatinAlmaYonetimi({
         setYeniMasrafYeri('')
         setYeniAsansorMekanik('')
         setYeniAciklama('')
-        setYeniKalemler([{ malzemeKodu: '', malzemeAdi: '', talepMiktar: '1', aciklama: '' }])
+        setYeniKalemler([{ urunId: '', malzemeKodu: '', malzemeAdi: '', talepMiktar: '1', aciklama: '', manuelGiris: false }])
         await loadTalepler(durumFiltre || undefined)
       } else {
         setError(json.message || 'Talep oluşturulamadı.')
@@ -5570,6 +6059,65 @@ function SatinAlmaYonetimi({
       setError(err instanceof Error ? err.message : 'Talep oluşturulamadı.')
     } finally {
       setYeniSaving(false)
+    }
+  }
+
+  async function handleTalepSil(talep: { id: string; formNo: string }) {
+    if (
+      !window.confirm(
+        `"${talep.formNo}" talebini kalıcı olarak silmek istiyor musunuz? Bu işlem geri alınamaz.`,
+      )
+    ) {
+      return
+    }
+    setTalepSilSaving((prev) => ({ ...prev, [talep.id]: true }))
+    setError('')
+    setMessage('')
+    try {
+      const res = await fetch(`/api/envanter/satinalma/${talep.id}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.ok) {
+        setMessage(json.message)
+        if (selectedTalepId === talep.id) {
+          setSelectedTalepId('')
+          setTalepDetay(null)
+        }
+        await loadTalepler()
+      } else {
+        setError(json.message || 'Talep silinemedi.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Talep silinemedi.')
+    } finally {
+      setTalepSilSaving((prev) => ({ ...prev, [talep.id]: false }))
+    }
+  }
+
+  async function handleTalepIptal() {
+    if (!selectedTalepId || !talepDetay) return
+    if (!window.confirm(`"${talepDetay.formNo}" talebini iptal etmek istiyor musunuz?`)) return
+    const sebep = window.prompt('İptal sebebi (opsiyonel):') || undefined
+    setTalepIptalSaving(true)
+    setError('')
+    setMessage('')
+    try {
+      const res = await fetch(`/api/envanter/satinalma/${selectedTalepId}/iptal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sebep }),
+      })
+      const json = await res.json()
+      if (json.ok) {
+        setMessage('Talep iptal edildi.')
+        await loadDetay(selectedTalepId)
+        await loadTalepler()
+      } else {
+        setError(json.message || 'Talep iptal edilemedi.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Talep iptal edilemedi.')
+    } finally {
+      setTalepIptalSaving(false)
     }
   }
 
@@ -5815,18 +6363,52 @@ function SatinAlmaYonetimi({
               <div className="mt-2 space-y-2">
                 {yeniKalemler.map((kalem, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 rounded-lg border bg-white p-2">
-                    <input
-                      value={kalem.malzemeKodu}
-                      onChange={(e) => kalemGuncelle(i, 'malzemeKodu', e.target.value)}
-                      placeholder="Malzeme Kodu"
-                      className="col-span-2 rounded-lg border p-1.5 text-sm"
-                    />
-                    <input
-                      value={kalem.malzemeAdi}
-                      onChange={(e) => kalemGuncelle(i, 'malzemeAdi', e.target.value)}
-                      placeholder="Malzeme Adı *"
-                      className="col-span-4 rounded-lg border p-1.5 text-sm"
-                    />
+                    {!kalem.manuelGiris ? (
+                      <select
+                        value={kalem.urunId}
+                        onChange={(e) => {
+                          if (e.target.value === '__manuel__') {
+                            kalemManuelToggle(i)
+                          } else {
+                            kalemUrunSec(i, e.target.value)
+                          }
+                        }}
+                        className="col-span-6 rounded-lg border p-1.5 text-sm"
+                      >
+                        <option value="">Ürün Seçiniz *</option>
+                        {urunler
+                          .filter((u) => u.durum !== 'PASIF')
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.kod} - {u.ad}
+                              {u.kategori ? ` (${u.kategori})` : ''}
+                            </option>
+                          ))}
+                        <option value="__manuel__">Diğer (elle yaz)</option>
+                      </select>
+                    ) : (
+                      <div className="col-span-6 flex gap-2">
+                        <input
+                          value={kalem.malzemeKodu}
+                          onChange={(e) => kalemGuncelle(i, 'malzemeKodu', e.target.value)}
+                          placeholder="Malzeme Kodu"
+                          className="w-24 rounded-lg border p-1.5 text-sm"
+                        />
+                        <input
+                          value={kalem.malzemeAdi}
+                          onChange={(e) => kalemGuncelle(i, 'malzemeAdi', e.target.value)}
+                          placeholder="Malzeme Adı *"
+                          className="flex-1 rounded-lg border p-1.5 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => kalemManuelToggle(i)}
+                          className="whitespace-nowrap rounded-lg border px-2 text-xs font-medium text-teal-700 hover:bg-teal-50"
+                        >
+                          Listeden seç
+                        </button>
+                      </div>
+                    )}
                     <input
                       type="number"
                       min={1}
@@ -5930,14 +6512,26 @@ function SatinAlmaYonetimi({
                     </td>
                     <td className="px-3 py-3 text-right">{talep.kalemler.length}</td>
                     <td className="px-3 py-3">
-                      <button
-                        type="button"
-                        onClick={() => handleTalepSec(talep.id)}
-                        className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        Detay
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleTalepSec(talep.id)}
+                          className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Detay
+                        </button>
+                        {talep.durum === 'TASLAK' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTalepSil(talep)}
+                            disabled={talepSilSaving[talep.id]}
+                            className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                          >
+                            {talepSilSaving[talep.id] ? 'Siliniyor...' : 'Sil'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -6063,7 +6657,19 @@ function SatinAlmaYonetimi({
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 className="font-semibold text-slate-900">Aksiyonlar</h4>
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="font-semibold text-slate-900">Aksiyonlar</h4>
+                  {!['REDDEDILDI', 'IPTAL', 'STOGA_ISLENDI'].includes(talepDetay.durum) && (
+                    <button
+                      type="button"
+                      onClick={handleTalepIptal}
+                      disabled={talepIptalSaving}
+                      className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                    >
+                      {talepIptalSaving ? 'İptal ediliyor...' : 'Talebi İptal Et'}
+                    </button>
+                  )}
+                </div>
 
                 {onayZincirindeMi && (
                   <div className="mt-3 space-y-3">
@@ -6255,17 +6861,6 @@ type SezonPlanDetay = {
   kalemler: SezonKalemDetay[]
 }
 
-type BedenProfilItem = {
-  id: string
-  personnelId: string
-  ustBeden: string | null
-  altBeden: string | null
-  ayakkabiNo: string | null
-  eldivenNo: string | null
-  not: string | null
-  personnel: { sicilNo: string | null; adSoyad: string; bolum: string }
-}
-
 function SezonPlaniYonetimi() {
   const [planlar, setPlanlar] = useState<SezonPlanListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -6301,6 +6896,29 @@ function SezonPlaniYonetimi() {
 
   const [yeniKalemUrunId, setYeniKalemUrunId] = useState('')
   const [yeniKalemKisiBasi, setYeniKalemKisiBasi] = useState('1')
+  // Faz D — secili urunun kullanimOmruGun'undan yillik kisi basi adet onerisi
+  const [seciliUrunKullanimOmruGun, setSeciliUrunKullanimOmruGun] = useState<number | null>(null)
+  useEffect(() => {
+    if (!yeniKalemUrunId) {
+      setSeciliUrunKullanimOmruGun(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/envanter/urunler/${yeniKalemUrunId}`)
+        const json = await res.json()
+        if (!cancelled) {
+          setSeciliUrunKullanimOmruGun(json.ok ? (json.data?.kullanimOmruGun ?? null) : null)
+        }
+      } catch {
+        if (!cancelled) setSeciliUrunKullanimOmruGun(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [yeniKalemUrunId])
   const [kalemEkleSaving, setKalemEkleSaving] = useState(false)
 
   const [ihtiyacSonuc, setIhtiyacSonuc] = useState<{
@@ -6311,29 +6929,9 @@ function SezonPlaniYonetimi() {
 
   const [talepOlusturSaving, setTalepOlusturSaving] = useState(false)
 
-  const [personeller, setPersoneller] = useState<any[]>([])
-  const [bedenProfilleri, setBedenProfilleri] = useState<BedenProfilItem[]>([])
-  const [bedenProfilLoading, setBedenProfilLoading] = useState(true)
-  const [bedenPersonelId, setBedenPersonelId] = useState('')
-  const [bedenUst, setBedenUst] = useState('')
-  const [bedenAlt, setBedenAlt] = useState('')
-  const [bedenAyakkabi, setBedenAyakkabi] = useState('')
-  const [bedenEldiven, setBedenEldiven] = useState('')
-  const [bedenNot, setBedenNot] = useState('')
-  const [bedenSaving, setBedenSaving] = useState(false)
-
-  const [showBedenImport, setShowBedenImport] = useState(false)
-  const [bedenImportDosya, setBedenImportDosya] = useState<File | null>(null)
-  const [bedenImportRapor, setBedenImportRapor] = useState<BedenProfilValidateSonuc | null>(null)
-  const [bedenImportSonuc, setBedenImportSonuc] = useState<BedenProfilExecuteSonuc | null>(null)
-  const [bedenImportValidating, setBedenImportValidating] = useState(false)
-  const [bedenImportExecuting, setBedenImportExecuting] = useState(false)
-
   useEffect(() => {
     loadPlanlar()
     loadUrunler()
-    loadPersoneller()
-    loadBedenProfilleri()
     loadSezonParametre()
     loadOneriler()
   }, [])
@@ -6370,22 +6968,7 @@ function SezonPlaniYonetimi() {
     if (json.ok) setUrunler(json.data)
   }
 
-  async function loadPersoneller() {
-    const res = await fetch('/api/envanter/personeller')
-    const json = await res.json()
-    if (json.ok) setPersoneller(json.data)
-  }
 
-  async function loadBedenProfilleri() {
-    setBedenProfilLoading(true)
-    try {
-      const res = await fetch('/api/envanter/beden-profili')
-      const json = await res.json()
-      if (json.ok) setBedenProfilleri(json.data)
-    } finally {
-      setBedenProfilLoading(false)
-    }
-  }
 
   async function loadDetay(id: string) {
     setDetayLoading(true)
@@ -6571,142 +7154,6 @@ function SezonPlaniYonetimi() {
       setError(err instanceof Error ? err.message : 'Talep oluşturulamadı.')
     } finally {
       setTalepOlusturSaving(false)
-    }
-  }
-
-  function handleBedenProfilDuzenle(profil: BedenProfilItem) {
-    setBedenPersonelId(profil.personnelId)
-    setBedenUst(profil.ustBeden ?? '')
-    setBedenAlt(profil.altBeden ?? '')
-    setBedenAyakkabi(profil.ayakkabiNo ?? '')
-    setBedenEldiven(profil.eldivenNo ?? '')
-    setBedenNot(profil.not ?? '')
-  }
-
-  async function handleBedenProfilKaydet() {
-    if (!bedenPersonelId) {
-      setError('Personel seçiniz.')
-      return
-    }
-
-    setError('')
-    setMessage('')
-    setBedenSaving(true)
-    try {
-      const res = await fetch('/api/envanter/beden-profili', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          personnelId: bedenPersonelId,
-          ustBeden: bedenUst || undefined,
-          altBeden: bedenAlt || undefined,
-          ayakkabiNo: bedenAyakkabi || undefined,
-          eldivenNo: bedenEldiven || undefined,
-          not: bedenNot || undefined,
-        }),
-      })
-      const json = await res.json()
-      if (json.ok) {
-        setMessage('Beden profili kaydedildi.')
-        setBedenPersonelId('')
-        setBedenUst('')
-        setBedenAlt('')
-        setBedenAyakkabi('')
-        setBedenEldiven('')
-        setBedenNot('')
-        await loadBedenProfilleri()
-      } else {
-        setError(json.message || 'Beden profili kaydedilemedi.')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Beden profili kaydedilemedi.')
-    } finally {
-      setBedenSaving(false)
-    }
-  }
-
-  function handleBedenSablonIndir() {
-    const ws = XLSX.utils.json_to_sheet([
-      { sicilNo: '', ustBeden: '', altBeden: '', ayakkabiNo: '', eldivenNo: '', aciklama: '' },
-    ])
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'BedenProfilleri')
-    XLSX.writeFile(wb, 'beden-profili-sablonu.xlsx')
-  }
-
-  function handleBedenImportDosyaSec(event: React.ChangeEvent<HTMLInputElement>) {
-    const secilen = event.target.files?.[0] ?? null
-    setBedenImportDosya(secilen)
-    setBedenImportRapor(null)
-    setBedenImportSonuc(null)
-    setError('')
-  }
-
-  async function handleBedenImportDogrula() {
-    if (!bedenImportDosya) {
-      setError('Önce bir .xlsx dosyası seçiniz.')
-      return
-    }
-
-    setError('')
-    setMessage('')
-    setBedenImportSonuc(null)
-    setBedenImportValidating(true)
-
-    try {
-      const formData = new FormData()
-      formData.append('file', bedenImportDosya)
-      formData.append('mode', 'validate')
-
-      const res = await fetch('/api/envanter/beden-profili/import', {
-        method: 'POST',
-        body: formData,
-      })
-      const json = await res.json()
-
-      if (json.ok) {
-        setBedenImportRapor(json.data)
-      } else {
-        setError(json.message || 'Doğrulama başarısız oldu.')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Doğrulama başarısız oldu.')
-    } finally {
-      setBedenImportValidating(false)
-    }
-  }
-
-  async function handleBedenImportIceriAktar() {
-    if (!bedenImportDosya) return
-
-    setError('')
-    setMessage('')
-    setBedenImportExecuting(true)
-
-    try {
-      const formData = new FormData()
-      formData.append('file', bedenImportDosya)
-      formData.append('mode', 'execute')
-
-      const res = await fetch('/api/envanter/beden-profili/import', {
-        method: 'POST',
-        body: formData,
-      })
-      const json = await res.json()
-
-      if (json.ok) {
-        setBedenImportSonuc(json.data)
-        setMessage(json.message || 'İçeri aktarım tamamlandı.')
-        setBedenImportDosya(null)
-        setBedenImportRapor(null)
-        await loadBedenProfilleri()
-      } else {
-        setError(json.message || 'İçeri aktarım başarısız oldu.')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'İçeri aktarım başarısız oldu.')
-    } finally {
-      setBedenImportExecuting(false)
     }
   }
 
@@ -7081,6 +7528,31 @@ function SezonPlaniYonetimi() {
                       onChange={(e) => setYeniKalemKisiBasi(e.target.value)}
                       className="mt-1 w-24 rounded-xl border p-2 text-sm"
                     />
+                    {seciliUrunKullanimOmruGun != null && seciliUrunKullanimOmruGun > 0 && (
+                      <p className="mt-1 max-w-xs text-xs text-slate-500">
+                        Önerilen: {Math.max(1, Math.round(365 / seciliUrunKullanimOmruGun))} adet/yıl (
+                        {seciliUrunKullanimOmruGun} günde bir){' '}
+                        <span
+                          title="Hesap: 365 ÷ Ürünün Kullanım Ömrü (Gün) = yıllık kişi başı öneri. Örnek: kullanım ömrü 182 gün ise yılda ~2 adet, 365 gün ise yılda 1 adet önerilir."
+                          className="inline-flex cursor-help items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 align-middle text-teal-700"
+                        >
+                          <HelpCircle className="h-3 w-3" />
+                          <span className="text-[10px] font-semibold">Nasıl hesaplanır?</span>
+                        </span>{' '}
+                        —{' '}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setYeniKalemKisiBasi(
+                              String(Math.max(1, Math.round(365 / (seciliUrunKullanimOmruGun as number)))),
+                            )
+                          }
+                          className="font-medium text-teal-700 underline"
+                        >
+                          Öneriyi Kullan
+                        </button>
+                      </p>
+                    )}
                   </div>
 
                   <button
@@ -7128,6 +7600,13 @@ function SezonPlaniYonetimi() {
                         ihtiyacSonuc.ozet.planlananAlim +
                         ihtiyacSonuc.ozet.turnoverKisi}{' '}
                       kişi · Emniyet payı: %{ihtiyacSonuc.ozet.emniyetOrani}
+                      <span
+                        title="Bu satır şirket geneli (tüm aktif personel) toplamını gösterir. Aşağıdaki tablodaki her satır, ürünün hedef yaka/bölüm kitlesine ve yenileme (kullanım ömrü) durumuna göre filtrelenmiş kişi sayılarını kullanır; bu yüzden toplamlar farklı görünebilir."
+                        className="ml-2 inline-flex cursor-help items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 align-middle text-amber-700"
+                      >
+                        <HelpCircle className="h-3 w-3" />
+                        <span className="text-[10px] font-semibold">Neden farklı?</span>
+                      </span>
                     </p>
 
                     <div className="mt-2 overflow-hidden overflow-x-auto rounded-xl border">
@@ -7137,6 +7616,7 @@ function SezonPlaniYonetimi() {
                             <th className="px-3 py-3">Ürün</th>
                             <th className="px-3 py-3">Beden</th>
                             <th className="px-3 py-3 text-right">Mevcut Personel</th>
+                            <th className="px-3 py-3 text-right">Zaten Üzerinde</th>
                             <th className="px-3 py-3 text-right">Yeni Alım</th>
                             <th className="px-3 py-3 text-right">Turnover</th>
                             <th className="px-3 py-3 text-right">Emniyet</th>
@@ -7161,6 +7641,9 @@ function SezonPlaniYonetimi() {
                                 )}
                               </td>
                               <td className="px-3 py-3 text-right">{satir.mevcutPersonelSayisi}</td>
+                              <td className="px-3 py-3 text-right text-slate-500">
+                                {satir.zatenUzerindeSayisi > 0 ? satir.zatenUzerindeSayisi : '-'}
+                              </td>
                               <td className="px-3 py-3 text-right">{satir.yeniAlimSayisi}</td>
                               <td className="px-3 py-3 text-right">{satir.turnoverSayisi}</td>
                               <td className="px-3 py-3 text-right">{satir.emniyetAdet}</td>
@@ -7184,247 +7667,6 @@ function SezonPlaniYonetimi() {
         </div>
       )}
 
-      <div className="rounded-2xl border bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-slate-900">Beden Profilleri</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Personel bazlı üst beden / alt beden / ayakkabı no / eldiven no bilgisi. Sezon
-              ihtiyaç hesabı bu bilgileri kullanır.
-            </p>
-          </div>
-
-          <div className="flex flex-shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={handleBedenSablonIndir}
-              className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            >
-              <Download className="h-4 w-4" />
-              Şablon İndir
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowBedenImport((prev) => !prev)}
-              className="flex items-center gap-2 rounded-xl border border-teal-700 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
-            >
-              <Upload className="h-4 w-4" />
-              {showBedenImport ? 'Vazgeç' : "Excel'den Yükle"}
-            </button>
-          </div>
-        </div>
-
-        {showBedenImport && (
-          <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="text-sm font-medium">Excel Dosyası (.xlsx)</label>
-                <input
-                  type="file"
-                  accept=".xlsx"
-                  onChange={handleBedenImportDosyaSec}
-                  className="mt-1 block rounded-xl border p-2 text-sm"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleBedenImportDogrula}
-                disabled={!bedenImportDosya || bedenImportValidating}
-                className="rounded-xl border border-teal-700 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
-              >
-                {bedenImportValidating ? 'Doğrulanıyor...' : 'Doğrula'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleBedenImportIceriAktar}
-                disabled={!bedenImportRapor || bedenImportRapor.hatalar.length > 0 || bedenImportExecuting}
-                className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-              >
-                {bedenImportExecuting ? 'Aktarılıyor...' : 'İçeri Aktar'}
-              </button>
-            </div>
-
-            {bedenImportRapor && (
-              <div className="space-y-2 text-sm">
-                <p>
-                  Geçerli (eşleşen) satır: <strong>{bedenImportRapor.gecerliSayisi}</strong> —
-                  Eşleşmeyen sicil: <strong>{bedenImportRapor.eslesmeyenSicil.length}</strong>
-                </p>
-
-                {bedenImportRapor.eslesmeyenSicil.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {bedenImportRapor.eslesmeyenSicil.map((sicil) => (
-                      <span
-                        key={sicil}
-                        className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
-                      >
-                        {sicil}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {bedenImportRapor.hatalar.length > 0 && (
-                  <div className="overflow-hidden overflow-x-auto rounded-xl border">
-                    <table className="w-full text-xs">
-                      <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                        <tr>
-                          <th className="px-3 py-2">Satır</th>
-                          <th className="px-3 py-2">Sicil</th>
-                          <th className="px-3 py-2">Mesaj</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {bedenImportRapor.hatalar.map((hata, i) => (
-                          <tr key={i}>
-                            <td className="px-3 py-2 text-right">{hata.satirNo}</td>
-                            <td className="px-3 py-2">{hata.sicilNo || '-'}</td>
-                            <td className="px-3 py-2 text-rose-700">{hata.mesaj}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {bedenImportRapor.hatalar.length === 0 && (
-                  <p className="text-emerald-700">Hata yok — "İçeri Aktar" ile devam edebilirsiniz.</p>
-                )}
-              </div>
-            )}
-
-            {bedenImportSonuc && (
-              <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">
-                {bedenImportSonuc.guncellenen} kayıt güncellendi, {bedenImportSonuc.atlanan} satır
-                atlandı.
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-5">
-          <div className="md:col-span-1">
-            <label className="text-sm font-medium">Personel</label>
-            <select
-              value={bedenPersonelId}
-              onChange={(e) => setBedenPersonelId(e.target.value)}
-              className="mt-1 w-full rounded-xl border p-2 text-sm"
-            >
-              <option value="">Seçiniz</option>
-              {personeller.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.sicilNo} - {p.adSoyad}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Üst Beden</label>
-            <input
-              value={bedenUst}
-              onChange={(e) => setBedenUst(e.target.value)}
-              className="mt-1 w-full rounded-xl border p-2 text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Alt Beden</label>
-            <input
-              value={bedenAlt}
-              onChange={(e) => setBedenAlt(e.target.value)}
-              className="mt-1 w-full rounded-xl border p-2 text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Ayakkabı No</label>
-            <input
-              value={bedenAyakkabi}
-              onChange={(e) => setBedenAyakkabi(e.target.value)}
-              className="mt-1 w-full rounded-xl border p-2 text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Eldiven No</label>
-            <input
-              value={bedenEldiven}
-              onChange={(e) => setBedenEldiven(e.target.value)}
-              className="mt-1 w-full rounded-xl border p-2 text-sm"
-            />
-          </div>
-
-          <div className="md:col-span-4">
-            <label className="text-sm font-medium">Not</label>
-            <input
-              value={bedenNot}
-              onChange={(e) => setBedenNot(e.target.value)}
-              className="mt-1 w-full rounded-xl border p-2 text-sm"
-            />
-          </div>
-
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={handleBedenProfilKaydet}
-              disabled={bedenSaving}
-              className="w-full rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-            >
-              {bedenSaving ? 'Kaydediliyor...' : 'Kaydet'}
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4">
-          {bedenProfilLoading ? (
-            <p className="text-sm text-slate-500">Yükleniyor...</p>
-          ) : bedenProfilleri.length === 0 ? (
-            <p className="text-sm text-slate-500">Henüz beden profili girilmedi.</p>
-          ) : (
-            <div className="overflow-hidden overflow-x-auto rounded-xl border">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-3">Sicil</th>
-                    <th className="px-3 py-3">Ad Soyad</th>
-                    <th className="px-3 py-3">Bölüm</th>
-                    <th className="px-3 py-3">Üst Beden</th>
-                    <th className="px-3 py-3">Alt Beden</th>
-                    <th className="px-3 py-3">Ayakkabı No</th>
-                    <th className="px-3 py-3">Eldiven No</th>
-                    <th className="px-3 py-3">Düzenle</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {bedenProfilleri.map((profil) => (
-                    <tr key={profil.id}>
-                      <td className="px-3 py-3">{profil.personnel.sicilNo ?? '-'}</td>
-                      <td className="px-3 py-3 font-medium text-slate-900">{profil.personnel.adSoyad}</td>
-                      <td className="px-3 py-3">{profil.personnel.bolum}</td>
-                      <td className="px-3 py-3">{profil.ustBeden ?? '-'}</td>
-                      <td className="px-3 py-3">{profil.altBeden ?? '-'}</td>
-                      <td className="px-3 py-3">{profil.ayakkabiNo ?? '-'}</td>
-                      <td className="px-3 py-3">{profil.eldivenNo ?? '-'}</td>
-                      <td className="px-3 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleBedenProfilDuzenle(profil)}
-                          className="rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                        >
-                          Düzenle
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   )
 }

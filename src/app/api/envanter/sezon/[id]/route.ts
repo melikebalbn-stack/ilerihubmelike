@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { getSezonPlanDetay, updateSezonPlanOverride } from '@/lib/envanter/sezon'
+import { logEnvanterIslem } from '@/lib/envanter/service'
 
 export async function GET(
   _request: Request,
@@ -53,6 +55,57 @@ export async function PATCH(
   } catch (err) {
     return NextResponse.json(
       { ok: false, message: err instanceof Error ? err.message : 'Sezon planı güncellenemedi.' },
+      { status: 400 },
+    )
+  }
+}
+
+// Sezon planı silme — kalemleri (envanter_sezon_kalem) cascade ile birlikte silinir.
+// Başka hiçbir model plan id'sine referans vermiyor (satın alma talebi ayrı, bağımsız
+// bir kayıt olarak oluşturuluyor) — bu yüzden hibrit değil, doğrudan kalıcı silme.
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { session, error } = await requireSession()
+  if (error) return error
+  if (!session.user.permissions?.includes('envanter.admin')) {
+    return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
+  }
+
+  try {
+    const { id } = await params
+    const plan = await prisma.envanterSezonPlan.findUnique({
+      where: { id },
+      include: { kalemler: true },
+    })
+    if (!plan) {
+      return NextResponse.json({ ok: false, message: 'Sezon planı bulunamadı.' }, { status: 404 })
+    }
+
+    await prisma.envanterSezonPlan.delete({ where: { id } })
+
+    await logEnvanterIslem({
+      actorId: session.user.id,
+      actorAd: session.user.name || session.user.email || 'Bilinmiyor',
+      islemTipi: 'SEZON_PLANI_SIL',
+      hedefTip: 'EnvanterSezonPlan',
+      hedefId: id,
+      detay: {
+        ad: plan.ad,
+        yil: plan.yil,
+        kalemSayisi: plan.kalemler.length,
+        aktorAd: session.user.name || session.user.email,
+      },
+    })
+
+    return NextResponse.json({
+      ok: true,
+      message: `Sezon planı silindi${plan.kalemler.length > 0 ? ` (${plan.kalemler.length} kalem dahil)` : ''}.`,
+    })
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, message: err instanceof Error ? err.message : 'Sezon planı silinemedi.' },
       { status: 400 },
     )
   }

@@ -3,6 +3,7 @@ import { requireSession } from '@/lib/auth/require-session'
 import {
   getYonlendirme,
   updateYonlendirme,
+  silYonlendirme,
   type BakimYonlendirmeDurumTip,
 } from '@/lib/envanter/bakim-yonlendirme'
 
@@ -55,6 +56,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       {
         ok: false,
         message: err instanceof Error ? err.message : 'Güncellenemedi.',
+      },
+      { status: 400 },
+    )
+  }
+}
+
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { session, error } = await requireSession()
+  if (error) return error
+  if (!session.user.permissions?.includes('envanter.admin')) {
+    return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
+  }
+
+  const { id } = await params
+
+  try {
+    await silYonlendirme(
+      id,
+      session.user.id,
+      session.user.name || session.user.email || 'Bilinmiyor',
+    )
+    return NextResponse.json({ ok: true, message: 'Kayıt silindi.' })
+  } catch (err) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: err instanceof Error ? err.message : 'Kayıt silinemedi.',
       },
       { status: 400 },
     )

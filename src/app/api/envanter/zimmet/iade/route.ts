@@ -16,9 +16,10 @@ export async function POST(request: NextRequest) {
     const result = await iadeZimmet({
       zimmetId: body.zimmetId,
       iadeMiktar: Number(body.iadeMiktar),
-      aciklama: body.aciklama,
-      createdById: user.id,
-    })
+        aciklama: body.aciklama,
+        createdById: user.id,
+        createdByAd: user.name || user.email || 'Bilinmiyor',
+      })
 
     return NextResponse.json({
       ok: true,

@@ -68,6 +68,8 @@ export function BakimYonlendirmeYonetimi() {
   const [duzenleSonucNotu, setDuzenleSonucNotu] = useState('')
   const [duzenleSaving, setDuzenleSaving] = useState(false)
 
+  const [silSaving, setSilSaving] = useState<Record<string, boolean>>({})
+
   useEffect(() => {
     loadKayitlar(durumFiltre || undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -164,6 +166,35 @@ export function BakimYonlendirmeYonetimi() {
       setError(err instanceof Error ? err.message : 'Güncellenemedi.')
     } finally {
       setDuzenleSaving(false)
+    }
+  }
+
+  async function handleSil(kayit: BakimYonlendirmeListItem) {
+    if (
+      !window.confirm(
+        `"${kayit.kayitNo} - ${kayit.konu}" kaydını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`,
+      )
+    ) {
+      return
+    }
+    setError('')
+    setMessage('')
+    setSilSaving((prev) => ({ ...prev, [kayit.id]: true }))
+    try {
+      const res = await fetch(`/api/envanter/bakim-yonlendirme/${kayit.id}`, {
+        method: 'DELETE',
+      })
+      const json = await res.json()
+      if (json.ok) {
+        setMessage(json.message || 'Kayıt silindi.')
+        await loadKayitlar(durumFiltre || undefined)
+      } else {
+        setError(json.message || 'Kayıt silinemedi.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Kayıt silinemedi.')
+    } finally {
+      setSilSaving((prev) => ({ ...prev, [kayit.id]: false }))
     }
   }
 
@@ -295,15 +326,29 @@ export function BakimYonlendirmeYonetimi() {
                         {new Date(kayit.createdAt).toLocaleDateString('tr-TR')}
                       </td>
                       <td className="px-3 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleKayitSec(kayit)}
-                          disabled={kapali}
-                          className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          {kapali ? 'Kapalı' : 'Güncelle'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleKayitSec(kayit)}
+                            disabled={kapali}
+                            className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            {kapali ? 'Kapalı' : 'Güncelle'}
+                          </button>
+                          {kayit.durum === 'TESPIT_EDILDI' &&
+                            !kayit.servisReferansi &&
+                            !kayit.sonucNotu && (
+                              <button
+                                type="button"
+                                onClick={() => handleSil(kayit)}
+                                disabled={!!silSaving[kayit.id]}
+                                className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                              >
+                                {silSaving[kayit.id] ? 'Siliniyor...' : 'Sil'}
+                              </button>
+                            )}
+                        </div>
                       </td>
                     </tr>
                   )

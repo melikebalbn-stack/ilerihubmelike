@@ -8,6 +8,32 @@ import {
   getTotalInitialStock,
 } from './stock'
 
+// Madde 8 — envanter islem audit log. Best-effort: loglama basarisiz olursa asil
+// islemi bozmasin diye try/catch icinde, sessizce sadece console.error basar.
+export async function logEnvanterIslem(params: {
+  actorId?: string | null
+  actorAd?: string | null
+  islemTipi: string
+  hedefTip: string
+  hedefId?: string | null
+  detay?: Record<string, unknown>
+}) {
+  try {
+    await prisma.envanterIslemLog.create({
+      data: {
+        aktorId: params.actorId || null,
+        aktorAd: params.actorAd || null,
+        islemTipi: params.islemTipi,
+        hedefTip: params.hedefTip,
+        hedefId: params.hedefId || null,
+        detay: (params.detay ?? null) as never,
+      },
+    })
+  } catch (err) {
+    console.error('Envanter islem log yazilamadi:', err)
+  }
+}
+
 function toNullableInt(value: string) {
   if (!value || value.trim() === '') return null
   const parsed = Number(value)
@@ -154,7 +180,7 @@ export async function listEnvanterUrunler(): Promise<EnvanterUrunListItem[]> {
   return urunler.map(mapUrunToListItem)
 }
 
-export async function createEnvanterUrun(form: EnvanterUrunForm) {
+export async function createEnvanterUrun(form: EnvanterUrunForm, actorId?: string, actorAd?: string) {
   assertValidEnvanterUrunForm(form)
 
   const varyantlar = buildVaryantList(form)
@@ -173,7 +199,7 @@ export async function createEnvanterUrun(form: EnvanterUrunForm) {
         aciklama: form.aciklama || null,
 
         varyantTipi: normalizeVaryantTipi(form.varyantTipi) as never,
-        bedenTipi: (form.bedenTipi || 'YOK') as never,
+        bedenTipi: (form.bedenTipi || 'STANDART') as never,
 
         tedarikci: form.tedarikci || null,
         marka: form.marka || null,
@@ -287,6 +313,16 @@ export async function createEnvanterUrun(form: EnvanterUrunForm) {
       toplamIlkGiris,
       varyantSayisi: varyantlar.length,
     }
+  }).then(async (sonuc) => {
+    await logEnvanterIslem({
+      actorId,
+      actorAd,
+      islemTipi: 'URUN_OLUSTUR',
+      hedefTip: 'URUN',
+      hedefId: sonuc.id,
+      detay: { kod: sonuc.kod, ad: sonuc.ad, varyantSayisi: sonuc.varyantSayisi },
+    })
+    return sonuc
   })
 }
 
@@ -343,6 +379,8 @@ export async function getEnvanterUrunDetail(id: string) {
     teslimYetkisi: urun.teslimYetkisi,
     sureSonuAksiyonu: urun.sureSonuAksiyonu,
     dagitimKurali: urun.dagitimKurali,
+    hedefYaka: urun.hedefYaka,
+    hedefBolum: urun.hedefBolum,
     createdAt: urun.createdAt.toISOString(),
 
     varyantlar: urun.varyantlar,
@@ -389,6 +427,8 @@ export async function createEnvanterStokHareket(input: {
   bolum?: string
   alanPersonelId?: string
   alanPersonelAd?: string
+  actorId?: string
+  actorAd?: string
 }) {
   if (!input.stokId) {
     throw new Error('Stok kaydı seçilmelidir.')
@@ -461,6 +501,7 @@ export async function createEnvanterStokHareket(input: {
         bolum: input.bolum || null,
         alanPersonelId: input.alanPersonelId || null,
         alanPersonelAd: input.alanPersonelAd || null,
+        createdById: input.actorId || null,
       },
     })
 
@@ -468,6 +509,23 @@ export async function createEnvanterStokHareket(input: {
       stok: updatedStok,
       hareket,
     }
+  }).then(async (sonuc) => {
+    await logEnvanterIslem({
+      actorId: input.actorId,
+      actorAd: input.actorAd,
+      islemTipi: 'STOK_HAREKET',
+      hedefTip: 'STOK_HAREKET',
+      hedefId: sonuc.hareket.id,
+      detay: {
+        hareketTipi: input.hareketTipi,
+        miktar: input.miktar,
+        stokId: input.stokId,
+        bolum: input.bolum,
+        alanPersonelId: input.alanPersonelId,
+        alanPersonelAd: input.alanPersonelAd,
+      },
+    })
+    return sonuc
   })
 }
 
@@ -482,6 +540,7 @@ export async function createZimmet(input: {
   kkdAltGrubu?: string
   verilmeTarihi?: Date
   createdById?: string
+  createdByAd?: string
 }) {
   if (!input.personnelId) {
     throw new Error('Personel seçilmelidir.')
@@ -553,6 +612,16 @@ export async function createZimmet(input: {
     })
 
     return { zimmet, stok: updatedStok, hareket }
+  }).then(async (sonuc) => {
+    await logEnvanterIslem({
+      actorId: input.createdById,
+      actorAd: input.createdByAd,
+      islemTipi: 'ZIMMET_OLUSTUR',
+      hedefTip: 'ZIMMET',
+      hedefId: sonuc.zimmet.id,
+      detay: { personnelId: input.personnelId, stokId: input.stokId, miktar: input.miktar },
+    })
+    return sonuc
   })
 }
 
@@ -561,6 +630,7 @@ export async function iadeZimmet(input: {
   iadeMiktar: number
   aciklama?: string
   createdById?: string
+  createdByAd?: string
 }) {
   if (!input.zimmetId) {
     throw new Error('Zimmet kaydı seçilmelidir.')
@@ -662,11 +732,141 @@ export async function iadeZimmet(input: {
       stok: updatedStok,
       hareket,
     }
+  }).then(async (sonuc) => {
+    await logEnvanterIslem({
+      actorId: input.createdById,
+      actorAd: input.createdByAd,
+      islemTipi: 'ZIMMET_IADE',
+      hedefTip: 'ZIMMET',
+      hedefId: input.zimmetId,
+      detay: { iadeMiktar: input.iadeMiktar },
+    })
+    return sonuc
   })
 }
+export async function silZimmet(zimmetId: string, actorId?: string, actorAd?: string) {
+  if (!zimmetId) {
+    throw new Error('Zimmet kaydı seçilmelidir.')
+  }
+  const zimmet = await prisma.envanterZimmet.findUnique({
+    where: { id: zimmetId },
+  })
+  if (!zimmet) {
+    throw new Error('Zimmet kaydı bulunamadı.')
+  }
+  if (zimmet.durum !== 'AKTIF') {
+    throw new Error(
+      'Sadece aktif (henüz iade edilmemiş) zimmet kayıtları silinebilir. Bu kayıt için İptal Et seçeneğini kullanın.',
+    )
+  }
+
+  const sonuc = await prisma.$transaction(async (tx) => {
+    const stok = await tx.envanterStok.findUnique({
+      where: { id: zimmet.stokId },
+    })
+    if (!stok) {
+      throw new Error('Stok kaydı bulunamadı.')
+    }
+
+    const yeniMevcut = stok.mevcut + zimmet.miktar
+    let durum: 'NORMAL' | 'MINIMUM' | 'KRITIK' | 'EKSIK' = 'NORMAL'
+    if (stok.minStok === null || stok.kritikStok === null) durum = 'EKSIK'
+    else if (yeniMevcut <= stok.kritikStok) durum = 'KRITIK'
+    else if (yeniMevcut <= stok.minStok) durum = 'MINIMUM'
+
+    const updatedStok = await tx.envanterStok.update({
+      where: { id: stok.id },
+      data: { mevcut: yeniMevcut, durum },
+    })
+
+    const hareket = await tx.envanterStokHareket.create({
+      data: {
+        urunId: stok.urunId,
+        varyantId: stok.varyantId,
+        personnelId: zimmet.personnelId,
+        hareketTipi: 'IADE',
+        miktar: zimmet.miktar,
+        depo: stok.depo,
+        raf: stok.raf,
+        aciklama: 'Hatalı zimmet kaydı silindi',
+        createdById: actorId || null,
+      },
+    })
+
+    await tx.envanterZimmet.delete({
+      where: { id: zimmetId },
+    })
+
+    return {
+      stok: updatedStok,
+      hareket,
+      silinenZimmet: {
+        personnelId: zimmet.personnelId,
+        urunId: zimmet.urunId,
+        miktar: zimmet.miktar,
+      },
+    }
+  })
+
+  await logEnvanterIslem({
+    actorId,
+    actorAd,
+    islemTipi: 'ZIMMET_SIL',
+    hedefTip: 'ZIMMET',
+    hedefId: zimmetId,
+    detay: sonuc.silinenZimmet,
+  })
+
+  return sonuc
+}
+
+export async function iptalZimmet(
+  zimmetId: string,
+  actorId?: string,
+  sebep?: string,
+  actorAd?: string,
+) {
+  if (!zimmetId) {
+    throw new Error('Zimmet kaydı seçilmelidir.')
+  }
+  const zimmet = await prisma.envanterZimmet.findUnique({
+    where: { id: zimmetId },
+  })
+  if (!zimmet) {
+    throw new Error('Zimmet kaydı bulunamadı.')
+  }
+  if (zimmet.durum === 'AKTIF') {
+    throw new Error('Aktif zimmet kayıtları iptal edilemez, Sil seçeneğini kullanın.')
+  }
+  if (zimmet.durum === 'IPTAL') {
+    throw new Error('Bu zimmet kaydı zaten iptal edilmiş.')
+  }
+
+  const guncelZimmet = await prisma.envanterZimmet.update({
+    where: { id: zimmetId },
+    data: {
+      durum: 'IPTAL',
+      aciklama: sebep
+        ? `${zimmet.aciklama ? `${zimmet.aciklama} | ` : ''}İptal: ${sebep}`
+        : zimmet.aciklama,
+    },
+  })
+
+  await logEnvanterIslem({
+    actorId,
+    actorAd,
+    islemTipi: 'ZIMMET_IPTAL',
+    hedefTip: 'ZIMMET',
+    hedefId: zimmetId,
+    detay: { sebep: sebep || null },
+  })
+
+  return guncelZimmet
+}
+
 // ============ Faz 2 — yeni servis fonksiyonları ============
 
-export async function geriAlStokHareket(hareketId: string) {
+export async function geriAlStokHareket(hareketId: string, actorId?: string, actorAd?: string) {
   const orijinal = await prisma.envanterStokHareket.findUnique({
     where: { id: hareketId },
   })
@@ -732,10 +932,21 @@ export async function geriAlStokHareket(hareketId: string) {
         alanPersonelId: orijinal.alanPersonelId,
         alanPersonelAd: orijinal.alanPersonelAd,
         geriAlindi: true,
+        createdById: actorId || null,
       },
     })
 
     return { stok: updatedStok, tersHareket }
+  }).then(async (sonuc) => {
+    await logEnvanterIslem({
+      actorId,
+      actorAd,
+      islemTipi: 'STOK_HAREKET_GERI_ALMA',
+      hedefTip: 'STOK_HAREKET',
+      hedefId: hareketId,
+      detay: { yeniHareketId: sonuc.tersHareket.id, orijinalTip: orijinal.hareketTipi },
+    })
+    return sonuc
   })
 }
 
@@ -744,6 +955,8 @@ export async function addVaryantToUrun(input: {
   tip: 'BEDEN' | 'NUMARA' | 'RENK'
   deger: string
   depo?: string | null
+  actorId?: string
+  actorAd?: string
 }) {
   const deger = input.deger.trim()
   if (!deger) throw new Error('Varyant değeri boş olamaz.')
@@ -802,6 +1015,16 @@ export async function addVaryantToUrun(input: {
     })
 
     return { varyant }
+  }).then(async (sonuc) => {
+    await logEnvanterIslem({
+      actorId: input.actorId,
+      actorAd: input.actorAd,
+      islemTipi: 'VARYANT_EKLE',
+      hedefTip: 'VARYANT',
+      hedefId: sonuc.varyant.id,
+      detay: { urunId: input.urunId, tip: input.tip, deger: input.deger },
+    })
+    return sonuc
   })
 }
 
@@ -809,6 +1032,8 @@ export async function updateStokEsik(input: {
   stokId: string
   minStok: number | null
   kritikStok: number | null
+  actorId?: string
+  actorAd?: string
 }) {
   const stok = await prisma.envanterStok.findUnique({ where: { id: input.stokId } })
   if (!stok) throw new Error('Stok kaydı bulunamadı.')
@@ -819,26 +1044,46 @@ export async function updateStokEsik(input: {
   else if (stok.mevcut <= input.kritikStok) durum = 'KRITIK'
   else if (stok.mevcut <= input.minStok) durum = 'MINIMUM'
 
-  return prisma.envanterStok.update({
+  const sonuc = await prisma.envanterStok.update({
     where: { id: input.stokId },
     data: { minStok: input.minStok, kritikStok: input.kritikStok, durum },
   })
+  await logEnvanterIslem({
+    actorId: input.actorId,
+    actorAd: input.actorAd,
+    islemTipi: 'STOK_ESIK_GUNCELLE',
+    hedefTip: 'STOK',
+    hedefId: input.stokId,
+    detay: { minStok: input.minStok, kritikStok: input.kritikStok },
+  })
+  return sonuc
 }
 
 export async function updateStokMaliyet(input: {
   stokId: string
   birimMaliyet: number | null
   paraBirimi: string | null
+  actorId?: string
+  actorAd?: string
 }) {
   const stok = await prisma.envanterStok.findUnique({ where: { id: input.stokId } })
   if (!stok) throw new Error('Stok kaydı bulunamadı.')
-  return prisma.envanterStok.update({
+  const sonuc = await prisma.envanterStok.update({
     where: { id: input.stokId },
     data: {
       birimMaliyet: input.birimMaliyet,
       paraBirimi: input.paraBirimi || 'TL',
     },
   })
+  await logEnvanterIslem({
+    actorId: input.actorId,
+    actorAd: input.actorAd,
+    islemTipi: 'STOK_MALIYET_GUNCELLE',
+    hedefTip: 'STOK',
+    hedefId: input.stokId,
+    detay: { birimMaliyet: input.birimMaliyet, paraBirimi: input.paraBirimi },
+  })
+  return sonuc
 }
 
 export async function updateVaryant(input: {
@@ -847,6 +1092,8 @@ export async function updateVaryant(input: {
   beden?: string | null
   numara?: string | null
   renk?: string | null
+  actorId?: string
+  actorAd?: string
 }) {
   const varyant = await prisma.envanterUrunVaryant.findUnique({ where: { id: input.varyantId } })
   if (!varyant) throw new Error('Varyant bulunamadı.')
@@ -863,13 +1110,22 @@ export async function updateVaryant(input: {
     throw new Error('Güncellenecek alan gönderilmedi.')
   }
 
-  return prisma.envanterUrunVaryant.update({
+  const sonuc = await prisma.envanterUrunVaryant.update({
     where: { id: input.varyantId },
     data,
   })
+  await logEnvanterIslem({
+    actorId: input.actorId,
+    actorAd: input.actorAd,
+    islemTipi: 'VARYANT_GUNCELLE',
+    hedefTip: 'VARYANT',
+    hedefId: input.varyantId,
+    detay: data,
+  })
+  return sonuc
 }
 
-export async function deleteVaryant(varyantId: string) {
+export async function deleteVaryant(varyantId: string, actorId?: string, actorAd?: string) {
   const varyant = await prisma.envanterUrunVaryant.findUnique({
     where: { id: varyantId },
     include: { stoklar: { select: { id: true } } },
@@ -898,6 +1154,14 @@ export async function deleteVaryant(varyantId: string) {
       where: { id: varyantId },
       data: { aktif: false },
     })
+    await logEnvanterIslem({
+      actorId,
+      actorAd,
+      islemTipi: 'VARYANT_SIL',
+      hedefTip: 'VARYANT',
+      hedefId: varyantId,
+      detay: { sonuc: 'pasiflestirildi', hareketSayisi, zimmetSayisi },
+    })
     return {
       pasifleştirildi: true,
       silindi: false,
@@ -910,6 +1174,15 @@ export async function deleteVaryant(varyantId: string) {
     prisma.envanterStok.deleteMany({ where: { varyantId } }),
     prisma.envanterUrunVaryant.delete({ where: { id: varyantId } }),
   ])
+
+  await logEnvanterIslem({
+    actorId,
+    actorAd,
+    islemTipi: 'VARYANT_SIL',
+    hedefTip: 'VARYANT',
+    hedefId: varyantId,
+    detay: { sonuc: 'silindi' },
+  })
 
   return { pasifleştirildi: false, silindi: true, mesaj: 'Varyant silindi.' }
 }

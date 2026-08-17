@@ -19,8 +19,10 @@ export async function POST(request: NextRequest) {
     const result = await updateStokEsik({
       stokId: body.stokId,
       minStok: toNum(body.minStok),
-      kritikStok: toNum(body.kritikStok),
-    })
+        kritikStok: toNum(body.kritikStok),
+        actorId: session.user.id,
+        actorAd: session.user.name || session.user.email || 'Bilinmiyor',
+      })
     return NextResponse.json({ ok: true, message: 'Eşik güncellendi.', data: result })
   } catch (err) {
     return NextResponse.json(

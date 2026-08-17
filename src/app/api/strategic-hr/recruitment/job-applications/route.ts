@@ -121,7 +121,10 @@ export async function GET(request: NextRequest) {
           expectedSalary: true,
           availableStartDate: true,
           educationLevel: true,
-          referralSource: true,
+          // Kaynak SÖZLÜKTEN (referralSourceId → ReferralSourceDef.name). Eski `referralSource`
+          // enum kolonu okunmaz: yazma tarafı ona ARTIK YAZMIYOR, dolayısıyla listede
+          // "Bize Nasıl Ulaştı" sütunu her kayıtta boş görünüyordu.
+          referralSourceDef: { select: { name: true } },
           photoUrl: true,
           status: true,
           notes: true,
@@ -193,8 +196,10 @@ export async function GET(request: NextRequest) {
       applications.map((a) => ({ id: a.id, tcKimlikNo: a.tcKimlikNo })),
     )
 
-    const withBekleyen = applications.map(({ tcKimlikNo: _tc, ...a }) => ({
+    const withBekleyen = applications.map(({ tcKimlikNo: _tc, referralSourceDef, ...a }) => ({
       ...a,
+      // İstemciye DÜZ ad verilir (ilişki nesnesi sızmaz); bağı yoksa null → sütun "-" çizer.
+      referralSourceAdi: referralSourceDef?.name ?? null,
       bekleyen: bekleyenTaraf(
         a.status,
         kullaniciAdi(a.assignedManagerId ? managerById.get(a.assignedManagerId) : undefined),

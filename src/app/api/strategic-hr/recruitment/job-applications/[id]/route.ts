@@ -75,6 +75,9 @@ export async function GET(
         include: {
           consent: { select: { signedAt: true, createdAt: true, documentCode: true, documentRev: true } },
           health: { select: { createdAt: true } },
+          // Kaynak SÖZLÜKTEN — ekran adı buradan okur. Eski `referralSource` enum kolonu
+          // kayıtta duruyor ama yazma tarafı ona ARTIK YAZMIYOR, o yüzden okunmaz.
+          referralSourceDef: { select: { name: true } },
         },
       })
       const sinavlar = await oturumOzetiGetir(prisma, id, { ik: true })

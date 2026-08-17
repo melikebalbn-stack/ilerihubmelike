@@ -75,14 +75,6 @@ const genderLabels: Record<string, string> = {
   FEMALE: "Bayan",
 }
 
-const referralSourceLabels: Record<string, string> = {
-  AGENCY: "Araci Kurum",
-  ISKUR: "IS-KUR",
-  WEBSITE: "Web Sitesi",
-  REFERENCE: "Referans",
-  OTHER: "Diger",
-}
-
 const militaryStatusLabels: Record<string, string> = {
   COMPLETED: "Tamamlandi",
   DEFERRED: "Tecilli",
@@ -717,7 +709,7 @@ export default function JobApplicationDetailPage() {
                       <InfoRow label="E-posta" value={app.email} />
                       <InfoRow label="Ev Adresi" value={app.homeAddress} />
                       <InfoRow label="Bakmakla Yukumlu" value={app.dependents} />
-                      <InfoRow label="Bize Nasil Ulasti" value={app.referralSource ? referralSourceLabels[app.referralSource] || app.referralSource : null} />
+                      <InfoRow label="Bize Nasil Ulasti" value={app.referralSourceDef?.name ?? null} />
                       {app.referralSourceOther && <InfoRow label="Kaynak Detay" value={app.referralSourceOther} />}
                     </tbody>
                   </table>
@@ -1610,10 +1602,10 @@ export default function JobApplicationDetailPage() {
                   <span>{app.expectedSalary.toLocaleString()} TL</span>
                 </div>
               )}
-              {app.referralSource && (
+              {app.referralSourceDef?.name && (
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Kaynak:</span>
-                  <span>{referralSourceLabels[app.referralSource] || app.referralSource}</span>
+                  <span>{app.referralSourceDef.name}</span>
                 </div>
               )}
             </CardContent>

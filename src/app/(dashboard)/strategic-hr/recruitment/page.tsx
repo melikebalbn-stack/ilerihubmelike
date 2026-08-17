@@ -175,7 +175,9 @@ interface PublicJobApplication {
   expectedSalary: number | null
   availableStartDate: string | null
   educationLevel: string | null
-  referralSource: string | null
+  // Sunucu kaynağı SÖZLÜKTEN düz ad olarak gönderiyor (referralSourceId → ReferralSourceDef.name).
+  // Eski `referralSource` enum alanı artık yanıtta YOK.
+  referralSourceAdi: string | null
   photoUrl: string | null
   status: string
   notes: string | null
@@ -286,14 +288,6 @@ const educationLevelLabels: Record<string, string> = {
 const genderLabels: Record<string, string> = {
   MALE: "Bay",
   FEMALE: "Bayan"
-}
-
-const referralSourceLabels: Record<string, string> = {
-  AGENCY: "Araci Kurum",
-  ISKUR: "IS-KUR",
-  WEBSITE: "Web Sitesi",
-  REFERENCE: "Referans",
-  OTHER: "Diger"
 }
 
 export default function RecruitmentPage() {
@@ -2028,10 +2022,8 @@ export default function RecruitmentPage() {
                           {app.educationLevel ? educationLevelLabels[app.educationLevel] || app.educationLevel : "-"}
                         </TableCell>
                         <TableCell>
-                          {app.referralSource ? (
-                            <Badge variant="outline">
-                              {referralSourceLabels[app.referralSource] || app.referralSource}
-                            </Badge>
+                          {app.referralSourceAdi ? (
+                            <Badge variant="outline">{app.referralSourceAdi}</Badge>
                           ) : "-"}
                         </TableCell>
                         <TableCell>
@@ -2223,10 +2215,10 @@ export default function RecruitmentPage() {
                       <span>{educationLevelLabels[selectedJobApp.educationLevel] || selectedJobApp.educationLevel}</span>
                     </div>
                   )}
-                  {selectedJobApp.referralSource && (
+                  {selectedJobApp.referralSourceAdi && (
                     <div className="text-sm">
                       <span className="text-muted-foreground">Kaynak: </span>
-                      <span>{referralSourceLabels[selectedJobApp.referralSource] || selectedJobApp.referralSource}</span>
+                      <span>{selectedJobApp.referralSourceAdi}</span>
                     </div>
                   )}
                 </div>

@@ -386,7 +386,18 @@ export async function POST(request: NextRequest) {
     const kaynakAdi = (formData.get('referralSource') as string)?.trim()
     if (kaynakAdi) {
       const def = await prisma.referralSourceDef.findFirst({ where: { name: kaynakAdi, isActive: true }, select: { id: true } })
-      if (def) (applicationData as Record<string, unknown>).referralSourceId = def.id
+      if (def) {
+        (applicationData as Record<string, unknown>).referralSourceId = def.id
+      } else {
+        // SESSİZ KAYIP DEĞİL: aday bir kaynak SEÇTİ ama sözlükte eşleşmedi → kayıt yine
+        // oluşur (form bozulmasın), ama iz kalır. Tipik sebepler: form statik fallback'e
+        // düşüp sözlükte olmayan bir ad göndermiş, ya da kaynak sonradan pasife alınmış.
+        // İK "Belirtilmemiş" kırılımını görünce sebebini bu logdan bulur.
+        console.warn(
+          `[job-application] kaynak eşleşmedi — referralSourceId null kalıyor. ` +
+            `gelen="${kaynakAdi}" (aktif ReferralSourceDef.name ile eşleşmedi)`,
+        )
+      }
     }
 
     // Taslak birleştirme: KVKK adımında oluşan taslağı (cookie'deki applicationId) tam form

@@ -29,12 +29,21 @@ export const MARITAL_STATUS_OPTIONS = [
   { value: 'MARRIED', label: 'Evli' },
 ] as const
 
+// Kaynak seçenekleri — YALNIZ FALLBACK. Asıl liste İK sözlüğünden gelir
+// (/api/job-application/referral-sources → ReferralSourceDef.name).
+//
+// ⚠ DEĞERLER SÖZLÜK ADLARIYLA BİREBİR AYNI OLMALI. Sunucu gelen değeri
+// `ReferralSourceDef.name` ile eşleştirip `referralSourceId`'yi çözüyor; eskiden burada
+// enum KODLARI (AGENCY/ISKUR/…) vardı ve fetch başarısız olup fallback'e düşüldüğünde
+// eşleşme bulunamıyor, kaynak SESSİZCE null kalıyordu. Sözlüğe yeni kaynak eklenirse
+// buraya eklemek ŞART DEĞİL (fallback yalnız uç senaryo), ama BURADAKİ bir ad sözlükte
+// yoksa o seçim yine kaynaksız kayıt üretir.
 export const REFERRAL_SOURCE_OPTIONS = [
-  { value: 'AGENCY', label: 'Aracı Kurum' },
-  { value: 'ISKUR', label: 'İŞ-KUR' },
-  { value: 'WEBSITE', label: 'Web Sitesi' },
-  { value: 'REFERENCE', label: 'Referans' },
-  { value: 'OTHER', label: 'Diğer' },
+  { value: 'Aracı Kurum', label: 'Aracı Kurum' },
+  { value: 'İŞKUR', label: 'İŞKUR' },
+  { value: 'Web Sitesi', label: 'Web Sitesi' },
+  { value: 'Referans', label: 'Referans' },
+  { value: 'Diğer', label: 'Diğer' },
 ] as const
 
 export const EDUCATION_LEVEL_OPTIONS = [

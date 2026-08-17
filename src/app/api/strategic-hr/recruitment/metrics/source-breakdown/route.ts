@@ -14,10 +14,10 @@ function recruitAccess(session: {
 }
 
 // Boş/null referralSource için grup anahtarı (İK veri eksikliğini görsün diye gizlenmez).
-const BELIRTILMEMIS = "BELIRTILMEMIS";
+const BELIRTILMEMIS = "Belirtilmemiş";
 
-// GET — Kaynak Kırılımı: GERÇEK başvuru akışı = PublicJobApplication.referralSource
-// (enum: AGENCY/ISKUR/WEBSITE/REFERENCE/OTHER + null). Her kaynak için:
+// GET — Kaynak Kırılımı: GERÇEK başvuru akışı = PublicJobApplication.referralSourceId
+// → ReferralSourceDef.name (İK'nın Tanımlar'dan yönettiği sözlük). Her kaynak için:
 // başvuru sayısı · işe alınan (status=ACCEPTED) · dönüşüm %.
 // JobApplication/Candidate OKUNMAZ (ölü tablo, 3 test kaydı). Sandbox tabloları okunmaz.
 export async function GET() {
@@ -34,9 +34,14 @@ export async function GET() {
     return NextResponse.json({ error: "Bu modüle erişim yetkiniz yok" }, { status: 403 });
   }
 
+  // KAYNAK SÖZLÜKTEN OKUNUR (referralSourceId → ReferralSourceDef.name).
+  // ESKİDEN `referralSource` (enum) okunuyordu; yazma tarafı o kolona ARTIK YAZMIYOR
+  // (bkz. api/job-application/route.ts — form kaynak ADINI gönderir, ada göre FK çözülür),
+  // dolayısıyla bu uç her başvuruyu "Belirtilmemiş" sayıyordu. metrics/dashboard zaten
+  // FK'den okuyordu; iki metrik ucu artık AYNI kaynağı kullanıyor.
   const basvurular = await prisma.publicJobApplication.findMany({
     select: {
-      referralSource: true,
+      referralSourceDef: { select: { name: true } },
       status: true,
     },
   });
@@ -44,7 +49,7 @@ export async function GET() {
   // Kaynak-başına başvuru + işe alınan (ACCEPTED). null → "Belirtilmemiş".
   const acc = new Map<string, { basvuru: number; iseAlinan: number }>();
   for (const b of basvurular) {
-    const kaynak = b.referralSource ?? BELIRTILMEMIS;
+    const kaynak = b.referralSourceDef?.name ?? BELIRTILMEMIS;
     let a = acc.get(kaynak);
     if (!a) { a = { basvuru: 0, iseAlinan: 0 }; acc.set(kaynak, a); }
     a.basvuru++;

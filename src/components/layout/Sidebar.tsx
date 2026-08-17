@@ -170,7 +170,7 @@ const formsMenuItems = [
   // Görünürlük diğer form kalemleriyle aynı desende (roles: "*"); asıl erişim
   // layout guard + API'de (getBulkCardScanAccess). Statik dept filtresi GRI
   // yaka kullanıcıları yanlış gizleyeceğinden burada rol/dept ile daraltılmaz.
-  { name: "Toplu Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"] },
+  { name: "Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"] },
   // İş Analizi Formu: oturumu olan herkes kendi formunu doldurur (roles: "*").
   { name: "İş Analizi Formu", icon: ClipboardList, href: "/strategic-hr/is-analizi", roles: ["*"] },
   // RMA/SMA İade Formu (KAL-KYT-16): herkes görür; yazma yetkisi sayfa/API'de (canManageRma).

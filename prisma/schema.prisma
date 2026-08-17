@@ -183,6 +183,7 @@ model User {
   bulkCardScanFailuresCreated  BulkCardScanFailure[] @relation("BulkCardScanFailureCreator")
   bulkCardScanFailuresToApprove BulkCardScanFailure[] @relation("BulkCardScanFailureApprover")
   bulkCardScanFailuresToApprove2 BulkCardScanFailure[] @relation("BulkCardScanFailureApprover2")
+  bulkCardScanFailuresToApprove3 BulkCardScanFailure[] @relation("BulkCardScanFailureApprover3")
   bulkCardScanFailuresIvOnayladi BulkCardScanFailure[] @relation("BulkCardScanFailureIvApprover")
 
   // Akademi Relations
@@ -12075,6 +12076,8 @@ model BulkCardScanFailure {
   approver    User?                   @relation("BulkCardScanFailureApprover", fields: [approverId], references: [id])
   approverId2 String?
   approver2   User?                   @relation("BulkCardScanFailureApprover2", fields: [approverId2], references: [id])
+  approverId3 String?
+  approver3   User?                   @relation("BulkCardScanFailureApprover3", fields: [approverId3], references: [id])
   approvedAt  DateTime?
   rejectedAt  DateTime?
 
@@ -12094,6 +12097,7 @@ model BulkCardScanFailure {
   @@index([createdById])
   @@index([approverId])
   @@index([approverId2])
+  @@index([approverId3])
 }
 
 // ============================================================

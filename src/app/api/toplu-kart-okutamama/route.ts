@@ -77,8 +77,13 @@ export async function GET(request: NextRequest) {
     // Full (Eski Kayıtlar): onay BEKLIYOR durumundaki kayıtlar (kendi adına giriş
     // onay akışı) onaylanmadan burada görünmez. GRI/SELF kendi girdiği kayıtları
     // (kendi + ekibi, durumu ne olursa olsun) her zaman görebilir.
+    // İSTİSNA: 1./2./3. Sorumlu'nun ÜÇÜ DE null olan "sorumsuz" BEKLIYOR kayıtlar
+    // İV kararı için burada görünür (aksi halde onaylanamadan askıda kalırdı).
     if (access.level === 'FULL') {
-      where.onayDurumu = { not: 'BEKLIYOR' }
+      where.OR = [
+        { onayDurumu: { not: 'BEKLIYOR' } },
+        { onayDurumu: 'BEKLIYOR', approverId: null, approverId2: null, approverId3: null },
+      ]
     }
 
     if (access.level === 'GRI' || access.level === 'SELF') {
@@ -92,10 +97,18 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      where.OR = [
+      const searchOr = [
         { adSoyad: { contains: search, mode: 'insensitive' } },
         { sicilNo: { contains: search, mode: 'insensitive' } },
       ]
+      if (Array.isArray(where.OR)) {
+        // FULL durum-OR'u zaten kurulu → durum VE arama olacak şekilde AND ile birleştir
+        // (aksi halde arama OR'u durum filtresini ezerdi).
+        where.AND = [{ OR: where.OR }, { OR: searchOr }]
+        delete where.OR
+      } else {
+        where.OR = searchOr
+      }
     }
 
     if (startDate || endDate) {

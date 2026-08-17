@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { notifyHrOfBulkCardScanRecords, notifySubmitterOfDecision } from '../../_lib/notify-hr'
+import { getBulkCardScanAccess } from '../../_lib/access'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,8 +45,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 })
     }
 
-    if (record.approverId !== user.id && record.approverId2 !== user.id && record.approverId3 !== user.id) {
-      return NextResponse.json({ error: 'Bu kaydı onaylama/reddetme yetkiniz yok' }, { status: 403 })
+    const isNamedApprover =
+      record.approverId === user.id || record.approverId2 === user.id || record.approverId3 === user.id
+    // Sorumsuz kayıt: 1./2./3. Sorumlu'nun ÜÇÜ DE null → named-approver kuralı kimseyi
+    // eşleştiremez. Bu durumda İSTİSNA olarak FULL (İV/Admin) karar verebilir; named
+    // approver'lı kayıtlarda kural aynen kalır (FULL, atanmadığı kayda karışamaz).
+    const isOrphan = !record.approverId && !record.approverId2 && !record.approverId3
+    if (!isNamedApprover) {
+      const access = isOrphan ? await getBulkCardScanAccess(user.id) : null
+      if (!(isOrphan && access?.level === 'FULL')) {
+        return NextResponse.json({ error: 'Bu kaydı onaylama/reddetme yetkiniz yok' }, { status: 403 })
+      }
     }
 
     if (record.onayDurumu !== 'BEKLIYOR') {

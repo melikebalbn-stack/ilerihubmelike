@@ -40,9 +40,19 @@ export async function resolveApprovers(personnelId: string): Promise<ResolvedApp
     resolveApproverUserId(personnel.sorumlu3),
   ])
 
+  // Kişi KENDİ Sorumlu'su olarak tanımlıysa (kendi adı 1./2./3. Sorumlu alanında)
+  // kendi kaydını kendisi ONAYLAYAMAZ — gönderen User'ı aday havuzundan baştan çıkar.
+  // Kalan aday yoksa kayıt orphan (üçü-null) olur ve İV listesine düşer.
+  const ownUser = await prisma.user.findFirst({
+    where: { personnelId },
+    select: { id: true },
+  })
+
   // Aynı kişi birden fazla Sorumlu alanına çözülürse, tekrarları boş bırak
-  // (bildirim/onay yetkisi tek kayıtta zaten geçerli olur).
+  // (bildirim/onay yetkisi tek kayıtta zaten geçerli olur). seen'i gönderen User ile
+  // tohumla → kendi adına çözülen slot(lar) otomatik elenir.
   const seen = new Set<string>()
+  if (ownUser?.id) seen.add(ownUser.id)
   const deduped = resolved.map((id) => {
     if (!id || seen.has(id)) return null
     seen.add(id)

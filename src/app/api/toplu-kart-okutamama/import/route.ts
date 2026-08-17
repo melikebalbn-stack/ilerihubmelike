@@ -261,7 +261,9 @@ export async function POST(request: NextRequest) {
       let approverId: string | null = null
       let approverId2: string | null = null
       let approverId3: string | null = null
-      if (access.level === 'GRI' && personnel.id === access.personnelId) {
+      // Kendi adına satır (FULL/İV dahil, kim import ederse etsin) → onaya tabi
+      // (create route ile aynı kural — rol onayı ATLATMAZ). Başkası/ekip satırı ONAYLANDI kalır.
+      if (personnel.id === access.personnelId) {
         onayDurumu = 'BEKLIYOR'
         const resolved = await resolveApprovers(personnel.id)
         approverId = resolved.approverId

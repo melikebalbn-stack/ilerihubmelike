@@ -200,12 +200,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: DUPLICATE_ERROR_MESSAGE }, { status: 409 })
     }
 
-    // Onay akışı SADECE kişi KENDİ ADINA kayıt girdiğinde devreye girer (GRI
-    // dahil, herkes için aynı kural) — ekibi için giriyorsa onay gerekmez,
-    // direkt onaylı sayılır (Full'un başkası için girmesi gibi). Onaylayıcı
-    // 1./2./3. Sorumlu'dan çözülür — üçünden biri onaylarsa/reddederse geçerli
-    // olur, sıra yok. Hiçbiri çözülemezse kayıt kimseye atanmadan BEKLIYOR kalır.
-    const isSelfEntry = (access.level === 'GRI' || access.level === 'SELF') && personnel.id === access.personnelId
+    // Onay akışı SADECE kişi KENDİ ADINA kayıt girdiğinde devreye girer. Kendi adına
+    // giren HERKES (FULL/İV/Super Admin dahil) 1./2./3. Sorumlu onayına tabidir —
+    // rol onayı ATLATMAZ (Melih kararı). Level kısıtı KALDIRILDI: yalnız "bu kayıt
+    // benim mi" (personnel.id === access.personnelId) belirleyici. Başkası için giriş
+    // (Full veya ekip/managed) DEĞİŞMEDİ — line 175 managed kapısından geçer, onaysız
+    // (ONAYLANDI) doğar. Onaylayıcı 1./2./3. Sorumlu'dan çözülür — biri onaylar/reddederse
+    // geçerli, sıra yok. Hiçbiri çözülemezse kayıt kimseye atanmadan BEKLIYOR kalır (orphan).
+    const isSelfEntry = personnel.id === access.personnelId
 
     let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
     let approverId: string | null = null

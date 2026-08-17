@@ -25,6 +25,7 @@ import { basvuruTakipImzasi } from '@/lib/recruitment/basvuru-takip'
 import { normalizeMaritalStatus } from '@/lib/job-application/marital-status'
 import { SERVER_SCALAR_REQUIRED } from '@/components/job-application/required-fields'
 import { alanBuyut } from '@/lib/job-application/buyuk-harf'
+import { fotoDosyasiniSil } from '@/lib/job-application/foto-dosya'
 
 // Public form gönderimindeki denetim kayıtlarının aktörü. Oturum YOK (public uç),
 // bu yüzden basvuru-sorgula'daki sentinel deseni kullanılır (PUBLIC_BASVURU_SORGULA).
@@ -39,6 +40,9 @@ function kimlikNormalize(v: string | null | undefined): string {
 
 // POST - İş başvurusu kaydet
 export async function POST(request: NextRequest) {
+  // Bu istekte diske yazılan fotoğrafın URL'i (yoksa null). catch bloğundan erişilebilmesi
+  // için try'ın DIŞINDA tanımlanır — aksi halde temizlik yapılamaz.
+  let yeniYazilanFoto: string | null = null
   try {
     // AKIŞ GUARD: KVKK onayı + sağlık beyanı tamamlanmadan başvuru gönderilemez.
     // (Adım atlanamaz — consent/health yoksa 403. Mevcut form davranışı korunur.)
@@ -272,6 +276,10 @@ export async function POST(request: NextRequest) {
       await writeFile(filePath, buffer)
 
       photoUrl = `/api/files/uploads/job-applications/${yearMonth}/${fileName}`
+      // Bu istekte diske YENİ yazılan dosya. Aşağıdaki DB işlemi patlarsa temizlenir
+      // (yetim dosya bırakmamak için). Düzeltme modunda başvurunun ESKİ fotoğrafı
+      // olabilir; onu silmemek için yalnız BU değişken izlenir — eski URL'e dokunulmaz.
+      yeniYazilanFoto = photoUrl
     }
 
     // BÜYÜK HARF NORMALİZASYONU — ASIL KAPI burasıdır (istemci yalnız görsel).
@@ -435,6 +443,22 @@ export async function POST(request: NextRequest) {
     return res
   } catch (error) {
     console.error('İş başvurusu kaydedilirken hata:', error)
+    // YETİM DOSYA TEMİZLİĞİ: fotoğraf diske YAZILDIKTAN sonra DB işlemi patlarsa dosya
+    // kimseye bağlı olmayan kişisel veri olarak diskte kalıyordu (prod ölçümü 2026-08-17:
+    // 4 gerçek yetim, 3'ü gerçek aday fotoğrafı).
+    //
+    // Silme TEK KAYNAK'tan yapılır: fotoDosyasiniSil (lib/job-application/foto-dosya.ts) —
+    // başvuru silme ucunun da kullandığı helper. realpath ile taban dizin kapsamı doğrular
+    // (shared/uploads/job-applications dışına çıkamaz), '..' içeren URL'i reddeder ve
+    // HİÇBİR durumda throw ETMEZ. Bu yüzden ana akış bozulmaz; sonuç yalnız loglanır.
+    if (yeniYazilanFoto) {
+      const temizlik = await fotoDosyasiniSil(yeniYazilanFoto)
+      if (temizlik.silindi) {
+        console.warn('[basvuru] DB hatasi sonrasi yetim fotograf silindi:', temizlik.yol)
+      } else {
+        console.error('[basvuru] yetim fotograf SILINEMEDI:', yeniYazilanFoto, temizlik.sebep, temizlik.detay ?? '')
+      }
+    }
     return NextResponse.json({ error: 'Sunucu hatası oluştu' }, { status: 500 })
   }
 }

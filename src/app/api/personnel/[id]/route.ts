@@ -291,6 +291,15 @@ export async function PUT(
     const bedenInput = body.beden
     delete body.beden
     delete body.bedenProfili
+    // Faz 6 REGRESYONU (2026-08-17): GET bu iki alanı da döndürüyor, düzenleme ekranı
+    // nesnenin TAMAMINI geri gönderiyordu. `jobApplication` bir İLİŞKİ anahtarı olduğu
+    // için Prisma checked `PersonnelUpdateInput` varyantına geçiyor ve orada skaler FK
+    // `jobApplicationId` geçersiz argüman oluyor → "Unknown argument `jobApplicationId`"
+    // → HER personel kaydı 500 veriyordu (15-17 Ağustos arası canlıydı).
+    // Başvuru bağı yalnız dönüşüm akışında kurulur (personele-donustur.ts); bu ekrandan
+    // DEĞİŞTİRİLMEZ, bu yüzden ikisi de gövdeden düşürülür.
+    delete body.jobApplication
+    delete body.jobApplicationId
 
     // Boş stringleri null'a çevir (Prisma enum/date/int hataları için)
     for (const key of Object.keys(body)) {
@@ -363,6 +372,16 @@ export async function PUT(
     console.error('Personel güncellenirken hata:', error)
     if (error?.code === 'P2002') {
       return NextResponse.json({ error: 'Bu sicil numarası zaten kayıtlı' }, { status: 409 })
+    }
+    // Prisma VALİDASYON hatası = gövdede şemaya uymayan alan var (Faz 6 regresyonundaki
+    // gibi). Kullanıcı "kaydedilemedi" dışında bir şey anlayamaz; ham Prisma metni ise
+    // model/alan yapısını sızdırır → KULLANICIYA GÖNDERİLMEZ, yalnız yukarıdaki
+    // console.error ile sunucu loguna yazılır (üstteki satır korundu).
+    if (error?.name === 'PrismaClientValidationError') {
+      return NextResponse.json(
+        { error: 'Kaydedilemeyen alan var, sistem yöneticisine bildirin' },
+        { status: 500 },
+      )
     }
     return NextResponse.json({ error: 'Personel güncellenirken bir hata oluştu' }, { status: 500 })
   }

@@ -289,7 +289,11 @@ export default function PersonnelDetailPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.message || "Güncelleme başarısız")
+        // Sunucu hata gövdesini `error` anahtarıyla döndürür (route.ts). Burada `message`
+        // okunduğu için 409 "Bu sicil numarası zaten kayıtlı" ve 500 mesajları ekrana HİÇ
+        // çıkmıyor, hepsi "Güncelleme başarısız" görünüyordu — Faz 6 regresyonu da bu
+        // yüzden teşhis edilemedi. `message` yedekte tutuldu (başka uçlar onu kullanabilir).
+        throw new Error(err.error ?? err.message ?? "Güncelleme başarısız")
       }
       toast.success("Personel güncellendi")
       setEditMode(false)

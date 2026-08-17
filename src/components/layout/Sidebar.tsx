@@ -189,18 +189,21 @@ const teknikMenuItems = [
 // IPRO — MAS üretim takip modülü yönetimi (tanımlar + kiosk cihazları)
 // Sidebar rol tabanlı; permission (ipro.view/ipro.admin) sayfa ve API guard'larında.
 // Roller ipro.view eşlemesiyle hizalı: super-admin/admin/it-admin/departman-muduru.
+// Görünürlük SAYFA GUARD'larıyla birebir: filterItems `permission` (OR-dizi) ile süzer,
+// item'da permission varsa roles/dept değerlendirilmez (zimmet-formu deseni). Kiosk/IFS/Sinyal
+// için roles'taki DEPT_HEAD boşluğu kapandı — artık ipro.view'li DEPT_HEAD de guard'la tutarlı görür.
 const iproMenuItems = [
-  { name: "İzleme Panosu", icon: Activity, href: "/ipro/izleme", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
-  { name: "OEE Pano", icon: Gauge, href: "/ipro/oee", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"], note: "canlı" },
-  { name: "İş Emirleri", icon: ClipboardList, href: "/ipro/is-emirleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
-  { name: "Fabrika Haritası", icon: Map, href: "/ipro/harita", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"], note: "canlı" },
-  { name: "Tezgahlar", icon: Factory, href: "/ipro/tezgahlar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
-  { name: "Operatör Eşlemeleri", icon: Users, href: "/ipro/operator-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
-  { name: "Hurda / Duruş Sebepleri", icon: ClipboardList, href: "/ipro/sebepler", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "DEPT_HEAD"] },
-  { name: "Vardiya & Takvim", icon: CalendarDays, href: "/ipro/takvim", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER", "HR_MANAGER"] },
-  { name: "Kiosk Cihazları", icon: MonitorSmartphone, href: "/ipro/kiosklar", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
-  { name: "IFS Eşlemeleri", icon: Link2, href: "/ipro/ifs-eslemeleri", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
-  { name: "Sinyal Takibi", icon: Radio, href: "/ipro/sinyal", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
+  { name: "İzleme Panosu", icon: Activity, href: "/ipro/izleme", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
+  { name: "OEE Pano", icon: Gauge, href: "/ipro/oee", roles: [] as string[], permission: ["ipro.view", "ipro.admin"], note: "canlı" },
+  { name: "İş Emirleri", icon: ClipboardList, href: "/ipro/is-emirleri", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
+  { name: "Fabrika Haritası", icon: Map, href: "/ipro/harita", roles: [] as string[], permission: ["ipro.view", "ipro.admin"], note: "canlı" },
+  { name: "Tezgahlar", icon: Factory, href: "/ipro/tezgahlar", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
+  { name: "Operatör Eşlemeleri", icon: Users, href: "/ipro/operator-eslemeleri", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
+  { name: "Hurda / Duruş Sebepleri", icon: ClipboardList, href: "/ipro/sebepler", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
+  { name: "Vardiya & Takvim", icon: CalendarDays, href: "/ipro/takvim", roles: [] as string[], permission: ["ipro.view", "ipro.admin", "ipro.takvim.yonet"] },
+  { name: "Kiosk Cihazları", icon: MonitorSmartphone, href: "/ipro/kiosklar", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
+  { name: "IFS Eşlemeleri", icon: Link2, href: "/ipro/ifs-eslemeleri", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
+  { name: "Sinyal Takibi", icon: Radio, href: "/ipro/sinyal", roles: [] as string[], permission: ["ipro.admin"] },
 ]
 
 // Stratejik IK alt menüsü
@@ -487,8 +490,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     // Permission tabanlı erişim: item'da `permission` varsa TEK belirleyici
     // odur (rol/departman/e-posta clause'ları değerlendirilmez). Menü
     // görünürlüğü kozmetiktir; asıl zorlama sayfa ve API guard'larındadır.
-    const itemPermission = (item as { permission?: string }).permission
-    if (itemPermission) return userPermissions.includes(itemPermission)
+    const itemPermission = (item as { permission?: string | string[] }).permission
+    if (itemPermission) {
+      const perms = Array.isArray(itemPermission) ? itemPermission : [itemPermission]
+      return perms.some((k) => userPermissions.includes(k))
+    }
 
     if (item.roles.includes('*')) return true
     if (item.roles.includes('SUPER_ADMIN') && userRole === 'SUPER_ADMIN') return true
@@ -528,7 +534,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const filteredMainItems = filterItems(mainMenuItems)
   const filteredTeknikItems = filterItems(teknikMenuItems)
-  const filteredIproItems = filterItems(iproMenuItems)
+  // IPRO öğeleri permission alanını `string[]` (OR) tutuyor; filterItems param tipi
+  // (typeof mainMenuItems) permission'ı `string` sanıyor. Süzme permission'ı runtime'da
+  // string|string[] olarak okur (bkz. filterItems). Cast yalnız tip içindir; davranış korunur.
+  const filteredIproItems = filterItems(iproMenuItems as unknown as typeof mainMenuItems)
   // QDMS öğeleri artık filterItems (roles) ile değil, canSeeQdms ile gate'lenir
   // (koşul layout/API guard'ıyla birebir). roles alanı vestigial.
   const filteredQdmsItems = canSeeQdms ? qdmsMenuItems : []

@@ -213,15 +213,21 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7"
-                        title="PDF indir"
-                        disabled={durum !== 'tamamlandi' || pdfStatus === 'loading'}
+                        title={durum === 'onay_bekliyor' ? 'Taslak PDF' : 'PDF indir'}
+                        disabled={
+                          (durum !== 'tamamlandi' && durum !== 'onay_bekliyor') ||
+                          pdfStatus === 'loading'
+                        }
                         onClick={handlePdfIndir}
                       >
                         <Printer className="h-4 w-4" />
                       </Button>
                     </span>
                   </TooltipTrigger>
-                  {durum !== 'tamamlandi' && (
+                  {durum === 'onay_bekliyor' && (
+                    <TooltipContent>Taslak PDF (onay bekliyor)</TooltipContent>
+                  )}
+                  {durum !== 'tamamlandi' && durum !== 'onay_bekliyor' && (
                     <TooltipContent>Onaylanıp imzalanınca aktif olur.</TooltipContent>
                   )}
                 </Tooltip>

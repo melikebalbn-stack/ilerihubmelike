@@ -327,8 +327,10 @@ function fmtDate(d: string | null | undefined) {
 // ── PDF / belge indirme ──────────────────────────────────────────────────────
 
 async function indirlePdf(id: string, durum: string) {
-  if (durum !== 'ONAYLANDI') {
-    toast.error('PDF indirmek için onay gereklidir')
+  // ONAYLANDI → temiz PDF; ONAY_BEKLIYOR → taslak (filigranlı) PDF; REDDEDILDI →
+  // endpoint zaten 403 döner, gereksiz istek atmadan burada engelle.
+  if (durum === 'REDDEDILDI') {
+    toast.error('Reddedilmiş kayıt yazdırılamaz')
     return
   }
   try {
@@ -744,7 +746,7 @@ export function ZimmetListesi() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                title="PDF indir"
+                                title={z.durum === 'ONAY_BEKLIYOR' ? 'Taslak PDF indir' : 'PDF indir'}
                                 onClick={() => indirlePdf(z.id, z.durum)}
                               >
                                 <Printer className="h-4 w-4" />

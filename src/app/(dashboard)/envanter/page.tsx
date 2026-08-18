@@ -883,10 +883,36 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
 )
 }
 
-function YeniUrunWizard({ onClose }: { onClose: () => void }) {
+// Ayni sihirbaz iki modda kullanilir: yeni urun (POST) ve duzenleme (PATCH).
+// Duzenleme modunda form mevcut degerlerle dolar; kilitli alanlar SUNUCUDAN gelen
+// `kilitler` bayragina gore disabled olur — ekran kendi kuralini uydurmaz.
+type UrunKilit = { kilitli: boolean; kisaSebep: string | null; sebep: string | null }
+type UrunKilitleri = Record<
+  'kod' | 'varyantTipi' | 'bedenTipi' | 'tip' | 'olcuBirimi',
+  UrunKilit
+>
+const KILIT_YOK: UrunKilit = { kilitli: false, kisaSebep: null, sebep: null }
+const BOS_KILITLER: UrunKilitleri = {
+  kod: KILIT_YOK,
+  varyantTipi: KILIT_YOK,
+  bedenTipi: KILIT_YOK,
+  tip: KILIT_YOK,
+  olcuBirimi: KILIT_YOK,
+}
+
+function YeniUrunWizard({
+  onClose,
+  duzenlenenUrunId,
+}: {
+  onClose: () => void
+  duzenlenenUrunId?: string
+}) {
+  const duzenlemeModu = Boolean(duzenlenenUrunId)
   const [wizardStep, setWizardStep] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [kilitler, setKilitler] = useState<UrunKilitleri>(BOS_KILITLER)
+  const [urunYukleniyor, setUrunYukleniyor] = useState(false)
 
   // F7 — kategori listesi DB'den (Parametreler'deki aktif kategoriler). Sabit liste kaldırıldı.
   const [kategoriListesi, setKategoriListesi] = useState<{ value: string; label: string }[]>([])
@@ -972,6 +998,81 @@ function YeniUrunWizard({ onClose }: { onClose: () => void }) {
     qrZorunlu: false,
     barkodZorunlu: false,
   })
+
+  // Duzenleme modu: mevcut urunu cek, formu doldur, kilitleri sunucudan al.
+  useEffect(() => {
+    if (!duzenlenenUrunId) return
+    let iptal = false
+    ;(async () => {
+      setUrunYukleniyor(true)
+      try {
+        const res = await fetch(`/api/envanter/urunler/${duzenlenenUrunId}`)
+        const json = await res.json()
+        if (iptal) return
+        if (!json.ok || !json.data) {
+          setSaveError(json.message || 'Ürün yüklenemedi.')
+          return
+        }
+        const u = json.data
+        const metin = (v: unknown) => (v === null || v === undefined ? '' : String(v))
+        const listeye = (v: unknown) =>
+          v === null || v === undefined || String(v).trim() === ''
+            ? []
+            : String(v).split(',').map((x) => x.trim()).filter(Boolean)
+        setKilitler(u.kilitler ?? BOS_KILITLER)
+        setUrunForm((mevcut) => ({
+          ...mevcut,
+          kod: metin(u.kod),
+          ad: metin(u.ad),
+          kategori: metin(u.kategori),
+          tip: metin(u.tip),
+          olcuBirimi: metin(u.olcuBirimi),
+          barkod: metin(u.barkod),
+          aciklama: metin(u.aciklama),
+          varyantTipi: metin(u.varyantTipi) === 'YOK' ? '' : metin(u.varyantTipi),
+          bedenTipi: metin(u.bedenTipi),
+          tedarikci: metin(u.tedarikci),
+          marka: metin(u.marka),
+          model: metin(u.model),
+          sonAlisFiyati: metin(u.sonAlisFiyati),
+          paraBirimi: metin(u.paraBirimi),
+          kdvOrani: metin(u.kdvOrani),
+          minSiparisMiktari: metin(u.minSiparisMiktari),
+          tedarikSuresiGun: metin(u.tedarikSuresiGun),
+          dagitimSekli: metin(u.dagitimSekli),
+          periyot: metin(u.periyot),
+          kullanimOmruGun: metin(u.kullanimOmruGun),
+          teslimYetkisi: metin(u.teslimYetkisi),
+          sureSonuAksiyonu: metin(u.sureSonuAksiyonu),
+          dagitimKurali: metin(u.dagitimKurali),
+          eskiUrunIade: Boolean(u.eskiUrunIade),
+          yoneticiOnayi: Boolean(u.yoneticiOnayi),
+          aciklamaZorunlu: Boolean(u.aciklamaZorunlu),
+          fotoZorunlu: Boolean(u.fotoZorunlu),
+          imzaZorunlu: Boolean(u.imzaZorunlu),
+          qrZorunlu: Boolean(u.qrZorunlu),
+          barkodZorunlu: Boolean(u.barkodZorunlu),
+          hedefYaka: listeye(u.hedefYaka),
+          hedefBolum: listeye(u.hedefBolum),
+          hedefPozisyon: metin(u.hedefPozisyon),
+          hedefLokasyon: metin(u.hedefLokasyon),
+          hedefVardiya: metin(u.hedefVardiya),
+          calismaSekli: metin(u.calismaSekli),
+          personelHedefTipi: metin(u.personelHedefTipi),
+          atamaTipi: metin(u.atamaTipi),
+          tahminiDagitim: metin(u.tahminiDagitim),
+          sonrakiDagitimTarihi: metin(u.sonrakiDagitimTarihi),
+        }))
+      } catch {
+        if (!iptal) setSaveError('Ürün yüklenemedi.')
+      } finally {
+        if (!iptal) setUrunYukleniyor(false)
+      }
+    })()
+    return () => {
+      iptal = true
+    }
+  }, [duzenlenenUrunId])
 
   const [topluStok, setTopluStok] = useState<StokSatiri>({
     ilkGiris: '',
@@ -1094,24 +1195,80 @@ async function handleSave() {
   setSaveError('')
 
   try {
-    const response = await fetch('/api/envanter/urunler', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    // Duzenlemede varyant/stok/personel hedefi DEGISMEZ — yalniz urun karti
+    // alanlari PATCH edilir. Gonderilmeyen alan sunucuda da degismez.
+    const govde = duzenlemeModu
+      ? {
+          kod: urunForm.kod,
+          ad: urunForm.ad,
+          kategori: urunForm.kategori,
+          tip: urunForm.tip,
+          olcuBirimi: urunForm.olcuBirimi,
+          barkod: urunForm.barkod,
+          aciklama: urunForm.aciklama,
+          varyantTipi: urunForm.varyantTipi || 'YOK',
+          bedenTipi: urunForm.bedenTipi,
+          tedarikci: urunForm.tedarikci,
+          marka: urunForm.marka,
+          model: urunForm.model,
+          sonAlisFiyati: urunForm.sonAlisFiyati,
+          paraBirimi: urunForm.paraBirimi,
+          kdvOrani: urunForm.kdvOrani,
+          minSiparisMiktari: urunForm.minSiparisMiktari,
+          tedarikSuresiGun: urunForm.tedarikSuresiGun,
+          dagitimSekli: urunForm.dagitimSekli,
+          periyot: urunForm.periyot,
+          kullanimOmruGun: urunForm.kullanimOmruGun,
+          teslimYetkisi: urunForm.teslimYetkisi,
+          sureSonuAksiyonu: urunForm.sureSonuAksiyonu,
+          dagitimKurali: urunForm.dagitimKurali,
+          eskiUrunIade: urunForm.eskiUrunIade,
+          yoneticiOnayi: urunForm.yoneticiOnayi,
+          aciklamaZorunlu: urunForm.aciklamaZorunlu,
+          fotoZorunlu: urunForm.fotoZorunlu,
+          imzaZorunlu: urunForm.imzaZorunlu,
+          qrZorunlu: urunForm.qrZorunlu,
+          barkodZorunlu: urunForm.barkodZorunlu,
+          hedefYaka: urunForm.hedefYaka.join(','),
+          hedefBolum: urunForm.hedefBolum.join(','),
+          hedefPozisyon: urunForm.hedefPozisyon,
+          hedefLokasyon: urunForm.hedefLokasyon,
+          hedefVardiya: urunForm.hedefVardiya,
+          calismaSekli: urunForm.calismaSekli,
+          personelHedefTipi: urunForm.personelHedefTipi,
+          atamaTipi: urunForm.atamaTipi,
+          tahminiDagitim: urunForm.tahminiDagitim,
+          sonrakiDagitimTarihi: urunForm.sonrakiDagitimTarihi,
+        }
+      : {
+          ...urunForm,
+          hedefYaka: urunForm.hedefYaka.join(',') || null,
+          hedefBolum: urunForm.hedefBolum.join(',') || null,
+        }
+
+    const response = await fetch(
+      duzenlemeModu
+        ? `/api/envanter/urunler/${duzenlenenUrunId}`
+        : '/api/envanter/urunler',
+      {
+        method: duzenlemeModu ? 'PATCH' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(govde),
       },
-      body: JSON.stringify({
-        ...urunForm,
-        hedefYaka: urunForm.hedefYaka.join(',') || null,
-        hedefBolum: urunForm.hedefBolum.join(',') || null,
-      }),
-    })
+    )
 
     const result = await response.json()
 
     if (!response.ok || !result.ok) {
-      throw new Error(result.message || 'Ürün kaydedilemedi.')
+      throw new Error(
+        result.message || (duzenlemeModu ? 'Ürün güncellenemedi.' : 'Ürün kaydedilemedi.'),
+      )
     }
 
+    // Detay paneli ve urun listesi tazelensin.
+    window.dispatchEvent(new Event('envanter-urun-kaydedildi'))
     onClose()
   } catch (error) {
     setSaveError(
@@ -1130,9 +1287,15 @@ async function handleSave() {
         <div className="flex items-center justify-between border-b p-6">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">
-              Yeni Ürün Kartı
+              {duzenlemeModu ? 'Ürün Kartını Düzenle' : 'Yeni Ürün Kartı'}
             </h2>
-            <p className="text-sm text-slate-500">Ürün oluşturma sihirbazı</p>
+            <p className="text-sm text-slate-500">
+              {duzenlemeModu
+                ? urunYukleniyor
+                  ? 'Ürün yükleniyor...'
+                  : 'Kilitli alanlar geçmiş kayıtları koruduğu için değiştirilemez.'
+                : 'Ürün oluşturma sihirbazı'}
+            </p>
           </div>
 
           <button
@@ -1176,6 +1339,8 @@ async function handleSave() {
                 value={urunForm.kod}
                 placeholder="ENV-0001"
                 onChange={(value) => updateForm('kod', value)}
+                disabled={kilitler.kod.kilitli}
+                kilitSebep={kilitler.kod.kisaSebep}
               />
 
               <FormInput
@@ -1196,6 +1361,8 @@ async function handleSave() {
                 label="Ürün Tipi"
                 value={urunForm.tip}
                 onChange={(value) => updateForm('tip', value)}
+                disabled={kilitler.tip.kilitli}
+                kilitSebep={kilitler.tip.kisaSebep}
                 options={[
                   { value: 'STANDART_STOK', label: 'Standart Stok' },
                   { value: 'PERIYODIK_TUKETIM', label: 'Periyodik Tüketim' },
@@ -1210,6 +1377,8 @@ async function handleSave() {
                 label="Ölçü Birimi"
                 value={urunForm.olcuBirimi}
                 onChange={(value) => updateForm('olcuBirimi', value)}
+                disabled={kilitler.olcuBirimi.kilitli}
+                kilitSebep={kilitler.olcuBirimi.kisaSebep}
                 options={[
                   { value: 'ADET', label: 'Adet' },
                   { value: 'CIFT', label: 'Çift' },
@@ -1254,6 +1423,8 @@ async function handleSave() {
                 label="Varyant Tipi"
                 value={urunForm.varyantTipi}
                 onChange={(value) => updateForm('varyantTipi', value)}
+                disabled={kilitler.varyantTipi.kilitli}
+                kilitSebep={kilitler.varyantTipi.kisaSebep}
                 options={[
                   { value: '', label: 'Varyant yok' },
                   { value: 'BEDEN', label: 'Beden' },
@@ -1268,6 +1439,8 @@ async function handleSave() {
                 label="Beden Tipi"
                 value={urunForm.bedenTipi}
                 onChange={(value) => updateForm('bedenTipi', value)}
+                disabled={kilitler.bedenTipi.kilitli}
+                kilitSebep={kilitler.bedenTipi.kisaSebep}
                 options={[...BEDEN_TIPI_SECENEKLERI]}
               />
               <p className="-mt-4 text-xs text-slate-500">
@@ -1275,7 +1448,16 @@ async function handleSave() {
                 eşleştirileceğini belirler.
               </p>
 
-              {(urunForm.varyantTipi === 'BEDEN' ||
+              {duzenlemeModu && (
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+                  Varyant listesi (beden/numara/renk) bu ekrandan değiştirilmez.
+                  Varyant eklemek veya adını düzeltmek için ürün detayındaki stok
+                  satırlarını kullanın.
+                </div>
+              )}
+
+              {!duzenlemeModu &&
+                (urunForm.varyantTipi === 'BEDEN' ||
                 urunForm.varyantTipi === 'BEDEN_RENK') && (
                 <VaryantCheckboxGroup
                   title="Bedenler"
@@ -1285,7 +1467,8 @@ async function handleSave() {
                 />
               )}
 
-              {(urunForm.varyantTipi === 'NUMARA' ||
+              {!duzenlemeModu &&
+                (urunForm.varyantTipi === 'NUMARA' ||
                 urunForm.varyantTipi === 'NUMARA_RENK') && (
                 <VaryantCheckboxGroup
                   title="Numaralar"
@@ -1295,7 +1478,8 @@ async function handleSave() {
                 />
               )}
 
-              {(urunForm.varyantTipi === 'RENK' ||
+              {!duzenlemeModu &&
+                (urunForm.varyantTipi === 'RENK' ||
                 urunForm.varyantTipi === 'BEDEN_RENK' ||
                 urunForm.varyantTipi === 'NUMARA_RENK') && (
                 <VaryantCheckboxGroup
@@ -1331,7 +1515,16 @@ async function handleSave() {
             </div>
           )}
 
-          {wizardStep === 2 && (
+          {wizardStep === 2 && duzenlemeModu && (
+            <div className="p-8">
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+                Stok politikası bu ekrandan değiştirilmez. Eşik ve maliyet
+                düzenlemesi ürün detayındaki stok satırlarından yapılır.
+              </div>
+            </div>
+          )}
+
+          {wizardStep === 2 && !duzenlemeModu && (
             <div className="space-y-6 p-8">
               <div>
                 <h3 className="text-lg font-semibold">Stok Politikası</h3>
@@ -1568,6 +1761,8 @@ async function handleSave() {
         label="Satın Alma Birimi"
         value={urunForm.olcuBirimi}
         onChange={(value) => updateForm('olcuBirimi', value)}
+        disabled={kilitler.olcuBirimi.kilitli}
+        kilitSebep={kilitler.olcuBirimi.kisaSebep}
         options={[
           { value: 'ADET', label: 'Adet' },
           { value: 'CIFT', label: 'Çift' },
@@ -1816,6 +2011,12 @@ async function handleSave() {
 )}
           {wizardStep === 5 && (
   <div className="space-y-6 p-8">
+    {duzenlemeModu && (
+      <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+        Hedefleme kuralları (yaka, bölüm, pozisyon, atama tipi) düzenlenebilir.
+        Tek tek seçilmiş personel listesi bu ekrandan değiştirilmez.
+      </div>
+    )}
     <div>
       <h3 className="text-lg font-semibold">Personel Hedefleme</h3>
       <p className="mt-1 text-sm text-slate-500">
@@ -2045,7 +2246,9 @@ async function handleSave() {
   </div>
 ) : (
   <InfoBox>
-    Kaydet butonu artık gerçek API'ye bağlandı. Kaydet dediğinizde ürün veritabanına yazılacaktır.
+    {duzenlemeModu
+      ? 'Yalnızca değiştirdiğiniz alanlar güncellenir; dokunmadığınız alanlar olduğu gibi kalır.'
+      : "Kaydet butonu artık gerçek API'ye bağlandı. Kaydet dediğinizde ürün veritabanına yazılacaktır."}
   </InfoBox>
 )}
             </div>
@@ -2073,7 +2276,7 @@ async function handleSave() {
 
             <button
               type="button"
-              disabled={isSaving || (!isLastStep && !canGoNext)}
+              disabled={isSaving || urunYukleniyor || (!isLastStep && !canGoNext)}
               onClick={() => {
                 if (isLastStep) {
                    handleSave()
@@ -2085,7 +2288,15 @@ async function handleSave() {
                 }}
               className="rounded-xl bg-teal-700 px-5 py-2 text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {isLastStep ? (isSaving ? 'Kaydediliyor...' : 'Kaydet') : 'İleri'}
+              {isLastStep
+                ? isSaving
+                  ? duzenlemeModu
+                    ? 'Güncelleniyor...'
+                    : 'Kaydediliyor...'
+                  : duzenlemeModu
+                    ? 'Değişiklikleri Kaydet'
+                    : 'Kaydet'
+                : 'İleri'}
             </button>
           </div>
         </div>
@@ -2121,11 +2332,15 @@ function FormInput({
   value,
   placeholder,
   onChange,
+  disabled,
+  kilitSebep,
 }: {
   label: string
   value: string
   placeholder?: string
   onChange: (value: string) => void
+  disabled?: boolean
+  kilitSebep?: string | null
 }) {
   return (
     <div>
@@ -2134,8 +2349,12 @@ function FormInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border px-3 py-2"
+        disabled={disabled}
+        className="w-full rounded-lg border px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       />
+      {disabled && kilitSebep && (
+        <p className="mt-1 text-xs text-amber-700">🔒 {kilitSebep}</p>
+      )}
     </div>
   )
 }
@@ -2145,11 +2364,15 @@ function FormSelect({
   value,
   options,
   onChange,
+  disabled,
+  kilitSebep,
 }: {
   label: string
   value: string
   options: { value: string; label: string }[]
   onChange: (value: string) => void
+  disabled?: boolean
+  kilitSebep?: string | null
 }) {
   return (
     <div>
@@ -2157,7 +2380,8 @@ function FormSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border px-3 py-2"
+        disabled={disabled}
+        className="w-full rounded-lg border px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -2165,6 +2389,9 @@ function FormSelect({
           </option>
         ))}
       </select>
+      {disabled && kilitSebep && (
+        <p className="mt-1 text-xs text-amber-700">🔒 {kilitSebep}</p>
+      )}
     </div>
   )
 }
@@ -2492,6 +2719,7 @@ function UrunDetayModal({
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [silSaving, setSilSaving] = useState(false)
+  const [duzenlemeAcik, setDuzenlemeAcik] = useState(false)
 
   // Madde 3 — kategori değiştirme
   const [kategoriListesiDetay, setKategoriListesiDetay] = useState<{ value: string; label: string }[]>([])
@@ -2877,6 +3105,14 @@ function UrunDetayModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setDuzenlemeAcik(true)}
+              disabled={!urun}
+              className="rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800 hover:bg-teal-100 disabled:opacity-60"
+            >
+              Düzenle
+            </button>
+            <button
+              type="button"
               onClick={handleUrunSil}
               disabled={silSaving || !urun}
               className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
@@ -2892,6 +3128,16 @@ function UrunDetayModal({
             </button>
           </div>
         </div>
+
+        {duzenlemeAcik && urunId && (
+          <YeniUrunWizard
+            duzenlenenUrunId={urunId}
+            onClose={() => {
+              setDuzenlemeAcik(false)
+              setRefreshKey((k) => k + 1)
+            }}
+          />
+        )}
 
         <div className="space-y-6 p-6">
           {loading && (

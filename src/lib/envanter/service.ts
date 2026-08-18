@@ -7,6 +7,8 @@ import {
   getOverallStockStatus,
   getTotalInitialStock,
 } from './stock'
+import { GECERLI_BEDEN_TIPLERI } from './beden-tipi-sabitleri'
+import { GECERLI_HEDEF_YAKALAR } from './yaka-sabitleri'
 
 // Madde 8 — envanter islem audit log. Best-effort: loglama basarisiz olursa asil
 // islemi bozmasin diye try/catch icinde, sessizce sadece console.error basar.
@@ -361,6 +363,9 @@ export async function getEnvanterUrunDetail(id: string) {
 
   if (!urun) return null
 
+  // Duzenleme formu tum alanlari ve kilit bayraklarini buradan okur (tek kaynak).
+  const { kilitler } = await getUrunKilitleri(urun.id)
+
   return {
     id: urun.id,
     kod: urun.kod,
@@ -368,20 +373,48 @@ export async function getEnvanterUrunDetail(id: string) {
     kategori: urun.kategori,
     tip: urun.tip,
     olcuBirimi: urun.olcuBirimi,
+    paketIciAdet: urun.paketIciAdet,
     barkod: urun.barkod,
     aciklama: urun.aciklama,
+    varyantTipi: urun.varyantTipi,
+    bedenTipi: urun.bedenTipi,
+    durum: urun.durum,
     tedarikci: urun.tedarikci,
     marka: urun.marka,
     model: urun.model,
+    sonAlisFiyati: urun.sonAlisFiyati !== null ? Number(urun.sonAlisFiyati) : null,
+    paraBirimi: urun.paraBirimi,
+    kdvOrani: urun.kdvOrani,
+    minSiparisMiktari: urun.minSiparisMiktari,
+    tedarikSuresiGun: urun.tedarikSuresiGun,
     dagitimSekli: urun.dagitimSekli,
     periyot: urun.periyot,
     kullanimOmruGun: urun.kullanimOmruGun,
     teslimYetkisi: urun.teslimYetkisi,
     sureSonuAksiyonu: urun.sureSonuAksiyonu,
     dagitimKurali: urun.dagitimKurali,
+    eskiUrunIade: urun.eskiUrunIade,
+    yoneticiOnayi: urun.yoneticiOnayi,
+    aciklamaZorunlu: urun.aciklamaZorunlu,
+    fotoZorunlu: urun.fotoZorunlu,
+    imzaZorunlu: urun.imzaZorunlu,
+    qrZorunlu: urun.qrZorunlu,
+    barkodZorunlu: urun.barkodZorunlu,
     hedefYaka: urun.hedefYaka,
     hedefBolum: urun.hedefBolum,
+    hedefPozisyon: urun.hedefPozisyon,
+    hedefLokasyon: urun.hedefLokasyon,
+    hedefVardiya: urun.hedefVardiya,
+    calismaSekli: urun.calismaSekli,
+    personelHedefTipi: urun.personelHedefTipi,
+    atamaTipi: urun.atamaTipi,
+    tahminiDagitim: urun.tahminiDagitim,
+    sonrakiDagitimTarihi: urun.sonrakiDagitimTarihi
+      ? urun.sonrakiDagitimTarihi.toISOString().slice(0, 10)
+      : null,
     createdAt: urun.createdAt.toISOString(),
+
+    kilitler,
 
     varyantlar: urun.varyantlar,
 
@@ -415,6 +448,454 @@ export async function getEnvanterUrunDetail(id: string) {
       hareketTipiRaw: hareket.hareketTipi, // Faz 2 — ham enum değeri
     })),
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ürün düzenleme — koşullu alan kilitleri.
+// Kilit kararının TEK KAYNAĞI burasıdır; ekran kendi kuralını uydurmaz, GET'ten
+// gelen `kilitler` bayrağına bakar. PATCH de aynı fonksiyonu çağırır.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type UrunKilitAlani =
+  | 'kod'
+  | 'varyantTipi'
+  | 'bedenTipi'
+  | 'tip'
+  | 'olcuBirimi'
+
+export type UrunKilit = {
+  kilitli: boolean
+  /** Ekranda alanın altında gösterilecek kısa gerekçe. */
+  kisaSebep: string | null
+  /** Kilitli alan değiştirilmeye çalışılırsa dönecek tam hata metni. */
+  sebep: string | null
+}
+
+export type UrunKilitleri = Record<UrunKilitAlani, UrunKilit>
+
+const KILIT_YOK: UrunKilit = { kilitli: false, kisaSebep: null, sebep: null }
+
+/**
+ * Ürünün geçmişine bakarak hangi alanların kilitli olduğunu hesaplar.
+ *
+ * kod          → stok hareketi VEYA zimmet kaydı varsa kilitli.
+ *                Gerekçe: Excel içe aktarma ürünleri koda göre eşleştiriyor
+ *                (lib/envanter/import.ts). Geçmişi olan üründe kod değişirse
+ *                eski kodlu dosya ikinci bir ürün oluşturur.
+ * varyantTipi  → varyant varsa kilitli (mevcut varyantlar anlamsız kalır).
+ * bedenTipi    → varyant varsa kilitli (aynı gerekçe).
+ * tip          → stok hareketi varsa kilitli.
+ * olcuBirimi   → stok hareketi varsa kilitli.
+ *                Gerekçe: geçmiş hareketler eski birime göre kaydedilmiş.
+ */
+export async function getUrunKilitleri(urunId: string) {
+  const [hareketSayisi, zimmetSayisi, varyantSayisi] = await Promise.all([
+    prisma.envanterStokHareket.count({ where: { urunId } }),
+    prisma.envanterZimmet.count({ where: { urunId } }),
+    prisma.envanterUrunVaryant.count({ where: { urunId } }),
+  ])
+
+  const gecmisVar = hareketSayisi > 0 || zimmetSayisi > 0
+  const gecmisMetni = `${hareketSayisi} stok hareketi, ${zimmetSayisi} zimmet kaydı`
+
+  const kilitler: UrunKilitleri = {
+    kod: gecmisVar
+      ? {
+          kilitli: true,
+          kisaSebep: 'Stok hareketi/zimmet geçmişi var',
+          sebep: `Bu ürünün geçmişi var (${gecmisMetni}), kod değiştirilemez.`,
+        }
+      : KILIT_YOK,
+    varyantTipi:
+      varyantSayisi > 0
+        ? {
+            kilitli: true,
+            kisaSebep: 'Varyant var',
+            sebep: `Bu ürünün ${varyantSayisi} varyantı var, varyant tipi değiştirilemez.`,
+          }
+        : KILIT_YOK,
+    bedenTipi:
+      varyantSayisi > 0
+        ? {
+            kilitli: true,
+            kisaSebep: 'Varyant var',
+            sebep: `Bu ürünün ${varyantSayisi} varyantı var, beden tipi değiştirilemez.`,
+          }
+        : KILIT_YOK,
+    tip:
+      hareketSayisi > 0
+        ? {
+            kilitli: true,
+            kisaSebep: 'Stok hareketi var',
+            sebep: `Bu ürünün ${hareketSayisi} stok hareketi var, ürün tipi değiştirilemez.`,
+          }
+        : KILIT_YOK,
+    olcuBirimi:
+      hareketSayisi > 0
+        ? {
+            kilitli: true,
+            kisaSebep: 'Stok hareketi var',
+            sebep: `Bu ürünün ${hareketSayisi} stok hareketi var, ölçü birimi değiştirilemez.`,
+          }
+        : KILIT_YOK,
+  }
+
+  return { kilitler, hareketSayisi, zimmetSayisi, varyantSayisi }
+}
+
+// Güncellenebilir 42 alan, dönüştürme davranışına göre gruplanmış.
+// Boş string gönderilirse alan NULL'a çekilir (formda alanı temizlemek = silmek).
+const METIN_ALANLARI = [
+  'barkod',
+  'aciklama',
+  'tedarikci',
+  'marka',
+  'model',
+  'dagitimSekli',
+  'periyot',
+  'teslimYetkisi',
+  'sureSonuAksiyonu',
+  'dagitimKurali',
+  'hedefPozisyon',
+  'hedefLokasyon',
+  'hedefVardiya',
+  'calismaSekli',
+  'personelHedefTipi',
+  'atamaTipi',
+  'tahminiDagitim',
+] as const
+
+const TAMSAYI_ALANLARI = [
+  'paketIciAdet',
+  'kdvOrani',
+  'minSiparisMiktari',
+  'tedarikSuresiGun',
+  'kullanimOmruGun',
+] as const
+
+const MANTIK_ALANLARI = [
+  'eskiUrunIade',
+  'yoneticiOnayi',
+  'aciklamaZorunlu',
+  'fotoZorunlu',
+  'imzaZorunlu',
+  'qrZorunlu',
+  'barkodZorunlu',
+] as const
+
+const OZEL_ALANLAR = [
+  'kod',
+  'ad',
+  'kategori',
+  'tip',
+  'olcuBirimi',
+  'paraBirimi',
+  'varyantTipi',
+  'bedenTipi',
+  'durum',
+  'sonAlisFiyati',
+  'hedefYaka',
+  'hedefBolum',
+  'sonrakiDagitimTarihi',
+] as const
+
+export const GUNCELLENEBILIR_ALANLAR = [
+  ...OZEL_ALANLAR,
+  ...METIN_ALANLARI,
+  ...TAMSAYI_ALANLARI,
+  ...MANTIK_ALANLARI,
+] as const
+
+export type GuncellenebilirAlan = (typeof GUNCELLENEBILIR_ALANLAR)[number]
+
+const GECERLI_URUN_TIPLERI = [
+  'STANDART_STOK',
+  'PERIYODIK_TUKETIM',
+  'NUMARALI_URUN',
+  'ZIMMETLI_URUN',
+  'BEDENLI_URUN',
+  'KKD_URUNU',
+]
+const GECERLI_VARYANT_TIPLERI = [
+  'YOK',
+  'BEDEN',
+  'NUMARA',
+  'RENK',
+  'BEDEN_RENK',
+  'NUMARA_RENK',
+]
+const GECERLI_DURUMLAR = ['AKTIF', 'PASIF', 'ARSIV']
+
+function metneCevir(value: unknown) {
+  if (value === null || value === undefined) return null
+  const metin = String(value).trim()
+  return metin === '' ? null : metin
+}
+
+function mantigaCevir(value: unknown) {
+  if (typeof value === 'boolean') return value
+  return value === 'true' || value === '1'
+}
+
+function csvNormalize(value: unknown) {
+  if (value === null || value === undefined) return null
+  const ham = Array.isArray(value) ? value.join(',') : String(value)
+  const temiz = ham
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .join(',')
+  return temiz === '' ? null : temiz
+}
+
+/**
+ * Kısmi ürün güncellemesi. Gönderilmeyen alan DEĞİŞMEZ.
+ * Kilitli bir alan GERÇEKTEN değiştirilmeye çalışılırsa (aynı değer tekrar
+ * gönderilirse değişiklik sayılmaz) sessizce yok sayılmaz, hata fırlatılır.
+ */
+export async function updateEnvanterUrun(
+  urunId: string,
+  patch: Record<string, unknown>,
+  actorId?: string,
+  actorAd?: string,
+) {
+  const mevcut = await prisma.envanterUrun.findUnique({ where: { id: urunId } })
+  if (!mevcut) {
+    throw new Error('Ürün bulunamadı.')
+  }
+
+  const { kilitler, varyantSayisi } = await getUrunKilitleri(urunId)
+
+  const gonderilen = GUNCELLENEBILIR_ALANLAR.filter((alan) =>
+    Object.prototype.hasOwnProperty.call(patch, alan),
+  )
+  if (gonderilen.length === 0) {
+    throw new Error('Güncellenecek alan gönderilmedi.')
+  }
+
+  const data: Record<string, unknown> = {}
+  const degisiklikler: Record<string, { once: unknown; sonra: unknown }> = {}
+
+  for (const alan of gonderilen) {
+    const ham = patch[alan]
+    let yeni: unknown
+
+    if ((METIN_ALANLARI as readonly string[]).includes(alan)) {
+      yeni = metneCevir(ham)
+    } else if ((TAMSAYI_ALANLARI as readonly string[]).includes(alan)) {
+      yeni = toNullableInt(String(ham ?? ''))
+    } else if ((MANTIK_ALANLARI as readonly string[]).includes(alan)) {
+      yeni = mantigaCevir(ham)
+    } else {
+      switch (alan) {
+        case 'kod':
+        case 'ad': {
+          const metin = metneCevir(ham)
+          if (!metin) throw new Error(`${alan === 'kod' ? 'Ürün kodu' : 'Ürün adı'} boş olamaz.`)
+          yeni = metin
+          break
+        }
+        case 'kategori': {
+          const metin = metneCevir(ham)
+          if (!metin) throw new Error('Kategori boş olamaz.')
+          yeni = metin
+          break
+        }
+        case 'tip': {
+          const metin = metneCevir(ham)
+          if (!metin || !GECERLI_URUN_TIPLERI.includes(metin)) {
+            throw new Error(
+              `"${String(ham)}" geçerli bir ürün tipi değil. Geçerli değerler: ${GECERLI_URUN_TIPLERI.join(', ')}`,
+            )
+          }
+          yeni = metin
+          break
+        }
+        case 'varyantTipi': {
+          const metin = normalizeVaryantTipi(String(ham ?? ''))
+          if (!GECERLI_VARYANT_TIPLERI.includes(metin)) {
+            throw new Error(
+              `"${String(ham)}" geçerli bir varyant tipi değil. Geçerli değerler: ${GECERLI_VARYANT_TIPLERI.join(', ')}`,
+            )
+          }
+          yeni = metin
+          break
+        }
+        case 'bedenTipi': {
+          const metin = metneCevir(ham) ?? 'STANDART'
+          if (!(GECERLI_BEDEN_TIPLERI as readonly string[]).includes(metin)) {
+            throw new Error(
+              `"${String(ham)}" geçerli bir beden tipi değil. Geçerli değerler: ${GECERLI_BEDEN_TIPLERI.join(', ')}`,
+            )
+          }
+          yeni = metin
+          break
+        }
+        case 'durum': {
+          const metin = metneCevir(ham)
+          if (!metin || !GECERLI_DURUMLAR.includes(metin)) {
+            throw new Error(
+              `"${String(ham)}" geçerli bir durum değil. Geçerli değerler: ${GECERLI_DURUMLAR.join(', ')}`,
+            )
+          }
+          yeni = metin
+          break
+        }
+        case 'olcuBirimi':
+          yeni = metneCevir(ham) ?? 'ADET'
+          break
+        case 'paraBirimi':
+          yeni = metneCevir(ham) ?? 'TRY'
+          break
+        case 'sonAlisFiyati':
+          yeni = toNullableDecimal(String(ham ?? ''))
+          break
+        case 'hedefYaka': {
+          const csv = csvNormalize(
+            typeof ham === 'string' ? ham.toUpperCase() : ham,
+          )
+          if (csv) {
+            const gecersizler = csv
+              .split(',')
+              .filter((v) => !GECERLI_HEDEF_YAKALAR.includes(v as never))
+            if (gecersizler.length > 0) {
+              throw new Error(
+                `"${gecersizler.join(', ')}" geçerli bir hedef yaka değil. Geçerli değerler: ${GECERLI_HEDEF_YAKALAR.join(', ')} veya boş (tümü).`,
+              )
+            }
+          }
+          yeni = csv
+          break
+        }
+        case 'hedefBolum':
+          yeni = csvNormalize(ham)
+          break
+        case 'sonrakiDagitimTarihi':
+          yeni = parseOptionalDate(String(ham ?? ''))
+          break
+        default:
+          continue
+      }
+    }
+
+    const oncekiHam = (mevcut as Record<string, unknown>)[alan]
+    const onceki =
+      oncekiHam instanceof Date
+        ? oncekiHam.toISOString()
+        : oncekiHam !== null && typeof oncekiHam === 'object'
+          ? Number(oncekiHam)
+          : oncekiHam
+    const sonraki = yeni instanceof Date ? yeni.toISOString() : yeni
+
+    if (onceki === sonraki) continue
+
+    // Kilitli alan GERÇEKTEN değişiyorsa: sessizce yok sayma, net hata.
+    const kilit = kilitler[alan as UrunKilitAlani]
+    if (kilit?.kilitli) {
+      throw new Error(kilit.sebep as string)
+    }
+
+    data[alan] = yeni
+    degisiklikler[alan] = { once: onceki, sonra: sonraki }
+  }
+
+  if (Object.keys(data).length === 0) {
+    return { urun: mevcut, degisiklikler: {}, degisiklikVar: false }
+  }
+
+  // Doğrulama: EKLEME formundaki doğrulayıcı aynen koşsun (yeni doğrulama yok).
+  // Mevcut değerler + gelen yama birleştirilip form şekline çevrilir.
+  const birlesik = { ...(mevcut as Record<string, unknown>), ...data }
+  const s = (v: unknown) => (v === null || v === undefined ? '' : String(v))
+  const varyantTipiSon = s(birlesik.varyantTipi)
+  // Varyant listeleri düzenlemede DEĞİŞMEZ; doğrulayıcının varyant kuralı mevcut
+  // varyantlara göre değerlendirilsin diye gerçek varyant sayısı yansıtılır.
+  const varyantDolgusu = varyantSayisi > 0 ? ['mevcut'] : []
+  const formSekli = {
+    kod: s(birlesik.kod),
+    ad: s(birlesik.ad),
+    kategori: s(birlesik.kategori),
+    tip: s(birlesik.tip),
+    olcuBirimi: s(birlesik.olcuBirimi),
+    barkod: s(birlesik.barkod),
+    aciklama: s(birlesik.aciklama),
+    varyantTipi: varyantTipiSon === 'YOK' ? '' : varyantTipiSon,
+    bedenTipi: s(birlesik.bedenTipi),
+    bedenler: varyantDolgusu,
+    numaralar: varyantDolgusu,
+    renkler: varyantDolgusu,
+    stokSatirlari: {},
+    tedarikci: s(birlesik.tedarikci),
+    marka: s(birlesik.marka),
+    model: s(birlesik.model),
+    sonAlisFiyati: s(birlesik.sonAlisFiyati),
+    paraBirimi: s(birlesik.paraBirimi),
+    kdvOrani: s(birlesik.kdvOrani),
+    minSiparisMiktari: s(birlesik.minSiparisMiktari),
+    tedarikSuresiGun: s(birlesik.tedarikSuresiGun),
+    dagitimSekli: s(birlesik.dagitimSekli),
+    periyot: s(birlesik.periyot),
+    kullanimOmruGun: s(birlesik.kullanimOmruGun),
+    teslimYetkisi: s(birlesik.teslimYetkisi),
+    sureSonuAksiyonu: s(birlesik.sureSonuAksiyonu),
+    dagitimKurali: s(birlesik.dagitimKurali),
+    eskiUrunIade: Boolean(birlesik.eskiUrunIade),
+    yoneticiOnayi: Boolean(birlesik.yoneticiOnayi),
+    aciklamaZorunlu: Boolean(birlesik.aciklamaZorunlu),
+    fotoZorunlu: Boolean(birlesik.fotoZorunlu),
+    imzaZorunlu: Boolean(birlesik.imzaZorunlu),
+    qrZorunlu: Boolean(birlesik.qrZorunlu),
+    barkodZorunlu: Boolean(birlesik.barkodZorunlu),
+    hedefYaka: s(birlesik.hedefYaka),
+    hedefBolum: s(birlesik.hedefBolum),
+    hedefPozisyon: s(birlesik.hedefPozisyon),
+    hedefLokasyon: s(birlesik.hedefLokasyon),
+    hedefVardiya: s(birlesik.hedefVardiya),
+    calismaSekli: s(birlesik.calismaSekli),
+    personelHedefTipi: s(birlesik.personelHedefTipi),
+    atamaTipi: s(birlesik.atamaTipi),
+    tahminiDagitim: s(birlesik.tahminiDagitim),
+    sonrakiDagitimTarihi:
+      birlesik.sonrakiDagitimTarihi instanceof Date
+        ? birlesik.sonrakiDagitimTarihi.toISOString().slice(0, 10)
+        : s(birlesik.sonrakiDagitimTarihi).slice(0, 10),
+    seciliPersoneller: [],
+  }
+  assertValidEnvanterUrunForm(formSekli as unknown as EnvanterUrunForm)
+
+  let urun
+  try {
+    urun = await prisma.envanterUrun.update({
+      where: { id: urunId },
+      data: data as never,
+    })
+  } catch (err) {
+    const kod = (err as { code?: string })?.code
+    if (kod === 'P2002' && data.kod) {
+      throw new Error(
+        `"${String(data.kod)}" kodu başka bir üründe kullanılıyor. Ürün kodu benzersiz olmalıdır.`,
+      )
+    }
+    throw err
+  }
+
+  // İşlem izi — URUN_SIL/URUN_PASIFLESTIR ile aynı desen, yeni altyapı yok.
+  await logEnvanterIslem({
+    actorId,
+    actorAd,
+    islemTipi: 'URUN_GUNCELLE',
+    hedefTip: 'EnvanterUrun',
+    hedefId: urunId,
+    detay: {
+      kod: urun.kod,
+      ad: urun.ad,
+      aktorAd: actorAd,
+      degisenAlanlar: Object.keys(degisiklikler),
+      degisiklikler,
+    },
+  })
+
+  return { urun, degisiklikler, degisiklikVar: true }
 }
 
 export async function createEnvanterStokHareket(input: {

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { getEnvanterUrunDetail, logEnvanterIslem } from '@/lib/envanter/service'
-
-import { GECERLI_BEDEN_TIPLERI } from '@/lib/envanter/beden-tipi-sabitleri'
-import { GECERLI_HEDEF_YAKALAR } from '@/lib/envanter/yaka-sabitleri'
+import {
+  getEnvanterUrunDetail,
+  logEnvanterIslem,
+  updateEnvanterUrun,
+} from '@/lib/envanter/service'
 
 export async function GET(
   _request: Request,
@@ -54,72 +55,25 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    const data: Record<string, unknown> = {}
+    // Tum alan/kilit/dogrulama mantigi servisin icinde — TEK KAYNAK.
+    // Satir ici degistiriciler (bedenTipi/kategori/hedefYaka/hedefBolum) da,
+    // tam duzenleme formu da ayni yoldan gecer.
+    const { urun, degisiklikler, degisiklikVar } = await updateEnvanterUrun(
+      id,
+      body,
+      session.user.id,
+      session.user.name || session.user.email || 'Bilinmiyor',
+    )
 
-    if (body.bedenTipi !== undefined) {
-      if (!GECERLI_BEDEN_TIPLERI.includes(body.bedenTipi)) {
-        throw new Error(
-          `"${body.bedenTipi}" geçerli bir beden tipi değil. Geçerli değerler: ${GECERLI_BEDEN_TIPLERI.join(', ')}`,
-        )
-      }
-      data.bedenTipi = body.bedenTipi
-    }
-
-    if (body.kategori !== undefined) {
-      const kategoriDeger = String(body.kategori).trim()
-      if (!kategoriDeger) {
-        throw new Error('Kategori boş olamaz.')
-      }
-      data.kategori = kategoriDeger
-    }
-
-    if (body.hedefYaka !== undefined) {
-      const hedefYakaDeger =
-        body.hedefYaka === null || String(body.hedefYaka).trim() === ''
-          ? null
-          : String(body.hedefYaka)
-              .split(',')
-              .map((v) => v.trim().toUpperCase())
-              .filter(Boolean)
-              .join(',')
-      if (hedefYakaDeger !== null) {
-        const gecersizler = hedefYakaDeger
-          .split(',')
-          .filter((v) => !GECERLI_HEDEF_YAKALAR.includes(v as never))
-        if (gecersizler.length > 0) {
-          throw new Error(
-            `"${gecersizler.join(', ')}" geçerli bir hedef yaka değil. Geçerli değerler: ${GECERLI_HEDEF_YAKALAR.join(', ')} veya boş (tümü).`,
-          )
-        }
-      }
-      data.hedefYaka = hedefYakaDeger
-    }
-
-    if (body.hedefBolum !== undefined) {
-      const hedefBolumDeger =
-        body.hedefBolum === null || String(body.hedefBolum).trim() === ''
-          ? null
-          : String(body.hedefBolum)
-              .split(',')
-              .map((v) => v.trim())
-              .filter(Boolean)
-              .join(',')
-      data.hedefBolum = hedefBolumDeger
-    }
-
-    if (Object.keys(data).length === 0) {
-      throw new Error('Güncellenecek alan gönderilmedi.')
-    }
-
-    const urun = await prisma.envanterUrun.update({
-      where: { id },
-      data: data as never,
+    return NextResponse.json({
+      ok: true,
+      message: degisiklikVar ? 'Ürün güncellendi.' : 'Değişiklik yok.',
+      degisenAlanlar: Object.keys(degisiklikler),
+      data: urun,
     })
-
-    return NextResponse.json({ ok: true, message: 'Ürün güncellendi.', data: urun })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Beden tipi güncellenemedi.' },
+      { ok: false, message: err instanceof Error ? err.message : 'Ürün güncellenemedi.' },
       { status: 400 },
     )
   }

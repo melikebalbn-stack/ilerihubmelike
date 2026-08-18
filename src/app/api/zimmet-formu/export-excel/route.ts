@@ -30,6 +30,7 @@ export async function GET() {
     if (error) return error
 
     const zimmetler = await prisma.zimmetFormu.findMany({
+      where: { silindiMi: false },
       orderBy: { createdAt: 'desc' },
       include: {
         zimmetSahibi: { select: { name: true, email: true } },

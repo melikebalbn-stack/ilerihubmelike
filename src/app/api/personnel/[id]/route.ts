@@ -300,6 +300,13 @@ export async function PUT(
     // DEĞİŞTİRİLMEZ, bu yüzden ikisi de gövdeden düşürülür.
     delete body.jobApplication
     delete body.jobApplicationId
+    // Sistem alanları — düzenleme ekranından EZİLMEMELİ. GET bunları döndürüyor, ekran da
+    // nesnenin tamamını geri gönderiyor; silinmezse `createdBy` kaydı ilk oluşturanın değil
+    // son kaydedenin formundaki değere düşebilir. Azure bağı da yalnız LDAP/AD senkronundan
+    // yazılır (bkz. ldap-sync), personel formundan değil.
+    delete body.createdBy
+    delete body.azureAdId
+    delete body.azureAdEmail
 
     // Boş stringleri null'a çevir (Prisma enum/date/int hataları için)
     for (const key of Object.keys(body)) {

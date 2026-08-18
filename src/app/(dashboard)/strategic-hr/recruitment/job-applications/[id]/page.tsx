@@ -58,7 +58,7 @@ import { PersoneleDonusturDialog } from "@/components/recruitment/PersoneleDonus
 // (Sunucu da aynı listeyle süzer: adaya-geri-gonder.ts)
 import { ALAN_ETIKETLERI, DUZENLENEBILIR_ALANLAR } from "@/lib/recruitment/basvuru-duzeltme-alanlari"
 import { BasvuruDuzeltmeGecmisi } from "@/components/recruitment/BasvuruDuzeltmeGecmisi"
-import { STATUS_LABELS_TR, roluKademedeMi } from "@/lib/recruitment/transitions"
+import { STATUS_LABELS_TR, roluKademedeMi, emekliMi } from "@/lib/recruitment/transitions"
 import type { JobApplicationStatus } from "@/generated/prisma"
 
 const educationLevelLabels: Record<string, string> = {
@@ -1064,12 +1064,28 @@ export default function JobApplicationDetailPage() {
                   Geçiş matrisi doğrusal değil (geri alma kenarları var), bu yüzden "ileriki
                   aşamalar" = bu durumdan gidilebilecek hedefler. */}
               {workflow && (() => {
+                // EMEKLİ STATÜLER ŞERİTTE ÇİZİLMEZ (2026-08-18). Kaynak TEK: transitions.ts
+                // (EMEKLI_STATULER/emekliMi) — etikete "(kullanımdan kaldırıldı)" yazma
+                // yöntemi KALKTI, etiketler artık temiz. TEK İSTİSNA: kayıt HÂLİHAZIRDA o
+                // statüdeyse (currentStatus) çizilmeye devam eder, yoksa nerede olduğu kaybolur.
                 const gecilmis: string[] = []
                 for (const l of logs) {
                   if (l.toStatus === workflow.currentStatus) continue
+                  if (emekliMi(l.toStatus)) continue
                   if (!gecilmis.includes(l.toStatus)) gecilmis.push(l.toStatus)
                 }
-                const siradaki = workflow.allowedTargets.filter((t) => t !== "REJECTED")
+                // AYNI STATÜ İKİ KEZ ÇİZİLMESİN (2026-08-18). Matris doğrusal değil: geri
+                // alma kenarları yüzünden bir statü hem "geçilmiş" (yeşil) hem "sıradaki"
+                // (gri) listesine düşebiliyordu — ekranda Müdür Değerlendirmesi / İV Havuzu /
+                // İK Mülakatı ikişer kez görünüyordu. Geçmiş bilgisi daha değerli olduğu için
+                // YEŞİL olan kalır, gri kopya düşer.
+                const siradaki = workflow.allowedTargets.filter(
+                  (t) =>
+                    t !== "REJECTED" &&
+                    !emekliMi(t) &&
+                    t !== workflow.currentStatus &&
+                    !gecilmis.includes(t),
+                )
                 const reddedildi = workflow.currentStatus === "REJECTED"
                 const chip = (etiket: string, sinif: string, key: string) => (
                   <span key={key} className={`rounded px-2 py-0.5 text-xs font-medium ${sinif}`}>

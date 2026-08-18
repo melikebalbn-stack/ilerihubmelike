@@ -36,6 +36,12 @@ type GecisSatiri = { IK: JobApplicationStatus[]; MUDUR: JobApplicationStatus[] }
   Record<Exclude<TransitionRole, "IK" | "MUDUR">, JobApplicationStatus[]>
 >;
 
+// TEKLIF HER İV AŞAMASINDAN ERİŞİLEBİLİR (2026-08-18): İV bir adayı işe almaya karar
+// verdiğinde araya sıkışan kademeleri tek tek tıklamak zorunda kalıyordu (TELEFON_MULAKATI'nda
+// TEKLIF yoktu → 5 ara adım). Bu yüzden bir aday akış dışına çıkarılıp elle personel listesine
+// eklendi. Artık İK satırlarının hepsinde TEKLIF var. ATANAN KİŞİ rolleri (MUDUR,
+// TEKNIK_MULAKATCI, TEKNIK_UST_AMIR) DEĞİŞMEDİ — TEKLIF ve REJECTED yalnız İK'nın.
+//
 // from durum → { IK: izinli hedefler, MUDUR: izinli hedefler, (opsiyonel yeni roller) }
 //
 // EXHAUSTIVENESS GUARD: `Record<JobApplicationStatus, ...>` — her statü için anahtar
@@ -56,11 +62,11 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
   // PENDING = "İV Ön İnceleme". ADAYA_GERI_GONDERILDI: formda eksik/hata varsa İK adaya
   // geri gönderir (bkz. adaya-geri-gonder.ts — env bayrağı kapalıyken hedef listelenmez).
   PENDING: {
-    IK: ["REVIEWING", "ADAYA_GERI_GONDERILDI", "MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
+    IK: ["REVIEWING", "ADAYA_GERI_GONDERILDI", "MUDUR_DEGERLENDIRME", "SINAV", "TEKLIF", "REJECTED"],
     MUDUR: [],
   },
   REVIEWING: {
-    IK: ["SHORTLISTED", "ADAYA_GERI_GONDERILDI", "MUDUR_DEGERLENDIRME", "SINAV", "REJECTED"],
+    IK: ["SHORTLISTED", "ADAYA_GERI_GONDERILDI", "MUDUR_DEGERLENDIRME", "SINAV", "TEKLIF", "REJECTED"],
     MUDUR: [],
   },
   // Aday düzeltme bekliyor. İK vazgeçip geri alabilir ya da reddedebilir; adayın kendi
@@ -70,12 +76,12 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     MUDUR: [],
   },
   SHORTLISTED: {
-    IK: ["MUDUR_DEGERLENDIRME", "TELEFON_MULAKATI", "SINAV", "REJECTED"],
+    IK: ["MUDUR_DEGERLENDIRME", "TELEFON_MULAKATI", "SINAV", "TEKLIF", "REJECTED"],
     MUDUR: [],
   },
   TELEFON_MULAKATI: {
     // İK geri alma: REVIEWING (süreci baştan yönetsin).
-    IK: ["IK_MULAKATI", "SINAV", "MUDUR_DEGERLENDIRME", "REVIEWING", "REJECTED"],
+    IK: ["IK_MULAKATI", "SINAV", "MUDUR_DEGERLENDIRME", "REVIEWING", "TEKLIF", "REJECTED"],
     MUDUR: [],
   },
   // ——— Müdür kademesi (Faz 5) ———
@@ -88,13 +94,13 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     // D4: İK aynı duruma geçebilir → müdür yanlış atandıysa yeniden atama (assignedManagerId zorunlu).
     // İK geri alma: REVIEWING, SINAV.
     MUDUR: ["MUDUR_MULAKATI", "SINAV", "REVIEWING"],
-    IK: ["REJECTED", "MUDUR_DEGERLENDIRME", "REVIEWING", "SINAV"],
+    IK: ["TEKLIF", "REJECTED", "MUDUR_DEGERLENDIRME", "REVIEWING", "SINAV"],
   },
   MUDUR_MULAKATI: {
     // Mülakat olumlu → TEKLIF (müdür kendi kademesini sonuçlandırabilsin), olumsuz → REVIEWING.
     MUDUR: ["TEKLIF", "SINAV", "REVIEWING"],
     // İK geri alma: REVIEWING, MUDUR_DEGERLENDIRME.
-    IK: ["SINAV", "REJECTED", "REVIEWING", "MUDUR_DEGERLENDIRME"],
+    IK: ["SINAV", "TEKLIF", "REJECTED", "REVIEWING", "MUDUR_DEGERLENDIRME"],
   },
   // ——— Mavi yaka değerlendirme zinciri — EMEKLİ (Faz 1) ———
   // Zincirin giriş koşulu YAKA AYRIMI idi; işe alım akışında yaka ayrımı kaldırıldı
@@ -224,12 +230,12 @@ export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
   MUDUR_MULAKATI: "Müdür Mülakatı",
   // ——— EMEKLİ statüler (Faz 1) — matris satırları boş, ulaşılamaz. Etiketler yalnız
   // geçmiş StageLog satırları okunabilsin diye duruyor.
-  REVIEWED: "İncelendi (kullanımdan kaldırıldı)",
-  INTERVIEW: "Mülakata Çağrıldı (kullanımdan kaldırıldı)",
-  ACCEPTED: "Kabul Edildi (kullanımdan kaldırıldı)",
-  DEGERLENDIRICI: "Değerlendirici İncelemesi (kullanımdan kaldırıldı)",
-  URETIM_MUDUR_YRD: "Üretim Müdür Yrd. Onayı (kullanımdan kaldırıldı)",
-  FABRIKA_MUDURU: "Fabrika Müdürü Onayı (kullanımdan kaldırıldı)",
+  REVIEWED: "İncelendi",
+  INTERVIEW: "Mülakata Çağrıldı",
+  ACCEPTED: "Kabul Edildi",
+  DEGERLENDIRICI: "Değerlendirici İncelemesi",
+  URETIM_MUDUR_YRD: "Üretim Müdür Yrd. Onayı",
+  FABRIKA_MUDURU: "Fabrika Müdürü Onayı",
 };
 
 /**

@@ -19,13 +19,9 @@ export async function GET(request: NextRequest) {
   const where: {
     durum?: ZimmetOnayDurumu
     OR?: Array<Record<string, unknown>>
-    // silindiMi?: boolean
+    silindiMi?: boolean
   } = {
-    // PENDING migration (prisma/migrations/PENDING_zimmet_silme_alanlari)
-    // uygulanana kadar GEÇİCİ olarak devre dışı - DB'de/generated client'ta
-    // silindiMi henüz yok, where'de kullanmak "Unknown argument" hatası verir.
-    // Migration çalışınca aşağıdaki satırı geri aç:
-    // silindiMi: false,
+    silindiMi: false,
   }
 
   if (durumParam && DURUM_VALUES.includes(durumParam)) {

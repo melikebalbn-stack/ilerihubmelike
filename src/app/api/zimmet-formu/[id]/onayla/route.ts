@@ -28,13 +28,18 @@ export async function PATCH(
 
     const mevcut = await prisma.zimmetFormu.findUnique({
       where: { id },
-      select: { id: true, durum: true },
+      select: { id: true, durum: true, zimmetSahibiId: true },
     })
     if (!mevcut) {
       return NextResponse.json({ error: 'Zimmet formu bulunamadı' }, { status: 404 })
     }
     if (mevcut.durum !== ZimmetOnayDurumu.ONAY_BEKLIYOR) {
       return NextResponse.json({ error: 'Bu zimmet formu zaten işleme alınmış' }, { status: 409 })
+    }
+    // Self-approval engeli: kişi kendi zimmet kaydını onaylayamaz/reddedemez
+    // (REDDEDILDI de dahil — ikisi de self-approval sayılır).
+    if (mevcut.zimmetSahibiId === user.id) {
+      return NextResponse.json({ error: 'Kendi zimmet kaydınızı onaylayamazsınız.' }, { status: 403 })
     }
 
     const guncellendi = await prisma.zimmetFormu.update({

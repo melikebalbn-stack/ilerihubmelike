@@ -12153,6 +12153,13 @@ enum ZimmetOnayDurumu {
   REDDEDILDI
 }
 
+// Zimmet kaydının kaynağı. SYTELINE_DEVIR = eski sistemden aktarılan kayıt
+// (sahip-onay akışına tabi); MANUEL = normal oluşturulan kayıt.
+enum ZimmetKaynak {
+  MANUEL
+  SYTELINE_DEVIR
+}
+
 model ZimmetFormu {
   id String @id @default(cuid())
 
@@ -12202,8 +12209,15 @@ model ZimmetFormu {
   silinmeTarihi DateTime?
   silenId       String? // User.id - KASITLI olarak relation değil (User modeline dokunmamak için)
 
+  // Devir akışı: kaynak = kaydın nereden geldiği; redSebebi = REDDEDILDI ise gerekçe;
+  // sonBildirimTarihi = hatırlatma cron'u için son bildirim damgası (PR-5b kullanacak).
+  kaynak            ZimmetKaynak @default(MANUEL)
+  redSebebi         String?
+  sonBildirimTarihi DateTime?
+
   @@index([zimmetSahibiId])
   @@index([durum])
+  @@index([kaynak, durum])
 }
 
 // Zimmet durum değişikliği audit log (append-only). ZimmetFormu'dan AYRI;

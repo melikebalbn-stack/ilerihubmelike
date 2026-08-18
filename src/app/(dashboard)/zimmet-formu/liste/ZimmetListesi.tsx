@@ -84,6 +84,7 @@ type ZimmetItem = {
   verilisTarihi: string | null
   cihazDurumu: string
   durum: string
+  redSebebi: string | null
   imzaModu: string | null
   zimmetSahibiImzaTarihi: string | null
   islakImzaDosyasi: string | null
@@ -388,6 +389,54 @@ async function indirBelge(id: string) {
 
 // ── Ana bileşen ──────────────────────────────────────────────────────────────
 
+// Reddedilenler sekmesi: red gerekçesini gösteren sade tablo. "Envantere al"
+// butonu bilinçli olarak YOK (envanter entegrasyonu ayrı iş).
+function ReddedilenlerTablosu({ rows }: { rows: ZimmetItem[] }) {
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="rounded-md border overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Kişi / Cihaz</TableHead>
+                <TableHead>Seri No</TableHead>
+                <TableHead>Red Gerekçesi</TableHead>
+                <TableHead>Tarih</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground py-10">
+                    Reddedilmiş kayıt yok
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((z) => (
+                  <TableRow key={z.id}>
+                    <TableCell>
+                      <div className="font-medium text-slate-900">
+                        {z.zimmetSahibi.name ?? z.zimmetSahibi.email ?? '—'}
+                      </div>
+                      <div className="text-xs text-slate-500">{turGosterim(z)}</div>
+                    </TableCell>
+                    <TableCell className="text-slate-600">{z.seriNumarasi ?? '—'}</TableCell>
+                    <TableCell className="max-w-md whitespace-pre-wrap text-slate-600">
+                      {z.redSebebi ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-slate-600">{fmtDate(z.createdAt)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function ZimmetListesi() {
   const [filtre, setFiltre] = useState<FiltreKey>('tumu')
   const [turFiltresi, setTurFiltresi] = useState<StatKey>('toplam')
@@ -625,6 +674,9 @@ export function ZimmetListesi() {
         {hata && <p className="text-sm text-rose-600">{hata}</p>}
 
         {/* Tablo */}
+        {filtre === 'reddedildi' ? (
+          <ReddedilenlerTablosu rows={zimmetlerGorunen} />
+        ) : (
         <Card>
           <CardContent className="p-0">
             <div className="rounded-md border overflow-x-auto">
@@ -815,6 +867,7 @@ export function ZimmetListesi() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
 
       <AlertDialog open={silinecekId !== null} onOpenChange={(open) => !open && setSilinecekId(null)}>

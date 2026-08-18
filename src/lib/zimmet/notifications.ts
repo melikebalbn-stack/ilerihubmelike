@@ -250,3 +250,66 @@ export async function dispatchZimmetApproval({
 
   console.log(`[zimmet-notify] dispatch finished for ${zimmet.id} in ${Date.now() - startedAt}ms`)
 }
+
+// ════════════════════════════════════════════════════════════
+// DEVİR ONAY İSTEĞİ — kişi başına TEK bildirim (e-posta + in-app)
+// ════════════════════════════════════════════════════════════
+
+type DevirBildirimRecipient = {
+  id: string
+  email: string
+  name: string | null
+}
+
+/**
+ * Syteline devir kayıtları için sahibe TEK toplu bildirim gönderir (kayıt başına
+ * DEĞİL). Fire-and-forget. E-posta + in-app; devir-onay ekranına yönlendirir.
+ */
+export async function dispatchZimmetDevirOnayIstegi({
+  kullanici,
+  kayitSayisi,
+}: {
+  kullanici: DevirBildirimRecipient
+  kayitSayisi: number
+}): Promise<void> {
+  const recipientName = kullanici.name ?? kullanici.email
+  const esc = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+
+  const subject = `[ILERIHub] Üzerinize kayıtlı ${kayitSayisi} zimmet onayınızı bekliyor`
+  const body = `Merhaba ${recipientName},
+
+Eski sistemden aktarılan ${kayitSayisi} zimmet kaydı üzerinize kayıtlı ve onayınızı bekliyor. Lütfen kontrol edip size ait olanları onaylayın, olmayanları gerekçesiyle reddedin.
+
+Zimmetlerim ekranından işlem yapabilirsiniz: /zimmet-formu/zimmetlerim`
+  const html = `
+    <p>Merhaba ${esc(recipientName)},</p>
+    <p>Eski sistemden aktarılan <strong>${kayitSayisi}</strong> zimmet kaydı üzerinize kayıtlı ve onayınızı bekliyor. Lütfen kontrol edip size ait olanları onaylayın, olmayanları gerekçesiyle reddedin.</p>
+    <p><a href="/zimmet-formu/zimmetlerim">Zimmetlerim</a> ekranından işlem yapabilirsiniz.</p>
+  `
+
+  const results = await Promise.allSettled([
+    sendEmail([{ name: recipientName, email: kullanici.email }], subject, body, html),
+    prisma.notification.create({
+      data: {
+        userId: kullanici.id,
+        title: `Üzerinize kayıtlı ${kayitSayisi} zimmet onayınızı bekliyor`,
+        message: 'Eski sistemden aktarılan zimmetleri kontrol edip onaylayın/reddedin.',
+        type: 'INFO',
+        link: '/zimmet-formu/zimmetlerim',
+      },
+    }),
+  ])
+
+  const channelNames = ['email', 'in-app'] as const
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error(`[zimmet-notify] devir-onay channel ${channelNames[i]} failed:`, r.reason)
+    }
+  })
+}

@@ -26,6 +26,8 @@ export async function GET() {
       seriNumarasi: true,
       verilisTarihi: true,
       durum: true,
+      kaynak: true,
+      redSebebi: true,
       zimmetSahibiImzaTarihi: true,
       imzaModu: true,
       islakImzaDosyasi: true,

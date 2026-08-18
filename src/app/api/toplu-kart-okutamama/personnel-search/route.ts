@@ -34,6 +34,19 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = { aktif: true }
 
+    // scope=self: level'dan BAĞIMSIZ kullanıcının KENDİ kaydı (FULL dahil — form
+    // "Kendi Kaydım" ön-dolumu için). personnelId yoksa (User'a bağlı personel kaydı
+    // olmayan kullanıcı) boş dizi döner — 500 değil.
+    if (scope === 'self') {
+      if (!access.personnelId) return NextResponse.json([])
+      const own = await prisma.personnel.findMany({
+        where: { id: access.personnelId, aktif: true },
+        select: { id: true, sicilNo: true, adSoyad: true, bolum: true },
+        take: 1,
+      })
+      return NextResponse.json(own)
+    }
+
     if (access.level === 'GRI' || access.level === 'SELF') {
       if (scope === 'team' && access.personnelId) {
         const managedIds = await getManagedPersonnelIds(access.personnelId)

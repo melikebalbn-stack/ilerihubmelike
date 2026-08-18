@@ -339,8 +339,9 @@ export default function TopluKartOkutamamaPage() {
   // GRI/SELF: kendi Personnel kaydını (id/sicilNo/adSoyad) çek — "Kendi
   // Kaydım" bölümünde gösterilir. Full için gerekmez (o herkesi yönetir).
   useEffect(() => {
-    if (accessLevel !== "GRI" && accessLevel !== "SELF") return
-    fetch("/api/toplu-kart-okutamama/personnel-search")
+    if (!accessLevel) return
+    // scope=self → FULL dahil her seviyede kullanıcının kendi kaydı ön-dolu gelir.
+    fetch("/api/toplu-kart-okutamama/personnel-search?scope=self")
       .then((res) => (res.ok ? res.json() : []))
       .then((data: PickedPersonnel[]) => setSelfPersonnel(data[0] || null))
   }, [accessLevel])
@@ -843,16 +844,22 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {!forbidden && !showTeamPanel && (accessLevel === "SELF" || accessLevel === "GRI") && (
+      {!forbidden && !showTeamPanel && (accessLevel === "SELF" || accessLevel === "GRI" || accessLevel === "FULL") && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">Kendi Kaydım</div>
           <div className="flex flex-wrap items-end gap-3 px-4 py-3">
             <div className="min-w-[200px]">
               <label className="mb-1 block text-xs text-muted-foreground">Sicil No / Ad Soyad</label>
-              <Input
-                readOnly
-                value={selfPersonnel ? `${selfPersonnel.sicilNo ? selfPersonnel.sicilNo + " - " : ""}${selfPersonnel.adSoyad}` : "Yükleniyor..."}
-              />
+              {accessLevel === "FULL" ? (
+                // FULL: kendi adıyla ön-dolu ama DEĞİŞTİRİLEBİLİR (başkası da seçilebilir).
+                <PersonnelPicker value={selfPersonnel} onSelect={setSelfPersonnel} />
+              ) : (
+                // SELF/GRI: kendi kaydı sabit, readOnly (mevcut davranış).
+                <Input
+                  readOnly
+                  value={selfPersonnel ? `${selfPersonnel.sicilNo ? selfPersonnel.sicilNo + " - " : ""}${selfPersonnel.adSoyad}` : "Yükleniyor..."}
+                />
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">Tarih</label>

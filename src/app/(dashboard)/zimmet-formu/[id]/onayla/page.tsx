@@ -19,8 +19,8 @@ export default async function ZimmetOnayPage({
 
   const { id } = await params
 
-  const zimmet = await prisma.zimmetFormu.findUnique({
-    where: { id },
+  const zimmet = await prisma.zimmetFormu.findFirst({
+    where: { id, silindiMi: false },
     include: {
       zimmetSahibi: { select: { name: true, email: true } },
       createdBy: { select: { name: true, email: true } },

@@ -19,8 +19,8 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const mod = searchParams.get('mod') === 'dijital' ? 'dijital' : 'islak'
 
-    const zimmet = await prisma.zimmetFormu.findUnique({
-      where: { id },
+    const zimmet = await prisma.zimmetFormu.findFirst({
+      where: { id, silindiMi: false },
       include: {
         zimmetSahibi: { select: { name: true, email: true, jobTitle: true, employeeId: true } },
         createdBy: { select: { name: true, email: true, jobTitle: true, department: true } },

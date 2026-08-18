@@ -14,8 +14,8 @@ export async function PATCH(
 
     const { id } = await params
 
-    const zimmet = await prisma.zimmetFormu.findUnique({
-      where: { id },
+    const zimmet = await prisma.zimmetFormu.findFirst({
+      where: { id, silindiMi: false },
       select: { id: true, zimmetSahibiId: true, zimmetSahibiImzaTarihi: true },
     })
 

@@ -26,8 +26,8 @@ export async function POST(
 
     const { id } = await params
 
-    const zimmet = await prisma.zimmetFormu.findUnique({
-      where: { id },
+    const zimmet = await prisma.zimmetFormu.findFirst({
+      where: { id, silindiMi: false },
       select: { id: true, durum: true },
     })
     if (!zimmet) {

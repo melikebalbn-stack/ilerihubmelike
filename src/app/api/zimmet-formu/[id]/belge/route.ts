@@ -23,8 +23,8 @@ export async function GET(
 
   const { id } = await params
 
-  const zimmet = await prisma.zimmetFormu.findUnique({
-    where: { id },
+  const zimmet = await prisma.zimmetFormu.findFirst({
+    where: { id, silindiMi: false },
     select: { id: true, zimmetSahibiId: true, islakImzaDosyasi: true },
   })
   if (!zimmet) {

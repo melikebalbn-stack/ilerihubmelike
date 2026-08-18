@@ -38,9 +38,12 @@ export async function GET(
       return NextResponse.json({ error: 'Bu tutanağı indirme yetkiniz yok' }, { status: 403 })
     }
 
-    if (zimmet.durum !== ZimmetOnayDurumu.ONAYLANDI) {
-      return NextResponse.json({ error: 'Onay bekleniyor' }, { status: 403 })
+    // Durum kapısı (gevşetildi): ONAYLANDI → temiz PDF; ONAY_BEKLIYOR → filigranlı
+    // TASLAK; REDDEDILDI → tutanak üretilmez (403).
+    if (zimmet.durum === ZimmetOnayDurumu.REDDEDILDI) {
+      return NextResponse.json({ error: 'Reddedilmiş kayıt için tutanak üretilemez' }, { status: 403 })
     }
+    const taslak = zimmet.durum !== ZimmetOnayDurumu.ONAYLANDI
 
     // zimmetSahibiId boş olabilir (Excel'den serbest metinle gelip Toplu
     // Bağlama ile henüz eşleştirilmemiş kayıt) - o durumda orijinal metni
@@ -80,9 +83,10 @@ export async function GET(
       onaylayanAdi: zimmet.onaylayan?.name ?? zimmet.onaylayan?.email ?? undefined,
       onaylayanUnvan: zimmet.onaylayan?.jobTitle,
       onayTarihi: zimmet.onayTarihi?.toISOString() ?? undefined,
+      taslak,
     })
 
-    const fileName = `zimmet-${id.slice(0, 8)}-${mod}.pdf`
+    const fileName = `zimmet-${id.slice(0, 8)}-${mod}${taslak ? '-taslak' : ''}.pdf`
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,

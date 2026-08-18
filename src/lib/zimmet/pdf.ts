@@ -12,7 +12,7 @@
 
 import fs from 'fs/promises'
 import path from 'path'
-import { PDFDocument, rgb, PageSizes, type PDFPage, type PDFFont, type RGB } from 'pdf-lib'
+import { PDFDocument, rgb, degrees, PageSizes, type PDFPage, type PDFFont, type RGB } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { loadOffboardingFonts } from '@/lib/offboarding/offboarding-fonts'
 import type { ZimmetTuru, ZimmetCihazDurumu, ZimmetOnayDurumu } from '@/generated/prisma'
@@ -54,6 +54,9 @@ export interface ZimmetPdfData {
   teslimEdenUnvan?: string | null
   teslimEdenBolum?: string | null
   onaylayanUnvan?: string | null
+  // Taslak modu: onay akışı tamamlanmamış (ONAY_BEKLIYOR) kayıt için filigranlı
+  // önizleme PDF'i. true iken her sayfaya çapraz "TASLAK" filigranı + imza altı not.
+  taslak?: boolean
 }
 
 const TUR_LABELS: Record<ZimmetTuru, string> = {
@@ -400,10 +403,32 @@ export async function generateZimmetPdf(data: ZimmetPdfData): Promise<Uint8Array
   })
   y -= sigH
 
-  // ── Footer (sayfa no + kayıt no, tüm sayfalar) ──
+  // Taslak: imza alanlarının altına onay-akışı uyarısı.
+  if (data.taslak) {
+    ensure(16)
+    text('Bu belge onay akışını tamamlamamıştır.', MARGIN, y - 2, 8.5, bold, rgb(0.72, 0.25, 0.25))
+    y -= 16
+  }
+
+  // ── Footer (sayfa no + kayıt no, tüm sayfalar) + taslak filigranı ──
   const pages = pdf.getPages()
   const total = pages.length
   pages.forEach((p, i) => {
+    // Taslak filigranı: her sayfaya çapraz, büyük, açık gri, düşük opaklık.
+    if (data.taslak) {
+      const wm = 'TASLAK · ONAYLANMAMIŞTIR'
+      const wmSize = 44
+      const wmW = bold.widthOfTextAtSize(wm, wmSize)
+      p.drawText(wm, {
+        x: PAGE_W / 2 - (wmW / 2) * Math.cos(Math.PI / 4),
+        y: PAGE_H / 2 - (wmW / 2) * Math.sin(Math.PI / 4),
+        size: wmSize,
+        font: bold,
+        color: rgb(0.6, 0.6, 0.6),
+        opacity: 0.15,
+        rotate: degrees(45),
+      })
+    }
     const label = `Sayfa ${i + 1} / ${total}`
     p.drawText(label, { x: PAGE_W - MARGIN - reg.widthOfTextAtSize(label, 8), y: FOOTER_Y, size: 8, font: reg, color: SLATE })
     p.drawText(`Zimmet Tutanağı · ${data.id}`, { x: MARGIN, y: FOOTER_Y, size: 8, font: reg, color: SLATE })

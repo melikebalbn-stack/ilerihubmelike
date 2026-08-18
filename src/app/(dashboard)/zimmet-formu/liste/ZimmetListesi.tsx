@@ -19,6 +19,7 @@ import {
   Plus,
   Printer,
   ScanLine,
+  Send,
   Shapes,
   Smartphone,
   Trash2,
@@ -344,6 +345,21 @@ async function indirlePdf(id: string, durum: string) {
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   } catch (err) {
     toast.error(err instanceof Error ? err.message : 'PDF indirilemedi')
+  }
+}
+
+// Onaya gönder: ONAY_BEKLIYOR kayıt için onaycıya bildirim (yeniden) tetikler.
+// Durum değişmez; tekrar basılabilir (hatırlatma).
+async function onayaGonder(id: string) {
+  try {
+    const res = await fetch(`/api/zimmet-formu/${id}/onaya-gonder`, { method: 'POST' })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}) as { error?: string })
+      throw new Error((data as { error?: string }).error || 'Onay bildirimi gönderilemedi')
+    }
+    toast.success('Onay bildirimi gönderildi')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Onay bildirimi gönderilemedi')
   }
 }
 
@@ -763,6 +779,18 @@ export function ZimmetListesi() {
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
+                              {z.durum === 'ONAY_BEKLIYOR' && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Onaya gönder (bildirim)"
+                                  className="text-sky-600 hover:text-sky-700 hover:bg-sky-50"
+                                  onClick={() => onayaGonder(z.id)}
+                                >
+                                  <Send className="h-4 w-4" />
+                                </Button>
+                              )}
                               {z.durum === 'ONAY_BEKLIYOR' && (
                                 <Button
                                   type="button"

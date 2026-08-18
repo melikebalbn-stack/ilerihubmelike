@@ -15,10 +15,7 @@ export async function GET() {
   const zimmetler = await prisma.zimmetFormu.findMany({
     where: {
       zimmetSahibiId: user.id,
-      // PENDING migration (prisma/migrations/PENDING_zimmet_silme_alanlari)
-      // uygulanana kadar GEÇİCİ olarak devre dışı - DB'de/generated client'ta
-      // silindiMi henüz yok. Migration çalışınca geri aç:
-      // silindiMi: false,
+      silindiMi: false,
     },
     orderBy: { createdAt: 'desc' },
     select: {

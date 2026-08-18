@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { TASLAK } from "@/lib/recruitment/taslak-statuler";
 
 // Recruitment modülünün mevcut yetki deseni (recruitAccess) — yeni izin icat edilmez.
 function recruitAccess(session: {
@@ -46,9 +47,16 @@ export async function GET() {
     },
   });
 
+  // TASLAKLAR HARİÇ — metrics/dashboard ile AYNI evren (dashboard/route.ts:54 deseni,
+  // küme TEK KAYNAK: lib/recruitment/taslak-statuler.ts). Taslak = aday KVKK/sağlık
+  // adımında kalmış, başvuru formunu GÖNDERMEMİŞ kayıt.
+  // NEDEN: iki uç aynı panoda yan yana görünüyor; farklı evren sayarlarsa aynı ekranda
+  // İKİ FARKLI TOPLAM çıkar (staging ölçümü: source-breakdown 34, dashboard 32).
+  const tamam = basvurular.filter((b) => !TASLAK.has(b.status)); // form tamamlanan
+
   // Kaynak-başına başvuru + işe alınan (ACCEPTED). null → "Belirtilmemiş".
   const acc = new Map<string, { basvuru: number; iseAlinan: number }>();
-  for (const b of basvurular) {
+  for (const b of tamam) {
     const kaynak = b.referralSourceDef?.name ?? BELIRTILMEMIS;
     let a = acc.get(kaynak);
     if (!a) { a = { basvuru: 0, iseAlinan: 0 }; acc.set(kaynak, a); }

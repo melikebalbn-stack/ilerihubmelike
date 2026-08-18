@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       location,
       workModel,
       priority,
-      status // DRAFT veya PENDING
+      // NOT: `status` body'den ALINMAZ — create DAİMA DRAFT yazar (aşağıya bakınız).
       // NOT: salaryMin/salaryMax/hasBudget body'den ALINMAZ — İK sonradan girer.
     } = body;
 
@@ -143,7 +143,20 @@ export async function POST(request: NextRequest) {
         salaryMax: null,
         hasBudget: false,
         priority: (priority as JobPriority) || "MEDIUM",
-        status: (status as PersonnelRequestStatus) || "DRAFT",
+        // DAİMA DRAFT — body'deki `status` KABUL EDİLMEZ.
+        //
+        // NEDEN: onay zinciri (PersonnelRequestApproval satırları) YALNIZ `submit`
+        // aksiyonunda kuruluyor (bkz. [id]/route.ts → resolveApprovers + createMany).
+        // Create body'den "PENDING" kabul ettiği sürece ikinci bir kod yolu oluşuyordu:
+        // talep PENDING doğuyor, submit'e hiç uğramıyor, zincir HİÇ kurulmuyor. Sonuç
+        // sessiz kilit — ekranda Onayla/Reddet butonu render edilmiyor (approvals boş),
+        // API'den zorlansa 400 "Bu talebin onay zinciri yok", "Onaya Gönder" de çıkmıyor
+        // (o yalnız DRAFT'ta görünür) → talebi kurtarmanın UI yolu kalmıyor.
+        // 2026-08 ölçümü: prod'daki 6 talebin ALTISI da bu yoldan gelmiş,
+        // PersonnelRequestApproval tablosu tamamen BOŞ (0 satır).
+        //
+        // Artık PENDING'e geçişin TEK yolu submit — zincir kurulumu tek yerde kalır.
+        status: "DRAFT" as PersonnelRequestStatus,
         // IV-FR-24 — talep eden alanları (İV kapanış alanları HARİÇ)
         formHazirlanmaTarihi: tarihDon(a.formHazirlanmaTarihi),
         ikTeslimTarihi: tarihDon(a.ikTeslimTarihi),

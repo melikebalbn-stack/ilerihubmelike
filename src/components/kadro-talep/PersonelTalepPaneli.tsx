@@ -274,18 +274,53 @@ export function PersonelTalepPaneli() {
           cinsiyetTercihi: requestForm.cinsiyetTercihi || null,
           yasAraligiMin: requestForm.yasAraligiMin !== "" ? parseInt(requestForm.yasAraligiMin as any) : null,
           yasAraligiMax: requestForm.yasAraligiMax !== "" ? parseInt(requestForm.yasAraligiMax as any) : null,
-          status: submitForApproval ? "PENDING" : "DRAFT"
+          // `status` GÖNDERİLMEZ — sunucu daima DRAFT yazar. "Onaya gönder" seçiliyse
+          // aşağıda AYRI bir submit çağrısı yapılır; onay zincirini kuran tek yol odur.
         })
       })
 
-      if (res.ok) {
+      if (!res.ok) {
+        const error = await res.json().catch(() => null)
+        toast.error(error?.error || "Talep olusturulamadi")
+        return
+      }
+
+      const created = await res.json()
+
+      // Taslak kaydet: burada bitiyor.
+      if (!submitForApproval) {
         setIsRequestDialogOpen(false)
         fetchRequests()
         resetRequestForm()
-        toast.success(submitForApproval ? "Talep onaya gonderildi" : "Talep taslak olarak kaydedildi")
+        toast.success("Talep taslak olarak kaydedildi")
+        return
+      }
+
+      // ONAYA GÖNDER — ikinci adım. Zincir burada kurulur (resolveApprovers).
+      // Bu çağrı başarısız olursa talep DRAFT olarak DURUR; kullanıcı bunu net görmeli,
+      // yoksa eskisi gibi "gönderildi" sanıp zincirsiz bir kayıtla baş başa kalır.
+      const submitRes = await fetch(
+        `/api/strategic-hr/recruitment/personnel-requests/${created.id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "submit" }),
+        },
+      )
+
+      setIsRequestDialogOpen(false)
+      fetchRequests()
+      resetRequestForm()
+
+      if (submitRes.ok) {
+        toast.success("Talep onaya gonderildi")
       } else {
-        const error = await res.json()
-        toast.error(error.error || "Talep olusturulamadi")
+        const err = await submitRes.json().catch(() => null)
+        toast.error(
+          `Talep TASLAK olarak kaydedildi, onaya GONDERILEMEDI: ${err?.error || "bilinmeyen hata"} — ` +
+            `talebi listeden acip "Onaya Gonder" ile tekrar deneyebilirsiniz.`,
+          { duration: 10000 },
+        )
       }
     } catch (error) {
       console.error("Talep olusturulurken hata:", error)

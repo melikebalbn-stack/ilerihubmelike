@@ -170,6 +170,18 @@ export async function PUT(
         // Sessiz boşta kalma YOK — talep PENDING'e geçmez, net hata döner.
         return NextResponse.json({ error: cozum.error }, { status: 400 });
       }
+      // ZİNCİRSİZ PENDING İMKÂNSIZ OLSUN: `ok:true` iken bile adım listesi boş gelirse
+      // aşağıdaki transaction statüyü PENDING yapar (createMany 0 satır yazar) ve hemen
+      // ardından `cozum.adimlar[0]` patlar → talep TAM OLARAK düzeltmeye çalıştığımız
+      // duruma düşer: PENDING ama zincirsiz, ekranda onay butonu yok, kurtarma yolu yok.
+      // Bugün resolveApprovers'ın boş dönmesi beklenmiyor (self-approval elemesi sonrası
+      // en az İK Müdürü adımı bırakılıyor), ama bu kapı varsayıma değil kontrole dayansın.
+      if (cozum.adimlar.length === 0) {
+        return NextResponse.json(
+          { error: "Onay zinciri kurulamadı (uygun onaycı bulunamadı). Talep taslak olarak kaldı." },
+          { status: 400 },
+        );
+      }
       await prisma.$transaction([
         prisma.personnelRequestApproval.deleteMany({ where: { personnelRequestId: id } }),
         prisma.personnelRequestApproval.createMany({

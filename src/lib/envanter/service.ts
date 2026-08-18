@@ -363,8 +363,10 @@ export async function getEnvanterUrunDetail(id: string) {
 
   if (!urun) return null
 
-  // Duzenleme formu tum alanlari ve kilit bayraklarini buradan okur (tek kaynak).
-  const { kilitler } = await getUrunKilitleri(urun.id)
+  // Duzenleme formu tum alanlari, kilit bayraklarini ve gecmis sayilarini
+  // buradan okur (tek kaynak). Sayilar kod degistirme uyarisinda kullanilir.
+  const { kilitler, hareketSayisi, zimmetSayisi, varyantSayisi } =
+    await getUrunKilitleri(urun.id)
 
   return {
     id: urun.id,
@@ -415,6 +417,7 @@ export async function getEnvanterUrunDetail(id: string) {
     createdAt: urun.createdAt.toISOString(),
 
     kilitler,
+    gecmisSayilari: { hareketSayisi, zimmetSayisi, varyantSayisi },
 
     varyantlar: urun.varyantlar,
 
@@ -478,10 +481,9 @@ const KILIT_YOK: UrunKilit = { kilitli: false, kisaSebep: null, sebep: null }
 /**
  * Ürünün geçmişine bakarak hangi alanların kilitli olduğunu hesaplar.
  *
- * kod          → stok hareketi VEYA zimmet kaydı varsa kilitli.
- *                Gerekçe: Excel içe aktarma ürünleri koda göre eşleştiriyor
- *                (lib/envanter/import.ts). Geçmişi olan üründe kod değişirse
- *                eski kodlu dosya ikinci bir ürün oluşturur.
+ * kod          → KİLİTLİ DEĞİL. Zimmet/stok kayıtları urunId (FK) üzerinden
+ *                bağlı; kod değişince bağ kopmuyor. Excel içe aktarma koda göre
+ *                eşleştirdiği için ekranda UYARI gösterilir, ama engellenmez.
  * varyantTipi  → varyant varsa kilitli (mevcut varyantlar anlamsız kalır).
  * bedenTipi    → varyant varsa kilitli (aynı gerekçe).
  * tip          → stok hareketi varsa kilitli.
@@ -495,17 +497,9 @@ export async function getUrunKilitleri(urunId: string) {
     prisma.envanterUrunVaryant.count({ where: { urunId } }),
   ])
 
-  const gecmisVar = hareketSayisi > 0 || zimmetSayisi > 0
-  const gecmisMetni = `${hareketSayisi} stok hareketi, ${zimmetSayisi} zimmet kaydı`
-
   const kilitler: UrunKilitleri = {
-    kod: gecmisVar
-      ? {
-          kilitli: true,
-          kisaSebep: 'Stok hareketi/zimmet geçmişi var',
-          sebep: `Bu ürünün geçmişi var (${gecmisMetni}), kod değiştirilemez.`,
-        }
-      : KILIT_YOK,
+    // Kod artik her durumda duzenlenebilir — bkz. fonksiyon basligindaki gerekce.
+    kod: KILIT_YOK,
     varyantTipi:
       varyantSayisi > 0
         ? {
@@ -664,7 +658,8 @@ export async function updateEnvanterUrun(
     throw new Error('Ürün bulunamadı.')
   }
 
-  const { kilitler, varyantSayisi } = await getUrunKilitleri(urunId)
+  const { kilitler, varyantSayisi, hareketSayisi, zimmetSayisi } =
+    await getUrunKilitleri(urunId)
 
   const gonderilen = GUNCELLENEBILIR_ALANLAR.filter((alan) =>
     Object.prototype.hasOwnProperty.call(patch, alan),
@@ -892,6 +887,16 @@ export async function updateEnvanterUrun(
       aktorAd: actorAd,
       degisenAlanlar: Object.keys(degisiklikler),
       degisiklikler,
+      // Kod degisimi ayrica isaretlenir: gecmisi olan urunde Excel ile toplu
+      // yuklemede eski kodlu satirlar bu urunu bulamaz.
+      ...(degisiklikler.kod
+        ? {
+            kodDegisti: true,
+            eskiKod: degisiklikler.kod.once,
+            yeniKod: degisiklikler.kod.sonra,
+            not: `${hareketSayisi} stok hareketi, ${zimmetSayisi} zimmet kaydı olan ürünün kodu değiştirildi`,
+          }
+        : {}),
     },
   })
 

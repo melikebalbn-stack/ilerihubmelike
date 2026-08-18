@@ -912,7 +912,21 @@ function YeniUrunWizard({
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [kilitler, setKilitler] = useState<UrunKilitleri>(BOS_KILITLER)
+  const [gecmisSayilari, setGecmisSayilari] = useState<{
+    hareketSayisi: number
+    zimmetSayisi: number
+  }>({ hareketSayisi: 0, zimmetSayisi: 0 })
   const [urunYukleniyor, setUrunYukleniyor] = useState(false)
+
+  // Kod duzenlenebilir; gecmisi olan urunde yalnizca UYARI gosterilir.
+  // Sayilar sunucudan gelir (GET → data.gecmisSayilari).
+  const kodUyarisi =
+    duzenlenenUrunId &&
+    (gecmisSayilari.hareketSayisi > 0 || gecmisSayilari.zimmetSayisi > 0)
+      ? `Bu ürünün geçmişi var (${gecmisSayilari.hareketSayisi} stok hareketi, ` +
+        `${gecmisSayilari.zimmetSayisi} zimmet kaydı). Kodu değiştirirseniz Excel ile ` +
+        `toplu yüklemede eski kodlu satırlar bu ürünü bulamaz ve YENİ ürün olarak eklenir.`
+      : null
 
   // F7 — kategori listesi DB'den (Parametreler'deki aktif kategoriler). Sabit liste kaldırıldı.
   const [kategoriListesi, setKategoriListesi] = useState<{ value: string; label: string }[]>([])
@@ -1020,6 +1034,10 @@ function YeniUrunWizard({
             ? []
             : String(v).split(',').map((x) => x.trim()).filter(Boolean)
         setKilitler(u.kilitler ?? BOS_KILITLER)
+        setGecmisSayilari({
+          hareketSayisi: u.gecmisSayilari?.hareketSayisi ?? 0,
+          zimmetSayisi: u.gecmisSayilari?.zimmetSayisi ?? 0,
+        })
         setUrunForm((mevcut) => ({
           ...mevcut,
           kod: metin(u.kod),
@@ -1339,8 +1357,7 @@ async function handleSave() {
                 value={urunForm.kod}
                 placeholder="ENV-0001"
                 onChange={(value) => updateForm('kod', value)}
-                disabled={kilitler.kod.kilitli}
-                kilitSebep={kilitler.kod.kisaSebep}
+                bilgiNotu={kodUyarisi}
               />
 
               <FormInput
@@ -2334,6 +2351,7 @@ function FormInput({
   onChange,
   disabled,
   kilitSebep,
+  bilgiNotu,
 }: {
   label: string
   value: string
@@ -2341,6 +2359,8 @@ function FormInput({
   onChange: (value: string) => void
   disabled?: boolean
   kilitSebep?: string | null
+  /** Alan duzenlenebilir ama dikkat edilmesi gereken bir durum varsa: notr not. */
+  bilgiNotu?: string | null
 }) {
   return (
     <div>
@@ -2354,6 +2374,11 @@ function FormInput({
       />
       {disabled && kilitSebep && (
         <p className="mt-1 text-xs text-amber-700">🔒 {kilitSebep}</p>
+      )}
+      {!disabled && bilgiNotu && (
+        <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+          {bilgiNotu}
+        </p>
       )}
     </div>
   )

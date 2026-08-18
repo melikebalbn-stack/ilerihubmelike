@@ -128,8 +128,8 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    const mevcut = await prisma.zimmetFormu.findUnique({
-      where: { id },
+    const mevcut = await prisma.zimmetFormu.findFirst({
+      where: { id, silindiMi: false },
       select: {
         id: true,
         durum: true,

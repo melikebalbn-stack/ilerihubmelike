@@ -15,6 +15,15 @@ import {
 } from "@/components/ui/table"
 import { PersonnelPicker, type PickedPersonnel } from "./_components/personnel-picker"
 import { TimeCombobox } from "./_components/time-combobox"
+import { KpiSection } from "./_components/kpi-section"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
+import { MoreHorizontal } from "lucide-react"
 
 // Yeni kayıt/boş form varsayılan saatleri (mesai giriş/çıkış). Düzenlemede
 // kaydın kendi değeri kullanılır; bu default'lar YALNIZ yeni/boş forma uygulanır.
@@ -221,7 +230,7 @@ export default function TopluKartOkutamamaPage() {
   // GRI/SELF: Personel Yönetimi'nde 1./2./3. Sorumlusu olduğu kişiler (ekibi) —
   // varsa üstte bir butonla bu panele geçilir, yoksa buton hiç görünmez.
   const [myTeam, setMyTeam] = useState<PickedPersonnel[]>([])
-  const [showTeamPanel, setShowTeamPanel] = useState(false)
+  const [activeTab, setActiveTab] = useState<"kendim" | "ekibim">("kendim")
 
   // Onayınızı bekleyen kayıtlar — formun kendi accessLevel'ından bağımsız:
   // herhangi bir kullanıcı birinin müdürüyse burada onun bekleyen kayıtlarını görür.
@@ -683,6 +692,15 @@ export default function TopluKartOkutamamaPage() {
   // bazlı) — "Kendi Kaydım" bunun içinden sadece kendi personelini süzer.
   const ownRecords = records.filter((r) => r.personnel?.id === selfPersonnel?.id)
   const sortedSelfRecords = sortItems(ownRecords, selfSortKey, selfSortOrder)
+  // Son kayıt özeti (Kendi Kaydım'da geçmiş liste yerine tek satır) — en yeni tarihli.
+  const sonKayit =
+    ownRecords.length > 0
+      ? [...ownRecords].sort((a, b) => new Date(b.tarih).getTime() - new Date(a.tarih).getTime())[0]
+      : null
+  // Ekibim sekmesi görünürlüğü: FULL her zaman; GRİ/SELF yalnız ekibi (myTeam) varsa.
+  // Mevcut görünürlük mantığıyla birebir — yetki DEĞİŞMEZ.
+  const hasEkibim =
+    accessLevel === "FULL" || ((accessLevel === "GRI" || accessLevel === "SELF") && myTeam.length > 0)
   const sortedMyTeam = sortItems(myTeam, teamSortKey, teamSortOrder)
 
   const editableRowContent = (
@@ -751,7 +769,7 @@ export default function TopluKartOkutamamaPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold">Kart Okutamama</h1>
         {!forbidden && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -759,22 +777,25 @@ export default function TopluKartOkutamamaPage() {
               className="hidden"
               onChange={handleImportFile}
             />
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-              Excel'den İçe Aktar
-            </Button>
-            <Button variant="outline" onClick={handleExport}>
-              Excel'e Aktar
-            </Button>
             {canManageAnyone && (
               <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
                 {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
               </Button>
             )}
-            {(accessLevel === "GRI" || accessLevel === "SELF") && myTeam.length > 0 && (
-              <Button variant="outline" onClick={() => setShowTeamPanel((v) => !v)}>
-                {showTeamPanel ? "Kendi Kaydıma Dön" : `Ekibim İçin Gir (${myTeam.length})`}
-              </Button>
-            )}
+            {/* Excel İçe/Dışa Aktar → ⋯ menüsü altına toplandı (sadeleştirme). */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="Daha fazla işlem">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                  Excel&apos;den İçe Aktar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExport}>Excel&apos;e Aktar</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>
@@ -850,7 +871,15 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {!forbidden && !showTeamPanel && (accessLevel === "SELF" || accessLevel === "GRI" || accessLevel === "FULL") && (
+      {!forbidden && (
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "kendim" | "ekibim")}>
+          <TabsList>
+            <TabsTrigger value="kendim">Kendi Kaydım</TabsTrigger>
+            {hasEkibim && <TabsTrigger value="ekibim">Ekibim</TabsTrigger>}
+          </TabsList>
+
+          <TabsContent value="kendim" className="space-y-6 pt-4">
+            {(accessLevel === "SELF" || accessLevel === "GRI" || accessLevel === "FULL") && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">Kendi Kaydım</div>
           <div className="flex flex-wrap items-end gap-3 px-4 py-3">
@@ -893,60 +922,23 @@ export default function TopluKartOkutamamaPage() {
             sonra İnsan Varlıkları&apos;na iletilir.
           </p>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortableHead label="Tarih" active={selfSortKey === "tarih"} order={selfSortOrder} onClick={() => toggleSelfSort("tarih")} />
-                <SortableHead label="Giriş Saati" active={selfSortKey === "girisSaati"} order={selfSortOrder} onClick={() => toggleSelfSort("girisSaati")} />
-                <SortableHead label="Çıkış Saati" active={selfSortKey === "cikisSaati"} order={selfSortOrder} onClick={() => toggleSelfSort("cikisSaati")} />
-                <SortableHead label="Neden" active={selfSortKey === "neden"} order={selfSortOrder} onClick={() => toggleSelfSort("neden")} />
-                <SortableHead label="Durum" active={selfSortKey === "onayDurumu"} order={selfSortOrder} onClick={() => toggleSelfSort("onayDurumu")} />
-                <SortableHead label="İV Onayı" active={selfSortKey === "ivOnaylandi"} order={selfSortOrder} onClick={() => toggleSelfSort("ivOnaylandi")} />
-                <TableHead>İşlem</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ownRecords.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
-                    Henüz kaydınız yok
-                  </TableCell>
-                </TableRow>
-              )}
-              {sortedSelfRecords.map((r) => {
-                if (editingId === r.id) {
-                  return <TableRow key={r.id}>{selfEditableRowContent}</TableRow>
-                }
-                const canEditSelf = r.onayDurumu === "BEKLIYOR" && !r.ivOnaylandi
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell>{new Date(r.tarih).toLocaleDateString("tr-TR")}</TableCell>
-                    <TableCell>{r.girisSaati || "-"}</TableCell>
-                    <TableCell>{r.cikisSaati || "-"}</TableCell>
-                    <TableCell>{NEDEN_OPTIONS.find((o) => o.value === r.neden)?.label || "-"}</TableCell>
-                    <TableCell>{ONAY_DURUMU_LABELS[r.onayDurumu]}</TableCell>
-                    <TableCell>{r.ivOnaylandi ? "Onaylandı" : "Onay Bekliyor"}</TableCell>
-                    <TableCell className="space-x-2 whitespace-nowrap">
-                      {canEditSelf && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => startEditing(r)}>
-                            Düzenle
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(r.id)}>
-                            Sil
-                          </Button>
-                        </>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+          {sonKayit ? (
+            <div className="border-t px-4 py-2 text-sm">
+              <span className="text-muted-foreground">Son kaydınız: </span>
+              {new Date(sonKayit.tarih).toLocaleDateString("tr-TR")} — {ONAY_DURUMU_LABELS[sonKayit.onayDurumu]}
+              {sonKayit.ivOnaylandi ? " · İV onaylı" : ""}
+            </div>
+          ) : (
+            <div className="border-t px-4 py-2 text-sm text-muted-foreground">Henüz kaydınız yok.</div>
+          )}
         </div>
-      )}
+            )}
+            <KpiSection />
+          </TabsContent>
 
-      {!forbidden && showTeamPanel && (accessLevel === "GRI" || accessLevel === "SELF") && (
+          {hasEkibim && (
+          <TabsContent value="ekibim" className="space-y-6 pt-4">
+            {(accessLevel === "GRI" || accessLevel === "SELF") && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Ekibim {myTeam.length > 0 && `(${myTeam.length})`}
@@ -991,17 +983,15 @@ export default function TopluKartOkutamamaPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="time"
+                        <TimeCombobox
                           value={draft.giris}
-                          onChange={(e) => updateTeamDraft(p.id, "giris", e.target.value)}
+                          onChange={(v) => updateTeamDraft(p.id, "giris", v)}
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="time"
+                        <TimeCombobox
                           value={draft.cikis}
-                          onChange={(e) => updateTeamDraft(p.id, "cikis", e.target.value)}
+                          onChange={(v) => updateTeamDraft(p.id, "cikis", v)}
                         />
                       </TableCell>
                       <TableCell>
@@ -1035,7 +1025,7 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-      {!forbidden && !showOldRecords && canManageAnyone && (
+            {!showOldRecords && canManageAnyone && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Bana Bağlı Personel {visibleTeam.length > 0 && `(${visibleTeam.length})`}
@@ -1043,6 +1033,9 @@ export default function TopluKartOkutamamaPage() {
 
           {canManageAnyone && (
             <div className="border-b px-4 py-3 space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Adım 1 · Kişileri ekleyin
+              </div>
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">
                   Bölüme Göre Ekle / Çıkar
@@ -1076,7 +1069,11 @@ export default function TopluKartOkutamamaPage() {
           )}
 
           {canManageAnyone && (
-            <div className="flex flex-wrap items-end gap-3 border-b bg-muted/20 px-4 py-3">
+            <div className="border-b bg-muted/20 px-4 py-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Adım 2 · Tarih / saat / neden
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">Tarih</label>
                 <Input type="date" value={bulkTarih} onChange={(e) => setBulkTarih(e.target.value)} />
@@ -1099,6 +1096,7 @@ export default function TopluKartOkutamamaPage() {
               <Button disabled={bulkSaving} onClick={handleBulkSaveAll}>
                 {bulkSaving ? "Kaydediliyor..." : "Tümünü Kaydet"}
               </Button>
+              </div>
             </div>
           )}
 
@@ -1115,6 +1113,9 @@ export default function TopluKartOkutamamaPage() {
             </div>
           )}
 
+          <div className="border-b px-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Adım 3 · Kaydedin
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -1158,17 +1159,15 @@ export default function TopluKartOkutamamaPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="time"
+                        <TimeCombobox
                           value={draft.giris}
-                          onChange={(e) => updateTeamDraft(p.id, "giris", e.target.value)}
+                          onChange={(v) => updateTeamDraft(p.id, "giris", v)}
                         />
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="time"
+                        <TimeCombobox
                           value={draft.cikis}
-                          onChange={(e) => updateTeamDraft(p.id, "cikis", e.target.value)}
+                          onChange={(v) => updateTeamDraft(p.id, "cikis", v)}
                         />
                       </TableCell>
                       <TableCell>
@@ -1230,6 +1229,12 @@ export default function TopluKartOkutamamaPage() {
             </div>
           )}
         </div>
+      )}
+
+          <KpiSection />
+          </TabsContent>
+          )}
+        </Tabs>
       )}
 
       {((showOldRecords && canManageAnyone) || accessLevel === "GRI" || accessLevel === "SELF") && (

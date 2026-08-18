@@ -14,6 +14,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { PersonnelPicker, type PickedPersonnel } from "./_components/personnel-picker"
+import { TimeCombobox } from "./_components/time-combobox"
+
+// Yeni kayıt/boş form varsayılan saatleri (mesai giriş/çıkış). Düzenlemede
+// kaydın kendi değeri kullanılır; bu default'lar YALNIZ yeni/boş forma uygulanır.
+const DEFAULT_GIRIS = "07:00"
+const DEFAULT_CIKIS = "17:00"
 
 interface BulkCardScanRecord {
   id: string
@@ -192,8 +198,8 @@ export default function TopluKartOkutamamaPage() {
   const [teamErrors, setTeamErrors] = useState<Record<string, string>>({})
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
   const [bulkTarih, setBulkTarih] = useState("")
-  const [bulkGiris, setBulkGiris] = useState("")
-  const [bulkCikis, setBulkCikis] = useState("")
+  const [bulkGiris, setBulkGiris] = useState(DEFAULT_GIRIS)
+  const [bulkCikis, setBulkCikis] = useState(DEFAULT_CIKIS)
   const [bulkNeden, setBulkNeden] = useState("")
   const [bulkSaving, setBulkSaving] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ created: number; errors: { personnelId: string; message: string }[] } | null>(null)
@@ -206,8 +212,8 @@ export default function TopluKartOkutamamaPage() {
   // GRI/SELF: herkes girişte önce kendi kaydını görür/girer.
   const [selfPersonnel, setSelfPersonnel] = useState<PickedPersonnel | null>(null)
   const [selfTarih, setSelfTarih] = useState("")
-  const [selfGiris, setSelfGiris] = useState("")
-  const [selfCikis, setSelfCikis] = useState("")
+  const [selfGiris, setSelfGiris] = useState(DEFAULT_GIRIS)
+  const [selfCikis, setSelfCikis] = useState(DEFAULT_CIKIS)
   const [selfNeden, setSelfNeden] = useState("")
   const [selfSaving, setSelfSaving] = useState(false)
   const [selfError, setSelfError] = useState<string | null>(null)
@@ -279,8 +285,8 @@ export default function TopluKartOkutamamaPage() {
         return
       }
       setSelfTarih("")
-      setSelfGiris("")
-      setSelfCikis("")
+      setSelfGiris(DEFAULT_GIRIS)
+      setSelfCikis(DEFAULT_CIKIS)
       setSelfNeden("")
       loadRecords()
     } finally {
@@ -462,8 +468,8 @@ export default function TopluKartOkutamamaPage() {
       setTeamDrafts({})
       setExcludedIds(new Set())
       setBulkTarih("")
-      setBulkGiris("")
-      setBulkCikis("")
+      setBulkGiris(DEFAULT_GIRIS)
+      setBulkCikis(DEFAULT_CIKIS)
       setBulkNeden("")
       loadRecords()
     } finally {
@@ -689,10 +695,10 @@ export default function TopluKartOkutamamaPage() {
         <Input type="date" value={formTarih} onChange={(e) => setFormTarih(e.target.value)} />
       </TableCell>
       <TableCell>
-        <Input type="time" value={formGiris} onChange={(e) => setFormGiris(e.target.value)} />
+        <TimeCombobox value={formGiris} onChange={setFormGiris} />
       </TableCell>
       <TableCell>
-        <Input type="time" value={formCikis} onChange={(e) => setFormCikis(e.target.value)} />
+        <TimeCombobox value={formCikis} onChange={setFormCikis} />
       </TableCell>
       <TableCell>
         <NedenSelect value={formNeden} onChange={setFormNeden} />
@@ -719,10 +725,10 @@ export default function TopluKartOkutamamaPage() {
         <Input type="date" value={formTarih} onChange={(e) => setFormTarih(e.target.value)} />
       </TableCell>
       <TableCell>
-        <Input type="time" value={formGiris} onChange={(e) => setFormGiris(e.target.value)} />
+        <TimeCombobox value={formGiris} onChange={setFormGiris} />
       </TableCell>
       <TableCell>
-        <Input type="time" value={formCikis} onChange={(e) => setFormCikis(e.target.value)} />
+        <TimeCombobox value={formCikis} onChange={setFormCikis} />
       </TableCell>
       <TableCell>
         <NedenSelect value={formNeden} onChange={setFormNeden} />
@@ -867,11 +873,11 @@ export default function TopluKartOkutamamaPage() {
             </div>
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">Giriş Saati</label>
-              <Input type="time" value={selfGiris} onChange={(e) => setSelfGiris(e.target.value)} />
+              <TimeCombobox value={selfGiris} onChange={setSelfGiris} />
             </div>
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">Çıkış Saati</label>
-              <Input type="time" value={selfCikis} onChange={(e) => setSelfCikis(e.target.value)} />
+              <TimeCombobox value={selfCikis} onChange={setSelfCikis} />
             </div>
             <div>
               <label className="mb-1 block text-xs text-muted-foreground">Neden</label>
@@ -1077,11 +1083,11 @@ export default function TopluKartOkutamamaPage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">Giriş Saati</label>
-                <Input type="time" value={bulkGiris} onChange={(e) => setBulkGiris(e.target.value)} />
+                <TimeCombobox value={bulkGiris} onChange={setBulkGiris} />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">Çıkış Saati</label>
-                <Input type="time" value={bulkCikis} onChange={(e) => setBulkCikis(e.target.value)} />
+                <TimeCombobox value={bulkCikis} onChange={setBulkCikis} />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">Neden</label>

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, ArrowLeft, RefreshCw } from 'lucide-react'
+import { AlertCircle, ArrowLeft, RefreshCw, Search } from 'lucide-react'
 import {
   Table,
   TableBody,
@@ -19,10 +19,19 @@ import { OperatorBadge } from '../../_shared'
 interface Props {
   operatorName: string
   isMerkezi: string
+  /** İş merkezi adı (WorkCenterDescription) — başlıkta kod yerine gösterilir. */
+  isMerkeziAdi: string
   isEmirleri: TerminalIsEmri[]
   /** IFS okuma hatası (varsa) — tablo yerine hata kutusu gösterilir. */
   error?: string | null
 }
+
+/** Üst arama kutusunun taradığı alanlar. */
+const SEARCH_FIELDS: ((r: TerminalIsEmri) => string)[] = [
+  (r) => r.isEmriNo,
+  (r) => r.stokKodu,
+  (r) => r.stokAdi,
+]
 
 // Teslim tarihi 'yyyy-MM-dd' → 'dd.MM.yyyy' (tz-güvenli, elle).
 function formatTeslim(iso: string): string {
@@ -60,23 +69,28 @@ const trLower = (s: string) => s.toLocaleLowerCase('tr')
 export function IsEmirleriClient({
   operatorName,
   isMerkezi,
+  isMerkeziAdi,
   isEmirleri,
   error,
 }: Props) {
   const router = useRouter()
+  const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
 
   const filtered = useMemo(() => {
+    const q = trLower(search.trim())
     const active = COLUMNS.map((c) => ({
       col: c,
       q: trLower((filters[c.key] ?? '').trim()),
     })).filter((f) => f.q.length > 0)
 
-    if (active.length === 0) return isEmirleri
-    return isEmirleri.filter((row) =>
-      active.every(({ col, q }) => trLower(col.get(row)).includes(q)),
-    )
-  }, [filters, isEmirleri])
+    return isEmirleri.filter((row) => {
+      // Üst arama: iş emri no / parça kodu / parça adı içinde (herhangi biri).
+      if (q && !SEARCH_FIELDS.some((get) => trLower(get(row)).includes(q))) return false
+      // Kolon filtreleri: hepsi eşleşmeli.
+      return active.every(({ col, q: cq }) => trLower(col.get(row)).includes(cq))
+    })
+  }, [search, filters, isEmirleri])
 
   const setFilter = (key: string, value: string) =>
     setFilters((prev) => ({ ...prev, [key]: value }))
@@ -98,9 +112,10 @@ export function IsEmirleriClient({
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="flex flex-col leading-tight">
-            <span className="text-base font-semibold">İş Emirleri</span>
+            <span className="text-base font-semibold">{isMerkeziAdi || isMerkezi}</span>
             <span className="text-xs text-muted-foreground">
-              {isMerkezi}
+              İş Emirleri
+              {isMerkeziAdi ? ` · ${isMerkezi}` : ''}
               {error ? '' : ` · ${filtered.length} kayıt`}
             </span>
           </div>
@@ -126,7 +141,20 @@ export function IsEmirleriClient({
           </button>
         </div>
       ) : (
-      /* Tablo — geniş, yatay scroll */
+      <>
+      {/* Üst arama — iş emri no / parça kodu / parça adı (dokunmatik: büyük input) */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Ara — iş emri no, parça kodu veya parça adı"
+          aria-label="İş emri ara"
+          className="h-12 min-h-12 w-full rounded-xl border bg-background pl-11 pr-4 text-base outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
+
+      {/* Tablo — geniş, yatay scroll */}
       <div className="overflow-x-auto rounded-lg border">
         <Table className="min-w-[1100px]">
           <TableHeader>
@@ -193,6 +221,7 @@ export function IsEmirleriClient({
           </TableBody>
         </Table>
       </div>
+      </>
       )}
     </div>
   )

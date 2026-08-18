@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { requirePermission } from '@/lib/auth/require-permission'
-import { type TerminalIsEmri } from '@/lib/uretim/terminal-mock'
 import { getShopOrderOperations } from '@/lib/ifs/shop-order-operations'
+import { type IfsShopOrderOperation } from '@/lib/ifs/types'
 import { IsEmirleriClient } from './_client'
 
 export const dynamic = 'force-dynamic'
@@ -30,7 +30,7 @@ export default async function IsEmirleriPage({
   // İş merkezi seçilmeden liste gösterilmez — ana ekrandaki seçime dön.
   if (!workCenter) redirect('/terminal/uretim')
 
-  let isEmirleri: TerminalIsEmri[] = []
+  let isEmirleri: IfsShopOrderOperation[] = []
   let ifsError: string | null = null
   try {
     isEmirleri = await getShopOrderOperations({ workCenter })
@@ -38,10 +38,14 @@ export default async function IsEmirleriPage({
     ifsError = e instanceof Error ? e.message : 'IFS verisi alınamadı'
   }
 
+  // İş merkezi adı (WorkCenterDescription) — kayıtların ilk boş-olmayanından.
+  const isMerkeziAdi = isEmirleri.find((e) => e.isMerkeziAdi)?.isMerkeziAdi ?? ''
+
   return (
     <IsEmirleriClient
       operatorName={session.user.name ?? 'Operatör'}
       isMerkezi={workCenter}
+      isMerkeziAdi={isMerkeziAdi}
       isEmirleri={isEmirleri}
       error={ifsError}
     />

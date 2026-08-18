@@ -2,7 +2,8 @@ export type IfsOperationStatus = 'ISLENEBILIR' | 'BEKLIYOR'
 
 export interface IfsShopOrderOperation {
   id: string
-  isMerkezi: string
+  isMerkezi: string      // WorkCenterNo — iş merkezi kodu
+  isMerkeziAdi: string   // WorkCenterDescription — iş merkezi adı (boş olabilir)
   isEmriNo: string
   operasyon: string
   operasyonNo: number

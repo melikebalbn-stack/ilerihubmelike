@@ -30,6 +30,7 @@ const SELECT_FIELDS = [
   'PartNo',
   'PartDescription',
   'WorkCenterNo',
+  'WorkCenterDescription',
   'RevisedQtyDue',
   'QtyComplete',
   'QtyScrapped',
@@ -50,6 +51,7 @@ interface RawShopOrderOperation {
   PartNo?: string | null
   PartDescription?: string | null
   WorkCenterNo?: string | null
+  WorkCenterDescription?: string | null
   RevisedQtyDue?: number | null
   QtyComplete?: number | null
   QtyScrapped?: number | null
@@ -121,6 +123,7 @@ function toTerminal(r: RawShopOrderOperation): IfsShopOrderOperation {
   return {
     id: `${orderNo}-${operationNo}`,
     isMerkezi: r.WorkCenterNo ?? '',
+    isMerkeziAdi: r.WorkCenterDescription ?? '',
     isEmriNo: orderNo,
     operasyon: r.OperationDescription ?? '',
     operasyonNo: operationNo,

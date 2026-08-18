@@ -1,19 +1,37 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertCircle, ClipboardList, Factory, Home, Plus } from 'lucide-react'
+import { AlertCircle, ClipboardList, Factory, Home, Plus, Search } from 'lucide-react'
 import { OperatorBadge, TERMINAL_ACCENT } from '../_shared'
+
+interface Merkez {
+  kod: string
+  /** WorkCenterDescription — iş merkezi adı (boş olabilir). */
+  ad: string
+  adet: number
+}
 
 interface Props {
   operatorName: string
-  /** Açık iş emri olan iş merkezleri (kod + açık iş adedi). */
-  merkezler: { kod: string; adet: number }[]
+  /** Açık iş emri olan iş merkezleri (kod + ad + açık iş adedi). */
+  merkezler: Merkez[]
   /** URL ?wc — seçili iş merkezi kodu; yoksa seçim ekranı gösterilir. */
   seciliWc: string | null
+  /** Seçili iş merkezinin adı (varsa) — başlıkta kod yerine gösterilir. */
+  seciliWcAd: string
   ifsError: string | null
 }
 
-export function TerminalMenuClient({ operatorName, merkezler, seciliWc, ifsError }: Props) {
+const trLower = (s: string) => s.toLocaleLowerCase('tr')
+
+export function TerminalMenuClient({
+  operatorName,
+  merkezler,
+  seciliWc,
+  seciliWcAd,
+  ifsError,
+}: Props) {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 p-6">
       {/* Ürün kimliği + Hub'a Dön */}
@@ -34,7 +52,7 @@ export function TerminalMenuClient({ operatorName, merkezler, seciliWc, ifsError
       </div>
 
       {seciliWc ? (
-        <TerminalMenu operatorName={operatorName} seciliWc={seciliWc} />
+        <TerminalMenu operatorName={operatorName} seciliWc={seciliWc} seciliWcAd={seciliWcAd} />
       ) : (
         <MerkezSecim operatorName={operatorName} merkezler={merkezler} ifsError={ifsError} />
       )}
@@ -49,9 +67,19 @@ function MerkezSecim({
   ifsError,
 }: {
   operatorName: string
-  merkezler: { kod: string; adet: number }[]
+  merkezler: Merkez[]
   ifsError: string | null
 }) {
+  const [q, setQ] = useState('')
+
+  const filtered = useMemo(() => {
+    const query = trLower(q.trim())
+    if (!query) return merkezler
+    return merkezler.filter(
+      (m) => trLower(m.kod).includes(query) || trLower(m.ad).includes(query),
+    )
+  }, [q, merkezler])
+
   return (
     <>
       <div className="flex items-center justify-between gap-4">
@@ -75,35 +103,69 @@ function MerkezSecim({
           Açık iş emri olan iş merkezi yok.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {merkezler.map((m) => (
-            <Link
-              key={m.kod}
-              href={`/terminal/uretim?wc=${encodeURIComponent(m.kod)}`}
-              className="group flex min-h-[120px] flex-col justify-between rounded-2xl border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
-            >
-              <span
-                className="flex h-12 w-12 items-center justify-center rounded-xl text-white transition-transform group-active:scale-95"
-                style={{ background: TERMINAL_ACCENT }}
-              >
-                <Factory className="h-6 w-6" />
-              </span>
-              <div>
-                <div className="text-lg font-semibold" style={{ color: TERMINAL_ACCENT }}>
-                  {m.kod}
-                </div>
-                <div className="text-sm text-muted-foreground">{m.adet} açık iş emri</div>
-              </div>
-            </Link>
-          ))}
-        </div>
+        <>
+          {/* Arama — kod veya ad (dokunmatik: büyük input) */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="İş merkezi ara — kod veya ad"
+              aria-label="İş merkezi ara"
+              className="h-12 min-h-12 w-full rounded-xl border bg-background pl-11 pr-4 text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+              &quot;{q}&quot; ile eşleşen iş merkezi yok.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((m) => (
+                <Link
+                  key={m.kod}
+                  href={`/terminal/uretim?wc=${encodeURIComponent(m.kod)}`}
+                  className="group flex min-h-[120px] flex-col justify-between rounded-2xl border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
+                >
+                  <span
+                    className="flex h-12 w-12 items-center justify-center rounded-xl text-white transition-transform group-active:scale-95"
+                    style={{ background: TERMINAL_ACCENT }}
+                  >
+                    <Factory className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <div
+                      className="line-clamp-2 text-lg font-semibold leading-tight"
+                      style={{ color: TERMINAL_ACCENT }}
+                    >
+                      {m.ad || m.kod}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {m.ad ? `${m.kod} · ` : ''}
+                      {m.adet} açık iş emri
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </>
   )
 }
 
 // ── Seçili iş merkezi menüsü (?wc varken) ─────────────────────────────────────
-function TerminalMenu({ operatorName, seciliWc }: { operatorName: string; seciliWc: string }) {
+function TerminalMenu({
+  operatorName,
+  seciliWc,
+  seciliWcAd,
+}: {
+  operatorName: string
+  seciliWc: string
+  seciliWcAd: string
+}) {
   return (
     <>
       {/* Üst bar — iş merkezi (sol, değiştir linki) + operatör (sağ) */}
@@ -116,12 +178,12 @@ function TerminalMenu({ operatorName, seciliWc }: { operatorName: string; secili
             <Factory className="h-5 w-5" />
           </span>
           <div className="flex flex-col leading-tight">
-            <span className="text-base font-semibold">{seciliWc}</span>
+            <span className="text-base font-semibold">{seciliWcAd || seciliWc}</span>
             <Link
               href="/terminal/uretim"
               className="text-xs text-muted-foreground underline-offset-2 hover:underline"
             >
-              İş merkezi değiştir
+              {seciliWcAd ? `${seciliWc} · ` : ''}İş merkezi değiştir
             </Link>
           </div>
         </div>

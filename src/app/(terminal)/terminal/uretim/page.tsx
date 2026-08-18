@@ -26,29 +26,36 @@ export default async function UretimTerminalPage({
   const { wc } = await searchParams
   const seciliWc = typeof wc === 'string' && wc.trim() ? wc.trim() : null
 
-  // Açık iş emirlerinin DISTINCT iş merkezleri (açık iş adediyle) — seçim listesi.
-  // Kaynak: IFS ShopOrderOperations (getShopOrderOperations import; DEĞİŞTİRİLMEDİ).
-  // Açık işi olmayan WC gösterilmez. Operasyon verisi WC ADI vermez → kod + adet.
-  let merkezler: { kod: string; adet: number }[] = []
+  // Açık iş emirlerinin DISTINCT iş merkezleri (kod + ad + açık iş adedi) — seçim
+  // listesi. Kaynak: IFS ShopOrderOperations. Açık işi olmayan WC gösterilmez.
+  // Ad = WorkCenterDescription (operasyon kaydından); ilk boş-olmayan değer alınır.
+  let merkezler: { kod: string; ad: string; adet: number }[] = []
   let ifsError: string | null = null
   try {
     const ops = await getShopOrderOperations({})
     const sayac = new Map<string, number>()
+    const adlar = new Map<string, string>()
     for (const o of ops) {
-      if (o.isMerkezi) sayac.set(o.isMerkezi, (sayac.get(o.isMerkezi) ?? 0) + 1)
+      if (!o.isMerkezi) continue
+      sayac.set(o.isMerkezi, (sayac.get(o.isMerkezi) ?? 0) + 1)
+      if (o.isMerkeziAdi && !adlar.get(o.isMerkezi)) adlar.set(o.isMerkezi, o.isMerkeziAdi)
     }
     merkezler = [...sayac.entries()]
-      .map(([kod, adet]) => ({ kod, adet }))
+      .map(([kod, adet]) => ({ kod, ad: adlar.get(kod) ?? '', adet }))
       .sort((a, b) => b.adet - a.adet || a.kod.localeCompare(b.kod, 'tr'))
   } catch (e) {
     ifsError = e instanceof Error ? e.message : 'IFS verisi alınamadı'
   }
+
+  // Seçili WC'nin adı (menü başlığında kod yerine ad göstermek için).
+  const seciliWcAd = seciliWc ? (merkezler.find((m) => m.kod === seciliWc)?.ad ?? '') : ''
 
   return (
     <TerminalMenuClient
       operatorName={session.user.name ?? 'Operatör'}
       merkezler={merkezler}
       seciliWc={seciliWc}
+      seciliWcAd={seciliWcAd}
       ifsError={ifsError}
     />
   )

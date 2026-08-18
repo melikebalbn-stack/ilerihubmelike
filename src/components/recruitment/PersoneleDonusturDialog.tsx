@@ -31,7 +31,16 @@ type Hiyerarsi = {
 type BolumSecenek = { name: string; hiyerarsi: Hiyerarsi; pasifKoltuk: boolean }
 type TcKontrol =
   | { durum: "TEMIZ" }
-  | { durum: "AKTIF_VAR"; personnelId: string; adSoyad: string; sicilNo: string | null; mesaj: string }
+  | {
+      durum: "AKTIF_VAR"
+      personnelId: string
+      adSoyad: string
+      sicilNo: string | null
+      mesaj: string
+      // Sunucu hesaplar (baglamaUygunMu) — client kural yurutmez.
+      baglanabilir?: boolean
+      baglanamamaSebebi?: string
+    }
   | {
       durum: "PASIF_VAR"
       adaylar: { personnelId: string; adSoyad: string; sicilNo: string | null; sonCikis: string | null }[]
@@ -146,6 +155,32 @@ export function PersoneleDonusturDialog({
     (cinsiyetGerekli && !cinsiyet) ||
     (pasifCakisma && !karar)
 
+  // "Mevcut kayda bagla ve kapat" — YENI KAYIT ACMAZ. Govde ayri (islem+personnelId);
+  // donusum alanlarinin hicbiri gonderilmez cunku yeni kart olusturulmuyor.
+  const baglaVeKapat = async () => {
+    if (!veri || veri.tcKontrol.durum !== "AKTIF_VAR") return
+    setGonderiliyor(true)
+    try {
+      const res = await fetch(`/api/recruitment/applications/${applicationId}/personele-donustur`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ islem: "MEVCUDA_BAGLA", personnelId: veri.tcKontrol.personnelId }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(d.error || "Baglama basarisiz")
+        return
+      }
+      toast.success("Basvuru mevcut personel kaydina baglandi ve kapatildi")
+      onOpenChange(false)
+      onDone()
+    } catch {
+      toast.error("Bir hata olustu")
+    } finally {
+      setGonderiliyor(false)
+    }
+  }
+
   const gonder = async () => {
     if (!veri) return
     setGonderiliyor(true)
@@ -209,14 +244,50 @@ export function PersoneleDonusturDialog({
         ) : (
           <div className="space-y-4">
             {/* ── Mükerrer TC ───────────────────────────────────────────── */}
-            {aktifCakisma && (
-              <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Donusum yapilamaz.</strong> {(veri.tcKontrol as { mesaj: string }).mesaj}
-                </span>
-              </div>
-            )}
+            {aktifCakisma && (() => {
+              const tc = veri.tcKontrol as {
+                mesaj: string; baglanabilir?: boolean; baglanamamaSebebi?: string
+                adSoyad: string; sicilNo: string | null
+              }
+              return (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Yeni kayit olusturulamaz.</strong> {tc.mesaj}
+                    </span>
+                  </div>
+                  {/* UCUNCU YOL: aday zaten elle personel listesine eklenmis olabilir; bu
+                      durumda dogru islem yeni kart acmak DEGIL, basvuruyu mevcut kayda
+                      baglayip kapatmaktir. Butonun cikip cikmayacagina SUNUCU karar verir
+                      (tcKontrol.baglanabilir) — pasif personel, zaten bagli kayit, ad
+                      uyusmazligi ve statu kosulu orada denetlenir. */}
+                  {tc.baglanabilir ? (
+                    <div className="mt-3 border-t border-red-200 pt-3">
+                      <p className="text-xs text-red-700">
+                        Bu kisi zaten kayitli: <strong>{tc.adSoyad}</strong>
+                        {tc.sicilNo ? ` (${tc.sicilNo})` : ""}. Basvuruyu bu kayda baglayip
+                        kapatabilirsiniz — yeni personel karti ACILMAZ, mevcut kaydin
+                        alanlarina DOKUNULMAZ.
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-2"
+                        disabled={gonderiliyor}
+                        onClick={baglaVeKapat}
+                      >
+                        {gonderiliyor ? "Baglaniyor..." : "Mevcut kayda bagla ve kapat"}
+                      </Button>
+                    </div>
+                  ) : tc.baglanamamaSebebi ? (
+                    <p className="mt-2 border-t border-red-200 pt-2 text-xs text-red-700">
+                      Mevcut kayda baglama su an mumkun degil: {tc.baglanamamaSebebi}
+                    </p>
+                  ) : null}
+                </div>
+              )
+            })()}
             {pasifCakisma && (
               <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 <div className="flex items-start gap-2">

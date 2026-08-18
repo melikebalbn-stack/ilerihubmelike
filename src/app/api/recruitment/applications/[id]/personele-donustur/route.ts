@@ -14,6 +14,8 @@ import {
   otomatikAlanlar,
   egitimCoz,
   tcKontrol,
+  baglamaUygunMu,
+  mevcutKaydaBagla,
   DonusumError,
   type BasvuruKaynak,
 } from "@/lib/recruitment/personele-donustur";
@@ -137,6 +139,26 @@ export async function GET(
   const egitim = egitimCoz(app.educationHistory, app.educationLevel);
   const tc = await tcKontrol(prisma, oto.tcKimlikNo);
 
+  // Mükerrer TC + AKTİF personel → "mevcut kayda bağla ve kapat" mümkün mü? Kural TEK
+  // KAYNAK (baglamaUygunMu); ekran yalnız bu bayrağa bakar, kendi kuralını yürütmez.
+  if (tc.durum === "AKTIF_VAR") {
+    const p = await prisma.personnel.findUnique({
+      where: { id: tc.personnelId },
+      select: { aktif: true, jobApplicationId: true, adSoyad: true },
+    });
+    const u = p
+      ? baglamaUygunMu({
+          basvuruStatus: app.status,
+          personelAktif: p.aktif,
+          personelJobApplicationId: p.jobApplicationId,
+          personelAdSoyad: p.adSoyad,
+          basvuruAdSoyad: app.fullName,
+        })
+      : ({ uygun: false, sebep: "Personel kaydı bulunamadı" } as const);
+    tc.baglanabilir = u.uygun;
+    if (!u.uygun) tc.baglanamamaSebebi = u.sebep;
+  }
+
   return NextResponse.json({
     basvuru: {
       id: app.id,
@@ -204,6 +226,13 @@ const BodySchema = z.object({
   mukerrerOnaylandi: z.boolean().optional(),
 });
 
+/** "Mevcut kayda bağla ve kapat" gövdesi — dönüşüm alanlarının HİÇBİRİ istenmez;
+ *  yeni kayıt açılmadığı için sicil/yaka/bölüm gibi girdilerin anlamı yok. */
+const BaglaSchema = z.object({
+  islem: z.literal("MEVCUDA_BAGLA"),
+  personnelId: z.string().trim().min(1),
+});
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -217,7 +246,32 @@ export async function POST(
   if (engel) return NextResponse.json({ error: engel }, { status: 403 });
 
   const { id } = await params;
-  const parsed = BodySchema.safeParse(await request.json().catch(() => null));
+  const ham = await request.json().catch(() => null);
+
+  // ── ÜÇÜNCÜ YOL: mevcut (AKTİF) personel kaydına bağla ve başvuruyu kapat ──
+  // Ayrı şema: dönüşüm alanları beklenmez. Guard'lar mevcutKaydaBagla içinde, TEK
+  // TRANSACTION'da ve tx İÇİNDE tekrar doğrulanır.
+  const baglaParsed = BaglaSchema.safeParse(ham);
+  if (baglaParsed.success) {
+    try {
+      const sonuc = await mevcutKaydaBagla({
+        prisma,
+        applicationId: id,
+        personnelId: baglaParsed.data.personnelId,
+        // Oturum VAR: sabit sentinel değil, işlemi yapan kullanıcı yazılır.
+        actorId: session.user.id,
+      });
+      return NextResponse.json(sonuc, { status: 200 });
+    } catch (err) {
+      if (err instanceof DonusumError) {
+        return NextResponse.json({ error: err.message, kod: err.kod }, { status: err.httpStatus });
+      }
+      console.error("[personele-donustur] baglama basarisiz:", err);
+      return NextResponse.json({ error: "Bağlama sırasında hata oluştu" }, { status: 500 });
+    }
+  }
+
+  const parsed = BodySchema.safeParse(ham);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Geçersiz istek gövdesi", detay: parsed.error.flatten() },

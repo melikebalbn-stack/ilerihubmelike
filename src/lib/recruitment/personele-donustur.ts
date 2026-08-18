@@ -238,7 +238,18 @@ export function otomatikAlanlar(app: BasvuruKaynak): OtomatikAlanlar {
 
 export type TcKontrolSonuc =
   | { durum: "TEMIZ" }
-  | { durum: "AKTIF_VAR"; personnelId: string; adSoyad: string; sicilNo: string | null; mesaj: string }
+  | {
+      durum: "AKTIF_VAR";
+      personnelId: string;
+      adSoyad: string;
+      sicilNo: string | null;
+      mesaj: string;
+      /** Faz 6+ — "mevcut kayda bağla ve kapat" bu kayıt için mümkün mü?
+       *  Kural SUNUCUDA (baglamaUygunMu); ekran yalnız bu bayrağa bakar. */
+      baglanabilir?: boolean;
+      /** Uygun değilse sebebi — İV neden butonun çıkmadığını görebilsin. */
+      baglanamamaSebebi?: string;
+    }
   | {
       durum: "PASIF_VAR";
       adaylar: { personnelId: string; adSoyad: string; sicilNo: string | null; sonCikis: Date | null }[];
@@ -602,4 +613,124 @@ export async function personeleDonustur(opts: {
     }
     throw err;
   }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5) MEVCUT KAYDA BAĞLA VE KAPAT  (mükerrer TC'de ÜÇÜNCÜ yol)
+// ─────────────────────────────────────────────────────────────────────────────
+// Gerçek senaryo: İV adayı ZATEN elle personel listesine eklemiş (Excel'den), başvuru
+// akışta açıkta kalmış. Form eskiden yalnız BLOKLUYORDU; bağlama işi iki kez elle SQL ile
+// yapıldı (Uğur Gökdaş 17.08, Cihan Temel 18.08). Bu fonksiyon o işi formun içine alır.
+//
+// YAPILAN: Personnel.jobApplicationId = başvuru · başvuru statüsü ISE_BASLADI · StageLog +1.
+// YAPILMAYAN: yeni Personnel/PersonnelSensitive/EmploymentPeriod YOK; personelin başka
+// HİÇBİR alanı güncellenmez (bölüm/görev/tarih hepsi İV'nin girdiği hâliyle kalır).
+
+/** İsim karşılaştırma normalizasyonu — TR büyük harf + fazla boşluk sadeleştirme.
+ *  Düz toUpperCase() KULLANILMAZ ("i" bozulur). */
+function adNormalize(v: string | null | undefined): string {
+  return (v ?? "").toLocaleUpperCase("tr-TR").replace(/\s+/g, " ").trim();
+}
+
+export type BaglamaUygunluk =
+  | { uygun: true }
+  | { uygun: false; sebep: string };
+
+/**
+ * "Bağla ve kapat" bu (başvuru, personel) çifti için mümkün mü?
+ * TEK KAYNAK — hem GET önizlemesi (buton çizilsin mi) hem POST guard'ı bunu kullanır,
+ * böylece ekranın gördüğü ile sunucunun uyguladığı sapamaz.
+ */
+export function baglamaUygunMu(args: {
+  basvuruStatus: JobApplicationStatus;
+  personelAktif: boolean;
+  personelJobApplicationId: string | null;
+  personelAdSoyad: string;
+  basvuruAdSoyad: string;
+}): BaglamaUygunluk {
+  // PASİF personel bu yoldan GEÇMEZ: onun için "yeniden işe alım" yolu zaten var
+  // (aktif=true + yeni EmploymentPeriod) ve o davranış DEĞİŞMEDİ.
+  if (!args.personelAktif) {
+    return { uygun: false, sebep: "Personel pasif — yeniden işe alım yolu kullanılmalı" };
+  }
+  if (args.personelJobApplicationId) {
+    return { uygun: false, sebep: "Bu personel zaten başka bir başvuruya bağlı" };
+  }
+  // Matristeki MEŞRU kenar: EVRAK_HAZIRLIK → ISE_BASLADI (İK). Başka statüde İV önce
+  // akışı ilerletmeli — veri katmanından matris delinmez.
+  if (!canTransition(args.basvuruStatus, "ISE_BASLADI", "IK")) {
+    return {
+      uygun: false,
+      sebep: `Başvuru "${args.basvuruStatus}" statüsünde; önce Evrak Hazırlık aşamasına alınmalı`,
+    };
+  }
+  // TC doğru ama FARKLI kişi olabilir — ad eşleşmeden bağlanmaz.
+  if (adNormalize(args.personelAdSoyad) !== adNormalize(args.basvuruAdSoyad)) {
+    return { uygun: false, sebep: "TC aynı ama ad farklı, kontrol edin" };
+  }
+  return { uygun: true };
+}
+
+export type BaglamaSonuc = {
+  personnelId: string;
+  sicilNo: string | null;
+  applicationId: string;
+  baglandi: true;
+};
+
+export async function mevcutKaydaBagla(opts: {
+  prisma: PrismaClient;
+  applicationId: string;
+  personnelId: string;
+  actorId: string;
+}): Promise<BaglamaSonuc> {
+  const { prisma, applicationId, personnelId, actorId } = opts;
+  return prisma.$transaction(async (tx) => {
+    const p = await tx.personnel.findUnique({
+      where: { id: personnelId },
+      select: { id: true, sicilNo: true, adSoyad: true, aktif: true, jobApplicationId: true },
+    });
+    if (!p) throw new DonusumError("Personel kaydı bulunamadı.", 404, "PERSONEL_YOK");
+
+    const a = await tx.publicJobApplication.findUnique({
+      where: { id: applicationId },
+      select: { id: true, status: true, fullName: true, tcKimlikNo: true },
+    });
+    if (!a) throw new DonusumError("Başvuru bulunamadı.", 404, "BASVURU_YOK");
+
+    // TC gerçekten aynı mı — istemciden gelen personnelId'ye körü körüne güvenilmez.
+    const s = await tx.personnelSensitive.findUnique({
+      where: { personnelId },
+      select: { tcKimlikNo: true },
+    });
+    const tcP = (s?.tcKimlikNo ?? "").replace(/\s/g, "");
+    const tcA = (a.tcKimlikNo ?? "").replace(/\s/g, "");
+    if (!tcP || !tcA || tcP !== tcA) {
+      throw new DonusumError("TC kimlik numaraları eşleşmiyor.", 409, "TC_ESLESMIYOR");
+    }
+
+    // Uygunluk TEK KAYNAKTAN, tx İÇİNDE tekrar (form açıldıktan sonra durum değişebilir).
+    const u = baglamaUygunMu({
+      basvuruStatus: a.status,
+      personelAktif: p.aktif,
+      personelJobApplicationId: p.jobApplicationId,
+      personelAdSoyad: p.adSoyad,
+      basvuruAdSoyad: a.fullName,
+    });
+    if (!u.uygun) throw new DonusumError(u.sebep, 409, "BAGLAMA_UYGUN_DEGIL");
+
+    await tx.personnel.update({ where: { id: p.id }, data: { jobApplicationId: a.id } });
+    await tx.publicJobApplication.update({ where: { id: a.id }, data: { status: "ISE_BASLADI" } });
+    await tx.publicJobApplicationStageLog.create({
+      data: {
+        applicationId: a.id,
+        fromStatus: a.status,
+        toStatus: "ISE_BASLADI",
+        changedBy: actorId,
+        note: "Personel kaydi daha once olusturulmustu; basvuru mevcut kayda baglandi",
+      },
+    });
+    return { personnelId: p.id, sicilNo: p.sicilNo, applicationId: a.id, baglandi: true as const };
+  });
 }

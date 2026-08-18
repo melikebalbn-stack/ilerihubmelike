@@ -14,7 +14,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 type Istatistik = {
-  kapsam: "SELF" | "GRI" | "FULL"
+  kapsam: "kendi" | "ekip"
+  erisim: "SELF" | "GRI" | "FULL"
   toplamKayit: number
   aylik: { ay: string; label: string; sayi: number }[]
   nedenDagilim: { neden: string; label: string; sayi: number }[]
@@ -45,23 +46,26 @@ function StatKart({ baslik, deger, alt }: { baslik: string; deger: string | numb
   )
 }
 
-export function KpiSection() {
+export function KpiSection({ kapsam }: { kapsam: "kendi" | "ekip" }) {
   const [data, setData] = useState<Istatistik | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let iptal = false
-    fetch("/api/toplu-kart-okutamama/istatistik")
+    setLoading(true)
+    fetch(`/api/toplu-kart-okutamama/istatistik?kapsam=${kapsam}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (!iptal) setData(d) })
       .finally(() => { if (!iptal) setLoading(false) })
     return () => { iptal = true }
-  }, [])
+  }, [kapsam])
 
   if (loading) return <div className="py-6 text-sm text-muted-foreground">İstatistik yükleniyor…</div>
   if (!data) return null
 
-  const kapsamEtiket = data.kapsam === "FULL" ? "Fabrika geneli" : data.kapsam === "GRI" ? "Ekibiniz" : "Kendi kayıtlarınız"
+  // Rozet: Kişisel (kendi) · Ekibiniz/Fabrika geneli (ekip, erişime göre).
+  const kapsamEtiket =
+    kapsam === "kendi" ? "Kişisel" : data.erisim === "FULL" ? "Fabrika geneli" : "Ekibiniz"
   const nedenVar = data.nedenDagilim.some((n) => n.sayi > 0)
 
   return (
@@ -123,7 +127,7 @@ export function KpiSection() {
         </Card>
 
         {/* Bölüm sıralaması — yalnız FULL */}
-        {data.kapsam === "FULL" && data.bolumKirilim.length > 0 && (
+        {data.bolumKirilim.length > 0 && (
           <Card className="lg:col-span-2">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Bölüm sıralaması (en çok kayıt — ilk 12)</CardTitle>

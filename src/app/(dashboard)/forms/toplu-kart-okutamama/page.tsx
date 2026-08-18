@@ -216,7 +216,6 @@ export default function TopluKartOkutamamaPage() {
   const [bolumList, setBolumList] = useState<string[]>([])
   const [bulkAddBolum, setBulkAddBolum] = useState("")
 
-  const [showOldRecords, setShowOldRecords] = useState(false)
 
   // GRI/SELF: herkes girişte önce kendi kaydını görür/girer.
   const [selfPersonnel, setSelfPersonnel] = useState<PickedPersonnel | null>(null)
@@ -320,6 +319,8 @@ export default function TopluKartOkutamamaPage() {
       if (oldStartDate) params.set("startDate", oldStartDate)
       if (oldEndDate) params.set("endDate", oldEndDate)
       if (ivFilter) params.set("ivDurum", ivFilter)
+      // Kapsam sekmeden gelir; sunucu ZORLAR (kendi<=erişim, ekip yalnız yetkiliye).
+      params.set("kapsam", activeTab === "kendim" ? "kendi" : "ekip")
       params.set("sortBy", eskiSortBy)
       params.set("sortOrder", eskiSortOrder)
       params.set("page", String(page))
@@ -340,12 +341,12 @@ export default function TopluKartOkutamamaPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, oldBolum, oldStartDate, oldEndDate, ivFilter, eskiSortBy, eskiSortOrder, page])
+  }, [search, oldBolum, oldStartDate, oldEndDate, ivFilter, eskiSortBy, eskiSortOrder, page, activeTab])
 
   // Filtreler değişince ilk sayfaya dön
   useEffect(() => {
     setPage(1)
-  }, [search, oldBolum, oldStartDate, oldEndDate, ivFilter, eskiSortBy, eskiSortOrder])
+  }, [search, oldBolum, oldStartDate, oldEndDate, ivFilter, eskiSortBy, eskiSortOrder, activeTab])
 
   useEffect(() => {
     if (status === "authenticated") loadRecords()
@@ -777,11 +778,6 @@ export default function TopluKartOkutamamaPage() {
               className="hidden"
               onChange={handleImportFile}
             />
-            {canManageAnyone && (
-              <Button variant="outline" onClick={() => setShowOldRecords((v) => !v)}>
-                {showOldRecords ? "Eski Kayıtları Gizle" : "Eski Kayıtlar"}
-              </Button>
-            )}
             {/* Excel İçe/Dışa Aktar → ⋯ menüsü altına toplandı (sadeleştirme). */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -933,7 +929,7 @@ export default function TopluKartOkutamamaPage() {
           )}
         </div>
             )}
-            <KpiSection />
+            <KpiSection kapsam="kendi" />
           </TabsContent>
 
           {hasEkibim && (
@@ -1025,7 +1021,7 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-            {!showOldRecords && canManageAnyone && (
+            {canManageAnyone && (
         <div className="rounded-md border">
           <div className="border-b bg-muted/40 px-4 py-2 text-sm font-medium">
             Bana Bağlı Personel {visibleTeam.length > 0 && `(${visibleTeam.length})`}
@@ -1231,16 +1227,20 @@ export default function TopluKartOkutamamaPage() {
         </div>
       )}
 
-          <KpiSection />
+          <KpiSection kapsam="ekip" />
           </TabsContent>
           )}
         </Tabs>
       )}
 
-      {((showOldRecords && canManageAnyone) || accessLevel === "GRI" || accessLevel === "SELF") && (
+      {!forbidden && accessLevel && (
         <>
       <h2 className="text-sm font-medium text-muted-foreground">
-        {canManageAnyone ? "Eski Kayıtlar" : "Geçmiş Kayıtlarım"}
+        {activeTab === "kendim"
+          ? "Geçmiş Kayıtlarım"
+          : canManageAnyone
+            ? "Fabrika Kayıtları"
+            : "Ekip Kayıtları"}
       </h2>
 
       <div className="flex flex-wrap items-center gap-2">

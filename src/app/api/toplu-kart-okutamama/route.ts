@@ -64,6 +64,9 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const ivDurum = searchParams.get('ivDurum') // 'onaylandi' | 'bekliyor'
+    // Kapsam SUNUCUDA zorlanır: kendi → yalnız kendi personnelId kayıtları (HERKES,
+    // FULL dahil); ekip → mevcut erişim kapsamı. Client kapsamı GENİŞLETEMEZ.
+    const kapsam = searchParams.get('kapsam') === 'kendi' ? 'kendi' : 'ekip'
     const sortBy = searchParams.get('sortBy')
     const sortOrder = searchParams.get('sortOrder')
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
@@ -74,26 +77,28 @@ export async function GET(request: NextRequest) {
     if (ivDurum === 'onaylandi') where.ivOnaylandi = true
     else if (ivDurum === 'bekliyor') where.ivOnaylandi = false
 
-    // Full (Eski Kayıtlar): onay BEKLIYOR durumundaki kayıtlar (kendi adına giriş
-    // onay akışı) onaylanmadan burada görünmez. GRI/SELF kendi girdiği kayıtları
-    // (kendi + ekibi, durumu ne olursa olsun) her zaman görebilir.
-    // İSTİSNA: 1./2./3. Sorumlu'nun ÜÇÜ DE null olan "sorumsuz" BEKLIYOR kayıtlar
-    // İV kararı için burada görünür (aksi halde onaylanamadan askıda kalırdı).
-    if (access.level === 'FULL') {
-      where.OR = [
-        { onayDurumu: { not: 'BEKLIYOR' } },
-        { onayDurumu: 'BEKLIYOR', approverId: null, approverId2: null, approverId3: null },
-      ]
-    }
+    if (kapsam === 'kendi') {
+      // "Geçmiş Kayıtlarım": YALNIZ kişinin KENDİ kayıtları (personnelId = kendisi),
+      // erişim seviyesinden bağımsız (FULL dahil). Tüm statüler (kendi BEKLIYOR dahil).
+      where.personnelId = access.personnelId ?? '__none__'
+    } else {
+      // ekip: mevcut erişim kapsamı.
+      // Full (Eski Kayıtlar): BEKLIYOR kayıtlar burada görünmez — İSTİSNA: 1./2./3.
+      // Sorumlu'nun ÜÇÜ DE null olan "sorumsuz" BEKLIYOR (İV kararı için) görünür.
+      if (access.level === 'FULL') {
+        where.OR = [
+          { onayDurumu: { not: 'BEKLIYOR' } },
+          { onayDurumu: 'BEKLIYOR', approverId: null, approverId2: null, approverId3: null },
+        ]
+      }
 
-    if (access.level === 'GRI' || access.level === 'SELF') {
-      // Kendi girdiği tüm kayıtlar: kendi adına + ekibi (Personel Yönetimi'nde
-      // 1./2./3. Sorumlusu olduğu kişiler) için girdikleri — bölüm/arama
-      // parametreleri göz ardı edilir.
-      where.createdById = user.id
-    } else if (bolum) {
-      // Bölüm filtresi sadece FULL erişimde anlamlı.
-      where.personnel = { bolum }
+      if (access.level === 'GRI' || access.level === 'SELF') {
+        // Kendi girdiği tüm kayıtlar: kendi adına + ekibi (sorumlusu olduğu kişiler).
+        where.createdById = user.id
+      } else if (bolum) {
+        // Bölüm filtresi sadece FULL erişimde anlamlı.
+        where.personnel = { bolum }
+      }
     }
 
     if (search) {

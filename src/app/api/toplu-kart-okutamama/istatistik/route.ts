@@ -26,7 +26,7 @@ function girisDakika(hhmm: string | null): number | null {
  *   · FULL → tüm fabrika. NONE erişemez.
  * Tek scoped fetch + bellek-içi aggregate (N+1 yok; veri kümesi küçük).
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { user, error } = await requireUser()
     if (error) return error
@@ -36,14 +36,24 @@ export async function GET() {
       return NextResponse.json({ error: 'Bu forma erişim yetkiniz yok' }, { status: 403 })
     }
 
-    // Kapsam: personnelId listesi (FULL'da null → filtre yok).
+    // Kapsam SUNUCUDA zorlanır — client parametresi kapsamı GENİŞLETEMEZ.
+    //   kendi → HERKES yalnız kendi personnelId'si (FULL/GRİ dahil).
+    //   ekip  → mevcut erişim kapsamı (GRİ ekip, FULL fabrika); SELF'in ekibi yok → 403.
+    const kapsam = new URL(request.url).searchParams.get('kapsam') === 'kendi' ? 'kendi' : 'ekip'
+
     let personnelIds: string[] | null = null
-    if (access.level === 'SELF') {
+    if (kapsam === 'kendi') {
       personnelIds = access.personnelId ? [access.personnelId] : ['__none__']
-    } else if (access.level === 'GRI') {
-      const managed = access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
-      personnelIds = [access.personnelId ?? '__none__', ...managed]
-    } // FULL → null (tümü)
+    } else {
+      // ekip
+      if (access.level === 'SELF') {
+        return NextResponse.json({ error: 'Ekip kapsamı için yetkiniz yok' }, { status: 403 })
+      }
+      if (access.level === 'GRI') {
+        const managed = access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
+        personnelIds = [access.personnelId ?? '__none__', ...managed]
+      } // FULL → null (tümü)
+    }
 
     // Son 6 ay penceresi (bu ay dahil): ilk günden başlar.
     const now = new Date()
@@ -113,8 +123,9 @@ export async function GET() {
     }))
     if (nedenYok > 0) nedenDagilim.push({ neden: 'YOK' as KartOkutamamaNedeni, label: 'Belirtilmemiş', sayi: nedenYok })
 
+    // Bölüm kırılımı yalnız FULL + ekip kapsamında anlamlı (kendi = tek kişi).
     const bolumKirilim =
-      access.level === 'FULL'
+      access.level === 'FULL' && kapsam === 'ekip'
         ? [...bolumSayac.entries()]
             .map(([bolum, sayi]) => ({ bolum, sayi }))
             .sort((a, b) => b.sayi - a.sayi)
@@ -122,7 +133,8 @@ export async function GET() {
         : []
 
     return NextResponse.json({
-      kapsam: access.level,
+      kapsam, // 'kendi' | 'ekip'
+      erisim: access.level, // görüntüleme/rozet için erişim seviyesi
       toplamKayit: rows.length,
       aylik: [...aylikMap.values()],
       nedenDagilim,

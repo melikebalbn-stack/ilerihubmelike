@@ -1,30 +1,112 @@
 'use client'
 
 import Link from 'next/link'
-import { ClipboardList, Factory, Plus } from 'lucide-react'
-import type { TerminalIsMerkezi } from '@/lib/uretim/terminal-mock'
+import { AlertCircle, ClipboardList, Factory, Home, Plus } from 'lucide-react'
 import { OperatorBadge, TERMINAL_ACCENT } from '../_shared'
 
 interface Props {
   operatorName: string
-  isMerkezi: TerminalIsMerkezi
+  /** Açık iş emri olan iş merkezleri (kod + açık iş adedi). */
+  merkezler: { kod: string; adet: number }[]
+  /** URL ?wc — seçili iş merkezi kodu; yoksa seçim ekranı gösterilir. */
+  seciliWc: string | null
+  ifsError: string | null
 }
 
-export function TerminalMenuClient({ operatorName, isMerkezi }: Props) {
+export function TerminalMenuClient({ operatorName, merkezler, seciliWc, ifsError }: Props) {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 p-6">
-      {/* Ürün kimliği */}
-      <div className="flex flex-col leading-tight">
-        <span
-          className="text-2xl font-bold tracking-tight"
-          style={{ color: TERMINAL_ACCENT }}
+      {/* Ürün kimliği + Hub'a Dön */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col leading-tight">
+          <span className="text-2xl font-bold tracking-tight" style={{ color: TERMINAL_ACCENT }}>
+            IPRO
+          </span>
+          <span className="text-xs text-muted-foreground">Üretim Takip</span>
+        </div>
+        <Link
+          href="/dashboard"
+          className="inline-flex min-h-12 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition-colors hover:bg-muted active:bg-muted/70"
         >
-          IPRO
-        </span>
-        <span className="text-xs text-muted-foreground">Üretim Takip</span>
+          <Home className="h-5 w-5" />
+          Hub&apos;a Dön
+        </Link>
       </div>
 
-      {/* Üst bar — iş merkezi (sol) + operatör (sağ) */}
+      {seciliWc ? (
+        <TerminalMenu operatorName={operatorName} seciliWc={seciliWc} />
+      ) : (
+        <MerkezSecim operatorName={operatorName} merkezler={merkezler} ifsError={ifsError} />
+      )}
+    </div>
+  )
+}
+
+// ── İş merkezi seçim ekranı (?wc yokken) ──────────────────────────────────────
+function MerkezSecim({
+  operatorName,
+  merkezler,
+  ifsError,
+}: {
+  operatorName: string
+  merkezler: { kod: string; adet: number }[]
+  ifsError: string | null
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col leading-tight">
+          <span className="text-base font-semibold">İş merkezi seçin</span>
+          <span className="text-xs text-muted-foreground">Açık iş emri olan iş merkezleri</span>
+        </div>
+        <OperatorBadge name={operatorName} />
+      </div>
+
+      {ifsError ? (
+        <div className="flex flex-col items-start gap-2 rounded-xl border border-red-300 bg-red-50 p-6 text-red-700">
+          <div className="flex items-center gap-2 font-medium">
+            <AlertCircle className="h-5 w-5" />
+            İş merkezleri IFS&apos;ten alınamadı
+          </div>
+          <p className="max-w-full break-all text-sm text-red-700/90">{ifsError}</p>
+        </div>
+      ) : merkezler.length === 0 ? (
+        <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+          Açık iş emri olan iş merkezi yok.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {merkezler.map((m) => (
+            <Link
+              key={m.kod}
+              href={`/terminal/uretim?wc=${encodeURIComponent(m.kod)}`}
+              className="group flex min-h-[120px] flex-col justify-between rounded-2xl border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
+            >
+              <span
+                className="flex h-12 w-12 items-center justify-center rounded-xl text-white transition-transform group-active:scale-95"
+                style={{ background: TERMINAL_ACCENT }}
+              >
+                <Factory className="h-6 w-6" />
+              </span>
+              <div>
+                <div className="text-lg font-semibold" style={{ color: TERMINAL_ACCENT }}>
+                  {m.kod}
+                </div>
+                <div className="text-sm text-muted-foreground">{m.adet} açık iş emri</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Seçili iş merkezi menüsü (?wc varken) ─────────────────────────────────────
+function TerminalMenu({ operatorName, seciliWc }: { operatorName: string; seciliWc: string }) {
+  return (
+    <>
+      {/* Üst bar — iş merkezi (sol, değiştir linki) + operatör (sağ) */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span
@@ -34,10 +116,13 @@ export function TerminalMenuClient({ operatorName, isMerkezi }: Props) {
             <Factory className="h-5 w-5" />
           </span>
           <div className="flex flex-col leading-tight">
-            <span className="text-base font-semibold">
-              {isMerkezi.kod} — {isMerkezi.ad}
-            </span>
-            <span className="text-xs text-muted-foreground">İş merkezi</span>
+            <span className="text-base font-semibold">{seciliWc}</span>
+            <Link
+              href="/terminal/uretim"
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              İş merkezi değiştir
+            </Link>
           </div>
         </div>
         <OperatorBadge name={operatorName} />
@@ -45,9 +130,8 @@ export function TerminalMenuClient({ operatorName, isMerkezi }: Props) {
 
       {/* Büyük dokunmatik kartlar */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {/* Aktif: İş Emirleri */}
         <Link
-          href="/terminal/uretim/is-emirleri"
+          href={`/terminal/uretim/is-emirleri?wc=${encodeURIComponent(seciliWc)}`}
           className="group flex min-h-[160px] flex-col justify-between rounded-2xl border bg-card p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
           style={{ borderColor: TERMINAL_ACCENT }}
         >
@@ -58,15 +142,10 @@ export function TerminalMenuClient({ operatorName, isMerkezi }: Props) {
             <ClipboardList className="h-7 w-7" />
           </span>
           <div>
-            <div
-              className="text-lg font-semibold"
-              style={{ color: TERMINAL_ACCENT }}
-            >
+            <div className="text-lg font-semibold" style={{ color: TERMINAL_ACCENT }}>
               İş Emirleri
             </div>
-            <div className="text-sm text-muted-foreground">
-              Açık iş emirlerini gör ve bildir
-            </div>
+            <div className="text-sm text-muted-foreground">Açık iş emirlerini gör ve bildir</div>
           </div>
         </Link>
 
@@ -81,16 +160,12 @@ export function TerminalMenuClient({ operatorName, isMerkezi }: Props) {
               <Plus className="h-7 w-7" />
             </span>
             <div>
-              <div className="text-lg font-semibold text-muted-foreground">
-                Sonra eklenecek
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Bu modül ilerleyen aşamada açılacak
-              </div>
+              <div className="text-lg font-semibold text-muted-foreground">Sonra eklenecek</div>
+              <div className="text-sm text-muted-foreground">Bu modül ilerleyen aşamada açılacak</div>
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </>
   )
 }

@@ -94,13 +94,20 @@ export function getTotalInitialStock(form: EnvanterUrunForm) {
   )
 }
 
+export type StokSeviyesi = 'NORMAL' | 'MINIMUM' | 'KRITIK' | 'EKSIK'
+
+/**
+ * Urunun genel stok seviyesi = satirlarin EN KOTUSU.
+ * Onceden yalniz KRITIK/NORMAL donuyordu; MINIMUM ve EKSIK kayboluyordu.
+ * Kotuden iyiye sira: EKSIK > KRITIK > MINIMUM > NORMAL.
+ */
 export function getOverallStockStatus(
   stocks: EnvanterStockCreateInput[],
-): 'NORMAL' | 'KRITIK' | 'PASIF' {
-  if (stocks.some((stock) => stock.durum === 'KRITIK')) {
-    return 'KRITIK'
-  }
-
+): StokSeviyesi {
+  if (stocks.length === 0) return 'EKSIK'
+  if (stocks.some((stock) => stock.durum === 'EKSIK')) return 'EKSIK'
+  if (stocks.some((stock) => stock.durum === 'KRITIK')) return 'KRITIK'
+  if (stocks.some((stock) => stock.durum === 'MINIMUM')) return 'MINIMUM'
   return 'NORMAL'
 }
 

@@ -61,7 +61,8 @@ type EnvanterTab =
   | 'veri-aktarimi'
   | 'raporlar'
 
-type UrunDurumu = 'NORMAL' | 'KRITIK' | 'PASIF'
+type UrunDurumu = 'AKTIF' | 'PASIF' | 'ARSIV'
+type StokSeviyesi = 'NORMAL' | 'MINIMUM' | 'KRITIK' | 'EKSIK'
 
 type DemoUrun = {
   kod: string
@@ -72,7 +73,7 @@ type DemoUrun = {
   mevcut: number
   min: number
   kritik: number
-  durum: UrunDurumu
+  durum: StokSeviyesi
 }
 
 type StokSatiri = {
@@ -453,7 +454,7 @@ function DashboardContent({
 
   const toplamUrun = urunler.length
   const toplamStok = urunler.reduce((total, urun) => total + urun.mevcut, 0)
-  const kritikUrun = urunler.filter((urun) => urun.durum === 'KRITIK').length
+  const kritikUrun = urunler.filter((urun) => urun.stokSeviyesi === 'KRITIK').length
   const eksikUrun = urunler.filter((urun) => urun.mevcut === 0).length
 
   if (loading) {
@@ -633,18 +634,25 @@ function UrunYonetimi({
 }) {
   const [search, setSearch] = useState('')
   const [kategoriFiltre, setKategoriFiltre] = useState('')
+  // Durum ve stok seviyesi AYRI filtreler; ikisi de SUNUCUDA uygulanir.
   const [durumFiltre, setDurumFiltre] = useState('')
+  const [stokFiltre, setStokFiltre] = useState('')
   const [urunler, setUrunler] = useState<EnvanterUrunListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedUrunId, setSelectedUrunId] = useState<string | null>(null)
   const [bedenTipiSaving, setBedenTipiSaving] = useState<Record<string, boolean>>({})
   const [bedenTipiHata, setBedenTipiHata] = useState<Record<string, string>>({})
 
-  async function loadUrunler() {
+  async function loadUrunler(durum = durumFiltre, stok = stokFiltre) {
   setLoading(true)
 
   try {
-    const response = await fetch('/api/envanter/urunler')
+    const qs = new URLSearchParams()
+    if (durum) qs.set('durum', durum)
+    if (stok) qs.set('stokSeviyesi', stok)
+    const response = await fetch(
+      `/api/envanter/urunler${qs.toString() ? `?${qs.toString()}` : ''}`,
+    )
     const result = await response.json()
 
     if (result.ok) {
@@ -658,15 +666,16 @@ function UrunYonetimi({
 }
 
 useEffect(() => {
-  loadUrunler()
+  loadUrunler(durumFiltre, stokFiltre)
 
-  const handler = () => loadUrunler()
+  const handler = () => loadUrunler(durumFiltre, stokFiltre)
   window.addEventListener('envanter-urun-kaydedildi', handler)
 
   return () => {
     window.removeEventListener('envanter-urun-kaydedildi', handler)
   }
-}, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [durumFiltre, stokFiltre])
 
 // Kategori seçenekleri sabit liste değil, listedeki ürünlerden türetilir.
 const kategoriSecenekleri = useMemo<string[]>(() => {
@@ -679,7 +688,7 @@ const filtered = useMemo<EnvanterUrunListItem[]>(() => {
 
   return urunler.filter((urun) => {
     if (kategoriFiltre && urun.kategori !== kategoriFiltre) return false
-    if (durumFiltre && urun.durum !== durumFiltre) return false
+    // durum + stokSeviyesi SUNUCUDA suzuldu; burada tekrar suzulmez.
     if (value) {
       const hit = [urun.kod, urun.ad, urun.kategori, urun.tip]
         .join(' ')
@@ -689,7 +698,7 @@ const filtered = useMemo<EnvanterUrunListItem[]>(() => {
     }
     return true
   })
-}, [search, kategoriFiltre, durumFiltre, urunler])
+}, [search, kategoriFiltre, urunler])
 
 async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
   setBedenTipiSaving((prev) => ({ ...prev, [urunId]: true }))
@@ -774,13 +783,24 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
             onChange={(e) => setDurumFiltre(e.target.value)}
             className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
           >
-            {/* Ürün listesinde durum yalnız NORMAL/KRITIK/PASIF olabilir
-                (service.ts → getOverallStockStatus); MINIMUM/EKSIK stok satırı
-                seviyesinde kalır, Tüm Stoklar tablosundan filtrelenir. */}
+            {/* Ürünün KENDİ durumu (EnvanterUrun.durum). Stok seviyesi ayrı filtrede. */}
             <option value="">Tüm Durumlar</option>
-            <option value="NORMAL">Normal</option>
-            <option value="KRITIK">Kritik</option>
+            <option value="AKTIF">Aktif</option>
             <option value="PASIF">Pasif</option>
+            <option value="ARSIV">Arşiv</option>
+          </select>
+
+          <select
+            value={stokFiltre}
+            onChange={(e) => setStokFiltre(e.target.value)}
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+          >
+            {/* Stok satırlarından türetilen seviye (EnvanterStok.durum en kötüsü). */}
+            <option value="">Tüm Stok Seviyeleri</option>
+            <option value="NORMAL">Normal</option>
+            <option value="MINIMUM">Minimum</option>
+            <option value="KRITIK">Kritik</option>
+            <option value="EKSIK">Eksik</option>
           </select>
         </div>
       </div>
@@ -798,6 +818,7 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
               <th className="px-4 py-3 text-right">Mevcut</th>
               <th className="px-4 py-3 text-right">Min.</th>
               <th className="px-4 py-3">Durum</th>
+              <th className="px-4 py-3">Stok</th>
               <th className="px-4 py-3 text-right">İşlem</th>
             </tr>
           </thead>
@@ -849,6 +870,9 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
                 <td className="px-4 py-3 text-right">{urun.min}</td>
                 <td className="px-4 py-3">
                   <DurumBadge durum={urun.durum} />
+                </td>
+                <td className="px-4 py-3">
+                  <StokSeviyesiBadge seviye={urun.stokSeviyesi} />
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button
@@ -912,6 +936,8 @@ function YeniUrunWizard({
   const [saveError, setSaveError] = useState('')
   const [alanUyarilari, setAlanUyarilari] =
     useState<UrunAlanUyarilari>(BOS_UYARILAR)
+  // Kategori ekranindaki `editDurum` deseninin aynisi (bkz. ParametrelerYonetimi).
+  const [editDurum, setEditDurum] = useState<UrunDurumu>('AKTIF')
   const [urunYukleniyor, setUrunYukleniyor] = useState(false)
 
   // Uyarilar YALNIZ duzenleme modunda ve yalniz sunucu gonderdiyse gosterilir.
@@ -1024,6 +1050,7 @@ function YeniUrunWizard({
             ? []
             : String(v).split(',').map((x) => x.trim()).filter(Boolean)
         setAlanUyarilari({ ...BOS_UYARILAR, ...(u.alanUyarilari ?? {}) })
+        setEditDurum((u.durum as UrunDurumu) ?? 'AKTIF')
         setUrunForm((mevcut) => ({
           ...mevcut,
           kod: metin(u.kod),
@@ -1243,6 +1270,7 @@ async function handleSave() {
           atamaTipi: urunForm.atamaTipi,
           tahminiDagitim: urunForm.tahminiDagitim,
           sonrakiDagitimTarihi: urunForm.sonrakiDagitimTarihi,
+          durum: editDurum,
         }
       : {
           ...urunForm,
@@ -1396,6 +1424,24 @@ async function handleSave() {
                 placeholder="Opsiyonel"
                 onChange={(value) => updateForm('barkod', value)}
               />
+
+              {duzenlemeModu && (
+                <FormSelect
+                  label="Durum"
+                  value={editDurum}
+                  onChange={(value) => setEditDurum(value as UrunDurumu)}
+                  options={[
+                    { value: 'AKTIF', label: 'Aktif' },
+                    { value: 'PASIF', label: 'Pasif' },
+                    { value: 'ARSIV', label: 'Arşiv' },
+                  ]}
+                  bilgiNotu={
+                    editDurum === 'AKTIF'
+                      ? null
+                      : 'Pasif/arşiv ürün listede görünmeye devam eder; zimmet ve stok hareketi hâlâ girilebilir, yalnız satın alma talebi kalemlerinde seçilemez.'
+                  }
+                />
+              )}
 
               <div className="col-span-2">
                 <label className="mb-2 block text-sm font-medium">
@@ -2649,26 +2695,63 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Urunun KENDI durumu. Kategori ekranindaki rozet deseniyle ayni
+// (bkz. ParametrelerYonetimi kategori tablosu: Pasif / Arsiv / Aktif).
 function DurumBadge({ durum }: { durum: UrunDurumu }) {
-  if (durum === 'KRITIK') {
+  if (durum === 'PASIF') {
     return (
-      <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
-        Kritik
+      <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600">
+        Pasif
       </span>
     )
   }
 
-  if (durum === 'PASIF') {
+  if (durum === 'ARSIV') {
     return (
-      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-        Pasif
+      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+        Arşiv
       </span>
     )
   }
 
   return (
     <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-      Normal
+      Aktif
+    </span>
+  )
+}
+
+// Pasif/arsiv urun secildiginde gosterilen NOTR bilgi kutusu.
+// ENGELLEME DEGIL: pasif urune zimmet ve stok hareketi girilebilir.
+function PasifUrunUyarisi({
+  urun,
+  islem,
+}: {
+  urun: EnvanterUrunListItem | undefined
+  islem: 'zimmet' | 'stok'
+}) {
+  if (!urun || urun.durum === 'AKTIF') return null
+  const durumMetni = urun.durum === 'PASIF' ? 'pasif' : 'arşiv'
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+      Bu ürün <strong>{durumMetni}</strong> durumda. Yine de{' '}
+      {islem === 'zimmet' ? 'zimmet verebilirsiniz' : 'stok hareketi girebilirsiniz'}.
+    </div>
+  )
+}
+
+// Stok satirlarindan turetilen seviye — urun durumundan BAGIMSIZ.
+function StokSeviyesiBadge({ seviye }: { seviye: StokSeviyesi }) {
+  const stil: Record<StokSeviyesi, { sinif: string; etiket: string }> = {
+    EKSIK: { sinif: 'bg-rose-100 text-rose-800', etiket: 'Eksik' },
+    KRITIK: { sinif: 'bg-rose-50 text-rose-700', etiket: 'Kritik' },
+    MINIMUM: { sinif: 'bg-amber-50 text-amber-700', etiket: 'Minimum' },
+    NORMAL: { sinif: 'bg-emerald-50 text-emerald-700', etiket: 'Normal' },
+  }
+  const s = stil[seviye] ?? stil.NORMAL
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${s.sinif}`}>
+      {s.etiket}
     </span>
   )
 }
@@ -2723,6 +2806,8 @@ function UrunDetayModal({
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [silSaving, setSilSaving] = useState(false)
+  const [durumSaving, setDurumSaving] = useState(false)
+  const [durumHata, setDurumHata] = useState('')
   const [duzenlemeAcik, setDuzenlemeAcik] = useState(false)
 
   // Madde 3 — kategori değiştirme
@@ -3068,6 +3153,33 @@ function UrunDetayModal({
     }
   }, [urunId, refreshKey])
 
+  // Durum degistirme mevcut PATCH ucunu kullanir — yeni uc yok.
+  // Sil butonunun DELETE davranisi AYNEN duruyor, buna dokunulmadi.
+  async function handleDurumDegistir() {
+    if (!urun) return
+    const yeniDurum = urun.durum === 'AKTIF' ? 'PASIF' : 'AKTIF'
+    setDurumSaving(true)
+    setDurumHata('')
+    try {
+      const res = await fetch(`/api/envanter/urunler/${urunId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durum: yeniDurum }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        setDurumHata(json.message || 'Durum değiştirilemedi.')
+        return
+      }
+      window.dispatchEvent(new Event('envanter-urun-kaydedildi'))
+      setRefreshKey((k) => k + 1)
+    } catch {
+      setDurumHata('Durum değiştirilemedi.')
+    } finally {
+      setDurumSaving(false)
+    }
+  }
+
   async function handleUrunSil() {
     if (!urun) return
     if (
@@ -3107,6 +3219,25 @@ function UrunDetayModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {urun && (
+              <button
+                type="button"
+                onClick={handleDurumDegistir}
+                disabled={durumSaving}
+                className={[
+                  'rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-60',
+                  urun.durum === 'AKTIF'
+                    ? 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                    : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+                ].join(' ')}
+              >
+                {durumSaving
+                  ? 'Kaydediliyor...'
+                  : urun.durum === 'AKTIF'
+                    ? 'Pasifleştir'
+                    : 'Aktifleştir'}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setDuzenlemeAcik(true)}
@@ -3144,6 +3275,19 @@ function UrunDetayModal({
         )}
 
         <div className="space-y-6 p-6">
+          {durumHata && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              {durumHata}
+            </div>
+          )}
+
+          {urun && urun.durum !== 'AKTIF' && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              Bu ürün <strong>{urun.durum === 'PASIF' ? 'pasif' : 'arşiv'}</strong> durumda.
+              Yeniden kullanıma almak için yukarıdaki “Aktifleştir” düğmesini kullanın.
+            </div>
+          )}
+
           {loading && (
             <div className="rounded-2xl border bg-slate-50 p-6 text-sm text-slate-600">
               Ürün detayı yükleniyor...
@@ -3751,6 +3895,12 @@ function StokYonetimi() {
                 </option>
               ))}
             </select>
+            <div className="mt-2">
+              <PasifUrunUyarisi
+                urun={urunler.find((u) => u.id === selectedUrunId)}
+                islem="stok"
+              />
+            </div>
           </div>
 
           {loading && (
@@ -4185,6 +4335,12 @@ function PersonelZimmeti() {
                   onChange={setSelectedUrun}
                   placeholder="Ürün seçiniz"
                 />
+                <div className="mt-2">
+                  <PasifUrunUyarisi
+                    urun={urunler.find((u) => u.id === selectedUrun)}
+                    islem="zimmet"
+                  />
+                </div>
               </div>
 
               {selectedUrun && (

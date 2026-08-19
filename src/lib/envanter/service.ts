@@ -130,7 +130,11 @@ function mapUrunToListItem(urun: {
     mevcut,
     min: minDegerler.length > 0 ? Math.min(...minDegerler) : 0,
     kritik: kritikDegerler.length > 0 ? Math.min(...kritikDegerler) : 0,
-    durum: urun.durum === 'PASIF' ? 'PASIF' : stokDurum,
+    // Urun durumu ile stok seviyesi AYRI alanlar — tek hucrede iki anlam yok.
+    durum: (urun.durum === 'PASIF' || urun.durum === 'ARSIV'
+      ? urun.durum
+      : 'AKTIF') as 'AKTIF' | 'PASIF' | 'ARSIV',
+    stokSeviyesi: stokDurum,
     varyantSayisi: urun.varyantlar.length,
     varyantOzeti: buildVaryantOzeti(urun.varyantTipi, urun.varyantlar), // Faz 2
   }
@@ -154,8 +158,14 @@ function buildVaryantOzeti(
   return parcalar.join(' | ')
 }
 
-export async function listEnvanterUrunler(): Promise<EnvanterUrunListItem[]> {
+export async function listEnvanterUrunler(filtre?: {
+  /** EnvanterUrun.durum — AKTIF | PASIF | ARSIV. Bos ise TUMU. */
+  durum?: string | null
+  /** Turetilmis stok seviyesi — NORMAL | MINIMUM | KRITIK | EKSIK. Bos ise TUMU. */
+  stokSeviyesi?: string | null
+}): Promise<EnvanterUrunListItem[]> {
   const urunler = await prisma.envanterUrun.findMany({
+    where: filtre?.durum ? { durum: filtre.durum as never } : undefined,
     orderBy: {
       createdAt: 'desc',
     },
@@ -179,7 +189,13 @@ export async function listEnvanterUrunler(): Promise<EnvanterUrunListItem[]> {
     },
   })
 
-  return urunler.map(mapUrunToListItem)
+  const liste = urunler.map(mapUrunToListItem)
+
+  // Stok seviyesi turetilmis alan; Prisma where'inde suzulemez, esleme sonrasi
+  // ama YINE SUNUCUDA suzulur — ekrana gelen liste = gosterilecek liste.
+  return filtre?.stokSeviyesi
+    ? liste.filter((u) => u.stokSeviyesi === filtre.stokSeviyesi)
+    : liste
 }
 
 export async function createEnvanterUrun(form: EnvanterUrunForm, actorId?: string, actorAd?: string) {
@@ -925,6 +941,30 @@ export async function updateEnvanterUrun(
         : {}),
     },
   })
+
+  // Aktiflestirme, pasiflestirmenin aynasi olsun diye AYRI bir iz birakir
+  // (URUN_PASIFLESTIR nasil yaziliyorsa oyle). Genel URUN_GUNCELLE izi de kalir.
+  const durumDegisimi = degisiklikler.durum
+  if (durumDegisimi && durumDegisimi.sonra === 'AKTIF') {
+    await logEnvanterIslem({
+      actorId,
+      actorAd,
+      islemTipi: 'URUN_AKTIFLESTIR',
+      hedefTip: 'EnvanterUrun',
+      hedefId: urunId,
+      detay: {
+        kod: urun.kod,
+        ad: urun.ad,
+        aktorAd: actorAd,
+        oncekiDurum: durumDegisimi.once,
+        gecmisSayilari: sayilar,
+        not:
+          `${hareketSayisi} stok hareketi, ${zimmetSayisi} zimmet kaydı, ` +
+          `${varyantSayisi} varyant, ${stokSayisi} stok satırı olan ürün ` +
+          `${String(durumDegisimi.once)} durumundan AKTIF'e alındı`,
+      },
+    })
+  }
 
   return { urun, degisiklikler, degisiklikVar: true }
 }

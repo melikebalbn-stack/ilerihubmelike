@@ -6,18 +6,23 @@ import {
 } from '@/lib/envanter/service'
 import type { EnvanterUrunForm } from '@/types/envanter'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const { session, error } = await requireSession()
   if (error) return error
   if (!session.user.permissions?.includes('envanter.view')) {
     return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
   }
   try {
-    const data = await listEnvanterUrunler()
+    // Filtreler SUNUCUDA uygulanir; donen liste = ekranda gosterilecek liste,
+    // boylece toplam sayi ile tablo icerigi hep tutarli olur.
+    const durum = request.nextUrl.searchParams.get('durum')
+    const stokSeviyesi = request.nextUrl.searchParams.get('stokSeviyesi')
+    const data = await listEnvanterUrunler({ durum, stokSeviyesi })
 
     return NextResponse.json({
       ok: true,
       data,
+      toplam: data.length,
     })
   } catch (error) {
     console.error('Envanter ürün listeleme hatası:', error)

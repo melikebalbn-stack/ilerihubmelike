@@ -87,7 +87,10 @@ export type EnvanterUrunListItem = {
   mevcut: number
   min: number
   kritik: number
-  durum: 'NORMAL' | 'KRITIK' | 'PASIF'
+  /** Urunun KENDI durumu (EnvanterUrun.durum). Stok seviyesiyle karistirilmaz. */
+  durum: 'AKTIF' | 'PASIF' | 'ARSIV'
+  /** Stok satirlarindan turetilen seviye (EnvanterStok.durum'un en kotusu). */
+  stokSeviyesi: 'NORMAL' | 'MINIMUM' | 'KRITIK' | 'EKSIK'
   varyantSayisi: number
   varyantOzeti: string // Faz 2 — varyant kısa özeti (liste görünümü)
 }
@@ -99,6 +102,8 @@ export type EnvanterUrunDetail = {
   kategori: string | null
   tip: string
   olcuBirimi: string
+  /** Urunun KENDI durumu — stok seviyesiyle karistirilmaz. */
+  durum: 'AKTIF' | 'PASIF' | 'ARSIV'
   barkod: string | null
   aciklama: string | null
   tedarikci: string | null

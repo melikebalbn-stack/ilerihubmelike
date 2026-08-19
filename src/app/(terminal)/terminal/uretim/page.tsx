@@ -1,5 +1,5 @@
 import { requirePermission } from '@/lib/auth/require-permission'
-import { getShopOrderOperations } from '@/lib/ifs/shop-order-operations'
+import { getWorkCenterDepartments } from '@/lib/ifs/work-center-departments'
 import { TerminalMenuClient } from './_client'
 
 export const dynamic = 'force-dynamic'
@@ -7,12 +7,13 @@ export const dynamic = 'force-dynamic'
 export const metadata = { title: 'IPRO' }
 
 // Üretim Terminali — ana menü (T1). Guard geçici: /uretim/bildirim ile aynı
-// admin.system.manage kontrolü (ayrı iş). İş merkezi ARTIK sabit değil: operatör
-// açık iş emri olan iş merkezlerinden birini seçer (?wc query ile taşınır).
+// admin.system.manage kontrolü (ayrı iş). İlk ekran ARTIK bölüm (departman) seçimi:
+// operatör IFS bölümlerinden birini seçer (?dept query ile taşınır). Alt akış
+// (tezgah → iş emri) ayrı iş — bu ekran yalnız bölüm listesini gösterir.
 export default async function UretimTerminalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ wc?: string }>
+  searchParams: Promise<{ dept?: string }>
 }) {
   const { session, error } = await requirePermission('admin.system.manage')
   if (error) {
@@ -23,39 +24,30 @@ export default async function UretimTerminalPage({
     )
   }
 
-  const { wc } = await searchParams
-  const seciliWc = typeof wc === 'string' && wc.trim() ? wc.trim() : null
+  const { dept } = await searchParams
+  const seciliDept = typeof dept === 'string' && dept.trim() ? dept.trim() : null
 
-  // Açık iş emirlerinin DISTINCT iş merkezleri (kod + ad + açık iş adedi) — seçim
-  // listesi. Kaynak: IFS ShopOrderOperations. Açık işi olmayan WC gösterilmez.
-  // Ad = WorkCenterDescription (operasyon kaydından); ilk boş-olmayan değer alınır.
-  let merkezler: { kod: string; ad: string; adet: number }[] = []
+  // IFS "Bakım Atölyesi Bölümleri" — site (ILER2) için tüm bölümler (10 kayıt).
+  // Kaynak: WorkCenterHandling.svc/Reference_WorkCenterDepartment. Filtreleme yok.
+  let departmanlar: { kod: string; ad: string }[] = []
   let ifsError: string | null = null
   try {
-    const ops = await getShopOrderOperations({})
-    const sayac = new Map<string, number>()
-    const adlar = new Map<string, string>()
-    for (const o of ops) {
-      if (!o.isMerkezi) continue
-      sayac.set(o.isMerkezi, (sayac.get(o.isMerkezi) ?? 0) + 1)
-      if (o.isMerkeziAdi && !adlar.get(o.isMerkezi)) adlar.set(o.isMerkezi, o.isMerkeziAdi)
-    }
-    merkezler = [...sayac.entries()]
-      .map(([kod, adet]) => ({ kod, ad: adlar.get(kod) ?? '', adet }))
-      .sort((a, b) => b.adet - a.adet || a.kod.localeCompare(b.kod, 'tr'))
+    departmanlar = await getWorkCenterDepartments()
   } catch (e) {
     ifsError = e instanceof Error ? e.message : 'IFS verisi alınamadı'
   }
 
-  // Seçili WC'nin adı (menü başlığında kod yerine ad göstermek için).
-  const seciliWcAd = seciliWc ? (merkezler.find((m) => m.kod === seciliWc)?.ad ?? '') : ''
+  // Seçili bölümün adı (yer tutucu başlığında kod yerine ad göstermek için).
+  const seciliDeptAd = seciliDept
+    ? (departmanlar.find((d) => d.kod === seciliDept)?.ad ?? '')
+    : ''
 
   return (
     <TerminalMenuClient
       operatorName={session.user.name ?? 'Operatör'}
-      merkezler={merkezler}
-      seciliWc={seciliWc}
-      seciliWcAd={seciliWcAd}
+      departmanlar={departmanlar}
+      seciliDept={seciliDept}
+      seciliDeptAd={seciliDeptAd}
       ifsError={ifsError}
     />
   )

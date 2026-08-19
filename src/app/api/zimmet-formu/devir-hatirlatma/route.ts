@@ -1,41 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requirePermission } from '@/lib/auth/require-permission'
 import { ZimmetOnayDurumu, ZimmetKaynak } from '@/generated/prisma'
 import { dispatchZimmetDevirOnayIstegi } from '@/lib/zimmet/notifications'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * POST /api/zimmet-formu/devir-bildirim-gonder
- *
- * Onay bekleyen devir kayıtlarını sahibe göre gruplar ve KİŞİ BAŞINA TEK bildirim
- * gönderir; her gruba `sonBildirimTarihi=now` damgalar (PR-5b hatırlatma cron'u
- * bunu kullanır). Yalnız zimmet-formu.approve yetkisi.
- *
- * Body (opsiyonel): { userIds?: string[] } — verilirse SADECE o kişilere gönderir
- * (pilot/kademeli açılım); verilmezse tüm kişiler.
- */
-export async function POST(request: NextRequest) {
-  const { error } = await requirePermission('zimmet-formu.approve')
-  if (error) return error
+const HATIRLATMA_ESIGI_MS = 7 * 24 * 60 * 60 * 1000 // 7 gün
 
-  let userIds: string[] | null = null
-  try {
-    const body = (await request.json()) as { userIds?: unknown }
-    if (Array.isArray(body?.userIds)) {
-      userIds = body.userIds.filter((x): x is string => typeof x === 'string')
-    }
-  } catch {
-    // gövde yok/boş → tüm kişiler (userIds null kalır)
+/**
+ * GET /api/zimmet-formu/devir-hatirlatma  (cron ucu, x-cron-secret ile auth)
+ *
+ * İlk bildirimden bu yana 7 gün geçmiş ama hâlâ ONAY_BEKLIYOR olan devir
+ * kayıtlarının sahiplerine haftalık hatırlatma. sonBildirimTarihi NULL olanlar
+ * ATLANIR (hiç bildirilmemiş — ilk gönderim manuel, devir-bildirim-gonder ile).
+ * Kişi başına TEK hatırlatma; sonBildirimTarihi=now damgalanır.
+ */
+export async function GET(request: NextRequest) {
+  const secret = request.headers.get('x-cron-secret')
+  if (!secret || secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  const esik = new Date(Date.now() - HATIRLATMA_ESIGI_MS)
 
   const kayitlar = await prisma.zimmetFormu.findMany({
     where: {
       kaynak: ZimmetKaynak.SYTELINE_DEVIR,
       durum: ZimmetOnayDurumu.ONAY_BEKLIYOR,
       silindiMi: false,
-      ...(userIds ? { zimmetSahibiId: { in: userIds } } : {}),
+      // lt otomatik olarak NULL'ları hariç tutar → hiç bildirilmemişler atlanır.
+      sonBildirimTarihi: { lt: esik },
     },
     select: {
       id: true,
@@ -47,7 +41,7 @@ export async function POST(request: NextRequest) {
   // zimmetSahibiId'ye göre grupla.
   const gruplar = new Map<string, { kullanici: { id: string; email: string; name: string | null }; ids: string[] }>()
   for (const z of kayitlar) {
-    if (!z.zimmetSahibi?.email) continue // bildirilecek gerçek kullanıcı yok — atla
+    if (!z.zimmetSahibi?.email) continue
     const g = gruplar.get(z.zimmetSahibiId)
     if (g) {
       g.ids.push(z.id)
@@ -60,17 +54,11 @@ export async function POST(request: NextRequest) {
   }
 
   const simdi = new Date()
-  let kisi = 0
+  let hatirlatilanKisi = 0
   let kayit = 0
-  const gonderilenler: { userId: string; ad: string; kayitSayisi: number }[] = []
   for (const g of gruplar.values()) {
-    kisi += 1
+    hatirlatilanKisi += 1
     kayit += g.ids.length
-    gonderilenler.push({
-      userId: g.kullanici.id,
-      ad: g.kullanici.name ?? g.kullanici.email,
-      kayitSayisi: g.ids.length,
-    })
     void dispatchZimmetDevirOnayIstegi({ kullanici: g.kullanici, kayitSayisi: g.ids.length }).catch(console.error)
     await prisma.zimmetFormu.updateMany({
       where: { id: { in: g.ids } },
@@ -78,5 +66,5 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  return NextResponse.json({ kisi, kayit, gonderilenler })
+  return NextResponse.json({ hatirlatilanKisi, kayit })
 }

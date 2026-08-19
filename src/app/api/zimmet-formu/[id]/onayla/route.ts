@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { ZimmetOnayDurumu } from '@/generated/prisma'
+import { ZimmetOnayDurumu, ZimmetKaynak } from '@/generated/prisma'
 import { dispatchZimmetSahibiImzaIstegi } from '@/lib/zimmet/notifications'
 import { requirePermission } from '@/lib/auth/require-permission'
 
@@ -28,7 +28,7 @@ export async function PATCH(
 
     const mevcut = await prisma.zimmetFormu.findUnique({
       where: { id },
-      select: { id: true, durum: true, zimmetSahibiId: true },
+      select: { id: true, durum: true, zimmetSahibiId: true, kaynak: true },
     })
     if (!mevcut) {
       return NextResponse.json({ error: 'Zimmet formu bulunamadı' }, { status: 404 })
@@ -40,6 +40,14 @@ export async function PATCH(
     // (REDDEDILDI de dahil — ikisi de self-approval sayılır).
     if (mevcut.zimmetSahibiId === user.id) {
       return NextResponse.json({ error: 'Kendi zimmet kaydınızı onaylayamazsınız.' }, { status: 403 })
+    }
+    // Devir kayıtları bu uçtan onaylanamaz — yalnız /devir-onay üzerinden, SAHİBİ
+    // tarafından (kısmi onay + red gerekçesi akışı) işlenir.
+    if (mevcut.kaynak === ZimmetKaynak.SYTELINE_DEVIR) {
+      return NextResponse.json(
+        { error: 'Devir kayıtları sahibi tarafından onaylanır; bu uçtan onaylanamaz.' },
+        { status: 409 },
+      )
     }
 
     const guncellendi = await prisma.zimmetFormu.update({

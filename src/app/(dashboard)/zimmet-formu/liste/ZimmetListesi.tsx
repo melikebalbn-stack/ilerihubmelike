@@ -272,7 +272,7 @@ function eslesirFiltre(z: ZimmetItem, filtre: FiltreKey): boolean {
 
 // ── Sıralama ─────────────────────────────────────────────────────────────────
 
-type SortField = 'zimmetNo' | 'zimmetSahibi' | 'tur' | 'departman' | 'verilisTarihi' | 'durum'
+type SortField = 'seriNo' | 'zimmetSahibi' | 'tur' | 'departman' | 'verilisTarihi' | 'durum'
 
 // Durum sıralaması alfabetik DEĞİL, iş akışı sırasına göre - rozet etiketleri
 // (getZimmetDurumRozeti) üzerinden, çünkü tabloda gösterilen de bu etiketler
@@ -287,8 +287,8 @@ const DURUM_SIRA: Record<string, number> = {
 
 function karsilastir(a: ZimmetItem, b: ZimmetItem, field: SortField): number {
   switch (field) {
-    case 'zimmetNo':
-      return a.id.localeCompare(b.id, 'tr-TR')
+    case 'seriNo':
+      return (a.seriNumarasi ?? '').localeCompare(b.seriNumarasi ?? '', 'tr-TR')
     case 'zimmetSahibi': {
       const an = a.zimmetSahibi.name ?? a.zimmetSahibi.email
       const bn = b.zimmetSahibi.name ?? b.zimmetSahibi.email
@@ -753,11 +753,11 @@ export function ZimmetListesi() {
                   <TableRow>
                     <TableHead
                       className="cursor-pointer select-none hover:bg-accent"
-                      onClick={() => handleSort('zimmetNo')}
+                      onClick={() => handleSort('seriNo')}
                     >
                       <div className="flex items-center gap-1">
-                        Zimmet No
-                        <SortIcon field="zimmetNo" />
+                        Seri No
+                        <SortIcon field="seriNo" />
                       </div>
                     </TableHead>
                     <TableHead
@@ -833,8 +833,8 @@ export function ZimmetListesi() {
                       const rozet = getZimmetDurumRozeti(z)
                       return (
                         <TableRow key={z.id}>
-                          <TableCell className="font-mono text-xs text-slate-500">
-                            {z.id.slice(0, 8)}
+                          <TableCell className="font-mono text-xs text-slate-600">
+                            {z.seriNumarasi ?? '—'}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2 min-w-0">

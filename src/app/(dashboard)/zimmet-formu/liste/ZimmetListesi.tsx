@@ -94,6 +94,7 @@ type ZimmetItem = {
   verilisTarihi: string | null
   cihazDurumu: string
   durum: string
+  kaynak: string
   redSebebi: string | null
   imzaModu: string | null
   zimmetSahibiImzaTarihi: string | null
@@ -901,7 +902,8 @@ export function ZimmetListesi() {
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
-                              {z.durum === 'ONAY_BEKLIYOR' && (
+                              {/* Devir kayıtları sahibin onayına gider → bu buton gizli. */}
+                              {z.durum === 'ONAY_BEKLIYOR' && z.kaynak !== 'SYTELINE_DEVIR' && (
                                 <Button
                                   type="button"
                                   variant="ghost"

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
-import { ZimmetOnayDurumu } from '@/generated/prisma'
+import { ZimmetOnayDurumu, ZimmetKaynak } from '@/generated/prisma'
 import { dispatchZimmetApproval } from '@/lib/zimmet/notifications'
 import { APPROVER_USER_ID, APPROVER_EMAIL, APPROVER_NAME } from '@/lib/zimmet/constants'
 
@@ -42,6 +42,14 @@ export async function POST(
     }
     if (zimmet.durum !== ZimmetOnayDurumu.ONAY_BEKLIYOR) {
       return NextResponse.json({ error: 'Bu zimmet formu zaten işleme alınmış' }, { status: 409 })
+    }
+    // Devir kayıtları bu uçtan onaya gönderilmez — sahibinin onayına gider
+    // (/devir-onay + devir bildirimi akışı).
+    if (zimmet.kaynak === ZimmetKaynak.SYTELINE_DEVIR) {
+      return NextResponse.json(
+        { error: 'Devir kayıtları sahibinin onayına gider; bu uç kullanılmaz.' },
+        { status: 409 },
+      )
     }
 
     // Durum değişmez (zaten ONAY_BEKLIYOR) — yalnız denetim izi + bildirim.

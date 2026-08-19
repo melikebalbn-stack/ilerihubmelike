@@ -39,6 +39,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,6 +66,15 @@ import { IslakImzaYukleDialog } from '../IslakImzaYukleDialog'
 // ── Tipler ──────────────────────────────────────────────────────────────────
 
 type ZimmetKisi = { name: string | null; email: string; employeeId?: string | null }
+
+// Devir bildirimi aday satırı (GET /devir-bildirim-gonder çıktısı).
+type DevirAday = {
+  userId: string
+  ad: string
+  email: string
+  kayitSayisi: number
+  sonBildirimTarihi: string | null
+}
 
 type ZimmetItem = {
   id: string
@@ -453,6 +463,11 @@ export function ZimmetListesi() {
   const [duzenlenecek, setDuzenlenecek] = useState<ZimmetItem | null>(null)
   const [duzenleForm, setDuzenleForm] = useState<DuzenleFormData>(BOS_DUZENLE_FORM)
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  // Devir bildirimi ekranı. devirAdaylar null = approve yetkisi yok → buton gizli.
+  const [devirAdaylar, setDevirAdaylar] = useState<DevirAday[] | null>(null)
+  const [devirDialogAcik, setDevirDialogAcik] = useState(false)
+  const [devirSecili, setDevirSecili] = useState<Set<string>>(new Set())
+  const [devirGonderiliyor, setDevirGonderiliyor] = useState(false)
 
   // Debounce 300ms
   useEffect(() => {
@@ -478,9 +493,52 @@ export function ZimmetListesi() {
       .finally(() => setYukleniyor(false))
   }, [])
 
+  // Devir bildirimi: aday listesi. GET 403 (approve yetkisi yok) → null → buton gizli.
+  const fetchDevirAdaylar = useCallback(() => {
+    return fetch('/api/zimmet-formu/devir-bildirim-gonder')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: DevirAday[]) => setDevirAdaylar(data))
+      .catch(() => setDevirAdaylar(null))
+  }, [])
+
   useEffect(() => {
     fetchZimmetler()
-  }, [fetchZimmetler])
+    fetchDevirAdaylar()
+  }, [fetchZimmetler, fetchDevirAdaylar])
+
+  const devirTumunuSec = () => setDevirSecili(new Set((devirAdaylar ?? []).map((a) => a.userId)))
+  const devirSecimiTemizle = () => setDevirSecili(new Set())
+  const devirToggle = (id: string) =>
+    setDevirSecili((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  async function devirGonder() {
+    setDevirGonderiliyor(true)
+    try {
+      const res = await fetch('/api/zimmet-formu/devir-bildirim-gonder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: [...devirSecili] }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}) as { error?: string })
+        throw new Error((d as { error?: string }).error || 'Bildirim gönderilemedi')
+      }
+      const d = (await res.json()) as { kisi: number; kayit: number }
+      toast.success(`${d.kisi} kişiye bildirim gönderildi`)
+      setDevirDialogAcik(false)
+      setDevirSecili(new Set())
+      fetchZimmetler()
+      fetchDevirAdaylar()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Bildirim gönderilemedi')
+    } finally {
+      setDevirGonderiliyor(false)
+    }
+  }
 
   const istatistik = useMemo(() => hesaplaIstatistik(zimmetler), [zimmetler])
 
@@ -596,6 +654,16 @@ export function ZimmetListesi() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="text-2xl font-medium text-slate-900">Zimmet geçmişi</h1>
           <div className="flex items-center gap-2 flex-wrap">
+            {devirAdaylar && devirAdaylar.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setDevirDialogAcik(true)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100"
+              >
+                <Send className="h-4 w-4 shrink-0" />
+                Devir bildirimi gönder
+              </button>
+            )}
             <button
               type="button"
               onClick={handleExcelExport}
@@ -890,6 +958,81 @@ export function ZimmetListesi() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Devir bildirimi gönderme dialog'u */}
+      <Dialog open={devirDialogAcik} onOpenChange={(o) => { if (!o) setDevirDialogAcik(false) }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Devir bildirimi gönder</DialogTitle>
+            <DialogDescription>
+              {(devirAdaylar?.length ?? 0)} kişiye,{' '}
+              {(devirAdaylar ?? []).reduce((t, a) => t + a.kayitSayisi, 0)} kayıt için bildirim
+              gönderilebilir. Kişi başına tek e-posta ve tek bildirim gider.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={devirTumunuSec}>
+              Tümünü seç
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={devirSecimiTemizle}>
+              Seçimi temizle
+            </Button>
+          </div>
+
+          <div className="max-h-[50vh] overflow-y-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10" />
+                  <TableHead>Ad</TableHead>
+                  <TableHead>Kayıt sayısı</TableHead>
+                  <TableHead>Son bildirim</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(devirAdaylar ?? []).map((a) => (
+                  <TableRow
+                    key={a.userId}
+                    className="cursor-pointer"
+                    onClick={() => devirToggle(a.userId)}
+                  >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={devirSecili.has(a.userId)}
+                        onCheckedChange={() => devirToggle(a.userId)}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium text-slate-900">{a.ad}</TableCell>
+                    <TableCell className="text-slate-600">{a.kayitSayisi}</TableCell>
+                    <TableCell className="text-slate-600">
+                      {a.sonBildirimTarihi ? fmtDate(a.sonBildirimTarihi) : '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDevirDialogAcik(false)}
+              disabled={devirGonderiliyor}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              onClick={devirGonder}
+              disabled={devirSecili.size === 0 || devirGonderiliyor}
+            >
+              {devirGonderiliyor ? 'Gönderiliyor…' : `Seçilenlere gönder (${devirSecili.size} kişi)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={duzenlenecek !== null} onOpenChange={(open) => !open && setDuzenlenecek(null)}>
         <DialogContent className="max-w-lg">

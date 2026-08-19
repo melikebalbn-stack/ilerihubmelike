@@ -7,6 +7,60 @@ import { dispatchZimmetDevirOnayIstegi } from '@/lib/zimmet/notifications'
 export const dynamic = 'force-dynamic'
 
 /**
+ * GET /api/zimmet-formu/devir-bildirim-gonder
+ *
+ * Onay bekleyen devir kayıtlarını sahibe göre gruplayıp bildirim ekranı için aday
+ * listesi döner. Yalnız zimmet-formu.approve yetkisi (yetkisiz → 403, UI butonu
+ * bu 403'e göre gizlenir).
+ *
+ * Dönüş: [{ userId, ad, email, kayitSayisi, sonBildirimTarihi }]
+ */
+export async function GET() {
+  const { error } = await requirePermission('zimmet-formu.approve')
+  if (error) return error
+
+  const kayitlar = await prisma.zimmetFormu.findMany({
+    where: {
+      kaynak: ZimmetKaynak.SYTELINE_DEVIR,
+      durum: ZimmetOnayDurumu.ONAY_BEKLIYOR,
+      silindiMi: false,
+    },
+    select: {
+      zimmetSahibiId: true,
+      sonBildirimTarihi: true,
+      zimmetSahibi: { select: { id: true, email: true, name: true } },
+    },
+  })
+
+  const gruplar = new Map<
+    string,
+    { userId: string; ad: string; email: string; kayitSayisi: number; sonBildirimTarihi: Date | null }
+  >()
+  for (const z of kayitlar) {
+    if (!z.zimmetSahibi?.email) continue
+    const g = gruplar.get(z.zimmetSahibiId)
+    if (g) {
+      g.kayitSayisi += 1
+      // Grubun EN YENİ bildirim tarihini göster.
+      if (z.sonBildirimTarihi && (!g.sonBildirimTarihi || z.sonBildirimTarihi > g.sonBildirimTarihi)) {
+        g.sonBildirimTarihi = z.sonBildirimTarihi
+      }
+    } else {
+      gruplar.set(z.zimmetSahibiId, {
+        userId: z.zimmetSahibi.id,
+        ad: z.zimmetSahibi.name ?? z.zimmetSahibi.email,
+        email: z.zimmetSahibi.email,
+        kayitSayisi: 1,
+        sonBildirimTarihi: z.sonBildirimTarihi ?? null,
+      })
+    }
+  }
+
+  const liste = [...gruplar.values()].sort((a, b) => a.ad.localeCompare(b.ad, 'tr-TR'))
+  return NextResponse.json(liste)
+}
+
+/**
  * POST /api/zimmet-formu/devir-bildirim-gonder
  *
  * Onay bekleyen devir kayıtlarını sahibe göre gruplar ve KİŞİ BAŞINA TEK bildirim

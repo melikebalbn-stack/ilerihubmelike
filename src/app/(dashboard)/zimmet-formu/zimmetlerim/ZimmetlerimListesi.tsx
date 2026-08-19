@@ -23,6 +23,9 @@ type ZimmetItem = {
   tur: string
   turDiger: string | null
   aciklama: string | null
+  ozellik: string | null
+  pcAdi: string | null
+  departman: string | null
   seriNumarasi: string | null
   verilisTarihi: string | null
   durum: string
@@ -49,6 +52,20 @@ const TUR_LABELS: Record<string, string> = {
 }
 
 // ── Yardımcılar ──────────────────────────────────────────────────────────────
+
+// Devir kayıtlarının açıklamasındaki teknik damga — UI'da GİZLENİR (DB'de kalır).
+const DEVIR_ONEK = '[Syteline devri] '
+function temizAciklama(a: string | null | undefined): string {
+  if (!a) return ''
+  const s = a.startsWith(DEVIR_ONEK) ? a.slice(DEVIR_ONEK.length) : a
+  return s.trim()
+}
+
+// Başlık: DIGER ise "Diğer · turDiger" (ör. yazılım lisansı adı), değilse tür etiketi.
+function turBaslik(tur: string, turDiger: string | null): string {
+  if (tur === 'DIGER' && turDiger?.trim()) return `Diğer · ${turDiger.trim()}`
+  return TUR_LABELS[tur] ?? tur
+}
 
 function avatarDurumu(rozetLabel: string): ZimmetDurumu {
   if (rozetLabel === 'Tamamlandı') return 'tamamlandi'
@@ -388,15 +405,23 @@ function DevirOnayBlok({
       <div className="space-y-2">
         {kayitlar.map((z) => {
           const k = kararlar[z.id]
-          const turLabel = TUR_LABELS[z.tur] ?? z.turDiger ?? z.tur
+          // Alt satır: temiz açıklama (önek gizli) + seri no — ikisi de varsa "· " ile.
+          const altSatir = [temizAciklama(z.aciklama), z.seriNumarasi?.trim()]
+            .filter((x): x is string => !!x)
+            .join(' · ')
+          // Detay: boş alanlar HİÇ render edilmez.
+          const detaylar: { label?: string; value: string }[] = []
+          if (z.verilisTarihi) detaylar.push({ label: 'Teslim tarihi', value: fmtDate(z.verilisTarihi) })
+          if (z.createdBy?.name) detaylar.push({ label: 'Teslim eden', value: z.createdBy.name })
+          if (z.ozellik?.trim()) detaylar.push({ value: z.ozellik.trim() })
+          if (z.pcAdi?.trim()) detaylar.push({ label: 'Cihaz adı', value: z.pcAdi.trim() })
+          if (z.departman?.trim()) detaylar.push({ value: z.departman.trim() })
           return (
             <div key={z.id} className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">{turLabel}</p>
-                  <p className="text-xs text-slate-500 truncate">
-                    {z.seriNumarasi ?? z.aciklama ?? '—'}
-                  </p>
+                  <p className="text-sm font-medium text-slate-900 truncate">{turBaslik(z.tur, z.turDiger)}</p>
+                  {altSatir && <p className="text-xs text-slate-500 truncate">{altSatir}</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
@@ -421,6 +446,18 @@ function DevirOnayBlok({
                   </Button>
                 </div>
               </div>
+
+              {/* Detay: teslim tarihi/eden + özellik + cihaz adı + departman (boşlar gizli) */}
+              {detaylar.length > 0 && (
+                <p className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
+                  {detaylar.map((d, i) => (
+                    <span key={i}>
+                      {d.label ? `${d.label}: ` : ''}
+                      {d.value}
+                    </span>
+                  ))}
+                </p>
+              )}
 
               {/* Bende değil → gerekçe */}
               {k?.karar === 'RED' && (

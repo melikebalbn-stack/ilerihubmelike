@@ -884,20 +884,19 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
 }
 
 // Ayni sihirbaz iki modda kullanilir: yeni urun (POST) ve duzenleme (PATCH).
-// Duzenleme modunda form mevcut degerlerle dolar; kilitli alanlar SUNUCUDAN gelen
-// `kilitler` bayragina gore disabled olur — ekran kendi kuralini uydurmaz.
-type UrunKilit = { kilitli: boolean; kisaSebep: string | null; sebep: string | null }
-type UrunKilitleri = Record<
+// HICBIR ALAN KILITLI DEGIL. Riskli alanlarda SUNUCUDAN gelen somut uyari metni
+// (`alanUyarilari`) alanin altinda notr bilgi kutusunda gosterilir — ekran kendi
+// kuralini uydurmaz, metni de sayilari da uretmez.
+type UrunAlanUyarilari = Record<
   'kod' | 'varyantTipi' | 'bedenTipi' | 'tip' | 'olcuBirimi',
-  UrunKilit
+  string | null
 >
-const KILIT_YOK: UrunKilit = { kilitli: false, kisaSebep: null, sebep: null }
-const BOS_KILITLER: UrunKilitleri = {
-  kod: KILIT_YOK,
-  varyantTipi: KILIT_YOK,
-  bedenTipi: KILIT_YOK,
-  tip: KILIT_YOK,
-  olcuBirimi: KILIT_YOK,
+const BOS_UYARILAR: UrunAlanUyarilari = {
+  kod: null,
+  varyantTipi: null,
+  bedenTipi: null,
+  tip: null,
+  olcuBirimi: null,
 }
 
 function YeniUrunWizard({
@@ -911,22 +910,13 @@ function YeniUrunWizard({
   const [wizardStep, setWizardStep] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  const [kilitler, setKilitler] = useState<UrunKilitleri>(BOS_KILITLER)
-  const [gecmisSayilari, setGecmisSayilari] = useState<{
-    hareketSayisi: number
-    zimmetSayisi: number
-  }>({ hareketSayisi: 0, zimmetSayisi: 0 })
+  const [alanUyarilari, setAlanUyarilari] =
+    useState<UrunAlanUyarilari>(BOS_UYARILAR)
   const [urunYukleniyor, setUrunYukleniyor] = useState(false)
 
-  // Kod duzenlenebilir; gecmisi olan urunde yalnizca UYARI gosterilir.
-  // Sayilar sunucudan gelir (GET → data.gecmisSayilari).
-  const kodUyarisi =
-    duzenlenenUrunId &&
-    (gecmisSayilari.hareketSayisi > 0 || gecmisSayilari.zimmetSayisi > 0)
-      ? `Bu ürünün geçmişi var (${gecmisSayilari.hareketSayisi} stok hareketi, ` +
-        `${gecmisSayilari.zimmetSayisi} zimmet kaydı). Kodu değiştirirseniz Excel ile ` +
-        `toplu yüklemede eski kodlu satırlar bu ürünü bulamaz ve YENİ ürün olarak eklenir.`
-      : null
+  // Uyarilar YALNIZ duzenleme modunda ve yalniz sunucu gonderdiyse gosterilir.
+  const uyari = (alan: keyof UrunAlanUyarilari) =>
+    duzenlenenUrunId ? alanUyarilari[alan] : null
 
   // F7 — kategori listesi DB'den (Parametreler'deki aktif kategoriler). Sabit liste kaldırıldı.
   const [kategoriListesi, setKategoriListesi] = useState<{ value: string; label: string }[]>([])
@@ -1013,7 +1003,7 @@ function YeniUrunWizard({
     barkodZorunlu: false,
   })
 
-  // Duzenleme modu: mevcut urunu cek, formu doldur, kilitleri sunucudan al.
+  // Duzenleme modu: mevcut urunu cek, formu doldur, alan uyarilarini sunucudan al.
   useEffect(() => {
     if (!duzenlenenUrunId) return
     let iptal = false
@@ -1033,11 +1023,7 @@ function YeniUrunWizard({
           v === null || v === undefined || String(v).trim() === ''
             ? []
             : String(v).split(',').map((x) => x.trim()).filter(Boolean)
-        setKilitler(u.kilitler ?? BOS_KILITLER)
-        setGecmisSayilari({
-          hareketSayisi: u.gecmisSayilari?.hareketSayisi ?? 0,
-          zimmetSayisi: u.gecmisSayilari?.zimmetSayisi ?? 0,
-        })
+        setAlanUyarilari({ ...BOS_UYARILAR, ...(u.alanUyarilari ?? {}) })
         setUrunForm((mevcut) => ({
           ...mevcut,
           kod: metin(u.kod),
@@ -1357,7 +1343,7 @@ async function handleSave() {
                 value={urunForm.kod}
                 placeholder="ENV-0001"
                 onChange={(value) => updateForm('kod', value)}
-                bilgiNotu={kodUyarisi}
+                bilgiNotu={uyari('kod')}
               />
 
               <FormInput
@@ -1378,8 +1364,7 @@ async function handleSave() {
                 label="Ürün Tipi"
                 value={urunForm.tip}
                 onChange={(value) => updateForm('tip', value)}
-                disabled={kilitler.tip.kilitli}
-                kilitSebep={kilitler.tip.kisaSebep}
+                bilgiNotu={uyari('tip')}
                 options={[
                   { value: 'STANDART_STOK', label: 'Standart Stok' },
                   { value: 'PERIYODIK_TUKETIM', label: 'Periyodik Tüketim' },
@@ -1394,8 +1379,7 @@ async function handleSave() {
                 label="Ölçü Birimi"
                 value={urunForm.olcuBirimi}
                 onChange={(value) => updateForm('olcuBirimi', value)}
-                disabled={kilitler.olcuBirimi.kilitli}
-                kilitSebep={kilitler.olcuBirimi.kisaSebep}
+                bilgiNotu={uyari('olcuBirimi')}
                 options={[
                   { value: 'ADET', label: 'Adet' },
                   { value: 'CIFT', label: 'Çift' },
@@ -1440,8 +1424,7 @@ async function handleSave() {
                 label="Varyant Tipi"
                 value={urunForm.varyantTipi}
                 onChange={(value) => updateForm('varyantTipi', value)}
-                disabled={kilitler.varyantTipi.kilitli}
-                kilitSebep={kilitler.varyantTipi.kisaSebep}
+                bilgiNotu={uyari('varyantTipi')}
                 options={[
                   { value: '', label: 'Varyant yok' },
                   { value: 'BEDEN', label: 'Beden' },
@@ -1456,8 +1439,7 @@ async function handleSave() {
                 label="Beden Tipi"
                 value={urunForm.bedenTipi}
                 onChange={(value) => updateForm('bedenTipi', value)}
-                disabled={kilitler.bedenTipi.kilitli}
-                kilitSebep={kilitler.bedenTipi.kisaSebep}
+                bilgiNotu={uyari('bedenTipi')}
                 options={[...BEDEN_TIPI_SECENEKLERI]}
               />
               <p className="-mt-4 text-xs text-slate-500">
@@ -1778,8 +1760,7 @@ async function handleSave() {
         label="Satın Alma Birimi"
         value={urunForm.olcuBirimi}
         onChange={(value) => updateForm('olcuBirimi', value)}
-        disabled={kilitler.olcuBirimi.kilitli}
-        kilitSebep={kilitler.olcuBirimi.kisaSebep}
+        bilgiNotu={uyari('olcuBirimi')}
         options={[
           { value: 'ADET', label: 'Adet' },
           { value: 'CIFT', label: 'Çift' },
@@ -2350,7 +2331,6 @@ function FormInput({
   placeholder,
   onChange,
   disabled,
-  kilitSebep,
   bilgiNotu,
 }: {
   label: string
@@ -2358,7 +2338,6 @@ function FormInput({
   placeholder?: string
   onChange: (value: string) => void
   disabled?: boolean
-  kilitSebep?: string | null
   /** Alan duzenlenebilir ama dikkat edilmesi gereken bir durum varsa: notr not. */
   bilgiNotu?: string | null
 }) {
@@ -2372,10 +2351,7 @@ function FormInput({
         disabled={disabled}
         className="w-full rounded-lg border px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       />
-      {disabled && kilitSebep && (
-        <p className="mt-1 text-xs text-amber-700">🔒 {kilitSebep}</p>
-      )}
-      {!disabled && bilgiNotu && (
+      {bilgiNotu && (
         <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
           {bilgiNotu}
         </p>
@@ -2390,14 +2366,15 @@ function FormSelect({
   options,
   onChange,
   disabled,
-  kilitSebep,
+  bilgiNotu,
 }: {
   label: string
   value: string
   options: { value: string; label: string }[]
   onChange: (value: string) => void
   disabled?: boolean
-  kilitSebep?: string | null
+  /** Alan duzenlenebilir ama dikkat edilmesi gereken bir durum varsa: notr not. */
+  bilgiNotu?: string | null
 }) {
   return (
     <div>
@@ -2414,8 +2391,10 @@ function FormSelect({
           </option>
         ))}
       </select>
-      {disabled && kilitSebep && (
-        <p className="mt-1 text-xs text-amber-700">🔒 {kilitSebep}</p>
+      {bilgiNotu && (
+        <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+          {bilgiNotu}
+        </p>
       )}
     </div>
   )

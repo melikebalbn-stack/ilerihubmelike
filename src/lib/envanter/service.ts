@@ -363,10 +363,9 @@ export async function getEnvanterUrunDetail(id: string) {
 
   if (!urun) return null
 
-  // Duzenleme formu tum alanlari, kilit bayraklarini ve gecmis sayilarini
-  // buradan okur (tek kaynak). Sayilar kod degistirme uyarisinda kullanilir.
-  const { kilitler, hareketSayisi, zimmetSayisi, varyantSayisi } =
-    await getUrunKilitleri(urun.id)
+  // Duzenleme formu tum alanlari, alan uyarilarini ve gecmis sayilarini buradan
+  // okur (TEK KAYNAK). Hicbir alan kilitli degil; uyari metinleri sunucudan gelir.
+  const { alanUyarilari, sayilar } = await getUrunAlanUyarilari(urun.id)
 
   return {
     id: urun.id,
@@ -416,8 +415,8 @@ export async function getEnvanterUrunDetail(id: string) {
       : null,
     createdAt: urun.createdAt.toISOString(),
 
-    kilitler,
-    gecmisSayilari: { hareketSayisi, zimmetSayisi, varyantSayisi },
+    alanUyarilari,
+    gecmisSayilari: sayilar,
 
     varyantlar: urun.varyantlar,
 
@@ -454,88 +453,107 @@ export async function getEnvanterUrunDetail(id: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ürün düzenleme — koşullu alan kilitleri.
-// Kilit kararının TEK KAYNAĞI burasıdır; ekran kendi kuralını uydurmaz, GET'ten
-// gelen `kilitler` bayrağına bakar. PATCH de aynı fonksiyonu çağırır.
+// Ürün düzenleme — KİLİT YOK, UYARI VAR.
+// Hiçbir alan koşullu olarak kilitli değil. Riskli alanlar için ekranda somut
+// (sayı içeren) uyarı gösterilir; kararı kullanıcı verir.
+// Uyarı metninin TEK KAYNAĞI burasıdır — ekran kendi kuralını uydurmaz, GET'ten
+// gelen `alanUyarilari` bayrağını basar.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type UrunKilitAlani =
+export type UrunUyariAlani =
   | 'kod'
   | 'varyantTipi'
   | 'bedenTipi'
   | 'tip'
   | 'olcuBirimi'
 
-export type UrunKilit = {
-  kilitli: boolean
-  /** Ekranda alanın altında gösterilecek kısa gerekçe. */
-  kisaSebep: string | null
-  /** Kilitli alan değiştirilmeye çalışılırsa dönecek tam hata metni. */
-  sebep: string | null
+export type UrunAlanUyarilari = Record<UrunUyariAlani, string | null>
+
+export type UrunGecmisSayilari = {
+  hareketSayisi: number
+  zimmetSayisi: number
+  varyantSayisi: number
+  stokSayisi: number
 }
-
-export type UrunKilitleri = Record<UrunKilitAlani, UrunKilit>
-
-const KILIT_YOK: UrunKilit = { kilitli: false, kisaSebep: null, sebep: null }
 
 /**
- * Ürünün geçmişine bakarak hangi alanların kilitli olduğunu hesaplar.
+ * Ürünün geçmişine bakarak riskli alanlar için SOMUT uyarı metni üretir.
+ * Hiçbiri engelleme değildir; tümü düzenlenebilir.
  *
- * kod          → KİLİTLİ DEĞİL. Zimmet/stok kayıtları urunId (FK) üzerinden
- *                bağlı; kod değişince bağ kopmuyor. Excel içe aktarma koda göre
- *                eşleştirdiği için ekranda UYARI gösterilir, ama engellenmez.
- * varyantTipi  → varyant varsa kilitli (mevcut varyantlar anlamsız kalır).
- * bedenTipi    → varyant varsa kilitli (aynı gerekçe).
- * tip          → stok hareketi varsa kilitli.
- * olcuBirimi   → stok hareketi varsa kilitli.
- *                Gerekçe: geçmiş hareketler eski birime göre kaydedilmiş.
+ * kod         → Excel içe aktarma ürünleri koda göre eşleştiriyor
+ *               (lib/envanter/import.ts). Zimmet/stok urunId ile bağlı, kopmaz.
+ * olcuBirimi  → EnvanterStokHareket'te birim kolonu YOK (miktar Int); geçmiş
+ *               miktarlar eski birime göre okunur.
+ * varyantTipi → Varyant kayıtları ve onlara bağlı stok satırları silinmez ama
+ *               anlamsız etiketli kalır. (Varyantı SİLMEK tehlikeli olurdu:
+ *               envanter_stok.varyantId CASCADE → envanter_zimmet.stokId CASCADE,
+ *               yani zimmet geçmişi de giderdi. Bu yüzden temizlik ÖNERİLMİYOR.)
+ * bedenTipi   → sezon.ts profilAlaniSec() bu alana bakar; sezon ihtiyaç hesabı
+ *               personelin farklı beden profili alanıyla eşleşmeye başlar.
+ * tip         → Hiçbir iş kuralı bu alana dallanmıyor; liste/rapor etiketi.
  */
-export async function getUrunKilitleri(urunId: string) {
-  const [hareketSayisi, zimmetSayisi, varyantSayisi] = await Promise.all([
-    prisma.envanterStokHareket.count({ where: { urunId } }),
-    prisma.envanterZimmet.count({ where: { urunId } }),
-    prisma.envanterUrunVaryant.count({ where: { urunId } }),
-  ])
+export async function getUrunAlanUyarilari(urunId: string) {
+  const [hareketSayisi, zimmetSayisi, varyantSayisi, stokSayisi] =
+    await Promise.all([
+      prisma.envanterStokHareket.count({ where: { urunId } }),
+      prisma.envanterZimmet.count({ where: { urunId } }),
+      prisma.envanterUrunVaryant.count({ where: { urunId } }),
+      prisma.envanterStok.count({ where: { urunId } }),
+    ])
 
-  const kilitler: UrunKilitleri = {
-    // Kod artik her durumda duzenlenebilir — bkz. fonksiyon basligindaki gerekce.
-    kod: KILIT_YOK,
-    varyantTipi:
-      varyantSayisi > 0
-        ? {
-            kilitli: true,
-            kisaSebep: 'Varyant var',
-            sebep: `Bu ürünün ${varyantSayisi} varyantı var, varyant tipi değiştirilemez.`,
-          }
-        : KILIT_YOK,
-    bedenTipi:
-      varyantSayisi > 0
-        ? {
-            kilitli: true,
-            kisaSebep: 'Varyant var',
-            sebep: `Bu ürünün ${varyantSayisi} varyantı var, beden tipi değiştirilemez.`,
-          }
-        : KILIT_YOK,
-    tip:
-      hareketSayisi > 0
-        ? {
-            kilitli: true,
-            kisaSebep: 'Stok hareketi var',
-            sebep: `Bu ürünün ${hareketSayisi} stok hareketi var, ürün tipi değiştirilemez.`,
-          }
-        : KILIT_YOK,
-    olcuBirimi:
-      hareketSayisi > 0
-        ? {
-            kilitli: true,
-            kisaSebep: 'Stok hareketi var',
-            sebep: `Bu ürünün ${hareketSayisi} stok hareketi var, ölçü birimi değiştirilemez.`,
-          }
-        : KILIT_YOK,
+  const sayilar: UrunGecmisSayilari = {
+    hareketSayisi,
+    zimmetSayisi,
+    varyantSayisi,
+    stokSayisi,
   }
 
-  return { kilitler, hareketSayisi, zimmetSayisi, varyantSayisi }
+  const gecmisVar = hareketSayisi > 0 || zimmetSayisi > 0
+
+  const alanUyarilari: UrunAlanUyarilari = {
+    kod: gecmisVar
+      ? `Bu ürünün geçmişi var (${hareketSayisi} stok hareketi, ${zimmetSayisi} zimmet kaydı). ` +
+        'Kodu değiştirirseniz Excel ile toplu yüklemede eski kodlu satırlar bu ürünü ' +
+        'bulamaz ve YENİ ürün olarak eklenir.'
+      : null,
+    olcuBirimi:
+      hareketSayisi > 0
+        ? `Bu ürünün ${hareketSayisi} stok hareketi var. Ölçü birimini değiştirirseniz ` +
+          'geçmiş hareketlerdeki miktarlar eski birime göre kaydedilmiş kalır ' +
+          '(hareket kaydında birim bilgisi tutulmuyor).'
+        : null,
+    tip:
+      hareketSayisi > 0
+        ? `Bu ürünün ${hareketSayisi} stok hareketi var. Ürün tipi yalnızca liste ve ` +
+          'raporlarda etiket olarak kullanılıyor; değiştirmek geçmiş hareketleri ' +
+          'etkilemez, ama eski kayıtlar yeni tiple listelenir.'
+        : null,
+    varyantTipi:
+      varyantSayisi > 0
+        ? `Bu ürünün ${varyantSayisi} varyantı ve bu varyantlara bağlı ${stokSayisi} stok ` +
+          `satırı var (${zimmetSayisi} zimmet kaydı bu stok satırlarına bağlı). Varyant ` +
+          'tipini değiştirirseniz bu kayıtlar SİLİNMEZ, ama eski varyant adlarıyla ' +
+          'anlamsız kalır; yeni tipe göre varyantları elle düzeltmeniz gerekir.'
+        : null,
+    bedenTipi:
+      varyantSayisi > 0
+        ? `Bu ürünün ${varyantSayisi} varyantı var. Beden tipini değiştirirseniz sezon planı ` +
+          'ihtiyaç hesabı personelin farklı beden profili alanıyla eşleşir ' +
+          '(ör. üst beden yerine ayakkabı numarası); mevcut varyantlar silinmez.'
+        : null,
+  }
+
+  return { alanUyarilari, sayilar, ...sayilar }
 }
+
+/** Uyari gosterilen alanlar — log notunda gecmis sayilari da yazilir. */
+const RISKLI_ALANLAR: UrunUyariAlani[] = [
+  'kod',
+  'varyantTipi',
+  'bedenTipi',
+  'tip',
+  'olcuBirimi',
+]
 
 // Güncellenebilir 42 alan, dönüştürme davranışına göre gruplanmış.
 // Boş string gönderilirse alan NULL'a çekilir (formda alanı temizlemek = silmek).
@@ -658,8 +676,8 @@ export async function updateEnvanterUrun(
     throw new Error('Ürün bulunamadı.')
   }
 
-  const { kilitler, varyantSayisi, hareketSayisi, zimmetSayisi } =
-    await getUrunKilitleri(urunId)
+  const { sayilar } = await getUrunAlanUyarilari(urunId)
+  const { varyantSayisi, hareketSayisi, zimmetSayisi, stokSayisi } = sayilar
 
   const gonderilen = GUNCELLENEBILIR_ALANLAR.filter((alan) =>
     Object.prototype.hasOwnProperty.call(patch, alan),
@@ -784,12 +802,8 @@ export async function updateEnvanterUrun(
 
     if (onceki === sonraki) continue
 
-    // Kilitli alan GERÇEKTEN değişiyorsa: sessizce yok sayma, net hata.
-    const kilit = kilitler[alan as UrunKilitAlani]
-    if (kilit?.kilitli) {
-      throw new Error(kilit.sebep as string)
-    }
-
+    // Kilit YOK: her alan duzenlenebilir. Riskli alanlar icin ekranda uyari
+    // gosterilir (getUrunAlanUyarilari), degisiklik islem izine not dusulur.
     data[alan] = yeni
     degisiklikler[alan] = { once: onceki, sonra: sonraki }
   }
@@ -874,6 +888,8 @@ export async function updateEnvanterUrun(
     throw err
   }
 
+  const riskliDegisenler = RISKLI_ALANLAR.filter((a) => a in degisiklikler)
+
   // İşlem izi — URUN_SIL/URUN_PASIFLESTIR ile aynı desen, yeni altyapı yok.
   await logEnvanterIslem({
     actorId,
@@ -887,14 +903,24 @@ export async function updateEnvanterUrun(
       aktorAd: actorAd,
       degisenAlanlar: Object.keys(degisiklikler),
       degisiklikler,
-      // Kod degisimi ayrica isaretlenir: gecmisi olan urunde Excel ile toplu
-      // yuklemede eski kodlu satirlar bu urunu bulamaz.
+      // Riskli alan degisimi ayrica isaretlenir; not'ta gecmis sayilari durur.
+      ...(riskliDegisenler.length > 0
+        ? {
+            riskliDegisim: true,
+            riskliAlanlar: riskliDegisenler,
+            gecmisSayilari: sayilar,
+            not:
+              `${hareketSayisi} stok hareketi, ${zimmetSayisi} zimmet kaydı, ` +
+              `${varyantSayisi} varyant, ${stokSayisi} stok satırı olan üründe ` +
+              `riskli alan değişti: ${riskliDegisenler.join(', ')}`,
+          }
+        : {}),
+      // Kod degisimi geriye donuk sorgular icin ayrica duz alanlarda tutulur.
       ...(degisiklikler.kod
         ? {
             kodDegisti: true,
             eskiKod: degisiklikler.kod.once,
             yeniKod: degisiklikler.kod.sonra,
-            not: `${hareketSayisi} stok hareketi, ${zimmetSayisi} zimmet kaydı olan ürünün kodu değiştirildi`,
           }
         : {}),
     },

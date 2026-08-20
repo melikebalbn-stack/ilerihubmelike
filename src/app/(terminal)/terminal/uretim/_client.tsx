@@ -147,8 +147,8 @@ function UstBar({
       <img
         src="/ipro-logo.png"
         alt="IPRO"
-        height={60}
-        className="h-[60px] w-auto object-contain"
+        height={48}
+        className="h-12 w-auto object-contain"
       />
 
       {/* Sağ: vardiya + tarih/saat + Hub + operatör */}
@@ -187,7 +187,6 @@ function BolumSecim({
     <>
       <div className="flex flex-col leading-tight">
         <span className="text-base font-semibold">Bölüm seçin</span>
-        <span className="text-xs text-muted-foreground">Bakım atölyesi bölümleri</span>
       </div>
 
       {ifsError ? (

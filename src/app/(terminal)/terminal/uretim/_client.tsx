@@ -142,14 +142,18 @@ function UstBar({
 
   return (
     <div className="flex items-center justify-between gap-4">
-      {/* Sol: logo (tek satır, dikey ortalı) — no-img-element eslint kuralı kapalı.
-          Logo yatay; yükseklik sabit, genişlik oran korunarak otomatik. */}
-      <img
-        src="/ipro-logo.png"
-        alt="IPRO"
-        height={48}
-        className="h-12 w-auto object-contain"
-      />
+      {/* Sol: logo | ince ayırıcı | "Üretim Terminali" — dikey ortalı, aralar 12px.
+          no-img-element eslint kuralı kapalı; logo yatay, genişlik oran korunarak auto. */}
+      <div className="flex items-center gap-3">
+        <img
+          src="/ipro-logo.png"
+          alt="IPRO"
+          height={32}
+          className="h-8 w-auto object-contain"
+        />
+        <span className="h-6 w-px bg-border" aria-hidden="true" />
+        <span className="text-sm font-normal text-muted-foreground">Üretim Terminali</span>
+      </div>
 
       {/* Sağ: vardiya + tarih/saat + Hub + operatör */}
       <div className="flex items-center gap-3">
@@ -186,7 +190,7 @@ function BolumSecim({
   return (
     <>
       <div className="flex flex-col leading-tight">
-        <span className="text-base font-semibold">Bölüm seçin</span>
+        <span className="text-[17px] font-medium">Bölüm seçin</span>
       </div>
 
       {ifsError ? (

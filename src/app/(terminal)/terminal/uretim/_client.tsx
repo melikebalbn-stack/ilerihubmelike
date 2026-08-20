@@ -5,8 +5,8 @@ import Link from 'next/link'
 import {
   ArrowLeft,
   Building2,
-  CircleDot,
-  Cog,
+  Cpu,
+  Disc,
   Droplet,
   Flame,
   Hammer,
@@ -55,13 +55,22 @@ const DEPT_ICON: Record<string, LucideIcon> = {
   WPH: Hammer,
   WLZ: Zap,
   WKY: Flame,
-  WCN: Cog,
+  WCN: Cpu, // CNC talaşlı imalat — bilgisayarlı kontrol
   WMM: Wrench,
   WPE: Droplet,
   WPK: Package,
-  WDT: CircleDot,
+  WDT: Disc, // daire testere — dönen kesme diski
   WAS: MoveVertical,
   FSN: Truck,
+}
+
+// IFS bölüm adı ALL-CAPS gelir ("PRESHANE"). Türkçe-güvenli başlık formatı:
+// önce tr-TR küçük harf (İMALAT→imalat, İ/ı doğru), sonra ilk harf büyük.
+// "CNC" gibi kısaltmalar "Cnc" olur — bilinçli kabul (spec).
+function baslikFormat(s: string): string {
+  const low = s.toLocaleLowerCase('tr-TR')
+  if (!low) return s
+  return low.charAt(0).toLocaleUpperCase('tr-TR') + low.slice(1)
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -122,19 +131,15 @@ function UstBar({
   const vardiya = now ? aktifVardiya(vardiyalar, now) : null
 
   return (
-    <div className="flex items-start justify-between gap-4">
-      {/* Sol: logo + alt satır */}
-      <div className="flex flex-col gap-1 leading-tight">
-        {/* Logo public/ipro-logo.png (kare) — no-img-element eslint kuralı kapalı. */}
-        <img
-          src="/ipro-logo.png"
-          alt="IPRO"
-          width={38}
-          height={38}
-          className="h-[38px] w-[38px] object-contain"
-        />
-        <span className="text-xs text-muted-foreground">İleri Production Intelligence</span>
-      </div>
+    <div className="flex items-center justify-between gap-4">
+      {/* Sol: logo (tek satır, dikey ortalı) — no-img-element eslint kuralı kapalı.
+          Logo yatay; yükseklik sabit, genişlik oran korunarak otomatik. */}
+      <img
+        src="/ipro-logo.png"
+        alt="IPRO"
+        height={44}
+        className="h-11 w-auto object-contain"
+      />
 
       {/* Sağ: vardiya + tarih/saat + Hub + operatör */}
       <div className="flex items-center gap-3">
@@ -205,12 +210,12 @@ function BolumKart({ d }: { d: Departman }) {
   return (
     <Link
       href={`/terminal/uretim?dept=${encodeURIComponent(d.kod)}`}
-      className={`group relative flex min-h-[120px] flex-col justify-between rounded-2xl border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm ${aktif ? '' : 'opacity-60'}`}
+      className="group relative flex min-h-[120px] flex-col justify-between rounded-2xl border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
     >
-      {/* Açık iş emri rozeti — yalnız iş emri olan bölümlerde. */}
+      {/* Açık iş emri rozeti — mutlak sağ üst (12px); min-w ile 1 ve 19 aynı genişlik. */}
       {aktif && (
         <span
-          className="absolute right-3 top-3 flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+          className="absolute right-3 top-3 flex min-w-[26px] items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold text-white"
           style={{ background: TERMINAL_ACCENT }}
           title={`${d.isEmri} açık iş emri`}
         >
@@ -218,20 +223,22 @@ function BolumKart({ d }: { d: Departman }) {
         </span>
       )}
 
+      {/* İkon kutusu 52×52 / ikon 28px. Aktif: accent zemin + beyaz; boş: nötr gri + muted. */}
       <span
-        className={`flex h-12 w-12 items-center justify-center rounded-xl transition-transform group-active:scale-95 ${aktif ? 'text-white' : 'bg-muted text-muted-foreground'}`}
+        className={`flex h-[52px] w-[52px] items-center justify-center rounded-xl transition-transform group-active:scale-95 ${aktif ? 'text-white' : 'bg-muted text-muted-foreground'}`}
         style={aktif ? { background: TERMINAL_ACCENT } : undefined}
       >
-        <Icon className="h-6 w-6" />
+        <Icon className="h-7 w-7" />
       </span>
       <div>
+        {/* Ad: title-case (ALL-CAPS kaldırıldı), 15px medium. Boş bölüm: secondary (görünür). */}
         <div
-          className={`line-clamp-2 text-lg font-semibold leading-tight ${aktif ? '' : 'text-muted-foreground'}`}
+          className={`line-clamp-2 text-[15px] font-medium leading-tight ${aktif ? '' : 'text-foreground/80'}`}
           style={aktif ? { color: TERMINAL_ACCENT } : undefined}
         >
-          {d.ad || d.kod}
+          {d.ad ? baslikFormat(d.ad) : d.kod}
         </div>
-        <div className="text-sm text-muted-foreground">
+        <div className="text-xs text-muted-foreground">
           {d.kod} · {d.tezgah} tezgah
         </div>
       </div>
@@ -258,7 +265,9 @@ function BolumSecildi({
           <Icon className="h-5 w-5" />
         </span>
         <div className="flex flex-col leading-tight">
-          <span className="text-base font-semibold">{seciliDeptAd || seciliDept}</span>
+          <span className="text-base font-semibold">
+            {seciliDeptAd ? baslikFormat(seciliDeptAd) : seciliDept}
+          </span>
           <span className="text-xs text-muted-foreground">{seciliDept}</span>
         </div>
       </div>

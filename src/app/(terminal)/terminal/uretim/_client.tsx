@@ -147,8 +147,8 @@ function UstBar({
       <img
         src="/ipro-logo.png"
         alt="IPRO"
-        height={44}
-        className="h-11 w-auto object-contain"
+        height={60}
+        className="h-[60px] w-auto object-contain"
       />
 
       {/* Sağ: vardiya + tarih/saat + Hub + operatör */}
@@ -203,7 +203,7 @@ function BolumSecim({
           Bölüm bulunamadı.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {departmanlar.map((d) => (
             <BolumKart key={d.kod} d={d} />
           ))}
@@ -220,7 +220,7 @@ function BolumKart({ d }: { d: Departman }) {
   return (
     <Link
       href={`/terminal/uretim?dept=${encodeURIComponent(d.kod)}`}
-      className="group relative flex min-h-[120px] flex-col justify-between rounded-2xl border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
+      className="group relative flex min-h-[120px] flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
     >
       {/* Açık iş emri rozeti — mutlak sağ üst (12px); min-w ile 1 ve 19 aynı genişlik. */}
       {aktif && (
@@ -233,15 +233,16 @@ function BolumKart({ d }: { d: Departman }) {
         </span>
       )}
 
-      {/* İkon kutusu 52×52 / ikon 28px. Aktif: accent zemin + beyaz; boş: nötr gri + muted. */}
+      {/* İkon kutusu 52×52 / ikon 28px — TÜM kartlarda AYNI (accent zemin + beyaz).
+          İş yok ayrımı yalnız rozet yokluğu + başlık renginde. */}
       <span
-        className={`flex h-[52px] w-[52px] items-center justify-center rounded-xl transition-transform group-active:scale-95 ${aktif ? 'text-white' : 'bg-muted text-muted-foreground'}`}
-        style={aktif ? { background: TERMINAL_ACCENT } : undefined}
+        className="flex h-[52px] w-[52px] items-center justify-center rounded-xl text-white transition-transform group-active:scale-95"
+        style={{ background: TERMINAL_ACCENT }}
       >
         <Icon className="h-7 w-7" />
       </span>
-      <div>
-        {/* Ad: title-case (ALL-CAPS kaldırıldı), 15px medium. Boş bölüm: secondary (görünür). */}
+      <div className="flex flex-col gap-1.5">
+        {/* Ad: 15px medium. Boş bölüm: secondary (görünür, ikinci planda). */}
         <div
           className={`line-clamp-2 text-[15px] font-medium leading-tight ${aktif ? '' : 'text-foreground/80'}`}
           style={aktif ? { color: TERMINAL_ACCENT } : undefined}

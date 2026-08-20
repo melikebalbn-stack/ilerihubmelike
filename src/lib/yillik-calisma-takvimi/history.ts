@@ -14,6 +14,7 @@ const FIELD_LABELS: Record<string, string> = {
   anaKonu: 'Ana konu', surec: 'Süreç', kisaBaslik: 'Kısa başlık', aciklama: 'Açıklama',
   departmentId: 'Departman', periyot: 'Periyot', oncelik: 'Öncelik', disKurum: 'Dış kurum',
   nihaiSonTarih: 'Nihai son tarih', plananUygulamaTarihi: 'Planlanan tarih', anaSorumlu: 'Ana sorumlu',
+  yedekSorumlu: 'Yedek sorumlu', bilgilendirilecekler: 'Bilgilendirilecek kişiler',
   gerceklesmeDurumu: 'Gerçekleşme durumu', gerceklesmeTarihi: 'Gerçekleşme tarihi',
   gerceklesmemeNedeni: 'Gerçekleşmeme/devir nedeni', baslik: 'Başlık', sorumlu: 'Sorumlu',
   sonTarih: 'Son tarih', zorunlu: 'Zorunluluk', kanitGerekli: 'Kanıt gerekliliği', tamamlandi: 'Tamamlanma',

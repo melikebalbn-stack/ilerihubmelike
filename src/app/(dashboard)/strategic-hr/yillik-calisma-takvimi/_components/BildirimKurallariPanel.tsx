@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { YillikTakvimKatilimciRol } from '@/generated/prisma'
 
 type Rule = { id: string; tetik: string; aliciRoller: YillikTakvimKatilimciRol[]; kanal: string[]; aktif: boolean }
-const roles: [YillikTakvimKatilimciRol, string][] = [['ANA_SORUMLU','Ana Sorumlu'],['YEDEK_SORUMLU','Yedek Sorumlu'],['DESTEK','Destek'],['ONAYLAYAN','Onaylayan'],['IKINCI_ONAYLAYAN','İkinci Onaylayan'],['BILGILENDIRILECEK','Bilgilendirilecek'],['GOZLEMCI','Gözlemci']]
+const roles: [YillikTakvimKatilimciRol, string][] = [['ANA_SORUMLU','Ana Sorumlu'],['YEDEK_SORUMLU','Yedek Sorumlu'],['ONAYLAYAN','Onaylayan'],['IKINCI_ONAYLAYAN','İkinci Onaylayan'],['BILGILENDIRILECEK','Bilgilendirilecek']]
 const label = (trigger: string) => trigger === 'son_gun' ? 'Son gün' : trigger.startsWith('gun_kala:') ? `${trigger.split(':')[1]} gün kala` : `${trigger.split(':')[1]} gün gecikme (eskalasyon)`
 
 export function BildirimKurallariPanel({ kayitId, canManage, locked, onChanged }: { kayitId: string; canManage: boolean; locked: boolean; onChanged: () => void }) {

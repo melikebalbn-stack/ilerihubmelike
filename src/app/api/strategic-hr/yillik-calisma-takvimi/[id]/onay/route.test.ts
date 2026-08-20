@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
 
-const guard = vi.fn(), recordFind = vi.fn(), stepsFind = vi.fn(), configFind = vi.fn(), createMany = vi.fn()
+const guard = vi.fn(), recordFind = vi.fn(), stepsFind = vi.fn(), configFind = vi.fn(), participantFind = vi.fn(), createMany = vi.fn()
 const claim = vi.fn(), recordUpdate = vi.fn(), auditCreate = vi.fn(), transaction = vi.fn()
 const lock = vi.fn()
+const hierarchyResolve = vi.fn()
 vi.mock('@/lib/auth/require-permission', () => ({ requirePermission: (...args: unknown[]) => guard(...args) }))
+vi.mock('@/lib/yillik-calisma-takvimi/hiyerarsi-cozumle', () => ({ ycktOnaylayanZinciriCoz: (...args: unknown[]) => hierarchyResolve(...args) }))
 vi.mock('@/lib/prisma', () => ({ prisma: {
   yillikTakvimKaydi: { findUnique: (...args: unknown[]) => recordFind(...args) },
   yillikTakvimOnayAdimi: { findMany: (...args: unknown[]) => stepsFind(...args) },
   yillikTakvimOnayKademesi: { findMany: (...args: unknown[]) => configFind(...args) },
+  yillikTakvimKatilimci: { findFirst: (...args: unknown[]) => participantFind(...args) },
   $transaction: (...args: unknown[]) => transaction(...args),
 } }))
 import { GET, POST } from './route'
@@ -22,13 +25,14 @@ const tx = {
   yillikTakvimKaydi: { findUnique: recordFind, update: recordUpdate },
   yillikTakvimOnayAdimi: { findMany: stepsFind, createMany, updateMany: claim },
   yillikTakvimOnayKademesi: { findMany: configFind },
+  yillikTakvimKatilimci: { findFirst: participantFind },
   yillikTakvimIslemGecmisi: { create: auditCreate },
 }
 beforeEach(() => {
   vi.clearAllMocks()
   transaction.mockImplementation(async callback => callback(tx))
   lock.mockResolvedValue([{ id: 'r1', durum: 'TAMAMLANDI_ONAY_BEKLIYOR', iptalMi: false, arsivMi: false, kaynakModul: null }])
-  recordFind.mockResolvedValue(record); claim.mockResolvedValue({ count: 1 })
+  recordFind.mockResolvedValue(record); claim.mockResolvedValue({ count: 1 }); participantFind.mockResolvedValue(null); hierarchyResolve.mockResolvedValue([])
 })
 
 describe('Yıllık Takvim onay akışı', () => {
@@ -55,6 +59,49 @@ describe('Yıllık Takvim onay akışı', () => {
       { kayitId: 'r1', tur: 1, adimSira: 2, unvan: 'Direktör', onaylayanId: 'u2' },
     ] })
     expect(recordUpdate).not.toHaveBeenCalled()
+  })
+
+  it('tam hiyerarşi bulunduğunda onaylayanları hiyerarşiden alır', async () => {
+    guard.mockResolvedValue({ error: null, userId: 'amir-1' })
+    stepsFind.mockResolvedValueOnce([]).mockResolvedValueOnce([step('s1', 1, 'amir-1'), step('s2', 2, 'amir-2')])
+    configFind.mockResolvedValue([{ sira: 1, unvan: 'Müdür', userId: 'yedek-1' }, { sira: 2, unvan: 'Direktör', userId: 'yedek-2' }])
+    participantFind.mockResolvedValue({ userId: 'ana-sorumlu' })
+    hierarchyResolve.mockResolvedValue([{ adimSira: 1, userId: 'amir-1' }, { adimSira: 2, userId: 'amir-2' }])
+
+    expect((await POST(request({ karar: 'ONAYLANDI' }), context)).status).toBe(200)
+    expect(hierarchyResolve).toHaveBeenCalledWith('ana-sorumlu', 2)
+    expect(createMany).toHaveBeenCalledWith({ data: [
+      { kayitId: 'r1', tur: 1, adimSira: 1, unvan: 'Müdür', onaylayanId: 'amir-1' },
+      { kayitId: 'r1', tur: 1, adimSira: 2, unvan: 'Direktör', onaylayanId: 'amir-2' },
+    ] })
+  })
+
+  it('kısmi hiyerarşide eksik adımı aktif konfigürasyondan tamamlar', async () => {
+    guard.mockResolvedValue({ error: null, userId: 'amir-1' })
+    stepsFind.mockResolvedValueOnce([]).mockResolvedValueOnce([step('s1', 1, 'amir-1'), step('s2', 2, 'yedek-2')])
+    configFind.mockResolvedValue([{ sira: 1, unvan: 'Müdür', userId: 'yedek-1' }, { sira: 2, unvan: 'Direktör', userId: 'yedek-2' }])
+    participantFind.mockResolvedValue({ userId: 'ana-sorumlu' })
+    hierarchyResolve.mockResolvedValue([{ adimSira: 1, userId: 'amir-1' }])
+
+    expect((await POST(request({ karar: 'ONAYLANDI' }), context)).status).toBe(200)
+    expect(createMany).toHaveBeenCalledWith({ data: [
+      { kayitId: 'r1', tur: 1, adimSira: 1, unvan: 'Müdür', onaylayanId: 'amir-1' },
+      { kayitId: 'r1', tur: 1, adimSira: 2, unvan: 'Direktör', onaylayanId: 'yedek-2' },
+    ] })
+  })
+
+  it('hiyerarşi hiç çözülemezse tüm adımları bugünkü gibi aktif konfigürasyondan alır', async () => {
+    guard.mockResolvedValue({ error: null, userId: 'yedek-1' })
+    stepsFind.mockResolvedValueOnce([]).mockResolvedValueOnce([step('s1', 1, 'yedek-1'), step('s2', 2, 'yedek-2')])
+    configFind.mockResolvedValue([{ sira: 1, unvan: 'Müdür', userId: 'yedek-1' }, { sira: 2, unvan: 'Direktör', userId: 'yedek-2' }])
+    participantFind.mockResolvedValue({ userId: 'ana-sorumlu' })
+    hierarchyResolve.mockResolvedValue([])
+
+    expect((await POST(request({ karar: 'ONAYLANDI' }), context)).status).toBe(200)
+    expect(createMany).toHaveBeenCalledWith({ data: [
+      { kayitId: 'r1', tur: 1, adimSira: 1, unvan: 'Müdür', onaylayanId: 'yedek-1' },
+      { kayitId: 'r1', tur: 1, adimSira: 2, unvan: 'Direktör', onaylayanId: 'yedek-2' },
+    ] })
   })
 
   it('mevcut snapshot varken mükerrer oluşturmaz', async () => {

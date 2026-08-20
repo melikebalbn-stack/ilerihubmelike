@@ -52,6 +52,8 @@ export function YillikTakvimDetailSheet({ kayitId, open, onOpenChange, onUpdated
   const [form, setForm] = useState<FormState | null>(null)
   const [department, setDepartment] = useState<AsyncComboboxOption | null>(null)
   const [responsible, setResponsible] = useState<AsyncComboboxOption | null>(null)
+  const [backupResponsible, setBackupResponsible] = useState<AsyncComboboxOption | null>(null)
+  const [informedUsers, setInformedUsers] = useState<AsyncComboboxOption[]>([])
   const [initialResponsibleId, setInitialResponsibleId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -83,7 +85,9 @@ export function YillikTakvimDetailSheet({ kayitId, open, onOpenChange, onUpdated
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error || 'Kayıt detayı alınamadı')
       const next = body as YillikTakvimKaydiDetail
-      const ana = next.katilimcilar[0]?.user ?? null
+      const ana = next.katilimcilar.find(participant => participant.rol === 'ANA_SORUMLU')?.user ?? null
+      const yedek = next.katilimcilar.find(participant => participant.rol === 'YEDEK_SORUMLU')?.user ?? null
+      const bilgilendirilecekler = next.katilimcilar.filter(participant => participant.rol === 'BILGILENDIRILECEK').map(participant => participant.user)
       setDetail(next)
       setForm({
         anaKonu: next.anaKonu, surec: next.surec, kisaBaslik: next.kisaBaslik ?? '', aciklama: next.aciklama ?? '',
@@ -93,8 +97,10 @@ export function YillikTakvimDetailSheet({ kayitId, open, onOpenChange, onUpdated
         gerceklesmemeNedeni: next.gerceklesmemeNedeni ?? '',
       })
       setDepartment(next.department ? { id: next.department.id, label: next.department.name } : null)
-      setResponsible(ana ? { id: ana.id, label: ana.name ?? 'İsimsiz kullanıcı' } : null)
-      setInitialResponsibleId(ana?.id ?? null)
+      setResponsible(ana ? { id: ana.email, label: ana.name ?? 'İsimsiz kullanıcı' } : null)
+      setInitialResponsibleId(ana?.email ?? null)
+      setBackupResponsible(yedek ? { id: yedek.email, label: yedek.name ?? 'İsimsiz kullanıcı' } : null)
+      setInformedUsers(bilgilendirilecekler.map(user => ({ id: user.email, label: user.name ?? 'İsimsiz kullanıcı' })))
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Kayıt detayı alınamadı') }
     finally { setLoading(false) }
   }, [kayitId])
@@ -140,6 +146,8 @@ export function YillikTakvimDetailSheet({ kayitId, open, onOpenChange, onUpdated
       nihaiSonTarih: currentForm.nihaiSonTarih, plananUygulamaTarihi: currentForm.plananUygulamaTarihi || null, periyot: currentForm.periyot,
     })
     if (responsible.id !== initialResponsibleId) payload.anaSorumluEmail = responsible.id
+    payload.yedekSorumluEmail = backupResponsible?.id ?? null
+    payload.bilgilendirilecekEmailler = informedUsers.map(user => user.id)
     try {
       const response = await fetch(`/api/strategic-hr/yillik-calisma-takvimi/${currentDetail.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -233,6 +241,8 @@ export function YillikTakvimDetailSheet({ kayitId, open, onOpenChange, onUpdated
       <Field label="Dış Kurum"><Input value={form.disKurum} disabled={disabled} onChange={e => set('disKurum', e.target.value)} /></Field>
       <Field label="Departman"><AsyncCombobox value={department} onChange={setDepartment} loadOptions={loadDepartments} placeholder="Departman seçin" searchPlaceholder="Departman ara" disabled={sourceDisabled} /></Field>
       <Field label="Ana Sorumlu"><AsyncCombobox value={responsible} onChange={setResponsible} loadOptions={loadUsers} placeholder="Ana sorumlu seçin" searchPlaceholder="Ad veya e-posta ara" minSearchLength={2} disabled={disabled} /></Field>
+      <Field label="Yedek Sorumlu"><AsyncCombobox value={backupResponsible} onChange={setBackupResponsible} loadOptions={loadUsers} placeholder="Yedek sorumlu seçin" searchPlaceholder="Ad veya e-posta ara" minSearchLength={2} disabled={disabled} /></Field>
+      <div className="sm:col-span-2"><Field label="Bilgilendirilecek Kişiler"><AsyncCombobox value={null} onChange={user => { if (user) setInformedUsers(current => current.some(item => item.id === user.id) ? current : [...current, user]) }} loadOptions={loadUsers} placeholder="Kişi ekleyin" searchPlaceholder="Ad veya e-posta ara" minSearchLength={2} disabled={disabled} />{informedUsers.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{informedUsers.map(user => <Badge key={user.id} variant="secondary" className="gap-1">{user.label}<button type="button" aria-label={`${user.label} kişisini kaldır`} disabled={disabled} onClick={() => setInformedUsers(current => current.filter(item => item.id !== user.id))}><X className="h-3 w-3" /></button></Badge>)}</div>}</Field></div>
       <Field label="Nihai Son Tarih"><Input type="date" value={form.nihaiSonTarih} disabled={sourceDisabled} onChange={e => set('nihaiSonTarih', e.target.value)} /></Field>
       <Field label="Planlanan Tarih"><Input ref={dateFieldRef} type="date" value={form.plananUygulamaTarihi} disabled={sourceDisabled} onChange={e => set('plananUygulamaTarihi', e.target.value)} /></Field>
       <Field label="Periyot"><EnumSelect value={form.periyot} options={PERIYOT_META} disabled={sourceDisabled} onChange={v => set('periyot', v as YillikTakvimPeriyot)} /></Field>

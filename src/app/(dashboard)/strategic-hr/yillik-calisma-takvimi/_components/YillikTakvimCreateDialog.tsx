@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { YillikTakvimKayitTuru, YillikTakvimOncelik, YillikTakvimPeriyot } from '@/generated/prisma'
-import { Loader2 } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,11 +44,13 @@ export function YillikTakvimCreateDialog({ open, onOpenChange, yil, onCreated }:
   const [form, setForm] = useState<FormState>(() => emptyForm(yil))
   const [department, setDepartment] = useState<AsyncComboboxOption | null>(null)
   const [anaSorumlu, setAnaSorumlu] = useState<AsyncComboboxOption | null>(null)
+  const [yedekSorumlu, setYedekSorumlu] = useState<AsyncComboboxOption | null>(null)
+  const [bilgilendirilecekler, setBilgilendirilecekler] = useState<AsyncComboboxOption[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) { setForm(emptyForm(yil)); setDepartment(null); setAnaSorumlu(null); setError(null) }
+    if (open) { setForm(emptyForm(yil)); setDepartment(null); setAnaSorumlu(null); setYedekSorumlu(null); setBilgilendirilecekler([]); setError(null) }
   }, [open, yil])
 
   const loadDepartments = useCallback(async (query: string) => {
@@ -78,6 +81,8 @@ export function YillikTakvimCreateDialog({ open, onOpenChange, yil, onCreated }:
           ...form,
           departmentId: department.id,
           anaSorumluEmail: anaSorumlu.id,
+          yedekSorumluEmail: yedekSorumlu?.id ?? null,
+          bilgilendirilecekEmailler: bilgilendirilecekler.map(user => user.id),
           kisaBaslik: form.kisaBaslik.trim() || null,
           aciklama: form.aciklama.trim() || null,
           disKurum: form.disKurum.trim() || null,
@@ -107,6 +112,8 @@ export function YillikTakvimCreateDialog({ open, onOpenChange, yil, onCreated }:
         <Field label="Dış Kurum"><Input maxLength={200} value={form.disKurum} onChange={e => set('disKurum', e.target.value)} /></Field>
         <Field label="Departman *"><AsyncCombobox value={department} onChange={setDepartment} loadOptions={loadDepartments} placeholder="Departman seçin" searchPlaceholder="Departman ara" /></Field>
         <Field label="Ana Sorumlu *"><AsyncCombobox value={anaSorumlu} onChange={setAnaSorumlu} loadOptions={loadUsers} placeholder="Ana sorumlu seçin" searchPlaceholder="Ad veya e-posta ara" minSearchLength={2} /></Field>
+        <Field label="Yedek Sorumlu"><AsyncCombobox value={yedekSorumlu} onChange={setYedekSorumlu} loadOptions={loadUsers} placeholder="Yedek sorumlu seçin" searchPlaceholder="Ad veya e-posta ara" minSearchLength={2} /></Field>
+        <div className="sm:col-span-2"><Field label="Bilgilendirilecek Kişiler"><AsyncCombobox value={null} onChange={user => { if (user) setBilgilendirilecekler(current => current.some(item => item.id === user.id) ? current : [...current, user]) }} loadOptions={loadUsers} placeholder="Kişi ekleyin" searchPlaceholder="Ad veya e-posta ara" minSearchLength={2} />{bilgilendirilecekler.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{bilgilendirilecekler.map(user => <Badge key={user.id} variant="secondary" className="gap-1">{user.label}<button type="button" aria-label={`${user.label} kişisini kaldır`} onClick={() => setBilgilendirilecekler(current => current.filter(item => item.id !== user.id))}><X className="h-3 w-3" /></button></Badge>)}</div>}</Field></div>
         <Field label="Nihai Son Tarih *"><Input type="date" value={form.nihaiSonTarih} onChange={e => set('nihaiSonTarih', e.target.value)} /></Field>
         <Field label="Planlanan Uygulama Tarihi"><Input type="date" value={form.plananUygulamaTarihi} onChange={e => set('plananUygulamaTarihi', e.target.value)} /></Field>
         <Field label="Periyot *"><EnumSelect value={form.periyot} options={PERIYOT_META} onChange={value => set('periyot', value as YillikTakvimPeriyot)} /></Field>

@@ -24,8 +24,8 @@ const detailSelect = {
   kaynakModul: true, iptalMi: true, arsivMi: true, createdById: true,
   department: { select: { id: true, name: true } },
   katilimcilar: {
-    where: { rol: 'ANA_SORUMLU' as const },
-    select: { id: true, user: { select: { id: true, name: true } } },
+    where: { rol: { in: ['ANA_SORUMLU', 'YEDEK_SORUMLU', 'BILGILENDIRILECEK'] as const } },
+    select: { id: true, rol: true, user: { select: { id: true, name: true, email: true } } },
   },
   sonrakiKayitlar: { where: { iptalMi: false }, select: { id: true, yil: true, durum: true } },
 } satisfies Prisma.YillikTakvimKaydiSelect
@@ -73,7 +73,10 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   try {
     const existing = await prisma.yillikTakvimKaydi.findUnique({
       where: { id },
-      include: { katilimcilar: { where: { rol: 'ANA_SORUMLU' }, select: { id: true, userId: true } } },
+      include: { katilimcilar: {
+        where: { rol: { in: ['ANA_SORUMLU', 'YEDEK_SORUMLU', 'BILGILENDIRILECEK'] } },
+        select: { id: true, userId: true, rol: true },
+      } },
     })
     if (!existing) return NextResponse.json({ error: 'Kayıt bulunamadı' }, { status: 404 })
     if (existing.iptalMi || existing.arsivMi) return NextResponse.json({ error: 'İptal edilmiş veya arşivlenmiş kayıt düzenlenemez' }, { status: 400 })
@@ -91,16 +94,36 @@ export async function PATCH(request: NextRequest, { params }: Context) {
       return NextResponse.json({ error: 'Gerçekleşmedi veya devredildi durumunda neden zorunludur' }, { status: 400 })
     }
 
-    const [department, anaSorumlu] = await Promise.all([
+    const [department, anaSorumlu, yedekSorumlu, bilgilendirilecekler] = await Promise.all([
       body.departmentId ? prisma.department.findFirst({ where: { id: body.departmentId, isActive: true }, select: { id: true } }) : null,
       body.anaSorumluEmail ? prisma.user.findFirst({ where: { email: { equals: body.anaSorumluEmail, mode: 'insensitive' }, isActive: true }, select: { id: true } }) : null,
+      body.yedekSorumluEmail ? prisma.user.findFirst({ where: { email: { equals: body.yedekSorumluEmail, mode: 'insensitive' }, isActive: true }, select: { id: true } }) : null,
+      body.bilgilendirilecekEmailler?.length ? prisma.user.findMany({
+        where: { isActive: true, OR: body.bilgilendirilecekEmailler.map(email => ({ email: { equals: email, mode: 'insensitive' as const } })) },
+        select: { id: true, email: true },
+      }) : [],
     ])
     if (body.departmentId && !department) return NextResponse.json({ error: 'Aktif departman bulunamadı' }, { status: 400 })
     if (body.anaSorumluEmail && !anaSorumlu) return NextResponse.json({ error: 'Ana sorumlu İleriHub kullanıcısı olarak bulunamadı veya pasif' }, { status: 400 })
+    if (body.yedekSorumluEmail && !yedekSorumlu) return NextResponse.json({ error: 'Yedek sorumlu İleriHub kullanıcısı olarak bulunamadı veya pasif' }, { status: 400 })
+    const bilgilendirilecekEmailler = new Set((body.bilgilendirilecekEmailler ?? []).map(email => email.toLowerCase()))
+    const bulunanBilgilendirilecekEmailler = new Set(bilgilendirilecekler.map(user => user.email.toLowerCase()))
+    if (body.bilgilendirilecekEmailler && [...bilgilendirilecekEmailler].some(email => !bulunanBilgilendirilecekEmailler.has(email))) {
+      return NextResponse.json({ error: 'Bilgilendirilecek kişilerden biri İleriHub kullanıcısı olarak bulunamadı veya pasif' }, { status: 400 })
+    }
 
-    const currentResponsible = existing.katilimcilar[0]
+    const currentResponsible = existing.katilimcilar.find(participant => participant.rol === 'ANA_SORUMLU')
+    const currentBackup = existing.katilimcilar.find(participant => participant.rol === 'YEDEK_SORUMLU')
+    const currentInformed = existing.katilimcilar.filter(participant => participant.rol === 'BILGILENDIRILECEK')
     const responsibleChanged = !!anaSorumlu && currentResponsible?.userId !== anaSorumlu.id
+    const backupChanged = body.yedekSorumluEmail !== undefined && currentBackup?.userId !== (yedekSorumlu?.id ?? undefined)
+    const informedChanged = body.bilgilendirilecekEmailler !== undefined && (
+      currentInformed.length !== bilgilendirilecekler.length
+      || currentInformed.some(participant => !bilgilendirilecekler.some(user => user.id === participant.userId))
+    )
     if (responsibleChanged) changed.push('anaSorumlu')
+    if (backupChanged) changed.push('yedekSorumlu')
+    if (informedChanged) changed.push('bilgilendirilecekler')
     if (changed.length === 0) return NextResponse.json({ error: 'Değişiklik bulunamadı' }, { status: 400 })
 
     await prisma.$transaction(async tx => {
@@ -126,6 +149,19 @@ export async function PATCH(request: NextRequest, { params }: Context) {
       if (responsibleChanged && anaSorumlu) {
         if (currentResponsible) await tx.yillikTakvimKatilimci.update({ where: { id: currentResponsible.id }, data: { userId: anaSorumlu.id } })
         else await tx.yillikTakvimKatilimci.create({ data: { kayitId: id, userId: anaSorumlu.id, rol: 'ANA_SORUMLU' } })
+      }
+      if (backupChanged) {
+        if (yedekSorumlu && currentBackup) await tx.yillikTakvimKatilimci.update({ where: { id: currentBackup.id }, data: { userId: yedekSorumlu.id } })
+        else if (yedekSorumlu) await tx.yillikTakvimKatilimci.create({ data: { kayitId: id, userId: yedekSorumlu.id, rol: 'YEDEK_SORUMLU' } })
+        else if (currentBackup) await tx.yillikTakvimKatilimci.delete({ where: { id: currentBackup.id } })
+      }
+      if (informedChanged) {
+        const nextUserIds = new Set(bilgilendirilecekler.map(user => user.id))
+        const currentUserIds = new Set(currentInformed.map(participant => participant.userId))
+        const removedIds = currentInformed.filter(participant => !nextUserIds.has(participant.userId)).map(participant => participant.id)
+        const addedUserIds = bilgilendirilecekler.filter(user => !currentUserIds.has(user.id)).map(user => user.id)
+        if (removedIds.length) await tx.yillikTakvimKatilimci.deleteMany({ where: { id: { in: removedIds } } })
+        if (addedUserIds.length) await tx.yillikTakvimKatilimci.createMany({ data: addedUserIds.map(userId => ({ kayitId: id, userId, rol: 'BILGILENDIRILECEK' })) })
       }
       await logYillikTakvimUpdate({ tx, kayitId: id, yapanId: userId, degisenAlanlar: [...new Set(changed)].sort() })
     })

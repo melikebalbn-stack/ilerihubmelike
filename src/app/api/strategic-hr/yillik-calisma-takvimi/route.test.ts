@@ -5,6 +5,7 @@ const requirePermissionMock = vi.fn()
 const findManyMock = vi.fn()
 const departmentFindFirstMock = vi.fn()
 const userFindFirstMock = vi.fn()
+const userFindManyMock = vi.fn()
 const kayitCreateMock = vi.fn()
 const auditCreateMock = vi.fn()
 const transactionMock = vi.fn()
@@ -16,7 +17,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     yillikTakvimKaydi: { findMany: (...args: unknown[]) => findManyMock(...args) },
     department: { findFirst: (...args: unknown[]) => departmentFindFirstMock(...args) },
-    user: { findFirst: (...args: unknown[]) => userFindFirstMock(...args) },
+    user: { findFirst: (...args: unknown[]) => userFindFirstMock(...args), findMany: (...args: unknown[]) => userFindManyMock(...args) },
     $transaction: (...args: unknown[]) => transactionMock(...args),
   },
 }))
@@ -48,6 +49,7 @@ beforeEach(() => {
   findManyMock.mockReset()
   departmentFindFirstMock.mockReset()
   userFindFirstMock.mockReset()
+  userFindManyMock.mockReset()
   kayitCreateMock.mockReset()
   auditCreateMock.mockReset()
   transactionMock.mockReset()
@@ -63,6 +65,31 @@ describe('Yıllık Çalışma Takvimi POST', () => {
     const response = await POST(postRequest(validPayload))
     expect(response.status).toBe(403)
     expect(transactionMock).not.toHaveBeenCalled()
+  })
+
+  it('yedek sorumlu ve bilgilendirilecek kişileri katılımcı olarak oluşturur', async () => {
+    requirePermissionMock.mockResolvedValue({ error: null, userId: 'actor-1' })
+    departmentFindFirstMock.mockResolvedValue({ id: 'dept-1' })
+    userFindFirstMock.mockResolvedValueOnce({ id: 'user-1' }).mockResolvedValueOnce({ id: 'user-2' })
+    userFindManyMock.mockResolvedValue([
+      { id: 'user-3', email: 'bilgi1@ilerigroup.com' },
+      { id: 'user-4', email: 'bilgi2@ilerigroup.com' },
+    ])
+    kayitCreateMock.mockResolvedValue({ id: 'kayit-1' })
+
+    const response = await POST(postRequest({
+      ...validPayload,
+      yedekSorumluEmail: 'yedek@ilerigroup.com',
+      bilgilendirilecekEmailler: ['bilgi1@ilerigroup.com', 'bilgi2@ilerigroup.com'],
+    }))
+
+    expect(response.status).toBe(201)
+    expect(kayitCreateMock).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ katilimcilar: { create: [
+      { userId: 'user-1', rol: 'ANA_SORUMLU' },
+      { userId: 'user-2', rol: 'YEDEK_SORUMLU' },
+      { userId: 'user-3', rol: 'BILGILENDIRILECEK' },
+      { userId: 'user-4', rol: 'BILGILENDIRILECEK' },
+    ] } }) }))
   })
 
   it('yalnız view yetkisi create açmaz; create/admin ister', async () => {
@@ -83,7 +110,7 @@ describe('Yıllık Çalışma Takvimi POST', () => {
     expect(response.status).toBe(201)
     expect(kayitCreateMock).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       createdById: 'actor-1',
-      katilimcilar: { create: { userId: 'user-1', rol: 'ANA_SORUMLU' } },
+      katilimcilar: { create: [{ userId: 'user-1', rol: 'ANA_SORUMLU' }] },
     }) }))
     expect(auditCreateMock).toHaveBeenCalledWith({ data: expect.objectContaining({
       kayitId: 'kayit-1', yapanId: 'actor-1', islemTuru: 'OLUSTUR',

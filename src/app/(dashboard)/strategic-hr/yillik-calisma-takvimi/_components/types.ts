@@ -47,7 +47,7 @@ export interface YillikTakvimKaydiDetail {
   arsivMi: boolean
   createdById: string
   department: { id: string; name: string } | null
-  katilimcilar: { id: string; user: { id: string; name: string | null } }[]
+  katilimcilar: { id: string; rol: string; user: { id: string; name: string | null; email: string } }[]
   sonrakiKayitlar: { id: string; yil: number; durum: YillikTakvimDurum }[]
 }
 

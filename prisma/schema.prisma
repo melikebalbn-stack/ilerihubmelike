@@ -12887,11 +12887,9 @@ enum YillikTakvimPeriyot {
 enum YillikTakvimKatilimciRol {
   ANA_SORUMLU
   YEDEK_SORUMLU
-  DESTEK
   ONAYLAYAN
   IKINCI_ONAYLAYAN
   BILGILENDIRILECEK
-  GOZLEMCI
 }
 
 enum YillikTakvimGerceklesmeDurumu {

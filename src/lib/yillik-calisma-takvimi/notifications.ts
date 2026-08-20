@@ -24,7 +24,11 @@ export async function runYillikTakvimNotifications({ dryRun = true, now = new Da
   const today = istanbulToday(now)
   const records = await db.yillikTakvimKaydi.findMany({
     where: { arsivMi: false, iptalMi: false, durum: { notIn: ['ONAYLANDI', 'IPTAL_EDILDI'] }, nihaiSonTarih: { not: null }, bildirimKurallari: { some: { aktif: true } } },
-    include: { katilimcilar: { include: { user: { select: { id: true, name: true, email: true, isActive: true } } } }, bildirimKurallari: { where: { aktif: true } } },
+    include: {
+      katilimcilar: { include: { user: { select: { id: true, name: true, email: true, isActive: true } } } },
+      bildirimKurallari: { where: { aktif: true } },
+      onayAdimlari: { orderBy: [{ tur: 'desc' }, { adimSira: 'asc' }], include: { onaylayan: { select: { id: true, name: true, email: true, isActive: true } } } },
+    },
   })
   const candidates: NotificationRunSummary['candidates'] = []
   let skippedDuplicateCount = 0, missingRecipientCount = 0, sentCount = 0, errorCount = 0
@@ -35,6 +39,14 @@ export async function runYillikTakvimNotifications({ dryRun = true, now = new Da
       if (!bildirimTetigiEslesir(rule.tetik, difference)) continue
       const escalation = parseBildirimTetik(rule.tetik).tip === 'gun_gecikme'
       const recipients = new Map(record.katilimcilar.filter(p => rule.aliciRoller.includes(p.rol) && p.user.isActive).map(p => [p.user.id, p.user]))
+      if (rule.aliciRoller.includes('ONAYLAYAN')) {
+        const approver = record.onayAdimlari.find(step => step.adimSira === 1)?.onaylayan
+        if (approver?.isActive) recipients.set(approver.id, approver)
+      }
+      if (rule.aliciRoller.includes('IKINCI_ONAYLAYAN')) {
+        const approver = record.onayAdimlari.find(step => step.adimSira === 2)?.onaylayan
+        if (approver?.isActive) recipients.set(approver.id, approver)
+      }
       if (escalation) {
         const level = await db.yillikTakvimOnayKademesi.findFirst({ where: { sira: 2, aktif: true }, include: { user: { select: { id: true, name: true, email: true, isActive: true } } } })
         if (level?.user.isActive) recipients.set(level.user.id, level.user)

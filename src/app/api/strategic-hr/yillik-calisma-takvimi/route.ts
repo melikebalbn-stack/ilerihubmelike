@@ -73,15 +73,29 @@ export async function POST(request: NextRequest) {
   const body = parsed.data
 
   try {
-    const [department, anaSorumlu] = await Promise.all([
+    const [department, anaSorumlu, yedekSorumlu, bilgilendirilecekler] = await Promise.all([
       prisma.department.findFirst({ where: { id: body.departmentId, isActive: true }, select: { id: true } }),
       prisma.user.findFirst({
         where: { email: { equals: body.anaSorumluEmail, mode: 'insensitive' }, isActive: true },
         select: { id: true },
       }),
+      body.yedekSorumluEmail ? prisma.user.findFirst({
+        where: { email: { equals: body.yedekSorumluEmail, mode: 'insensitive' }, isActive: true },
+        select: { id: true },
+      }) : null,
+      body.bilgilendirilecekEmailler?.length ? prisma.user.findMany({
+        where: { isActive: true, OR: body.bilgilendirilecekEmailler.map(email => ({ email: { equals: email, mode: 'insensitive' as const } })) },
+        select: { id: true, email: true },
+      }) : [],
     ])
     if (!department) return NextResponse.json({ error: 'Aktif departman bulunamadı' }, { status: 400 })
     if (!anaSorumlu) return NextResponse.json({ error: 'Ana sorumlu İleriHub kullanıcısı olarak bulunamadı veya pasif' }, { status: 400 })
+    if (body.yedekSorumluEmail && !yedekSorumlu) return NextResponse.json({ error: 'Yedek sorumlu İleriHub kullanıcısı olarak bulunamadı veya pasif' }, { status: 400 })
+    const bilgilendirilecekEmailler = new Set((body.bilgilendirilecekEmailler ?? []).map(email => email.toLowerCase()))
+    const bulunanBilgilendirilecekEmailler = new Set(bilgilendirilecekler.map(user => user.email.toLowerCase()))
+    if ([...bilgilendirilecekEmailler].some(email => !bulunanBilgilendirilecekEmailler.has(email))) {
+      return NextResponse.json({ error: 'Bilgilendirilecek kişilerden biri İleriHub kullanıcısı olarak bulunamadı veya pasif' }, { status: 400 })
+    }
 
     const created = await prisma.$transaction(async tx => {
       const kayit = await tx.yillikTakvimKaydi.create({
@@ -99,7 +113,11 @@ export async function POST(request: NextRequest) {
           kisaBaslik: body.kisaBaslik ?? null,
           disKurum: body.disKurum ?? null,
           createdById: userId,
-          katilimcilar: { create: { userId: anaSorumlu.id, rol: 'ANA_SORUMLU' } },
+          katilimcilar: { create: [
+            { userId: anaSorumlu.id, rol: 'ANA_SORUMLU' },
+            ...(yedekSorumlu ? [{ userId: yedekSorumlu.id, rol: 'YEDEK_SORUMLU' as const }] : []),
+            ...bilgilendirilecekler.map(user => ({ userId: user.id, rol: 'BILGILENDIRILECEK' as const })),
+          ] },
         },
         select: { id: true },
       })

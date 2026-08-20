@@ -29,6 +29,7 @@ const user = { id: 'user-1', name: 'Örnek', email: 'private@example.com', isAct
 const record = (overrides: Record<string, unknown> = {}) => ({
   id: 'record-1', surec: 'Süreç', kisaBaslik: 'Başlık', nihaiSonTarih: new Date('2026-02-16T00:00:00Z'),
   katilimcilar: [{ rol: 'ANA_SORUMLU', user }],
+  onayAdimlari: [],
   bildirimKurallari: [{ id: 'rule-1', tetik: 'gun_kala:15', aliciRoller: ['ANA_SORUMLU'], kanal: ['HUB'], aktif: true }],
   ...overrides,
 })
@@ -51,6 +52,19 @@ describe('Yıllık Takvim dry-run motoru', () => {
   it('mükerrer logu atlanmış sayar', async () => {
     const result = await runYillikTakvimNotifications({ dryRun: true, now: new Date('2026-02-01T12:00:00Z'), db: db([record()], { id: 'log-1', sonuc: 'GONDERILDI' }) as never })
     expect(result.skippedDuplicateCount).toBe(1); expect(result.candidates[0].duplicate).toBe(true)
+  })
+  it('ONAYLAYAN rolü için birinci snapshot adımının aktif kullanıcısını alıcıya ekler', async () => {
+    const approver = { id: 'approver-1', name: 'Onaylayan', email: 'approver@example.com', isActive: true }
+    const approvalRecord = record({
+      katilimcilar: [],
+      onayAdimlari: [{ adimSira: 1, onaylayan: approver }],
+      bildirimKurallari: [{ id: 'rule-1', tetik: 'gun_kala:15', aliciRoller: ['ONAYLAYAN'], kanal: ['HUB'], aktif: true }],
+    })
+
+    const result = await runYillikTakvimNotifications({ dryRun: true, now: new Date('2026-02-01T12:00:00Z'), db: db([approvalRecord]) as never })
+
+    expect(result.candidates[0].targetUserCount).toBe(1)
+    expect(result.missingRecipientCount).toBe(0)
   })
   it('eskalasyonda yalnız aktif ikinci kademeyi ekler; yoksa alıcı uydurmaz', async () => {
     const overdue = record({ nihaiSonTarih: new Date('2026-01-25T00:00:00Z'), katilimcilar: [], bildirimKurallari: [{ id: 'r', tetik: 'gun_gecikme:7', aliciRoller: ['ANA_SORUMLU'], kanal: ['HUB'], aktif: true }] })

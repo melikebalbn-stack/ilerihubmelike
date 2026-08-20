@@ -21,7 +21,11 @@ const detail = () => ({
   disKurum: 'Akredite Kurum', gerceklesmeDurumu: 'BEKLIYOR', gerceklesmeTarihi: null,
   gerceklesmemeNedeni: null, kaynakModul: null, iptalMi: false, arsivMi: false,
   createdById: 'u1', sonrakiKayitlar: [],
-  department: { id: 'd1', name: 'İnsan Varlıkları' }, katilimcilar: [{ id: 'p1', user: { id: 'u1', name: 'Elif Yıldırım' } }],
+  department: { id: 'd1', name: 'İnsan Varlıkları' }, katilimcilar: [
+    { id: 'p1', rol: 'ANA_SORUMLU', user: { id: 'u1', name: 'Elif Yıldırım', email: 'elif@ilerigroup.com' } },
+    { id: 'p2', rol: 'YEDEK_SORUMLU', user: { id: 'u2', name: 'Yedek Kullanıcı', email: 'yedek@ilerigroup.com' } },
+    { id: 'p3', rol: 'BILGILENDIRILECEK', user: { id: 'u3', name: 'Bilgi Kullanıcısı', email: 'bilgi@ilerigroup.com' } },
+  ],
 })
 
 beforeEach(() => {
@@ -51,6 +55,18 @@ describe('Yıllık Takvim detay referans kabuğu', () => {
     expect(screen.getByRole('button', { name: 'Düzenle' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Tamamla' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Tarih Değiştir' })).toBeDisabled()
+  })
+
+  it('düzenleme formunda yedek ve bilgilendirilecek kişi alanlarını gösterir', async () => {
+    const user = userEvent.setup()
+    render(<YillikTakvimDetailSheet kayitId="r1" open onOpenChange={vi.fn()} onUpdated={vi.fn()} />)
+    await screen.findByText('İŞ EKİPMANLARI')
+    await user.click(screen.getByRole('button', { name: 'Düzenle' }))
+
+    expect(screen.getByText('Yedek Sorumlu')).toBeInTheDocument()
+    expect(screen.getByText('Bilgilendirilecek Kişiler')).toBeInTheDocument()
+    expect(screen.getByText('Yedek Kullanıcı')).toBeInTheDocument()
+    expect(screen.getByText('Bilgi Kullanıcısı')).toBeInTheDocument()
   })
 
   it('onaylanmış kayıtta sonraki dönem aksiyonunu gösterir ve POST çağrısı yapar', async () => {

@@ -6,6 +6,7 @@ import { YILLIK_TAKVIM_APPROVE_PERMISSIONS, YILLIK_TAKVIM_VIEW_PERMISSIONS } fro
 import { YillikTakvimApprovalSchema } from '@/lib/yillik-calisma-takvimi/validators'
 import { logYillikTakvimAction } from '@/lib/yillik-calisma-takvimi/audit'
 import { lockYillikTakvimParent } from '@/lib/yillik-calisma-takvimi/transaction'
+import { ycktOnaylayanZinciriCoz } from '@/lib/yillik-calisma-takvimi/hiyerarsi-cozumle'
 
 export const dynamic = 'force-dynamic'
 type Context = { params: Promise<{ id: string }> }
@@ -29,10 +30,27 @@ async function currentOrCreateSnapshot(tx: Tx, kayitId: string) {
 
   const configured = await tx.yillikTakvimOnayKademesi.findMany({ where: { aktif: true }, orderBy: { sira: 'asc' } })
   if (configured.length === 0) throw new ApprovalRuleError('Aktif Yıllık Takvim onay kademesi tanımlı değil')
+  const anaSorumlu = await tx.yillikTakvimKatilimci.findFirst({
+    where: { kayitId, rol: 'ANA_SORUMLU' },
+    select: { userId: true },
+  })
+  const kademeSayisi = configured.length
+  const hiyerarsi = anaSorumlu
+    ? await ycktOnaylayanZinciriCoz(anaSorumlu.userId, kademeSayisi)
+    : []
   const tur = latestTur + 1
-  await tx.yillikTakvimOnayAdimi.createMany({ data: configured.map(step => ({
-    kayitId, tur, adimSira: step.sira, unvan: step.unvan, onaylayanId: step.userId,
-  })) })
+  const data = Array.from({ length: kademeSayisi }, (_, index) => {
+    const adimSira = index + 1
+    const hiyerarsiAdimi = hiyerarsi.find(step => step.adimSira === adimSira)
+    const yedek = configured[index]
+    const onaylayanId = hiyerarsiAdimi?.userId ?? yedek?.userId
+    if (!onaylayanId) {
+      console.warn(`[YCT onay] ${kayitId} kaydı için ${adimSira}. onay adımı atlandı: onaylayan bulunamadı`)
+      return null
+    }
+    return { kayitId, tur, adimSira, unvan: yedek?.unvan ?? `${adimSira}. Onaylayan`, onaylayanId }
+  }).filter(step => step !== null)
+  await tx.yillikTakvimOnayAdimi.createMany({ data })
   const steps = await tx.yillikTakvimOnayAdimi.findMany({ where: { kayitId, tur }, orderBy: { adimSira: 'asc' } })
   return { tur, steps }
 }

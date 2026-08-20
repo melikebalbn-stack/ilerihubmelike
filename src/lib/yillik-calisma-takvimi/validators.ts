@@ -7,6 +7,7 @@ const DateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tarih YYYY-AA-GG forma
 }, 'Geçersiz tarih')
 
 const OptionalText = (max: number) => z.string().trim().max(max).nullable().optional()
+const UserEmail = (message?: string) => z.string().trim().email(message).max(320)
 
 export const YillikTakvimCreateSchema = z.object({
   yil: z.number().int().min(2000).max(2100),
@@ -14,7 +15,9 @@ export const YillikTakvimCreateSchema = z.object({
   surec: z.string().trim().min(1, 'Başlık/süreç zorunludur').max(300),
   aciklama: OptionalText(5000),
   departmentId: z.string().trim().min(1, 'Departman zorunludur').max(100),
-  anaSorumluEmail: z.string().trim().email('Geçerli bir ana sorumlu seçilmelidir').max(320),
+  anaSorumluEmail: UserEmail('Geçerli bir ana sorumlu seçilmelidir'),
+  yedekSorumluEmail: UserEmail().nullable().optional(),
+  bilgilendirilecekEmailler: z.array(UserEmail()).optional(),
   nihaiSonTarih: DateOnly,
   plananUygulamaTarihi: DateOnly.nullable().optional(),
   periyot: z.nativeEnum(YillikTakvimPeriyot),
@@ -32,7 +35,9 @@ export const YillikTakvimUpdateSchema = z.object({
   kisaBaslik: OptionalText(200),
   aciklama: OptionalText(5000),
   departmentId: z.string().trim().min(1).max(100).optional(),
-  anaSorumluEmail: z.string().trim().email().max(320).optional(),
+  anaSorumluEmail: UserEmail().optional(),
+  yedekSorumluEmail: UserEmail().nullable().optional(),
+  bilgilendirilecekEmailler: z.array(UserEmail()).optional(),
   nihaiSonTarih: DateOnly.optional(),
   plananUygulamaTarihi: DateOnly.nullable().optional(),
   periyot: z.nativeEnum(YillikTakvimPeriyot).optional(),

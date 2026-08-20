@@ -5,9 +5,13 @@ const requirePermissionMock = vi.fn()
 const findUniqueMock = vi.fn()
 const departmentFindFirstMock = vi.fn()
 const userFindFirstMock = vi.fn()
+const userFindManyMock = vi.fn()
 const recordUpdateMock = vi.fn()
 const participantUpdateMock = vi.fn()
 const participantCreateMock = vi.fn()
+const participantDeleteMock = vi.fn()
+const participantDeleteManyMock = vi.fn()
+const participantCreateManyMock = vi.fn()
 const auditCreateMock = vi.fn()
 const transactionMock = vi.fn()
 const lockMock = vi.fn()
@@ -16,7 +20,7 @@ vi.mock('@/lib/auth/require-permission', () => ({ requirePermission: (...args: u
 vi.mock('@/lib/prisma', () => ({ prisma: {
   yillikTakvimKaydi: { findUnique: (...args: unknown[]) => findUniqueMock(...args) },
   department: { findFirst: (...args: unknown[]) => departmentFindFirstMock(...args) },
-  user: { findFirst: (...args: unknown[]) => userFindFirstMock(...args) },
+  user: { findFirst: (...args: unknown[]) => userFindFirstMock(...args), findMany: (...args: unknown[]) => userFindManyMock(...args) },
   $transaction: (...args: unknown[]) => transactionMock(...args),
 } }))
 
@@ -32,15 +36,15 @@ const existing = {
   nihaiSonTarih: new Date('2026-12-15T00:00:00.000Z'), plananUygulamaTarihi: null,
   disKurum: null, gerceklesmeDurumu: 'BEKLIYOR', gerceklesmeTarihi: null,
   gerceklesmemeNedeni: null, kaynakModul: null, iptalMi: false, arsivMi: false,
-  katilimcilar: [{ id: 'kat-1', userId: 'user-old' }],
+  katilimcilar: [{ id: 'kat-1', userId: 'user-old', rol: 'ANA_SORUMLU' }],
 }
 
 beforeEach(() => {
-  for (const mock of [requirePermissionMock, findUniqueMock, departmentFindFirstMock, userFindFirstMock, recordUpdateMock, participantUpdateMock, participantCreateMock, auditCreateMock, transactionMock]) mock.mockReset()
+  for (const mock of [requirePermissionMock, findUniqueMock, departmentFindFirstMock, userFindFirstMock, userFindManyMock, recordUpdateMock, participantUpdateMock, participantCreateMock, participantDeleteMock, participantDeleteManyMock, participantCreateManyMock, auditCreateMock, transactionMock]) mock.mockReset()
   transactionMock.mockImplementation(async callback => callback({
     $queryRaw: lockMock,
     yillikTakvimKaydi: { update: recordUpdateMock },
-    yillikTakvimKatilimci: { update: participantUpdateMock, create: participantCreateMock },
+    yillikTakvimKatilimci: { update: participantUpdateMock, create: participantCreateMock, delete: participantDeleteMock, deleteMany: participantDeleteManyMock, createMany: participantCreateManyMock },
     yillikTakvimIslemGecmisi: { create: auditCreateMock },
   }))
   lockMock.mockResolvedValue([{ id: 'kayit-1', durum: 'PLANLANDI', iptalMi: false, arsivMi: false, kaynakModul: null }])
@@ -61,7 +65,7 @@ describe('tekil GET', () => {
     expect(response.status).toBe(200)
     expect(requirePermissionMock).toHaveBeenCalledWith(['yilliktakvim.view', 'yilliktakvim.admin'])
     const select = findUniqueMock.mock.calls[0][0].select
-    expect(select.katilimcilar.select.user.select).toEqual({ id: true, name: true })
+    expect(select.katilimcilar.select.user.select).toEqual({ id: true, name: true, email: true })
   })
 
   it('olmayan ID için 404 döner', async () => {
@@ -118,6 +122,43 @@ describe('PATCH', () => {
     expect(response.status).toBe(200)
     expect(participantUpdateMock).toHaveBeenCalledWith({ where: { id: 'kat-1' }, data: { userId: 'user-new' } })
     expect(auditCreateMock).toHaveBeenCalled()
+  })
+
+  it('yedek sorumlu ekler ve değişikliği PII olmadan audit eder', async () => {
+    requirePermissionMock.mockResolvedValue({ error: null, userId: 'editor' })
+    findUniqueMock.mockResolvedValue(existing)
+    userFindFirstMock.mockResolvedValue({ id: 'user-backup' })
+
+    const response = await PATCH(request('PATCH', { yedekSorumluEmail: 'yedek@ilerigroup.com' }), context)
+
+    expect(response.status).toBe(200)
+    expect(participantCreateMock).toHaveBeenCalledWith({ data: { kayitId: 'kayit-1', userId: 'user-backup', rol: 'YEDEK_SORUMLU' } })
+    expect(auditCreateMock).toHaveBeenCalledWith({ data: expect.objectContaining({
+      yeniDeger: JSON.stringify({ degisenAlanlar: ['yedekSorumlu'] }),
+    }) })
+  })
+
+  it('bilgilendirilecek listesindeki ekleme ve çıkarmayı diff ile uygular', async () => {
+    requirePermissionMock.mockResolvedValue({ error: null, userId: 'editor' })
+    findUniqueMock.mockResolvedValue({ ...existing, katilimcilar: [
+      ...existing.katilimcilar,
+      { id: 'info-old', userId: 'user-old-info', rol: 'BILGILENDIRILECEK' },
+      { id: 'info-same', userId: 'user-same', rol: 'BILGILENDIRILECEK' },
+    ] })
+    userFindManyMock.mockResolvedValue([
+      { id: 'user-same', email: 'same@ilerigroup.com' },
+      { id: 'user-new-info', email: 'new@ilerigroup.com' },
+    ])
+
+    const response = await PATCH(request('PATCH', { bilgilendirilecekEmailler: ['same@ilerigroup.com', 'new@ilerigroup.com'] }), context)
+
+    expect(response.status).toBe(200)
+    expect(participantDeleteManyMock).toHaveBeenCalledWith({ where: { id: { in: ['info-old'] } } })
+    expect(participantCreateManyMock).toHaveBeenCalledWith({ data: [{ kayitId: 'kayit-1', userId: 'user-new-info', rol: 'BILGILENDIRILECEK' }] })
+    expect(participantUpdateMock).not.toHaveBeenCalled()
+    expect(auditCreateMock).toHaveBeenCalledWith({ data: expect.objectContaining({
+      yeniDeger: JSON.stringify({ degisenAlanlar: ['bilgilendirilecekler'] }),
+    }) })
   })
 
   it('audit başarısızsa transaction hatası olarak 500 döner', async () => {

@@ -64,13 +64,23 @@ const DEPT_ICON: Record<string, LucideIcon> = {
   FSN: Truck,
 }
 
-// IFS bölüm adı ALL-CAPS gelir ("PRESHANE"). Türkçe-güvenli başlık formatı:
-// önce tr-TR küçük harf (İMALAT→imalat, İ/ı doğru), sonra ilk harf büyük.
-// "CNC" gibi kısaltmalar "Cnc" olur — bilinçli kabul (spec).
+// IFS bölüm adı ALL-CAPS gelir ("CNC TALAŞLI İMALAT"). Kelime bazlı cümle-başı formatı:
+//  - ≤4 harf ve tamamı büyük harf olan kelimeler (CNC, WPH, FSN) OLDUĞU GİBİ kalır,
+//  - diğerleri tr-TR küçük harfe iner (İMALAT→imalat, İ/ı doğru); yalnız ilk kelime
+//    baş harfi büyük. Örn: "CNC talaşlı imalat", "Daire testere/boru büküm".
 function baslikFormat(s: string): string {
-  const low = s.toLocaleLowerCase('tr-TR')
-  if (!low) return s
-  return low.charAt(0).toLocaleUpperCase('tr-TR') + low.slice(1)
+  return s
+    .trim()
+    .split(/\s+/)
+    .map((w, i) => {
+      const buyuk = w.toLocaleUpperCase('tr-TR')
+      const kucuk = w.toLocaleLowerCase('tr-TR')
+      // Kısaltma: kısa + tamamı büyük harf (harf içeren) → dokunma.
+      if (w.length <= 4 && w === buyuk && w !== kucuk) return w
+      // İlk kelime cümle-başı büyük; diğerleri küçük.
+      return i === 0 ? kucuk.charAt(0).toLocaleUpperCase('tr-TR') + kucuk.slice(1) : kucuk
+    })
+    .join(' ')
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')

@@ -179,6 +179,104 @@ function UstBar({
   )
 }
 
+// ── Yoğunluk kademesi — açık iş emri sayısına göre 4 kademe (eşikler TEK yerde) ──
+type YogunlukKademe = 'yogun' | 'orta' | 'az' | 'yok'
+
+function yogunlukKademesi(isEmri: number): YogunlukKademe {
+  if (isEmri >= 10) return 'yogun'
+  if (isEmri >= 4) return 'orta'
+  if (isEmri >= 1) return 'az'
+  return 'yok'
+}
+
+// Kademe → stiller. Renkler tema `primary` token'ından (+ opaklık); hardcode hex yok.
+const KADEME_STIL: Record<
+  YogunlukKademe,
+  { kart: string; baslik: string; ikon: string; alt: string; sayi: string; lejant: string }
+> = {
+  yogun: {
+    kart: 'bg-primary border-transparent',
+    baslik: 'text-primary-foreground',
+    ikon: 'text-primary-foreground/85',
+    alt: 'text-primary-foreground/75',
+    sayi: 'text-primary-foreground',
+    lejant: 'bg-primary',
+  },
+  orta: {
+    kart: 'bg-primary/20 border-transparent',
+    baslik: 'text-primary',
+    ikon: 'text-primary',
+    alt: 'text-muted-foreground',
+    sayi: 'text-primary',
+    lejant: 'bg-primary/40',
+  },
+  az: {
+    kart: 'bg-primary/10 border-transparent',
+    baslik: 'text-primary',
+    ikon: 'text-primary/80',
+    alt: 'text-muted-foreground',
+    sayi: 'text-primary',
+    lejant: 'bg-primary/20',
+  },
+  yok: {
+    kart: 'bg-card border-border',
+    baslik: 'text-foreground/70',
+    ikon: 'text-muted-foreground',
+    alt: 'text-muted-foreground',
+    sayi: '',
+    lejant: 'bg-card border border-border',
+  },
+}
+
+// ── Üst özet şeridi — 4 metrik (mevcut departman verisinden türetilir) ─────────
+function OzetSerit({ departmanlar }: { departmanlar: Departman[] }) {
+  const toplamIs = departmanlar.reduce((s, d) => s + d.isEmri, 0)
+  const isliBolum = departmanlar.filter((d) => d.isEmri > 0).length
+  const toplamTezgah = departmanlar.reduce((s, d) => s + d.tezgah, 0)
+  const bolumSayisi = departmanlar.length
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <OzetKart etiket="Açık iş emri" deger={toplamIs} />
+      <OzetKart etiket="İşi olan bölüm" deger={isliBolum} ek={`/ ${bolumSayisi}`} />
+      <OzetKart etiket="Toplam tezgah" deger={toplamTezgah} />
+      <OzetKart etiket="Bölüm" deger={bolumSayisi} />
+    </div>
+  )
+}
+
+function OzetKart({ etiket, deger, ek }: { etiket: string; deger: number; ek?: string }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-xl border bg-card p-4">
+      <span className="text-xs text-muted-foreground">{etiket}</span>
+      <span className="text-[28px] font-medium leading-none tabular-nums">
+        {deger}
+        {ek ? <span className="ml-1 text-base font-normal text-muted-foreground">{ek}</span> : null}
+      </span>
+    </div>
+  )
+}
+
+// ── Lejant — yoğunluk kademesi renk anahtarı ──────────────────────────────────
+const LEJANT: { k: YogunlukKademe; label: string }[] = [
+  { k: 'yogun', label: 'yoğun' },
+  { k: 'orta', label: 'orta' },
+  { k: 'az', label: 'az' },
+  { k: 'yok', label: 'iş yok' },
+]
+
+function Lejant() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {LEJANT.map((it) => (
+        <span key={it.k} className="flex items-center gap-1.5">
+          <span className={`h-2.5 w-2.5 rounded-sm ${KADEME_STIL[it.k].lejant}`} />
+          <span className="text-xs text-muted-foreground">{it.label}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // ── Bölüm seçim ekranı (?dept yokken) ─────────────────────────────────────────
 function BolumSecim({
   departmanlar,
@@ -187,72 +285,69 @@ function BolumSecim({
   departmanlar: Departman[]
   ifsError: string | null
 }) {
+  if (ifsError) {
+    return (
+      <div className="flex flex-col items-start gap-2 rounded-xl border border-red-300 bg-red-50 p-6 text-red-700">
+        <div className="flex items-center gap-2 font-medium">
+          <AlertCircle className="h-5 w-5" />
+          Bölümler IFS&apos;ten alınamadı
+        </div>
+        <p className="max-w-full break-all text-sm text-red-700/90">{ifsError}</p>
+      </div>
+    )
+  }
+  if (departmanlar.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+        Bölüm bulunamadı.
+      </div>
+    )
+  }
   return (
     <>
-      <div className="flex flex-col leading-tight">
-        <span className="text-[17px] font-medium">Bölüm seçin</span>
+      <OzetSerit departmanlar={departmanlar} />
+
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <span className="text-[17px] font-medium">Bölümler</span>
+        <Lejant />
       </div>
 
-      {ifsError ? (
-        <div className="flex flex-col items-start gap-2 rounded-xl border border-red-300 bg-red-50 p-6 text-red-700">
-          <div className="flex items-center gap-2 font-medium">
-            <AlertCircle className="h-5 w-5" />
-            Bölümler IFS&apos;ten alınamadı
-          </div>
-          <p className="max-w-full break-all text-sm text-red-700/90">{ifsError}</p>
-        </div>
-      ) : departmanlar.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-          Bölüm bulunamadı.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-          {departmanlar.map((d) => (
-            <BolumKart key={d.kod} d={d} />
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {departmanlar.map((d) => (
+          <BolumKart key={d.kod} d={d} />
+        ))}
+      </div>
     </>
   )
 }
 
 function BolumKart({ d }: { d: Departman }) {
   const Icon = DEPT_ICON[d.kod] ?? Building2
-  const aktif = d.isEmri > 0
+  const s = KADEME_STIL[yogunlukKademesi(d.isEmri)]
 
   return (
     <Link
       href={`/terminal/uretim?dept=${encodeURIComponent(d.kod)}`}
-      className="group relative flex min-h-[120px] flex-col gap-4 rounded-2xl border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
+      className={`group relative flex min-h-[118px] flex-col gap-3 rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm ${s.kart}`}
     >
-      {/* Açık iş emri rozeti — mutlak sağ üst (12px); min-w ile 1 ve 19 aynı genişlik. */}
-      {aktif && (
+      {/* Açık iş sayısı — sağ üst, düz büyük rakam (rozet değil). 0 ise gösterilmez. */}
+      {d.isEmri > 0 && (
         <span
-          className="absolute right-3 top-3 flex min-w-[26px] items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold text-white"
-          style={{ background: TERMINAL_ACCENT }}
+          className={`absolute right-4 top-3.5 text-[26px] font-medium leading-none tabular-nums ${s.sayi}`}
           title={`${d.isEmri} açık iş emri`}
         >
           {d.isEmri}
         </span>
       )}
 
-      {/* İkon kutusu 52×52 / ikon 28px — TÜM kartlarda AYNI (accent zemin + beyaz).
-          İş yok ayrımı yalnız rozet yokluğu + başlık renginde. */}
-      <span
-        className="flex h-[52px] w-[52px] items-center justify-center rounded-xl text-white transition-transform group-active:scale-95"
-        style={{ background: TERMINAL_ACCENT }}
-      >
-        <Icon className="h-7 w-7" />
-      </span>
-      <div className="flex flex-col gap-1.5">
-        {/* Ad: 15px medium. Boş bölüm: secondary (görünür, ikinci planda). */}
-        <div
-          className={`line-clamp-2 text-[15px] font-medium leading-tight ${aktif ? '' : 'text-foreground/80'}`}
-          style={aktif ? { color: TERMINAL_ACCENT } : undefined}
-        >
+      {/* İkon — kutu yok, doğrudan 30px; kart zeminiyle kontrast renk. */}
+      <Icon className={`h-[30px] w-[30px] transition-transform group-active:scale-95 ${s.ikon}`} />
+
+      <div className="flex flex-col gap-1">
+        <div className={`line-clamp-2 text-[15px] font-medium leading-tight ${s.baslik}`}>
           {d.ad ? baslikFormat(d.ad) : d.kod}
         </div>
-        <div className="text-xs text-muted-foreground">
+        <div className={`text-xs ${s.alt}`}>
           {d.kod} · {d.tezgah} tezgah
         </div>
       </div>

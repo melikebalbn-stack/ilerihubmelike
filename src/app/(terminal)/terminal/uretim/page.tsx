@@ -62,12 +62,32 @@ export default async function UretimTerminalPage({
 
   // Tezgah sayısı — ipro_tezgah.ifsWorkCenterNo (3 haneli WC) → departman.
   const tezgahSayi = new Map<string, number>()
+  const deptEsleTezgahKodlari = new Set<string>() // departmana eşlenen tezgah kodları
   const tezgahlar = await prisma.iproTezgah.findMany({
-    select: { ifsWorkCenterNo: true },
+    select: { kod: true, ifsWorkCenterNo: true },
   })
   for (const t of tezgahlar) {
     const d = tezgahWcDepartmani(t.ifsWorkCenterNo)
-    if (d && gecerliKodlar.has(d)) tezgahSayi.set(d, (tezgahSayi.get(d) ?? 0) + 1)
+    if (d && gecerliKodlar.has(d)) {
+      tezgahSayi.set(d, (tezgahSayi.get(d) ?? 0) + 1)
+      deptEsleTezgahKodlari.add(t.kod)
+    }
+  }
+
+  // Canlı çalışan tezgah — son 180 sn'de ipro_sayac_okuma'da delta üreten DISTINCT
+  // tezgah. BAĞIMSIZ sorgu (oee-pano-service kopyası; import DEĞİL). Poller yalnız
+  // delta>0 yazar → 180 sn içinde satırı olan tezgah çalışıyor. Departmana eşlenmiş
+  // olanları sayarız (M ≤ T). Hata → 0, sayfa çökmez.
+  let calisanTezgah = 0
+  try {
+    const hareketli = await prisma.$queryRaw<{ tezgahKod: string }[]>`
+      SELECT DISTINCT "tezgahKod" FROM ipro_sayac_okuma WHERE ts > now() - interval '180 seconds'
+    `
+    for (const r of hareketli) {
+      if (deptEsleTezgahKodlari.has(r.tezgahKod)) calisanTezgah++
+    }
+  } catch {
+    // canlı sinyal alınamazsa doluluk 0 gösterilir; sayfa etkilenmez.
   }
 
   // Zengin departman listesi — SIRALAMA getWorkCenterDepartments'tan (İSİM bazlı) korunur.
@@ -97,6 +117,7 @@ export default async function UretimTerminalPage({
     <TerminalMenuClient
       operatorName={session.user.name ?? 'Operatör'}
       departmanlar={zenginDepartmanlar}
+      calisanTezgah={calisanTezgah}
       vardiyalar={vardiyalar}
       seciliDept={seciliDept}
       seciliDeptAd={seciliDeptAd}

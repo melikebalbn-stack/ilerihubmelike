@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
   Building2,
+  ClipboardList,
   Cpu,
   Disc,
   Droplet,
   Flame,
+  Gauge,
   Hammer,
   Home,
   MoveVertical,
@@ -43,6 +45,8 @@ interface Departman {
 interface Props {
   operatorName: string
   departmanlar: Departman[]
+  /** Son 180 sn'de delta üreten, departmana eşlenmiş çalışan tezgah sayısı (M). */
+  calisanTezgah: number
   vardiyalar: Vardiya[]
   /** URL ?dept — seçili bölüm kodu; yoksa seçim ekranı gösterilir. */
   seciliDept: string | null
@@ -104,6 +108,7 @@ function tarihSaat(now: Date): string {
 export function TerminalMenuClient({
   operatorName,
   departmanlar,
+  calisanTezgah,
   vardiyalar,
   seciliDept,
   seciliDeptAd,
@@ -116,7 +121,7 @@ export function TerminalMenuClient({
       {seciliDept ? (
         <BolumSecildi seciliDept={seciliDept} seciliDeptAd={seciliDeptAd} />
       ) : (
-        <BolumSecim departmanlar={departmanlar} ifsError={ifsError} />
+        <BolumSecim departmanlar={departmanlar} calisanTezgah={calisanTezgah} ifsError={ifsError} />
       )}
     </div>
   )
@@ -179,7 +184,7 @@ function UstBar({
   )
 }
 
-// ── Yoğunluk kademesi — açık iş emri sayısına göre 4 kademe (eşikler TEK yerde) ──
+// ── Yoğunluk kademesi — açık iş emri sayısına göre kademe (eşikler TEK yerde) ──
 type YogunlukKademe = 'yogun' | 'orta' | 'az' | 'yok'
 
 function yogunlukKademesi(isEmri: number): YogunlukKademe {
@@ -189,90 +194,141 @@ function yogunlukKademesi(isEmri: number): YogunlukKademe {
   return 'yok'
 }
 
-// Kademe → stiller. Renkler tema `primary` token'ından (+ opaklık); hardcode hex yok.
-const KADEME_STIL: Record<
-  YogunlukKademe,
-  { kart: string; baslik: string; ikon: string; alt: string; sayi: string; lejant: string }
-> = {
-  yogun: {
-    kart: 'bg-primary border-transparent',
-    baslik: 'text-primary-foreground',
-    ikon: 'text-primary-foreground/85',
-    alt: 'text-primary-foreground/75',
-    sayi: 'text-primary-foreground',
-    lejant: 'bg-primary',
-  },
-  orta: {
-    kart: 'bg-primary/20 border-transparent',
-    baslik: 'text-primary',
-    ikon: 'text-primary',
-    alt: 'text-muted-foreground',
-    sayi: 'text-primary',
-    lejant: 'bg-primary/40',
-  },
-  az: {
-    kart: 'bg-primary/10 border-transparent',
-    baslik: 'text-primary',
-    ikon: 'text-primary/80',
-    alt: 'text-muted-foreground',
-    sayi: 'text-primary',
-    lejant: 'bg-primary/20',
-  },
-  yok: {
-    kart: 'bg-card border-border',
-    baslik: 'text-foreground/70',
-    ikon: 'text-muted-foreground',
-    alt: 'text-muted-foreground',
-    sayi: '',
-    lejant: 'bg-card border border-border',
-  },
+// Dolu segment rengi — yoğunluk 3 kademe. Tema `primary` token'ı + opaklık (hardcode hex yok).
+const SEGMENT_DOLU: Record<'yogun' | 'orta' | 'az', string> = {
+  yogun: 'bg-primary',
+  orta: 'bg-primary/60',
+  az: 'bg-primary/35',
 }
 
-// ── Üst özet şeridi — 4 metrik (mevcut departman verisinden türetilir) ─────────
-function OzetSerit({ departmanlar }: { departmanlar: Departman[] }) {
+// ── Segment dağılımı — her bar TOPLAM açık işi gösterir; dolu = bölümün işi ────
+// GÜVENLİK: toplam > 60 ise segmentler görünmez incelir → 60'a oransal ölçekle
+// (dolu = round(bolumIs/toplam*60), en az 1). Kural TEK yerde.
+const MAX_SEGMENT = 60
+function segmentDagilimi(toplamIs: number): {
+  toplamSegment: number
+  dolu: (bolumIs: number) => number
+} {
+  if (toplamIs <= 0) return { toplamSegment: 0, dolu: () => 0 }
+  if (toplamIs <= MAX_SEGMENT) return { toplamSegment: toplamIs, dolu: (b) => b }
+  return {
+    toplamSegment: MAX_SEGMENT,
+    dolu: (b) => (b > 0 ? Math.max(1, Math.round((b / toplamIs) * MAX_SEGMENT)) : 0),
+  }
+}
+
+// ── Dilimli halka (inline SVG, kütüphane yok) ─────────────────────────────────
+// Zemin: dilimli (dasharray 2.2/3.5). Dolu: pathLength=100 ile yüzde uzunlukta arc,
+// aynı dilim deseni MASK ile uygulanır. Her halkanın mask id'si benzersiz (id).
+// Renkler Tailwind stroke token'ıyla (stroke-primary/green-600/amber-500/border).
+function Halka({ yuzde, renk, id }: { yuzde: number; renk: string; id: string }) {
+  const pct = Math.max(0, Math.min(100, Math.round(yuzde)))
+  const maskId = `halka-mask-${id}`
+  return (
+    <svg viewBox="0 0 66 66" className="h-[66px] w-[66px] shrink-0" aria-hidden="true">
+      <mask id={maskId}>
+        <circle cx="33" cy="33" r="26" fill="none" stroke="white" strokeWidth="9" strokeDasharray="2.2 3.5" />
+      </mask>
+      {/* zemin dilimli halka */}
+      <circle cx="33" cy="33" r="26" fill="none" strokeWidth="9" strokeDasharray="2.2 3.5" className="stroke-border" />
+      {/* dolu kısım — dilim maskesiyle */}
+      <circle
+        cx="33"
+        cy="33"
+        r="26"
+        fill="none"
+        strokeWidth="9"
+        pathLength={100}
+        strokeDasharray={`${pct} ${100 - pct}`}
+        transform="rotate(-90 33 33)"
+        mask={`url(#${maskId})`}
+        className={renk}
+      />
+    </svg>
+  )
+}
+
+// ── Üst özet — 3 halkalı kart ─────────────────────────────────────────────────
+function OzetHalkaKart({
+  ikon: Ikon,
+  etiket,
+  rakam,
+  alt,
+  yuzde,
+  renk,
+  id,
+}: {
+  ikon: LucideIcon
+  etiket: string
+  rakam: ReactNode
+  alt: string
+  yuzde: number
+  renk: string
+  id: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4">
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Ikon className="h-4 w-4 shrink-0" />
+          <span className="truncate">{etiket}</span>
+        </div>
+        <div className="text-[26px] font-medium leading-none tabular-nums">{rakam}</div>
+        <div className="text-xs text-muted-foreground">{alt}</div>
+      </div>
+      <Halka yuzde={yuzde} renk={renk} id={id} />
+    </div>
+  )
+}
+
+function UcHalkaOzet({
+  departmanlar,
+  calisanTezgah,
+}: {
+  departmanlar: Departman[]
+  calisanTezgah: number
+}) {
   const toplamIs = departmanlar.reduce((s, d) => s + d.isEmri, 0)
   const isliBolum = departmanlar.filter((d) => d.isEmri > 0).length
-  const toplamTezgah = departmanlar.reduce((s, d) => s + d.tezgah, 0)
   const bolumSayisi = departmanlar.length
+  const bosBolum = bolumSayisi - isliBolum
+  const toplamTezgah = departmanlar.reduce((s, d) => s + d.tezgah, 0)
+  const dolulukPct = toplamTezgah > 0 ? Math.round((calisanTezgah / toplamTezgah) * 100) : 0
+  const bolumPct = bolumSayisi > 0 ? Math.round((isliBolum / bolumSayisi) * 100) : 0
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <OzetKart etiket="Açık iş emri" deger={toplamIs} />
-      <OzetKart etiket="İşi olan bölüm" deger={isliBolum} ek={`/ ${bolumSayisi}`} />
-      <OzetKart etiket="Toplam tezgah" deger={toplamTezgah} />
-      <OzetKart etiket="Bölüm" deger={bolumSayisi} />
-    </div>
-  )
-}
-
-function OzetKart({ etiket, deger, ek }: { etiket: string; deger: number; ek?: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-xl border bg-card p-4">
-      <span className="text-xs text-muted-foreground">{etiket}</span>
-      <span className="text-[28px] font-medium leading-none tabular-nums">
-        {deger}
-        {ek ? <span className="ml-1 text-base font-normal text-muted-foreground">{ek}</span> : null}
-      </span>
-    </div>
-  )
-}
-
-// ── Lejant — yoğunluk kademesi renk anahtarı ──────────────────────────────────
-const LEJANT: { k: YogunlukKademe; label: string }[] = [
-  { k: 'yogun', label: 'yoğun' },
-  { k: 'orta', label: 'orta' },
-  { k: 'az', label: 'az' },
-  { k: 'yok', label: 'iş yok' },
-]
-
-function Lejant() {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      {LEJANT.map((it) => (
-        <span key={it.k} className="flex items-center gap-1.5">
-          <span className={`h-2.5 w-2.5 rounded-sm ${KADEME_STIL[it.k].lejant}`} />
-          <span className="text-xs text-muted-foreground">{it.label}</span>
-        </span>
-      ))}
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <OzetHalkaKart
+        id="doluluk"
+        ikon={Gauge}
+        etiket="Tezgah doluluk"
+        rakam={`%${dolulukPct}`}
+        alt={`${calisanTezgah} / ${toplamTezgah} çalışıyor`}
+        yuzde={dolulukPct}
+        renk="stroke-primary"
+      />
+      <OzetHalkaKart
+        id="bolum"
+        ikon={Building2}
+        etiket="İşi olan bölüm"
+        rakam={
+          <>
+            {isliBolum}
+            <span className="text-base font-normal text-muted-foreground"> / {bolumSayisi}</span>
+          </>
+        }
+        alt={`${bosBolum} bölüm boşta`}
+        yuzde={bolumPct}
+        renk="stroke-green-600"
+      />
+      <OzetHalkaKart
+        id="isemri"
+        ikon={ClipboardList}
+        etiket="Açık iş emri"
+        rakam={toplamIs}
+        alt={`${isliBolum} bölüme dağılmış`}
+        yuzde={100}
+        renk="stroke-amber-500"
+      />
     </div>
   )
 }
@@ -280,9 +336,11 @@ function Lejant() {
 // ── Bölüm seçim ekranı (?dept yokken) ─────────────────────────────────────────
 function BolumSecim({
   departmanlar,
+  calisanTezgah,
   ifsError,
 }: {
   departmanlar: Departman[]
+  calisanTezgah: number
   ifsError: string | null
 }) {
   if (ifsError) {
@@ -303,53 +361,82 @@ function BolumSecim({
       </div>
     )
   }
+  const toplamIs = departmanlar.reduce((s, d) => s + d.isEmri, 0)
+  const { toplamSegment, dolu } = segmentDagilimi(toplamIs)
   return (
     <>
-      <OzetSerit departmanlar={departmanlar} />
+      <UcHalkaOzet departmanlar={departmanlar} calisanTezgah={calisanTezgah} />
 
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <span className="text-[17px] font-medium">Bölümler</span>
-        <Lejant />
-      </div>
+      <span className="text-[17px] font-medium">Bölümler</span>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
         {departmanlar.map((d) => (
-          <BolumKart key={d.kod} d={d} />
+          <BolumKart
+            key={d.kod}
+            d={d}
+            toplamSegment={toplamSegment}
+            doluSegment={dolu(d.isEmri)}
+            pct={toplamIs > 0 ? Math.round((d.isEmri / toplamIs) * 100) : 0}
+          />
         ))}
       </div>
     </>
   )
 }
 
-function BolumKart({ d }: { d: Departman }) {
+function BolumKart({
+  d,
+  toplamSegment,
+  doluSegment,
+  pct,
+}: {
+  d: Departman
+  toplamSegment: number
+  doluSegment: number
+  pct: number
+}) {
   const Icon = DEPT_ICON[d.kod] ?? Building2
-  const s = KADEME_STIL[yogunlukKademesi(d.isEmri)]
+  const kademe = yogunlukKademesi(d.isEmri)
+  const aktif = d.isEmri > 0
+  const doluRenk = aktif ? SEGMENT_DOLU[kademe as 'yogun' | 'orta' | 'az'] : 'bg-border'
 
   return (
     <Link
       href={`/terminal/uretim?dept=${encodeURIComponent(d.kod)}`}
-      className={`group relative flex min-h-[118px] flex-col gap-3 rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm ${s.kart}`}
+      className="group flex min-h-[104px] flex-col justify-between gap-3 rounded-2xl border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
     >
-      {/* Açık iş sayısı — sağ üst, düz büyük rakam (rozet değil). 0 ise gösterilmez. */}
-      {d.isEmri > 0 && (
+      {/* Üst satır: ikon kutusu + ad/kod + sağda sayı/%N (ya da "açık iş yok") */}
+      <div className="flex items-center gap-3">
         <span
-          className={`absolute right-4 top-3.5 text-[26px] font-medium leading-none tabular-nums ${s.sayi}`}
-          title={`${d.isEmri} açık iş emri`}
+          className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg ${aktif ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
         >
-          {d.isEmri}
+          <Icon className="h-[18px] w-[18px]" />
         </span>
-      )}
-
-      {/* İkon — kutu yok, doğrudan 30px; kart zeminiyle kontrast renk. */}
-      <Icon className={`h-[30px] w-[30px] transition-transform group-active:scale-95 ${s.ikon}`} />
-
-      <div className="flex flex-col gap-1">
-        <div className={`line-clamp-2 text-[15px] font-medium leading-tight ${s.baslik}`}>
-          {d.ad ? baslikFormat(d.ad) : d.kod}
+        <div className="min-w-0 flex-1">
+          <div className={`truncate text-sm font-medium ${aktif ? '' : 'text-foreground/70'}`}>
+            {d.ad ? baslikFormat(d.ad) : d.kod}
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            {d.kod} · {d.tezgah} tezgah
+          </div>
         </div>
-        <div className={`text-xs ${s.alt}`}>
-          {d.kod} · {d.tezgah} tezgah
-        </div>
+        {aktif ? (
+          <div className="shrink-0 text-right">
+            <div className="text-[22px] font-medium leading-none tabular-nums text-primary">
+              {d.isEmri}
+            </div>
+            <div className="text-[11px] text-muted-foreground">%{pct}</div>
+          </div>
+        ) : (
+          <span className="shrink-0 text-[11px] text-muted-foreground">açık iş yok</span>
+        )}
+      </div>
+
+      {/* Segment şeridi — toplam açık işi gösterir, dolu = bölümün işi */}
+      <div className="flex h-[22px] items-stretch gap-0.5">
+        {Array.from({ length: toplamSegment }).map((_, i) => (
+          <span key={i} className={`flex-1 rounded-[1px] ${i < doluSegment ? doluRenk : 'bg-border'}`} />
+        ))}
       </div>
     </Link>
   )

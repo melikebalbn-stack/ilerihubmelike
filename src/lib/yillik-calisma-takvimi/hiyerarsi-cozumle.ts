@@ -1,17 +1,15 @@
 import { prisma } from '@/lib/prisma'
+import { amirCozumle } from '@/lib/is-analizi/amir-cozumle'
 
 export interface YctOnaylayanZinciriAdimi {
   adimSira: number
   userId: string
 }
 
-interface OrgKoltuk {
-  id: string
-  reportsToId: string | null
-}
-
 /**
- * Ana sorumlunun OrgEmployee raporlama hattını izleyerek N seviye amiri çözer.
+ * Ana sorumlunun amir zincirini ortak İş Analizi çözümleyicisiyle izler.
+ * Birincil koltuk seçimi, boş koltukların atlanması ve kişinin kendisini amir
+ * seçmeme kuralları amir-cozumle.ts / birincil-koltuk.ts içinde tek kaynaktır.
  * Zincir eksikse yalnız o ana kadar güvenle çözülen adımları döndürür.
  * Global onay kademesi fallback'i bu servisin sorumluluğunda değildir.
  */
@@ -27,26 +25,17 @@ export async function ycktOnaylayanZinciriCoz(
   })
   if (!anaSorumlu?.personnelId) return []
 
-  const baslangicKoltugu = await prisma.orgEmployee.findFirst({
-    where: { personnelId: anaSorumlu.personnelId, isActive: true },
-    orderBy: { id: 'asc' },
-    select: { id: true, reportsToId: true },
-  })
-  if (!baslangicKoltugu) return []
-
   const sonuc: YctOnaylayanZinciriAdimi[] = []
-  let mevcutKoltuk: OrgKoltuk = baslangicKoltugu
-  for (let adimSira = 1; adimSira <= kademeSayisi; adimSira++) {
-    if (!mevcutKoltuk.reportsToId) break
+  let mevcutPersonnelId = anaSorumlu.personnelId
+  const ziyaretEdilenPersonnelIdleri = new Set([mevcutPersonnelId])
 
-    const amirKoltugu: (OrgKoltuk & { personnelId: string | null }) | null = await prisma.orgEmployee.findUnique({
-      where: { id: mevcutKoltuk.reportsToId },
-      select: { id: true, personnelId: true, reportsToId: true },
-    })
-    if (!amirKoltugu?.personnelId) break
+  for (let adimSira = 1; adimSira <= kademeSayisi; adimSira++) {
+    const amir = await amirCozumle(mevcutPersonnelId)
+    const amirPersonnelId = amir.amirPersonnelId
+    if (amir.kaynak !== 'ORG' || !amir.guvenilir || !amirPersonnelId || ziyaretEdilenPersonnelIdleri.has(amirPersonnelId)) break
 
     const amirPersonel = await prisma.personnel.findUnique({
-      where: { id: amirKoltugu.personnelId },
+      where: { id: amirPersonnelId },
       select: {
         user: { select: { id: true } },
       },
@@ -54,7 +43,8 @@ export async function ycktOnaylayanZinciriCoz(
     if (!amirPersonel?.user) break
 
     sonuc.push({ adimSira, userId: amirPersonel.user.id })
-    mevcutKoltuk = amirKoltugu
+    ziyaretEdilenPersonnelIdleri.add(amirPersonnelId)
+    mevcutPersonnelId = amirPersonnelId
   }
 
   return sonuc

@@ -9,6 +9,7 @@ import BosKadroModal, { BosKadro } from "./BosKadroModal"
 import KoltuksuzPersonelModal, { KoltuksuzPersonel } from "./KoltuksuzPersonelModal"
 import SorumluTablosuPanel from "./SorumluTablosuPanel"
 import PozisyonYonetimPanel from "./PozisyonYonetimPanel"
+import BirimYonetimPanel from "./BirimYonetimPanel"
 import {
   Card,
   CardContent,
@@ -950,6 +951,11 @@ export default function OrgChartPage() {
                 <PozisyonYonetimPanel
                   departmanUnitlari={selectedDeptUnits}
                   orgUnitCode={selectedUnit?.code}
+                  hasFullAccess={hasFullAccess}
+                  onRefresh={fetchUnits}
+                />
+                <BirimYonetimPanel
+                  departmanUnitlari={selectedDeptUnits}
                   hasFullAccess={hasFullAccess}
                   onRefresh={fetchUnits}
                 />

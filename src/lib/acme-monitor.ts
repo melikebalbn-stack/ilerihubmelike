@@ -119,7 +119,7 @@ export function pickTriggeredThreshold(
   daysRemaining: number,
   thresholds: number[],
 ): number | null {
-  const sorted = [...thresholds].sort((a, b) => b - a) // descending
+  const sorted = [...thresholds].sort((a, b) => a - b) // ascending
   for (const t of sorted) {
     if (daysRemaining <= t) return t
   }

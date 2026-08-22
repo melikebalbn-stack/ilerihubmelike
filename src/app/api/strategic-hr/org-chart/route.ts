@@ -184,6 +184,39 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Personele BAĞLI OLMAYAN koltuklar — şemada isim görünüyor ama sistem o kişiyi
+    // tanımıyor (OrgEmployee.personnelId NULL). İK bağlayabilsin diye listelenir.
+    // koltuksuzPersonel ile AYNI desen: sunucuda hesaplanır, yalnız hasFullAccess'e döner
+    // (isim listesi yetkisiz kullanıcıya yeni PII yüzeyi açmasın).
+    let personelsizKoltuk: {
+      id: string
+      displayName: string
+      orgUnitId: string
+      kutuKodu: string
+      kutuAdi: string
+      ustBirim: string | null
+    }[] = []
+    if (hasFullAccess) {
+      const ham = await prisma.orgEmployee.findMany({
+        where: { isActive: true, personnelId: null },
+        select: {
+          id: true,
+          displayName: true,
+          orgUnitId: true,
+          orgUnit: { select: { code: true, name: true, parent: { select: { name: true } } } },
+        },
+        orderBy: { displayName: "asc" },
+      })
+      personelsizKoltuk = ham.map((k) => ({
+        id: k.id,
+        displayName: k.displayName,
+        orgUnitId: k.orgUnitId,
+        kutuKodu: k.orgUnit.code,
+        kutuAdi: k.orgUnit.name,
+        ustBirim: k.orgUnit.parent?.name ?? null,
+      }))
+    }
+
     // hasFullAccess SUNUCUDA hesaplanır (checkAccess) — client mükerrer hesaplamasın diye
     // yanıtta döner. Düzenleme butonlarının görünürlüğü bu bayrağa bağlanır (güvenlik yine 403).
     return NextResponse.json({
@@ -191,6 +224,8 @@ export async function GET(request: NextRequest) {
       hasFullAccess,
       koltuksuzPersonel,
       koltuksuzPersonelSayisi: koltuksuzPersonel.length,
+      personelsizKoltuk,
+      personelsizKoltukSayisi: personelsizKoltuk.length,
     });
   } catch (error) {
     console.error("Organizasyon birimleri listesi hatası:", error);

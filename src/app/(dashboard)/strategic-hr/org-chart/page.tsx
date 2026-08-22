@@ -7,6 +7,7 @@ import OrgChartTree from "./OrgChartTree"
 import RevizyonPanel from "./RevizyonPanel"
 import BosKadroModal, { BosKadro } from "./BosKadroModal"
 import KoltuksuzPersonelModal, { KoltuksuzPersonel } from "./KoltuksuzPersonelModal"
+import PersonelsizKoltukModal, { PersonelsizKoltuk } from "./PersonelsizKoltukModal"
 import SorumluTablosuPanel from "./SorumluTablosuPanel"
 import PozisyonYonetimPanel from "./PozisyonYonetimPanel"
 import BirimYonetimPanel from "./BirimYonetimPanel"
@@ -179,6 +180,9 @@ export default function OrgChartPage() {
   // Şemada yeri olmayan personel — SUNUCUDAN gelir (yalnız hasFullAccess dolu döner).
   const [koltuksuzPersonel, setKoltuksuzPersonel] = useState<KoltuksuzPersonel[]>([])
   const [isKoltuksuzModalOpen, setIsKoltuksuzModalOpen] = useState(false)
+  // Personele bağlı olmayan koltuklar — sayı SUNUCUDAN gelir, ekran saymaz.
+  const [personelsizKoltuk, setPersonelsizKoltuk] = useState<PersonelsizKoltuk[]>([])
+  const [isPersonelsizModalOpen, setIsPersonelsizModalOpen] = useState(false)
   const [selectedDeptId, setSelectedDeptId] = useState<string>("")
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -210,6 +214,7 @@ export default function OrgChartPage() {
         const data = await res.json()
         setHasFullAccess(!!data.hasFullAccess)
         setKoltuksuzPersonel(data.koltuksuzPersonel ?? [])
+        setPersonelsizKoltuk(data.personelsizKoltuk ?? [])
         const roots = buildTree(data.units ?? [])
         setUnits(roots)
       }
@@ -690,6 +695,13 @@ export default function OrgChartPage() {
           varsayilanYapan={varsayilanYapan}
         />
 
+        <PersonelsizKoltukModal
+          open={isPersonelsizModalOpen}
+          onOpenChange={setIsPersonelsizModalOpen}
+          koltuklar={personelsizKoltuk}
+          onRefresh={fetchUnits}
+        />
+
         <KoltuksuzPersonelModal
           open={isKoltuksuzModalOpen}
           onOpenChange={setIsKoltuksuzModalOpen}
@@ -877,6 +889,23 @@ export default function OrgChartPage() {
             <div className="text-2xl font-bold text-amber-600">{bosPozisyonSayisi}</div>
           </CardContent>
         </Card>
+
+        {/* Personele bağlı olmayan koltuklar — sayı sunucudan (personelsizKoltukSayisi). */}
+        {hasFullAccess && personelsizKoltuk.length > 0 && (
+          <Card
+            className="cursor-pointer transition-colors hover:bg-amber-50"
+            onClick={() => setIsPersonelsizModalOpen(true)}
+          >
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Personel Kaydı Yok</CardTitle>
+              <AlertCircle className="h-4 w-4 text-amber-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-600">{personelsizKoltuk.length}</div>
+              <p className="mt-1 text-xs text-muted-foreground">koltuk personele bagli degil</p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Şemada yeri olmayan personel — yalnız İK/admin (sunucu boş dizi döner). */}
         {hasFullAccess && koltuksuzPersonel.length > 0 && (

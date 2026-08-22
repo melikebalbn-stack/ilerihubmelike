@@ -4,7 +4,13 @@ import { requireSession } from "@/lib/auth/require-session";
 import { logAuditEvent } from "@/lib/audit-log";
 import { orgYonetimYetkisi, raporlamaDongusuVarMi } from "@/lib/org/yonetim";
 
-// PATCH - Raporlama hatti atama.
+// PATCH - Koltuk guncelleme: reportsToId (raporlama hatti) ve/veya personnelId
+// (personele baglama).
+//
+// personnelId NEDEN BURADA: mevcut uye-ata ucu bu isi YAPAMIYOR — o uc kutunun
+// BOS olmasini sart kosuyor ve YENI OrgEmployee olusturuyor. Personelsiz koltukta
+// ise kutu DOLU ve mevcut kaydin personnelId'si doldurulacak. Yeni uc acmak yerine
+// bu uca minimal alan eklendi; guard/dogrulama/audit iskeleti aynen korundu.
 //
 // NOT: reportsToId kolonu OrgUnit'te DEGIL, OrgEmployee'de duruyor (sema teyit
 // edildi). Yani raporlama KUTULAR arasinda degil KOLTUKLAR arasinda kuruluyor.
@@ -20,9 +26,63 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const body = await req.json();
 
-  if (!Object.prototype.hasOwnProperty.call(body, "reportsToId")) {
-    return NextResponse.json({ error: "reportsToId gönderilmedi" }, { status: 400 });
+  const reportsToGonderildi = Object.prototype.hasOwnProperty.call(body, "reportsToId");
+  const personnelGonderildi = Object.prototype.hasOwnProperty.call(body, "personnelId");
+  if (!reportsToGonderildi && !personnelGonderildi) {
+    return NextResponse.json({ error: "reportsToId veya personnelId gönderilmedi" }, { status: 400 });
   }
+  // ── personele bağlama ────────────────────────────────────────────────────
+  if (personnelGonderildi) {
+    const pid = body.personnelId === null || body.personnelId === "" ? null : body.personnelId;
+    if (pid !== null && typeof pid !== "string") {
+      return NextResponse.json({ error: "personnelId geçersiz" }, { status: 400 });
+    }
+    const koltukP = await prisma.orgEmployee.findUnique({
+      where: { id },
+      select: { id: true, displayName: true, personnelId: true, orgUnit: { select: { code: true, name: true } } },
+    });
+    if (!koltukP) return NextResponse.json({ error: "Üye kaydı bulunamadı" }, { status: 404 });
+
+    let personel: { id: string; sicilNo: string | null; adSoyad: string } | null = null;
+    if (pid) {
+      const p = await prisma.personnel.findUnique({
+        where: { id: pid },
+        select: { id: true, sicilNo: true, adSoyad: true, aktif: true },
+      });
+      if (!p || !p.aktif) {
+        return NextResponse.json({ error: "Geçersiz veya pasif personel" }, { status: 400 });
+      }
+      personel = { id: p.id, sicilNo: p.sicilNo, adSoyad: p.adSoyad };
+    }
+
+    const guncelP = await prisma.orgEmployee.update({
+      where: { id },
+      data: { personnelId: pid, ...(personel ? { displayName: personel.adSoyad } : {}) },
+      select: { id: true, displayName: true, personnelId: true },
+    });
+
+    await logAuditEvent({
+      action: "ORG_UYE_PERSONEL_BAGLA",
+      actorId: session.user.id,
+      targetType: "ORG_UNIT",
+      targetId: koltukP.orgUnit?.code ?? id,
+      details: {
+        orgEmployeeId: id,
+        kutu: `${koltukP.orgUnit?.code ?? ""} ${koltukP.orgUnit?.name ?? ""}`.trim(),
+        onceDisplayName: koltukP.displayName,
+        oncePersonnelId: koltukP.personnelId,
+        sonraPersonnelId: pid,
+        sicilNo: personel?.sicilNo ?? null,
+        adSoyad: personel?.adSoyad ?? null,
+      },
+    });
+
+    if (!reportsToGonderildi) {
+      return NextResponse.json({ ok: true, orgEmployeeId: guncelP.id, personnelId: guncelP.personnelId, displayName: guncelP.displayName });
+    }
+  }
+
+  // ── raporlama hattı ──────────────────────────────────────────────────────
   const hedefId = body.reportsToId === null || body.reportsToId === "" ? null : body.reportsToId;
   if (hedefId !== null && typeof hedefId !== "string") {
     return NextResponse.json({ error: "reportsToId geçersiz" }, { status: 400 });
@@ -30,7 +90,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const koltuk = await prisma.orgEmployee.findUnique({
     where: { id },
-    select: { id: true, displayName: true, reportsToId: true, orgUnit: { select: { code: true, name: true } } },
+    select: { id: true, displayName: true, reportsToId: true, personnelId: true, orgUnit: { select: { code: true, name: true } } },
   });
   if (!koltuk) return NextResponse.json({ error: "Üye kaydı bulunamadı" }, { status: 404 });
 

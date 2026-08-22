@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
-import { User, Briefcase, Users } from "lucide-react"
+import { User, Briefcase, Users, AlertTriangle } from "lucide-react"
 import VekilAtamaModal from "./VekilAtamaModal"
 import PozisyonDuzenleModal from "./PozisyonDuzenleModal"
 
@@ -27,6 +27,8 @@ interface OrgEmployee {
   employmentStatus: string
   orgUnitId: string
   cinsiyet?: "MALE" | "FEMALE" | null
+  /** NULL ise koltuk Personnel kaydına bağlı değil — kartta uyarı işareti çıkar. */
+  personnelId?: string | null
 }
 
 interface OrgUnit {
@@ -131,7 +133,12 @@ function OrgChartNode({
     unit.unitType === "POSITION" && (unit.approvedHeadcount ?? 0) > 0 && activeCount === 0
   // Çok kişili kutularda her isim kendi satırında (virgülle yan yana değil).
   // Boş kadro artık "BOŞ KADRO" metni yerine ayrı bir rozetle gösteriliyor (aşağıda).
-  const isimSatirlari: string[] = activeCount > 0 ? activeEmployees.map((e) => e.displayName) : []
+  // Personele bağlı olmayan koltuklar (personnelId NULL) uyarı işaretiyle gösterilir.
+  // İstisna YOK: dış kaynak/şirket kaydı olsa da işaret çıkar, kararı İK verir.
+  const isimSatirlari = activeCount > 0
+    ? activeEmployees.map((e) => ({ ad: e.displayName, bagsiz: !e.personnelId }))
+    : []
+  const bagsizVar = isimSatirlari.some((x) => x.bagsiz)
   const rozet = kadroRozeti(unit, activeCount)
 
   // Tüm işlemler (kişi ata/çıkar, vekil, pozisyon çıkar) artık POSITION kartına tıklayınca
@@ -198,8 +205,21 @@ function OrgChartNode({
               <>
                 <div className="font-semibold text-sm leading-tight">{unit.name}</div>
                 {isimSatirlari.map((satir, i) => (
-                  <div key={i} className="text-xs text-muted-foreground mt-0.5 whitespace-nowrap">
-                    {satir}
+                  <div
+                    key={i}
+                    className={[
+                      "text-xs mt-0.5 whitespace-nowrap flex items-center gap-1",
+                      satir.bagsiz ? "text-amber-700 font-medium" : "text-muted-foreground",
+                    ].join(" ")}
+                    title={satir.bagsiz ? "Personel kaydına bağlı değil" : undefined}
+                  >
+                    {satir.bagsiz && (
+                      <AlertTriangle
+                        className="h-3 w-3 shrink-0 text-amber-600"
+                        aria-label="Personel kaydına bağlı değil"
+                      />
+                    )}
+                    {satir.ad}
                   </div>
                 ))}
               </>
@@ -208,6 +228,11 @@ function OrgChartNode({
             )}
           </div>
         </div>
+        {bagsizVar && (
+          <div className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+            Personel kaydına bağlı değil
+          </div>
+        )}
         {unit.isExternal && (
           <div className="text-[10px] text-slate-500 mt-1">(Dış Kaynak)</div>
         )}

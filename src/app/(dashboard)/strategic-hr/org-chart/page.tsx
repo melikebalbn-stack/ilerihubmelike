@@ -327,22 +327,12 @@ export default function OrgChartPage() {
 
   const flatUnits = getAllUnitsFlat(units)
 
-  // Toplam Birim / Toplam Personel — Tüm Firma (ORG-TF*) ve Yönetim (ORG-YN*) HARİÇ:
-  // Tüm Firma gerçek departmanların isimsiz kopyası (envanter), Yönetim'deki müdürler
-  // zaten kendi gerçek departmanlarında sayılı — ikisi de üst sayaçlarda mükerrer.
-  // Departman seçicide GÖRÜNMEYE devam ederler, yalnız bu sayaçlardan çıkarıldılar.
-  const tfYnUnitIds = new Set(
-    flatUnits
-      .filter(
-        u =>
-          u.code === "ORG-TF" ||
-          u.code.startsWith("ORG-TF-") ||
-          u.code === "ORG-YN" ||
-          u.code.startsWith("ORG-YN-")
-      )
-      .map(u => u.id)
-  )
-  const totalUnits = flatUnits.filter(u => !tfYnUnitIds.has(u.id)).length
+  // Toplam Birim — DIŞLAMA YOK. Eskiden "Tüm Firma" (ORG-TF*) gerçek departmanların
+  // isimsiz kopyasıydı ve mükerrer sayılmasın diye dışlanıyordu; şema temizliğinden
+  // sonra ORG-TF ANA AĞAÇ oldu, dışlanırsa sayaç neredeyse sıfırlanıyor.
+  // ORG-YN kökü de silindi, o dışlama da gereksiz.
+  const tfYnUnitIds = new Set<string>()
+  const totalUnits = flatUnits.length
 
   // Toplam Personel — kurul (ORG-KR-*) kutularindaki OrgEmployee'ler ek gorev/mukerrer
   // sayildigi icin, Tum Firma/Yonetim de yukaridaki sebeple haric tutulur. Ayrica ayni
@@ -409,8 +399,33 @@ export default function OrgChartPage() {
     return sum + (u.unitType === "DEPARTMENT" ? 1 : 0) + (u.children ? countDepts(u.children) : 0)
   }, 0)
 
-  // Departman seçici — units (buildTree kökleri) birden fazla DEPARTMENT içerebilir (İK, Fabrika, ...)
-  const departmanKokleri = units.filter(u => u.unitType === "DEPARTMENT")
+  // Departman seçici — AĞAÇTAN TÜRETİLİR, sabit kod YOK.
+  // Şema tek kök altında toplandıktan sonra "kök departmanlar" listesi tek öğeye
+  // düştü ve tüm firmayı tek seferde çizmek 240 yapraklık dev bir tuval üretiyordu.
+  // Kural: kök ("Tüm Firma") + kökün POSITION olmayan çocukları (Kurullar konteyneri)
+  // + kökten inen TEK ÇOCUKLU pozisyon zincirinin (Genel Müdür → GMY) ilk dallanan
+  // düğümünün DEPARTMENT çocukları (müdürlükler).
+  const secilebilirBirimler = (() => {
+    const out: OrgUnit[] = []
+    units.forEach(kok => {
+      out.push(kok)
+      ;(kok.children ?? []).forEach(c => {
+        if (c.unitType !== "POSITION") { out.push(c); return }
+        // pozisyon zincirini tek çocuk oldukça in
+        let cur = c
+        while ((cur.children ?? []).length === 1 && cur.children![0].unitType === "POSITION") {
+          cur = cur.children![0]
+        }
+        ;(cur.children ?? [])
+          .filter(x => x.unitType === "DEPARTMENT")
+          .forEach(x => out.push(x))
+      })
+    })
+    // aynı birim iki yoldan gelmesin
+    const gorulen = new Set<string>()
+    return out.filter(u => (gorulen.has(u.id) ? false : (gorulen.add(u.id), true)))
+  })()
+  const departmanKokleri = secilebilirBirimler
   // Seçili birim: önce TÜM birimler arasında ara (kart tıklama non-root da seçebilsin),
   // yoksa kök departmanlara düş. (flatUnitsById yukarıda tanımlı.)
   const selectedUnit = flatUnitsById.get(selectedDeptId) ?? departmanKokleri.find(u => u.id === selectedDeptId) ?? departmanKokleri[0]
@@ -420,9 +435,15 @@ export default function OrgChartPage() {
   const selectedDeptUnits = selectedUnit ? getAllUnitsFlat([selectedUnit]) : []
 
   useEffect(() => {
-    if (!selectedDeptId && departmanKokleri.length > 0) {
-      setSelectedDeptId(departmanKokleri[0].id)
-    }
+    if (selectedDeptId || departmanKokleri.length === 0) return
+    // Varsayılan KÖK OLMASIN — tüm firmayı çizmek 240 yapraklık tuval demek.
+    // Kök dışındakiler arasından alfabetik ilki seçilir (kullanıcı bölümüne göre
+    // seçim deseni bu ekranda yok; alfabetik ilk).
+    const kokIdler = new Set(units.map(u => u.id))
+    const adaylar = departmanKokleri
+      .filter(u => !kokIdler.has(u.id))
+      .sort((a, b) => a.name.localeCompare(b.name, "tr"))
+    setSelectedDeptId((adaylar[0] ?? departmanKokleri[0]).id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [units])
 
@@ -430,7 +451,7 @@ export default function OrgChartPage() {
   // hesaplanmaz. Buton görünürlüğü bu bayrağa; gerçek denetim her uçta 403.
 
   // Export/Revizyon artık SEÇİLİ departmanı hedefler (birden fazla departman olabildiği için)
-  const kokKod = selectedUnit?.code ?? "ORG-IV"
+  const kokKod = selectedUnit?.code ?? "ORG-TF"
   const kokAd = selectedUnit?.name ?? kokKod
   const varsayilanYapan = session?.user?.name || "İV"
 

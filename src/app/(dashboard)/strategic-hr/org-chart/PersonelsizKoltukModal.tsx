@@ -5,7 +5,7 @@
 // Bağlama mevcut PATCH org-chart/uye/{id} ucunu kullanır — yeni uç açılmadı;
 // uye-ata bu işi yapamıyor (kutunun BOŞ olmasını şart koşuyor, yeni kayıt açıyor).
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -40,24 +40,37 @@ interface Props {
 
 export default function PersonelsizKoltukModal({ open, onOpenChange, koltuklar, onRefresh }: Props) {
   const [personeller, setPersoneller] = useState<PersonelSecenek[]>([])
+  const [toplam, setToplam] = useState(0)
+  const [yukleniyor, setYukleniyor] = useState(false)
   const [secim, setSecim] = useState<Record<string, string>>({})
-  const [arama, setArama] = useState<Record<string, string>>({})
+  // Arama TEK kutu ve SUNUCU tarafı: uç take:50 sınırlı olduğu için client-side
+  // filtre yanıltıcıydı (ilk 50 içinde arıyordu). Artık ?q= ile sunucuya gider.
+  const [arama, setArama] = useState("")
   const [saving, setSaving] = useState<string | null>(null)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
   // Atanacak personel listesi — mevcut personel-listesi ucu (yeni uç yok).
+  // Yanıt şekli: { personel, toplam } — anahtar `personel`.
   useEffect(() => {
     if (!open) return
-    ;(async () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      setYukleniyor(true)
       try {
-        const res = await fetch("/api/strategic-hr/org-chart/personel-listesi")
+        const qs = arama.trim() ? `?q=${encodeURIComponent(arama.trim())}` : ""
+        const res = await fetch(`/api/strategic-hr/org-chart/personel-listesi${qs}`)
         const json = await res.json()
-        const arr = json.personeller ?? json.data ?? json
-        if (Array.isArray(arr)) setPersoneller(arr)
+        setPersoneller(Array.isArray(json.personel) ? json.personel : [])
+        setToplam(typeof json.toplam === "number" ? json.toplam : 0)
       } catch {
-        /* liste alınamazsa seçici boş kalır, modal yine listeyi gösterir */
+        setPersoneller([])
+        setToplam(0)
+      } finally {
+        setYukleniyor(false)
       }
-    })()
-  }, [open])
+    }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [open, arama])
 
   const bagla = async (koltukId: string) => {
     const personnelId = secim[koltukId]
@@ -93,6 +106,25 @@ export default function PersonelsizKoltukModal({ open, onOpenChange, koltuklar, 
           </DialogDescription>
         </DialogHeader>
 
+        {/* Arama TEK kutu — tüm satırlar aynı sonuç listesini kullanır. */}
+        <div className="flex items-center gap-2">
+          <input
+            value={arama}
+            onChange={(e) => setArama(e.target.value)}
+            placeholder="Personel ara (ad) — sunucuda aranır"
+            className="w-72 rounded border px-2 py-1 text-xs"
+          />
+          <span className="text-xs text-muted-foreground">
+            {yukleniyor
+              ? "aranıyor…"
+              : arama.trim()
+                ? personeller.length === 0
+                  ? "Sonuç bulunamadı"
+                  : `${personeller.length} sonuç gösteriliyor${toplam > personeller.length ? ` (toplam ${toplam}, daraltın)` : ""}`
+                : `${personeller.length} kişi listeleniyor${toplam > personeller.length ? ` (toplam ${toplam}, arayarak daraltın)` : ""}`}
+          </span>
+        </div>
+
         {koltuklar.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             Tüm koltuklar personel kaydına bağlı.
@@ -110,12 +142,7 @@ export default function PersonelsizKoltukModal({ open, onOpenChange, koltuklar, 
               </TableHeader>
               <TableBody>
                 {koltuklar.map((k) => {
-                  const q = (arama[k.id] ?? "").toLocaleLowerCase("tr-TR")
-                  const secenekler = q
-                    ? personeller.filter((p) =>
-                        `${p.sicilNo ?? ""} ${p.adSoyad}`.toLocaleLowerCase("tr-TR").includes(q),
-                      )
-                    : personeller
+                  const secenekler = personeller
                   return (
                     <TableRow key={k.id}>
                       <TableCell className="font-medium text-amber-800">⚠ {k.displayName}</TableCell>
@@ -123,20 +150,16 @@ export default function PersonelsizKoltukModal({ open, onOpenChange, koltuklar, 
                       <TableCell className="text-muted-foreground">{k.ustBirim ?? "—"}</TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          <input
-                            value={arama[k.id] ?? ""}
-                            onChange={(e) => setArama((s) => ({ ...s, [k.id]: e.target.value }))}
-                            placeholder="Personel ara (sicil / ad)"
-                            className="rounded border px-2 py-1 text-xs"
-                          />
                           <div className="flex gap-1">
                             <select
                               value={secim[k.id] ?? ""}
                               onChange={(e) => setSecim((s) => ({ ...s, [k.id]: e.target.value }))}
                               className="min-w-0 flex-1 rounded border px-2 py-1 text-xs"
                             >
-                              <option value="">Personel seçiniz…</option>
-                              {secenekler.slice(0, 200).map((p) => (
+                              <option value="">
+                                {secenekler.length === 0 ? "Sonuç bulunamadı" : "Personel seçiniz…"}
+                              </option>
+                              {secenekler.map((p) => (
                                 <option key={p.id} value={p.id}>
                                   {p.sicilNo ? `${p.sicilNo} — ` : ""}{p.adSoyad}
                                 </option>

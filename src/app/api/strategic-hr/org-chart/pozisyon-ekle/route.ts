@@ -88,12 +88,10 @@ export async function POST(req: Request) {
   if (!kok) {
     return NextResponse.json({ error: "Kök birim bulunamadı" }, { status: 404 });
   }
-  if (kok.code === "ORG-TF" || kok.code === "ORG-YN") {
-    return NextResponse.json(
-      { error: "Tüm Firma / Yönetim türetilmiş/özet kapsamdır — buraya pozisyon eklenemez" },
-      { status: 400 }
-    );
-  }
+  // NOT: eskiden kökü ORG-TF/ORG-YN olan yere pozisyon eklenmesi yasaktı ("türetilmiş/
+  // özet kapsam"). Şema temizliğinden sonra ORG-TF ANA AĞAÇ oldu ve ORG-YN silindi;
+  // yasak kalsaydı tüm şemaya pozisyon eklenemezdi. Kaldırıldı.
+  // Diğer korumalar (yalnız var olan birime ekleme, kod çakışması) yerinde.
 
   // Otomatik kod: kök departmanın mevcut "P" pozisyon kodları içinden en yükseği +1.
   // Genişlik (kaç haneli) mevcut kodlardan öğrenilir — sabit 2 hane varsayılmaz.

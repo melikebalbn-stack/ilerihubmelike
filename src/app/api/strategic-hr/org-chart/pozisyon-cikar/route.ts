@@ -174,12 +174,10 @@ export async function POST(req: Request) {
   }
 
   const kok = await kokeCik(orgUnitId);
-  if (kok && (kok.code === "ORG-TF" || kok.code === "ORG-YN")) {
-    return NextResponse.json(
-      { error: "Tüm Firma / Yönetim türetilmiş/özet kapsamdır — buradaki pozisyon dondurulamaz" },
-      { status: 400 }
-    );
-  }
+  // NOT: eskiden kökü ORG-TF/ORG-YN olan pozisyonun dondurulması yasaktı
+  // ("türetilmiş/özet kapsam"). Şema temizliğinden sonra ORG-TF ANA AĞAÇ oldu ve
+  // ORG-YN silindi; yasak kalsaydı hiçbir pozisyon dondurulamazdı. Kaldırıldı.
+  // "Dolu kadro dondurulamaz" koruması yukarıda yerinde duruyor.
 
   const gerekceMetni = gerekce.trim();
 

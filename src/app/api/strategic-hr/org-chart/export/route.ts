@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   if (!hasFullAccess) return new NextResponse("Forbidden", { status: 403 });
 
   const { searchParams } = new URL(req.url);
-  const code = searchParams.get("code") ?? "ORG-IV";
+  const code = searchParams.get("code") ?? "ORG-TF";
   if (!/^ORG-[A-Z0-9-]+$/.test(code)) {
     return new NextResponse("Geçersiz bölüm kodu", { status: 400 });
   }

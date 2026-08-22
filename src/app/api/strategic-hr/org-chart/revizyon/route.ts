@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
-  const code = searchParams.get("code") ?? "ORG-IV";
+  const code = searchParams.get("code") ?? "ORG-TF";
   if (!CODE_PATTERN.test(code)) {
     return NextResponse.json({ error: "Geçersiz bölüm kodu" }, { status: 400 });
   }

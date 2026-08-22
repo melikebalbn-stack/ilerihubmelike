@@ -2407,6 +2407,15 @@ model Ticket {
   slaResponseBreached   Boolean   @default(false)
   slaResolutionBreached Boolean   @default(false)
 
+  // ── İş-saati SLA (Faz 1a: alanlar açıldı, HENÜZ YAZILMIYOR) ───────────────
+  // Yukarıdaki slaResponseDue/slaResolutionDue TAKVİM saati üzerinden hesaplanır
+  // ve yerinde kalır. Bunlar İŞ dakikası karşılıkları; geçiş tamamlanınca
+  // eskiler emekliye ayrılacak.
+  responseDueAt    DateTime? // iş-saati yanıt hedefi
+  resolutionDueAt  DateTime? // iş-saati çözüm hedefi
+  slaPausedAt      DateTime? // PENDING/ON_HOLD'a girilen an (null = duraklatılmadı)
+  slaPausedMinutes Int       @default(0) // birikmiş duraklatma (iş dakikası)
+
   // Çözüm
   resolutionSummary String? @db.Text // Çözüm özeti
   rootCause         String? @db.Text // Kök neden

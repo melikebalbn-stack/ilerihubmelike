@@ -4,6 +4,7 @@ import { dispatchTicketCreated, dispatchTicketAssigned, dispatchTicketToTeam } f
 import { parseMembers } from '@/lib/tickets/team-members'
 import { requireUser } from '@/lib/auth/require-user'
 import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
+import { cozumSlaDakika, hesaplaSlaHedefleri } from '@/lib/sla'
 
 // Ticket numarası oluştur
 async function generateTicketNumber(): Promise<string> {
@@ -24,24 +25,6 @@ async function generateTicketNumber(): Promise<string> {
   }
 
   return `${prefix}${nextNumber.toString().padStart(4, '0')}`
-}
-
-// SLA hesapla
-function calculateSLA(priority: string, createdAt: Date) {
-  // Varsayılan SLA süreleri (dakika)
-  const slaTimes: Record<string, { response: number; resolution: number }> = {
-    TICKET_CRITICAL: { response: 15, resolution: 120 },
-    TICKET_HIGH: { response: 60, resolution: 480 },
-    NORMAL: { response: 240, resolution: 1440 },
-    TICKET_LOW: { response: 480, resolution: 2880 },
-  }
-
-  const sla = slaTimes[priority] || slaTimes.NORMAL
-
-  return {
-    slaResponseDue: new Date(createdAt.getTime() + sla.response * 60 * 1000),
-    slaResolutionDue: new Date(createdAt.getTime() + sla.resolution * 60 * 1000),
-  }
 }
 
 // GET - Ticket listesi
@@ -190,12 +173,12 @@ export async function POST(request: NextRequest) {
 
     const ticketNumber = await generateTicketNumber()
     const now = new Date()
-    const sla = calculateSLA(priority, now)
 
     // Kategori varsayılan atama kontrolü
     let assignedTo = null
     let assignedToName = null
     let assignedTeamId = null
+    let kategoriSla: { slaResponseMinutes: number | null; slaResolutionMinutes: number | null } | null = null
 
     if (categoryId) {
       const category = await prisma.ticketCategory.findUnique({
@@ -203,8 +186,17 @@ export async function POST(request: NextRequest) {
         select: {
           defaultAssigneeEmail: true,
           defaultTeamId: true,
+          slaResponseMinutes: true,
+          slaResolutionMinutes: true,
         }
       })
+
+      if (category) {
+        kategoriSla = {
+          slaResponseMinutes: category.slaResponseMinutes,
+          slaResolutionMinutes: category.slaResolutionMinutes,
+        }
+      }
 
       // HAVUZ MODELİ — ÖNCELİK: takım > kişi.
       // Kategori bir TAKIMA bağlıysa ticket takıma düşer ve `assignedTo` BOŞ kalır:
@@ -219,6 +211,15 @@ export async function POST(request: NextRequest) {
         // LDAP'tan isim alınabilir
       }
     }
+
+    // ── İŞ-SAATİ SLA (Faz 1b) ────────────────────────────────────────────
+    // Dakikalar: kategori değeri varsa o, yoksa öncelik tabanı (cozumSlaDakika).
+    // Hedefler çalışma takvimine göre ileri sarılır; gece/tatilde biten bir
+    // hedef üretilmez. Eski TAKVİM-saati alanları (slaResponseDue /
+    // slaResolutionDue) İHLAL HESABI hâlâ onları okuduğu için yerinde bırakıldı
+    // — bu fazda ihlal mantığına dokunulmuyor.
+    const slaDk = cozumSlaDakika(kategoriSla, priority)
+    const slaHedef = await hesaplaSlaHedefleri(now, slaDk.responseMin, slaDk.resolutionMin)
 
     const ticket = await prisma.ticket.create({
       data: {
@@ -239,8 +240,10 @@ export async function POST(request: NextRequest) {
         assignedTo,
         assignedToName,
         assignedTeamId,
-        slaResponseDue: sla.slaResponseDue,
-        slaResolutionDue: sla.slaResolutionDue,
+        slaResponseDue: slaHedef.responseDueAt,
+        slaResolutionDue: slaHedef.resolutionDueAt,
+        responseDueAt: slaHedef.responseDueAt,
+        resolutionDueAt: slaHedef.resolutionDueAt,
         attachments: attachments ? JSON.stringify(attachments) : null,
         source: 'WEB_PORTAL',
       },

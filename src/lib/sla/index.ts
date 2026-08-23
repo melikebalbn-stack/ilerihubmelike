@@ -180,3 +180,56 @@ export async function hesaplaSlaHedefleri(
     resolutionDueAt: addBusinessMinutes(createdAt, resolutionMin, tatilMap, ayar),
   }
 }
+
+// ── Öncelik tabanı + SLA dakika zinciri ─────────────────────────────────────
+
+export interface SlaDakikalari {
+  responseMin: number
+  resolutionMin: number
+}
+
+/**
+ * Öncelik tabanı — İŞ dakikası.
+ *
+ * Bu tablo `src/app/api/tickets/route.ts` içindeki eski `calculateSLA`'nın
+ * yerini alır. Rakamlar TAKVİM dakikasından İŞ dakikasına çevrildi: eskiden
+ * NORMAL çözüm 1440dk (=24 takvim saati) idi, artık 1080dk (=2 iş günü,
+ * 540dk/gün). Kritik/yüksek eşikleri aynı gün içinde kaldığı için değişmedi.
+ *
+ * Anahtarlar TicketPriority enum değerleridir (TICKET_ önekine dikkat).
+ */
+export const ONCELIK_SLA: Record<string, SlaDakikalari> = {
+  TICKET_CRITICAL: { responseMin: 15, resolutionMin: 120 },
+  TICKET_HIGH: { responseMin: 60, resolutionMin: 480 },
+  NORMAL: { responseMin: 240, resolutionMin: 1080 },
+  TICKET_LOW: { responseMin: 480, resolutionMin: 2160 },
+}
+
+/** Kategoriden okunan ham SLA alanları (Prisma select ile birebir). */
+export interface KategoriSlaAlanlari {
+  slaResponseMinutes: number | null
+  slaResolutionMinutes: number | null
+}
+
+/**
+ * SLA dakikalarını belirler: KATEGORİ değeri varsa o, yoksa ÖNCELİK tabanı.
+ *
+ * Yanıt ve çözüm BAĞIMSIZ düşer — kategori yalnız birini tanımlamışsa diğeri
+ * önceliğe düşer, ikisi birden reddedilmez.
+ * Sıfır ve negatif değerler yok sayılır: 0 dakikalık SLA anlamlı bir hedef
+ * değil, veri girişi hatasıdır ve sessizce "her ticket ihlalde" üretirdi.
+ */
+export function cozumSlaDakika(
+  kategori: KategoriSlaAlanlari | null | undefined,
+  priority: string | null | undefined,
+): SlaDakikalari {
+  const taban = ONCELIK_SLA[priority ?? ''] ?? ONCELIK_SLA.NORMAL
+
+  const gecerli = (v: number | null | undefined): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0
+
+  return {
+    responseMin: gecerli(kategori?.slaResponseMinutes) ? kategori!.slaResponseMinutes! : taban.responseMin,
+    resolutionMin: gecerli(kategori?.slaResolutionMinutes) ? kategori!.slaResolutionMinutes! : taban.resolutionMin,
+  }
+}

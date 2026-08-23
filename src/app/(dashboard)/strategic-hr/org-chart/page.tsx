@@ -349,6 +349,10 @@ export default function OrgChartPage() {
   const benzersizPersonnelIdler = new Set(activeEmployees.filter(e => e.personnelId).map(e => e.personnelId))
   const isimsizCalisanSayisi = activeEmployees.filter(e => !e.personnelId).length
   const toplamPersonelSayisi = benzersizPersonnelIdler.size + isimsizCalisanSayisi
+  // Yalnız ETİKET/alt açıklama için: kaç koltuk dolu (tekilleştirme ve kurul
+  // dışlaması UYGULANMADAN). Sayaç değeri (toplamPersonelSayisi) DEĞİŞMEZ —
+  // "Şemadaki kişi" ile "dolu koltuk" farkı görünür olsun diye.
+  const doluKoltukSayisi = employees.filter(e => e.employmentStatus !== "VACANT").length
 
   // Boş Pozisyon — gerçek açık kadro listesi: her POSITION kutusu için (N - M), N>0,
   // M<N, DONDURULMUŞ olmayan kutularda satır. Eskiden employmentStatus==="VACANT"
@@ -890,11 +894,14 @@ export default function OrgChartPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Toplam Personel</CardTitle>
+            <CardTitle className="text-sm font-medium">Semadaki Kisi</CardTitle>
             <Users className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{toplamPersonelSayisi}</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {toplamPersonelSayisi} kisi &middot; {doluKoltukSayisi} dolu koltuk
+            </p>
           </CardContent>
         </Card>
 

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
-import { User, Briefcase, Users, AlertTriangle } from "lucide-react"
+import { User, Briefcase, Users, AlertTriangle, Printer } from "lucide-react"
 import VekilAtamaModal from "./VekilAtamaModal"
 import PozisyonDuzenleModal from "./PozisyonDuzenleModal"
 
@@ -176,6 +176,11 @@ interface OrgChartNodeProps {
   onToggleCollapse: (id: string) => void
   acikGruplar: Set<string>
   onToggleGrup: (key: string) => void
+  // Yazdırma: ekrandaki aç/kapa durumundan BAĞIMSIZ olarak her şey açık çizilir.
+  // Kullanıcının collapsedIds/acikGruplar state'i değiştirilmez.
+  zorlaAcik: boolean
+  // Kağıda sığmayan düğümler: çocukları alt alta sayfalanır (ölçüm sonucu).
+  bolunenIdler: Set<string>
   hasFullAccess: boolean
   // POSITION kartı tıklama → düzenleme modalı; DEPARTMENT/GROUP → o birimi seç.
   onCardClick: (unit: OrgUnit) => void
@@ -189,6 +194,8 @@ function OrgChartNode({
   onToggleCollapse,
   acikGruplar,
   onToggleGrup,
+  zorlaAcik,
+  bolunenIdler,
   hasFullAccess,
   onCardClick,
   onSelectUnit,
@@ -200,7 +207,7 @@ function OrgChartNode({
   // dondurulabildiği için (backend kısıtı) alt ağaç kaybı riski yok.
   const children = (unit.children ?? []).filter((c) => c.positionStatus !== "DONDURULDU")
   const hasChildren = children.length > 0
-  const isCollapsed = collapsedIds.has(unit.id)
+  const isCollapsed = zorlaAcik ? false : collapsedIds.has(unit.id)
   const gruplar = kardesGruplari(unit.id, children)
   const kapaliAltKoltuk = isCollapsed
     ? children.reduce((t, c) => t + altAgacKoltuk(c), 0)
@@ -230,9 +237,12 @@ function OrgChartNode({
   }
 
   const boxClasses = [
-    // Kompakt: min genişlik 160 → 116, dar padding. 240 yapraklı şemada
-    // toplam genişliği belirleyen ana etken kart genişliği.
-    "rounded-lg px-2 py-1.5 shadow-sm min-w-[116px] max-w-[150px] text-left",
+    // Genişlik ölçümle seçildi (prod, 300 POSITION): unvan uzunluğu ort 22 /
+    // medyan 21 / p90 33 / p95 37 / max 42 karakter; kişi adı p90 17 / max 24.
+    // 208px kart → metin sütunu ~154px; 12px yazıda satır başına ~25 karakter,
+    // iki satırda ~50 karakter → p95 dahil tüm unvanlar kırpılmadan sığar.
+    "rounded-lg px-2 py-1.5 shadow-sm min-w-[180px] max-w-[208px] text-left",
+    "print:break-inside-avoid",
     "cursor-pointer hover:ring-2 hover:ring-blue-300 transition-shadow",
     isVacantPosition
       ? "border-2 border-dashed border-yellow-400 bg-yellow-50"
@@ -262,8 +272,10 @@ function OrgChartNode({
     cinsiyet === "MALE" ? "text-blue-600" : cinsiyet === "FEMALE" ? "text-pink-600" : "text-slate-500",
   ].join(" ")
 
+  const bolunuyor = bolunenIdler.has(unit.id)
+
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center" data-dugum={unit.id}>
       <div className={boxClasses} onClick={kartTiklama} role="button" tabIndex={0}>
         <div className="flex flex-row items-start gap-1.5">
           <div className={avatarClasses}>
@@ -281,20 +293,20 @@ function OrgChartNode({
                 <div className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-800">
                   Boş Pozisyon
                 </div>
-                <div className="font-semibold text-[11px] leading-tight mt-0.5 truncate" title={unit.name}>
+                <div className="font-semibold text-xs leading-snug mt-0.5 line-clamp-2" title={unit.name}>
                   {unit.name}
                 </div>
               </>
             ) : isimSatirlari.length > 0 ? (
               <>
-                <div className="font-semibold text-[11px] leading-tight truncate" title={unit.name}>
+                <div className="font-semibold text-xs leading-snug line-clamp-2" title={unit.name}>
                   {unit.name}
                 </div>
                 {isimSatirlari.map((satir, i) => (
                   <div
                     key={i}
                     className={[
-                      "text-[10px] mt-0.5 min-w-0 flex items-center gap-1",
+                      "text-[11px] mt-0.5 min-w-0 flex items-center gap-1",
                       satir.bagsiz ? "text-amber-700 font-medium" : "text-muted-foreground",
                     ].join(" ")}
                     title={satir.bagsiz ? `${satir.ad} — personel kaydına bağlı değil` : satir.ad}
@@ -305,12 +317,12 @@ function OrgChartNode({
                         aria-label="Personel kaydına bağlı değil"
                       />
                     )}
-                    <span className="truncate">{satir.ad}</span>
+                    <span className="truncate print:font-semibold">{satir.ad}</span>
                   </div>
                 ))}
               </>
             ) : (
-              <div className="font-semibold text-[11px] leading-tight truncate" title={unit.name}>
+              <div className="font-semibold text-xs leading-snug line-clamp-2" title={unit.name}>
                 {unit.name}
               </div>
             )}
@@ -369,18 +381,40 @@ function OrgChartNode({
       )}
 
       {hasChildren && !isCollapsed && (
-        <div className="relative flex flex-row items-start before:content-[''] before:absolute before:top-0 before:left-1/2 before:-translate-x-1/2 before:w-px before:h-4 before:bg-gray-300">
+        <div
+          className={[
+            "relative flex flex-row items-start",
+            "before:content-[''] before:absolute before:top-0 before:left-1/2 before:-translate-x-1/2 before:w-px before:h-4 before:bg-gray-300",
+            // Kağıda sığmayan düğümlerin çocukları yazdırmada alt alta sayfalanır;
+            // böylece ölçek tüm ağaca değil sayfaya sığan EN GENİŞ BÖLÜME göre
+            // hesaplanır ve yazı okunur kalır. Bölünme noktaları ÖLÇÜLEREK seçilir.
+            // Yerleşim globals.css'teki data-öznitelik kurallarıyla yapılır:
+            // oradaki `.flex { display: flex !important }` Tailwind print: sınıflarını eziyor.
+            bolunuyor ? "print:before:hidden" : "",
+          ].join(" ")}
+          data-bolum-kabi={bolunuyor ? "1" : undefined}
+        >
           {gruplar.map((grup, idx) => {
             const isFirst = idx === 0
             const isLast = idx === gruplar.length - 1
             const isOnly = gruplar.length === 1
-            const sarmalayici = `relative px-3 pt-4 ${childConnectorClasses(isFirst, isLast, isOnly)}`
+            const anaDal = bolunuyor
+            const sarmalayici = [
+              "relative px-3 pt-4",
+              childConnectorClasses(isFirst, isLast, isOnly),
+              anaDal ? "print:before:hidden print:after:hidden" : "",
+            ].join(" ")
 
             // Tek üyeli grup = normal kutu (tek kişilik unvanlar gruplanmaz).
             if (grup.uyeler.length === 1) {
               const child = grup.uyeler[0]
               return (
-                <div key={child.id} className={sarmalayici}>
+                <div
+                  key={child.id}
+                  className={sarmalayici}
+                  data-dal-koku={anaDal ? "1" : undefined}
+                  data-ilk-dal={anaDal && isFirst ? "1" : undefined}
+                >
                   <OrgChartNode
                     unit={child}
                     derinlik={derinlik + 1}
@@ -388,6 +422,8 @@ function OrgChartNode({
                     onToggleCollapse={onToggleCollapse}
                     acikGruplar={acikGruplar}
                     onToggleGrup={onToggleGrup}
+                    zorlaAcik={zorlaAcik}
+                    bolunenIdler={bolunenIdler}
                     hasFullAccess={hasFullAccess}
                     onCardClick={onCardClick}
                     onSelectUnit={onSelectUnit}
@@ -398,7 +434,7 @@ function OrgChartNode({
 
             // ÇOK ÜYELİ GRUP — yalnız görünüm. Kapalıyken tek kart, açıkken
             // üyelerin her biri kendi kutusuyla (tüm işlemler kutu bazında kalır).
-            const grupAcik = acikGruplar.has(grup.key)
+            const grupAcik = zorlaAcik || acikGruplar.has(grup.key)
             const grupKisi = grup.uyeler.reduce(
               (t, u) => t + (u.employees ?? []).filter((e) => e.employmentStatus !== "VACANT").length,
               0,
@@ -411,7 +447,12 @@ function OrgChartNode({
             ).length
 
             return (
-              <div key={grup.key} className={sarmalayici}>
+              <div
+                key={grup.key}
+                className={sarmalayici}
+                data-dal-koku={anaDal ? "1" : undefined}
+                data-ilk-dal={anaDal && isFirst ? "1" : undefined}
+              >
                 <div className="flex flex-col items-center">
                   <button
                     type="button"
@@ -419,17 +460,17 @@ function OrgChartNode({
                     aria-expanded={grupAcik}
                     data-grup-karti={grup.uyeler.length}
                     title={`${grup.ad} — ${grup.uyeler.length} kutu, ${grupKisi} kişi (${grupAcik ? "kapat" : "aç"})`}
-                    className="rounded-lg px-2 py-1.5 shadow-sm min-w-[116px] max-w-[150px] text-left border border-slate-300 bg-slate-50 cursor-pointer hover:ring-2 hover:ring-blue-300 transition-shadow"
+                    className="rounded-lg px-2 py-1.5 shadow-sm min-w-[180px] max-w-[208px] text-left border border-slate-300 bg-slate-50 cursor-pointer hover:ring-2 hover:ring-blue-300 transition-shadow print:break-inside-avoid"
                   >
                     <div className="flex items-center gap-1.5">
                       <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center shrink-0">
                         <Users className="w-4 h-4 text-slate-600" />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[11px] font-semibold text-gray-900 truncate" title={grup.ad}>
+                        <div className="text-xs font-semibold leading-snug text-gray-900 line-clamp-2" title={grup.ad}>
                           {grup.ad}
                         </div>
-                        <div className="text-[10px] text-gray-600">
+                        <div className="text-[11px] text-gray-600">
                           {grupKisi} kişi{grupBos > 0 ? ` · ${grupBos} boş` : ""}
                         </div>
                       </div>
@@ -440,7 +481,7 @@ function OrgChartNode({
                         />
                       )}
                     </div>
-                    <div className="text-[10px] text-blue-600 mt-0.5">
+                    <div className="text-[11px] text-blue-600 mt-0.5 print:hidden">
                       {grupAcik ? "− kapat" : `+ ${grup.uyeler.length} kutu`}
                     </div>
                   </button>
@@ -459,6 +500,8 @@ function OrgChartNode({
                             onToggleCollapse={onToggleCollapse}
                             acikGruplar={acikGruplar}
                             onToggleGrup={onToggleGrup}
+                            zorlaAcik={zorlaAcik}
+                            bolunenIdler={bolunenIdler}
                             hasFullAccess={hasFullAccess}
                             onCardClick={onCardClick}
                             onSelectUnit={onSelectUnit}
@@ -482,6 +525,10 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
   // Grup açılımı yalnız oturum içi state — localStorage/kalıcı kayıt YOK.
   const [acikGruplar, setAcikGruplar] = useState<Set<string>>(new Set())
   const [merkezleIstegi, setMerkezleIstegi] = useState(0)
+  // Yazdırma: ekran state'i korunur, çizim geçici olarak tam açık yapılır.
+  const [yazdirmaModu, setYazdirmaModu] = useState(false)
+  const [yazdirmaOlcegi, setYazdirmaOlcegi] = useState(1)
+  const [bolunenIdler, setBolunenIdler] = useState<Set<string>>(new Set())
   const [atamaModal, setAtamaModal] = useState<{ unit: OrgUnit; mode: "vekil" | "uye" } | null>(null)
   const [duzenleModal, setDuzenleModal] = useState<OrgUnit | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -550,6 +597,67 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
       return next
     })
   }
+
+  // A4 yatay, 8mm kenar boşluğu → kullanılabilir genişlik ≈ 281mm ≈ 1062px @96dpi.
+  const YAZDIRMA_GENISLIGI = 1062
+
+  const yazdir = () => setYazdirmaModu(true)
+
+  // Tam açık çizim DOM'a bastıktan sonra: (1) sayfaya sığmayan düğümleri ÖLÇ ve
+  // bölünme noktalarını seç, (2) ölçeği en geniş bölüme göre hesapla, (3) yazdır.
+  useEffect(() => {
+    if (!yazdirmaModu) return
+    document.body.classList.add("org-yazdir")
+
+    const zamanlayici = setTimeout(() => {
+      const el = scrollRef.current
+      if (!el) { window.print(); return }
+
+      const genislikler = new Map<string, number>()
+      el.querySelectorAll<HTMLElement>("[data-dugum]").forEach((d) => {
+        genislikler.set(d.dataset.dugum ?? "", d.getBoundingClientRect().width)
+      })
+
+      // Sayfaya sığmayan düğüme in: çocukları ayrı sayfalara bölünür.
+      const bolunen = new Set<string>()
+      let enGenisBolum = 0
+      const gez = (u: OrgUnit) => {
+        const g = genislikler.get(u.id) ?? 0
+        const cocuklar = (u.children ?? []).filter((c) => c.positionStatus !== "DONDURULDU")
+        if (g <= YAZDIRMA_GENISLIGI || cocuklar.length === 0) {
+          enGenisBolum = Math.max(enGenisBolum, g)
+          return
+        }
+        // Bölünen düğümün kendi kartı tek başına kalır (kart genişliği < sayfa),
+        // çocukları ayrı sayfalara iner.
+        bolunen.add(u.id)
+        cocuklar.forEach(gez)
+      }
+      units.forEach(gez)
+      // Hiçbir bölüm ölçülemediyse tüm ağaca göre ölçekle (güvenli varsayılan).
+      if (enGenisBolum === 0) enGenisBolum = el.scrollWidth
+
+      setBolunenIdler(bolunen)
+      setYazdirmaOlcegi(Math.min(1, YAZDIRMA_GENISLIGI / enGenisBolum))
+      requestAnimationFrame(() => requestAnimationFrame(() => window.print()))
+    }, 300)
+
+    return () => clearTimeout(zamanlayici)
+  }, [yazdirmaModu, units])
+
+  useEffect(() => {
+    const bitti = () => {
+      setYazdirmaModu(false)
+      setYazdirmaOlcegi(1)
+      setBolunenIdler(new Set())
+      document.body.classList.remove("org-yazdir")
+    }
+    window.addEventListener("afterprint", bitti)
+    return () => {
+      window.removeEventListener("afterprint", bitti)
+      document.body.classList.remove("org-yazdir")
+    }
+  }, [])
 
   const tumunuAc = () => {
     setCollapsedIds(new Set())
@@ -636,7 +744,7 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
 
   return (
     <div className="w-full">
-      <div className="flex items-center gap-2 px-4 pt-2 pb-1">
+      <div className="flex items-center gap-2 px-4 pt-2 pb-1 print:hidden">
         <button
           type="button"
           onClick={tumunuAc}
@@ -650,6 +758,15 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
           className="text-xs px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
         >
           Tümünü kapat
+        </button>
+        <button
+          type="button"
+          onClick={yazdir}
+          disabled={yazdirmaModu}
+          className="text-xs px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
+        >
+          <Printer className="h-3.5 w-3.5" />
+          {yazdirmaModu ? "Hazırlanıyor…" : "Yazdır"}
         </button>
         <span className="text-[11px] text-gray-500">
           Aynı unvanlı kutular tek kartta toplanır — kart yalnız görünümdür, kayıtlar ayrıdır.
@@ -668,7 +785,23 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
         </div>
       )}
 
-      <div ref={scrollRef} onScroll={onContainerScroll} className="overflow-auto w-full max-h-[70vh]">
+      <div
+        id="org-yazdir-alani"
+        style={{ ["--org-olcek" as string]: String(yazdirmaOlcegi) } as React.CSSProperties}
+      >
+        {/* Yalnız kağıtta görünen üst bilgi */}
+        <div className="hidden print:block mb-3 border-b border-gray-400 pb-2">
+          <div className="text-base font-bold">{units[0]?.name ?? "Organizasyon Şeması"}</div>
+          <div className="text-xs text-gray-700">
+            İleri Group · Organizasyon Şeması · {new Date().toLocaleDateString("tr-TR")}
+          </div>
+        </div>
+
+      <div
+        ref={scrollRef}
+        onScroll={onContainerScroll}
+        className="overflow-auto w-full max-h-[70vh] print:max-h-none print:overflow-visible"
+      >
         <div className="flex flex-row items-start p-4 min-w-fit">
           {units.map((unit) => (
             <div key={unit.id} className="px-4">
@@ -679,6 +812,8 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
                 onToggleCollapse={toggleCollapse}
                 acikGruplar={acikGruplar}
                 onToggleGrup={toggleGrup}
+                zorlaAcik={yazdirmaModu}
+                bolunenIdler={bolunenIdler}
                 hasFullAccess={hasFullAccess}
                 onCardClick={(u) => setDuzenleModal(u)}
                 onSelectUnit={(id) => onSelectUnit?.(id)}
@@ -686,6 +821,7 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
             </div>
           ))}
         </div>
+      </div>
       </div>
 
       {atamaModal && (

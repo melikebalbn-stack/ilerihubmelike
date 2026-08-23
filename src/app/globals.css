@@ -480,3 +480,84 @@
     #3b82f6
   );
 }
+
+/* ── Organizasyon Şeması yazdırma ──
+   Named page kullanılıyor: sayfa yönü YALNIZ şema alanı için yatay olur,
+   5S formu gibi diğer A4 dikey çıktılar etkilenmez. */
+@page org-yatay {
+  size: A4 landscape;
+  margin: 8mm;
+}
+
+@media print {
+  /* Yalnız şema alanı basılır: şema alanının ATASI olmayan, kendisi olmayan ve
+     içinde bulunmayan her şey (sağ panel, sidebar, üst bar, butonlar, filtreler)
+     tamamen kaldırılır. display:none kullanılıyor ki yer kaplamasın — böylece
+     named page (yatay) şema alanına uygulanabiliyor. */
+  body.org-yazdir *:not(:has(#org-yazdir-alani)):not(#org-yazdir-alani):not(#org-yazdir-alani *) {
+    display: none !important;
+  }
+  /* Ataların yerleşimi çıktıyı bozmasın */
+  body.org-yazdir *:has(#org-yazdir-alani) {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+    background: #fff !important;
+  }
+  body.org-yazdir #org-yazdir-alani {
+    page: org-yatay;
+    width: max-content !important;
+    max-width: none !important;
+    /* Genişlik kağıda göre ölçeklenir; katsayı React tarafında ölçülür. */
+    transform: scale(var(--org-olcek, 1));
+    transform-origin: top left;
+  }
+  /* Sayfaya sığmayan düğümün çocukları ALT ALTA sayfalanır.
+     !important şart: bu dosyanın üstündeki genel print bloğunda
+     `.flex { display: flex !important }` var ve Tailwind'in print: sınıflarını eziyor. */
+  body.org-yazdir #org-yazdir-alani [data-bolum-kabi] {
+    display: block !important;
+  }
+  body.org-yazdir #org-yazdir-alani [data-dal-koku] {
+    display: block !important;
+    width: max-content !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 8px !important;
+  }
+  /* Bölümler doğal akışta sayfalanır: zorunlu sayfa atlatmak yerine
+     "bölümü bölme" denir → gereksiz boş sayfa çıkmaz, kart da ortadan bölünmez. */
+  body.org-yazdir #org-yazdir-alani [data-dal-koku] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Kart ortadan bölünmesin */
+  body.org-yazdir #org-yazdir-alani [role="button"],
+  body.org-yazdir #org-yazdir-alani button[data-grup-karti] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  /* Gri tonlu çıktıda da okunur: kart çerçevesi ve bağsız koltuk vurgusu */
+  body.org-yazdir #org-yazdir-alani [role="button"] {
+    border-color: #4b5563 !important;
+    box-shadow: none !important;
+  }
+  body.org-yazdir #org-yazdir-alani .text-amber-700 {
+    color: #000 !important;
+    border-left: 3px solid #6b7280 !important;
+    padding-left: 3px !important;
+  }
+  body.org-yazdir #org-yazdir-alani .bg-amber-100 {
+    background: #e5e7eb !important;
+    color: #000 !important;
+    border: 1px solid #6b7280 !important;
+  }
+}

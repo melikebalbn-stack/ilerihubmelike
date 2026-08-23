@@ -11,11 +11,17 @@ const alias = {
   'server-only': path.resolve(__dirname, './src/test/server-only-stub.ts'),
 }
 
-// IPRO entegrasyon testleri — paylaşılan dev DB'ye yazar; cron endpoint'i tabloyu GLOBAL
-// tarayıp mutasyona uğratır → dosyalar paralel koşarsa birbirinin satırlarını bozar.
-const IPRO_INTEGRATION = [
+// Gerçek (migrasyonlu) veritabanı isteyen testler — paylaşılan dev DB'ye yazar; cron
+// endpoint'i tabloyu GLOBAL tarayıp mutasyona uğratır → dosyalar paralel koşarsa
+// birbirinin satırlarını bozar. CI'da boş DB olduğu için test:ci bunları KOŞMAZ
+// (bkz. package.json: "test:ci": "vitest run --project unit"); opt-in kalırlar:
+//   npx vitest run --project integration   ← migrasyonlu bir DATABASE_URL ister
+const DB_INTEGRATION = [
   'src/**/ipro/**/*.{test,spec}.{ts,tsx}',
   'src/lib/ipro/**/*.{test,spec}.{ts,tsx}',
+  // LDAP sync debounce testi mock'lanmamış prisma ile gerçek DB'ye yazar
+  // (describe: "... (dev DB)"), IPRO değil ama aynı ön koşula bağlı.
+  'src/lib/ldap-sync-debounce.test.ts',
 ]
 
 const sharedTest = {
@@ -58,8 +64,8 @@ export default defineConfig({
             // PLC poller saf hesap testleri (PLC/DB dokunmaz → unit'te paralel koşar).
             'scripts/ipro/plc-poller/**/*.{test,spec}.{ts,mts,cts}',
           ],
-          // IPRO entegrasyon testleri buradan HARİÇ — ayrı 'integration' projesinde seri koşar.
-          exclude: ['node_modules', '.next', 'dist', ...IPRO_INTEGRATION],
+          // DB isteyen testler buradan HARİÇ — ayrı 'integration' projesinde seri koşar.
+          exclude: ['node_modules', '.next', 'dist', ...DB_INTEGRATION],
         },
       },
       {
@@ -68,7 +74,7 @@ export default defineConfig({
         test: {
           ...sharedTest,
           name: 'integration',
-          include: IPRO_INTEGRATION,
+          include: DB_INTEGRATION,
           exclude: ['node_modules', '.next', 'dist'],
           // Seri koş — paylaşımlı dev DB + global cron taraması çakışmasın.
           fileParallelism: false,

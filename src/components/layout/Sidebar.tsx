@@ -212,10 +212,10 @@ const strategicHrMenuItems = [
   { name: "Yetenek Yönetimi", icon: Target, href: "/talent-management", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "Yedekleme Planlaması", icon: UserCheck, href: "/strategic-hr/succession-planning", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "Performans Yönetimi", icon: Target, href: "/strategic-hr/performance", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
-  { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
-  { name: "Envanter", icon: Boxes, href: "/envanter", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
+  { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "recruitment.view" },
+  { name: "Envanter", icon: Boxes, href: "/envanter", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "envanter.view" },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
-  { name: "Yıllık Çalışma Takvimi", icon: CalendarDays, href: "/strategic-hr/yillik-calisma-takvimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
+  { name: "Yıllık Çalışma Takvimi", icon: CalendarDays, href: "/strategic-hr/yillik-calisma-takvimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "yilliktakvim.view" },
 ]
 
 // OFFB-3: İlişik Kesme / Zimmet İade — İK grubu girişi.
@@ -519,6 +519,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // İnsan Varlıkları departmanı veya yetkili roller tam erişim
   // Departman müdürleri (DEPT_HEAD) de erişebilir (API'de departman filtresi uygulanacak)
   const filterStrategicHrItems = (items: typeof strategicHrMenuItems) => items.filter(item => {
+    // Permission tabanlı erişim: item'da `permission` varsa TEK belirleyici
+    // odur (rol/departman clause'ları değerlendirilmez) — filterItems'taki
+    // aynı desen (satır ~490-497). RBAC permission'ı olan (örn. idari-isler
+    // rolündeki) kullanıcı, İV departmanında olmasa/legacy admin rolü
+    // taşımasa bile görür.
+    const itemPermission = (item as { permission?: string | string[] }).permission
+    if (itemPermission) {
+      const perms = Array.isArray(itemPermission) ? itemPermission : [itemPermission]
+      return perms.some((k) => userPermissions.includes(k))
+    }
+
     // Admin roller her zaman görebilir
     if (['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER', 'IT_MANAGER'].includes(userRole)) return true
 

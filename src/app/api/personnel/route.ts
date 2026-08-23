@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { personelEklendiginde } from '@/lib/org/personel-koltuk-senkron'
+import { personelEklendiginde, type YeniPersonelSonuc } from '@/lib/org/personel-koltuk-senkron'
 import { requireUser } from '@/lib/auth/require-user'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
@@ -192,6 +192,8 @@ export async function POST(request: NextRequest) {
     // PR-B: Personnel create + ilk AÇIK EmploymentPeriod = TEK transaction.
     // PR-4b: Personnel.exit* DROP edildi; çıkış verisi tek kaynak EmploymentPeriod'da.
     // Personnel.iseGirisTarihi yazılmaya devam (giriş tarihi paralel korunur).
+    // Koltuk sonucu İK'ya uyarı olarak döner (kayıt yine oluşur).
+    let koltukSonuc: YeniPersonelSonuc = { koltukAcildi: false, sebep: 'calistirilmadi' }
     const newPersonnel = await prisma.$transaction(async (tx) => {
       const created = await tx.personnel.create({ data: personnelData })
       await tx.employmentPeriod.create({
@@ -212,7 +214,7 @@ export async function POST(request: NextRequest) {
       // Org koltugu — bolum+gorev tek kesin pozisyona esleserse acilir.
       // KOLTUK IKINCIL: eslesme yoksa koltuk acilmaz, personel kaydi YINE DE olusur
       // (helper throw etmez). Eslesmeyenler org semasindaki uyaridan elle baglanir.
-      await personelEklendiginde(tx, created.id, { actorId: user.id })
+      koltukSonuc = await personelEklendiginde(tx, created.id, { actorId: user.id })
       return created
     })
 
@@ -269,7 +271,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(newPersonnel, { status: 201 })
+    return NextResponse.json(
+      {
+        ...newPersonnel,
+        koltuk: koltukSonuc.koltukAcildi
+          ? { acildi: true, birim: koltukSonuc.orgUnitAdi }
+          : {
+              acildi: false,
+              sebep: koltukSonuc.sebep,
+              uyari: 'Şemada boş kadro yok, elle yerleştirin',
+            },
+      },
+      { status: 201 },
+    )
   } catch (error: any) {
     console.error('Personel oluşturulurken hata:', error)
     if (error?.code === 'P2002') {

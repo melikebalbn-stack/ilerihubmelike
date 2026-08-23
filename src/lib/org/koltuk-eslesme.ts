@@ -8,10 +8,11 @@ import { Prisma } from "@/generated/prisma";
 // KURAL (sırayla):
 //   1. Personnel.gorev ↔ OrgUnit.name TAM eşleşme (Türkçe normalize)
 //   2. Adayın üst zinciri Personnel.bolum ile uyuşmalı
-//   3. Tek kesin aday yoksa eslesmedi (belirsizlikte koltuk AÇILMAZ).
-//      TEK İSTİSNA: aynı unvanda birden çok kutu varsa ve bunlardan YALNIZ BİRİ boşsa
-//      o seçilir — dolu kutuya oturtmak zaten yanlış olacağı için hedef belirsiz değildir.
-//      Boş aday 0 ise (hepsi dolu) veya 2+ ise yine eşleşme YOK.
+//   3. Aynı unvanda birden çok kutu varsa BOŞ olanlar arasından seçilir. Görev artık
+//      formda şemadan seçildiği için "hangi kutu" sorusu kadro sayısıyla ilgilidir,
+//      belirsizlik değildir: boş adaylar bölüm dalına göre zaten süzülmüştür, aralarından
+//      ilki (kod sırası — kararlı) alınır. Boş aday YOKSA (hepsi dolu) eşleşme YOK →
+//      çağıran akış personeli yine kaydeder, İV'ye "boş kadro yok" uyarısı düşer.
 //   4. Kurul birimleri (ORG-KR-*) asla eşleşme sonucu olamaz
 //   5. Yalnız "canlı" ağaçlar hedef olabilir — hiç açık koltuğu olmayan kök
 //      yerleşim hedefi değildir. Prod'da ORG-TF ("İleri Group (Tüm Firma)")
@@ -180,24 +181,32 @@ export function pozisyonEslesmesiBul(
   let secilen = bolumluk[0];
   let kural: string | null = null;
 
+  // Tek aday da olsa doluysa yerleştirme yapılmaz — kişi dolu kutuya oturtulmaz.
+  if (bolumluk.length === 1 && (ix.acikKoltukSayisi.get(secilen.id) ?? 0) > 0) {
+    return {
+      eslesti: false,
+      sebep: "bos kadro yok (tek aday dolu)",
+      adaylar: bolumluk.map(k),
+    };
+  }
+
   if (bolumluk.length > 1) {
     // Aynı unvanda birden çok kutu olması normaldir (kadro sayısı kadar kutu açılmış).
     // Kişi zaten DOLU bir kutuya oturtulmamalı; adaylardan yalnız BİRİ boşsa hedef
     // aslında belirsiz değildir. Kural veriden türer (açık koltuk sayısı), pozisyon
     // kodu/adı gömülmez.
-    const bos = bolumluk.filter((u) => (ix.acikKoltukSayisi.get(u.id) ?? 0) === 0);
-    if (bos.length !== 1) {
+    const bos = bolumluk
+      .filter((u) => (ix.acikKoltukSayisi.get(u.id) ?? 0) === 0)
+      .sort((a, b) => a.code.localeCompare(b.code));
+    if (bos.length === 0) {
       return {
         eslesti: false,
-        sebep:
-          bos.length === 0
-            ? `birden fazla aday (${bolumluk.length}), hepsi dolu`
-            : `birden fazla aday (${bolumluk.length}), ${bos.length} tanesi bos`,
+        sebep: `bos kadro yok (${bolumluk.length} aday, hepsi dolu)`,
         adaylar: bolumluk.map(k),
       };
     }
     secilen = bos[0];
-    kural = "ayni adli adaylardan bos olan";
+    kural = bos.length === 1 ? "ayni adli adaylardan bos olan" : `${bos.length} bos adaydan ilki (kod sirasi)`;
   }
 
   return {

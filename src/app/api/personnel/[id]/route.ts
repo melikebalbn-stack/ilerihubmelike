@@ -6,7 +6,7 @@ import { logAuditEvent } from '@/lib/audit-log'
 import { computeTenure } from '@/lib/personnel-tenure'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
-import { personelPasiflestiginde, personelAktiflestiginde } from '@/lib/org/personel-koltuk-senkron'
+import { personelPasiflestiginde, personelAktiflestiginde, personelGoreviDegisti, type GorevDegisimSonuc } from '@/lib/org/personel-koltuk-senkron'
 
 export const dynamic = 'force-dynamic'
 
@@ -346,6 +346,10 @@ export async function PUT(
     // Personnel update + beden profili upsert = TEK transaction.
     // Beden: yalnız en az bir alan doluysa upsert edilir (boş kayıt yaratma).
     const bedenData = normalizeBeden(bedenInput)
+    // Görev değiştiyse şemadaki ana koltuk da taşınır (kurul koltukları etkilenmez).
+    const gorevDegisti =
+      typeof body.gorev === 'string' && body.gorev !== (existing.gorev ?? '')
+    let koltukSonuc: GorevDegisimSonuc | null = null
     const updatedPersonnel = await prisma.$transaction(async (tx) => {
       const updated = await tx.personnel.update({
         where: { id: personnelId },
@@ -357,6 +361,9 @@ export async function PUT(
           create: { personnelId, ...bedenData, updatedById: user.id },
           update: { ...bedenData, updatedById: user.id },
         })
+      }
+      if (gorevDegisti) {
+        koltukSonuc = await personelGoreviDegisti(tx, personnelId, { actorId: user.id })
       }
       return updated
     })
@@ -371,10 +378,19 @@ export async function PUT(
         actorEmail: user.email,
         sicilNo: existing.sicilNo,
         changedFieldKeys: Object.keys(body),
+        ...(gorevDegisti
+          ? {
+              gorevDegisimi: { eski: existing.gorev, yeni: body.gorev },
+              koltuk: koltukSonuc,
+            }
+          : {}),
       },
     })
 
-    return NextResponse.json(updatedPersonnel)
+    return NextResponse.json({
+      ...updatedPersonnel,
+      ...(gorevDegisti ? { koltuk: koltukSonuc } : {}),
+    })
   } catch (error: any) {
     console.error('Personel güncellenirken hata:', error)
     if (error?.code === 'P2002') {

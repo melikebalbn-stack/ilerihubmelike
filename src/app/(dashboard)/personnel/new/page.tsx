@@ -7,6 +7,7 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { GorevSecici } from "@/components/personnel/GorevSecici"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
@@ -158,15 +159,10 @@ export default function NewPersonnelPage() {
   const [saving, setSaving] = useState(false)
   // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer girildiğinde açılır.
   const [altBedenDiger, setAltBedenDiger] = useState(false)
-  const [jobTitles, setJobTitles] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
 
   useEffect(() => {
-    fetch("/api/settings/job-titles")
-      .then(r => r.ok ? r.json() : [])
-      .then((data: { name: string }[]) => setJobTitles(data.map(j => j.name)))
-      .catch(() => {})
     fetch("/api/settings/hr-departments")
       .then(r => r.ok ? r.json() : [])
       .then((data: { name: string }[]) => setDepartments(data.map(d => d.name)))
@@ -276,7 +272,17 @@ export default function NewPersonnelPage() {
         throw new Error(err.error || err.message || "Kayıt başarısız")
       }
 
+      const olusan = await res.json().catch(() => null)
       toast.success("Personel başarıyla oluşturuldu")
+      // Koltuk ikincil: açılmadıysa kayıt yine oluştu, İK elle yerleştirsin.
+      if (olusan?.koltuk?.acildi) {
+        toast.success(`Şemada koltuk açıldı: ${olusan.koltuk.birim}`)
+      } else if (olusan?.koltuk) {
+        toast.warning("Şemada boş kadro yok, elle yerleştirin", {
+          description: olusan.koltuk.sebep,
+          duration: 8000,
+        })
+      }
       router.push("/personnel")
     } catch (err: any) {
       toast.error(err.message || "Bir hata oluştu")
@@ -373,12 +379,14 @@ export default function NewPersonnelPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="gorev">Görev *</Label>
-                <Select id="gorev" value={form.gorev} onChange={(e) => set("gorev", e.target.value)} required>
-                  <option value="">Seçiniz</option>
-                  {jobTitles.map((j) => (
-                    <option key={j} value={j}>{j}</option>
-                  ))}
-                </Select>
+                {/* Seçenekler organizasyon şemasındaki POSITION kutu adlarından gelir;
+                    bölüm seçiliyse o dala göre süzülür. Personnel.gorev String kalır. */}
+                <GorevSecici
+                  id="gorev"
+                  value={form.gorev}
+                  bolum={form.bolum}
+                  onChange={(v) => set("gorev", v)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="bolum">Bölüm *</Label>

@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { GorevSecici } from "@/components/personnel/GorevSecici"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
@@ -158,7 +159,6 @@ export default function PersonnelDetailPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(searchParams.get("edit") === "true")
-  const [jobTitles, setJobTitles] = useState<string[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
   // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer yüklenince/seçilince açılır.
@@ -174,10 +174,6 @@ export default function PersonnelDetailPage() {
   const [transferRefreshKey, setTransferRefreshKey] = useState(0)
 
   useEffect(() => {
-    fetch("/api/settings/job-titles")
-      .then(r => r.ok ? r.json() : [])
-      .then((data: { name: string }[]) => setJobTitles(data.map(j => j.name)))
-      .catch(() => {})
     fetch("/api/settings/hr-departments")
       .then(r => r.ok ? r.json() : [])
       .then((data: { name: string }[]) => setDepartments(data.map(d => d.name)))
@@ -299,6 +295,17 @@ export default function PersonnelDetailPage() {
       setEditMode(false)
       // Refresh data
       const updated = await res.json()
+      // Görev değiştiyse şemadaki koltuk da taşınmış olmalı; olmadıysa İK'ya uyarı.
+      if (updated?.koltuk?.tasindi) {
+        toast.success(
+          `Şemadaki koltuk taşındı: ${updated.koltuk.eskiOrgUnitAdi} → ${updated.koltuk.yeniOrgUnitAdi}`,
+        )
+      } else if (updated?.koltuk) {
+        toast.warning("Şemadaki koltuk taşınamadı, yerinde kaldı", {
+          description: updated.koltuk.sebep,
+          duration: 8000,
+        })
+      }
       setData(updated)
     } catch (err: any) {
       toast.error(err.message || "Bir hata oluştu")
@@ -585,15 +592,13 @@ export default function PersonnelDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Görev *</Label>
-                <Select value={form.gorev || ""} onChange={(e) => set("gorev", e.target.value)}>
-                  <option value="">Seçiniz</option>
-                  {jobTitles.map((j) => (
-                    <option key={j} value={j}>{j}</option>
-                  ))}
-                  {form.gorev && !jobTitles.includes(form.gorev) && (
-                    <option value={form.gorev}>{form.gorev} (eski)</option>
-                  )}
-                </Select>
+                {/* Seçenekler şemadaki POSITION kutu adları. Şemada olmayan mevcut
+                    değer korunur, üstte uyarı çıkar; kayıt engellenmez. */}
+                <GorevSecici
+                  value={form.gorev || ""}
+                  bolum={form.bolum || ""}
+                  onChange={(v) => set("gorev", v)}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Bölüm *</Label>

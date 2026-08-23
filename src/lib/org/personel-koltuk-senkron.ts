@@ -326,3 +326,94 @@ export async function personelEklendiginde(
     return { koltukAcildi: false, sebep: "beklenmeyen hata" };
   }
 }
+
+// ─── Görev değişti → koltuk taşı ───
+
+export interface GorevDegisimSonuc {
+  tasindi: boolean;
+  eskiOrgUnitId?: string;
+  eskiOrgUnitAdi?: string;
+  yeniOrgUnitId?: string;
+  yeniOrgUnitAdi?: string;
+  /** Taşınmadıysa nedeni — İK'ya uyarı olarak gösterilir. */
+  sebep?: string;
+}
+
+/**
+ * Mevcut personelin görevi değiştiğinde ANA koltuğunu yeni unvanın boş kutusuna taşır.
+ *
+ * ⚠️ KURUL/KOMİTE koltukları (ORG-KR-*) ASLA etkilenmez — onlar ek görev, ana görevle
+ *    ilgisi yok. Yalnız ana ağaçtaki tek koltuk taşınır.
+ * ⚠️ Hedefte boş kutu yoksa görev güncellenmiş kalır ama koltuk YERİNDE durur; çağıran
+ *    akış sebebi İK'ya uyarı olarak gösterir. Bu fonksiyon ASLA throw etmez.
+ */
+export async function personelGoreviDegisti(
+  db: DbClient,
+  personnelId: string,
+  opts?: { actorId?: string },
+): Promise<GorevDegisimSonuc> {
+  try {
+    const p = await db.personnel.findUnique({
+      where: { id: personnelId },
+      select: { id: true, adSoyad: true, bolum: true, gorev: true, aktif: true },
+    });
+    if (!p) return { tasindi: false, sebep: "personel bulunamadi" };
+    if (!p.aktif) return { tasindi: false, sebep: "personel pasif" };
+
+    // Ana koltuk = kurul/komite DIŞINDAKİ açık koltuk.
+    const koltuklar = await db.orgEmployee.findMany({
+      where: { personnelId, isActive: true },
+      select: { id: true, orgUnitId: true, orgUnit: { select: { code: true, name: true } } },
+    });
+    const anaKoltuklar = koltuklar.filter((k) => !k.orgUnit?.code?.startsWith("ORG-KR-"));
+    if (anaKoltuklar.length === 0) {
+      return { tasindi: false, sebep: "semada ana koltugu yok" };
+    }
+    if (anaKoltuklar.length > 1) {
+      // İki ana koltuklu kişilerde hangisinin taşınacağı belirsiz — dokunmuyoruz.
+      return { tasindi: false, sebep: "birden fazla ana koltuk — elle tasiyin" };
+    }
+    const mevcut = anaKoltuklar[0];
+
+    const ix = await eslesmeIndeksiYukle(db);
+    const sonuc = pozisyonEslesmesiBul(ix, { bolum: p.bolum, gorev: p.gorev });
+    if (!sonuc.eslesti) {
+      return {
+        tasindi: false,
+        eskiOrgUnitId: mevcut.orgUnitId,
+        eskiOrgUnitAdi: mevcut.orgUnit?.name ?? undefined,
+        sebep: sonuc.sebep,
+      };
+    }
+    if (sonuc.orgUnitId === mevcut.orgUnitId) {
+      return { tasindi: false, sebep: "zaten dogru kutuda" };
+    }
+
+    await db.orgEmployee.update({
+      where: { id: mevcut.id },
+      data: { orgUnitId: sonuc.orgUnitId, displayName: p.adSoyad },
+    });
+
+    const kokEski = await kokeCik(db, mevcut.orgUnitId);
+    const kokYeni = await kokeCik(db, sonuc.orgUnitId);
+    const aciklama = `Koltuk taşındı: ${mevcut.orgUnit?.name ?? "?"} → ${sonuc.name} (${p.adSoyad})`;
+    if (kokEski) {
+      await revizyonYaz(db, kokEski.id, kokEski.name, aciklama, "Sistem — GOREV_DEGISTI", opts?.actorId ?? null);
+    }
+    if (kokYeni && kokYeni.id !== kokEski?.id) {
+      await revizyonYaz(db, kokYeni.id, kokYeni.name, aciklama, "Sistem — GOREV_DEGISTI", opts?.actorId ?? null);
+    }
+
+    return {
+      tasindi: true,
+      eskiOrgUnitId: mevcut.orgUnitId,
+      eskiOrgUnitAdi: mevcut.orgUnit?.name ?? undefined,
+      yeniOrgUnitId: sonuc.orgUnitId,
+      yeniOrgUnitAdi: sonuc.name,
+    };
+  } catch (e) {
+    // Koltuk taşınamaması personel güncellemesini DÜŞÜRMEZ.
+    console.error("personelGoreviDegisti koltuk tasinamadi:", e);
+    return { tasindi: false, sebep: "beklenmeyen hata" };
+  }
+}

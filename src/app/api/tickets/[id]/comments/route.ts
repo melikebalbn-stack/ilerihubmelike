@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { getSlaAyar, getTatilMap } from '@/lib/sla'
+import { duraklatmaGecisi, ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
 
 // GET - Ticket yorumları
 export async function GET(
@@ -87,26 +89,52 @@ export async function POST(
       }
     })
 
+    // ── SLA: ihlal hesabı TEK KAYNAK (@/lib/sla/ihlal) ────────────────────
+    // Eskiden burada slaResponseDue/slaResolutionDue ile ayrı bir karşılaştırma
+    // vardı; formül üç dosyada kopyalanıyordu. Artık tek fonksiyon, duraklatma
+    // düşülmüş hâliyle.
+    const slaSimdi = new Date()
+    const slaBaglam: TakvimBaglami = {
+      ayar: await getSlaAyar(),
+      tatilMap: await getTatilMap([slaSimdi.getUTCFullYear() - 1, slaSimdi.getUTCFullYear()]),
+    }
+    const slaGirdi = {
+      status: ticket.status,
+      respondedAt: ticket.respondedAt,
+      resolvedAt: ticket.resolvedAt,
+      responseDueAt: ticket.responseDueAt,
+      resolutionDueAt: ticket.resolutionDueAt,
+      slaResponseBreached: ticket.slaResponseBreached,
+      slaResolutionBreached: ticket.slaResolutionBreached,
+      slaPausedAt: ticket.slaPausedAt,
+      slaPausedMinutes: ticket.slaPausedMinutes,
+    }
+
     // İlk yanıt kontrolü (IT personeli yanıt verdiyse)
     if (isAdmin && !ticket.respondedAt) {
+      const karar = ihlalDegerlendir(slaGirdi, slaSimdi, slaBaglam)
       await prisma.ticket.update({
         where: { id: ticketId },
         data: {
-          respondedAt: new Date(),
-          slaResponseBreached: ticket.slaResponseDue ? new Date() > ticket.slaResponseDue : false,
+          respondedAt: slaSimdi,
+          slaResponseBreached: karar.yanitIhlali || ticket.slaResponseBreached,
         }
       })
     }
 
     // Çözüm notu ise durumu güncelle
     if (isResolution && ticket.status !== 'RESOLVED' && ticket.status !== 'CLOSED') {
+      // RESOLVED kapalı durumdur: duraklatmadaysa birikim burada kapanır.
+      const durak = duraklatmaGecisi(ticket.status, 'RESOLVED', slaGirdi, slaSimdi, slaBaglam)
+      const karar = ihlalDegerlendir(slaGirdi, slaSimdi, slaBaglam)
       await prisma.ticket.update({
         where: { id: ticketId },
         data: {
           status: 'RESOLVED',
-          resolvedAt: new Date(),
+          resolvedAt: slaSimdi,
           resolutionSummary: content.trim(),
-          slaResolutionBreached: ticket.slaResolutionDue ? new Date() > ticket.slaResolutionDue : false,
+          slaResolutionBreached: karar.cozumIhlali || ticket.slaResolutionBreached,
+          ...durak.guncelleme,
         }
       })
 

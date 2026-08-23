@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { dispatchTicketAssigned } from '@/lib/ticket-notifications'
 import { parseMembers, isTeamMember } from '@/lib/tickets/team-members'
+import { getSlaAyar, getTatilMap } from '@/lib/sla'
+import { duraklatmaGecisi, ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
 
 // GET - Ticket detayı
 export async function GET(
@@ -247,24 +249,69 @@ export async function PUT(
         newValue: status,
       })
 
+      // ── SLA: duraklatma + ihlal (TEK KAYNAK: @/lib/sla/ihlal) ───────────
+      const slaSimdi = new Date()
+      const slaBaglam: TakvimBaglami = {
+        ayar: await getSlaAyar(),
+        tatilMap: await getTatilMap([
+          slaSimdi.getUTCFullYear() - 1,
+          slaSimdi.getUTCFullYear(),
+        ]),
+      }
+
+      // Duraklatma geçişi (PENDING/ON_HOLD'a giriş-çıkış). Hedef tarih
+      // KAYDIRILMAZ; birikim karşılaştırma anında düşülür.
+      const durak = duraklatmaGecisi(
+        existingTicket.status,
+        status,
+        {
+          slaPausedAt: existingTicket.slaPausedAt,
+          slaPausedMinutes: existingTicket.slaPausedMinutes,
+        },
+        slaSimdi,
+        slaBaglam,
+      )
+      Object.assign(updateData, durak.guncelleme)
+      if (durak.olay) {
+        timelineEntries.push({
+          action: durak.olay,
+          description:
+            durak.olay === 'sla_paused'
+              ? 'SLA duraklatıldı (kullanıcı/harici bekleniyor)'
+              : `SLA devam ediyor (${durak.kapananDk} iş dk duraklatma eklendi)`,
+        })
+      }
+
+      // İhlal değerlendirmesi — duraklatma DÜŞÜLMÜŞ hâliyle.
+      // Geçiş sonrası durumu yansıtsın diye güncellenmiş alanlar kullanılır.
+      const slaKarar = ihlalDegerlendir(
+        {
+          status,
+          respondedAt: existingTicket.respondedAt,
+          resolvedAt: existingTicket.resolvedAt,
+          responseDueAt: existingTicket.responseDueAt,
+          resolutionDueAt: existingTicket.resolutionDueAt,
+          slaResponseBreached: existingTicket.slaResponseBreached,
+          slaResolutionBreached: existingTicket.slaResolutionBreached,
+          slaPausedAt: durak.guncelleme.slaPausedAt !== undefined
+            ? durak.guncelleme.slaPausedAt
+            : existingTicket.slaPausedAt,
+          slaPausedMinutes: durak.guncelleme.slaPausedMinutes ?? existingTicket.slaPausedMinutes,
+        },
+        slaSimdi,
+        slaBaglam,
+      )
+
       // İlk yanıt zamanı
       if (!existingTicket.respondedAt && ['ASSIGNED', 'IN_PROGRESS'].includes(status)) {
-        updateData.respondedAt = new Date()
-
-        // SLA ihlali kontrolü
-        if (existingTicket.slaResponseDue && new Date() > existingTicket.slaResponseDue) {
-          updateData.slaResponseBreached = true
-        }
+        updateData.respondedAt = slaSimdi
+        if (slaKarar.yanitIhlali) updateData.slaResponseBreached = true
       }
 
       // Çözüm zamanı
       if (status === 'RESOLVED' && !existingTicket.resolvedAt) {
-        updateData.resolvedAt = new Date()
-
-        // SLA ihlali kontrolü
-        if (existingTicket.slaResolutionDue && new Date() > existingTicket.slaResolutionDue) {
-          updateData.slaResolutionBreached = true
-        }
+        updateData.resolvedAt = slaSimdi
+        if (slaKarar.cozumIhlali) updateData.slaResolutionBreached = true
       }
 
       // Kapanış zamanı

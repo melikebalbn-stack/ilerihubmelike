@@ -4,7 +4,8 @@ import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
 import { parseMembers } from '@/lib/tickets/team-members'
-import { ihlalDegerlendir, ihlalEtiketi, KAPALI_DURUMLAR, type IhlalKarari } from '@/lib/sla/ihlal'
+import { ihlalDegerlendir, ihlalEtiketi, KAPALI_DURUMLAR, type IhlalKarari, type TakvimBaglami } from '@/lib/sla/ihlal'
+import { getSlaAyar, getTatilMap } from '@/lib/sla'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,8 +20,10 @@ export const dynamic = 'force-dynamic'
  * bildirimden ÖNCE yapılır: mail patlarsa bile ikinci turda tekrar
  * bildirilmez — çift bildirim, kaçan bildirimden daha zararlı.
  *
+ * DURAKLATMA (Faz 1d): PENDING/ON_HOLD'da saat durur. Bu uç duraklatma
+ * alanlarını OKUR ama YAZMAZ — yazma yalnız durum geçişinde ([id]/route.ts).
+ *
  * KAPSAM DIŞI (bilinçli):
- *   - Duraklatma: slaPausedAt/slaPausedMinutes okunmaz, yazılmaz.
  *   - Eski takvim-saati alanları (slaResponseDue/slaResolutionDue): okunmaz.
  *   - Geriye dönük backfill: hedefi NULL olan kayıtlar atlanır.
  *
@@ -144,8 +147,15 @@ export async function POST(req: NextRequest) {
   const dryRun = new URL(req.url).searchParams.get('dryRun') === '1'
   const now = new Date()
 
+  // Takvim bağlamı bir kez okunur, tüm ticket'lar için paylaşılır.
+  const ayar = await getSlaAyar()
+  const tatilMap = await getTatilMap([now.getUTCFullYear() - 1, now.getUTCFullYear()])
+  const baglam: TakvimBaglami = { tatilMap, ayar }
+
   // Aday süzme DB'de: kapalı olmayan + en az bir hedefi geçmiş + ilgili bayrağı false.
-  // NULL hedefler `lt` ile zaten elenir; karar yine de ihlalDegerlendir'de verilir.
+  // NULL hedefler `lt` ile zaten elenir. DURAKLATMADAKİ ticket'lar da adaydır:
+  // hedefi geçmiş olabilir ama duraklatma düşülünce ihlal çıkmayabilir — bu
+  // kararı SQL değil ihlalDegerlendir verir.
   const adaylar = await prisma.ticket.findMany({
     where: {
       status: { notIn: [...KAPALI_DURUMLAR] },
@@ -160,6 +170,7 @@ export async function POST(req: NextRequest) {
       respondedAt: true, resolvedAt: true,
       responseDueAt: true, resolutionDueAt: true,
       slaResponseBreached: true, slaResolutionBreached: true,
+      slaPausedAt: true, slaPausedMinutes: true,
     },
   })
 
@@ -172,7 +183,7 @@ export async function POST(req: NextRequest) {
   // Ticket BAŞINA işlenir: birinin bildirimi patlarsa parti düşmesin.
   for (const t of adaylar) {
     try {
-      const karar: IhlalKarari = ihlalDegerlendir(t, now)
+      const karar: IhlalKarari = ihlalDegerlendir(t, now, baglam)
       if (!karar.yanitIhlali && !karar.cozumIhlali) continue
 
       const etiket = ihlalEtiketi(karar)

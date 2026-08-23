@@ -21,6 +21,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail, generateTicketCreatedEmailContent } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
+import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
 
 // ════════════════════════════════════════════════════════════
 // TİP TANIMLARI
@@ -353,5 +354,117 @@ export async function dispatchTicketToTeam(
     } catch (err) {
       console.error('[ticket-team-notify] push failed:', err)
     }
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// PUBLIC: KAPANIŞ + DEĞERLENDİRME DAVETİ
+// ════════════════════════════════════════════════════════════
+
+export type TicketKapanisInfo = {
+  id: string
+  ticketNumber: string
+  subject: string
+  /** Talebi açan — bildirim ONA gider. */
+  requesterEmail: string
+  /** RESOLVED | CLOSED */
+  status: string
+}
+
+/**
+ * Ticket RESOLVED/CLOSED'a geçtiğinde TALEBİ AÇAN kişiye kapanış bildirimi +
+ * değerlendirme daveti gönderir. Kanallar dispatchTicketCreated ile aynı:
+ * e-posta + in-app + push. Yeni altyapı yok, mevcut yardımcılar kullanılır.
+ *
+ * KURALLAR:
+ *   - Kapanışı yapan kişi talebi açanla AYNIYSA gönderilmez (kendi kapattığı
+ *     talebi kendine haber vermenin anlamı yok).
+ *   - Tek sefer: RESOLVED→CLOSED ikinci geçişinde tekrar gitmez. Damga için
+ *     YENİ KOLON eklenmedi; çağıran taraf TicketTimeline'da
+ *     'satisfaction_requested' kaydının varlığına bakar.
+ *   - Kullanıcı User tablosunda yoksa/pasifse sessizce atlanır.
+ *   - throw ETMEZ → kapanış akışı bildirimden dolayı bozulmaz.
+ */
+export async function dispatchTicketKapandi(
+  ticket: TicketKapanisInfo,
+  kapatanEmail: string | null,
+): Promise<void> {
+  const acan = (ticket.requesterEmail ?? '').toLowerCase().trim()
+  if (acan === '') return
+  if (acan === (kapatanEmail ?? '').toLowerCase().trim()) return // kendi kapattı
+
+  let user: { id: string; email: string; firstName: string | null; lastName: string | null; name: string | null } | null = null
+  try {
+    user = await prisma.user.findFirst({
+      where: { email: acan, isActive: true },
+      select: { id: true, email: true, firstName: true, lastName: true, name: true },
+    })
+  } catch (err) {
+    console.error('[ticket-kapanis-notify] kullanıcı çözümlenemedi:', err)
+    return
+  }
+  if (!user) return
+
+  const r = toRecipient(user)
+  const link = `/it-support?ticket=${ticket.ticketNumber}`
+  const durumMetni = ticket.status === 'CLOSED' ? 'kapatıldı' : 'çözüldü'
+  const title = `Talebiniz ${durumMetni}: ${ticket.ticketNumber}`
+  const message = `${ticket.subject} — aldığınız hizmeti değerlendirebilirsiniz.`
+
+  // Kanal 1: e-posta
+  try {
+    const text =
+      `Talebiniz ${durumMetni}.\n\n` +
+      `Talep No: ${ticket.ticketNumber}\n` +
+      `Konu: ${ticket.subject}\n\n` +
+      `Aldığınız hizmeti değerlendirmek için talebe gidin:\n${ileriHubUrl(link)}\n\n` +
+      `Değerlendirme bağlantısı 14 gün geçerlidir.\n\nİleri Group`
+    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f4f6f8;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
+          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
+        </td></tr>
+        <tr><td style="padding:22px 24px;">
+          <h1 style="margin:0 0 12px;font-size:18px;color:#166534;">Talebiniz ${durumMetni}</h1>
+          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${ticket.subject}</p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
+            Aldığınız hizmeti değerlendirir misiniz? Bir dakikanızı alır.
+          </p>
+          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Değerlendir</a>
+          <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">Bağlantı 14 gün geçerlidir.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+    await sendEmail([{ name: r.name, email: r.email }], title, text, html)
+  } catch (err) {
+    console.error('[ticket-kapanis-notify] email failed:', err)
+  }
+
+  // Kanal 2: in-app
+  try {
+    await prisma.notification.create({
+      data: { userId: r.id, title, message, type: 'SUCCESS' as const, link },
+    })
+  } catch (err) {
+    console.error('[ticket-kapanis-notify] in-app failed:', err)
+  }
+
+  // Kanal 3: push (abonelik yoksa 0 döner)
+  try {
+    await sendPushToUser(prisma, r.id, {
+      title,
+      body: ticket.subject,
+      url: link,
+      tag: `ticket-kapanis-${ticket.id}`,
+      data: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber },
+    })
+  } catch (err) {
+    console.error('[ticket-kapanis-notify] push failed:', err)
   }
 }

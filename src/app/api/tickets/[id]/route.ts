@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { dispatchTicketAssigned } from '@/lib/ticket-notifications'
+import { dispatchTicketAssigned, dispatchTicketKapandi } from '@/lib/ticket-notifications'
 import { parseMembers, isTeamMember } from '@/lib/tickets/team-members'
 import { getSlaAyar, getTatilMap } from '@/lib/sla'
 import { duraklatmaGecisi, ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
+import { z } from 'zod'
+import { puanlayabilirMi, redHttpKodu, RED_MESAJLARI } from '@/lib/tickets/memnuniyet'
 
 // GET - Ticket detayı
 export async function GET(
@@ -358,11 +360,43 @@ export async function PUT(
     }
 
     if (satisfactionRating !== undefined) {
-      updateData.satisfactionRating = satisfactionRating
-      updateData.satisfactionComment = satisfactionComment || null
+      // ── MEMNUNİYET: sunucu-tarafı doğrulama (UI'ya güvenilmez) ──────────
+      const memnuniyetSemasi = z.object({
+        satisfactionRating: z.number().int().min(1).max(5),
+        satisfactionComment: z.string().trim().max(500).optional().nullable(),
+      })
+      const cozumleme = memnuniyetSemasi.safeParse({ satisfactionRating, satisfactionComment })
+      if (!cozumleme.success) {
+        return NextResponse.json(
+          { error: 'Geçersiz değerlendirme', detay: cozumleme.error.issues.map((i) => i.message) },
+          { status: 400 },
+        )
+      }
+
+      // Kurallar tek kaynakta (@/lib/tickets/memnuniyet) — UI aynısını kullanır.
+      const karar = puanlayabilirMi(
+        {
+          requesterEmail: existingTicket.requesterEmail,
+          status: existingTicket.status,
+          closedAt: existingTicket.closedAt,
+          resolvedAt: existingTicket.resolvedAt,
+          satisfactionRating: existingTicket.satisfactionRating,
+        },
+        user.email,
+        new Date(),
+      )
+      if (!karar.puanlayabilir) {
+        return NextResponse.json(
+          { error: RED_MESAJLARI[karar.sebep!] },
+          { status: redHttpKodu(karar.sebep!) },
+        )
+      }
+
+      updateData.satisfactionRating = cozumleme.data.satisfactionRating
+      updateData.satisfactionComment = cozumleme.data.satisfactionComment?.trim() || null
       timelineEntries.push({
         action: 'satisfaction_rated',
-        description: `Memnuniyet puanı: ${satisfactionRating}/5`,
+        description: `Memnuniyet puanı: ${cozumleme.data.satisfactionRating}/5`,
       })
     }
 
@@ -413,6 +447,50 @@ export async function PUT(
         }
       } catch (err) {
         console.error('[ticket-assign-notify] dispatch failed:', err)
+      }
+    }
+
+    // ── KAPANIŞ + DEĞERLENDİRME DAVETİ (best-effort) ────────────────────
+    // RESOLVED/CLOSED'a GEÇİŞTE talebi açana bir kez gider.
+    // TEK SEFER: yeni kolon eklenmedi; damga TicketTimeline'daki
+    // 'satisfaction_requested' kaydının varlığı. RESOLVED→CLOSED ikinci
+    // geçişinde bu kayıt zaten durduğu için tekrar gönderilmez.
+    if (
+      status !== undefined &&
+      status !== existingTicket.status &&
+      ['RESOLVED', 'CLOSED'].includes(status)
+    ) {
+      try {
+        const zatenIstendi = await prisma.ticketTimeline.findFirst({
+          where: { ticketId: id, action: 'satisfaction_requested' },
+          select: { id: true },
+        })
+        if (!zatenIstendi) {
+          await dispatchTicketKapandi(
+            {
+              id: ticket.id,
+              ticketNumber: ticket.ticketNumber,
+              subject: ticket.subject,
+              requesterEmail: ticket.requesterEmail,
+              status,
+            },
+            user.email,
+          )
+          // Damgayı bildirim GİTTİKTEN sonra yaz: gönderim patlarsa bir
+          // sonraki geçişte yeniden denenir (kapanış bildirimi 15 dakikada
+          // bir tekrarlayan bir şey değil, kaçırmak göndermekten kötü).
+          await prisma.ticketTimeline.create({
+            data: {
+              ticketId: id,
+              action: 'satisfaction_requested',
+              description: 'Değerlendirme daveti gönderildi',
+              performedBy: 'system',
+              performedByName: 'Sistem',
+            },
+          })
+        }
+      } catch (err) {
+        console.error('[ticket-kapanis-notify] dispatch failed:', err)
       }
     }
 

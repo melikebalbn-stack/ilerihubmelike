@@ -16,6 +16,8 @@ import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { ticketAge, resolutionTime, isOpenStatus } from "../_lib/ticket-age"
 import { CategoryBadge } from "./category-badge"
+import { MemnuniyetKarti, MemnuniyetSonucu } from "./memnuniyet-karti"
+import { puanlayabilirMi } from "@/lib/tickets/memnuniyet"
 import { toast } from "sonner"
 
 // Durum okunaklı TR etiketleri — toast geri bildiriminde kullanılır.
@@ -42,6 +44,8 @@ interface Ticket {
   assetInfo: string | null
   slaResponseBreached?: boolean
   slaResolutionBreached?: boolean
+  satisfactionRating?: number | null
+  satisfactionComment?: string | null
   createdAt: string
   closedAt?: string | null
   resolvedAt?: string | null
@@ -146,6 +150,7 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
   const [comments, setComments] = useState<TicketComment[]>([])
   const [timeline, setTimeline] = useState<TicketTimelineEntry[]>([])
   const [updatingTicket, setUpdatingTicket] = useState(false)
+  const [puanGonderiliyor, setPuanGonderiliyor] = useState(false)
   const [ekYukleniyor, setEkYukleniyor] = useState(false)
   const [newComment, setNewComment] = useState("")
   const [sendingComment, setSendingComment] = useState(false)
@@ -220,6 +225,38 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
       toast.error("İşlem başarısız — bağlantı hatası")
     } finally {
       setUpdatingTicket(false)
+    }
+  }
+
+  /**
+   * Memnuniyet puanı gönderir. Mevcut PUT yolu kullanılır — yeni endpoint yok.
+   * Sunucu sahiplik/durum/pencere/tekrar kontrollerini KENDİ yapar; buradaki
+   * görünürlük kararı yalnız kullanıcı deneyimi içindir.
+   */
+  const handlePuanla = async (puan: number, yorum: string) => {
+    if (!ticket) return
+    setPuanGonderiliyor(true)
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          satisfactionRating: puan,
+          satisfactionComment: yorum || null,
+        }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setTicket((cur) => (cur ? { ...cur, ...updated } : cur))
+        toast.success("Değerlendirmeniz için teşekkürler")
+      } else {
+        const data = await res.json().catch(() => null)
+        toast.error(data?.error || "Değerlendirme kaydedilemedi")
+      }
+    } catch {
+      toast.error("Değerlendirme gönderilemedi — bağlantı hatası")
+    } finally {
+      setPuanGonderiliyor(false)
     }
   }
 
@@ -328,6 +365,22 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
 
   const open = isOpenStatus(ticket.status)
   const age = ticketAge(ticket.createdAt)
+
+  // ── MEMNUNİYET: görünürlük kararı TEK KAYNAK (@/lib/tickets/memnuniyet).
+  // Sunucu PUT'ta aynı fonksiyonu tekrar çağırır; burası yalnız çizim kararı.
+  const memnuniyet = puanlayabilirMi(
+    {
+      requesterEmail: ticket.requesterEmail,
+      status: ticket.status,
+      closedAt: ticket.closedAt ? new Date(ticket.closedAt) : null,
+      resolvedAt: ticket.resolvedAt ? new Date(ticket.resolvedAt) : null,
+      satisfactionRating: ticket.satisfactionRating ?? null,
+    },
+    session?.user?.email,
+    new Date(),
+  )
+  const puanlandi =
+    ticket.satisfactionRating !== null && ticket.satisfactionRating !== undefined
   const resolved = !open ? resolutionTime(ticket.createdAt, ticket.closedAt, ticket.resolvedAt) : null
 
   // Yorumlar + sistem olayları tek kronolojik akışta (eski→yeni). 'comment_added'
@@ -363,6 +416,20 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Memnuniyet: puanlanmışsa sonuç (herkese), değilse davet (yalnız talebi açana) */}
+        {puanlandi ? (
+          <MemnuniyetSonucu
+            puan={ticket.satisfactionRating as number}
+            yorum={ticket.satisfactionComment ?? null}
+          />
+        ) : memnuniyet.puanlayabilir ? (
+          <MemnuniyetKarti
+            kalanGun={memnuniyet.kalanGun}
+            gonderiliyor={puanGonderiliyor}
+            onGonder={handlePuanla}
+          />
+        ) : null}
+
         {/* Bekleme göstergesi (açık ticket) */}
         {open && (
           <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${age.className}`}>

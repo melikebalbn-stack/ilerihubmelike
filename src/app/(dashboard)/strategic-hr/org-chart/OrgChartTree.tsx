@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
 import { User, Briefcase, Users, AlertTriangle, Printer } from "lucide-react"
 import VekilAtamaModal from "./VekilAtamaModal"
+import KartIslemMenusu, { type KartIslem } from "./KartIslemMenusu"
+import HedefSecici from "./HedefSecici"
 import PozisyonDuzenleModal from "./PozisyonDuzenleModal"
 
 // F5.2 — Yatay şema görünümüne CSS pseudo-element bağlantı çizgileri eklendi.
@@ -181,6 +183,10 @@ interface OrgChartNodeProps {
   zorlaAcik: boolean
   // Kağıda sığmayan düğümler: çocukları alt alta sayfalanır (ölçüm sonucu).
   bolunenIdler: Set<string>
+  /** Kart menüsünden seçilen işlem — modalları OrgChartTree merkezî yönetir. */
+  onIslem: (unit: OrgUnit, islem: KartIslem) => void
+  /** Yeni eklenen kutu — kısa süre vurgulanır. */
+  vurgulananId: string | null
   hasFullAccess: boolean
   // POSITION kartı tıklama → düzenleme modalı; DEPARTMENT/GROUP → o birimi seç.
   onCardClick: (unit: OrgUnit) => void
@@ -196,6 +202,8 @@ function OrgChartNode({
   onToggleGrup,
   zorlaAcik,
   bolunenIdler,
+  onIslem,
+  vurgulananId,
   hasFullAccess,
   onCardClick,
   onSelectUnit,
@@ -236,17 +244,19 @@ function OrgChartNode({
     else onSelectUnit(unit.id)
   }
 
+  const vurgulu = vurgulananId === unit.id
   const boxClasses = [
     // Genişlik ölçümle seçildi (prod, 300 POSITION): unvan uzunluğu ort 22 /
     // medyan 21 / p90 33 / p95 37 / max 42 karakter; kişi adı p90 17 / max 24.
     // 208px kart → metin sütunu ~154px; 12px yazıda satır başına ~25 karakter,
     // iki satırda ~50 karakter → p95 dahil tüm unvanlar kırpılmadan sığar.
-    "rounded-lg px-2 py-1.5 shadow-sm min-w-[180px] max-w-[208px] text-left",
+    "relative rounded-lg px-2 py-1.5 shadow-sm min-w-[180px] max-w-[208px] text-left",
     "print:break-inside-avoid",
     "cursor-pointer hover:ring-2 hover:ring-blue-300 transition-shadow",
     isVacantPosition
       ? "border-2 border-dashed border-yellow-400 bg-yellow-50"
       : "border border-gray-200 bg-card",
+    vurgulu ? "ring-2 ring-teal-500 ring-offset-1 animate-pulse" : "",
   ].join(" ")
 
   // Avatar cinsiyete göre: boş kadroda sarı daire + çanta (Briefcase). Doluda TEK kişi
@@ -273,6 +283,24 @@ function OrgChartNode({
   ].join(" ")
 
   const bolunuyor = bolunenIdler.has(unit.id)
+
+  // Silme yalnız boş ve alt birimsiz kutuda; sunucu da ayrıca reddeder.
+  const koltukSayisi = (unit.employees ?? []).length
+  const silPasifSebep =
+    koltukSayisi > 0
+      ? "Kutuda koltuk var — önce taşıyın"
+      : children.length > 0
+        ? "Alt birimi var — önce taşıyın"
+        : undefined
+
+  const menuIslemleri: { id: KartIslem; etiket: string; tehlikeli?: boolean; pasifSebep?: string }[] = [
+    { id: "pozisyonEkle", etiket: "Altına pozisyon ekle" },
+    { id: "birimEkle", etiket: "Altına birim ekle" },
+    ...(isPosition ? [{ id: "uyeAta" as KartIslem, etiket: "Üye ata / değiştir" }] : []),
+    { id: "ustBirim", etiket: "Üst birimi değiştir" },
+    ...(activeCount > 0 ? [{ id: "raporlama" as KartIslem, etiket: "Raporlama hattı" }] : []),
+    { id: "sil", etiket: "Bu birimi sil", tehlikeli: true, pasifSebep: silPasifSebep },
+  ]
 
   return (
     <div className="flex flex-col items-center" data-dugum={unit.id}>
@@ -328,6 +356,11 @@ function OrgChartNode({
             )}
           </div>
         </div>
+        {hasFullAccess && (
+          <div className="absolute right-0.5 top-0.5">
+            <KartIslemMenusu islemler={menuIslemleri} onSec={(i) => onIslem(unit, i)} />
+          </div>
+        )}
         {bagsizVar && (
           <div className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
             Personel kaydına bağlı değil
@@ -424,6 +457,8 @@ function OrgChartNode({
                     onToggleGrup={onToggleGrup}
                     zorlaAcik={zorlaAcik}
                     bolunenIdler={bolunenIdler}
+                    onIslem={onIslem}
+                    vurgulananId={vurgulananId}
                     hasFullAccess={hasFullAccess}
                     onCardClick={onCardClick}
                     onSelectUnit={onSelectUnit}
@@ -502,6 +537,8 @@ function OrgChartNode({
                             onToggleGrup={onToggleGrup}
                             zorlaAcik={zorlaAcik}
                             bolunenIdler={bolunenIdler}
+                            onIslem={onIslem}
+                            vurgulananId={vurgulananId}
                             hasFullAccess={hasFullAccess}
                             onCardClick={onCardClick}
                             onSelectUnit={onSelectUnit}
@@ -528,6 +565,12 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
   // Yazdırma: ekran state'i korunur, çizim geçici olarak tam açık yapılır.
   const [yazdirmaModu, setYazdirmaModu] = useState(false)
   const [yazdirmaOlcegi, setYazdirmaOlcegi] = useState(1)
+  // Kart menüsü işlemleri — hepsi MEVCUT uçları çağırır, yeni uç yok.
+  const [ekleModal, setEkleModal] = useState<{ unit: OrgUnit; tip: "POSITION" | "DEPARTMENT" | "GROUP" } | null>(null)
+  const [ekleAd, setEkleAd] = useState("")
+  const [hedefModal, setHedefModal] = useState<{ unit: OrgUnit; islem: "ustBirim" | "raporlama" } | null>(null)
+  const [vurgulananId, setVurgulananId] = useState<string | null>(null)
+  const [islemSuruyor, setIslemSuruyor] = useState(false)
   const [bolunenIdler, setBolunenIdler] = useState<Set<string>>(new Set())
   const [atamaModal, setAtamaModal] = useState<{ unit: OrgUnit; mode: "vekil" | "uye" } | null>(null)
   const [duzenleModal, setDuzenleModal] = useState<OrgUnit | null>(null)
@@ -658,6 +701,68 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
       document.body.classList.remove("org-yazdir")
     }
   }, [])
+
+  // Tüm işlemler aynı kabuk: 403 ayrı mesaj, başarıda ağaç tazelenir (sayfa yenilenmez).
+  const ucCagir = async (url: string, method: string, body?: unknown, basari = "İşlem tamam") => {
+    setIslemSuruyor(true)
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      if (res.status === 403) { toast.error("Bu işlem için yetkiniz yok"); return null }
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.error) { toast.error(data.error || "İşlem başarısız"); return null }
+      toast.success(data.message || basari)
+      onRefresh?.()
+      return data as Record<string, unknown>
+    } catch {
+      toast.error("İşlem başarısız")
+      return null
+    } finally {
+      setIslemSuruyor(false)
+    }
+  }
+
+  /** Yeni kutu: ağaç tazelendikten sonra o kutuya kaydır + kısa süre vurgula. */
+  const yeniKutuyaGit = (id: string) => {
+    setVurgulananId(id)
+    const dene = (kalan: number) => {
+      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-dugum="${id}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
+        return
+      }
+      if (kalan > 0) setTimeout(() => dene(kalan - 1), 400)
+    }
+    setTimeout(() => dene(6), 400)
+    setTimeout(() => setVurgulananId(null), 4000)
+  }
+
+  const kartIslemi = (unit: OrgUnit, islem: KartIslem) => {
+    if (islem === "pozisyonEkle") { setEkleAd(""); setEkleModal({ unit, tip: "POSITION" }); return }
+    if (islem === "birimEkle") { setEkleAd(""); setEkleModal({ unit, tip: "DEPARTMENT" }); return }
+    if (islem === "uyeAta") { setAtamaModal({ unit, mode: "uye" }); return }
+    if (islem === "ustBirim") { setHedefModal({ unit, islem: "ustBirim" }); return }
+    if (islem === "raporlama") { setHedefModal({ unit, islem: "raporlama" }); return }
+    if (islem === "sil") {
+      const koltuk = (unit.employees ?? []).length
+      const alt = (unit.children ?? []).filter((c) => c.positionStatus !== "DONDURULDU").length
+      if (koltuk > 0 || alt > 0) {
+        toast.error(koltuk > 0 ? "Kutuda koltuk var — önce taşıyın" : "Alt birimi var — önce taşıyın")
+        return
+      }
+      if (!window.confirm(`"${unit.name}" birimi kalıcı olarak silinsin mi?`)) return
+      void ucCagir(`/api/strategic-hr/org-chart/birim/${unit.id}`, "DELETE", undefined, "Birim silindi")
+    }
+  }
+
+  /** Üst birim değiştirmede kaynak ve kendi alt ağacı hedef olamaz (döngü koruması). */
+  const altAgacIdleri = (u: OrgUnit): string[] => [
+    u.id,
+    ...(u.children ?? []).flatMap((c) => altAgacIdleri(c)),
+  ]
 
   const tumunuAc = () => {
     setCollapsedIds(new Set())
@@ -814,6 +919,8 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
                 onToggleGrup={toggleGrup}
                 zorlaAcik={yazdirmaModu}
                 bolunenIdler={bolunenIdler}
+                onIslem={kartIslemi}
+                vurgulananId={vurgulananId}
                 hasFullAccess={hasFullAccess}
                 onCardClick={(u) => setDuzenleModal(u)}
                 onSelectUnit={(id) => onSelectUnit?.(id)}
@@ -823,6 +930,105 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
         </div>
       </div>
       </div>
+
+      {ekleModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-lg border bg-card p-4 shadow-xl">
+            <div className="text-sm font-semibold">
+              {ekleModal.tip === "POSITION" ? "Altına pozisyon ekle" : "Altına birim ekle"}
+            </div>
+            {/* Üst birim ZATEN BELLİ — sorulmaz. */}
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Üst birim: <span className="font-medium text-foreground">{ekleModal.unit.name}</span>
+            </div>
+            <input
+              autoFocus
+              value={ekleAd}
+              onChange={(e) => setEkleAd(e.target.value)}
+              placeholder={ekleModal.tip === "POSITION" ? "Unvan (ör. Kalite Sorumlusu)" : "Birim adı"}
+              className="mt-3 h-9 w-full rounded border px-2 text-sm"
+            />
+            {ekleModal.tip !== "POSITION" && (
+              <select
+                value={ekleModal.tip}
+                onChange={(e) => setEkleModal({ ...ekleModal, tip: e.target.value as "DEPARTMENT" | "GROUP" })}
+                className="mt-2 h-9 w-full rounded border px-2 text-sm"
+              >
+                <option value="DEPARTMENT">Departman</option>
+                <option value="GROUP">Grup</option>
+              </select>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setEkleModal(null)} className="rounded border px-3 py-1.5 text-xs">
+                İptal
+              </button>
+              <button
+                type="button"
+                disabled={islemSuruyor || !ekleAd.trim()}
+                onClick={async () => {
+                  const d = await ucCagir(
+                    "/api/strategic-hr/org-chart/birim",
+                    "POST",
+                    { name: ekleAd.trim(), unitType: ekleModal.tip, parentId: ekleModal.unit.id },
+                    ekleModal.tip === "POSITION" ? "Pozisyon eklendi" : "Birim eklendi",
+                  )
+                  const yeni = (d?.birim as { id?: string } | undefined)?.id
+                  setEkleModal(null)
+                  if (yeni) yeniKutuyaGit(yeni)
+                }}
+                className="rounded bg-teal-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {islemSuruyor ? "Ekleniyor…" : "Ekle"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hedefModal && hedefModal.islem === "ustBirim" && (
+        <HedefSecici
+          baslik="Üst birimi değiştir"
+          aciklama={`Taşınacak: ${hedefModal.unit.name} — hedefi ağaçtan seçin`}
+          birimler={units}
+          mod="birim"
+          kokSecenegi
+          secilemezIdler={new Set(altAgacIdleri(hedefModal.unit))}
+          onKapat={() => setHedefModal(null)}
+          onSec={async (secim) => {
+            const u = hedefModal.unit
+            setHedefModal(null)
+            await ucCagir(
+              `/api/strategic-hr/org-chart/birim/${u.id}`,
+              "PATCH",
+              { parentId: secim?.id ?? null },
+              "Üst birim değişti",
+            )
+          }}
+        />
+      )}
+
+      {hedefModal && hedefModal.islem === "raporlama" && (
+        <HedefSecici
+          baslik="Raporlama hattı"
+          aciklama={`${(hedefModal.unit.employees ?? []).filter((e) => e.employmentStatus !== "VACANT")[0]?.displayName ?? hedefModal.unit.name} kime rapor veriyor?`}
+          birimler={units}
+          mod="koltuk"
+          kokSecenegi={false}
+          secilemezIdler={new Set((hedefModal.unit.employees ?? []).map((e) => e.id))}
+          onKapat={() => setHedefModal(null)}
+          onSec={async (secim) => {
+            const kaynak = (hedefModal.unit.employees ?? []).filter((e) => e.employmentStatus !== "VACANT")[0]
+            setHedefModal(null)
+            if (!kaynak) { toast.error("Bu kutuda kişi yok"); return }
+            await ucCagir(
+              `/api/strategic-hr/org-chart/uye/${kaynak.id}`,
+              "PATCH",
+              { reportsToId: secim?.id ?? null },
+              "Raporlama hattı güncellendi",
+            )
+          }}
+        />
+      )}
 
       {atamaModal && (
         <VekilAtamaModal

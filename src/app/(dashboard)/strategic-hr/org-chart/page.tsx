@@ -10,7 +10,6 @@ import KoltuksuzPersonelModal, { KoltuksuzPersonel } from "./KoltuksuzPersonelMo
 import PersonelsizKoltukModal, { PersonelsizKoltuk } from "./PersonelsizKoltukModal"
 import SorumluTablosuPanel from "./SorumluTablosuPanel"
 import PozisyonYonetimPanel from "./PozisyonYonetimPanel"
-import BirimYonetimPanel from "./BirimYonetimPanel"
 import {
   Card,
   CardContent,
@@ -1008,11 +1007,6 @@ export default function OrgChartPage() {
                 <PozisyonYonetimPanel
                   departmanUnitlari={selectedDeptUnits}
                   orgUnitCode={selectedUnit?.code}
-                  hasFullAccess={hasFullAccess}
-                  onRefresh={fetchUnits}
-                />
-                <BirimYonetimPanel
-                  departmanUnitlari={selectedDeptUnits}
                   hasFullAccess={hasFullAccess}
                   onRefresh={fetchUnits}
                 />

@@ -59,14 +59,9 @@ export default function PozisyonYonetimPanel({
   hasFullAccess,
   onRefresh,
 }: PozisyonYonetimPanelProps) {
-  const [ekleFormAcik, setEkleFormAcik] = useState(false)
   const [cikarFormAcik, setCikarFormAcik] = useState(false)
   const [pasifListeAcik, setPasifListeAcik] = useState(false)
 
-  const [ekleParentId, setEkleParentId] = useState("")
-  const [ekleUnvan, setEkleUnvan] = useState("")
-  const [ekleKadro, setEkleKadro] = useState("1")
-  const [ekleSubmitting, setEkleSubmitting] = useState(false)
 
   const [cikarOrgUnitId, setCikarOrgUnitId] = useState("")
   const [cikarGerekce, setCikarGerekce] = useState("")
@@ -92,62 +87,14 @@ export default function PozisyonYonetimPanel({
     (u) => u.unitType === "POSITION" && u.positionStatus === "DONDURULDU"
   )
 
-  const ekleFormuKapat = () => {
-    setEkleFormAcik(false)
-    setEkleParentId("")
-    setEkleUnvan("")
-    setEkleKadro("1")
-  }
-
   const cikarFormuKapat = () => {
     setCikarFormAcik(false)
     setCikarOrgUnitId("")
     setCikarGerekce("")
   }
 
-  const handleEkle = async () => {
-    if (!ekleParentId) {
-      toast.error("Üst pozisyon seçin")
-      return
-    }
-    if (!ekleUnvan.trim()) {
-      toast.error("Unvan zorunludur")
-      return
-    }
-
-    setEkleSubmitting(true)
-    try {
-      const res = await fetch("/api/strategic-hr/org-chart/pozisyon-ekle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          parentId: ekleParentId,
-          name: ekleUnvan.trim(),
-          approvedHeadcount: ekleKadro ? parseInt(ekleKadro, 10) : 1,
-        }),
-      })
-
-      if (res.status === 403) {
-        toast.error("Bu işlem için yetkiniz yok")
-        return
-      }
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        toast.error(data.error || "Pozisyon eklenemedi")
-        return
-      }
-
-      const data = await res.json()
-      toast.success(`Pozisyon eklendi: ${data.code}`)
-      ekleFormuKapat()
-      onRefresh?.()
-    } catch (err) {
-      console.error("Pozisyon ekleme hatası:", err)
-      toast.error("Pozisyon eklenemedi")
-    } finally {
-      setEkleSubmitting(false)
-    }
-  }
+  // Pozisyon ekleme kart menüsüne taşındı — pozisyon-ekle ucu oradan çağrılmıyor,
+  // kart menüsü birim ucunu kullanıyor (parentId zaten belli).
 
   const handlePasifeCek = async () => {
     if (!cikarOrgUnitId) {
@@ -224,62 +171,8 @@ export default function PozisyonYonetimPanel({
       <div className="bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-900">Pozisyon Yönetimi</div>
 
       <div className="px-2 py-1.5 space-y-1.5">
-        {/* Pozisyon Ekle */}
-        {ekleFormAcik ? (
-          <div className="space-y-1.5 border rounded-md p-2">
-            <div>
-              <Label className="text-xs">Üst Pozisyon</Label>
-              <Select value={ekleParentId} onValueChange={setEkleParentId}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Kutu seçin" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departmanUnitlari.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {birimEtiketi(u)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Unvan *</Label>
-              <Input
-                className="h-8 text-xs"
-                value={ekleUnvan}
-                onChange={(e) => setEkleUnvan(e.target.value)}
-                placeholder="ör. Kalite Sorumlusu"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Onaylı Kadro</Label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min={1}
-                value={ekleKadro}
-                onChange={(e) => setEkleKadro(e.target.value)}
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={ekleFormuKapat}>
-                İptal
-              </Button>
-              <Button size="sm" onClick={handleEkle} disabled={ekleSubmitting}>
-                {ekleSubmitting ? "Ekleniyor..." : "Ekle"}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEkleFormAcik(true)}
-            className="text-xs px-2 py-1 rounded border border-blue-300 text-blue-600 hover:bg-blue-50"
-          >
-            + Pozisyon Ekle
-          </button>
-        )}
-
+        {/* Pozisyon ekleme kart menüsüne taşındı (üst birim orada zaten belli) —
+            burada listeden üst birim seçtirmek çakışma yaratıyordu. */}
         {/* Pozisyon Çıkar (dondur) — gerekçe zorunlu */}
         {cikarFormAcik ? (
           <div className="space-y-1.5 border rounded-md p-2">

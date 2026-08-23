@@ -178,6 +178,8 @@ export default function OrgChartPage() {
   const [isBosKadroModalOpen, setIsBosKadroModalOpen] = useState(false)
   // Şemada yeri olmayan personel — SUNUCUDAN gelir (yalnız hasFullAccess dolu döner).
   const [koltuksuzPersonel, setKoltuksuzPersonel] = useState<KoltuksuzPersonel[]>([])
+  // Yerleştirme sonrası ağaçta ilgili kutuya kaydır + vurgula.
+  const [vurgulaIstek, setVurgulaIstek] = useState<{ id: string; n: number } | null>(null)
   const [isKoltuksuzModalOpen, setIsKoltuksuzModalOpen] = useState(false)
   // Personele bağlı olmayan koltuklar — sayı SUNUCUDAN gelir, ekran saymaz.
   const [personelsizKoltuk, setPersonelsizKoltuk] = useState<PersonelsizKoltuk[]>([])
@@ -730,6 +732,13 @@ export default function OrgChartPage() {
           open={isKoltuksuzModalOpen}
           onOpenChange={setIsKoltuksuzModalOpen}
           personeller={koltuksuzPersonel}
+          birimler={units}
+          hasFullAccess={hasFullAccess}
+          onRefresh={fetchUnits}
+          onYerlesti={(orgUnitId) => {
+            setIsKoltuksuzModalOpen(false)
+            setVurgulaIstek((p) => ({ id: orgUnitId, n: (p?.n ?? 0) + 1 }))
+          }}
         />
 
         <BosKadroModal
@@ -993,6 +1002,7 @@ export default function OrgChartPage() {
                   hasFullAccess={hasFullAccess}
                   onRefresh={fetchUnits}
                   onSelectUnit={setSelectedDeptId}
+                  vurgulaIstek={vurgulaIstek}
                 />
               </div>
               {/* Yönetim paneli (sağ yan): sabit dar genişlik, ağacın üstünü kapatmaz.

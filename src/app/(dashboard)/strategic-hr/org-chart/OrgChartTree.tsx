@@ -53,6 +53,9 @@ interface OrgChartTreeProps {
   onRefresh?: () => void
   // DEPARTMENT/GROUP kartına tıklayınca o birimi seçili yap (dropdown ile aynı etki).
   onSelectUnit?: (unitId: string) => void
+  /** Dışarıdan (ör. yerleştirme modalı) gelen "şu kutuya kaydır + vurgula" isteği.
+   *  n sayacı her istekte artar; aynı kutu için tekrar tetiklenebilsin diye. */
+  vurgulaIstek?: { id: string; n: number } | null
 }
 
 // page.tsx'teki kadroRozeti ile aynı renk paletiyle tutarlı (bg-X-100 text-X-800).
@@ -557,7 +560,7 @@ function OrgChartNode({
   )
 }
 
-export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, onSelectUnit }: OrgChartTreeProps) {
+export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, onSelectUnit, vurgulaIstek }: OrgChartTreeProps) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
   // Grup açılımı yalnız oturum içi state — localStorage/kalıcı kayıt YOK.
   const [acikGruplar, setAcikGruplar] = useState<Set<string>>(new Set())
@@ -688,6 +691,14 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
     return () => clearTimeout(zamanlayici)
   }, [yazdirmaModu, units])
 
+  // Dışarıdan gelen vurgulama isteği (yerleştirme sonrası).
+  useEffect(() => {
+    if (!vurgulaIstek?.id) return
+    yeniKutuyaGit(vurgulaIstek.id)
+    // yeniKutuyaGit sabit referans değil ama yalnız istek değişince koşmalı.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vurgulaIstek?.id, vurgulaIstek?.n])
+
   useEffect(() => {
     const bitti = () => {
       setYazdirmaModu(false)
@@ -725,20 +736,50 @@ export default function OrgChartTree({ units, hasFullAccess = false, onRefresh, 
     }
   }
 
-  /** Yeni kutu: ağaç tazelendikten sonra o kutuya kaydır + kısa süre vurgula. */
+  /** id'ye giden ata zinciri (kökten hedefe) — kapalı dalları açmak için. */
+  const ataZinciri = (kokler: OrgUnit[], hedef: string): OrgUnit[] | null => {
+    for (const k of kokler) {
+      if (k.id === hedef) return [k]
+      const alt = ataZinciri(k.children ?? [], hedef)
+      if (alt) return [k, ...alt]
+    }
+    return null
+  }
+
+  /** Vurgulanacak kutuyu iste — ağaç tazelenince aşağıdaki efekt onu açıp kaydırır. */
   const yeniKutuyaGit = (id: string) => {
     setVurgulananId(id)
-    const dene = (kalan: number) => {
-      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-dugum="${id}"]`)
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
-        return
-      }
-      if (kalan > 0) setTimeout(() => dene(kalan - 1), 400)
-    }
-    setTimeout(() => dene(6), 400)
-    setTimeout(() => setVurgulananId(null), 4000)
+    setTimeout(() => setVurgulananId((m) => (m === id ? null : m)), 8000)
   }
+
+  // Vurgulanacak kutu ağaçta kapalı bir dalın altında kalabiliyor (katmanlı açılım
+  // varsayılanı) — ağaç her tazelendiğinde ata zincirini aç, grubu aç, sonra kaydır.
+  useEffect(() => {
+    if (!vurgulananId) return
+    const zincir = ataZinciri(units, vurgulananId)
+    if (!zincir) return
+    const acilacak = new Set(zincir.map((z) => z.id))
+    setCollapsedIds((prev) => {
+      const kalan = [...prev].filter((x) => !acilacak.has(x))
+      return kalan.length === prev.size ? prev : new Set(kalan)
+    })
+    const ust = zincir[zincir.length - 2]
+    const hedef = zincir[zincir.length - 1]
+    if (ust && hedef) {
+      const kardesler = (ust.children ?? []).filter((c) => c.positionStatus !== "DONDURULDU")
+      if (kardesler.filter((c) => normalizeAd(c.name) === normalizeAd(hedef.name)).length > 1) {
+        const anahtar = `${ust.id}|${normalizeAd(hedef.name)}`
+        setAcikGruplar((p) => (p.has(anahtar) ? p : new Set([...p, anahtar])))
+      }
+    }
+    const kare = setTimeout(() => {
+      scrollRef.current
+        ?.querySelector<HTMLElement>(`[data-dugum="${vurgulananId}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
+    }, 250)
+    return () => clearTimeout(kare)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [units, vurgulananId])
 
   const kartIslemi = (unit: OrgUnit, islem: KartIslem) => {
     if (islem === "pozisyonEkle") { setEkleAd(""); setEkleModal({ unit, tip: "POSITION" }); return }

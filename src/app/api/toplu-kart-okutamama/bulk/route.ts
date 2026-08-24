@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
-import { notifyHrOfBulkCardScanRecords } from '../_lib/notify-hr'
+import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from '../_lib/notify-hr'
 import { VALID_NEDEN } from '../_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
+import { resolveApprovers } from '../_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,6 +54,8 @@ export async function POST(request: NextRequest) {
     let created = 0
     const errors: { personnelId: string; message: string }[] = []
     const createdSummaries: { sicilNo: string | null; adSoyad: string }[] = []
+    // Kendi adına giren BEKLIYOR kayıtlar (onaylayıcıya bildirim için).
+    const pendingSelf: { approverIds: string[]; sicilNo: string | null; adSoyad: string }[] = []
 
     for (const item of items) {
       const personnel = personnelMap.get(item.personnelId)
@@ -82,8 +85,22 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      // Full her zaman direkt onaylı oluşturur (kendisi için girse bile) — onay
-      // akışı sadece GRI/SELF'in kendi adına girdiği kayıtlarda geçerlidir.
+      // KENDİ ADINA satır → FULL/İV dahil 1./2./3. Sorumlu onayına tabi (create/import
+      // ile BİREBİR aynı kural; bulk yolundaki self-onay açığı kapatıldı). Diğer (gerçek
+      // ekip) satırları FULL için onaysız (ONAYLANDI) kalır. resolveApprovers gönderen
+      // kişiyi aday havuzundan dışlar (kendini-onaylama yok); hiçbiri çözülmezse orphan.
+      let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
+      let approverId: string | null = null
+      let approverId2: string | null = null
+      let approverId3: string | null = null
+      if (personnel.id === access.personnelId) {
+        onayDurumu = 'BEKLIYOR'
+        const resolved = await resolveApprovers(personnel.id)
+        approverId = resolved.approverId
+        approverId2 = resolved.approverId2
+        approverId3 = resolved.approverId3
+      }
+
       await prisma.bulkCardScanFailure.create({
         data: {
           personnelId: personnel.id,
@@ -94,15 +111,32 @@ export async function POST(request: NextRequest) {
           cikisSaati: item.cikisSaati || null,
           neden: (item.neden as 'UNUTMA' | 'BOZULMA' | 'KAYBETME' | 'VAZIFE') || null,
           createdById: user.id,
+          onayDurumu,
+          approverId,
+          approverId2,
+          approverId3,
         },
       })
       created++
-      createdSummaries.push({ sicilNo: personnel.sicilNo, adSoyad: personnel.adSoyad })
+      if (onayDurumu === 'ONAYLANDI') {
+        createdSummaries.push({ sicilNo: personnel.sicilNo, adSoyad: personnel.adSoyad })
+      } else {
+        pendingSelf.push({
+          approverIds: [approverId, approverId2, approverId3].filter((id): id is string => !!id),
+          sicilNo: personnel.sicilNo,
+          adSoyad: personnel.adSoyad,
+        })
+      }
     }
 
-    // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok) — sadece
-    // direkt onaylı (BEKLIYOR olmayan) kayıtlar için.
-    notifyHrOfBulkCardScanRecords(createdSummaries, user.name || user.email)
+    // ONAYLANDI kayıtlar → İnsan Varlıkları'na in-app bildirim (mail yok).
+    if (createdSummaries.length > 0) {
+      notifyHrOfBulkCardScanRecords(createdSummaries, user.name || user.email)
+    }
+    // Kendi adına BEKLIYOR kayıt(lar) → 1./2./3. Sorumlu'ya onay bildirimi (create/import deseni).
+    for (const p of pendingSelf) {
+      notifyApproverOfPendingRecord(p.approverIds, { sicilNo: p.sicilNo, adSoyad: p.adSoyad }, user.name || user.email)
+    }
 
     return NextResponse.json({ created, errors })
   } catch (error) {

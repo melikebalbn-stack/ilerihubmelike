@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
   // büyük/küçük harf farkı tolere edilir; cuid'ler zaten küçük harf olduğundan etkilenmez.
   const basvuru = await prisma.publicJobApplication.findFirst({
     where: { applicationNumber: { equals: applicationNumber, mode: "insensitive" } },
-    select: { id: true, tcKimlikNo: true },
+    select: { id: true, tcKimlikNo: true, applicationNumber: true },
   });
 
   if (!basvuru) {
@@ -134,7 +134,8 @@ export async function POST(req: NextRequest) {
   // YALNIZ imza + numara döner. TC, ad, telefon, statü, sınav bilgisi BURADAN DÖNMEZ —
   // durum sorgusu ayrı uçtan (/api/public/basvuru-durum) ve o uç da yalnız durum döner.
   return NextResponse.json(
-    { applicationNumber, takipImzasi: basvuruTakipImzasi(basvuru.id) },
+    // Numara KANONİK hâliyle döner (kullanıcı "ik-2026-0001" yazsa da "IK-2026-0001").
+    { applicationNumber: basvuru.applicationNumber, takipImzasi: basvuruTakipImzasi(basvuru.id) },
     { headers: HEADERS },
   );
 }

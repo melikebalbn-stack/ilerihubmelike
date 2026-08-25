@@ -5,6 +5,7 @@ import { parseMembers } from '@/lib/tickets/team-members'
 import { requireUser } from '@/lib/auth/require-user'
 import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
 import { cozumSlaDakika, hesaplaSlaHedefleri } from '@/lib/sla'
+import { cihazAnlikGoruntu, ASSET_INFO_MAX } from '@/lib/tickets/cihaz-etiket'
 
 // Ticket numarası oluştur
 async function generateTicketNumber(): Promise<string> {
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest) {
       urgency = 'MEDIUM',
       location,
       assetInfo,
+      zimmetFormuId,
       attachments,
     } = body
 
@@ -169,6 +171,57 @@ export async function POST(request: NextRequest) {
         { error: 'Konu ve açıklama zorunludur' },
         { status: 400 }
       )
+    }
+
+    // ── Zimmet (cihaz) bağı ──────────────────────────────────────────────
+    // İSTEMCİYE GÜVENİLMEZ: gönderilen id gerçekten oturum sahibinin AKTİF ve
+    // ONAYLANMIŞ zimmetinde mi, sunucuda doğrulanır. Başkasının cihaz id'sini
+    // gönderen istek 400 alır — sahiplik filtresi sorgunun içinde, gövdeden
+    // gelen hiçbir alanla ezilemez.
+    let bagliZimmetId: string | null = null
+    let cozulmusAssetInfo: string | null = null
+
+    if (typeof zimmetFormuId === 'string' && zimmetFormuId.trim()) {
+      const cihaz = await prisma.zimmetFormu.findFirst({
+        where: {
+          id: zimmetFormuId.trim(),
+          zimmetSahibiId: user.id,
+          silindiMi: false,
+          cihazDurumu: 'AKTIF',
+          durum: 'ONAYLANDI',
+        },
+        select: {
+          id: true,
+          tur: true,
+          turDiger: true,
+          marka: true,
+          model: true,
+          seriNumarasi: true,
+          pcAdi: true,
+        },
+      })
+
+      if (!cihaz) {
+        return NextResponse.json(
+          { error: 'Seçilen cihaz zimmetinizde bulunamadı' },
+          { status: 400 }
+        )
+      }
+
+      bagliZimmetId = cihaz.id
+      // Cihaz seçildiyse istemciden gelen assetInfo YOK SAYILIR: alan artık
+      // seçim anının anlık görüntüsü, kullanıcı metni değil.
+      cozulmusAssetInfo = cihazAnlikGoruntu(cihaz) || null
+    } else {
+      // Serbest metin yolu. Boş/whitespace → "" DEĞİL, NULL yazılır.
+      const serbest = typeof assetInfo === 'string' ? assetInfo.trim() : ''
+      if (serbest.length > ASSET_INFO_MAX) {
+        return NextResponse.json(
+          { error: `İlgili cihaz bilgisi en fazla ${ASSET_INFO_MAX} karakter olabilir` },
+          { status: 400 }
+        )
+      }
+      cozulmusAssetInfo = serbest || null
     }
 
     const ticketNumber = await generateTicketNumber()
@@ -236,7 +289,8 @@ export async function POST(request: NextRequest) {
         requesterName: user.name ?? user.email,
         requesterDept: user.department || null,
         location,
-        assetInfo,
+        assetInfo: cozulmusAssetInfo,
+        zimmetFormuId: bagliZimmetId,
         assignedTo,
         assignedToName,
         assignedTeamId,

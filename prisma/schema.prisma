@@ -2404,6 +2404,12 @@ model Ticket {
   location  String? // Lokasyon bilgisi
   assetInfo String? // İlgili varlık bilgisi (bilgisayar adı vb.)
 
+  // Zimmet bağı: seçilen cihazın kaydı. onDelete: SetNull — zimmet kaydı silinse
+  // bile ticket ayakta kalır; assetInfo o anki anlık görüntüyü taşıdığı için
+  // geçmiş okunabilir olmayı sürdürür.
+  zimmetFormuId String?
+  zimmetFormu   ZimmetFormu? @relation("TicketZimmetFormu", fields: [zimmetFormuId], references: [id], onDelete: SetNull)
+
   // Atama
   assignedTo     String? // Atanan teknisyen email
   assignedToName String?
@@ -2466,6 +2472,7 @@ model Ticket {
   @@index([priority])
   @@index([createdAt])
   @@index([slaResolutionDue])
+  @@index([zimmetFormuId])
 }
 
 // Ticket Tipleri (ITIL)
@@ -12241,6 +12248,9 @@ model ZimmetFormu {
   kaynak            ZimmetKaynak @default(MANUEL)
   redSebebi         String?
   sonBildirimTarihi DateTime?
+
+  // Bu cihaza bağlanmış IT talepleri (Ticket.zimmetFormuId).
+  tickets Ticket[] @relation("TicketZimmetFormu")
 
   @@index([zimmetSahibiId])
   @@index([durum])

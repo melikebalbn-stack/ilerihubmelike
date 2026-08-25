@@ -18,6 +18,7 @@ import { ticketAge, resolutionTime, isOpenStatus } from "../_lib/ticket-age"
 import { CategoryBadge } from "./category-badge"
 import { MemnuniyetKarti, MemnuniyetSonucu } from "./memnuniyet-karti"
 import { puanlayabilirMi } from "@/lib/tickets/memnuniyet"
+import { ZIMMET_TUR_LABELS } from "@/lib/tickets/cihaz-etiket"
 import { toast } from "sonner"
 
 // Durum okunaklı TR etiketleri — toast geri bildiriminde kullanılır.
@@ -41,7 +42,23 @@ interface Ticket {
   assignedTo: string | null
   assignedToName: string | null
   location: string | null
+  /**
+   * Seçim anının anlık görüntüsü (cihaz seçildiyse SUNUCUDA üretilir) ya da
+   * kullanıcının yazdığı serbest metin. Cihaz sonradan pasifleşse/silinse bile
+   * burası okunabilir kalır.
+   */
   assetInfo: string | null
+  zimmetFormuId?: string | null
+  zimmetFormu?: {
+    id: string
+    tur: string
+    turDiger: string | null
+    marka: string | null
+    model: string | null
+    seriNumarasi: string | null
+    pcAdi: string | null
+    cihazDurumu: string
+  } | null
   slaResponseBreached?: boolean
   slaResolutionBreached?: boolean
   satisfactionRating?: number | null
@@ -475,12 +492,51 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
               <p className="font-medium">{ticket.location}</p>
             </div>
           )}
-          {ticket.assetInfo && (
+          {/*
+            Üç durum:
+            1) Bağlı zimmet kaydı var  → yapılandırılmış cihaz künyesi
+            2) Kayıt yok ama assetInfo dolu → düz metin (serbest giriş VEYA
+               cihaz silindikten sonra geriye kalan anlık görüntü). Bu bir hata
+               değil, tasarım gereği — "cihaz kaydı bulunamadı" BASILMAZ.
+            3) İkisi de yok → blok hiç çizilmez
+          */}
+          {ticket.zimmetFormu ? (
+            <div>
+              <p className="text-sm text-muted-foreground">Ilgili Cihaz</p>
+              <p className="font-medium">
+                {ticket.zimmetFormu.turDiger?.trim() ||
+                  ZIMMET_TUR_LABELS[ticket.zimmetFormu.tur] ||
+                  ticket.zimmetFormu.tur}
+                {ticket.zimmetFormu.cihazDurumu === "PASIF" && (
+                  <Badge variant="outline" className="ml-2 text-xs font-normal">
+                    Pasif
+                  </Badge>
+                )}
+              </p>
+              {(ticket.zimmetFormu.marka || ticket.zimmetFormu.model) && (
+                <p className="text-sm">
+                  {[ticket.zimmetFormu.marka, ticket.zimmetFormu.model]
+                    .filter(Boolean)
+                    .join(" ")}
+                </p>
+              )}
+              {ticket.zimmetFormu.seriNumarasi && (
+                <p className="text-sm text-muted-foreground">
+                  SN: {ticket.zimmetFormu.seriNumarasi}
+                </p>
+              )}
+              {ticket.zimmetFormu.pcAdi && (
+                <p className="text-sm text-muted-foreground">
+                  PC: {ticket.zimmetFormu.pcAdi}
+                </p>
+              )}
+            </div>
+          ) : ticket.assetInfo ? (
             <div>
               <p className="text-sm text-muted-foreground">Ilgili Cihaz</p>
               <p className="font-medium">{ticket.assetInfo}</p>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Açıklama */}

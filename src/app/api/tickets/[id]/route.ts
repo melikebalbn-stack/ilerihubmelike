@@ -28,6 +28,21 @@ export async function GET(
         // `assignedTeam: true` idi → ham `members` JSON'ı talebi açan HERKESE
         // gidiyordu. Üyelik bilgisi sunucuda hesaplanıp bayrak olarak dönüyor.
         assignedTeam: { select: { id: true, name: true, members: true } },
+        // Bağlı cihaz — DAR select. Cihaz silinmiş/relation kopmuşsa null döner;
+        // bu bir hata değil, Ticket.assetInfo o anki anlık görüntüyü taşımaya
+        // devam eder ve detayda o gösterilir.
+        zimmetFormu: {
+          select: {
+            id: true,
+            tur: true,
+            turDiger: true,
+            marka: true,
+            model: true,
+            seriNumarasi: true,
+            pcAdi: true,
+            cihazDurumu: true,
+          }
+        },
         parentTicket: {
           select: { id: true, ticketNumber: true, subject: true }
         },

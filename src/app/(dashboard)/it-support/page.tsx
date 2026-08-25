@@ -44,6 +44,7 @@ import {
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { cihazSecimEtiketi } from "@/lib/tickets/cihaz-etiket"
 import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -106,6 +107,25 @@ interface TicketStats {
   }
 }
 
+/** /api/tickets/cihazlarim — oturum sahibinin AKTİF + ONAYLANMIŞ zimmetleri. */
+interface Cihaz {
+  id: string
+  tur: string
+  turDiger: string | null
+  marka: string | null
+  model: string | null
+  seriNumarasi: string | null
+  pcAdi: string | null
+  verilisTarihi: string | null
+}
+
+/**
+ * "Listede yok / başka cihaz" seçeneğinin değeri. Radix Select boş string'i
+ * değer olarak kabul etmediği için nöbetçi (sentinel) bir sabit gerekiyor.
+ * Sunucuya ASLA gönderilmez — gönderimde null'a çevrilir.
+ */
+const CIHAZ_SERBEST = "__serbest__"
+
 // ── Liste sıralama (client-side) ──
 type SortKey = "date" | "priority" | "wait" | "status"
 type SortState = { key: SortKey; dir: "asc" | "desc" }
@@ -141,12 +161,14 @@ export default function ITSupportPage() {
   // yükleme create'ten hemen önce yapılır (iptal edilirse sunucuda çöp kalmaz).
   const [ekDosyalar, setEkDosyalar] = useState<File[]>([])
   const [ekYukleniyor, setEkYukleniyor] = useState(false)
+  const [cihazlar, setCihazlar] = useState<Cihaz[]>([])
   const [newTicket, setNewTicket] = useState({
     subject: "",
     description: "",
     categoryId: "",
     location: "",
     assetInfo: "",
+    zimmetFormuId: "",
   })
   const [submitting, setSubmitting] = useState(false)
 
@@ -164,10 +186,13 @@ export default function ITSupportPage() {
       // /api/tickets/reports'tan çeker. `viewMode=kpi` diye anlamsız bir istek
       // atılmasın diye ticket listesi bu sekmede hiç istenmez.
       const kpiSekmesi = activeTab === "kpi"
-      const [ticketsRes, categoriesRes, statsRes] = await Promise.all([
+      const [ticketsRes, categoriesRes, statsRes, cihazlarRes] = await Promise.all([
         kpiSekmesi ? Promise.resolve(null) : fetch(`/api/tickets?viewMode=${activeTab}`),
         fetch("/api/tickets/categories"),
         fetch("/api/tickets/stats"),
+        // Cihaz listesi İSTEĞE BAĞLI veri: uç hata verirse (403/500) ya da ağ
+        // koparsa form kırılmaz, kullanıcı serbest metne düşer.
+        fetch("/api/tickets/cihazlarim").catch(() => null),
       ])
 
       if (ticketsRes && ticketsRes.ok) {
@@ -178,6 +203,11 @@ export default function ITSupportPage() {
       }
       if (statsRes.ok) {
         setStats(await statsRes.json())
+      }
+      if (cihazlarRes?.ok) {
+        setCihazlar(await cihazlarRes.json().catch(() => []))
+      } else {
+        setCihazlar([])
       }
     } catch (error) {
       console.error("Veri yuklenemedi:", error)
@@ -237,10 +267,23 @@ export default function ITSupportPage() {
       }
 
       // 2) Ticket oluştur (attachments create'te JSON'a çevrilip yazılıyor)
+      // Gövde AÇIKÇA kurulur, `...newTicket` yayılmaz: nöbetçi CIHAZ_SERBEST
+      // değeri sunucuya sızmasın ve boş assetInfo "" yerine null gitsin diye.
+      // Sunucu bunların hepsini yeniden doğrular; burası yalnız temiz gövde.
+      const cihazSecildi = !!newTicket.zimmetFormuId && newTicket.zimmetFormuId !== CIHAZ_SERBEST
       const response = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newTicket, attachments }),
+        body: JSON.stringify({
+          subject: newTicket.subject,
+          description: newTicket.description,
+          categoryId: newTicket.categoryId,
+          location: newTicket.location,
+          zimmetFormuId: cihazSecildi ? newTicket.zimmetFormuId : null,
+          // Cihaz seçildiyse assetInfo'yu sunucu üretir; istemci hiç göndermez.
+          assetInfo: cihazSecildi ? null : newTicket.assetInfo.trim() || null,
+          attachments,
+        }),
       })
 
       if (response.ok) {
@@ -251,6 +294,7 @@ export default function ITSupportPage() {
           categoryId: "",
           location: "",
           assetInfo: "",
+          zimmetFormuId: "",
         })
         setEkDosyalar([])
         retry()
@@ -405,11 +449,55 @@ export default function ITSupportPage() {
 
                   <div className="grid gap-2">
                     <Label>Ilgili Cihaz/Ekipman</Label>
-                    <Input
-                      placeholder="Bilgisayar adi, yazici modeli, vs."
-                      value={newTicket.assetInfo}
-                      onChange={(e) => setNewTicket({ ...newTicket, assetInfo: e.target.value })}
-                    />
+                    {/*
+                      Zimmetinde AKTİF+ONAYLANMIŞ cihazı olan kullanıcı listeden
+                      seçer; olmayan (ya da uç hata verdiyse herkes) doğrudan
+                      serbest metin yazar. "Listede yok" seçilirse serbest metin
+                      alanı açılır ve zimmetFormuId null gider.
+                    */}
+                    {cihazlar.length > 0 ? (
+                      <>
+                        <Select
+                          value={newTicket.zimmetFormuId}
+                          onValueChange={(v) =>
+                            setNewTicket({
+                              ...newTicket,
+                              zimmetFormuId: v,
+                              // Cihaz seçildiği anda daha önce yazılmış serbest
+                              // metin temizlenir; sunucu zaten yok sayacak.
+                              assetInfo: v === CIHAZ_SERBEST ? newTicket.assetInfo : "",
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Cihaz secin" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cihazlar.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {cihazSecimEtiketi(c)}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value={CIHAZ_SERBEST}>Listede yok / baska cihaz</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {newTicket.zimmetFormuId === CIHAZ_SERBEST && (
+                          <Input
+                            placeholder="Bilgisayar adi, yazici modeli, vs."
+                            maxLength={200}
+                            value={newTicket.assetInfo}
+                            onChange={(e) => setNewTicket({ ...newTicket, assetInfo: e.target.value })}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <Input
+                        placeholder="Bilgisayar adi, yazici modeli, vs."
+                        maxLength={200}
+                        value={newTicket.assetInfo}
+                        onChange={(e) => setNewTicket({ ...newTicket, assetInfo: e.target.value })}
+                      />
+                    )}
                   </div>
                 </div>
 

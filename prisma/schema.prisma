@@ -260,6 +260,18 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
+  // Servis Yönetimi (FAZ 1/A) — ters ilişkiler (DB kolonu eklemez)
+  servisAracVarsayilanOlusturanlar    ServisGuzergahAracVarsayilan[]  @relation("ServisGuzergahAracVarsayilanOlusturan")
+  servisAracVarsayilanGuncelleyenler  ServisGuzergahAracVarsayilan[]  @relation("ServisGuzergahAracVarsayilanGuncelleyen")
+  servisSoforVarsayilanOlusturanlar   ServisGuzergahSoforVarsayilan[] @relation("ServisGuzergahSoforVarsayilanOlusturan")
+  servisSoforVarsayilanGuncelleyenler ServisGuzergahSoforVarsayilan[] @relation("ServisGuzergahSoforVarsayilanGuncelleyen")
+  servisPersonelAtamaOlusturanlar     ServisPersonelAtama[]           @relation("ServisPersonelAtamaOlusturan")
+  servisPersonelAtamaGuncelleyenler   ServisPersonelAtama[]           @relation("ServisPersonelAtamaGuncelleyen")
+  servisSorumlusuOlusturanlar         ServisSorumlusu[]               @relation("ServisSorumlusuOlusturan")
+  servisSorumlusuGuncelleyenler       ServisSorumlusu[]               @relation("ServisSorumlusuGuncelleyen")
+  servisPersonelDurumOlusturanlar     ServisPersonelDurum[]           @relation("ServisPersonelDurumOlusturan")
+  servisPersonelDurumGuncelleyenler   ServisPersonelDurum[]           @relation("ServisPersonelDurumGuncelleyen")
+  servisIslemYapilanlar               ServisIslemGecmisi[]            @relation("ServisIslemYapan")
 }
 
 model VerificationToken {
@@ -9172,6 +9184,12 @@ model Personnel {
   rmaSorumluluklar              RmaKayit[]
   uygunsuzlukSorumluluklari      KaliteUygunsuzluk[]
 
+  // Servis Yönetimi (FAZ 1/A) — ters ilişkiler (DB kolonu eklemez)
+  servisSoforKaydi              ServisSofor?
+  servisAtamalari               ServisPersonelAtama[]
+  servisSorumlulari             ServisSorumlusu[]
+  servisDurumlari               ServisPersonelDurum[]
+
   @@index([bolum])
   @@index([yakaRengi])
   @@index([aktif])
@@ -13125,4 +13143,560 @@ model YillikTakvimOnayAdimi {
   createdAt DateTime @default(now())
 
   @@index([kayitId])
+}
+
+// ============================================================================
+// SERVİS YÖNETİMİ — FAZ 1 / A KAPSAMI
+// Kaynak tasarım: docs/servis-yonetimi/faz1-a-kapsami-prisma-modeli.prisma
+// EXCLUDE / CHECK / bileşik FK kısıtları Prisma ile ifade edilemez —
+// docs/servis-yonetimi/faz1-a-kapsami-migration.sql içinde elle tanımlıdır.
+// ============================================================================
+// ============================================================================
+// ENUM'LAR
+// ============================================================================
+
+enum ServisSeferDilimiYon {
+  GIDIS
+  DONUS
+}
+
+// ANA/YEDEK ortak rol kavramı — araç varsayılanı, şoför varsayılanı ve servis
+// sorumlusunda aynı anlamı taşır (birincil / yedek). GECICI değeri B fazına
+// aittir (ServisSeferGorevlendirme fiilî sefer bazlı geçici atamayı karşılar);
+// A'da geçici değişiklik ANA/YEDEK varsayılan kaydının tarih aralığı
+// bölünerek yapılır, ayrı bir rol değeri GEREKMEZ.
+enum ServisRol {
+  ANA
+  YEDEK
+}
+
+// OPTIMIZASYON değeri kasıtlı olarak YOK — bir optimizasyon motoru bu fazda
+// mevcut değil; motor devreye girdiğinde (B/C) enum'a eklenecek.
+enum ServisAtamaKaynagi {
+  MANUEL
+  IMPORT
+}
+
+// Personelin servis kullanıp kullanmadığı durumu — "KENDİ GELİYOR" (canlıda
+// 19 kişi) bir güzergah/durak DEĞİL, kullanım durumudur. Bkz. ServisPersonelDurum.
+enum ServisKullanimDurumu {
+  SERVIS_KULLANIYOR
+  KENDI_GELIYOR
+  KULLANMIYOR
+}
+
+// ServisIslemGecmisi.hedefTipi — serbest metin DEĞİL, A kapsamındaki her
+// modeli birebir karşılayan sabit liste.
+enum ServisIslemHedefTipi {
+  FIRMA
+  YERLESKE
+  SEFER_DILIMI
+  GUZERGAH
+  DURAK
+  GUZERGAH_DURAK
+  GUZERGAH_DURAK_SAAT
+  ARAC
+  SOFOR
+  GUZERGAH_ARAC_VARSAYILAN
+  GUZERGAH_SOFOR_VARSAYILAN
+  PERSONEL_ATAMA
+  PERSONEL_ATAMA_DILIM
+  SORUMLUSU
+  PERSONEL_DURUM
+}
+
+enum ServisIslemTuru {
+  OLUSTURMA
+  GUNCELLEME
+  PASIFLESTIRME
+  AKTIFLESTIRME
+}
+
+// ============================================================================
+// TANIM (MASTER) VERİLERİ
+// ============================================================================
+
+model ServisFirma {
+  id         String   @id @default(cuid())
+  ad         String
+  yetkiliAdi String?
+  telefon    String?
+  eposta     String?
+  adres      String?  @db.Text
+  aktif      Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  araclar  ServisArac[]
+  soforler ServisSofor[]
+
+  @@index([aktif])
+  @@index([ad])
+  @@map("servis_firma")
+}
+
+// Repository'de yeniden kullanılabilecek yerleşke/lokasyon master'ı YOK
+// (FAZ 0.5 keşfinde doğrulandı — OrgUnit.location serbest metin, master değil).
+// Bu yüzden minimal bir yerleşke tablosu burada tanımlanıyor.
+model ServisYerleske {
+  id        String   @id @default(cuid())
+  kod       String   @unique
+  ad        String
+  adres     String?  @db.Text
+  enlem     Decimal? @db.Decimal(9, 6)
+  boylam    Decimal? @db.Decimal(9, 6)
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  guzergahlar ServisGuzergah[]
+
+  @@index([aktif])
+  @@map("servis_yerleske")
+}
+
+// Sabit enum yerine lookup tablosu — dilim sayısı vardiya yapısına göre
+// değişebilir (şu an 3 vardiya × 2 yön = 6 dilim) ve ileride yeni dilim
+// eklemek migration GEREKTİRMEMELİ; yalnız bu tabloya satır eklenir.
+model ServisSeferDilimi {
+  id        String               @id @default(cuid())
+  kod       String               @unique
+  ad        String
+  yon       ServisSeferDilimiYon
+  // Aynı vardiyanın GIDIS ve DONUS dilimini gruplamak için serbest etiket
+  // (örn. "VARDIYA-1" hem gidiş hem dönüş satırında aynı değeri taşır).
+  // IproVardiya'ya FK KURULMADI — kasıtlı: bu modül IproVardiya'ya bağımlı
+  // olmasın (ayrı domain), yalnız UI'da "vardiya seç → ilgili dilimler
+  // otomatik işaretlensin" akışını mümkün kılan bir görüntüleme etiketi.
+  // Personel atama mantığı buna hiç dokunmaz; yalnız seçim ekranı kolaylığı.
+  grupKodu  String?
+  sira      Int
+  aktif     Boolean              @default(true)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  guzergahDurakSaatleri ServisGuzergahDurakSaat[]
+  aracVarsayilanlari    ServisGuzergahAracVarsayilan[]
+  soforVarsayilanlari   ServisGuzergahSoforVarsayilan[]
+  personelAtamalari     ServisPersonelAtamaDilim[]
+
+  @@index([aktif])
+  @@index([yon])
+  @@index([grupKodu])
+  @@map("servis_sefer_dilimi")
+}
+
+// ============================================================================
+// GÜZERGAH VE DURAK
+// ============================================================================
+
+model ServisGuzergah {
+  id                   String    @id @default(cuid())
+  kod                  String    @unique
+  ad                   String
+  aciklama             String?   @db.Text
+  // ServisBolge A kapsamına GİRMİYOR — şimdilik serbest metin etiket yeterli.
+  bolge                String?
+  yerleskeId           String
+  yerleske             ServisYerleske @relation(fields: [yerleskeId], references: [id], onDelete: Restrict)
+  aktif                Boolean   @default(true)
+  gecerlilikBaslangici DateTime? @db.Date
+  gecerlilikBitisi     DateTime? @db.Date
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  duraklar          ServisGuzergahDurak[]
+  personelAtamalari ServisPersonelAtama[]
+  aracVarsayilanlari  ServisGuzergahAracVarsayilan[]
+  soforVarsayilanlari ServisGuzergahSoforVarsayilan[]
+  sorumlular        ServisSorumlusu[]
+
+  @@index([aktif])
+  @@index([yerleskeId])
+  @@index([gecerlilikBaslangici, gecerlilikBitisi])
+  @@map("servis_guzergah")
+}
+
+// il/ilce/mahalle eklendi (MASTER md.19) — aynı isimli duraklar farklı fiziksel
+// noktalar olabilir (örn. "GARANTİ BANKASI" 3 farklı güzergahta, "CEZAEVİ KAPISI"
+// 2 farklı güzergahta — göç envanterinde tespit edildi). ServisDurak BAĞIMSIZ
+// master olarak kalıyor, guzergahId EKLENMEDİ — ayırt etme kod (@unique) + ilçe
+// alanıyla yapılıyor; aynı isimli iki durak aynı ada farklı kod ve farklı
+// ilçe/mahalle ile ayrı satır olarak var olabilir.
+model ServisDurak {
+  id           String   @id @default(cuid())
+  kod          String   @unique
+  ad           String
+  adresEtiketi String?
+  il           String?
+  ilce         String?
+  mahalle      String?
+  enlem        Decimal? @db.Decimal(9, 6)
+  boylam       Decimal? @db.Decimal(9, 6)
+  aktif        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  guzergahlar       ServisGuzergahDurak[]
+  personelAtamalari ServisPersonelAtama[]
+
+  @@index([aktif])
+  @@index([il, ilce])
+  @@map("servis_durak")
+}
+
+// Bir güzergahın hangi sırada hangi durakları kapsadığı. sabahBinisSaati /
+// aksamInisSaati SABİT KOLONLARI KALDIRILDI — saatler dilim bazına
+// ServisGuzergahDurakSaat'e taşındı (N dilim var, iki sabit kolon yetmiyor).
+//
+// Bu satır hard-delete EDİLMEZ (aktif=false ile pasifleştirilir) çünkü
+// ServisPersonelAtama, (guzergahId, durakId) bileşik anahtarıyla buraya
+// referans verir (bkz. migration SQL'deki bileşik FK) — geçmiş bir atamanın
+// hedefi silinmemeli.
+model ServisGuzergahDurak {
+  id         String         @id @default(cuid())
+  guzergahId String
+  guzergah   ServisGuzergah @relation(fields: [guzergahId], references: [id], onDelete: Restrict)
+  durakId    String
+  durak      ServisDurak    @relation(fields: [durakId], references: [id], onDelete: Restrict)
+  sira       Int
+  aktif      Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  saatler ServisGuzergahDurakSaat[]
+
+  @@unique([guzergahId, sira])
+  @@unique([guzergahId, durakId])
+  @@index([durakId])
+  @@index([aktif])
+  @@map("servis_guzergah_durak")
+}
+
+// N dilim × durak saati. yön bilgisi dilimin kendisinde (GIDIS/DONUS)
+// olduğu için burada ayrı bir "binis/inis" ayrımı GEREKMEZ: GIDIS dilimi için
+// saat = biniş saati, DONUS dilimi için saat = iniş saatidir.
+//
+// Bu tablo tanım/takvim verisidir, operasyonel atama değildir — bir dilimin
+// bir duraktaki saati düzeltilmek istendiğinde satır doğrudan güncellenir
+// veya silinir (aktif bayrağı YOK, tarihçe tutulmaz). Tarihçe gereken şey
+// "kim hangi güzergahta/duraktaydı" (ServisPersonelAtama), "bu duraktaki
+// planlı saat kaçtı" değildir.
+model ServisGuzergahDurakSaat {
+  id             String              @id @default(cuid())
+  guzergahDurakId String
+  guzergahDurak  ServisGuzergahDurak @relation(fields: [guzergahDurakId], references: [id], onDelete: Restrict)
+  dilimId        String
+  dilim          ServisSeferDilimi   @relation(fields: [dilimId], references: [id], onDelete: Restrict)
+  saat           String              // "HH:mm" — IproVardiya.baslangicSaat/bitisSaat ile aynı desen
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@unique([guzergahDurakId, dilimId])
+  @@index([dilimId])
+  @@map("servis_guzergah_durak_saat")
+}
+
+// ============================================================================
+// ARAÇ VE ŞOFÖR (yalnız taşeron)
+// ============================================================================
+
+// ServisArac YALNIZ taşeron servis aracıdır — şirket/havuz araçları bu
+// modülün DIŞINDA, ayrı bir domaindir. ServisAracSahiplik enum'u KALDIRILDI;
+// firmaId artık ZORUNLU (eskiden yalnız sahiplik=TEDARIKCI iken zorunluydu).
+model ServisArac {
+  id                   String    @id @default(cuid())
+  plaka                String    @unique
+  kapasite             Int
+  firmaId              String
+  firma                ServisFirma @relation(fields: [firmaId], references: [id], onDelete: Restrict)
+  aracTipi             String?
+  aktif                Boolean   @default(true)
+  gecerlilikBaslangici DateTime? @db.Date
+  gecerlilikBitisi     DateTime? @db.Date
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  guzergahVarsayilanlari ServisGuzergahAracVarsayilan[]
+
+  @@index([firmaId])
+  @@index([aktif])
+  @@index([gecerlilikBaslangici, gecerlilikBitisi])
+  @@map("servis_arac")
+}
+
+// Dahili sürücü: personnelId dolu, TC istenmez (Personnel üzerinden zaten
+// var). Dış firma sürücüsü: personnelId NULL, firmaId dolu + disFirmaSoforKodu
+// dolu (TC yerine KVKK-uyumlu ayırt edici alan — örn. firma personel no'su).
+model ServisSofor {
+  id                 String       @id @default(cuid())
+  adSoyad            String
+  telefon            String?
+  personnelId        String?      @unique
+  personnel          Personnel?   @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  firmaId            String?
+  firma              ServisFirma? @relation(fields: [firmaId], references: [id], onDelete: Restrict)
+  disFirmaSoforKodu  String?      // TC DEĞİL — dış firma sürücüsünü ayırt eden serbest kod
+  aktif              Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  guzergahVarsayilanlari ServisGuzergahSoforVarsayilan[]
+
+  @@index([firmaId])
+  @@index([aktif])
+  @@map("servis_sofor")
+}
+
+// ============================================================================
+// VARSAYILAN ARAÇ / ŞOFÖR ATAMASI (güzergah + dilim bazında)
+// ============================================================================
+//
+// İsimlendirme kararı: bu modeller "bu hatta normalde şu araç/şoför çalışır"
+// bilgisini tutar (A). Fiilî sefer ataması (hangi araç bugün hangi seferi
+// yaptı) ServisSeferGorevlendirme'dir (B, bu fazda YOK).
+//
+// (guzergahId, dilimId) üzerine UNIQUE KISIT YOK — aynı güzergah-dilimde
+// birden fazla ANA araç/şoför meşrudur (örn. yoğun hat 2 araçla çalışır).
+// Kapasite, ilgili güzergah+dilimdeki aktif ANA araçların kapasite
+// toplamı olarak SORGU KATMANINDA hesaplanır (bu tabloda saklanmaz).
+//
+// Aynı fiziksel aracın/şoförün aynı dilimde iki farklı güzergaha çakışan
+// tarihlerde ANA olarak atanmasını engelleyen EXCLUDE kısıtları yalnız
+// migration SQL'inde tanımlıdır (Prisma'da ifade edilemez).
+
+model ServisGuzergahAracVarsayilan {
+  id              String         @id @default(cuid())
+  guzergahId      String
+  guzergah        ServisGuzergah @relation(fields: [guzergahId], references: [id], onDelete: Restrict)
+  dilimId         String
+  dilim           ServisSeferDilimi @relation(fields: [dilimId], references: [id], onDelete: Restrict)
+  aracId          String
+  arac            ServisArac     @relation(fields: [aracId], references: [id], onDelete: Restrict)
+  rol             ServisRol      @default(ANA)
+  baslangicTarihi DateTime       @db.Date
+  bitisTarihi     DateTime?      @db.Date
+  aktif           Boolean        @default(true)
+  neden           String?
+  aciklama        String?        @db.Text
+  createdById     String
+  createdBy       User           @relation("ServisGuzergahAracVarsayilanOlusturan", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById     String?
+  updatedBy       User?          @relation("ServisGuzergahAracVarsayilanGuncelleyen", fields: [updatedById], references: [id], onDelete: Restrict)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([guzergahId, dilimId, aktif])
+  @@index([aracId, aktif])
+  @@index([rol])
+  @@index([baslangicTarihi, bitisTarihi])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("servis_guzergah_arac_varsayilan")
+}
+
+model ServisGuzergahSoforVarsayilan {
+  id              String            @id @default(cuid())
+  guzergahId      String
+  guzergah        ServisGuzergah    @relation(fields: [guzergahId], references: [id], onDelete: Restrict)
+  dilimId         String
+  dilim           ServisSeferDilimi @relation(fields: [dilimId], references: [id], onDelete: Restrict)
+  soforId         String
+  sofor           ServisSofor       @relation(fields: [soforId], references: [id], onDelete: Restrict)
+  rol             ServisRol         @default(ANA)
+  baslangicTarihi DateTime          @db.Date
+  bitisTarihi     DateTime?         @db.Date
+  aktif           Boolean           @default(true)
+  neden           String?
+  aciklama        String?           @db.Text
+  createdById     String
+  createdBy       User              @relation("ServisGuzergahSoforVarsayilanOlusturan", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById     String?
+  updatedBy       User?             @relation("ServisGuzergahSoforVarsayilanGuncelleyen", fields: [updatedById], references: [id], onDelete: Restrict)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([guzergahId, dilimId, aktif])
+  @@index([soforId, aktif])
+  @@index([rol])
+  @@index([baslangicTarihi, bitisTarihi])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("servis_guzergah_sofor_varsayilan")
+}
+
+// ============================================================================
+// PERSONEL ATAMASI VE SERVİS KULLANIM DURUMU
+// ============================================================================
+
+// Hangi personelin hangi güzergah + durağı kullandığı. createdById OPSİYONEL
+// tutuldu (ServisGuzergahAracVarsayilan/SoforVarsayilan'ın aksine) çünkü
+// atamaKaynagi=IMPORT olduğunda toplu bir yükleme betiği belirli bir
+// kullanıcı adına işlem yapmayabilir; bu durumda ServisIslemGecmisi.userId de
+// NULL kalır, işlemi yapan script açıklamada (aciklama) belirtilir.
+//
+// Bir atama HANGİ DİLİM(LER)DE geçerli olduğunu kendi başına bilmez — bunu
+// ServisPersonelAtamaDilim junction'ı taşır (aşağıda). Neden ayrı tablo:
+// personel exclusion kısıtı (aynı personelin çakışan tarihte aktif iki
+// ataması olamaz) personelId + tarih aralığı üzerinden çalışır ve dilim
+// seçimiyle İLGİSİZDİR — dilimi ServisPersonelAtama'ya tek bir sütun olarak
+// eklemek 1 atama = 1 dilim'e kilitler, oysa bir kişi aynı güzergah+durakta
+// birden çok dilim kullanabilir (örn. sabah gidiş + akşam dönüş, hatta
+// vardiya değişince ek dilim). N:N ilişki gerekiyor.
+model ServisPersonelAtama {
+  id              String             @id @default(cuid())
+  personnelId     String
+  personnel       Personnel          @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  guzergahId      String
+  guzergah        ServisGuzergah     @relation(fields: [guzergahId], references: [id], onDelete: Restrict)
+  // NULLABLE (göç envanterinde 43 kayıtta güzergah var, durak yok — kaynak
+  // veri bu ayrımı tutmuyor). PostgreSQL'in bileşik FK'de varsayılan eşleşme
+  // kuralı MATCH SIMPLE'dır: bileşik anahtarın HERHANGİ bir sütunu NULL ise
+  // kısıt o satır için hiç KONTROL EDİLMEZ. Yani durakId NULL olduğunda
+  // (guzergahId, durakId) bileşik FK'si (yalnız migration SQL'de tanımlı)
+  // devre dışı kalır, guzergahId dolu olsa bile hata VERMEZ — mevcut bileşik
+  // FK tasarımı bu değişiklikle BOZULMUYOR.
+  durakId         String?
+  durak           ServisDurak?       @relation(fields: [durakId], references: [id], onDelete: Restrict)
+  baslangicTarihi DateTime           @db.Date
+  bitisTarihi     DateTime?          @db.Date
+  aktif           Boolean            @default(true)
+  atamaKaynagi    ServisAtamaKaynagi @default(MANUEL)
+  createdById     String?
+  createdBy       User?              @relation("ServisPersonelAtamaOlusturan", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById     String?
+  updatedBy       User?              @relation("ServisPersonelAtamaGuncelleyen", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  dilimler ServisPersonelAtamaDilim[]
+
+  // NOT: (guzergahId, durakId) çiftinin ServisGuzergahDurak'ta gerçekten var
+  // olduğunu garanti eden bileşik FK Prisma'da ifade edilemez — yalnız
+  // migration SQL'inde tanımlı. Aynı şekilde aynı personelin çakışan aktif
+  // tarih aralıklı iki ataması olamaz kuralı (EXCLUDE) da yalnız SQL'de VE
+  // yalnız ServisPersonelAtama üzerinde çalışır — dilim seçimi bu kısıtı
+  // etkilemez (madde 2'de netleştirilen karar).
+
+  @@index([personnelId, aktif])
+  @@index([guzergahId, aktif])
+  @@index([durakId])
+  @@index([baslangicTarihi, bitisTarihi])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("servis_personel_atama")
+}
+
+// Bir atamanın hangi dilim(ler)de geçerli olduğu — saf N:N junction.
+// Tarihçe/aktif TAŞIMAZ: geçerliliği tamamen ebeveyn ServisPersonelAtama'dan
+// alır. Bir personelin dilim seçimi zaman içinde değişecekse (örn. vardiyası
+// değişti), aynı "tarih aralığını bölerek tarihçe koru" deseni uygulanır:
+// mevcut ServisPersonelAtama satırı bitisTarihi ile kapatılır, yeni bir
+// ServisPersonelAtama + kendi ServisPersonelAtamaDilim satırları açılır —
+// bu junction'da UPDATE ile "geçmişe dönük" dilim değişikliği YAPILMAZ.
+//
+// DB seviyesinde "bir atamanın en az 1 dilimi olmalı" kısıtı YOK (bu, trigger
+// gerektirir ve şimdilik istenmedi) — servis katmanı API'si bir
+// ServisPersonelAtama oluştururken en az bir dilim satırını ATOMİK olarak
+// (aynı transaction'da) yazmalı; bu bir kod-seviyesi kural olarak
+// belgelendi, DB kısıtı değil.
+model ServisPersonelAtamaDilim {
+  id        String              @id @default(cuid())
+  atamaId   String
+  atama     ServisPersonelAtama @relation(fields: [atamaId], references: [id], onDelete: Restrict)
+  dilimId   String
+  dilim     ServisSeferDilimi   @relation(fields: [dilimId], references: [id], onDelete: Restrict)
+  createdAt DateTime            @default(now())
+
+  @@unique([atamaId, dilimId])
+  @@index([dilimId])
+  @@map("servis_personel_atama_dilim")
+}
+
+// Servis sorumlusu SÜRÜCÜDEN AYRI bir roldür. Emsal: RmaKayit.sorumluId →
+// Personnel (schema.prisma:10593-94). ANA/YEDEK dışında rol yok (bkz.
+// paylaşılan ServisRol enum'u).
+model ServisSorumlusu {
+  id              String         @id @default(cuid())
+  personnelId     String
+  personnel       Personnel      @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  guzergahId      String
+  guzergah        ServisGuzergah @relation(fields: [guzergahId], references: [id], onDelete: Restrict)
+  rol             ServisRol      @default(ANA)
+  baslangicTarihi DateTime       @db.Date
+  bitisTarihi     DateTime?      @db.Date
+  aktif           Boolean        @default(true)
+  neden           String?
+  aciklama        String?        @db.Text
+  createdById     String
+  createdBy       User           @relation("ServisSorumlusuOlusturan", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById     String?
+  updatedBy       User?          @relation("ServisSorumlusuGuncelleyen", fields: [updatedById], references: [id], onDelete: Restrict)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([guzergahId, rol, aktif])
+  @@index([personnelId, aktif])
+  @@index([baslangicTarihi, bitisTarihi])
+  @@map("servis_sorumlusu")
+}
+
+// ---------------------------------------------------------------------------
+// SERVİS KULLANIM DURUMU (ALINMIŞ KARAR — canlıdaki "KENDİ GELİYOR" 19 kişi)
+// ---------------------------------------------------------------------------
+// Gerekçe: "KENDİ GELİYOR" bir güzergah/durak DEĞİL, kişinin servisi hiç
+// kullanmadığı bilgisidir. Bunu ServisPersonelAtama'ya bir "durum" alanı
+// ekleyerek çözmek, güzergahId/durakId'yi nullable yapmayı gerektirir —
+// bu da (guzergahId, durakId) bileşik FK'sini ve EXCLUDE kısıtını
+// bozar/karmaşıklaştırır (bir "atama" satırının hedefi olmayabilir hale
+// gelir). Bunun yerine BAĞIMSIZ bir durum kaydı daha temiz:
+//   - ServisPersonelAtama SADECE "kullanıyorsa hangi güzergah/durak" bilgisini
+//     taşımaya devam eder (hep dolu guzergahId/durakId).
+//   - ServisPersonelDurum "kullanıyor mu, kullanmıyorsa neden" bilgisini
+//     ayrı ve açık tutar; KENDİ_GELIYOR/KULLANMIYOR durumunda personelin
+//     ServisPersonelAtama'da hiç satırı OLMAZ (belirsizlik kalmaz: "atama
+//     yok çünkü veri eksik" ile "atama yok çünkü bilinçli olarak kullanmıyor"
+//     ayrımı netleşir).
+// Aynı tarihçe/aktif deseni burada da uygulanıyor (tutarlılık).
+model ServisPersonelDurum {
+  id              String               @id @default(cuid())
+  personnelId     String
+  personnel       Personnel            @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  durum           ServisKullanimDurumu
+  baslangicTarihi DateTime             @db.Date
+  bitisTarihi     DateTime?            @db.Date
+  aktif           Boolean              @default(true)
+  neden           String?
+  createdById     String?
+  createdBy       User?                @relation("ServisPersonelDurumOlusturan", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById     String?
+  updatedBy       User?                @relation("ServisPersonelDurumGuncelleyen", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([personnelId, aktif])
+  @@index([durum])
+  @@index([baslangicTarihi, bitisTarihi])
+  @@map("servis_personel_durum")
+}
+
+// ============================================================================
+// İŞLEM GEÇMİŞİ
+// ============================================================================
+
+model ServisIslemGecmisi {
+  id          String               @id @default(cuid())
+  hedefTipi   ServisIslemHedefTipi
+  hedefId     String
+  islem       ServisIslemTuru
+  oncekiDeger Json?
+  yeniDeger   Json?
+  userId      String?
+  user        User?                @relation("ServisIslemYapan", fields: [userId], references: [id], onDelete: SetNull)
+  tarih       DateTime             @default(now())
+  aciklama    String?              @db.Text
+
+  @@index([hedefTipi, hedefId, tarih])
+  @@index([userId, tarih])
+  @@map("servis_islem_gecmisi")
 }

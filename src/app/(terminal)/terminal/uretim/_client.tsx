@@ -68,25 +68,6 @@ const DEPT_ICON: Record<string, LucideIcon> = {
   FSN: Truck,
 }
 
-// IFS bölüm adı ALL-CAPS gelir ("CNC TALAŞLI İMALAT"). Kelime bazlı cümle-başı formatı:
-//  - ≤4 harf ve tamamı büyük harf olan kelimeler (CNC, WPH, FSN) OLDUĞU GİBİ kalır,
-//  - diğerleri tr-TR küçük harfe iner (İMALAT→imalat, İ/ı doğru); yalnız ilk kelime
-//    baş harfi büyük. Örn: "CNC talaşlı imalat", "Daire testere/boru büküm".
-function baslikFormat(s: string): string {
-  return s
-    .trim()
-    .split(/\s+/)
-    .map((w, i) => {
-      const buyuk = w.toLocaleUpperCase('tr-TR')
-      const kucuk = w.toLocaleLowerCase('tr-TR')
-      // Kısaltma: kısa + tamamı büyük harf (harf içeren) → dokunma.
-      if (w.length <= 4 && w === buyuk && w !== kucuk) return w
-      // İlk kelime cümle-başı büyük; diğerleri küçük.
-      return i === 0 ? kucuk.charAt(0).toLocaleUpperCase('tr-TR') + kucuk.slice(1) : kucuk
-    })
-    .join(' ')
-}
-
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
 /** Canlı saatten şu ana denk gelen vardiyayı bulur (yoksa null). */
@@ -414,7 +395,7 @@ function BolumKart({
         </span>
         <div className="min-w-0 flex-1">
           <div className={`truncate text-sm font-medium ${aktif ? '' : 'text-foreground/70'}`}>
-            {d.ad ? baslikFormat(d.ad) : d.kod}
+            {d.ad || d.kod}
           </div>
           <div className="text-[11px] text-muted-foreground">
             {d.kod} · {d.tezgah} tezgah
@@ -462,7 +443,7 @@ function BolumSecildi({
         </span>
         <div className="flex flex-col leading-tight">
           <span className="text-base font-semibold">
-            {seciliDeptAd ? baslikFormat(seciliDeptAd) : seciliDept}
+            {seciliDeptAd || seciliDept}
           </span>
           <span className="text-xs text-muted-foreground">{seciliDept}</span>
         </div>

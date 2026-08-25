@@ -47,8 +47,8 @@ interface Props {
   departmanlar: Departman[]
   /** Son 180 sn'de delta üreten, departmana eşlenmiş çalışan tezgah sayısı (M). */
   calisanTezgah: number
-  /** ifsWorkCenterNo'su güncel IFS WC listesinde OLMAYAN tezgah sayısı (senkron göstergesi). */
-  bayatKod: number
+  /** IFS'te aktif tanımlı ama IPRO karşılığı olmayan kaynak sayısı (teşhis). */
+  iproEksikKaynak: number
   vardiyalar: Vardiya[]
   /** URL ?dept — seçili bölüm kodu; yoksa seçim ekranı gösterilir. */
   seciliDept: string | null
@@ -92,7 +92,7 @@ export function TerminalMenuClient({
   operatorName,
   departmanlar,
   calisanTezgah,
-  bayatKod,
+  iproEksikKaynak,
   vardiyalar,
   seciliDept,
   seciliDeptAd,
@@ -108,7 +108,7 @@ export function TerminalMenuClient({
         <BolumSecim
           departmanlar={departmanlar}
           calisanTezgah={calisanTezgah}
-          bayatKod={bayatKod}
+          iproEksikKaynak={iproEksikKaynak}
           ifsError={ifsError}
         />
       )}
@@ -326,12 +326,12 @@ function UcHalkaOzet({
 function BolumSecim({
   departmanlar,
   calisanTezgah,
-  bayatKod,
+  iproEksikKaynak,
   ifsError,
 }: {
   departmanlar: Departman[]
   calisanTezgah: number
-  bayatKod: number
+  iproEksikKaynak: number
   ifsError: string | null
 }) {
   if (ifsError) {
@@ -373,9 +373,9 @@ function BolumSecim({
       </div>
 
       {/* Geçici teşhis — WC senkron kurulunca kalkacak. 0 ise hiç gösterilmez. */}
-      {bayatKod > 0 && (
+      {iproEksikKaynak > 0 && (
         <p className="text-xs text-muted-foreground">
-          {bayatKod} tezgahın IFS iş merkezi kodu güncel değil
+          IFS&apos;te tanımlı {iproEksikKaynak} kaynağın IPRO karşılığı yok
         </p>
       )}
     </>

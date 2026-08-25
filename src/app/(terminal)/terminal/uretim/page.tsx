@@ -1,6 +1,10 @@
 import { requirePermission } from '@/lib/auth/require-permission'
 import { prisma } from '@/lib/prisma'
-import { getWorkCenterDepartments, getWorkCenters } from '@/lib/ifs/work-center-departments'
+import {
+  getWorkCenterDepartments,
+  getWorkCenters,
+  getWorkCenterResources,
+} from '@/lib/ifs/work-center-departments'
 import { getShopOrderOperations } from '@/lib/ifs/shop-order-operations'
 import { listVardiyalar } from '@/lib/ipro/takvim'
 import { isEmriWcDepartmanKoku } from '@/lib/ipro/departman-eslesme'
@@ -57,38 +61,45 @@ export default async function UretimTerminalPage({
     // iş emri sayısı yoksa rozet gösterilmez; bölüm listesi etkilenmez.
   }
 
-  // IFS WorkCenterSet — WC → departman CANLI eşleme (sabit tablo YOK; kodlar yeniden
-  // numaralanıyor). Tek çağrı, tezgah başına sorgu yok. AYRI hata yolu: alınamazsa
-  // wcMap boş kalır → tezgah sayıları 0, sayfa çökmez; departman/iş emri etkilenmez.
+  // IFS zinciri: departman (WorkCenterSet.DepartmentNo) → iş merkezi (WorkCenterNo)
+  //   → kaynak (Reference_WorkCenterResource.ResourceId) → ipro_tezgah.kod (DOĞRU anahtar).
+  // İki AYRI çağrı, AYRI hata yolu: kaynak alınamazsa tezgah sayıları 0, departman
+  // listesi ve iş emri sayıları etkilenmez. Numerik ifsWorkCenterNo/ifsResourceId BAYAT,
+  // kullanılmaz. Tezgah başına sorgu YOK.
   const wcMap = new Map<string, string>() // workCenterNo → departmentNo
-  let wcMapAlindi = false
   try {
     for (const w of await getWorkCenters()) {
       if (w.departmentNo) wcMap.set(w.workCenterNo, w.departmentNo)
     }
-    wcMapAlindi = true
   } catch {
-    // IFS WC listesi alınamadı → tezgah sayıları 0, bayat-kod göstergesi de gizli.
+    // WC→departman alınamadı → kaynaklar departmana bağlanamaz, tezgah sayıları 0.
   }
 
-  // Tezgah sayısı — ipro_tezgah.ifsWorkCenterNo → IFS Map'inden departman.
+  let kaynaklar: Awaited<ReturnType<typeof getWorkCenterResources>> = []
+  try {
+    kaynaklar = await getWorkCenterResources()
+  } catch {
+    // Kaynak listesi alınamadı → tezgah sayıları 0; ekran yine açılır.
+  }
+
+  // ipro_tezgah.kod → tr-TR küçük harf anahtarlı (büyük/küçük harf duyarsız eşleşme).
+  const iproKodByLower = new Map<string, string>()
+  const tezgahlar = await prisma.iproTezgah.findMany({ select: { kod: true } })
+  for (const t of tezgahlar) iproKodByLower.set(t.kod.toLocaleLowerCase('tr-TR'), t.kod)
+
+  // Tezgah sayısı = departmandaki AKTİF kaynak sayısı (Objstate=Active).
+  // IPRO eşleşmesi: ResourceId == ipro_tezgah.kod. IPRO'da olmayan aktif kaynak → teşhis.
   const tezgahSayi = new Map<string, number>()
-  const deptEsleTezgahKodlari = new Set<string>() // departmana eşlenen tezgah kodları
-  let bayatKod = 0 // ifsWorkCenterNo dolu AMA IFS WC listesinde YOK (senkron göstergesi)
-  const tezgahlar = await prisma.iproTezgah.findMany({
-    select: { kod: true, ifsWorkCenterNo: true },
-  })
-  for (const t of tezgahlar) {
-    const wc = t.ifsWorkCenterNo?.trim()
-    if (!wc) continue
-    const d = wcMap.get(wc)
-    if (d && gecerliKodlar.has(d)) {
-      tezgahSayi.set(d, (tezgahSayi.get(d) ?? 0) + 1)
-      deptEsleTezgahKodlari.add(t.kod)
-    } else if (wcMapAlindi && !wcMap.has(wc)) {
-      // WC dolu ama güncel IFS listesinde yok → bayat kod. (Yalnız liste ALINDIYSA sayılır.)
-      bayatKod++
-    }
+  const deptEsleTezgahKodlari = new Set<string>() // canlı doluluk (M) için IPRO kodları
+  let iproEksikKaynak = 0 // IFS'te aktif tanımlı ama IPRO karşılığı olmayan kaynak
+  for (const r of kaynaklar) {
+    if (r.objstate !== 'Active') continue
+    const d = wcMap.get(r.workCenterNo)
+    if (!d || !gecerliKodlar.has(d)) continue
+    tezgahSayi.set(d, (tezgahSayi.get(d) ?? 0) + 1)
+    const iproKod = iproKodByLower.get(r.resourceId.toLocaleLowerCase('tr-TR'))
+    if (iproKod) deptEsleTezgahKodlari.add(iproKod)
+    else iproEksikKaynak++
   }
 
   // Canlı çalışan tezgah — son 180 sn'de ipro_sayac_okuma'da delta üreten DISTINCT
@@ -135,7 +146,7 @@ export default async function UretimTerminalPage({
       operatorName={session.user.name ?? 'Operatör'}
       departmanlar={zenginDepartmanlar}
       calisanTezgah={calisanTezgah}
-      bayatKod={bayatKod}
+      iproEksikKaynak={iproEksikKaynak}
       vardiyalar={vardiyalar}
       seciliDept={seciliDept}
       seciliDeptAd={seciliDeptAd}

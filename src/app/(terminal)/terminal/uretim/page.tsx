@@ -1,12 +1,9 @@
 import { requirePermission } from '@/lib/auth/require-permission'
 import { prisma } from '@/lib/prisma'
-import { getWorkCenterDepartments } from '@/lib/ifs/work-center-departments'
+import { getWorkCenterDepartments, getWorkCenters } from '@/lib/ifs/work-center-departments'
 import { getShopOrderOperations } from '@/lib/ifs/shop-order-operations'
 import { listVardiyalar } from '@/lib/ipro/takvim'
-import {
-  isEmriWcDepartmanKoku,
-  tezgahWcDepartmani,
-} from '@/lib/ipro/departman-eslesme'
+import { isEmriWcDepartmanKoku } from '@/lib/ipro/departman-eslesme'
 import { TerminalMenuClient } from './_client'
 
 export const dynamic = 'force-dynamic'
@@ -60,17 +57,37 @@ export default async function UretimTerminalPage({
     // iş emri sayısı yoksa rozet gösterilmez; bölüm listesi etkilenmez.
   }
 
-  // Tezgah sayısı — ipro_tezgah.ifsWorkCenterNo (3 haneli WC) → departman.
+  // IFS WorkCenterSet — WC → departman CANLI eşleme (sabit tablo YOK; kodlar yeniden
+  // numaralanıyor). Tek çağrı, tezgah başına sorgu yok. AYRI hata yolu: alınamazsa
+  // wcMap boş kalır → tezgah sayıları 0, sayfa çökmez; departman/iş emri etkilenmez.
+  const wcMap = new Map<string, string>() // workCenterNo → departmentNo
+  let wcMapAlindi = false
+  try {
+    for (const w of await getWorkCenters()) {
+      if (w.departmentNo) wcMap.set(w.workCenterNo, w.departmentNo)
+    }
+    wcMapAlindi = true
+  } catch {
+    // IFS WC listesi alınamadı → tezgah sayıları 0, bayat-kod göstergesi de gizli.
+  }
+
+  // Tezgah sayısı — ipro_tezgah.ifsWorkCenterNo → IFS Map'inden departman.
   const tezgahSayi = new Map<string, number>()
   const deptEsleTezgahKodlari = new Set<string>() // departmana eşlenen tezgah kodları
+  let bayatKod = 0 // ifsWorkCenterNo dolu AMA IFS WC listesinde YOK (senkron göstergesi)
   const tezgahlar = await prisma.iproTezgah.findMany({
     select: { kod: true, ifsWorkCenterNo: true },
   })
   for (const t of tezgahlar) {
-    const d = tezgahWcDepartmani(t.ifsWorkCenterNo)
+    const wc = t.ifsWorkCenterNo?.trim()
+    if (!wc) continue
+    const d = wcMap.get(wc)
     if (d && gecerliKodlar.has(d)) {
       tezgahSayi.set(d, (tezgahSayi.get(d) ?? 0) + 1)
       deptEsleTezgahKodlari.add(t.kod)
+    } else if (wcMapAlindi && !wcMap.has(wc)) {
+      // WC dolu ama güncel IFS listesinde yok → bayat kod. (Yalnız liste ALINDIYSA sayılır.)
+      bayatKod++
     }
   }
 
@@ -118,6 +135,7 @@ export default async function UretimTerminalPage({
       operatorName={session.user.name ?? 'Operatör'}
       departmanlar={zenginDepartmanlar}
       calisanTezgah={calisanTezgah}
+      bayatKod={bayatKod}
       vardiyalar={vardiyalar}
       seciliDept={seciliDept}
       seciliDeptAd={seciliDeptAd}

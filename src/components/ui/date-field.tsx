@@ -9,6 +9,23 @@
 // SÖZLEŞME FormDateInput ile AYNI: dışarı ISO `YYYY-MM-DD` (veya boş string) çıkar.
 // Yeni bağımlılık YOK — mevcut @radix-ui/react-popover + date-fns kullanılır.
 
+// ⚠️ GEÇİCİ ÇÖZÜM (2026-08-25) — TAKVİM POPOVER'I DEVRE DIŞI
+//
+// Takvim ikonuna tıklamak canlıda sayfayı çökertiyordu:
+//   "Maximum update depth exceeded" (prod'da minified React #185)
+//   dispatchSetState ← FocusScope.useComposedRefs[composedRefs]
+//     (@radix-ui/react-focus-scope@1.1.7 satır 33) ← setRef ← composeRefs
+//
+// Sebep: react-focus-scope'un `useComposedRefs(forwardedRef, (node) => setContainer(node))`
+// çağrısı her render'da YENİ ref callback üretiyor; react@19.2.3 ref kimliği değişince
+// detach+attach yapıyor, callback içindeki setContainer yeni render tetikliyor → sonsuz döngü.
+// 12 Ağustos'tan (cf9a85490) beri canlıydı; başvuru formunda aday kaybına yol açtı.
+//
+// Bu turda YALNIZ popover ÇAĞRILMIYOR — kod SİLİNMEDİ, aşağıda `TAKVIM_POPOVER_AKTIF`
+// bayrağıyla kapalı duruyor. Kalıcı çözümde (Radix sürümü / Popover'sız takvim) bayrak
+// true yapılıp bu blok geri açılacak. Elle GG.AA.YYYY girişi etkilenmedi.
+const TAKVIM_POPOVER_AKTIF = false
+
 import { useEffect, useMemo, useState } from 'react'
 import { addDays, format, isValid, parse, startOfMonth, startOfWeek } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -201,6 +218,7 @@ export function DateField({
             hata ? 'border-red-400 focus:border-red-500' : 'border-slate-200 focus:border-[#1B4F72]'
           )}
         />
+        {TAKVIM_POPOVER_AKTIF && (
         <Popover open={acik} onOpenChange={setAcik}>
           <PopoverTrigger asChild>
             <button
@@ -268,7 +286,14 @@ export function DateField({
             </div>
           </PopoverContent>
         </Popover>
+        )}
       </div>
+      {/* Takvim kapalıyken kullanıcı ne yapacağını bilsin. */}
+      {!TAKVIM_POPOVER_AKTIF && !hata && (
+        <p className="mt-1 text-xs text-slate-500">
+          Tarihi GG.AA.YYYY biçimiyle yazın (ör. 15.03.1990)
+        </p>
+      )}
       {hata && <p className="mt-1 text-xs text-red-500">{hata}</p>}
     </div>
   )

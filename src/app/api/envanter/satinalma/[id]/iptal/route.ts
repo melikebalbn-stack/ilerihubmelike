@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { iptalEt } from '@/lib/envanter/satinalma'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 function kullaniciAdi(user: {
   name: string | null
@@ -34,7 +35,7 @@ export async function POST(
     return NextResponse.json({ ok: true, message: 'Talep iptal edildi.', data: talep })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Talep iptal edilemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Talep iptal edilemedi.') },
       { status: 400 },
     )
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET() {
   const { session, error } = await requireSession()
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, message: 'Beden profili kaydedildi.', data: profil })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Beden profili kaydedilemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Beden profili kaydedilemedi.') },
       { status: 400 },
     )
   }

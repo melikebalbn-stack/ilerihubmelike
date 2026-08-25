@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { addVaryantToUrun } from '@/lib/envanter/service'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function POST(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, message: 'Varyant eklendi.', data: result })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Varyant eklenemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Varyant eklenemedi.') },
       { status: 400 },
     )
   }

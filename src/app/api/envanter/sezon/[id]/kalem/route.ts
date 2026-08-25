@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { addSezonKalem } from '@/lib/envanter/sezon'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function POST(
   request: NextRequest,
@@ -24,7 +25,7 @@ export async function POST(
     )
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Kalem eklenemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Kalem eklenemedi.') },
       { status: 400 },
     )
   }

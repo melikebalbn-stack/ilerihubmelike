@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { executeImport, validateImport } from '@/lib/envanter/import'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 // xlsx (SheetJS) Edge runtime'da çalışmaz — Node runtime zorunlu.
 export const runtime = 'nodejs'
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        message: err instanceof Error ? err.message : 'İçeri aktarım başarısız oldu.',
+        message: envanterHataMesaji(err, 'İçeri aktarım başarısız oldu.'),
       },
       { status: 400 },
     )

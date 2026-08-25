@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { stogaIsle } from '@/lib/envanter/satinalma'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 function kullaniciAdi(user: { name: string | null; firstName?: string | null; lastName?: string | null; email: string }) {
   return user.name || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
@@ -25,7 +26,7 @@ export async function POST(
     return NextResponse.json({ ok: true, message: 'Kalemler stoğa işlendi.', data: talep })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Stoğa işlenemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Stoğa işlenemedi.') },
       { status: 400 },
     )
   }

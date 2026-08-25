@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { kritikUrunBildirimGonder } from '@/lib/envanter/kritik-bildirim'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function POST() {
   const { session, error } = await requireSession()
@@ -18,7 +19,7 @@ export async function POST() {
     return NextResponse.json({ ok: true, ...sonuc })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Bildirim gönderilemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Bildirim gönderilemedi.') },
       { status: 400 },
     )
   }

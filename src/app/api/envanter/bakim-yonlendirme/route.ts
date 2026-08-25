@@ -5,6 +5,7 @@ import {
   listYonlendirmeler,
   type BakimYonlendirmeDurumTip,
 } from '@/lib/envanter/bakim-yonlendirme'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        message: err instanceof Error ? err.message : 'Kayıt oluşturulamadı.',
+        message: envanterHataMesaji(err, 'Kayıt oluşturulamadı.'),
       },
       { status: 400 },
     )

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { getSezonPlanDetay, updateSezonPlanOverride } from '@/lib/envanter/sezon'
 import { logEnvanterIslem } from '@/lib/envanter/service'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(
   _request: Request,
@@ -54,7 +55,7 @@ export async function PATCH(
     return NextResponse.json({ ok: true, message: 'Sezon planı güncellendi.', data: plan })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Sezon planı güncellenemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Sezon planı güncellenemedi.') },
       { status: 400 },
     )
   }
@@ -105,7 +106,7 @@ export async function DELETE(
     })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Sezon planı silinemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Sezon planı silinemedi.') },
       { status: 400 },
     )
   }

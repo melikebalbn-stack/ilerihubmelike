@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { createSezonPlan, listSezonPlan } from '@/lib/envanter/sezon'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET() {
   const { session, error } = await requireSession()
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     )
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Sezon planı oluşturulamadı.' },
+      { ok: false, message: envanterHataMesaji(err, 'Sezon planı oluşturulamadı.') },
       { status: 400 },
     )
   }

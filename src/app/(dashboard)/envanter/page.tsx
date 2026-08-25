@@ -20,6 +20,7 @@ import type { ExecuteSonuc, ImportAtlanan, ImportHata, ValidateSonuc } from '@/l
 import type { YenilemeDurum, YenilemeSatiri } from '@/lib/envanter/yenileme'
 import type { SatinAlmaAksiyonTip, SatinAlmaDurumTip } from '@/lib/envanter/satinalma'
 import { BEDEN_TIPI_SECENEKLERI } from '@/lib/envanter/beden-tipi-sabitleri'
+import { VARYANT_TIPI_SECENEKLERI } from '@/lib/envanter/varyant-tipi-sabitleri'
 import type {
   IhtiyacOzet,
   IhtiyacSatiri,
@@ -988,7 +989,7 @@ function YeniUrunWizard({
     barkod: '',
     aciklama: '',
     varyantTipi: '',
-    bedenTipi: 'YOK',
+    bedenTipi: BEDEN_TIPI_SECENEKLERI[0].value,
     bedenler: [],
     numaralar: [],
     renkler: [],
@@ -1471,13 +1472,12 @@ async function handleSave() {
                 value={urunForm.varyantTipi}
                 onChange={(value) => updateForm('varyantTipi', value)}
                 bilgiNotu={uyari('varyantTipi')}
+                // Tek kaynak: varyant-tipi-sabitleri.ts (şemadaki enum ile birebir).
+                // 'YOK' burada boş değer olarak sunulur; servis normalizeVaryantTipi ile
+                // boşu YOK'a çevirir — sabit liste tutulmaz.
                 options={[
                   { value: '', label: 'Varyant yok' },
-                  { value: 'BEDEN', label: 'Beden' },
-                  { value: 'NUMARA', label: 'Numara' },
-                  { value: 'RENK', label: 'Renk' },
-                  { value: 'BEDEN_RENK', label: 'Beden + Renk' },
-                  { value: 'NUMARA_RENK', label: 'Numara + Renk' },
+                  ...VARYANT_TIPI_SECENEKLERI.filter((s) => s.value !== 'YOK'),
                 ]}
               />
 

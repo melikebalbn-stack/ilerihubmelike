@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { createEnvanterStokHareket } from '@/lib/envanter/service'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function POST(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -33,9 +34,7 @@ export async function POST(request: NextRequest) {
       {
         ok: false,
         message:
-          error instanceof Error
-            ? error.message
-            : 'Stok hareketi oluşturulamadı.',
+          envanterHataMesaji(error, 'Stok hareketi oluşturulamadı.'),
       },
       { status: 400 },
     )

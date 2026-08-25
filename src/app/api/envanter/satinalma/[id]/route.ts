@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { getTalepDetay } from '@/lib/envanter/satinalma'
 import { logEnvanterIslem } from '@/lib/envanter/service'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(
   _request: Request,
@@ -75,7 +76,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true, message: 'Talep kalıcı olarak silindi.' })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Talep silinemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Talep silinemedi.') },
       { status: 400 },
     )
   }

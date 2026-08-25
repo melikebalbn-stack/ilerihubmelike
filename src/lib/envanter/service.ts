@@ -8,6 +8,7 @@ import {
   getTotalInitialStock,
 } from './stock'
 import { GECERLI_BEDEN_TIPLERI } from './beden-tipi-sabitleri'
+import { GECERLI_VARYANT_TIPLERI } from './varyant-tipi-sabitleri'
 import { GECERLI_HEDEF_YAKALAR } from './yaka-sabitleri'
 
 // Madde 8 — envanter islem audit log. Best-effort: loglama basarisiz olursa asil
@@ -314,9 +315,9 @@ export async function createEnvanterUrun(form: EnvanterUrunForm, actorId?: strin
       })
     }
 
-    if (form.seciliPersoneller.length > 0) {
+    if ((form.seciliPersoneller ?? []).length > 0) {
       await tx.envanterUrunPersonelHedef.createMany({
-        data: form.seciliPersoneller.map((personnelId) => ({
+        data: (form.seciliPersoneller ?? []).map((personnelId) => ({
           urunId: urun.id,
           personnelId,
         })),
@@ -644,14 +645,6 @@ const GECERLI_URUN_TIPLERI = [
   'BEDENLI_URUN',
   'KKD_URUNU',
 ]
-const GECERLI_VARYANT_TIPLERI = [
-  'YOK',
-  'BEDEN',
-  'NUMARA',
-  'RENK',
-  'BEDEN_RENK',
-  'NUMARA_RENK',
-]
 const GECERLI_DURUMLAR = ['AKTIF', 'PASIF', 'ARSIV']
 
 function metneCevir(value: unknown) {
@@ -742,7 +735,7 @@ export async function updateEnvanterUrun(
         }
         case 'varyantTipi': {
           const metin = normalizeVaryantTipi(String(ham ?? ''))
-          if (!GECERLI_VARYANT_TIPLERI.includes(metin)) {
+          if (!(GECERLI_VARYANT_TIPLERI as readonly string[]).includes(metin)) {
             throw new Error(
               `"${String(ham)}" geçerli bir varyant tipi değil. Geçerli değerler: ${GECERLI_VARYANT_TIPLERI.join(', ')}`,
             )

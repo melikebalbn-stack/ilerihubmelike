@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { updateVaryant, deleteVaryant } from '@/lib/envanter/service'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function PATCH(
   request: NextRequest,
@@ -26,7 +27,7 @@ export async function PATCH(
     return NextResponse.json({ ok: true, message: 'Varyant güncellendi.', data: result })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Varyant güncellenemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Varyant güncellenemedi.') },
       { status: 400 },
     )
   }
@@ -51,7 +52,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true, ...result })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Varyant silinemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Varyant silinemedi.') },
       { status: 400 },
     )
   }

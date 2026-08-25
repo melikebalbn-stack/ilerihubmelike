@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { createTalep, listTalepler, type SatinAlmaDurumTip } from '@/lib/envanter/satinalma'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 function kullaniciAdi(user: { name: string | null; firstName?: string | null; lastName?: string | null; email: string }) {
   return user.name || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        message: err instanceof Error ? err.message : 'Talep oluşturulamadı.',
+        message: envanterHataMesaji(err, 'Talep oluşturulamadı.'),
       },
       { status: 400 },
     )

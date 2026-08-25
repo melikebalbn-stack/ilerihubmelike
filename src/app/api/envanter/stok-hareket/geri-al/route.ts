@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { geriAlStokHareket } from '@/lib/envanter/service'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function POST(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        message: err instanceof Error ? err.message : 'Geri alınamadı.',
+        message: envanterHataMesaji(err, 'Geri alınamadı.'),
       },
       { status: 400 },
     )

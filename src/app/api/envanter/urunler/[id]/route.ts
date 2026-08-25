@@ -6,6 +6,8 @@ import {
   logEnvanterIslem,
   updateEnvanterUrun,
 } from '@/lib/envanter/service'
+import { Prisma } from '@/generated/prisma'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(
   _request: Request,
@@ -72,8 +74,22 @@ export async function PATCH(
       data: urun,
     })
   } catch (err) {
+    console.error('Envanter ürün güncelleme hatası:', err)
+
+    if (
+      err instanceof Prisma.PrismaClientValidationError ||
+      (err as { name?: string })?.name === 'PrismaClientValidationError'
+    ) {
+      // Ham Prisma metni model/alan yapısını sızdırır — kullanıcıya GİTMEZ,
+      // yalnız yukarıdaki console.error ile sunucu loguna yazılır.
+      return NextResponse.json(
+        { ok: false, message: 'Kaydedilemeyen alan var, sistem yöneticisine bildirin' },
+        { status: 500 },
+      )
+    }
+
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Ürün güncellenemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Ürün güncellenemedi.') },
       { status: 400 },
     )
   }
@@ -135,7 +151,7 @@ export async function DELETE(
     })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Silinemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Silinemedi.') },
       { status: 400 },
     )
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { terminGir } from '@/lib/envanter/satinalma'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 function kullaniciAdi(user: { name: string | null; firstName?: string | null; lastName?: string | null; email: string }) {
   return user.name || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
@@ -35,7 +36,7 @@ export async function POST(
     return NextResponse.json({ ok: true, message: 'Termin tarihi girildi.', data: talep })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Termin tarihi girilemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Termin tarihi girilemedi.') },
       { status: 400 },
     )
   }

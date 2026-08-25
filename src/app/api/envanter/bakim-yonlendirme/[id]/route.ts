@@ -6,6 +6,7 @@ import {
   silYonlendirme,
   type BakimYonlendirmeDurumTip,
 } from '@/lib/envanter/bakim-yonlendirme'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { session, error } = await requireSession()
@@ -55,7 +56,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json(
       {
         ok: false,
-        message: err instanceof Error ? err.message : 'Güncellenemedi.',
+        message: envanterHataMesaji(err, 'Güncellenemedi.'),
       },
       { status: 400 },
     )
@@ -82,7 +83,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     return NextResponse.json(
       {
         ok: false,
-        message: err instanceof Error ? err.message : 'Kayıt silinemedi.',
+        message: envanterHataMesaji(err, 'Kayıt silinemedi.'),
       },
       { status: 400 },
     )

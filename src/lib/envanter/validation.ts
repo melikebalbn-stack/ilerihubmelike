@@ -1,4 +1,12 @@
 import type { EnvanterUrunForm } from '@/types/envanter'
+import {
+  BEDEN_TIPI_SECENEKLERI,
+  GECERLI_BEDEN_TIPLERI,
+} from './beden-tipi-sabitleri'
+import {
+  VARYANT_TIPI_SECENEKLERI,
+  GECERLI_VARYANT_TIPLERI,
+} from './varyant-tipi-sabitleri'
 
 export type EnvanterValidationResult = {
   valid: boolean
@@ -42,6 +50,7 @@ export function validateEnvanterUrunForm(
     errors.push('Ürün adı en az 2 karakter olmalıdır.')
   }
 
+  validateEnumFields(form, errors)
   validateVariants(form, errors)
   validateStock(form, errors)
   validatePurchase(form, errors)
@@ -50,6 +59,28 @@ export function validateEnvanterUrunForm(
   return {
     valid: errors.length === 0,
     errors,
+  }
+}
+
+/**
+ * Enum alanları: değer şemadaki enum'a uymuyorsa BURADA yakalanır.
+ * Aksi halde Prisma'ya geçip ham "Expected EnvanterBedenTipi" hatası üretiyordu
+ * (13.08 enum yeniden adlandırması sonrası ekranın 'YOK' göndermesi böyle patladı).
+ * Geçerli değerler sabit yazılmaz; beden/varyant tipi sabit dosyalarından gelir.
+ */
+function validateEnumFields(form: EnvanterUrunForm, errors: string[]) {
+  const bedenTipi = String(form.bedenTipi ?? '').trim()
+  if (bedenTipi && !(GECERLI_BEDEN_TIPLERI as readonly string[]).includes(bedenTipi)) {
+    const etiketler = BEDEN_TIPI_SECENEKLERI.map((s) => `${s.label} (${s.value})`).join(', ')
+    errors.push(`"${bedenTipi}" geçerli bir beden tipi değil. Geçerli değerler: ${etiketler}`)
+  }
+
+  // varyantTipi boş bırakılabilir (form "varyantsız" için boş string gönderiyor,
+  // servis normalizeVaryantTipi ile YOK'a çeviriyor) — yalnız DOLU değer denetlenir.
+  const varyantTipi = String(form.varyantTipi ?? '').trim()
+  if (varyantTipi && !(GECERLI_VARYANT_TIPLERI as readonly string[]).includes(varyantTipi)) {
+    const etiketler = VARYANT_TIPI_SECENEKLERI.map((s) => `${s.label} (${s.value})`).join(', ')
+    errors.push(`"${varyantTipi}" geçerli bir varyant tipi değil. Geçerli değerler: ${etiketler}`)
   }
 }
 

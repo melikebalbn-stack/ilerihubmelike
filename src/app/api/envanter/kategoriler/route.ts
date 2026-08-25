@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { logEnvanterIslem } from '@/lib/envanter/service'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        message: err instanceof Error ? err.message : 'Kategori oluşturulamadı.',
+        message: envanterHataMesaji(err, 'Kategori oluşturulamadı.'),
       },
       { status: 400 },
     )
@@ -124,7 +125,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        message: err instanceof Error ? err.message : 'Kategori güncellenemedi.',
+        message: envanterHataMesaji(err, 'Kategori güncellenemedi.'),
       },
       { status: 400 },
     )
@@ -186,7 +187,7 @@ export async function DELETE(request: NextRequest) {
     })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Kategori silinemedi.' },
+      { ok: false, message: envanterHataMesaji(err, 'Kategori silinemedi.') },
       { status: 400 },
     )
   }

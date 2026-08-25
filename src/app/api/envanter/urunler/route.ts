@@ -5,6 +5,8 @@ import {
   listEnvanterUrunler,
 } from '@/lib/envanter/service'
 import type { EnvanterUrunForm } from '@/types/envanter'
+import { Prisma } from '@/generated/prisma'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -63,10 +65,20 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Envanter ürün oluşturma hatası:', error)
 
+    if (
+      error instanceof Prisma.PrismaClientValidationError ||
+      (error as { name?: string })?.name === 'PrismaClientValidationError'
+    ) {
+      // Ham Prisma metni model/alan yapısını sızdırır — kullanıcıya GİTMEZ,
+      // yalnız yukarıdaki console.error ile sunucu loguna yazılır.
+      return NextResponse.json(
+        { ok: false, message: 'Kaydedilemeyen alan var, sistem yöneticisine bildirin' },
+        { status: 500 },
+      )
+    }
+
     const message =
-      error instanceof Error
-        ? error.message
-        : 'Ürün oluşturulurken hata oluştu.'
+      envanterHataMesaji(error, 'Ürün oluşturulurken hata oluştu.')
 
     return NextResponse.json(
       {

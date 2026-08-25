@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { onayAksiyon, type SatinAlmaAksiyonTip } from '@/lib/envanter/satinalma'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 function kullaniciAdi(user: { name: string | null; firstName?: string | null; lastName?: string | null; email: string }) {
   return user.name || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
@@ -41,7 +42,7 @@ export async function POST(
     return NextResponse.json({ ok: true, message: 'İşlem uygulandı.', data: talep })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'İşlem uygulanamadı.' },
+      { ok: false, message: envanterHataMesaji(err, 'İşlem uygulanamadı.') },
       { status: 400 },
     )
   }

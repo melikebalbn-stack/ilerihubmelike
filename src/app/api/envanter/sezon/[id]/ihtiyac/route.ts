@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { hesaplaIhtiyac } from '@/lib/envanter/sezon'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(
   _request: Request,
@@ -19,7 +20,7 @@ export async function GET(
     return NextResponse.json({ ok: true, data })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'İhtiyaç hesaplanamadı.' },
+      { ok: false, message: envanterHataMesaji(err, 'İhtiyaç hesaplanamadı.') },
       { status: 400 },
     )
   }

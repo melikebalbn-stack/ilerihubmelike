@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireSession } from '@/lib/auth/require-session'
 import { olusturSatinAlmaTalebiFromPlan } from '@/lib/envanter/sezon'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 function kullaniciAdi(user: { name: string | null; firstName?: string | null; lastName?: string | null; email: string }) {
   return user.name || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
@@ -32,7 +33,7 @@ export async function POST(
     })
   } catch (err) {
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : 'Talep oluşturulamadı.' },
+      { ok: false, message: envanterHataMesaji(err, 'Talep oluşturulamadı.') },
       { status: 400 },
     )
   }

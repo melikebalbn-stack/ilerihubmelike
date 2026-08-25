@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { createZimmet } from '@/lib/envanter/service'
+import { envanterHataMesaji } from '@/lib/envanter/hata'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireSession()
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
       {
         ok: false,
         message:
-          err instanceof Error ? err.message : 'Zimmet oluşturulamadı.',
+          envanterHataMesaji(err, 'Zimmet oluşturulamadı.'),
       },
       { status: 400 },
     )

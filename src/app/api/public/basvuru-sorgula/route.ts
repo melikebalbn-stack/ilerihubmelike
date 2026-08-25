@@ -104,8 +104,14 @@ export async function POST(req: NextRequest) {
   if (!rl.success) return reddet();
 
   // Yalnız id + tcKimlikNo çekilir; başka HİÇBİR alan okunmaz.
-  const basvuru = await prisma.publicJobApplication.findUnique({
-    where: { applicationNumber },
+  //
+  // İKİ BİÇİM DE KABUL EDİLİR:
+  //   · eski cuid  (cmt8lphss0007vppe815tutfi) — 12.08–25.08 arası kayıtlar
+  //   · yeni okunabilir (IK-2026-0001)
+  // Tam eşitlik her ikisini de bulur. Yeni biçim elle yazılabildiği için ("ik-2026-0001")
+  // büyük/küçük harf farkı tolere edilir; cuid'ler zaten küçük harf olduğundan etkilenmez.
+  const basvuru = await prisma.publicJobApplication.findFirst({
+    where: { applicationNumber: { equals: applicationNumber, mode: "insensitive" } },
     select: { id: true, tcKimlikNo: true },
   });
 

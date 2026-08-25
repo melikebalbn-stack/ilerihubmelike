@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sonrakiBasvuruNo } from "@/lib/job-application/basvuru-no";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -62,9 +63,16 @@ export async function POST(request: NextRequest) {
       .digest("hex");
 
     // Taslak başvuru + consent TEK transaction.
-    const application = await prisma.$transaction(async (tx) => {
+    // applicationNumber okunabilir üretilir (IK-2026-0001). Şemadaki @default(cuid())
+    // duruyor — artık her zaman açık değer geçildiği için devreye girmiyor; migration YOK.
+    // Çakışmayı advisory lock engeller; yine de P2002 yakalanıp bir kez yeniden denenir.
+    const yil = new Date().getFullYear();
+    const olustur = () =>
+      prisma.$transaction(async (tx) => {
+      const applicationNumber = await sonrakiBasvuruNo(yil, tx);
       const app = await tx.publicJobApplication.create({
         data: {
+          applicationNumber,
           fullName: adSoyad!.trim(),
           tcKimlikNo: tcKimlikNo!.trim(),
           status: "CONSENT_PENDING",
@@ -89,7 +97,19 @@ export async function POST(request: NextRequest) {
       // Aşama logu: başlangıç satırı (from=null → CONSENT_PENDING). Public → changedBy null.
       await logInitialStage(tx, { applicationId: app.id, toStatus: "CONSENT_PENDING" });
       return app;
-    });
+      });
+
+    let application: { id: string };
+    try {
+      application = await olustur();
+    } catch (e) {
+      if ((e as { code?: string })?.code === "P2002") {
+        console.warn("[job-application/consent] applicationNumber cakismasi — yeniden deneniyor");
+        application = await olustur();
+      } else {
+        throw e;
+      }
+    }
 
     const res = NextResponse.json({ ok: true }, { status: 201 });
     // İmzalı httpOnly cookie — sonraki adımların taslak referansı.

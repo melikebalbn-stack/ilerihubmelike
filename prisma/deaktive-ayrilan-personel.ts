@@ -1,13 +1,9 @@
 /**
- * Ayrılmış personelin açık kalan portal hesaplarını kapatır.
+ * Ayrılmış personelin açık kalan portal hesaplarını kapatır (CLI).
  *
- * Neden: ilişik kesme (offboarding) akışı User.isActive'e dokunmuyor; kod
- * tabanında hesabı kapatan tek yol src/lib/ldap-sync.ts (AD-disabled debounce).
- * Mavi yaka hesaplarının AD karşılığı olmadığı için o yol onları hiç kapatmıyor.
- *
- * Hedef SORGUYLA bulunur (sabit liste değil): Personnel.aktif=false + User.isActive=true.
- * Böylece tekrar koşturulduğunda yeni düşenleri de yakalar; idempotenttir —
- * kapatılan kayıt bir sonraki turda sorguya girmez.
+ * Mantık src/lib/offboarding/deaktive-ayrilan.ts'te — gecelik cron ucu
+ * (/api/cron/deaktive-ayrilan-personel) de aynı servisi çağırır; bu dosya
+ * yalnız CLI kabuğudur (argüman ayrıştırma, DB kapısı, çıktı).
  *
  * Kullanım:
  *   npx tsx --env-file=.env prisma/deaktive-ayrilan-personel.ts --db=ilerihub
@@ -20,6 +16,11 @@ import { PrismaClient } from '../src/generated/prisma';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
+import {
+  DEACTIVATION_ABORT_LIMIT,
+  adayOzet,
+  deaktiveAyrilanPersonel,
+} from '../src/lib/offboarding/deaktive-ayrilan';
 
 dotenv.config();
 
@@ -29,24 +30,6 @@ const prisma = new PrismaClient({ adapter });
 
 const APPLY = process.argv.includes('--apply');
 const DB_ARG = process.argv.find((a) => a.startsWith('--db='))?.slice('--db='.length);
-
-type Aday = {
-  userId: string;
-  email: string;
-  adSoyad: string;
-  sicilNo: string | null;
-  roller: string[];
-  sonGiris: Date | null;
-  pasiflestirme: Date;
-};
-
-function sicil(s: string | null): string {
-  return s ?? '(sicil yok)';
-}
-
-function tarih(d: Date | null): string {
-  return d ? d.toISOString().replace('T', ' ').slice(0, 19) : '—';
-}
 
 async function main() {
   // ── DB kapısı: --db zorunlu, bağlanılan veritabanıyla birebir eşleşmeli ──
@@ -66,71 +49,40 @@ async function main() {
   console.log(`Veritabanı: ${bagliDb}`);
   console.log('═'.repeat(70));
 
-  // ── Hedefler: personel pasif, portal hesabı hâlâ açık ──
-  const kayitlar = await prisma.user.findMany({
-    where: { isActive: true, personnel: { aktif: false } },
-    select: {
-      id: true,
-      email: true,
-      lastLoginAt: true,
-      personnel: { select: { sicilNo: true, adSoyad: true, updatedAt: true } },
-      userRoles: { select: { role: { select: { slug: true } } } },
-    },
-  });
+  const sonuc = await deaktiveAyrilanPersonel(prisma, { dryRun: !APPLY });
 
-  const adaylar: Aday[] = kayitlar
-    .filter((u) => u.personnel !== null)
-    .map((u) => ({
-      userId: u.id,
-      email: u.email,
-      adSoyad: u.personnel!.adSoyad,
-      sicilNo: u.personnel!.sicilNo,
-      roller: u.userRoles.map((ur) => ur.role.slug).sort(),
-      sonGiris: u.lastLoginAt,
-      // Personnel'de ayrılma tarihi sütunu yok; pasifleştirme anı için tek vekil updatedAt.
-      pasiflestirme: u.personnel!.updatedAt,
-    }))
-    .sort((a, b) => b.pasiflestirme.getTime() - a.pasiflestirme.getTime());
+  console.log(`\nBulunan: ${sonuc.bulundu} hesap\n`);
 
-  console.log(`\nBulunan: ${adaylar.length} hesap\n`);
+  if (sonuc.abortedLimit) {
+    console.error(
+      `❌ GÜVENLİK AĞI: ${sonuc.hedefler.length} hesap kapatılacaktı ` +
+        `(limit ${DEACTIVATION_ABORT_LIMIT}) — HİÇBİRİ kapatılmadı.`,
+    );
+    console.error('   Muhtemel hatalı toplu pasifleştirme. Liste:');
+    for (const a of sonuc.hedefler) console.error(`   - ${adayOzet(a)}`);
+    process.exit(1);
+  }
 
-  let guncellendi = 0;
-  const atlananlar: Aday[] = [];
+  for (const a of sonuc.hedefler) {
+    console.log(adayOzet(a));
+    console.log(APPLY ? '   ✅ kapatıldı (isActive=false, roller korundu)' : '   → kapatılacak (dry-run, yazma yok)');
+    console.log('');
+  }
 
-  for (const a of adaylar) {
-    // Ayrılma SONRASI giriş varsa dokunma — elle karar gerektirir (ayrılma tarihi
-    // yanlış girilmiş ya da kişi hâlâ çalışıyor olabilir).
-    const ayrilmaSonrasiGiris = a.sonGiris !== null && a.sonGiris > a.pasiflestirme;
-
-    console.log(`${sicil(a.sicilNo)}  ${a.adSoyad}`);
-    console.log(`   e-posta      : ${a.email}`);
-    console.log(`   roller       : ${a.roller.length ? a.roller.join(', ') : '(rol yok)'}`);
-    console.log(`   son giriş    : ${tarih(a.sonGiris)}`);
-    console.log(`   pasifleştirme: ${tarih(a.pasiflestirme)}`);
-
-    if (ayrilmaSonrasiGiris) {
-      atlananlar.push(a);
-      console.log('   ⚠️  ATLANDI — ayrılma SONRASI giriş var, elle karar gerekiyor');
-      console.log('');
-      continue;
-    }
-
-    if (APPLY) {
-      // Yalnız isActive; rol bağları korunuyor.
-      await prisma.user.update({ where: { id: a.userId }, data: { isActive: false } });
-      guncellendi++;
-      console.log('   ✅ kapatıldı (isActive=false, roller korundu)');
-    } else {
-      console.log('   → kapatılacak (dry-run, yazma yok)');
-    }
+  for (const a of sonuc.atlananlar) {
+    console.log(adayOzet(a));
+    console.log('   ⚠️  ATLANDI — ayrılma SONRASI giriş var, elle karar gerekiyor');
     console.log('');
   }
 
   console.log('═'.repeat(70));
-  console.log(`ÖZET  bulundu: ${adaylar.length}  |  ${APPLY ? 'güncellendi' : 'kapatılacak'}: ${APPLY ? guncellendi : adaylar.length - atlananlar.length}  |  atlandı: ${atlananlar.length}`);
-  if (atlananlar.length) {
+  console.log(
+    `ÖZET  bulundu: ${sonuc.bulundu}  |  ${APPLY ? 'güncellendi' : 'kapatılacak'}: ` +
+      `${APPLY ? sonuc.kapatildi : sonuc.hedefler.length}  |  atlandı: ${sonuc.atlananlar.length}`,
+  );
+  if (sonuc.atlananlar.length) {
     console.log('\nElle karar gerekenler (ayrılma sonrası giriş):');
-    for (const a of atlananlar) console.log(`  - ${sicil(a.sicilNo)} ${a.adSoyad} <${a.email}> son giriş ${tarih(a.sonGiris)}`);
+    for (const a of sonuc.atlananlar) console.log(`  - ${adayOzet(a)}`);
   }
   if (!APPLY) console.log('\nDRY-RUN — hiçbir yazma yapılmadı. Uygulamak için: --apply');
   console.log('═'.repeat(70));

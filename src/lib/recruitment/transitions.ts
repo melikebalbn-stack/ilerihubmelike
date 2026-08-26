@@ -100,12 +100,18 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     IK: ["TEKLIF", "REJECTED", "MUDUR_DEGERLENDIRME", "REVIEWING", "SINAV"],
   },
   // MUDUR_MULAKATI — EMEKLİ (2026-08). Müdür kademesi tek karara indirildi; ayrı mülakat
-  // aşaması kalktı. Satır BOŞ → hiçbir rol bu statüden/bu statüye geçemez, UI'da görünmez.
-  // ENUM'DAN SİLİNMEDİ: prod'da 1 başvurunun StageLog'unda geçiyor (IK-2026-0001,
-  // MUDUR_DEGERLENDIRME→MUDUR_MULAKATI, 26.08). Enum daraltma o satırı cast edemez.
+  // aşaması kalktı. Bu statü hiçbir satırın HEDEFİ değil ve EMEKLI_STATULER'de → UI'da
+  // görünmez, oraya YENİ kayıt giremez.
+  // ENUM'DAN SİLİNMEDİ: prod'da StageLog'da 18 satır geçiyor. Enum daraltma cast edemez.
   MUDUR_MULAKATI: {
+    // Müdür bu statüde HİÇBİR ŞEY yapamaz — aşama emekli, hedef olarak da hiçbir yerde yok.
     MUDUR: [],
-    IK: [],
+    // İV KURTARMA KAPISI: sürüm geçişi anında bu statüde yolda kalan kayıt olabilir
+    // (prod'da 1 kayıt vardı). Satır tamamen boş olsaydı o kayıtta HİÇBİR rol geçiş
+    // yapamaz, başvuru donardı. İV tek tıkla İV Havuzu'na alabilsin diye REVIEWING kalır.
+    // Bu, statüyü yeniden canlandırmaz: MUDUR_MULAKATI hiçbir satırın HEDEFİ değil,
+    // EMEKLI_STATULER'de olduğu için UI filtresinde de görünmez — oraya yeni kayıt giremez.
+    IK: ["REVIEWING"],
   },
   // ——— Mavi yaka değerlendirme zinciri — EMEKLİ (Faz 1) ———
   // Zincirin giriş koşulu YAKA AYRIMI idi; işe alım akışında yaka ayrımı kaldırıldı

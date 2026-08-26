@@ -15,6 +15,8 @@ import {
   Home,
   MoveVertical,
   Package,
+  SignalHigh,
+  SignalZero,
   Truck,
   Wrench,
   Zap,
@@ -51,6 +53,10 @@ interface Tezgah {
   workCenterNo: string
   /** IPRO (ipro_tezgah.kod) karşılığı var mı. */
   iproTanimli: boolean
+  /** Durum kademesi; IPRO'da tanımsızsa null (bilgi yok). */
+  durum: 'calisiyor' | 'durusta' | 'bosta' | null
+  /** PLC pini tanımlı mı (statik yapı — sinyal ALMASI beklenen tezgah). */
+  sinyalli: boolean
 }
 
 interface Props {
@@ -529,28 +535,62 @@ function TezgahListesi({
   )
 }
 
+// Durum kademesi → etiket + renk. Renkler tema token'ı / Tailwind paleti (hardcode hex yok).
+type TezgahDurum = 'calisiyor' | 'durusta' | 'bosta'
+const DURUM_ETIKET: Record<TezgahDurum, string> = {
+  calisiyor: 'çalışıyor',
+  durusta: 'duruşta',
+  bosta: 'boşta',
+}
+const DURUM_METIN: Record<TezgahDurum, string> = {
+  calisiyor: 'text-green-600',
+  durusta: 'text-destructive',
+  bosta: 'text-muted-foreground',
+}
+const DURUM_NOKTA: Record<TezgahDurum, string> = {
+  calisiyor: 'bg-green-600',
+  durusta: 'bg-destructive',
+  bosta: 'bg-muted-foreground/50',
+}
+
 function TezgahKart({ t, seciliDept }: { t: Tezgah; seciliDept: string }) {
   const bas = t.resourceId.slice(0, 2).toLocaleUpperCase('tr-TR')
   const tanimli = t.iproTanimli
+  const SignalIcon = t.sinyalli ? SignalHigh : SignalZero
   return (
     <Link
       href={`/terminal/uretim?dept=${encodeURIComponent(seciliDept)}&tezgah=${encodeURIComponent(t.resourceId)}`}
-      className="group flex items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
+      className="group relative flex items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
     >
+      {/* Sağ üst: sinyal ikonu + durum noktası — yalnız IPRO tanımlı kaynakta (bilgi var). */}
+      {tanimli && (
+        <div className="absolute right-3 top-3 flex items-center gap-1.5">
+          <SignalIcon
+            className={`h-4 w-4 text-muted-foreground ${t.sinyalli ? '' : 'opacity-40'}`}
+            aria-hidden="true"
+          />
+          {t.durum && <span className={`h-2 w-2 rounded-full ${DURUM_NOKTA[t.durum]}`} />}
+        </div>
+      )}
+
       <span
         className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg text-[13px] font-semibold ${tanimli ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
       >
         {bas}
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 pr-12">
         <div className={`text-[15px] font-medium leading-tight ${tanimli ? '' : 'text-foreground/70'}`}>
           {t.resourceId}
         </div>
         <div className="line-clamp-2 text-xs text-muted-foreground">{t.description}</div>
-        <div className="text-[11px] text-muted-foreground">
-          İş merkezi {t.workCenterNo}
-          {!tanimli && ' · IPRO’da tanımsız'}
-        </div>
+        <div className="text-[11px] text-muted-foreground">İş merkezi {t.workCenterNo}</div>
+        {tanimli ? (
+          t.durum && (
+            <div className={`text-[11px] ${DURUM_METIN[t.durum]}`}>{DURUM_ETIKET[t.durum]}</div>
+          )
+        ) : (
+          <div className="text-[11px] text-muted-foreground">IPRO’da tanımsız</div>
+        )}
       </div>
     </Link>
   )

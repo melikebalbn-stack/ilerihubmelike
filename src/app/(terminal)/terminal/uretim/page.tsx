@@ -83,10 +83,19 @@ export default async function UretimTerminalPage({
     // Kaynak listesi alınamadı → tezgah sayıları 0; ekran yine açılır.
   }
 
-  // ipro_tezgah.kod → tr-TR küçük harf anahtarlı (büyük/küçük harf duyarsız eşleşme).
-  const iproKodByLower = new Map<string, string>()
-  const tezgahlar = await prisma.iproTezgah.findMany({ select: { kod: true } })
-  for (const t of tezgahlar) iproKodByLower.set(t.kod.toLocaleLowerCase('tr-TR'), t.kod)
+  // ipro_tezgah — kod (tr-TR küçük harf anahtar) → {kod, id, plcPinler}. TEK sorgu.
+  // plcPinler: sinyalli bayrağı (PLC pini tanımlı mı — statik yapı). id: durum sorguları için.
+  const iproByLower = new Map<string, { kod: string; id: string; plcPinler: number }>()
+  const tezgahlar = await prisma.iproTezgah.findMany({
+    select: { id: true, kod: true, _count: { select: { plcPinler: true } } },
+  })
+  for (const t of tezgahlar) {
+    iproByLower.set(t.kod.toLocaleLowerCase('tr-TR'), {
+      kod: t.kod,
+      id: t.id,
+      plcPinler: t._count.plcPinler,
+    })
+  }
 
   // Tezgah sayısı = departmandaki AKTİF kaynak sayısı (Objstate=Active).
   // IPRO eşleşmesi: ResourceId == ipro_tezgah.kod. IPRO'da olmayan aktif kaynak → teşhis.
@@ -98,26 +107,25 @@ export default async function UretimTerminalPage({
     const d = wcMap.get(r.workCenterNo)
     if (!d || !gecerliKodlar.has(d)) continue
     tezgahSayi.set(d, (tezgahSayi.get(d) ?? 0) + 1)
-    const iproKod = iproKodByLower.get(r.resourceId.toLocaleLowerCase('tr-TR'))
-    if (iproKod) deptEsleTezgahKodlari.add(iproKod)
+    const ipro = iproByLower.get(r.resourceId.toLocaleLowerCase('tr-TR'))
+    if (ipro) deptEsleTezgahKodlari.add(ipro.kod)
     else iproEksikKaynak++
   }
 
-  // Canlı çalışan tezgah — son 180 sn'de ipro_sayac_okuma'da delta üreten DISTINCT
-  // tezgah. BAĞIMSIZ sorgu (oee-pano-service kopyası; import DEĞİL). Poller yalnız
-  // delta>0 yazar → 180 sn içinde satırı olan tezgah çalışıyor. Departmana eşlenmiş
-  // olanları sayarız (M ≤ T). Hata → 0, sayfa çökmez.
-  let calisanTezgah = 0
+  // Faz2 hareket — son 180 sn'de delta üreten DISTINCT tezgahKod. BAĞIMSIZ sorgu
+  // (oee-pano-service KOPYASI; import DEĞİL). Poller yalnız delta>0 yazar. Hem canlı
+  // doluluk (M) hem tezgah durum göstergesinde kullanılır. Hata → boş set, sayfa çökmez.
+  const faz2Set = new Set<string>()
   try {
     const hareketli = await prisma.$queryRaw<{ tezgahKod: string }[]>`
       SELECT DISTINCT "tezgahKod" FROM ipro_sayac_okuma WHERE ts > now() - interval '180 seconds'
     `
-    for (const r of hareketli) {
-      if (deptEsleTezgahKodlari.has(r.tezgahKod)) calisanTezgah++
-    }
+    for (const r of hareketli) faz2Set.add(r.tezgahKod)
   } catch {
-    // canlı sinyal alınamazsa doluluk 0 gösterilir; sayfa etkilenmez.
+    // canlı sinyal alınamazsa doluluk 0 + durum 'bosta'; sayfa etkilenmez.
   }
+  let calisanTezgah = 0
+  for (const kod of deptEsleTezgahKodlari) if (faz2Set.has(kod)) calisanTezgah++
 
   // Zengin departman listesi — SIRALAMA getWorkCenterDepartments'tan (İSİM bazlı) korunur.
   const zenginDepartmanlar = departmanlar.map((d) => ({
@@ -131,17 +139,56 @@ export default async function UretimTerminalPage({
     ? (departmanlar.find((d) => d.kod === seciliDept)?.ad ?? '')
     : ''
 
+  // Seçili departmanın tezgahları için DURUM göstergesi — TOPLU sorgular (tezgah başına YOK).
+  // izleme/oee panosu kuralının KOPYASI (import değil): öncelik durusta > calisiyor > bosta.
+  // Yalnız departman seçiliyken sorulur; her biri ayrı try/catch → düşerse o gösterge nötr.
+  const acikDurusTezgahId = new Set<string>() // IproMachineDowntime bitis=null
+  const acikIsTezgahId = new Set<string>() // IproProductionLog durum=ACIK + baslatildiAt
+  if (seciliDept) {
+    try {
+      const rows = await prisma.iproMachineDowntime.findMany({
+        where: { bitis: null },
+        select: { tezgahId: true },
+      })
+      for (const r of rows) acikDurusTezgahId.add(r.tezgahId)
+    } catch {
+      // duruş alınamazsa 'durusta' işaretlenmez (kademe düşer).
+    }
+    try {
+      const rows = await prisma.iproProductionLog.findMany({
+        where: { durum: 'ACIK', baslatildiAt: { not: null } },
+        select: { tezgahId: true },
+      })
+      for (const r of rows) acikIsTezgahId.add(r.tezgahId)
+    } catch {
+      // açık iş alınamazsa o kaynaktan 'calisiyor' gelmez (faz2 hâlâ geçerli).
+    }
+  }
+
   // Seçili departmanın tezgahları = o departmanın WC'lerine bağlı AKTİF kaynaklar.
   // IPRO eşleşmesi ResourceId==ipro_tezgah.kod (tr-TR). ResourceId'ye göre alfabetik.
   const seciliDeptTezgahlar = seciliDept
     ? kaynaklar
         .filter((r) => r.objstate === 'Active' && wcMap.get(r.workCenterNo) === seciliDept)
-        .map((r) => ({
-          resourceId: r.resourceId,
-          description: r.description,
-          workCenterNo: r.workCenterNo,
-          iproTanimli: iproKodByLower.has(r.resourceId.toLocaleLowerCase('tr-TR')),
-        }))
+        .map((r) => {
+          const ipro = iproByLower.get(r.resourceId.toLocaleLowerCase('tr-TR'))
+          // IPRO tanımsızsa durum bilinmez (null). Değilse: durusta > calisiyor > bosta.
+          const durum: 'calisiyor' | 'durusta' | 'bosta' | null = !ipro
+            ? null
+            : acikDurusTezgahId.has(ipro.id)
+              ? 'durusta'
+              : acikIsTezgahId.has(ipro.id) || faz2Set.has(ipro.kod)
+                ? 'calisiyor'
+                : 'bosta'
+          return {
+            resourceId: r.resourceId,
+            description: r.description,
+            workCenterNo: r.workCenterNo,
+            iproTanimli: !!ipro,
+            durum,
+            sinyalli: ipro ? ipro.plcPinler > 0 : false,
+          }
+        })
         .sort((a, b) => a.resourceId.localeCompare(b.resourceId, 'tr'))
     : []
   const seciliDeptIsEmri = seciliDept ? (isEmriSayi.get(seciliDept) ?? 0) : 0

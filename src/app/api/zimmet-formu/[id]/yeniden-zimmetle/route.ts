@@ -49,12 +49,16 @@ export async function POST(
     if (!kaynak) {
       return NextResponse.json({ error: 'Zimmet formu bulunamadı' }, { status: 404 })
     }
-    if (kaynak.cihazDurumu === ZimmetCihazDurumu.HURDA) {
-      return NextResponse.json({ error: 'Hurdaya çıkarılmış cihaz zimmetlenemez.' }, { status: 409 })
-    }
-    if (kaynak.iadeTarihi === null || kaynak.cihazDurumu !== ZimmetCihazDurumu.PASIF) {
+    // Yeniden zimmetleme yalnızca PASIF (envanterdeki) cihaz için. İade geçmişi ŞART
+    // değil — devir import'undan PASIF gelen cihazlar da envanterde sayılır.
+    if (kaynak.cihazDurumu !== ZimmetCihazDurumu.PASIF) {
       return NextResponse.json(
-        { error: 'Yalnızca envantere alınmış (iade edilmiş, pasif) cihaz yeniden zimmetlenebilir.' },
+        {
+          error:
+            kaynak.cihazDurumu === ZimmetCihazDurumu.HURDA
+              ? 'Hurdaya çıkarılmış cihaz zimmetlenemez.'
+              : 'Bu cihaz halen bir kişide zimmetli.',
+        },
         { status: 409 },
       )
     }

@@ -61,12 +61,25 @@ export default async function ZimmetOnayPage({
   const fmt = (d: Date | null) =>
     d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 
+  // Çakışma uyarısı: aynı seri no'lu kayıtların ikisinden fazlası hâlâ iade
+  // edilmemişse (iadeTarihi NULL) aynı seri birden fazla fiziksel cihazda kullanılmış
+  // olabilir → kayıtlar aynı cihaza ait olmayabilir.
+  const iadesizSayi =
+    (zimmet.iadeTarihi === null ? 1 : 0) + gecmis.filter((g) => g.iadeTarihi === null).length
+  const cakismaUyarisi = gecmis.length > 0 && iadesizSayi >= 2
+
   return (
     <>
       <ZimmetOnayClient zimmet={zimmetData} />
       {gecmis.length > 0 && (
         <div className="mx-auto max-w-3xl px-4 pb-10">
           <h2 className="mb-2 text-sm font-semibold text-slate-700">Bu cihazın geçmişi</h2>
+          {cakismaUyarisi && (
+            <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Aynı seri numarası birden fazla cihazda kullanılmış olabilir — kayıtlar aynı cihaza
+              ait olmayabilir.
+            </p>
+          )}
           <div className="overflow-x-auto rounded-md border border-slate-200">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs text-slate-500">

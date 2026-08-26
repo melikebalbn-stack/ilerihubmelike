@@ -1047,8 +1047,8 @@ export function ZimmetListesi() {
                                   <ArchiveRestore className="h-4 w-4" />
                                 </Button>
                               )}
-                              {/* Yeniden zimmetle: envantere alınmış (iade + PASIF) cihaz */}
-                              {z.iadeTarihi !== null && z.cihazDurumu === 'PASIF' && (
+                              {/* Yeniden zimmetle: envanterdeki (PASIF) cihaz — iade geçmişi şart değil */}
+                              {z.cihazDurumu === 'PASIF' && (
                                 <Button
                                   type="button"
                                   variant="ghost"

@@ -90,17 +90,22 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
   // ZORUNLU (transition route'daki olumsuz-görüş guard'ı — teknik mülakat kademeleriyle
   // AYNI kural). İK satırları DEĞİŞMEDİ: İV her iki statüden de reddedebilir.
   MUDUR_DEGERLENDIRME: {
-    // Müdür değerlendirir; İK her zaman geri alabilir/reddedebilir/yeniden atayabilir.
-    // D4: İK aynı duruma geçebilir → müdür yanlış atandıysa yeniden atama (assignedManagerId zorunlu).
-    // İK geri alma: REVIEWING, SINAV.
-    MUDUR: ["MUDUR_MULAKATI", "SINAV", "REVIEWING"],
+    // Müdürden YALNIZ İKİ sonuç çıkar: olumlu / olumsuz — İKİSİ DE İV'ye (REVIEWING) döner.
+    // Karar `mudurKarari` (APPROVED/REJECTED) alanına yazılır; statü hedefi tek olduğu için
+    // matriste tek satır görünür. Müdür kendi kendine bir sonraki aşamaya GEÇEMEZ:
+    // iki adım da aynı kişiye gidiyordu (MUDUR_DEGERLENDIRME → MUDUR_MULAKATI), anlamsızdı.
+    // Mülakat yapıp yapmamaya müdür kendi karar verir; sistemde ayrı adım YOK.
+    MUDUR: ["REVIEWING"],
+    // İK satırı DEĞİŞMEDİ — İV her seçeneğe sahip.
     IK: ["TEKLIF", "REJECTED", "MUDUR_DEGERLENDIRME", "REVIEWING", "SINAV"],
   },
+  // MUDUR_MULAKATI — EMEKLİ (2026-08). Müdür kademesi tek karara indirildi; ayrı mülakat
+  // aşaması kalktı. Satır BOŞ → hiçbir rol bu statüden/bu statüye geçemez, UI'da görünmez.
+  // ENUM'DAN SİLİNMEDİ: prod'da 1 başvurunun StageLog'unda geçiyor (IK-2026-0001,
+  // MUDUR_DEGERLENDIRME→MUDUR_MULAKATI, 26.08). Enum daraltma o satırı cast edemez.
   MUDUR_MULAKATI: {
-    // Mülakat olumlu → TEKLIF (müdür kendi kademesini sonuçlandırabilsin), olumsuz → REVIEWING.
-    MUDUR: ["TEKLIF", "SINAV", "REVIEWING"],
-    // İK geri alma: REVIEWING, MUDUR_DEGERLENDIRME.
-    IK: ["SINAV", "TEKLIF", "REJECTED", "REVIEWING", "MUDUR_DEGERLENDIRME"],
+    MUDUR: [],
+    IK: [],
   },
   // ——— Mavi yaka değerlendirme zinciri — EMEKLİ (Faz 1) ———
   // Zincirin giriş koşulu YAKA AYRIMI idi; işe alım akışında yaka ayrımı kaldırıldı
@@ -137,7 +142,7 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
   },
   IK_MULAKATI: {
     // İK geri alma: REVIEWING.
-    IK: ["TEKNIK_MULAKAT", "MUDUR_MULAKATI", "TEKLIF", "REVIEWING", "REJECTED"],
+    IK: ["TEKNIK_MULAKAT", "TEKLIF", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
   // ——— Teknik mülakat iki kademe (Faz 4) ———
@@ -148,7 +153,7 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
   TEKNIK_MULAKAT: {
     TEKNIK_MULAKATCI: ["TEKNIK_MULAKAT_UST_ONAY", "REVIEWING"],
     // İK: yeniden atama (aynı statü), üst onaya elle çıkarma, geri alma, ilerletme, ret.
-    IK: ["TEKNIK_MULAKAT", "TEKNIK_MULAKAT_UST_ONAY", "TEKLIF", "MUDUR_MULAKATI", "REVIEWING", "REJECTED"],
+    IK: ["TEKNIK_MULAKAT", "TEKNIK_MULAKAT_UST_ONAY", "TEKLIF", "REVIEWING", "REJECTED"],
     MUDUR: [],
   },
   // 2. kademe: üst amir. Onaylarsa teklife, olumsuzsa İV'ye döner. REJECTED YOK.
@@ -227,7 +232,7 @@ export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
   ISE_BASLADI: "İşe Başladı",
   REJECTED: "Reddedildi",
   MUDUR_DEGERLENDIRME: "Müdür Değerlendirmesi",
-  MUDUR_MULAKATI: "Müdür Mülakatı",
+  MUDUR_MULAKATI: "Müdür Mülakatı (kullanımdan kaldırıldı)",
   // ——— EMEKLİ statüler (Faz 1) — matris satırları boş, ulaşılamaz. Etiketler yalnız
   // geçmiş StageLog satırları okunabilsin diye duruyor.
   REVIEWED: "İncelendi",
@@ -244,6 +249,8 @@ export const STATUS_LABELS_TR: Record<JobApplicationStatus, string> = {
  * Enum'dan SİLİNMEDİLER — gerekçe ALLOWED_TRANSITIONS içindeki yorumlarda.
  */
 export const EMEKLI_STATULER: JobApplicationStatus[] = [
+  // 2026-08: müdür kademesi tek karara indirildi (olumlu/olumsuz → İV). Ayrı mülakat aşaması kalktı.
+  "MUDUR_MULAKATI",
   "REVIEWED",
   "INTERVIEW",
   "ACCEPTED",

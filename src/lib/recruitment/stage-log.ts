@@ -123,6 +123,10 @@ export async function transitionApplicationStatus(args: {
   // bildirimi üretilmez — yeni durum sınav sonucu bildiriminde/mailinde gösterilir.
   // Geçişin kendisi ve StageLog satırı ETKİLENMEZ, yalnız bildirim atlanır.
   otomatikSinavGecisi?: boolean;
+  // 2026-08 — müdür kademesi kararı. Verilirse statü güncellemesiyle AYNI tx'te
+  // PublicJobApplication.mudurKarari* alanlarına yazılır. Karar veren = changedBy.
+  mudurKarari?: "APPROVED" | "REJECTED";
+  mudurKarariNotu?: string | null;
 }) {
   // Güvenlik ağı (invariant): SINAV'a geçiş assessmentId olmadan yapılamaz — oturumsuz
   // SINAV üretilemez. Tek çağıran (transition route) zaten guard'lı; bu, gelecekteki
@@ -181,6 +185,16 @@ export async function transitionApplicationStatus(args: {
     // Ret nedeni: verilmişse AYNI tx'te rejectionReasonId yaz + note'a okunabilir etiket ekle.
     // (Etiket StageLog note'una girer; ham id kullanıcıya gösterilmez.)
     const extraData: Prisma.PublicJobApplicationUpdateInput = {};
+
+    // 2026-08 — müdür kademesi kararı: statü güncellemesiyle AYNI tx'te yazılır.
+    // Karar veren = changedBy (düz alan, FK yok — kullanıcı silinse de karar okunur kalır).
+    if (args.mudurKarari) {
+      extraData.mudurKarari = args.mudurKarari;
+      extraData.mudurKarariNotu = args.mudurKarariNotu ?? null;
+      extraData.mudurKarariTarihi = new Date();
+      extraData.mudurKarariVeren = args.changedBy ?? null;
+    }
+
     if (args.rejectionReasonId) {
       const reason = await tx.rejectionReason.findUnique({
         where: { id: args.rejectionReasonId },

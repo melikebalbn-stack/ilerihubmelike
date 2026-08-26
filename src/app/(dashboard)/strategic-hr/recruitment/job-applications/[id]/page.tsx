@@ -51,6 +51,7 @@ import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { JobApplicationSensitiveSections } from "@/components/job-application/JobApplicationSensitiveSections"
 import { JobApplicationStatusBadge, SinavSonucBadge } from "@/components/recruitment/JobApplicationStatusBadge"
+import { MudurKarariBadge } from "@/components/recruitment/MudurKarariBadge"
 import { Badge } from "@/components/ui/badge"
 import { BasvuruDuzeltmeDialog } from "@/components/recruitment/BasvuruDuzeltmeDialog"
 import { PersoneleDonusturDialog } from "@/components/recruitment/PersoneleDonusturDialog"
@@ -257,6 +258,9 @@ export default function JobApplicationDetailPage() {
 
   // Geçiş modalı state'i.
   const [txTarget, setTxTarget] = useState<string | null>(null)
+  // 2026-08 — müdür kademesi kararı. İki buton da REVIEWING'e gider; hedef statü kararı
+  // ayırt etmediği için seçilen karar ayrıca taşınır.
+  const [txMudurKarari, setTxMudurKarari] = useState<"APPROVED" | "REJECTED" | null>(null)
   const [txNote, setTxNote] = useState("")
   const [txManagerId, setTxManagerId] = useState("")
   const [txReasonId, setTxReasonId] = useState("")
@@ -340,7 +344,12 @@ export default function JobApplicationDetailPage() {
     roluKademedeMi(workflow.currentStatus as JobApplicationStatus, "MUDUR")
   // Karar yorumu isteyen her kademe (teknik + müdür) — olumsuz görüşte yorum ZORUNLU.
   const kademeKarari = teknikKademe || mudurKademe
-  const olumsuzGorus = kademeKarari && txTarget === "REVIEWING"
+  // Olumsuz görüş = yorumu ZORUNLU kılan durum. Teknik kademede REVIEWING'e dönüş
+  // tek başına olumsuzdur; müdürde ise iki karar da REVIEWING'e gittiği için SEÇİLEN
+  // karara bakılır (olumlu → yorum opsiyonel, olumsuz → zorunlu).
+  const olumsuzGorus =
+    (teknikKademe && txTarget === "REVIEWING") ||
+    (mudurKademe && txTarget === "REVIEWING" && txMudurKarari === "REJECTED")
   // Seçilen mülakatçının üst amir önizlemesi (2. kademe atlanacak mı).
   const secilenMulakatci =
     txTarget === "TEKNIK_MULAKAT" && txManagerId
@@ -363,8 +372,9 @@ export default function JobApplicationDetailPage() {
   const geriGondermeSayisi = logs.filter((l) => l.toStatus === "ADAYA_GERI_GONDERILDI").length
 
   // Aksiyon butonuna basınca modalı hazırla — hedef ek girdi istiyorsa ilgili listeyi çek.
-  const openTransition = async (target: string) => {
+  const openTransition = async (target: string, mudurKarari?: "APPROVED" | "REJECTED") => {
     setTxTarget(target)
+    setTxMudurKarari(mudurKarari ?? null)
     setTxNote("")
     setTxManagerId("")
     setTxReasonId("")
@@ -412,6 +422,7 @@ export default function JobApplicationDetailPage() {
       // Alan ADLARI gider; etikete çevirme + beyaz liste süzmesi SUNUCUDA yapılır.
       if (isGeriGonder && txAlanlar.length) body.duzeltilecekAlanlar = txAlanlar
       if (kademeKarari && txKademeYorumu.trim()) body.kademeYorumu = txKademeYorumu.trim()
+      if (mudurKademe && txMudurKarari) body.mudurKarari = txMudurKarari
       const res = await fetch(`/api/recruitment/applications/${id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1141,6 +1152,35 @@ export default function JobApplicationDetailPage() {
                 ) : workflow && workflow.allowedTargets.length > 0 ? (
                   <div className="mt-2 flex flex-col gap-2">
                     {workflow.allowedTargets.map((target) => {
+                      // 2026-08 — müdür kademesinde REVIEWING tek hedeftir ama İKİ karar
+                      // taşır: olumlu/olumsuz. Bu yüzden tek hedef İKİ butona açılır.
+                      if (mudurKademe && target === "REVIEWING") {
+                        return (
+                          <div key={target} className="flex flex-col gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="justify-start border-green-300 text-green-800 hover:bg-green-50"
+                              onClick={() => openTransition(target, "APPROVED")}
+                            >
+                              <CheckCircle2 className="h-4 w-4 mr-2" />
+                              Olumlu — IV'ye gonder
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="justify-start border-red-300 text-red-800 hover:bg-red-50"
+                              onClick={() => openTransition(target, "REJECTED")}
+                            >
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Olumsuz — IV'ye gonder
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                              Basvuru IV'ye doner, sizden islem beklenmez.
+                            </p>
+                          </div>
+                        )
+                      }
                       const isReject = target === "REJECTED"
                       // SINAV hedefi + zaten aktif oturum varsa: "Sınavı Değiştir" (aynı-statü değişim).
                       const sinavDegistir = target === "SINAV" && !!app.sinavlar?.aktif
@@ -1229,6 +1269,33 @@ export default function JobApplicationDetailPage() {
                 <OnayRow label="KVKK Onayı" alindi={app.onaylar.kvkkAlindi} tarih={app.onaylar.kvkkTarih} />
                 <OnayRow label="Sağlık Beyanı" alindi={app.onaylar.saglikBeyaniAlindi} tarih={app.onaylar.saglikTarih} />
                 <OnayRow label="Beyan Kabulü" alindi={app.onaylar.beyanKabul} tarih={app.onaylar.beyanTarih} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Müdür kararı — karar verilmemişse kart HİÇ çizilmez (rozetle aynı ilke).
+              Karar + gerekçe + kim + ne zaman. İV bu kartla müdürün görüşünü görür. */}
+          {(app.mudurKarari === "APPROVED" || app.mudurKarari === "REJECTED") && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <UserCheck className="h-4 w-4" />
+                  Müdür Kararı
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <MudurKarariBadge karar={app.mudurKarari} />
+                {app.mudurKarariNotu && (
+                  <p className="whitespace-pre-line text-slate-700">{app.mudurKarariNotu}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {app.mudurKarariVerenAd
+                    ? `${app.mudurKarariVerenAd}${app.mudurKarariVerenSicil ? ` (${app.mudurKarariVerenSicil})` : ""}`
+                    : "—"}
+                  {app.mudurKarariTarihi
+                    ? ` · ${new Date(app.mudurKarariTarihi).toLocaleString("tr-TR")}`
+                    : ""}
+                </p>
               </CardContent>
             </Card>
           )}

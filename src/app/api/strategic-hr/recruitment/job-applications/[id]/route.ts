@@ -35,6 +35,11 @@ const MANAGER_SELECT = {
   assignedManagerId: true,
   assignedAt: true,
   createdAt: true,
+  // Müdür kendi verdiği kararı ve gerekçesini görebilir.
+  mudurKarari: true,
+  mudurKarariNotu: true,
+  mudurKarariTarihi: true,
+  mudurKarariVeren: true,
 } satisfies Prisma.PublicJobApplicationSelect
 
 // GET - Başvuru detayı
@@ -98,7 +103,24 @@ export async function GET(
         beyanKabul: !!application?.declarationAccepted,
         beyanTarih: application?.declarationDate ?? null,
       }
-      return NextResponse.json({ ...application, onaylar, sinavlar, oncekiBasvurular })
+      // Müdür kararını VEREN kişinin adı — düz alan User.id tuttuğu için tek sorguyla
+      // çözülür (FK/ilişki yok; kullanıcı silinse de karar okunur kalsın diye böyle).
+      const mudurKarariVerenAd = application?.mudurKarariVeren
+        ? (
+            await prisma.user.findUnique({
+              where: { id: application.mudurKarariVeren },
+              select: { name: true, employeeId: true },
+            })
+          )
+        : null
+      return NextResponse.json({
+        ...application,
+        mudurKarariVerenAd: mudurKarariVerenAd?.name ?? null,
+        mudurKarariVerenSicil: mudurKarariVerenAd?.employeeId ?? null,
+        onaylar,
+        sinavlar,
+        oncekiBasvurular,
+      })
     }
 
     // Saf müdür → whitelist alanlar + kısıtlı işaret + sınav özeti (müdür: puan/durum/tarih VAR,

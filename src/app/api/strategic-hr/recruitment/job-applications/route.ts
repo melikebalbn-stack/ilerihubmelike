@@ -15,6 +15,9 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
+    // Müdür kararı filtresi: APPROVED | REJECTED | YOK (karar verilmemiş). Sunucu tarafında
+    // süzülür → sayfalama toplamı (count) aynı where'i kullandığı için tutarlı kalır.
+    const mudurKarariFiltre = searchParams.get('mudurKarari')
     const search = searchParams.get('search')
     // "Bana atananlar": yalnız oturum sahibinin atanan müdür olduğu başvurular.
     // Filtreleme SUNUCUDA (assignedManagerId = session.user.id); client'ta filtreleme yok.
@@ -102,6 +105,13 @@ export async function GET(request: NextRequest) {
       where.assignedManagerId = session.user.id
     }
 
+    // Müdür kararı filtresi — where'e eklendiği için count da aynı süzgeci görür.
+    if (mudurKarariFiltre === 'APPROVED' || mudurKarariFiltre === 'REJECTED') {
+      where.mudurKarari = mudurKarariFiltre
+    } else if (mudurKarariFiltre === 'YOK') {
+      where.mudurKarari = null
+    }
+
     // Başvuruları getir
     const [applications, total] = await Promise.all([
       prisma.publicJobApplication.findMany({
@@ -133,6 +143,9 @@ export async function GET(request: NextRequest) {
           createdAt: true,
           // "Bekleyen" sütunu icin — musteri adi asagida TEK toplu sorguyla cozulur.
           assignedManagerId: true,
+          // Müdür kararı rozeti — PublicJobApplication'ın KENDİ kolonu, ek sorgu YOK.
+          // (Sınav rozeti ayrı tablodan geldiği için toplu çözülüyordu; bunda gerek yok.)
+          mudurKarari: true,
           // Mükerrer rozeti SUNUCUDA hesaplansın diye çekilir; yanıtta HİÇ dönmez
           // (aşağıda `tcKimlikNo` alanı ayrıştırılıp atılıyor — İK yolunda da).
           tcKimlikNo: true,
@@ -229,6 +242,8 @@ export async function GET(request: NextRequest) {
           // Müdür puanı/durumu GÖREBİLİR (mevcut davranış — oturumOzetiGetir({ik:false}) ile
           // aynı ilke). Rozet zaten token/link taşımıyor, bu yüzden aynen geçer.
           sinavRozeti: a.sinavRozeti,
+          // Müdür kendi verdiği kararı görür (rozet, hassas veri taşımaz).
+          mudurKarari: a.mudurKarari,
           // `mukerrer` BİLEREK YOK: adayın geçmiş başvuruları İV'nin bilgisi. Müdürün işi
           // önündeki güncel başvuru. (Alan listesi açık yazıldığı için sızma da olamaz.)
         }))

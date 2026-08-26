@@ -50,6 +50,9 @@ const BodySchema = z.object({
   duzeltilecekAlanlar: z.array(z.string().trim().min(1)).max(60).optional(),
   // Faz 4 — teknik mülakat kademe kararı. OLUMSUZ görüşte yorum ZORUNLU (aşağıda guard).
   kademeYorumu: z.string().trim().max(2000).optional(),
+  // 2026-08 — müdür kademesi kararı. Müdürden YALNIZ iki sonuç çıkar ve İKİSİ DE
+  // REVIEWING'e döner; hedef statü ayırt etmediği için karar AÇIKÇA gelir.
+  mudurKarari: z.enum(["APPROVED", "REJECTED"]).optional(),
 });
 
 export async function POST(
@@ -70,7 +73,7 @@ export async function POST(
       { status: 400 },
     );
   }
-  const { toStatus, note, assignedManagerId, rejectionReasonId, assessmentId, duzeltilecekAlanlar, kademeYorumu } =
+  const { toStatus, note, assignedManagerId, rejectionReasonId, assessmentId, duzeltilecekAlanlar, kademeYorumu, mudurKarari } =
     parsed.data;
 
   // 2) Başvuruyu çek
@@ -198,12 +201,21 @@ export async function POST(
   //
   // Kullanıcı hem İK hem atanan müdür olabilir: bu durumda da yorum istenir. Bilinçli —
   // rol birleşimi geçiş HAKKINI genişletir, ama kararı veren yine atanan kişidir.
-  const mudurKarari = roles.includes("MUDUR") && roluKademedeMi(current, "MUDUR");
+  const mudurKademesinde = roles.includes("MUDUR") && roluKademedeMi(current, "MUDUR");
+
+  // 2026-08 — müdür kademesinde İKİ karar da REVIEWING'e döner; hedef statü artık
+  // olumlu/olumsuz ayrımını taşımıyor. Bu yüzden karar AÇIKÇA istenir.
+  if (mudurKademesinde && toStatus === "REVIEWING" && !mudurKarari) {
+    return NextResponse.json(
+      { error: "Müdür kararı zorunlu (olumlu/olumsuz)" },
+      { status: 400 },
+    );
+  }
 
   // OLUMSUZ görüş = kademeden REVIEWING'e dönüş. Yorum ZORUNLU (İV neden döndüğünü görsün).
   // Teknik mülakat (Faz 4) ve müdür (Faz 5) kademeleri AYNI kuralı paylaşır.
   const teknikOlumsuz = teknikKademeKarari && toStatus === "REVIEWING";
-  const mudurOlumsuz = mudurKarari && toStatus === "REVIEWING";
+  const mudurOlumsuz = mudurKademesinde && toStatus === "REVIEWING" && mudurKarari === "REJECTED";
   const olumsuzGorus = teknikOlumsuz || mudurOlumsuz;
   if (olumsuzGorus && !kademeYorumu) {
     return NextResponse.json(
@@ -280,8 +292,12 @@ export async function POST(
   // kayıtlı; not tek biçimli kalsın diye kademe adı ayrıca yazılmaz.
   if (mudurOlumsuz) {
     kademeNotParcalari.push(`Müdür değerlendirmesi olumsuz: ${kademeYorumu}`);
-  } else if (mudurKarari && kademeYorumu) {
-    kademeNotParcalari.push(`Müdür değerlendirmesi olumlu: ${kademeYorumu}`);
+  } else if (mudurKademesinde && mudurKarari === "APPROVED") {
+    kademeNotParcalari.push(
+      kademeYorumu
+        ? `Müdür değerlendirmesi olumlu: ${kademeYorumu}`
+        : "Müdür değerlendirmesi olumlu",
+    );
   }
   if (ivAtlamasi) {
     kademeNotParcalari.push("1. kademe İV tarafından atlandı — mülakatçı görüşü alınmadı");
@@ -332,6 +348,9 @@ export async function POST(
       rejectionReasonId: rejectionReasonId ?? undefined,
       // SINAV'da guard'dan geçti; helper AYNI tx'te AssessmentSession açar + note'a sınav adı ekler.
       assessmentId: assessmentId ?? undefined,
+      // 2026-08 — müdür kararı statüyle AYNI tx'te yazılır (karar + gerekçe + kim + ne zaman).
+      mudurKarari: mudurKademesinde ? (mudurKarari ?? undefined) : undefined,
+      mudurKarariNotu: mudurKademesinde ? (kademeYorumu ?? undefined) : undefined,
     });
 
     // 7) FAZ 4 — approval satırları. Geçiş COMMIT olduktan SONRA yazılır: satır yazımı

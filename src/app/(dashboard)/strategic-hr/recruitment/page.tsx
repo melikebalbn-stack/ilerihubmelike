@@ -84,6 +84,7 @@ import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
 import { JobApplicationStatusBadge, SinavSonucBadge, MukerrerBasvuruBadge, type SinavRozetiVeri, type MukerrerRozetVeri } from "@/components/recruitment/JobApplicationStatusBadge"
+import { MudurKarariBadge } from "@/components/recruitment/MudurKarariBadge"
 import RecruitmentDashboard from "./_components/RecruitmentDashboard"
 import RejectionReasonsPanel from "./_components/RejectionReasonsPanel"
 import CostPerHirePanel from "./_components/CostPerHirePanel"
@@ -188,6 +189,7 @@ interface PublicJobApplication {
   bekleyen: { tip: "MUDUR" | "IK" | "ADAY"; ad: string; kisa: string } | null
   // Sunucuda turetilir (AssessmentSession.result/score + passingScore). Oturum yoksa null.
   sinavRozeti: SinavRozetiVeri | null
+  mudurKarari?: "APPROVED" | "REJECTED" | null
   // Tekrar başvuru rozeti — sunucudan gelir; tek başvuruda null (rozet çizilmez).
   // Müdür yanıtında bu alan HİÇ yok (adayın geçmişi İV'nin bilgisi).
   mukerrer?: MukerrerRozetVeri | null
@@ -315,6 +317,7 @@ export default function RecruitmentPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   // Sinav sonucu filtresi — SUNUCU tarafinda uygulanir (sayfalama toplamiyla tutarli).
   const [sinavFilter, setSinavFilter] = useState("all")
+  const [mudurKarariFilter, setMudurKarariFilter] = useState("all")
   const [tekrarFilter, setTekrarFilter] = useState("all")
   const [candidateSourceFilter, setCandidateSourceFilter] = useState("all")
 
@@ -392,6 +395,11 @@ export default function RecruitmentPage() {
     fetchJobApplications()
   }, [sinavFilter])
 
+  useEffect(() => {
+    void fetchJobApplications()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mudurKarariFilter])
+
   // Tekrar basvuru filtresi de SUNUCU tarafinda — ayni desen.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -436,6 +444,11 @@ export default function RecruitmentPage() {
       }
       if (sinavFilter !== "all" && efektifTab === "job-applications") {
         params.set("sinavSonuc", sinavFilter)
+      }
+      // Müdür kararı filtresi — sınav/tekrar filtreleriyle AYNI ilke: SUNUCUDA uygulanır,
+      // findMany ve count aynı `where`'i kullandığı için sayfalama toplamı tutarlı kalır.
+      if (mudurKarariFilter !== "all" && efektifTab === "job-applications") {
+        params.set("mudurKarari", mudurKarariFilter)
       }
       if (searchTerm && efektifTab === "job-applications") {
         params.set("search", searchTerm)
@@ -1603,6 +1616,19 @@ export default function RecruitmentPage() {
             </SelectContent>
           </Select>
         )}
+        {efektifTab === "job-applications" && (
+          <Select value={mudurKarariFilter} onValueChange={setMudurKarariFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Mudur karari" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tum Mudur Kararlari</SelectItem>
+              <SelectItem value="APPROVED">Olumlu</SelectItem>
+              <SelectItem value="REJECTED">Olumsuz</SelectItem>
+              <SelectItem value="YOK">Karar yok</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         {/* Tekrar basvuranlar filtresi — sinav filtresiyle AYNI ilke: SUNUCU tarafinda
             uygulanir, ayni `where` findMany + count'ta kullanilir (sayfalama tutarli).
             Kume TAM: Evet ∪ Hayir = tum basvurular (TC'si bos kayitlar Hayir tarafinda). */}
@@ -2029,6 +2055,8 @@ export default function RecruitmentPage() {
                         <TableCell>
                           <div className="flex flex-wrap items-center gap-1">
                             <JobApplicationStatusBadge status={app.status} />
+                            {/* Karar yoksa rozet HİÇ çizilmez (bileşen null döner). */}
+                            <MudurKarariBadge karar={app.mudurKarari} />
                             {/* Tek başvuruda sunucu null döner → rozet hiç çizilmez.
                                 Tooltip'te "Son başvuru: <tarih> — <statü>". */}
                             <MukerrerBasvuruBadge rozet={app.mukerrer} />

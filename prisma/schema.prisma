@@ -5951,6 +5951,16 @@ model PublicJobApplication {
   assignedManager   User?     @relation("AssignedApplications", fields: [assignedManagerId], references: [id], onDelete: SetNull)
   assignedAt        DateTime?
 
+  // Müdür kademesi kararı (additive, nullable) — müdürden YALNIZ iki sonuç çıkar:
+  // APPROVED / REJECTED. İkisi de başvuruyu REVIEWING'e (İV Havuzu) döndürür.
+  // MUDUR_MULAKATI aşaması emekliye ayrıldı; müdür mülakat yapıp yapmamaya kendi karar verir.
+  // mudurKarariVeren: User.id — FK YOK, StageLog.changedBy ile aynı düz-alan deseni
+  // (kullanıcı silinse de karar geçmişi okunabilir kalsın).
+  mudurKarari       ApprovalDecision?
+  mudurKarariNotu   String?           @db.Text
+  mudurKarariTarihi DateTime?
+  mudurKarariVeren  String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -5960,6 +5970,7 @@ model PublicJobApplication {
   @@index([rejectionReasonId])
   @@index([referralSourceId])
   @@index([assignedManagerId])
+  @@index([mudurKarari])
 }
 
 // Başvuru kaynağı SÖZLÜĞÜ — İK yönetir (Tanımlar). Eski ReferralSource enum'unun

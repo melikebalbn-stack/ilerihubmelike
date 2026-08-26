@@ -39,5 +39,64 @@ export default async function ZimmetOnayPage({
     updatedAt: zimmet.updatedAt.toISOString(),
   }
 
-  return <ZimmetOnayClient zimmet={zimmetData} />
+  // Bu cihazın geçmişi: AYNI seriNumarasi'na sahip diğer kayıtlar. Seri no boşsa
+  // gösterilmez (devir verisinde "Microsoft 365 İş Standart" gibi ortak metinler
+  // 33 kayıtta tekrar ediyor → yanlış eşleşme olur).
+  const seri = zimmet.seriNumarasi?.trim()
+  const gecmis = seri
+    ? await prisma.zimmetFormu.findMany({
+        where: { seriNumarasi: seri, silindiMi: false, id: { not: id } },
+        orderBy: { verilisTarihi: 'desc' },
+        select: {
+          id: true,
+          verilisTarihi: true,
+          iadeTarihi: true,
+          durum: true,
+          cihazDurumu: true,
+          zimmetSahibi: { select: { name: true, email: true } },
+        },
+      })
+    : []
+
+  const fmt = (d: Date | null) =>
+    d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
+
+  return (
+    <>
+      <ZimmetOnayClient zimmet={zimmetData} />
+      {gecmis.length > 0 && (
+        <div className="mx-auto max-w-3xl px-4 pb-10">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">Bu cihazın geçmişi</h2>
+          <div className="overflow-x-auto rounded-md border border-slate-200">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Sahip</th>
+                  <th className="px-3 py-2">Veriliş</th>
+                  <th className="px-3 py-2">İade</th>
+                  <th className="px-3 py-2">Durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gecmis.map((g) => (
+                  <tr key={g.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2 text-slate-800">{g.zimmetSahibi?.name ?? g.zimmetSahibi?.email ?? '—'}</td>
+                    <td className="px-3 py-2 text-slate-600">{fmt(g.verilisTarihi)}</td>
+                    <td className="px-3 py-2 text-slate-600">{fmt(g.iadeTarihi)}</td>
+                    <td className="px-3 py-2 text-slate-600">
+                      {g.iadeTarihi
+                        ? g.cihazDurumu === 'HURDA'
+                          ? 'Hurda'
+                          : 'Envanterde'
+                        : g.durum}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
+  )
 }

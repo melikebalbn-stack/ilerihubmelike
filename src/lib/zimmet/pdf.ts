@@ -74,6 +74,7 @@ const TUR_LABELS: Record<ZimmetTuru, string> = {
 const CIHAZ_DURUMU_LABELS: Record<ZimmetCihazDurumu, string> = {
   AKTIF: 'Aktif',
   PASIF: 'Pasif',
+  HURDA: 'Hurda',
 }
 
 const LOGO_PATH = path.join(process.cwd(), 'public', 'images', 'zimmet', 'ileri-group-logo.png')

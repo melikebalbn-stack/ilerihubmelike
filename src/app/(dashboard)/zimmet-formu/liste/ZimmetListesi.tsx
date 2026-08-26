@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
+  ArchiveRestore,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -23,6 +24,7 @@ import {
   Shapes,
   Smartphone,
   Trash2,
+  UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -62,6 +64,8 @@ import { getZimmetDurumRozeti } from '@/lib/zimmet/constants'
 import { cokluAlandaAra } from '@/lib/zimmet/arama'
 import { ZimmetDurumBadge } from '../ZimmetDurumBadge'
 import { IslakImzaYukleDialog } from '../IslakImzaYukleDialog'
+import { PersonelCombobox } from '../PersonelCombobox'
+import type { PersonelHit } from '../useZimmetFormu'
 
 // ── Tipler ──────────────────────────────────────────────────────────────────
 
@@ -93,6 +97,8 @@ type ZimmetItem = {
   imeiNumarasi: string | null
   verilisTarihi: string | null
   cihazDurumu: string
+  iadeTarihi: string | null
+  iadeAlanId: string | null
   durum: string
   kaynak: string
   redSebebi: string | null
@@ -217,8 +223,10 @@ function turKovasi(zimmet: Pick<ZimmetItem, 'tur' | 'turDiger'>): Exclude<StatKe
 }
 
 function hesaplaIstatistik(zimmetler: ZimmetItem[]): Record<StatKey, number> {
+  // Tür kırılımı yalnız GÜNCEL zimmetleri sayar (iade edilenler hariç).
+  const guncel = zimmetler.filter((z) => z.iadeTarihi === null)
   const sayac: Record<StatKey, number> = {
-    toplam: zimmetler.length,
+    toplam: guncel.length,
     NOTEBOOK_BILGISAYAR: 0,
     DESKTOP_BILGISAYAR: 0,
     CEP_TELEFONU: 0,
@@ -229,8 +237,18 @@ function hesaplaIstatistik(zimmetler: ZimmetItem[]): Record<StatKey, number> {
     OFFICE_365: 0,
     DIGER: 0,
   }
-  for (const z of zimmetler) sayac[turKovasi(z)]++
+  for (const z of guncel) sayac[turKovasi(z)]++
   return sayac
+}
+
+// Durum özeti (üst bant): iade akışına göre kova sayıları.
+function hesaplaDurumOzeti(zimmetler: ZimmetItem[]) {
+  return {
+    zimmetli: zimmetler.filter((z) => z.iadeTarihi === null && z.cihazDurumu === 'AKTIF').length,
+    envanterde: zimmetler.filter((z) => z.cihazDurumu === 'PASIF').length,
+    hurda: zimmetler.filter((z) => z.cihazDurumu === 'HURDA').length,
+    gecmis: zimmetler.filter((z) => z.iadeTarihi !== null).length,
+  }
 }
 
 // İstatistik kartına tıklayınca uygulanan tür filtresi - 'toplam' = filtre yok.
@@ -464,6 +482,15 @@ export function ZimmetListesi() {
   const [duzenlenecek, setDuzenlenecek] = useState<ZimmetItem | null>(null)
   const [duzenleForm, setDuzenleForm] = useState<DuzenleFormData>(BOS_DUZENLE_FORM)
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  // İade alma / yeniden zimmetleme akışı
+  const [personelListesi, setPersonelListesi] = useState<PersonelHit[]>([])
+  const [iadeAlinacak, setIadeAlinacak] = useState<ZimmetItem | null>(null)
+  const [iadeHedef, setIadeHedef] = useState<'PASIF' | 'HURDA'>('PASIF')
+  const [iadeNot, setIadeNot] = useState('')
+  const [iadeGonderiliyor, setIadeGonderiliyor] = useState(false)
+  const [yenidenZimmet, setYenidenZimmet] = useState<ZimmetItem | null>(null)
+  const [yeniSahipId, setYeniSahipId] = useState('')
+  const [yenidenGonderiliyor, setYenidenGonderiliyor] = useState(false)
   // Devir bildirimi ekranı. devirAdaylar null = approve yetkisi yok → buton gizli.
   const [devirAdaylar, setDevirAdaylar] = useState<DevirAday[] | null>(null)
   const [devirDialogAcik, setDevirDialogAcik] = useState(false)
@@ -507,6 +534,63 @@ export function ZimmetListesi() {
     fetchDevirAdaylar()
   }, [fetchZimmetler, fetchDevirAdaylar])
 
+  // Yeniden zimmetleme kişi seçici için personel listesi (diğer modüllerle aynı uç).
+  useEffect(() => {
+    fetch('/api/users?source=db')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: PersonelHit[]) => setPersonelListesi(data))
+      .catch(() => setPersonelListesi([]))
+  }, [])
+
+  async function iadeAlKaydet() {
+    if (!iadeAlinacak) return
+    setIadeGonderiliyor(true)
+    try {
+      const res = await fetch(`/api/zimmet-formu/${iadeAlinacak.id}/iade-al`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hedefDurum: iadeHedef, not: iadeNot.trim() || undefined }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}) as { error?: string })
+        throw new Error((d as { error?: string }).error || 'İade alınamadı')
+      }
+      toast.success(iadeHedef === 'HURDA' ? 'Cihaz hurdaya çıkarıldı' : 'Cihaz envantere alındı')
+      setIadeAlinacak(null)
+      setIadeNot('')
+      setIadeHedef('PASIF')
+      fetchZimmetler()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'İade alınamadı')
+    } finally {
+      setIadeGonderiliyor(false)
+    }
+  }
+
+  async function yenidenZimmetleKaydet() {
+    if (!yenidenZimmet || !yeniSahipId) return
+    setYenidenGonderiliyor(true)
+    try {
+      const res = await fetch(`/api/zimmet-formu/${yenidenZimmet.id}/yeniden-zimmetle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yeniSahipId }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}) as { error?: string })
+        throw new Error((d as { error?: string }).error || 'Yeniden zimmetlenemedi')
+      }
+      toast.success('Cihaz yeni sahibine zimmetlendi (onay bekliyor)')
+      setYenidenZimmet(null)
+      setYeniSahipId('')
+      fetchZimmetler()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Yeniden zimmetlenemedi')
+    } finally {
+      setYenidenGonderiliyor(false)
+    }
+  }
+
   const devirTumunuSec = () => setDevirSecili(new Set((devirAdaylar ?? []).map((a) => a.userId)))
   const devirSecimiTemizle = () => setDevirSecili(new Set())
   const devirToggle = (id: string) =>
@@ -542,6 +626,7 @@ export function ZimmetListesi() {
   }
 
   const istatistik = useMemo(() => hesaplaIstatistik(zimmetler), [zimmetler])
+  const durumOzeti = useMemo(() => hesaplaDurumOzeti(zimmetler), [zimmetler])
 
   const zimmetlerGorunen = useMemo(() => {
     const filtreli = zimmetler.filter(
@@ -684,7 +769,27 @@ export function ZimmetListesi() {
           </div>
         </div>
 
-        {/* İstatistik kartları */}
+        {/* Durum özeti (iade akışı) */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs text-slate-500">Zimmetli</p>
+            <p className="text-xl font-semibold text-emerald-600">{durumOzeti.zimmetli}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs text-slate-500">Envanterde</p>
+            <p className="text-xl font-semibold text-slate-700">{durumOzeti.envanterde}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs text-slate-500">Hurda</p>
+            <p className="text-xl font-semibold text-rose-600">{durumOzeti.hurda}</p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs text-slate-500">Geçmiş (iade)</p>
+            <p className="text-xl font-semibold text-slate-400">{durumOzeti.gecmis}</p>
+          </div>
+        </div>
+
+        {/* İstatistik kartları (güncel zimmetler — tür kırılımı) */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {STAT_KARTLARI.map((stat) => {
             const Icon = stat.icon
@@ -833,7 +938,7 @@ export function ZimmetListesi() {
                     zimmetlerGorunen.map((z) => {
                       const rozet = getZimmetDurumRozeti(z)
                       return (
-                        <TableRow key={z.id}>
+                        <TableRow key={z.id} className={z.iadeTarihi ? 'opacity-60' : undefined}>
                           <TableCell className="font-mono text-xs text-slate-600">
                             {z.seriNumarasi ?? '—'}
                           </TableCell>
@@ -857,6 +962,16 @@ export function ZimmetListesi() {
                           <TableCell className="text-slate-600">{fmtDate(z.verilisTarihi)}</TableCell>
                           <TableCell>
                             <ZimmetDurumBadge zimmet={z} />
+                            {z.iadeTarihi && (
+                              <span className="mt-1 block text-[11px] text-slate-500">
+                                İade alındı: {fmtDate(z.iadeTarihi)}
+                                {z.cihazDurumu === 'HURDA'
+                                  ? ' · Hurda'
+                                  : z.cihazDurumu === 'PASIF'
+                                    ? ' · Envanterde'
+                                    : ''}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -915,6 +1030,39 @@ export function ZimmetListesi() {
                                   <Send className="h-4 w-4" />
                                 </Button>
                               )}
+                              {/* İade al: onaylanmış + henüz iade edilmemiş cihaz */}
+                              {z.durum === 'ONAYLANDI' && z.iadeTarihi === null && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  title="İade al (envantere/hurdaya)"
+                                  className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                  onClick={() => {
+                                    setIadeHedef('PASIF')
+                                    setIadeNot('')
+                                    setIadeAlinacak(z)
+                                  }}
+                                >
+                                  <ArchiveRestore className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {/* Yeniden zimmetle: envantere alınmış (iade + PASIF) cihaz */}
+                              {z.iadeTarihi !== null && z.cihazDurumu === 'PASIF' && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Yeniden zimmetle"
+                                  className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                  onClick={() => {
+                                    setYeniSahipId('')
+                                    setYenidenZimmet(z)
+                                  }}
+                                >
+                                  <UserPlus className="h-4 w-4" />
+                                </Button>
+                              )}
                               {z.durum === 'ONAY_BEKLIYOR' && (
                                 <Button
                                   type="button"
@@ -960,6 +1108,83 @@ export function ZimmetListesi() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* İade alma dialog'u */}
+      <Dialog open={iadeAlinacak !== null} onOpenChange={(o) => { if (!o) setIadeAlinacak(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cihazı iade al</DialogTitle>
+            <DialogDescription>
+              {iadeAlinacak ? `${turGosterim(iadeAlinacak)} — ${iadeAlinacak.seriNumarasi ?? '—'}` : ''}. Cihaz
+              geri alınır; imzalı tutanak (ONAYLANDI) korunur.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={iadeHedef === 'PASIF' ? 'default' : 'outline'}
+                className="flex-1"
+                onClick={() => setIadeHedef('PASIF')}
+              >
+                Envantere al
+              </Button>
+              <Button
+                type="button"
+                variant={iadeHedef === 'HURDA' ? 'destructive' : 'outline'}
+                className="flex-1"
+                onClick={() => setIadeHedef('HURDA')}
+              >
+                Hurdaya çıkar
+              </Button>
+            </div>
+            <Textarea
+              value={iadeNot}
+              onChange={(e) => setIadeNot(e.target.value)}
+              placeholder="Not (opsiyonel)"
+              className="min-h-[70px]"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIadeAlinacak(null)} disabled={iadeGonderiliyor}>
+              Vazgeç
+            </Button>
+            <Button type="button" onClick={iadeAlKaydet} disabled={iadeGonderiliyor}>
+              {iadeGonderiliyor ? 'İşleniyor…' : iadeHedef === 'HURDA' ? 'Hurdaya çıkar' : 'Envantere al'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Yeniden zimmetleme dialog'u */}
+      <Dialog open={yenidenZimmet !== null} onOpenChange={(o) => { if (!o) setYenidenZimmet(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Yeniden zimmetle</DialogTitle>
+            <DialogDescription>
+              {yenidenZimmet ? `${turGosterim(yenidenZimmet)} — ${yenidenZimmet.seriNumarasi ?? '—'}` : ''}. Yeni
+              sahibe onay bekleyen bir zimmet kaydı açılır; eski kayıt korunur.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Yeni zimmet sahibi</Label>
+            <PersonelCombobox
+              personelListesi={personelListesi}
+              value={yeniSahipId}
+              onSelect={setYeniSahipId}
+              placeholder="Personel seçin"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setYenidenZimmet(null)} disabled={yenidenGonderiliyor}>
+              Vazgeç
+            </Button>
+            <Button type="button" onClick={yenidenZimmetleKaydet} disabled={!yeniSahipId || yenidenGonderiliyor}>
+              {yenidenGonderiliyor ? 'İşleniyor…' : 'Zimmetle'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Devir bildirimi gönderme dialog'u */}
       <Dialog open={devirDialogAcik} onOpenChange={(o) => { if (!o) setDevirDialogAcik(false) }}>

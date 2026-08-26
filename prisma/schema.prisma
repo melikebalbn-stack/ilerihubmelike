@@ -2410,6 +2410,17 @@ model Ticket {
   zimmetFormuId String?
   zimmetFormu   ZimmetFormu? @relation("TicketZimmetFormu", fields: [zimmetFormuId], references: [id], onDelete: SetNull)
 
+  // ── E-posta kanalı ────────────────────────────────────────────────────
+  // Talep mail ile açıldıysa doldurulur; web portalından açılanlarda NULL kalır.
+  // Yanıt eşleştirmenin ANA yolu conversationId; internetMessageId onun yedeği
+  // (In-Reply-To / References başlıklarıyla eşleşme için).
+  emailConversationId String? // Graph conversationId
+  emailMessageId      String? // ilk mailin internetMessageId'si
+  // Mailin GERÇEK göndereni. requesterEmail'den AYRI tutuluyor: mail atan kişi
+  // sistemde kayıtlı olmayabilir, o durumda requesterEmail bir vekil değere
+  // düşerken emailFrom ham adresi korur.
+  emailFrom String?
+
   // Atama
   assignedTo     String? // Atanan teknisyen email
   assignedToName String?
@@ -2473,6 +2484,8 @@ model Ticket {
   @@index([createdAt])
   @@index([slaResolutionDue])
   @@index([zimmetFormuId])
+  @@index([emailConversationId])
+  @@index([emailMessageId])
 }
 
 // Ticket Tipleri (ITIL)
@@ -2545,6 +2558,11 @@ model TicketComment {
 
   attachments String? @db.Text // JSON array
 
+  // Yorum bir mail yanıtından geldiyse o mailin internetMessageId'si.
+  // UNIQUE: aynı mail iki kez işlenirse ikinci yazma DB seviyesinde reddedilir
+  // (uygulama katmanındaki tekilleştirmenin son savunma hattı).
+  emailMessageId String? @unique
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2601,6 +2619,37 @@ enum WorkLogType {
   PHONE_SUPPORT // Telefon desteği
   RESEARCH // Araştırma
   DOCUMENTATION // Dokümantasyon
+}
+
+// ── E-posta alım (ingest) günlüğü ───────────────────────────────────────
+// Gelen her mail için TEK satır. Amaç iki yönlü: (1) messageId UNIQUE olduğu
+// için aynı mail iki kez işlenemez, (2) yoksayılan/hatalı mailler de kayda
+// geçtiği için "mail geldi ama ticket açılmadı" durumu görülebilir olur.
+enum EmailIngestSonuc {
+  TICKET_OLUSTURULDU
+  YORUM_EKLENDI
+  YOKSAYILDI // otomatik yanıt, bounce, boş gövde vb.
+  HATA
+}
+
+model EmailIngestLog {
+  id             String   @id @default(cuid())
+  messageId      String   @unique // internetMessageId — tekilleştirme anahtarı
+  conversationId String?
+  fromAddress    String
+  toAddress      String? // hangi adrese gelmiş
+  subject        String?
+  receivedAt     DateTime? // mailin kendi tarihi
+  processedAt    DateTime @default(now())
+  sonuc          EmailIngestSonuc
+  // Ticket'a KASITLI olarak formal ilişki (FK) YOK: ticket silinse bile alım
+  // günlüğü bozulmadan kalsın. Aynı desen EnvanterIslemLog / ZimmetDurumGecmisi.
+  ticketId   String?
+  hataMesaji String? @db.Text
+
+  @@index([conversationId])
+  @@index([processedAt])
+  @@index([sonuc])
 }
 
 // SLA Politikaları

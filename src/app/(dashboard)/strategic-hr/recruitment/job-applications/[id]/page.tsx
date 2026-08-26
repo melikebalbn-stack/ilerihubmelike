@@ -185,14 +185,18 @@ const sinavDurumRenk: Record<string, string> = {
   ATANDI: "bg-blue-100 text-blue-800", BASLADI: "bg-amber-100 text-amber-800",
   TAMAMLANDI: "bg-emerald-100 text-emerald-800", SURESI_DOLDU: "bg-slate-100 text-slate-600", IPTAL: "bg-slate-100 text-slate-600",
 }
+// note/changedByName/changedByTitle: saf müdür (İK yetkisi yok) yanıtında SUNUCU bunları
+// HİÇ göndermez (bkz. stage-log/route.ts · SAF MÜDÜR KISITI) — bu yüzden opsiyonel.
+// kendiSatirim: yalnız kısıtlı yanıtta gelir; kullanıcının KENDİ yazdığı satırı işaretler.
 type StageLogRow = {
   id: string
   fromStatus: string | null
   toStatus: string
-  note: string | null
+  note?: string | null
   createdAt: string
-  changedByName: string | null
-  changedByTitle: string | null
+  changedByName?: string | null
+  changedByTitle?: string | null
+  kendiSatirim?: boolean
 }
 
 // Aşama geçmişini "değerlendirme turlarına" böler (SALT GÖRÜNTÜLEME — veri değişmez).
@@ -232,9 +236,9 @@ type ManagersResp = { onerilenler: ManagerOption[]; tumAktif: ManagerOption[]; u
 type RejectionReasonOption = { id: string; category: string; name: string }
 // Faz 4 — teknik mülakat onay zinciri satırı (sunucudan; ham approver id dönmez).
 type OnayAdimi = {
-  step: number; kademe: string; role: string; onaycıAdi: string | null
+  step: number; kademe: string; role: string; onaycıAdi?: string | null
   decision: "APPROVED" | "REJECTED" | "RETURNED" | "FORWARDED" | null
-  comment: string | null; decidedAt: string | null; createdAt: string
+  comment?: string | null; decidedAt: string | null; createdAt: string
 }
 
 export default function JobApplicationDetailPage() {
@@ -1343,7 +1347,7 @@ export default function JobApplicationDetailPage() {
 
           {/* Faz 4 — TEKNİK MÜLAKAT ONAY ZİNCİRİ. Satır yoksa kart hiç çıkmaz.
               Olumsuz görüş satırı SİLİNMEZ; İV neden döndüğünü burada görür. */}
-          {onayZinciri.length > 0 && (
+          {!app._restrictedView && onayZinciri.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -1508,12 +1512,17 @@ export default function JobApplicationDetailPage() {
                                 <span className="font-medium text-slate-700">
                                   {format(new Date(log.createdAt), "d MMM yyyy HH:mm", { locale: tr })}
                                 </span>
-                                {log.changedByName && (
+                                {/* Kişi adı yalnız İK görünümünde. Saf müdürde sunucu zaten
+                                    göndermiyor; kapı burada da açıkça duruyor (çift emniyet). */}
+                                {!app._restrictedView && log.changedByName && (
                                   <>
                                     {" · "}
                                     <span className="font-medium text-slate-600">{log.changedByName}</span>
                                     {log.changedByTitle ? ` (${log.changedByTitle})` : ""}
                                   </>
+                                )}
+                                {app._restrictedView && log.kendiSatirim && (
+                                  <>{" · "}<span className="font-medium text-slate-600">Siz</span></>
                                 )}
                               </div>
                               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm">
@@ -1525,7 +1534,9 @@ export default function JobApplicationDetailPage() {
                                 <span className="text-muted-foreground">&rarr;</span>
                                 <JobApplicationStatusBadge status={log.toStatus} />
                               </div>
-                              {log.note && (
+                              {/* Not: İK'da hepsi. Saf müdürde YALNIZ kendi yazdığı not
+                                  (sunucu diğerlerini zaten göndermiyor). */}
+                              {log.note && (!app._restrictedView || log.kendiSatirim) && (
                                 <div className="mt-1 text-xs text-slate-600 whitespace-pre-wrap">{log.note}</div>
                               )}
                             </li>

@@ -436,8 +436,25 @@ export async function POST(
     }
 
     // 8) Güncel kayıt + kademe atlandıysa UI'ın gösterebilmesi için bilgi.
+    //
+    // SAF MÜDÜR KISITI (2026-08): `updated` HAM kayıttır (Prisma update, select yok) —
+    // notes/tcKimlikNo/rejectionReasonId dahil HER alanı taşır. Müdür kendi kararını
+    // gönderdiğinde bu yanıt, detay ucundaki MANAGER_SELECT'i baypas ediyordu.
+    // İK yolunda gövde AYNEN eskisi gibi döner. Tek çağıran (detay ekranı) başarı
+    // gövdesini okumuyor (yalnız res.ok'a bakıp yeniden çekiyor), bu yüzden kısıt
+    // hiçbir akışı bozmaz.
+    const govde = roles.includes("IK")
+      ? updated
+      : {
+          id: updated.id,
+          applicationNumber: updated.applicationNumber,
+          status: updated.status,
+          assignedManagerId: updated.assignedManagerId,
+          mudurKarari: updated.mudurKarari,
+          mudurKarariTarihi: updated.mudurKarariTarihi,
+        };
     return NextResponse.json(
-      kademeAtlandi ? { ...updated, kademeAtlandi } : updated,
+      kademeAtlandi ? { ...govde, kademeAtlandi } : govde,
       { status: 200 },
     );
   } catch (err) {

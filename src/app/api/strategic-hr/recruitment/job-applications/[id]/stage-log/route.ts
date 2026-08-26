@@ -54,6 +54,14 @@ export async function GET(
     return NextResponse.json({ error: "Bu başvuruyu görüntüleme yetkiniz yok" }, { status: 403 });
   }
 
+  // SAF MÜDÜR KISITI (2026-08). İK yetkisi OLMAYAN kullanıcıya (atanan müdür, değerlendirici,
+  // teknik mülakatçı, zincir rolleri) serbest metin ve kişi adı DÖNMEZ: StageLog.note İV'nin
+  // iç metnini taşıyor (ücret pazarlığı, ret nedeni etiketi, iç değerlendirme) ve detay ucundaki
+  // MANAGER_SELECT ile kapatılan bilgi buradan geri geliyordu.
+  // Kısıt SUNUCUDA — ekran gizlemesi yeterli değil (uç doğrudan çağrılabilir).
+  // İK yolunda HİÇBİR ŞEY değişmez.
+  const ikYetkili = roles.includes("IK");
+
   // StageLog kayıtları (createdAt ASC). changedBy düz String id (User relation'ı yok),
   // bu yüzden manuel join: id'leri topla → User adı/unvanı çek → eşle. Ham id dönmez.
   const rows = await prisma.publicJobApplicationStageLog.findMany({
@@ -87,6 +95,20 @@ export async function GET(
 
   const logs = rows.map((r) => {
     const u = r.changedBy ? userById.get(r.changedBy) : undefined;
+    if (!ikYetkili) {
+      // Aşama AKIŞI kalır (tarih + from/to) — geçmiş kartı çizilmeye devam eder.
+      // İSTİSNA: kullanıcının KENDİ yazdığı not döner; kendi görüşünü hatırlaması meşru.
+      // note/changedByName/changedByTitle anahtarları yanıtta HİÇ YER ALMAZ (null bile değil).
+      const kendiSatirim = !!r.changedBy && r.changedBy === session.user.id;
+      return {
+        id: r.id,
+        fromStatus: r.fromStatus,
+        toStatus: r.toStatus,
+        createdAt: r.createdAt,
+        kendiSatirim,
+        ...(kendiSatirim && r.note ? { note: r.note } : {}),
+      };
+    }
     return {
       id: r.id,
       fromStatus: r.fromStatus,
@@ -142,15 +164,17 @@ export async function GET(
       approver: { select: { name: true, firstName: true, lastName: true, email: true } },
     },
   });
+  // Saf müdürde kademe YORUMU (serbest metin) ve onaycı ADI düşer; adım/kademe/karar kalır.
+  // (Ekranda onay zinciri kartı zaten _restrictedView ile gizli — bu, ucun doğrudan
+  // çağrılması hâlinde de sızıntı olmamasını sağlar.)
   const onayZinciri = onaylar.map((o) => ({
     step: o.step,
     kademe: o.kademe,
     role: o.role,
-    onaycıAdi: kullaniciAdi(o.approver),
     decision: o.decision,
-    comment: o.comment,
     decidedAt: o.decidedAt,
     createdAt: o.createdAt,
+    ...(ikYetkili ? { onaycıAdi: kullaniciAdi(o.approver), comment: o.comment } : {}),
   }));
 
   return NextResponse.json({

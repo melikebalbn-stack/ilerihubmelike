@@ -535,46 +535,65 @@ function TezgahListesi({
   )
 }
 
-// Durum kademesi → etiket + renk. Renkler tema token'ı / Tailwind paleti (hardcode hex yok).
+// Durum kademesi → etiket + tüm görsel stiller. Renkler: success=green paleti,
+// danger=destructive token'ı, bosta=mevcut (hepsi tema/palet token — hardcode hex YOK).
+// Pastel zemin çok açık (green-50 / destructive/10) → metin okunurluğu korunur.
 type TezgahDurum = 'calisiyor' | 'durusta' | 'bosta'
 const DURUM_ETIKET: Record<TezgahDurum, string> = {
   calisiyor: 'çalışıyor',
   durusta: 'duruşta',
   bosta: 'boşta',
 }
-const DURUM_METIN: Record<TezgahDurum, string> = {
-  calisiyor: 'text-green-600',
-  durusta: 'text-destructive',
-  bosta: 'text-muted-foreground',
-}
-const DURUM_NOKTA: Record<TezgahDurum, string> = {
-  calisiyor: 'bg-green-600',
-  durusta: 'bg-destructive',
-  bosta: 'bg-muted-foreground/50',
+const DURUM_STIL: Record<
+  TezgahDurum,
+  { kart: string; kutu: string; ikon: string; nokta: string; metin: string }
+> = {
+  calisiyor: {
+    kart: 'border-green-200 bg-green-50',
+    kutu: 'bg-card text-green-700', // kart pastel yeşil → kutu beyaz zemin, harf yeşil
+    ikon: 'text-green-600',
+    nokta: 'bg-green-600',
+    metin: 'font-medium text-green-700',
+  },
+  durusta: {
+    kart: 'border-destructive/30 bg-destructive/10',
+    kutu: 'bg-card text-destructive',
+    ikon: 'text-destructive',
+    nokta: 'bg-destructive',
+    metin: 'font-medium text-destructive',
+  },
+  bosta: {
+    kart: 'bg-card', // DEĞİŞMEZ: beyaz zemin + varsayılan border
+    kutu: 'bg-primary/10 text-primary', // DEĞİŞMEZ: mevcut accent stil
+    ikon: 'text-muted-foreground',
+    nokta: 'bg-muted-foreground/50',
+    metin: 'text-muted-foreground',
+  },
 }
 
 function TezgahKart({ t, seciliDept }: { t: Tezgah; seciliDept: string }) {
   const bas = t.resourceId.slice(0, 2).toLocaleUpperCase('tr-TR')
   const tanimli = t.iproTanimli
+  const stil = tanimli && t.durum ? DURUM_STIL[t.durum] : null
   const SignalIcon = t.sinyalli ? SignalHigh : SignalZero
   return (
     <Link
       href={`/terminal/uretim?dept=${encodeURIComponent(seciliDept)}&tezgah=${encodeURIComponent(t.resourceId)}`}
-      className="group relative flex items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
+      className={`group relative flex items-center gap-3 rounded-2xl border p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm ${stil ? stil.kart : 'bg-card'}`}
     >
       {/* Sağ üst: sinyal ikonu + durum noktası — yalnız IPRO tanımlı kaynakta (bilgi var). */}
       {tanimli && (
         <div className="absolute right-3 top-3 flex items-center gap-1.5">
           <SignalIcon
-            className={`h-4 w-4 text-muted-foreground ${t.sinyalli ? '' : 'opacity-40'}`}
+            className={`h-4 w-4 ${stil ? stil.ikon : 'text-muted-foreground'} ${t.sinyalli ? '' : 'opacity-40'}`}
             aria-hidden="true"
           />
-          {t.durum && <span className={`h-2 w-2 rounded-full ${DURUM_NOKTA[t.durum]}`} />}
+          {stil && <span className={`h-2 w-2 rounded-full ${stil.nokta}`} />}
         </div>
       )}
 
       <span
-        className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg text-[13px] font-semibold ${tanimli ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+        className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg text-[13px] font-semibold ${stil ? stil.kutu : 'bg-muted text-muted-foreground'}`}
       >
         {bas}
       </span>
@@ -584,12 +603,10 @@ function TezgahKart({ t, seciliDept }: { t: Tezgah; seciliDept: string }) {
         </div>
         <div className="line-clamp-2 text-xs text-muted-foreground">{t.description}</div>
         <div className="text-[11px] text-muted-foreground">İş merkezi {t.workCenterNo}</div>
-        {tanimli ? (
-          t.durum && (
-            <div className={`text-[11px] ${DURUM_METIN[t.durum]}`}>{DURUM_ETIKET[t.durum]}</div>
-          )
+        {stil ? (
+          <div className={`text-[11px] ${stil.metin}`}>{DURUM_ETIKET[t.durum!]}</div>
         ) : (
-          <div className="text-[11px] text-muted-foreground">IPRO’da tanımsız</div>
+          !tanimli && <div className="text-[11px] text-muted-foreground">IPRO’da tanımsız</div>
         )}
       </div>
     </Link>

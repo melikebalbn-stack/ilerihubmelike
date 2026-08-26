@@ -1030,8 +1030,8 @@ export function ZimmetListesi() {
                                   <Send className="h-4 w-4" />
                                 </Button>
                               )}
-                              {/* İade al: onaylanmış + henüz iade edilmemiş cihaz */}
-                              {z.durum === 'ONAYLANDI' && z.iadeTarihi === null && (
+                              {/* İade al: onaylanmış + henüz iade edilmemiş + AKTIF (kişide) cihaz */}
+                              {z.durum === 'ONAYLANDI' && z.iadeTarihi === null && z.cihazDurumu === 'AKTIF' && (
                                 <Button
                                   type="button"
                                   variant="ghost"

@@ -35,7 +35,7 @@ export async function POST(
 
     const zimmet = await prisma.zimmetFormu.findFirst({
       where: { id, silindiMi: false },
-      select: { id: true, durum: true, iadeTarihi: true },
+      select: { id: true, durum: true, iadeTarihi: true, cihazDurumu: true },
     })
     if (!zimmet) {
       return NextResponse.json({ error: 'Zimmet formu bulunamadı' }, { status: 404 })
@@ -45,6 +45,18 @@ export async function POST(
     }
     if (zimmet.iadeTarihi !== null) {
       return NextResponse.json({ error: 'Bu zimmet zaten iade alınmış.' }, { status: 409 })
+    }
+    // İade yalnızca AKTIF (kişide olan) cihaz için. Envanterdeki/hurdaki cihaz iade alınmaz.
+    if (zimmet.cihazDurumu !== ZimmetCihazDurumu.AKTIF) {
+      return NextResponse.json(
+        {
+          error:
+            zimmet.cihazDurumu === ZimmetCihazDurumu.HURDA
+              ? 'Hurdaya çıkarılmış cihaz iade alınamaz.'
+              : 'Bu cihaz zaten envanterde.',
+        },
+        { status: 409 },
+      )
     }
 
     const simdi = new Date()

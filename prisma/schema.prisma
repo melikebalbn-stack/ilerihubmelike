@@ -240,6 +240,7 @@ model User {
   zimmetFormlariSahip     ZimmetFormu[] @relation("ZimmetFormuSahibi")
   zimmetFormlariOnaylanan ZimmetFormu[] @relation("ZimmetFormuOnaylayan")
   zimmetFormlariOlusturan ZimmetFormu[] @relation("ZimmetFormuOlusturan")
+  zimmetIadeAldiklari     ZimmetFormu[] @relation("ZimmetIadeAlan")
 
   depoHareketleri DepoHareketLog[] @relation("DepoHareketKullanici")
 
@@ -12239,6 +12240,7 @@ enum ZimmetTuru {
 enum ZimmetCihazDurumu {
   AKTIF
   PASIF
+  HURDA
 }
 
 enum ZimmetOnayDurumu {
@@ -12309,12 +12311,18 @@ model ZimmetFormu {
   redSebebi         String?
   sonBildirimTarihi DateTime?
 
+  // İade akışı: cihaz geri alındığında doldurulur (iadeAlan = teslim alan IT/yetkili).
+  iadeTarihi DateTime?
+  iadeAlanId String?
+  iadeAlan   User?     @relation("ZimmetIadeAlan", fields: [iadeAlanId], references: [id])
+
   // Bu cihaza bağlanmış IT talepleri (Ticket.zimmetFormuId).
   tickets Ticket[] @relation("TicketZimmetFormu")
 
   @@index([zimmetSahibiId])
   @@index([durum])
   @@index([kaynak, durum])
+  @@index([iadeTarihi])
 }
 
 // Zimmet durum değişikliği audit log (append-only). ZimmetFormu'dan AYRI;

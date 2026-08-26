@@ -3,10 +3,17 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { dispatchTicketAssigned, dispatchTicketKapandi } from '@/lib/ticket-notifications'
 import { parseMembers, isTeamMember } from '@/lib/tickets/team-members'
-import { getSlaAyar, getTatilMap } from '@/lib/sla'
+import { getSlaAyar, getTatilMap, cozumSlaDakika, hesaplaSlaHedefleri } from '@/lib/sla'
 import { duraklatmaGecisi, ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
 import { z } from 'zod'
 import { puanlayabilirMi, redHttpKodu, RED_MESAJLARI } from '@/lib/tickets/memnuniyet'
+import {
+  KATEGORI_TURETME_SELECT,
+  etkinOncelik,
+  istemciGonderdiMi,
+  kategoriAtamasi,
+  type KategoriVarsayilanlari,
+} from '@/lib/tickets/kategori-turetme'
 
 // GET - Ticket detayı
 export async function GET(
@@ -223,7 +230,13 @@ export async function PUT(
       })
     }
 
-    if (categoryId !== undefined && categoryId !== existingTicket.categoryId) {
+    // ── Yeniden sınıflandırma: kategori + öncelik ─────────────────────────
+    // Bu iki alan SLA hedeflerinin ve (atamasız ticket'ta) kuyruğun girdisi.
+    // Değiştiklerinde aşağıda "yeniden türetme" bloğu devreye giriyor.
+    const kategoriDegisti = categoryId !== undefined && categoryId !== existingTicket.categoryId
+    const yeniKategoriId = categoryId !== undefined ? categoryId : existingTicket.categoryId
+
+    if (kategoriDegisti) {
       updateData.categoryId = categoryId
       timelineEntries.push({
         action: 'category_changed',
@@ -231,13 +244,37 @@ export async function PUT(
       })
     }
 
-    if (priority !== undefined && priority !== existingTicket.priority) {
-      updateData.priority = priority
+    // ETKİN kategori. Öncelik değiştiğinde de okunur, çünkü SLA dakikaları hâlâ
+    // MEVCUT kategoriden gelir (kategoride açık dakika varsa öncelik tabanı hiç
+    // devreye girmez). categoryId NULL'a çekildiyse null kalır.
+    //
+    // Sorgu KAPILI: yeniden türetmeyi tetikleyecek bir şey yoksa (durum değişimi,
+    // yorum, atama gibi sıradan PUT'lar) kategoriye hiç bakılmaz — her PUT'a
+    // fazladan bir DB turu bindirmemek için.
+    const turetmeGerekli = kategoriDegisti || istemciGonderdiMi(priority)
+    let kategori: KategoriVarsayilanlari | null = null
+    if (turetmeGerekli && yeniKategoriId) {
+      kategori = await prisma.ticketCategory.findUnique({
+        where: { id: yeniKategoriId },
+        select: KATEGORI_TURETME_SELECT,
+      })
+    }
+
+    // Etkin öncelik: istemci > (kategori DEĞİŞTİYSE) yeni kategorinin varsayılanı
+    // > mevcut öncelik. Kategori değişmediyse varsayılanı devreye sokmuyoruz:
+    // yoksa alakasız bir PUT eski bir ticket'ın önceliğini sessizce değiştirirdi.
+    const etkinPriority = etkinOncelik(priority, kategoriDegisti ? kategori : null, existingTicket.priority)
+    const oncelikDegisti = etkinPriority !== existingTicket.priority
+
+    if (oncelikDegisti) {
+      updateData.priority = etkinPriority
       timelineEntries.push({
         action: 'priority_changed',
-        description: 'Öncelik değiştirildi',
+        description: istemciGonderdiMi(priority)
+          ? 'Öncelik değiştirildi'
+          : 'Öncelik yeni kategorinin varsayılanına güncellendi',
         oldValue: existingTicket.priority,
-        newValue: priority,
+        newValue: etkinPriority,
       })
     }
 
@@ -364,6 +401,107 @@ export async function PUT(
         action: 'team_assigned',
         description: 'Ekip ataması değiştirildi',
       })
+    }
+
+    // ── YENİDEN TÜRETME: kategori/öncelik değiştiyse SLA + (boşsa) kuyruk ────
+    // Açık atama bloklarından SONRA çalışır: istemci aynı istekte atama
+    // gönderdiyse ona dokunmayız, türetme yalnız boşluğu doldurur.
+    if (kategoriDegisti || oncelikDegisti) {
+      const slaDk = cozumSlaDakika(kategori, etkinPriority)
+      // BAŞLANGIÇ ANI createdAt — `now` DEĞİL. Yeniden sınıflandırma SLA saatini
+      // sıfırlamaz; talep açıldığı andan itibaren işlemeye devam eder.
+      const yeniHedef = await hesaplaSlaHedefleri(
+        existingTicket.createdAt,
+        slaDk.responseMin,
+        slaDk.resolutionMin,
+      )
+
+      // KORUMA — her hedef AYRI değerlendirilir. İhlal işaretlenmişse ya da
+      // hedefe zaten ulaşılmışsa o hedef DONAR. Gerekçe ihlal.ts:7'deki ilke:
+      // "hedef tarih KAYDIRILMAZ — denetim izi". Geçmişe dönük bir hedef
+      // kaydırması, gerçekleşmiş bir ihlali olmamış gibi gösterirdi.
+      //
+      // ESKİ KAYITLAR: responseDueAt/resolutionDueAt'i NULL olan motor öncesi
+      // ticket'lar da buradan geçer ve hedefleri İLK KEZ üretilir — ihlal
+      // bayrakları false, respondedAt/resolvedAt null olduğu sürece koruma
+      // engellemez. NULL hedefli ticket'ları cron zaten hiç değerlendirmiyordu.
+      const yanitGuncellenebilir =
+        existingTicket.respondedAt === null && existingTicket.slaResponseBreached === false
+      const cozumGuncellenebilir =
+        existingTicket.resolvedAt === null && existingTicket.slaResolutionBreached === false
+
+      const ayniAn = (a: Date | null, b: Date): boolean => a !== null && a.getTime() === b.getTime()
+
+      const yanitDegisti = yanitGuncellenebilir && !ayniAn(existingTicket.responseDueAt, yeniHedef.responseDueAt)
+      const cozumDegisti = cozumGuncellenebilir && !ayniAn(existingTicket.resolutionDueAt, yeniHedef.resolutionDueAt)
+
+      if (yanitDegisti) {
+        updateData.responseDueAt = yeniHedef.responseDueAt
+        // Eski takvim-saati ikizi POST'ta hep aynı değerle yazılıyor; burada da
+        // birlikte güncellenir ki ikili ilk kez ayrışmasın. (Okuyan mantık yok.)
+        updateData.slaResponseDue = yeniHedef.responseDueAt
+      }
+      if (cozumDegisti) {
+        updateData.resolutionDueAt = yeniHedef.resolutionDueAt
+        updateData.slaResolutionDue = yeniHedef.resolutionDueAt
+      }
+
+      // Timeline YALNIZ hedef fiilen değiştiyse. Koruma engellediyse kayıt yok.
+      if (yanitDegisti || cozumDegisti) {
+        const bicim = (d: Date | null): string => (d === null ? '—' : d.toISOString())
+        const parcalar: string[] = []
+        if (yanitDegisti) parcalar.push(`yanıt ${bicim(existingTicket.responseDueAt)} → ${bicim(yeniHedef.responseDueAt)}`)
+        if (cozumDegisti) parcalar.push(`çözüm ${bicim(existingTicket.resolutionDueAt)} → ${bicim(yeniHedef.resolutionDueAt)}`)
+        const donan: string[] = []
+        if (!yanitGuncellenebilir) donan.push('yanıt')
+        if (!cozumGuncellenebilir) donan.push('çözüm')
+
+        timelineEntries.push({
+          action: 'sla_recalculated',
+          description:
+            `SLA hedefi yeniden hesaplandı (${parcalar.join(', ')})` +
+            (donan.length > 0 ? ` — ${donan.join(' ve ')} hedefi dondu` : ''),
+          oldValue: `${bicim(existingTicket.responseDueAt)} / ${bicim(existingTicket.resolutionDueAt)}`,
+          newValue:
+            `${bicim(yanitDegisti ? yeniHedef.responseDueAt : existingTicket.responseDueAt)} / ` +
+            `${bicim(cozumDegisti ? yeniHedef.resolutionDueAt : existingTicket.resolutionDueAt)}`,
+        })
+      }
+
+      // KUYRUK — yalnız ticket TAMAMEN atamasızsa. Atanmış/havuzdaki bir
+      // ticket'tan kimsenin işini koparmıyoruz. İstemci aynı istekte atama
+      // gönderdiyse de karışmıyoruz (yukarıdaki bloklar onu zaten işledi).
+      const atamaBos =
+        existingTicket.assignedTo === null &&
+        existingTicket.assignedTeamId === null &&
+        assignedTo === undefined &&
+        assignedTeamId === undefined
+
+      if (kategoriDegisti && atamaBos) {
+        const atama = kategoriAtamasi(kategori)
+        if (atama.assignedTeamId) {
+          updateData.assignedTeamId = atama.assignedTeamId
+          timelineEntries.push({
+            action: 'team_assigned',
+            description: 'Kategori değişimiyle ekibe atandı',
+          })
+        } else if (atama.assignedTo) {
+          updateData.assignedTo = atama.assignedTo
+          updateData.assignedToName = null // LDAP'tan isim alınabilir (POST'ta da null)
+          timelineEntries.push({
+            action: 'assigned',
+            description: `Kategori değişimiyle ${atama.assignedTo} kişisine atandı`,
+          })
+          // POST'taki `status: assignedTo ? 'ASSIGNED' : 'NEW'` kuralının PUT
+          // karşılığı: yalnız NEW ilerletilir (mevcut atama bloğuyla aynı guard,
+          // satır ~351). IN_PROGRESS bir ticket geriye çekilmez. Aynı istekte
+          // istemci durum gönderdiyse ona dokunulmaz.
+          if (updateData.status === undefined && existingTicket.status === 'NEW') {
+            updateData.status = 'ASSIGNED'
+          }
+        }
+        // Takıma düşen ticket NEW kalır — havuzda bekler (POST ile aynı).
+      }
     }
 
     if (resolutionSummary !== undefined) {

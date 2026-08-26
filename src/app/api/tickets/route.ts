@@ -6,6 +6,12 @@ import { requireUser } from '@/lib/auth/require-user'
 import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
 import { cozumSlaDakika, hesaplaSlaHedefleri } from '@/lib/sla'
 import { cihazAnlikGoruntu, ASSET_INFO_MAX } from '@/lib/tickets/cihaz-etiket'
+import {
+  KATEGORI_TURETME_SELECT,
+  etkinOncelik,
+  kategoriAtamasi,
+  type KategoriVarsayilanlari,
+} from '@/lib/tickets/kategori-turetme'
 
 // Ticket numarası oluştur
 async function generateTicketNumber(): Promise<string> {
@@ -157,7 +163,11 @@ export async function POST(request: NextRequest) {
       description,
       ticketType = 'INCIDENT',
       categoryId,
-      priority = 'NORMAL',
+      // DİKKAT: burada `priority = 'NORMAL'` varsayılanı YOK — bilerek.
+      // Varsayılan olsaydı "istemci göndermedi" ile "istemci NORMAL gönderdi"
+      // ayırt edilemezdi ve kategorinin defaultPriority'si hiç devreye giremezdi.
+      // Etkin değer aşağıda etkinOncelik() ile çözülüyor.
+      priority,
       impact = 'INDIVIDUAL',
       urgency = 'MEDIUM',
       location,
@@ -231,39 +241,29 @@ export async function POST(request: NextRequest) {
     let assignedTo = null
     let assignedToName = null
     let assignedTeamId = null
-    let kategoriSla: { slaResponseMinutes: number | null; slaResolutionMinutes: number | null } | null = null
+    // Kategori TEK değişkende: SLA dakikaları, atama ve öncelik varsayılanı
+    // aynı kayıttan okunuyor.
+    let kategori: KategoriVarsayilanlari | null = null
 
     if (categoryId) {
-      const category = await prisma.ticketCategory.findUnique({
+      kategori = await prisma.ticketCategory.findUnique({
         where: { id: categoryId },
-        select: {
-          defaultAssigneeEmail: true,
-          defaultTeamId: true,
-          slaResponseMinutes: true,
-          slaResolutionMinutes: true,
-        }
+        select: KATEGORI_TURETME_SELECT,
       })
 
-      if (category) {
-        kategoriSla = {
-          slaResponseMinutes: category.slaResponseMinutes,
-          slaResolutionMinutes: category.slaResolutionMinutes,
-        }
-      }
-
-      // HAVUZ MODELİ — ÖNCELİK: takım > kişi.
-      // Kategori bir TAKIMA bağlıysa ticket takıma düşer ve `assignedTo` BOŞ kalır:
-      // kimseye özel atanmamıştır, üyelerden biri üstlenene kadar havuzda bekler
-      // (üstlenme akışı Faz 3). Bu yüzden status da ASSIGNED değil NEW olur —
-      // aşağıdaki `status: assignedTo ? 'ASSIGNED' : 'NEW'` bunu kendiliğinden verir.
-      // Takım yoksa eski davranış aynen sürer: defaultAssigneeEmail varsa kişiye atanır.
-      if (category?.defaultTeamId) {
-        assignedTeamId = category.defaultTeamId
-      } else if (category?.defaultAssigneeEmail) {
-        assignedTo = category.defaultAssigneeEmail
-        // LDAP'tan isim alınabilir
-      }
+      // Atama kuralı (takım > kişi) tek kaynakta: kategoriAtamasi(). Takıma düşen
+      // ticket'ta assignedTo BOŞ kalır, dolayısıyla aşağıdaki
+      // `status: assignedTo ? 'ASSIGNED' : 'NEW'` onu kendiliğinden NEW bırakır —
+      // havuzda, üyelerden biri üstlenene kadar.
+      const atama = kategoriAtamasi(kategori)
+      assignedTeamId = atama.assignedTeamId
+      assignedTo = atama.assignedTo
+      // assignedToName LDAP'tan alınabilir (bugün null kalıyor)
     }
+
+    // Etkin öncelik: istemci > kategori varsayılanı > 'NORMAL'.
+    // SLA de bu değerle türer (cozumSlaDakika aşağıda onu alıyor).
+    const etkinPriority = etkinOncelik(priority, kategori, 'NORMAL')
 
     // ── İŞ-SAATİ SLA (Faz 1b) ────────────────────────────────────────────
     // Dakikalar: kategori değeri varsa o, yoksa öncelik tabanı (cozumSlaDakika).
@@ -271,7 +271,7 @@ export async function POST(request: NextRequest) {
     // hedef üretilmez. Eski TAKVİM-saati alanları (slaResponseDue /
     // slaResolutionDue) İHLAL HESABI hâlâ onları okuduğu için yerinde bırakıldı
     // — bu fazda ihlal mantığına dokunulmuyor.
-    const slaDk = cozumSlaDakika(kategoriSla, priority)
+    const slaDk = cozumSlaDakika(kategori, etkinPriority)
     const slaHedef = await hesaplaSlaHedefleri(now, slaDk.responseMin, slaDk.resolutionMin)
 
     const ticket = await prisma.ticket.create({
@@ -281,7 +281,7 @@ export async function POST(request: NextRequest) {
         description: description.trim(),
         ticketType,
         categoryId,
-        priority,
+        priority: etkinPriority,
         impact,
         urgency,
         status: assignedTo ? 'ASSIGNED' : 'NEW',

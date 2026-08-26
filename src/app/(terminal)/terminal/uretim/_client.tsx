@@ -42,6 +42,17 @@ interface Departman {
   tezgah: number
 }
 
+interface Tezgah {
+  /** ResourceId — kaynak/tezgah kodu (DT03, PE02, …). */
+  resourceId: string
+  /** Description — kaynak adı. */
+  description: string
+  /** Bağlı iş merkezi kodu. */
+  workCenterNo: string
+  /** IPRO (ipro_tezgah.kod) karşılığı var mı. */
+  iproTanimli: boolean
+}
+
 interface Props {
   operatorName: string
   departmanlar: Departman[]
@@ -53,6 +64,12 @@ interface Props {
   /** URL ?dept — seçili bölüm kodu; yoksa seçim ekranı gösterilir. */
   seciliDept: string | null
   seciliDeptAd: string
+  /** URL ?tezgah — seçili tezgah (ResourceId); varsa yer tutucu gösterilir. */
+  seciliTezgah: string | null
+  /** Seçili departmanın tezgahları (aktif kaynaklar), ResourceId sıralı. */
+  tezgahlar: Tezgah[]
+  /** Seçili departmanın açık iş emri sayısı (başlık için). */
+  seciliDeptIsEmri: number
   ifsError: string | null
 }
 
@@ -96,6 +113,9 @@ export function TerminalMenuClient({
   vardiyalar,
   seciliDept,
   seciliDeptAd,
+  seciliTezgah,
+  tezgahlar,
+  seciliDeptIsEmri,
   ifsError,
 }: Props) {
   return (
@@ -103,7 +123,16 @@ export function TerminalMenuClient({
       <UstBar operatorName={operatorName} vardiyalar={vardiyalar} />
 
       {seciliDept ? (
-        <BolumSecildi seciliDept={seciliDept} seciliDeptAd={seciliDeptAd} />
+        seciliTezgah ? (
+          <TezgahSecildi seciliDept={seciliDept} seciliTezgah={seciliTezgah} />
+        ) : (
+          <TezgahListesi
+            seciliDept={seciliDept}
+            seciliDeptAd={seciliDeptAd}
+            tezgahlar={tezgahlar}
+            isEmri={seciliDeptIsEmri}
+          />
+        )
       ) : (
         <BolumSecim
           departmanlar={departmanlar}
@@ -440,42 +469,127 @@ function BolumKart({
   )
 }
 
-// ── Bölüm seçildi — yer tutucu (alt akış: tezgah/iş emri ayrı iş) ─────────────
-function BolumSecildi({
+// ── Tezgah listesi ekranı (?dept var, ?tezgah yok) ────────────────────────────
+function TezgahListesi({
   seciliDept,
   seciliDeptAd,
+  tezgahlar,
+  isEmri,
 }: {
   seciliDept: string
   seciliDeptAd: string
+  tezgahlar: Tezgah[]
+  isEmri: number
 }) {
-  const Icon = DEPT_ICON[seciliDept] ?? Building2
+  const Icon = DEPT_ICON[seciliDept] ?? Building2 // ana ekrandaki ikon map'i (ortak)
   return (
     <>
+      {/* Üst başlık: geri oku + departman ikonu + ad/alt bilgi */}
       <div className="flex items-center gap-3">
+        <Link
+          href="/terminal/uretim"
+          aria-label="Bölüm seçimine dön"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors hover:bg-muted active:bg-muted/70"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
         <span
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white"
           style={{ background: TERMINAL_ACCENT }}
         >
           <Icon className="h-5 w-5" />
         </span>
-        <div className="flex flex-col leading-tight">
-          <span className="text-base font-semibold">
-            {seciliDeptAd || seciliDept}
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate text-base font-semibold">{seciliDeptAd || seciliDept}</span>
+          <span className="text-xs text-muted-foreground">
+            {seciliDept} · {tezgahlar.length} tezgah · {isEmri} açık iş emri
           </span>
-          <span className="text-xs text-muted-foreground">{seciliDept}</span>
+        </div>
+      </div>
+
+      {tezgahlar.length === 0 ? (
+        <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed p-10 text-center">
+          <p className="text-sm text-muted-foreground">Bu bölümde tanımlı tezgah yok</p>
+          <Link
+            href="/terminal/uretim"
+            className="inline-flex min-h-12 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition-colors hover:bg-muted active:bg-muted/70"
+          >
+            <ArrowLeft className="h-5 w-5" />
+            Bölüm seçimine dön
+          </Link>
+        </div>
+      ) : (
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
+          {tezgahlar.map((t) => (
+            <TezgahKart key={t.resourceId} t={t} seciliDept={seciliDept} />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+function TezgahKart({ t, seciliDept }: { t: Tezgah; seciliDept: string }) {
+  const bas = t.resourceId.slice(0, 2).toLocaleUpperCase('tr-TR')
+  const tanimli = t.iproTanimli
+  return (
+    <Link
+      href={`/terminal/uretim?dept=${encodeURIComponent(seciliDept)}&tezgah=${encodeURIComponent(t.resourceId)}`}
+      className="group flex items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
+    >
+      <span
+        className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg text-[13px] font-semibold ${tanimli ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+      >
+        {bas}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className={`text-[15px] font-medium leading-tight ${tanimli ? '' : 'text-foreground/70'}`}>
+          {t.resourceId}
+        </div>
+        <div className="line-clamp-2 text-xs text-muted-foreground">{t.description}</div>
+        <div className="text-[11px] text-muted-foreground">
+          İş merkezi {t.workCenterNo}
+          {!tanimli && ' · IPRO’da tanımsız'}
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+// ── Tezgah seçildi — yer tutucu (iş emri listesi ayrı tur) ────────────────────
+function TezgahSecildi({
+  seciliDept,
+  seciliTezgah,
+}: {
+  seciliDept: string
+  seciliTezgah: string
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <Link
+          href={`/terminal/uretim?dept=${encodeURIComponent(seciliDept)}`}
+          aria-label="Tezgah listesine dön"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors hover:bg-muted active:bg-muted/70"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
+        <div className="flex flex-col leading-tight">
+          <span className="text-base font-semibold">{seciliTezgah}</span>
+          <span className="text-xs text-muted-foreground">Tezgah</span>
         </div>
       </div>
 
       <div className="flex flex-col items-start gap-4 rounded-2xl border border-dashed p-8">
         <p className="text-sm text-muted-foreground">
-          Bu bölümün tezgah ve iş emri listesi bir sonraki adımda eklenecek.
+          Bu tezgahın iş emri listesi bir sonraki adımda eklenecek.
         </p>
         <Link
-          href="/terminal/uretim"
+          href={`/terminal/uretim?dept=${encodeURIComponent(seciliDept)}`}
           className="inline-flex min-h-12 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition-colors hover:bg-muted active:bg-muted/70"
         >
           <ArrowLeft className="h-5 w-5" />
-          Bölüm değiştir
+          Tezgah listesine dön
         </Link>
       </div>
     </>

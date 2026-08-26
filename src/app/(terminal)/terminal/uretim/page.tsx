@@ -21,7 +21,7 @@ export const metadata = { title: 'IPRO' }
 export default async function UretimTerminalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ dept?: string }>
+  searchParams: Promise<{ dept?: string; tezgah?: string }>
 }) {
   const { session, error } = await requirePermission('admin.system.manage')
   if (error) {
@@ -32,8 +32,9 @@ export default async function UretimTerminalPage({
     )
   }
 
-  const { dept } = await searchParams
+  const { dept, tezgah } = await searchParams
   const seciliDept = typeof dept === 'string' && dept.trim() ? dept.trim() : null
+  const seciliTezgah = typeof tezgah === 'string' && tezgah.trim() ? tezgah.trim() : null
 
   // IFS "Bakım Atölyesi Bölümleri" — site (ILER2) için tüm bölümler (10 kayıt).
   let departmanlar: { kod: string; ad: string }[] = []
@@ -130,6 +131,21 @@ export default async function UretimTerminalPage({
     ? (departmanlar.find((d) => d.kod === seciliDept)?.ad ?? '')
     : ''
 
+  // Seçili departmanın tezgahları = o departmanın WC'lerine bağlı AKTİF kaynaklar.
+  // IPRO eşleşmesi ResourceId==ipro_tezgah.kod (tr-TR). ResourceId'ye göre alfabetik.
+  const seciliDeptTezgahlar = seciliDept
+    ? kaynaklar
+        .filter((r) => r.objstate === 'Active' && wcMap.get(r.workCenterNo) === seciliDept)
+        .map((r) => ({
+          resourceId: r.resourceId,
+          description: r.description,
+          workCenterNo: r.workCenterNo,
+          iproTanimli: iproKodByLower.has(r.resourceId.toLocaleLowerCase('tr-TR')),
+        }))
+        .sort((a, b) => a.resourceId.localeCompare(b.resourceId, 'tr'))
+    : []
+  const seciliDeptIsEmri = seciliDept ? (isEmriSayi.get(seciliDept) ?? 0) : 0
+
   // Vardiya tanımları (aktif) — client, canlı saatten şu ana denk geleni seçer.
   const vardiyalar = (await listVardiyalar())
     .filter((v) => v.aktif)
@@ -150,6 +166,9 @@ export default async function UretimTerminalPage({
       vardiyalar={vardiyalar}
       seciliDept={seciliDept}
       seciliDeptAd={seciliDeptAd}
+      seciliTezgah={seciliTezgah}
+      tezgahlar={seciliDeptTezgahlar}
+      seciliDeptIsEmri={seciliDeptIsEmri}
       ifsError={ifsError}
     />
   )

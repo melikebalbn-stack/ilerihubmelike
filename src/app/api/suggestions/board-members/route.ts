@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { requireUser } from '@/lib/auth/require-user'
 
 // GET - Öneri Kurulu üyelerini listele
 export async function GET() {
@@ -24,9 +25,14 @@ export async function GET() {
 // POST - Yeni Öneri Kurulu üyesi ekle
 export async function POST(request: NextRequest) {
   try {
-    // PR-Y2.5-suggestions: requireSession (admin check yok mevcut kod)
-    const { error } = await requireSession()
+    // YETKI: kurul üyeliği TÜM önerileri görme yetkisi verir — herkes kendini ekleyememeli.
+    // Kontrol, AYNI MODÜLDEKİ mevcut desenle birebir (suggestions/categories/route.ts):
+    // rol ∈ {SUPER_ADMIN, ADMIN, HR_MANAGER}. Yeni permission anahtarı türetilmedi.
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(user.role || 'EMPLOYEE')) {
+      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+    }
 
     const body = await request.json()
     const { name, department, role } = body
@@ -79,9 +85,13 @@ export async function POST(request: NextRequest) {
 // DELETE - Öneri Kurulu üyesini sil (soft delete)
 export async function DELETE(request: NextRequest) {
   try {
-    // PR-Y2.5-suggestions: requireSession
-    const { error } = await requireSession()
+    // Üye ÇIKARMA da üye ekleme kadar hassas (kurul görünürlüğünü değiştirir) —
+    // POST ile AYNI kapı.
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(user.role || 'EMPLOYEE')) {
+      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+    }
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

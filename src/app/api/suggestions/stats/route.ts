@@ -1,13 +1,25 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { oneriGorunurlugu, gorunurlukFiltresi } from '@/lib/suggestions/gorunurluk'
 
 // GET - İstatistikleri getir
+//
+// SAYAÇLAR KULLANICIYA GÖRE SÜZÜLÜR. Eskiden hiç süzülmüyordu: herkes "Toplam Öneri 4"
+// görüyor ama listede yalnız kendi önerisi çıkıyordu. Görünürlük kuralı liste ucuyla
+// AYNI KAYNAKTAN gelir (gorunurluk.ts) — kopyalanmaz.
 export async function GET() {
   try {
-    // PR-Y2.5-suggestions: requireSession — sade auth, DB hit yok
-    const { error } = await requireSession()
+    // PR-Y2.5-suggestions: requireSession
+    const { session, error } = await requireSession()
     if (error) return error
+
+    const gorunurluk = await oneriGorunurlugu({
+      userEmail: session.user.email ?? '',
+      distinguishedName: (session.user as { distinguishedName?: string }).distinguishedName,
+    })
+    // Tüm sayaç sorgularının ortak tabanı. Kurul üyesinde boş ({}) → eski davranış.
+    const gorunur = gorunurlukFiltresi(gorunurluk)
 
     // Tarih hesaplamaları
     const startOfMonth = new Date()
@@ -31,13 +43,14 @@ export async function GET() {
       // 1. Status bazlı count'lar (tek sorgu ile tüm status'lar)
       prisma.suggestion.groupBy({
         by: ['status'],
-        where: { isActive: true },
+        where: { ...gorunur, isActive: true },
         _count: { id: true }
       }),
 
       // 2. Bu ayki öneriler
       prisma.suggestion.count({
         where: {
+          ...gorunur,
           isActive: true,
           submittedAt: { gte: startOfMonth }
         }
@@ -46,6 +59,7 @@ export async function GET() {
       // 3. Toplam tasarruf
       prisma.suggestion.aggregate({
         where: {
+          ...gorunur,
           isActive: true,
           status: 'IMPLEMENTED',
           actualSavings: { not: null }
@@ -56,7 +70,7 @@ export async function GET() {
       // 4. Kategori bazlı dağılım
       prisma.suggestion.groupBy({
         by: ['categoryId'],
-        where: { isActive: true },
+        where: { ...gorunur, isActive: true },
         _count: { id: true }
       }),
 
@@ -69,6 +83,7 @@ export async function GET() {
       prisma.suggestion.groupBy({
         by: ['submittedByDept'],
         where: {
+          ...gorunur,
           isActive: true,
           submittedByDept: { not: null }
         },
@@ -80,6 +95,7 @@ export async function GET() {
       // 7. Aylık trend (son 6 ay)
       prisma.suggestion.findMany({
         where: {
+          ...gorunur,
           isActive: true,
           submittedAt: { gte: sixMonthsAgo }
         },
@@ -90,6 +106,7 @@ export async function GET() {
       prisma.suggestion.groupBy({
         by: ['submittedBy', 'submittedByName'],
         where: {
+          ...gorunur,
           isActive: true,
           isAnonymous: false
         },

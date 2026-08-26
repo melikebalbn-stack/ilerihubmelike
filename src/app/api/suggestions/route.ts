@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { mapAdOuToDepartment } from '@/lib/department-utils'
-import { getAllLDAPUsers } from '@/lib/ldap'
 import { requireUser } from '@/lib/auth/require-user'
+import { oneriGorunurlugu, gorunurlukFiltresi } from '@/lib/suggestions/gorunurluk'
+import { bildirYeniOneri } from '@/lib/suggestions/bildirim'
 
 // Öneri numarası oluştur: ONR-2025-0001
 async function generateSuggestionNumber(): Promise<string> {
@@ -49,23 +50,13 @@ export async function GET(request: NextRequest) {
     // eslint-disable-next-line
     const where: Record<string, unknown> = { isActive: true }
 
-    // Kullanıcının rolünü belirle (kurul üyesi mi, manager mı?)
-    const boardMembers = await prisma.suggestionBoardMember.findMany({
-      where: { isActive: true },
-      select: { email: true },
+    // Kullanıcının rolü (kurul üyesi / yönetici) TEK KAYNAK'tan gelir; sayaç ucu
+    // (stats/route.ts) aynı helper'ı çağırır — kural iki yerde kopyalanmaz.
+    const gorunurluk = await oneriGorunurlugu({
+      userEmail,
+      distinguishedName: (session.user as { distinguishedName?: string }).distinguishedName,
     })
-    const isBoardMember = boardMembers.some(m => m.email.toLowerCase() === userEmail)
-
-    // Manager olarak astlarımın email'lerini bul
-    const ldapUsers = await getAllLDAPUsers()
-    const myDN = (session.user as { distinguishedName?: string }).distinguishedName?.toLowerCase()
-    const subordinateEmails = myDN
-      ? ldapUsers
-          .filter(u => u.managerDN?.toLowerCase() === myDN)
-          .map(u => u.email?.toLowerCase())
-          .filter((e): e is string => !!e)
-      : []
-    const isManager = subordinateEmails.length > 0
+    const { isBoardMember, isManager, subordinateEmails } = gorunurluk
 
     // Görünüm modu filtresi
     if (viewMode === 'my') {
@@ -130,20 +121,9 @@ export async function GET(request: NextRequest) {
         where.id = 'no-match'
       }
     } else if (viewMode === 'all') {
-      // Tümü - rol bazlı görünürlük
-      if (isBoardMember) {
-        // Kurul üyesi: tüm önerileri görebilir
-        // where'e ek filtre gerekmez
-      } else if (isManager) {
-        // Manager: kendi önerileri + astlarının önerileri
-        const visibleEmails = [userEmail, ...subordinateEmails]
-        where.OR = visibleEmails.map(email => ({
-          submittedBy: { equals: email, mode: 'insensitive' as const }
-        }))
-      } else {
-        // Normal kullanıcı: sadece kendi önerileri
-        where.submittedBy = { equals: userEmail, mode: 'insensitive' as const }
-      }
+      // Tümü — rol bazlı görünürlük, TEK KAYNAK (gorunurluk.ts). Davranış birebir aynı:
+      // kurul üyesinde filtre yok, yöneticide kendi+astları, diğerinde yalnız kendisi.
+      Object.assign(where, gorunurlukFiltresi(gorunurluk))
     }
 
     // Durum filtresi
@@ -267,6 +247,19 @@ export async function POST(request: NextRequest) {
         performedByName: isAnonymous ? 'Anonim' : (user.name ?? userEmail),
         newStatus: 'SUBMITTED'
       }
+    })
+
+    // (a) Yöneticiye bildirim — YAZMA TAMAMLANDIKTAN SONRA, best-effort.
+    // Helper kendi içinde try/catch'li: bildirim patlasa da öneri kaydı geri ALINMAZ.
+    await bildirYeniOneri({
+      id: suggestion.id,
+      suggestionNumber: suggestion.suggestionNumber,
+      title: suggestion.title,
+      submittedBy: suggestion.submittedBy,
+      submittedByName: suggestion.submittedByName,
+      submittedByDept: suggestion.submittedByDept,
+      isAnonymous: suggestion.isAnonymous,
+      kategoriAdi: suggestion.category?.name ?? null,
     })
 
     return NextResponse.json(suggestion, { status: 201 })

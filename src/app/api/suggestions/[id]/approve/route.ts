@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { SuggestionStatus } from '@/generated/prisma'
 import { getAllLDAPUsers } from '@/lib/ldap'
 import { requireUser } from '@/lib/auth/require-user'
+import { bildirKurulaDustu, bildirKarar } from '@/lib/suggestions/bildirim'
 
 // POST - Öneriyi onayla/reddet
 export async function POST(
@@ -219,6 +220,30 @@ export async function POST(
 
       return updated
     })
+
+    // ── Bildirimler — TRANSACTION'DAN SONRA, best-effort (helper'lar fırlatmaz).
+    // Bildirim başarısız olsa da statü değişimi KALICIDIR (hr-notifications ile aynı ilke).
+    const ozet = {
+      id: updatedSuggestion.id,
+      suggestionNumber: updatedSuggestion.suggestionNumber,
+      title: updatedSuggestion.title,
+      submittedBy: updatedSuggestion.submittedBy,
+      submittedByName: updatedSuggestion.submittedByName,
+      submittedByDept: updatedSuggestion.submittedByDept,
+      isAnonymous: updatedSuggestion.isAnonymous,
+      kategoriAdi: updatedSuggestion.category?.name ?? null,
+    }
+    const aktorAdi = user.name ?? userEmail
+
+    // (b) Yönetici onayladı → öneri artık kurulda. Kurul üyelerine bildirim + MAIL.
+    if (newStatus === 'PENDING_APPROVAL' && suggestion.status !== 'PENDING_APPROVAL') {
+      await bildirKurulaDustu(ozet, aktorAdi)
+    }
+
+    // (c) Kurul karar verdi → öneri sahibine. Anonim öneride helper sessizce atlar.
+    if (isBoardMember && (decision === 'APPROVE' || decision === 'REJECT')) {
+      await bildirKarar(ozet, decision === 'APPROVE' ? 'Onaylandı' : 'Reddedildi')
+    }
 
     return NextResponse.json(updatedSuggestion)
   } catch (error) {

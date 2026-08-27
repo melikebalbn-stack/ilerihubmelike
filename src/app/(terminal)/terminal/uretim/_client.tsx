@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
   Building2,
@@ -24,6 +25,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { OperatorBadge, TERMINAL_ACCENT } from '../_shared'
+import { TezgahDetayModal } from './_tezgah-detay'
 
 interface Vardiya {
   kod: string
@@ -53,6 +55,8 @@ interface Tezgah {
   workCenterNo: string
   /** IPRO (ipro_tezgah.kod) karşılığı var mı. */
   iproTanimli: boolean
+  /** ipro_tezgah.id — detay modal'ı bu anahtarla çağrılır; tanımsızsa null. */
+  iproId: string | null
   /** Durum kademesi; IPRO'da tanımsızsa null (bilgi yok). */
   durum: 'calisiyor' | 'durusta' | 'bosta' | null
   /** PLC pini tanımlı mı (statik yapı — sinyal ALMASI beklenen tezgah). */
@@ -124,21 +128,30 @@ export function TerminalMenuClient({
   seciliDeptIsEmri,
   ifsError,
 }: Props) {
+  const router = useRouter()
+  // Modal kapanınca ?tezgah'ı düşür → tezgah listesine dön (dept korunur).
+  const modalKapat = () =>
+    router.replace(seciliDept ? `/terminal/uretim?dept=${encodeURIComponent(seciliDept)}` : '/terminal/uretim')
+  // Seçili tezgahın IPRO id'si (varsa) — listeden ResourceId ile bulunur.
+  const seciliIproId = seciliTezgah
+    ? (tezgahlar.find((t) => t.resourceId === seciliTezgah)?.iproId ?? null)
+    : null
+
   return (
     <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-6 p-6">
       <UstBar operatorName={operatorName} vardiyalar={vardiyalar} />
 
       {seciliDept ? (
-        seciliTezgah ? (
-          <TezgahSecildi seciliDept={seciliDept} seciliTezgah={seciliTezgah} />
-        ) : (
+        <>
+          {/* Liste hep monte; detay modal (portal) üstüne biner, ?tezgah ile açılır. */}
           <TezgahListesi
             seciliDept={seciliDept}
             seciliDeptAd={seciliDeptAd}
             tezgahlar={tezgahlar}
             isEmri={seciliDeptIsEmri}
           />
-        )
+          <TezgahDetayModal seciliTezgah={seciliTezgah} iproId={seciliIproId} onClose={modalKapat} />
+        </>
       ) : (
         <BolumSecim
           departmanlar={departmanlar}
@@ -613,42 +626,3 @@ function TezgahKart({ t, seciliDept }: { t: Tezgah; seciliDept: string }) {
   )
 }
 
-// ── Tezgah seçildi — yer tutucu (iş emri listesi ayrı tur) ────────────────────
-function TezgahSecildi({
-  seciliDept,
-  seciliTezgah,
-}: {
-  seciliDept: string
-  seciliTezgah: string
-}) {
-  return (
-    <>
-      <div className="flex items-center gap-3">
-        <Link
-          href={`/terminal/uretim?dept=${encodeURIComponent(seciliDept)}`}
-          aria-label="Tezgah listesine dön"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors hover:bg-muted active:bg-muted/70"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div className="flex flex-col leading-tight">
-          <span className="text-base font-semibold">{seciliTezgah}</span>
-          <span className="text-xs text-muted-foreground">Tezgah</span>
-        </div>
-      </div>
-
-      <div className="flex flex-col items-start gap-4 rounded-2xl border border-dashed p-8">
-        <p className="text-sm text-muted-foreground">
-          Bu tezgahın iş emri listesi bir sonraki adımda eklenecek.
-        </p>
-        <Link
-          href={`/terminal/uretim?dept=${encodeURIComponent(seciliDept)}`}
-          className="inline-flex min-h-12 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition-colors hover:bg-muted active:bg-muted/70"
-        >
-          <ArrowLeft className="h-5 w-5" />
-          Tezgah listesine dön
-        </Link>
-      </div>
-    </>
-  )
-}

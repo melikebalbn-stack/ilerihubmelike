@@ -185,6 +185,9 @@ export default async function UretimTerminalPage({
             description: r.description,
             workCenterNo: r.workCenterNo,
             iproTanimli: !!ipro,
+            // Detay modal'ı ipro_tezgah.id ile çağırır (izleme-service anahtarı).
+            // iproByLower zaten yüklü → ekstra sorgu YOK. Tanımsızsa null.
+            iproId: ipro ? ipro.id : null,
             durum,
             sinyalli: ipro ? ipro.plcPinler > 0 : false,
           }

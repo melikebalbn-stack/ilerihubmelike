@@ -153,11 +153,6 @@ const mainMenuItems = [
   // { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] }, // Şimdilik gizli
   { name: "Akademi", icon: GraduationCap, href: "/akademi", roles: ["*"] },
   { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
-  // Zimmet Teslim Formu — cihaz teslim tutanağı (offboarding "Zimmet İade" ve
-  // envanter zimmetinden AYRI). Görünürlük zimmet-formu.view iznine bağlı;
-  // prod'da açılana kadar hiçbir rolde izin yok → menüde görünmez.
-  { name: "Zimmet Teslim Formu", icon: Laptop, href: "/zimmet-formu/liste", roles: [] as string[], permission: "zimmet-formu.view" },
-  { name: "Zimmetlerim", icon: Laptop, href: "/zimmet-formu/zimmetlerim", roles: [] as string[], permission: "zimmet-formu.view" },
 ]
 
 // Formlar alt menüsü
@@ -175,6 +170,12 @@ const formsMenuItems = [
   { name: "İş Analizi Formu", icon: ClipboardList, href: "/strategic-hr/is-analizi", roles: ["*"] },
   // RMA/SMA İade Formu (KAL-KYT-16): herkes görür; yazma yetkisi sayfa/API'de (canManageRma).
   { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"] },
+  // Zimmetlerim — kullanıcının kendi üzerine kayıtlı zimmet teslim tutanaklarını
+  // görüp imzaladığı ekran. Herkese açık (permission YOK) - erişim zaten
+  // sunucu tarafında zimmetSahibiId === user.id filtresiyle daraltılıyor
+  // (bkz. API route). "Zimmet Teslim Formu" (liste/onay ekranı, zimmet-formu.view
+  // gerektirir) Sistem Geliştirme altında AYRI kaldı.
+  { name: "Zimmetlerim", icon: Laptop, href: "/zimmet-formu/zimmetlerim", roles: ["*"] },
   // { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] }, // Şimdilik gizli
 ]
 
@@ -312,6 +313,10 @@ const sistemGelistirmeMenuItems = [
   { name: "AD Grup Mapping", icon: ShieldCheck, href: "/settings/azure-ad-mapping", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
   { name: "Login Aktiviteleri", icon: LogIn, href: "/login-logs", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Yedekleme", icon: HardDrive, href: "/backups", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
+  // Zimmet Teslim Formu — cihaz teslim tutanağı listesi/onay ekranı (offboarding
+  // "Zimmet İade" ve envanter zimmetinden AYRI). "Zimmetlerim" (Formlar altında,
+  // herkese açık) BUNDAN AYRI - kullanıcının kendi kayıtlarını gördüğü ekran.
+  { name: "Zimmet Teslim Formu", icon: Laptop, href: "/zimmet-formu/liste", roles: [] as string[], permission: "zimmet-formu.view" },
 ]
 
 // Alt menü öğeleri

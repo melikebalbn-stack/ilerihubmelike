@@ -1,10 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, Download } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Download } from 'lucide-react'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { zimmetSahibiBaslik, zimmetSahibiAltBaslik } from '@/lib/zimmet/constants'
+import { zimmetTurGosterim } from '@/lib/zimmet/tur'
 
 // ── Tipler ───────────────────────────────────────────────────────────────────
 
@@ -23,17 +26,6 @@ export type ZimmetImzalaData = {
   aciklama: string | null
   departman: string | null
   verilisTarihi: string | null
-}
-
-// ── Sabitler ─────────────────────────────────────────────────────────────────
-
-const TUR_LABELS: Record<string, string> = {
-  NOTEBOOK_BILGISAYAR: 'Notebook Bilgisayar',
-  DESKTOP_BILGISAYAR: 'Desktop Bilgisayar',
-  CEP_TELEFONU: 'Cep Telefonu',
-  EL_TERMINALI: 'El Terminali',
-  OFFICE_365: 'Office 365',
-  DIGER: 'Diğer',
 }
 
 // ── Yardımcı ─────────────────────────────────────────────────────────────────
@@ -57,11 +49,14 @@ export function ZimmetImzalaClient({ zimmet }: { zimmet: ZimmetImzalaData }) {
   const [pdfHata, setPdfHata] = useState<string | null>(null)
 
   const isImzalandi = imzaTarihi !== null
-  const turLabel = TUR_LABELS[zimmet.tur] ?? zimmet.tur
-  // Excel import'tan serbest metinle gelip henüz Toplu Bağlama ile eşleştirilmemiş
-  // kayıtlarda zimmetSahibi yok - o durumda orijinal metni göster.
-  const zimmetSahibiAdi =
-    zimmet.zimmetSahibi?.name ?? zimmet.zimmetSahibi?.email ?? '—'
+  const turLabel = zimmetTurGosterim(zimmet)
+  // Reddedilmiş kayıtta artık kimseye ait değil - Liste/Onayla ekranlarıyla
+  // AYNI fonksiyon (bkz. constants.ts). Bu sayfaya zaten sadece zimmetSahibiId
+  // eşleşen kullanıcı erişebiliyor (page.tsx) - REDDEDILDI durumunda pratikte
+  // nadiren görülür ama tutarlılık için aynı mantık uygulanıyor.
+  const zimmetSahibiGirdi = { durum: zimmet.durum, zimmetSahibi: zimmet.zimmetSahibi }
+  const zimmetSahibiAdi = zimmetSahibiBaslik(zimmetSahibiGirdi)
+  const zimmetSahibiAlt = zimmetSahibiAltBaslik(zimmetSahibiGirdi)
 
   async function handleImzala() {
     setImzalaniyor(true)
@@ -118,6 +113,15 @@ export function ZimmetImzalaClient({ zimmet }: { zimmet: ZimmetImzalaData }) {
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-2xl mx-auto px-4 pt-6 pb-24 space-y-5">
 
+        {/* Geri */}
+        <Link
+          href="/zimmet-formu/zimmetlerim"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Zimmetlerime dön
+        </Link>
+
         {/* Başlık */}
         <div>
           <h1 className="text-2xl font-medium text-slate-900">Zimmet İmzala</h1>
@@ -153,6 +157,9 @@ export function ZimmetImzalaClient({ zimmet }: { zimmet: ZimmetImzalaData }) {
                 <dd className="text-sm font-medium text-slate-800">
                   {zimmetSahibiAdi}
                 </dd>
+                {zimmetSahibiAlt && (
+                  <dd className="text-xs text-slate-400 mt-0.5">{zimmetSahibiAlt}</dd>
+                )}
               </div>
               <div>
                 <dt className="text-xs text-slate-400 mb-0.5">Tür</dt>

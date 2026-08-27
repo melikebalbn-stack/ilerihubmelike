@@ -14,6 +14,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
+import { ZIMMET_TUR_ETIKET } from '@/lib/zimmet/tur'
 
 type Approver = {
   id: string
@@ -30,15 +31,6 @@ export type ZimmetForDispatch = {
   createdAt: Date
 }
 
-const TUR_LABELS: Record<string, string> = {
-  NOTEBOOK_BILGISAYAR: 'Notebook Bilgisayar',
-  DESKTOP_BILGISAYAR: 'Desktop Bilgisayar',
-  CEP_TELEFONU: 'Cep Telefonu',
-  EL_TERMINALI: 'El Terminali',
-  OFFICE_365: 'Office 365',
-  DIGER: 'Diğer',
-}
-
 // ════════════════════════════════════════════════════════════
 // KANAL 1: EMAIL
 // ════════════════════════════════════════════════════════════
@@ -47,7 +39,7 @@ function buildApprovalEmailContent(
   zimmet: ZimmetForDispatch,
   recipientName: string,
 ): { subject: string; body: string; html: string } {
-  const turLabel = TUR_LABELS[zimmet.tur] ?? zimmet.tur
+  const turLabel = ZIMMET_TUR_ETIKET[zimmet.tur as keyof typeof ZIMMET_TUR_ETIKET] ?? zimmet.tur
 
   const esc = (s: string): string =>
     s

@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,24 +10,28 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 
+// Tetikleyici artık dışarıda (ZimmetListesi.tsx'teki "⋯ Daha fazla" menüsünde) -
+// bu bileşen sadece dialogun kendisi, open/onOpenChange dışarıdan kontrol edilir.
 export function IslakImzaYukleDialog({
+  open,
+  onOpenChange,
   zimmetId,
   onUploaded,
 }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   zimmetId: string
   onUploaded: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const [dosya, setDosya] = useState<File | null>(null)
   const [yukleniyor, setYukleniyor] = useState(false)
   const [hata, setHata] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   function handleOpenChange(nextOpen: boolean) {
-    setOpen(nextOpen)
+    onOpenChange(nextOpen)
     if (!nextOpen) {
       setDosya(null)
       setHata(null)
@@ -62,16 +65,6 @@ export function IslakImzaYukleDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          size="sm"
-          className="bg-[#1B4F72] text-white hover:bg-[#1B4F72]/90"
-        >
-          <Upload className="w-3.5 h-3.5 mr-1" />
-          Belge Yükle
-        </Button>
-      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Islak imza belgesi yükle</DialogTitle>

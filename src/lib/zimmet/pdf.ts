@@ -15,6 +15,8 @@ import path from 'path'
 import { PDFDocument, rgb, degrees, PageSizes, type PDFPage, type PDFFont, type RGB } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { loadOffboardingFonts } from '@/lib/offboarding/offboarding-fonts'
+import { temizleAciklama } from '@/lib/zimmet/aciklama'
+import { zimmetTurGosterim } from '@/lib/zimmet/tur'
 import type { ZimmetTuru, ZimmetCihazDurumu, ZimmetOnayDurumu } from '@/generated/prisma'
 
 export interface ZimmetPdfData {
@@ -31,11 +33,6 @@ export interface ZimmetPdfData {
   seriNumarasi: string | null
   aciklama: string | null
   ozellik: string | null
-  ram?: string
-  ipAdresi?: string
-  parcaNo?: string
-  lisansBaslangic?: string
-  lisansBitis?: string
   macAdresi: string | null
   pcAdi: string | null
   imeiNumarasi: string | null
@@ -57,18 +54,6 @@ export interface ZimmetPdfData {
   // Taslak modu: onay akışı tamamlanmamış (ONAY_BEKLIYOR) kayıt için filigranlı
   // önizleme PDF'i. true iken her sayfaya çapraz "TASLAK" filigranı + imza altı not.
   taslak?: boolean
-}
-
-const TUR_LABELS: Record<ZimmetTuru, string> = {
-  NOTEBOOK_BILGISAYAR: 'Notebook Bilgisayar',
-  DESKTOP_BILGISAYAR: 'Desktop Bilgisayar',
-  CEP_TELEFONU: 'Cep Telefonu',
-  EL_TERMINALI: 'El Terminali',
-  OFFICE_365: 'Office 365',
-  YAZICI: 'Yazıcı',
-  MONITOR: 'Monitör',
-  MIKROFON: 'Mikrofon',
-  DIGER: 'Diğer',
 }
 
 const CIHAZ_DURUMU_LABELS: Record<ZimmetCihazDurumu, string> = {
@@ -173,10 +158,14 @@ export async function generateZimmetPdf(data: ZimmetPdfData): Promise<Uint8Array
       })
     }
 
+    // Başlık + kayıt no sayfa genişliğine göre ortalanır (logo solda sabit kalır,
+    // ortalamayı etkilemez) - eskiden logonun hemen sağında sola yaslıydı.
     const title = 'ZİMMET TUTANAĞI'
-    const textX = MARGIN + logoDims.width + 14
-    text(title, textX, top - logoDims.height / 2 - 2, 16, bold, NAVY)
-    text(`Kayıt No: ${data.id}`, textX, top - logoDims.height / 2 - 16, 8, reg, SLATE)
+    const titleW = bold.widthOfTextAtSize(title, 16)
+    text(title, MARGIN + (CONTENT_W - titleW) / 2, top - logoDims.height / 2 - 2, 16, bold, NAVY)
+    const kayitNoStr = `Kayıt No: ${data.id}`
+    const kayitNoW = reg.widthOfTextAtSize(kayitNoStr, 8)
+    text(kayitNoStr, MARGIN + (CONTENT_W - kayitNoW) / 2, top - logoDims.height / 2 - 16, 8, reg, SLATE)
 
     const lineY = top - logoDims.height - 8
     page.drawLine({
@@ -198,7 +187,7 @@ export async function generateZimmetPdf(data: ZimmetPdfData): Promise<Uint8Array
   drawHeader()
 
   // ── İki kolonlu bilgi tablosu ──
-  const turGosterim = data.tur === 'DIGER' ? data.turDiger || '—' : TUR_LABELS[data.tur]
+  const turGosterim = zimmetTurGosterim(data)
   const zimmetSahibiAdiGosterim =
     (data.zimmetSahibiAdi || '—') + (data.sicilNo ? ` (Sicil: ${data.sicilNo})` : '')
   // Üçüncü eleman (varsa) - deger satirinin ALTINDA kucuk gri "alt satir" olarak
@@ -215,44 +204,53 @@ export async function generateZimmetPdf(data: ZimmetPdfData): Promise<Uint8Array
     ...(data.model ? [['Model', data.model] as [string, string]] : []),
     ['Seri Numarası', data.seriNumarasi || '—'],
     ...(data.imeiNumarasi ? [['IMEI Numarası', data.imeiNumarasi] as [string, string]] : []),
-    ['Açıklama', data.aciklama || '—'],
+    ['Açıklama', temizleAciklama(data.aciklama) || '—'],
     ['Özellik', data.ozellik || '—'],
-    ...(data.ram ? [['RAM', data.ram] as [string, string]] : []),
-    ...(data.ipAdresi ? [['IP Adresi', data.ipAdresi] as [string, string]] : []),
-    ...(data.parcaNo ? [['P/N', data.parcaNo] as [string, string]] : []),
     ['MAC Adresi', data.macAdresi || '—'],
     ['PC Adı', data.pcAdi || '—'],
     ['Veriliş Tarihi', fmtDate(data.verilisTarihi)],
-    ...(data.lisansBaslangic
-      ? [['Lisans Başlangıç', fmtDate(new Date(data.lisansBaslangic))] as [string, string]]
-      : []),
-    ...(data.lisansBitis
-      ? [['Lisans Bitiş', fmtDate(new Date(data.lisansBitis))] as [string, string]]
-      : []),
   ]
   const colW = CONTENT_W / 2
-  const ROW_H = 18
-  const SUB_LINE_H = 10
+  const VALUE_X_OFFSET = 120
+  const VALUE_SIZE = 8
+  const LINE_H = 10 // satır aralığı - hem sarılan değer satırları hem de alt satır (ünvan) için AYNI
+  const ROW_TOP_PAD = 12 // hücre üstünden ilk satır baseline'ına kadar
+  const ROW_BOTTOM_PAD = 6 // son satır baseline'ından hücre altına kadar
   const SUB_SIZE = 7
+  // Satır yüksekliği, hücredeki en çok satıra ihtiyaç duyan tarafa göre dinamik
+  // hesaplanır - komşu hücrenin üzerine binme (taşma) bu şekilde önlenir.
+  const rowHeightForLines = (n: number) => ROW_TOP_PAD + Math.max(0, n - 1) * LINE_H + ROW_BOTTOM_PAD
   for (let i = 0; i < infoRows.length; i += 2) {
     const rowCells: [typeof infoRows[number] | undefined, typeof infoRows[number] | undefined] = [
       infoRows[i],
       infoRows[i + 1],
     ]
-    // Satırdaki İKİ hücreden biri alt satır (ünvan gibi) taşıyorsa, satır
-    // yüksekliği ikisi için de büyür - aksi halde aynı satırdaki komşu hücrenin
-    // çerçevesi kısa kalır, dikey hizası bozulur.
-    const rowH = rowCells.some((c) => c?.[2]) ? ROW_H + SUB_LINE_H : ROW_H
+    // Uzun değerler ("Özellik" gibi) hücre genişliğini aşınca otomatik satıra
+    // sarılır - satır yüksekliği en çok satıra ihtiyaç duyan hücreye göre büyür,
+    // komşu hücrenin (örn. yandaki "MAC Adresi") üzerine binmez.
+    const valueMaxW = colW - VALUE_X_OFFSET - 6
+    const cellLines = rowCells.map((cell) => {
+      if (!cell) return null
+      const lines = wrap(cell[1], reg, VALUE_SIZE, valueMaxW)
+      return { lines, totalLines: lines.length + (cell[2] ? 1 : 0) }
+    })
+    const maxLines = Math.max(1, ...cellLines.filter(Boolean).map((cd) => cd!.totalLines))
+    const rowH = rowHeightForLines(maxLines)
     ensure(rowH)
     for (let c = 0; c < 2; c++) {
       const cell = rowCells[c]
-      if (!cell) continue
+      const cd = cellLines[c]
+      if (!cell || !cd) continue
       const cx = MARGIN + c * colW
       page.drawRectangle({ x: cx, y: y - rowH, width: colW, height: rowH, borderColor: BORDER, borderWidth: 0.6 })
       text(cell[0], cx + 6, y - 12, 8, bold, NAVY)
-      text(cell[1], cx + 120, y - 12, 8, reg, SLATE)
+      let valueY = y - 12
+      cd.lines.forEach((ln) => {
+        text(ln, cx + VALUE_X_OFFSET, valueY, VALUE_SIZE, reg, SLATE)
+        valueY -= LINE_H
+      })
       if (cell[2]) {
-        text(cell[2], cx + 120, y - 12 - SUB_LINE_H, SUB_SIZE, reg, MUTED)
+        text(cell[2], cx + VALUE_X_OFFSET, valueY, SUB_SIZE, reg, MUTED)
       }
     }
     y -= rowH

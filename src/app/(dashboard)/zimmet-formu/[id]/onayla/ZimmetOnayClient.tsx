@@ -1,12 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { CheckCircle2, Clock, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, RotateCcw, XCircle } from 'lucide-react'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { zimmetSahibiBaslik, zimmetSahibiAltBaslik } from '@/lib/zimmet/constants'
+import { temizleAciklama } from '@/lib/zimmet/aciklama'
+import { zimmetTurGosterim } from '@/lib/zimmet/tur'
 import { ZimmetDurumGecmisiTimeline } from '../../ZimmetDurumGecmisiTimeline'
 
 // ── Tipler ───────────────────────────────────────────────────────────────────
@@ -31,17 +35,6 @@ export type ZimmetOnayData = {
   teslimEdenImzaTarihi: string | null
 }
 
-// ── Sabitler ─────────────────────────────────────────────────────────────────
-
-const TUR_LABELS: Record<string, string> = {
-  NOTEBOOK_BILGISAYAR: 'Notebook Bilgisayar',
-  DESKTOP_BILGISAYAR: 'Desktop Bilgisayar',
-  CEP_TELEFONU: 'Cep Telefonu',
-  EL_TERMINALI: 'El Terminali',
-  OFFICE_365: 'Office 365',
-  DIGER: 'Diğer',
-}
-
 // ── Yardımcılar ───────────────────────────────────────────────────────────────
 
 function fmtDate(d: string | null | undefined) {
@@ -59,11 +52,12 @@ function fmtDateTime(d: string | null | undefined) {
     : '—'
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, altDeger }: { label: string; value: string; altDeger?: string | null }) {
   return (
     <div>
       <dt className="text-xs text-slate-400 mb-0.5">{label}</dt>
       <dd className="text-sm font-medium text-slate-800">{value || '—'}</dd>
+      {altDeger && <dd className="text-xs text-slate-400 mt-0.5">{altDeger}</dd>}
     </div>
   )
 }
@@ -76,11 +70,13 @@ export function ZimmetOnayClient({ zimmet }: { zimmet: ZimmetOnayData }) {
   const [yukleniyor, setYukleniyor] = useState(false)
   const [hata, setHata] = useState<string | null>(null)
 
-  const turLabel = TUR_LABELS[zimmet.tur] ?? zimmet.tur
-  // Excel import'tan serbest metinle gelip henüz Toplu Bağlama ile eşleştirilmemiş
-  // kayıtlarda zimmetSahibi yok - o durumda orijinal metni göster.
-  const zimmetSahibiAdi =
-    zimmet.zimmetSahibi?.name ?? zimmet.zimmetSahibi?.email ?? '—'
+  const turLabel = zimmetTurGosterim(zimmet)
+  // Reddedilmiş kayıtta artık kimseye ait değil - "IT Envanterinde (önceki
+  // aday: X)" gösterilir (Liste ekranıyla AYNI fonksiyon, bkz. constants.ts).
+  // Local `durum` state kullanılıyor - onayla/reddet/tekrar-onaya-gönder
+  // sonrası sayfa yenilenmeden anında güncellensin diye.
+  const zimmetSahibiGirdi = { durum, zimmetSahibi: zimmet.zimmetSahibi }
+  const zimmetSahibiAdi = zimmetSahibiBaslik(zimmetSahibiGirdi)
 
   async function islemYap(karar: 'ONAYLANDI' | 'REDDEDILDI') {
     setYukleniyor(true)
@@ -103,9 +99,37 @@ export function ZimmetOnayClient({ zimmet }: { zimmet: ZimmetOnayData }) {
     }
   }
 
+  // Yanlışlıkla reddedilen kaydı tekrar ONAY_BEKLIYOR'a çevirir - bkz.
+  // [id]/tekrar-onaya-gonder/route.ts.
+  async function tekrarOnayaGonder() {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const res = await fetch(`/api/zimmet-formu/${zimmet.id}/tekrar-onaya-gonder`, { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string })
+        throw new Error(data.error || 'İşlem tamamlanamadı')
+      }
+      setDurum('ONAY_BEKLIYOR')
+    } catch (err) {
+      setHata(err instanceof Error ? err.message : 'İşlem tamamlanamadı')
+    } finally {
+      setYukleniyor(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-2xl mx-auto px-4 pt-6 pb-24 space-y-5">
+
+        {/* Geri */}
+        <Link
+          href="/zimmet-formu/liste"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Listeye dön
+        </Link>
 
         {/* Başlık + durum rozeti */}
         <Card>
@@ -147,11 +171,15 @@ export function ZimmetOnayClient({ zimmet }: { zimmet: ZimmetOnayData }) {
           </CardHeader>
           <CardContent className="pt-0">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-              <InfoRow label="Zimmet Sahibi" value={zimmetSahibiAdi} />
+              <InfoRow
+                label="Zimmet Sahibi"
+                value={zimmetSahibiAdi}
+                altDeger={zimmetSahibiAltBaslik(zimmetSahibiGirdi)}
+              />
               <InfoRow label="Departman" value={zimmet.departman ?? '—'} />
               <InfoRow label="Tür" value={turLabel} />
               <InfoRow label="Seri Numarası" value={zimmet.seriNumarasi ?? '—'} />
-              {zimmet.aciklama && <InfoRow label="Açıklama" value={zimmet.aciklama} />}
+              {zimmet.aciklama && <InfoRow label="Açıklama" value={temizleAciklama(zimmet.aciklama)} />}
               <InfoRow label="Veriliş Tarihi" value={fmtDate(zimmet.verilisTarihi)} />
             </dl>
           </CardContent>
@@ -225,6 +253,23 @@ export function ZimmetOnayClient({ zimmet }: { zimmet: ZimmetOnayData }) {
                 {yukleniyor ? 'İşleniyor…' : 'E-İmzala ve onayla'}
               </Button>
             </div>
+          </>
+        )}
+
+        {/* Reddedilmiş kayıt: yanlışlıkla reddedildiyse tekrar onaya sokma imkanı */}
+        {durum === 'REDDEDILDI' && (
+          <>
+            {hata && <p className="text-sm text-rose-600">{hata}</p>}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full border-sky-300 text-sky-600 hover:bg-sky-50 hover:border-sky-400"
+              disabled={yukleniyor}
+              onClick={tekrarOnayaGonder}
+            >
+              <RotateCcw className="w-4 h-4 mr-1.5" />
+              {yukleniyor ? 'İşleniyor…' : 'Tekrar onaya gönder'}
+            </Button>
           </>
         )}
 

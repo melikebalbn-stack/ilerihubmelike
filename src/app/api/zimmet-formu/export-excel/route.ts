@@ -3,20 +3,9 @@ import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
+import { zimmetTurGosterim } from '@/lib/zimmet/tur'
 
 export const dynamic = 'force-dynamic'
-
-const TUR_LABELS: Record<string, string> = {
-  NOTEBOOK_BILGISAYAR: 'Notebook Bilgisayar',
-  DESKTOP_BILGISAYAR: 'Desktop Bilgisayar',
-  CEP_TELEFONU: 'Cep Telefonu',
-  EL_TERMINALI: 'El Terminali',
-  OFFICE_365: 'Office 365',
-  YAZICI: 'Yazıcı',
-  MONITOR: 'Monitör',
-  MIKROFON: 'Mikrofon',
-  DIGER: 'Diğer',
-}
 
 
 const fmtDate = (d: Date | null | undefined): string =>
@@ -42,7 +31,7 @@ export async function GET() {
       'Zimmet No': z.id.slice(0, 8),
       'Zimmet Sahibi': z.zimmetSahibi?.name ?? '-',
       'Departman': z.departman ?? '-',
-      'Tür': TUR_LABELS[z.tur] ?? z.tur,
+      'Tür': zimmetTurGosterim(z),
       'Marka/Açıklama': z.aciklama ?? '-',
       'Seri Numarası': z.seriNumarasi ?? '-',
       'MAC Adresi': z.macAdresi ?? '-',

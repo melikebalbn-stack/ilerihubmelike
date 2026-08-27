@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Check, Download, Laptop, Package, PenLine, Printer, Smartphone, X } from 'lucide-react'
+import { Check, Download, Eye, Laptop, Package, PenLine, Printer, Smartphone, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ZimmetDurumBadge } from '../ZimmetDurumBadge'
 import { getZimmetDurumRozeti } from '@/lib/zimmet/constants'
+import { temizleAciklama } from '@/lib/zimmet/aciklama'
+import { zimmetTurGosterim } from '@/lib/zimmet/tur'
 
 // NOT: Bu ekranda şu an bir arama kutusu yok (kişinin kendi zimmetleri zaten
 // az sayıda). İleride eklenirse src/lib/sandbox/zimmet-arama.ts'teki
@@ -22,9 +25,13 @@ type ZimmetItem = {
   id: string
   tur: string
   turDiger: string | null
+  marka: string | null
+  model: string | null
   aciklama: string | null
   ozellik: string | null
+  macAdresi: string | null
   pcAdi: string | null
+  imeiNumarasi: string | null
   departman: string | null
   seriNumarasi: string | null
   verilisTarihi: string | null
@@ -40,32 +47,13 @@ type ZimmetItem = {
 
 type ZimmetDurumu = 'tamamlandi' | 'imza_bekliyor' | 'onay_bekliyor' | 'reddedildi' | 'belge_bekleniyor'
 
-// ── Sabitler ─────────────────────────────────────────────────────────────────
-
-const TUR_LABELS: Record<string, string> = {
-  NOTEBOOK_BILGISAYAR: 'Notebook Bilgisayar',
-  DESKTOP_BILGISAYAR: 'Desktop Bilgisayar',
-  CEP_TELEFONU: 'Cep Telefonu',
-  EL_TERMINALI: 'El Terminali',
-  OFFICE_365: 'Office 365',
-  DIGER: 'Diğer',
-}
-
 // ── Yardımcılar ──────────────────────────────────────────────────────────────
-
-// Devir kayıtlarının açıklamasındaki teknik damga — UI'da GİZLENİR (DB'de kalır).
-const DEVIR_ONEK = '[Syteline devri] '
-function temizAciklama(a: string | null | undefined): string {
-  if (!a) return ''
-  const s = a.startsWith(DEVIR_ONEK) ? a.slice(DEVIR_ONEK.length) : a
-  return s.trim()
-}
-
-// Başlık: DIGER ise "Diğer · turDiger" (ör. yazılım lisansı adı), değilse tür etiketi.
-function turBaslik(tur: string, turDiger: string | null): string {
-  if (tur === 'DIGER' && turDiger?.trim()) return `Diğer · ${turDiger.trim()}`
-  return TUR_LABELS[tur] ?? tur
-}
+// temizAciklama artık src/lib/zimmet/aciklama.ts'te (temizleAciklama) - tüm
+// gösterim noktalarının aynı mantığı kullanması için oraya taşındı.
+// turBaslik/TUR_LABELS de aynı şekilde src/lib/zimmet/tur.ts'e taşındı
+// (zimmetTurGosterim) - eskiden burada TUR_LABELS[tur] ?? turDiger ?? tur
+// sırasıyla DIGER için turDiger'ı HİÇ göstermiyordu (TUR_LABELS['DIGER']
+// zaten dolu olduğu için ?? hiç turDiger'a düşmüyordu) - bu bug da düzeldi.
 
 function avatarDurumu(rozetLabel: string): ZimmetDurumu {
   if (rozetLabel === 'Tamamlandı') return 'tamamlandi'
@@ -151,14 +139,24 @@ function ZimmetSkeleton() {
 
 // ── Zimmet kartı ──────────────────────────────────────────────────────────────
 
+function DetayRow({ label, value, full }: { label: string; value: string | null | undefined; full?: boolean }) {
+  return (
+    <div className={full ? 'col-span-2' : undefined}>
+      <dt className="text-xs text-slate-400 mb-0.5">{label}</dt>
+      <dd className="font-medium text-slate-800">{value || '—'}</dd>
+    </div>
+  )
+}
+
 function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
   const rozet = getZimmetDurumRozeti(zimmet)
   const durum = avatarDurumu(rozet.label)
-  const turLabel = TUR_LABELS[zimmet.tur] ?? zimmet.turDiger ?? zimmet.tur
+  const turLabel = zimmetTurGosterim(zimmet)
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [pdfHata, setPdfHata] = useState<string | null>(null)
   const [belgeStatus, setBelgeStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [belgeHata, setBelgeHata] = useState<string | null>(null)
+  const [detayAcik, setDetayAcik] = useState(false)
 
   async function handleBelgeIndir() {
     setBelgeStatus('loading')
@@ -211,6 +209,7 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
   }
 
   return (
+    <>
     <Card>
       <CardContent className="pt-4 space-y-3">
         {/* Üst satır: avatar + tur + rozet */}
@@ -219,12 +218,26 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
             <TurAvatar tur={zimmet.tur} durum={durum} />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate">{turLabel}</p>
-              <p className="text-xs text-slate-500 truncate">{zimmet.seriNumarasi ?? zimmet.aciklama ?? '—'}</p>
+              <p className="text-xs text-slate-500 truncate">
+                {zimmet.model ?? zimmet.marka ?? zimmet.seriNumarasi ?? '—'}
+              </p>
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-1.5">
               <ZimmetDurumBadge zimmet={zimmet} />
+              {/* Detay/Yazdır/Sil - Zimmet Formu listesi (IT ekranı) ile AYNI
+                  ikon seti ve hizada (h-7 w-7) - uygun olmayanlar disabled + tooltip. */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                title="Detay"
+                onClick={() => setDetayAcik(true)}
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -251,6 +264,25 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
                   {durum !== 'tamamlandi' && durum !== 'onay_bekliyor' && (
                     <TooltipContent>Onaylanıp imzalanınca aktif olur.</TooltipContent>
                   )}
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-rose-600 hover:text-rose-700 hover:bg-rose-50 disabled:text-slate-300 disabled:hover:bg-transparent"
+                        title="Kaydı sil"
+                        disabled
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Silme işlemi için Zimmet Formu listesinden IT ekibine ulaşın</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>
@@ -310,6 +342,30 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
         )}
       </CardContent>
     </Card>
+
+    {/* Detay dialog - kart üstündeki 3 sütun zaten özet gösteriyor, burada
+        departman/mac/pc/imei/özellik gibi kartta yer almayan alanlar da var. */}
+    <Dialog open={detayAcik} onOpenChange={setDetayAcik}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{turLabel}</DialogTitle>
+        </DialogHeader>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <DetayRow label="Departman" value={zimmet.departman} />
+          <DetayRow label="Marka" value={zimmet.marka} />
+          <DetayRow label="Model" value={zimmet.model} />
+          <DetayRow label="Seri Numarası" value={zimmet.seriNumarasi} />
+          <DetayRow label="Özellik" value={zimmet.ozellik} />
+          <DetayRow label="MAC Adresi" value={zimmet.macAdresi} />
+          <DetayRow label="PC Adı" value={zimmet.pcAdi} />
+          <DetayRow label="IMEI Numarası" value={zimmet.imeiNumarasi} />
+          <DetayRow label="Teslim Tarihi" value={fmtDate(zimmet.verilisTarihi)} />
+          <DetayRow label="Teslim Eden" value={zimmet.createdBy.name} />
+          <DetayRow label="Açıklama" value={temizleAciklama(zimmet.aciklama)} full />
+        </dl>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
@@ -406,7 +462,7 @@ function DevirOnayBlok({
         {kayitlar.map((z) => {
           const k = kararlar[z.id]
           // Alt satır: temiz açıklama (önek gizli) + seri no — ikisi de varsa "· " ile.
-          const altSatir = [temizAciklama(z.aciklama), z.seriNumarasi?.trim()]
+          const altSatir = [temizleAciklama(z.aciklama), z.seriNumarasi?.trim()]
             .filter((x): x is string => !!x)
             .join(' · ')
           // Detay: boş alanlar HİÇ render edilmez.
@@ -420,7 +476,7 @@ function DevirOnayBlok({
             <div key={z.id} className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">{turBaslik(z.tur, z.turDiger)}</p>
+                  <p className="text-sm font-medium text-slate-900 truncate">{zimmetTurGosterim(z)}</p>
                   {altSatir && <p className="text-xs text-slate-500 truncate">{altSatir}</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">

@@ -33,3 +33,26 @@ export function getZimmetDurumRozeti(zimmet: {
 }
 
 export type ZimmetDurumRozeti = ReturnType<typeof getZimmetDurumRozeti>
+
+// REDDEDILDI kayıt kimseye ait değil ama zimmetSahibiId DB'de NOT NULL olduğu
+// için hâlâ son teklif edilen kişiyi gösteriyor gibi görünüyordu ("hâlâ
+// [kişide] duruyor" izlenimi). Gerçek bir IT envanteri/havuz modeli olmadığı
+// için (madde 7 araştırması) bu SADECE görsel bir düzeltme - veri değişmiyor.
+// Liste, Onayla (detay) ve İmzala ekranlarının ÜÇÜ de bu TEK fonksiyondan
+// geçer - kod tekrarı yok, tek yerden değişir.
+type ZimmetSahibiGosterimGirdi = {
+  durum: string
+  zimmetSahibi: { name: string | null; email: string; employeeId?: string | null } | null
+}
+
+export function zimmetSahibiBaslik(z: ZimmetSahibiGosterimGirdi): string {
+  if (z.durum === 'REDDEDILDI') return 'IT Envanterinde'
+  return z.zimmetSahibi?.name ?? z.zimmetSahibi?.email ?? '—'
+}
+
+export function zimmetSahibiAltBaslik(z: ZimmetSahibiGosterimGirdi): string | null {
+  if (z.durum === 'REDDEDILDI') {
+    return `Önceki aday: ${z.zimmetSahibi?.name ?? z.zimmetSahibi?.email ?? '—'}`
+  }
+  return z.zimmetSahibi?.employeeId ? `Sicil: ${z.zimmetSahibi.employeeId}` : null
+}

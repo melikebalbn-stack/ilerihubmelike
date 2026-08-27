@@ -29,7 +29,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 export function ZimmetFormuStep3({ step1, step2, teslimEdenAdi, onEditStep, personelListesi, teslimEdenImzalandi = false }: Props) {
   const zimmetSahibi = personelListesi.find((p) => p.id === step1.zimmetSahibiId)
-  const turGosterim = step1.tur === 'Diğer' ? step1.turDiger : step1.tur
+  const turGosterim = step1.tur === 'Yazılım' ? step1.turDiger : step1.tur
 
   return (
     <div className="space-y-4">
@@ -73,24 +73,9 @@ export function ZimmetFormuStep3({ step1, step2, teslimEdenAdi, onEditStep, pers
             <SummaryRow label="Seri numarası" value={step1.seriNumarasi} />
             <SummaryRow label="Açıklama" value={step1.aciklama} />
             <SummaryRow label="Özellik" value={step1.ozellik} />
-            {step1.ram && <SummaryRow label="RAM" value={step1.ram} />}
-            {step1.ipAdresi && <SummaryRow label="IP adresi" value={step1.ipAdresi} />}
-            {step1.parcaNo && <SummaryRow label="P/N" value={step1.parcaNo} />}
-            {step1.lisansBaslangic && (
-              <SummaryRow
-                label="Lisans başlangıç"
-                value={new Date(step1.lisansBaslangic).toLocaleDateString('tr-TR')}
-              />
-            )}
-            {step1.lisansBitis && (
-              <SummaryRow
-                label="Lisans bitiş"
-                value={new Date(step1.lisansBitis).toLocaleDateString('tr-TR')}
-              />
-            )}
-            <SummaryRow label="MAC adresi" value={step1.macAdresi} />
-            <SummaryRow label="PC adı" value={step1.pcAdi} />
-            <SummaryRow label="IMEI numarası" value={step1.imeiNumarasi} />
+            {step1.macAdresi && <SummaryRow label="MAC adresi" value={step1.macAdresi} />}
+            {step1.pcAdi && <SummaryRow label="PC adı" value={step1.pcAdi} />}
+            {step1.imeiNumarasi && <SummaryRow label="IMEI numarası" value={step1.imeiNumarasi} />}
           </CardContent>
         </Card>
 

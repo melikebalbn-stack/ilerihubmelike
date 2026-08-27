@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
+import { varsayilanTeslimNotu } from '@/lib/zimmet/teslim-notlari'
 import { ZimmetImzalaClient } from './ZimmetImzalaClient'
 
 export const dynamic = 'force-dynamic'
@@ -41,7 +42,9 @@ export default async function ZimmetImzalaPage({
     onayTarihi: zimmet.onayTarihi?.toISOString() ?? null,
     zimmetSahibiImzaTarihi: zimmet.zimmetSahibiImzaTarihi?.toISOString() ?? null,
     durum: zimmet.durum as string,
-    teslimNotu: zimmet.teslimNotu ?? null,
+    // Syteline devrinden gelen kayıtlarda teslimNotu hiç set edilmemişti -
+    // türe göre standart metin varsayılan olarak gösteriliyor.
+    teslimNotu: zimmet.teslimNotu ?? varsayilanTeslimNotu(zimmet.tur, zimmet.turDiger),
     aciklama: zimmet.aciklama ?? null,
     departman: zimmet.departman ?? null,
     verilisTarihi: zimmet.verilisTarihi?.toISOString() ?? null,

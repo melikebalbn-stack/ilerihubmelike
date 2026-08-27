@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { ZimmetOnayDurumu } from '@/generated/prisma'
 import { generateZimmetPdf } from '@/lib/zimmet/pdf'
+import { varsayilanTeslimNotu } from '@/lib/zimmet/teslim-notlari'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,10 @@ export async function GET(
       verilisTarihi: zimmet.verilisTarihi,
       cihazDurumu: zimmet.cihazDurumu,
       durum: zimmet.durum,
-      teslimNotu: zimmet.teslimNotu,
+      // Syteline devrinden gelen kayıtlarda teslimNotu hiç set edilmemişti -
+      // türe göre standart metin varsayılan olarak gösteriliyor (bkz.
+      // src/lib/zimmet/teslim-notlari.ts), DB'ye geri yazılmıyor.
+      teslimNotu: zimmet.teslimNotu ?? varsayilanTeslimNotu(zimmet.tur, zimmet.turDiger),
       teslimEdenAdi: zimmet.createdBy.name ?? zimmet.createdBy.email,
       teslimEdenUnvan: zimmet.createdBy.jobTitle,
       teslimEdenBolum: zimmet.createdBy.department,

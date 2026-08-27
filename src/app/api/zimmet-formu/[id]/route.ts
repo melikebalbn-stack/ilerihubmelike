@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { hasPermission } from '@/lib/auth/has-permission'
-import { ZimmetOnayDurumu } from '@/generated/prisma'
+import { zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
+import { yazilimKaydi } from '@/lib/zimmet/tur'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,10 +51,9 @@ export async function GET(
   }
 }
 
-// Sadece ONAY_BEKLIYOR durumundaki (henüz onaylanmamış/reddedilmemiş) hatalı
-// kayıtlar silinebilir - örn. yanlış girilmiş bir seri numarası. Onaylanmış/
-// reddedilmiş kayıtlar kalıcı kayıt niteliğinde olduğu için silinemez.
-// Yetki: zimmet-formu.approve (soft-delete).
+// Kayıt hangi durumda olursa olsun (ONAY_BEKLIYOR, ONAYLANDI, REDDEDILDI)
+// silinebilir - onay dialogu (client tarafı) kullanıcının yanlışlıkla
+// silmesine karşı tek koruma. Yetki: zimmet-formu.approve (soft-delete).
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -73,15 +73,6 @@ export async function DELETE(
     })
     if (!mevcut) {
       return NextResponse.json({ error: 'Zimmet formu bulunamadı' }, { status: 404 })
-    }
-    if (mevcut.durum !== ZimmetOnayDurumu.ONAY_BEKLIYOR) {
-      return NextResponse.json(
-        {
-          error:
-            'Onaylanmış/reddedilmiş kayıtlar silinemez, yalnızca onay bekleyen hatalı kayıtlar silinebilir',
-        },
-        { status: 400 },
-      )
     }
 
     await prisma.zimmetFormu.update({
@@ -133,16 +124,60 @@ export async function PATCH(
       select: {
         id: true,
         durum: true,
+        tur: true,
+        turDiger: true,
         seriNumarasi: true,
         aciklama: true,
         ozellik: true,
         macAdresi: true,
         pcAdi: true,
         imeiNumarasi: true,
+        zimmetSahibiId: true,
+        zimmetSahibi: { select: { name: true, email: true } },
       },
     })
     if (!mevcut) {
       return NextResponse.json({ error: 'Zimmet formu bulunamadı' }, { status: 404 })
+    }
+
+    // zimmetSahibiId prod'da NOT NULL - boş gönderilmesine izin verilmez,
+    // gönderilen id'nin gerçek bir User olduğu doğrulanır.
+    const yeniZimmetSahibiId = optionalString(body.zimmetSahibiId)
+    if (!yeniZimmetSahibiId) {
+      return NextResponse.json({ error: 'Zimmet sahibi seçilmelidir' }, { status: 400 })
+    }
+    const yeniZimmetSahibi = await prisma.user.findUnique({
+      where: { id: yeniZimmetSahibiId },
+      select: { id: true, name: true, email: true },
+    })
+    if (!yeniZimmetSahibi) {
+      return NextResponse.json({ error: 'Geçersiz zimmet sahibi' }, { status: 400 })
+    }
+
+    // Tür genel olarak bu uçtan DEĞİŞTİRİLEMEZ - TEK istisna: "Yazılım" grubu
+    // içinde (DIGER ↔ OFFICE_365) turDiger seçimine göre otomatik geçiş
+    // (Melih'in kararı - Office 365 SADECE OFFICE_365 enum'unda yaşar, DIGER+
+    // "Office 365" hiç oluşmasın). Başka HİÇBİR tür değişimi yok - mevcut.tur
+    // DIGER/OFFICE_365 dışındaysa tur/turDiger tamamen dokunulmaz kalır.
+    let yeniTur = mevcut.tur
+    let yeniTurDiger = mevcut.turDiger
+    if (mevcut.tur === 'DIGER' || mevcut.tur === 'OFFICE_365') {
+      const normalize = yazilimKaydi(optionalString(body.turDiger) ?? '')
+      yeniTur = normalize.tur
+      yeniTurDiger = normalize.turDiger
+    }
+
+    // Türe göre değişen zorunlu alanlar (Seri No/Özellik/IMEI/Hangi yazılım)
+    // kaydın MEVCUT türüne göre kontrol edilir - İstemci (Düzenle dialogu) ile
+    // AYNI tablo, src/lib/zimmet/zorunlu-alanlar.ts. OFFICE_365/DIGER geçişinde
+    // turDiger her iki yönde de dolu gönderildiği için (bkz. Düzenle dialogu
+    // prefill) bu kontrol mevcut.tur ile de doğru sonuç verir.
+    const eksikAlanlar = zimmetEksikAlanlar(mevcut.tur, body)
+    if (eksikAlanlar.length > 0) {
+      return NextResponse.json(
+        { error: 'Zorunlu alanlar eksik', eksikAlanlar },
+        { status: 400 },
+      )
     }
 
     const guncellendi = await prisma.zimmetFormu.update({
@@ -156,6 +191,9 @@ export async function PATCH(
         imeiNumarasi: optionalString(body.imeiNumarasi),
         marka: optionalString(body.marka),
         model: optionalString(body.model),
+        tur: yeniTur,
+        turDiger: yeniTurDiger,
+        zimmetSahibiId: yeniZimmetSahibi.id,
       },
     })
 
@@ -183,6 +221,24 @@ export async function PATCH(
     }
     if (mevcut.imeiNumarasi !== guncellendi.imeiNumarasi) {
       degisiklikler.push(`IMEI: "${mevcut.imeiNumarasi ?? '—'}" → "${guncellendi.imeiNumarasi ?? '—'}"`)
+    }
+    // Tür seviyesinde değişim (DIGER ↔ OFFICE_365) olduysa AYRI ve daha net bir
+    // satır düşülür (ör. "Tür güncellendi: Yazılım · LOGO Tiger3 → Office 365") -
+    // bu durumda turDiger diff'i (altta) TEKRAR düşürülmez, aynı bilgiyi
+    // iki kez farklı biçimde göstermesin.
+    if (mevcut.tur !== guncellendi.tur) {
+      const yazilimAdi = (tur: string, turDiger: string | null) =>
+        tur === 'OFFICE_365' ? 'Office 365' : (turDiger ?? '—')
+      degisiklikler.push(
+        `Tür güncellendi: Yazılım · ${yazilimAdi(mevcut.tur, mevcut.turDiger)} → ${yazilimAdi(guncellendi.tur, guncellendi.turDiger)}`
+      )
+    } else if (mevcut.turDiger !== guncellendi.turDiger) {
+      degisiklikler.push(`Hangi yazılım: "${mevcut.turDiger ?? '—'}" → "${guncellendi.turDiger ?? '—'}"`)
+    }
+    if (mevcut.zimmetSahibiId !== guncellendi.zimmetSahibiId) {
+      const eskiAd = mevcut.zimmetSahibi.name ?? mevcut.zimmetSahibi.email
+      const yeniAd = yeniZimmetSahibi.name ?? yeniZimmetSahibi.email
+      degisiklikler.push(`Zimmet sahibi değiştirildi: ${eskiAd} → ${yeniAd}`)
     }
     const not = degisiklikler.length > 0
       ? `Kayıt düzenlendi: ${degisiklikler.join('; ')}`

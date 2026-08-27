@@ -1,31 +1,26 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ZimmetTuru as PrismaZimmetTuru } from '@/generated/prisma'
+import {
+  DEFAULT_TESLIM_NOTU,
+  varsayilanTeslimNotu as varsayilanTeslimNotuByEnum,
+} from '@/lib/zimmet/teslim-notlari'
+import {
+  ZIMMET_TUR_SECENEKLERI,
+  ZIMMET_SECENEK_TO_ENUM,
+  yazilimKaydi,
+  type ZimmetTurSecenegi,
+} from '@/lib/zimmet/tur'
+import { zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
 
-export const ZIMMET_TUR_OPTIONS = [
-  'Notebook Bilgisayar',
-  'Desktop Bilgisayar',
-  'Cep Telefonu',
-  'El Terminali',
-  'Yazıcı',
-  'Office 365',
-  'Diğer',
-] as const
-
-export type ZimmetTuru = (typeof ZIMMET_TUR_OPTIONS)[number]
-
-// Backend (Prisma enum) karşılıkları — UI'daki Türkçe etiketler değişmeden kalır.
-// "Yazıcı" artık gerçek ZimmetTuru.YAZICI enum değerine sahip (bkz. schema.prisma) -
-// eskiden DIGER kaçış kapısına düşüyordu, PENDING migration uygulanınca bu geçerli olur.
-const ZIMMET_TUR_TO_ENUM: Record<ZimmetTuru, string> = {
-  'Notebook Bilgisayar': 'NOTEBOOK_BILGISAYAR',
-  'Desktop Bilgisayar': 'DESKTOP_BILGISAYAR',
-  'Cep Telefonu': 'CEP_TELEFONU',
-  'El Terminali': 'EL_TERMINALI',
-  Yazıcı: 'YAZICI',
-  'Office 365': 'OFFICE_365',
-  Diğer: 'DIGER',
-}
+// Form seçenekleri + Türkçe→enum eşlemesi artık src/lib/zimmet/tur.ts'te -
+// Liste ekranının istatistik kartlarıyla AYNI kaynak (tek yerden değişir,
+// ikisi sapmaz). "Yazılım" → varsayılan DIGER + turDiger, ama "Office 365"
+// özel durumu var (bkz. buildSubmitPayload + tur.ts yazilimKaydi).
+export const ZIMMET_TUR_OPTIONS = ZIMMET_TUR_SECENEKLERI
+export type ZimmetTuru = ZimmetTurSecenegi
+export const ZIMMET_TUR_TO_ENUM: Record<ZimmetTuru, string> = ZIMMET_SECENEK_TO_ENUM
 
 export interface PersonelHit {
   id: string
@@ -50,32 +45,28 @@ export interface ZimmetFormuStep1Data {
   seriNumarasi: string
   aciklama: string
   ozellik: string
-  ram: string
-  ipAdresi: string
-  parcaNo: string
-  lisansBaslangic: string
-  lisansBitis: string
   macAdresi: string
   pcAdi: string
   imeiNumarasi: string
 }
 
-// Zorunlu alanlar — sunucu tarafındaki (route.ts, preview-pdf/route.ts) kontrolle
-// AYNI dört alan. Adım 1→2 geçişi, önizleme ve imzalama butonları HEPSİ bu tek
-// fonksiyondan geçer - tek yerden değişir, kontrol çakışmaz/eksik kalmaz.
+// Zimmet Sahibi ve Tür HER türde sabit zorunlu (burada). Türe göre DEĞİŞEN
+// ek zorunlu alanlar (Seri No/Özellik/IMEI/Hangi yazılım) artık
+// src/lib/zimmet/zorunlu-alanlar.ts'te (zimmetEksikAlanlar) - sunucu
+// tarafındaki (route.ts, preview-pdf/route.ts, [id]/route.ts PATCH) kontrolle
+// AYNI tablo, tek yerden değişir, kontrol çakışmaz/eksik kalmaz. Adım 1→2
+// geçişi, önizleme ve imzalama butonları HEPSİ bu tek fonksiyondan geçer.
 const ZORUNLU_ALAN_ETIKETLERI = {
   zimmetSahibiId: 'Zimmet sahibi',
   tur: 'Tür',
-  seriNumarasi: 'Seri numarası',
-  aciklama: 'Açıklama',
 } as const
 
 export function zimmetEksikZorunluAlanlar(step1: ZimmetFormuStep1Data): string[] {
   const eksik: string[] = []
   if (!step1.zimmetSahibiId.trim()) eksik.push(ZORUNLU_ALAN_ETIKETLERI.zimmetSahibiId)
   if (!step1.tur) eksik.push(ZORUNLU_ALAN_ETIKETLERI.tur)
-  if (!step1.seriNumarasi.trim()) eksik.push(ZORUNLU_ALAN_ETIKETLERI.seriNumarasi)
-  if (!step1.aciklama.trim()) eksik.push(ZORUNLU_ALAN_ETIKETLERI.aciklama)
+  const enumTur = step1.tur ? ZIMMET_TUR_TO_ENUM[step1.tur] : ''
+  eksik.push(...zimmetEksikAlanlar(enumTur, step1))
   return eksik
 }
 
@@ -95,11 +86,6 @@ const INITIAL_STEP1: ZimmetFormuStep1Data = {
   seriNumarasi: '',
   aciklama: '',
   ozellik: '',
-  ram: '',
-  ipAdresi: '',
-  parcaNo: '',
-  lisansBaslangic: '',
-  lisansBitis: '',
   macAdresi: '',
   pcAdi: '',
   imeiNumarasi: '',
@@ -119,91 +105,24 @@ export interface ZimmetFormuStep2Data {
   teslimNotu: string
 }
 
-const DEFAULT_TESLIM_NOTU =
-  'Cihaz hasarsız teslim edilmiştir, kullanım kurallarına uyulacaktır.'
-
-// Tür seçilince "Teslim koşulları" alanını otomatik dolduran standart metinler.
-// Kullanıcı metni elle değiştirirse bir sonraki tür değişiminde üzerine yazılmaz.
-const ZIMMET_TESLIM_NOTLARI: Partial<Record<string, string>> = {
-  'Notebook Bilgisayar': `Markası, modeli, kullanıcı tanımlı programları liste halinde ve ekipmanları işaretli olarak yazılı olan bir (1) adet Notebook bilgisayar eksiksiz ve sağlam olarak teslim edilmiştir.
-
-İlgili bilgisayar bilgi teknolojileri departmanı tarafından tarafınıza teslim edildikten sonra;
-
-- Bilgi teknolojileri tarafından onaysız veya habersiz olarak yüklenen yazılımlarda 5864 nolu Fikir ve Sanat Eserleri kanunun gereğince,
-- Mail msn gibi iletişim programları, Internet forumları, haber yorumları gibi benzer iletişim araçları ile hakaret ve sövme cürümlerinde, yasadışı yayınlarda TCK 125-200-426-427-480-490. Maddeleri gereğince,
-- Şirket içi veya şirket dışındaki bilgisayar sistemlerini ve servislerini yetkiniz dışında erişim ve dinleme halinde TCK 525. Madde gereğince;
-- Amaç dışı kullanımlarda ve ilgili bilgisayarın (kullanıcı hatasından kaynaklanmayan donanım arızaları haricinde) zarar görmesi durumunda;
-
-İş bu maddelerde yazılı kanun ve durumların ihlali halinde tüm maddi, hukuki ve cezai sorumluluk teslim edilen kullanıcıya aittir. Bu sebeple şirketin uğrayacağı her türlü zararın teslim edilen kullanıcı tarafından tazmin edileceği kayıtsız şartsız kabul ve taahhüt edilmiştir.
-
-Teslim edilen bilgisayar satılamaz, takas edilemez ve bir başka kullanıcıya devredilemez. Bilgisayarlarda lisansı olmayan hiçbir yazılım ve donanımın bulunmadığı kontrol edilerek teslim edilmiştir.`,
-
-  'Desktop Bilgisayar': `Markası, modeli, kullanıcı tanımlı programları liste halinde ve ekipmanları işaretli olarak yazılı olan bir (1) adet Desktop bilgisayar eksiksiz ve sağlam olarak teslim edilmiştir.
-
-İlgili bilgisayar bilgi teknolojileri departmanı tarafından tarafınıza teslim edildikten sonra;
-
-- Bilgi teknolojileri tarafından onaysız veya habersiz olarak yüklenen yazılımlarda 5864 nolu Fikir ve Sanat Eserleri kanunun gereğince,
-- Mail msn gibi iletişim programları, Internet forumları, haber yorumları gibi benzer iletişim araçları ile hakaret ve sövme cürümlerinde, yasadışı yayınlarda TCK 125-200-426-427-480-490. Maddeleri gereğince,
-- Şirket içi veya şirket dışındaki bilgisayar sistemlerini ve servislerini yetkiniz dışında erişim ve dinleme halinde TCK 525. Madde gereğince;
-- Amaç dışı kullanımlarda ve ilgili bilgisayarın (kullanıcı hatasından kaynaklanmayan donanım arızaları haricinde) zarar görmesi durumunda;
-
-İş bu maddelerde yazılı kanun ve durumların ihlali halinde tüm maddi, hukuki ve cezai sorumluluk teslim edilen kullanıcıya aittir. Bu sebeple şirketin uğrayacağı her türlü zararın teslim edilen kullanıcı tarafından tazmin edileceği kayıtsız şartsız kabul ve taahhüt edilmiştir.
-
-Teslim edilen bilgisayar satılamaz, takas edilemez ve bir başka kullanıcıya devredilemez. Bilgisayarlarda lisansı olmayan hiçbir yazılım ve donanımın bulunmadığı kontrol edilerek teslim edilmiştir.`,
-
-  'Cep Telefonu': `1-) Aşağıda marka ve modeli yazılı cep telefonu, batarya ve şarj aleti, hasarsız ve tam olarak teslim edilmiştir.
-
-2-) İş bu belge gereği bu cep telefonu satılmaz, kiralanmaz veya takas edilmez.
-
-3-) Bu telefon ve ekipmanlarının minimum kullanma süresi 3 yıldır. Bu süreden önce üretici firma tarafından belirtilen garanti şartları dışında kalan durumlarda, oluşabilecek maddi ödemelerden kullanıcı sorumludur. ILERI GROUP bu süre içerisinde kullanıcı kaynaklı arızalanan telefonları yenilemekle mükellef değildir.
-
-4-) Kullanıcıya teslim edilen telefon hattında, aşağıda belirtilen dakika ve data aşımı gerçekleşmesi halinde detaylı fatura incelenir. İş dışındaki kullanım tespitlerinde aşım bedeli kullanıcıdan tahsil edilecektir.`,
-
-  'El Terminali': `Tanımı ve özellikleri belirtilen endüstriyel el terminali birim sorumlusu olarak tarafınıza eksiksiz ve sağlam olarak teslim edilmiştir. Teslim edilen ürünler satılamaz, takas edilemez ve bir başka kullanıcıya devir edilemez. Bu ekipmanların minimum kullanım süresi 5 yıldır. Bu süreden önce üretici firma tarafından belirtilen garanti şartları dışında kalan durumlarda, oluşabilecek maddi ödemelerden kullanıcı sorumludur.
-
-- El terminali veya ekipmanları üzerinde oluşabilecek hasar ve arızaları önce birim sorumlusuna, sonrasında Bilgi Teknolojileri departmanına bildirmekle sorumlusunuzdur.
-- Hasar ve arıza bildirimi yapılmayan el terminalinin tespit edilmesi durumunda ilgili teknik servis raporuna göre belirlenen bedel, hasar şartları ağır ise, el terminalinin o güne ait sıfır cihaz bedeli zimmetlenen tutanak sahibinden tahsil edilir.
-- İşten ayrılma, yıllık izin gibi durumlarda tutanak sahibi el terminalini Bilgi Teknolojileri bölümüne teslim etmek zorundadır.
-- Bu sebeplerle şirketin uğrayacağı her türlü zararın teslim edilen kullanıcı tarafından tazmin edileceği kayıtsız şartsız kabul ve taahhüt edilmiştir.
-- Birim sorumlusu yukarıda yazılı tüm şartları kabul etmiş sayılmakta olup ihlal durumlarında 5237 sayılı T.C.K. 151-153. maddelerine istinaden tüm sorumlulukları kabul etmiş sayılmaktadır.`,
-
-  'Yazıcı': `Markası, modeli, IP adresi liste halinde ve ekipmanları işaretli olarak yazılı olan bir (1) adet Yazıcı eksiksiz ve sağlam olarak teslim edilmiştir.
-
-İlgili yazıcı bilgi teknolojileri departmanı tarafından tarafınıza teslim edildikten sonra;
-
-- Bilgi teknolojileri tarafından onaysız veya habersiz olarak yüklenen yazılımlarda 5864 nolu Fikir ve Sanat Eserleri kanunun gereğince,
-- Mail msn gibi iletişim programları, Internet forumları, haber yorumları gibi benzer iletişim araçları ile hakaret ve sövme cürümlerinde, yasadışı yayınlarda TCK 125-200-426-427-480-490. Maddeleri gereğince,
-- Şirket içi veya şirket dışındaki bilgisayar ve yazıcı sistemlerini ve servislerini yetkiniz dışında erişim ve dinleme halinde TCK 525. Madde gereğince;
-- Amaç dışı kullanımlarda ve ilgili yazıcının (kullanıcı hatasından kaynaklanmayan donanım arızaları haricinde) zarar görmesi durumunda;
-
-İş bu maddelerde yazılı kanun ve durumların ihlali halinde tüm maddi, hukuki ve cezai sorumluluk teslim edilen kullanıcıya aittir. Bu sebeple şirketin uğrayacağı her türlü zararın teslim edilen kullanıcı tarafından tazmin edileceği kayıtsız şartsız kabul ve taahhüt edilmiştir.
-
-Teslim edilen yazıcı satılamaz, takas edilemez ve bir başka kullanıcıya devredilemez. Yazıcıda lisansı olmayan hiçbir yazılım ve donanımın bulunmadığı kontrol edilerek teslim edilmiştir.`,
-
-  'Mikrofon': `Markası, modeli, seri numarası ve ekipmanları belirtilen bir (1) adet mikrofon bir (1) adet verici, eksiksiz ve sağlam olarak teslim edilmiştir.
-
-İlgili mikrofon, Bilgi Teknolojileri Departmanı tarafından tarafınıza teslim edildikten sonra;
-
-- Bilgi teknolojileri tarafından onaysız veya habersiz olarak yüklenen yazılımlarda 5864 nolu Fikir ve Sanat Eserleri kanunun gereğince,
-- Mikrofonun; ses kayıtları, iletişim programları veya internet platformlarında yasa dışı yayınlarda kullanılması, TCK 125, 200, 426, 427, 480, 490. maddeleri gereğince hukuki ve cezai sorumluluk doğuracaktır.
-- Şirket içi veya şirket dışındaki sistemlere yetkisiz erişim, ses kayıtlarının izinsiz dinlenmesi ve paylaşılması halinde, TCK 525. madde gereğince sorumluluk teslim edilen kullanıcıya ait olacaktır.
-- Mikrofonun amacı dışında kullanılması ve kullanıcı hatasından kaynaklanan arızalar durumunda tüm sorumluluk kullanıcıya aittir.
-
-Yukarıda belirtilen kanun ve kuralların ihlali halinde, meydana gelecek tüm maddi, hukuki ve cezai sorumluluk teslim edilen kullanıcıya ait olup, şirketin uğrayacağı zararlar eksiksiz olarak tazmin edileceği kabul ve taahhüt edilmiştir.
-
-Teslim edilen mikrofon; satılamaz, takas edilemez ve bir başka kullanıcıya devredilemez. Mikrofon, lisansı olmayan herhangi bir yazılım veya donanım içermediği kontrol edilerek teslim edilmiştir.`,
-
-  // NOT: Yüklenen Monitör_Zimmet_formu.docx içeriği, Mikrofon dosyasıyla birebir aynı metni içeriyor
-  // (şirketin kendi şablonunda muhtemelen kopyala-yapıştır hatası — Monitör'e özgü ayrı bir metin yok).
-  // Bu yüzden Monitör notu KISALTILMIŞ haliyle bırakıldı, YANLIŞLIKLA mikrofon metni kopyalanmadı.
-  // Gerçek Monitör tutanağı metni netleşirse Melih üzerinden güncellenmeli.
-  'Monitör': 'Teslim edilen monitör hasarsız ve eksiksiz olarak teslim alınmıştır. Amaç dışı kullanım veya kullanıcı hatasından kaynaklanan hasarlarda sorumluluk teslim alan kullanıcıya aittir.',
-
-  'Office 365': 'Bu lisans şirket kullanımı içindir, kişisel amaçla kullanılamaz ve başka bir kullanıcıya devredilemez. Lisans süresi dolduğunda veya kullanıcının görevi sona erdiğinde lisans Bilgi Teknolojileri departmanına iade edilmek/devredilmek zorundadır.',
-}
-
-function varsayilanTeslimNotu(tur: ZimmetTuru | ''): string {
-  return (tur && ZIMMET_TESLIM_NOTLARI[tur]) || DEFAULT_TESLIM_NOTU
+// Tür seçilince "Teslim koşulları" alanını otomatik dolduran standart metinler
+// artık src/lib/zimmet/teslim-notlari.ts'te - sunucu tarafı (pdf/route.ts,
+// onayla/imzala sayfaları) ile AYNI metinleri paylaşabilmek için oraya taşındı
+// (bkz. o dosyadaki not: Syteline devri kayıtları hiç teslimNotu almıyordu).
+// Kullanıcı metni elle değiştirirse bir sonraki tür değişiminde üzerine
+// yazılmaz - bu davranış değişmedi.
+// "Yazılım" seçiliyken hangi metnin (lisans mı, donanım mı) doğru olduğu
+// turDiger'a bağlı - buildSubmitPayload'daki NİHAİ dönüşümle (yazilimKaydi)
+// AYNI mantık burada da kullanılıyor, ör. "Office 365" seçilince canlı önizleme
+// de OFFICE_365'in lisans metnini göstersin (DB'ye kaydedilmeden önce bile).
+function varsayilanTeslimNotu(tur: ZimmetTuru | '', turDiger: string): string {
+  if (!tur) return DEFAULT_TESLIM_NOTU
+  if (tur === 'Yazılım') {
+    const yazilim = yazilimKaydi(turDiger)
+    return varsayilanTeslimNotuByEnum(yazilim.tur, yazilim.turDiger)
+  }
+  const enumDegeri = ZIMMET_TUR_TO_ENUM[tur] as PrismaZimmetTuru
+  return varsayilanTeslimNotuByEnum(enumDegeri)
 }
 
 function todayIsoDate(): string {
@@ -242,6 +161,7 @@ export function useZimmetFormu() {
   const [teslimEdenImzalandi, setTeslimEdenImzalandi] = useState(false)
   const [teslimEdenImzaTarihi, setTeslimEdenImzaTarihi] = useState('')
   const prevTurRef = useRef<ZimmetTuru | ''>('')
+  const prevTurDigerRef = useRef<string>('')
 
   // Gerçek kullanıcı listesi — diğer modüllerin (örn. offboarding) kullandığı /api/users?source=db
   useEffect(() => {
@@ -295,17 +215,22 @@ export function useZimmetFormu() {
   )
 
   // Tür değişince "Teslim koşulları" alanını standart metinle doldurur.
-  // Kullanıcı metni elle değiştirmişse (önceki türün varsayılanından farklıysa) dokunmaz.
+  // Kullanıcı metni elle değiştirmişse (önceki varsayılandan farklıysa) dokunmaz.
+  // "Yazılım" seçiliyken turDiger değişimi de (LOGO Tiger3 → Office 365 gibi)
+  // izlenir - lisans/donanım metni ayrımı turDiger'a bağlı olduğu için.
   useEffect(() => {
-    if (step1.tur === prevTurRef.current) return
-    const oncekiVarsayilan = varsayilanTeslimNotu(prevTurRef.current)
+    const turDegisti = step1.tur !== prevTurRef.current
+    const turDigerDegisti = step1.tur === 'Yazılım' && step1.turDiger !== prevTurDigerRef.current
+    if (!turDegisti && !turDigerDegisti) return
+    const oncekiVarsayilan = varsayilanTeslimNotu(prevTurRef.current, prevTurDigerRef.current)
     setStep2((prev) =>
       prev.teslimNotu === '' || prev.teslimNotu === oncekiVarsayilan
-        ? { ...prev, teslimNotu: varsayilanTeslimNotu(step1.tur) }
+        ? { ...prev, teslimNotu: varsayilanTeslimNotu(step1.tur, step1.turDiger) }
         : prev
     )
     prevTurRef.current = step1.tur
-  }, [step1.tur])
+    prevTurDigerRef.current = step1.turDiger
+  }, [step1.tur, step1.turDiger])
 
   const setStep2Field = useCallback(
     <K extends keyof ZimmetFormuStep2Data>(field: K, value: ZimmetFormuStep2Data[K]) => {
@@ -332,23 +257,22 @@ export function useZimmetFormu() {
   }, [])
 
   // handleSubmit ve previewPdf AYNI gövdeyi gönderir — tek yerden üretilir.
-  const buildSubmitPayload = useCallback(
-    () => ({
+  // "Yazılım" seçilince tur/turDiger'ın NİHAİ hali yazilimKaydi()'den geçer -
+  // "Office 365" özel durumu orada ele alınıyor (OFFICE_365 + turDiger:null),
+  // diğer tüm yazılımlar DIGER + turDiger olarak kalır.
+  const buildSubmitPayload = useCallback(() => {
+    const yazilim = step1.tur === 'Yazılım' ? yazilimKaydi(step1.turDiger) : null
+    return {
       zimmetSahibiId: step1.zimmetSahibiId,
       altZimmetSahibi: step1.altZimmetSahibi,
       departman: step1.departman,
-      tur: step1.tur ? ZIMMET_TUR_TO_ENUM[step1.tur] : '',
-      turDiger: step1.turDiger,
+      tur: yazilim ? yazilim.tur : (step1.tur ? ZIMMET_TUR_TO_ENUM[step1.tur] : ''),
+      turDiger: yazilim ? (yazilim.turDiger ?? '') : '',
       marka: step1.marka,
       model: step1.model,
       seriNumarasi: step1.seriNumarasi,
       aciklama: step1.aciklama,
       ozellik: step1.ozellik,
-      ram: step1.ram,
-      ipAdresi: step1.ipAdresi,
-      parcaNo: step1.parcaNo,
-      lisansBaslangic: step1.lisansBaslangic,
-      lisansBitis: step1.lisansBitis,
       macAdresi: step1.macAdresi,
       pcAdi: step1.pcAdi,
       imeiNumarasi: step1.imeiNumarasi,
@@ -357,9 +281,8 @@ export function useZimmetFormu() {
       teslimNotu: step2.teslimNotu,
       teslimEdenImzalandi,
       teslimEdenImzaTarihi,
-    }),
-    [step1, step2, teslimEdenImzalandi, teslimEdenImzaTarihi]
-  )
+    }
+  }, [step1, step2, teslimEdenImzalandi, teslimEdenImzaTarihi])
 
   const handleSubmit = useCallback(async () => {
     setSubmitStatus('submitting')

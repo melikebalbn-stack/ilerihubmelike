@@ -5,6 +5,8 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { ZimmetTuru, ZimmetCihazDurumu } from '@/generated/prisma'
 import { dispatchZimmetApproval } from '@/lib/zimmet/notifications'
 import { APPROVER_USER_ID, APPROVER_EMAIL, APPROVER_NAME } from '@/lib/zimmet/constants'
+import { zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
+import { yazilimKaydi } from '@/lib/zimmet/tur'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,9 +51,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Zimmet sahibi gerekli' }, { status: 400 })
     }
 
-    const tur = typeof body.tur === 'string' ? body.tur : ''
+    let tur = typeof body.tur === 'string' ? body.tur : ''
     if (!TUR_VALUES.includes(tur)) {
       return NextResponse.json({ error: 'Geçerli bir tür seçin' }, { status: 400 })
+    }
+
+    // Office 365 istisnası (Melih'in kararı): normal akışta istemci "Office 365"
+    // seçilince zaten tur=OFFICE_365 gönderiyor (bkz. useZimmetFormu.ts
+    // buildSubmitPayload). Burası SADECE istemci bypass edilip doğrudan
+    // tur=DIGER + turDiger="Office 365" gönderilirse devreye giren bir
+    // güvenlik ağı - aynı bilgi DB'de iki farklı şekilde temsil edilmesin
+    // (bkz. tur.ts yazilimKaydi).
+    let turDigerNihai: string | null = null
+    if (tur === ZimmetTuru.DIGER) {
+      const normalize = yazilimKaydi(optionalString(body.turDiger) ?? '')
+      tur = normalize.tur
+      turDigerNihai = normalize.turDiger
     }
 
     const zimmetSahibi = await prisma.user.findUnique({ where: { id: zimmetSahibiId } })
@@ -61,16 +76,11 @@ export async function POST(request: NextRequest) {
 
     // İstemci tarafındaki required kontrollerine güvenilmez (DevTools/doğrudan
     // API isteğiyle bypass edilebilir) - sunucu tarafı tek gerçek güvenlik katmanı.
-    const zorunluAlanlar = {
-      zimmetSahibiId: body.zimmetSahibiId,
-      tur: body.tur,
-      seriNumarasi: body.seriNumarasi,
-      aciklama: body.aciklama,
-    }
-
-    const eksikAlanlar = Object.entries(zorunluAlanlar)
-      .filter(([, deger]) => !deger || (typeof deger === 'string' && deger.trim() === ''))
-      .map(([anahtar]) => anahtar)
+    // Zimmet Sahibi + Tür zaten yukarıda ayrı kontrol edildi (erken 400 döner).
+    // Türe göre DEĞİŞEN ek zorunlu alanlar (Seri No/Özellik/IMEI/Hangi yazılım)
+    // src/lib/zimmet/zorunlu-alanlar.ts'ten (zimmetEksikAlanlar) - istemciyle
+    // (useZimmetFormu.ts) AYNI tablo, ikisi asla sapmaz.
+    const eksikAlanlar = zimmetEksikAlanlar(tur, body)
 
     if (eksikAlanlar.length > 0) {
       return NextResponse.json(
@@ -109,7 +119,7 @@ export async function POST(request: NextRequest) {
         altZimmetSahibi: optionalString(body.altZimmetSahibi),
         departman: optionalString(body.departman),
         tur: tur as ZimmetTuru,
-        turDiger: tur === ZimmetTuru.DIGER ? optionalString(body.turDiger) : null,
+        turDiger: turDigerNihai,
         // PENDING migration (prisma/migrations/PENDING_marka_model_tur_genisletme)
         // uygulanana kadar GEÇICI olarak devre dışı — DB'de/generated client'ta
         // marka/model henüz yok, create() Unknown argument hatası veriyordu.

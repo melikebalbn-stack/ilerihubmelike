@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { ZimmetTuru, ZimmetCihazDurumu } from '@/generated/prisma'
 import { generateZimmetPdf, type ZimmetPdfData } from '@/lib/zimmet/pdf'
 import { APPROVER_USER_ID, APPROVER_NAME } from '@/lib/zimmet/constants'
+import { zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
 
 const TUR_VALUES: string[] = Object.values(ZimmetTuru)
 const CIHAZ_DURUMU_VALUES: string[] = Object.values(ZimmetCihazDurumu)
@@ -17,10 +18,10 @@ function optionalString(value: unknown): string | null {
 
 // POST - Taslak PDF önizleme: henüz kaydedilmemiş form verisiyle PDF üretir.
 // Alan bazında gerçek POST'a göre daha TOLERANSLI (örn. geçersiz Tür DIGER'e
-// düşer, hata vermez) — ama zorunlu alanlar (Zimmet Sahibi, Tür, Seri No,
-// Açıklama) yine de boş olamaz; istemci taraflı buton disable'ı UI için,
-// asıl güvenlik/tutarlılık katmanı burasıdır (buton bypass edilip API'ye
-// doğrudan istek atılsa bile boş önizleme üretilemez).
+// düşer, hata vermez) — ama zorunlu alanlar (Zimmet Sahibi, Tür + türe göre
+// değişen ek alanlar) yine de boş olamaz; istemci taraflı buton disable'ı UI
+// için, asıl güvenlik/tutarlılık katmanı burasıdır (buton bypass edilip
+// API'ye doğrudan istek atılsa bile boş önizleme üretilemez).
 export async function POST(request: NextRequest) {
   try {
     const { error: permError } = await requirePermission('zimmet-formu.create')
@@ -31,15 +32,17 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
 
-    const zorunluAlanlar = {
-      zimmetSahibiId: body.zimmetSahibiId,
-      tur: body.tur,
-      seriNumarasi: body.seriNumarasi,
-      aciklama: body.aciklama,
+    // Zimmet Sahibi + Tür sabit zorunlu. Türe göre değişen ek zorunlu alanlar
+    // (Seri No/Özellik/IMEI/Hangi yazılım) src/lib/zimmet/zorunlu-alanlar.ts'ten
+    // (zimmetEksikAlanlar) - gerçek POST'la (route.ts) AYNI tablo.
+    const eksikAlanlar: string[] = []
+    if (!body.zimmetSahibiId || typeof body.zimmetSahibiId !== 'string' || !body.zimmetSahibiId.trim()) {
+      eksikAlanlar.push('zimmetSahibiId')
     }
-    const eksikAlanlar = Object.entries(zorunluAlanlar)
-      .filter(([, deger]) => !deger || (typeof deger === 'string' && deger.trim() === ''))
-      .map(([anahtar]) => anahtar)
+    if (!body.tur || typeof body.tur !== 'string' || !body.tur.trim()) {
+      eksikAlanlar.push('tur')
+    }
+    eksikAlanlar.push(...zimmetEksikAlanlar(typeof body.tur === 'string' ? body.tur : '', body))
 
     if (eksikAlanlar.length > 0) {
       return NextResponse.json(
@@ -97,11 +100,6 @@ export async function POST(request: NextRequest) {
       seriNumarasi: optionalString(body.seriNumarasi),
       aciklama: optionalString(body.aciklama),
       ozellik: optionalString(body.ozellik),
-      ram: optionalString(body.ram) ?? undefined,
-      ipAdresi: optionalString(body.ipAdresi) ?? undefined,
-      parcaNo: optionalString(body.parcaNo) ?? undefined,
-      lisansBaslangic: optionalString(body.lisansBaslangic) ?? undefined,
-      lisansBitis: optionalString(body.lisansBitis) ?? undefined,
       macAdresi: optionalString(body.macAdresi),
       pcAdi: optionalString(body.pcAdi),
       imeiNumarasi: optionalString(body.imeiNumarasi),

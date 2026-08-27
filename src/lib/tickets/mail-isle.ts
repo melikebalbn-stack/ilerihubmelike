@@ -10,6 +10,10 @@
  * DEĞİŞİR, internetMessageId değişmez. EmailIngestLog.messageId @unique olduğu
  * için son savunma hattı da DB'de.
  *
+ * DÖNGÜ KORUMASI: izlenen kutunun KENDİSİNDEN gelen mail yoksayılır
+ * (yoksayilmaliMi, `from` üzerinden). Kutu adresi burada hardcode DEĞİL —
+ * çağıran (cron ucu) veriyor.
+ *
  * BU FAZDA YOK (bilinçli): bildirim gönderimi. dispatchTicketCreated
  * ÇAĞRILMIYOR — mevcut bildirim akışına dokunulmadı, ayrı iş.
  */
@@ -107,7 +111,12 @@ async function ticketBul(m: GraphMesaj): Promise<{ id: string; ticketNumber: str
  * Hata fırlatmaz: beklenmedik bir şey olursa 'hata' sonucu döner ve (dryRun
  * değilse) EmailIngestLog'a HATA satırı yazar. Tek bozuk mail turu düşürmemeli.
  */
-export async function tekMesajIsle(m: GraphMesaj, dryRun: boolean): Promise<IsleSonucu> {
+export async function tekMesajIsle(
+  m: GraphMesaj,
+  dryRun: boolean,
+  /** İzlenen posta kutusu — döngü koruması bunu gerektiriyor (çağıran verir). */
+  izlenenKutu: string,
+): Promise<IsleSonucu> {
   const messageId = m.internetMessageId?.trim() || null
   const gonderici = gondericiCoz(m)
   const konu = konuCoz(m)
@@ -152,7 +161,7 @@ export async function tekMesajIsle(m: GraphMesaj, dryRun: boolean): Promise<Isle
     }
 
     // (b) YOKSAYMA — otomatik yanıt, bounce, boş mail.
-    const karar = yoksayilmaliMi(m)
+    const karar = yoksayilmaliMi(m, izlenenKutu)
     if (karar.yoksay) {
       if (!dryRun) {
         await prisma.emailIngestLog.create({

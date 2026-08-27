@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   const tasimaHatalari: string[] = []
 
   for (const m of mesajlar) {
-    const sonuc = await tekMesajIsle(m, dryRun)
+    const sonuc = await tekMesajIsle(m, dryRun, KUTU)
     sonuclar.push(sonuc)
 
     if (!dryRun && hedefKlasorId && sonuc.tasinabilir) {

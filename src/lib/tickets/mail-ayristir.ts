@@ -70,14 +70,82 @@ export function htmlToMetin(html: string): string {
 }
 
 /**
- * Gövde metni. contentType 'html' ise düz metne çevrilir.
+ * Alıntılanan yanıt geçmişini kırpar.
+ *
+ * SAF ve ayrı: govdeCoz onu çağırır ama tek başına test edilebilir.
+ * İlk ayraç bulunduğunda GERİSİ atılır — alıntı bloğu her zaman gövdenin
+ * sonuna kadar sürer.
+ *
+ * ⚠ VERİ KAYBETMEME KURALI: kırpma sonrası gövde boş kalıyorsa kırpma
+ * UYGULANMAZ, orijinal metin döner. Bazı istemciler kullanıcının yazdığını
+ * alıntının ALTINA koyuyor; körü körüne kırpmak o mesajı yok ederdi.
+ *
+ * İMZA kırpma YAPILMIYOR: "-- " ayracı güvenilir değil ve Türkçe imzalarda
+ * çoğu zaman hiç yok. Ayrı iş.
+ */
+export function alintiKirp(metin: string): string {
+  const satirlar = metin.split('\n')
+
+  /** Sonraki BOŞ OLMAYAN satırın indeksi (yoksa -1). */
+  const sonrakiDolu = (i: number): number => {
+    for (let j = i + 1; j < satirlar.length; j++) {
+      if (satirlar[j].trim()) return j
+    }
+    return -1
+  }
+
+  const baslikSatiri = /^\s*(from|gönderen|gonderen)\s*:/i
+  const izleyenBaslik = /^\s*(sent|gönderildi|gonderildi|to|kime|subject|konu)\s*:/i
+  const orijinalMesaj = /^\s*-{2,}\s*(orijinal mesaj|original message)\s*-{2,}\s*$/i
+  const altCizgiBlogu = /^_{10,}\s*$/
+  const yazdiSatiri = /^\s*(on\b.*\bwrote\s*:|.*\btarihinde\b.*\byazd[ıi]\s*:)\s*$/i
+
+  let kesim = -1
+  for (let i = 0; i < satirlar.length; i++) {
+    const satir = satirlar[i]
+
+    if (orijinalMesaj.test(satir) || altCizgiBlogu.test(satir) || yazdiSatiri.test(satir)) {
+      kesim = i
+      break
+    }
+
+    // "From:"/"Gönderen:" TEK BAŞINA kesmez — normal bir cümlede de geçebilir.
+    // Ardından "Sent:/Gönderildi:/To:/Kime:" gelmesi aranır.
+    if (baslikSatiri.test(satir)) {
+      const j = sonrakiDolu(i)
+      if (j !== -1 && izleyenBaslik.test(satirlar[j])) {
+        kesim = i
+        break
+      }
+    }
+
+    // Klasik alıntı: ARDIŞIK en az iki ">" satırı. Tek bir ">" satırı
+    // (ör. bir ok işareti) yüzünden gövde kesilmesin.
+    if (/^\s*>/.test(satir)) {
+      const j = sonrakiDolu(i)
+      if (j !== -1 && /^\s*>/.test(satirlar[j])) {
+        kesim = i
+        break
+      }
+    }
+  }
+
+  if (kesim === -1) return metin
+
+  const kirpilmis = satirlar.slice(0, kesim).join('\n').trim()
+  return kirpilmis ? kirpilmis : metin
+}
+
+/**
+ * Gövde metni. contentType 'html' ise düz metne çevrilir, sonra alıntılanan
+ * yanıt geçmişi kırpılır.
  * body boşsa bodyPreview'a düşülür (Graph bazı mesajlarda yalnız onu verir).
  */
 export function govdeCoz(m: Pick<GraphMesaj, 'body' | 'bodyPreview'>): string {
   const ham = (m.body?.content ?? '').trim()
-  if (!ham) return (m.bodyPreview ?? '').trim()
+  if (!ham) return alintiKirp((m.bodyPreview ?? '').trim())
   const tip = (m.body?.contentType ?? '').toLowerCase()
-  return tip === 'html' ? htmlToMetin(ham) : ham
+  return alintiKirp(tip === 'html' ? htmlToMetin(ham) : ham)
 }
 
 export interface YoksaymaKarari {
@@ -92,7 +160,19 @@ export interface YoksaymaKarari {
  * Amaç otomatik yanıt/bounce döngüsünü kesmek: bir "ofis dışındayım" yanıtına
  * ticket açılırsa kuyruk çöple dolar.
  */
-export function yoksayilmaliMi(m: GraphMesaj): YoksaymaKarari {
+export function yoksayilmaliMi(m: GraphMesaj, izlenenKutu: string): YoksaymaKarari {
+  // DÖNGÜ KORUMASI — yalnız `from`. Kutunun KENDİSİNDEN gelen mail işlenmez:
+  // ILERIHub bu kutudan bildirim göndermeye başladığında kendi mailini geri
+  // emmesin.
+  //
+  // ⚠ YALNIZ `from` bakılır. `toRecipients` ya da `replyTo` KONTROL EDİLMEZ:
+  // kullanıcının destek@'e yazdığı NORMAL mailde `to` zaten destek@'tir;
+  // onu yoksaymak kanalı tümüyle kapatırdı.
+  const kutu = (izlenenKutu ?? '').trim().toLowerCase()
+  if (kutu && gondericiCoz(m) === kutu) {
+    return { yoksay: true, sebep: 'Kendi kutumuzdan gelen mail (döngü koruması)' }
+  }
+
   const autoSubmitted = baslikDegeri(m, 'Auto-Submitted')
   if (autoSubmitted && autoSubmitted.toLowerCase() !== 'no') {
     return { yoksay: true, sebep: `Auto-Submitted: ${autoSubmitted}` }

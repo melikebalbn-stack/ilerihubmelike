@@ -68,6 +68,8 @@ interface EvalCell {
   ornekAciklama: string | null;
   ornekStatus: OrnekStatus;
   kursiyerDurum: string;
+  // Uç bunu zaten döndürüyordu; matriste gösterilmiyordu (eğitmen izi).
+  degerlendirildiAt: string | null;
   projeEkibiYorum: string | null;
   danismanYorum: string | null;
 }
@@ -169,6 +171,7 @@ export function IfsEvaluationsTab() {
         ornekAciklama: null,
         ornekStatus: "PENDING",
         kursiyerDurum: "BEKLIYOR",
+        degerlendirildiAt: null,
         projeEkibiYorum: null,
         danismanYorum: null,
       };
@@ -632,6 +635,18 @@ export function IfsEvaluationsTab() {
                           >
                             {ORNEK_STATUS_LABEL[status]}
                           </Badge>
+                        )}
+                        {/* Eğitmen izi — uçtan zaten dönüyordu, artık görünür. */}
+                        {e?.degerlendirildiAt && (
+                          <div
+                            className="text-[11px] mt-1"
+                            style={{ color: "var(--ak-text-tertiary)" }}
+                            title="Son değerlendirme tarihi"
+                          >
+                            {new Date(e.degerlendirildiAt).toLocaleDateString(
+                              "tr-TR"
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-3 py-2">

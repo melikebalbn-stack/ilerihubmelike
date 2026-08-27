@@ -6,6 +6,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
 import { cozumSlaDakika, hesaplaSlaHedefleri } from '@/lib/sla'
 import { cihazAnlikGoruntu, ASSET_INFO_MAX } from '@/lib/tickets/cihaz-etiket'
+import { ticketNumarasiUret } from '@/lib/tickets/ticket-numarasi'
 import {
   KATEGORI_TURETME_SELECT,
   etkinOncelik,
@@ -13,26 +14,6 @@ import {
   type KategoriVarsayilanlari,
 } from '@/lib/tickets/kategori-turetme'
 
-// Ticket numarası oluştur
-async function generateTicketNumber(): Promise<string> {
-  const year = new Date().getFullYear()
-  const prefix = `TKT-${year}-`
-
-  const lastTicket = await prisma.ticket.findFirst({
-    where: {
-      ticketNumber: { startsWith: prefix }
-    },
-    orderBy: { ticketNumber: 'desc' }
-  })
-
-  let nextNumber = 1
-  if (lastTicket) {
-    const lastNumber = parseInt(lastTicket.ticketNumber.split('-').pop() || '0')
-    nextNumber = lastNumber + 1
-  }
-
-  return `${prefix}${nextNumber.toString().padStart(4, '0')}`
-}
 
 // GET - Ticket listesi
 export async function GET(request: NextRequest) {
@@ -234,7 +215,7 @@ export async function POST(request: NextRequest) {
       cozulmusAssetInfo = serbest || null
     }
 
-    const ticketNumber = await generateTicketNumber()
+    const ticketNumber = await ticketNumarasiUret(prisma)
     const now = new Date()
 
     // Kategori varsayılan atama kontrolü

@@ -7,6 +7,7 @@ import { VALID_NEDEN, NEDEN_LABELS, type KartOkutamamaNedeni } from '../_lib/ned
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
 import { notifyApproverOfPendingRecord } from '../_lib/notify-hr'
 import { resolveApprovers, getManagedPersonnelIds } from '../_lib/approvers'
+import { selfEntryOnaydanMuafMi } from '../_lib/muafiyet'
 
 export const dynamic = 'force-dynamic'
 
@@ -263,7 +264,9 @@ export async function POST(request: NextRequest) {
       let approverId3: string | null = null
       // Kendi adına satır (FULL/İV dahil, kim import ederse etsin) → onaya tabi
       // (create route ile aynı kural — rol onayı ATLATMAZ). Başkası/ekip satırı ONAYLANDI kalır.
-      if (personnel.id === access.personnelId) {
+      if (personnel.id === access.personnelId && !(await selfEntryOnaydanMuafMi(personnel.id))) {
+        // Muafiyet create ucuyla AYNI kaynaktan (muafiyet.ts) — kanal fark etmez:
+        // muaf kişinin kendi satırı da ONAYLANDI doğar, onaycı atanmaz.
         onayDurumu = 'BEKLIYOR'
         const resolved = await resolveApprovers(personnel.id)
         approverId = resolved.approverId

@@ -7,6 +7,7 @@ import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from './
 import { VALID_NEDEN } from './_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from './_lib/duplicate-check'
 import { resolveApprovers, getManagedPersonnelIds } from './_lib/approvers'
+import { selfEntryOnaydanMuafMi } from './_lib/muafiyet'
 
 export const dynamic = 'force-dynamic'
 
@@ -219,11 +220,18 @@ export async function POST(request: NextRequest) {
     let approverId2: string | null = null
     let approverId3: string | null = null
     if (isSelfEntry) {
-      onayDurumu = 'BEKLIYOR'
-      const resolved = await resolveApprovers(personnel.id)
-      approverId = resolved.approverId
-      approverId2 = resolved.approverId2
-      approverId3 = resolved.approverId3
+      // MUAFİYET (2026-08): şemadaki departman müdürleri + ayardaki sicil listesi
+      // üst amir onayından muaftır — kayıt ONAYLANDI doğar, onaycı ATANMAZ ve
+      // doğrudan İV katmanına düşer (ivOnaylandi=false, İV kararı sürüyor).
+      // Muaf DEĞİLSE mevcut davranış birebir aynı: BEKLIYOR + 1./2./3. Sorumlu.
+      const muaf = await selfEntryOnaydanMuafMi(personnel.id)
+      if (!muaf) {
+        onayDurumu = 'BEKLIYOR'
+        const resolved = await resolveApprovers(personnel.id)
+        approverId = resolved.approverId
+        approverId2 = resolved.approverId2
+        approverId3 = resolved.approverId3
+      }
     }
 
     const record = await prisma.bulkCardScanFailure.create({

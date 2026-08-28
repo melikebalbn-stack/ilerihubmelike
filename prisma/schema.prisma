@@ -166,42 +166,43 @@ model User {
   calendarEvents CalendarEvent[] @relation("EventCreator")
 
   // Overtime (Mesai) Relations
-  overtimeFormsCreated      OvertimeForm[]             @relation("OvertimeCreator")
-  overtimeApprovals         OvertimeApproval[]         @relation("OvertimeApprover")
-  personnelRequestApprovals PersonnelRequestApproval[] @relation("PersonnelRequestApprover")
+  overtimeFormsCreated      OvertimeForm[]                 @relation("OvertimeCreator")
+  overtimeApprovals         OvertimeApproval[]             @relation("OvertimeApprover")
+  personnelRequestApprovals PersonnelRequestApproval[]     @relation("PersonnelRequestApprover")
   // Faz 4 — teknik mülakat onay zincirinde onaycı olduğu satırlar (back-relation).
   teknikMulakatOnaylari     PublicJobApplicationApproval[] @relation("TeknikMulakatApprover")
-  approvalPositions         ApprovalPosition[]         @relation("ApprovalPositionUser")
-  overtimeAuthorized        OvertimeAuthorizedUser?    @relation("OvertimeAuthorizedUser")
+  approvalPositions         ApprovalPosition[]             @relation("ApprovalPositionUser")
+  overtimeAuthorized        OvertimeAuthorizedUser?        @relation("OvertimeAuthorizedUser")
   // Faz 2+: parça kodu (Mesai Nedeni) sonradan düzeltmeleri
-  uretimParcaDuzeltmeleri   OvertimePersonnelUretim[]  @relation("UretimParcaDuzelten")
+  uretimParcaDuzeltmeleri   OvertimePersonnelUretim[]      @relation("UretimParcaDuzelten")
   // PR-3 eskalasyon back-relation'ları (named relation ZORUNLU)
-  approvalPositionBackups   ApprovalPosition[]         @relation("ApprovalPositionBackup")
-  overtimeEscalations       OvertimeApproval[]         @relation("OvertimeApprovalEscalatedTo")
+  approvalPositionBackups   ApprovalPosition[]             @relation("ApprovalPositionBackup")
+  overtimeEscalations       OvertimeApproval[]             @relation("OvertimeApprovalEscalatedTo")
 
   // Toplu Kart Okutamama Relations
-  bulkCardScanFailuresCreated  BulkCardScanFailure[] @relation("BulkCardScanFailureCreator")
-  bulkCardScanFailuresToApprove BulkCardScanFailure[] @relation("BulkCardScanFailureApprover")
+  bulkCardScanFailuresCreated    BulkCardScanFailure[] @relation("BulkCardScanFailureCreator")
+  bulkCardScanFailuresToApprove  BulkCardScanFailure[] @relation("BulkCardScanFailureApprover")
   bulkCardScanFailuresToApprove2 BulkCardScanFailure[] @relation("BulkCardScanFailureApprover2")
   bulkCardScanFailuresToApprove3 BulkCardScanFailure[] @relation("BulkCardScanFailureApprover3")
   bulkCardScanFailuresIvOnayladi BulkCardScanFailure[] @relation("BulkCardScanFailureIvApprover")
 
   // Akademi Relations
-  courseAssignments    UserCourseAssignment[]
-  packageAssignments   UserPackageAssignment[]
-  courseProgresses     CourseProgress[]
-  contentProgresses    ContentProgress[]
-  examAttempts         UserExamAttempt[]
-  examAnswersGraded    UserExamAnswer[]        @relation("UserExamAnswerGradedBy")
-  akademiCertificates  AkademiCertificate[]
-  ifsTaskEvaluations   IfsTaskEvaluation[]
-  ifsCourseEvaluations IfsCourseEvaluation[]
-  userAchievements     UserAchievement[]
-  userBadges           UserBadge[]
-  userXp               UserXp[]
-  xpHistories          XpHistory[]
-  dailyChallenges      UserDailyChallenge[]
-  akademiNotifications AkademiNotification[]
+  courseAssignments     UserCourseAssignment[]
+  packageAssignments    UserPackageAssignment[]
+  courseProgresses      CourseProgress[]
+  contentProgresses     ContentProgress[]
+  examAttempts          UserExamAttempt[]
+  examAnswersGraded     UserExamAnswer[]        @relation("UserExamAnswerGradedBy")
+  akademiCertificates   AkademiCertificate[]
+  ifsTaskEvaluations    IfsTaskEvaluation[]
+  ifsCourseEvaluations  IfsCourseEvaluation[]
+  ifsKeyUserEvaluations IfsCourseEvaluation[]   @relation("IfsKeyUser")
+  userAchievements      UserAchievement[]
+  userBadges            UserBadge[]
+  userXp                UserXp[]
+  xpHistories           XpHistory[]
+  dailyChallenges       UserDailyChallenge[]
+  akademiNotifications  AkademiNotification[]
 
   // Arşiv Yönetimi Relations
   arsivKolilerSorumlu      ArsivKoli[]        @relation("ArsivKoliSorumlu")
@@ -258,9 +259,9 @@ model User {
   yctOnayAdimlari        YillikTakvimOnayAdimi[]    @relation("YctOnayAdimiOnaylayan")
   yctOnayKademeleri      YillikTakvimOnayKademesi[] @relation("YctOnayKademesiUser")
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  lastLoginAt DateTime?
+  createdAt                           DateTime                        @default(now())
+  updatedAt                           DateTime                        @updatedAt
+  lastLoginAt                         DateTime?
   // Servis Yönetimi (FAZ 1/A) — ters ilişkiler (DB kolonu eklemez)
   servisAracVarsayilanOlusturanlar    ServisGuzergahAracVarsayilan[]  @relation("ServisGuzergahAracVarsayilanOlusturan")
   servisAracVarsayilanGuncelleyenler  ServisGuzergahAracVarsayilan[]  @relation("ServisGuzergahAracVarsayilanGuncelleyen")
@@ -303,21 +304,21 @@ enum UserRoleEnum {
 }
 
 model Department {
-  id        String              @id @default(cuid())
-  name      String              @unique // ILERIHub'da görünecek isim (örn: "Mühendislik")
-  code      String              @unique
-  adOuName  String?             @unique // AD'deki OU adı (örn: "Muhendislik")
-  adOuDn    String? // AD'deki tam DN (örn: "OU=Muhendislik,OU=ilerigroup,DC=ilerigroup,DC=com")
-  managerId String?
-  parentId  String?
-  parent    Department?         @relation("SubDepartments", fields: [parentId], references: [id])
-  children  Department[]        @relation("SubDepartments")
-  devices   CalibrationDevice[] @relation("DepartmentDevices")
+  id                            String                         @id @default(cuid())
+  name                          String                         @unique // ILERIHub'da görünecek isim (örn: "Mühendislik")
+  code                          String                         @unique
+  adOuName                      String?                        @unique // AD'deki OU adı (örn: "Muhendislik")
+  adOuDn                        String? // AD'deki tam DN (örn: "OU=Muhendislik,OU=ilerigroup,DC=ilerigroup,DC=com")
+  managerId                     String?
+  parentId                      String?
+  parent                        Department?                    @relation("SubDepartments", fields: [parentId], references: [id])
+  children                      Department[]                   @relation("SubDepartments")
+  devices                       CalibrationDevice[]            @relation("DepartmentDevices")
   calibrationProductionSections CalibrationProductionSection[] @relation("DepartmentProductionSections")
-  isActive  Boolean             @default(true)
-  sortOrder Int                 @default(0)
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  isActive                      Boolean                        @default(true)
+  sortOrder                     Int                            @default(0)
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
 
   // QDMS Relations
   qdmsDocuments             QdmsDocument[]
@@ -393,18 +394,18 @@ model CalibrationLocation {
 }
 
 model CalibrationProductionSection {
-  id           String      @id @default(cuid())
-  name         String      @unique
-  code         String?
-  departmentId String?
-  department   Department? @relation("DepartmentProductionSections", fields: [departmentId], references: [id])
+  id            String      @id @default(cuid())
+  name          String      @unique
+  code          String?
+  departmentId  String?
+  department    Department? @relation("DepartmentProductionSections", fields: [departmentId], references: [id])
   // Kalibrasyon geçmişinde Karar=Hurda seçilince cihazın taşınacağı hedef bölüm.
   // Tekil olmalı (UI/API tek kaydı true tutar); koda departman/bölüm adı gömülmez.
-  isHurdaTarget Boolean    @default(false)
-  isActive     Boolean     @default(true)
-  sortOrder    Int         @default(0)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  isHurdaTarget Boolean     @default(false)
+  isActive      Boolean     @default(true)
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@index([isActive, sortOrder])
   @@index([departmentId])
@@ -505,14 +506,14 @@ model CalibrationDevice {
   scrapDescription      String?   @db.Text // Hurda açıklaması
 
   // Durum
-  status               CalibrationStatus @default(VALID)
-  statusManualOverride Boolean           @default(false) // IN_PROCESS/OUT_OF_ORDER manuel override
+  status               CalibrationStatus  @default(VALID)
+  statusManualOverride Boolean            @default(false) // IN_PROCESS/OUT_OF_ORDER manuel override
   // Son kalibrasyon geçmiş kaydının sonucu — liste rozetinde "Başarısız" (FAIL)
   // gösterebilmek için denormalize edilir; her history POST/PUT'ta güncellenir.
   sonKalibrasyonSonucu CalibrationResult? // null = hiç kalibrasyon geçmişi yok
-  isActive             Boolean           @default(true)
-  requiresResponsible  Boolean           @default(false) // Zorunlu zimmet
-  notes                String?           @db.Text
+  isActive             Boolean            @default(true)
+  requiresResponsible  Boolean            @default(false) // Zorunlu zimmet
+  notes                String?            @db.Text
 
   // Dosya ekleri
   attachments String? @db.Text // JSON array of file URLs
@@ -2420,7 +2421,7 @@ model Ticket {
   // Mailin GERÇEK göndereni. requesterEmail'den AYRI tutuluyor: mail atan kişi
   // sistemde kayıtlı olmayabilir, o durumda requesterEmail bir vekil değere
   // düşerken emailFrom ham adresi korur.
-  emailFrom String?
+  emailFrom           String?
 
   // Atama
   assignedTo     String? // Atanan teknisyen email
@@ -2634,19 +2635,19 @@ enum EmailIngestSonuc {
 }
 
 model EmailIngestLog {
-  id             String   @id @default(cuid())
-  messageId      String   @unique // internetMessageId — tekilleştirme anahtarı
+  id             String           @id @default(cuid())
+  messageId      String           @unique // internetMessageId — tekilleştirme anahtarı
   conversationId String?
   fromAddress    String
   toAddress      String? // hangi adrese gelmiş
   subject        String?
   receivedAt     DateTime? // mailin kendi tarihi
-  processedAt    DateTime @default(now())
+  processedAt    DateTime         @default(now())
   sonuc          EmailIngestSonuc
   // Ticket'a KASITLI olarak formal ilişki (FK) YOK: ticket silinse bile alım
   // günlüğü bozulmadan kalsın. Aynı desen EnvanterIslemLog / ZimmetDurumGecmisi.
-  ticketId   String?
-  hataMesaji String? @db.Text
+  ticketId       String?
+  hataMesaji     String?          @db.Text
 
   @@index([conversationId])
   @@index([processedAt])
@@ -5180,10 +5181,10 @@ model PersonnelRequest {
   digerBelgeIhtiyaci  String?
   // AYRIMCILIK KORUMASI: cinsiyetTercihi + yasAraligi* yalnız İÇ kadro planlaması.
   // JobOpening'e (iş ilanı) ASLA taşınmaz — bkz. personnel-requests/[id]/route.ts convert bloğu.
-  cinsiyetTercihi CinsiyetTercihi?
-  yasAraligiMin   Int?
-  yasAraligiMax   Int?
-  askerlikGerekli Boolean?
+  cinsiyetTercihi     CinsiyetTercihi?
+  yasAraligiMin       Int?
+  yasAraligiMax       Int?
+  askerlikGerekli     Boolean?
 
   // Talep nedeni detayı
   ayrilanPersonelAdi String? // boşalan kadro / eleman değişikliği için
@@ -8380,7 +8381,7 @@ model CostCustomer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  analyses CostAnalysis[]
+  analyses    CostAnalysis[]
   // RMA/SMA iade kayıtları (KAL-KYT-16) — back-relation (DB kolonu eklemez).
   rmaKayitlar RmaKayit[]
 
@@ -9250,13 +9251,13 @@ model Personnel {
   bulkCardScanFailures          BulkCardScanFailure[]
   // RMA/SMA iade kayıtlarında sorumlu (KAL-KYT-16) — back-relation (DB kolonu eklemez).
   rmaSorumluluklar              RmaKayit[]
-  uygunsuzlukSorumluluklari      KaliteUygunsuzluk[]
+  uygunsuzlukSorumluluklari     KaliteUygunsuzluk[]
 
   // Servis Yönetimi (FAZ 1/A) — ters ilişkiler (DB kolonu eklemez)
-  servisSoforKaydi              ServisSofor?
-  servisAtamalari               ServisPersonelAtama[]
-  servisSorumlulari             ServisSorumlusu[]
-  servisDurumlari               ServisPersonelDurum[]
+  servisSoforKaydi  ServisSofor?
+  servisAtamalari   ServisPersonelAtama[]
+  servisSorumlulari ServisSorumlusu[]
+  servisDurumlari   ServisPersonelDurum[]
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -9629,24 +9630,24 @@ enum KursiyerGorevDurum {
 }
 
 model IfsTaskEvaluation {
-  id                String      @id @default(cuid())
+  id                String             @id @default(cuid())
   contentId         String
   userId            String
-  egitimVerildi     Boolean     @default(false)
-  uygulamaliYapildi Boolean     @default(false)
-  ornekYapildi      Boolean     @default(false)
+  egitimVerildi     Boolean            @default(false)
+  uygulamaliYapildi Boolean            @default(false)
+  ornekYapildi      Boolean            @default(false)
   // Kursiyer görev durumu — ornekYapildi=true olduğunda ORNEK_YAPILDI'ya eşlenir (mirror korunur).
   kursiyerDurum     KursiyerGorevDurum @default(BEKLIYOR)
   // Kursiyer-tarafı: "Örnek Yaptım" derken NE yaptığını yazdığı açıklama
   // (değerlendiren ekip okuyup ornekStatus verir). Nullable → eski kayıtlar null.
-  ornekAciklama     String?     @db.Text
-  projeEkibiYorum   String?     @db.Text
-  danismanYorum     String?     @db.Text
+  ornekAciklama     String?            @db.Text
+  projeEkibiYorum   String?            @db.Text
+  danismanYorum     String?            @db.Text
   // IFS canlı değerlendirme (PR-1): eğitmen kararı + iz. Davranış sonraki PR'da.
-  ornekStatus       OrnekStatus @default(PENDING)
+  ornekStatus       OrnekStatus        @default(PENDING)
   degerlendirenId   String?
   degerlendirildiAt DateTime?
-  updatedAt         DateTime    @updatedAt
+  updatedAt         DateTime           @updatedAt
 
   content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id])
@@ -9672,11 +9673,21 @@ model IfsCourseEvaluation {
   degerlendirenId String?
   updatedAt       DateTime         @updatedAt
 
-  user   User   @relation(fields: [userId], references: [id])
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  // Key user değerlendirmesi — eğitmen (seviye/not) değerlendirmesinden AYRI,
+  // ikinci ve bağımsız bir kanaat. Mevcut alanlar DEĞİŞMEZ; key user kendi
+  // seviyesini/notunu buraya yazar, ikisi yan yana okunur.
+  keyUserSeviye IfsCourseSeviye?
+  keyUserNot    String?          @db.Text
+  keyUserId     String?
+  keyUserAt     DateTime?
+
+  user    User   @relation(fields: [userId], references: [id])
+  keyUser User?  @relation("IfsKeyUser", fields: [keyUserId], references: [id], onDelete: SetNull)
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@unique([userId, courseId])
   @@index([courseId])
+  @@index([keyUserId])
   @@map("ifs_course_evaluations")
 }
 
@@ -10684,9 +10695,9 @@ model RmaKayit {
 
   // Audit — userId string (User FK/back-ref eklemez; mevcut audit deseni)
   olusturanId      String?
-  olusturmaTarihi  DateTime  @default(now())
+  olusturmaTarihi  DateTime @default(now())
   guncelleyenId    String?
-  guncellemeTarihi DateTime  @updatedAt
+  guncellemeTarihi DateTime @updatedAt
 
   satirlar RmaSatir[]
 
@@ -10734,16 +10745,16 @@ enum UygunsuzlukKarar {
 ///
 /// redOrani ALANI YOK — hesaplanır (redAdeti / isEmriAdeti), saklanmaz.
 model KaliteUygunsuzluk {
-  id                String    @id @default(cuid())
-  no                Int       @unique // tek kesintisiz seri (RmaKayit deseni)
+  id                String     @id @default(cuid())
+  no                Int        @unique // tek kesintisiz seri (RmaKayit deseni)
   tarih             DateTime
   mamulUrunKodu     String
   isEmriNo          String
   isEmriAdeti       Int?
   tespitEdenBolumId String?
-  tespitEdenBolum   HataKodu? @relation("UygunsuzlukTespitEdenBolum", fields: [tespitEdenBolumId], references: [id], onDelete: Restrict)
-  kokNeden          String?   @db.Text
-  duzelticiFaaliyet String?   @db.Text
+  tespitEdenBolum   HataKodu?  @relation("UygunsuzlukTespitEdenBolum", fields: [tespitEdenBolumId], references: [id], onDelete: Restrict)
+  kokNeden          String?    @db.Text
+  duzelticiFaaliyet String?    @db.Text
   sorumluId         String?
   sorumlu           Personnel? @relation(fields: [sorumluId], references: [id], onDelete: SetNull)
   termin            DateTime?
@@ -10751,9 +10762,9 @@ model KaliteUygunsuzluk {
 
   // Audit — userId string (User FK/back-ref eklemez; mevcut audit deseni)
   olusturanId      String?
-  olusturmaTarihi  DateTime  @default(now())
+  olusturmaTarihi  DateTime @default(now())
   guncelleyenId    String?
-  guncellemeTarihi DateTime  @updatedAt
+  guncellemeTarihi DateTime @updatedAt
 
   satirlar KaliteUygunsuzlukSatir[]
 
@@ -10764,20 +10775,20 @@ model KaliteUygunsuzluk {
 
 /// Uygunsuzluk ürün satırı. Başlık silinince cascade.
 model KaliteUygunsuzlukSatir {
-  id             String            @id @default(cuid())
-  uygunsuzlukId  String
-  uygunsuzluk    KaliteUygunsuzluk @relation(fields: [uygunsuzlukId], references: [id], onDelete: Cascade)
-  siraNo         Int
-  yariMamulKodu  String?
-  malzemeAdi     String?
-  redAdeti       Int
-  reworkAdedi    Int?
-  olusanBolumId  String?
-  olusanBolum    HataKodu?         @relation("UygunsuzlukSatirOlusanBolum", fields: [olusanBolumId], references: [id], onDelete: Restrict)
-  hataKoduId     String?
-  hataKodu       HataKodu?         @relation("UygunsuzlukSatirHataKodu", fields: [hataKoduId], references: [id], onDelete: Restrict)
-  hataDetayi     String?           @db.Text
-  karar          UygunsuzlukKarar?
+  id            String            @id @default(cuid())
+  uygunsuzlukId String
+  uygunsuzluk   KaliteUygunsuzluk @relation(fields: [uygunsuzlukId], references: [id], onDelete: Cascade)
+  siraNo        Int
+  yariMamulKodu String?
+  malzemeAdi    String?
+  redAdeti      Int
+  reworkAdedi   Int?
+  olusanBolumId String?
+  olusanBolum   HataKodu?         @relation("UygunsuzlukSatirOlusanBolum", fields: [olusanBolumId], references: [id], onDelete: Restrict)
+  hataKoduId    String?
+  hataKodu      HataKodu?         @relation("UygunsuzlukSatirHataKodu", fields: [hataKoduId], references: [id], onDelete: Restrict)
+  hataDetayi    String?           @db.Text
+  karar         UygunsuzlukKarar?
 
   @@index([uygunsuzlukId])
   @@index([hataKoduId])
@@ -11915,7 +11926,7 @@ model EnvanterBakimYonlendirme {
   konu               String
   lokasyon           String?
   aciklama           String?
-  yonlendirilenBirim String @default("Bakım")
+  yonlendirilenBirim String  @default("Bakım")
 
   durum           BakimYonlendirmeDurum @default(TESPIT_EDILDI)
   servisReferansi String?
@@ -12175,7 +12186,7 @@ model BulkCardScanFailure {
   sicilNo String?
   adSoyad String
 
-  tarih      DateTime @db.Date
+  tarih      DateTime             @db.Date
   girisSaati String? // "08:00"
   cikisSaati String? // "17:00"
   neden      KartOkutamamaNedeni?
@@ -12281,10 +12292,10 @@ model ZimmetFormu {
   cihazDurumu   ZimmetCihazDurumu @default(AKTIF)
   teslimNotu    String?           @db.Text
 
-  durum       ZimmetOnayDurumu @default(ONAY_BEKLIYOR)
-  onaylayanId String?
-  onaylayan   User?            @relation("ZimmetFormuOnaylayan", fields: [onaylayanId], references: [id])
-  onayTarihi  DateTime? // onay tarihi
+  durum                  ZimmetOnayDurumu @default(ONAY_BEKLIYOR)
+  onaylayanId            String?
+  onaylayan              User?            @relation("ZimmetFormuOnaylayan", fields: [onaylayanId], references: [id])
+  onayTarihi             DateTime? // onay tarihi
   zimmetSahibiImzaTarihi DateTime? // zimmet sahibi imza tarihi
   teslimEdenImzaTarihi   DateTime? // zimmeti verenin imza tarihi
 
@@ -12388,8 +12399,8 @@ model OrgRevizyon {
   yapanUserId    String?
   createdAt      DateTime @default(now())
 
-  @@index([orgUnitId])
   @@unique([orgUnitId, revNo])
+  @@index([orgUnitId])
 }
 
 // ============================================================
@@ -13369,25 +13380,25 @@ model ServisSeferDilimi {
 // ============================================================================
 
 model ServisGuzergah {
-  id                   String    @id @default(cuid())
-  kod                  String    @unique
+  id                   String         @id @default(cuid())
+  kod                  String         @unique
   ad                   String
-  aciklama             String?   @db.Text
+  aciklama             String?        @db.Text
   // ServisBolge A kapsamına GİRMİYOR — şimdilik serbest metin etiket yeterli.
   bolge                String?
   yerleskeId           String
   yerleske             ServisYerleske @relation(fields: [yerleskeId], references: [id], onDelete: Restrict)
-  aktif                Boolean   @default(true)
-  gecerlilikBaslangici DateTime? @db.Date
-  gecerlilikBitisi     DateTime? @db.Date
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  aktif                Boolean        @default(true)
+  gecerlilikBaslangici DateTime?      @db.Date
+  gecerlilikBitisi     DateTime?      @db.Date
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
-  duraklar          ServisGuzergahDurak[]
-  personelAtamalari ServisPersonelAtama[]
+  duraklar            ServisGuzergahDurak[]
+  personelAtamalari   ServisPersonelAtama[]
   aracVarsayilanlari  ServisGuzergahAracVarsayilan[]
   soforVarsayilanlari ServisGuzergahSoforVarsayilan[]
-  sorumlular        ServisSorumlusu[]
+  sorumlular          ServisSorumlusu[]
 
   @@index([aktif])
   @@index([yerleskeId])
@@ -13461,14 +13472,14 @@ model ServisGuzergahDurak {
 // "kim hangi güzergahta/duraktaydı" (ServisPersonelAtama), "bu duraktaki
 // planlı saat kaçtı" değildir.
 model ServisGuzergahDurakSaat {
-  id             String              @id @default(cuid())
+  id              String              @id @default(cuid())
   guzergahDurakId String
-  guzergahDurak  ServisGuzergahDurak @relation(fields: [guzergahDurakId], references: [id], onDelete: Restrict)
-  dilimId        String
-  dilim          ServisSeferDilimi   @relation(fields: [dilimId], references: [id], onDelete: Restrict)
-  saat           String              // "HH:mm" — IproVardiya.baslangicSaat/bitisSaat ile aynı desen
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  guzergahDurak   ServisGuzergahDurak @relation(fields: [guzergahDurakId], references: [id], onDelete: Restrict)
+  dilimId         String
+  dilim           ServisSeferDilimi   @relation(fields: [dilimId], references: [id], onDelete: Restrict)
+  saat            String // "HH:mm" — IproVardiya.baslangicSaat/bitisSaat ile aynı desen
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   @@unique([guzergahDurakId, dilimId])
   @@index([dilimId])
@@ -13483,17 +13494,17 @@ model ServisGuzergahDurakSaat {
 // modülün DIŞINDA, ayrı bir domaindir. ServisAracSahiplik enum'u KALDIRILDI;
 // firmaId artık ZORUNLU (eskiden yalnız sahiplik=TEDARIKCI iken zorunluydu).
 model ServisArac {
-  id                   String    @id @default(cuid())
-  plaka                String    @unique
+  id                   String      @id @default(cuid())
+  plaka                String      @unique
   kapasite             Int
   firmaId              String
   firma                ServisFirma @relation(fields: [firmaId], references: [id], onDelete: Restrict)
   aracTipi             String?
-  aktif                Boolean   @default(true)
-  gecerlilikBaslangici DateTime? @db.Date
-  gecerlilikBitisi     DateTime? @db.Date
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  aktif                Boolean     @default(true)
+  gecerlilikBaslangici DateTime?   @db.Date
+  gecerlilikBitisi     DateTime?   @db.Date
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
 
   guzergahVarsayilanlari ServisGuzergahAracVarsayilan[]
 
@@ -13507,17 +13518,17 @@ model ServisArac {
 // var). Dış firma sürücüsü: personnelId NULL, firmaId dolu + disFirmaSoforKodu
 // dolu (TC yerine KVKK-uyumlu ayırt edici alan — örn. firma personel no'su).
 model ServisSofor {
-  id                 String       @id @default(cuid())
-  adSoyad            String
-  telefon            String?
-  personnelId        String?      @unique
-  personnel          Personnel?   @relation(fields: [personnelId], references: [id], onDelete: Restrict)
-  firmaId            String?
-  firma              ServisFirma? @relation(fields: [firmaId], references: [id], onDelete: Restrict)
-  disFirmaSoforKodu  String?      // TC DEĞİL — dış firma sürücüsünü ayırt eden serbest kod
-  aktif              Boolean      @default(true)
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  id                String       @id @default(cuid())
+  adSoyad           String
+  telefon           String?
+  personnelId       String?      @unique
+  personnel         Personnel?   @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  firmaId           String?
+  firma             ServisFirma? @relation(fields: [firmaId], references: [id], onDelete: Restrict)
+  disFirmaSoforKodu String? // TC DEĞİL — dış firma sürücüsünü ayırt eden serbest kod
+  aktif             Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   guzergahVarsayilanlari ServisGuzergahSoforVarsayilan[]
 
@@ -13544,25 +13555,25 @@ model ServisSofor {
 // migration SQL'inde tanımlıdır (Prisma'da ifade edilemez).
 
 model ServisGuzergahAracVarsayilan {
-  id              String         @id @default(cuid())
+  id              String            @id @default(cuid())
   guzergahId      String
-  guzergah        ServisGuzergah @relation(fields: [guzergahId], references: [id], onDelete: Restrict)
+  guzergah        ServisGuzergah    @relation(fields: [guzergahId], references: [id], onDelete: Restrict)
   dilimId         String
   dilim           ServisSeferDilimi @relation(fields: [dilimId], references: [id], onDelete: Restrict)
   aracId          String
-  arac            ServisArac     @relation(fields: [aracId], references: [id], onDelete: Restrict)
-  rol             ServisRol      @default(ANA)
-  baslangicTarihi DateTime       @db.Date
-  bitisTarihi     DateTime?      @db.Date
-  aktif           Boolean        @default(true)
+  arac            ServisArac        @relation(fields: [aracId], references: [id], onDelete: Restrict)
+  rol             ServisRol         @default(ANA)
+  baslangicTarihi DateTime          @db.Date
+  bitisTarihi     DateTime?         @db.Date
+  aktif           Boolean           @default(true)
   neden           String?
-  aciklama        String?        @db.Text
+  aciklama        String?           @db.Text
   createdById     String
-  createdBy       User           @relation("ServisGuzergahAracVarsayilanOlusturan", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy       User              @relation("ServisGuzergahAracVarsayilanOlusturan", fields: [createdById], references: [id], onDelete: Restrict)
   updatedById     String?
-  updatedBy       User?          @relation("ServisGuzergahAracVarsayilanGuncelleyen", fields: [updatedById], references: [id], onDelete: Restrict)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  updatedBy       User?             @relation("ServisGuzergahAracVarsayilanGuncelleyen", fields: [updatedById], references: [id], onDelete: Restrict)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([guzergahId, dilimId, aktif])
   @@index([aracId, aktif])

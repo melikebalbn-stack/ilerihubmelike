@@ -33,16 +33,31 @@ export const dynamic = 'force-dynamic'
 
 type Alici = { id: string; email: string; name: string }
 
-/** helpdesk.admin izni taşıyan aktif kullanıcılar (son çare alıcı). */
-async function helpdeskAdminleri(): Promise<Alici[]> {
+/**
+ * IT ekibi — son çare bildirim alıcısı.
+ *
+ * ROL SLUG'INA göre çözülür, `helpdesk.admin` İZNİNE göre DEĞİL. O izin
+ * super-admin'de de var ve üst yönetimi listeye sokuyordu: 27 Ağustos'ta
+ * kategorisiz+atamasız bir ticket'ın SLA ihlali 8 kişiye gitti, aralarında
+ * GM ve yönetim kademesi vardı.
+ *
+ * Aynı ayrımı assignable-users ucu daha önce yapmıştı (route.ts:19-24,
+ * "super-admin BİLİNÇLİ hariç") — burada o desen tekrarlanıyor.
+ *
+ * ⚠ Bu YALNIZ bildirim alıcısını daraltır. `helpdesk.admin` izninin kendisine
+ * dokunulmadı: KPI panosu, dahili yorum, viewMode kapsamı, requirePermission
+ * kapıları aynen duruyor. Kimse yetki kaybetmiyor.
+ */
+async function itEkibi(): Promise<Alici[]> {
   const simdi = new Date()
   const users = await prisma.user.findMany({
     where: {
       isActive: true,
       userRoles: {
         some: {
+          // Süresi dolmuş rol ataması bildirim üretmesin (eski davranış korundu).
           OR: [{ expiresAt: null }, { expiresAt: { gt: simdi } }],
-          role: { rolePermissions: { some: { permission: { key: 'helpdesk.admin' } } } },
+          role: { slug: { in: ['it-admin', 'helpdesk-agent'] } },
         },
       },
     },
@@ -56,8 +71,11 @@ async function helpdeskAdminleri(): Promise<Alici[]> {
 }
 
 /**
- * Bildirim alıcıları: atanan kişi → yoksa takım üyeleri → yoksa helpdesk.admin.
+ * Bildirim alıcıları: atanan kişi → yoksa takım üyeleri → yoksa IT ekibi.
  * Zincir, ticket'ı gerçekten takip eden en dar kümeden başlar.
+ *
+ * Liste BOŞ dönebilir; çağıran taraf onu zaten `alicilar.length > 0` ile
+ * koruyor (ihlal bayrağı ve timeline yine yazılır, yalnız bildirim atlanır).
  */
 async function alicilariCoz(t: {
   assignedTo: string | null
@@ -107,7 +125,7 @@ async function alicilariCoz(t: {
     }
   }
 
-  return { alicilar: await helpdeskAdminleri(), kaynak: 'helpdesk.admin' }
+  return { alicilar: await itEkibi(), kaynak: 'it-ekibi' }
 }
 
 function mailGovdesi(t: { ticketNumber: string; subject: string }, etiket: string, link: string) {

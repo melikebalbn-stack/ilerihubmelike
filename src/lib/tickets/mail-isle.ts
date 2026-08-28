@@ -14,13 +14,15 @@
  * (yoksayilmaliMi, `from` üzerinden). Kutu adresi burada hardcode DEĞİL —
  * çağıran (cron ucu) veriyor.
  *
- * BU FAZDA YOK (bilinçli): bildirim gönderimi. dispatchTicketCreated
- * ÇAĞRILMIYOR — mevcut bildirim akışına dokunulmadı, ayrı iş.
+ * BİLDİRİM: yeni ticket açıldığında dispatchTicketCreated çağrılır (IT ekibi =
+ * Sistem Geliştirme departmanı; e-posta + uygulama içi + push). YORUM ekleme
+ * dalında çağrılmaz — bu fazda yalnız yeni ticket.
  */
 
 import { prisma } from '@/lib/prisma'
 import { cozumSlaDakika, hesaplaSlaHedefleri } from '@/lib/sla'
 import { ticketNumarasiUret } from '@/lib/tickets/ticket-numarasi'
+import { dispatchTicketCreated } from '@/lib/ticket-notifications'
 import type { GraphMesaj } from '@/lib/graph/mail'
 import {
   aciklamaCoz,
@@ -239,7 +241,17 @@ export async function tekMesajIsle(
           resolutionDueAt: slaHedef.resolutionDueAt,
           source: 'EMAIL',
         },
-        select: { id: true, ticketNumber: true },
+        // Bildirim gövdesi için gereken alanlar da seçiliyor (ikinci sorgu yok).
+        select: {
+          id: true,
+          ticketNumber: true,
+          subject: true,
+          description: true,
+          priority: true,
+          requesterName: true,
+          requesterDept: true,
+          createdAt: true,
+        },
       })
       await tx.ticketTimeline.create({
         data: {
@@ -255,6 +267,31 @@ export async function tekMesajIsle(
       })
       return t
     })
+
+    // ── BİLDİRİM ────────────────────────────────────────────────────────
+    // POST /api/tickets ile AYNI fonksiyon ve AYNI gövde. Tek fark: orada
+    // `void ...catch()` ile fire-and-forget, çünkü kullanıcıya yanıt
+    // geciktirilmiyor. Burada AWAIT ediliyor — cron'un dönüş süresi kimseyi
+    // bekletmiyor ve fire-and-forget'te istek bitince gönderim yarıda kalabilir.
+    //
+    // Hata ticket'ı BAŞARISIZ SAYMAZ: mail zaten işlendi, EmailIngestLog
+    // TICKET_OLUSTURULDU kalır, bildirim ikincildir. Bu yüzden dıştaki
+    // try/catch'e DÜŞMEDEN burada yutuluyor.
+    try {
+      await dispatchTicketCreated({
+        id: olusan.id,
+        ticketNumber: olusan.ticketNumber,
+        subject: olusan.subject,
+        description: olusan.description,
+        priority: olusan.priority,
+        category: '(Kategorisiz)', // mail kanalı kategorisiz açıyor — IT triyaj edecek
+        requesterName: olusan.requesterName,
+        requesterDept: olusan.requesterDept ?? '',
+        createdAt: olusan.createdAt,
+      })
+    } catch (err) {
+      console.error('[ticket-mail] bildirim gönderilemedi:', olusan.ticketNumber, err)
+    }
 
     return {
       ...taban,

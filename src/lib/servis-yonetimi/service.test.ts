@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   yerleskeFindUnique: vi.fn(),
   yerleskeCreate: vi.fn(),
   yerleskeUpdate: vi.fn(),
+  guzergahFindMany: vi.fn(),
+  guzergahFindUnique: vi.fn(),
+  guzergahCreate: vi.fn(),
+  guzergahUpdate: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -25,19 +29,30 @@ vi.mock('@/lib/prisma', () => ({
       create: mocks.yerleskeCreate,
       update: mocks.yerleskeUpdate,
     },
+    servisGuzergah: {
+      findMany: mocks.guzergahFindMany,
+      findUnique: mocks.guzergahFindUnique,
+      create: mocks.guzergahCreate,
+      update: mocks.guzergahUpdate,
+    },
   },
 }))
 
 import {
   createServisFirma,
+  createServisGuzergah,
   createServisYerleske,
   geriAlServisFirma,
+  geriAlServisGuzergah,
   geriAlServisYerleske,
   listServisFirmalar,
+  listServisGuzergahlar,
   listServisYerleskeler,
   pasiflestirServisFirma,
+  pasiflestirServisGuzergah,
   pasiflestirServisYerleske,
   updateServisFirma,
+  updateServisGuzergah,
   updateServisYerleske,
 } from './service'
 
@@ -161,5 +176,95 @@ describe('ServisYerleske — view', () => {
     mocks.yerleskeFindMany.mockResolvedValue([{ id: '1', kod: 'DAR' }])
     const data = await listServisYerleskeler()
     expect(data).toHaveLength(1)
+  })
+})
+
+const gecerliGuzergah = {
+  kod: 'dar-1',
+  ad: 'Darıca Merkez',
+  aciklama: 'Sabah ve akşam hattı',
+  bolge: 'DARIÇA',
+  yerleskeId: 'yer-1',
+  gecerlilikBaslangici: '2026-08-01',
+  gecerlilikBitisi: '2026-12-31',
+}
+
+describe('ServisGuzergah — view', () => {
+  it('aktif filtresi ve yerleşke bilgisiyle listeler', async () => {
+    mocks.guzergahFindMany.mockResolvedValue([{ id: 'g1', kod: 'DAR-1' }])
+    const data = await listServisGuzergahlar({ aktif: true })
+    expect(mocks.guzergahFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { aktif: true },
+      include: { yerleske: { select: { id: true, kod: true, ad: true } } },
+    }))
+    expect(data).toHaveLength(1)
+  })
+})
+
+describe('ServisGuzergah — create/edit', () => {
+  it('tüm değiştirilebilir scalar alanları normalize edip kaydeder', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue(null)
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
+    mocks.guzergahCreate.mockResolvedValue({ id: 'g1', kod: 'DAR-1', ad: 'Darıca Merkez' })
+
+    await createServisGuzergah(gecerliGuzergah)
+
+    expect(mocks.guzergahCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        kod: 'DAR-1',
+        ad: 'Darıca Merkez',
+        aciklama: 'Sabah ve akşam hattı',
+        bolge: 'DARIÇA',
+        yerleskeId: 'yer-1',
+        gecerlilikBaslangici: new Date('2026-08-01T00:00:00.000Z'),
+        gecerlilikBitisi: new Date('2026-12-31T00:00:00.000Z'),
+      }),
+    }))
+  })
+
+  it('aynı kodla yeni kayıt oluşturmaz', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'baska', kod: 'DAR-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    await expect(createServisGuzergah(gecerliGuzergah)).rejects.toThrow('zaten kullanılıyor')
+    expect(mocks.guzergahCreate).not.toHaveBeenCalled()
+  })
+
+  it('olmayan yerleşkeyle kayıt oluşturmaz', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue(null)
+    mocks.yerleskeFindUnique.mockResolvedValue(null)
+    await expect(createServisGuzergah(gecerliGuzergah)).rejects.toThrow('Yerleşke bulunamadı')
+  })
+
+  it('bitiş tarihi başlangıçtan önceyse DB çağrısı yapmaz', async () => {
+    await expect(createServisGuzergah({
+      ...gecerliGuzergah,
+      gecerlilikBaslangici: '2026-12-31',
+      gecerlilikBitisi: '2026-08-01',
+    })).rejects.toThrow('başlangıç tarihinden önce')
+    expect(mocks.guzergahFindUnique).not.toHaveBeenCalled()
+  })
+
+  it('mevcut güzergâhı günceller', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', kod: 'DAR-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', kod: 'DAR-1', ad: 'Yeni Ad' })
+    const data = await updateServisGuzergah('g1', { ...gecerliGuzergah, ad: 'Yeni Ad' })
+    expect(data.ad).toBe('Yeni Ad')
+  })
+})
+
+describe('ServisGuzergah — passive/restore', () => {
+  it('aktif kaydı pasifleştirir', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', aktif: true })
+    mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', aktif: false })
+    const data = await pasiflestirServisGuzergah('g1')
+    expect(data.aktif).toBe(false)
+  })
+
+  it('pasif kaydı geri aktifleştirir', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', aktif: false })
+    mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', aktif: true })
+    const data = await geriAlServisGuzergah('g1')
+    expect(data.aktif).toBe(true)
   })
 })

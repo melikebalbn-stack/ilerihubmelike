@@ -1,8 +1,10 @@
 import { prisma } from '@/lib/prisma'
 import {
   validateServisFirmaForm,
+  validateServisGuzergahForm,
   validateServisYerleskeForm,
   type ServisFirmaForm,
+  type ServisGuzergahForm,
   type ServisYerleskeForm,
 } from './validation'
 
@@ -136,4 +138,92 @@ export async function geriAlServisYerleske(id: string) {
   if (existing.aktif) throw new Error('Yerleşke zaten aktif.')
 
   return prisma.servisYerleske.update({ where: { id }, data: { aktif: true } })
+}
+
+// ============================================================================
+// ServisGuzergah
+// ============================================================================
+
+function dateOnlyOrNull(value?: string | null): Date | null {
+  return value?.trim() ? new Date(`${value.trim()}T00:00:00.000Z`) : null
+}
+
+export async function listServisGuzergahlar(filtre?: { aktif?: boolean }) {
+  return prisma.servisGuzergah.findMany({
+    where: filtre?.aktif !== undefined ? { aktif: filtre.aktif } : undefined,
+    include: { yerleske: { select: { id: true, kod: true, ad: true } } },
+    orderBy: [{ kod: 'asc' }, { ad: 'asc' }],
+  })
+}
+
+export async function createServisGuzergah(form: ServisGuzergahForm) {
+  const { valid, errors } = validateServisGuzergahForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const kod = form.kod.trim().toUpperCase()
+  const [kodCakismasi, yerleske] = await Promise.all([
+    prisma.servisGuzergah.findUnique({ where: { kod } }),
+    prisma.servisYerleske.findUnique({ where: { id: form.yerleskeId.trim() } }),
+  ])
+  if (kodCakismasi) throw new Error(`"${kod}" kodu zaten kullanılıyor.`)
+  if (!yerleske) throw new Error('Yerleşke bulunamadı.')
+
+  return prisma.servisGuzergah.create({
+    data: {
+      kod,
+      ad: form.ad.trim(),
+      aciklama: form.aciklama?.trim() || null,
+      bolge: form.bolge?.trim() || null,
+      yerleskeId: form.yerleskeId.trim(),
+      gecerlilikBaslangici: dateOnlyOrNull(form.gecerlilikBaslangici),
+      gecerlilikBitisi: dateOnlyOrNull(form.gecerlilikBitisi),
+    },
+    include: { yerleske: { select: { id: true, kod: true, ad: true } } },
+  })
+}
+
+export async function updateServisGuzergah(id: string, form: ServisGuzergahForm) {
+  const { valid, errors } = validateServisGuzergahForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const existing = await prisma.servisGuzergah.findUnique({ where: { id } })
+  if (!existing) throw new Error('Güzergâh bulunamadı.')
+
+  const kod = form.kod.trim().toUpperCase()
+  const [kodCakismasi, yerleske] = await Promise.all([
+    kod !== existing.kod ? prisma.servisGuzergah.findUnique({ where: { kod } }) : Promise.resolve(null),
+    prisma.servisYerleske.findUnique({ where: { id: form.yerleskeId.trim() } }),
+  ])
+  if (kodCakismasi) throw new Error(`"${kod}" kodu zaten kullanılıyor.`)
+  if (!yerleske) throw new Error('Yerleşke bulunamadı.')
+
+  return prisma.servisGuzergah.update({
+    where: { id },
+    data: {
+      kod,
+      ad: form.ad.trim(),
+      aciklama: form.aciklama?.trim() || null,
+      bolge: form.bolge?.trim() || null,
+      yerleskeId: form.yerleskeId.trim(),
+      gecerlilikBaslangici: dateOnlyOrNull(form.gecerlilikBaslangici),
+      gecerlilikBitisi: dateOnlyOrNull(form.gecerlilikBitisi),
+    },
+    include: { yerleske: { select: { id: true, kod: true, ad: true } } },
+  })
+}
+
+export async function pasiflestirServisGuzergah(id: string) {
+  const existing = await prisma.servisGuzergah.findUnique({ where: { id } })
+  if (!existing) throw new Error('Güzergâh bulunamadı.')
+  if (!existing.aktif) throw new Error('Güzergâh zaten pasif.')
+
+  return prisma.servisGuzergah.update({ where: { id }, data: { aktif: false } })
+}
+
+export async function geriAlServisGuzergah(id: string) {
+  const existing = await prisma.servisGuzergah.findUnique({ where: { id } })
+  if (!existing) throw new Error('Güzergâh bulunamadı.')
+  if (existing.aktif) throw new Error('Güzergâh zaten aktif.')
+
+  return prisma.servisGuzergah.update({ where: { id }, data: { aktif: true } })
 }

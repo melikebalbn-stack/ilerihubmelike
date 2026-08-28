@@ -52,3 +52,47 @@ export function validateServisYerleskeForm(form: ServisYerleskeForm): ServisVali
 
   return { valid: errors.length === 0, errors }
 }
+
+export type ServisGuzergahForm = {
+  kod: string
+  ad: string
+  aciklama?: string | null
+  bolge?: string | null
+  yerleskeId: string
+  gecerlilikBaslangici?: string | null
+  gecerlilikBitisi?: string | null
+}
+
+function parseDateOnly(value?: string | null): Date | null {
+  if (!value?.trim()) return null
+  const date = new Date(`${value.trim()}T00:00:00.000Z`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export function validateServisGuzergahForm(form: ServisGuzergahForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.kod || form.kod.trim().length < 2) {
+    errors.push('Güzergâh kodu en az 2 karakter olmalıdır.')
+  }
+  if (!form.ad || form.ad.trim().length < 2) {
+    errors.push('Güzergâh adı en az 2 karakter olmalıdır.')
+  }
+  if (!form.yerleskeId?.trim()) {
+    errors.push('Yerleşke seçimi zorunludur.')
+  }
+
+  const baslangic = parseDateOnly(form.gecerlilikBaslangici)
+  const bitis = parseDateOnly(form.gecerlilikBitisi)
+  if (form.gecerlilikBaslangici?.trim() && !baslangic) {
+    errors.push('Geçerlilik başlangıç tarihi geçersiz.')
+  }
+  if (form.gecerlilikBitisi?.trim() && !bitis) {
+    errors.push('Geçerlilik bitiş tarihi geçersiz.')
+  }
+  if (baslangic && bitis && bitis < baslangic) {
+    errors.push('Geçerlilik bitiş tarihi başlangıç tarihinden önce olamaz.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

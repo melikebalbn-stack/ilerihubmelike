@@ -26,11 +26,11 @@ const ornekPersonel = [
 ]
 
 describe('Servis personel arama route', () => {
-  it('servis.tanim.manage ister ve reddedilirse prisma çağrılmaz', async () => {
+  it('servis.tanim.manage veya servis.sorumlu.manage ister ve reddedilirse prisma çağrılmaz', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(false))
     const response = await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara'))
     expect(response.status).toBe(403)
-    expect(mocks.requirePermission).toHaveBeenCalledWith('servis.tanim.manage')
+    expect(mocks.requirePermission).toHaveBeenCalledWith(['servis.tanim.manage', 'servis.sorumlu.manage'])
     expect(mocks.personnelFindMany).not.toHaveBeenCalled()
   })
 

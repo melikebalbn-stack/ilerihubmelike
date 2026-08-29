@@ -48,6 +48,10 @@ const mocks = vi.hoisted(() => ({
   soforVarsayilanFindUnique: vi.fn(),
   soforVarsayilanCreate: vi.fn(),
   soforVarsayilanUpdate: vi.fn(),
+  sorumluFindMany: vi.fn(),
+  sorumluFindUnique: vi.fn(),
+  sorumluCreate: vi.fn(),
+  sorumluUpdate: vi.fn(),
   transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
 }))
 
@@ -124,6 +128,12 @@ vi.mock('@/lib/prisma', () => ({
       create: mocks.soforVarsayilanCreate,
       update: mocks.soforVarsayilanUpdate,
     },
+    servisSorumlusu: {
+      findMany: mocks.sorumluFindMany,
+      findUnique: mocks.sorumluFindUnique,
+      create: mocks.sorumluCreate,
+      update: mocks.sorumluUpdate,
+    },
     $transaction: mocks.transaction,
   },
 }))
@@ -182,6 +192,11 @@ import {
   guncelleServisGuzergahSoforVarsayilan,
   pasiflestirServisGuzergahSoforVarsayilan,
   geriAlServisGuzergahSoforVarsayilan,
+  listServisSorumlulari,
+  createServisSorumlusu,
+  guncelleServisSorumlusu,
+  pasiflestirServisSorumlusu,
+  geriAlServisSorumlusu,
 } from './service'
 
 beforeEach(() => {
@@ -1417,5 +1432,132 @@ describe('ServisGuzergahSoforVarsayilan — pasifleştir/geri-al', () => {
     expect(mocks.soforVarsayilanUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: { aktif: true, updatedById: 'user-1' },
     }))
+  })
+})
+
+const gecerliSorumlu = {
+  personnelId: 'personel-1',
+  guzergahId: 'guzergah-1',
+  rol: 'ANA' as const,
+  baslangicTarihi: '2026-01-01',
+}
+
+describe('ServisSorumlusu — view', () => {
+  it('güzergaha ait sorumluları aktif-en-üstte, tarihe göre listeler', async () => {
+    mocks.sorumluFindMany.mockResolvedValue([{ id: 'sr1' }])
+    const data = await listServisSorumlulari('guzergah-1')
+    expect(mocks.sorumluFindMany).toHaveBeenCalledWith({
+      where: { guzergahId: 'guzergah-1' },
+      include: expect.any(Object),
+      orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
+    })
+    expect(data).toHaveLength(1)
+  })
+})
+
+describe('ServisSorumlusu — oluşturma (ÇAKIŞMA KONTROLÜ YOK — DB\'de EXCLUDE tanımlı değil, bilinçli karar)', () => {
+  beforeEach(() => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: true })
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
+  })
+
+  it('geçerli atamayı oluşturur', async () => {
+    mocks.sorumluCreate.mockResolvedValue({ id: 'sr1', ...gecerliSorumlu })
+    await createServisSorumlusu(gecerliSorumlu, 'user-1')
+    expect(mocks.sorumluCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        personnelId: 'personel-1', guzergahId: 'guzergah-1', rol: 'ANA', createdById: 'user-1',
+      }),
+    }))
+  })
+
+  it('aynı personel için ikinci bir ANA ataması hiçbir çakışma kontrolüne takılmadan oluşturulabilir', async () => {
+    // Bilinçli: EXCLUDE yok, bir personel aynı anda birden fazla güzergahın
+    // sorumlusu olabilir. Bu test, gelecekte yanlışlıkla bir çakışma
+    // kontrolü eklenirse (ör. Araç/Şoför Varsayılan'dan kopyalanarak) bunun
+    // farkına varılmasını sağlar.
+    mocks.sorumluCreate.mockResolvedValue({ id: 'sr2' })
+    await createServisSorumlusu({ ...gecerliSorumlu, guzergahId: 'guzergah-2' }, 'user-1')
+    expect(mocks.sorumluFindMany).not.toHaveBeenCalled()
+    expect(mocks.sorumluCreate).toHaveBeenCalled()
+  })
+
+  it('pasif personeli sorumlu atamaz', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: false })
+    await expect(createServisSorumlusu(gecerliSorumlu, 'user-1')).rejects.toThrow('Pasif personel')
+    expect(mocks.sorumluCreate).not.toHaveBeenCalled()
+  })
+
+  it('pasif güzergaha sorumlu atamaz', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: false })
+    await expect(createServisSorumlusu(gecerliSorumlu, 'user-1')).rejects.toThrow('Pasif güzergaha')
+    expect(mocks.sorumluCreate).not.toHaveBeenCalled()
+  })
+
+  it('geçersiz rol veya bitiş başlangıçtan önceyse DB çağrısı yapmaz (CHECK karşılığı)', async () => {
+    await expect(createServisSorumlusu({ ...gecerliSorumlu, rol: 'BASKA' as never }, 'user-1'))
+      .rejects.toThrow('Rol ANA veya YEDEK')
+    await expect(createServisSorumlusu({ ...gecerliSorumlu, bitisTarihi: '2025-12-01' }, 'user-1'))
+      .rejects.toThrow('Bitiş tarihi başlangıç tarihinden önce olamaz')
+    expect(mocks.sorumluCreate).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServisSorumlusu — güncelleme (sınırlı)', () => {
+  it('bitisTarihi başlangıçtan önceyse reddeder', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', baslangicTarihi: new Date('2026-01-10') })
+    await expect(guncelleServisSorumlusu('sr1', { bitisTarihi: '2026-01-01' }, 'user-1')).rejects.toThrow('önce olamaz')
+    expect(mocks.sorumluUpdate).not.toHaveBeenCalled()
+  })
+
+  it('neden/açıklama günceller', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', baslangicTarihi: new Date('2026-01-01') })
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1' })
+    await guncelleServisSorumlusu('sr1', { neden: 'düzeltme' }, 'user-1')
+    expect(mocks.sorumluUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { updatedById: 'user-1', neden: 'düzeltme' },
+    }))
+  })
+})
+
+describe('ServisSorumlusu — pasifleştir/geri-al (madde 14: satır silinmez, bitisTarihi kalıcı)', () => {
+  it('pasifleştirme bitisTarihi ister ve aktif=false yapar', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: true, baslangicTarihi: new Date('2026-01-01') })
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1', aktif: false })
+    await pasiflestirServisSorumlusu('sr1', '2026-01-15', 'user-1')
+    expect(mocks.sorumluUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ bitisTarihi: expect.any(Date), aktif: false, updatedById: 'user-1' }),
+    }))
+  })
+
+  it('bitisTarihi verilmeden pasifleştirilemez', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: true, baslangicTarihi: new Date('2026-01-01') })
+    await expect(pasiflestirServisSorumlusu('sr1', '', 'user-1')).rejects.toThrow('Kapatma tarihi zorunludur')
+    expect(mocks.sorumluUpdate).not.toHaveBeenCalled()
+  })
+
+  it('kapatma tarihi başlangıçtan önceyse reddeder', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: true, baslangicTarihi: new Date('2026-01-10') })
+    await expect(pasiflestirServisSorumlusu('sr1', '2026-01-01', 'user-1')).rejects.toThrow('önce olamaz')
+    expect(mocks.sorumluUpdate).not.toHaveBeenCalled()
+  })
+
+  it('zaten pasif kaydı tekrar pasifleştirmez', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: false })
+    await expect(pasiflestirServisSorumlusu('sr1', '2026-01-15', 'user-1')).rejects.toThrow('zaten pasif')
+  })
+
+  it('geri-al aktif=true yapar, bitisTarihi korunur, çakışma kontrolü yapılmaz', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: false, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15') })
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1', aktif: true })
+    await geriAlServisSorumlusu('sr1', 'user-1')
+    expect(mocks.sorumluUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { aktif: true, updatedById: 'user-1' },
+    }))
+  })
+
+  it('zaten aktif kaydı tekrar geri almaz', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: true })
+    await expect(geriAlServisSorumlusu('sr1', 'user-1')).rejects.toThrow('zaten aktif')
   })
 })

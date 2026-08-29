@@ -14,7 +14,10 @@ import { requirePermission } from '@/lib/auth/require-permission'
 // ekranlarındaki (Firma/Araç/Şoför listesi) client-side tr-TR arama
 // deseniyle aynı yaklaşım.
 export async function GET(request: NextRequest) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  // Bu modülde personel arayan birden fazla özellik var (İç Personel Şoförü
+  // seçimi, Servis Sorumlusu ataması) — her biri kendi manage anahtarıyla
+  // korunuyor, ikisi de aynı dar kapsamlı aramayı kullanabilmeli.
+  const { error } = await requirePermission(['servis.tanim.manage', 'servis.sorumlu.manage'])
   if (error) return error
 
   try {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
@@ -82,6 +82,20 @@ type SoforVarsayilan = {
   aciklama: string | null
 }
 
+type SorumluPickedPersonel = { id: string; sicilNo: string | null; adSoyad: string }
+
+type Sorumlu = {
+  id: string
+  personnelId: string
+  personnel: { id: string; adSoyad: string; sicilNo: string | null; aktif: boolean }
+  rol: ServisRol
+  baslangicTarihi: string
+  bitisTarihi: string | null
+  aktif: boolean
+  neden: string | null
+  aciklama: string | null
+}
+
 function AktifRozet({ aktif }: { aktif: boolean }) {
   return <Badge variant={aktif ? 'default' : 'secondary'}>{aktif ? 'Aktif' : 'Pasif'}</Badge>
 }
@@ -93,6 +107,7 @@ export default function GuzergahDetayPage() {
   const permissions = session?.user?.permissions || []
   const canView = permissions.includes('servis.view')
   const canManage = permissions.includes('servis.tanim.manage')
+  const canSorumluManage = permissions.includes('servis.sorumlu.manage')
   const canPassive = permissions.includes('servis.passive')
   const canRestore = permissions.includes('servis.restore')
 
@@ -267,6 +282,7 @@ export default function GuzergahDetayPage() {
             <TabsTrigger value="duraklar">Duraklar</TabsTrigger>
             <TabsTrigger value="arac-varsayilan">Varsayılan Araçlar</TabsTrigger>
             <TabsTrigger value="sofor-varsayilan">Varsayılan Şoförler</TabsTrigger>
+            <TabsTrigger value="sorumlu">Servis Sorumluları</TabsTrigger>
           </TabsList>
 
           <TabsContent value="duraklar" className="space-y-4">
@@ -341,6 +357,15 @@ export default function GuzergahDetayPage() {
               guzergahId={guzergahId}
               dilimler={dilimler}
               canManage={canManage}
+              canPassive={canPassive}
+              canRestore={canRestore}
+            />
+          </TabsContent>
+
+          <TabsContent value="sorumlu">
+            <SorumlularPanel
+              guzergahId={guzergahId}
+              canSorumluManage={canSorumluManage}
               canPassive={canPassive}
               canRestore={canRestore}
             />
@@ -1054,6 +1079,298 @@ function VarsayilanSoforlerPanel({
             <div>
               <Label htmlFor="sv-kapatma-tarihi">Kapatma (Bitiş) Tarihi *</Label>
               <Input id="sv-kapatma-tarihi" type="date" value={kapatmaTarihi} onChange={(e) => setKapatmaTarihi(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter><Button variant="destructive" onClick={kapat}>Kapat</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// Servis sorumlusu personel seçimi — servis-yonetimi/page.tsx'teki
+// SoforPersonelPicker ile aynı desen (arama-üzerine-seç, elle serbest metin
+// yok), aynı dar kapsamlı /api/servis-yonetimi/personel-ara uç noktası.
+function SorumluPersonelPicker({
+  value,
+  onSelect,
+}: {
+  value: SorumluPickedPersonel | null
+  onSelect: (personel: SorumluPickedPersonel) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [sonuclar, setSonuclar] = useState<SorumluPickedPersonel[]>([])
+  const [acik, setAcik] = useState(false)
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function tikla(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAcik(false)
+    }
+    document.addEventListener('mousedown', tikla)
+    return () => document.removeEventListener('mousedown', tikla)
+  }, [])
+
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setSonuclar([])
+      return
+    }
+    const zamanlayici = setTimeout(async () => {
+      setYukleniyor(true)
+      try {
+        const res = await fetch(`/api/servis-yonetimi/personel-ara?search=${encodeURIComponent(query)}`)
+        const json = await res.json()
+        setSonuclar(res.ok && json.ok ? json.data : [])
+      } finally {
+        setYukleniyor(false)
+      }
+    }, 300)
+    return () => clearTimeout(zamanlayici)
+  }, [query])
+
+  return (
+    <div ref={ref} className="relative">
+      <Input
+        value={value ? `${value.sicilNo ? value.sicilNo + ' - ' : ''}${value.adSoyad}` : query}
+        placeholder="Sicil No veya Ad Soyad ile ara..."
+        onChange={(e) => { setQuery(e.target.value); setAcik(true) }}
+        onFocus={() => { setQuery(''); setAcik(true) }}
+      />
+      {acik && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-56 overflow-y-auto">
+          {yukleniyor && <div className="px-3 py-2 text-sm text-muted-foreground">Aranıyor...</div>}
+          {!yukleniyor && query.trim().length >= 2 && sonuclar.length === 0 && (
+            <div className="px-3 py-2 text-sm text-muted-foreground">Sonuç bulunamadı</div>
+          )}
+          {!yukleniyor && query.trim().length < 2 && (
+            <div className="px-3 py-2 text-sm text-muted-foreground">En az 2 karakter yazın</div>
+          )}
+          {sonuclar.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+              onMouseDown={(e) => { e.preventDefault(); onSelect(p); setQuery(''); setAcik(false) }}
+            >
+              <span className="font-medium">{p.sicilNo || '-'}</span> — {p.adSoyad}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SorumlularPanel({
+  guzergahId,
+  canSorumluManage,
+  canPassive,
+  canRestore,
+}: {
+  guzergahId: string
+  canSorumluManage: boolean
+  canPassive: boolean
+  canRestore: boolean
+}) {
+  const [liste, setListe] = useState<Sorumlu[]>([])
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [hata, setHata] = useState<string | null>(null)
+  const [dialogAcik, setDialogAcik] = useState(false)
+  const [secilenPersonel, setSecilenPersonel] = useState<SorumluPickedPersonel | null>(null)
+  const [form, setForm] = useState({ personnelId: '', rol: 'ANA' as ServisRol, baslangicTarihi: bugun(), bitisTarihi: '', neden: '' })
+  const [kapatilan, setKapatilan] = useState<Sorumlu | null>(null)
+  const [kapatmaTarihi, setKapatmaTarihi] = useState('')
+
+  const yukle = useCallback(async () => {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/sorumlu`)
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setHata(json.message || 'Servis sorumluları alınamadı.')
+        return
+      }
+      setListe(json.data)
+    } catch {
+      setHata('Veriler alınırken beklenmeyen bir hata oluştu.')
+    } finally {
+      setYukleniyor(false)
+    }
+  }, [guzergahId])
+
+  useEffect(() => {
+    yukle()
+  }, [yukle])
+
+  function yeniAc() {
+    setSecilenPersonel(null)
+    setForm({ personnelId: '', rol: 'ANA', baslangicTarihi: bugun(), bitisTarihi: '', neden: '' })
+    setHata(null)
+    setDialogAcik(true)
+  }
+
+  async function kaydet() {
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/sorumlu`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Kaydedilemedi.')
+      return
+    }
+    setDialogAcik(false)
+    yukle()
+  }
+
+  function kapatmaAc(v: Sorumlu) {
+    setKapatilan(v)
+    setKapatmaTarihi(bugun())
+    setHata(null)
+  }
+
+  async function kapat() {
+    if (!kapatilan) return
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/guzergah-sorumlu/${kapatilan.id}/pasiflestir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bitisTarihi: kapatmaTarihi }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Atama kapatılamadı.')
+      return
+    }
+    setKapatilan(null)
+    yukle()
+  }
+
+  async function geriAl(id: string) {
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/guzergah-sorumlu/${id}/geri-al`, { method: 'POST' })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Geri alınamadı.')
+      return
+    }
+    yukle()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-medium">Servis Sorumluları</h2>
+        {canSorumluManage && (
+          <Button size="sm" onClick={yeniAc}>
+            <Plus className="mr-2 h-4 w-4" /> Yeni Atama
+          </Button>
+        )}
+      </div>
+      {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {yukleniyor ? (
+        <p className="text-sm text-muted-foreground">Yükleniyor...</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Personel</TableHead>
+              <TableHead>Rol</TableHead>
+              <TableHead>Başlangıç</TableHead>
+              <TableHead>Bitiş</TableHead>
+              <TableHead>Durum</TableHead>
+              {(canPassive || canRestore) && <TableHead className="text-right">İşlem</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {liste.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={canPassive || canRestore ? 6 : 5} className="text-center text-muted-foreground">
+                  Kayıt yok.
+                </TableCell>
+              </TableRow>
+            )}
+            {liste.map((v) => (
+              <TableRow key={v.id}>
+                <TableCell>{v.personnel.adSoyad}{!v.personnel.aktif ? ' (Pasif)' : ''}</TableCell>
+                <TableCell><RolRozet rol={v.rol} /></TableCell>
+                <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
+                <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
+                <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
+                {(canPassive || canRestore) && (
+                  <TableCell className="text-right space-x-2">
+                    {v.aktif && canPassive && (
+                      <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
+                    )}
+                    {!v.aktif && canRestore && (
+                      <Button size="sm" variant="outline" onClick={() => geriAl(v.id)}>Geri Al</Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Yeni Servis Sorumlusu Ataması</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="sr-personel">Personel *</Label>
+              <SorumluPersonelPicker
+                value={secilenPersonel}
+                onSelect={(p) => { setSecilenPersonel(p); setForm({ ...form, personnelId: p.id }) }}
+              />
+            </div>
+            <div>
+              <Label>Rol *</Label>
+              <RadioGroup value={form.rol} onValueChange={(v) => setForm({ ...form, rol: v as ServisRol })} className="flex gap-4 pt-1">
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="ANA" id="sr-rol-ana" />
+                  <Label htmlFor="sr-rol-ana" className="font-normal cursor-pointer">ANA</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="YEDEK" id="sr-rol-yedek" />
+                  <Label htmlFor="sr-rol-yedek" className="font-normal cursor-pointer">YEDEK</Label>
+                </div>
+              </RadioGroup>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="sr-baslangic">Başlangıç *</Label>
+                <Input id="sr-baslangic" type="date" value={form.baslangicTarihi} onChange={(e) => setForm({ ...form, baslangicTarihi: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="sr-bitis">Bitiş</Label>
+                <Input id="sr-bitis" type="date" value={form.bitisTarihi} onChange={(e) => setForm({ ...form, bitisTarihi: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="sr-neden">Neden</Label>
+              <Input id="sr-neden" value={form.neden} onChange={(e) => setForm({ ...form, neden: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter><Button onClick={kaydet} disabled={!form.personnelId}>Kaydet</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!kapatilan} onOpenChange={(o) => !o && setKapatilan(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Atamayı Kapat</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Bu atamayı kapatmak geçmişi silmez — yalnızca bitiş tarihini kaydedip pasife alır.
+            </p>
+            <div>
+              <Label htmlFor="sr-kapatma-tarihi">Kapatma (Bitiş) Tarihi *</Label>
+              <Input id="sr-kapatma-tarihi" type="date" value={kapatmaTarihi} onChange={(e) => setKapatmaTarihi(e.target.value)} />
             </div>
           </div>
           <DialogFooter><Button variant="destructive" onClick={kapat}>Kapat</Button></DialogFooter>

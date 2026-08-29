@@ -12,6 +12,7 @@ import {
   validateServisGuzergahDurakSaatForm,
   validateServisGuzergahAracVarsayilanForm,
   validateServisGuzergahSoforVarsayilanForm,
+  validateServisSorumlusuForm,
   type ServisFirmaForm,
   type ServisAracForm,
   type ServisDurakForm,
@@ -23,6 +24,7 @@ import {
   type ServisGuzergahDurakSaatForm,
   type ServisGuzergahAracVarsayilanForm,
   type ServisGuzergahSoforVarsayilanForm,
+  type ServisSorumlusuForm,
 } from './validation'
 
 // ============================================================================
@@ -1124,5 +1126,119 @@ export async function geriAlServisGuzergahSoforVarsayilan(id: string, updatedByI
     where: { id },
     data: { aktif: true, updatedById },
     include: servisGuzergahSoforVarsayilanInclude,
+  })
+}
+
+// ============================================================================
+// ServisSorumlusu — servis sorumlusu (sürücüden AYRI bir rol, bkz.
+// schema.prisma yorumu). ZAMAN BAĞIMLI ATAMA — geçmiş korunur, satır asla
+// silinmez/üzerine yazılmaz; "pasifleştirme" bitisTarihi + aktif=false
+// yazmaktır, yeni atama her zaman yeni satırdır (madde 14).
+//
+// ÖNEMLİ FARK (Araç/Şoför Varsayılan'dan): bu tabloda EXCLUDE/daterange
+// çakışma kısıtı DB'de TANIMLI DEĞİL — migration SQL'de yalnız 4 EXCLUDE
+// var (arac_varsayilan, sofor_varsayilan, personel_atama, personel_durum),
+// servis_sorumlusu bunlardan biri değil. Bilinçli tasarım kararı olarak
+// kabul edildi: bir personel aynı anda birden fazla güzergahın sorumlusu
+// olabilir (fiziksel bir kaynak değil, gözetim/irtibat rolü). Bu yüzden
+// burada ANA-çakışma kontrolü YOK — yalnız mevcut DB CHECK'in
+// (bitisTarihi IS NULL OR bitisTarihi >= baslangicTarihi) aplikasyon
+// katmanı karşılığı uygulanır.
+
+const servisSorumlusuInclude = {
+  guzergah: { select: { id: true, kod: true, ad: true } },
+  personnel: { select: { id: true, adSoyad: true, sicilNo: true, aktif: true } },
+} as const
+
+export async function listServisSorumlulari(guzergahId: string, filtre?: { aktif?: boolean }) {
+  return prisma.servisSorumlusu.findMany({
+    where: { guzergahId, ...(filtre?.aktif !== undefined ? { aktif: filtre.aktif } : {}) },
+    include: servisSorumlusuInclude,
+    orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
+  })
+}
+
+export async function createServisSorumlusu(form: ServisSorumlusuForm, createdById: string) {
+  const { valid, errors } = validateServisSorumlusuForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const personnelId = form.personnelId.trim()
+  const guzergahId = form.guzergahId.trim()
+  const baslangic = dateOnlyOrNull(form.baslangicTarihi)!
+  const bitis = dateOnlyOrNull(form.bitisTarihi)
+
+  const [personnel, guzergah] = await Promise.all([
+    prisma.personnel.findUnique({ where: { id: personnelId } }),
+    prisma.servisGuzergah.findUnique({ where: { id: guzergahId } }),
+  ])
+  if (!personnel) throw new Error('Personel bulunamadı.')
+  if (!personnel.aktif) throw new Error('Pasif personel servis sorumlusu olarak atanamaz.')
+  if (!guzergah) throw new Error('Güzergâh bulunamadı.')
+  if (!guzergah.aktif) throw new Error('Pasif güzergaha sorumlu atanamaz.')
+
+  return prisma.servisSorumlusu.create({
+    data: {
+      personnelId,
+      guzergahId,
+      rol: form.rol,
+      baslangicTarihi: baslangic,
+      bitisTarihi: bitis,
+      neden: form.neden?.trim() || null,
+      aciklama: form.aciklama?.trim() || null,
+      createdById,
+    },
+    include: servisSorumlusuInclude,
+  })
+}
+
+export async function guncelleServisSorumlusu(
+  id: string,
+  form: { bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
+  updatedById: string,
+) {
+  const existing = await prisma.servisSorumlusu.findUnique({ where: { id } })
+  if (!existing) throw new Error('Servis sorumlusu ataması bulunamadı.')
+
+  const data: { bitisTarihi?: Date | null; neden?: string | null; aciklama?: string | null; updatedById: string } = {
+    updatedById,
+  }
+
+  if (form.bitisTarihi !== undefined) {
+    const bitis = dateOnlyOrNull(form.bitisTarihi)
+    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
+    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+    data.bitisTarihi = bitis
+  }
+  if (form.neden !== undefined) data.neden = form.neden?.trim() || null
+  if (form.aciklama !== undefined) data.aciklama = form.aciklama?.trim() || null
+
+  return prisma.servisSorumlusu.update({ where: { id }, data, include: servisSorumlusuInclude })
+}
+
+export async function pasiflestirServisSorumlusu(id: string, bitisTarihi: string, updatedById: string) {
+  const existing = await prisma.servisSorumlusu.findUnique({ where: { id } })
+  if (!existing) throw new Error('Servis sorumlusu ataması bulunamadı.')
+  if (!existing.aktif) throw new Error('Bu atama zaten pasif.')
+
+  const bitis = dateOnlyOrNull(bitisTarihi)
+  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
+  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+
+  return prisma.servisSorumlusu.update({
+    where: { id },
+    data: { bitisTarihi: bitis, aktif: false, updatedById },
+    include: servisSorumlusuInclude,
+  })
+}
+
+export async function geriAlServisSorumlusu(id: string, updatedById: string) {
+  const existing = await prisma.servisSorumlusu.findUnique({ where: { id } })
+  if (!existing) throw new Error('Servis sorumlusu ataması bulunamadı.')
+  if (existing.aktif) throw new Error('Bu atama zaten aktif.')
+
+  return prisma.servisSorumlusu.update({
+    where: { id },
+    data: { aktif: true, updatedById },
+    include: servisSorumlusuInclude,
   })
 }

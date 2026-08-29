@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   geriAlServisGuzergahAracVarsayilan: vi.fn(),
   pasiflestirServisGuzergahSoforVarsayilan: vi.fn(),
   geriAlServisGuzergahSoforVarsayilan: vi.fn(),
+  pasiflestirServisSorumlusu: vi.fn(),
+  geriAlServisSorumlusu: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-permission', () => ({
@@ -49,6 +51,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   geriAlServisGuzergahAracVarsayilan: mocks.geriAlServisGuzergahAracVarsayilan,
   pasiflestirServisGuzergahSoforVarsayilan: mocks.pasiflestirServisGuzergahSoforVarsayilan,
   geriAlServisGuzergahSoforVarsayilan: mocks.geriAlServisGuzergahSoforVarsayilan,
+  pasiflestirServisSorumlusu: mocks.pasiflestirServisSorumlusu,
+  geriAlServisSorumlusu: mocks.geriAlServisSorumlusu,
 }))
 
 import { POST as firmaPasiflestir } from './firma/[id]/pasiflestir/route'
@@ -71,6 +75,8 @@ import { POST as aracVarsayilanPasiflestir } from './guzergah-arac-varsayilan/[i
 import { POST as aracVarsayilanGeriAl } from './guzergah-arac-varsayilan/[id]/geri-al/route'
 import { POST as soforVarsayilanPasiflestir } from './guzergah-sofor-varsayilan/[id]/pasiflestir/route'
 import { POST as soforVarsayilanGeriAl } from './guzergah-sofor-varsayilan/[id]/geri-al/route'
+import { POST as sorumluPasiflestir } from './guzergah-sorumlu/[id]/pasiflestir/route'
+import { POST as sorumluGeriAl } from './guzergah-sorumlu/[id]/geri-al/route'
 
 type PostHandler = (
   request: Request,
@@ -98,6 +104,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['güzergâh-durak', guzergahDurakPasiflestir],
     ['güzergâh-araç varsayılanı', aracVarsayilanPasiflestir],
     ['güzergâh-şoför varsayılanı', soforVarsayilanPasiflestir],
+    ['servis sorumlusu', sorumluPasiflestir],
   ] as [string, PostHandler][])('%s pasifleştirme servis.passive ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.passive')
@@ -114,6 +121,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['güzergâh-durak', guzergahDurakGeriAl],
     ['güzergâh-araç varsayılanı', aracVarsayilanGeriAl],
     ['güzergâh-şoför varsayılanı', soforVarsayilanGeriAl],
+    ['servis sorumlusu', sorumluGeriAl],
   ] as [string, PostHandler][])('%s geri-al servis.restore ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.restore')

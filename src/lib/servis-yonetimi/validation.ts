@@ -331,3 +331,29 @@ export function validateServisGuzergahSoforVarsayilanForm(
 
   return { valid: errors.length === 0, errors }
 }
+
+// ServisSorumlusu — servis sorumlusu sürücüden ayrı bir roldür (bkz.
+// schema.prisma yorumu). EXCLUDE/daterange kısıtı DB'de TANIMLI DEĞİL
+// (migration SQL'de yalnız 4 EXCLUDE var, sorumlu bunlardan biri değil) —
+// bilinçli tasarım: bir personel aynı anda birden fazla güzergahın
+// sorumlusu olabilir. Yalnız CHECK (bitisTarihi IS NULL OR >= baslangic)
+// karşılığı burada uygulanır, ANA-çakışma kontrolü YOK.
+export type ServisSorumlusuForm = {
+  personnelId: string
+  guzergahId: string
+  rol: ServisRol
+  baslangicTarihi: string
+  bitisTarihi?: string | null
+  neden?: string | null
+  aciklama?: string | null
+}
+
+export function validateServisSorumlusuForm(form: ServisSorumlusuForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.personnelId?.trim()) errors.push('Personel seçimi zorunludur.')
+  if (!form.guzergahId?.trim()) errors.push('Güzergâh seçimi zorunludur.')
+  validateRolVeTarihler(form, errors)
+
+  return { valid: errors.length === 0, errors }
+}

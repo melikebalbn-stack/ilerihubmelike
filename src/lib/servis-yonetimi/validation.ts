@@ -163,3 +163,32 @@ export function validateServisAracForm(form: ServisAracForm): ServisValidationRe
 
   return { valid: errors.length === 0, errors }
 }
+
+export type ServisSoforForm = {
+  adSoyad: string
+  telefon?: string | null
+  firmaId: string
+}
+
+export function normalizeServisSoforTelefon(telefon?: string | null): string | null {
+  if (!telefon?.trim()) return null
+  const sade = telefon.trim().replace(/[\s()-]/g, '')
+  const eslesme = sade.match(/^(?:\+90|0090|0)?([2-5]\d{9})$/)
+  return eslesme ? `+90${eslesme[1]}` : null
+}
+
+export function validateServisSoforForm(form: ServisSoforForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.adSoyad || form.adSoyad.trim().length < 3) {
+    errors.push('Ad soyad en az 3 karakter olmalıdır.')
+  }
+  if (form.telefon?.trim() && !normalizeServisSoforTelefon(form.telefon)) {
+    errors.push('Geçerli bir Türkiye telefon numarası girin.')
+  }
+  if (!form.firmaId?.trim()) {
+    errors.push('Firma seçimi zorunludur.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

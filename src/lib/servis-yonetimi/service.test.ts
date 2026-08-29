@@ -21,6 +21,10 @@ const mocks = vi.hoisted(() => ({
   aracFindUnique: vi.fn(),
   aracCreate: vi.fn(),
   aracUpdate: vi.fn(),
+  soforFindMany: vi.fn(),
+  soforFindUnique: vi.fn(),
+  soforCreate: vi.fn(),
+  soforUpdate: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -55,6 +59,12 @@ vi.mock('@/lib/prisma', () => ({
       create: mocks.aracCreate,
       update: mocks.aracUpdate,
     },
+    servisSofor: {
+      findMany: mocks.soforFindMany,
+      findUnique: mocks.soforFindUnique,
+      create: mocks.soforCreate,
+      update: mocks.soforUpdate,
+    },
   },
 }))
 
@@ -64,26 +74,31 @@ import {
   createServisDurak,
   createServisGuzergah,
   createServisYerleske,
+  createServisSofor,
   geriAlServisFirma,
   geriAlServisArac,
   geriAlServisDurak,
   geriAlServisGuzergah,
   geriAlServisYerleske,
+  geriAlServisSofor,
   listServisFirmalar,
   listServisAraclar,
   listServisDuraklar,
   listServisGuzergahlar,
   listServisYerleskeler,
+  listServisSoforler,
   pasiflestirServisFirma,
   pasiflestirServisArac,
   pasiflestirServisDurak,
   pasiflestirServisGuzergah,
   pasiflestirServisYerleske,
+  pasiflestirServisSofor,
   updateServisFirma,
   updateServisArac,
   updateServisDurak,
   updateServisGuzergah,
   updateServisYerleske,
+  updateServisSofor,
 } from './service'
 
 beforeEach(() => {
@@ -481,5 +496,101 @@ describe('ServisArac — passive/restore', () => {
     mocks.aracUpdate.mockResolvedValue({ id: 'a1', aktif: true })
     const data = await geriAlServisArac('a1')
     expect(data.aktif).toBe(true)
+  })
+})
+
+const gecerliSofor = {
+  adSoyad: 'Test Şoför',
+  telefon: '0532 123 45 67',
+  firmaId: 'firma-1',
+}
+
+describe('ServisSofor — view', () => {
+  it('aktif filtresi ve firma bilgisiyle ada göre listeler', async () => {
+    mocks.soforFindMany.mockResolvedValue([{ id: 's1', adSoyad: 'Test Şoför' }])
+    const data = await listServisSoforler({ aktif: true })
+    expect(mocks.soforFindMany).toHaveBeenCalledWith({
+      where: { aktif: true },
+      include: { firma: { select: { id: true, ad: true, aktif: true } } },
+      orderBy: { adSoyad: 'asc' },
+    })
+    expect(data).toHaveLength(1)
+  })
+})
+
+describe('ServisSofor — create/edit', () => {
+  it('telefonu normalize eder ve kişisel veri içermeyen benzersiz dış kod üretir', async () => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    mocks.soforCreate.mockResolvedValue({ id: 's1', adSoyad: 'Test Şoför' })
+
+    await createServisSofor(gecerliSofor)
+
+    expect(mocks.soforCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        adSoyad: 'Test Şoför',
+        telefon: '+905321234567',
+        firmaId: 'firma-1',
+        personnelId: null,
+        disFirmaSoforKodu: expect.stringMatching(/^DIS-[0-9A-F-]{36}$/),
+      }),
+    }))
+  })
+
+  it.each(['12345', '+901231234567', '0532ABC4567'])('geçersiz telefon %s değerini reddeder', async (telefon) => {
+    await expect(createServisSofor({ ...gecerliSofor, telefon })).rejects.toThrow('Türkiye telefon')
+    expect(mocks.soforCreate).not.toHaveBeenCalled()
+  })
+
+  it('telefonu boş bırakmaya izin verir', async () => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    mocks.soforCreate.mockResolvedValue({ id: 's1' })
+    await createServisSofor({ ...gecerliSofor, telefon: '' })
+    expect(mocks.soforCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ telefon: null }),
+    }))
+  })
+
+  it('pasif firmaya yeni şoför bağlamaz', async () => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: false })
+    await expect(createServisSofor(gecerliSofor)).rejects.toThrow('Pasif firmaya')
+    expect(mocks.soforCreate).not.toHaveBeenCalled()
+  })
+
+  it('olmayan firmaya şoför bağlamaz', async () => {
+    mocks.firmaFindUnique.mockResolvedValue(null)
+    await expect(createServisSofor(gecerliSofor)).rejects.toThrow('Firma bulunamadı')
+  })
+
+  it('güncellemede mevcut teknik kimliği korur', async () => {
+    mocks.soforFindUnique.mockResolvedValue({
+      id: 's1', personnelId: null, disFirmaSoforKodu: 'DIS-MEVCUT',
+    })
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    mocks.soforUpdate.mockResolvedValue({ id: 's1', adSoyad: 'Yeni Şoför' })
+    await updateServisSofor('s1', { ...gecerliSofor, adSoyad: 'Yeni Şoför' })
+    expect(mocks.soforUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ disFirmaSoforKodu: 'DIS-MEVCUT' }),
+    }))
+  })
+
+  it('güncellemede pasif firmaya bağlamayı reddeder', async () => {
+    mocks.soforFindUnique.mockResolvedValue({ id: 's1', disFirmaSoforKodu: 'DIS-MEVCUT' })
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: false })
+    await expect(updateServisSofor('s1', gecerliSofor)).rejects.toThrow('Pasif firmaya')
+    expect(mocks.soforUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServisSofor — passive/restore', () => {
+  it('aktif şoförü pasifleştirir', async () => {
+    mocks.soforFindUnique.mockResolvedValue({ id: 's1', aktif: true })
+    mocks.soforUpdate.mockResolvedValue({ id: 's1', aktif: false })
+    expect((await pasiflestirServisSofor('s1')).aktif).toBe(false)
+  })
+
+  it('pasif şoförü geri aktifleştirir', async () => {
+    mocks.soforFindUnique.mockResolvedValue({ id: 's1', aktif: false })
+    mocks.soforUpdate.mockResolvedValue({ id: 's1', aktif: true })
+    expect((await geriAlServisSofor('s1')).aktif).toBe(true)
   })
 })

@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   geriAlServisDurak: vi.fn(),
   pasiflestirServisArac: vi.fn(),
   geriAlServisArac: vi.fn(),
+  pasiflestirServisSofor: vi.fn(),
+  geriAlServisSofor: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-permission', () => ({
@@ -29,6 +31,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   geriAlServisDurak: mocks.geriAlServisDurak,
   pasiflestirServisArac: mocks.pasiflestirServisArac,
   geriAlServisArac: mocks.geriAlServisArac,
+  pasiflestirServisSofor: mocks.pasiflestirServisSofor,
+  geriAlServisSofor: mocks.geriAlServisSofor,
 }))
 
 import { POST as firmaPasiflestir } from './firma/[id]/pasiflestir/route'
@@ -41,6 +45,8 @@ import { POST as durakPasiflestir } from './durak/[id]/pasiflestir/route'
 import { POST as durakGeriAl } from './durak/[id]/geri-al/route'
 import { POST as aracPasiflestir } from './arac/[id]/pasiflestir/route'
 import { POST as aracGeriAl } from './arac/[id]/geri-al/route'
+import { POST as soforPasiflestir } from './sofor/[id]/pasiflestir/route'
+import { POST as soforGeriAl } from './sofor/[id]/geri-al/route'
 
 type PostHandler = (
   request: Request,
@@ -63,6 +69,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['güzergâh', guzergahPasiflestir],
     ['durak', durakPasiflestir],
     ['araç', aracPasiflestir],
+    ['şoför', soforPasiflestir],
   ] as [string, PostHandler][])('%s pasifleştirme servis.passive ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.passive')
@@ -74,6 +81,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['güzergâh', guzergahGeriAl],
     ['durak', durakGeriAl],
     ['araç', aracGeriAl],
+    ['şoför', soforGeriAl],
   ] as [string, PostHandler][])('%s geri-al servis.restore ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.restore')

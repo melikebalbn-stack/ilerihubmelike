@@ -82,6 +82,17 @@ type ServisArac = {
   updatedAt: string
 }
 
+type ServisSofor = {
+  id: string
+  adSoyad: string
+  telefon: string | null
+  firmaId: string | null
+  firma: { id: string; ad: string; aktif: boolean } | null
+  aktif: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 function AktifBadge({ aktif }: { aktif: boolean }) {
   return (
     <Badge variant={aktif ? 'default' : 'secondary'}>
@@ -1119,6 +1130,125 @@ function ServisAracPanel({ canManage }: { canManage: boolean }) {
   )
 }
 
+const bosSoforForm = { adSoyad: '', telefon: '', firmaId: '' }
+
+function ServisSoforPanel({ canManage }: { canManage: boolean }) {
+  const [soforler, setSoforler] = useState<ServisSofor[]>([])
+  const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
+  const [arama, setArama] = useState('')
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [hata, setHata] = useState<string | null>(null)
+  const [dialogAcik, setDialogAcik] = useState(false)
+  const [duzenlenen, setDuzenlenen] = useState<ServisSofor | null>(null)
+  const [form, setForm] = useState(bosSoforForm)
+
+  const yukle = useCallback(async () => {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const [soforRes, firmaRes] = await Promise.all([
+        fetch('/api/servis-yonetimi/sofor'),
+        fetch('/api/servis-yonetimi/firma?durum=aktif'),
+      ])
+      const [soforJson, firmaJson] = await Promise.all([soforRes.json(), firmaRes.json()])
+      if (!soforRes.ok || !soforJson.ok) {
+        setHata(soforJson.message || 'Şoför listesi alınamadı.')
+        return
+      }
+      if (!firmaRes.ok || !firmaJson.ok) {
+        setHata(firmaJson.message || 'Firma listesi alınamadı.')
+        return
+      }
+      setSoforler(soforJson.data)
+      setFirmalar(firmaJson.data)
+    } catch {
+      setHata('Şoför listesi alınırken beklenmeyen bir hata oluştu.')
+    } finally {
+      setYukleniyor(false)
+    }
+  }, [])
+
+  useEffect(() => { yukle() }, [yukle])
+
+  const query = arama.trim().toLocaleLowerCase('tr-TR')
+  const filtreliSoforler = soforler.filter((sofor) =>
+    !query || sofor.adSoyad.toLocaleLowerCase('tr-TR').includes(query)
+  )
+
+  function yeniAc() {
+    setDuzenlenen(null)
+    setForm({ ...bosSoforForm, firmaId: firmalar[0]?.id || '' })
+    setDialogAcik(true)
+  }
+
+  function duzenleAc(sofor: ServisSofor) {
+    setDuzenlenen(sofor)
+    setForm({ adSoyad: sofor.adSoyad, telefon: sofor.telefon || '', firmaId: sofor.firmaId || '' })
+    setDialogAcik(true)
+  }
+
+  async function kaydet() {
+    setHata(null)
+    const url = duzenlenen ? `/api/servis-yonetimi/sofor/${duzenlenen.id}` : '/api/servis-yonetimi/sofor'
+    const res = await fetch(url, {
+      method: duzenlenen ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Kaydedilemedi.')
+      return
+    }
+    setDialogAcik(false)
+    yukle()
+  }
+
+  async function durumDegistir(id: string, aktif: boolean) {
+    await fetch(`/api/servis-yonetimi/sofor/${id}/${aktif ? 'pasiflestir' : 'geri-al'}`, { method: 'POST' })
+    yukle()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Ad soyada göre ara" aria-label="Şoför ara" className="sm:max-w-sm" />
+        {canManage && <Button onClick={yeniAc} disabled={firmalar.length === 0}><Plus className="mr-2 h-4 w-4" /> Yeni Şoför</Button>}
+      </div>
+      {canManage && firmalar.length === 0 && !yukleniyor && (
+        <p className="text-sm text-amber-600">Şoför eklemek için önce aktif bir taşeron firma oluşturun.</p>
+      )}
+      {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {yukleniyor ? <p className="text-sm text-muted-foreground">Yükleniyor...</p> : (
+        <Table>
+          <TableHeader><TableRow><TableHead>Ad Soyad</TableHead><TableHead>Telefon</TableHead><TableHead>Firma</TableHead><TableHead>Durum</TableHead>{canManage && <TableHead className="text-right">İşlem</TableHead>}</TableRow></TableHeader>
+          <TableBody>
+            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage ? 5 : 4} className="text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
+            {filtreliSoforler.map((sofor) => (
+              <TableRow key={sofor.id}>
+                <TableCell>{sofor.adSoyad}</TableCell><TableCell>{sofor.telefon || '-'}</TableCell>
+                <TableCell>{sofor.firma ? `${sofor.firma.ad}${sofor.firma.aktif ? '' : ' (Pasif)'}` : '-'}</TableCell>
+                <TableCell><AktifBadge aktif={sofor.aktif} /></TableCell>
+                {canManage && <TableCell className="space-x-2 text-right"><Button size="sm" variant="outline" onClick={() => duzenleAc(sofor)}>Düzenle</Button>{sofor.aktif ? <Button size="sm" variant="destructive" onClick={() => durumDegistir(sofor.id, true)}>Pasifleştir</Button> : <Button size="sm" variant="outline" onClick={() => durumDegistir(sofor.id, false)}>Geri Al</Button>}</TableCell>}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
+        <DialogContent><DialogHeader><DialogTitle>{duzenlenen ? 'Şoförü Düzenle' : 'Yeni Şoför'}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label htmlFor="sofor-ad-soyad">Ad Soyad *</Label><Input id="sofor-ad-soyad" value={form.adSoyad} onChange={(e) => setForm({ ...form, adSoyad: e.target.value })} /></div>
+            <div><Label htmlFor="sofor-telefon">Telefon</Label><Input id="sofor-telefon" type="tel" placeholder="0532 123 45 67" value={form.telefon} onChange={(e) => setForm({ ...form, telefon: e.target.value })} /></div>
+            <div><Label htmlFor="sofor-firma">Taşeron Firma *</Label><select id="sofor-firma" value={form.firmaId} onChange={(e) => setForm({ ...form, firmaId: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">Firma seçin</option>{firmalar.map((firma) => <option key={firma.id} value={firma.id}>{firma.ad}</option>)}</select></div>
+          </div>
+          <DialogFooter><Button onClick={kaydet}>Kaydet</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 export default function ServisYonetimiPage() {
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
@@ -1148,6 +1278,7 @@ export default function ServisYonetimiPage() {
           <TabsTrigger value="guzergah">Güzergâhlar</TabsTrigger>
           <TabsTrigger value="durak">Duraklar</TabsTrigger>
           <TabsTrigger value="arac">Araçlar</TabsTrigger>
+          <TabsTrigger value="sofor">Şoförler</TabsTrigger>
         </TabsList>
         <TabsContent value="firma">
           <ServisFirmaPanel canManage={canManage} />
@@ -1163,6 +1294,9 @@ export default function ServisYonetimiPage() {
         </TabsContent>
         <TabsContent value="arac">
           <ServisAracPanel canManage={canManage} />
+        </TabsContent>
+        <TabsContent value="sofor">
+          <ServisSoforPanel canManage={canManage} />
         </TabsContent>
       </Tabs>
     </div>

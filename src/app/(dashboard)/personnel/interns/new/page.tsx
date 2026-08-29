@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { NativeSelect as Select } from "@/components/ui/select"
 import { ArrowLeft, Save, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { BOLUMLER } from "@/lib/personnel-constants"
+import { useDepartments } from "@/lib/use-departments"
 
 type InternForm = {
   adSoyad: string
@@ -39,6 +39,8 @@ const initialForm: InternForm = {
 
 export default function NewInternPage() {
   const router = useRouter()
+  // Bölümler DB'den (hr-departments ucu) — sabit liste YOK.
+  const { departments: bolumler, loading: bolumlerYukleniyor, hata: bolumHatasi } = useDepartments()
   const [form, setForm] = useState<InternForm>(initialForm)
   const [saving, setSaving] = useState(false)
 
@@ -132,9 +134,13 @@ export default function NewInternPage() {
                   value={form.bolum}
                   onChange={(e) => set("bolum", e.target.value)}
                   required
+                  disabled={bolumlerYukleniyor || !!bolumHatasi}
+                  title={bolumHatasi ?? undefined}
                 >
-                  <option value="">Secin</option>
-                  {BOLUMLER.map((b) => (
+                  <option value="">
+                    {bolumlerYukleniyor ? "Bölümler yükleniyor…" : bolumHatasi ? bolumHatasi : "Secin"}
+                  </option>
+                  {bolumler.map((b) => (
                     <option key={b} value={b}>
                       {b}
                     </option>

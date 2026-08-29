@@ -85,8 +85,11 @@ export async function uretimDepartmaniCozOrNull(db: DbClient = prisma): Promise<
   if (!anahtar) return null;
 
   // Değer id ya da ad olabilir; ikisi de tekil olduğu için OR güvenli.
+  // AD eşleşmesi büyük/küçük harf DUYARSIZ: departman şema üslubuna göre yeniden
+  // adlandırıldığında ("FABRİKA MÜDÜRLÜĞÜ" → "Fabrika Müdürlüğü") env değeri
+  // kırılmasın. Tam ad şart — kapsama/parçalı eşleşme YOK.
   const dept = await db.departmentDefinition.findFirst({
-    where: { OR: [{ id: anahtar }, { name: anahtar }] },
+    where: { OR: [{ id: anahtar }, { name: { equals: anahtar, mode: "insensitive" } }] },
     select: { id: true, name: true, mudurId: true, mudurYardimcisiId: true },
   });
   if (!dept) return null;

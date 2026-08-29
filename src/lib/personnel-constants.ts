@@ -1,33 +1,7 @@
-export const BOLUMLER = [
-  "ASANSÖR",
-  "ASANSÖR SATIŞ PAZARLAMA",
-  "BAKIMHANE",
-  "BÜRO MEMURU",
-  "DEPO",
-  "FABRİKA MÜDÜRLÜĞÜ",
-  "FİNANS MUHASEBE MÜDÜRLÜĞÜ",
-  "GENEL MÜDÜRLÜK",
-  "İDARİ İŞLER",
-  "İNSAN VARLIKLARI",
-  "KALIPHANE",
-  "KALİTE MÜDÜRLÜĞÜ",
-  "KAYNAKHANE",
-  "LAZER & DAİRE TESTERE",
-  "MEKANİK BAKIM",
-  "MEKANİK MONTAJ",
-  "MEKATRONİK",
-  "MÜHENDİSLİK",
-  "PAKETLEME & DİREKSİYON",
-  "PLASTİK ENJEKSİYON",
-  "PRESHANE",
-  "PROTOTİP ATÖLYE",
-  "SATINALMA MÜDÜRLÜĞÜ",
-  "SATIŞ VE PAZ.MÜDÜRLÜĞÜ",
-  "SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ",
-  "TALAŞLI İMALAT",
-  "YATIRIM VE TEŞVİK",
-  "YENİ İŞ GELİŞTİRME",
-]
+// BOLUMLER sabiti KALDIRILDI (2026-08): bölüm listesi artık DepartmentDefinition'dan
+// gelir — `useDepartments()` → GET /api/settings/hr-departments. Kodda sabit tutmak,
+// DB'de ad değiştiğinde ekranların eskide kalmasına ve düzenlemede eski adın geri
+// yazılmasına yol açıyordu.
 
 export const GOREVLER_ORNEK = [
   // Beyaz yaka

@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/table"
 import { Search, Plus, Download, Upload, Users, ChevronLeft, ChevronRight, Loader2, GraduationCap, Briefcase, ArrowUpDown, ArrowUp, ArrowDown, BarChart3 } from "lucide-react"
 import { toast } from "sonner"
-import { BOLUMLER, YAKA_DETAYI_LABELS } from "@/lib/personnel-constants"
+import { YAKA_DETAYI_LABELS } from "@/lib/personnel-constants"
+import { useDepartments } from "@/lib/use-departments"
 
 type Personnel = {
   id: string
@@ -111,6 +112,7 @@ const formatDate = (dateStr: string | null) => {
 
 // ── Personnel Tab ──
 function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
+  const { departments: bolumler, loading: bolumlerYukleniyor, hata: bolumHatasi } = useDepartments()
   const [personnel, setPersonnel] = useState<Personnel[]>([])
   const [loading, setLoading] = useState(true)
   const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, limit: 25, total: 0, totalPages: 1 })
@@ -208,9 +210,18 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
                 className="pl-9"
               />
             </div>
-            <Select value={bolum} onChange={(e) => { setBolum(e.target.value); setPagination(prev => ({ ...prev, page: 1 })) }}>
-              <option value="">Tüm Bölümler</option>
-              {BOLUMLER.map((b) => (
+            {/* Bölüm listesi DepartmentDefinition'dan (mevcut hr-departments ucu) —
+                kodda sabit liste YOK, ad değişimi otomatik yansır. */}
+            <Select
+              value={bolum}
+              onChange={(e) => { setBolum(e.target.value); setPagination(prev => ({ ...prev, page: 1 })) }}
+              disabled={bolumlerYukleniyor || !!bolumHatasi}
+              title={bolumHatasi ?? undefined}
+            >
+              <option value="">
+                {bolumlerYukleniyor ? "Bölümler yükleniyor…" : bolumHatasi ? bolumHatasi : "Tüm Bölümler"}
+              </option>
+              {bolumler.map((b) => (
                 <option key={b} value={b}>{b}</option>
               ))}
             </Select>

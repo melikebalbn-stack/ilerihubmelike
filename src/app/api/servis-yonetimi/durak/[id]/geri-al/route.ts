@@ -3,7 +3,7 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { geriAlServisDurak } from '@/lib/servis-yonetimi/service'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error } = await requirePermission('servis.restore')
   if (error) return error
   try {
     const { id } = await params

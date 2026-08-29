@@ -141,6 +141,10 @@ export const PERMISSION_KEYS = {
   // === Kalite Uygunsuzluk (KAL-KYT-15 Bölüm 2) ===
   UYGUNSUZLUK_MANAGE: 'uygunsuzluk.manage',
 
+  // === SERVİS YÖNETİMİ ===
+  SERVIS_VIEW: 'servis.view',
+  SERVIS_TANIM_MANAGE: 'servis.tanim.manage',
+
   // === YILLIK ÇALIŞMA TAKVİMİ ===
   YILLIK_TAKVIM_VIEW: 'yilliktakvim.view',
   YILLIK_TAKVIM_CREATE: 'yilliktakvim.create',
@@ -179,6 +183,7 @@ export const MODULE_LABELS: Record<string, string> = {
   ipro: 'IPRO Üretim Takip',
   qdms: 'Kalite Yönetim Sistemi',
   rma: 'RMA/SMA İade Formu',
+  servis: 'Servis Yönetimi',
   yilliktakvim: 'Yıllık Çalışma Takvimi',
 };
 
@@ -284,6 +289,9 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'rma.manage': 'RMA/SMA iade formu yönetim — oluştur/düzenle/sil',
   'quality.hatakodu.manage': 'Kalite hata kodları (KAL-KYT-15) yönetim — oluştur/düzenle/pasifleştir',
   'uygunsuzluk.manage': 'Kalite uygunsuzluk formu (KAL-KYT-15) yönetim — oluştur/düzenle/sil',
+
+  'servis.view': 'Servis yönetimi modülünü görüntüleme',
+  'servis.tanim.manage': 'Servis yönetimi tanım verisi (firma/yerleşke/güzergâh) yönetimi — oluştur/düzenle/pasifleştir/geri al',
 
   'yilliktakvim.view': 'Yıllık çalışma takvimini görüntüleme',
   'yilliktakvim.create': 'Yıllık çalışma takvimi kaydı oluşturma',

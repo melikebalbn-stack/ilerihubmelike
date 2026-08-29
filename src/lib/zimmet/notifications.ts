@@ -14,7 +14,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
-import { ZIMMET_TUR_ETIKET } from '@/lib/zimmet/tur'
+import { zimmetTurGosterim, YAZILIM_KOK_ADI } from '@/lib/zimmet/tur'
 
 type Approver = {
   id: string
@@ -27,8 +27,19 @@ export type ZimmetForDispatch = {
   zimmetSahibiAdi: string
   departman: string | null
   tur: string
+  turDiger: string | null
   teslimEdenAdi: string
   createdAt: Date
+}
+
+// ZimmetTanim kök tanımları ("Yazılım" hariç) - bkz. tur.ts zimmetTurGosterim.
+// Sadece onay e-postası tür etiketini gösteriyor (in-app/push göstermiyor).
+async function bilinenOzelTurleriGetir(): Promise<string[]> {
+  const kokTanimlar = await prisma.zimmetTanim.findMany({
+    where: { parentId: null, aktif: true, ad: { not: YAZILIM_KOK_ADI } },
+    select: { ad: true },
+  })
+  return kokTanimlar.map((t) => t.ad)
 }
 
 // ════════════════════════════════════════════════════════════
@@ -38,8 +49,9 @@ export type ZimmetForDispatch = {
 function buildApprovalEmailContent(
   zimmet: ZimmetForDispatch,
   recipientName: string,
+  bilinenOzelTurler: string[],
 ): { subject: string; body: string; html: string } {
-  const turLabel = ZIMMET_TUR_ETIKET[zimmet.tur as keyof typeof ZIMMET_TUR_ETIKET] ?? zimmet.tur
+  const turLabel = zimmetTurGosterim(zimmet, bilinenOzelTurler)
 
   const esc = (s: string): string =>
     s
@@ -75,8 +87,12 @@ Detayları görmek için ILERIHub'a giriş yapabilirsiniz.`
   return { subject, body, html }
 }
 
-async function sendApprovalEmail(approver: Approver, zimmet: ZimmetForDispatch): Promise<void> {
-  const { subject, body, html } = buildApprovalEmailContent(zimmet, approver.name)
+async function sendApprovalEmail(
+  approver: Approver,
+  zimmet: ZimmetForDispatch,
+  bilinenOzelTurler: string[],
+): Promise<void> {
+  const { subject, body, html } = buildApprovalEmailContent(zimmet, approver.name, bilinenOzelTurler)
   await sendEmail([{ name: approver.name, email: approver.email }], subject, body, html)
 }
 
@@ -227,8 +243,10 @@ export async function dispatchZimmetApproval({
   const startedAt = Date.now()
   console.log(`[zimmet-notify] dispatch started for ${zimmet.id} → ${approver.email}`)
 
+  const bilinenOzelTurler = await bilinenOzelTurleriGetir().catch(() => [])
+
   const results = await Promise.allSettled([
-    sendApprovalEmail(approver, zimmet),
+    sendApprovalEmail(approver, zimmet, bilinenOzelTurler),
     createApprovalInAppNotification(approver, zimmet),
     sendApprovalPush(approver, zimmet),
   ])

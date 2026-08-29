@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
-import { zimmetTurGosterim } from '@/lib/zimmet/tur'
+import { zimmetTurGosterim, YAZILIM_KOK_ADI } from '@/lib/zimmet/tur'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,11 +27,18 @@ export async function GET() {
       },
     })
 
+    // ZimmetTanim kök tanımları ("Yazılım" hariç) - bkz. tur.ts zimmetTurGosterim.
+    const kokTanimlar = await prisma.zimmetTanim.findMany({
+      where: { parentId: null, aktif: true, ad: { not: YAZILIM_KOK_ADI } },
+      select: { ad: true },
+    })
+    const bilinenOzelTurler = kokTanimlar.map((t) => t.ad)
+
     const sheetData = zimmetler.map((z) => ({
       'Zimmet No': z.id.slice(0, 8),
       'Zimmet Sahibi': z.zimmetSahibi?.name ?? '-',
       'Departman': z.departman ?? '-',
-      'Tür': zimmetTurGosterim(z),
+      'Tür': zimmetTurGosterim(z, bilinenOzelTurler),
       'Marka/Açıklama': z.aciklama ?? '-',
       'Seri Numarası': z.seriNumarasi ?? '-',
       'MAC Adresi': z.macAdresi ?? '-',

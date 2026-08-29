@@ -9,8 +9,9 @@ import {
 import {
   ZIMMET_TUR_SECENEKLERI,
   ZIMMET_SECENEK_TO_ENUM,
+  YAZILIM_KOK_ADI,
   yazilimKaydi,
-  type ZimmetTurSecenegi,
+  ozelTurKaydi,
 } from '@/lib/zimmet/tur'
 import { zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
 
@@ -18,9 +19,36 @@ import { zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
 // Liste ekranının istatistik kartlarıyla AYNI kaynak (tek yerden değişir,
 // ikisi sapmaz). "Yazılım" → varsayılan DIGER + turDiger, ama "Office 365"
 // özel durumu var (bkz. buildSubmitPayload + tur.ts yazilimKaydi).
-export const ZIMMET_TUR_OPTIONS = ZIMMET_TUR_SECENEKLERI
-export type ZimmetTuru = ZimmetTurSecenegi
-export const ZIMMET_TUR_TO_ENUM: Record<ZimmetTuru, string> = ZIMMET_SECENEK_TO_ENUM
+//
+// SABIT_TUR_SECENEKLERI: dropdown'a sabit gelen 5 donanım türü ("Yazılım"
+// HARİÇ - o artık ZimmetTanim'da bir kök kayıt, TanimCombobox'ın DB'den
+// çektiği listede geliyor, korumalı olarak). ZIMMET_TUR_TO_ENUM genişletildi:
+// `string` indeksli - artık tür DB'den gelen (sabit olmayan) bir isim de
+// olabildiği için (`tur in ZIMMET_TUR_TO_ENUM` ile ayrım yapılıyor).
+export const SABIT_TUR_SECENEKLERI = ZIMMET_TUR_SECENEKLERI.filter((t) => t !== YAZILIM_KOK_ADI)
+export const ZIMMET_TUR_TO_ENUM: Record<string, string> = ZIMMET_SECENEK_TO_ENUM
+
+// Verilen (UI) tür adı + alt-dal metninden NİHAİ enum + turDiger'ı türetir -
+// sabit 5 donanım türü ise direkt enum eşlemesi, "Yazılım" ise yazilimKaydi
+// (Office 365 istisnası dahil), DB'den gelen YENİ bir tür ise ozelTurKaydi
+// ("TürAdı" veya "TürAdı · AltDal", bkz. tur.ts). Tek yerden - hem zorunlu
+// alan kontrolü hem submit payload'u hem teslim notu önizlemesi BU fonksiyonu
+// kullanır, biri unutulup diğeri unutulmasın.
+export function turVeTurDigerNihai(
+  tur: string,
+  altDalMetni: string
+): { enumTur: string; turDigerNihai: string | null } {
+  if (!tur) return { enumTur: '', turDigerNihai: null }
+  if (tur === YAZILIM_KOK_ADI) {
+    const y = yazilimKaydi(altDalMetni)
+    return { enumTur: y.tur, turDigerNihai: y.turDiger }
+  }
+  if (tur in ZIMMET_TUR_TO_ENUM) {
+    return { enumTur: ZIMMET_TUR_TO_ENUM[tur], turDigerNihai: null }
+  }
+  const o = ozelTurKaydi(tur, altDalMetni)
+  return { enumTur: o.tur, turDigerNihai: o.turDiger }
+}
 
 export interface PersonelHit {
   id: string
@@ -38,7 +66,12 @@ export interface ZimmetFormuStep1Data {
   departman: string
   unvan: string
   altZimmetSahibi: string
-  tur: ZimmetTuru | ''
+  // Sabit 5 donanım türünden biri, "Yazılım", ya da ZimmetTanim'da tanımlı
+  // YENİ bir tür adı olabilir - artık kapalı bir union değil (bkz.
+  // TanimCombobox.tsx).
+  tur: string
+  // Alt-dal seçimi (yazılım adı VEYA yeni bir türün alt-dalı) - nihai
+  // enum+turDiger'a turVeTurDigerNihai() ile dönüştürülür.
   turDiger: string
   marka: string
   model: string
@@ -65,8 +98,13 @@ export function zimmetEksikZorunluAlanlar(step1: ZimmetFormuStep1Data): string[]
   const eksik: string[] = []
   if (!step1.zimmetSahibiId.trim()) eksik.push(ZORUNLU_ALAN_ETIKETLERI.zimmetSahibiId)
   if (!step1.tur) eksik.push(ZORUNLU_ALAN_ETIKETLERI.tur)
-  const enumTur = step1.tur ? ZIMMET_TUR_TO_ENUM[step1.tur] : ''
-  eksik.push(...zimmetEksikAlanlar(enumTur, step1))
+  // zimmetEksikAlanlar, DIGER için turDiger'ın (nihai) dolu olmasını arıyor -
+  // custom bir tür için alt-dal boş bırakılsa bile nihai turDiger EN AZINDAN
+  // tür adını içerir (bkz. ozelTurKaydi), yani bu kontrol yanlışlıkla
+  // "alt-dal zorunlu" gibi davranmaz - custom türde alt-dal gerçekten
+  // opsiyonel kalır.
+  const { enumTur, turDigerNihai } = turVeTurDigerNihai(step1.tur, step1.turDiger)
+  eksik.push(...zimmetEksikAlanlar(enumTur, { ...step1, turDiger: turDigerNihai ?? '' }))
   return eksik
 }
 
@@ -115,14 +153,10 @@ export interface ZimmetFormuStep2Data {
 // turDiger'a bağlı - buildSubmitPayload'daki NİHAİ dönüşümle (yazilimKaydi)
 // AYNI mantık burada da kullanılıyor, ör. "Office 365" seçilince canlı önizleme
 // de OFFICE_365'in lisans metnini göstersin (DB'ye kaydedilmeden önce bile).
-function varsayilanTeslimNotu(tur: ZimmetTuru | '', turDiger: string): string {
+function varsayilanTeslimNotu(tur: string, turDiger: string): string {
   if (!tur) return DEFAULT_TESLIM_NOTU
-  if (tur === 'Yazılım') {
-    const yazilim = yazilimKaydi(turDiger)
-    return varsayilanTeslimNotuByEnum(yazilim.tur, yazilim.turDiger)
-  }
-  const enumDegeri = ZIMMET_TUR_TO_ENUM[tur] as PrismaZimmetTuru
-  return varsayilanTeslimNotuByEnum(enumDegeri)
+  const { enumTur, turDigerNihai } = turVeTurDigerNihai(tur, turDiger)
+  return varsayilanTeslimNotuByEnum(enumTur as PrismaZimmetTuru, turDigerNihai)
 }
 
 function todayIsoDate(): string {
@@ -160,7 +194,7 @@ export function useZimmetFormu() {
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [teslimEdenImzalandi, setTeslimEdenImzalandi] = useState(false)
   const [teslimEdenImzaTarihi, setTeslimEdenImzaTarihi] = useState('')
-  const prevTurRef = useRef<ZimmetTuru | ''>('')
+  const prevTurRef = useRef<string>('')
   const prevTurDigerRef = useRef<string>('')
 
   // Gerçek kullanıcı listesi — diğer modüllerin (örn. offboarding) kullandığı /api/users?source=db
@@ -216,11 +250,14 @@ export function useZimmetFormu() {
 
   // Tür değişince "Teslim koşulları" alanını standart metinle doldurur.
   // Kullanıcı metni elle değiştirmişse (önceki varsayılandan farklıysa) dokunmaz.
-  // "Yazılım" seçiliyken turDiger değişimi de (LOGO Tiger3 → Office 365 gibi)
-  // izlenir - lisans/donanım metni ayrımı turDiger'a bağlı olduğu için.
+  // "Yazılım" VEYA yeni bir özel tür seçiliyken turDiger (alt-dal) değişimi de
+  // izlenir - lisans/donanım metni ayrımı (Yazılım için) turDiger'a bağlı;
+  // sabit 5 donanım türünde alt-dal hiç olmadığı için bu izleme gereksiz.
   useEffect(() => {
     const turDegisti = step1.tur !== prevTurRef.current
-    const turDigerDegisti = step1.tur === 'Yazılım' && step1.turDiger !== prevTurDigerRef.current
+    const altDalIzleniyor =
+      step1.tur === YAZILIM_KOK_ADI || (!!step1.tur && !(step1.tur in ZIMMET_TUR_TO_ENUM))
+    const turDigerDegisti = altDalIzleniyor && step1.turDiger !== prevTurDigerRef.current
     if (!turDegisti && !turDigerDegisti) return
     const oncekiVarsayilan = varsayilanTeslimNotu(prevTurRef.current, prevTurDigerRef.current)
     setStep2((prev) =>
@@ -257,17 +294,17 @@ export function useZimmetFormu() {
   }, [])
 
   // handleSubmit ve previewPdf AYNI gövdeyi gönderir — tek yerden üretilir.
-  // "Yazılım" seçilince tur/turDiger'ın NİHAİ hali yazilimKaydi()'den geçer -
-  // "Office 365" özel durumu orada ele alınıyor (OFFICE_365 + turDiger:null),
-  // diğer tüm yazılımlar DIGER + turDiger olarak kalır.
+  // Tür + alt-dal'ın NİHAİ enum/turDiger hali turVeTurDigerNihai()'den geçer -
+  // "Yazılım" için Office 365 istisnası (OFFICE_365 + turDiger:null), YENİ bir
+  // özel tür için "TürAdı[· AltDal]" (bkz. tur.ts).
   const buildSubmitPayload = useCallback(() => {
-    const yazilim = step1.tur === 'Yazılım' ? yazilimKaydi(step1.turDiger) : null
+    const { enumTur, turDigerNihai } = turVeTurDigerNihai(step1.tur, step1.turDiger)
     return {
       zimmetSahibiId: step1.zimmetSahibiId,
       altZimmetSahibi: step1.altZimmetSahibi,
       departman: step1.departman,
-      tur: yazilim ? yazilim.tur : (step1.tur ? ZIMMET_TUR_TO_ENUM[step1.tur] : ''),
-      turDiger: yazilim ? (yazilim.turDiger ?? '') : '',
+      tur: enumTur,
+      turDiger: turDigerNihai ?? '',
       marka: step1.marka,
       model: step1.model,
       seriNumarasi: step1.seriNumarasi,

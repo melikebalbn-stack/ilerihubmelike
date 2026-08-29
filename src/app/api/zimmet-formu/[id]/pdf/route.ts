@@ -29,6 +29,15 @@ export async function GET(
       },
     })
 
+    // ZimmetTanim kök tanımları ("Yazılım" hariç) - PDF'te DIGER+turDiger'ın
+    // YENİ bir özel tür mü yoksa yazılım mı olduğunu doğru etiketlemek için
+    // (bkz. tur.ts zimmetTurGosterim, pdf.ts).
+    const kokTanimlar = await prisma.zimmetTanim.findMany({
+      where: { parentId: null, aktif: true, ad: { not: 'Yazılım' } },
+      select: { ad: true },
+    })
+    const bilinenOzelTurler = kokTanimlar.map((t) => t.ad)
+
     if (!zimmet) {
       return NextResponse.json({ error: 'Zimmet formu bulunamadı' }, { status: 404 })
     }
@@ -88,6 +97,7 @@ export async function GET(
       onaylayanUnvan: zimmet.onaylayan?.jobTitle,
       onayTarihi: zimmet.onayTarihi?.toISOString() ?? undefined,
       taslak,
+      bilinenOzelTurler,
     })
 
     const fileName = `zimmet-${id.slice(0, 8)}-${mod}${taslak ? '-taslak' : ''}.pdf`

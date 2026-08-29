@@ -69,6 +69,7 @@ export async function POST(
         zimmetSahibiAdi: zimmet.zimmetSahibi?.name ?? zimmet.zimmetSahibi?.email ?? '—',
         departman: zimmet.departman,
         tur: zimmet.tur,
+        turDiger: zimmet.turDiger,
         teslimEdenAdi: zimmet.createdBy.name ?? zimmet.createdBy.email,
         createdAt: zimmet.createdAt,
       },

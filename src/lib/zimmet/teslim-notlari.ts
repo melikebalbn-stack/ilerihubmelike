@@ -11,7 +11,7 @@
  */
 
 import type { ZimmetTuru } from '@/generated/prisma'
-import { turkceNormalize } from './arama'
+import { esitlikIcinNormalize } from './arama'
 import { ZIMMET_YAZILIM_SECENEKLERI } from './tur'
 
 export const DEFAULT_TESLIM_NOTU =
@@ -29,20 +29,14 @@ const LISANS_TESLIM_NOTU =
 // KENDİSİ, gerçek bir yazılım adı değil) kasıtlı olarak listeden çıkarıldı.
 const BILINEN_YAZILIM_ADLARI = ZIMMET_YAZILIM_SECENEKLERI.filter((ad) => ad !== 'Diğer')
 
-function bosluklariSikilastir(metin: string): string {
-  return metin.trim().replace(/\s+/g, ' ')
-}
-
 // Büyük/küçük harf ve fazla boşluğa duyarsız karşılaştırma - "LOGO  Bordro
 // Plus" (çift boşluk, DB'deki gerçek yazımla birebir) gibi varyantlar da
 // yakalanabilsin diye.
 function bilinenYazilimMi(turDiger: string | null | undefined): boolean {
   const deger = turDiger?.trim()
   if (!deger) return false
-  const normalizeEdilmis = turkceNormalize(bosluklariSikilastir(deger))
-  return BILINEN_YAZILIM_ADLARI.some(
-    (ad) => turkceNormalize(bosluklariSikilastir(ad)) === normalizeEdilmis
-  )
+  const normalizeEdilmis = esitlikIcinNormalize(deger)
+  return BILINEN_YAZILIM_ADLARI.some((ad) => esitlikIcinNormalize(ad) === normalizeEdilmis)
 }
 
 export const ZIMMET_TESLIM_NOTLARI: Partial<Record<ZimmetTuru, string>> = {

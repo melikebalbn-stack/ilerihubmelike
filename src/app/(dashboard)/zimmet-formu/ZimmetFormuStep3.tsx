@@ -29,7 +29,13 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 export function ZimmetFormuStep3({ step1, step2, teslimEdenAdi, onEditStep, personelListesi, teslimEdenImzalandi = false }: Props) {
   const zimmetSahibi = personelListesi.find((p) => p.id === step1.zimmetSahibiId)
-  const turGosterim = step1.tur === 'Yazılım' ? step1.turDiger : step1.tur
+  // Yazılım: sadece yazılım adı gösterilir (ör. "LOGO Tiger3"). Yeni/özel bir
+  // tür + alt-dal seçilmişse "TürAdı · AltDal" (bkz. tur.ts ozelTurKaydi).
+  const turGosterim = step1.turDiger.trim()
+    ? step1.tur === 'Yazılım'
+      ? step1.turDiger
+      : `${step1.tur} · ${step1.turDiger}`
+    : step1.tur
 
   return (
     <div className="space-y-4">

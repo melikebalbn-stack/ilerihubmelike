@@ -8,24 +8,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { EK_ALAN_KATALOG, varsayilanEkAlanlar, type EkAlanKey } from '@/lib/zimmet/ek-alanlar'
 import { zorunluAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
-import {
-  ZIMMET_YAZILIM_SECENEKLERI,
-  yazilimSecimindenTuret,
-  type ZimmetYazilimSecenegi,
-} from '@/lib/zimmet/tur'
+import { YAZILIM_KOK_ADI } from '@/lib/zimmet/tur'
 import { PersonelCombobox } from './PersonelCombobox'
+import { TanimCombobox } from './TanimCombobox'
 import {
-  ZIMMET_TUR_OPTIONS,
-  ZIMMET_TUR_TO_ENUM,
+  SABIT_TUR_SECENEKLERI,
+  turVeTurDigerNihai,
   type PersonelHit,
   type ZimmetFormuStep1Data,
 } from './useZimmetFormu'
@@ -58,17 +48,16 @@ export function ZimmetFormuStep1({
   // Kullanıcının "Alan ekle" ile elle açtığı alanlar (türün varsayılanı dışında).
   const [manuelEkAlanlar, setManuelEkAlanlar] = useState<Set<EkAlanKey>>(new Set())
   const [alanEkleAcik, setAlanEkleAcik] = useState(false)
-  // "Yazılım" seçilince dropdown'dan hangi seçenek işaretli - turDiger'dan
-  // türetilir (bkz. tur.ts yazilimSecimindenTuret), ama LIVE seçim değişimini
-  // ayrıca takip etmek gerekiyor (bkz. handleYazilimSecimi) - salt turDiger'dan
-  // türetmek "Diğer"e geçişte (turDiger henüz boşken) state'i kararsız bırakır.
-  // Wizard her zaman YENİ kayıt oluşturur (mevcut bir OFFICE_365 kaydından
-  // prefill yok), o yüzden tur argümanı burada hiç OFFICE_365 olmaz - '' yeterli.
-  const [yazilimSecimi, setYazilimSecimi] = useState<ZimmetYazilimSecenegi | ''>(() =>
-    yazilimSecimindenTuret('', data.turDiger)
-  )
+  // Tür seçilince (Yazılım VEYA DB'den YENİ bir tür) alt-dal Combobox'ının
+  // hangi parentId'yi sorgulayacağı - TanimCombobox'ın onValueChange'i seçilen
+  // satırın gerçek id'sini geri verir (bkz. TanimCombobox.tsx). Sabit 5
+  // donanım türünde id her zaman null - alt-dal Combobox'ı hiç render edilmez.
+  const [turAilesiId, setTurAilesiId] = useState<string | null>(null)
+  // Alt-dal Combobox'ının canlı seçimi - Wizard her zaman YENİ kayıt
+  // oluşturur (prefill yok), bu yüzden hep boş başlar.
+  const [altDalSecimi, setAltDalSecimi] = useState('')
 
-  const enumTur = data.tur ? ZIMMET_TUR_TO_ENUM[data.tur] : ''
+  const { enumTur } = turVeTurDigerNihai(data.tur, data.turDiger)
 
   const varsayilanlar = useMemo(() => new Set(varsayilanEkAlanlar(enumTur)), [enumTur])
 
@@ -76,10 +65,18 @@ export function ZimmetFormuStep1({
   // - burada değil). src/lib/zimmet/zorunlu-alanlar.ts - sunucuyla AYNI tablo.
   const zorunluSet = useMemo(() => new Set<string>(zorunluAlanlar(enumTur)), [enumTur])
 
-  function handleYazilimSecimi(v: ZimmetYazilimSecenegi) {
-    if (v === yazilimSecimi) return
-    setYazilimSecimi(v)
-    setField('turDiger', v === 'Diğer' ? '' : v)
+  function handleTurSecimi(ad: string, id: string | null) {
+    if (ad === data.tur) return
+    setField('tur', ad)
+    setTurAilesiId(id)
+    setAltDalSecimi('')
+    setField('turDiger', '')
+  }
+
+  function handleAltDalSecimi(ad: string) {
+    if (ad === altDalSecimi) return
+    setAltDalSecimi(ad)
+    setField('turDiger', ad === 'Diğer' ? '' : ad)
   }
 
   // Görünür alanlar = türün varsayılanı ∪ elle eklenenler ∪ zaten dolu olanlar
@@ -186,52 +183,50 @@ export function ZimmetFormuStep1({
           <Label htmlFor="tur">
             Tür <RequiredMark />
           </Label>
-          <Select
+          <TanimCombobox
+            id="tur"
+            parentId={null}
             value={data.tur}
-            onValueChange={(v) => setField('tur', v as ZimmetFormuStep1Data['tur'])}
-          >
-            <SelectTrigger
-              id="tur"
-              className={!data.tur ? 'border-rose-300 ring-1 ring-rose-200' : ''}
-            >
-              <SelectValue placeholder="Tür seçin" />
-            </SelectTrigger>
-            <SelectContent>
-              {ZIMMET_TUR_OPTIONS.map((opt) => (
-                <SelectItem key={opt} value={opt}>
-                  {opt}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onValueChange={handleTurSecimi}
+            sabitSecenekler={[...SABIT_TUR_SECENEKLERI]}
+            korumaliAdlar={[YAZILIM_KOK_ADI]}
+            placeholder="Tür seçin"
+            aramaPlaceholder="Tür ara..."
+            ekleEtiketi="Yeni tür ekle"
+            className={!data.tur ? 'border-rose-300 ring-1 ring-rose-200' : ''}
+          />
         </div>
 
-        {data.tur === 'Yazılım' && (
+        {turAilesiId && (
           <div className="space-y-2">
             <Label htmlFor="turDiger">
-              Hangi yazılım? <RequiredMark />
+              {data.tur === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : `${data.tur} - alt tür`}{' '}
+              {data.tur === YAZILIM_KOK_ADI ? <RequiredMark /> : <OptionalMark />}
             </Label>
-            <Select value={yazilimSecimi} onValueChange={(v) => handleYazilimSecimi(v as ZimmetYazilimSecenegi)}>
-              <SelectTrigger
-                id="turDiger"
-                className={!yazilimSecimi ? 'border-rose-300 ring-1 ring-rose-200' : ''}
-              >
-                <SelectValue placeholder="Yazılım seçin" />
-              </SelectTrigger>
-              <SelectContent>
-                {ZIMMET_YAZILIM_SECENEKLERI.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {yazilimSecimi === 'Diğer' && (
+            <TanimCombobox
+              id="turDiger"
+              parentId={turAilesiId}
+              value={altDalSecimi}
+              onValueChange={handleAltDalSecimi}
+              placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
+              aramaPlaceholder="Ara..."
+              ekleEtiketi="Yeni alt-dal ekle"
+              className={
+                data.tur === YAZILIM_KOK_ADI && !altDalSecimi
+                  ? 'border-rose-300 ring-1 ring-rose-200'
+                  : ''
+              }
+            />
+            {altDalSecimi === 'Diğer' && (
               <Input
                 value={data.turDiger}
                 onChange={(e) => setField('turDiger', e.target.value)}
-                placeholder="Yazılımı yazın"
-                className={!data.turDiger.trim() ? 'border-rose-300 ring-1 ring-rose-200' : ''}
+                placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
+                className={
+                  data.tur === YAZILIM_KOK_ADI && !data.turDiger.trim()
+                    ? 'border-rose-300 ring-1 ring-rose-200'
+                    : ''
+                }
               />
             )}
           </div>

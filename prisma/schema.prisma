@@ -12350,6 +12350,31 @@ model ZimmetDurumGecmisi {
   @@index([zimmetId])
 }
 
+// Hem "Yazılım"ın alt-dalları (Office 365, LOGO Tiger3, ...) HEM DE tamamen
+// yeni ("Tablet" gibi) türler ve onların alt-dalları TEK bu tabloda -
+// kendine-referanslı (parentId NULL = tür/kök seviyesi, dolu = o türün
+// alt-dalı). Enum'daki 6 sabit tür (NOTEBOOK_BILGISAYAR...YAZICI, DIGER,
+// OFFICE_365) DEĞİŞMEDİ - yeni türler DIGER+turDiger deseniyle yaşıyor (bkz.
+// src/lib/zimmet/tur.ts turSecimindenTuret/ozelTurKaydi). "Yazılım" kök kaydı
+// KORUMALI - ad==='Yazılım' tam eşleşmesiyle kod tarafında silinemez/
+// yeniden adlandırılamaz olarak işleniyor (bkz. TanimCombobox.tsx), DB
+// seviyesinde özel bir bayrağı yok, sadece bu isimle var olması yeterli.
+// Gerçek silme YOK (aktif=false, soft-delete, ebeveyn silinince çocuklar da
+// cascade soft-delete olur - bkz. /api/zimmet-formu/tanim/[id] DELETE).
+model ZimmetTanim {
+  id        String        @id @default(cuid())
+  ad        String
+  parentId  String?
+  parent    ZimmetTanim?  @relation("TanimHiyerarsi", fields: [parentId], references: [id])
+  cocuklar  ZimmetTanim[] @relation("TanimHiyerarsi")
+  aktif     Boolean       @default(true)
+  sira      Int           @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([ad, parentId], map: "uq_zimmet_tanim_ad_parent")
+}
+
 // ===== ORG ŞEMASI DEVRİ (F1/R1/R4) — Elif =====
 
 enum OrgPositionStatus {

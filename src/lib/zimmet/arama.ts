@@ -27,3 +27,11 @@ export function cokluAlandaAra(alanlar: (string | null | undefined)[], aranan: s
   if (!aranan.trim()) return true
   return alanlar.some((alan) => alan && metinEslesiyorMu(alan, aranan))
 }
+
+// Eşitlik/tekilleştirme karşılaştırması için - turkceNormalize'a EK olarak
+// fazla boşluğu da katlar ("LOGO  Bordro Plus" çift boşluklu DB yazımı ile
+// tek boşluklu bir varyantın AYNI değer sayılması gerektiği yerlerde, ör.
+// teslim-notlari.ts bilinenYazilimMi ve yazılım dropdown listesi tekilleştirme).
+export function esitlikIcinNormalize(metin: string): string {
+  return turkceNormalize(metin.trim().replace(/\s+/g, ' '))
+}

@@ -45,13 +45,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -76,13 +69,15 @@ import { EK_ALAN_KATALOG, varsayilanEkAlanlar, type EkAlanKey } from '@/lib/zimm
 import { zorunluAlanlar, zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
 import {
   zimmetTurGosterim,
-  ZIMMET_YAZILIM_SECENEKLERI,
-  yazilimSecimindenTuret,
-  type ZimmetYazilimSecenegi,
+  turSecimindenTuret,
+  altDalSecimindenTuret,
+  ozelTurKaydi,
+  YAZILIM_KOK_ADI,
 } from '@/lib/zimmet/tur'
 import { ZimmetDurumBadge } from '../ZimmetDurumBadge'
 import { IslakImzaYukleDialog } from '../IslakImzaYukleDialog'
 import { PersonelCombobox } from '../PersonelCombobox'
+import { TanimCombobox } from '../TanimCombobox'
 import type { PersonelHit } from '../useZimmetFormu'
 
 // ── Tipler ──────────────────────────────────────────────────────────────────
@@ -165,8 +160,11 @@ const BOS_DUZENLE_FORM: DuzenleFormData = {
 // Model doluysa "Tür / Model" formatında gosterilir (PENDING migration'dan once
 // yazilmis eski kayitlarda model olmayabilir). Tür etiketi src/lib/zimmet/tur.ts'ten
 // (zimmetTurGosterim) - Office 365/Diğer artık "Yazılım" olarak birleşik gösteriliyor.
-function turGosterim(zimmet: Pick<ZimmetItem, 'tur' | 'turDiger' | 'model'>): string {
-  const tur = zimmetTurGosterim(zimmet)
+function turGosterim(
+  zimmet: Pick<ZimmetItem, 'tur' | 'turDiger' | 'model'>,
+  bilinenOzelTurler: readonly string[] = []
+): string {
+  const tur = zimmetTurGosterim(zimmet, bilinenOzelTurler)
   return zimmet.model ? `${tur} / ${zimmet.model}` : tur
 }
 
@@ -294,7 +292,18 @@ function eslesirTurFiltresi(z: ZimmetItem, turFiltresi: StatKey): boolean {
 // kullanıyor, kod tekrarı yok.
 function eslesirArama(z: ZimmetItem, aramaMetni: string): boolean {
   return cokluAlandaAra(
-    [z.zimmetSahibi.name ?? z.zimmetSahibi.email, z.zimmetSahibi.employeeId, z.departman, z.seriNumarasi],
+    [
+      z.zimmetSahibi.name ?? z.zimmetSahibi.email,
+      z.zimmetSahibi.employeeId,
+      z.departman,
+      z.seriNumarasi,
+      // Ekranda görünen tür etiketi ("Notebook Bilgisayar", "Yazılım · Adobe
+      // Lisans" vb.) - "Yazılım" veya "Notebook" yazınca da eşleşsin.
+      zimmetTurGosterim(z),
+      // turDiger ayrıca eklendi - zimmetTurGosterim DIGER dışında turDiger'ı
+      // göstermiyor (ör. OFFICE_365'te turDiger hep null zaten, zararsız).
+      z.turDiger,
+    ],
     aramaMetni
   )
 }
@@ -335,7 +344,12 @@ const DURUM_SIRA: Record<string, number> = {
   'Reddedildi': 4,
 }
 
-function karsilastir(a: ZimmetItem, b: ZimmetItem, field: SortField): number {
+function karsilastir(
+  a: ZimmetItem,
+  b: ZimmetItem,
+  field: SortField,
+  bilinenOzelTurler: readonly string[] = []
+): number {
   switch (field) {
     case 'seriNo':
       return (a.seriNumarasi ?? '').localeCompare(b.seriNumarasi ?? '', 'tr-TR')
@@ -345,7 +359,7 @@ function karsilastir(a: ZimmetItem, b: ZimmetItem, field: SortField): number {
       return an.localeCompare(bn, 'tr-TR')
     }
     case 'tur':
-      return turGosterim(a).localeCompare(turGosterim(b), 'tr-TR')
+      return turGosterim(a, bilinenOzelTurler).localeCompare(turGosterim(b, bilinenOzelTurler), 'tr-TR')
     case 'departman':
       return (a.departman ?? '').localeCompare(b.departman ?? '', 'tr-TR')
     case 'verilisTarihi': {
@@ -535,11 +549,25 @@ export function ZimmetListesi() {
   // değişince (acDuzenle) sıfırlanır, aksi halde önceki kayıttan kalır.
   const [duzenleManuelEkAlanlar, setDuzenleManuelEkAlanlar] = useState<Set<EkAlanKey>>(new Set())
   const [duzenleAlanEkleAcik, setDuzenleAlanEkleAcik] = useState(false)
-  // "Yazılım" (DIGER) kaydı düzenlenirken turDiger dropdown'ının hangi
-  // seçeneği gösterdiği - acDuzenle içinde mevcut değerden türetilir (bkz.
-  // tur.ts yazilimSecimindenTuret), listede olmayan bir değer (ör. "MAS
-  // Laptop") "Diğer" olarak gelir, serbest metinde aynen görünür.
-  const [duzenleYazilimSecimi, setDuzenleYazilimSecimi] = useState<ZimmetYazilimSecenegi | ''>('')
+  // "Yazılım" VEYA yeni bir özel tür (DIGER/OFFICE_365) kaydı düzenlenirken
+  // tür-ailesi (Yazılım mı, hangi özel tür mü) + alt-dal dropdown'larının
+  // durumu - acDuzenle içinde mevcut (tur, turDiger) çiftinden türetilir (bkz.
+  // tur.ts turSecimindenTuret/altDalSecimindenTuret). Bilinmeyen bir değer
+  // (ör. eski "MAS Laptop") "Yazılım" ailesinde "Diğer" olarak gelir, serbest
+  // metinde aynen görünür - veri kaybolmaz.
+  const [duzenleTurAilesi, setDuzenleTurAilesi] = useState('')
+  const [duzenleTurAilesiId, setDuzenleTurAilesiId] = useState<string | null>(null)
+  const [duzenleAltDalSecimi, setDuzenleAltDalSecimi] = useState('')
+  // Kök (parentId=null) tanımlar - acDuzenle'nin turSecimindenTuret çağrısı
+  // için (bilinen özel tür adları) VE tür-ailesi seçildiğinde id'sini
+  // bulabilmek için. Dropdown'ların KENDİSİ artık TanimCombobox'ta, kendi
+  // listesini kendisi çekiyor (bkz. TanimCombobox.tsx) - bu SADECE prefill
+  // sınıflandırması için.
+  const [kokTanimlar, setKokTanimlar] = useState<{ id: string; ad: string }[]>([])
+  const bilinenOzelTurler = useMemo(
+    () => kokTanimlar.filter((t) => t.ad !== YAZILIM_KOK_ADI).map((t) => t.ad),
+    [kokTanimlar]
+  )
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [personelListesi, setPersonelListesi] = useState<PersonelHit[]>([])
   // İade alma / yeniden zimmetleme akışı
@@ -564,6 +592,22 @@ export function ZimmetListesi() {
     const t = setTimeout(() => setAramaDebounced(aramaText), 300)
     return () => clearTimeout(t)
   }, [aramaText])
+
+  // Kök tanımlar (Düzenle dialogu prefill'i için) - hata olursa sessizce boş
+  // kalır, o durumda acDuzenle her şeyi "Diğer" olarak sınıflandırır (veri
+  // kaybolmaz, sadece prefill daha az akıllı olur).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/zimmet-formu/tanim?parentId=null')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { id: string; ad: string }[] | null) => {
+        if (!cancelled && Array.isArray(data)) setKokTanimlar(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Durum/tür/arama filtreleri tamamen client tarafında uygulanıyor (bkz.
   // eslesirFiltre/eslesirTurFiltresi/eslesirArama) - liste bir kere çekilip
@@ -709,9 +753,9 @@ export function ZimmetListesi() {
         eslesirArama(z, aramaDebounced)
     )
     if (!sortField) return filtreli
-    const sirali = [...filtreli].sort((a, b) => karsilastir(a, b, sortField))
+    const sirali = [...filtreli].sort((a, b) => karsilastir(a, b, sortField, bilinenOzelTurler))
     return sortDirection === 'asc' ? sirali : sirali.reverse()
-  }, [zimmetler, filtre, turFiltresi, durumOzetiFiltresi, aramaDebounced, sortField, sortDirection])
+  }, [zimmetler, filtre, turFiltresi, durumOzetiFiltresi, aramaDebounced, sortField, sortDirection, bilinenOzelTurler])
 
   // Karta tekrar tıklayınca (toggle) veya "Toplam Zimmet"e tıklayınca filtre temizlenir.
   function handleTurFiltresiClick(key: StatKey) {
@@ -788,10 +832,42 @@ export function ZimmetListesi() {
   // [id]/route.ts PATCH. Açıklama, "[Syteline devri]" ön eki temizlenmiş
   // haliyle dolduruluyor (bkz. temizleAciklama) - kullanıcı ne görüyorsa onu
   // düzenliyor, Kaydet'e basınca da temizlenmiş hali DB'ye yazılıyor.
-  function acDuzenle(z: ZimmetItem) {
+  // Kayıt DIGER/OFFICE_365 ise tür-ailesi (Yazılım mı, hangi özel tür mü) +
+  // alt-dal'ı mevcut (tur, turDiger) çiftinden türetir (bkz. tur.ts
+  // turSecimindenTuret). Alt-dal'ın BİLİNEN bir çocuk mu yoksa serbest metin
+  // mi olduğunu anlamak için tür-ailesinin çocuklarını ayrıca çeker (tek
+  // seferlik, dialog açılırken) - kokTanimlar zaten kök seviyeyi tutuyor,
+  // çocuklar farklı bir sorgu.
+  async function acDuzenle(z: ZimmetItem) {
     setDuzenlenecek(z)
     setDuzenleManuelEkAlanlar(new Set())
-    setDuzenleYazilimSecimi(yazilimSecimindenTuret(z.tur, z.turDiger))
+
+    let turDigerPrefill = z.turDiger ?? ''
+
+    if (z.tur === 'DIGER' || z.tur === 'OFFICE_365') {
+      const { turAdi, altDal } = turSecimindenTuret(z.tur, z.turDiger, bilinenOzelTurler)
+      setDuzenleTurAilesi(turAdi)
+      const turAilesiId = kokTanimlar.find((t) => t.ad === turAdi)?.id ?? null
+      setDuzenleTurAilesiId(turAilesiId)
+      turDigerPrefill = altDal
+
+      if (turAilesiId && altDal) {
+        try {
+          const res = await fetch(`/api/zimmet-formu/tanim?parentId=${turAilesiId}`)
+          const cocuklar: { ad: string }[] = res.ok ? await res.json() : []
+          setDuzenleAltDalSecimi(altDalSecimindenTuret(altDal, cocuklar.map((c) => c.ad)))
+        } catch {
+          setDuzenleAltDalSecimi('Diğer')
+        }
+      } else {
+        setDuzenleAltDalSecimi('')
+      }
+    } else {
+      setDuzenleTurAilesi('')
+      setDuzenleTurAilesiId(null)
+      setDuzenleAltDalSecimi('')
+    }
+
     setDuzenleForm({
       zimmetSahibiId: z.zimmetSahibiId,
       seriNumarasi: z.seriNumarasi ?? '',
@@ -802,18 +878,40 @@ export function ZimmetListesi() {
       imeiNumarasi: z.imeiNumarasi ?? '',
       marka: z.marka ?? '',
       model: z.model ?? '',
-      // OFFICE_365 kaydında turDiger DB'de null'dır (bkz. yazilimKaydi) ama
-      // Kaydet'e dokunmadan basılırsa gönderilecek metin "Office 365" OLMALI
-      // (aksi halde sunucu tarafındaki yazilimKaydi normalizasyonu boş metni
-      // DIGER+null'a çevirir - kayıt yanlışlıkla OFFICE_365'ten DIGER'e düşer).
-      turDiger: z.tur === 'OFFICE_365' ? 'Office 365' : (z.turDiger ?? ''),
+      turDiger: turDigerPrefill,
     })
   }
 
-  function handleDuzenleYazilimSecimi(v: ZimmetYazilimSecenegi) {
-    if (v === duzenleYazilimSecimi) return
-    setDuzenleYazilimSecimi(v)
-    setDuzenleAlan('turDiger', v === 'Diğer' ? '' : v)
+  function handleDuzenleTurAilesiSecimi(ad: string, id: string | null) {
+    if (ad === duzenleTurAilesi) return
+    setDuzenleTurAilesi(ad)
+    setDuzenleTurAilesiId(id)
+    setDuzenleAltDalSecimi('')
+    setDuzenleAlan('turDiger', '')
+  }
+
+  function handleDuzenleAltDalSecimi(ad: string) {
+    if (ad === duzenleAltDalSecimi) return
+    setDuzenleAltDalSecimi(ad)
+    setDuzenleAlan('turDiger', ad === 'Diğer' ? '' : ad)
+  }
+
+  // duzenleForm.turDiger DÜZENLEME SIRASINDA hep HAM alt-dal metnidir (ör.
+  // "LOGO Tiger3", "Office 365" veya özel bir türde sadece "Kurumsal").
+  // Yazılım ailesinde bu HAM metin AYNEN gönderilir - sunucu ([id]/route.ts
+  // PATCH) zaten kendi yazilimKaydi() çağrısıyla "Office 365" özel durumunu
+  // çözüyor (bunu client'ta ÖNCEDEN çözüp sadece turDiger'ı göndersek
+  // OFFICE_365 sinyali kaybolurdu - null turDiger ile "seçim yok" ayrımı
+  // yapılamaz). Özel (custom) bir türde ise NİHAİ "TürAdı · AltDal" birleşimi
+  // burada hesaplanır - sunucu bunun farkında değil, olduğu gibi kaydeder.
+  // Zorunlu-alan kontrolü de AYNI nihai değeri kullanır - yoksa özel bir
+  // türde alt-dal boş bırakıldığında (opsiyonel olmasına rağmen) yanlışlıkla
+  // "eksik" görünürdü.
+  function duzenleTurDigerNihaiHesapla(): string {
+    if (!duzenlenecek) return duzenleForm.turDiger
+    if (duzenlenecek.tur !== 'DIGER' && duzenlenecek.tur !== 'OFFICE_365') return duzenleForm.turDiger
+    if (duzenleTurAilesi === YAZILIM_KOK_ADI) return duzenleForm.turDiger
+    return ozelTurKaydi(duzenleTurAilesi, duzenleForm.turDiger).turDiger
   }
 
   // Düzenle dialogunda türe göre görünür alanlar (MAC Adresi/PC Adı/IMEI) -
@@ -839,8 +937,11 @@ export function ZimmetListesi() {
   // (sabit, bu dialogdan değişmiyor) ona göre.
   const duzenleZorunluSet = useMemo(() => new Set<string>(zorunluAlanlar(duzenlenecek?.tur ?? '')), [duzenlenecek?.tur])
   const duzenleEksikAlanlar = useMemo(
-    () => (duzenlenecek ? zimmetEksikAlanlar(duzenlenecek.tur, duzenleForm) : []),
-    [duzenlenecek, duzenleForm]
+    () =>
+      duzenlenecek
+        ? zimmetEksikAlanlar(duzenlenecek.tur, { ...duzenleForm, turDiger: duzenleTurDigerNihaiHesapla() })
+        : [],
+    [duzenlenecek, duzenleForm, duzenleTurAilesi]
   )
 
   function duzenleAlanEkle(key: EkAlanKey) {
@@ -869,10 +970,11 @@ export function ZimmetListesi() {
     }
     setKaydediliyor(true)
     try {
+      const govde = { ...duzenleForm, turDiger: duzenleTurDigerNihaiHesapla() }
       const res = await fetch(`/api/zimmet-formu/${duzenlenecek.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(duzenleForm),
+        body: JSON.stringify(govde),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}) as { error?: string })
@@ -983,7 +1085,7 @@ export function ZimmetListesi() {
 
         {/* Arama */}
         <Input
-          placeholder="Zimmet sahibi adı, departmanı, sicil no veya seri no ara..."
+          placeholder="Zimmet sahibi adı, departmanı, sicil no, seri no, tür veya yazılım adı ara..."
           value={aramaText}
           onChange={(e) => setAramaText(e.target.value)}
         />
@@ -1120,7 +1222,7 @@ export function ZimmetListesi() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-slate-600">{turGosterim(z)}</TableCell>
+                          <TableCell className="text-slate-600">{turGosterim(z, bilinenOzelTurler)}</TableCell>
                           <TableCell className="text-slate-600">{z.departman ?? '—'}</TableCell>
                           <TableCell className="text-slate-600">{fmtDate(z.verilisTarihi)}</TableCell>
                           <TableCell>
@@ -1330,7 +1432,7 @@ export function ZimmetListesi() {
           <DialogHeader>
             <DialogTitle>Cihazı iade al</DialogTitle>
             <DialogDescription>
-              {iadeAlinacak ? `${turGosterim(iadeAlinacak)} — ${iadeAlinacak.seriNumarasi ?? '—'}` : ''}. Cihaz
+              {iadeAlinacak ? `${turGosterim(iadeAlinacak, bilinenOzelTurler)} — ${iadeAlinacak.seriNumarasi ?? '—'}` : ''}. Cihaz
               geri alınır; imzalı tutanak (ONAYLANDI) korunur.
             </DialogDescription>
           </DialogHeader>
@@ -1377,7 +1479,7 @@ export function ZimmetListesi() {
           <DialogHeader>
             <DialogTitle>Yeniden zimmetle</DialogTitle>
             <DialogDescription>
-              {yenidenZimmet ? `${turGosterim(yenidenZimmet)} — ${yenidenZimmet.seriNumarasi ?? '—'}` : ''}. Yeni
+              {yenidenZimmet ? `${turGosterim(yenidenZimmet, bilinenOzelTurler)} — ${yenidenZimmet.seriNumarasi ?? '—'}` : ''}. Yeni
               sahibe onay bekleyen bir zimmet kaydı açılır; eski kayıt korunur.
             </DialogDescription>
           </DialogHeader>
@@ -1534,42 +1636,63 @@ export function ZimmetListesi() {
                 onChange={(e) => setDuzenleAlan('model', e.target.value)}
               />
             </div>
-            {/* DIGER hem OFFICE_365 - "Yazılım" grubunun iki üyesi de bu
-                dropdown'ı gösterir; buradan seçilen değere göre Kaydet'te
-                tur OFFICE_365↔DIGER arasında otomatik geçebilir (bkz.
-                [id]/route.ts PATCH, tur.ts yazilimKaydi). */}
+            {/* DIGER hem OFFICE_365 - "Yazılım/özel tür" grubunun iki üyesi de
+                bu dropdown'ları gösterir; buradan seçilen değere göre
+                Kaydet'te tur OFFICE_365↔DIGER arasında otomatik geçebilir
+                (bkz. [id]/route.ts PATCH, tur.ts yazilimKaydi/ozelTurKaydi). */}
             {(duzenlenecek?.tur === 'DIGER' || duzenlenecek?.tur === 'OFFICE_365') && (
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="duzenle-turDiger">
-                  Hangi yazılım? <RequiredMark />
-                </Label>
-                <Select
-                  value={duzenleYazilimSecimi}
-                  onValueChange={(v) => handleDuzenleYazilimSecimi(v as ZimmetYazilimSecenegi)}
-                >
-                  <SelectTrigger
-                    id="duzenle-turDiger"
-                    className={!duzenleYazilimSecimi ? 'border-rose-300 ring-1 ring-rose-200' : ''}
-                  >
-                    <SelectValue placeholder="Yazılım seçin" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ZIMMET_YAZILIM_SECENEKLERI.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {opt}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {duzenleYazilimSecimi === 'Diğer' && (
-                  <Input
-                    value={duzenleForm.turDiger}
-                    onChange={(e) => setDuzenleAlan('turDiger', e.target.value)}
-                    placeholder="Yazılımı yazın"
-                    className={!duzenleForm.turDiger.trim() ? 'border-rose-300 ring-1 ring-rose-200' : ''}
+              <>
+                <div className="col-span-2 space-y-1.5">
+                  <Label htmlFor="duzenle-tur-ailesi">
+                    Tür <RequiredMark />
+                  </Label>
+                  <TanimCombobox
+                    id="duzenle-tur-ailesi"
+                    parentId={null}
+                    value={duzenleTurAilesi}
+                    onValueChange={handleDuzenleTurAilesiSecimi}
+                    korumaliAdlar={[YAZILIM_KOK_ADI]}
+                    placeholder="Tür seçin"
+                    aramaPlaceholder="Tür ara..."
+                    ekleEtiketi="Yeni tür ekle"
+                    className={!duzenleTurAilesi ? 'border-rose-300 ring-1 ring-rose-200' : ''}
                   />
+                </div>
+
+                {duzenleTurAilesiId && (
+                  <div className="col-span-2 space-y-1.5">
+                    <Label htmlFor="duzenle-turDiger">
+                      {duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : `${duzenleTurAilesi} - alt tür`}{' '}
+                      {duzenleTurAilesi === YAZILIM_KOK_ADI ? <RequiredMark /> : null}
+                    </Label>
+                    <TanimCombobox
+                      id="duzenle-turDiger"
+                      parentId={duzenleTurAilesiId}
+                      value={duzenleAltDalSecimi}
+                      onValueChange={handleDuzenleAltDalSecimi}
+                      placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
+                      ekleEtiketi="Yeni alt-dal ekle"
+                      className={
+                        duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleAltDalSecimi
+                          ? 'border-rose-300 ring-1 ring-rose-200'
+                          : ''
+                      }
+                    />
+                    {duzenleAltDalSecimi === 'Diğer' && (
+                      <Input
+                        value={duzenleForm.turDiger}
+                        onChange={(e) => setDuzenleAlan('turDiger', e.target.value)}
+                        placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
+                        className={
+                          duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleForm.turDiger.trim()
+                            ? 'border-rose-300 ring-1 ring-rose-200'
+                            : ''
+                        }
+                      />
+                    )}
+                  </div>
                 )}
-              </div>
+              </>
             )}
             {EK_ALAN_KATALOG.filter(({ key }) => duzenleGorunurAlanlar.has(key)).map(({ key, label }) => {
               const gerekli = duzenleZorunluSet.has(key)

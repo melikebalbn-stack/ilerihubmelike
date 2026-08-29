@@ -162,6 +162,7 @@ export async function POST(request: NextRequest) {
         zimmetSahibiAdi: zimmetSahibi.name ?? zimmetSahibi.email,
         departman: zimmetFormu.departman,
         tur: zimmetFormu.tur,
+        turDiger: zimmetFormu.turDiger,
         teslimEdenAdi: user.name ?? user.email,
         createdAt: zimmetFormu.createdAt,
       },

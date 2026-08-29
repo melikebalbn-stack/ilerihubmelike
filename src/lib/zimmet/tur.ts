@@ -1,4 +1,11 @@
 import type { ZimmetTuru } from '@/generated/prisma'
+import { esitlikIcinNormalize } from './arama'
+
+// ZimmetTanim'daki "Yazılım" kök kaydının adı - kod tarafında KORUMALI
+// (silinemez/yeniden adlandırılamaz, bkz. TanimCombobox.tsx). DB'de özel bir
+// bayrağı yok, sadece bu isimle var olması yeterli - tam eşleşmeyle kontrol
+// edilir.
+export const YAZILIM_KOK_ADI = 'Yazılım'
 
 // DB'deki enum → gösterim etiketi. ZimmetTuru enum'una DOKUNULMADI (migration
 // gerekmesin diye) - OFFICE_365 ve DIGER değerleri DB'de aynen duruyor,
@@ -24,10 +31,29 @@ export const ZIMMET_TUR_ETIKET: Record<ZimmetTuru, string> = {
 // önceden her dosyada ayrı ayrı tanımlıydı (bazıları turDiger'ı hiç
 // göstermiyordu, bazıları etiketin YERİNE geçiriyordu, bazıları önüne
 // eklemiyordu) - tek kaynağa indirgendi.
-export function zimmetTurGosterim(zimmet: { tur: string; turDiger?: string | null }): string {
+//
+// `bilinenOzelTurler` opsiyonel (ZimmetTanim'daki kök tanım adları, "Yazılım"
+// HARİÇ) - DIGER + turDiger'ın YENİ bir özel tür kaydı mı (turDiger =
+// "TürAdı" veya "TürAdı · AltDal", bkz. ozelTurKaydi) yoksa eski/yazılım
+// kaydı mı (turDiger = çıplak yazılım adı) olduğunu ayırt etmek için.
+// turDiger'ın " · " öncesi ilk parçası bu listeden biriyle eşleşirse, değer
+// zaten "TürAdı[· AltDal]" içeriyor demektir - OLDUĞU GİBİ basılır, "Yazılım"
+// öneki EKLENMEZ. Eşleşmezse bugünkü (legacy) davranış aynen sürer. Parametre
+// verilmezse (mevcut TÜM eski çağıranlar) davranış HİÇ değişmez - geriye
+// dönük uyumlu.
+export function zimmetTurGosterim(
+  zimmet: { tur: string; turDiger?: string | null },
+  bilinenOzelTurler: readonly string[] = []
+): string {
   const etiket = ZIMMET_TUR_ETIKET[zimmet.tur as ZimmetTuru] ?? zimmet.tur
   if (zimmet.tur === 'DIGER' && zimmet.turDiger?.trim()) {
-    return `${etiket} · ${zimmet.turDiger.trim()}`
+    const deger = zimmet.turDiger.trim()
+    const ilkParca = deger.split('·')[0].trim()
+    const ozelTurMu = bilinenOzelTurler.some(
+      (ad) => esitlikIcinNormalize(ad) === esitlikIcinNormalize(ilkParca)
+    )
+    if (ozelTurMu) return deger
+    return `${etiket} · ${deger}`
   }
   return etiket
 }
@@ -89,16 +115,23 @@ export type ZimmetYazilimSecenegi = (typeof ZIMMET_YAZILIM_SECENEKLERI)[number]
 // `tur` da alınır: OFFICE_365 kaydında turDiger HER ZAMAN null'dır (bkz.
 // yazilimKaydi) - turDiger'a bakarak "Office 365" seçili göstermek mümkün
 // değil, tur===OFFICE_365 doğrudan kontrol edilmeli.
+//
+// `bilinenListe` opsiyonel - dropdown artık sabit 8 seçenekle SINIRLI değil,
+// /api/zimmet-formu/tanim?parentId=<Yazılım kökünün id'si>'nden dinamik olarak
+// genişliyor (ZimmetTanim'da Yazılım kökünün altına eklenen yeni yazılımlar).
+// Çağıran taraf o dinamik listeyi geçirirse, önceden "Diğer" olarak görünen
+// bir DB değeri artık KENDİ ismiyle seçili gösterilebilir. Varsayılan
+// (parametre verilmezse) sabit listedir - dönüş tipi artık `string` (dinamik
+// değerler statik union'a sığmaz).
 export function yazilimSecimindenTuret(
   tur: string,
-  turDiger: string | null | undefined
-): ZimmetYazilimSecenegi | '' {
+  turDiger: string | null | undefined,
+  bilinenListe: readonly string[] = ZIMMET_YAZILIM_SECENEKLERI
+): string {
   if (tur === 'OFFICE_365') return 'Office 365'
   const deger = turDiger?.trim()
   if (!deger) return ''
-  return (ZIMMET_YAZILIM_SECENEKLERI as readonly string[]).includes(deger)
-    ? (deger as ZimmetYazilimSecenegi)
-    : 'Diğer'
+  return bilinenListe.includes(deger) ? deger : 'Diğer'
 }
 
 // Office 365 istisnası (Melih'in kararı): "Yazılım" seçilip "Office 365"
@@ -119,4 +152,58 @@ export function yazilimKaydi(turDigerMetni: string): { tur: ZimmetTuru; turDiger
   const metin = turDigerMetni.trim()
   if (metin === 'Office 365') return { tur: 'OFFICE_365', turDiger: null }
   return { tur: 'DIGER', turDiger: metin || null }
+}
+
+// ── Yeni (DB'den eklenen) türler — hibrit çözüm ─────────────────────────────
+// Enum'daki 6 sabit tür + Yazılım DEĞİŞMEDİ. Kullanıcı tür dropdown'undan
+// tamamen YENİ bir tür (ör. "Tablet") eklerse, bu da yazılım gibi DIGER +
+// turDiger deseniyle yazılır - Melih'in kararı: turDiger = "TürAdı" (alt-dal
+// yoksa) veya "TürAdı · AltDal" (varsa). zimmetTurGosterim, turDiger'ın ilk
+// parçasını bilinen özel tür adlarıyla karşılaştırıp bu kaydı YAZILIM'dan
+// ayırt ediyor (yukarıda bkz.).
+export function ozelTurKaydi(turAdi: string, altDal: string): { tur: ZimmetTuru; turDiger: string } {
+  const ad = turAdi.trim()
+  const alt = altDal.trim()
+  return { tur: 'DIGER', turDiger: alt ? `${ad} · ${alt}` : ad }
+}
+
+// Var olan bir kaydın (tur, turDiger) ikilisinden TÜR dropdown'unun hangi
+// seçeneği göstermesi gerektiğini türetir (Düzenle dialogu prefill).
+// Sabit 6 tür ise direkt enum etiketi döner (altDal boş). OFFICE_365 ise
+// "Yazılım" + altDal="Office 365". DIGER ise: turDiger'ın ilk parçası bilinen
+// bir özel tür adıyla (ZimmetTanim kök listesi, "Yazılım" HARİÇ) eşleşiyorsa
+// o türü + kalan kısmı (varsa) altDal olarak döner - eşleşmiyorsa "Yazılım"
+// varsayılır (legacy/bilinmeyen DIGER kaydı davranışı, değişmedi).
+export function turSecimindenTuret(
+  tur: string,
+  turDiger: string | null | undefined,
+  bilinenOzelTurler: readonly string[] = []
+): { turAdi: string; altDal: string } {
+  if (tur === 'OFFICE_365') return { turAdi: YAZILIM_KOK_ADI, altDal: 'Office 365' }
+  if (tur !== 'DIGER') {
+    return { turAdi: ZIMMET_TUR_ETIKET[tur as ZimmetTuru] ?? tur, altDal: '' }
+  }
+  const deger = (turDiger ?? '').trim()
+  if (!deger) return { turAdi: YAZILIM_KOK_ADI, altDal: '' }
+
+  const parcalar = deger.split('·').map((p) => p.trim())
+  const ilkParca = parcalar[0]
+  const eslesenTur = bilinenOzelTurler.find(
+    (ad) => esitlikIcinNormalize(ad) === esitlikIcinNormalize(ilkParca)
+  )
+  if (eslesenTur) {
+    return { turAdi: eslesenTur, altDal: parcalar.slice(1).join(' · ') }
+  }
+  return { turAdi: YAZILIM_KOK_ADI, altDal: deger }
+}
+
+// Bir alt-dal Combobox'ının (Yazılım'ın çocukları VEYA yeni bir özel türün
+// çocukları - ikisi de aynı ZimmetTanim tablosundan geliyor) mevcut değeri
+// bilinen çocuklardan biriyle eşleşiyor mu diye bakar - eşleşmezse (boş
+// değilse) "Diğer" döner, serbest metin aynen korunur.
+export function altDalSecimindenTuret(deger: string, bilinenCocuklar: readonly string[]): string {
+  const d = deger.trim()
+  if (!d) return ''
+  const eslesen = bilinenCocuklar.find((ad) => esitlikIcinNormalize(ad) === esitlikIcinNormalize(d))
+  return eslesen ?? 'Diğer'
 }

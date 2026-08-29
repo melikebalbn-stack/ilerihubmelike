@@ -54,6 +54,11 @@ export interface ZimmetPdfData {
   // Taslak modu: onay akışı tamamlanmamış (ONAY_BEKLIYOR) kayıt için filigranlı
   // önizleme PDF'i. true iken her sayfaya çapraz "TASLAK" filigranı + imza altı not.
   taslak?: boolean
+  // ZimmetTanim'daki kök tanım adları ("Yazılım" hariç) - zimmetTurGosterim'in
+  // DIGER+turDiger'ı YENİ bir özel tür mü yoksa yazılım mı diye doğru
+  // etiketleyebilmesi için (bkz. tur.ts). Verilmezse (çağıran taraf
+  // sorgulamadıysa) legacy davranış: her zaman "Yazılım · X".
+  bilinenOzelTurler?: string[]
 }
 
 const CIHAZ_DURUMU_LABELS: Record<ZimmetCihazDurumu, string> = {
@@ -187,7 +192,7 @@ export async function generateZimmetPdf(data: ZimmetPdfData): Promise<Uint8Array
   drawHeader()
 
   // ── İki kolonlu bilgi tablosu ──
-  const turGosterim = zimmetTurGosterim(data)
+  const turGosterim = zimmetTurGosterim(data, data.bilinenOzelTurler ?? [])
   const zimmetSahibiAdiGosterim =
     (data.zimmetSahibiAdi || '—') + (data.sicilNo ? ` (Sicil: ${data.sicilNo})` : '')
   // Üçüncü eleman (varsa) - deger satirinin ALTINDA kucuk gri "alt satir" olarak

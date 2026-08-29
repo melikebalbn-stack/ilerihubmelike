@@ -72,6 +72,14 @@ export async function POST(request: NextRequest) {
       select: { name: true, email: true, jobTitle: true },
     })
 
+    // ZimmetTanim kök tanımları ("Yazılım" hariç) - bkz. tur.ts
+    // zimmetTurGosterim, pdf.ts.
+    const kokTanimlar = await prisma.zimmetTanim.findMany({
+      where: { parentId: null, aktif: true, ad: { not: 'Yazılım' } },
+      select: { ad: true },
+    })
+    const bilinenOzelTurler = kokTanimlar.map((t) => t.ad)
+
     const turRaw = typeof body.tur === 'string' ? body.tur : ''
     const tur = TUR_VALUES.includes(turRaw) ? (turRaw as ZimmetTuru) : ZimmetTuru.DIGER
     const cihazDurumu = CIHAZ_DURUMU_VALUES.includes(body.cihazDurumu)
@@ -113,6 +121,7 @@ export async function POST(request: NextRequest) {
       onaylayanAdi: approver?.name ?? approver?.email ?? APPROVER_NAME,
       onaylayanUnvan: approver?.jobTitle ?? undefined,
       createdAt: new Date(),
+      bilinenOzelTurler,
     }
 
     const pdfBytes = await generateZimmetPdf(pdfData)

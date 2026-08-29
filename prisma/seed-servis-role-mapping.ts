@@ -1,23 +1,19 @@
 /**
  * Servis Yönetimi Yetki Matrisi hedef tablosu (11 anahtar):
  *
- * | Anahtar                | Hedef kullanım |
- * |------------------------|------------------|
- * | servis.view            | Modülü görüntüleme |
- * | servis.create          | Servis kaydı oluşturma |
- * | servis.edit            | Servis kaydı düzenleme |
- * | servis.history         | İşlem geçmişini görüntüleme |
- * | servis.tanim.manage    | Firma/yerleşke/güzergâh tanımlarını yönetme |
- * | servis.sorumlu.manage  | Sorumlu atamalarını yönetme |
- * | servis.passive         | Kayıt pasifleştirme |
- * | servis.restore         | Pasif kaydı geri alma |
- * | servis.export          | Dışa aktarma |
- * | servis.kvkk.view       | KVKK verilerini görüntüleme |
- * | servis.admin           | Tam yönetim |
- *
- * Faz 1A'da yalnız route'u bulunan servis.view ve servis.tanim.manage
- * rollere bağlanır. Diğer dokuz anahtar ileride ilgili route'lar geldiğinde
- * bu hedef tabloya göre ayrıca eşlenecektir.
+ * | Anahtar                | super-admin | admin | hr-yoneticisi | idari-isler |
+ * |------------------------|-------------|-------|---------------|--------------|
+ * | servis.view            | ✓ | ✓ | ✓ | ✓ |
+ * | servis.create          | ✓ | ✓ | ✓ | ✓ |
+ * | servis.edit            | ✓ | ✓ | ✓ | ✓ |
+ * | servis.history         | ✓ | ✓ | ✓ | ✓ |
+ * | servis.tanim.manage    | ✓ | ✓ | ✓ | ✓ |
+ * | servis.sorumlu.manage  | ✓ | ✓ | ✓ | ✓ |
+ * | servis.passive         | ✓ | ✓ | ✓ | — |
+ * | servis.restore         | ✓ | ✓ | ✓ | — |
+ * | servis.export          | ✓ | ✓ | ✓ | — |
+ * | servis.kvkk.view       | ✓ | — | ✓ | — |
+ * | servis.admin           | ✓ | ✓ | — | — |
  *
  * Kullanım:
  *   npx tsx --env-file=.env prisma/seed-permissions.ts
@@ -31,7 +27,16 @@ import { PrismaClient } from '../src/generated/prisma'
 
 const ROLE_MAPPING: Record<string, string[]> = {
   'servis.view': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
+  'servis.create': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
+  'servis.edit': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
+  'servis.history': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
   'servis.tanim.manage': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
+  'servis.sorumlu.manage': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
+  'servis.passive': ['super-admin', 'admin', 'hr-yoneticisi'],
+  'servis.restore': ['super-admin', 'admin', 'hr-yoneticisi'],
+  'servis.export': ['super-admin', 'admin', 'hr-yoneticisi'],
+  'servis.kvkk.view': ['super-admin', 'hr-yoneticisi'],
+  'servis.admin': ['super-admin', 'admin'],
 }
 
 async function main() {

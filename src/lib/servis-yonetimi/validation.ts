@@ -225,3 +225,37 @@ export function validateServisSeferDilimiForm(form: ServisSeferDilimiForm): Serv
 
   return { valid: errors.length === 0, errors }
 }
+
+export type ServisGuzergahDurakForm = {
+  durakId: string
+}
+
+export function validateServisGuzergahDurakForm(form: ServisGuzergahDurakForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.durakId?.trim()) {
+    errors.push('Durak seçimi zorunludur.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
+const SAAT_REGEX = /^([01][0-9]|2[0-3]):[0-5][0-9]$/
+
+export type ServisGuzergahDurakSaatForm = {
+  dilimId: string
+  saat: string
+}
+
+export function validateServisGuzergahDurakSaatForm(form: ServisGuzergahDurakSaatForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.dilimId?.trim()) {
+    errors.push('Sefer dilimi seçimi zorunludur.')
+  }
+  if (!form.saat || !SAAT_REGEX.test(form.saat.trim())) {
+    errors.push('Saat "SS:DD" formatında olmalıdır (00:00-23:59).')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

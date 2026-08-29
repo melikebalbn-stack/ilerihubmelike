@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   geriAlServisSofor: vi.fn(),
   pasiflestirServisSeferDilimi: vi.fn(),
   geriAlServisSeferDilimi: vi.fn(),
+  pasiflestirServisGuzergahDurak: vi.fn(),
+  geriAlServisGuzergahDurak: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-permission', () => ({
@@ -37,6 +39,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   geriAlServisSofor: mocks.geriAlServisSofor,
   pasiflestirServisSeferDilimi: mocks.pasiflestirServisSeferDilimi,
   geriAlServisSeferDilimi: mocks.geriAlServisSeferDilimi,
+  pasiflestirServisGuzergahDurak: mocks.pasiflestirServisGuzergahDurak,
+  geriAlServisGuzergahDurak: mocks.geriAlServisGuzergahDurak,
 }))
 
 import { POST as firmaPasiflestir } from './firma/[id]/pasiflestir/route'
@@ -53,6 +57,8 @@ import { POST as soforPasiflestir } from './sofor/[id]/pasiflestir/route'
 import { POST as soforGeriAl } from './sofor/[id]/geri-al/route'
 import { POST as seferDilimiPasiflestir } from './sefer-dilimi/[id]/pasiflestir/route'
 import { POST as seferDilimiGeriAl } from './sefer-dilimi/[id]/geri-al/route'
+import { POST as guzergahDurakPasiflestir } from './guzergah-durak/[id]/pasiflestir/route'
+import { POST as guzergahDurakGeriAl } from './guzergah-durak/[id]/geri-al/route'
 
 type PostHandler = (
   request: Request,
@@ -77,6 +83,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['araç', aracPasiflestir],
     ['şoför', soforPasiflestir],
     ['sefer dilimi', seferDilimiPasiflestir],
+    ['güzergâh-durak', guzergahDurakPasiflestir],
   ] as [string, PostHandler][])('%s pasifleştirme servis.passive ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.passive')
@@ -90,6 +97,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['araç', aracGeriAl],
     ['şoför', soforGeriAl],
     ['sefer dilimi', seferDilimiGeriAl],
+    ['güzergâh-durak', guzergahDurakGeriAl],
   ] as [string, PostHandler][])('%s geri-al servis.restore ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.restore')

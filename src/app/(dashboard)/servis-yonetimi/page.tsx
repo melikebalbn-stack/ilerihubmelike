@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -662,6 +663,9 @@ function ServisGuzergahPanel({ canManage }: { canManage: boolean }) {
                 <TableCell><AktifBadge aktif={guzergah.aktif} /></TableCell>
                 {canManage && (
                   <TableCell className="space-x-2 text-right">
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href={`/servis-yonetimi/guzergah/${guzergah.id}`}>Duraklar</Link>
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => duzenleAc(guzergah)}>Düzenle</Button>
                     {guzergah.aktif ? (
                       <Button size="sm" variant="destructive" onClick={() => pasiflestir(guzergah.id)}>Pasifleştir</Button>

@@ -30,6 +30,15 @@ const mocks = vi.hoisted(() => ({
   seferDilimiFindUnique: vi.fn(),
   seferDilimiCreate: vi.fn(),
   seferDilimiUpdate: vi.fn(),
+  guzergahDurakFindMany: vi.fn(),
+  guzergahDurakFindUnique: vi.fn(),
+  guzergahDurakFindFirst: vi.fn(),
+  guzergahDurakCreate: vi.fn(),
+  guzergahDurakUpdate: vi.fn(),
+  guzergahDurakSaatFindUnique: vi.fn(),
+  guzergahDurakSaatUpsert: vi.fn(),
+  guzergahDurakSaatDelete: vi.fn(),
+  transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -79,6 +88,19 @@ vi.mock('@/lib/prisma', () => ({
       create: mocks.seferDilimiCreate,
       update: mocks.seferDilimiUpdate,
     },
+    servisGuzergahDurak: {
+      findMany: mocks.guzergahDurakFindMany,
+      findUnique: mocks.guzergahDurakFindUnique,
+      findFirst: mocks.guzergahDurakFindFirst,
+      create: mocks.guzergahDurakCreate,
+      update: mocks.guzergahDurakUpdate,
+    },
+    servisGuzergahDurakSaat: {
+      findUnique: mocks.guzergahDurakSaatFindUnique,
+      upsert: mocks.guzergahDurakSaatUpsert,
+      delete: mocks.guzergahDurakSaatDelete,
+    },
+    $transaction: mocks.transaction,
   },
 }))
 
@@ -118,6 +140,14 @@ import {
   listServisSeferDilimleri,
   pasiflestirServisSeferDilimi,
   updateServisSeferDilimi,
+  createServisGuzergahDurak,
+  geriAlServisGuzergahDurak,
+  listServisGuzergahDuraklar,
+  pasiflestirServisGuzergahDurak,
+  siraDegistirServisGuzergahDurak,
+  yenidenSiralaServisGuzergahDuraklar,
+  guzergahDurakSaatiKaydet,
+  guzergahDurakSaatiSil,
 } from './service'
 
 beforeEach(() => {
@@ -788,5 +818,291 @@ describe('ServisSeferDilimi — passive/restore', () => {
     mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'sd1', aktif: false })
     mocks.seferDilimiUpdate.mockResolvedValue({ id: 'sd1', aktif: true })
     expect((await geriAlServisSeferDilimi('sd1')).aktif).toBe(true)
+  })
+})
+
+describe('ServisGuzergahDurak — view', () => {
+  it('güzergaha ait duraklari siraya göre listeler', async () => {
+    mocks.guzergahDurakFindMany.mockResolvedValue([{ id: 'gd1', sira: 1 }])
+    const data = await listServisGuzergahDuraklar('guzergah-1')
+    expect(mocks.guzergahDurakFindMany).toHaveBeenCalledWith({
+      where: { guzergahId: 'guzergah-1' },
+      include: expect.any(Object),
+      orderBy: { sira: 'asc' },
+    })
+    expect(data).toHaveLength(1)
+  })
+
+  it('aktif filtresi verildiğinde where içine ekler', async () => {
+    mocks.guzergahDurakFindMany.mockResolvedValue([])
+    await listServisGuzergahDuraklar('guzergah-1', { aktif: true })
+    expect(mocks.guzergahDurakFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { guzergahId: 'guzergah-1', aktif: true },
+    }))
+  })
+})
+
+describe('ServisGuzergahDurak — durak ekleme', () => {
+  it('yeni duragi mevcut en yüksek sıranın bir fazlasına ekler', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
+    mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: true })
+    mocks.guzergahDurakFindUnique.mockResolvedValue(null)
+    mocks.guzergahDurakFindFirst.mockResolvedValue({ sira: 3 })
+    mocks.guzergahDurakCreate.mockResolvedValue({ id: 'gd1', sira: 4 })
+
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' })
+
+    expect(mocks.guzergahDurakCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { guzergahId: 'guzergah-1', durakId: 'durak-1', sira: 4 },
+    }))
+  })
+
+  it('güzergahın ilk durağını sira=1 ile ekler', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
+    mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: true })
+    mocks.guzergahDurakFindUnique.mockResolvedValue(null)
+    mocks.guzergahDurakFindFirst.mockResolvedValue(null)
+    mocks.guzergahDurakCreate.mockResolvedValue({ id: 'gd1', sira: 1 })
+
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' })
+
+    expect(mocks.guzergahDurakCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { guzergahId: 'guzergah-1', durakId: 'durak-1', sira: 1 },
+    }))
+  })
+
+  it('pasif güzergaha durak eklemez', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: false })
+    mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: true })
+    mocks.guzergahDurakFindUnique.mockResolvedValue(null)
+    mocks.guzergahDurakFindFirst.mockResolvedValue(null)
+    await expect(createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' })).rejects.toThrow('Pasif güzergaha')
+    expect(mocks.guzergahDurakCreate).not.toHaveBeenCalled()
+  })
+
+  it('pasif duragi güzergaha eklemez', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
+    mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: false })
+    mocks.guzergahDurakFindUnique.mockResolvedValue(null)
+    mocks.guzergahDurakFindFirst.mockResolvedValue(null)
+    await expect(createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' })).rejects.toThrow('Pasif durak')
+    expect(mocks.guzergahDurakCreate).not.toHaveBeenCalled()
+  })
+
+  it('zaten aktif eklenmiş duragi tekrar eklemez', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
+    mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: true })
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd-eski', aktif: true })
+    mocks.guzergahDurakFindFirst.mockResolvedValue(null)
+    await expect(createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' })).rejects.toThrow('zaten bu güzergahta')
+    expect(mocks.guzergahDurakCreate).not.toHaveBeenCalled()
+  })
+
+  it('pasifleştirilmiş eski kaydı tekrar eklemek yerine geri-al önerir', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
+    mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: true })
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd-eski', aktif: false })
+    mocks.guzergahDurakFindFirst.mockResolvedValue(null)
+    await expect(createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' })).rejects.toThrow('geri alın')
+    expect(mocks.guzergahDurakCreate).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServisGuzergahDurak — pasifleştir/geri-al saat verisini korur', () => {
+  it('durağı pasifleştirip geri alma saat kayıtlarına dokunmaz', async () => {
+    mocks.guzergahDurakFindUnique
+      .mockResolvedValueOnce({ id: 'gd1', aktif: true })
+      .mockResolvedValueOnce({ id: 'gd1', aktif: false })
+    mocks.guzergahDurakUpdate
+      .mockResolvedValueOnce({ id: 'gd1', aktif: false })
+      .mockResolvedValueOnce({ id: 'gd1', aktif: true })
+
+    await pasiflestirServisGuzergahDurak('gd1')
+    await geriAlServisGuzergahDurak('gd1')
+
+    expect(mocks.guzergahDurakUpdate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { id: 'gd1' },
+      data: { aktif: false },
+    }))
+    expect(mocks.guzergahDurakUpdate).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: { id: 'gd1' },
+      data: { aktif: true },
+    }))
+    // Pasifleştir/geri-al yalnızca `aktif` alanını değiştirir — saat
+    // tablosuna hiçbir zaman delete/deleteMany çağrısı yapılmaz.
+    expect(mocks.guzergahDurakSaatDelete).not.toHaveBeenCalled()
+
+    // Bu durak için önceden girilmiş bir saat kaydı hâlâ listede görünür
+    // (uçtan uca akış: saat gir → pasifleştir → geri al → veri hâlâ orada).
+    const saatKaydi = { id: 'saat-1', guzergahDurakId: 'gd1', dilimId: 'dilim-1', saat: '08:30' }
+    mocks.guzergahDurakFindMany.mockResolvedValue([{ id: 'gd1', aktif: true, saatler: [saatKaydi] }])
+    const liste = await listServisGuzergahDuraklar('guzergah-1')
+    expect(liste[0].saatler).toEqual([saatKaydi])
+  })
+})
+
+// @@unique([guzergahId, sira]) DB'de ANLIK kontrol edilir (deferrable değil).
+// Aşağıdaki sahte-DB, gerçek Postgres'in bu davranışını simüle eder: bir
+// update başka bir kaydın hâlihazırda sahip olduğu sira'ya yazmaya çalışırsa
+// (tıpkı gerçek unique index gibi) hata fırlatır. Servis kodu iki/üç fazlı
+// (önce geçici, sonra nihai) bir sıralama stratejisi kullanmazsa bu testler
+// GERÇEKTEN patlar — yani "hata almadığını" sahte biçimde değil, kodun asıl
+// yazma sırasını simüle ederek kanıtlar.
+function siraKisitliSahteDB(baslangic: { id: string; sira: number; aktif: boolean }[]) {
+  const kayitlar = new Map(baslangic.map((k) => [k.id, { ...k }]))
+  function update({ where, data }: { where: { id: string }; data: Record<string, unknown> }) {
+    const kayit = kayitlar.get(where.id)
+    if (!kayit) throw new Error(`Sahte DB: kayıt yok — ${where.id}`)
+    if (typeof data.sira === 'number') {
+      const cakisan = [...kayitlar.values()].find((k) => k.id !== where.id && k.sira === data.sira)
+      if (cakisan) {
+        throw new Error(
+          `Unique constraint failed on the fields: (\`guzergahId\`,\`sira\`) — id=${where.id} sira=${data.sira} zaten id=${cakisan.id} tarafından kullanılıyor.`,
+        )
+      }
+    }
+    Object.assign(kayit, data)
+    return Promise.resolve({ ...kayit })
+  }
+  // Gerçek Prisma findMany'nin döndürdüğü objeler DB'den taze snapshot'tır —
+  // sonraki update() çağrıları onları GERİYE DÖNÜP mutasyona uğratmaz. Burada
+  // da KLON döndürülür; aksi halde servis kodunun elinde tuttuğu referanslar
+  // (secili/komsu) sahte-DB'nin kendi iç Map'iyle paylaşılır ve update()'in
+  // Object.assign'ı onları test'in kontrolü dışında mutasyona uğratır — bu,
+  // servis kodunda değil, sahte-DB'de yanlış bir "hata" üretir.
+  function bul() {
+    return [...kayitlar.values()].map((k) => ({ ...k })).sort((a, b) => a.sira - b.sira)
+  }
+  return { kayitlar, update, bul }
+}
+
+describe('ServisGuzergahDurak — yukarı/aşağı sıralama (unique-constraint güvenliği)', () => {
+  it('3 durağı ok butonlarıyla yeniden sıralarken sira çakışması oluşmaz', async () => {
+    const sahteDB = siraKisitliSahteDB([
+      { id: 'gd1', sira: 1, aktif: true },
+      { id: 'gd2', sira: 2, aktif: true },
+      { id: 'gd3', sira: 3, aktif: true },
+    ])
+    mocks.guzergahDurakFindMany.mockImplementation(() =>
+      Promise.resolve(sahteDB.bul()),
+    )
+    mocks.guzergahDurakUpdate.mockImplementation(sahteDB.update)
+
+    // gd3'ü iki kez yukarı taşı → en üste çıkmalı: [gd3, gd1, gd2]
+    await siraDegistirServisGuzergahDurak('guzergah-1', 'gd3', 'YUKARI')
+    await siraDegistirServisGuzergahDurak('guzergah-1', 'gd3', 'YUKARI')
+
+    const nihaiSira = sahteDB.bul().map((k) => k.id)
+    expect(nihaiSira).toEqual(['gd3', 'gd1', 'gd2'])
+  })
+
+  it('en üstteki durağı yukarı taşımaya çalışmak no-op olur', async () => {
+    const sahteDB = siraKisitliSahteDB([
+      { id: 'gd1', sira: 1, aktif: true },
+      { id: 'gd2', sira: 2, aktif: true },
+    ])
+    mocks.guzergahDurakFindMany.mockImplementation(() =>
+      Promise.resolve(sahteDB.bul()),
+    )
+    mocks.guzergahDurakUpdate.mockImplementation(sahteDB.update)
+
+    await siraDegistirServisGuzergahDurak('guzergah-1', 'gd1', 'YUKARI')
+
+    expect(mocks.guzergahDurakUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServisGuzergahDurak — sürükle-bırak toplu yeniden sıralama (unique-constraint güvenliği)', () => {
+  it('3 durağı tam tersine çevirirken sira çakışması oluşmaz', async () => {
+    const sahteDB = siraKisitliSahteDB([
+      { id: 'gd1', sira: 1, aktif: true },
+      { id: 'gd2', sira: 2, aktif: true },
+      { id: 'gd3', sira: 3, aktif: true },
+    ])
+    mocks.guzergahDurakFindMany.mockImplementation(() =>
+      Promise.resolve(sahteDB.bul()),
+    )
+    mocks.guzergahDurakUpdate.mockImplementation(sahteDB.update)
+
+    await yenidenSiralaServisGuzergahDuraklar('guzergah-1', ['gd3', 'gd2', 'gd1'])
+
+    const nihaiSira = sahteDB.bul().map((k) => k.id)
+    expect(nihaiSira).toEqual(['gd3', 'gd2', 'gd1'])
+  })
+
+  it('aktif duraklarla birebir eşleşmeyen listeyi reddeder', async () => {
+    mocks.guzergahDurakFindMany.mockResolvedValue([
+      { id: 'gd1', sira: 1, aktif: true },
+      { id: 'gd2', sira: 2, aktif: true },
+    ])
+    await expect(yenidenSiralaServisGuzergahDuraklar('guzergah-1', ['gd1'])).rejects.toThrow('birebir eşleşmiyor')
+    expect(mocks.guzergahDurakUpdate).not.toHaveBeenCalled()
+  })
+
+  it('pasif duraklar sona eklenir, aktiflerin çakışmasına neden olmaz', async () => {
+    const sahteDB = siraKisitliSahteDB([
+      { id: 'gd1', sira: 1, aktif: true },
+      { id: 'gd2', sira: 2, aktif: false },
+      { id: 'gd3', sira: 3, aktif: true },
+    ])
+    mocks.guzergahDurakFindMany.mockImplementation(() =>
+      Promise.resolve(sahteDB.bul()),
+    )
+    mocks.guzergahDurakUpdate.mockImplementation(sahteDB.update)
+
+    await yenidenSiralaServisGuzergahDuraklar('guzergah-1', ['gd3', 'gd1'])
+
+    const nihaiSira = sahteDB.bul().map((k) => k.id)
+    expect(nihaiSira).toEqual(['gd3', 'gd1', 'gd2'])
+  })
+})
+
+describe('ServisGuzergahDurakSaat — kaydet/sil', () => {
+  const gecerliSaat = { dilimId: 'dilim-1', saat: '08:30' }
+
+  it('geçerli saati upsert eder', async () => {
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', aktif: true })
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'dilim-1', aktif: true })
+    mocks.guzergahDurakSaatUpsert.mockResolvedValue({ id: 's1', ...gecerliSaat })
+
+    await guzergahDurakSaatiKaydet('gd1', gecerliSaat)
+
+    expect(mocks.guzergahDurakSaatUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { guzergahDurakId_dilimId: { guzergahDurakId: 'gd1', dilimId: 'dilim-1' } },
+      create: { guzergahDurakId: 'gd1', dilimId: 'dilim-1', saat: '08:30' },
+      update: { saat: '08:30' },
+    }))
+  })
+
+  it.each(['8:30', '25:00', '08:60', 'saat'])('geçersiz saat %s değerini reddeder', async (saat) => {
+    await expect(guzergahDurakSaatiKaydet('gd1', { ...gecerliSaat, saat })).rejects.toThrow('SS:DD')
+    expect(mocks.guzergahDurakSaatUpsert).not.toHaveBeenCalled()
+  })
+
+  it('pasif güzergah-durak eşleşmesine saat girilemez', async () => {
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', aktif: false })
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'dilim-1', aktif: true })
+    await expect(guzergahDurakSaatiKaydet('gd1', gecerliSaat)).rejects.toThrow('Pasif güzergâh-durak')
+    expect(mocks.guzergahDurakSaatUpsert).not.toHaveBeenCalled()
+  })
+
+  it('pasif sefer dilimine saat girilemez', async () => {
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', aktif: true })
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'dilim-1', aktif: false })
+    await expect(guzergahDurakSaatiKaydet('gd1', gecerliSaat)).rejects.toThrow('Pasif sefer dilimine')
+    expect(mocks.guzergahDurakSaatUpsert).not.toHaveBeenCalled()
+  })
+
+  it('mevcut saat kaydını siler', async () => {
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1' })
+    mocks.guzergahDurakSaatDelete.mockResolvedValue({ id: 's1' })
+    await guzergahDurakSaatiSil('s1')
+    expect(mocks.guzergahDurakSaatDelete).toHaveBeenCalledWith({ where: { id: 's1' } })
+  })
+
+  it('olmayan saat kaydını silmez', async () => {
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue(null)
+    await expect(guzergahDurakSaatiSil('yok')).rejects.toThrow('bulunamadı')
+    expect(mocks.guzergahDurakSaatDelete).not.toHaveBeenCalled()
   })
 })

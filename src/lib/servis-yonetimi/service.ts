@@ -8,6 +8,8 @@ import {
   validateServisSoforForm,
   normalizeServisSoforTelefon,
   validateServisSeferDilimiForm,
+  validateServisGuzergahDurakForm,
+  validateServisGuzergahDurakSaatForm,
   type ServisFirmaForm,
   type ServisAracForm,
   type ServisDurakForm,
@@ -15,6 +17,8 @@ import {
   type ServisYerleskeForm,
   type ServisSoforForm,
   type ServisSeferDilimiForm,
+  type ServisGuzergahDurakForm,
+  type ServisGuzergahDurakSaatForm,
 } from './validation'
 
 // ============================================================================
@@ -564,4 +568,204 @@ export async function geriAlServisSeferDilimi(id: string) {
   if (existing.aktif) throw new Error('Sefer dilimi zaten aktif.')
 
   return prisma.servisSeferDilimi.update({ where: { id }, data: { aktif: true } })
+}
+
+// ============================================================================
+// ServisGuzergahDurak — güzergahın sıralı durak listesi
+// ============================================================================
+//
+// sira, (guzergahId, sira) üzerinde DB'de ANLIK (deferrable olmayan) unique
+// kısıtla korunur. Pasifleştirme sira'yı DEĞİŞTİRMEZ — yalnız aktif=false
+// yapar; satır asla hard-delete edilmez çünkü ServisPersonelAtama geçmiş bir
+// atamanın hedefini (guzergahId, durakId) bileşik anahtarıyla buraya
+// referans verir (bkz. schema.prisma yorumu). sira'nın kendisi yalnız
+// gösterim/sıralama amaçlıdır — iş kuralı/tarihçe sira'ya bakmaz.
+
+const SIRA_GECICI_OFSET = 1_000_000
+
+const servisGuzergahDurakInclude = {
+  durak: { select: { id: true, kod: true, ad: true, aktif: true } },
+  saatler: {
+    include: { dilim: { select: { id: true, kod: true, ad: true, yon: true } } },
+  },
+} as const
+
+export async function listServisGuzergahDuraklar(guzergahId: string, filtre?: { aktif?: boolean }) {
+  return prisma.servisGuzergahDurak.findMany({
+    where: { guzergahId, ...(filtre?.aktif !== undefined ? { aktif: filtre.aktif } : {}) },
+    include: servisGuzergahDurakInclude,
+    orderBy: { sira: 'asc' },
+  })
+}
+
+export async function createServisGuzergahDurak(guzergahId: string, form: ServisGuzergahDurakForm) {
+  const { valid, errors } = validateServisGuzergahDurakForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const durakId = form.durakId.trim()
+  const [guzergah, durak, mevcut, sonuncusu] = await Promise.all([
+    prisma.servisGuzergah.findUnique({ where: { id: guzergahId } }),
+    prisma.servisDurak.findUnique({ where: { id: durakId } }),
+    prisma.servisGuzergahDurak.findUnique({ where: { guzergahId_durakId: { guzergahId, durakId } } }),
+    prisma.servisGuzergahDurak.findFirst({ where: { guzergahId }, orderBy: { sira: 'desc' } }),
+  ])
+  if (!guzergah) throw new Error('Güzergâh bulunamadı.')
+  if (!guzergah.aktif) throw new Error('Pasif güzergaha durak eklenemez.')
+  if (!durak) throw new Error('Durak bulunamadı.')
+  if (!durak.aktif) throw new Error('Pasif durak güzergaha eklenemez.')
+  if (mevcut) {
+    throw new Error(
+      mevcut.aktif
+        ? 'Bu durak zaten bu güzergahta.'
+        : 'Bu durak bu güzergahta daha önce eklenmiş ve pasifleştirilmiş — yeniden eklemek yerine geri alın.',
+    )
+  }
+
+  return prisma.servisGuzergahDurak.create({
+    data: { guzergahId, durakId, sira: (sonuncusu?.sira ?? 0) + 1 },
+    include: servisGuzergahDurakInclude,
+  })
+}
+
+export async function pasiflestirServisGuzergahDurak(id: string) {
+  const existing = await prisma.servisGuzergahDurak.findUnique({ where: { id } })
+  if (!existing) throw new Error('Güzergâh-durak eşleşmesi bulunamadı.')
+  if (!existing.aktif) throw new Error('Durak zaten pasif.')
+
+  return prisma.servisGuzergahDurak.update({
+    where: { id },
+    data: { aktif: false },
+    include: servisGuzergahDurakInclude,
+  })
+}
+
+export async function geriAlServisGuzergahDurak(id: string) {
+  const existing = await prisma.servisGuzergahDurak.findUnique({ where: { id } })
+  if (!existing) throw new Error('Güzergâh-durak eşleşmesi bulunamadı.')
+  if (existing.aktif) throw new Error('Durak zaten aktif.')
+
+  return prisma.servisGuzergahDurak.update({
+    where: { id },
+    data: { aktif: true },
+    include: servisGuzergahDurakInclude,
+  })
+}
+
+// Komşu aktif kayıtla sira değiştirir (yukarı/aşağı ok butonları). Üç adımlı
+// transaction ZORUNLU: doğrudan "seçili.sira = komşu.sira" yazımı, komşu o
+// sira'yı hâlâ taşırken @@unique([guzergahId, sira]) ihlali fırlatır (anlık
+// kontrol edilir, deferrable değil) — seçili önce aralık dışı geçici bir
+// sira'ya taşınmalı.
+export async function siraDegistirServisGuzergahDurak(
+  guzergahId: string,
+  id: string,
+  yon: 'YUKARI' | 'ASAGI',
+) {
+  const aktifSirali = await prisma.servisGuzergahDurak.findMany({
+    where: { guzergahId, aktif: true },
+    orderBy: { sira: 'asc' },
+  })
+  const index = aktifSirali.findIndex((d) => d.id === id)
+  if (index === -1) throw new Error('Güzergâh-durak eşleşmesi bulunamadı veya pasif.')
+
+  const komsuIndex = yon === 'YUKARI' ? index - 1 : index + 1
+  if (komsuIndex < 0 || komsuIndex >= aktifSirali.length) {
+    return listServisGuzergahDuraklar(guzergahId)
+  }
+
+  const seciliId = aktifSirali[index].id
+  const seciliSira = aktifSirali[index].sira
+  const komsuId = aktifSirali[komsuIndex].id
+  const komsuSira = aktifSirali[komsuIndex].sira
+
+  await prisma.$transaction([
+    prisma.servisGuzergahDurak.update({
+      where: { id: seciliId },
+      data: { sira: seciliSira + SIRA_GECICI_OFSET },
+    }),
+    prisma.servisGuzergahDurak.update({ where: { id: komsuId }, data: { sira: seciliSira } }),
+    prisma.servisGuzergahDurak.update({ where: { id: seciliId }, data: { sira: komsuSira } }),
+  ])
+
+  return listServisGuzergahDuraklar(guzergahId)
+}
+
+// Sürükle-bırak sonrası tam liste yeniden sıralama. `siraliIdler` YALNIZ aktif
+// kayıtları, istenen yeni sırayla içermeli — pasif kayıtlar (varsa) listenin
+// sonuna eklenir (sira'ları pasif kayıtlar için anlamsızdır, yalnız unique
+// kalmaları yeterlidir). İki fazlı transaction: önce TÜM etkilenen satırlar
+// çakışmayacak geçici değerlere, sonra 1..N'e taşınır — @@unique([guzergahId,
+// sira]) anlık kontrol edildiği için tek fazda (index+1) doğrudan yazmak
+// mevcut değerlerle çakışabilir.
+export async function yenidenSiralaServisGuzergahDuraklar(guzergahId: string, siraliIdler: string[]) {
+  const tumKayitlar = await prisma.servisGuzergahDurak.findMany({
+    where: { guzergahId },
+    orderBy: { sira: 'asc' },
+  })
+
+  const aktifIdSeti = new Set(tumKayitlar.filter((d) => d.aktif).map((d) => d.id))
+  const gelenIdSeti = new Set(siraliIdler)
+  const birebirEsit =
+    siraliIdler.length === aktifIdSeti.size &&
+    siraliIdler.every((id) => aktifIdSeti.has(id)) &&
+    [...aktifIdSeti].every((id) => gelenIdSeti.has(id))
+  if (!birebirEsit) {
+    throw new Error('Sıralama listesi bu güzergahın aktif duraklarıyla birebir eşleşmiyor.')
+  }
+
+  const pasifIdler = tumKayitlar.filter((d) => !d.aktif).map((d) => d.id)
+  const nihaiSiraliListe = [...siraliIdler, ...pasifIdler]
+
+  await prisma.$transaction([
+    ...nihaiSiraliListe.map((id, index) =>
+      prisma.servisGuzergahDurak.update({
+        where: { id },
+        data: { sira: index + 1 + SIRA_GECICI_OFSET },
+      }),
+    ),
+    ...nihaiSiraliListe.map((id, index) =>
+      prisma.servisGuzergahDurak.update({ where: { id }, data: { sira: index + 1 } }),
+    ),
+  ])
+
+  return listServisGuzergahDuraklar(guzergahId)
+}
+
+// ============================================================================
+// ServisGuzergahDurakSaat — dilim bazlı biniş/iniş saati (tanım verisi,
+// aktif/tarihçe YOK — satır doğrudan güncellenir veya silinir, bkz.
+// schema.prisma yorumu)
+// ============================================================================
+
+const servisGuzergahDurakSaatInclude = {
+  dilim: { select: { id: true, kod: true, ad: true, yon: true } },
+} as const
+
+export async function guzergahDurakSaatiKaydet(guzergahDurakId: string, form: ServisGuzergahDurakSaatForm) {
+  const { valid, errors } = validateServisGuzergahDurakSaatForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const dilimId = form.dilimId.trim()
+  const [guzergahDurak, dilim] = await Promise.all([
+    prisma.servisGuzergahDurak.findUnique({ where: { id: guzergahDurakId } }),
+    prisma.servisSeferDilimi.findUnique({ where: { id: dilimId } }),
+  ])
+  if (!guzergahDurak) throw new Error('Güzergâh-durak eşleşmesi bulunamadı.')
+  if (!guzergahDurak.aktif) throw new Error('Pasif güzergâh-durak eşleşmesine saat girilemez.')
+  if (!dilim) throw new Error('Sefer dilimi bulunamadı.')
+  if (!dilim.aktif) throw new Error('Pasif sefer dilimine saat girilemez.')
+
+  return prisma.servisGuzergahDurakSaat.upsert({
+    where: { guzergahDurakId_dilimId: { guzergahDurakId, dilimId } },
+    create: { guzergahDurakId, dilimId, saat: form.saat.trim() },
+    update: { saat: form.saat.trim() },
+    include: servisGuzergahDurakSaatInclude,
+  })
+}
+
+export async function guzergahDurakSaatiSil(id: string) {
+  const existing = await prisma.servisGuzergahDurakSaat.findUnique({ where: { id } })
+  if (!existing) throw new Error('Saat kaydı bulunamadı.')
+
+  return prisma.servisGuzergahDurakSaat.delete({ where: { id } })
 }

@@ -19,6 +19,12 @@ function permissionResult(allowed: boolean) {
   return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 }) }
 }
 
+const ornekPersonel = [
+  { id: 'p1', sicilNo: '1001', adSoyad: 'Ahmet Işık', bolum: 'Üretim' },
+  { id: 'p2', sicilNo: '1002', adSoyad: 'Ali Veli', bolum: 'IT' },
+  { id: 'p3', sicilNo: '1003', adSoyad: 'Zeynep Yılmaz', bolum: 'İK' },
+]
+
 describe('Servis personel arama route', () => {
   it('servis.tanim.manage ister ve reddedilirse prisma çağrılmaz', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(false))
@@ -28,35 +34,66 @@ describe('Servis personel arama route', () => {
     expect(mocks.personnelFindMany).not.toHaveBeenCalled()
   })
 
-  it('arama terimiyle yalnız aktif personeli sicilNo/adSoyad üzerinden arar', async () => {
+  it('yalnız aktif personeli çeker, arama filtresi DB yerine JS tarafında uygulanır', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(true))
-    mocks.personnelFindMany.mockResolvedValue([{ id: 'p1', sicilNo: '123', adSoyad: 'Ali Veli', bolum: 'IT' }])
+    mocks.personnelFindMany.mockResolvedValue(ornekPersonel)
 
-    const response = await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara?search=ali'))
-    const json = await response.json()
+    await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara?search=ali'))
 
-    expect(response.status).toBe(200)
-    expect(json.ok).toBe(true)
-    expect(json.data).toHaveLength(1)
-    expect(mocks.personnelFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        aktif: true,
-        OR: [
-          { adSoyad: { contains: 'ali', mode: 'insensitive' } },
-          { sicilNo: { contains: 'ali', mode: 'insensitive' } },
-        ],
-      }),
-    }))
+    expect(mocks.personnelFindMany).toHaveBeenCalledWith({
+      where: { aktif: true },
+      select: { id: true, sicilNo: true, adSoyad: true, bolum: true },
+      orderBy: { adSoyad: 'asc' },
+    })
   })
 
-  it('arama terimi yokken yalnız aktif filtresiyle listeler', async () => {
+  it('adSoyad üzerinde arar', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(true))
-    mocks.personnelFindMany.mockResolvedValue([])
+    mocks.personnelFindMany.mockResolvedValue(ornekPersonel)
 
-    await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara'))
+    const response = await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara?search=veli'))
+    const json = await response.json()
 
-    expect(mocks.personnelFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { aktif: true },
-    }))
+    expect(json.data.map((p: { id: string }) => p.id)).toEqual(['p2'])
+  })
+
+  it('sicilNo üzerinde arar', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.personnelFindMany.mockResolvedValue(ornekPersonel)
+
+    const response = await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara?search=1003'))
+    const json = await response.json()
+
+    expect(json.data.map((p: { id: string }) => p.id)).toEqual(['p3'])
+  })
+
+  it('tr-TR duyarlı arar: büyük "I" ile yazılmış "Işık" küçük "ışık" aramasıyla bulunur (Postgres ILIKE bunu kaçırır)', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.personnelFindMany.mockResolvedValue(ornekPersonel)
+
+    const response = await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara?search=ışık'))
+    const json = await response.json()
+
+    expect(json.data.map((p: { id: string }) => p.id)).toEqual(['p1'])
+  })
+
+  it('tr-TR duyarlı arar: tümü büyük "YILMAZ" küçük "yılmaz" aramasıyla bulunur', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.personnelFindMany.mockResolvedValue(ornekPersonel)
+
+    const response = await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara?search=YILMAZ'))
+    const json = await response.json()
+
+    expect(json.data.map((p: { id: string }) => p.id)).toEqual(['p3'])
+  })
+
+  it('arama terimi yokken tüm aktif personeli (ilk 50) döner', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.personnelFindMany.mockResolvedValue(ornekPersonel)
+
+    const response = await GET(new NextRequest('http://localhost/api/servis-yonetimi/personel-ara'))
+    const json = await response.json()
+
+    expect(json.data).toHaveLength(3)
   })
 })

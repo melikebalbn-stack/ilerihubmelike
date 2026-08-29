@@ -15,7 +15,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const { id } = await context.params
     const data = await prisma.servisSofor.findUnique({
       where: { id },
-      include: { firma: { select: { id: true, ad: true, aktif: true } } },
+      include: {
+        firma: { select: { id: true, ad: true, aktif: true } },
+        personnel: { select: { id: true, adSoyad: true, sicilNo: true, aktif: true } },
+      },
     })
     return data
       ? NextResponse.json({ ok: true, data })

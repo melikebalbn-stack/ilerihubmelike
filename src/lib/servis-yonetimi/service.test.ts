@@ -516,12 +516,15 @@ const gecerliSoforPersonel = {
 }
 
 describe('ServisSofor — view', () => {
-  it('aktif filtresi ve firma bilgisiyle ada göre listeler', async () => {
+  it('aktif filtresi, firma ve personel bilgisiyle ada göre listeler', async () => {
     mocks.soforFindMany.mockResolvedValue([{ id: 's1', adSoyad: 'Test Şoför' }])
     const data = await listServisSoforler({ aktif: true })
     expect(mocks.soforFindMany).toHaveBeenCalledWith({
       where: { aktif: true },
-      include: { firma: { select: { id: true, ad: true, aktif: true } } },
+      include: {
+        firma: { select: { id: true, ad: true, aktif: true } },
+        personnel: { select: { id: true, adSoyad: true, sicilNo: true, aktif: true } },
+      },
       orderBy: { adSoyad: 'asc' },
     })
     expect(data).toHaveLength(1)

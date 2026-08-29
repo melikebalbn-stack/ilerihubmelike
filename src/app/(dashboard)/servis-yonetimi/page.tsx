@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Dialog,
   DialogContent,
@@ -82,12 +83,16 @@ type ServisArac = {
   updatedAt: string
 }
 
+type SoforPersonel = { id: string; adSoyad: string; sicilNo: string | null; aktif: boolean }
+
 type ServisSofor = {
   id: string
   adSoyad: string
   telefon: string | null
   firmaId: string | null
   firma: { id: string; ad: string; aktif: boolean } | null
+  personnelId: string | null
+  personnel: SoforPersonel | null
   aktif: boolean
   createdAt: string
   updatedAt: string
@@ -1130,7 +1135,89 @@ function ServisAracPanel({ canManage }: { canManage: boolean }) {
   )
 }
 
-const bosSoforForm = { adSoyad: '', telefon: '', firmaId: '' }
+type SoforPickedPersonel = { id: string; sicilNo: string | null; adSoyad: string }
+
+// Dahili personel şoförü seçimi — toplu-kart-okutamama/_components/personnel-picker.tsx
+// ile aynı desen (arama-üzerine-seç, elle serbest metin girişi yok), servis-yonetimi'nin
+// kendi dar kapsamlı arama uç noktasına (/api/servis-yonetimi/personel-ara) bağlanır.
+function SoforPersonelPicker({
+  id,
+  value,
+  onSelect,
+}: {
+  id?: string
+  value: SoforPickedPersonel | null
+  onSelect: (personel: SoforPickedPersonel) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [sonuclar, setSonuclar] = useState<SoforPickedPersonel[]>([])
+  const [acik, setAcik] = useState(false)
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function tikla(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAcik(false)
+    }
+    document.addEventListener('mousedown', tikla)
+    return () => document.removeEventListener('mousedown', tikla)
+  }, [])
+
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setSonuclar([])
+      return
+    }
+    const zamanlayici = setTimeout(async () => {
+      setYukleniyor(true)
+      try {
+        const res = await fetch(`/api/servis-yonetimi/personel-ara?search=${encodeURIComponent(query)}`)
+        const json = await res.json()
+        setSonuclar(res.ok && json.ok ? json.data : [])
+      } finally {
+        setYukleniyor(false)
+      }
+    }, 300)
+    return () => clearTimeout(zamanlayici)
+  }, [query])
+
+  return (
+    <div ref={ref} className="relative">
+      <Input
+        id={id}
+        value={value ? `${value.sicilNo ? value.sicilNo + ' - ' : ''}${value.adSoyad}` : query}
+        placeholder="Sicil No veya Ad Soyad ile ara..."
+        onChange={(e) => { setQuery(e.target.value); setAcik(true) }}
+        onFocus={() => { setQuery(''); setAcik(true) }}
+      />
+      {acik && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-56 overflow-y-auto">
+          {yukleniyor && <div className="px-3 py-2 text-sm text-muted-foreground">Aranıyor...</div>}
+          {!yukleniyor && query.trim().length >= 2 && sonuclar.length === 0 && (
+            <div className="px-3 py-2 text-sm text-muted-foreground">Sonuç bulunamadı</div>
+          )}
+          {!yukleniyor && query.trim().length < 2 && (
+            <div className="px-3 py-2 text-sm text-muted-foreground">En az 2 karakter yazın</div>
+          )}
+          {sonuclar.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+              onMouseDown={(e) => { e.preventDefault(); onSelect(p); setQuery(''); setAcik(false) }}
+            >
+              <span className="font-medium">{p.sicilNo || '-'}</span> — {p.adSoyad}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type SoforKimlikTuru = 'FIRMA' | 'PERSONEL'
+
+const bosSoforForm = { adSoyad: '', telefon: '', kimlikTuru: 'FIRMA' as SoforKimlikTuru, firmaId: '', personnelId: '' }
 
 function ServisSoforPanel({ canManage }: { canManage: boolean }) {
   const [soforler, setSoforler] = useState<ServisSofor[]>([])
@@ -1141,6 +1228,7 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
   const [dialogAcik, setDialogAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<ServisSofor | null>(null)
   const [form, setForm] = useState(bosSoforForm)
+  const [secilenPersonel, setSecilenPersonel] = useState<SoforPickedPersonel | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1177,23 +1265,39 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
 
   function yeniAc() {
     setDuzenlenen(null)
+    setSecilenPersonel(null)
     setForm({ ...bosSoforForm, firmaId: firmalar[0]?.id || '' })
     setDialogAcik(true)
   }
 
   function duzenleAc(sofor: ServisSofor) {
     setDuzenlenen(sofor)
-    setForm({ adSoyad: sofor.adSoyad, telefon: sofor.telefon || '', firmaId: sofor.firmaId || '' })
+    setForm({
+      adSoyad: sofor.adSoyad,
+      telefon: sofor.telefon || '',
+      kimlikTuru: sofor.personnelId ? 'PERSONEL' : 'FIRMA',
+      firmaId: sofor.firmaId || '',
+      personnelId: sofor.personnelId || '',
+    })
+    setSecilenPersonel(
+      sofor.personnel ? { id: sofor.personnel.id, sicilNo: sofor.personnel.sicilNo, adSoyad: sofor.personnel.adSoyad } : null
+    )
     setDialogAcik(true)
   }
 
   async function kaydet() {
     setHata(null)
+    const govde = {
+      adSoyad: form.adSoyad,
+      telefon: form.telefon,
+      firmaId: form.kimlikTuru === 'FIRMA' ? form.firmaId : '',
+      personnelId: form.kimlikTuru === 'PERSONEL' ? form.personnelId : '',
+    }
     const url = duzenlenen ? `/api/servis-yonetimi/sofor/${duzenlenen.id}` : '/api/servis-yonetimi/sofor'
     const res = await fetch(url, {
       method: duzenlenen ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify(govde),
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
@@ -1213,21 +1317,23 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Ad soyada göre ara" aria-label="Şoför ara" className="sm:max-w-sm" />
-        {canManage && <Button onClick={yeniAc} disabled={firmalar.length === 0}><Plus className="mr-2 h-4 w-4" /> Yeni Şoför</Button>}
+        {canManage && <Button onClick={yeniAc}><Plus className="mr-2 h-4 w-4" /> Yeni Şoför</Button>}
       </div>
-      {canManage && firmalar.length === 0 && !yukleniyor && (
-        <p className="text-sm text-amber-600">Şoför eklemek için önce aktif bir taşeron firma oluşturun.</p>
-      )}
       {hata && <p className="text-sm text-red-600">{hata}</p>}
       {yukleniyor ? <p className="text-sm text-muted-foreground">Yükleniyor...</p> : (
         <Table>
-          <TableHeader><TableRow><TableHead>Ad Soyad</TableHead><TableHead>Telefon</TableHead><TableHead>Firma</TableHead><TableHead>Durum</TableHead>{canManage && <TableHead className="text-right">İşlem</TableHead>}</TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Ad Soyad</TableHead><TableHead>Telefon</TableHead><TableHead>Tür</TableHead><TableHead>Bağlı Olduğu</TableHead><TableHead>Durum</TableHead>{canManage && <TableHead className="text-right">İşlem</TableHead>}</TableRow></TableHeader>
           <TableBody>
-            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage ? 5 : 4} className="text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
+            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage ? 6 : 5} className="text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
             {filtreliSoforler.map((sofor) => (
               <TableRow key={sofor.id}>
                 <TableCell>{sofor.adSoyad}</TableCell><TableCell>{sofor.telefon || '-'}</TableCell>
-                <TableCell>{sofor.firma ? `${sofor.firma.ad}${sofor.firma.aktif ? '' : ' (Pasif)'}` : '-'}</TableCell>
+                <TableCell>{sofor.personnelId ? 'İç Personel' : 'Taşeron Firma'}</TableCell>
+                <TableCell>
+                  {sofor.personnelId
+                    ? `${sofor.personnel?.adSoyad || '-'}${sofor.personnel && !sofor.personnel.aktif ? ' (Pasif)' : ''}`
+                    : `${sofor.firma?.ad || '-'}${sofor.firma && !sofor.firma.aktif ? ' (Pasif)' : ''}`}
+                </TableCell>
                 <TableCell><AktifBadge aktif={sofor.aktif} /></TableCell>
                 {canManage && <TableCell className="space-x-2 text-right"><Button size="sm" variant="outline" onClick={() => duzenleAc(sofor)}>Düzenle</Button>{sofor.aktif ? <Button size="sm" variant="destructive" onClick={() => durumDegistir(sofor.id, true)}>Pasifleştir</Button> : <Button size="sm" variant="outline" onClick={() => durumDegistir(sofor.id, false)}>Geri Al</Button>}</TableCell>}
               </TableRow>
@@ -1240,7 +1346,45 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
           <div className="space-y-3">
             <div><Label htmlFor="sofor-ad-soyad">Ad Soyad *</Label><Input id="sofor-ad-soyad" value={form.adSoyad} onChange={(e) => setForm({ ...form, adSoyad: e.target.value })} /></div>
             <div><Label htmlFor="sofor-telefon">Telefon</Label><Input id="sofor-telefon" type="tel" placeholder="0532 123 45 67" value={form.telefon} onChange={(e) => setForm({ ...form, telefon: e.target.value })} /></div>
-            <div><Label htmlFor="sofor-firma">Taşeron Firma *</Label><select id="sofor-firma" value={form.firmaId} onChange={(e) => setForm({ ...form, firmaId: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"><option value="">Firma seçin</option>{firmalar.map((firma) => <option key={firma.id} value={firma.id}>{firma.ad}</option>)}</select></div>
+            <div>
+              <Label>Şoför Türü *</Label>
+              <RadioGroup
+                value={form.kimlikTuru}
+                onValueChange={(v) => setForm({ ...form, kimlikTuru: v as SoforKimlikTuru })}
+                className="flex flex-col gap-2 pt-1 sm:flex-row sm:gap-4"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="FIRMA" id="sofor-tur-firma" />
+                  <Label htmlFor="sofor-tur-firma" className="cursor-pointer font-normal">Taşeron Firma Şoförü</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="PERSONEL" id="sofor-tur-personel" />
+                  <Label htmlFor="sofor-tur-personel" className="cursor-pointer font-normal">İç Personel Şoförü</Label>
+                </div>
+              </RadioGroup>
+            </div>
+            {form.kimlikTuru === 'FIRMA' ? (
+              <div>
+                <Label htmlFor="sofor-firma">Taşeron Firma *</Label>
+                {firmalar.length === 0 ? (
+                  <p className="text-sm text-amber-600">Seçilecek aktif taşeron firma yok — önce Firmalar sekmesinden bir firma oluşturun.</p>
+                ) : (
+                  <select id="sofor-firma" value={form.firmaId} onChange={(e) => setForm({ ...form, firmaId: e.target.value })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <option value="">Firma seçin</option>
+                    {firmalar.map((firma) => <option key={firma.id} value={firma.id}>{firma.ad}</option>)}
+                  </select>
+                )}
+              </div>
+            ) : (
+              <div>
+                <Label htmlFor="sofor-personel">Personel *</Label>
+                <SoforPersonelPicker
+                  id="sofor-personel"
+                  value={secilenPersonel}
+                  onSelect={(p) => { setSecilenPersonel(p); setForm({ ...form, personnelId: p.id }) }}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter><Button onClick={kaydet}>Kaydet</Button></DialogFooter>
         </DialogContent>

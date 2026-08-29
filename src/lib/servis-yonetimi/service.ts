@@ -390,13 +390,18 @@ export async function geriAlServisArac(id: string) {
 }
 
 // ============================================================================
-// ServisSofor — dış firma şoförü için minimum veri master kaydı
+// ServisSofor — dış firma şoförü ya da dahili personel şoförü master kaydı
 // ============================================================================
+
+const servisSoforInclude = {
+  firma: { select: { id: true, ad: true, aktif: true } },
+  personnel: { select: { id: true, adSoyad: true, sicilNo: true, aktif: true } },
+} as const
 
 export async function listServisSoforler(filtre?: { aktif?: boolean }) {
   return prisma.servisSofor.findMany({
     where: filtre?.aktif !== undefined ? { aktif: filtre.aktif } : undefined,
-    include: { firma: { select: { id: true, ad: true, aktif: true } } },
+    include: servisSoforInclude,
     orderBy: { adSoyad: 'asc' },
   })
 }
@@ -454,7 +459,7 @@ export async function createServisSofor(form: ServisSoforForm) {
       telefon: normalizeServisSoforTelefon(form.telefon),
       ...kimlik,
     },
-    include: { firma: { select: { id: true, ad: true, aktif: true } } },
+    include: servisSoforInclude,
   })
 }
 
@@ -475,7 +480,7 @@ export async function updateServisSofor(id: string, form: ServisSoforForm) {
       telefon: normalizeServisSoforTelefon(form.telefon),
       ...kimlik,
     },
-    include: { firma: { select: { id: true, ad: true, aktif: true } } },
+    include: servisSoforInclude,
   })
 }
 

@@ -10,20 +10,6 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter })
 
-const SERVIS_PERMISSIONS: Record<string, string> = {
-  'servis.view': 'Servis yönetimi modülünü görüntüleme',
-  'servis.create': 'Servis kaydı oluşturma',
-  'servis.edit': 'Servis kaydı düzenleme',
-  'servis.history': 'Servis işlem geçmişini görüntüleme',
-  'servis.tanim.manage': 'Servis firma, yerleşke ve güzergâh tanımlarını yönetme',
-  'servis.sorumlu.manage': 'Servis sorumlusu atamalarını yönetme',
-  'servis.passive': 'Servis kayıtlarını pasifleştirme',
-  'servis.restore': 'Pasif servis kayıtlarını geri alma',
-  'servis.export': 'Servis verilerini dışa aktarma',
-  'servis.kvkk.view': 'Servis kapsamındaki KVKK verilerini görüntüleme',
-  'servis.admin': 'Servis yönetimi tam yetkisi',
-}
-
 async function main() {
   console.log('🔐 Permission seed (bootstrap-only) başlıyor...')
 
@@ -35,14 +21,9 @@ async function main() {
   let created = 0
   let skipped = 0
 
-  const permissionKeys = [...new Set([
-    ...Object.values(PERMISSION_KEYS),
-    ...Object.keys(SERVIS_PERMISSIONS),
-  ])]
-
-  for (const key of permissionKeys) {
+  for (const key of Object.values(PERMISSION_KEYS)) {
     const module = key.split('.')[0]
-    const description = SERVIS_PERMISSIONS[key] ?? PERMISSION_DESCRIPTIONS[key] ?? key
+    const description = PERMISSION_DESCRIPTIONS[key] ?? key
 
     const existing = await prisma.permission.findUnique({ where: { key } })
 
@@ -59,7 +40,7 @@ async function main() {
 
   // Sistemde tanımlı olmayan eski permission'ları (kodda silinmişler) raporla
   const allInDb = await prisma.permission.findMany({ select: { key: true, isSystem: true } })
-  const definedKeys = new Set<string>(permissionKeys)
+  const definedKeys = new Set<string>(Object.values(PERMISSION_KEYS) as string[])
   const orphaned = allInDb.filter(p => p.isSystem && !definedKeys.has(p.key))
 
   console.log(`✅ Oluşturuldu: ${created}, mevcut korundu: ${skipped}`)

@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   geriAlServisGuzergahSoforVarsayilan: vi.fn(),
   pasiflestirServisSorumlusu: vi.fn(),
   geriAlServisSorumlusu: vi.fn(),
+  pasiflestirServisPersonelDurum: vi.fn(),
+  geriAlServisPersonelDurum: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-permission', () => ({
@@ -53,6 +55,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   geriAlServisGuzergahSoforVarsayilan: mocks.geriAlServisGuzergahSoforVarsayilan,
   pasiflestirServisSorumlusu: mocks.pasiflestirServisSorumlusu,
   geriAlServisSorumlusu: mocks.geriAlServisSorumlusu,
+  pasiflestirServisPersonelDurum: mocks.pasiflestirServisPersonelDurum,
+  geriAlServisPersonelDurum: mocks.geriAlServisPersonelDurum,
 }))
 
 import { POST as firmaPasiflestir } from './firma/[id]/pasiflestir/route'
@@ -77,6 +81,8 @@ import { POST as soforVarsayilanPasiflestir } from './guzergah-sofor-varsayilan/
 import { POST as soforVarsayilanGeriAl } from './guzergah-sofor-varsayilan/[id]/geri-al/route'
 import { POST as sorumluPasiflestir } from './guzergah-sorumlu/[id]/pasiflestir/route'
 import { POST as sorumluGeriAl } from './guzergah-sorumlu/[id]/geri-al/route'
+import { POST as personelDurumPasiflestir } from './personel-durum/[id]/pasiflestir/route'
+import { POST as personelDurumGeriAl } from './personel-durum/[id]/geri-al/route'
 
 type PostHandler = (
   request: Request,
@@ -105,6 +111,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['güzergâh-araç varsayılanı', aracVarsayilanPasiflestir],
     ['güzergâh-şoför varsayılanı', soforVarsayilanPasiflestir],
     ['servis sorumlusu', sorumluPasiflestir],
+    ['servis personel durumu', personelDurumPasiflestir],
   ] as [string, PostHandler][])('%s pasifleştirme servis.passive ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.passive')
@@ -122,6 +129,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['güzergâh-araç varsayılanı', aracVarsayilanGeriAl],
     ['güzergâh-şoför varsayılanı', soforVarsayilanGeriAl],
     ['servis sorumlusu', sorumluGeriAl],
+    ['servis personel durumu', personelDurumGeriAl],
   ] as [string, PostHandler][])('%s geri-al servis.restore ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.restore')

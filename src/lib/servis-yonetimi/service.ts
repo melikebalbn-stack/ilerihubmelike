@@ -13,6 +13,7 @@ import {
   validateServisGuzergahAracVarsayilanForm,
   validateServisGuzergahSoforVarsayilanForm,
   validateServisSorumlusuForm,
+  validateServisPersonelDurumForm,
   type ServisFirmaForm,
   type ServisAracForm,
   type ServisDurakForm,
@@ -25,6 +26,7 @@ import {
   type ServisGuzergahAracVarsayilanForm,
   type ServisGuzergahSoforVarsayilanForm,
   type ServisSorumlusuForm,
+  type ServisPersonelDurumForm,
 } from './validation'
 
 // ============================================================================
@@ -1240,5 +1242,169 @@ export async function geriAlServisSorumlusu(id: string, updatedById: string) {
     where: { id },
     data: { aktif: true, updatedById },
     include: servisSorumlusuInclude,
+  })
+}
+
+// ============================================================================
+// ServisPersonelDurum — güzergahtan BAĞIMSIZ, personel bazlı kullanım durumu
+// ("KENDİ GELİYOR" bir güzergah/durak değil, kullanım durumudur — bkz.
+// ServisKullanimDurumu şema yorumu). ZAMAN BAĞIMLI ATAMA — geçmiş korunur,
+// satır asla silinmez/üzerine yazılmaz (madde 14/15).
+//
+// EXCLUDE USING gist (personnelId WITH =, daterange(...) WITH &&) WHERE
+// (aktif=true) — Sorumlusu'nun aksine bu tabloda EXCLUDE VAR, Araç/Şoför
+// Varsayılan'ın aksine rol/durum filtresi YOK: TÜM aktif kayıtlar aynı
+// personel için birbiriyle çakışır (aynı personelin aynı anda iki farklı
+// — hatta aynı — kullanım durumu olamaz). Kontrol BAŞTAN pozitif AND-of-OR
+// formuyla yazıldı (Ders 59 — NOT+lt/gt formu NULL bitisTarihi'li
+// (süresiz) satırları SQL'de UNKNOWN karşılaştırması yüzünden kaçırıp çiğ
+// Postgres EXCLUDE hatası sızdırıyordu; Araç/Şoför Varsayılan'da tespit
+// edilip düzeltilmişti, burada baştan doğru yazıldı).
+//
+// KVKK/minimum veri (madde 23): personel için yalnız görüntüleme amaçlı
+// alanlar (id, adSoyad, sicilNo, bolum, aktif) çekilir — adres/telefon gibi
+// alanlara bu ekranın hiçbir ihtiyacı yok.
+
+function durumEtiketi(durum: string): string {
+  switch (durum) {
+    case 'SERVIS_KULLANIYOR':
+      return 'Servis Kullanıyor'
+    case 'KENDI_GELIYOR':
+      return 'Kendi Geliyor'
+    case 'KULLANMIYOR':
+      return 'Kullanmıyor'
+    default:
+      return durum
+  }
+}
+
+async function personelDurumCakismasi(
+  personnelId: string,
+  baslangic: Date,
+  bitis: Date | null,
+  haricId?: string,
+) {
+  return prisma.servisPersonelDurum.findFirst({
+    where: {
+      personnelId,
+      aktif: true,
+      ...(haricId ? { id: { not: haricId } } : {}),
+      AND: [
+        { OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: baslangic } }] },
+        ...(bitis ? [{ baslangicTarihi: { lte: bitis } }] : []),
+      ],
+    },
+  })
+}
+
+function personelDurumCakismaMesaji(cakisan: { baslangicTarihi: Date; bitisTarihi: Date | null; durum: string }): string {
+  const araligi = cakisan.bitisTarihi
+    ? `${tarihStr(cakisan.baslangicTarihi)} – ${tarihStr(cakisan.bitisTarihi)}`
+    : `${tarihStr(cakisan.baslangicTarihi)} tarihinden itibaren süresiz`
+  return `Bu personelin ${araligi} aralığında zaten aktif bir "${durumEtiketi(cakisan.durum)}" kaydı var. Önce onu kapatmalısınız.`
+}
+
+const servisPersonelDurumInclude = {
+  personnel: { select: { id: true, adSoyad: true, sicilNo: true, bolum: true, aktif: true } },
+} as const
+
+export async function listServisPersonelDurumlari(filtre?: { personnelId?: string; aktif?: boolean }) {
+  return prisma.servisPersonelDurum.findMany({
+    where: {
+      ...(filtre?.personnelId ? { personnelId: filtre.personnelId } : {}),
+      ...(filtre?.aktif !== undefined ? { aktif: filtre.aktif } : {}),
+    },
+    include: servisPersonelDurumInclude,
+    orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
+  })
+}
+
+export async function createServisPersonelDurum(form: ServisPersonelDurumForm, createdById: string) {
+  const { valid, errors } = validateServisPersonelDurumForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const personnelId = form.personnelId.trim()
+  const baslangic = dateOnlyOrNull(form.baslangicTarihi)!
+  const bitis = dateOnlyOrNull(form.bitisTarihi)
+
+  const personnel = await prisma.personnel.findUnique({ where: { id: personnelId } })
+  if (!personnel) throw new Error('Personel bulunamadı.')
+  if (!personnel.aktif) throw new Error('Pasif personel için servis kullanım durumu kaydı oluşturulamaz.')
+
+  const cakisan = await personelDurumCakismasi(personnelId, baslangic, bitis)
+  if (cakisan) throw new Error(personelDurumCakismaMesaji(cakisan))
+
+  return prisma.servisPersonelDurum.create({
+    data: {
+      personnelId,
+      durum: form.durum,
+      baslangicTarihi: baslangic,
+      bitisTarihi: bitis,
+      neden: form.neden?.trim() || null,
+      createdById,
+    },
+    include: servisPersonelDurumInclude,
+  })
+}
+
+export async function guncelleServisPersonelDurum(
+  id: string,
+  form: { bitisTarihi?: string | null; neden?: string | null },
+  updatedById: string,
+) {
+  const existing = await prisma.servisPersonelDurum.findUnique({ where: { id } })
+  if (!existing) throw new Error('Servis kullanım durumu kaydı bulunamadı.')
+
+  const data: { bitisTarihi?: Date | null; neden?: string | null; updatedById: string } = { updatedById }
+
+  if (form.bitisTarihi !== undefined) {
+    const bitis = dateOnlyOrNull(form.bitisTarihi)
+    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
+    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+
+    if (existing.aktif && bitis?.getTime() !== existing.bitisTarihi?.getTime()) {
+      const cakisan = await personelDurumCakismasi(existing.personnelId, existing.baslangicTarihi, bitis, id)
+      if (cakisan) throw new Error(personelDurumCakismaMesaji(cakisan))
+    }
+    data.bitisTarihi = bitis
+  }
+  if (form.neden !== undefined) data.neden = form.neden?.trim() || null
+
+  return prisma.servisPersonelDurum.update({ where: { id }, data, include: servisPersonelDurumInclude })
+}
+
+export async function pasiflestirServisPersonelDurum(id: string, bitisTarihi: string, updatedById: string) {
+  const existing = await prisma.servisPersonelDurum.findUnique({ where: { id } })
+  if (!existing) throw new Error('Servis kullanım durumu kaydı bulunamadı.')
+  if (!existing.aktif) throw new Error('Bu kayıt zaten pasif.')
+
+  const bitis = dateOnlyOrNull(bitisTarihi)
+  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
+  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+
+  return prisma.servisPersonelDurum.update({
+    where: { id },
+    data: { bitisTarihi: bitis, aktif: false, updatedById },
+    include: servisPersonelDurumInclude,
+  })
+}
+
+export async function geriAlServisPersonelDurum(id: string, updatedById: string) {
+  const existing = await prisma.servisPersonelDurum.findUnique({ where: { id } })
+  if (!existing) throw new Error('Servis kullanım durumu kaydı bulunamadı.')
+  if (existing.aktif) throw new Error('Bu kayıt zaten aktif.')
+
+  const cakisan = await personelDurumCakismasi(
+    existing.personnelId,
+    existing.baslangicTarihi,
+    existing.bitisTarihi,
+    id,
+  )
+  if (cakisan) throw new Error(personelDurumCakismaMesaji(cakisan))
+
+  return prisma.servisPersonelDurum.update({
+    where: { id },
+    data: { aktif: true, updatedById },
+    include: servisPersonelDurumInclude,
   })
 }

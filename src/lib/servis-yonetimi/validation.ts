@@ -357,3 +357,43 @@ export function validateServisSorumlusuForm(form: ServisSorumlusuForm): ServisVa
 
   return { valid: errors.length === 0, errors }
 }
+
+// ServisPersonelDurum — güzergahtan BAĞIMSIZ, personel bazlı bir alan
+// ("KENDİ GELİYOR" bir güzergah/durak değil, kullanım durumudur — bkz.
+// ServisKullanimDurumu yorumu). EXCLUDE USING gist (personnelId WITH =,
+// daterange(...) WITH &&) WHERE (aktif=true) — rol/durum ayrımı YOK, tüm
+// aktif kayıtlar personnelId bazında birbiriyle çakışır (aynı personelin
+// aynı anda iki farklı — hatta aynı — kullanım durumu olamaz).
+export type ServisKullanimDurumu = 'SERVIS_KULLANIYOR' | 'KENDI_GELIYOR' | 'KULLANMIYOR'
+
+export type ServisPersonelDurumForm = {
+  personnelId: string
+  durum: ServisKullanimDurumu
+  baslangicTarihi: string
+  bitisTarihi?: string | null
+  neden?: string | null
+}
+
+export function validateServisPersonelDurumForm(form: ServisPersonelDurumForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.personnelId?.trim()) errors.push('Personel seçimi zorunludur.')
+  if (form.durum !== 'SERVIS_KULLANIYOR' && form.durum !== 'KENDI_GELIYOR' && form.durum !== 'KULLANMIYOR') {
+    errors.push('Durum SERVIS_KULLANIYOR, KENDI_GELIYOR veya KULLANMIYOR olmalıdır.')
+  }
+
+  const baslangic = parseDateOnly(form.baslangicTarihi)
+  if (!form.baslangicTarihi?.trim() || !baslangic) {
+    errors.push('Başlangıç tarihi zorunludur ve geçerli olmalıdır.')
+  }
+
+  const bitis = parseDateOnly(form.bitisTarihi)
+  if (form.bitisTarihi?.trim() && !bitis) {
+    errors.push('Bitiş tarihi geçersiz.')
+  }
+  if (baslangic && bitis && bitis < baslangic) {
+    errors.push('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

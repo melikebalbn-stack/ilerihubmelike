@@ -52,6 +52,11 @@ const mocks = vi.hoisted(() => ({
   sorumluFindUnique: vi.fn(),
   sorumluCreate: vi.fn(),
   sorumluUpdate: vi.fn(),
+  personelDurumFindMany: vi.fn(),
+  personelDurumFindFirst: vi.fn(),
+  personelDurumFindUnique: vi.fn(),
+  personelDurumCreate: vi.fn(),
+  personelDurumUpdate: vi.fn(),
   transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
 }))
 
@@ -134,6 +139,13 @@ vi.mock('@/lib/prisma', () => ({
       create: mocks.sorumluCreate,
       update: mocks.sorumluUpdate,
     },
+    servisPersonelDurum: {
+      findMany: mocks.personelDurumFindMany,
+      findFirst: mocks.personelDurumFindFirst,
+      findUnique: mocks.personelDurumFindUnique,
+      create: mocks.personelDurumCreate,
+      update: mocks.personelDurumUpdate,
+    },
     $transaction: mocks.transaction,
   },
 }))
@@ -197,6 +209,11 @@ import {
   guncelleServisSorumlusu,
   pasiflestirServisSorumlusu,
   geriAlServisSorumlusu,
+  listServisPersonelDurumlari,
+  createServisPersonelDurum,
+  guncelleServisPersonelDurum,
+  pasiflestirServisPersonelDurum,
+  geriAlServisPersonelDurum,
 } from './service'
 
 beforeEach(() => {
@@ -1559,5 +1576,154 @@ describe('ServisSorumlusu — pasifleştir/geri-al (madde 14: satır silinmez, b
   it('zaten aktif kaydı tekrar geri almaz', async () => {
     mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: true })
     await expect(geriAlServisSorumlusu('sr1', 'user-1')).rejects.toThrow('zaten aktif')
+  })
+})
+
+const gecerliPersonelDurum = {
+  personnelId: 'personel-1',
+  durum: 'SERVIS_KULLANIYOR' as const,
+  baslangicTarihi: '2026-01-01',
+}
+
+describe('ServisPersonelDurum — view', () => {
+  it('personnelId ve aktif filtresiyle listeler', async () => {
+    mocks.personelDurumFindMany.mockResolvedValue([{ id: 'pd1' }])
+    const data = await listServisPersonelDurumlari({ personnelId: 'personel-1', aktif: true })
+    expect(mocks.personelDurumFindMany).toHaveBeenCalledWith({
+      where: { personnelId: 'personel-1', aktif: true },
+      include: expect.any(Object),
+      orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
+    })
+    expect(data).toHaveLength(1)
+  })
+
+  it('filtresiz tüm kayıtları listeler', async () => {
+    mocks.personelDurumFindMany.mockResolvedValue([])
+    await listServisPersonelDurumlari()
+    expect(mocks.personelDurumFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
+  })
+})
+
+describe('ServisPersonelDurum — oluşturma ve çakışma (EXCLUDE simülasyonu, personnelId bazlı)', () => {
+  beforeEach(() => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: true })
+    mocks.personelDurumFindFirst.mockResolvedValue(null)
+  })
+
+  it('geçerli kaydı oluşturur', async () => {
+    mocks.personelDurumCreate.mockResolvedValue({ id: 'pd1', ...gecerliPersonelDurum })
+    await createServisPersonelDurum(gecerliPersonelDurum, 'user-1')
+    expect(mocks.personelDurumCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ personnelId: 'personel-1', durum: 'SERVIS_KULLANIYOR', createdById: 'user-1' }),
+    }))
+  })
+
+  it('pasif personel için kayıt oluşturmaz', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: false })
+    await expect(createServisPersonelDurum(gecerliPersonelDurum, 'user-1')).rejects.toThrow('Pasif personel')
+    expect(mocks.personelDurumCreate).not.toHaveBeenCalled()
+  })
+
+  it('aynı personelin çakışan tarihte zaten aktif bir durumu varsa reddeder — DURUM DEĞERİ FARKLI OLSA BİLE', async () => {
+    mocks.personelDurumFindFirst.mockResolvedValue({
+      id: 'pd-eski', baslangicTarihi: new Date('2025-12-01'), bitisTarihi: null, durum: 'KENDI_GELIYOR',
+    })
+    await expect(createServisPersonelDurum(gecerliPersonelDurum, 'user-1'))
+      .rejects.toThrow('zaten aktif bir "Kendi Geliyor" kaydı var')
+    expect(mocks.personelDurumCreate).not.toHaveBeenCalled()
+  })
+
+  it('geçersiz durum veya tarihle DB çağrısı yapmaz', async () => {
+    await expect(createServisPersonelDurum({ ...gecerliPersonelDurum, durum: 'BASKA' as never }, 'user-1'))
+      .rejects.toThrow('Durum SERVIS_KULLANIYOR')
+    await expect(createServisPersonelDurum({ ...gecerliPersonelDurum, baslangicTarihi: '' }, 'user-1'))
+      .rejects.toThrow('Başlangıç tarihi')
+    expect(mocks.personnelFindUnique).not.toHaveBeenCalled()
+  })
+
+  // Regresyon (Ders 59): süresiz (bitisTarihi=null) mevcut bir durumu SQL'de
+  // NULL karşılaştırması yüzünden kaçırıp çiğ EXCLUDE hatası sızdıran
+  // NOT+lt/gt formuna karşı — WHERE'in NULL-güvenli AND-of-OR biçiminde
+  // kaldığını sabitler.
+  it('süresiz mevcut kayıtla çakışma sorgusu NULL-güvenli (AND-of-OR) kurulur', async () => {
+    await createServisPersonelDurum(gecerliPersonelDurum, 'user-1')
+    expect(mocks.personelDurumFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: [
+          { OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: expect.any(Date) } }] },
+        ],
+      }),
+    }))
+  })
+})
+
+describe('ServisPersonelDurum — güncelleme (sınırlı)', () => {
+  it('bitisTarihi uzatılırken yeni bir çakışma varsa reddeder', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({
+      id: 'pd1', personnelId: 'personel-1', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-10'),
+    })
+    mocks.personelDurumFindFirst.mockResolvedValue({
+      id: 'pd-baska', baslangicTarihi: new Date('2026-01-15'), bitisTarihi: null, durum: 'KULLANMIYOR',
+    })
+    await expect(guncelleServisPersonelDurum('pd1', { bitisTarihi: '2026-02-01' }, 'user-1'))
+      .rejects.toThrow('zaten aktif bir "Kullanmıyor" kaydı var')
+    expect(mocks.personelDurumUpdate).not.toHaveBeenCalled()
+  })
+
+  it('neden güncellemesi çakışma kontrolü tetiklemez', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({
+      id: 'pd1', personnelId: 'personel-1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null,
+    })
+    mocks.personelDurumUpdate.mockResolvedValue({ id: 'pd1' })
+    await guncelleServisPersonelDurum('pd1', { neden: 'düzeltme' }, 'user-1')
+    expect(mocks.personelDurumFindFirst).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServisPersonelDurum — pasifleştir/geri-al (madde 14/15: satır silinmez)', () => {
+  it('pasifleştirme bitisTarihi ister ve aktif=false yapar', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({ id: 'pd1', aktif: true, baslangicTarihi: new Date('2026-01-01') })
+    mocks.personelDurumUpdate.mockResolvedValue({ id: 'pd1', aktif: false })
+    await pasiflestirServisPersonelDurum('pd1', '2026-01-15', 'user-1')
+    expect(mocks.personelDurumUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ bitisTarihi: expect.any(Date), aktif: false, updatedById: 'user-1' }),
+    }))
+  })
+
+  it('bitisTarihi verilmeden pasifleştirilemez', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({ id: 'pd1', aktif: true, baslangicTarihi: new Date('2026-01-01') })
+    await expect(pasiflestirServisPersonelDurum('pd1', '', 'user-1')).rejects.toThrow('Kapatma tarihi zorunludur')
+    expect(mocks.personelDurumUpdate).not.toHaveBeenCalled()
+  })
+
+  it('geri-al: çakışma yoksa aktif=true yapar', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({
+      id: 'pd1', aktif: false, personnelId: 'personel-1',
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15'),
+    })
+    mocks.personelDurumFindFirst.mockResolvedValue(null)
+    mocks.personelDurumUpdate.mockResolvedValue({ id: 'pd1', aktif: true })
+    await geriAlServisPersonelDurum('pd1', 'user-1')
+    expect(mocks.personelDurumUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { aktif: true, updatedById: 'user-1' },
+    }))
+  })
+
+  it('geri-al: aradan başka bir aktif kayıt oluşmuşsa (yeniden çakışma) reddeder', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({
+      id: 'pd1', aktif: false, personnelId: 'personel-1',
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15'),
+    })
+    mocks.personelDurumFindFirst.mockResolvedValue({
+      id: 'pd-yeni', baslangicTarihi: new Date('2026-01-05'), bitisTarihi: null, durum: 'SERVIS_KULLANIYOR',
+    })
+    await expect(geriAlServisPersonelDurum('pd1', 'user-1')).rejects.toThrow('zaten aktif bir "Servis Kullanıyor" kaydı var')
+    expect(mocks.personelDurumUpdate).not.toHaveBeenCalled()
+  })
+
+  it('zaten aktif kaydı tekrar geri almaz', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({ id: 'pd1', aktif: true })
+    await expect(geriAlServisPersonelDurum('pd1', 'user-1')).rejects.toThrow('zaten aktif')
   })
 })

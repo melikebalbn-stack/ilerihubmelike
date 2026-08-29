@@ -113,6 +113,19 @@ type ServisSeferDilimi = {
   updatedAt: string
 }
 
+type ServisKullanimDurumu = 'SERVIS_KULLANIYOR' | 'KENDI_GELIYOR' | 'KULLANMIYOR'
+
+type ServisPersonelDurumKaydi = {
+  id: string
+  personnelId: string
+  personnel: { id: string; adSoyad: string; sicilNo: string | null; bolum: string | null; aktif: boolean }
+  durum: ServisKullanimDurumu
+  baslangicTarihi: string
+  bitisTarihi: string | null
+  aktif: boolean
+  neden: string | null
+}
+
 function AktifBadge({ aktif }: { aktif: boolean }) {
   return (
     <Badge variant={aktif ? 'default' : 'secondary'}>
@@ -1656,11 +1669,291 @@ function ServisSeferDilimiPanel({ canManage }: { canManage: boolean }) {
   )
 }
 
+function durumEtiketiGoster(durum: ServisKullanimDurumu): string {
+  switch (durum) {
+    case 'SERVIS_KULLANIYOR': return 'Servis Kullanıyor'
+    case 'KENDI_GELIYOR': return 'Kendi Geliyor'
+    case 'KULLANMIYOR': return 'Kullanmıyor'
+  }
+}
+
+const bugunPersonelDurum = () => new Date().toISOString().slice(0, 10)
+const bosPersonelDurumForm = { personnelId: '', durum: 'SERVIS_KULLANIYOR' as ServisKullanimDurumu, baslangicTarihi: bugunPersonelDurum(), bitisTarihi: '', neden: '' }
+
+function ServisPersonelDurumPanel({
+  canCreate,
+  canEdit,
+  canPassive,
+  canRestore,
+}: {
+  canCreate: boolean
+  canEdit: boolean
+  canPassive: boolean
+  canRestore: boolean
+}) {
+  const [liste, setListe] = useState<ServisPersonelDurumKaydi[]>([])
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [hata, setHata] = useState<string | null>(null)
+  const [dialogAcik, setDialogAcik] = useState(false)
+  // SoforPersonelPicker / SoforPickedPersonel yukarıda "İç Personel Şoförü"
+  // için tanımlı — burada da aynen tekrar kullanılıyor (aynı dosyada,
+  // Sofor'a özel bir mantığı yok, salt personel arama-seç bileşeni).
+  const [secilenPersonel, setSecilenPersonel] = useState<SoforPickedPersonel | null>(null)
+  const [form, setForm] = useState(bosPersonelDurumForm)
+  const [kapatilan, setKapatilan] = useState<ServisPersonelDurumKaydi | null>(null)
+  const [kapatmaTarihi, setKapatmaTarihi] = useState('')
+  const [duzenlenen, setDuzenlenen] = useState<ServisPersonelDurumKaydi | null>(null)
+  const [duzenlemeNeden, setDuzenlemeNeden] = useState('')
+
+  const yukle = useCallback(async () => {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const res = await fetch('/api/servis-yonetimi/personel-durum')
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setHata(json.message || 'Servis kullanım durumu listesi alınamadı.')
+        return
+      }
+      setListe(json.data)
+    } catch {
+      setHata('Veriler alınırken beklenmeyen bir hata oluştu.')
+    } finally {
+      setYukleniyor(false)
+    }
+  }, [])
+
+  useEffect(() => { yukle() }, [yukle])
+
+  function yeniAc() {
+    setSecilenPersonel(null)
+    setForm(bosPersonelDurumForm)
+    setHata(null)
+    setDialogAcik(true)
+  }
+
+  async function kaydet() {
+    setHata(null)
+    const res = await fetch('/api/servis-yonetimi/personel-durum', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Kaydedilemedi.')
+      return
+    }
+    setDialogAcik(false)
+    yukle()
+  }
+
+  function kapatmaAc(v: ServisPersonelDurumKaydi) {
+    setKapatilan(v)
+    setKapatmaTarihi(bugunPersonelDurum())
+    setHata(null)
+  }
+
+  function duzenlemeAc(v: ServisPersonelDurumKaydi) {
+    setDuzenlenen(v)
+    setDuzenlemeNeden(v.neden || '')
+    setHata(null)
+  }
+
+  async function duzenlemeKaydet() {
+    if (!duzenlenen) return
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/personel-durum/${duzenlenen.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ neden: duzenlemeNeden }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Güncellenemedi.')
+      return
+    }
+    setDuzenlenen(null)
+    yukle()
+  }
+
+  async function kapat() {
+    if (!kapatilan) return
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/personel-durum/${kapatilan.id}/pasiflestir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bitisTarihi: kapatmaTarihi }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Kayıt kapatılamadı.')
+      return
+    }
+    setKapatilan(null)
+    yukle()
+  }
+
+  async function geriAl(id: string) {
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/personel-durum/${id}/geri-al`, { method: 'POST' })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Geri alınamadı.')
+      return
+    }
+    yukle()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-medium">Personel Servis Kullanım Durumları</h2>
+        {canCreate && (
+          <Button size="sm" onClick={yeniAc}>
+            <Plus className="mr-2 h-4 w-4" /> Yeni Kayıt
+          </Button>
+        )}
+      </div>
+      {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {yukleniyor ? (
+        <p className="text-sm text-muted-foreground">Yükleniyor...</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Personel</TableHead>
+              <TableHead>Bölüm</TableHead>
+              <TableHead>Durum</TableHead>
+              <TableHead>Başlangıç</TableHead>
+              <TableHead>Bitiş</TableHead>
+              <TableHead>Kayıt Durumu</TableHead>
+              {(canEdit || canPassive || canRestore) && <TableHead className="text-right">İşlem</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {liste.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={canEdit || canPassive || canRestore ? 7 : 6} className="text-center text-muted-foreground">
+                  Kayıt yok.
+                </TableCell>
+              </TableRow>
+            )}
+            {liste.map((v) => (
+              <TableRow key={v.id}>
+                <TableCell>{v.personnel.adSoyad}{!v.personnel.aktif ? ' (Pasif)' : ''}</TableCell>
+                <TableCell>{v.personnel.bolum || '-'}</TableCell>
+                <TableCell>{durumEtiketiGoster(v.durum)}</TableCell>
+                <TableCell>{v.baslangicTarihi.slice(0, 10)}</TableCell>
+                <TableCell>{v.bitisTarihi ? v.bitisTarihi.slice(0, 10) : '-'}</TableCell>
+                <TableCell><AktifBadge aktif={v.aktif} /></TableCell>
+                {(canEdit || canPassive || canRestore) && (
+                  <TableCell className="text-right space-x-2">
+                    {canEdit && (
+                      <Button size="sm" variant="outline" onClick={() => duzenlemeAc(v)}>Düzenle</Button>
+                    )}
+                    {v.aktif && canPassive && (
+                      <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
+                    )}
+                    {!v.aktif && canRestore && (
+                      <Button size="sm" variant="outline" onClick={() => geriAl(v.id)}>Geri Al</Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Yeni Servis Kullanım Durumu Kaydı</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="pd-personel">Personel *</Label>
+              <SoforPersonelPicker
+                id="pd-personel"
+                value={secilenPersonel}
+                onSelect={(p) => { setSecilenPersonel(p); setForm({ ...form, personnelId: p.id }) }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="pd-durum">Durum *</Label>
+              <select
+                id="pd-durum"
+                value={form.durum}
+                onChange={(e) => setForm({ ...form, durum: e.target.value as ServisKullanimDurumu })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="SERVIS_KULLANIYOR">Servis Kullanıyor</option>
+                <option value="KENDI_GELIYOR">Kendi Geliyor</option>
+                <option value="KULLANMIYOR">Kullanmıyor</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="pd-baslangic">Başlangıç *</Label>
+                <Input id="pd-baslangic" type="date" value={form.baslangicTarihi} onChange={(e) => setForm({ ...form, baslangicTarihi: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="pd-bitis">Bitiş</Label>
+                <Input id="pd-bitis" type="date" value={form.bitisTarihi} onChange={(e) => setForm({ ...form, bitisTarihi: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="pd-neden">Neden</Label>
+              <Input id="pd-neden" value={form.neden} onChange={(e) => setForm({ ...form, neden: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter><Button onClick={kaydet} disabled={!form.personnelId}>Kaydet</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!kapatilan} onOpenChange={(o) => !o && setKapatilan(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Kaydı Kapat</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Bu kaydı kapatmak geçmişi silmez — yalnızca bitiş tarihini kaydedip pasife alır.
+            </p>
+            <div>
+              <Label htmlFor="pd-kapatma-tarihi">Kapatma (Bitiş) Tarihi *</Label>
+              <Input id="pd-kapatma-tarihi" type="date" value={kapatmaTarihi} onChange={(e) => setKapatmaTarihi(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter><Button variant="destructive" onClick={kapat}>Kapat</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!duzenlenen} onOpenChange={(o) => !o && setDuzenlenen(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Kaydı Düzenle</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Yalnız "Neden" alanı düzenlenebilir — durum/tarih/personel değişikliği yeni bir kayıt gerektirir.
+            </p>
+            <div>
+              <Label htmlFor="pd-duzenle-neden">Neden</Label>
+              <Input id="pd-duzenle-neden" value={duzenlemeNeden} onChange={(e) => setDuzenlemeNeden(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter><Button onClick={duzenlemeKaydet}>Kaydet</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 export default function ServisYonetimiPage() {
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
   const canView = permissions.includes('servis.view')
   const canManage = permissions.includes('servis.tanim.manage')
+  const canPersonelDurumCreate = permissions.includes('servis.create')
+  const canPersonelDurumEdit = permissions.includes('servis.edit')
+  const canPassive = permissions.includes('servis.passive')
+  const canRestore = permissions.includes('servis.restore')
 
   if (!canView) {
     return (
@@ -1687,6 +1980,7 @@ export default function ServisYonetimiPage() {
           <TabsTrigger value="arac">Araçlar</TabsTrigger>
           <TabsTrigger value="sofor">Şoförler</TabsTrigger>
           <TabsTrigger value="sefer-dilimi">Sefer Dilimleri</TabsTrigger>
+          <TabsTrigger value="personel-durum">Personel Durumları</TabsTrigger>
         </TabsList>
         <TabsContent value="firma">
           <ServisFirmaPanel canManage={canManage} />
@@ -1708,6 +2002,14 @@ export default function ServisYonetimiPage() {
         </TabsContent>
         <TabsContent value="sefer-dilimi">
           <ServisSeferDilimiPanel canManage={canManage} />
+        </TabsContent>
+        <TabsContent value="personel-durum">
+          <ServisPersonelDurumPanel
+            canCreate={canPersonelDurumCreate}
+            canEdit={canPersonelDurumEdit}
+            canPassive={canPassive}
+            canRestore={canRestore}
+          />
         </TabsContent>
       </Tabs>
     </div>

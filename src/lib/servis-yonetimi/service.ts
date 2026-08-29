@@ -7,12 +7,14 @@ import {
   validateServisYerleskeForm,
   validateServisSoforForm,
   normalizeServisSoforTelefon,
+  validateServisSeferDilimiForm,
   type ServisFirmaForm,
   type ServisAracForm,
   type ServisDurakForm,
   type ServisGuzergahForm,
   type ServisYerleskeForm,
   type ServisSoforForm,
+  type ServisSeferDilimiForm,
 } from './validation'
 
 // ============================================================================
@@ -498,4 +500,68 @@ export async function geriAlServisSofor(id: string) {
   if (existing.aktif) throw new Error('Şoför zaten aktif.')
 
   return prisma.servisSofor.update({ where: { id }, data: { aktif: true } })
+}
+
+// ============================================================================
+// ServisSeferDilimi — sabit enum yerine lookup tablosu (vardiya × yön dilimi)
+// ============================================================================
+
+export async function listServisSeferDilimleri(filtre?: { aktif?: boolean }) {
+  return prisma.servisSeferDilimi.findMany({
+    where: filtre?.aktif !== undefined ? { aktif: filtre.aktif } : undefined,
+    orderBy: [{ sira: 'asc' }, { kod: 'asc' }],
+  })
+}
+
+function servisSeferDilimiData(form: ServisSeferDilimiForm) {
+  return {
+    kod: form.kod.trim().toUpperCase(),
+    ad: form.ad.trim(),
+    yon: form.yon,
+    grupKodu: form.grupKodu?.trim() || null,
+    sira: form.sira,
+  }
+}
+
+export async function createServisSeferDilimi(form: ServisSeferDilimiForm) {
+  const { valid, errors } = validateServisSeferDilimiForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const data = servisSeferDilimiData(form)
+  const existing = await prisma.servisSeferDilimi.findUnique({ where: { kod: data.kod } })
+  if (existing) throw new Error(`"${data.kod}" kodu zaten kullanılıyor.`)
+
+  return prisma.servisSeferDilimi.create({ data })
+}
+
+export async function updateServisSeferDilimi(id: string, form: ServisSeferDilimiForm) {
+  const { valid, errors } = validateServisSeferDilimiForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const existing = await prisma.servisSeferDilimi.findUnique({ where: { id } })
+  if (!existing) throw new Error('Sefer dilimi bulunamadı.')
+
+  const data = servisSeferDilimiData(form)
+  if (data.kod !== existing.kod) {
+    const kodCakismasi = await prisma.servisSeferDilimi.findUnique({ where: { kod: data.kod } })
+    if (kodCakismasi) throw new Error(`"${data.kod}" kodu zaten kullanılıyor.`)
+  }
+
+  return prisma.servisSeferDilimi.update({ where: { id }, data })
+}
+
+export async function pasiflestirServisSeferDilimi(id: string) {
+  const existing = await prisma.servisSeferDilimi.findUnique({ where: { id } })
+  if (!existing) throw new Error('Sefer dilimi bulunamadı.')
+  if (!existing.aktif) throw new Error('Sefer dilimi zaten pasif.')
+
+  return prisma.servisSeferDilimi.update({ where: { id }, data: { aktif: false } })
+}
+
+export async function geriAlServisSeferDilimi(id: string) {
+  const existing = await prisma.servisSeferDilimi.findUnique({ where: { id } })
+  if (!existing) throw new Error('Sefer dilimi bulunamadı.')
+  if (existing.aktif) throw new Error('Sefer dilimi zaten aktif.')
+
+  return prisma.servisSeferDilimi.update({ where: { id }, data: { aktif: true } })
 }

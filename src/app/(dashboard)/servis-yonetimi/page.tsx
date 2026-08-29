@@ -98,6 +98,20 @@ type ServisSofor = {
   updatedAt: string
 }
 
+type ServisSeferDilimiYon = 'GIDIS' | 'DONUS'
+
+type ServisSeferDilimi = {
+  id: string
+  kod: string
+  ad: string
+  yon: ServisSeferDilimiYon
+  grupKodu: string | null
+  sira: number
+  aktif: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 function AktifBadge({ aktif }: { aktif: boolean }) {
   return (
     <Badge variant={aktif ? 'default' : 'secondary'}>
@@ -108,6 +122,7 @@ function AktifBadge({ aktif }: { aktif: boolean }) {
 
 function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
   const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
+  const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState<string | null>(null)
   const [dialogAcik, setDialogAcik] = useState(false)
@@ -135,6 +150,12 @@ function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
   useEffect(() => {
     yukle()
   }, [yukle])
+
+  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
+  const filtreliFirmalar = firmalar.filter((firma) => {
+    const query = normalize(arama.trim())
+    return !query || normalize(firma.ad).includes(query) || (firma.yetkiliAdi && normalize(firma.yetkiliAdi).includes(query))
+  })
 
   function yeniAc() {
     setDuzenlenen(null)
@@ -184,13 +205,20 @@ function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      {canManage && (
-        <div className="flex justify-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Input
+          value={arama}
+          onChange={(e) => setArama(e.target.value)}
+          placeholder="Ad veya yetkiliye göre ara"
+          aria-label="Firma ara"
+          className="sm:max-w-sm"
+        />
+        {canManage && (
           <Button onClick={yeniAc}>
             <Plus className="mr-2 h-4 w-4" /> Yeni Firma
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       {hata && <p className="text-sm text-red-600">{hata}</p>}
       {yukleniyor ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
@@ -206,14 +234,14 @@ function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {firmalar.length === 0 && (
+            {filtreliFirmalar.length === 0 && (
               <TableRow>
                 <TableCell colSpan={canManage ? 5 : 4} className="text-center text-muted-foreground">
-                  Kayıt yok.
+                  {arama.trim() ? 'Aramayla eşleşen firma yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
             )}
-            {firmalar.map((firma) => (
+            {filtreliFirmalar.map((firma) => (
               <TableRow key={firma.id}>
                 <TableCell>{firma.ad}</TableCell>
                 <TableCell>{firma.yetkiliAdi || '-'}</TableCell>
@@ -279,6 +307,7 @@ function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
 
 function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
   const [yerleskeler, setYerleskeler] = useState<ServisYerleske[]>([])
+  const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState<string | null>(null)
   const [dialogAcik, setDialogAcik] = useState(false)
@@ -306,6 +335,13 @@ function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
   useEffect(() => {
     yukle()
   }, [yukle])
+
+  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
+  const filtreliYerleskeler = yerleskeler.filter((yerleske) => {
+    const query = normalize(arama.trim())
+    const alanlar = [yerleske.kod, yerleske.ad, yerleske.adres]
+    return !query || alanlar.some((alan) => alan && normalize(alan).includes(query))
+  })
 
   function yeniAc() {
     setDuzenlenen(null)
@@ -361,13 +397,20 @@ function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      {canManage && (
-        <div className="flex justify-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Input
+          value={arama}
+          onChange={(e) => setArama(e.target.value)}
+          placeholder="Kod, ad veya adrese göre ara"
+          aria-label="Yerleşke ara"
+          className="sm:max-w-sm"
+        />
+        {canManage && (
           <Button onClick={yeniAc}>
             <Plus className="mr-2 h-4 w-4" /> Yeni Yerleşke
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       {hata && <p className="text-sm text-red-600">{hata}</p>}
       {yukleniyor ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
@@ -383,14 +426,14 @@ function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {yerleskeler.length === 0 && (
+            {filtreliYerleskeler.length === 0 && (
               <TableRow>
                 <TableCell colSpan={canManage ? 5 : 4} className="text-center text-muted-foreground">
-                  Kayıt yok.
+                  {arama.trim() ? 'Aramayla eşleşen yerleşke yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
             )}
-            {yerleskeler.map((yerleske) => (
+            {filtreliYerleskeler.map((yerleske) => (
               <TableRow key={yerleske.id}>
                 <TableCell className="font-mono">{yerleske.kod}</TableCell>
                 <TableCell>{yerleske.ad}</TableCell>
@@ -1393,6 +1436,222 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
   )
 }
 
+const bosSeferDilimiForm = { kod: '', ad: '', yon: 'GIDIS' as ServisSeferDilimiYon, grupKodu: '', sira: '1' }
+
+function ServisSeferDilimiPanel({ canManage }: { canManage: boolean }) {
+  const [dilimler, setDilimler] = useState<ServisSeferDilimi[]>([])
+  const [arama, setArama] = useState('')
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [hata, setHata] = useState<string | null>(null)
+  const [dialogAcik, setDialogAcik] = useState(false)
+  const [duzenlenen, setDuzenlenen] = useState<ServisSeferDilimi | null>(null)
+  const [form, setForm] = useState(bosSeferDilimiForm)
+
+  const yukle = useCallback(async () => {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const res = await fetch('/api/servis-yonetimi/sefer-dilimi')
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setHata(json.message || 'Sefer dilimi listesi alınamadı.')
+        return
+      }
+      setDilimler(json.data)
+    } catch {
+      setHata('Sefer dilimi listesi alınırken beklenmeyen bir hata oluştu.')
+    } finally {
+      setYukleniyor(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    yukle()
+  }, [yukle])
+
+  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
+  const filtreliDilimler = dilimler.filter((dilim) => {
+    const query = normalize(arama.trim())
+    const alanlar = [dilim.kod, dilim.ad, dilim.grupKodu]
+    return !query || alanlar.some((alan) => alan && normalize(alan).includes(query))
+  })
+
+  function yeniAc() {
+    setDuzenlenen(null)
+    setForm(bosSeferDilimiForm)
+    setDialogAcik(true)
+  }
+
+  function duzenleAc(dilim: ServisSeferDilimi) {
+    setDuzenlenen(dilim)
+    setForm({
+      kod: dilim.kod,
+      ad: dilim.ad,
+      yon: dilim.yon,
+      grupKodu: dilim.grupKodu ?? '',
+      sira: String(dilim.sira),
+    })
+    setDialogAcik(true)
+  }
+
+  async function kaydet() {
+    setHata(null)
+    const url = duzenlenen ? `/api/servis-yonetimi/sefer-dilimi/${duzenlenen.id}` : '/api/servis-yonetimi/sefer-dilimi'
+    const res = await fetch(url, {
+      method: duzenlenen ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kod: form.kod,
+        ad: form.ad,
+        yon: form.yon,
+        grupKodu: form.grupKodu,
+        sira: form.sira ? Number(form.sira) : form.sira,
+      }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Kaydedilemedi.')
+      return
+    }
+    setDialogAcik(false)
+    yukle()
+  }
+
+  async function pasiflestir(id: string) {
+    await fetch(`/api/servis-yonetimi/sefer-dilimi/${id}/pasiflestir`, { method: 'POST' })
+    yukle()
+  }
+
+  async function geriAl(id: string) {
+    await fetch(`/api/servis-yonetimi/sefer-dilimi/${id}/geri-al`, { method: 'POST' })
+    yukle()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Input
+          value={arama}
+          onChange={(e) => setArama(e.target.value)}
+          placeholder="Kod, ad veya vardiya etiketine göre ara"
+          aria-label="Sefer dilimi ara"
+          className="sm:max-w-sm"
+        />
+        {canManage && (
+          <Button onClick={yeniAc}>
+            <Plus className="mr-2 h-4 w-4" /> Yeni Sefer Dilimi
+          </Button>
+        )}
+      </div>
+      {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {yukleniyor ? (
+        <p className="text-sm text-muted-foreground">Yükleniyor...</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Kod</TableHead>
+              <TableHead>Ad</TableHead>
+              <TableHead>Yön</TableHead>
+              <TableHead>Vardiya Etiketi</TableHead>
+              <TableHead>Sıra</TableHead>
+              <TableHead>Durum</TableHead>
+              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtreliDilimler.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={canManage ? 7 : 6} className="text-center text-muted-foreground">
+                  {arama.trim() ? 'Aramayla eşleşen sefer dilimi yok.' : 'Kayıt yok.'}
+                </TableCell>
+              </TableRow>
+            )}
+            {filtreliDilimler.map((dilim) => (
+              <TableRow key={dilim.id}>
+                <TableCell className="font-mono">{dilim.kod}</TableCell>
+                <TableCell>{dilim.ad}</TableCell>
+                <TableCell>{dilim.yon === 'GIDIS' ? 'Gidiş' : 'Dönüş'}</TableCell>
+                <TableCell>{dilim.grupKodu || '-'}</TableCell>
+                <TableCell>{dilim.sira}</TableCell>
+                <TableCell><AktifBadge aktif={dilim.aktif} /></TableCell>
+                {canManage && (
+                  <TableCell className="text-right space-x-2">
+                    <Button size="sm" variant="outline" onClick={() => duzenleAc(dilim)}>
+                      Düzenle
+                    </Button>
+                    {dilim.aktif ? (
+                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(dilim.id)}>
+                        Pasifleştir
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => geriAl(dilim.id)}>
+                        Geri Al
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{duzenlenen ? 'Sefer Dilimini Düzenle' : 'Yeni Sefer Dilimi'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="dilim-kod">Kod *</Label>
+              <Input id="dilim-kod" value={form.kod} onChange={(e) => setForm({ ...form, kod: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="dilim-ad">Ad *</Label>
+              <Input id="dilim-ad" value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="dilim-yon">Yön *</Label>
+              <select
+                id="dilim-yon"
+                value={form.yon}
+                onChange={(e) => setForm({ ...form, yon: e.target.value as ServisSeferDilimiYon })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="GIDIS">Gidiş</option>
+                <option value="DONUS">Dönüş</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="dilim-grup-kodu">Vardiya Etiketi</Label>
+              <Input
+                id="dilim-grup-kodu"
+                placeholder="Örn. VARDIYA-1"
+                value={form.grupKodu}
+                onChange={(e) => setForm({ ...form, grupKodu: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="dilim-sira">Sıra * (listeleme sırası)</Label>
+              <Input
+                id="dilim-sira"
+                type="number"
+                min={1}
+                value={form.sira}
+                onChange={(e) => setForm({ ...form, sira: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={kaydet}>Kaydet</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 export default function ServisYonetimiPage() {
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
@@ -1423,6 +1682,7 @@ export default function ServisYonetimiPage() {
           <TabsTrigger value="durak">Duraklar</TabsTrigger>
           <TabsTrigger value="arac">Araçlar</TabsTrigger>
           <TabsTrigger value="sofor">Şoförler</TabsTrigger>
+          <TabsTrigger value="sefer-dilimi">Sefer Dilimleri</TabsTrigger>
         </TabsList>
         <TabsContent value="firma">
           <ServisFirmaPanel canManage={canManage} />
@@ -1441,6 +1701,9 @@ export default function ServisYonetimiPage() {
         </TabsContent>
         <TabsContent value="sofor">
           <ServisSoforPanel canManage={canManage} />
+        </TabsContent>
+        <TabsContent value="sefer-dilimi">
+          <ServisSeferDilimiPanel canManage={canManage} />
         </TabsContent>
       </Tabs>
     </div>

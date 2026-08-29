@@ -26,6 +26,10 @@ const mocks = vi.hoisted(() => ({
   soforCreate: vi.fn(),
   soforUpdate: vi.fn(),
   personnelFindUnique: vi.fn(),
+  seferDilimiFindMany: vi.fn(),
+  seferDilimiFindUnique: vi.fn(),
+  seferDilimiCreate: vi.fn(),
+  seferDilimiUpdate: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -69,6 +73,12 @@ vi.mock('@/lib/prisma', () => ({
     personnel: {
       findUnique: mocks.personnelFindUnique,
     },
+    servisSeferDilimi: {
+      findMany: mocks.seferDilimiFindMany,
+      findUnique: mocks.seferDilimiFindUnique,
+      create: mocks.seferDilimiCreate,
+      update: mocks.seferDilimiUpdate,
+    },
   },
 }))
 
@@ -103,6 +113,11 @@ import {
   updateServisGuzergah,
   updateServisYerleske,
   updateServisSofor,
+  createServisSeferDilimi,
+  geriAlServisSeferDilimi,
+  listServisSeferDilimleri,
+  pasiflestirServisSeferDilimi,
+  updateServisSeferDilimi,
 } from './service'
 
 beforeEach(() => {
@@ -685,5 +700,93 @@ describe('ServisSofor — passive/restore', () => {
     mocks.soforFindUnique.mockResolvedValue({ id: 's1', aktif: false })
     mocks.soforUpdate.mockResolvedValue({ id: 's1', aktif: true })
     expect((await geriAlServisSofor('s1')).aktif).toBe(true)
+  })
+})
+
+const gecerliSeferDilimi = {
+  kod: 'v1-gidis',
+  ad: 'Vardiya 1 Gidiş',
+  yon: 'GIDIS' as const,
+  grupKodu: 'VARDIYA-1',
+  sira: 1,
+}
+
+describe('ServisSeferDilimi — view', () => {
+  it('aktif filtresiyle sıra ve koda göre sıralı listeler', async () => {
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'sd1', kod: 'V1-GIDIS' }])
+    const data = await listServisSeferDilimleri({ aktif: true })
+    expect(mocks.seferDilimiFindMany).toHaveBeenCalledWith({
+      where: { aktif: true },
+      orderBy: [{ sira: 'asc' }, { kod: 'asc' }],
+    })
+    expect(data).toHaveLength(1)
+  })
+})
+
+describe('ServisSeferDilimi — create/edit', () => {
+  it('kodu büyük harfe çevirip normalize ederek kaydeder', async () => {
+    mocks.seferDilimiFindUnique.mockResolvedValue(null)
+    mocks.seferDilimiCreate.mockResolvedValue({ id: 'sd1', kod: 'V1-GIDIS' })
+
+    await createServisSeferDilimi(gecerliSeferDilimi)
+
+    expect(mocks.seferDilimiCreate).toHaveBeenCalledWith({
+      data: {
+        kod: 'V1-GIDIS',
+        ad: 'Vardiya 1 Gidiş',
+        yon: 'GIDIS',
+        grupKodu: 'VARDIYA-1',
+        sira: 1,
+      },
+    })
+  })
+
+  it('grupKodu boş bırakılabilir', async () => {
+    mocks.seferDilimiFindUnique.mockResolvedValue(null)
+    mocks.seferDilimiCreate.mockResolvedValue({ id: 'sd1' })
+    await createServisSeferDilimi({ ...gecerliSeferDilimi, grupKodu: '' })
+    expect(mocks.seferDilimiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ grupKodu: null }),
+    }))
+  })
+
+  it('aynı kodla yeni kayıt oluşturmaz', async () => {
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'baska', kod: 'V1-GIDIS' })
+    await expect(createServisSeferDilimi(gecerliSeferDilimi)).rejects.toThrow('zaten kullanılıyor')
+    expect(mocks.seferDilimiCreate).not.toHaveBeenCalled()
+  })
+
+  it('geçersiz yön veya sırayla DB çağrısı yapmaz', async () => {
+    await expect(createServisSeferDilimi({ ...gecerliSeferDilimi, yon: 'YAN' as never })).rejects.toThrow('Yön')
+    await expect(createServisSeferDilimi({ ...gecerliSeferDilimi, sira: 0 })).rejects.toThrow('Sıra')
+    await expect(createServisSeferDilimi({ ...gecerliSeferDilimi, sira: 1.5 })).rejects.toThrow('Sıra')
+    expect(mocks.seferDilimiFindUnique).not.toHaveBeenCalled()
+  })
+
+  it('mevcut dilimi günceller', async () => {
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'sd1', kod: 'V1-GIDIS' })
+    mocks.seferDilimiUpdate.mockResolvedValue({ id: 'sd1', ad: 'Yeni Ad' })
+    const data = await updateServisSeferDilimi('sd1', { ...gecerliSeferDilimi, ad: 'Yeni Ad' })
+    expect(data.ad).toBe('Yeni Ad')
+  })
+
+  it('olmayan dilimi güncellemez', async () => {
+    mocks.seferDilimiFindUnique.mockResolvedValue(null)
+    await expect(updateServisSeferDilimi('yok', gecerliSeferDilimi)).rejects.toThrow('Sefer dilimi bulunamadı')
+    expect(mocks.seferDilimiUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServisSeferDilimi — passive/restore', () => {
+  it('aktif dilimi pasifleştirir', async () => {
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'sd1', aktif: true })
+    mocks.seferDilimiUpdate.mockResolvedValue({ id: 'sd1', aktif: false })
+    expect((await pasiflestirServisSeferDilimi('sd1')).aktif).toBe(false)
+  })
+
+  it('pasif dilimi geri aktifleştirir', async () => {
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'sd1', aktif: false })
+    mocks.seferDilimiUpdate.mockResolvedValue({ id: 'sd1', aktif: true })
+    expect((await geriAlServisSeferDilimi('sd1')).aktif).toBe(true)
   })
 })

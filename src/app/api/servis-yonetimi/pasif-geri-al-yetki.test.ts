@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   geriAlServisArac: vi.fn(),
   pasiflestirServisSofor: vi.fn(),
   geriAlServisSofor: vi.fn(),
+  pasiflestirServisSeferDilimi: vi.fn(),
+  geriAlServisSeferDilimi: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-permission', () => ({
@@ -33,6 +35,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   geriAlServisArac: mocks.geriAlServisArac,
   pasiflestirServisSofor: mocks.pasiflestirServisSofor,
   geriAlServisSofor: mocks.geriAlServisSofor,
+  pasiflestirServisSeferDilimi: mocks.pasiflestirServisSeferDilimi,
+  geriAlServisSeferDilimi: mocks.geriAlServisSeferDilimi,
 }))
 
 import { POST as firmaPasiflestir } from './firma/[id]/pasiflestir/route'
@@ -47,6 +51,8 @@ import { POST as aracPasiflestir } from './arac/[id]/pasiflestir/route'
 import { POST as aracGeriAl } from './arac/[id]/geri-al/route'
 import { POST as soforPasiflestir } from './sofor/[id]/pasiflestir/route'
 import { POST as soforGeriAl } from './sofor/[id]/geri-al/route'
+import { POST as seferDilimiPasiflestir } from './sefer-dilimi/[id]/pasiflestir/route'
+import { POST as seferDilimiGeriAl } from './sefer-dilimi/[id]/geri-al/route'
 
 type PostHandler = (
   request: Request,
@@ -70,6 +76,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['durak', durakPasiflestir],
     ['araç', aracPasiflestir],
     ['şoför', soforPasiflestir],
+    ['sefer dilimi', seferDilimiPasiflestir],
   ] as [string, PostHandler][])('%s pasifleştirme servis.passive ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.passive')
@@ -82,6 +89,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['durak', durakGeriAl],
     ['araç', aracGeriAl],
     ['şoför', soforGeriAl],
+    ['sefer dilimi', seferDilimiGeriAl],
   ] as [string, PostHandler][])('%s geri-al servis.restore ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.restore')

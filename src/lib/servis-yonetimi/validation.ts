@@ -196,3 +196,32 @@ export function validateServisSoforForm(form: ServisSoforForm): ServisValidation
 
   return { valid: errors.length === 0, errors }
 }
+
+export type ServisSeferDilimiYon = 'GIDIS' | 'DONUS'
+
+export type ServisSeferDilimiForm = {
+  kod: string
+  ad: string
+  yon: ServisSeferDilimiYon
+  grupKodu?: string | null
+  sira: number
+}
+
+export function validateServisSeferDilimiForm(form: ServisSeferDilimiForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.kod || form.kod.trim().length < 2) {
+    errors.push('Dilim kodu en az 2 karakter olmalıdır.')
+  }
+  if (!form.ad || form.ad.trim().length < 2) {
+    errors.push('Dilim adı en az 2 karakter olmalıdır.')
+  }
+  if (form.yon !== 'GIDIS' && form.yon !== 'DONUS') {
+    errors.push('Yön GİDİŞ veya DÖNÜŞ olmalıdır.')
+  }
+  if (!Number.isInteger(form.sira) || form.sira <= 0) {
+    errors.push('Sıra pozitif tam sayı olmalıdır.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

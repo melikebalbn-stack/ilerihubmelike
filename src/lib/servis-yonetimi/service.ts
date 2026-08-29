@@ -401,16 +401,43 @@ export async function listServisSoforler(filtre?: { aktif?: boolean }) {
   })
 }
 
-function servisSoforData(
+function servisSoforKimlikData(
   form: ServisSoforForm,
-  kimlik: { personnelId?: string | null; disFirmaSoforKodu: string },
+  kimlik: { mevcutDisFirmaSoforKodu?: string | null },
 ) {
+  const firmaId = form.firmaId?.trim() || null
+  if (firmaId) {
+    return {
+      firmaId,
+      personnelId: null,
+      disFirmaSoforKodu: kimlik.mevcutDisFirmaSoforKodu || `DIS-${crypto.randomUUID().toUpperCase()}`,
+    }
+  }
   return {
-    adSoyad: form.adSoyad.trim(),
-    telefon: normalizeServisSoforTelefon(form.telefon),
-    firmaId: form.firmaId.trim(),
-    personnelId: kimlik.personnelId ?? null,
-    disFirmaSoforKodu: kimlik.disFirmaSoforKodu,
+    firmaId: null,
+    personnelId: form.personnelId!.trim(),
+    disFirmaSoforKodu: null,
+  }
+}
+
+async function dogrulaServisSoforKimlik(
+  kimlik: { firmaId: string | null; personnelId: string | null },
+  existingId?: string,
+) {
+  if (kimlik.firmaId) {
+    const firma = await prisma.servisFirma.findUnique({ where: { id: kimlik.firmaId } })
+    if (!firma) throw new Error('Firma bulunamadı.')
+    if (!firma.aktif) throw new Error('Pasif firmaya şoför bağlanamaz.')
+    return
+  }
+
+  const personnel = await prisma.personnel.findUnique({ where: { id: kimlik.personnelId! } })
+  if (!personnel) throw new Error('Personel bulunamadı.')
+  if (!personnel.aktif) throw new Error('Pasif personel şoför olarak atanamaz.')
+
+  const baskaSofor = await prisma.servisSofor.findUnique({ where: { personnelId: kimlik.personnelId! } })
+  if (baskaSofor && baskaSofor.id !== existingId) {
+    throw new Error('Bu personel zaten bir şoför kaydına bağlı.')
   }
 }
 
@@ -418,15 +445,15 @@ export async function createServisSofor(form: ServisSoforForm) {
   const { valid, errors } = validateServisSoforForm(form)
   if (!valid) throw new Error(errors.join(' '))
 
-  const firma = await prisma.servisFirma.findUnique({ where: { id: form.firmaId.trim() } })
-  if (!firma) throw new Error('Firma bulunamadı.')
-  if (!firma.aktif) throw new Error('Pasif firmaya şoför bağlanamaz.')
+  const kimlik = servisSoforKimlikData(form, {})
+  await dogrulaServisSoforKimlik(kimlik)
 
-  const data = servisSoforData(form, {
-    disFirmaSoforKodu: `DIS-${crypto.randomUUID().toUpperCase()}`,
-  })
   return prisma.servisSofor.create({
-    data,
+    data: {
+      adSoyad: form.adSoyad.trim(),
+      telefon: normalizeServisSoforTelefon(form.telefon),
+      ...kimlik,
+    },
     include: { firma: { select: { id: true, ad: true, aktif: true } } },
   })
 }
@@ -438,17 +465,16 @@ export async function updateServisSofor(id: string, form: ServisSoforForm) {
   const existing = await prisma.servisSofor.findUnique({ where: { id } })
   if (!existing) throw new Error('Şoför bulunamadı.')
 
-  const firma = await prisma.servisFirma.findUnique({ where: { id: form.firmaId.trim() } })
-  if (!firma) throw new Error('Firma bulunamadı.')
-  if (!firma.aktif) throw new Error('Pasif firmaya şoför bağlanamaz.')
+  const kimlik = servisSoforKimlikData(form, { mevcutDisFirmaSoforKodu: existing.disFirmaSoforKodu })
+  await dogrulaServisSoforKimlik(kimlik, id)
 
-  const data = servisSoforData(form, {
-    personnelId: existing.personnelId,
-    disFirmaSoforKodu: existing.disFirmaSoforKodu || `DIS-${crypto.randomUUID().toUpperCase()}`,
-  })
   return prisma.servisSofor.update({
     where: { id },
-    data,
+    data: {
+      adSoyad: form.adSoyad.trim(),
+      telefon: normalizeServisSoforTelefon(form.telefon),
+      ...kimlik,
+    },
     include: { firma: { select: { id: true, ad: true, aktif: true } } },
   })
 }

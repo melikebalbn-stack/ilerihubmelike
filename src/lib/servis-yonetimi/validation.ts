@@ -167,7 +167,8 @@ export function validateServisAracForm(form: ServisAracForm): ServisValidationRe
 export type ServisSoforForm = {
   adSoyad: string
   telefon?: string | null
-  firmaId: string
+  firmaId?: string | null
+  personnelId?: string | null
 }
 
 export function normalizeServisSoforTelefon(telefon?: string | null): string | null {
@@ -186,8 +187,11 @@ export function validateServisSoforForm(form: ServisSoforForm): ServisValidation
   if (form.telefon?.trim() && !normalizeServisSoforTelefon(form.telefon)) {
     errors.push('Geçerli bir Türkiye telefon numarası girin.')
   }
-  if (!form.firmaId?.trim()) {
-    errors.push('Firma seçimi zorunludur.')
+
+  const firmaVar = !!form.firmaId?.trim()
+  const personnelVar = !!form.personnelId?.trim()
+  if (firmaVar === personnelVar) {
+    errors.push('Şoför ya bir taşeron firmaya ya da bir personele bağlanmalıdır (ikisi birden değil).')
   }
 
   return { valid: errors.length === 0, errors }

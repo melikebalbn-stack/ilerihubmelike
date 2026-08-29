@@ -53,6 +53,21 @@ type ServisGuzergah = {
   updatedAt: string
 }
 
+type ServisDurak = {
+  id: string
+  kod: string
+  ad: string
+  adresEtiketi: string | null
+  il: string | null
+  ilce: string | null
+  mahalle: string | null
+  enlem: string | null
+  boylam: string | null
+  aktif: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 function AktifBadge({ aktif }: { aktif: boolean }) {
   return (
     <Badge variant={aktif ? 'default' : 'secondary'}>
@@ -646,6 +661,227 @@ function ServisGuzergahPanel({ canManage }: { canManage: boolean }) {
   )
 }
 
+const bosDurakForm = {
+  kod: '',
+  ad: '',
+  adresEtiketi: '',
+  il: '',
+  ilce: '',
+  mahalle: '',
+  enlem: '',
+  boylam: '',
+}
+
+function ServisDurakPanel({ canManage }: { canManage: boolean }) {
+  const [duraklar, setDuraklar] = useState<ServisDurak[]>([])
+  const [arama, setArama] = useState('')
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [hata, setHata] = useState<string | null>(null)
+  const [dialogAcik, setDialogAcik] = useState(false)
+  const [duzenlenen, setDuzenlenen] = useState<ServisDurak | null>(null)
+  const [form, setForm] = useState(bosDurakForm)
+
+  const yukle = useCallback(async () => {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const res = await fetch('/api/servis-yonetimi/durak')
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setHata(json.message || 'Durak listesi alınamadı.')
+        return
+      }
+      setDuraklar(json.data)
+    } catch {
+      setHata('Durak listesi alınırken beklenmeyen bir hata oluştu.')
+    } finally {
+      setYukleniyor(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    yukle()
+  }, [yukle])
+
+  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
+  const filtreliDuraklar = duraklar.filter((durak) => {
+    const query = normalize(arama.trim())
+    const alanlar = [durak.kod, durak.ad, durak.il, durak.ilce, durak.mahalle]
+    return !query || alanlar.some((alan) => alan && normalize(alan).includes(query))
+  })
+
+  function yeniAc() {
+    setDuzenlenen(null)
+    setForm(bosDurakForm)
+    setDialogAcik(true)
+  }
+
+  function duzenleAc(durak: ServisDurak) {
+    setDuzenlenen(durak)
+    setForm({
+      kod: durak.kod,
+      ad: durak.ad,
+      adresEtiketi: durak.adresEtiketi ?? '',
+      il: durak.il ?? '',
+      ilce: durak.ilce ?? '',
+      mahalle: durak.mahalle ?? '',
+      enlem: durak.enlem ?? '',
+      boylam: durak.boylam ?? '',
+    })
+    setDialogAcik(true)
+  }
+
+  async function kaydet() {
+    setHata(null)
+    const url = duzenlenen ? `/api/servis-yonetimi/durak/${duzenlenen.id}` : '/api/servis-yonetimi/durak'
+    const method = duzenlenen ? 'PATCH' : 'POST'
+    const body = {
+      ...form,
+      enlem: form.enlem.trim() ? Number(form.enlem) : null,
+      boylam: form.boylam.trim() ? Number(form.boylam) : null,
+    }
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Kaydedilemedi.')
+      return
+    }
+    setDialogAcik(false)
+    yukle()
+  }
+
+  async function pasiflestir(id: string) {
+    await fetch(`/api/servis-yonetimi/durak/${id}/pasiflestir`, { method: 'POST' })
+    yukle()
+  }
+
+  async function geriAl(id: string) {
+    await fetch(`/api/servis-yonetimi/durak/${id}/geri-al`, { method: 'POST' })
+    yukle()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Input
+          value={arama}
+          onChange={(e) => setArama(e.target.value)}
+          placeholder="Kod, ad, il, ilçe veya mahalleye göre ara"
+          aria-label="Durak ara"
+          className="sm:max-w-md"
+        />
+        {canManage && (
+          <Button onClick={yeniAc}>
+            <Plus className="mr-2 h-4 w-4" /> Yeni Durak
+          </Button>
+        )}
+      </div>
+      {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {yukleniyor ? (
+        <p className="text-sm text-muted-foreground">Yükleniyor...</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Kod</TableHead>
+              <TableHead>Ad</TableHead>
+              <TableHead>Konum</TableHead>
+              <TableHead>Adres Etiketi</TableHead>
+              <TableHead>Koordinat</TableHead>
+              <TableHead>Durum</TableHead>
+              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtreliDuraklar.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={canManage ? 7 : 6} className="text-center text-muted-foreground">
+                  {arama.trim() ? 'Aramayla eşleşen durak yok.' : 'Kayıt yok.'}
+                </TableCell>
+              </TableRow>
+            )}
+            {filtreliDuraklar.map((durak) => (
+              <TableRow key={durak.id}>
+                <TableCell className="font-mono">{durak.kod}</TableCell>
+                <TableCell>{durak.ad}</TableCell>
+                <TableCell>{[durak.il, durak.ilce, durak.mahalle].filter(Boolean).join(' / ') || '-'}</TableCell>
+                <TableCell>{durak.adresEtiketi || '-'}</TableCell>
+                <TableCell>{durak.enlem && durak.boylam ? `${durak.enlem}, ${durak.boylam}` : '-'}</TableCell>
+                <TableCell><AktifBadge aktif={durak.aktif} /></TableCell>
+                {canManage && (
+                  <TableCell className="space-x-2 text-right">
+                    <Button size="sm" variant="outline" onClick={() => duzenleAc(durak)}>Düzenle</Button>
+                    {durak.aktif ? (
+                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(durak.id)}>Pasifleştir</Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => geriAl(durak.id)}>Geri Al</Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{duzenlenen ? 'Durağı Düzenle' : 'Yeni Durak'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="durak-kod">Kod *</Label>
+                <Input id="durak-kod" value={form.kod} onChange={(e) => setForm({ ...form, kod: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="durak-ad">Ad *</Label>
+                <Input id="durak-ad" value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label htmlFor="durak-il">İl</Label>
+                <Input id="durak-il" value={form.il} onChange={(e) => setForm({ ...form, il: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="durak-ilce">İlçe</Label>
+                <Input id="durak-ilce" value={form.ilce} onChange={(e) => setForm({ ...form, ilce: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="durak-mahalle">Mahalle</Label>
+                <Input id="durak-mahalle" value={form.mahalle} onChange={(e) => setForm({ ...form, mahalle: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="durak-adres">Adres Etiketi</Label>
+              <Textarea id="durak-adres" value={form.adresEtiketi} onChange={(e) => setForm({ ...form, adresEtiketi: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="durak-enlem">Enlem</Label>
+                <Input id="durak-enlem" type="number" step="0.000001" min="-90" max="90" value={form.enlem} onChange={(e) => setForm({ ...form, enlem: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="durak-boylam">Boylam</Label>
+                <Input id="durak-boylam" type="number" step="0.000001" min="-180" max="180" value={form.boylam} onChange={(e) => setForm({ ...form, boylam: e.target.value })} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={kaydet}>Kaydet</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 export default function ServisYonetimiPage() {
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
@@ -665,7 +901,7 @@ export default function ServisYonetimiPage() {
       <div>
         <h1 className="text-2xl font-semibold">Servis Yönetimi</h1>
         <p className="text-sm text-muted-foreground">
-          FAZ 1/A — tanım verisi (firma, yerleşke). Lokal gösterim amaçlı.
+          FAZ 1/A — servis tanım verileri.
         </p>
       </div>
       <Tabs defaultValue="firma">
@@ -673,6 +909,7 @@ export default function ServisYonetimiPage() {
           <TabsTrigger value="firma">Firmalar</TabsTrigger>
           <TabsTrigger value="yerleske">Yerleşkeler</TabsTrigger>
           <TabsTrigger value="guzergah">Güzergâhlar</TabsTrigger>
+          <TabsTrigger value="durak">Duraklar</TabsTrigger>
         </TabsList>
         <TabsContent value="firma">
           <ServisFirmaPanel canManage={canManage} />
@@ -682,6 +919,9 @@ export default function ServisYonetimiPage() {
         </TabsContent>
         <TabsContent value="guzergah">
           <ServisGuzergahPanel canManage={canManage} />
+        </TabsContent>
+        <TabsContent value="durak">
+          <ServisDurakPanel canManage={canManage} />
         </TabsContent>
       </Tabs>
     </div>

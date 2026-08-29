@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/prisma'
 import {
   validateServisFirmaForm,
+  validateServisDurakForm,
   validateServisGuzergahForm,
   validateServisYerleskeForm,
   type ServisFirmaForm,
+  type ServisDurakForm,
   type ServisGuzergahForm,
   type ServisYerleskeForm,
 } from './validation'
@@ -226,4 +228,71 @@ export async function geriAlServisGuzergah(id: string) {
   if (existing.aktif) throw new Error('Güzergâh zaten aktif.')
 
   return prisma.servisGuzergah.update({ where: { id }, data: { aktif: true } })
+}
+
+// ============================================================================
+// ServisDurak
+// ============================================================================
+
+export async function listServisDuraklar(filtre?: { aktif?: boolean }) {
+  return prisma.servisDurak.findMany({
+    where: filtre?.aktif !== undefined ? { aktif: filtre.aktif } : undefined,
+    orderBy: [{ kod: 'asc' }, { ad: 'asc' }],
+  })
+}
+
+function servisDurakData(form: ServisDurakForm) {
+  return {
+    kod: form.kod.trim().toUpperCase(),
+    ad: form.ad.trim(),
+    adresEtiketi: form.adresEtiketi?.trim() || null,
+    il: form.il?.trim() || null,
+    ilce: form.ilce?.trim() || null,
+    mahalle: form.mahalle?.trim() || null,
+    enlem: form.enlem ?? null,
+    boylam: form.boylam ?? null,
+  }
+}
+
+export async function createServisDurak(form: ServisDurakForm) {
+  const { valid, errors } = validateServisDurakForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const data = servisDurakData(form)
+  const existing = await prisma.servisDurak.findUnique({ where: { kod: data.kod } })
+  if (existing) throw new Error(`"${data.kod}" kodu zaten kullanılıyor.`)
+
+  return prisma.servisDurak.create({ data })
+}
+
+export async function updateServisDurak(id: string, form: ServisDurakForm) {
+  const { valid, errors } = validateServisDurakForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const existing = await prisma.servisDurak.findUnique({ where: { id } })
+  if (!existing) throw new Error('Durak bulunamadı.')
+
+  const data = servisDurakData(form)
+  if (data.kod !== existing.kod) {
+    const kodCakismasi = await prisma.servisDurak.findUnique({ where: { kod: data.kod } })
+    if (kodCakismasi) throw new Error(`"${data.kod}" kodu zaten kullanılıyor.`)
+  }
+
+  return prisma.servisDurak.update({ where: { id }, data })
+}
+
+export async function pasiflestirServisDurak(id: string) {
+  const existing = await prisma.servisDurak.findUnique({ where: { id } })
+  if (!existing) throw new Error('Durak bulunamadı.')
+  if (!existing.aktif) throw new Error('Durak zaten pasif.')
+
+  return prisma.servisDurak.update({ where: { id }, data: { aktif: false } })
+}
+
+export async function geriAlServisDurak(id: string) {
+  const existing = await prisma.servisDurak.findUnique({ where: { id } })
+  if (!existing) throw new Error('Durak bulunamadı.')
+  if (existing.aktif) throw new Error('Durak zaten aktif.')
+
+  return prisma.servisDurak.update({ where: { id }, data: { aktif: true } })
 }

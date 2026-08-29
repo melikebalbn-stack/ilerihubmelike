@@ -96,3 +96,33 @@ export function validateServisGuzergahForm(form: ServisGuzergahForm): ServisVali
 
   return { valid: errors.length === 0, errors }
 }
+
+export type ServisDurakForm = {
+  kod: string
+  ad: string
+  adresEtiketi?: string | null
+  il?: string | null
+  ilce?: string | null
+  mahalle?: string | null
+  enlem?: number | null
+  boylam?: number | null
+}
+
+export function validateServisDurakForm(form: ServisDurakForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.kod || form.kod.trim().length < 2) {
+    errors.push('Durak kodu en az 2 karakter olmalıdır.')
+  }
+  if (!form.ad || form.ad.trim().length < 2) {
+    errors.push('Durak adı en az 2 karakter olmalıdır.')
+  }
+  if (form.enlem !== null && form.enlem !== undefined && (!Number.isFinite(form.enlem) || form.enlem < -90 || form.enlem > 90)) {
+    errors.push('Enlem -90 ile 90 arasında olmalıdır.')
+  }
+  if (form.boylam !== null && form.boylam !== undefined && (!Number.isFinite(form.boylam) || form.boylam < -180 || form.boylam > 180)) {
+    errors.push('Boylam -180 ile 180 arasında olmalıdır.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

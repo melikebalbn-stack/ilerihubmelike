@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   guzergahFindUnique: vi.fn(),
   guzergahCreate: vi.fn(),
   guzergahUpdate: vi.fn(),
+  durakFindMany: vi.fn(),
+  durakFindUnique: vi.fn(),
+  durakCreate: vi.fn(),
+  durakUpdate: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -35,23 +39,34 @@ vi.mock('@/lib/prisma', () => ({
       create: mocks.guzergahCreate,
       update: mocks.guzergahUpdate,
     },
+    servisDurak: {
+      findMany: mocks.durakFindMany,
+      findUnique: mocks.durakFindUnique,
+      create: mocks.durakCreate,
+      update: mocks.durakUpdate,
+    },
   },
 }))
 
 import {
   createServisFirma,
+  createServisDurak,
   createServisGuzergah,
   createServisYerleske,
   geriAlServisFirma,
+  geriAlServisDurak,
   geriAlServisGuzergah,
   geriAlServisYerleske,
   listServisFirmalar,
+  listServisDuraklar,
   listServisGuzergahlar,
   listServisYerleskeler,
   pasiflestirServisFirma,
+  pasiflestirServisDurak,
   pasiflestirServisGuzergah,
   pasiflestirServisYerleske,
   updateServisFirma,
+  updateServisDurak,
   updateServisGuzergah,
   updateServisYerleske,
 } from './service'
@@ -265,6 +280,92 @@ describe('ServisGuzergah — passive/restore', () => {
     mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', aktif: false })
     mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', aktif: true })
     const data = await geriAlServisGuzergah('g1')
+    expect(data.aktif).toBe(true)
+  })
+})
+
+const gecerliDurak = {
+  kod: 'drk-01',
+  ad: 'İstasyon Şube',
+  adresEtiketi: 'Ana cadde üzeri',
+  il: 'Kocaeli',
+  ilce: 'Gebze',
+  mahalle: 'Güzeller',
+  enlem: 40.802345,
+  boylam: 29.431234,
+}
+
+describe('ServisDurak — view', () => {
+  it('aktif filtresiyle kod ve ada göre sıralı listeler', async () => {
+    mocks.durakFindMany.mockResolvedValue([{ id: 'd1', kod: 'DRK-01' }])
+    const data = await listServisDuraklar({ aktif: true })
+    expect(mocks.durakFindMany).toHaveBeenCalledWith({
+      where: { aktif: true },
+      orderBy: [{ kod: 'asc' }, { ad: 'asc' }],
+    })
+    expect(data).toHaveLength(1)
+  })
+})
+
+describe('ServisDurak — create/edit', () => {
+  it('tüm değiştirilebilir scalar alanları normalize edip kaydeder', async () => {
+    mocks.durakFindUnique.mockResolvedValue(null)
+    mocks.durakCreate.mockResolvedValue({ id: 'd1', kod: 'DRK-01', ad: 'İstasyon Şube' })
+
+    await createServisDurak(gecerliDurak)
+
+    expect(mocks.durakCreate).toHaveBeenCalledWith({
+      data: {
+        kod: 'DRK-01',
+        ad: 'İstasyon Şube',
+        adresEtiketi: 'Ana cadde üzeri',
+        il: 'Kocaeli',
+        ilce: 'Gebze',
+        mahalle: 'Güzeller',
+        enlem: 40.802345,
+        boylam: 29.431234,
+      },
+    })
+  })
+
+  it('aynı kodla yeni kayıt oluşturmaz', async () => {
+    mocks.durakFindUnique.mockResolvedValue({ id: 'baska', kod: 'DRK-01' })
+    await expect(createServisDurak(gecerliDurak)).rejects.toThrow('zaten kullanılıyor')
+    expect(mocks.durakCreate).not.toHaveBeenCalled()
+  })
+
+  it('geçersiz koordinatlarla DB çağrısı yapmaz', async () => {
+    await expect(createServisDurak({ ...gecerliDurak, enlem: 91 })).rejects.toThrow('Enlem')
+    await expect(createServisDurak({ ...gecerliDurak, boylam: -181 })).rejects.toThrow('Boylam')
+    expect(mocks.durakFindUnique).not.toHaveBeenCalled()
+  })
+
+  it('mevcut durağı günceller', async () => {
+    mocks.durakFindUnique.mockResolvedValue({ id: 'd1', kod: 'DRK-01' })
+    mocks.durakUpdate.mockResolvedValue({ id: 'd1', kod: 'DRK-01', ad: 'Yeni Durak Adı' })
+    const data = await updateServisDurak('d1', { ...gecerliDurak, ad: 'Yeni Durak Adı' })
+    expect(data.ad).toBe('Yeni Durak Adı')
+  })
+
+  it('olmayan durağı güncellemez', async () => {
+    mocks.durakFindUnique.mockResolvedValue(null)
+    await expect(updateServisDurak('yok', gecerliDurak)).rejects.toThrow('Durak bulunamadı')
+    expect(mocks.durakUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServisDurak — passive/restore', () => {
+  it('aktif durağı pasifleştirir', async () => {
+    mocks.durakFindUnique.mockResolvedValue({ id: 'd1', aktif: true })
+    mocks.durakUpdate.mockResolvedValue({ id: 'd1', aktif: false })
+    const data = await pasiflestirServisDurak('d1')
+    expect(data.aktif).toBe(false)
+  })
+
+  it('pasif durağı geri aktifleştirir', async () => {
+    mocks.durakFindUnique.mockResolvedValue({ id: 'd1', aktif: false })
+    mocks.durakUpdate.mockResolvedValue({ id: 'd1', aktif: true })
+    const data = await geriAlServisDurak('d1')
     expect(data.aktif).toBe(true)
   })
 })

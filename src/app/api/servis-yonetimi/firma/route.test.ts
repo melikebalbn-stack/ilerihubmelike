@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
-  requireSession: vi.fn(),
+  requirePermission: vi.fn(),
   listServisFirmalar: vi.fn(),
   createServisFirma: vi.fn(),
 }))
 
-vi.mock('@/lib/auth/require-session', () => ({
-  requireSession: mocks.requireSession,
+vi.mock('@/lib/auth/require-permission', () => ({
+  requirePermission: mocks.requirePermission,
 }))
 
 vi.mock('@/lib/servis-yonetimi/service', () => ({
@@ -18,11 +18,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
 
 import { GET, POST } from './route'
 
-function sessionWith(permissions: string[]) {
-  return {
-    session: { user: { id: 'u1', permissions } },
-    error: null,
-  }
+function permissionResult(allowed: boolean) {
+  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }) }
 }
 
 beforeEach(() => {
@@ -31,14 +28,14 @@ beforeEach(() => {
 
 describe('GET /api/servis-yonetimi/firma — permission guard', () => {
   it('servis.view izni olmayan kullanıcı 403 alır', async () => {
-    mocks.requireSession.mockResolvedValue(sessionWith([]))
+    mocks.requirePermission.mockResolvedValue(permissionResult(false))
     const res = await GET(new NextRequest('http://localhost/api/servis-yonetimi/firma'))
     expect(res.status).toBe(403)
     expect(mocks.listServisFirmalar).not.toHaveBeenCalled()
   })
 
   it('servis.view izni olan kullanıcı listeyi görür', async () => {
-    mocks.requireSession.mockResolvedValue(sessionWith(['servis.view']))
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
     mocks.listServisFirmalar.mockResolvedValue([{ id: '1', ad: 'ABC' }])
     const res = await GET(new NextRequest('http://localhost/api/servis-yonetimi/firma'))
     const json = await res.json()
@@ -50,7 +47,7 @@ describe('GET /api/servis-yonetimi/firma — permission guard', () => {
 
 describe('POST /api/servis-yonetimi/firma — permission guard', () => {
   it('servis.tanim.manage izni olmayan (yalnız servis.view) kullanıcı 403 alır', async () => {
-    mocks.requireSession.mockResolvedValue(sessionWith(['servis.view']))
+    mocks.requirePermission.mockResolvedValue(permissionResult(false))
     const res = await POST(
       new NextRequest('http://localhost/api/servis-yonetimi/firma', {
         method: 'POST',
@@ -62,7 +59,7 @@ describe('POST /api/servis-yonetimi/firma — permission guard', () => {
   })
 
   it('servis.tanim.manage izni olan kullanıcı firma oluşturabilir', async () => {
-    mocks.requireSession.mockResolvedValue(sessionWith(['servis.tanim.manage']))
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
     mocks.createServisFirma.mockResolvedValue({ id: '1', ad: 'Yeni Firma' })
     const res = await POST(
       new NextRequest('http://localhost/api/servis-yonetimi/firma', {

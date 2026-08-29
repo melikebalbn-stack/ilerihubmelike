@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireSession } from '@/lib/auth/require-session'
+import { requirePermission } from '@/lib/auth/require-permission'
 import { createServisGuzergah, listServisGuzergahlar } from '@/lib/servis-yonetimi/service'
 import type { ServisGuzergahForm } from '@/lib/servis-yonetimi/validation'
 
 export async function GET(request: NextRequest) {
-  const { session, error } = await requireSession()
+  const { error } = await requirePermission('servis.view')
   if (error) return error
-  if (!session.user.permissions?.includes('servis.view')) {
-    return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
-  }
   try {
     const durum = request.nextUrl.searchParams.get('durum')
     const aktif = durum === 'aktif' ? true : durum === 'pasif' ? false : undefined
@@ -22,11 +19,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { session, error } = await requireSession()
+  const { error } = await requirePermission('servis.tanim.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('servis.tanim.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
-  }
   try {
     const body = (await request.json()) as ServisGuzergahForm
     const data = await createServisGuzergah(body)

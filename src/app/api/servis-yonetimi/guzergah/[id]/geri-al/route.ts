@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server'
-import { requireSession } from '@/lib/auth/require-session'
+import { requirePermission } from '@/lib/auth/require-permission'
 import { geriAlServisGuzergah } from '@/lib/servis-yonetimi/service'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { session, error } = await requireSession()
+  const { error } = await requirePermission('servis.tanim.manage')
   if (error) return error
-  if (!session.user.permissions?.includes('servis.tanim.manage')) {
-    return NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 })
-  }
   try {
     const { id } = await params
     const data = await geriAlServisGuzergah(id)

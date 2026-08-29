@@ -68,6 +68,20 @@ type ServisDurak = {
   updatedAt: string
 }
 
+type ServisArac = {
+  id: string
+  plaka: string
+  kapasite: number
+  firmaId: string
+  firma: { id: string; ad: string; aktif: boolean }
+  aracTipi: string | null
+  aktif: boolean
+  gecerlilikBaslangici: string | null
+  gecerlilikBitisi: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 function AktifBadge({ aktif }: { aktif: boolean }) {
   return (
     <Badge variant={aktif ? 'default' : 'secondary'}>
@@ -882,6 +896,229 @@ function ServisDurakPanel({ canManage }: { canManage: boolean }) {
   )
 }
 
+const bosAracForm = {
+  plaka: '',
+  kapasite: '',
+  firmaId: '',
+  aracTipi: '',
+  gecerlilikBaslangici: '',
+  gecerlilikBitisi: '',
+}
+
+function ServisAracPanel({ canManage }: { canManage: boolean }) {
+  const [araclar, setAraclar] = useState<ServisArac[]>([])
+  const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
+  const [arama, setArama] = useState('')
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [hata, setHata] = useState<string | null>(null)
+  const [dialogAcik, setDialogAcik] = useState(false)
+  const [duzenlenen, setDuzenlenen] = useState<ServisArac | null>(null)
+  const [form, setForm] = useState(bosAracForm)
+
+  const yukle = useCallback(async () => {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const [aracRes, firmaRes] = await Promise.all([
+        fetch('/api/servis-yonetimi/arac'),
+        fetch('/api/servis-yonetimi/firma?durum=aktif'),
+      ])
+      const [aracJson, firmaJson] = await Promise.all([aracRes.json(), firmaRes.json()])
+      if (!aracRes.ok || !aracJson.ok) {
+        setHata(aracJson.message || 'Araç listesi alınamadı.')
+        return
+      }
+      if (!firmaRes.ok || !firmaJson.ok) {
+        setHata(firmaJson.message || 'Firma listesi alınamadı.')
+        return
+      }
+      setAraclar(aracJson.data)
+      setFirmalar(firmaJson.data)
+    } catch {
+      setHata('Araç listesi alınırken beklenmeyen bir hata oluştu.')
+    } finally {
+      setYukleniyor(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    yukle()
+  }, [yukle])
+
+  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
+  const filtreliAraclar = araclar.filter((arac) => {
+    const query = normalize(arama.trim())
+    return !query || normalize(arac.plaka).includes(query) || (arac.aracTipi && normalize(arac.aracTipi).includes(query))
+  })
+
+  function yeniAc() {
+    setDuzenlenen(null)
+    setForm({ ...bosAracForm, firmaId: firmalar[0]?.id || '' })
+    setDialogAcik(true)
+  }
+
+  function duzenleAc(arac: ServisArac) {
+    setDuzenlenen(arac)
+    setForm({
+      plaka: arac.plaka,
+      kapasite: String(arac.kapasite),
+      firmaId: arac.firmaId,
+      aracTipi: arac.aracTipi ?? '',
+      gecerlilikBaslangici: tarihInputDegeri(arac.gecerlilikBaslangici),
+      gecerlilikBitisi: tarihInputDegeri(arac.gecerlilikBitisi),
+    })
+    setDialogAcik(true)
+  }
+
+  async function kaydet() {
+    setHata(null)
+    const url = duzenlenen ? `/api/servis-yonetimi/arac/${duzenlenen.id}` : '/api/servis-yonetimi/arac'
+    const method = duzenlenen ? 'PATCH' : 'POST'
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...form, kapasite: Number(form.kapasite) }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Kaydedilemedi.')
+      return
+    }
+    setDialogAcik(false)
+    yukle()
+  }
+
+  async function pasiflestir(id: string) {
+    await fetch(`/api/servis-yonetimi/arac/${id}/pasiflestir`, { method: 'POST' })
+    yukle()
+  }
+
+  async function geriAl(id: string) {
+    await fetch(`/api/servis-yonetimi/arac/${id}/geri-al`, { method: 'POST' })
+    yukle()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Input
+          value={arama}
+          onChange={(e) => setArama(e.target.value)}
+          placeholder="Plaka veya araç tipine göre ara"
+          aria-label="Araç ara"
+          className="sm:max-w-sm"
+        />
+        {canManage && (
+          <Button onClick={yeniAc} disabled={firmalar.length === 0}>
+            <Plus className="mr-2 h-4 w-4" /> Yeni Araç
+          </Button>
+        )}
+      </div>
+      {canManage && firmalar.length === 0 && !yukleniyor && (
+        <p className="text-sm text-amber-600">Araç eklemek için önce aktif bir taşeron firma oluşturun.</p>
+      )}
+      {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {yukleniyor ? (
+        <p className="text-sm text-muted-foreground">Yükleniyor...</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Plaka</TableHead>
+              <TableHead>Kapasite</TableHead>
+              <TableHead>Firma</TableHead>
+              <TableHead>Araç Tipi</TableHead>
+              <TableHead>Geçerlilik</TableHead>
+              <TableHead>Durum</TableHead>
+              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtreliAraclar.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={canManage ? 7 : 6} className="text-center text-muted-foreground">
+                  {arama.trim() ? 'Aramayla eşleşen araç yok.' : 'Kayıt yok.'}
+                </TableCell>
+              </TableRow>
+            )}
+            {filtreliAraclar.map((arac) => (
+              <TableRow key={arac.id}>
+                <TableCell className="font-mono">{arac.plaka}</TableCell>
+                <TableCell>{arac.kapasite}</TableCell>
+                <TableCell>{arac.firma.ad}{arac.firma.aktif ? '' : ' (Pasif)'}</TableCell>
+                <TableCell>{arac.aracTipi || '-'}</TableCell>
+                <TableCell>
+                  {tarihInputDegeri(arac.gecerlilikBaslangici) || '-'} / {tarihInputDegeri(arac.gecerlilikBitisi) || '-'}
+                </TableCell>
+                <TableCell><AktifBadge aktif={arac.aktif} /></TableCell>
+                {canManage && (
+                  <TableCell className="space-x-2 text-right">
+                    <Button size="sm" variant="outline" onClick={() => duzenleAc(arac)}>Düzenle</Button>
+                    {arac.aktif ? (
+                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(arac.id)}>Pasifleştir</Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => geriAl(arac.id)}>Geri Al</Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{duzenlenen ? 'Aracı Düzenle' : 'Yeni Araç'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="arac-plaka">Plaka *</Label>
+                <Input id="arac-plaka" value={form.plaka} onChange={(e) => setForm({ ...form, plaka: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="arac-kapasite">Kapasite *</Label>
+                <Input id="arac-kapasite" type="number" min="1" step="1" value={form.kapasite} onChange={(e) => setForm({ ...form, kapasite: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="arac-firma">Taşeron Firma *</Label>
+              <select
+                id="arac-firma"
+                value={form.firmaId}
+                onChange={(e) => setForm({ ...form, firmaId: e.target.value })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Firma seçin</option>
+                {firmalar.map((firma) => <option key={firma.id} value={firma.id}>{firma.ad}</option>)}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="arac-tipi">Araç Tipi</Label>
+              <Input id="arac-tipi" value={form.aracTipi} onChange={(e) => setForm({ ...form, aracTipi: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="arac-baslangic">Geçerlilik Başlangıcı</Label>
+                <Input id="arac-baslangic" type="date" value={form.gecerlilikBaslangici} onChange={(e) => setForm({ ...form, gecerlilikBaslangici: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="arac-bitis">Geçerlilik Bitişi</Label>
+                <Input id="arac-bitis" type="date" value={form.gecerlilikBitisi} onChange={(e) => setForm({ ...form, gecerlilikBitisi: e.target.value })} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={kaydet}>Kaydet</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 export default function ServisYonetimiPage() {
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
@@ -910,6 +1147,7 @@ export default function ServisYonetimiPage() {
           <TabsTrigger value="yerleske">Yerleşkeler</TabsTrigger>
           <TabsTrigger value="guzergah">Güzergâhlar</TabsTrigger>
           <TabsTrigger value="durak">Duraklar</TabsTrigger>
+          <TabsTrigger value="arac">Araçlar</TabsTrigger>
         </TabsList>
         <TabsContent value="firma">
           <ServisFirmaPanel canManage={canManage} />
@@ -922,6 +1160,9 @@ export default function ServisYonetimiPage() {
         </TabsContent>
         <TabsContent value="durak">
           <ServisDurakPanel canManage={canManage} />
+        </TabsContent>
+        <TabsContent value="arac">
+          <ServisAracPanel canManage={canManage} />
         </TabsContent>
       </Tabs>
     </div>

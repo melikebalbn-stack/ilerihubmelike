@@ -126,3 +126,40 @@ export function validateServisDurakForm(form: ServisDurakForm): ServisValidation
 
   return { valid: errors.length === 0, errors }
 }
+
+export type ServisAracForm = {
+  plaka: string
+  kapasite: number
+  firmaId: string
+  aracTipi?: string | null
+  gecerlilikBaslangici?: string | null
+  gecerlilikBitisi?: string | null
+}
+
+export function validateServisAracForm(form: ServisAracForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.plaka || form.plaka.replace(/\s+/g, '').length < 5) {
+    errors.push('Plaka en az 5 karakter olmalıdır.')
+  }
+  if (!Number.isInteger(form.kapasite) || form.kapasite <= 0) {
+    errors.push('Kapasite pozitif tam sayı olmalıdır.')
+  }
+  if (!form.firmaId?.trim()) {
+    errors.push('Firma seçimi zorunludur.')
+  }
+
+  const baslangic = parseDateOnly(form.gecerlilikBaslangici)
+  const bitis = parseDateOnly(form.gecerlilikBitisi)
+  if (form.gecerlilikBaslangici?.trim() && !baslangic) {
+    errors.push('Geçerlilik başlangıç tarihi geçersiz.')
+  }
+  if (form.gecerlilikBitisi?.trim() && !bitis) {
+    errors.push('Geçerlilik bitiş tarihi geçersiz.')
+  }
+  if (baslangic && bitis && bitis < baslangic) {
+    errors.push('Geçerlilik bitiş tarihi başlangıç tarihinden önce olamaz.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

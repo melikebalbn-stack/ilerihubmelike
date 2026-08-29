@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   geriAlServisGuzergah: vi.fn(),
   pasiflestirServisDurak: vi.fn(),
   geriAlServisDurak: vi.fn(),
+  pasiflestirServisArac: vi.fn(),
+  geriAlServisArac: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-permission', () => ({
@@ -25,6 +27,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   geriAlServisGuzergah: mocks.geriAlServisGuzergah,
   pasiflestirServisDurak: mocks.pasiflestirServisDurak,
   geriAlServisDurak: mocks.geriAlServisDurak,
+  pasiflestirServisArac: mocks.pasiflestirServisArac,
+  geriAlServisArac: mocks.geriAlServisArac,
 }))
 
 import { POST as firmaPasiflestir } from './firma/[id]/pasiflestir/route'
@@ -35,6 +39,8 @@ import { POST as guzergahPasiflestir } from './guzergah/[id]/pasiflestir/route'
 import { POST as guzergahGeriAl } from './guzergah/[id]/geri-al/route'
 import { POST as durakPasiflestir } from './durak/[id]/pasiflestir/route'
 import { POST as durakGeriAl } from './durak/[id]/geri-al/route'
+import { POST as aracPasiflestir } from './arac/[id]/pasiflestir/route'
+import { POST as aracGeriAl } from './arac/[id]/geri-al/route'
 
 type PostHandler = (
   request: Request,
@@ -56,6 +62,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['yerleşke', yerleskePasiflestir],
     ['güzergâh', guzergahPasiflestir],
     ['durak', durakPasiflestir],
+    ['araç', aracPasiflestir],
   ] as [string, PostHandler][])('%s pasifleştirme servis.passive ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.passive')
@@ -66,6 +73,7 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['yerleşke', yerleskeGeriAl],
     ['güzergâh', guzergahGeriAl],
     ['durak', durakGeriAl],
+    ['araç', aracGeriAl],
   ] as [string, PostHandler][])('%s geri-al servis.restore ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.restore')

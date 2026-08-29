@@ -1,10 +1,12 @@
 import { prisma } from '@/lib/prisma'
 import {
   validateServisFirmaForm,
+  validateServisAracForm,
   validateServisDurakForm,
   validateServisGuzergahForm,
   validateServisYerleskeForm,
   type ServisFirmaForm,
+  type ServisAracForm,
   type ServisDurakForm,
   type ServisGuzergahForm,
   type ServisYerleskeForm,
@@ -295,4 +297,91 @@ export async function geriAlServisDurak(id: string) {
   if (existing.aktif) throw new Error('Durak zaten aktif.')
 
   return prisma.servisDurak.update({ where: { id }, data: { aktif: true } })
+}
+
+// ============================================================================
+// ServisArac — yalnız taşeron araç master kaydı
+// ============================================================================
+
+export function normalizeServisAracPlaka(plaka: string): string {
+  return plaka.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')
+}
+
+export async function listServisAraclar(filtre?: { aktif?: boolean }) {
+  return prisma.servisArac.findMany({
+    where: filtre?.aktif !== undefined ? { aktif: filtre.aktif } : undefined,
+    include: { firma: { select: { id: true, ad: true, aktif: true } } },
+    orderBy: { plaka: 'asc' },
+  })
+}
+
+function servisAracData(form: ServisAracForm) {
+  return {
+    plaka: normalizeServisAracPlaka(form.plaka),
+    kapasite: form.kapasite,
+    firmaId: form.firmaId.trim(),
+    aracTipi: form.aracTipi?.trim() || null,
+    gecerlilikBaslangici: dateOnlyOrNull(form.gecerlilikBaslangici),
+    gecerlilikBitisi: dateOnlyOrNull(form.gecerlilikBitisi),
+  }
+}
+
+export async function createServisArac(form: ServisAracForm) {
+  const { valid, errors } = validateServisAracForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const data = servisAracData(form)
+  const [plakaCakismasi, firma] = await Promise.all([
+    prisma.servisArac.findUnique({ where: { plaka: data.plaka } }),
+    prisma.servisFirma.findUnique({ where: { id: data.firmaId } }),
+  ])
+  if (plakaCakismasi) throw new Error(`"${data.plaka}" plakası zaten kullanılıyor.`)
+  if (!firma) throw new Error('Firma bulunamadı.')
+  if (!firma.aktif) throw new Error('Pasif firmaya araç bağlanamaz.')
+
+  return prisma.servisArac.create({
+    data,
+    include: { firma: { select: { id: true, ad: true, aktif: true } } },
+  })
+}
+
+export async function updateServisArac(id: string, form: ServisAracForm) {
+  const { valid, errors } = validateServisAracForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const existing = await prisma.servisArac.findUnique({ where: { id } })
+  if (!existing) throw new Error('Araç bulunamadı.')
+
+  const data = servisAracData(form)
+  const [plakaCakismasi, firma] = await Promise.all([
+    data.plaka !== existing.plaka
+      ? prisma.servisArac.findUnique({ where: { plaka: data.plaka } })
+      : Promise.resolve(null),
+    prisma.servisFirma.findUnique({ where: { id: data.firmaId } }),
+  ])
+  if (plakaCakismasi) throw new Error(`"${data.plaka}" plakası zaten kullanılıyor.`)
+  if (!firma) throw new Error('Firma bulunamadı.')
+  if (!firma.aktif) throw new Error('Pasif firmaya araç bağlanamaz.')
+
+  return prisma.servisArac.update({
+    where: { id },
+    data,
+    include: { firma: { select: { id: true, ad: true, aktif: true } } },
+  })
+}
+
+export async function pasiflestirServisArac(id: string) {
+  const existing = await prisma.servisArac.findUnique({ where: { id } })
+  if (!existing) throw new Error('Araç bulunamadı.')
+  if (!existing.aktif) throw new Error('Araç zaten pasif.')
+
+  return prisma.servisArac.update({ where: { id }, data: { aktif: false } })
+}
+
+export async function geriAlServisArac(id: string) {
+  const existing = await prisma.servisArac.findUnique({ where: { id } })
+  if (!existing) throw new Error('Araç bulunamadı.')
+  if (existing.aktif) throw new Error('Araç zaten aktif.')
+
+  return prisma.servisArac.update({ where: { id }, data: { aktif: true } })
 }

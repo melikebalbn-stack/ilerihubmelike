@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   durakFindUnique: vi.fn(),
   durakCreate: vi.fn(),
   durakUpdate: vi.fn(),
+  aracFindMany: vi.fn(),
+  aracFindUnique: vi.fn(),
+  aracCreate: vi.fn(),
+  aracUpdate: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -45,27 +49,38 @@ vi.mock('@/lib/prisma', () => ({
       create: mocks.durakCreate,
       update: mocks.durakUpdate,
     },
+    servisArac: {
+      findMany: mocks.aracFindMany,
+      findUnique: mocks.aracFindUnique,
+      create: mocks.aracCreate,
+      update: mocks.aracUpdate,
+    },
   },
 }))
 
 import {
   createServisFirma,
+  createServisArac,
   createServisDurak,
   createServisGuzergah,
   createServisYerleske,
   geriAlServisFirma,
+  geriAlServisArac,
   geriAlServisDurak,
   geriAlServisGuzergah,
   geriAlServisYerleske,
   listServisFirmalar,
+  listServisAraclar,
   listServisDuraklar,
   listServisGuzergahlar,
   listServisYerleskeler,
   pasiflestirServisFirma,
+  pasiflestirServisArac,
   pasiflestirServisDurak,
   pasiflestirServisGuzergah,
   pasiflestirServisYerleske,
   updateServisFirma,
+  updateServisArac,
   updateServisDurak,
   updateServisGuzergah,
   updateServisYerleske,
@@ -366,6 +381,105 @@ describe('ServisDurak — passive/restore', () => {
     mocks.durakFindUnique.mockResolvedValue({ id: 'd1', aktif: false })
     mocks.durakUpdate.mockResolvedValue({ id: 'd1', aktif: true })
     const data = await geriAlServisDurak('d1')
+    expect(data.aktif).toBe(true)
+  })
+})
+
+const gecerliArac = {
+  plaka: '41 abc 123',
+  kapasite: 16,
+  firmaId: 'firma-1',
+  aracTipi: 'Minibüs',
+  gecerlilikBaslangici: '2026-08-01',
+  gecerlilikBitisi: '2026-12-31',
+}
+
+describe('ServisArac — view', () => {
+  it('aktif filtresi ve firma bilgisiyle plakaya göre listeler', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41ABC123' }])
+    const data = await listServisAraclar({ aktif: true })
+    expect(mocks.aracFindMany).toHaveBeenCalledWith({
+      where: { aktif: true },
+      include: { firma: { select: { id: true, ad: true, aktif: true } } },
+      orderBy: { plaka: 'asc' },
+    })
+    expect(data).toHaveLength(1)
+  })
+})
+
+describe('ServisArac — create/edit', () => {
+  it('plakayı boşluksuz büyük harfe çevirip tüm scalar alanları kaydeder', async () => {
+    mocks.aracFindUnique.mockResolvedValue(null)
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    mocks.aracCreate.mockResolvedValue({ id: 'a1', plaka: '41ABC123' })
+
+    await createServisArac(gecerliArac)
+
+    expect(mocks.aracCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: {
+        plaka: '41ABC123',
+        kapasite: 16,
+        firmaId: 'firma-1',
+        aracTipi: 'Minibüs',
+        gecerlilikBaslangici: new Date('2026-08-01T00:00:00.000Z'),
+        gecerlilikBitisi: new Date('2026-12-31T00:00:00.000Z'),
+      },
+    }))
+  })
+
+  it('boşluk ve harf farkıyla aynı plakayı ikinci kez oluşturmaz', async () => {
+    mocks.aracFindUnique.mockResolvedValue({ id: 'baska', plaka: '41ABC123' })
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    await expect(createServisArac({ ...gecerliArac, plaka: ' 41 AbC 123 ' })).rejects.toThrow('zaten kullanılıyor')
+    expect(mocks.aracCreate).not.toHaveBeenCalled()
+  })
+
+  it.each([0, -1, 1.5])('geçersiz kapasite %s değerini reddeder', async (kapasite) => {
+    await expect(createServisArac({ ...gecerliArac, kapasite })).rejects.toThrow('pozitif tam sayı')
+    expect(mocks.aracFindUnique).not.toHaveBeenCalled()
+  })
+
+  it('pasif firmaya yeni araç bağlamaz', async () => {
+    mocks.aracFindUnique.mockResolvedValue(null)
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: false })
+    await expect(createServisArac(gecerliArac)).rejects.toThrow('Pasif firmaya')
+    expect(mocks.aracCreate).not.toHaveBeenCalled()
+  })
+
+  it('olmayan firmaya araç bağlamaz', async () => {
+    mocks.aracFindUnique.mockResolvedValue(null)
+    mocks.firmaFindUnique.mockResolvedValue(null)
+    await expect(createServisArac(gecerliArac)).rejects.toThrow('Firma bulunamadı')
+  })
+
+  it('mevcut aracı aktif firmayla günceller', async () => {
+    mocks.aracFindUnique.mockResolvedValue({ id: 'a1', plaka: '41ABC123' })
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1', plaka: '41ABC123', kapasite: 18 })
+    const data = await updateServisArac('a1', { ...gecerliArac, kapasite: 18 })
+    expect(data.kapasite).toBe(18)
+  })
+
+  it('güncellemede pasif firmaya bağlamayı reddeder', async () => {
+    mocks.aracFindUnique.mockResolvedValue({ id: 'a1', plaka: '41ABC123' })
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: false })
+    await expect(updateServisArac('a1', gecerliArac)).rejects.toThrow('Pasif firmaya')
+    expect(mocks.aracUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('ServisArac — passive/restore', () => {
+  it('aktif aracı pasifleştirir', async () => {
+    mocks.aracFindUnique.mockResolvedValue({ id: 'a1', aktif: true })
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1', aktif: false })
+    const data = await pasiflestirServisArac('a1')
+    expect(data.aktif).toBe(false)
+  })
+
+  it('pasif aracı geri aktifleştirir', async () => {
+    mocks.aracFindUnique.mockResolvedValue({ id: 'a1', aktif: false })
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1', aktif: true })
+    const data = await geriAlServisArac('a1')
     expect(data.aktif).toBe(true)
   })
 })

@@ -10,6 +10,8 @@ import {
   validateServisSeferDilimiForm,
   validateServisGuzergahDurakForm,
   validateServisGuzergahDurakSaatForm,
+  validateServisGuzergahAracVarsayilanForm,
+  validateServisGuzergahSoforVarsayilanForm,
   type ServisFirmaForm,
   type ServisAracForm,
   type ServisDurakForm,
@@ -19,6 +21,8 @@ import {
   type ServisSeferDilimiForm,
   type ServisGuzergahDurakForm,
   type ServisGuzergahDurakSaatForm,
+  type ServisGuzergahAracVarsayilanForm,
+  type ServisGuzergahSoforVarsayilanForm,
 } from './validation'
 
 // ============================================================================
@@ -768,4 +772,357 @@ export async function guzergahDurakSaatiSil(id: string) {
   if (!existing) throw new Error('Saat kaydı bulunamadı.')
 
   return prisma.servisGuzergahDurakSaat.delete({ where: { id } })
+}
+
+// ============================================================================
+// ServisGuzergahAracVarsayilan / ServisGuzergahSoforVarsayilan — güzergahın
+// bir sefer diliminde varsayılan olarak hangi araç/şoförle çalıştığı
+// (ANA/YEDEK). ZAMAN BAĞIMLI ATAMA — geçmiş korunur: satır asla silinmez
+// veya kimlik alanları (aracId/soforId/dilimId/guzergahId/rol/baslangıç)
+// üzerine yazılmaz. "Pasifleştirme" bitisTarihi yazıp aktif=false yapmaktır
+// (kapatma tarihi kalıcı olarak kayıtta kalır); yeni bir atama HER ZAMAN
+// yeni bir satırdır.
+//
+// DB'de EXCLUDE USING gist (aracId|soforId WITH =, dilimId WITH =,
+// daterange(baslangicTarihi, COALESCE(bitisTarihi,'infinity'),'[]') WITH &&)
+// WHERE (aktif=true AND rol='ANA') — yalnız migration SQL'inde tanımlı,
+// Prisma'da ifade edilemez. ÖNEMLİ (migration SQL yorumunda da açık):
+// guzergahId bu kısıta DAHİL DEĞİL. Kısıt araç/şoför bazlı çalışır: aynı
+// güzergah+dilimde birden fazla ANA araç/şoför olması (yoğun hat, 2 araç)
+// kısıtı İHLAL ETMEZ (aracId farklı). İhlal eden şey: AYNI araç/şoförün
+// AYNI dilimde çakışan tarih aralıklarında FARKLI güzergahların ANA'sı
+// olması (fiziken aynı anda iki yerde olamaz). YEDEK satırları bu kısıtın
+// tamamen dışındadır (WHERE rol='ANA' filtresi) — bir araç/şoför aynı anda
+// birden çok güzergaha YEDEK yazılabilir, DB hiç kontrol etmez.
+//
+// Aşağıdaki cakisma kontrolü bu kuralı aplikasyon katmanında BİREBİR
+// uygular (insert/update/geri-al öncesi) — çiğ Postgres EXCLUDE hatası
+// kullanıcıya asla yansımaz.
+
+function tarihStr(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+async function anaAracCakismasi(
+  aracId: string,
+  dilimId: string,
+  baslangic: Date,
+  bitis: Date | null,
+  haricId?: string,
+) {
+  return prisma.servisGuzergahAracVarsayilan.findFirst({
+    where: {
+      aracId,
+      dilimId,
+      rol: 'ANA',
+      aktif: true,
+      ...(haricId ? { id: { not: haricId } } : {}),
+      AND: [
+        { OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: baslangic } }] },
+        ...(bitis ? [{ baslangicTarihi: { lte: bitis } }] : []),
+      ],
+    },
+    include: { guzergah: { select: { id: true, kod: true, ad: true } } },
+  })
+}
+
+async function anaSoforCakismasi(
+  soforId: string,
+  dilimId: string,
+  baslangic: Date,
+  bitis: Date | null,
+  haricId?: string,
+) {
+  return prisma.servisGuzergahSoforVarsayilan.findFirst({
+    where: {
+      soforId,
+      dilimId,
+      rol: 'ANA',
+      aktif: true,
+      ...(haricId ? { id: { not: haricId } } : {}),
+      AND: [
+        { OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: baslangic } }] },
+        ...(bitis ? [{ baslangicTarihi: { lte: bitis } }] : []),
+      ],
+    },
+    include: { guzergah: { select: { id: true, kod: true, ad: true } } },
+  })
+}
+
+function aracCakismaMesaji(cakisan: { baslangicTarihi: Date; bitisTarihi: Date | null; guzergah: { kod: string; ad: string } }): string {
+  const araligi = cakisan.bitisTarihi
+    ? `${tarihStr(cakisan.baslangicTarihi)} – ${tarihStr(cakisan.bitisTarihi)}`
+    : `${tarihStr(cakisan.baslangicTarihi)} tarihinden itibaren süresiz`
+  return `Bu araç ${araligi} aralığında zaten "${cakisan.guzergah.kod} — ${cakisan.guzergah.ad}" güzergahının ANA aracı. Önce o atamayı kapatmalısınız.`
+}
+
+function soforCakismaMesaji(cakisan: { baslangicTarihi: Date; bitisTarihi: Date | null; guzergah: { kod: string; ad: string } }): string {
+  const araligi = cakisan.bitisTarihi
+    ? `${tarihStr(cakisan.baslangicTarihi)} – ${tarihStr(cakisan.bitisTarihi)}`
+    : `${tarihStr(cakisan.baslangicTarihi)} tarihinden itibaren süresiz`
+  return `Bu şoför ${araligi} aralığında zaten "${cakisan.guzergah.kod} — ${cakisan.guzergah.ad}" güzergahının ANA şoförü. Önce o atamayı kapatmalısınız.`
+}
+
+const servisGuzergahAracVarsayilanInclude = {
+  guzergah: { select: { id: true, kod: true, ad: true } },
+  dilim: { select: { id: true, kod: true, ad: true, yon: true } },
+  arac: { select: { id: true, plaka: true, aktif: true } },
+} as const
+
+export async function listServisGuzergahAracVarsayilanlari(guzergahId: string, filtre?: { aktif?: boolean }) {
+  return prisma.servisGuzergahAracVarsayilan.findMany({
+    where: { guzergahId, ...(filtre?.aktif !== undefined ? { aktif: filtre.aktif } : {}) },
+    include: servisGuzergahAracVarsayilanInclude,
+    orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
+  })
+}
+
+export async function createServisGuzergahAracVarsayilan(
+  form: ServisGuzergahAracVarsayilanForm,
+  createdById: string,
+) {
+  const { valid, errors } = validateServisGuzergahAracVarsayilanForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const guzergahId = form.guzergahId.trim()
+  const dilimId = form.dilimId.trim()
+  const aracId = form.aracId.trim()
+  const baslangic = dateOnlyOrNull(form.baslangicTarihi)!
+  const bitis = dateOnlyOrNull(form.bitisTarihi)
+
+  const [guzergah, dilim, arac] = await Promise.all([
+    prisma.servisGuzergah.findUnique({ where: { id: guzergahId } }),
+    prisma.servisSeferDilimi.findUnique({ where: { id: dilimId } }),
+    prisma.servisArac.findUnique({ where: { id: aracId } }),
+  ])
+  if (!guzergah) throw new Error('Güzergâh bulunamadı.')
+  if (!guzergah.aktif) throw new Error('Pasif güzergaha varsayılan araç ataması yapılamaz.')
+  if (!dilim) throw new Error('Sefer dilimi bulunamadı.')
+  if (!dilim.aktif) throw new Error('Pasif sefer dilimine varsayılan araç ataması yapılamaz.')
+  if (!arac) throw new Error('Araç bulunamadı.')
+  if (!arac.aktif) throw new Error('Pasif araç varsayılan olarak atanamaz.')
+
+  if (form.rol === 'ANA') {
+    const cakisan = await anaAracCakismasi(aracId, dilimId, baslangic, bitis)
+    if (cakisan) throw new Error(aracCakismaMesaji(cakisan))
+  }
+
+  return prisma.servisGuzergahAracVarsayilan.create({
+    data: {
+      guzergahId,
+      dilimId,
+      aracId,
+      rol: form.rol,
+      baslangicTarihi: baslangic,
+      bitisTarihi: bitis,
+      neden: form.neden?.trim() || null,
+      aciklama: form.aciklama?.trim() || null,
+      createdById,
+    },
+    include: servisGuzergahAracVarsayilanInclude,
+  })
+}
+
+export async function guncelleServisGuzergahAracVarsayilan(
+  id: string,
+  form: { bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
+  updatedById: string,
+) {
+  const existing = await prisma.servisGuzergahAracVarsayilan.findUnique({ where: { id } })
+  if (!existing) throw new Error('Varsayılan araç ataması bulunamadı.')
+
+  const data: { bitisTarihi?: Date | null; neden?: string | null; aciklama?: string | null; updatedById: string } = {
+    updatedById,
+  }
+
+  if (form.bitisTarihi !== undefined) {
+    const bitis = dateOnlyOrNull(form.bitisTarihi)
+    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
+    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+
+    if (existing.rol === 'ANA' && existing.aktif && bitis?.getTime() !== existing.bitisTarihi?.getTime()) {
+      const cakisan = await anaAracCakismasi(existing.aracId, existing.dilimId, existing.baslangicTarihi, bitis, id)
+      if (cakisan) throw new Error(aracCakismaMesaji(cakisan))
+    }
+    data.bitisTarihi = bitis
+  }
+  if (form.neden !== undefined) data.neden = form.neden?.trim() || null
+  if (form.aciklama !== undefined) data.aciklama = form.aciklama?.trim() || null
+
+  return prisma.servisGuzergahAracVarsayilan.update({
+    where: { id },
+    data,
+    include: servisGuzergahAracVarsayilanInclude,
+  })
+}
+
+export async function pasiflestirServisGuzergahAracVarsayilan(id: string, bitisTarihi: string, updatedById: string) {
+  const existing = await prisma.servisGuzergahAracVarsayilan.findUnique({ where: { id } })
+  if (!existing) throw new Error('Varsayılan araç ataması bulunamadı.')
+  if (!existing.aktif) throw new Error('Bu atama zaten pasif.')
+
+  const bitis = dateOnlyOrNull(bitisTarihi)
+  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
+  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+
+  return prisma.servisGuzergahAracVarsayilan.update({
+    where: { id },
+    data: { bitisTarihi: bitis, aktif: false, updatedById },
+    include: servisGuzergahAracVarsayilanInclude,
+  })
+}
+
+export async function geriAlServisGuzergahAracVarsayilan(id: string, updatedById: string) {
+  const existing = await prisma.servisGuzergahAracVarsayilan.findUnique({ where: { id } })
+  if (!existing) throw new Error('Varsayılan araç ataması bulunamadı.')
+  if (existing.aktif) throw new Error('Bu atama zaten aktif.')
+
+  if (existing.rol === 'ANA') {
+    const cakisan = await anaAracCakismasi(
+      existing.aracId,
+      existing.dilimId,
+      existing.baslangicTarihi,
+      existing.bitisTarihi,
+      id,
+    )
+    if (cakisan) throw new Error(aracCakismaMesaji(cakisan))
+  }
+
+  return prisma.servisGuzergahAracVarsayilan.update({
+    where: { id },
+    data: { aktif: true, updatedById },
+    include: servisGuzergahAracVarsayilanInclude,
+  })
+}
+
+const servisGuzergahSoforVarsayilanInclude = {
+  guzergah: { select: { id: true, kod: true, ad: true } },
+  dilim: { select: { id: true, kod: true, ad: true, yon: true } },
+  sofor: { select: { id: true, adSoyad: true, aktif: true } },
+} as const
+
+export async function listServisGuzergahSoforVarsayilanlari(guzergahId: string, filtre?: { aktif?: boolean }) {
+  return prisma.servisGuzergahSoforVarsayilan.findMany({
+    where: { guzergahId, ...(filtre?.aktif !== undefined ? { aktif: filtre.aktif } : {}) },
+    include: servisGuzergahSoforVarsayilanInclude,
+    orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
+  })
+}
+
+export async function createServisGuzergahSoforVarsayilan(
+  form: ServisGuzergahSoforVarsayilanForm,
+  createdById: string,
+) {
+  const { valid, errors } = validateServisGuzergahSoforVarsayilanForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const guzergahId = form.guzergahId.trim()
+  const dilimId = form.dilimId.trim()
+  const soforId = form.soforId.trim()
+  const baslangic = dateOnlyOrNull(form.baslangicTarihi)!
+  const bitis = dateOnlyOrNull(form.bitisTarihi)
+
+  const [guzergah, dilim, sofor] = await Promise.all([
+    prisma.servisGuzergah.findUnique({ where: { id: guzergahId } }),
+    prisma.servisSeferDilimi.findUnique({ where: { id: dilimId } }),
+    prisma.servisSofor.findUnique({ where: { id: soforId } }),
+  ])
+  if (!guzergah) throw new Error('Güzergâh bulunamadı.')
+  if (!guzergah.aktif) throw new Error('Pasif güzergaha varsayılan şoför ataması yapılamaz.')
+  if (!dilim) throw new Error('Sefer dilimi bulunamadı.')
+  if (!dilim.aktif) throw new Error('Pasif sefer dilimine varsayılan şoför ataması yapılamaz.')
+  if (!sofor) throw new Error('Şoför bulunamadı.')
+  if (!sofor.aktif) throw new Error('Pasif şoför varsayılan olarak atanamaz.')
+
+  if (form.rol === 'ANA') {
+    const cakisan = await anaSoforCakismasi(soforId, dilimId, baslangic, bitis)
+    if (cakisan) throw new Error(soforCakismaMesaji(cakisan))
+  }
+
+  return prisma.servisGuzergahSoforVarsayilan.create({
+    data: {
+      guzergahId,
+      dilimId,
+      soforId,
+      rol: form.rol,
+      baslangicTarihi: baslangic,
+      bitisTarihi: bitis,
+      neden: form.neden?.trim() || null,
+      aciklama: form.aciklama?.trim() || null,
+      createdById,
+    },
+    include: servisGuzergahSoforVarsayilanInclude,
+  })
+}
+
+export async function guncelleServisGuzergahSoforVarsayilan(
+  id: string,
+  form: { bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
+  updatedById: string,
+) {
+  const existing = await prisma.servisGuzergahSoforVarsayilan.findUnique({ where: { id } })
+  if (!existing) throw new Error('Varsayılan şoför ataması bulunamadı.')
+
+  const data: { bitisTarihi?: Date | null; neden?: string | null; aciklama?: string | null; updatedById: string } = {
+    updatedById,
+  }
+
+  if (form.bitisTarihi !== undefined) {
+    const bitis = dateOnlyOrNull(form.bitisTarihi)
+    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
+    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+
+    if (existing.rol === 'ANA' && existing.aktif && bitis?.getTime() !== existing.bitisTarihi?.getTime()) {
+      const cakisan = await anaSoforCakismasi(existing.soforId, existing.dilimId, existing.baslangicTarihi, bitis, id)
+      if (cakisan) throw new Error(soforCakismaMesaji(cakisan))
+    }
+    data.bitisTarihi = bitis
+  }
+  if (form.neden !== undefined) data.neden = form.neden?.trim() || null
+  if (form.aciklama !== undefined) data.aciklama = form.aciklama?.trim() || null
+
+  return prisma.servisGuzergahSoforVarsayilan.update({
+    where: { id },
+    data,
+    include: servisGuzergahSoforVarsayilanInclude,
+  })
+}
+
+export async function pasiflestirServisGuzergahSoforVarsayilan(id: string, bitisTarihi: string, updatedById: string) {
+  const existing = await prisma.servisGuzergahSoforVarsayilan.findUnique({ where: { id } })
+  if (!existing) throw new Error('Varsayılan şoför ataması bulunamadı.')
+  if (!existing.aktif) throw new Error('Bu atama zaten pasif.')
+
+  const bitis = dateOnlyOrNull(bitisTarihi)
+  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
+  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+
+  return prisma.servisGuzergahSoforVarsayilan.update({
+    where: { id },
+    data: { bitisTarihi: bitis, aktif: false, updatedById },
+    include: servisGuzergahSoforVarsayilanInclude,
+  })
+}
+
+export async function geriAlServisGuzergahSoforVarsayilan(id: string, updatedById: string) {
+  const existing = await prisma.servisGuzergahSoforVarsayilan.findUnique({ where: { id } })
+  if (!existing) throw new Error('Varsayılan şoför ataması bulunamadı.')
+  if (existing.aktif) throw new Error('Bu atama zaten aktif.')
+
+  if (existing.rol === 'ANA') {
+    const cakisan = await anaSoforCakismasi(
+      existing.soforId,
+      existing.dilimId,
+      existing.baslangicTarihi,
+      existing.bitisTarihi,
+      id,
+    )
+    if (cakisan) throw new Error(soforCakismaMesaji(cakisan))
+  }
+
+  return prisma.servisGuzergahSoforVarsayilan.update({
+    where: { id },
+    data: { aktif: true, updatedById },
+    include: servisGuzergahSoforVarsayilanInclude,
+  })
 }

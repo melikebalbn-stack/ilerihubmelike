@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   geriAlServisSeferDilimi: vi.fn(),
   pasiflestirServisGuzergahDurak: vi.fn(),
   geriAlServisGuzergahDurak: vi.fn(),
+  pasiflestirServisGuzergahAracVarsayilan: vi.fn(),
+  geriAlServisGuzergahAracVarsayilan: vi.fn(),
+  pasiflestirServisGuzergahSoforVarsayilan: vi.fn(),
+  geriAlServisGuzergahSoforVarsayilan: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-permission', () => ({
@@ -41,6 +45,10 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   geriAlServisSeferDilimi: mocks.geriAlServisSeferDilimi,
   pasiflestirServisGuzergahDurak: mocks.pasiflestirServisGuzergahDurak,
   geriAlServisGuzergahDurak: mocks.geriAlServisGuzergahDurak,
+  pasiflestirServisGuzergahAracVarsayilan: mocks.pasiflestirServisGuzergahAracVarsayilan,
+  geriAlServisGuzergahAracVarsayilan: mocks.geriAlServisGuzergahAracVarsayilan,
+  pasiflestirServisGuzergahSoforVarsayilan: mocks.pasiflestirServisGuzergahSoforVarsayilan,
+  geriAlServisGuzergahSoforVarsayilan: mocks.geriAlServisGuzergahSoforVarsayilan,
 }))
 
 import { POST as firmaPasiflestir } from './firma/[id]/pasiflestir/route'
@@ -59,6 +67,10 @@ import { POST as seferDilimiPasiflestir } from './sefer-dilimi/[id]/pasiflestir/
 import { POST as seferDilimiGeriAl } from './sefer-dilimi/[id]/geri-al/route'
 import { POST as guzergahDurakPasiflestir } from './guzergah-durak/[id]/pasiflestir/route'
 import { POST as guzergahDurakGeriAl } from './guzergah-durak/[id]/geri-al/route'
+import { POST as aracVarsayilanPasiflestir } from './guzergah-arac-varsayilan/[id]/pasiflestir/route'
+import { POST as aracVarsayilanGeriAl } from './guzergah-arac-varsayilan/[id]/geri-al/route'
+import { POST as soforVarsayilanPasiflestir } from './guzergah-sofor-varsayilan/[id]/pasiflestir/route'
+import { POST as soforVarsayilanGeriAl } from './guzergah-sofor-varsayilan/[id]/geri-al/route'
 
 type PostHandler = (
   request: Request,
@@ -84,6 +96,8 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['şoför', soforPasiflestir],
     ['sefer dilimi', seferDilimiPasiflestir],
     ['güzergâh-durak', guzergahDurakPasiflestir],
+    ['güzergâh-araç varsayılanı', aracVarsayilanPasiflestir],
+    ['güzergâh-şoför varsayılanı', soforVarsayilanPasiflestir],
   ] as [string, PostHandler][])('%s pasifleştirme servis.passive ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.passive')
@@ -98,6 +112,8 @@ describe('Servis tanım pasifleştirme/geri-al permission anahtarları', () => {
     ['şoför', soforGeriAl],
     ['sefer dilimi', seferDilimiGeriAl],
     ['güzergâh-durak', guzergahDurakGeriAl],
+    ['güzergâh-araç varsayılanı', aracVarsayilanGeriAl],
+    ['güzergâh-şoför varsayılanı', soforVarsayilanGeriAl],
   ] as [string, PostHandler][])('%s geri-al servis.restore ister', async (_entity, handler) => {
     await handler(request, context)
     expect(mocks.requirePermission).toHaveBeenCalledWith('servis.restore')

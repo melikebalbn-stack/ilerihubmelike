@@ -259,3 +259,75 @@ export function validateServisGuzergahDurakSaatForm(form: ServisGuzergahDurakSaa
 
   return { valid: errors.length === 0, errors }
 }
+
+export type ServisRol = 'ANA' | 'YEDEK'
+
+function validateRolVeTarihler(
+  form: { rol: string; baslangicTarihi: string; bitisTarihi?: string | null },
+  errors: string[],
+) {
+  if (form.rol !== 'ANA' && form.rol !== 'YEDEK') {
+    errors.push('Rol ANA veya YEDEK olmalıdır.')
+  }
+
+  const baslangic = parseDateOnly(form.baslangicTarihi)
+  if (!form.baslangicTarihi?.trim() || !baslangic) {
+    errors.push('Başlangıç tarihi zorunludur ve geçerli olmalıdır.')
+  }
+
+  const bitis = parseDateOnly(form.bitisTarihi)
+  if (form.bitisTarihi?.trim() && !bitis) {
+    errors.push('Bitiş tarihi geçersiz.')
+  }
+  if (baslangic && bitis && bitis < baslangic) {
+    errors.push('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+  }
+}
+
+export type ServisGuzergahAracVarsayilanForm = {
+  guzergahId: string
+  dilimId: string
+  aracId: string
+  rol: ServisRol
+  baslangicTarihi: string
+  bitisTarihi?: string | null
+  neden?: string | null
+  aciklama?: string | null
+}
+
+export function validateServisGuzergahAracVarsayilanForm(
+  form: ServisGuzergahAracVarsayilanForm,
+): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.guzergahId?.trim()) errors.push('Güzergâh seçimi zorunludur.')
+  if (!form.dilimId?.trim()) errors.push('Sefer dilimi seçimi zorunludur.')
+  if (!form.aracId?.trim()) errors.push('Araç seçimi zorunludur.')
+  validateRolVeTarihler(form, errors)
+
+  return { valid: errors.length === 0, errors }
+}
+
+export type ServisGuzergahSoforVarsayilanForm = {
+  guzergahId: string
+  dilimId: string
+  soforId: string
+  rol: ServisRol
+  baslangicTarihi: string
+  bitisTarihi?: string | null
+  neden?: string | null
+  aciklama?: string | null
+}
+
+export function validateServisGuzergahSoforVarsayilanForm(
+  form: ServisGuzergahSoforVarsayilanForm,
+): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.guzergahId?.trim()) errors.push('Güzergâh seçimi zorunludur.')
+  if (!form.dilimId?.trim()) errors.push('Sefer dilimi seçimi zorunludur.')
+  if (!form.soforId?.trim()) errors.push('Şoför seçimi zorunludur.')
+  validateRolVeTarihler(form, errors)
+
+  return { valid: errors.length === 0, errors }
+}

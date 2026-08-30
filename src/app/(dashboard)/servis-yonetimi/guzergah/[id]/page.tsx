@@ -383,6 +383,7 @@ export default function GuzergahDetayPage() {
               canManage={canManage}
               canPassive={canPassive}
               canRestore={canRestore}
+              canHistory={canHistory}
             />
           </TabsContent>
 
@@ -393,6 +394,7 @@ export default function GuzergahDetayPage() {
               canManage={canManage}
               canPassive={canPassive}
               canRestore={canRestore}
+              canHistory={canHistory}
             />
           </TabsContent>
 
@@ -677,12 +679,14 @@ function VarsayilanAraclarPanel({
   canManage,
   canPassive,
   canRestore,
+  canHistory,
 }: {
   guzergahId: string
   dilimler: SeferDilimi[]
   canManage: boolean
   canPassive: boolean
   canRestore: boolean
+  canHistory: boolean
 }) {
   const [liste, setListe] = useState<AracVarsayilan[]>([])
   const [araclar, setAraclar] = useState<SecilebilirArac[]>([])
@@ -694,6 +698,7 @@ function VarsayilanAraclarPanel({
   })
   const [kapatilan, setKapatilan] = useState<AracVarsayilan | null>(null)
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
+  const [gecmisVarsayilan, setGecmisVarsayilan] = useState<AracVarsayilan | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -803,13 +808,13 @@ function VarsayilanAraclarPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
-              {(canPassive || canRestore) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPassive || canRestore ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -822,8 +827,9 @@ function VarsayilanAraclarPanel({
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
-                {(canPassive || canRestore) && (
+                {(canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
+                    {canHistory && <GecmisButonu onClick={() => setGecmisVarsayilan(v)} />}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -836,6 +842,16 @@ function VarsayilanAraclarPanel({
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisVarsayilan && (
+        <ServisGecmisDialog
+          hedefTipi="GUZERGAH_ARAC_VARSAYILAN"
+          hedefId={gecmisVarsayilan.id}
+          baslik={`${gecmisVarsayilan.dilim.kod} — ${gecmisVarsayilan.arac.plaka}`}
+          open={!!gecmisVarsayilan}
+          onOpenChange={(o) => !o && setGecmisVarsayilan(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -911,12 +927,14 @@ function VarsayilanSoforlerPanel({
   canManage,
   canPassive,
   canRestore,
+  canHistory,
 }: {
   guzergahId: string
   dilimler: SeferDilimi[]
   canManage: boolean
   canPassive: boolean
   canRestore: boolean
+  canHistory: boolean
 }) {
   const [liste, setListe] = useState<SoforVarsayilan[]>([])
   const [soforler, setSoforler] = useState<SecilebilirSofor[]>([])
@@ -928,6 +946,7 @@ function VarsayilanSoforlerPanel({
   })
   const [kapatilan, setKapatilan] = useState<SoforVarsayilan | null>(null)
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
+  const [gecmisVarsayilan, setGecmisVarsayilan] = useState<SoforVarsayilan | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1037,13 +1056,13 @@ function VarsayilanSoforlerPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
-              {(canPassive || canRestore) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPassive || canRestore ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -1056,8 +1075,9 @@ function VarsayilanSoforlerPanel({
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
-                {(canPassive || canRestore) && (
+                {(canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
+                    {canHistory && <GecmisButonu onClick={() => setGecmisVarsayilan(v)} />}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -1070,6 +1090,16 @@ function VarsayilanSoforlerPanel({
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisVarsayilan && (
+        <ServisGecmisDialog
+          hedefTipi="GUZERGAH_SOFOR_VARSAYILAN"
+          hedefId={gecmisVarsayilan.id}
+          baslik={`${gecmisVarsayilan.dilim.kod} — ${gecmisVarsayilan.sofor.adSoyad}`}
+          open={!!gecmisVarsayilan}
+          onOpenChange={(o) => !o && setGecmisVarsayilan(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>

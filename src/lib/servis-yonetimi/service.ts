@@ -1150,21 +1150,29 @@ export async function createServisGuzergahAracVarsayilan(
     if (cakisan) throw new Error(aracCakismaMesaji(cakisan))
   }
 
-  return prisma.servisGuzergahAracVarsayilan.create({
-    data: {
-      guzergahId,
-      dilimId,
-      aracId,
-      rol: form.rol,
-      baslangicTarihi: baslangic,
-      bitisTarihi: bitis,
-      neden: form.neden?.trim() || null,
-      aciklama: form.aciklama?.trim() || null,
-      createdById,
-    },
-    include: servisGuzergahAracVarsayilanInclude,
+  const data = {
+    guzergahId,
+    dilimId,
+    aracId,
+    rol: form.rol,
+    baslangicTarihi: baslangic,
+    bitisTarihi: bitis,
+    neden: form.neden?.trim() || null,
+    aciklama: form.aciklama?.trim() || null,
+    createdById,
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const varsayilan = await tx.servisGuzergahAracVarsayilan.create({ data, include: servisGuzergahAracVarsayilanInclude })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', hedefId: varsayilan.id, islem: 'OLUSTURMA', yapanId: createdById,
+      yeniDeger: { guzergahId, dilimId, aracId, rol: form.rol, baslangicTarihi: baslangic, bitisTarihi: bitis, neden: data.neden, aciklama: data.aciklama },
+    })
+    return varsayilan
   })
 }
+
+const ARAC_VARSAYILAN_GUNCELLENEBILIR_ALANLAR = ['bitisTarihi', 'neden', 'aciklama'] as const
 
 export async function guncelleServisGuzergahAracVarsayilan(
   id: string,
@@ -1192,10 +1200,14 @@ export async function guncelleServisGuzergahAracVarsayilan(
   if (form.neden !== undefined) data.neden = form.neden?.trim() || null
   if (form.aciklama !== undefined) data.aciklama = form.aciklama?.trim() || null
 
-  return prisma.servisGuzergahAracVarsayilan.update({
-    where: { id },
-    data,
-    include: servisGuzergahAracVarsayilanInclude,
+  const fark = degisenAlanlar(existing, data, [...ARAC_VARSAYILAN_GUNCELLENEBILIR_ALANLAR])
+
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisGuzergahAracVarsayilan.update({ where: { id }, data, include: servisGuzergahAracVarsayilanInclude })
+    if (fark) {
+      await kaydetIslemGecmisi({ tx, hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', hedefId: id, islem: 'GUNCELLEME', yapanId: updatedById, ...fark })
+    }
+    return guncel
   })
 }
 
@@ -1208,10 +1220,18 @@ export async function pasiflestirServisGuzergahAracVarsayilan(id: string, bitisT
   if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
   if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
 
-  return prisma.servisGuzergahAracVarsayilan.update({
-    where: { id },
-    data: { bitisTarihi: bitis, aktif: false, updatedById },
-    include: servisGuzergahAracVarsayilanInclude,
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisGuzergahAracVarsayilan.update({
+      where: { id },
+      data: { bitisTarihi: bitis, aktif: false, updatedById },
+      include: servisGuzergahAracVarsayilanInclude,
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', hedefId: id, islem: 'PASIFLESTIRME', yapanId: updatedById,
+      oncekiDeger: { bitisTarihi: existing.bitisTarihi, aktif: true },
+      yeniDeger: { bitisTarihi: bitis, aktif: false },
+    })
+    return guncel
   })
 }
 
@@ -1231,10 +1251,17 @@ export async function geriAlServisGuzergahAracVarsayilan(id: string, updatedById
     if (cakisan) throw new Error(aracCakismaMesaji(cakisan))
   }
 
-  return prisma.servisGuzergahAracVarsayilan.update({
-    where: { id },
-    data: { aktif: true, updatedById },
-    include: servisGuzergahAracVarsayilanInclude,
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisGuzergahAracVarsayilan.update({
+      where: { id },
+      data: { aktif: true, updatedById },
+      include: servisGuzergahAracVarsayilanInclude,
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', hedefId: id, islem: 'AKTIFLESTIRME', yapanId: updatedById,
+      oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+    })
+    return guncel
   })
 }
 
@@ -1282,21 +1309,29 @@ export async function createServisGuzergahSoforVarsayilan(
     if (cakisan) throw new Error(soforCakismaMesaji(cakisan))
   }
 
-  return prisma.servisGuzergahSoforVarsayilan.create({
-    data: {
-      guzergahId,
-      dilimId,
-      soforId,
-      rol: form.rol,
-      baslangicTarihi: baslangic,
-      bitisTarihi: bitis,
-      neden: form.neden?.trim() || null,
-      aciklama: form.aciklama?.trim() || null,
-      createdById,
-    },
-    include: servisGuzergahSoforVarsayilanInclude,
+  const data = {
+    guzergahId,
+    dilimId,
+    soforId,
+    rol: form.rol,
+    baslangicTarihi: baslangic,
+    bitisTarihi: bitis,
+    neden: form.neden?.trim() || null,
+    aciklama: form.aciklama?.trim() || null,
+    createdById,
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const varsayilan = await tx.servisGuzergahSoforVarsayilan.create({ data, include: servisGuzergahSoforVarsayilanInclude })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', hedefId: varsayilan.id, islem: 'OLUSTURMA', yapanId: createdById,
+      yeniDeger: { guzergahId, dilimId, soforId, rol: form.rol, baslangicTarihi: baslangic, bitisTarihi: bitis, neden: data.neden, aciklama: data.aciklama },
+    })
+    return varsayilan
   })
 }
+
+const SOFOR_VARSAYILAN_GUNCELLENEBILIR_ALANLAR = ['bitisTarihi', 'neden', 'aciklama'] as const
 
 export async function guncelleServisGuzergahSoforVarsayilan(
   id: string,
@@ -1324,10 +1359,14 @@ export async function guncelleServisGuzergahSoforVarsayilan(
   if (form.neden !== undefined) data.neden = form.neden?.trim() || null
   if (form.aciklama !== undefined) data.aciklama = form.aciklama?.trim() || null
 
-  return prisma.servisGuzergahSoforVarsayilan.update({
-    where: { id },
-    data,
-    include: servisGuzergahSoforVarsayilanInclude,
+  const fark = degisenAlanlar(existing, data, [...SOFOR_VARSAYILAN_GUNCELLENEBILIR_ALANLAR])
+
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisGuzergahSoforVarsayilan.update({ where: { id }, data, include: servisGuzergahSoforVarsayilanInclude })
+    if (fark) {
+      await kaydetIslemGecmisi({ tx, hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', hedefId: id, islem: 'GUNCELLEME', yapanId: updatedById, ...fark })
+    }
+    return guncel
   })
 }
 
@@ -1340,10 +1379,18 @@ export async function pasiflestirServisGuzergahSoforVarsayilan(id: string, bitis
   if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
   if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
 
-  return prisma.servisGuzergahSoforVarsayilan.update({
-    where: { id },
-    data: { bitisTarihi: bitis, aktif: false, updatedById },
-    include: servisGuzergahSoforVarsayilanInclude,
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisGuzergahSoforVarsayilan.update({
+      where: { id },
+      data: { bitisTarihi: bitis, aktif: false, updatedById },
+      include: servisGuzergahSoforVarsayilanInclude,
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', hedefId: id, islem: 'PASIFLESTIRME', yapanId: updatedById,
+      oncekiDeger: { bitisTarihi: existing.bitisTarihi, aktif: true },
+      yeniDeger: { bitisTarihi: bitis, aktif: false },
+    })
+    return guncel
   })
 }
 
@@ -1363,10 +1410,17 @@ export async function geriAlServisGuzergahSoforVarsayilan(id: string, updatedByI
     if (cakisan) throw new Error(soforCakismaMesaji(cakisan))
   }
 
-  return prisma.servisGuzergahSoforVarsayilan.update({
-    where: { id },
-    data: { aktif: true, updatedById },
-    include: servisGuzergahSoforVarsayilanInclude,
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisGuzergahSoforVarsayilan.update({
+      where: { id },
+      data: { aktif: true, updatedById },
+      include: servisGuzergahSoforVarsayilanInclude,
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', hedefId: id, islem: 'AKTIFLESTIRME', yapanId: updatedById,
+      oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+    })
+    return guncel
   })
 }
 

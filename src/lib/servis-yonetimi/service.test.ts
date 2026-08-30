@@ -1807,6 +1807,17 @@ describe('ServisGuzergahAracVarsayilan — oluşturma', () => {
       }),
     }))
   })
+
+  it('oluşturma ServisIslemGecmisi kaydı yazar (GUZERGAH_ARAC_VARSAYILAN/OLUSTURMA)', async () => {
+    mocks.aracVarsayilanCreate.mockResolvedValue({ id: 'v1' })
+    await createServisGuzergahAracVarsayilan(gecerliAracVarsayilan, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', hedefId: 'v1', islem: 'OLUSTURMA', userId: 'user-1',
+        yeniDeger: expect.objectContaining({ guzergahId: 'guzergah-1', dilimId: 'dilim-1', aracId: 'arac-1', rol: 'ANA' }),
+      }),
+    }))
+  })
 })
 
 describe('ServisGuzergahAracVarsayilan — güncelleme (sınırlı)', () => {
@@ -1848,6 +1859,31 @@ describe('ServisGuzergahAracVarsayilan — güncelleme (sınırlı)', () => {
     await guncelleServisGuzergahAracVarsayilan('v1', { neden: 'düzeltme' }, 'user-1')
     expect(mocks.aracVarsayilanFindFirst).not.toHaveBeenCalled()
   })
+
+  it('yalnız değişen alanı (neden) ServisIslemGecmisi’ye yazar', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue({
+      id: 'v1', aracId: 'arac-1', dilimId: 'dilim-1', rol: 'ANA', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null, neden: 'Eski neden', aciklama: null,
+    })
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1' })
+    await guncelleServisGuzergahAracVarsayilan('v1', { neden: 'Yeni neden' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', hedefId: 'v1', islem: 'GUNCELLEME', userId: 'user-1',
+        oncekiDeger: { neden: 'Eski neden' }, yeniDeger: { neden: 'Yeni neden' },
+      }),
+    }))
+  })
+
+  it('hiçbir alan değişmezse ServisIslemGecmisi kaydı YAZILMAZ', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue({
+      id: 'v1', aracId: 'arac-1', dilimId: 'dilim-1', rol: 'ANA', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null, neden: 'Aynı neden', aciklama: null,
+    })
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1' })
+    await guncelleServisGuzergahAracVarsayilan('v1', { neden: 'Aynı neden' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
 })
 
 describe('ServisGuzergahAracVarsayilan — pasifleştir/geri-al (madde 3: satır silinmez, bitisTarihi kalıcı)', () => {
@@ -1859,6 +1895,19 @@ describe('ServisGuzergahAracVarsayilan — pasifleştir/geri-al (madde 3: satır
     await pasiflestirServisGuzergahAracVarsayilan('v1', '2026-01-15', 'user-1')
     expect(mocks.aracVarsayilanUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ bitisTarihi: expect.any(Date), aktif: false, updatedById: 'user-1' }),
+    }))
+  })
+
+  it('pasifleştirme ServisIslemGecmisi kaydı yazar', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue({ id: 'v1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null })
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1', aktif: false })
+    await pasiflestirServisGuzergahAracVarsayilan('v1', '2026-01-15', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', hedefId: 'v1', islem: 'PASIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { bitisTarihi: null, aktif: true },
+        yeniDeger: { bitisTarihi: new Date('2026-01-15'), aktif: false },
+      }),
     }))
   })
 
@@ -1913,6 +1962,22 @@ describe('ServisGuzergahAracVarsayilan — pasifleştir/geri-al (madde 3: satır
     mocks.aracVarsayilanFindUnique.mockResolvedValue({ id: 'v1', aktif: true })
     await expect(geriAlServisGuzergahAracVarsayilan('v1', 'user-1')).rejects.toThrow('zaten aktif')
   })
+
+  it('geri alma ServisIslemGecmisi kaydı yazar', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue({
+      id: 'v1', aktif: false, aracId: 'arac-1', dilimId: 'dilim-1', rol: 'ANA',
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15'),
+    })
+    mocks.aracVarsayilanFindFirst.mockResolvedValue(null)
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1', aktif: true })
+    await geriAlServisGuzergahAracVarsayilan('v1', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', hedefId: 'v1', islem: 'AKTIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+      }),
+    }))
+  })
 })
 
 const gecerliSoforVarsayilan = {
@@ -1960,12 +2025,63 @@ describe('ServisGuzergahSoforVarsayilan — oluşturma ve çakışma (EXCLUDE si
     await createServisGuzergahSoforVarsayilan({ ...gecerliSoforVarsayilan, rol: 'YEDEK' }, 'user-1')
     expect(mocks.soforVarsayilanFindFirst).not.toHaveBeenCalled()
   })
+
+  it('oluşturma ServisIslemGecmisi kaydı yazar (GUZERGAH_SOFOR_VARSAYILAN/OLUSTURMA)', async () => {
+    mocks.soforVarsayilanCreate.mockResolvedValue({ id: 's1' })
+    await createServisGuzergahSoforVarsayilan(gecerliSoforVarsayilan, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', hedefId: 's1', islem: 'OLUSTURMA', userId: 'user-1',
+        yeniDeger: expect.objectContaining({ guzergahId: 'guzergah-1', dilimId: 'dilim-1', soforId: 'sofor-1', rol: 'ANA' }),
+      }),
+    }))
+  })
+})
+
+describe('ServisGuzergahSoforVarsayilan — güncelleme (sınırlı)', () => {
+  it('yalnız değişen alanı (aciklama) ServisIslemGecmisi’ye yazar', async () => {
+    mocks.soforVarsayilanFindUnique.mockResolvedValue({
+      id: 's1', soforId: 'sofor-1', dilimId: 'dilim-1', rol: 'ANA', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null, neden: null, aciklama: 'Eski açıklama',
+    })
+    mocks.soforVarsayilanUpdate.mockResolvedValue({ id: 's1' })
+    await guncelleServisGuzergahSoforVarsayilan('s1', { aciklama: 'Yeni açıklama' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', hedefId: 's1', islem: 'GUNCELLEME', userId: 'user-1',
+        oncekiDeger: { aciklama: 'Eski açıklama' }, yeniDeger: { aciklama: 'Yeni açıklama' },
+      }),
+    }))
+  })
+
+  it('hiçbir alan değişmezse ServisIslemGecmisi kaydı YAZILMAZ', async () => {
+    mocks.soforVarsayilanFindUnique.mockResolvedValue({
+      id: 's1', soforId: 'sofor-1', dilimId: 'dilim-1', rol: 'ANA', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null, neden: null, aciklama: 'Aynı açıklama',
+    })
+    mocks.soforVarsayilanUpdate.mockResolvedValue({ id: 's1' })
+    await guncelleServisGuzergahSoforVarsayilan('s1', { aciklama: 'Aynı açıklama' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
 })
 
 describe('ServisGuzergahSoforVarsayilan — pasifleştir/geri-al', () => {
   it('pasifleştirme bitisTarihi ister', async () => {
     mocks.soforVarsayilanFindUnique.mockResolvedValue({ id: 's1', aktif: true, baslangicTarihi: new Date('2026-01-01') })
     await expect(pasiflestirServisGuzergahSoforVarsayilan('s1', '', 'user-1')).rejects.toThrow('Kapatma tarihi zorunludur')
+  })
+
+  it('pasifleştirme ServisIslemGecmisi kaydı yazar', async () => {
+    mocks.soforVarsayilanFindUnique.mockResolvedValue({ id: 's1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null })
+    mocks.soforVarsayilanUpdate.mockResolvedValue({ id: 's1', aktif: false })
+    await pasiflestirServisGuzergahSoforVarsayilan('s1', '2026-01-15', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', hedefId: 's1', islem: 'PASIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { bitisTarihi: null, aktif: true },
+        yeniDeger: { bitisTarihi: new Date('2026-01-15'), aktif: false },
+      }),
+    }))
   })
 
   it('geri-al aktif=true yapar', async () => {
@@ -1978,6 +2094,22 @@ describe('ServisGuzergahSoforVarsayilan — pasifleştir/geri-al', () => {
     await geriAlServisGuzergahSoforVarsayilan('s1', 'user-1')
     expect(mocks.soforVarsayilanUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: { aktif: true, updatedById: 'user-1' },
+    }))
+  })
+
+  it('geri alma ServisIslemGecmisi kaydı yazar', async () => {
+    mocks.soforVarsayilanFindUnique.mockResolvedValue({
+      id: 's1', aktif: false, soforId: 'sofor-1', dilimId: 'dilim-1', rol: 'ANA',
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15'),
+    })
+    mocks.soforVarsayilanFindFirst.mockResolvedValue(null)
+    mocks.soforVarsayilanUpdate.mockResolvedValue({ id: 's1', aktif: true })
+    await geriAlServisGuzergahSoforVarsayilan('s1', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', hedefId: 's1', islem: 'AKTIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+      }),
     }))
   })
 })

@@ -1806,11 +1806,13 @@ function ServisPersonelDurumPanel({
   canEdit,
   canPassive,
   canRestore,
+  canHistory,
 }: {
   canCreate: boolean
   canEdit: boolean
   canPassive: boolean
   canRestore: boolean
+  canHistory: boolean
 }) {
   const [liste, setListe] = useState<ServisPersonelDurumKaydi[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -1825,6 +1827,7 @@ function ServisPersonelDurumPanel({
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
   const [duzenlenen, setDuzenlenen] = useState<ServisPersonelDurumKaydi | null>(null)
   const [duzenlemeNeden, setDuzenlemeNeden] = useState('')
+  const [gecmisKayit, setGecmisKayit] = useState<ServisPersonelDurumKaydi | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1949,13 +1952,13 @@ function ServisPersonelDurumPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Kayıt Durumu</TableHead>
-              {(canEdit || canPassive || canRestore) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canEdit || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canEdit || canPassive || canRestore ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canEdit || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -1968,8 +1971,9 @@ function ServisPersonelDurumPanel({
                 <TableCell>{v.baslangicTarihi.slice(0, 10)}</TableCell>
                 <TableCell>{v.bitisTarihi ? v.bitisTarihi.slice(0, 10) : '-'}</TableCell>
                 <TableCell><AktifBadge aktif={v.aktif} /></TableCell>
-                {(canEdit || canPassive || canRestore) && (
+                {(canEdit || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
+                    {canHistory && <GecmisButonu onClick={() => setGecmisKayit(v)} />}
                     {canEdit && (
                       <Button size="sm" variant="outline" onClick={() => duzenlemeAc(v)}>Düzenle</Button>
                     )}
@@ -1985,6 +1989,16 @@ function ServisPersonelDurumPanel({
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisKayit && (
+        <ServisGecmisDialog
+          hedefTipi="PERSONEL_DURUM"
+          hedefId={gecmisKayit.id}
+          baslik={gecmisKayit.personnel.adSoyad}
+          open={!!gecmisKayit}
+          onOpenChange={(o) => !o && setGecmisKayit(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -2132,6 +2146,7 @@ export default function ServisYonetimiPage() {
             canEdit={canPersonelDurumEdit}
             canPassive={canPassive}
             canRestore={canRestore}
+            canHistory={canHistory}
           />
         </TabsContent>
       </Tabs>

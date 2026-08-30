@@ -404,6 +404,7 @@ export default function GuzergahDetayPage() {
               canSorumluManage={canSorumluManage}
               canPassive={canPassive}
               canRestore={canRestore}
+              canHistory={canHistory}
             />
           </TabsContent>
 
@@ -1249,11 +1250,13 @@ function SorumlularPanel({
   canSorumluManage,
   canPassive,
   canRestore,
+  canHistory,
 }: {
   guzergahId: string
   canSorumluManage: boolean
   canPassive: boolean
   canRestore: boolean
+  canHistory: boolean
 }) {
   const [liste, setListe] = useState<Sorumlu[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -1263,6 +1266,7 @@ function SorumlularPanel({
   const [form, setForm] = useState({ personnelId: '', rol: 'ANA' as ServisRol, baslangicTarihi: bugun(), bitisTarihi: '', neden: '' })
   const [kapatilan, setKapatilan] = useState<Sorumlu | null>(null)
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
+  const [gecmisSorumlu, setGecmisSorumlu] = useState<Sorumlu | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1365,13 +1369,13 @@ function SorumlularPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
-              {(canPassive || canRestore) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPassive || canRestore ? 6 : 5} className="text-center text-muted-foreground">
+                <TableCell colSpan={canPassive || canRestore || canHistory ? 6 : 5} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -1383,8 +1387,9 @@ function SorumlularPanel({
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
-                {(canPassive || canRestore) && (
+                {(canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
+                    {canHistory && <GecmisButonu onClick={() => setGecmisSorumlu(v)} />}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -1397,6 +1402,16 @@ function SorumlularPanel({
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisSorumlu && (
+        <ServisGecmisDialog
+          hedefTipi="SORUMLUSU"
+          hedefId={gecmisSorumlu.id}
+          baslik={gecmisSorumlu.personnel.adSoyad}
+          open={!!gecmisSorumlu}
+          onOpenChange={(o) => !o && setGecmisSorumlu(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>

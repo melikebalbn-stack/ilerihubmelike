@@ -2180,6 +2180,19 @@ describe('ServisSorumlusu — oluşturma (ÇAKIŞMA KONTROLÜ YOK — DB\'de EXC
       .rejects.toThrow('Bitiş tarihi başlangıç tarihinden önce olamaz')
     expect(mocks.sorumluCreate).not.toHaveBeenCalled()
   })
+
+  it('oluşturma ServisIslemGecmisi kaydı yazar (SORUMLUSU/OLUSTURMA), yalnız personnelId FK — personel adı YOK', async () => {
+    mocks.sorumluCreate.mockResolvedValue({ id: 'sr1' })
+    await createServisSorumlusu(gecerliSorumlu, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'SORUMLUSU', hedefId: 'sr1', islem: 'OLUSTURMA', userId: 'user-1',
+        yeniDeger: expect.objectContaining({ personnelId: 'personel-1', guzergahId: 'guzergah-1', rol: 'ANA' }),
+      }),
+    }))
+    const yeniDeger = mocks.islemGecmisiCreate.mock.calls[0][0].data.yeniDeger as Record<string, unknown>
+    expect(yeniDeger).not.toHaveProperty('adSoyad')
+  })
 })
 
 describe('ServisSorumlusu — güncelleme (sınırlı)', () => {
@@ -2197,6 +2210,25 @@ describe('ServisSorumlusu — güncelleme (sınırlı)', () => {
       data: { updatedById: 'user-1', neden: 'düzeltme' },
     }))
   })
+
+  it('yalnız değişen alanı (neden) ServisIslemGecmisi’ye yazar', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', baslangicTarihi: new Date('2026-01-01'), neden: 'Eski neden', aciklama: null })
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1' })
+    await guncelleServisSorumlusu('sr1', { neden: 'Yeni neden' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'SORUMLUSU', hedefId: 'sr1', islem: 'GUNCELLEME', userId: 'user-1',
+        oncekiDeger: { neden: 'Eski neden' }, yeniDeger: { neden: 'Yeni neden' },
+      }),
+    }))
+  })
+
+  it('hiçbir alan değişmezse ServisIslemGecmisi kaydı YAZILMAZ', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', baslangicTarihi: new Date('2026-01-01'), neden: 'Aynı neden', aciklama: null })
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1' })
+    await guncelleServisSorumlusu('sr1', { neden: 'Aynı neden' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
 })
 
 describe('ServisSorumlusu — pasifleştir/geri-al (madde 14: satır silinmez, bitisTarihi kalıcı)', () => {
@@ -2206,6 +2238,19 @@ describe('ServisSorumlusu — pasifleştir/geri-al (madde 14: satır silinmez, b
     await pasiflestirServisSorumlusu('sr1', '2026-01-15', 'user-1')
     expect(mocks.sorumluUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ bitisTarihi: expect.any(Date), aktif: false, updatedById: 'user-1' }),
+    }))
+  })
+
+  it('pasifleştirme ServisIslemGecmisi kaydı yazar', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null })
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1', aktif: false })
+    await pasiflestirServisSorumlusu('sr1', '2026-01-15', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'SORUMLUSU', hedefId: 'sr1', islem: 'PASIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { bitisTarihi: null, aktif: true },
+        yeniDeger: { bitisTarihi: new Date('2026-01-15'), aktif: false },
+      }),
     }))
   })
 
@@ -2232,6 +2277,18 @@ describe('ServisSorumlusu — pasifleştir/geri-al (madde 14: satır silinmez, b
     await geriAlServisSorumlusu('sr1', 'user-1')
     expect(mocks.sorumluUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: { aktif: true, updatedById: 'user-1' },
+    }))
+  })
+
+  it('geri alma ServisIslemGecmisi kaydı yazar', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue({ id: 'sr1', aktif: false, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15') })
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1', aktif: true })
+    await geriAlServisSorumlusu('sr1', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'SORUMLUSU', hedefId: 'sr1', islem: 'AKTIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+      }),
     }))
   })
 
@@ -2337,6 +2394,20 @@ describe('ServisPersonelDurum — oluşturma ve çakışma (EXCLUDE simülasyonu
       }),
     }))
   })
+
+  it('oluşturma ServisIslemGecmisi kaydı yazar (PERSONEL_DURUM/OLUSTURMA), yalnız personnelId FK — personel adı YOK', async () => {
+    mocks.personelDurumCreate.mockResolvedValue({ id: 'pd1' })
+    await createServisPersonelDurum(gecerliPersonelDurum, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_DURUM', hedefId: 'pd1', islem: 'OLUSTURMA', userId: 'user-1',
+        yeniDeger: expect.objectContaining({ personnelId: 'personel-1', durum: 'SERVIS_KULLANIYOR' }),
+      }),
+    }))
+    const yeniDeger = mocks.islemGecmisiCreate.mock.calls[0][0].data.yeniDeger as Record<string, unknown>
+    expect(yeniDeger).not.toHaveProperty('adSoyad')
+    expect(yeniDeger).not.toHaveProperty('sicilNo')
+  })
 })
 
 describe('ServisPersonelDurum — güncelleme (sınırlı)', () => {
@@ -2361,6 +2432,29 @@ describe('ServisPersonelDurum — güncelleme (sınırlı)', () => {
     await guncelleServisPersonelDurum('pd1', { neden: 'düzeltme' }, 'user-1')
     expect(mocks.personelDurumFindFirst).not.toHaveBeenCalled()
   })
+
+  it('yalnız değişen alanı (neden) ServisIslemGecmisi’ye yazar', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({
+      id: 'pd1', personnelId: 'personel-1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null, neden: 'Eski neden',
+    })
+    mocks.personelDurumUpdate.mockResolvedValue({ id: 'pd1' })
+    await guncelleServisPersonelDurum('pd1', { neden: 'Yeni neden' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_DURUM', hedefId: 'pd1', islem: 'GUNCELLEME', userId: 'user-1',
+        oncekiDeger: { neden: 'Eski neden' }, yeniDeger: { neden: 'Yeni neden' },
+      }),
+    }))
+  })
+
+  it('hiçbir alan değişmezse ServisIslemGecmisi kaydı YAZILMAZ', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({
+      id: 'pd1', personnelId: 'personel-1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null, neden: 'Aynı neden',
+    })
+    mocks.personelDurumUpdate.mockResolvedValue({ id: 'pd1' })
+    await guncelleServisPersonelDurum('pd1', { neden: 'Aynı neden' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
 })
 
 describe('ServisPersonelDurum — pasifleştir/geri-al (madde 14/15: satır silinmez)', () => {
@@ -2370,6 +2464,19 @@ describe('ServisPersonelDurum — pasifleştir/geri-al (madde 14/15: satır sili
     await pasiflestirServisPersonelDurum('pd1', '2026-01-15', 'user-1')
     expect(mocks.personelDurumUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ bitisTarihi: expect.any(Date), aktif: false, updatedById: 'user-1' }),
+    }))
+  })
+
+  it('pasifleştirme ServisIslemGecmisi kaydı yazar', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({ id: 'pd1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null })
+    mocks.personelDurumUpdate.mockResolvedValue({ id: 'pd1', aktif: false })
+    await pasiflestirServisPersonelDurum('pd1', '2026-01-15', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_DURUM', hedefId: 'pd1', islem: 'PASIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { bitisTarihi: null, aktif: true },
+        yeniDeger: { bitisTarihi: new Date('2026-01-15'), aktif: false },
+      }),
     }))
   })
 
@@ -2389,6 +2496,22 @@ describe('ServisPersonelDurum — pasifleştir/geri-al (madde 14/15: satır sili
     await geriAlServisPersonelDurum('pd1', 'user-1')
     expect(mocks.personelDurumUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: { aktif: true, updatedById: 'user-1' },
+    }))
+  })
+
+  it('geri alma ServisIslemGecmisi kaydı yazar', async () => {
+    mocks.personelDurumFindUnique.mockResolvedValue({
+      id: 'pd1', aktif: false, personnelId: 'personel-1',
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15'),
+    })
+    mocks.personelDurumFindFirst.mockResolvedValue(null)
+    mocks.personelDurumUpdate.mockResolvedValue({ id: 'pd1', aktif: true })
+    await geriAlServisPersonelDurum('pd1', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_DURUM', hedefId: 'pd1', islem: 'AKTIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+      }),
     }))
   })
 

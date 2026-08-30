@@ -1048,7 +1048,7 @@ const bosAracForm = {
   gecerlilikBitisi: '',
 }
 
-function ServisAracPanel({ canManage }: { canManage: boolean }) {
+function ServisAracPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
   const [araclar, setAraclar] = useState<ServisArac[]>([])
   const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
   const [arama, setArama] = useState('')
@@ -1057,6 +1057,7 @@ function ServisAracPanel({ canManage }: { canManage: boolean }) {
   const [dialogAcik, setDialogAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<ServisArac | null>(null)
   const [form, setForm] = useState(bosAracForm)
+  const [gecmisArac, setGecmisArac] = useState<ServisArac | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1173,13 +1174,13 @@ function ServisAracPanel({ canManage }: { canManage: boolean }) {
               <TableHead>Araç Tipi</TableHead>
               <TableHead>Geçerlilik</TableHead>
               <TableHead>Durum</TableHead>
-              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliAraclar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen araç yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -1194,13 +1195,18 @@ function ServisAracPanel({ canManage }: { canManage: boolean }) {
                   {tarihInputDegeri(arac.gecerlilikBaslangici) || '-'} / {tarihInputDegeri(arac.gecerlilikBitisi) || '-'}
                 </TableCell>
                 <TableCell><AktifBadge aktif={arac.aktif} /></TableCell>
-                {canManage && (
+                {(canManage || canHistory) && (
                   <TableCell className="space-x-2 text-right">
-                    <Button size="sm" variant="outline" onClick={() => duzenleAc(arac)}>Düzenle</Button>
-                    {arac.aktif ? (
-                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(arac.id)}>Pasifleştir</Button>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={() => geriAl(arac.id)}>Geri Al</Button>
+                    {canHistory && <GecmisButonu onClick={() => setGecmisArac(arac)} />}
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => duzenleAc(arac)}>Düzenle</Button>
+                        {arac.aktif ? (
+                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(arac.id)}>Pasifleştir</Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => geriAl(arac.id)}>Geri Al</Button>
+                        )}
+                      </>
                     )}
                   </TableCell>
                 )}
@@ -1208,6 +1214,16 @@ function ServisAracPanel({ canManage }: { canManage: boolean }) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisArac && (
+        <ServisGecmisDialog
+          hedefTipi="ARAC"
+          hedefId={gecmisArac.id}
+          baslik={gecmisArac.plaka}
+          open={!!gecmisArac}
+          onOpenChange={(o) => !o && setGecmisArac(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -1346,7 +1362,7 @@ type SoforKimlikTuru = 'FIRMA' | 'PERSONEL'
 
 const bosSoforForm = { adSoyad: '', telefon: '', kimlikTuru: 'FIRMA' as SoforKimlikTuru, firmaId: '', personnelId: '' }
 
-function ServisSoforPanel({ canManage }: { canManage: boolean }) {
+function ServisSoforPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
   const [soforler, setSoforler] = useState<ServisSofor[]>([])
   const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
   const [arama, setArama] = useState('')
@@ -1356,6 +1372,7 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
   const [duzenlenen, setDuzenlenen] = useState<ServisSofor | null>(null)
   const [form, setForm] = useState(bosSoforForm)
   const [secilenPersonel, setSecilenPersonel] = useState<SoforPickedPersonel | null>(null)
+  const [gecmisSofor, setGecmisSofor] = useState<ServisSofor | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1449,9 +1466,9 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
       {hata && <p className="text-sm text-red-600">{hata}</p>}
       {yukleniyor ? <p className="text-sm text-muted-foreground">Yükleniyor...</p> : (
         <Table>
-          <TableHeader><TableRow><TableHead>Ad Soyad</TableHead><TableHead>Telefon</TableHead><TableHead>Tür</TableHead><TableHead>Bağlı Olduğu</TableHead><TableHead>Durum</TableHead>{canManage && <TableHead className="text-right">İşlem</TableHead>}</TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Ad Soyad</TableHead><TableHead>Telefon</TableHead><TableHead>Tür</TableHead><TableHead>Bağlı Olduğu</TableHead><TableHead>Durum</TableHead>{(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}</TableRow></TableHeader>
           <TableBody>
-            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage ? 6 : 5} className="text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
+            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage || canHistory ? 6 : 5} className="text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
             {filtreliSoforler.map((sofor) => (
               <TableRow key={sofor.id}>
                 <TableCell>{sofor.adSoyad}</TableCell><TableCell>{sofor.telefon || '-'}</TableCell>
@@ -1462,11 +1479,31 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
                     : `${sofor.firma?.ad || '-'}${sofor.firma && !sofor.firma.aktif ? ' (Pasif)' : ''}`}
                 </TableCell>
                 <TableCell><AktifBadge aktif={sofor.aktif} /></TableCell>
-                {canManage && <TableCell className="space-x-2 text-right"><Button size="sm" variant="outline" onClick={() => duzenleAc(sofor)}>Düzenle</Button>{sofor.aktif ? <Button size="sm" variant="destructive" onClick={() => durumDegistir(sofor.id, true)}>Pasifleştir</Button> : <Button size="sm" variant="outline" onClick={() => durumDegistir(sofor.id, false)}>Geri Al</Button>}</TableCell>}
+                {(canManage || canHistory) && (
+                  <TableCell className="space-x-2 text-right">
+                    {canHistory && <GecmisButonu onClick={() => setGecmisSofor(sofor)} />}
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => duzenleAc(sofor)}>Düzenle</Button>
+                        {sofor.aktif ? <Button size="sm" variant="destructive" onClick={() => durumDegistir(sofor.id, true)}>Pasifleştir</Button> : <Button size="sm" variant="outline" onClick={() => durumDegistir(sofor.id, false)}>Geri Al</Button>}
+                      </>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisSofor && (
+        <ServisGecmisDialog
+          hedefTipi="SOFOR"
+          hedefId={gecmisSofor.id}
+          baslik={gecmisSofor.adSoyad}
+          open={!!gecmisSofor}
+          onOpenChange={(o) => !o && setGecmisSofor(null)}
+        />
       )}
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
         <DialogContent><DialogHeader><DialogTitle>{duzenlenen ? 'Şoförü Düzenle' : 'Yeni Şoför'}</DialogTitle></DialogHeader>
@@ -1522,7 +1559,7 @@ function ServisSoforPanel({ canManage }: { canManage: boolean }) {
 
 const bosSeferDilimiForm = { kod: '', ad: '', yon: 'GIDIS' as ServisSeferDilimiYon, grupKodu: '', sira: '1' }
 
-function ServisSeferDilimiPanel({ canManage }: { canManage: boolean }) {
+function ServisSeferDilimiPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
   const [dilimler, setDilimler] = useState<ServisSeferDilimi[]>([])
   const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -1530,6 +1567,7 @@ function ServisSeferDilimiPanel({ canManage }: { canManage: boolean }) {
   const [dialogAcik, setDialogAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<ServisSeferDilimi | null>(null)
   const [form, setForm] = useState(bosSeferDilimiForm)
+  const [gecmisDilim, setGecmisDilim] = useState<ServisSeferDilimi | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1640,13 +1678,13 @@ function ServisSeferDilimiPanel({ canManage }: { canManage: boolean }) {
               <TableHead>Vardiya Etiketi</TableHead>
               <TableHead>Sıra</TableHead>
               <TableHead>Durum</TableHead>
-              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliDilimler.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen sefer dilimi yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -1659,19 +1697,24 @@ function ServisSeferDilimiPanel({ canManage }: { canManage: boolean }) {
                 <TableCell>{dilim.grupKodu || '-'}</TableCell>
                 <TableCell>{dilim.sira}</TableCell>
                 <TableCell><AktifBadge aktif={dilim.aktif} /></TableCell>
-                {canManage && (
+                {(canManage || canHistory) && (
                   <TableCell className="text-right space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => duzenleAc(dilim)}>
-                      Düzenle
-                    </Button>
-                    {dilim.aktif ? (
-                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(dilim.id)}>
-                        Pasifleştir
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={() => geriAl(dilim.id)}>
-                        Geri Al
-                      </Button>
+                    {canHistory && <GecmisButonu onClick={() => setGecmisDilim(dilim)} />}
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => duzenleAc(dilim)}>
+                          Düzenle
+                        </Button>
+                        {dilim.aktif ? (
+                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(dilim.id)}>
+                            Pasifleştir
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => geriAl(dilim.id)}>
+                            Geri Al
+                          </Button>
+                        )}
+                      </>
                     )}
                   </TableCell>
                 )}
@@ -1679,6 +1722,16 @@ function ServisSeferDilimiPanel({ canManage }: { canManage: boolean }) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisDilim && (
+        <ServisGecmisDialog
+          hedefTipi="SEFER_DILIMI"
+          hedefId={gecmisDilim.id}
+          baslik={gecmisDilim.kod}
+          open={!!gecmisDilim}
+          onOpenChange={(o) => !o && setGecmisDilim(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -2065,13 +2118,13 @@ export default function ServisYonetimiPage() {
           <ServisDurakPanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="arac">
-          <ServisAracPanel canManage={canManage} />
+          <ServisAracPanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="sofor">
-          <ServisSoforPanel canManage={canManage} />
+          <ServisSoforPanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="sefer-dilimi">
-          <ServisSeferDilimiPanel canManage={canManage} />
+          <ServisSeferDilimiPanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="personel-durum">
           <ServisPersonelDurumPanel

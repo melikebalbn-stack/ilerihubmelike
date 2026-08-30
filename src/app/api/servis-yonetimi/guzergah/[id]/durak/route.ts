@@ -17,12 +17,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
   try {
     const { id } = await params
     const body = (await request.json()) as ServisGuzergahDurakForm
-    const data = await createServisGuzergahDurak(id, body)
+    const data = await createServisGuzergahDurak(id, body, userId)
     return NextResponse.json({ ok: true, message: 'Durak güzergaha eklendi.', data }, { status: 201 })
   } catch (err) {
     console.error('Güzergâh durak ekleme hatası:', err)

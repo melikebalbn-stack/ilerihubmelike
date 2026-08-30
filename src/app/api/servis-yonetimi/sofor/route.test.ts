@@ -17,8 +17,10 @@ import { GET, POST } from './route'
 
 beforeEach(() => vi.clearAllMocks())
 
-function permissionResult(allowed: boolean) {
-  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 }) }
+function permissionResult(allowed: boolean, userId = 'user-1') {
+  return allowed
+    ? { error: null, userId }
+    : { error: NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 }), userId: null }
 }
 
 describe('ServisSofor collection route', () => {
@@ -54,6 +56,6 @@ describe('ServisSofor collection route', () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }))
     expect(response.status).toBe(201)
-    expect(mocks.createServisSofor).toHaveBeenCalledWith(body)
+    expect(mocks.createServisSofor).toHaveBeenCalledWith(body, 'user-1')
   })
 })

@@ -21,12 +21,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
   try {
     const { id } = await params
     const body = (await request.json()) as ServisSeferDilimiForm
-    const data = await updateServisSeferDilimi(id, body)
+    const data = await updateServisSeferDilimi(id, body, userId)
     return NextResponse.json({ ok: true, message: 'Sefer dilimi güncellendi.', data })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Sefer dilimi güncellenemedi.'

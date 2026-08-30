@@ -30,13 +30,13 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
 
   try {
     const { id } = await context.params
     const body = (await request.json()) as ServisSoforForm
-    return NextResponse.json({ ok: true, data: await updateServisSofor(id, body) })
+    return NextResponse.json({ ok: true, data: await updateServisSofor(id, body, userId) })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Şoför güncellenemedi.'
     return NextResponse.json({ ok: false, message }, { status: 400 })

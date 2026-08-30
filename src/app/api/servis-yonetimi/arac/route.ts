@@ -18,11 +18,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
   try {
     const body = (await request.json()) as ServisAracForm
-    const data = await createServisArac(body)
+    const data = await createServisArac(body, userId)
     return NextResponse.json({ ok: true, message: 'Araç başarıyla oluşturuldu.', data }, { status: 201 })
   } catch (err) {
     console.error('Servis araç oluşturma hatası:', err)

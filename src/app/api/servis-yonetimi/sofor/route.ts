@@ -19,12 +19,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
 
   try {
     const body = (await request.json()) as ServisSoforForm
-    const data = await createServisSofor(body)
+    const data = await createServisSofor(body, userId)
     return NextResponse.json({ ok: true, message: 'Şoför başarıyla oluşturuldu.', data }, { status: 201 })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Şoför oluşturulamadı.'

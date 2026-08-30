@@ -3,11 +3,11 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { geriAlServisGuzergahDurak } from '@/lib/servis-yonetimi/service'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('servis.restore')
+  const { error, userId } = await requirePermission('servis.restore')
   if (error) return error
   try {
     const { id } = await params
-    const data = await geriAlServisGuzergahDurak(id)
+    const data = await geriAlServisGuzergahDurak(id, userId)
     return NextResponse.json({ ok: true, message: 'Durak güzergaha geri alındı.', data })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Durak geri alınamadı.'

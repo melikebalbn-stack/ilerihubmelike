@@ -15,8 +15,10 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
 
 import { GET, POST } from './route'
 
-function permissionResult(allowed: boolean) {
-  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }) }
+function permissionResult(allowed: boolean, userId = 'user-1') {
+  return allowed
+    ? { error: null, userId }
+    : { error: NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }), userId: null }
 }
 
 beforeEach(() => {
@@ -67,6 +69,6 @@ describe('POST /api/servis-yonetimi/guzergah/[id]/durak — permission guard', (
     const json = await res.json()
     expect(res.status).toBe(201)
     expect(json.ok).toBe(true)
-    expect(mocks.createServisGuzergahDurak).toHaveBeenCalledWith('guzergah-1', body)
+    expect(mocks.createServisGuzergahDurak).toHaveBeenCalledWith('guzergah-1', body, 'user-1')
   })
 })

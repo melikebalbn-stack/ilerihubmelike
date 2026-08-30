@@ -140,6 +140,7 @@ export default function GuzergahDetayPage() {
   const [eklenecekDurakId, setEklenecekDurakId] = useState('')
 
   const [saatDuzenlenen, setSaatDuzenlenen] = useState<GuzergahDurak | null>(null)
+  const [gecmisDurak, setGecmisDurak] = useState<GuzergahDurak | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -331,11 +332,13 @@ export default function GuzergahDetayPage() {
                         total={aktifDuraklar.length}
                         canManage={canManage}
                         canPassive={canPassive}
+                        canHistory={canHistory}
                         siralamaDegisiyor={siralamaDegisiyor === d.id}
                         onUp={() => siraDegistir(d.id, 'YUKARI')}
                         onDown={() => siraDegistir(d.id, 'ASAGI')}
                         onSaatler={() => setSaatDuzenlenen(d)}
                         onPasiflestir={() => pasiflestir(d.id)}
+                        onGecmis={() => setGecmisDurak(d)}
                       />
                     ))}
                   </div>
@@ -349,14 +352,27 @@ export default function GuzergahDetayPage() {
                 {pasifDuraklar.map((d) => (
                   <div key={d.id} className="flex items-center justify-between rounded-md border border-dashed p-3 text-sm text-muted-foreground">
                     <span>{d.durak.kod} — {d.durak.ad}</span>
-                    {canRestore && (
-                      <Button size="sm" variant="outline" onClick={() => geriAl(d.id)}>
-                        Geri Al
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {canHistory && <GecmisButonu onClick={() => setGecmisDurak(d)} />}
+                      {canRestore && (
+                        <Button size="sm" variant="outline" onClick={() => geriAl(d.id)}>
+                          Geri Al
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
+            )}
+
+            {gecmisDurak && (
+              <ServisGecmisDialog
+                hedefTipi={['GUZERGAH_DURAK', 'GUZERGAH_DURAK_SAAT']}
+                hedefId={gecmisDurak.id}
+                baslik={`${gecmisDurak.durak.kod} — ${gecmisDurak.durak.ad}`}
+                open={!!gecmisDurak}
+                onOpenChange={(o) => !o && setGecmisDurak(null)}
+              />
             )}
           </TabsContent>
 
@@ -447,22 +463,26 @@ function SiraliDurakSatiri({
   total,
   canManage,
   canPassive,
+  canHistory,
   siralamaDegisiyor,
   onUp,
   onDown,
   onSaatler,
   onPasiflestir,
+  onGecmis,
 }: {
   durak: GuzergahDurak
   index: number
   total: number
   canManage: boolean
   canPassive: boolean
+  canHistory: boolean
   siralamaDegisiyor: boolean
   onUp: () => void
   onDown: () => void
   onSaatler: () => void
   onPasiflestir: () => void
+  onGecmis: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: d.id })
   const style: React.CSSProperties = {
@@ -523,6 +543,7 @@ function SiraliDurakSatiri({
         )}
       </div>
       <div className="flex items-center gap-1">
+        {canHistory && <GecmisButonu onClick={onGecmis} />}
         {canManage && (
           <Button size="sm" variant="outline" onClick={onSaatler}>
             <Clock className="mr-1.5 h-3.5 w-3.5" /> Saatleri Düzenle

@@ -13,8 +13,10 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
 
 import { DELETE } from './route'
 
-function permissionResult(allowed: boolean) {
-  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }) }
+function permissionResult(allowed: boolean, userId = 'user-1') {
+  return allowed
+    ? { error: null, userId }
+    : { error: NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }), userId: null }
 }
 
 beforeEach(() => {
@@ -38,6 +40,6 @@ describe('DELETE /api/servis-yonetimi/guzergah-durak-saat/[id]', () => {
     const json = await res.json()
     expect(res.status).toBe(200)
     expect(json.ok).toBe(true)
-    expect(mocks.guzergahDurakSaatiSil).toHaveBeenCalledWith('s1')
+    expect(mocks.guzergahDurakSaatiSil).toHaveBeenCalledWith('s1', 'user-1')
   })
 })

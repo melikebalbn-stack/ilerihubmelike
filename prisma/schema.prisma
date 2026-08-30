@@ -13272,6 +13272,8 @@ enum ServisKullanimDurumu {
   SERVIS_KULLANIYOR
   KENDI_GELIYOR
   KULLANMIYOR
+  // Şirket aracıyla gelen personel (göç: İZMİT güzergahı — servis hattı değil).
+  SIRKET_ARACI
 }
 
 // ServisIslemGecmisi.hedefTipi — serbest metin DEĞİL, A kapsamındaki her

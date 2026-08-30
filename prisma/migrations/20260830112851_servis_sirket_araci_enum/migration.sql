@@ -1,0 +1,14 @@
+-- AlterEnum
+-- ServisKullanimDurumu'na SIRKET_ARACI eklenir. Göç script'i (İZMİT güzergahı)
+-- bu değeri ServisPersonelDurum üzerinden yazıyor; İZMİT bir servis hattı değil,
+-- şirket aracıyla geliş durumudur.
+--
+-- NOT: ALTER TYPE ... ADD VALUE PostgreSQL'de transaction bloğu İÇİNDE çalışmaz,
+-- bu yüzden bu ifade TEK BAŞINA kendi migration dosyasındadır (BEGIN/COMMIT yok).
+-- GERİ ALINAMAZ: PostgreSQL'de enum değeri düşürme (DROP VALUE) yoktur.
+--
+-- Prisma'nın ürettiği diff'teki
+--   ALTER TABLE "servis_personel_atama" DROP CONSTRAINT "servis_personel_atama_guzergah_durak_fkey";
+-- satırı BİLEREK ALINMADI — bileşik FK Prisma'da ifade edilemediği için her
+-- diff'te görünür, uygulanması veri bütünlüğünü bozar (bkz. lib-knowndrift.sh).
+ALTER TYPE "ServisKullanimDurumu" ADD VALUE 'SIRKET_ARACI';

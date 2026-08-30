@@ -364,7 +364,10 @@ export function validateServisSorumlusuForm(form: ServisSorumlusuForm): ServisVa
 // daterange(...) WITH &&) WHERE (aktif=true) — rol/durum ayrımı YOK, tüm
 // aktif kayıtlar personnelId bazında birbiriyle çakışır (aynı personelin
 // aynı anda iki farklı — hatta aynı — kullanım durumu olamaz).
-export type ServisKullanimDurumu = 'SERVIS_KULLANIYOR' | 'KENDI_GELIYOR' | 'KULLANMIYOR'
+// SIRKET_ARACI: 20260830112851_servis_sirket_araci_enum migration'ıyla
+// (Melih) DB enum'una eklendi — burası yalnız o gerçek değeri yansıtıyor,
+// enum'a dokunmuyor.
+export type ServisKullanimDurumu = 'SERVIS_KULLANIYOR' | 'KENDI_GELIYOR' | 'KULLANMIYOR' | 'SIRKET_ARACI'
 
 export type ServisPersonelDurumForm = {
   personnelId: string
@@ -374,12 +377,14 @@ export type ServisPersonelDurumForm = {
   neden?: string | null
 }
 
+const GECERLI_KULLANIM_DURUMLARI: ServisKullanimDurumu[] = ['SERVIS_KULLANIYOR', 'KENDI_GELIYOR', 'KULLANMIYOR', 'SIRKET_ARACI']
+
 export function validateServisPersonelDurumForm(form: ServisPersonelDurumForm): ServisValidationResult {
   const errors: string[] = []
 
   if (!form.personnelId?.trim()) errors.push('Personel seçimi zorunludur.')
-  if (form.durum !== 'SERVIS_KULLANIYOR' && form.durum !== 'KENDI_GELIYOR' && form.durum !== 'KULLANMIYOR') {
-    errors.push('Durum SERVIS_KULLANIYOR, KENDI_GELIYOR veya KULLANMIYOR olmalıdır.')
+  if (!GECERLI_KULLANIM_DURUMLARI.includes(form.durum)) {
+    errors.push('Durum SERVIS_KULLANIYOR, KENDI_GELIYOR, KULLANMIYOR veya SIRKET_ARACI olmalıdır.')
   }
 
   const baslangic = parseDateOnly(form.baslangicTarihi)

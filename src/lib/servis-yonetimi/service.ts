@@ -1378,6 +1378,8 @@ function durumEtiketi(durum: string): string {
       return 'Kendi Geliyor'
     case 'KULLANMIYOR':
       return 'Kullanmıyor'
+    case 'SIRKET_ARACI':
+      return 'Şirket Aracı Kullanıyor'
     default:
       return durum
   }

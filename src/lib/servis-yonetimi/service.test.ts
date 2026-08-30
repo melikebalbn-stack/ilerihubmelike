@@ -1916,6 +1916,26 @@ describe('ServisPersonelDurum — oluşturma ve çakışma (EXCLUDE simülasyonu
     expect(mocks.personnelFindUnique).not.toHaveBeenCalled()
   })
 
+  // SIRKET_ARACI: 20260830112851_servis_sirket_araci_enum migration'ıyla
+  // eklenen 4. deger — validation whitelist'i de guncellenmedigi surece
+  // dropdown'dan secilse bile reddedilirdi (bkz. Ders: yalniz etiket
+  // eklemek yetmez, form dogrulamasi da enum'u yansitmali).
+  it('SIRKET_ARACI değeriyle kayıt oluşturur (geçerli 4. durum)', async () => {
+    mocks.personelDurumCreate.mockResolvedValue({ id: 'pd1', ...gecerliPersonelDurum, durum: 'SIRKET_ARACI' })
+    await createServisPersonelDurum({ ...gecerliPersonelDurum, durum: 'SIRKET_ARACI' }, 'user-1')
+    expect(mocks.personelDurumCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ durum: 'SIRKET_ARACI' }),
+    }))
+  })
+
+  it('çakışma mesajında SIRKET_ARACI "Şirket Aracı Kullanıyor" olarak gösterilir', async () => {
+    mocks.personelDurumFindFirst.mockResolvedValue({
+      id: 'pd-eski', baslangicTarihi: new Date('2025-12-01'), bitisTarihi: null, durum: 'SIRKET_ARACI',
+    })
+    await expect(createServisPersonelDurum(gecerliPersonelDurum, 'user-1'))
+      .rejects.toThrow('zaten aktif bir "Şirket Aracı Kullanıyor" kaydı var')
+  })
+
   // Regresyon (Ders 59): süresiz (bitisTarihi=null) mevcut bir durumu SQL'de
   // NULL karşılaştırması yüzünden kaçırıp çiğ EXCLUDE hatası sızdıran
   // NOT+lt/gt formuna karşı — WHERE'in NULL-güvenli AND-of-OR biçiminde

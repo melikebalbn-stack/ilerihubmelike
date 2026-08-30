@@ -114,7 +114,9 @@ type ServisSeferDilimi = {
   updatedAt: string
 }
 
-type ServisKullanimDurumu = 'SERVIS_KULLANIYOR' | 'KENDI_GELIYOR' | 'KULLANMIYOR'
+// SIRKET_ARACI: 20260830112851_servis_sirket_araci_enum migration'ıyla
+// (Melih) DB enum'una eklendi — burası yalnız o gerçek değeri yansıtıyor.
+type ServisKullanimDurumu = 'SERVIS_KULLANIYOR' | 'KENDI_GELIYOR' | 'KULLANMIYOR' | 'SIRKET_ARACI'
 
 type ServisPersonelDurumKaydi = {
   id: string
@@ -1739,6 +1741,7 @@ function durumEtiketiGoster(durum: ServisKullanimDurumu): string {
     case 'SERVIS_KULLANIYOR': return 'Servis Kullanıyor'
     case 'KENDI_GELIYOR': return 'Kendi Geliyor'
     case 'KULLANMIYOR': return 'Kullanmıyor'
+    case 'SIRKET_ARACI': return 'Şirket Aracı Kullanıyor'
   }
 }
 
@@ -1954,6 +1957,7 @@ function ServisPersonelDurumPanel({
                 <option value="SERVIS_KULLANIYOR">Servis Kullanıyor</option>
                 <option value="KENDI_GELIYOR">Kendi Geliyor</option>
                 <option value="KULLANMIYOR">Kullanmıyor</option>
+                <option value="SIRKET_ARACI">Şirket Aracı Kullanıyor</option>
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">

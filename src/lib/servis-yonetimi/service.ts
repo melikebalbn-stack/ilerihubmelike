@@ -14,6 +14,7 @@ import {
   validateServisGuzergahSoforVarsayilanForm,
   validateServisSorumlusuForm,
   validateServisPersonelDurumForm,
+  validateServisPersonelAtamaForm,
   type ServisFirmaForm,
   type ServisAracForm,
   type ServisDurakForm,
@@ -27,6 +28,7 @@ import {
   type ServisGuzergahSoforVarsayilanForm,
   type ServisSorumlusuForm,
   type ServisPersonelDurumForm,
+  type ServisPersonelAtamaForm,
 } from './validation'
 
 // ============================================================================
@@ -1406,5 +1408,188 @@ export async function geriAlServisPersonelDurum(id: string, updatedById: string)
     where: { id },
     data: { aktif: true, updatedById },
     include: servisPersonelDurumInclude,
+  })
+}
+
+// ============================================================================
+// ServisPersonelAtama + ServisPersonelAtamaDilim — bir personelin bir
+// güzergaha (opsiyonel: belirli bir durağa), N sefer diliminde geçerli
+// ataması. ZAMAN BAĞIMLI — geçmiş korunur, satır asla silinmez/üzerine
+// yazılmaz. Dilim seçimi de İMMUTABLE: bir atamanın dilimleri sonradan
+// değiştirilemez (şema yorumu) — değişiklik = mevcut atamayı bitisTarihi
+// ile kapat + yeni atama+dilim satırları aç.
+//
+// EXCLUDE USING gist (personnelId WITH =, daterange(...) WITH &&) WHERE
+// (aktif=true) — ServisPersonelDurum ile BİREBİR aynı desen: guzergahId/
+// durakId kısıta dahil değil, TÜM aktif atamalar personnelId bazında
+// birbiriyle çakışır. Kontrol BAŞTAN pozitif AND-of-OR formuyla yazıldı.
+//
+// Bileşik FK (guzergahId, durakId) → servis_guzergah_durak(guzergahId,
+// durakId) yalnız migration SQL'inde var, Prisma'da ifade edilemez —
+// aşağıda create sırasında AYNI kuralı önceden kontrol edip çiğ FK
+// hatası yerine anlaşılır mesaj veriyoruz.
+//
+// atamaKaynagi: UI'dan hiç seçtirilmiyor, HER ZAMAN 'MANUEL' yazılıyor —
+// 'IMPORT' yalnız göç script'i (feat/servis-goc-script) içindir.
+
+const servisPersonelAtamaInclude = {
+  personnel: { select: { id: true, adSoyad: true, sicilNo: true, bolum: true, aktif: true } },
+  guzergah: { select: { id: true, kod: true, ad: true } },
+  durak: { select: { id: true, kod: true, ad: true } },
+  dilimler: { include: { dilim: { select: { id: true, kod: true, ad: true, yon: true } } } },
+} as const
+
+async function personelAtamaCakismasi(
+  personnelId: string,
+  baslangic: Date,
+  bitis: Date | null,
+  haricId?: string,
+) {
+  return prisma.servisPersonelAtama.findFirst({
+    where: {
+      personnelId,
+      aktif: true,
+      ...(haricId ? { id: { not: haricId } } : {}),
+      AND: [
+        { OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: baslangic } }] },
+        ...(bitis ? [{ baslangicTarihi: { lte: bitis } }] : []),
+      ],
+    },
+    include: { guzergah: { select: { id: true, kod: true, ad: true } } },
+  })
+}
+
+function personelAtamaCakismaMesaji(cakisan: { baslangicTarihi: Date; bitisTarihi: Date | null; guzergah: { kod: string; ad: string } }): string {
+  const araligi = cakisan.bitisTarihi
+    ? `${tarihStr(cakisan.baslangicTarihi)} – ${tarihStr(cakisan.bitisTarihi)}`
+    : `${tarihStr(cakisan.baslangicTarihi)} tarihinden itibaren süresiz`
+  return `Bu personelin ${araligi} aralığında zaten "${cakisan.guzergah.kod} — ${cakisan.guzergah.ad}" güzergahına aktif bir ataması var. Önce onu kapatmalısınız.`
+}
+
+export async function listServisPersonelAtamalari(guzergahId: string, filtre?: { aktif?: boolean }) {
+  return prisma.servisPersonelAtama.findMany({
+    where: { guzergahId, ...(filtre?.aktif !== undefined ? { aktif: filtre.aktif } : {}) },
+    include: servisPersonelAtamaInclude,
+    orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
+  })
+}
+
+export async function createServisPersonelAtama(form: ServisPersonelAtamaForm, createdById: string) {
+  const { valid, errors } = validateServisPersonelAtamaForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const personnelId = form.personnelId.trim()
+  const guzergahId = form.guzergahId.trim()
+  const durakId = form.durakId?.trim() || null
+  const baslangic = dateOnlyOrNull(form.baslangicTarihi)!
+  const bitis = dateOnlyOrNull(form.bitisTarihi)
+  const dilimIdleri = [...new Set(form.dilimIdleri.map((d) => d.trim()).filter(Boolean))]
+
+  const [personnel, guzergah, dilimler] = await Promise.all([
+    prisma.personnel.findUnique({ where: { id: personnelId } }),
+    prisma.servisGuzergah.findUnique({ where: { id: guzergahId } }),
+    prisma.servisSeferDilimi.findMany({ where: { id: { in: dilimIdleri } } }),
+  ])
+  if (!personnel) throw new Error('Personel bulunamadı.')
+  if (!personnel.aktif) throw new Error('Pasif personel servise atanamaz.')
+  if (!guzergah) throw new Error('Güzergâh bulunamadı.')
+  if (!guzergah.aktif) throw new Error('Pasif güzergaha personel atanamaz.')
+
+  if (durakId) {
+    const guzergahDurak = await prisma.servisGuzergahDurak.findUnique({
+      where: { guzergahId_durakId: { guzergahId, durakId } },
+    })
+    if (!guzergahDurak) throw new Error('Bu durak, seçilen güzergahın bir durağı değil.')
+  }
+
+  if (dilimler.length !== dilimIdleri.length) throw new Error('Seçilen sefer dilimlerinden biri veya birkaçı bulunamadı.')
+  const pasifDilim = dilimler.find((d) => !d.aktif)
+  if (pasifDilim) throw new Error(`"${pasifDilim.kod}" dilimi pasif, atama yapılamaz.`)
+
+  const cakisan = await personelAtamaCakismasi(personnelId, baslangic, bitis)
+  if (cakisan) throw new Error(personelAtamaCakismaMesaji(cakisan))
+
+  return prisma.$transaction(async (tx) => {
+    const atama = await tx.servisPersonelAtama.create({
+      data: {
+        personnelId,
+        guzergahId,
+        durakId,
+        baslangicTarihi: baslangic,
+        bitisTarihi: bitis,
+        atamaKaynagi: 'MANUEL',
+        createdById,
+      },
+    })
+    await tx.servisPersonelAtamaDilim.createMany({
+      data: dilimIdleri.map((dilimId) => ({ atamaId: atama.id, dilimId })),
+    })
+    const sonuc = await tx.servisPersonelAtama.findUnique({
+      where: { id: atama.id },
+      include: servisPersonelAtamaInclude,
+    })
+    if (!sonuc) throw new Error('Atama oluşturulamadı.')
+    return sonuc
+  })
+}
+
+export async function guncelleServisPersonelAtama(
+  id: string,
+  form: { bitisTarihi?: string | null },
+  updatedById: string,
+) {
+  const existing = await prisma.servisPersonelAtama.findUnique({ where: { id } })
+  if (!existing) throw new Error('Personel ataması bulunamadı.')
+
+  const data: { bitisTarihi?: Date | null; updatedById: string } = { updatedById }
+
+  if (form.bitisTarihi !== undefined) {
+    const bitis = dateOnlyOrNull(form.bitisTarihi)
+    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
+    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+
+    if (existing.aktif && bitis?.getTime() !== existing.bitisTarihi?.getTime()) {
+      const cakisan = await personelAtamaCakismasi(existing.personnelId, existing.baslangicTarihi, bitis, id)
+      if (cakisan) throw new Error(personelAtamaCakismaMesaji(cakisan))
+    }
+    data.bitisTarihi = bitis
+  }
+
+  return prisma.servisPersonelAtama.update({ where: { id }, data, include: servisPersonelAtamaInclude })
+}
+
+export async function pasiflestirServisPersonelAtama(id: string, bitisTarihi: string, updatedById: string) {
+  const existing = await prisma.servisPersonelAtama.findUnique({ where: { id } })
+  if (!existing) throw new Error('Personel ataması bulunamadı.')
+  if (!existing.aktif) throw new Error('Bu atama zaten pasif.')
+
+  const bitis = dateOnlyOrNull(bitisTarihi)
+  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
+  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+
+  return prisma.servisPersonelAtama.update({
+    where: { id },
+    data: { bitisTarihi: bitis, aktif: false, updatedById },
+    include: servisPersonelAtamaInclude,
+  })
+}
+
+export async function geriAlServisPersonelAtama(id: string, updatedById: string) {
+  const existing = await prisma.servisPersonelAtama.findUnique({ where: { id } })
+  if (!existing) throw new Error('Personel ataması bulunamadı.')
+  if (existing.aktif) throw new Error('Bu atama zaten aktif.')
+
+  const cakisan = await personelAtamaCakismasi(
+    existing.personnelId,
+    existing.baslangicTarihi,
+    existing.bitisTarihi,
+    id,
+  )
+  if (cakisan) throw new Error(personelAtamaCakismaMesaji(cakisan))
+
+  return prisma.servisPersonelAtama.update({
+    where: { id },
+    data: { aktif: true, updatedById },
+    include: servisPersonelAtamaInclude,
   })
 }

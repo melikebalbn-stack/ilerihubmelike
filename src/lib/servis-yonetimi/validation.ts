@@ -397,3 +397,44 @@ export function validateServisPersonelDurumForm(form: ServisPersonelDurumForm): 
 
   return { valid: errors.length === 0, errors }
 }
+
+// ServisPersonelAtama — bir personelin bir güzergaha (opsiyonel: belirli bir
+// durağa) zaman aralıklı ataması, N sefer dilimi ile. EXCLUDE USING gist
+// (personnelId WITH =, daterange(...) WITH &&) WHERE (aktif=true) —
+// ServisPersonelDurum ile BİREBİR aynı desen: guzergahId/durakId kısıta
+// dahil değil, TÜM aktif atamalar personnelId bazında birbiriyle çakışır.
+// dilimIdleri: şema yorumunda "en az 1 dilim" DB kısıtı yok (trigger
+// gerektirir, istenmedi) — bu kod-seviyesi kural burada uygulanır.
+export type ServisPersonelAtamaForm = {
+  personnelId: string
+  guzergahId: string
+  durakId?: string | null
+  baslangicTarihi: string
+  bitisTarihi?: string | null
+  dilimIdleri: string[]
+}
+
+export function validateServisPersonelAtamaForm(form: ServisPersonelAtamaForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.personnelId?.trim()) errors.push('Personel seçimi zorunludur.')
+  if (!form.guzergahId?.trim()) errors.push('Güzergâh seçimi zorunludur.')
+  if (!form.dilimIdleri || form.dilimIdleri.filter((d) => d?.trim()).length === 0) {
+    errors.push('En az bir sefer dilimi seçilmelidir.')
+  }
+
+  const baslangic = parseDateOnly(form.baslangicTarihi)
+  if (!form.baslangicTarihi?.trim() || !baslangic) {
+    errors.push('Başlangıç tarihi zorunludur ve geçerli olmalıdır.')
+  }
+
+  const bitis = parseDateOnly(form.bitisTarihi)
+  if (form.bitisTarihi?.trim() && !bitis) {
+    errors.push('Bitiş tarihi geçersiz.')
+  }
+  if (baslangic && bitis && bitis < baslangic) {
+    errors.push('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

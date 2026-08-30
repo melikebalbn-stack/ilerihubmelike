@@ -57,11 +57,21 @@ const mocks = vi.hoisted(() => ({
   personelDurumFindUnique: vi.fn(),
   personelDurumCreate: vi.fn(),
   personelDurumUpdate: vi.fn(),
+  personelAtamaFindMany: vi.fn(),
+  personelAtamaFindFirst: vi.fn(),
+  personelAtamaFindUnique: vi.fn(),
+  personelAtamaCreate: vi.fn(),
+  personelAtamaUpdate: vi.fn(),
+  personelAtamaDilimCreateMany: vi.fn(),
   transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
 }))
 
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+// $transaction hem dizi formunu (guzergah-durak yeniden sıralama) hem de
+// interaktif callback formunu (createServisPersonelAtama: create + createMany
+// aynı atomik işlemde) destekler — tx, prisma ile aynı mock delegate'lerini
+// paylaşan aynı nesnedir.
+vi.mock('@/lib/prisma', () => {
+  const prismaMock = {
     servisFirma: {
       findMany: mocks.firmaFindMany,
       findUnique: mocks.firmaFindUnique,
@@ -146,9 +156,27 @@ vi.mock('@/lib/prisma', () => ({
       create: mocks.personelDurumCreate,
       update: mocks.personelDurumUpdate,
     },
-    $transaction: mocks.transaction,
-  },
-}))
+    servisPersonelAtama: {
+      findMany: mocks.personelAtamaFindMany,
+      findFirst: mocks.personelAtamaFindFirst,
+      findUnique: mocks.personelAtamaFindUnique,
+      create: mocks.personelAtamaCreate,
+      update: mocks.personelAtamaUpdate,
+    },
+    servisPersonelAtamaDilim: {
+      createMany: mocks.personelAtamaDilimCreateMany,
+    },
+  }
+  return {
+    prisma: {
+      ...prismaMock,
+      $transaction: (arg: unknown) =>
+        typeof arg === 'function'
+          ? (arg as (tx: typeof prismaMock) => unknown)(prismaMock)
+          : mocks.transaction(arg as unknown[]),
+    },
+  }
+})
 
 import {
   createServisFirma,
@@ -214,6 +242,11 @@ import {
   guncelleServisPersonelDurum,
   pasiflestirServisPersonelDurum,
   geriAlServisPersonelDurum,
+  listServisPersonelAtamalari,
+  createServisPersonelAtama,
+  guncelleServisPersonelAtama,
+  pasiflestirServisPersonelAtama,
+  geriAlServisPersonelAtama,
 } from './service'
 
 beforeEach(() => {
@@ -1725,5 +1758,231 @@ describe('ServisPersonelDurum — pasifleştir/geri-al (madde 14/15: satır sili
   it('zaten aktif kaydı tekrar geri almaz', async () => {
     mocks.personelDurumFindUnique.mockResolvedValue({ id: 'pd1', aktif: true })
     await expect(geriAlServisPersonelDurum('pd1', 'user-1')).rejects.toThrow('zaten aktif')
+  })
+})
+
+const gecerliPersonelAtama = {
+  personnelId: 'personel-1',
+  guzergahId: 'guzergah-1',
+  baslangicTarihi: '2026-01-01',
+  dilimIdleri: ['dilim-1'],
+}
+
+describe('ServisPersonelAtama — view', () => {
+  it('guzergahId ve aktif filtresiyle listeler', async () => {
+    mocks.personelAtamaFindMany.mockResolvedValue([{ id: 'pa1' }])
+    const data = await listServisPersonelAtamalari('guzergah-1', { aktif: true })
+    expect(mocks.personelAtamaFindMany).toHaveBeenCalledWith({
+      where: { guzergahId: 'guzergah-1', aktif: true },
+      include: expect.any(Object),
+      orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
+    })
+    expect(data).toHaveLength(1)
+  })
+
+  it('aktif filtresi verilmezse tüm kayıtları listeler', async () => {
+    mocks.personelAtamaFindMany.mockResolvedValue([])
+    await listServisPersonelAtamalari('guzergah-1')
+    expect(mocks.personelAtamaFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { guzergahId: 'guzergah-1' } })
+    )
+  })
+})
+
+describe('ServisPersonelAtama — oluşturma ve çakışma (EXCLUDE simülasyonu, personnelId bazlı)', () => {
+  beforeEach(() => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: true })
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'dilim-1', kod: 'S1', aktif: true }])
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaCreate.mockResolvedValue({ id: 'pa1' })
+    mocks.personelAtamaDilimCreateMany.mockResolvedValue({ count: 1 })
+    mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'pa1', ...gecerliPersonelAtama })
+  })
+
+  it('geçerli formu atama+dilim olarak atomik oluşturur', async () => {
+    const data = await createServisPersonelAtama(gecerliPersonelAtama, 'user-1')
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        personnelId: 'personel-1',
+        guzergahId: 'guzergah-1',
+        durakId: null,
+        atamaKaynagi: 'MANUEL',
+        createdById: 'user-1',
+      }),
+    }))
+    expect(mocks.personelAtamaDilimCreateMany).toHaveBeenCalledWith({
+      data: [{ atamaId: 'pa1', dilimId: 'dilim-1' }],
+    })
+    expect(data.id).toBe('pa1')
+  })
+
+  it('pasif personel için atama oluşturmaz', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: false })
+    await expect(createServisPersonelAtama(gecerliPersonelAtama, 'user-1')).rejects.toThrow('Pasif personel')
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+  })
+
+  it('pasif güzergaha atama oluşturmaz', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: false })
+    await expect(createServisPersonelAtama(gecerliPersonelAtama, 'user-1')).rejects.toThrow('Pasif güzergaha')
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+  })
+
+  it('durakId, seçilen güzergahın durağı değilse anlaşılır hata verir (çiğ FK hatası değil)', async () => {
+    mocks.guzergahDurakFindUnique.mockResolvedValue(null)
+    await expect(createServisPersonelAtama({ ...gecerliPersonelAtama, durakId: 'durak-99' }, 'user-1'))
+      .rejects.toThrow('Bu durak, seçilen güzergahın bir durağı değil.')
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+  })
+
+  it('durakId, güzergahın durağıysa (bileşik FK’in Prisma karşılığı) kabul eder', async () => {
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', guzergahId: 'guzergah-1', durakId: 'durak-1' })
+    await createServisPersonelAtama({ ...gecerliPersonelAtama, durakId: 'durak-1' }, 'user-1')
+    expect(mocks.guzergahDurakFindUnique).toHaveBeenCalledWith({
+      where: { guzergahId_durakId: { guzergahId: 'guzergah-1', durakId: 'durak-1' } },
+    })
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ durakId: 'durak-1' }),
+    }))
+  })
+
+  it('bulunamayan sefer dilimi ile hata verir', async () => {
+    mocks.seferDilimiFindMany.mockResolvedValue([])
+    await expect(createServisPersonelAtama(gecerliPersonelAtama, 'user-1')).rejects.toThrow('bulunamadı')
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+  })
+
+  it('pasif sefer dilimi ile hata verir', async () => {
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'dilim-1', kod: 'S1', aktif: false }])
+    await expect(createServisPersonelAtama(gecerliPersonelAtama, 'user-1')).rejects.toThrow('S1" dilimi pasif')
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+  })
+
+  it('aynı personelin çakışan tarihte zaten aktif bir ataması varsa reddeder — GÜZERGAH FARKLI OLSA BİLE', async () => {
+    mocks.personelAtamaFindFirst.mockResolvedValue({
+      id: 'pa-eski', baslangicTarihi: new Date('2025-12-01'), bitisTarihi: null,
+      guzergah: { kod: 'G1', ad: 'Eski Güzergah' },
+    })
+    await expect(createServisPersonelAtama(gecerliPersonelAtama, 'user-1'))
+      .rejects.toThrow('zaten "G1 — Eski Güzergah" güzergahına aktif bir ataması var')
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+  })
+
+  it('geçersiz formla (dilim seçilmeden) DB çağrısı yapmaz', async () => {
+    await expect(createServisPersonelAtama({ ...gecerliPersonelAtama, dilimIdleri: [] }, 'user-1'))
+      .rejects.toThrow('sefer dilimi seçilmelidir')
+    expect(mocks.personnelFindUnique).not.toHaveBeenCalled()
+  })
+
+  // Regresyon (Ders 59): süresiz (bitisTarihi=null) mevcut bir atamayı SQL'de
+  // NULL karşılaştırması yüzünden kaçırıp çiğ EXCLUDE hatası sızdıran
+  // NOT+lt/gt formuna karşı — WHERE'in NULL-güvenli AND-of-OR biçiminde
+  // kaldığını sabitler.
+  it('süresiz mevcut kayıtla çakışma sorgusu NULL-güvenli (AND-of-OR) kurulur', async () => {
+    await createServisPersonelAtama(gecerliPersonelAtama, 'user-1')
+    expect(mocks.personelAtamaFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: [
+          { OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: expect.any(Date) } }] },
+        ],
+      }),
+    }))
+  })
+})
+
+describe('ServisPersonelAtama — güncelleme (sınırlı, yalnız bitisTarihi)', () => {
+  it('bitisTarihi verilirken yeni bir çakışma varsa reddeder', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', personnelId: 'personel-1', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null,
+    })
+    mocks.personelAtamaFindFirst.mockResolvedValue({
+      id: 'pa-baska', baslangicTarihi: new Date('2026-02-15'), bitisTarihi: null,
+      guzergah: { kod: 'G2', ad: 'Başka Güzergah' },
+    })
+    await expect(guncelleServisPersonelAtama('pa1', { bitisTarihi: '2026-03-01' }, 'user-1'))
+      .rejects.toThrow('zaten "G2 — Başka Güzergah" güzergahına aktif bir ataması var')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('bitisTarihi, baslangicTarihi öncesi olamaz', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', personnelId: 'personel-1', aktif: true,
+      baslangicTarihi: new Date('2026-01-10'), bitisTarihi: null,
+    })
+    await expect(guncelleServisPersonelAtama('pa1', { bitisTarihi: '2026-01-01' }, 'user-1'))
+      .rejects.toThrow('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('değişmeyen bitisTarihi çakışma kontrolünü tetiklemez', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', personnelId: 'personel-1', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-02-01'),
+    })
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1' })
+    await guncelleServisPersonelAtama('pa1', { bitisTarihi: '2026-02-01' }, 'user-1')
+    expect(mocks.personelAtamaFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('olmayan atama için hata verir', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue(null)
+    await expect(guncelleServisPersonelAtama('yok', { bitisTarihi: '2026-01-01' }, 'user-1'))
+      .rejects.toThrow('bulunamadı')
+  })
+})
+
+describe('ServisPersonelAtama — pasifleştir/geri-al (zaman bağımlı, satır silinmez)', () => {
+  it('pasifleştirme bitisTarihi ister ve aktif=false yapar', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'pa1', aktif: true, baslangicTarihi: new Date('2026-01-01') })
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1', aktif: false })
+    await pasiflestirServisPersonelAtama('pa1', '2026-01-15', 'user-1')
+    expect(mocks.personelAtamaUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ bitisTarihi: expect.any(Date), aktif: false, updatedById: 'user-1' }),
+    }))
+  })
+
+  it('bitisTarihi verilmeden pasifleştirilemez', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'pa1', aktif: true, baslangicTarihi: new Date('2026-01-01') })
+    await expect(pasiflestirServisPersonelAtama('pa1', '', 'user-1')).rejects.toThrow('Kapatma tarihi zorunludur')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('zaten pasif atamayı tekrar pasifleştirmez', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'pa1', aktif: false, baslangicTarihi: new Date('2026-01-01') })
+    await expect(pasiflestirServisPersonelAtama('pa1', '2026-01-15', 'user-1')).rejects.toThrow('zaten pasif')
+  })
+
+  it('geri-al: çakışma yoksa aktif=true yapar', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', aktif: false, personnelId: 'personel-1',
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15'),
+    })
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1', aktif: true })
+    await geriAlServisPersonelAtama('pa1', 'user-1')
+    expect(mocks.personelAtamaUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { aktif: true, updatedById: 'user-1' },
+    }))
+  })
+
+  it('geri-al: aradan başka bir aktif kayıt oluşmuşsa (yeniden çakışma) reddeder', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', aktif: false, personnelId: 'personel-1',
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15'),
+    })
+    mocks.personelAtamaFindFirst.mockResolvedValue({
+      id: 'pa-yeni', baslangicTarihi: new Date('2026-01-05'), bitisTarihi: null,
+      guzergah: { kod: 'G3', ad: 'Yeni Güzergah' },
+    })
+    await expect(geriAlServisPersonelAtama('pa1', 'user-1'))
+      .rejects.toThrow('zaten "G3 — Yeni Güzergah" güzergahına aktif bir ataması var')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('zaten aktif atamayı tekrar geri almaz', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'pa1', aktif: true })
+    await expect(geriAlServisPersonelAtama('pa1', 'user-1')).rejects.toThrow('zaten aktif')
   })
 })

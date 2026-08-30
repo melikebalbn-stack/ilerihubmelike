@@ -15,9 +15,9 @@ import { requirePermission } from '@/lib/auth/require-permission'
 // deseniyle aynı yaklaşım.
 export async function GET(request: NextRequest) {
   // Bu modülde personel arayan birden fazla özellik var (İç Personel Şoförü
-  // seçimi, Servis Sorumlusu ataması) — her biri kendi manage anahtarıyla
-  // korunuyor, ikisi de aynı dar kapsamlı aramayı kullanabilmeli.
-  const { error } = await requirePermission(['servis.tanim.manage', 'servis.sorumlu.manage'])
+  // seçimi, Servis Sorumlusu ataması, Personel Ataması) — her biri kendi
+  // yetki anahtarıyla korunuyor, hepsi aynı dar kapsamlı aramayı kullanabilmeli.
+  const { error } = await requirePermission(['servis.tanim.manage', 'servis.sorumlu.manage', 'servis.create'])
   if (error) return error
 
   try {

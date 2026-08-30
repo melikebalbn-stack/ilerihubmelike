@@ -96,6 +96,20 @@ type Sorumlu = {
   aciklama: string | null
 }
 
+type PersonelAtamaDilim = { id: string; dilimId: string; dilim: SeferDilimi }
+
+type PersonelAtama = {
+  id: string
+  personnelId: string
+  personnel: { id: string; adSoyad: string; sicilNo: string | null; bolum: string; aktif: boolean }
+  durakId: string | null
+  durak: { id: string; kod: string; ad: string } | null
+  baslangicTarihi: string
+  bitisTarihi: string | null
+  aktif: boolean
+  dilimler: PersonelAtamaDilim[]
+}
+
 function AktifRozet({ aktif }: { aktif: boolean }) {
   return <Badge variant={aktif ? 'default' : 'secondary'}>{aktif ? 'Aktif' : 'Pasif'}</Badge>
 }
@@ -108,6 +122,7 @@ export default function GuzergahDetayPage() {
   const canView = permissions.includes('servis.view')
   const canManage = permissions.includes('servis.tanim.manage')
   const canSorumluManage = permissions.includes('servis.sorumlu.manage')
+  const canPersonelAtamaManage = permissions.includes('servis.create')
   const canPassive = permissions.includes('servis.passive')
   const canRestore = permissions.includes('servis.restore')
 
@@ -283,6 +298,7 @@ export default function GuzergahDetayPage() {
             <TabsTrigger value="arac-varsayilan">Varsayılan Araçlar</TabsTrigger>
             <TabsTrigger value="sofor-varsayilan">Varsayılan Şoförler</TabsTrigger>
             <TabsTrigger value="sorumlu">Servis Sorumluları</TabsTrigger>
+            <TabsTrigger value="personel-atama">Personel Atamaları</TabsTrigger>
           </TabsList>
 
           <TabsContent value="duraklar" className="space-y-4">
@@ -366,6 +382,17 @@ export default function GuzergahDetayPage() {
             <SorumlularPanel
               guzergahId={guzergahId}
               canSorumluManage={canSorumluManage}
+              canPassive={canPassive}
+              canRestore={canRestore}
+            />
+          </TabsContent>
+
+          <TabsContent value="personel-atama">
+            <PersonelAtamalarPanel
+              guzergahId={guzergahId}
+              aktifDuraklar={aktifDuraklar}
+              dilimler={dilimler}
+              canManage={canPersonelAtamaManage}
               canPassive={canPassive}
               canRestore={canRestore}
             />
@@ -1371,6 +1398,263 @@ function SorumlularPanel({
             <div>
               <Label htmlFor="sr-kapatma-tarihi">Kapatma (Bitiş) Tarihi *</Label>
               <Input id="sr-kapatma-tarihi" type="date" value={kapatmaTarihi} onChange={(e) => setKapatmaTarihi(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter><Button variant="destructive" onClick={kapat}>Kapat</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// Personel Atamaları — bir personelin bu güzergaha (opsiyonel: belirli bir
+// durağa), N sefer diliminde geçerli ataması. Dilim seçimi İMMUTABLE: bir
+// atama oluştuktan sonra dilimler değiştirilemez (yalnız kapat + yeni atama
+// aç). Durak seçimi, güzergahın MEVCUT (aktif) duraklarıyla sınırlı — bu,
+// backend'deki (guzergahId, durakId) bileşik FK ön-kontrolüyle birebir
+// örtüşüyor, çiğ FK hatası yerine burada zaten geçerli seçenekler sunuluyor.
+function PersonelAtamalarPanel({
+  guzergahId,
+  aktifDuraklar,
+  dilimler,
+  canManage,
+  canPassive,
+  canRestore,
+}: {
+  guzergahId: string
+  aktifDuraklar: GuzergahDurak[]
+  dilimler: SeferDilimi[]
+  canManage: boolean
+  canPassive: boolean
+  canRestore: boolean
+}) {
+  const [liste, setListe] = useState<PersonelAtama[]>([])
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [hata, setHata] = useState<string | null>(null)
+  const [dialogAcik, setDialogAcik] = useState(false)
+  const [secilenPersonel, setSecilenPersonel] = useState<SorumluPickedPersonel | null>(null)
+  const [form, setForm] = useState({
+    personnelId: '', durakId: '', baslangicTarihi: bugun(), bitisTarihi: '', dilimIdleri: [] as string[],
+  })
+  const [kapatilan, setKapatilan] = useState<PersonelAtama | null>(null)
+  const [kapatmaTarihi, setKapatmaTarihi] = useState('')
+
+  const yukle = useCallback(async () => {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/personel-atama`)
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setHata(json.message || 'Personel atamaları alınamadı.')
+        return
+      }
+      setListe(json.data)
+    } catch {
+      setHata('Veriler alınırken beklenmeyen bir hata oluştu.')
+    } finally {
+      setYukleniyor(false)
+    }
+  }, [guzergahId])
+
+  useEffect(() => {
+    yukle()
+  }, [yukle])
+
+  function yeniAc() {
+    setSecilenPersonel(null)
+    setForm({ personnelId: '', durakId: '', baslangicTarihi: bugun(), bitisTarihi: '', dilimIdleri: [] })
+    setHata(null)
+    setDialogAcik(true)
+  }
+
+  function dilimSecimDegistir(dilimId: string, secili: boolean) {
+    setForm((f) => ({
+      ...f,
+      dilimIdleri: secili ? [...f.dilimIdleri, dilimId] : f.dilimIdleri.filter((id) => id !== dilimId),
+    }))
+  }
+
+  async function kaydet() {
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/personel-atama`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Kaydedilemedi.')
+      return
+    }
+    setDialogAcik(false)
+    yukle()
+  }
+
+  function kapatmaAc(v: PersonelAtama) {
+    setKapatilan(v)
+    setKapatmaTarihi(bugun())
+    setHata(null)
+  }
+
+  async function kapat() {
+    if (!kapatilan) return
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/guzergah-personel-atama/${kapatilan.id}/pasiflestir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bitisTarihi: kapatmaTarihi }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Atama kapatılamadı.')
+      return
+    }
+    setKapatilan(null)
+    yukle()
+  }
+
+  async function geriAl(id: string) {
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/guzergah-personel-atama/${id}/geri-al`, { method: 'POST' })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Geri alınamadı.')
+      return
+    }
+    yukle()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-medium">Personel Atamaları</h2>
+        {canManage && (
+          <Button size="sm" onClick={yeniAc} disabled={dilimler.length === 0}>
+            <Plus className="mr-2 h-4 w-4" /> Yeni Atama
+          </Button>
+        )}
+      </div>
+      {canManage && dilimler.length === 0 && (
+        <p className="text-sm text-amber-600">Atama yapmak için önce en az bir aktif sefer dilimi gerekir.</p>
+      )}
+      {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {yukleniyor ? (
+        <p className="text-sm text-muted-foreground">Yükleniyor...</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Personel</TableHead>
+              <TableHead>Durak</TableHead>
+              <TableHead>Sefer Dilimleri</TableHead>
+              <TableHead>Başlangıç</TableHead>
+              <TableHead>Bitiş</TableHead>
+              <TableHead>Durum</TableHead>
+              {(canPassive || canRestore) && <TableHead className="text-right">İşlem</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {liste.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={canPassive || canRestore ? 7 : 6} className="text-center text-muted-foreground">
+                  Kayıt yok.
+                </TableCell>
+              </TableRow>
+            )}
+            {liste.map((v) => (
+              <TableRow key={v.id}>
+                <TableCell>{v.personnel.adSoyad}{!v.personnel.aktif ? ' (Pasif)' : ''}</TableCell>
+                <TableCell>{v.durak ? `${v.durak.kod} — ${v.durak.ad}` : '-'}</TableCell>
+                <TableCell>{v.dilimler.map((d) => d.dilim.kod).join(', ')}</TableCell>
+                <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
+                <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
+                <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
+                {(canPassive || canRestore) && (
+                  <TableCell className="text-right space-x-2">
+                    {v.aktif && canPassive && (
+                      <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
+                    )}
+                    {!v.aktif && canRestore && (
+                      <Button size="sm" variant="outline" onClick={() => geriAl(v.id)}>Geri Al</Button>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Yeni Personel Ataması</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="pa-personel">Personel *</Label>
+              <SorumluPersonelPicker
+                value={secilenPersonel}
+                onSelect={(p) => { setSecilenPersonel(p); setForm({ ...form, personnelId: p.id }) }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="pa-durak">Durak (opsiyonel)</Label>
+              <select
+                id="pa-durak"
+                value={form.durakId}
+                onChange={(e) => setForm({ ...form, durakId: e.target.value })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Belirli durak seçilmedi</option>
+                {aktifDuraklar.map((d) => (
+                  <option key={d.durakId} value={d.durakId}>{d.durak.kod} — {d.durak.ad}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Sefer Dilimleri * (en az bir tane, sonradan değiştirilemez)</Label>
+              <div className="space-y-1 pt-1">
+                {dilimler.map((d) => (
+                  <label key={d.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.dilimIdleri.includes(d.id)}
+                      onChange={(e) => dilimSecimDegistir(d.id, e.target.checked)}
+                    />
+                    {d.kod} ({d.yon === 'GIDIS' ? 'Gidiş' : 'Dönüş'})
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="pa-baslangic">Başlangıç *</Label>
+                <Input id="pa-baslangic" type="date" value={form.baslangicTarihi} onChange={(e) => setForm({ ...form, baslangicTarihi: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="pa-bitis">Bitiş</Label>
+                <Input id="pa-bitis" type="date" value={form.bitisTarihi} onChange={(e) => setForm({ ...form, bitisTarihi: e.target.value })} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={kaydet} disabled={!form.personnelId || form.dilimIdleri.length === 0 || !form.baslangicTarihi}>
+              Kaydet
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!kapatilan} onOpenChange={(o) => !o && setKapatilan(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Atamayı Kapat</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Bu atamayı kapatmak geçmişi silmez — yalnızca bitiş tarihini kaydedip pasife alır.
+            </p>
+            <div>
+              <Label htmlFor="pa-kapatma-tarihi">Kapatma (Bitiş) Tarihi *</Label>
+              <Input id="pa-kapatma-tarihi" type="date" value={kapatmaTarihi} onChange={(e) => setKapatmaTarihi(e.target.value)} />
             </div>
           </div>
           <DialogFooter><Button variant="destructive" onClick={kapat}>Kapat</Button></DialogFooter>

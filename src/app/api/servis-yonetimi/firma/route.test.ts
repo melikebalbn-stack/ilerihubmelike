@@ -18,8 +18,10 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
 
 import { GET, POST } from './route'
 
-function permissionResult(allowed: boolean) {
-  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }) }
+function permissionResult(allowed: boolean, userId = 'user-1') {
+  return allowed
+    ? { error: null, userId }
+    : { error: NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }), userId: null }
 }
 
 beforeEach(() => {
@@ -71,5 +73,17 @@ describe('POST /api/servis-yonetimi/firma — permission guard', () => {
     expect(res.status).toBe(201)
     expect(json.ok).toBe(true)
     expect(json.data.ad).toBe('Yeni Firma')
+  })
+
+  it('işlemi yapan kullanıcının id’sini createServisFirma’ya (audit için) iletir', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true, 'user-42'))
+    mocks.createServisFirma.mockResolvedValue({ id: '1', ad: 'Yeni Firma' })
+    await POST(
+      new NextRequest('http://localhost/api/servis-yonetimi/firma', {
+        method: 'POST',
+        body: JSON.stringify({ ad: 'Yeni Firma' }),
+      })
+    )
+    expect(mocks.createServisFirma).toHaveBeenCalledWith({ ad: 'Yeni Firma' }, 'user-42')
   })
 })

@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Plus } from 'lucide-react'
+import { ServisGecmisDialog, GecmisButonu } from './_components/ServisGecmisDialog'
 
 type ServisFirma = {
   id: string
@@ -134,7 +135,7 @@ function AktifBadge({ aktif }: { aktif: boolean }) {
   )
 }
 
-function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
+function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
   const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
   const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -142,6 +143,7 @@ function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
   const [dialogAcik, setDialogAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<ServisFirma | null>(null)
   const [form, setForm] = useState({ ad: '', yetkiliAdi: '', telefon: '', eposta: '', adres: '' })
+  const [gecmisFirma, setGecmisFirma] = useState<ServisFirma | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -244,13 +246,13 @@ function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
               <TableHead>Yetkili</TableHead>
               <TableHead>Telefon</TableHead>
               <TableHead>Durum</TableHead>
-              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliFirmalar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage ? 5 : 4} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canHistory ? 5 : 4} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen firma yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -261,19 +263,24 @@ function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
                 <TableCell>{firma.yetkiliAdi || '-'}</TableCell>
                 <TableCell>{firma.telefon || '-'}</TableCell>
                 <TableCell><AktifBadge aktif={firma.aktif} /></TableCell>
-                {canManage && (
+                {(canManage || canHistory) && (
                   <TableCell className="text-right space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => duzenleAc(firma)}>
-                      Düzenle
-                    </Button>
-                    {firma.aktif ? (
-                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(firma.id)}>
-                        Pasifleştir
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={() => geriAl(firma.id)}>
-                        Geri Al
-                      </Button>
+                    {canHistory && <GecmisButonu onClick={() => setGecmisFirma(firma)} />}
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => duzenleAc(firma)}>
+                          Düzenle
+                        </Button>
+                        {firma.aktif ? (
+                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(firma.id)}>
+                            Pasifleştir
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => geriAl(firma.id)}>
+                            Geri Al
+                          </Button>
+                        )}
+                      </>
                     )}
                   </TableCell>
                 )}
@@ -281,6 +288,16 @@ function ServisFirmaPanel({ canManage }: { canManage: boolean }) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisFirma && (
+        <ServisGecmisDialog
+          hedefTipi="FIRMA"
+          hedefId={gecmisFirma.id}
+          baslik={gecmisFirma.ad}
+          open={!!gecmisFirma}
+          onOpenChange={(o) => !o && setGecmisFirma(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -1954,6 +1971,7 @@ export default function ServisYonetimiPage() {
   const canPersonelDurumEdit = permissions.includes('servis.edit')
   const canPassive = permissions.includes('servis.passive')
   const canRestore = permissions.includes('servis.restore')
+  const canHistory = permissions.includes('servis.history')
 
   if (!canView) {
     return (
@@ -1983,7 +2001,7 @@ export default function ServisYonetimiPage() {
           <TabsTrigger value="personel-durum">Personel Durumları</TabsTrigger>
         </TabsList>
         <TabsContent value="firma">
-          <ServisFirmaPanel canManage={canManage} />
+          <ServisFirmaPanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="yerleske">
           <ServisYerleskePanel canManage={canManage} />

@@ -30,6 +30,7 @@ import {
   type ServisPersonelDurumForm,
   type ServisPersonelAtamaForm,
 } from './validation'
+import { kaydetIslemGecmisi, degisenAlanlar } from './audit'
 
 // ============================================================================
 // ServisFirma
@@ -42,54 +43,78 @@ export async function listServisFirmalar(filtre?: { aktif?: boolean }) {
   })
 }
 
-export async function createServisFirma(form: ServisFirmaForm) {
+export async function createServisFirma(form: ServisFirmaForm, yapanId?: string | null) {
   const { valid, errors } = validateServisFirmaForm(form)
   if (!valid) throw new Error(errors.join(' '))
 
-  return prisma.servisFirma.create({
-    data: {
-      ad: form.ad.trim(),
-      yetkiliAdi: form.yetkiliAdi?.trim() || null,
-      telefon: form.telefon?.trim() || null,
-      eposta: form.eposta?.trim() || null,
-      adres: form.adres?.trim() || null,
-    },
+  const data = {
+    ad: form.ad.trim(),
+    yetkiliAdi: form.yetkiliAdi?.trim() || null,
+    telefon: form.telefon?.trim() || null,
+    eposta: form.eposta?.trim() || null,
+    adres: form.adres?.trim() || null,
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const firma = await tx.servisFirma.create({ data })
+    await kaydetIslemGecmisi({ tx, hedefTipi: 'FIRMA', hedefId: firma.id, islem: 'OLUSTURMA', yapanId, yeniDeger: data })
+    return firma
   })
 }
 
-export async function updateServisFirma(id: string, form: ServisFirmaForm) {
+export async function updateServisFirma(id: string, form: ServisFirmaForm, yapanId?: string | null) {
   const { valid, errors } = validateServisFirmaForm(form)
   if (!valid) throw new Error(errors.join(' '))
 
   const existing = await prisma.servisFirma.findUnique({ where: { id } })
   if (!existing) throw new Error('Firma bulunamadı.')
 
-  return prisma.servisFirma.update({
-    where: { id },
-    data: {
-      ad: form.ad.trim(),
-      yetkiliAdi: form.yetkiliAdi?.trim() || null,
-      telefon: form.telefon?.trim() || null,
-      eposta: form.eposta?.trim() || null,
-      adres: form.adres?.trim() || null,
-    },
+  const data = {
+    ad: form.ad.trim(),
+    yetkiliAdi: form.yetkiliAdi?.trim() || null,
+    telefon: form.telefon?.trim() || null,
+    eposta: form.eposta?.trim() || null,
+    adres: form.adres?.trim() || null,
+  }
+  const fark = degisenAlanlar(existing, data, ['ad', 'yetkiliAdi', 'telefon', 'eposta', 'adres'])
+
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisFirma.update({ where: { id }, data })
+    if (fark) {
+      await kaydetIslemGecmisi({ tx, hedefTipi: 'FIRMA', hedefId: id, islem: 'GUNCELLEME', yapanId, ...fark })
+    }
+    return guncel
   })
 }
 
-export async function pasiflestirServisFirma(id: string) {
+export async function pasiflestirServisFirma(id: string, yapanId?: string | null) {
   const existing = await prisma.servisFirma.findUnique({ where: { id } })
   if (!existing) throw new Error('Firma bulunamadı.')
   if (!existing.aktif) throw new Error('Firma zaten pasif.')
 
-  return prisma.servisFirma.update({ where: { id }, data: { aktif: false } })
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisFirma.update({ where: { id }, data: { aktif: false } })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'FIRMA', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
+      oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+    })
+    return guncel
+  })
 }
 
-export async function geriAlServisFirma(id: string) {
+export async function geriAlServisFirma(id: string, yapanId?: string | null) {
   const existing = await prisma.servisFirma.findUnique({ where: { id } })
   if (!existing) throw new Error('Firma bulunamadı.')
   if (existing.aktif) throw new Error('Firma zaten aktif.')
 
-  return prisma.servisFirma.update({ where: { id }, data: { aktif: true } })
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisFirma.update({ where: { id }, data: { aktif: true } })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'FIRMA', hedefId: id, islem: 'AKTIFLESTIRME', yapanId,
+      oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+    })
+    return guncel
+  })
 }
 
 // ============================================================================
@@ -1524,6 +1549,17 @@ export async function createServisPersonelAtama(form: ServisPersonelAtamaForm, c
     await tx.servisPersonelAtamaDilim.createMany({
       data: dilimIdleri.map((dilimId) => ({ atamaId: atama.id, dilimId })),
     })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: atama.id, islem: 'OLUSTURMA', yapanId: createdById,
+      yeniDeger: { personnelId, guzergahId, durakId, baslangicTarihi: baslangic, bitisTarihi: bitis, atamaKaynagi: 'MANUEL' },
+    })
+    // Dilim seçimi immutable — set yalnız oluşturmada yazılır, hedefId
+    // ATAMANIN id'si (dilim satırlarının kendi id'leri değil) ki "Geçmiş"
+    // butonu ayni atama satirinda ikisini de gostersin.
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'PERSONEL_ATAMA_DILIM', hedefId: atama.id, islem: 'OLUSTURMA', yapanId: createdById,
+      yeniDeger: { dilimIdleri },
+    })
     const sonuc = await tx.servisPersonelAtama.findUnique({
       where: { id: atama.id },
       include: servisPersonelAtamaInclude,
@@ -1555,7 +1591,15 @@ export async function guncelleServisPersonelAtama(
     data.bitisTarihi = bitis
   }
 
-  return prisma.servisPersonelAtama.update({ where: { id }, data, include: servisPersonelAtamaInclude })
+  const fark = degisenAlanlar(existing, data, ['bitisTarihi'])
+
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisPersonelAtama.update({ where: { id }, data, include: servisPersonelAtamaInclude })
+    if (fark) {
+      await kaydetIslemGecmisi({ tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: id, islem: 'GUNCELLEME', yapanId: updatedById, ...fark })
+    }
+    return guncel
+  })
 }
 
 export async function pasiflestirServisPersonelAtama(id: string, bitisTarihi: string, updatedById: string) {
@@ -1567,10 +1611,18 @@ export async function pasiflestirServisPersonelAtama(id: string, bitisTarihi: st
   if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
   if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
 
-  return prisma.servisPersonelAtama.update({
-    where: { id },
-    data: { bitisTarihi: bitis, aktif: false, updatedById },
-    include: servisPersonelAtamaInclude,
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisPersonelAtama.update({
+      where: { id },
+      data: { bitisTarihi: bitis, aktif: false, updatedById },
+      include: servisPersonelAtamaInclude,
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: id, islem: 'PASIFLESTIRME', yapanId: updatedById,
+      oncekiDeger: { bitisTarihi: existing.bitisTarihi, aktif: true },
+      yeniDeger: { bitisTarihi: bitis, aktif: false },
+    })
+    return guncel
   })
 }
 
@@ -1587,9 +1639,16 @@ export async function geriAlServisPersonelAtama(id: string, updatedById: string)
   )
   if (cakisan) throw new Error(personelAtamaCakismaMesaji(cakisan))
 
-  return prisma.servisPersonelAtama.update({
-    where: { id },
-    data: { aktif: true, updatedById },
-    include: servisPersonelAtamaInclude,
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisPersonelAtama.update({
+      where: { id },
+      data: { aktif: true, updatedById },
+      include: servisPersonelAtamaInclude,
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: id, islem: 'AKTIFLESTIRME', yapanId: updatedById,
+      oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+    })
+    return guncel
   })
 }

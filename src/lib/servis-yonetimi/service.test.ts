@@ -63,6 +63,7 @@ const mocks = vi.hoisted(() => ({
   personelAtamaCreate: vi.fn(),
   personelAtamaUpdate: vi.fn(),
   personelAtamaDilimCreateMany: vi.fn(),
+  islemGecmisiCreate: vi.fn(),
   transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
 }))
 
@@ -165,6 +166,9 @@ vi.mock('@/lib/prisma', () => {
     },
     servisPersonelAtamaDilim: {
       createMany: mocks.personelAtamaDilimCreateMany,
+    },
+    servisIslemGecmisi: {
+      create: mocks.islemGecmisiCreate,
     },
   }
   return {
@@ -280,6 +284,17 @@ describe('ServisFirma — create', () => {
   it('geçersiz e-posta ile hata verir', async () => {
     await expect(createServisFirma({ ad: 'ABC Turizm', eposta: 'gecersiz' })).rejects.toThrow('e-posta')
   })
+
+  it('oluşturma ServisIslemGecmisi kaydı yazar (FIRMA/OLUSTURMA, aynı transaction)', async () => {
+    mocks.firmaCreate.mockResolvedValue({ id: '1', ad: 'ABC Turizm' })
+    await createServisFirma({ ad: 'ABC Turizm' }, 'user-9')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'FIRMA', hedefId: '1', islem: 'OLUSTURMA', userId: 'user-9',
+        yeniDeger: expect.objectContaining({ ad: 'ABC Turizm' }),
+      }),
+    }))
+  })
 })
 
 describe('ServisFirma — edit', () => {
@@ -294,6 +309,26 @@ describe('ServisFirma — edit', () => {
     mocks.firmaFindUnique.mockResolvedValue(null)
     await expect(updateServisFirma('yok', { ad: 'Geçerli Ad' })).rejects.toThrow('bulunamadı')
   })
+
+  it('yalnız değişen alanları ServisIslemGecmisi’ye yazar (tam satır değil)', async () => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: '1', ad: 'Eski Ad', yetkiliAdi: 'Ayşe', telefon: '111', eposta: null, adres: null })
+    mocks.firmaUpdate.mockResolvedValue({ id: '1', ad: 'Yeni Ad' })
+    await updateServisFirma('1', { ad: 'Yeni Ad', yetkiliAdi: 'Ayşe', telefon: '111' }, 'user-9')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'FIRMA', hedefId: '1', islem: 'GUNCELLEME', userId: 'user-9',
+        oncekiDeger: { ad: 'Eski Ad' },
+        yeniDeger: { ad: 'Yeni Ad' },
+      }),
+    }))
+  })
+
+  it('hiçbir alan değişmezse ServisIslemGecmisi kaydı YAZILMAZ', async () => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: '1', ad: 'Aynı Ad', yetkiliAdi: null, telefon: null, eposta: null, adres: null })
+    mocks.firmaUpdate.mockResolvedValue({ id: '1', ad: 'Aynı Ad' })
+    await updateServisFirma('1', { ad: 'Aynı Ad' }, 'user-9')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
 })
 
 describe('ServisFirma — passive/restore', () => {
@@ -303,6 +338,18 @@ describe('ServisFirma — passive/restore', () => {
     const data = await pasiflestirServisFirma('1')
     expect(mocks.firmaUpdate).toHaveBeenCalledWith({ where: { id: '1' }, data: { aktif: false } })
     expect(data.aktif).toBe(false)
+  })
+
+  it('pasifleştirme ServisIslemGecmisi kaydı yazar (FIRMA/PASIFLESTIRME)', async () => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: '1', aktif: true })
+    mocks.firmaUpdate.mockResolvedValue({ id: '1', aktif: false })
+    await pasiflestirServisFirma('1', 'user-9')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'FIRMA', hedefId: '1', islem: 'PASIFLESTIRME', userId: 'user-9',
+        oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+      }),
+    }))
   })
 
   it('zaten pasif kaydı tekrar pasifleştirmez', async () => {
@@ -317,6 +364,18 @@ describe('ServisFirma — passive/restore', () => {
     const data = await geriAlServisFirma('1')
     expect(mocks.firmaUpdate).toHaveBeenCalledWith({ where: { id: '1' }, data: { aktif: true } })
     expect(data.aktif).toBe(true)
+  })
+
+  it('geri alma ServisIslemGecmisi kaydı yazar (FIRMA/AKTIFLESTIRME)', async () => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: '1', aktif: false })
+    mocks.firmaUpdate.mockResolvedValue({ id: '1', aktif: true })
+    await geriAlServisFirma('1', 'user-9')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'FIRMA', hedefId: '1', islem: 'AKTIFLESTIRME', userId: 'user-9',
+        oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+      }),
+    }))
   })
 
   it('zaten aktif kaydı tekrar aktifleştirmez', async () => {
@@ -1817,6 +1876,34 @@ describe('ServisPersonelAtama — oluşturma ve çakışma (EXCLUDE simülasyonu
     expect(data.id).toBe('pa1')
   })
 
+  it('oluşturma İKİ ServisIslemGecmisi kaydı yazar — PERSONEL_ATAMA ve PERSONEL_ATAMA_DILIM, ikisi de aynı hedefId (atama.id)', async () => {
+    await createServisPersonelAtama(gecerliPersonelAtama, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_ATAMA', hedefId: 'pa1', islem: 'OLUSTURMA', userId: 'user-1',
+        yeniDeger: expect.objectContaining({ personnelId: 'personel-1', guzergahId: 'guzergah-1' }),
+      }),
+    }))
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_ATAMA_DILIM', hedefId: 'pa1', islem: 'OLUSTURMA', userId: 'user-1',
+        yeniDeger: { dilimIdleri: ['dilim-1'] },
+      }),
+    }))
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledTimes(2)
+  })
+
+  it('KVKK/madde 23: ServisIslemGecmisi yeniDeger içinde personel adı/sicil no gibi JOIN alanı YOK, yalnız personnelId (FK)', async () => {
+    await createServisPersonelAtama(gecerliPersonelAtama, 'user-1')
+    const cagri = mocks.islemGecmisiCreate.mock.calls.find(
+      (c: [{ data: { hedefTipi: string } }]) => c[0].data.hedefTipi === 'PERSONEL_ATAMA',
+    )
+    const yeniDeger = cagri?.[0].data.yeniDeger as Record<string, unknown>
+    expect(yeniDeger).not.toHaveProperty('adSoyad')
+    expect(yeniDeger).not.toHaveProperty('sicilNo')
+    expect(yeniDeger.personnelId).toBe('personel-1')
+  })
+
   it('pasif personel için atama oluşturmaz', async () => {
     mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: false })
     await expect(createServisPersonelAtama(gecerliPersonelAtama, 'user-1')).rejects.toThrow('Pasif personel')
@@ -1931,6 +2018,33 @@ describe('ServisPersonelAtama — güncelleme (sınırlı, yalnız bitisTarihi)'
     await expect(guncelleServisPersonelAtama('yok', { bitisTarihi: '2026-01-01' }, 'user-1'))
       .rejects.toThrow('bulunamadı')
   })
+
+  it('bitisTarihi fiilen değiştiğinde ServisIslemGecmisi (PERSONEL_ATAMA/GUNCELLEME) yazar', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', personnelId: 'personel-1', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null,
+    })
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1' })
+    await guncelleServisPersonelAtama('pa1', { bitisTarihi: '2026-03-01' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_ATAMA', hedefId: 'pa1', islem: 'GUNCELLEME', userId: 'user-1',
+        oncekiDeger: { bitisTarihi: null },
+        yeniDeger: { bitisTarihi: new Date('2026-03-01') },
+      }),
+    }))
+  })
+
+  it('değişmeyen bitisTarihi ServisIslemGecmisi kaydı YAZMAZ', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', personnelId: 'personel-1', aktif: true,
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-02-01'),
+    })
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1' })
+    await guncelleServisPersonelAtama('pa1', { bitisTarihi: '2026-02-01' }, 'user-1')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
 })
 
 describe('ServisPersonelAtama — pasifleştir/geri-al (zaman bağımlı, satır silinmez)', () => {
@@ -1940,6 +2054,19 @@ describe('ServisPersonelAtama — pasifleştir/geri-al (zaman bağımlı, satır
     await pasiflestirServisPersonelAtama('pa1', '2026-01-15', 'user-1')
     expect(mocks.personelAtamaUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ bitisTarihi: expect.any(Date), aktif: false, updatedById: 'user-1' }),
+    }))
+  })
+
+  it('pasifleştirme ServisIslemGecmisi kaydı yazar (PERSONEL_ATAMA/PASIFLESTIRME)', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'pa1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null })
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1', aktif: false })
+    await pasiflestirServisPersonelAtama('pa1', '2026-01-15', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_ATAMA', hedefId: 'pa1', islem: 'PASIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { bitisTarihi: null, aktif: true },
+        yeniDeger: { bitisTarihi: new Date('2026-01-15'), aktif: false },
+      }),
     }))
   })
 
@@ -1964,6 +2091,22 @@ describe('ServisPersonelAtama — pasifleştir/geri-al (zaman bağımlı, satır
     await geriAlServisPersonelAtama('pa1', 'user-1')
     expect(mocks.personelAtamaUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: { aktif: true, updatedById: 'user-1' },
+    }))
+  })
+
+  it('geri-al ServisIslemGecmisi kaydı yazar (PERSONEL_ATAMA/AKTIFLESTIRME)', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', aktif: false, personnelId: 'personel-1',
+      baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-01-15'),
+    })
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1', aktif: true })
+    await geriAlServisPersonelAtama('pa1', 'user-1')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'PERSONEL_ATAMA', hedefId: 'pa1', islem: 'AKTIFLESTIRME', userId: 'user-1',
+        oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+      }),
     }))
   })
 

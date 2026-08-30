@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ServisGecmisDialog, GecmisButonu } from '../../_components/ServisGecmisDialog'
 
 type Guzergah = { id: string; kod: string; ad: string; aktif: boolean }
 type SecilebilirDurak = { id: string; kod: string; ad: string }
@@ -125,6 +126,7 @@ export default function GuzergahDetayPage() {
   const canPersonelAtamaManage = permissions.includes('servis.create')
   const canPassive = permissions.includes('servis.passive')
   const canRestore = permissions.includes('servis.restore')
+  const canHistory = permissions.includes('servis.history')
 
   const [guzergah, setGuzergah] = useState<Guzergah | null>(null)
   const [duraklar, setDuraklar] = useState<GuzergahDurak[]>([])
@@ -395,6 +397,7 @@ export default function GuzergahDetayPage() {
               canManage={canPersonelAtamaManage}
               canPassive={canPassive}
               canRestore={canRestore}
+              canHistory={canHistory}
             />
           </TabsContent>
         </Tabs>
@@ -1420,6 +1423,7 @@ function PersonelAtamalarPanel({
   canManage,
   canPassive,
   canRestore,
+  canHistory,
 }: {
   guzergahId: string
   aktifDuraklar: GuzergahDurak[]
@@ -1427,12 +1431,14 @@ function PersonelAtamalarPanel({
   canManage: boolean
   canPassive: boolean
   canRestore: boolean
+  canHistory: boolean
 }) {
   const [liste, setListe] = useState<PersonelAtama[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState<string | null>(null)
   const [dialogAcik, setDialogAcik] = useState(false)
   const [secilenPersonel, setSecilenPersonel] = useState<SorumluPickedPersonel | null>(null)
+  const [gecmisAtama, setGecmisAtama] = useState<PersonelAtama | null>(null)
   const [form, setForm] = useState({
     personnelId: '', durakId: '', baslangicTarihi: bugun(), bitisTarihi: '', dilimIdleri: [] as string[],
   })
@@ -1551,13 +1557,13 @@ function PersonelAtamalarPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
-              {(canPassive || canRestore) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPassive || canRestore ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -1570,8 +1576,9 @@ function PersonelAtamalarPanel({
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
-                {(canPassive || canRestore) && (
+                {(canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
+                    {canHistory && <GecmisButonu onClick={() => setGecmisAtama(v)} />}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -1584,6 +1591,16 @@ function PersonelAtamalarPanel({
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisAtama && (
+        <ServisGecmisDialog
+          hedefTipi={['PERSONEL_ATAMA', 'PERSONEL_ATAMA_DILIM']}
+          hedefId={gecmisAtama.id}
+          baslik={gecmisAtama.personnel.adSoyad}
+          open={!!gecmisAtama}
+          onOpenChange={(o) => !o && setGecmisAtama(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>

@@ -87,6 +87,9 @@ export async function GET(req: NextRequest) {
     basarisiz: number;
     egitimIhtiyaci: number;
     farkliDepartman: number;
+    // Eğitmen kararı VERİLMİŞ görev (BASARILI + TEKRAR_GEREKLI). 0 ise pct'nin
+    // %0 olması başarısızlık değil "henüz değerlendirilmedi" demektir.
+    kararVerilmis: number;
   }
   const sayac = new Map<string, Sayac>(); // key: userId|courseId
   for (const r of rows) {
@@ -95,9 +98,17 @@ export async function GET(req: NextRequest) {
     const k = `${r.userId}|${courseId}`;
     const c =
       sayac.get(k) ??
-      { basarili: 0, basarisiz: 0, egitimIhtiyaci: 0, farkliDepartman: 0 };
+      {
+        basarili: 0,
+        basarisiz: 0,
+        egitimIhtiyaci: 0,
+        farkliDepartman: 0,
+        kararVerilmis: 0,
+      };
     if (r.ornekStatus === "BASARILI") c.basarili++;
     else if (r.ornekStatus === "TEKRAR_GEREKLI") c.basarisiz++;
+    if (r.ornekStatus === "BASARILI" || r.ornekStatus === "TEKRAR_GEREKLI")
+      c.kararVerilmis++;
     if (r.kursiyerDurum === "EGITIM_GEREKLI") c.egitimIhtiyaci++;
     else if (r.kursiyerDurum === "FARKLI_DEPARTMAN") c.farkliDepartman++;
     sayac.set(k, c);
@@ -153,6 +164,7 @@ export async function GET(req: NextRequest) {
         toplamGorev,
         basariliGorev: c.basarili,
         basarisizGorev: c.basarisiz,
+        degerlendirilmisGorev: c.kararVerilmis,
         pct: payda > 0 ? Math.round((c.basarili / payda) * 100) : 0,
         degerlendirme: {
           seviye: d?.seviye ?? null,

@@ -17,6 +17,10 @@ import { getLinkedBolums, resolveUserBolum } from "@/lib/user-personnel";
 //                    paydayı şişirmesin).
 //   basariPct      : ornekStatus=BASARILI / değerlendirilmiş satır toplamı.
 //   egitimGerekli  : kursiyerDurum=EGITIM_GEREKLI satır sayısı.
+//   degerlendirilmisSatir : eğitmen kararı VERİLMİŞ satır (BASARILI veya
+//                    TEKRAR_GEREKLI). 0 ise basariPct'nin %0 olması başarısızlık
+//                    değil "henüz değerlendirilmedi" demektir — ekran ikisini
+//                    ayırabilsin diye döner.
 export async function GET() {
   const { session, error } = await requirePermission("akademi.report.view");
   if (error) return error;
@@ -73,6 +77,7 @@ export async function GET() {
   const degerlendirilen = new Map<string, number>();
   const basarili = new Map<string, number>();
   const egitimGerekli = new Map<string, number>();
+  const kararVerilmis = new Map<string, number>();
   const bump = (m: Map<string, number>, k: string) =>
     m.set(k, (m.get(k) ?? 0) + 1);
 
@@ -84,6 +89,8 @@ export async function GET() {
     kisiSet.set(b, s);
     bump(degerlendirilen, b);
     if (r.ornekStatus === "BASARILI") bump(basarili, b);
+    if (r.ornekStatus === "BASARILI" || r.ornekStatus === "TEKRAR_GEREKLI")
+      bump(kararVerilmis, b);
     if (r.kursiyerDurum === "EGITIM_GEREKLI") bump(egitimGerekli, b);
   }
 
@@ -94,6 +101,7 @@ export async function GET() {
       bolum: b,
       egitimAlanKisi: kisiSet.get(b)?.size ?? 0,
       basariPct: toplam > 0 ? Math.round((bas / toplam) * 100) : 0,
+      degerlendirilmisSatir: kararVerilmis.get(b) ?? 0,
       egitimGerekli: egitimGerekli.get(b) ?? 0,
     };
   });

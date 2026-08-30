@@ -29,6 +29,8 @@ interface BolumRow {
   bolum: string;
   egitimAlanKisi: number;
   basariPct: number;
+  /** Eğitmen kararı verilmiş satır (BASARILI + TEKRAR_GEREKLI). */
+  degerlendirilmisSatir: number;
   egitimGerekli: number;
 }
 interface OzetData {
@@ -49,6 +51,8 @@ interface KisiRow {
   toplamGorev: number;
   basariliGorev: number;
   basarisizGorev: number;
+  /** Eğitmen kararı verilmiş görev sayısı; 0 ise pct anlamsız. */
+  degerlendirilmisGorev: number;
   pct: number;
   degerlendirme: DegerlendirmeAlan;
   egitimIhtiyaci: number;
@@ -58,6 +62,26 @@ interface KisilerData {
   bolum: string;
   scope: "full" | "own";
   satirlar: KisiRow[];
+}
+
+/**
+ * Yüzde hücresi. Eğitmen kararı verilmiş satır YOKSA %0 yazmak yanıltıcı —
+ * başarısızlık gibi okunuyor; oysa kimse değerlendirmemiş demek. O durumda
+ * yüzde yerine soluk bir "Değerlendirilmedi" ibaresi gösterilir (rozet değil).
+ */
+function YuzdeHucre({ pct, degerlendirilmis }: { pct: number; degerlendirilmis: number }) {
+  if (degerlendirilmis === 0) {
+    return (
+      <span
+        className="text-xs"
+        style={{ color: "var(--ak-text-tertiary)" }}
+        title="Kursiyer kayıtları var ama eğitmen değerlendirmesi girilmemiş"
+      >
+        Değerlendirilmedi
+      </span>
+    );
+  }
+  return <>%{pct}</>;
 }
 
 /** seviye + altında giren kişi adı; veri yoksa "—". */
@@ -147,7 +171,9 @@ export function IfsRaporuTab() {
           </td>
           <td className="px-3 py-2 font-medium">{b.bolum}</td>
           <td className="px-3 py-2 text-right">{b.egitimAlanKisi}</td>
-          <td className="px-3 py-2 text-right">%{b.basariPct}</td>
+          <td className="px-3 py-2 text-right">
+            <YuzdeHucre pct={b.basariPct} degerlendirilmis={b.degerlendirilmisSatir} />
+          </td>
           <td className="px-3 py-2 text-right">
             {b.egitimGerekli > 0 ? (
               <span
@@ -186,7 +212,9 @@ export function IfsRaporuTab() {
                         <th className="px-2 py-1 text-right font-medium">Başarısız</th>
                         <th className="px-2 py-1 text-right font-medium">%</th>
                         <th className="px-2 py-1 text-left font-medium">Değerlendirme</th>
-                        <th className="px-2 py-1 text-right font-medium">Eğitim İhtiyacı</th>
+                        <th className="px-2 py-1 text-right font-medium">
+                          Eğitim İstenen Görev
+                        </th>
                         <th className="px-2 py-1 text-left font-medium">
                           Key User Değerlendirmesi
                         </th>
@@ -228,7 +256,12 @@ export function IfsRaporuTab() {
                             <td className="px-2 py-1.5 text-right align-top">
                               {s.basarisizGorev}
                             </td>
-                            <td className="px-2 py-1.5 text-right align-top">%{s.pct}</td>
+                            <td className="px-2 py-1.5 text-right align-top">
+                              <YuzdeHucre
+                                pct={s.pct}
+                                degerlendirilmis={s.degerlendirilmisGorev}
+                              />
+                            </td>
                             <td className="px-2 py-1.5 align-top">
                               <DegerlendirmeHucre d={s.degerlendirme} />
                             </td>

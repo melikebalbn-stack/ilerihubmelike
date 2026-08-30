@@ -21,12 +21,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
   try {
     const { id } = await params
     const body = (await request.json()) as ServisYerleskeForm
-    const data = await updateServisYerleske(id, body)
+    const data = await updateServisYerleske(id, body, userId)
 
     return NextResponse.json({ ok: true, message: 'Yerleşke güncellendi.', data })
   } catch (err) {

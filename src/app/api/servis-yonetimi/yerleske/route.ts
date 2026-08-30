@@ -19,11 +19,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
   try {
     const body = (await request.json()) as ServisYerleskeForm
-    const data = await createServisYerleske(body)
+    const data = await createServisYerleske(body, userId)
 
     return NextResponse.json({ ok: true, message: 'Yerleşke başarıyla oluşturuldu.', data }, { status: 201 })
   } catch (err) {

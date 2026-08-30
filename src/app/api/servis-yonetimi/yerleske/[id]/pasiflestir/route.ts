@@ -3,11 +3,11 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { pasiflestirServisYerleske } from '@/lib/servis-yonetimi/service'
 
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('servis.passive')
+  const { error, userId } = await requirePermission('servis.passive')
   if (error) return error
   try {
     const { id } = await params
-    const data = await pasiflestirServisYerleske(id)
+    const data = await pasiflestirServisYerleske(id, userId)
     return NextResponse.json({ ok: true, message: 'Yerleşke pasifleştirildi.', data })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Yerleşke pasifleştirilemedi.'

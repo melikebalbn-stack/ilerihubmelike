@@ -24,12 +24,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
   try {
     const { id } = await params
     const body = (await request.json()) as ServisGuzergahForm
-    const data = await updateServisGuzergah(id, body)
+    const data = await updateServisGuzergah(id, body, userId)
     return NextResponse.json({ ok: true, message: 'Güzergâh güncellendi.', data })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Güzergâh güncellenemedi.'

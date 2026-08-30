@@ -18,11 +18,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
   try {
     const body = (await request.json()) as ServisDurakForm
-    const data = await createServisDurak(body)
+    const data = await createServisDurak(body, userId)
     return NextResponse.json({ ok: true, message: 'Durak başarıyla oluşturuldu.', data }, { status: 201 })
   } catch (err) {
     console.error('Servis durak oluşturma hatası:', err)

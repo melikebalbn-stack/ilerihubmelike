@@ -336,7 +336,7 @@ function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHi
   )
 }
 
-function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
+function ServisYerleskePanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
   const [yerleskeler, setYerleskeler] = useState<ServisYerleske[]>([])
   const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -344,6 +344,7 @@ function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
   const [dialogAcik, setDialogAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<ServisYerleske | null>(null)
   const [form, setForm] = useState({ kod: '', ad: '', adres: '', enlem: '', boylam: '' })
+  const [gecmisYerleske, setGecmisYerleske] = useState<ServisYerleske | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -453,13 +454,13 @@ function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
               <TableHead>Ad</TableHead>
               <TableHead>Adres</TableHead>
               <TableHead>Durum</TableHead>
-              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliYerleskeler.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage ? 5 : 4} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canHistory ? 5 : 4} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen yerleşke yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -470,19 +471,24 @@ function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
                 <TableCell>{yerleske.ad}</TableCell>
                 <TableCell>{yerleske.adres || '-'}</TableCell>
                 <TableCell><AktifBadge aktif={yerleske.aktif} /></TableCell>
-                {canManage && (
+                {(canManage || canHistory) && (
                   <TableCell className="text-right space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => duzenleAc(yerleske)}>
-                      Düzenle
-                    </Button>
-                    {yerleske.aktif ? (
-                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(yerleske.id)}>
-                        Pasifleştir
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={() => geriAl(yerleske.id)}>
-                        Geri Al
-                      </Button>
+                    {canHistory && <GecmisButonu onClick={() => setGecmisYerleske(yerleske)} />}
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => duzenleAc(yerleske)}>
+                          Düzenle
+                        </Button>
+                        {yerleske.aktif ? (
+                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(yerleske.id)}>
+                            Pasifleştir
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => geriAl(yerleske.id)}>
+                            Geri Al
+                          </Button>
+                        )}
+                      </>
                     )}
                   </TableCell>
                 )}
@@ -490,6 +496,16 @@ function ServisYerleskePanel({ canManage }: { canManage: boolean }) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisYerleske && (
+        <ServisGecmisDialog
+          hedefTipi="YERLESKE"
+          hedefId={gecmisYerleske.id}
+          baslik={gecmisYerleske.ad}
+          open={!!gecmisYerleske}
+          onOpenChange={(o) => !o && setGecmisYerleske(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -544,7 +560,7 @@ function tarihInputDegeri(value: string | null): string {
   return value ? value.slice(0, 10) : ''
 }
 
-function ServisGuzergahPanel({ canManage }: { canManage: boolean }) {
+function ServisGuzergahPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
   const [guzergahlar, setGuzergahlar] = useState<ServisGuzergah[]>([])
   const [yerleskeler, setYerleskeler] = useState<ServisYerleske[]>([])
   const [arama, setArama] = useState('')
@@ -553,6 +569,7 @@ function ServisGuzergahPanel({ canManage }: { canManage: boolean }) {
   const [dialogAcik, setDialogAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<ServisGuzergah | null>(null)
   const [form, setForm] = useState(bosGuzergahForm)
+  const [gecmisGuzergah, setGecmisGuzergah] = useState<ServisGuzergah | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -670,13 +687,13 @@ function ServisGuzergahPanel({ canManage }: { canManage: boolean }) {
               <TableHead>Yerleşke</TableHead>
               <TableHead>Geçerlilik</TableHead>
               <TableHead>Durum</TableHead>
-              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliGuzergahlar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen güzergâh yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -691,16 +708,21 @@ function ServisGuzergahPanel({ canManage }: { canManage: boolean }) {
                   {tarihInputDegeri(guzergah.gecerlilikBaslangici) || '-'} / {tarihInputDegeri(guzergah.gecerlilikBitisi) || '-'}
                 </TableCell>
                 <TableCell><AktifBadge aktif={guzergah.aktif} /></TableCell>
-                {canManage && (
+                {(canManage || canHistory) && (
                   <TableCell className="space-x-2 text-right">
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/servis-yonetimi/guzergah/${guzergah.id}`}>Duraklar</Link>
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => duzenleAc(guzergah)}>Düzenle</Button>
-                    {guzergah.aktif ? (
-                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(guzergah.id)}>Pasifleştir</Button>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={() => geriAl(guzergah.id)}>Geri Al</Button>
+                    {canHistory && <GecmisButonu onClick={() => setGecmisGuzergah(guzergah)} />}
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="outline" asChild>
+                          <Link href={`/servis-yonetimi/guzergah/${guzergah.id}`}>Duraklar</Link>
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => duzenleAc(guzergah)}>Düzenle</Button>
+                        {guzergah.aktif ? (
+                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(guzergah.id)}>Pasifleştir</Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => geriAl(guzergah.id)}>Geri Al</Button>
+                        )}
+                      </>
                     )}
                   </TableCell>
                 )}
@@ -708,6 +730,16 @@ function ServisGuzergahPanel({ canManage }: { canManage: boolean }) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisGuzergah && (
+        <ServisGecmisDialog
+          hedefTipi="GUZERGAH"
+          hedefId={gecmisGuzergah.id}
+          baslik={gecmisGuzergah.ad}
+          open={!!gecmisGuzergah}
+          onOpenChange={(o) => !o && setGecmisGuzergah(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -779,7 +811,7 @@ const bosDurakForm = {
   boylam: '',
 }
 
-function ServisDurakPanel({ canManage }: { canManage: boolean }) {
+function ServisDurakPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
   const [duraklar, setDuraklar] = useState<ServisDurak[]>([])
   const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -787,6 +819,7 @@ function ServisDurakPanel({ canManage }: { canManage: boolean }) {
   const [dialogAcik, setDialogAcik] = useState(false)
   const [duzenlenen, setDuzenlenen] = useState<ServisDurak | null>(null)
   const [form, setForm] = useState(bosDurakForm)
+  const [gecmisDurak, setGecmisDurak] = useState<ServisDurak | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -900,13 +933,13 @@ function ServisDurakPanel({ canManage }: { canManage: boolean }) {
               <TableHead>Adres Etiketi</TableHead>
               <TableHead>Koordinat</TableHead>
               <TableHead>Durum</TableHead>
-              {canManage && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliDuraklar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen durak yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -919,13 +952,18 @@ function ServisDurakPanel({ canManage }: { canManage: boolean }) {
                 <TableCell>{durak.adresEtiketi || '-'}</TableCell>
                 <TableCell>{durak.enlem && durak.boylam ? `${durak.enlem}, ${durak.boylam}` : '-'}</TableCell>
                 <TableCell><AktifBadge aktif={durak.aktif} /></TableCell>
-                {canManage && (
+                {(canManage || canHistory) && (
                   <TableCell className="space-x-2 text-right">
-                    <Button size="sm" variant="outline" onClick={() => duzenleAc(durak)}>Düzenle</Button>
-                    {durak.aktif ? (
-                      <Button size="sm" variant="destructive" onClick={() => pasiflestir(durak.id)}>Pasifleştir</Button>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={() => geriAl(durak.id)}>Geri Al</Button>
+                    {canHistory && <GecmisButonu onClick={() => setGecmisDurak(durak)} />}
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => duzenleAc(durak)}>Düzenle</Button>
+                        {durak.aktif ? (
+                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(durak.id)}>Pasifleştir</Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => geriAl(durak.id)}>Geri Al</Button>
+                        )}
+                      </>
                     )}
                   </TableCell>
                 )}
@@ -933,6 +971,16 @@ function ServisDurakPanel({ canManage }: { canManage: boolean }) {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {gecmisDurak && (
+        <ServisGecmisDialog
+          hedefTipi="DURAK"
+          hedefId={gecmisDurak.id}
+          baslik={gecmisDurak.ad}
+          open={!!gecmisDurak}
+          onOpenChange={(o) => !o && setGecmisDurak(null)}
+        />
       )}
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -2004,13 +2052,13 @@ export default function ServisYonetimiPage() {
           <ServisFirmaPanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="yerleske">
-          <ServisYerleskePanel canManage={canManage} />
+          <ServisYerleskePanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="guzergah">
-          <ServisGuzergahPanel canManage={canManage} />
+          <ServisGuzergahPanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="durak">
-          <ServisDurakPanel canManage={canManage} />
+          <ServisDurakPanel canManage={canManage} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="arac">
           <ServisAracPanel canManage={canManage} />

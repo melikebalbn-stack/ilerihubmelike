@@ -44,9 +44,21 @@ export async function kaydetIslemGecmisi(params: {
 // değerlendirilmez (kısmi güncelleme desteği). Hiçbir alan değişmediyse
 // null döner — çağıran taraf bu durumda kaydetIslemGecmisi'yi hiç
 // çağırmamalı (anlamsız/boş audit satırı yazılmasın).
+// Prisma.Decimal (enlem/boylam gibi @db.Decimal alanları) JSON.stringify'da
+// STRING olur ("40.123456"), form'dan gelen plain number ise NUMBER olur
+// (40.123456) — aynı değer olsa da iki farklı JSON çıktısı üretir ve
+// değişmemiş bir alanı yanlışlıkla "değişti" olarak işaretler. toNumber()
+// duck-type kontrolüyle Decimal'i number'a normalize ederek karşılaştırıyoruz.
+function normalizeKarsilastirma(deger: unknown): unknown {
+  if (deger !== null && typeof deger === 'object' && 'toNumber' in deger && typeof (deger as { toNumber: unknown }).toNumber === 'function') {
+    return (deger as { toNumber: () => number }).toNumber()
+  }
+  return deger
+}
+
 export function degisenAlanlar<T extends Record<string, unknown>>(
   eski: T,
-  yeni: Partial<T>,
+  yeni: Record<string, unknown>,
   alanlar: (keyof T)[],
 ): { oncekiDeger: Record<string, unknown>; yeniDeger: Record<string, unknown> } | null {
   const oncekiDeger: Record<string, unknown> = {}
@@ -54,8 +66,8 @@ export function degisenAlanlar<T extends Record<string, unknown>>(
   for (const alan of alanlar) {
     if (!(alan in yeni)) continue
     const eskiDeger = eski[alan]
-    const yeniD = yeni[alan]
-    if (JSON.stringify(eskiDeger) !== JSON.stringify(yeniD)) {
+    const yeniD = yeni[alan as string]
+    if (JSON.stringify(normalizeKarsilastirma(eskiDeger)) !== JSON.stringify(normalizeKarsilastirma(yeniD))) {
       oncekiDeger[alan as string] = eskiDeger
       yeniDegerSonuc[alan as string] = yeniD
     }

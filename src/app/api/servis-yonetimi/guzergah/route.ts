@@ -19,11 +19,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requirePermission('servis.tanim.manage')
+  const { error, userId } = await requirePermission('servis.tanim.manage')
   if (error) return error
   try {
     const body = (await request.json()) as ServisGuzergahForm
-    const data = await createServisGuzergah(body)
+    const data = await createServisGuzergah(body, userId)
     return NextResponse.json({ ok: true, message: 'Güzergâh başarıyla oluşturuldu.', data }, { status: 201 })
   } catch (err) {
     console.error('Servis güzergâh oluşturma hatası:', err)

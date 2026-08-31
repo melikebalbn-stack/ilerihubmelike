@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
+import { ustDepartmanBul, type KutuDugumu } from '@/lib/org/ust-departman'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +39,21 @@ export async function GET(request: NextRequest) {
         mudur: personSel,
       },
     })
-    return NextResponse.json(depts)
+
+    // ÜST DEPARTMAN — şema zincirinde yukarı yürüyüp ilk DEPARTMENT kutusu.
+    // Kutular tek sorguda çekilir (bölüm başına sorgu YOK). Mevcut alanların
+    // hiçbiri değişmiyor; yanıta yalnız `ustDepartman` ekleniyor.
+    const kutular = await prisma.orgUnit.findMany({
+      select: { id: true, code: true, name: true, parentId: true, unitType: true },
+    })
+    const byId = new Map<string, KutuDugumu>(kutular.map((k) => [k.id, k as KutuDugumu]))
+
+    const sonuc = depts.map((d) => ({
+      ...d,
+      ustDepartman: ustDepartmanBul(d.orgUnitId, byId),
+    }))
+
+    return NextResponse.json(sonuc)
   } catch (error) {
     console.error('Bölüm listesi hatası:', error)
     return NextResponse.json({ error: 'Bölüm listesi alınamadı' }, { status: 500 })

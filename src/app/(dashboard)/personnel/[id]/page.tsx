@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { GorevSecici } from "@/components/personnel/GorevSecici"
+import { BolumSecici } from "@/components/personnel/BolumSecici"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
@@ -160,6 +161,9 @@ export default function PersonnelDetailPage() {
   const [saving, setSaving] = useState(false)
   const [editMode, setEditMode] = useState(searchParams.get("edit") === "true")
   const [departments, setDepartments] = useState<string[]>([])
+  // Seçili bölümün şema kutusu — GorevSecici FK süzmesi için.
+  // BolumSecici seçim anında verir; sayfa açılışında null (ad kuralına düşülür).
+  const [bolumOrgUnitId, setBolumOrgUnitId] = useState<string | null>(null)
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
   // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer yüklenince/seçilince açılır.
   const [altBedenDiger, setAltBedenDiger] = useState(false)
@@ -597,20 +601,18 @@ export default function PersonnelDetailPage() {
                 <GorevSecici
                   value={form.gorev || ""}
                   bolum={form.bolum || ""}
+                  bolumOrgUnitId={bolumOrgUnitId}
                   onChange={(v) => set("gorev", v)}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Bölüm *</Label>
-                <Select value={form.bolum || ""} onChange={(e) => set("bolum", e.target.value)}>
-                  <option value="">Seçiniz</option>
-                  {departments.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                  {form.bolum && !departments.includes(form.bolum) && (
-                    <option value={form.bolum}>{form.bolum} (eski)</option>
-                  )}
-                </Select>
+                {/* Eski `… (eski)` seçeneğinin karşılığı: şemada olmayan mevcut
+                    değer BolumSecici'de AYNEN korunur ve sarı uyarı çıkar. */}
+                <BolumSecici
+                  value={form.bolum || ""}
+                  onChange={(v, ouId) => { set("bolum", v); setBolumOrgUnitId(ouId) }}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Bölüm Detay</Label>

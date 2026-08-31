@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, ChevronDown, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { buyukTR, normalizeAd } from "@/lib/org/normalize-ad"
+
+export { buyukTR }
 
 export interface PozisyonSecenegi {
   ad: string
@@ -10,38 +13,30 @@ export interface PozisyonSecenegi {
   zincir: string[]
   kutuSayisi: number
   bosKutuVar: boolean
+  /** Üst zincirdeki kutu id'leri — FK tabanlı süzme için (sunucu doldurur). */
+  ustIds?: string[]
 }
 
 interface Props {
   value: string
   onChange: (value: string) => void
-  /** Seçili bölüm — liste bu bölümün şema dalıyla süzülür. */
+  /** Seçili bölüm — FK yoksa ad kuralıyla süzme için. */
   bolum?: string
+  /**
+   * Seçili bölümün şema kutusu. VARSA süzme bunun alt ağacına göre yapılır
+   * (ad kuralındaki "Kalıphane ↔ Kalite" gibi kapsama yanılgıları olmaz).
+   * Yoksa MEVCUT ad kuralına düşülür — fail-open korunur.
+   */
+  bolumOrgUnitId?: string | null
   id?: string
   disabled?: boolean
-}
-
-/** Türkçe büyük harf — düz toUpperCase() i/ı'yı bozar. */
-export function buyukTR(s: string): string {
-  return (s ?? "").toLocaleUpperCase("tr-TR")
-}
-
-const DIACRITIC: Record<string, string> = { Ç: "C", Ğ: "G", Ş: "S", Ö: "O", Ü: "U", İ: "I" }
-/** koltuk-eslesme.ts'teki normalizeAd ile aynı aile — süzme kuralı sunucuyla tutarlı olsun. */
-function normalizeAd(input: string): string {
-  if (!input) return ""
-  return buyukTR(input)
-    .replace(/[ÇĞŞÖÜİ]/g, (c) => DIACRITIC[c] ?? c)
-    .replace(/[^A-Z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ")
 }
 
 /**
  * Görev alanı — seçenekler organizasyon şemasındaki POSITION kutu adlarından gelir.
  * Şemada tanımlı olmayan mevcut değer KORUNUR ve uyarı gösterilir; kayıt engellenmez.
  */
-export function GorevSecici({ value, onChange, bolum, id, disabled }: Props) {
+export function GorevSecici({ value, onChange, bolum, bolumOrgUnitId, id, disabled }: Props) {
   const [pozisyonlar, setPozisyonlar] = useState<PozisyonSecenegi[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [acik, setAcik] = useState(false)
@@ -65,8 +60,16 @@ export function GorevSecici({ value, onChange, bolum, id, disabled }: Props) {
     return () => document.removeEventListener("mousedown", dis)
   }, [])
 
-  // Bölüme göre süzme: bölümün şema dalındaki pozisyonlar. Eşleşme yoksa süzme YAPILMAZ.
+  // Bölüme göre süzme — ÖNCE FK, sonra ad kuralı.
+  //   1. bolumOrgUnitId varsa: o kutunun ALT AĞACINDAKİ pozisyonlar (kesin bağ)
+  //   2. yoksa (ya da FK ile hiç eşleşme çıkmazsa): MEVCUT ad kuralı
+  // Her iki yolda da sonuç boşsa süzme YAPILMAZ — fail-open korunur, kullanıcı
+  // şemadan kopuk bir bölümde de görev seçebilir.
   const bolumeUyan = useMemo(() => {
+    if (bolumOrgUnitId) {
+      const fk = pozisyonlar.filter((p) => p.ustIds?.includes(bolumOrgUnitId))
+      if (fk.length > 0) return fk
+    }
     const b = normalizeAd(bolum ?? "")
     if (!b) return pozisyonlar
     const uyan = pozisyonlar.filter((p) =>
@@ -76,7 +79,7 @@ export function GorevSecici({ value, onChange, bolum, id, disabled }: Props) {
       }),
     )
     return uyan.length > 0 ? uyan : pozisyonlar
-  }, [pozisyonlar, bolum])
+  }, [pozisyonlar, bolum, bolumOrgUnitId])
 
   const bolumSuzmeIsliyor = bolumeUyan.length !== pozisyonlar.length
 

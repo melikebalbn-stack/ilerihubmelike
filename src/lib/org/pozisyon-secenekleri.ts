@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
-import { normalizeAd } from "./koltuk-eslesme";
+import { normalizeAd, buyukTR } from "./normalize-ad";
 
 // Personel kartındaki "Görev" alanının seçenek kaynağı = organizasyon şemasındaki
 // POSITION kutu adları. Personnel.gorev String KALIR (FK yok) — bağ ekran ve
@@ -28,12 +28,19 @@ export interface PozisyonSecenegi {
   kutuSayisi: number;
   /** Bu unvanda boş kutu var mı — İK "kadro var mı" görebilsin. */
   bosKutuVar: boolean;
+  /**
+   * Bu unvanın geçtiği kutuların ÜST ZİNCİRİNDEKİ kutu id'leri.
+   * Bölüme göre süzme artık ad kuralı yerine FK ile yapılabilsin diye eklendi:
+   * seçili bölümün orgUnitId'si bu listede geçiyorsa pozisyon o bölümün
+   * alt ağacındadır. Mevcut alanlar DEĞİŞMEDİ — `zincir` (adlar) fail-open
+   * yolu için yerinde duruyor.
+   */
+  ustIds: string[];
 }
 
-/** Türkçe büyük harf — düz toUpperCase() Türkçe'de i/ı'yı bozar. */
-export function buyukTR(s: string): string {
-  return (s ?? "").toLocaleUpperCase("tr-TR");
-}
+// buyukTR tanımı @/lib/org/normalize-ad'e taşındı (tek kaynak); mevcut
+// çağıranlar için re-export korunuyor.
+export { buyukTR };
 
 export async function pozisyonSecenekleriYukle(db: DbClient = prisma): Promise<PozisyonSecenegi[]> {
   const units = await db.orgUnit.findMany({
@@ -76,11 +83,13 @@ export async function pozisyonSecenekleriYukle(db: DbClient = prisma): Promise<P
     if (!anahtar) continue;
     const mevcut = gruplar.get(anahtar);
     const ustler = zincir.slice(1).map((z) => z.name);
+    const ustIdler = zincir.slice(1).map((z) => z.id);
     const bos = (acikKoltuk.get(u.id) ?? 0) === 0;
     if (mevcut) {
       mevcut.kutuSayisi += 1;
       mevcut.bosKutuVar = mevcut.bosKutuVar || bos;
       ustler.forEach((n) => { if (!mevcut.zincir.includes(n)) mevcut.zincir.push(n); });
+      ustIdler.forEach((i) => { if (!mevcut.ustIds.includes(i)) mevcut.ustIds.push(i); });
     } else {
       gruplar.set(anahtar, {
         ad: u.name,
@@ -88,6 +97,7 @@ export async function pozisyonSecenekleriYukle(db: DbClient = prisma): Promise<P
         zincir: ustler,
         kutuSayisi: 1,
         bosKutuVar: bos,
+        ustIds: ustIdler,
       });
     }
   }
@@ -100,6 +110,22 @@ export async function pozisyonSecenekleriYukle(db: DbClient = prisma): Promise<P
  * normalize edilmiş adlarda eşitlik veya kapsama ("KALİTE MÜDÜRLÜĞÜ" ↔ "Kalite").
  * Eşleşme bulunamazsa süzme yapılmaz — çağıran tüm listeyi gösterir.
  */
+/**
+ * FK tabanlı süzme: seçili bölümün orgUnitId'si pozisyonun üst zincirinde
+ * geçiyorsa pozisyon o bölümün alt ağacındadır.
+ *
+ * Ad kuralından (bolumeUyanlar) ÜSTÜNDÜR: "Kalıphane" ile "Kalite" gibi
+ * kapsama yanılgıları burada olmaz. Eşleşme bulunamazsa BOŞ döner — çağıran
+ * fail-open kararını kendisi verir (bkz. GorevSecici).
+ */
+export function altAgactakiler(
+  secenekler: PozisyonSecenegi[],
+  bolumOrgUnitId: string,
+): PozisyonSecenegi[] {
+  if (!bolumOrgUnitId) return [];
+  return secenekler.filter((s) => s.ustIds.includes(bolumOrgUnitId));
+}
+
 export function bolumeUyanlar(secenekler: PozisyonSecenegi[], bolum: string): PozisyonSecenegi[] {
   const b = normalizeAd(bolum);
   if (!b) return secenekler;

@@ -10,10 +10,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { NativeSelect as Select } from "@/components/ui/select"
 import { ArrowLeft, Save, Loader2, Pencil } from "lucide-react"
 import { toast } from "sonner"
-import { useDepartments } from "@/lib/use-departments"
+import { BolumSecici } from "@/components/personnel/BolumSecici"
 
 type ConsultantForm = {
   adSoyad: string
@@ -45,8 +44,6 @@ function formatDate(val: string | null | undefined): string {
 export default function ConsultantDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  // Bölümler DB'den (hr-departments ucu) — sabit liste YOK.
-  const { departments: bolumler, loading: bolumlerYukleniyor, hata: bolumHatasi } = useDepartments()
   const [form, setForm] = useState<ConsultantForm>(initialForm)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -192,22 +189,12 @@ export default function ConsultantDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="bolum">Bolum</Label>
-                <Select
+                <BolumSecici
                   id="bolum"
                   value={form.bolum}
-                  onChange={(e) => set("bolum", e.target.value)}
-                  disabled={!editMode || bolumlerYukleniyor || !!bolumHatasi}
-                  title={bolumHatasi ?? undefined}
-                >
-                  <option value="">
-                    {bolumlerYukleniyor ? "Bölümler yükleniyor…" : bolumHatasi ? bolumHatasi : "Secin"}
-                  </option>
-                  {bolumler.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={(v) => set("bolum", v)}
+                  disabled={!editMode}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="uzmanlikAlani">Uzmanlik Alani</Label>

@@ -23,6 +23,7 @@ import {
   TALEP_EDEN_OPTIONS,
   ONAY_OPTIONS,
 } from './constants'
+import { BolumSecici } from '@/components/personnel/BolumSecici'
 
 interface Props {
   open: boolean
@@ -65,11 +66,6 @@ const initialForm: FormState = {
   transferTarihi: today(),
 }
 
-interface Department {
-  id: string
-  name: string
-}
-
 export function PersonnelTransferModal({
   open,
   onClose,
@@ -79,7 +75,6 @@ export function PersonnelTransferModal({
   currentBolum,
 }: Props) {
   const [form, setForm] = useState<FormState>(initialForm)
-  const [departments, setDepartments] = useState<Department[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,11 +84,8 @@ export function PersonnelTransferModal({
       setError(null)
       return
     }
-    // Bölüm listesi
-    fetch('/api/settings/hr-departments')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d: Department[]) => setDepartments(d ?? []))
-      .catch(() => setDepartments([]))
+    // Bölüm listesini artık BolumSecici kendi çekiyor (grup başlıkları için
+    // ustDepartman alanı da gerekiyor) — buradaki kopya fetch kaldırıldı.
   }, [open])
 
   const toggleGerekce = (value: string) => {
@@ -362,18 +354,14 @@ export function PersonnelTransferModal({
             </div>
             <div>
               <Label htmlFor="transferEdilenBolum">Yeni Bölüm *</Label>
-              <Select
+              {/* Mevcut bölüme transfer anlamsız — haricTut ile listeden çıkarılır
+                  (eski `.filter(d => d.name !== currentBolum)` davranışı korunuyor). */}
+              <BolumSecici
                 id="transferEdilenBolum"
                 value={form.transferEdilenBolum}
-                onChange={(e) => setForm({ ...form, transferEdilenBolum: e.target.value })}
-              >
-                <option value="">Seçiniz</option>
-                {departments
-                  .filter((d) => d.name !== (currentBolum ?? ''))
-                  .map((d) => (
-                    <option key={d.id} value={d.name}>{d.name}</option>
-                  ))}
-              </Select>
+                onChange={(v) => setForm({ ...form, transferEdilenBolum: v })}
+                haricTut={currentBolum ?? undefined}
+              />
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="transferTarihi">Transfer Tarihi *</Label>

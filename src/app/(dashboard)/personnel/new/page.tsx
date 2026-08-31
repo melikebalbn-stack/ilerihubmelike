@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GorevSecici } from "@/components/personnel/GorevSecici"
+import { BolumSecici } from "@/components/personnel/BolumSecici"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
@@ -160,6 +161,9 @@ export default function NewPersonnelPage() {
   // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer girildiğinde açılır.
   const [altBedenDiger, setAltBedenDiger] = useState(false)
   const [departments, setDepartments] = useState<string[]>([])
+  // Seçili bölümün şema kutusu — GorevSecici FK süzmesi için.
+  // BolumSecici seçim anında verir; sayfa açılışında null (ad kuralına düşülür).
+  const [bolumOrgUnitId, setBolumOrgUnitId] = useState<string | null>(null)
   const [personnelNames, setPersonnelNames] = useState<string[]>([])
 
   useEffect(() => {
@@ -385,17 +389,20 @@ export default function NewPersonnelPage() {
                   id="gorev"
                   value={form.gorev}
                   bolum={form.bolum}
+                  bolumOrgUnitId={bolumOrgUnitId}
                   onChange={(v) => set("gorev", v)}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="bolum">Bölüm *</Label>
-                <Select id="bolum" value={form.bolum} onChange={(e) => set("bolum", e.target.value)} required>
-                  <option value="">Seçiniz</option>
-                  {departments.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </Select>
+                {/* Seçenekler DepartmentDefinition'dan; org şemasındaki üst
+                    departmana göre gruplanır. Seçilen bölümün orgUnitId'si
+                    GorevSecici'ye geçer, görev listesi o dala süzülür. */}
+                <BolumSecici
+                  id="bolum"
+                  value={form.bolum}
+                  onChange={(v, ouId) => { set("bolum", v); setBolumOrgUnitId(ouId) }}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="bolumDetay">Bölüm Detay</Label>

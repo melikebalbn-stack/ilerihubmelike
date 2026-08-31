@@ -25,23 +25,12 @@ type DbClient = Prisma.TransactionClient | typeof prisma;
 const MAX_DERINLIK = 15;
 const KURUL_ONEKI = "ORG-KR-";
 
-const DIACRITIC_MAP: Record<string, string> = {
-  Ç: "C",
-  Ğ: "G",
-  Ş: "S",
-  Ö: "O",
-  Ü: "U",
-  İ: "I",
-};
-
 // prisma/seed-org-*.ts ile aynı normalize ailesi (aksan + boşluk + noktalama).
-export function normalizeAd(input: string): string {
-  if (!input) return "";
-  let s = input.toLocaleUpperCase("tr-TR");
-  s = s.replace(/[ÇĞŞÖÜİ]/g, (ch) => DIACRITIC_MAP[ch] ?? ch);
-  s = s.replace(/[^A-Z0-9]+/g, " ");
-  return s.trim().replace(/\s+/g, " ");
-}
+// Tanım @/lib/org/normalize-ad'e taşındı: bu dosya prisma import ettiği için
+// SUNUCU-ONLY ve client component'ler (GorevSecici/BolumSecici) buradan
+// alamıyordu. Mevcut çağıranlar kırılmasın diye re-export ediliyor.
+import { normalizeAd } from "./normalize-ad";
+export { normalizeAd };
 
 export type EslesmeSonuc =
   | {

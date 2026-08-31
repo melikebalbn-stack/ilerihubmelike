@@ -13514,11 +13514,20 @@ model ServisGuzergahDurak {
 // olduğu için burada ayrı bir "binis/inis" ayrımı GEREKMEZ: GIDIS dilimi için
 // saat = biniş saati, DONUS dilimi için saat = iniş saatidir.
 //
-// Bu tablo tanım/takvim verisidir, operasyonel atama değildir — bir dilimin
-// bir duraktaki saati düzeltilmek istendiğinde satır doğrudan güncellenir
-// veya silinir (aktif bayrağı YOK, tarihçe tutulmaz). Tarihçe gereken şey
-// "kim hangi güzergahta/duraktaydı" (ServisPersonelAtama), "bu duraktaki
-// planlı saat kaçtı" değildir.
+// AKTİF BAYRAĞI (karar değişikliği): bu tablo başlangıçta "tanım verisi, satır
+// doğrudan silinir" varsayımıyla aktif bayrağı OLMADAN tasarlanmıştı. Karar
+// değişti — saat kaydı personel ihtilaflarında delil oluyor ("o gün servis
+// kaçta geçiyordu"), dolayısıyla satır fiziksel olarak silinmemeli.
+// ServisIslemGecmisi zaten GUZERGAH_DURAK_SAAT hedef tipiyle audit tutuyor;
+// aktif bayrağı o izle birlikte geçmiş saati ERİŞİLEBİLİR de kılıyor.
+//
+// UNIQUE NEDEN TAM (kısmi index DEĞİL): (guzergahDurakId, dilimId) unique'i
+// `WHERE aktif` yüklemi ALMAZ — ServisGuzergahDurak ile aynı desen: pasif satır
+// anahtarı TUTAR, aynı durak+dilime yeniden saat girilmek istendiğinde yeni satır
+// açılmaz, mevcut satır reaktive edilip güncellenir (bkz. guzergahDurakSaatiKaydet
+// upsert'i). Gerekçe: Prisma kısmi unique index'i ifade edemez; kısmi index elle
+// SQL'e yazılsaydı her `migrate diff` çıktısında kalıcı bir drift daha doğar,
+// guard beyaz listesi (lib-knowndrift.sh) şişerdi.
 model ServisGuzergahDurakSaat {
   id              String              @id @default(cuid())
   guzergahDurakId String
@@ -13526,11 +13535,13 @@ model ServisGuzergahDurakSaat {
   dilimId         String
   dilim           ServisSeferDilimi   @relation(fields: [dilimId], references: [id], onDelete: Restrict)
   saat            String // "HH:mm" — IproVardiya.baslangicSaat/bitisSaat ile aynı desen
+  aktif           Boolean             @default(true)
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
   @@unique([guzergahDurakId, dilimId])
   @@index([dilimId])
+  @@index([aktif])
   @@map("servis_guzergah_durak_saat")
 }
 

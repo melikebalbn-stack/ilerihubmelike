@@ -104,10 +104,18 @@ export async function PUT(
   try {
     const { id } = await params
     // PR-Y2.5-personnel: requireUser — updatedBy yazımı + admin role
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
-    // Düzenleme yetkisi (asıl güvenlik): legacy rol VEYA acting-user'ın İK bölümü.
+    // Düzenleme yetkisi — İKİ KAPI birden (görmeyen düzenleyemez):
+    //   1) canViewSensitive : legacy rol VEYA RBAC `calisanrehberi.admin`
+    //   2) canEditSensitive : legacy rol VEYA acting-user'ın İK bölümü
+    // Tek başına (2) yeterli değildi: bölümü İK görünen ama hassas veriyi GÖREMEYEN
+    // personel (ör. idari işler kadrosu) PUT ile TC/SGK/banka yazabiliyordu — GET
+    // kapalıyken yazma açıktı. Mevcut yetkililer etkilenmez: İK ekibi ikisini de sağlar.
+    if (!canViewSensitive(user.role, session.user.permissions)) {
+      return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
+    }
     // Buton (client) ile AYNI helper — bolum burada DB'den (Personnel.bolum) alınır.
     const actorBolum = user.personnelId
       ? (await prisma.personnel.findUnique({ where: { id: user.personnelId }, select: { bolum: true } }))?.bolum

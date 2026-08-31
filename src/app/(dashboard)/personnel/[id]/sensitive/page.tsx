@@ -51,7 +51,8 @@ export default function SensitivePage() {
   const userBolum = (session?.user as { department?: string } | undefined)?.department
 
   const isAdmin = canViewSensitive(userRole, perms)
-  const canEdit = canEditSensitive(userRole, userBolum)
+  // PUT ile AYNI iki kapı: görmeyen düzenleyemez (sunucu tarafıyla simetrik).
+  const canEdit = isAdmin && canEditSensitive(userRole, userBolum)
 
   const [data, setData] = useState<SensitiveData | null>(null)
   const [form, setForm] = useState<Record<string, any>>({})

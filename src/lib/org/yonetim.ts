@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { normalizeDept } from '@/lib/auth/personnel-access'
 
 /**
  * Org şeması yönetim uçlarının ORTAK yetki kontrolü.
@@ -15,7 +16,10 @@ export function orgYonetimYetkisi(session: any) {
 
   const fullAccessRoles = ['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER', 'IT_MANAGER']
   const hrDepartments = ['insan varliklari', 'insan varlıkları', 'human resources', 'hr']
-  const isHrDepartment = hrDepartments.some((dept) => userDepartment.toLowerCase().includes(dept))
+  // TR-normalize (personnel-access · normalizeDept) — düz toLowerCase() Türkçe "İ"yi
+  // i+birleşen nokta yapıp eşleşmeyi düşürüyordu.
+  const normDept = normalizeDept(userDepartment)
+  const isHrDepartment = hrDepartments.some((dept) => normDept.includes(normalizeDept(dept)))
 
   return { hasFullAccess: fullAccessRoles.includes(userRole) || isHrDepartment }
 }

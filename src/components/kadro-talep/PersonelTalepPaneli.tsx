@@ -61,6 +61,7 @@ import { toast } from "sonner"
 import { TalepBilgisiEkSection } from "./TalepBilgisiEkSection"
 import { ArananYetkinliklerSection } from "./ArananYetkinliklerSection"
 import { InsanVarliklariSection } from "./InsanVarliklariSection"
+import { normalizeDept } from '@/lib/auth/personnel-access'
 
 export interface PersonnelRequest {
   id: string
@@ -481,7 +482,9 @@ export function PersonelTalepPaneli() {
   const userDepartment = session?.user?.department || ""
   const fullAccessRoles = ["SUPER_ADMIN", "ADMIN", "HR_MANAGER", "IT_MANAGER"]
   const hrDepartments = ["insan varliklari", "insan varlıkları", "human resources", "hr"]
-  const isHrDepartment = hrDepartments.some(dept => userDepartment.toLowerCase().includes(dept))
+  // TR-normalize — düz toLowerCase() "İnsan Varlıkları…" değerini kaçırıyordu.
+  const normDept = normalizeDept(userDepartment)
+  const isHrDepartment = hrDepartments.some(dept => normDept.includes(normalizeDept(dept)))
   const hasFullAccess = fullAccessRoles.includes(userRole) || isHrDepartment
 
   const filteredRequests = requests

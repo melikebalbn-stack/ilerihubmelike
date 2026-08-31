@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { normalizeDept } from '@/lib/auth/personnel-access';
 import { isInsanVarliklari } from '@/lib/auth/personnel-access';
 
 function publicBase(req: NextRequest) {
@@ -52,8 +53,10 @@ export async function middleware(req: NextRequest) {
 
       // /settings için Kalite departmanı da erişebilir
       if (!hasRole && protectedPath === '/settings') {
-        const dept = ((token?.department as string) || '').toLowerCase();
-        const ou = ((token?.ou as string) || '').toLowerCase();
+        // TR-normalize (personnel-access · normalizeDept) — düz toLowerCase()
+        // Türkçe "İ"yi i+birleşen nokta yapıp eşleşmeyi düşürüyordu.
+        const dept = normalizeDept((token?.department as string) || '');
+        const ou = normalizeDept((token?.ou as string) || '');
         const isKalite = dept.includes('kalite') || dept.includes('laboratuvar') ||
                          ou.includes('kalite') || ou.includes('laboratuvar');
         if (isKalite) {

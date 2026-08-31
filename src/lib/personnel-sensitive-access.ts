@@ -1,4 +1,5 @@
 // Hassas personel verisi (TC/SGK/banka) GÖRÜNTÜLEME yetkisi — TEK KAYNAK.
+import { normalizeDept } from '@/lib/auth/personnel-access'
 // Hem API route (server) hem sayfa (client) bunu kullanır → sapma olmaz.
 //
 // Kök sebep: eskiden yalnız legacy `User.role` (VIEW_ROLES) kontrol ediliyordu.
@@ -26,15 +27,15 @@ export function canViewSensitive(
 export const SENSITIVE_EDIT_ROLES = ['ADMIN', 'SUPER_ADMIN']
 
 // Bölüm İK mi? İki farklı kaynak yakalanır: Personnel.bolum ("İNSAN VARLIKLARI" /
-// "İNSAN VARLIKLARI MÜDÜRLÜĞÜ") ve User.department ("İnsan Varliklari Departmanı").
-// NFD-normalize + aksan-strip + lowercase → Türkçe İ/i + "Departmanı"/"Müdürlüğü"
-// eki toleransı (can-manage-menu deseni). 'insan varliklari' contains ile eşle.
-function normBolum(s: string | null | undefined): string {
-  return (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
-}
-
+// "İnsan Varlıkları Müdürlüğü") ve User.department ("İnsan Varliklari Departmanı").
+//
+// NORMALIZE TEK KAYNAK: personnel-access.ts · normalizeDept (İ/I/ı→i, ş→s, ğ→g, …).
+// Eskiden burada NFD + aksan-strip kullanılıyordu; NFD noktasız "ı" (U+0131) harfini
+// ÇÖZMEDİĞİ için "İnsan Varlıkları Müdürlüğü" değeri "insan varlıkları …" olarak
+// normalize oluyor ve eşleşme SESSİZCE düşüyordu (30.08 bölüm adı değişikliğinden
+// sonra 10 aktif kişi hassas veri düzenleyemedi). Artık tek normalize kullanılıyor.
 export function isIkBolum(bolum: string | null | undefined): boolean {
-  return normBolum(bolum).includes('insan varliklari')
+  return normalizeDept(bolum).includes('insan varliklari')
 }
 
 export function canEditSensitive(

@@ -8,6 +8,7 @@
  */
 
 export const KALITE_ROLLERI = ['ADMIN', 'SUPER_ADMIN', 'QUALITY_MANAGER'] as const
+import { normalizeDept } from '@/lib/auth/personnel-access'
 
 /** Rol, Kalite/Ayarlar rol setinde mi (dept istisnası YOK — /fire-safety bunu kullanır). */
 export function isKaliteRol(role: string | null | undefined): boolean {
@@ -24,8 +25,10 @@ export function canAccessKalite(
   ou: string | null | undefined,
 ): boolean {
   if (isKaliteRol(role)) return true
-  const dept = (department ?? '').toLowerCase()
-  const o = (ou ?? '').toLowerCase()
+  // TR-normalize: "KALİTE MÜDÜRLÜĞÜ".toLowerCase() → "kali̇te …" olduğu için
+  // includes('kalite') FALSE dönüyordu (prod'da 9 kullanıcı tam bu değere sahip).
+  const dept = normalizeDept(department)
+  const o = normalizeDept(ou)
   return (
     dept.includes('kalite') ||
     dept.includes('laboratuvar') ||

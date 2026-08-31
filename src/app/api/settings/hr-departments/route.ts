@@ -26,6 +26,10 @@ export async function GET(request: NextRequest) {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {
         parent: { select: { id: true, name: true } },
+        // Şema karşılığı — orgUnitId skaler alanı zaten dönüyor; burada kutunun
+        // kod/adı da veriliyor ki çağıran ikinci bir sorgu atmasın. Liste kaynağı
+        // DEĞİŞMEDİ: kayıtlar yine DepartmentDefinition'dan geliyor.
+        orgUnit: { select: { id: true, code: true, name: true } },
         sorumlu1: personSel,
         sorumlu2: personSel,
         sorumlu3: personSel,

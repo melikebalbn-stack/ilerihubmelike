@@ -5506,6 +5506,8 @@ model OrgUnit {
 
   // İlişkiler
   employees OrgEmployee[]
+  // Bu kutuyu karşılık gösteren bölüm tanımları (çoka-bir'in ters ucu).
+  bolumTanimlari DepartmentDefinition[] @relation("DeptOrgUnit")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -9496,9 +9498,18 @@ model DepartmentDefinition {
   arsivBolumId Int?
   arsivBolum   ArsivBolum? @relation(fields: [arsivBolumId], references: [id], onDelete: SetNull)
 
+  // Organizasyon şemasındaki karşılığı — şemadaki DEPARTMENT kutusu (kurul ve kök
+  // hariç). Nullable: şemada henüz kutusu olmayan bölüm (dört depo, DEPO, GENEL
+  // MÜDÜRLÜK, YATIRIM VE TEŞVİK, BÜRO MEMURU) null kalır. Bu bağ liste kaynağını
+  // DEĞİŞTİRMEZ — hr-departments yine DepartmentDefinition döner; FK yalnız iki
+  // tarafı ad metnine bağlı kalmadan eşler.
+  orgUnitId String?
+  orgUnit   OrgUnit? @relation("DeptOrgUnit", fields: [orgUnitId], references: [id], onDelete: SetNull)
+
   @@index([parentId])
   @@index([isActive])
   @@index([arsivBolumId])
+  @@index([orgUnitId])
 }
 
 // İSKELET: STAJYER

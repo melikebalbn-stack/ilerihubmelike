@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   guzergahDurakSaatFindUnique: vi.fn(),
   guzergahDurakSaatUpsert: vi.fn(),
   guzergahDurakSaatDelete: vi.fn(),
+  guzergahDurakSaatUpdate: vi.fn(),
   aracVarsayilanFindMany: vi.fn(),
   aracVarsayilanFindFirst: vi.fn(),
   aracVarsayilanFindUnique: vi.fn(),
@@ -129,6 +130,7 @@ vi.mock('@/lib/prisma', () => {
       findUnique: mocks.guzergahDurakSaatFindUnique,
       upsert: mocks.guzergahDurakSaatUpsert,
       delete: mocks.guzergahDurakSaatDelete,
+      update: mocks.guzergahDurakSaatUpdate,
     },
     servisGuzergahAracVarsayilan: {
       findMany: mocks.aracVarsayilanFindMany,
@@ -226,6 +228,7 @@ import {
   yenidenSiralaServisGuzergahDuraklar,
   guzergahDurakSaatiKaydet,
   guzergahDurakSaatiSil,
+  geriAlGuzergahDurakSaat,
   listServisGuzergahAracVarsayilanlari,
   createServisGuzergahAracVarsayilan,
   guncelleServisGuzergahAracVarsayilan,
@@ -1603,10 +1606,10 @@ describe('ServisGuzergahDurak — sürükle-bırak toplu yeniden sıralama (uniq
   })
 })
 
-describe('ServisGuzergahDurakSaat — kaydet/sil', () => {
+describe('ServisGuzergahDurakSaat — kaydet/pasifleştir/geri-al (aktif bayrağı, 20260831113946_servis_saat_aktif)', () => {
   const gecerliSaat = { dilimId: 'dilim-1', saat: '08:30' }
 
-  it('geçerli saati upsert eder', async () => {
+  it('geçerli saati upsert eder, update bloğu HER ZAMAN aktif:true yazar (pasif satırı reaktive eder)', async () => {
     mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', aktif: true })
     mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'dilim-1', aktif: true })
     mocks.guzergahDurakSaatUpsert.mockResolvedValue({ id: 's1', ...gecerliSaat })
@@ -1616,7 +1619,7 @@ describe('ServisGuzergahDurakSaat — kaydet/sil', () => {
     expect(mocks.guzergahDurakSaatUpsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { guzergahDurakId_dilimId: { guzergahDurakId: 'gd1', dilimId: 'dilim-1' } },
       create: { guzergahDurakId: 'gd1', dilimId: 'dilim-1', saat: '08:30' },
-      update: { saat: '08:30' },
+      update: { saat: '08:30', aktif: true },
     }))
   })
 
@@ -1639,17 +1642,26 @@ describe('ServisGuzergahDurakSaat — kaydet/sil', () => {
     expect(mocks.guzergahDurakSaatUpsert).not.toHaveBeenCalled()
   })
 
-  it('mevcut saat kaydını siler', async () => {
-    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1' })
-    mocks.guzergahDurakSaatDelete.mockResolvedValue({ id: 's1' })
+  it('mevcut saat kaydını PASİFLEŞTİRİR (soft — update aktif:false, delete ÇAĞRILMAZ)', async () => {
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', aktif: true })
+    mocks.guzergahDurakSaatUpdate.mockResolvedValue({ id: 's1', aktif: false })
     await guzergahDurakSaatiSil('s1')
-    expect(mocks.guzergahDurakSaatDelete).toHaveBeenCalledWith({ where: { id: 's1' } })
+    expect(mocks.guzergahDurakSaatUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 's1' }, data: { aktif: false },
+    }))
+    expect(mocks.guzergahDurakSaatDelete).not.toHaveBeenCalled()
   })
 
-  it('olmayan saat kaydını silmez', async () => {
+  it('olmayan saat kaydını pasifleştirmez', async () => {
     mocks.guzergahDurakSaatFindUnique.mockResolvedValue(null)
     await expect(guzergahDurakSaatiSil('yok')).rejects.toThrow('bulunamadı')
-    expect(mocks.guzergahDurakSaatDelete).not.toHaveBeenCalled()
+    expect(mocks.guzergahDurakSaatUpdate).not.toHaveBeenCalled()
+  })
+
+  it('zaten pasif saat kaydını tekrar pasifleştirmez', async () => {
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', aktif: false })
+    await expect(guzergahDurakSaatiSil('s1')).rejects.toThrow('zaten pasif')
+    expect(mocks.guzergahDurakSaatUpdate).not.toHaveBeenCalled()
   })
 
   it('ilk kayıt (upsert→create) ServisIslemGecmisi’ye GUZERGAH_DURAK_SAAT/OLUSTURMA yazar, hedefId ATAMANIN DEĞİL güzergah-durağın id’sidir', async () => {
@@ -1666,10 +1678,10 @@ describe('ServisGuzergahDurakSaat — kaydet/sil', () => {
     }))
   })
 
-  it('mevcut saat DEĞİŞİRSE (upsert→update) GUNCELLEME yazar', async () => {
+  it('mevcut AKTİF saat DEĞİŞİRSE (upsert→update) GUNCELLEME yazar', async () => {
     mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', aktif: true })
     mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'dilim-1', aktif: true })
-    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', saat: '07:00' })
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', saat: '07:00', aktif: true })
     mocks.guzergahDurakSaatUpsert.mockResolvedValue({ id: 's1', ...gecerliSaat })
     await guzergahDurakSaatiKaydet('gd1', gecerliSaat, 'user-9')
     expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
@@ -1681,25 +1693,84 @@ describe('ServisGuzergahDurakSaat — kaydet/sil', () => {
     }))
   })
 
-  it('saat DEĞİŞMEZSE (aynı değer yeniden kaydedilirse) ServisIslemGecmisi kaydı YAZILMAZ', async () => {
+  it('saat DEĞİŞMEZSE (aynı değer aktif satıra yeniden kaydedilirse) ServisIslemGecmisi kaydı YAZILMAZ', async () => {
     mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', aktif: true })
     mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'dilim-1', aktif: true })
-    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', saat: '08:30' })
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', saat: '08:30', aktif: true })
     mocks.guzergahDurakSaatUpsert.mockResolvedValue({ id: 's1', ...gecerliSaat })
     await guzergahDurakSaatiKaydet('gd1', gecerliSaat, 'user-9')
     expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
   })
 
-  it('silme, ServisIslemTuru’nda SILME değeri OLMADIĞI için en yakın karşılık PASIFLESTIRME ile loglanır, hedefId güzergah-durağın id’sidir', async () => {
-    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', guzergahDurakId: 'gd1', dilimId: 'dilim-1', saat: '08:30' })
-    mocks.guzergahDurakSaatDelete.mockResolvedValue({ id: 's1' })
+  // REAKTİVASYON (bu talimatın çekirdeği): pasif bir satıra kaydet çağrılırsa
+  // GUNCELLEME değil AKTIFLESTIRME yazılmalı — ServisGuzergahDurak'ın
+  // geri-al'ıyla aynı "pasif→aktif = AKTIFLESTIRME" kuralı.
+  it('PASİF satıra yeniden kaydet → AKTIFLESTIRME yazar (saat de değişmiş olsa bile)', async () => {
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', aktif: true })
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'dilim-1', aktif: true })
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', saat: '07:00', aktif: false })
+    mocks.guzergahDurakSaatUpsert.mockResolvedValue({ id: 's1', ...gecerliSaat, aktif: true })
+    await guzergahDurakSaatiKaydet('gd1', gecerliSaat, 'user-9')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: 'gd1', islem: 'AKTIFLESTIRME', userId: 'user-9',
+        oncekiDeger: { aktif: false, saat: '07:00' },
+        yeniDeger: { aktif: true, saat: '08:30' },
+      }),
+    }))
+  })
+
+  it('PASİF satıra AYNI saatle yeniden kaydet → AKTIFLESTIRME yazar, ama diff’te yalnız aktif olur (saat değişmedi)', async () => {
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1', aktif: true })
+    mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'dilim-1', aktif: true })
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', saat: '08:30', aktif: false })
+    mocks.guzergahDurakSaatUpsert.mockResolvedValue({ id: 's1', ...gecerliSaat, aktif: true })
+    await guzergahDurakSaatiKaydet('gd1', gecerliSaat, 'user-9')
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: 'gd1', islem: 'AKTIFLESTIRME', userId: 'user-9',
+        oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
+      }),
+    }))
+  })
+
+  it('pasifleştirme ServisIslemGecmisi kaydı yazar (PASIFLESTIRME), hedefId güzergah-durağın id’sidir', async () => {
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', guzergahDurakId: 'gd1', dilimId: 'dilim-1', saat: '08:30', aktif: true })
+    mocks.guzergahDurakSaatUpdate.mockResolvedValue({ id: 's1', aktif: false })
     await guzergahDurakSaatiSil('s1', 'user-9')
     expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: 'gd1', islem: 'PASIFLESTIRME', userId: 'user-9',
-        oncekiDeger: { dilimId: 'dilim-1', saat: '08:30' },
+        oncekiDeger: { dilimId: 'dilim-1', aktif: true }, yeniDeger: { dilimId: 'dilim-1', aktif: false },
       }),
     }))
+  })
+
+  it('geri-al: pasif saat kaydını aktif yapar, ServisIslemGecmisi AKTIFLESTIRME yazar', async () => {
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', guzergahDurakId: 'gd1', dilimId: 'dilim-1', saat: '08:30', aktif: false })
+    mocks.guzergahDurakSaatUpdate.mockResolvedValue({ id: 's1', aktif: true })
+    await geriAlGuzergahDurakSaat('s1', 'user-9')
+    expect(mocks.guzergahDurakSaatUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 's1' }, data: { aktif: true },
+    }))
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: 'gd1', islem: 'AKTIFLESTIRME', userId: 'user-9',
+        oncekiDeger: { dilimId: 'dilim-1', aktif: false }, yeniDeger: { dilimId: 'dilim-1', aktif: true },
+      }),
+    }))
+  })
+
+  it('geri-al: olmayan saat kaydını geri almaz', async () => {
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue(null)
+    await expect(geriAlGuzergahDurakSaat('yok')).rejects.toThrow('bulunamadı')
+    expect(mocks.guzergahDurakSaatUpdate).not.toHaveBeenCalled()
+  })
+
+  it('geri-al: zaten aktif saat kaydını tekrar geri almaz', async () => {
+    mocks.guzergahDurakSaatFindUnique.mockResolvedValue({ id: 's1', aktif: true })
+    await expect(geriAlGuzergahDurakSaat('s1')).rejects.toThrow('zaten aktif')
+    expect(mocks.guzergahDurakSaatUpdate).not.toHaveBeenCalled()
   })
 })
 

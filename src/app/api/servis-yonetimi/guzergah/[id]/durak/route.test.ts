@@ -42,7 +42,14 @@ describe('GET /api/servis-yonetimi/guzergah/[id]/durak — permission guard', ()
     const json = await res.json()
     expect(res.status).toBe(200)
     expect(json.toplam).toBe(1)
-    expect(mocks.listServisGuzergahDuraklar).toHaveBeenCalledWith('guzergah-1')
+    expect(mocks.listServisGuzergahDuraklar).toHaveBeenCalledWith('guzergah-1', { saatlerPasifDahil: false })
+  })
+
+  it('saatlerPasifDahil=true query parametresi servise iletilir', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.listServisGuzergahDuraklar.mockResolvedValue([])
+    await GET(new NextRequest('http://localhost/api/servis-yonetimi/guzergah/guzergah-1/durak?saatlerPasifDahil=true'), context)
+    expect(mocks.listServisGuzergahDuraklar).toHaveBeenCalledWith('guzergah-1', { saatlerPasifDahil: true })
   })
 })
 

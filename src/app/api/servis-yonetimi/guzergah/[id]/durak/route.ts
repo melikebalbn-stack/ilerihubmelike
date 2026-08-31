@@ -3,12 +3,13 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { createServisGuzergahDurak, listServisGuzergahDuraklar } from '@/lib/servis-yonetimi/service'
 import type { ServisGuzergahDurakForm } from '@/lib/servis-yonetimi/validation'
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error } = await requirePermission('servis.view')
   if (error) return error
   try {
     const { id } = await params
-    const data = await listServisGuzergahDuraklar(id)
+    const saatlerPasifDahil = request.nextUrl.searchParams.get('saatlerPasifDahil') === 'true'
+    const data = await listServisGuzergahDuraklar(id, { saatlerPasifDahil })
     return NextResponse.json({ ok: true, data, toplam: data.length })
   } catch (err) {
     console.error('Güzergâh durak listeleme hatası:', err)

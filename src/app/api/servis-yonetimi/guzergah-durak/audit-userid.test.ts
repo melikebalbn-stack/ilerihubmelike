@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   geriAlServisGuzergahDurak: vi.fn(),
   guzergahDurakSaatiKaydet: vi.fn(),
   guzergahDurakSaatiSil: vi.fn(),
+  geriAlGuzergahDurakSaat: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-permission', () => ({ requirePermission: mocks.requirePermission }))
@@ -20,6 +21,7 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   geriAlServisGuzergahDurak: mocks.geriAlServisGuzergahDurak,
   guzergahDurakSaatiKaydet: mocks.guzergahDurakSaatiKaydet,
   guzergahDurakSaatiSil: mocks.guzergahDurakSaatiSil,
+  geriAlGuzergahDurakSaat: mocks.geriAlGuzergahDurakSaat,
   listServisGuzergahDuraklar: vi.fn(),
 }))
 
@@ -27,7 +29,8 @@ import { POST as createRoute } from '../guzergah/[id]/durak/route'
 import { POST as pasiflestirRoute } from './[id]/pasiflestir/route'
 import { POST as geriAlRoute } from './[id]/geri-al/route'
 import { POST as saatKaydetRoute } from './[id]/saat/route'
-import { DELETE as saatSilRoute } from '../guzergah-durak-saat/[id]/route'
+import { POST as saatPasiflestirRoute } from '../guzergah-durak-saat/[id]/pasiflestir/route'
+import { POST as saatGeriAlRoute } from '../guzergah-durak-saat/[id]/geri-al/route'
 
 function permissionResult(userId = 'user-42') {
   return { error: null, userId }
@@ -64,10 +67,17 @@ describe('ServisGuzergahDurak (+ Saat) route userId → audit', () => {
     expect(mocks.guzergahDurakSaatiKaydet).toHaveBeenCalledWith('gd1', { dilimId: 'dilim-1', saat: '08:30' }, 'user-42')
   })
 
-  it('saat sil: userId guzergahDurakSaatiSil’e iletilir', async () => {
+  it('saat pasiflestir: userId guzergahDurakSaatiSil’e iletilir', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult())
-    mocks.guzergahDurakSaatiSil.mockResolvedValue({ id: 's1' })
-    await saatSilRoute(new Request('http://localhost/x', { method: 'DELETE' }), { params: Promise.resolve({ id: 's1' }) })
+    mocks.guzergahDurakSaatiSil.mockResolvedValue({ id: 's1', aktif: false })
+    await saatPasiflestirRoute(new NextRequest('http://localhost/x', { method: 'POST' }), { params: Promise.resolve({ id: 's1' }) })
     expect(mocks.guzergahDurakSaatiSil).toHaveBeenCalledWith('s1', 'user-42')
+  })
+
+  it('saat geri-al: userId geriAlGuzergahDurakSaat’e iletilir', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult())
+    mocks.geriAlGuzergahDurakSaat.mockResolvedValue({ id: 's1', aktif: true })
+    await saatGeriAlRoute(new NextRequest('http://localhost/x', { method: 'POST' }), { params: Promise.resolve({ id: 's1' }) })
+    expect(mocks.geriAlGuzergahDurakSaat).toHaveBeenCalledWith('s1', 'user-42')
   })
 })

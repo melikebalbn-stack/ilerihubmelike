@@ -775,17 +775,26 @@ export async function geriAlServisSeferDilimi(id: string, yapanId?: string | nul
 
 const SIRA_GECICI_OFSET = 1_000_000
 
-const servisGuzergahDurakInclude = {
-  durak: { select: { id: true, kod: true, ad: true, aktif: true } },
-  saatler: {
-    include: { dilim: { select: { id: true, kod: true, ad: true, yon: true } } },
-  },
-} as const
+// saatlerPasifDahil varsayılan false — pasifleştirilmiş (soft-delete) saat
+// kayıtları listelemede GÖRÜNMEZ, yalnız açıkça istenirse (ör. Saatler
+// diyaloğu, geri-al akışı için) dahil edilir.
+function servisGuzergahDurakIncludeYap(saatlerPasifDahil = false) {
+  return {
+    durak: { select: { id: true, kod: true, ad: true, aktif: true } },
+    saatler: {
+      where: saatlerPasifDahil ? undefined : { aktif: true },
+      include: { dilim: { select: { id: true, kod: true, ad: true, yon: true } } },
+    },
+  }
+}
 
-export async function listServisGuzergahDuraklar(guzergahId: string, filtre?: { aktif?: boolean }) {
+export async function listServisGuzergahDuraklar(
+  guzergahId: string,
+  filtre?: { aktif?: boolean; saatlerPasifDahil?: boolean },
+) {
   return prisma.servisGuzergahDurak.findMany({
     where: { guzergahId, ...(filtre?.aktif !== undefined ? { aktif: filtre.aktif } : {}) },
-    include: servisGuzergahDurakInclude,
+    include: servisGuzergahDurakIncludeYap(filtre?.saatlerPasifDahil),
     orderBy: { sira: 'asc' },
   })
 }
@@ -818,7 +827,7 @@ export async function createServisGuzergahDurak(guzergahId: string, form: Servis
   return prisma.$transaction(async (tx) => {
     const guzergahDurak = await tx.servisGuzergahDurak.create({
       data: { guzergahId, durakId, sira },
-      include: servisGuzergahDurakInclude,
+      include: servisGuzergahDurakIncludeYap(),
     })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'GUZERGAH_DURAK', hedefId: guzergahDurak.id, islem: 'OLUSTURMA', yapanId,
@@ -837,7 +846,7 @@ export async function pasiflestirServisGuzergahDurak(id: string, yapanId?: strin
     const guncel = await tx.servisGuzergahDurak.update({
       where: { id },
       data: { aktif: false },
-      include: servisGuzergahDurakInclude,
+      include: servisGuzergahDurakIncludeYap(),
     })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'GUZERGAH_DURAK', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
@@ -856,7 +865,7 @@ export async function geriAlServisGuzergahDurak(id: string, yapanId?: string | n
     const guncel = await tx.servisGuzergahDurak.update({
       where: { id },
       data: { aktif: true },
-      include: servisGuzergahDurakInclude,
+      include: servisGuzergahDurakIncludeYap(),
     })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'GUZERGAH_DURAK', hedefId: id, islem: 'AKTIFLESTIRME', yapanId,
@@ -947,9 +956,13 @@ export async function yenidenSiralaServisGuzergahDuraklar(guzergahId: string, si
 }
 
 // ============================================================================
-// ServisGuzergahDurakSaat — dilim bazlı biniş/iniş saati (tanım verisi,
-// aktif/tarihçe YOK — satır doğrudan güncellenir veya silinir, bkz.
-// schema.prisma yorumu)
+// ServisGuzergahDurakSaat — dilim bazlı biniş/iniş saati. KARAR DEĞİŞİKLİĞİ
+// (20260831113946_servis_saat_aktif, Melih): saat kaydı personel
+// ihtilaflarında delil oluyor ("o gün servis kaçta geçiyordu") — satır
+// artık fiziksel olarak SİLİNMEZ, aktif bayrağıyla soft-pasifleştirilir.
+// (guzergahDurakId, dilimId) unique'i TAM (kısmi index değil, bkz. şema
+// yorumu) — pasif satırın anahtarı tutar, aynı dilime yeniden saat
+// girildiğinde YENİ satır açılmaz, mevcut satır reaktive edilip güncellenir.
 // ============================================================================
 
 const servisGuzergahDurakSaatInclude = {
@@ -972,15 +985,20 @@ export async function guzergahDurakSaatiKaydet(guzergahDurakId: string, form: Se
   if (!dilim) throw new Error('Sefer dilimi bulunamadı.')
   if (!dilim.aktif) throw new Error('Pasif sefer dilimine saat girilemez.')
 
-  // Upsert — OLUSTURMA/GUNCELLEME ayrımı mevcutSaat'in var olup olmamasına
-  // göre; hedefId BİLEREK guzergahDurakId (dilim satırının kendi id'si değil)
-  // — "Geçmiş" butonu güzergah-durak satırında, tüm dilim saatleri onun
-  // altında görünsün (Personel Atama Dilim ile aynı desen).
+  // Upsert her zaman aktif:true yazar — pasif bir satıra yeniden saat
+  // girilmesi onu REAKTİVE eder (unique tam olduğu için yeni satır açılmaz).
+  // islem ayrımı: hiç yoktu → OLUSTURMA; pasifti → AKTIFLESTIRME (saat de
+  // değişmiş olsa bile tek kayıt, ServisGuzergahDurak'ın geri-al'ıyla aynı
+  // "pasif→aktif = AKTIFLESTIRME" kuralı); zaten aktifti → yalnız saat
+  // değiştiyse GUNCELLEME. hedefId BİLEREK guzergahDurakId (dilim satırının
+  // kendi id'si değil) — "Geçmiş" butonu güzergah-durak satırında, tüm
+  // dilim saatleri onun altında görünsün (Personel Atama Dilim ile aynı
+  // desen).
   return prisma.$transaction(async (tx) => {
     const sonuc = await tx.servisGuzergahDurakSaat.upsert({
       where: { guzergahDurakId_dilimId: { guzergahDurakId, dilimId } },
       create: { guzergahDurakId, dilimId, saat },
-      update: { saat },
+      update: { saat, aktif: true },
       include: servisGuzergahDurakSaatInclude,
     })
     if (!mevcutSaat) {
@@ -988,6 +1006,11 @@ export async function guzergahDurakSaatiKaydet(guzergahDurakId: string, form: Se
         tx, hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: guzergahDurakId, islem: 'OLUSTURMA', yapanId,
         yeniDeger: { dilimId, saat },
       })
+    } else if (!mevcutSaat.aktif) {
+      const fark = degisenAlanlar(mevcutSaat, { aktif: true, saat }, ['aktif', 'saat'])
+      if (fark) {
+        await kaydetIslemGecmisi({ tx, hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: guzergahDurakId, islem: 'AKTIFLESTIRME', yapanId, ...fark })
+      }
     } else if (mevcutSaat.saat !== saat) {
       await kaydetIslemGecmisi({
         tx, hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: guzergahDurakId, islem: 'GUNCELLEME', yapanId,
@@ -998,22 +1021,41 @@ export async function guzergahDurakSaatiKaydet(guzergahDurakId: string, form: Se
   })
 }
 
-// Bu tabloda tarihçe/aktif bayrağı yok (bkz. şema yorumu) — satır hard-delete
-// edilir. ServisIslemTuru enum'unda SILME değeri YOK (yalnız OLUSTURMA/
-// GUNCELLEME/PASIFLESTIRME/AKTIFLESTIRME); en yakın anlamsal karşılık olarak
-// PASIFLESTIRME kullanılıyor (yeniDeger yok, satır artık mevcut değil).
 export async function guzergahDurakSaatiSil(id: string, yapanId?: string | null) {
   const existing = await prisma.servisGuzergahDurakSaat.findUnique({ where: { id } })
   if (!existing) throw new Error('Saat kaydı bulunamadı.')
+  if (!existing.aktif) throw new Error('Bu saat kaydı zaten pasif.')
 
   return prisma.$transaction(async (tx) => {
-    const silinen = await tx.servisGuzergahDurakSaat.delete({ where: { id } })
+    const guncel = await tx.servisGuzergahDurakSaat.update({
+      where: { id },
+      data: { aktif: false },
+      include: servisGuzergahDurakSaatInclude,
+    })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: existing.guzergahDurakId, islem: 'PASIFLESTIRME', yapanId,
-      oncekiDeger: { dilimId: existing.dilimId, saat: existing.saat },
-      aciklama: 'Saat kaydı silindi (hard delete — bu tabloda tarihçe/aktif bayrağı yok).',
+      oncekiDeger: { dilimId: existing.dilimId, aktif: true }, yeniDeger: { dilimId: existing.dilimId, aktif: false },
     })
-    return silinen
+    return guncel
+  })
+}
+
+export async function geriAlGuzergahDurakSaat(id: string, yapanId?: string | null) {
+  const existing = await prisma.servisGuzergahDurakSaat.findUnique({ where: { id } })
+  if (!existing) throw new Error('Saat kaydı bulunamadı.')
+  if (existing.aktif) throw new Error('Bu saat kaydı zaten aktif.')
+
+  return prisma.$transaction(async (tx) => {
+    const guncel = await tx.servisGuzergahDurakSaat.update({
+      where: { id },
+      data: { aktif: true },
+      include: servisGuzergahDurakSaatInclude,
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'GUZERGAH_DURAK_SAAT', hedefId: existing.guzergahDurakId, islem: 'AKTIFLESTIRME', yapanId,
+      oncekiDeger: { dilimId: existing.dilimId, aktif: false }, yeniDeger: { dilimId: existing.dilimId, aktif: true },
+    })
+    return guncel
   })
 }
 

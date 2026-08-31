@@ -41,7 +41,7 @@ import { ServisGecmisDialog, GecmisButonu } from '../../_components/ServisGecmis
 type Guzergah = { id: string; kod: string; ad: string; aktif: boolean }
 type SecilebilirDurak = { id: string; kod: string; ad: string }
 type SeferDilimi = { id: string; kod: string; ad: string; yon: 'GIDIS' | 'DONUS' }
-type GuzergahDurakSaat = { id: string; dilimId: string; saat: string; dilim: SeferDilimi }
+type GuzergahDurakSaat = { id: string; dilimId: string; saat: string; aktif: boolean; dilim: SeferDilimi }
 type GuzergahDurak = {
   id: string
   durakId: string
@@ -609,12 +609,12 @@ function SaatlerDialog({
     onSaved()
   }
 
-  async function sil(saatId: string, dilimId: string) {
+  async function pasiflestir(saatId: string, dilimId: string) {
     setHata(null)
-    const res = await fetch(`/api/servis-yonetimi/guzergah-durak-saat/${saatId}`, { method: 'DELETE' })
+    const res = await fetch(`/api/servis-yonetimi/guzergah-durak-saat/${saatId}/pasiflestir`, { method: 'POST' })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Saat silinemedi.')
+      setHata(json.message || 'Saat kaydı pasifleştirilemedi.')
       return
     }
     setSaatler((s) => ({ ...s, [dilimId]: '' }))
@@ -649,7 +649,7 @@ function SaatlerDialog({
                   <>
                     <Button size="sm" variant="outline" onClick={() => kaydet(dilim.id)}>Kaydet</Button>
                     {mevcutSaat && (
-                      <Button size="sm" variant="ghost" onClick={() => sil(mevcutSaat.id, dilim.id)}>
+                      <Button size="sm" variant="ghost" onClick={() => pasiflestir(mevcutSaat.id, dilim.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}

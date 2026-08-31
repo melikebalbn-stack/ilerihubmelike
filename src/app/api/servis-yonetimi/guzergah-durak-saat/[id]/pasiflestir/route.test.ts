@@ -11,7 +11,7 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
   guzergahDurakSaatiSil: mocks.guzergahDurakSaatiSil,
 }))
 
-import { DELETE } from './route'
+import { POST } from './route'
 
 function permissionResult(allowed: boolean, userId = 'user-1') {
   return allowed
@@ -25,21 +25,22 @@ beforeEach(() => {
 
 const context = { params: Promise.resolve({ id: 's1' }) }
 
-describe('DELETE /api/servis-yonetimi/guzergah-durak-saat/[id]', () => {
-  it('servis.tanim.manage izni olmayan kullanıcı 403 alır', async () => {
+describe('POST /api/servis-yonetimi/guzergah-durak-saat/[id]/pasiflestir', () => {
+  it('servis.passive izni olmayan kullanıcı 403 alır', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(false))
-    const res = await DELETE(new Request('http://localhost/x', { method: 'DELETE' }), context)
+    const res = await POST(new NextRequest('http://localhost/x', { method: 'POST' }), context)
     expect(res.status).toBe(403)
+    expect(mocks.requirePermission).toHaveBeenCalledWith('servis.passive')
     expect(mocks.guzergahDurakSaatiSil).not.toHaveBeenCalled()
   })
 
-  it('servis.tanim.manage izni olan kullanıcı saati silebilir', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
-    mocks.guzergahDurakSaatiSil.mockResolvedValue({ id: 's1' })
-    const res = await DELETE(new Request('http://localhost/x', { method: 'DELETE' }), context)
+  it('servis.passive izni olan kullanıcı saati pasifleştirebilir, userId iletilir', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true, 'user-42'))
+    mocks.guzergahDurakSaatiSil.mockResolvedValue({ id: 's1', aktif: false })
+    const res = await POST(new NextRequest('http://localhost/x', { method: 'POST' }), context)
     const json = await res.json()
     expect(res.status).toBe(200)
     expect(json.ok).toBe(true)
-    expect(mocks.guzergahDurakSaatiSil).toHaveBeenCalledWith('s1', 'user-1')
+    expect(mocks.guzergahDurakSaatiSil).toHaveBeenCalledWith('s1', 'user-42')
   })
 })

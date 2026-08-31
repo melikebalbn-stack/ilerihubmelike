@@ -9,7 +9,7 @@
 // "Görev Bazlı" sekmesi ve ifs-gorev-detay ucu bu ekrandan BAĞIMSIZ, duruyor.
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -128,6 +128,52 @@ function DegerlendirmeHucre({ d }: { d: DegerlendirmeAlan }) {
   );
 }
 
+// xlsx/pdf indirme — ifs-evaluation-report.tsx'ten TAŞINDI (aynı uç, aynı
+// mekanizma). Sayfa navigasyonundan KOPUK: fetch + blob + geçici <a download>;
+// düz <a href> API'ye navigasyon başlatıp global yükleme göstergesini asılı
+// bırakıyordu. Dosya adı Content-Disposition'dan (sunucu Türkçe-sanitize eder).
+//
+// PARAMETRE FARKI (bilinçli): kaynak sekme paket ekseninde olduğu için
+// `packageId` yolluyordu; bu sekme bölüm ekseninde çalıştığı ve tasarım gereği
+// paket seçici barındırmadığı için ucun `mode=bolum` dalı kullanılıyor —
+// ifs-bolum-report.tsx'in bugün kullandığı parametre kümesinin aynısı.
+// UÇTA DEĞİŞİKLİK YOK.
+async function raporIndir(
+  bolum: string,
+  format: "xlsx" | "pdf"
+): Promise<void> {
+  const res = await fetch(
+    `/api/akademi/admin/reports/ifs-aggregate/export?mode=bolum&format=${format}&bolum=${encodeURIComponent(bolum)}`
+  );
+  if (!res.ok) {
+    const msg = await res
+      .json()
+      .then((j) => j?.error)
+      .catch(() => null);
+    toast.error(
+      msg ??
+        (res.status === 401 || res.status === 403
+          ? "Bu raporu indirme yetkiniz yok"
+          : "Rapor indirilemedi")
+    );
+    return;
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("content-disposition") ?? "";
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+  const fallback = `IFS-Egitim-Raporu.${format === "pdf" ? "pdf" : "xlsx"}`;
+  const filename = match ? decodeURIComponent(match[1]) : fallback;
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function IfsRaporuTab() {
   const [ozet, setOzet] = useState<OzetData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,6 +190,8 @@ export function IfsRaporuTab() {
     Record<string, { seviye: Seviye | ""; not: string }>
   >({});
   const [kaydediliyor, setKaydediliyor] = useState<string | null>(null);
+  // `${bolum}|${format}` — hangi düğme yüklemede
+  const [indiriliyor, setIndiriliyor] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/akademi/admin/reports/ifs-departman-ozet")
@@ -312,6 +360,36 @@ export function IfsRaporuTab() {
                 </div>
               )}
               {detay && detay !== "yukleniyor" && (
+                <div className="space-y-2">
+                  {/* Bölüm raporu indirme — ifs-evaluation-report'tan taşındı. */}
+                  <div className="flex items-center justify-end gap-2">
+                    {(["xlsx", "pdf"] as const).map((f) => {
+                      const dk = `${b.bolum}|${f}`;
+                      return (
+                        <button
+                          key={f}
+                          type="button"
+                          disabled={indiriliyor !== null}
+                          onClick={async (ev) => {
+                            ev.stopPropagation();
+                            setIndiriliyor(dk);
+                            try {
+                              await raporIndir(b.bolum, f);
+                            } finally {
+                              setIndiriliyor(null);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border disabled:opacity-50"
+                          style={{ borderColor: "var(--ak-border-default)" }}
+                          title={`${b.bolum} raporunu ${f.toUpperCase()} indir`}
+                        >
+                          <Download size={12} />
+                          {indiriliyor === dk ? "İndiriliyor…" : f.toUpperCase()}
+                        </button>
+                      );
+                    })}
+                  </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
@@ -511,6 +589,7 @@ export function IfsRaporuTab() {
                       })}
                     </tbody>
                   </table>
+                </div>
                 </div>
               )}
             </td>

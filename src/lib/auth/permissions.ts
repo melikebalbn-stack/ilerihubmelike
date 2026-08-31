@@ -24,6 +24,18 @@ export const PERMISSION_KEYS = {
   AKADEMI_IFS_EVALUATE: 'akademi.ifs.evaluate',
   AKADEMI_IFS_KEYUSER: 'akademi.ifs.keyuser',
 
+  // ── IFS ayrımı (FAZ 1) ────────────────────────────────────────────────
+  // IFS eğitim modülü akademiden ayrılıyor; bu beş anahtar akademi.* karşılık-
+  // larının yerini ALACAK. Geçiş süresince İKİSİ de duruyor: guard'lar önce
+  // OR'a çevrilecek (['ifs.x','akademi.x']), oturumlar yenilendikten sonra
+  // eski anahtarlar kaldırılacak. Bu turda YALNIZ tanım eklendi — hiçbir
+  // guard değişmedi.
+  IFS_VIEW: 'ifs.view',
+  IFS_RAPOR_VIEW: 'ifs.rapor.view',
+  IFS_ADMIN: 'ifs.admin',
+  IFS_EVALUATE: 'ifs.evaluate',
+  IFS_KEYUSER: 'ifs.keyuser',
+
   // === ARŞİV ===
   // Y14: Arşiv modülü RBAC kapsam dışı — departman-bazlı resource-level
   // access (arsiv-auth.ts: kullanıcı kendi bolumId'sine erişir) RBAC
@@ -208,6 +220,11 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'akademi.grade.manual': 'Manuel notlandırma (açık uçlu sorular)',
   'akademi.ifs.evaluate': 'IFS canlı değerlendirme',
   'akademi.ifs.keyuser': 'IFS key user değerlendirmesi girme',
+  'ifs.view': 'IFS eğitim modülünü görüntüleme',
+  'ifs.rapor.view': 'IFS raporlarını görüntüleme',
+  'ifs.admin': 'IFS eğitim yapısı ve key user atamalarını yönetme',
+  'ifs.evaluate': 'IFS görev/ders değerlendirmesi girme (eğitmen)',
+  'ifs.keyuser': 'IFS key user değerlendirmesi girme',
 
   'arsiv.view': 'Arşiv görüntüleme',
 

@@ -9488,8 +9488,17 @@ model DepartmentDefinition {
   // Kiosk/Workstation Faz 1: bu bölüme bağlı tezgahlar
   workstations Workstation[]
 
+  // Arşiv bölümü — METİN AD EŞLEŞMESİ YERİNE FK. Arşiv erişimi (arsiv-auth.ts)
+  // eskiden Personnel.bolum metnini ArsivBolum.ad ile birebir karşılaştırıyordu;
+  // bölüm adları Title-Case'e çevrilince eşleşme koptu ve arşiv fiilen yalnız
+  // SUPER_ADMIN'de kaldı. Çoka-bir: dört depo bölümü tek arşiv kutusunu (DEP)
+  // gösterir. Nullable — arşiv karşılığı olmayan bölüm (ör. pasif kayıtlar) null.
+  arsivBolumId Int?
+  arsivBolum   ArsivBolum? @relation(fields: [arsivBolumId], references: [id], onDelete: SetNull)
+
   @@index([parentId])
   @@index([isActive])
+  @@index([arsivBolumId])
 }
 
 // İSKELET: STAJYER
@@ -10206,6 +10215,8 @@ model ArsivBolum {
   evrakTurleri ArsivEvrakTuru[]
   koliler      ArsivKoli[]
   sayaclar     ArsivSayac[]
+  // Bu arşiv kutusunu gösteren bölümler (çoka-bir'in ters ucu).
+  bolumTanimlari DepartmentDefinition[]
 
   @@map("arsiv_bolum")
 }

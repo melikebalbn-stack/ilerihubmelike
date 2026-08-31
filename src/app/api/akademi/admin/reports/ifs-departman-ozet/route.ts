@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { getLinkedBolums, resolveUserBolum } from "@/lib/user-personnel";
+import { ifsYuzde } from "@/lib/akademi/ifs-progress";
 
 // IFS RAPOR — SEVİYE 1: departman özeti (parametresiz).
 // Kapsam: TÜM IFS kursları (tek kurs değil) — bölüm başına tek satır.
@@ -15,7 +16,10 @@ import { getLinkedBolums, resolveUserBolum } from "@/lib/user-personnel";
 //   egitimAlanKisi : o bölümde EN AZ BİR IfsTaskEvaluation satırı olan kişi
 //                    sayısı — bölümün tüm personeli DEĞİL (dokunmamış kişi
 //                    paydayı şişirmesin).
-//   basariPct      : ornekStatus=BASARILI / değerlendirilmiş satır toplamı.
+//   basariPct      : payda TEK KAYNAK'ta — ifs-progress.ts (ifsYuzde).
+//                    FARKLI_DEPARTMAN satırı hem paydadan hem paydan düşer
+//                    (kapsam dışı = başarısız DEĞİL); ifs-departman-kisiler ve
+//                    ifs-aggregate de aynı kuralı uygular.
 //   egitimGerekli  : kursiyerDurum=EGITIM_GEREKLI satır sayısı.
 //   degerlendirilmisSatir : eğitmen kararı VERİLMİŞ satır (BASARILI veya
 //                    TEKRAR_GEREKLI). 0 ise basariPct'nin %0 olması başarısızlık
@@ -78,6 +82,8 @@ export async function GET() {
   const basarili = new Map<string, number>();
   const egitimGerekli = new Map<string, number>();
   const kararVerilmis = new Map<string, number>();
+  const farkliDepartman = new Map<string, number>();
+  const basariliVeFarkli = new Map<string, number>();
   const bump = (m: Map<string, number>, k: string) =>
     m.set(k, (m.get(k) ?? 0) + 1);
 
@@ -92,6 +98,10 @@ export async function GET() {
     if (r.ornekStatus === "BASARILI" || r.ornekStatus === "TEKRAR_GEREKLI")
       bump(kararVerilmis, b);
     if (r.kursiyerDurum === "EGITIM_GEREKLI") bump(egitimGerekli, b);
+    if (r.kursiyerDurum === "FARKLI_DEPARTMAN") {
+      bump(farkliDepartman, b);
+      if (r.ornekStatus === "BASARILI") bump(basariliVeFarkli, b);
+    }
   }
 
   const out = bolums.map((b) => {
@@ -100,7 +110,11 @@ export async function GET() {
     return {
       bolum: b,
       egitimAlanKisi: kisiSet.get(b)?.size ?? 0,
-      basariPct: toplam > 0 ? Math.round((bas / toplam) * 100) : 0,
+      basariPct: ifsYuzde(
+        Math.max(bas - (basariliVeFarkli.get(b) ?? 0), 0),
+        toplam,
+        farkliDepartman.get(b) ?? 0
+      ),
       degerlendirilmisSatir: kararVerilmis.get(b) ?? 0,
       egitimGerekli: egitimGerekli.get(b) ?? 0,
     };

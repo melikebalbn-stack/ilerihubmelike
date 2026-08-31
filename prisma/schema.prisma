@@ -197,6 +197,7 @@ model User {
   ifsTaskEvaluations    IfsTaskEvaluation[]
   ifsCourseEvaluations  IfsCourseEvaluation[]
   ifsKeyUserEvaluations IfsCourseEvaluation[]   @relation("IfsKeyUser")
+  ifsKeyUserAtamalari   IfsKeyUser[]            @relation("IfsKeyUserAtama")
   userAchievements      UserAchievement[]
   userBadges            UserBadge[]
   userXp                UserXp[]
@@ -9689,6 +9690,26 @@ model IfsCourseEvaluation {
   @@index([courseId])
   @@index([keyUserId])
   @@map("ifs_course_evaluations")
+}
+
+// IFS key user ataması — hangi bölümün key user'ı kim.
+// `bolum` SERBEST METİN: DepartmentPackage.bolum ile aynı desen (Personnel.bolum
+// değerine karşılık gelir, FK yok — bölümler ayrı bir tabloda tutulmuyor).
+model IfsKeyUser {
+  id              String   @id @default(cuid())
+  bolum           String
+  userId          String
+  // Atamayı yapan (akademi.admin). Kullanıcı silinirse iz kaybolsun istemiyoruz,
+  // atama ayakta kalsın → ilişki kurulmadı, düz kimlik alanı.
+  atayanId        String?
+  olusturmaTarihi DateTime @default(now())
+
+  user User @relation("IfsKeyUserAtama", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([bolum, userId])
+  @@index([bolum])
+  @@index([userId])
+  @@map("ifs_key_users")
 }
 
 model CoursePackage {

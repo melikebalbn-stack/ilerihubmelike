@@ -10,7 +10,9 @@
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 
 type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ";
 
@@ -61,7 +63,24 @@ interface KisiRow {
 interface KisilerData {
   bolum: string;
   scope: "full" | "own";
+  /** Sunucuda hesaplanır: izin + bu bölüme atanmış key user olma. */
+  keyUserYetkim: boolean;
   satirlar: KisiRow[];
+}
+interface EgitimGorev {
+  contentId: string;
+  konu: string;
+  order: number;
+  modul: string | null;
+  altModul: string | null;
+  ifsEkran: string | null;
+  ornekAciklama: string | null;
+  degerlendirildiAt: string | null;
+}
+interface EgitimIstenenData {
+  ad: string;
+  egitimAdi: string;
+  gorevler: EgitimGorev[];
 }
 
 /**
@@ -115,6 +134,16 @@ export function IfsRaporuTab() {
   const [acikBolum, setAcikBolum] = useState<string | null>(null);
   const [kisiler, setKisiler] = useState<Record<string, KisilerData | "yukleniyor">>({});
   const [bosGoster, setBosGoster] = useState(false);
+  // "Eğitim İstenen Görev" açılır paneli — anahtar: `${userId}|${courseId}`
+  const [acikEgitim, setAcikEgitim] = useState<string | null>(null);
+  const [egitimler, setEgitimler] = useState<
+    Record<string, EgitimIstenenData | "yukleniyor">
+  >({});
+  // Key user düzenleme taslağı — anahtar aynı; kaydedilene kadar yerelde durur.
+  const [taslak, setTaslak] = useState<
+    Record<string, { seviye: Seviye | ""; not: string }>
+  >({});
+  const [kaydediliyor, setKaydediliyor] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/akademi/admin/reports/ifs-departman-ozet")
@@ -140,14 +169,96 @@ export function IfsRaporuTab() {
         .then((d: KisilerData | null) =>
           setKisiler((p) => ({
             ...p,
-            [bolum]: d ?? { bolum, scope: "own", satirlar: [] },
+            [bolum]: d ?? { bolum, scope: "own", keyUserYetkim: false, satirlar: [] },
           }))
         )
         .catch(() =>
-          setKisiler((p) => ({ ...p, [bolum]: { bolum, scope: "own", satirlar: [] } }))
+          setKisiler((p) => ({
+            ...p,
+            [bolum]: { bolum, scope: "own", keyUserYetkim: false, satirlar: [] },
+          }))
         );
     },
     [acikBolum, kisiler]
+  );
+
+  const egitimAc = useCallback(
+    (userId: string, courseId: string) => {
+      const k = `${userId}|${courseId}`;
+      if (acikEgitim === k) {
+        setAcikEgitim(null);
+        return;
+      }
+      setAcikEgitim(k);
+      if (egitimler[k]) return; // bir kez çekilir
+      setEgitimler((p) => ({ ...p, [k]: "yukleniyor" }));
+      fetch(
+        `/api/akademi/admin/reports/ifs-egitim-istenen?userId=${encodeURIComponent(
+          userId
+        )}&courseId=${encodeURIComponent(courseId)}`
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: EgitimIstenenData | null) =>
+          setEgitimler((p) => ({
+            ...p,
+            [k]: d ?? { ad: "", egitimAdi: "", gorevler: [] },
+          }))
+        )
+        .catch(() =>
+          setEgitimler((p) => ({
+            ...p,
+            [k]: { ad: "", egitimAdi: "", gorevler: [] },
+          }))
+        );
+    },
+    [acikEgitim, egitimler]
+  );
+
+  const keyUserKaydet = useCallback(
+    async (bolum: string, s: KisiRow) => {
+      const k = `${s.userId}|${s.courseId}`;
+      const t = taslak[k] ?? {
+        seviye: (s.keyUser.seviye ?? "") as Seviye | "",
+        not: s.keyUser.not ?? "",
+      };
+      setKaydediliyor(k);
+      try {
+        const res = await fetch(
+          "/api/akademi/admin/reports/ifs-keyuser-degerlendirme",
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: s.userId,
+              courseId: s.courseId,
+              keyUserSeviye: t.seviye === "" ? null : t.seviye,
+              keyUserNot: t.not.trim() || null,
+            }),
+          }
+        );
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          toast.error(err?.error || "Kaydedilemedi");
+          return;
+        }
+        toast.success("Key user değerlendirmesi kaydedildi");
+        // Sunucudan taze oku — keyUserAt/giren ad sunucuda dolduruluyor.
+        setKisiler((p) => {
+          const n = { ...p };
+          delete n[bolum];
+          return n;
+        });
+        setAcikBolum(null);
+        setTaslak((p) => {
+          const n = { ...p };
+          delete n[k];
+          return n;
+        });
+      } finally {
+        setKaydediliyor(null);
+      }
+    },
+    [taslak]
   );
 
   const dolu = (ozet?.bolums ?? []).filter((b) => b.egitimAlanKisi > 0);
@@ -237,9 +348,16 @@ export function IfsRaporuTab() {
                         // yalnız ilkinde yazılır (uç zaten ada göre sıralı döner).
                         const ilkSatir =
                           i === 0 || detay.satirlar[i - 1].userId !== s.userId;
+                        const k = `${s.userId}|${s.courseId}`;
+                        const egitimAcik = acikEgitim === k;
+                        const egitimVeri = egitimler[k];
+                        const t = taslak[k] ?? {
+                          seviye: (s.keyUser.seviye ?? "") as Seviye | "",
+                          not: s.keyUser.not ?? "",
+                        };
                         return (
+                        <Fragment key={k}>
                           <tr
-                            key={`${s.userId}|${s.courseId}`}
                             className={ilkSatir ? "border-t" : ""}
                             style={{ borderColor: "var(--ak-border-default)" }}
                           >
@@ -267,24 +385,128 @@ export function IfsRaporuTab() {
                             </td>
                             <td className="px-2 py-1.5 text-right align-top">
                               {s.egitimIhtiyaci > 0 ? (
-                                <span
-                                  className="font-semibold px-1.5 py-0.5 rounded"
+                                <button
+                                  type="button"
+                                  onClick={() => egitimAc(s.userId, s.courseId)}
+                                  className="font-semibold px-1.5 py-0.5 rounded underline underline-offset-2"
                                   style={{
                                     background: "rgba(245,158,11,0.15)",
                                     color: "rgb(180,120,10)",
                                   }}
+                                  title="Eğitim istenen görevleri göster"
                                 >
                                   {s.egitimIhtiyaci}
-                                </span>
+                                </button>
                               ) : (
+                                // 0 ise tıklanabilir DEĞİL — açılacak liste yok.
                                 <span style={{ color: "var(--ak-text-tertiary)" }}>0</span>
                               )}
                             </td>
-                            {/* Key user: bu turda SALT OKUNUR — veri yok, "—". Yazma sonraki turda. */}
+                            {/* Key user: yalnız bu bölümün key user'ı düzenler (sunucu
+                                keyUserYetkim ile söyler); değilse salt okunur. */}
                             <td className="px-2 py-1.5 align-top">
-                              <DegerlendirmeHucre d={s.keyUser} />
+                              {detay.keyUserYetkim ? (
+                                <div className="space-y-1 min-w-[190px]">
+                                  <select
+                                    className="w-full px-2 py-1 text-xs rounded border bg-white"
+                                    style={{ borderColor: "var(--ak-border-default)" }}
+                                    value={t.seviye}
+                                    onChange={(e) =>
+                                      setTaslak((p) => ({
+                                        ...p,
+                                        [k]: { ...t, seviye: e.target.value as Seviye | "" },
+                                      }))
+                                    }
+                                  >
+                                    <option value="">— seçilmedi —</option>
+                                    <option value="BASARILI">Başarılı</option>
+                                    <option value="EGITIM_GEREKLI">Eğitime İhtiyacı Var</option>
+                                    <option value="BASARISIZ">Başarısız</option>
+                                  </select>
+                                  <Textarea
+                                    rows={1}
+                                    className="text-xs min-h-[30px]"
+                                    placeholder="Key user notu"
+                                    value={t.not}
+                                    onChange={(e) =>
+                                      setTaslak((p) => ({
+                                        ...p,
+                                        [k]: { ...t, not: e.target.value },
+                                      }))
+                                    }
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={kaydediliyor === k}
+                                    onClick={() => keyUserKaydet(detay.bolum, s)}
+                                    className="text-xs px-2 py-1 rounded border disabled:opacity-50"
+                                    style={{ borderColor: "var(--ak-border-default)" }}
+                                  >
+                                    {kaydediliyor === k ? "Kaydediliyor…" : "Kaydet"}
+                                  </button>
+                                  {s.keyUser.girenAd && (
+                                    <div
+                                      className="text-[11px]"
+                                      style={{ color: "var(--ak-text-tertiary)" }}
+                                    >
+                                      son: {s.keyUser.girenAd}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <DegerlendirmeHucre d={s.keyUser} />
+                              )}
                             </td>
                           </tr>
+
+                          {/* Eğitim istenen görevler — satırın ALTINDA, aynı ekranda. */}
+                          {egitimAcik && (
+                            <tr style={{ background: "var(--ak-surface-primary)" }}>
+                              <td colSpan={9} className="px-3 py-2">
+                                {egitimVeri === "yukleniyor" && (
+                                  <div
+                                    className="text-xs"
+                                    style={{ color: "var(--ak-text-secondary)" }}
+                                  >
+                                    Yükleniyor…
+                                  </div>
+                                )}
+                                {egitimVeri && egitimVeri !== "yukleniyor" && (
+                                  <div className="space-y-1">
+                                    {egitimVeri.gorevler.length === 0 && (
+                                      <div
+                                        className="text-xs"
+                                        style={{ color: "var(--ak-text-tertiary)" }}
+                                      >
+                                        Eğitim istenen görev yok.
+                                      </div>
+                                    )}
+                                    {egitimVeri.gorevler.map((g) => (
+                                      <div
+                                        key={g.contentId}
+                                        className="text-xs border-l-2 pl-2 py-0.5"
+                                        style={{ borderColor: "rgba(245,158,11,0.6)" }}
+                                      >
+                                        <div className="font-medium">{g.konu}</div>
+                                        <div style={{ color: "var(--ak-text-tertiary)" }}>
+                                          {[g.modul, g.ifsEkran].filter(Boolean).join(" / ") || "—"}
+                                        </div>
+                                        {g.ornekAciklama && (
+                                          <div
+                                            className="whitespace-pre-wrap break-words"
+                                            style={{ color: "var(--ak-text-secondary)" }}
+                                          >
+                                            {g.ornekAciklama}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                         );
                       })}
                     </tbody>

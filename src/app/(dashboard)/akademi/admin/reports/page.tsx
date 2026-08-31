@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { FileSpreadsheet } from "lucide-react";
 import { useAkademiAuth } from "@/lib/akademi-auth";
 import { UsersReportTab } from "./_tabs/users-report";
@@ -13,6 +14,7 @@ import { IfsEvaluationsTab } from "./_tabs/ifs-evaluations";
 import { IfsEvaluationReportTab } from "./_tabs/ifs-evaluation-report";
 import { IfsGorevDetayTab } from "./_tabs/ifs-gorev-detay";
 import { IfsRaporuTab } from "./_tabs/ifs-raporu";
+import { IfsKeyUserAtamaTab } from "./_tabs/ifs-keyuser-atama";
 
 const TABS = [
   { id: "users", label: "Kullanıcılar" },
@@ -25,7 +27,16 @@ const TABS = [
   { id: "ifs-report", label: "IFS Değerlendirme Raporu" },
   { id: "ifs-gorev-detay", label: "Görev Bazlı" },
   { id: "ifs-raporu", label: "IFS Raporu" },
+  // Yalnız akademi.admin görür — aşağıda gorunenTabs ile süzülüyor.
+  { id: "ifs-keyuser-atama", label: "Key User Atama" },
 ] as const;
+
+// Sekme görünürlüğü: id → gerekli izin. Listede olmayan sekme herkese açık
+// (mevcut davranış korunuyor); burada yalnız yeni admin-only sekme var.
+const TAB_IZIN: Partial<Record<TabIdRaw, string>> = {
+  "ifs-keyuser-atama": "akademi.admin",
+};
+type TabIdRaw = (typeof TABS)[number]["id"];
 
 // Excel export'u olmayan (özel) sekmeler
 const NO_EXPORT_TABS = [
@@ -34,13 +45,21 @@ const NO_EXPORT_TABS = [
   "ifs-report",
   "ifs-gorev-detay",
   "ifs-raporu",
+  "ifs-keyuser-atama",
 ];
 
 type TabId = (typeof TABS)[number]["id"];
 
 export default function ReportsPage() {
+  const { data: session } = useSession();
   useAkademiAuth();
   const [activeTab, setActiveTab] = useState<TabId>("users");
+  const izinler = (session?.user as { permissions?: string[] } | undefined)?.permissions ?? [];
+  // Menü görünürlüğü kozmetik; asıl zorlama uçlarda (ifs-keyuser → akademi.admin).
+  const gorunenTabs = TABS.filter((t) => {
+    const gerekli = TAB_IZIN[t.id];
+    return !gerekli || izinler.includes(gerekli);
+  });
 
   return (
     <div className="ak-animate-in space-y-4">
@@ -61,7 +80,7 @@ export default function ReportsPage() {
         style={{ borderColor: "var(--ak-border-divider)" }}
       >
         <div className="flex gap-1 overflow-x-auto">
-          {TABS.map((t) => (
+          {gorunenTabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
@@ -88,6 +107,7 @@ export default function ReportsPage() {
         {activeTab === "ifs-report" && <IfsEvaluationReportTab />}
         {activeTab === "ifs-gorev-detay" && <IfsGorevDetayTab />}
         {activeTab === "ifs-raporu" && <IfsRaporuTab />}
+        {activeTab === "ifs-keyuser-atama" && <IfsKeyUserAtamaTab />}
       </div>
     </div>
   );

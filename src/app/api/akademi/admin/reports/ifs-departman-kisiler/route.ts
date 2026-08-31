@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { resolveUserBolum } from "@/lib/user-personnel";
+import { ifsYuzde } from "@/lib/akademi/ifs-progress";
 
 // IFS RAPOR — SEVİYE 2: bir bölümün kişi × eğitim satırları.
 // Her kişi-eğitim çifti AYRI satır; yalnız DEĞERLENDİRME SATIRI OLAN çiftler
@@ -13,9 +14,11 @@ import { resolveUserBolum } from "@/lib/user-personnel";
 // Yetki + scope: `ifs-evaluations` GET ile BİREBİR aynı — akademi.report.view,
 // akademi.admin => her bölüm, aksi halde yalnız kendi bölümü (başkası 403).
 //
-// pct: mevcut TEK KAYNAK metriğiyle hizalı (src/lib/akademi/ifs-aggregate.ts) —
-// pay = ornekStatus BASARILI, payda = toplamGorev − FARKLI_DEPARTMAN. Kursiyer
-// "bu görev benim departmanımın işi değil" dediğinde görev paydadan düşer.
+// pct: payda TEK KAYNAK'ta — src/lib/akademi/ifs-progress.ts (ifsYuzde).
+// Pay bilerek çağırana bırakılmış; BURADAKİ KURAL: FARKLI_DEPARTMAN görevi
+// paydadan düştüğü için PAYDAN DA düşer (aynı görev hem "kapsam dışı" hem
+// "başarılı" işaretlenebiliyor — prod'da 8 satır; düzeltilmezse oran 100'ü
+// aşıyordu, bkz. %107 vakası).
 export async function GET(req: NextRequest) {
   const { session, error } = await requirePermission("akademi.report.view");
   if (error) return error;
@@ -90,6 +93,8 @@ export async function GET(req: NextRequest) {
     // Eğitmen kararı VERİLMİŞ görev (BASARILI + TEKRAR_GEREKLI). 0 ise pct'nin
     // %0 olması başarısızlık değil "henüz değerlendirilmedi" demektir.
     kararVerilmis: number;
+    // Hem BASARILI hem FARKLI_DEPARTMAN olan görev — yüzdede paydan düşer.
+    basariliVeFarkli: number;
   }
   const sayac = new Map<string, Sayac>(); // key: userId|courseId
   for (const r of rows) {
@@ -104,9 +109,12 @@ export async function GET(req: NextRequest) {
         egitimIhtiyaci: 0,
         farkliDepartman: 0,
         kararVerilmis: 0,
+        basariliVeFarkli: 0,
       };
     if (r.ornekStatus === "BASARILI") c.basarili++;
     else if (r.ornekStatus === "TEKRAR_GEREKLI") c.basarisiz++;
+    if (r.ornekStatus === "BASARILI" && r.kursiyerDurum === "FARKLI_DEPARTMAN")
+      c.basariliVeFarkli++;
     if (r.ornekStatus === "BASARILI" || r.ornekStatus === "TEKRAR_GEREKLI")
       c.kararVerilmis++;
     if (r.kursiyerDurum === "EGITIM_GEREKLI") c.egitimIhtiyaci++;
@@ -154,7 +162,6 @@ export async function GET(req: NextRequest) {
     .map(([key, c]) => {
       const [userId, courseId] = key.split("|");
       const toplamGorev = kursGorevSayisi.get(courseId) ?? 0;
-      const payda = Math.max(toplamGorev - c.farkliDepartman, 0);
       const d = dersOf.get(key);
       return {
         userId,
@@ -165,7 +172,11 @@ export async function GET(req: NextRequest) {
         basariliGorev: c.basarili,
         basarisizGorev: c.basarisiz,
         degerlendirilmisGorev: c.kararVerilmis,
-        pct: payda > 0 ? Math.round((c.basarili / payda) * 100) : 0,
+        pct: ifsYuzde(
+          Math.max(c.basarili - c.basariliVeFarkli, 0),
+          toplamGorev,
+          c.farkliDepartman
+        ),
         degerlendirme: {
           seviye: d?.seviye ?? null,
           not: d?.not ?? null,
@@ -187,9 +198,21 @@ export async function GET(req: NextRequest) {
       (a, b) => a.ad.localeCompare(b.ad, "tr") || a.egitimAdi.localeCompare(b.egitimAdi, "tr")
     );
 
+  // keyUserYetkim: çağıran BU bölümün key user'ı mı + yazma izni var mı.
+  // Ekran, "Key User Değerlendirmesi" hücresini düzenlenebilir yapıp yapmayacağına
+  // buna bakarak karar verir. Karar SUNUCUDA verilir — istemci permissions dizisine
+  // bakıp kendi kendine karar vermesin; zorlama zaten ifs-keyuser-degerlendirme
+  // ucunda (aynı iki koşul: izin + o bölüme atanmış olma).
+  const keyUserYetkim =
+    perms.has("akademi.ifs.keyuser") &&
+    (await prisma.ifsKeyUser.count({
+      where: { bolum, userId: callerId },
+    })) > 0;
+
   return NextResponse.json({
     bolum,
     scope: fullScope ? "full" : "own",
+    keyUserYetkim,
     satirlar,
   });
 }

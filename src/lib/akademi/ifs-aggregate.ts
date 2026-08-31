@@ -180,6 +180,11 @@ export async function computeIfsAggregate(
   ]);
 
   const basariliByUser = new Map<string, number>();
+  // Hem BASARILI hem FARKLI_DEPARTMAN olan görevler. FARKLI_DEPARTMAN paydadan
+  // düştüğü için bunlar PAYDAN DA düşmeli — aksi halde pay paydayı aşıyor
+  // (prod'da 8 satır; %107 vakası). ifsYuzde clamp'i sonucu 100'de tutuyordu
+  // ama oran yine de yanlış hesaplanıyordu.
+  const basariliVeFarkliByUser = new Map<string, number>();
   // IFS-DURUM: kursiyer-tarafı iki yeni sayaç (eğitmen ornekStatus'ından bağımsız).
   const farkliByUser = new Map<string, number>();
   const egitimByUser = new Map<string, number>();
@@ -187,8 +192,14 @@ export async function computeIfsAggregate(
   for (const r of taskRows) {
     if (r.ornekStatus === "BASARILI")
       basariliByUser.set(r.userId, (basariliByUser.get(r.userId) ?? 0) + 1);
-    if (r.kursiyerDurum === "FARKLI_DEPARTMAN")
+    if (r.kursiyerDurum === "FARKLI_DEPARTMAN") {
       farkliByUser.set(r.userId, (farkliByUser.get(r.userId) ?? 0) + 1);
+      if (r.ornekStatus === "BASARILI")
+        basariliVeFarkliByUser.set(
+          r.userId,
+          (basariliVeFarkliByUser.get(r.userId) ?? 0) + 1
+        );
+    }
     else if (r.kursiyerDurum === "EGITIM_GEREKLI")
       egitimByUser.set(r.userId, (egitimByUser.get(r.userId) ?? 0) + 1);
     const b = userBolum.get(r.userId);
@@ -215,8 +226,13 @@ export async function computeIfsAggregate(
         ad: u.name ?? u.email ?? u.id,
         basariliGorev: bas,
         gorevCount,
-        // Pay = BASARILI (eğitmen); payda = ortak (gorevCount − FARKLI_DEPARTMAN).
-        pct: ifsYuzde(bas, gorevCount, farkliByUser.get(u.id) ?? 0),
+        // Pay = BASARILI (eğitmen) − FARKLI_DEPARTMAN çakışması; payda = ortak
+        // (gorevCount − FARKLI_DEPARTMAN). Dışlama İKİ TARAFA da uygulanır.
+        pct: ifsYuzde(
+          Math.max(bas - (basariliVeFarkliByUser.get(u.id) ?? 0), 0),
+          gorevCount,
+          farkliByUser.get(u.id) ?? 0
+        ),
         seviye: (ce?.seviye ?? null) as Seviye | null,
         not: ce?.not ?? null,
         farkliDepartman: farkliByUser.get(u.id) ?? 0,
@@ -240,7 +256,11 @@ export async function computeIfsAggregate(
     for (const uid of list) {
       const bas = basariliByUser.get(uid) ?? 0;
       // Kişi bazlı: her kullanıcının kendi paydası (gorevCount − FARKLI), sonra ortalama.
-      pctSum += ifsYuzde(bas, gorevCount, farkliByUser.get(uid) ?? 0);
+      pctSum += ifsYuzde(
+        Math.max(bas - (basariliVeFarkliByUser.get(uid) ?? 0), 0),
+        gorevCount,
+        farkliByUser.get(uid) ?? 0
+      );
       const sev = seviyeByUser.get(uid);
       if (sev === "BASARILI" || sev === "EGITIM_GEREKLI" || sev === "BASARISIZ")
         seviyeDist[sev]++;

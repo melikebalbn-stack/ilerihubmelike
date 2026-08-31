@@ -151,7 +151,7 @@ export default function NewMeetingPage() {
           type: "internal",
           userId: selectedAttendeeUser.id,
           userName: selectedAttendeeUser.name,
-          userEmail: selectedAttendeeUser.email,
+          userEmail: selectedAttendeeUser.email ?? '',
           userDepartment: selectedAttendeeUser.department || undefined,
           userJobTitle: selectedAttendeeUser.jobTitle || undefined,
           role: newAttendeeRole,
@@ -541,7 +541,7 @@ export default function NewMeetingPage() {
                         <div className="space-y-2">
                           <Label>Sunucu</Label>
                           <UserSearchCombobox
-                            value={newAgendaPresenter?.email}
+                            value={newAgendaPresenter?.email ?? undefined}
                             onSelect={setNewAgendaPresenter}
                             placeholder="Sunucu sec..."
                           />
@@ -600,7 +600,7 @@ export default function NewMeetingPage() {
                 <div className="space-y-2">
                   <Label>Toplanti Baskani</Label>
                   <UserSearchCombobox
-                    value={chairman?.email}
+                    value={chairman?.email ?? undefined}
                     onSelect={setChairman}
                     placeholder="Baskan sec..."
                   />
@@ -609,7 +609,7 @@ export default function NewMeetingPage() {
                 <div className="space-y-2">
                   <Label>Raporter</Label>
                   <UserSearchCombobox
-                    value={rapporteur?.email}
+                    value={rapporteur?.email ?? undefined}
                     onSelect={setRapporteur}
                     placeholder="Raporter sec..."
                   />
@@ -707,7 +707,7 @@ export default function NewMeetingPage() {
                         <div className="space-y-2">
                           <Label>Kullanici</Label>
                           <UserSearchCombobox
-                            value={selectedAttendeeUser?.email}
+                            value={selectedAttendeeUser?.email ?? undefined}
                             onSelect={setSelectedAttendeeUser}
                             placeholder="Kullanici sec..."
                           />

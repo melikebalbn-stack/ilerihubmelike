@@ -57,7 +57,13 @@ type TaskCategory = {
 
 type ResponsiblePerson = {
   name: string
-  email: string
+  /** E-postasız personel de atanabilir (Personnel kaynağı) → null olabilir. */
+  email: string | null
+  /**
+   * Sicil no. ESKİ kayıtlarda YOK — optional. "Görevlerim" eşleşmesi bunu
+   * kullanır; olmayan kayıtlar eski e-posta eşleşmesiyle çalışmaya devam eder.
+   */
+  sicilNo?: string | null
 }
 
 type PlannedTask = {
@@ -981,7 +987,7 @@ export default function TasksPage() {
                               {task.responsiblePersons ? (
                                 (() => {
                                   try {
-                                    const persons = JSON.parse(task.responsiblePersons) as { name: string; email: string }[]
+                                    const persons = JSON.parse(task.responsiblePersons) as ResponsiblePerson[]
                                     return persons.map(p => p.name).join(', ')
                                   } catch {
                                     return task.responsiblePerson
@@ -1137,17 +1143,27 @@ export default function TasksPage() {
                 </label>
                 <UserSearchCombobox
                   value=""
+                  // Kaynak Personnel tablosu: e-postasız personel de seçilebilir.
+                  // Diğer modüller varsayılan /api/users'ta KALIR.
+                  endpoint="/api/personnel/search"
                   onSelect={(user) => {
                     if (user) {
-                      // Aynı kişi zaten eklenmişse ekleme
-                      const alreadyExists = formData.responsiblePersons.some(p => p.email === user.email)
+                      // Mükerrer kontrolü SİCİL öncelikli — e-posta null olabiliyor
+                      // ve iki e-postasız kişi `null === null` ile aynı sanılırdı.
+                      const alreadyExists = formData.responsiblePersons.some((p) =>
+                        user.sicilNo ? p.sicilNo === user.sicilNo : !!user.email && p.email === user.email,
+                      )
                       if (!alreadyExists) {
                         setFormData({
                           ...formData,
-                          responsiblePersons: [...formData.responsiblePersons, { name: user.name, email: user.email }],
+                          responsiblePersons: [
+                            ...formData.responsiblePersons,
+                            { name: user.name, email: user.email ?? null, sicilNo: user.sicilNo ?? null },
+                          ],
                           // Geriye uyumluluk için ilk kişiyi eski alanlara da yaz
                           responsiblePerson: formData.responsiblePersons.length === 0 ? user.name : formData.responsiblePerson,
-                          responsiblePersonEmail: formData.responsiblePersons.length === 0 ? user.email : formData.responsiblePersonEmail,
+                          responsiblePersonEmail:
+                            formData.responsiblePersons.length === 0 ? user.email ?? "" : formData.responsiblePersonEmail,
                         })
                       }
                     }

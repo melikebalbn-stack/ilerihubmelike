@@ -21,12 +21,20 @@ import {
 export type ADUser = {
   id: string
   name: string
-  email: string
+  /**
+   * E-postasız kişi de seçilebilir olmalı (Personnel kaynağında 185 aktif
+   * personelin 97'sinin kurumsal e-postası yok) — bu yüzden null OLABİLİR.
+   * /api/users kaynağı e-postasızı zaten eliyor, yani mevcut kullanıcılar
+   * için pratikte hep dolu; tip gevşetildi, davranış değişmedi.
+   */
+  email: string | null
   department?: string | null
   jobTitle?: string | null
   username?: string
   employeeId?: string | null
-  source?: 'ldap' | 'bluecollar' | 'db'
+  /** Personnel kaynağında sicil no — responsiblePersons'a yazılır. */
+  sicilNo?: string | null
+  source?: 'ldap' | 'bluecollar' | 'db' | 'personnel'
 }
 
 interface UserSearchComboboxProps {
@@ -35,6 +43,13 @@ interface UserSearchComboboxProps {
   placeholder?: string
   disabled?: boolean
   className?: string
+  /**
+   * Arama kaynağı. Varsayılan `/api/users` (LDAP birincil, e-postasızı eler) —
+   * mevcut tüm kullanıcılar bu davranışta KALIR. Planlı Görevler
+   * `/api/personnel/search` veriyor: kaynak Personnel tablosu, e-postasız
+   * personel de dönüyor.
+   */
+  endpoint?: string
 }
 
 export function UserSearchCombobox({
@@ -43,6 +58,7 @@ export function UserSearchCombobox({
   placeholder = 'Kullanici secin...',
   disabled = false,
   className,
+  endpoint = '/api/users',
 }: UserSearchComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
@@ -59,7 +75,7 @@ export function UserSearchCombobox({
       if (searchTerm && searchTerm.length >= 2) {
         params.append('search', searchTerm)
       }
-      const response = await fetch(`/api/users?${params.toString()}`)
+      const response = await fetch(`${endpoint}?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
         setUsers(data)
@@ -69,7 +85,7 @@ export function UserSearchCombobox({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [endpoint])
 
   // Debounced search
   React.useEffect(() => {
@@ -112,7 +128,7 @@ export function UserSearchCombobox({
   // Resolve user from value when users list is not yet loaded
   React.useEffect(() => {
     if (value && !selectedUser) {
-      fetch(`/api/users?search=${encodeURIComponent(value)}`)
+      fetch(`${endpoint}?search=${encodeURIComponent(value)}`)
         .then(res => res.ok ? res.json() : [])
         .then((data: ADUser[]) => {
           const found = data.find(u => u.email === value)
@@ -198,8 +214,10 @@ export function UserSearchCombobox({
               )}
               {users.map((user) => (
                 <CommandItem
-                  key={user.id}
-                  value={user.email}
+                  // Personnel kaynağında e-posta null olabiliyor; anahtar ve
+                  // cmdk `value`'su bu yüzden e-postaya BAĞLI DEĞİL.
+                  key={user.id || user.sicilNo || user.name}
+                  value={user.email || user.sicilNo || user.name}
                   onSelect={() => {
                     handleSelect(user)
                   }}
@@ -222,6 +240,20 @@ export function UserSearchCombobox({
                       {user.source === 'bluecollar' ? (
                         <>
                           {user.employeeId && <span className="truncate">Sicil: {user.employeeId}</span>}
+                          {user.department && (
+                            <>
+                              <span>-</span>
+                              <span className="truncate">{user.department}</span>
+                            </>
+                          )}
+                        </>
+                      ) : user.source === 'personnel' || !user.email ? (
+                        <>
+                          {/* E-postasız personelde adres yerine sicil gösterilir;
+                              boş bir satır kullanıcıya hiçbir şey söylemezdi. */}
+                          <span className="truncate">
+                            {user.sicilNo ? `Sicil: ${user.sicilNo}` : 'E-posta yok'}
+                          </span>
                           {user.department && (
                             <>
                               <span>-</span>

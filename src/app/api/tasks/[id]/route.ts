@@ -4,6 +4,7 @@ import { TaskStatus, TaskPriority } from '@/generated/prisma'
 import { getAllSubordinates } from '@/lib/ldap'
 import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
+import { atamaBildirimiGonder, sorumlulariCoz, yeniEklenenler } from '@/lib/tasks/atama-bildirimi'
 
 // GET - Tek bir görevi getir
 export async function GET(
@@ -157,6 +158,13 @@ export async function PUT(
       finalResponsibleDepartment = responsibleDepartments[0]
     }
 
+    // ATAMA BİLDİRİMİ için ÖNCEKİ sorumlular — update'ten SONRA okunamaz.
+    const oncekiKayit = await prisma.plannedTask.findUnique({
+      where: { id },
+      select: { responsiblePersons: true },
+    })
+    const oncekiSorumlular = sorumlulariCoz(oncekiKayit?.responsiblePersons)
+
     const task = await prisma.plannedTask.update({
       where: { id },
       data: {
@@ -189,6 +197,17 @@ export async function PUT(
         category: true,
       },
     })
+
+    // ── ATAMA BİLDİRİMİ — YALNIZ YENİ EKLENENLER ────────────────────────
+    // Mevcut sorumlular her güncellemede tekrar bildirim ALMAZ; fark
+    // yeniEklenenler() ile hesaplanır (sicil öncelikli eşleştirme).
+    const yeniler = yeniEklenenler(oncekiSorumlular, sorumlulariCoz(task.responsiblePersons))
+    if (yeniler.length > 0) {
+      await atamaBildirimiGonder(
+        { id: task.id, title: task.title, dueDate: task.dueDate },
+        yeniler,
+      )
+    }
 
     // NOT: Tekrarlayan görevler için yeni periyotlar artık timeline modal'ından manuel olarak oluşturuluyor
     // Eski otomatik oluşturma mantığı kaldırıldı

@@ -4,6 +4,7 @@ import { TaskStatus, TaskPriority, TaskEmailType } from '@/generated/prisma'
 import { sendTaskNotification, TaskEmailData, EmailRecipient } from '@/lib/email'
 import { getAllSubordinates } from '@/lib/ldap'
 import { requireUser } from '@/lib/auth/require-user'
+import { atamaBildirimiGonder, sorumlulariCoz } from '@/lib/tasks/atama-bildirimi'
 
 // Departman adını AD OU adına çevir
 async function getDepartmentAdOuName(departmentName: string): Promise<string | null> {
@@ -53,26 +54,51 @@ export async function GET(request: NextRequest) {
 
       // viewMode'a göre filtrele
       switch (viewMode) {
-        case 'my':
-          // Bana atanan görevler (tek kişi + çoklu kişi + departman)
+        case 'my': {
+          // Bana atanan görevler (tek kişi + çoklu kişi + SİCİL + departman)
+          //
+          // SİCİL EŞLEŞMESİ (yeni): responsiblePersons artık {name,email,sicilNo}
+          // taşıyor. E-postası OLMAYAN personel yalnız sicille bulunabilir —
+          // e-posta koşulu onları hiç yakalamıyordu. Eski e-posta eşleşmesi
+          // KALDIRILMADI: sicilsiz eski kayıtlar aynen çalışmaya devam ediyor.
+          const myConditions: any[] = []
+
           if (userEmail) {
-            const myConditions: any[] = [
+            myConditions.push(
               // Doğrudan bana atanan (tek kişi)
               { responsiblePersonEmail: { equals: userEmail, mode: 'insensitive' } },
               // Çoklu kişi atamasında benim email'im geçiyor
               { responsiblePersons: { contains: userEmail, mode: 'insensitive' } },
-            ]
-            // Departmanıma atanan görevler de "benim görevlerim"de görünsün
-            if (userDeptName) {
-              myConditions.push(
-                { responsibleDepartment: { equals: userDeptName, mode: 'insensitive' } }
-              )
-            }
-            where.OR = myConditions
-          } else {
-            return NextResponse.json([])
+            )
           }
+
+          // employeeId = sicil no. Session'da taşınmıyor, DB'den okunur.
+          const employeeId = (
+            await prisma.user.findUnique({
+              where: { id: user.id },
+              select: { employeeId: true },
+            })
+          )?.employeeId
+          if (employeeId) {
+            // JSON metin içinde `"sicilNo":"ILR-00123"` aranır. Tırnaklar KASITLI:
+            // çıplak `contains: employeeId` sicili başka bir alanın (ör. ad ya da
+            // e-posta) içinde geçen görevleri de yakalardı.
+            myConditions.push({
+              responsiblePersons: { contains: `"sicilNo":"${employeeId}"` },
+            })
+          }
+
+          // Departmanıma atanan görevler de "benim görevlerim"de görünsün
+          if (userDeptName) {
+            myConditions.push(
+              { responsibleDepartment: { equals: userDeptName, mode: 'insensitive' } }
+            )
+          }
+
+          if (myConditions.length === 0) return NextResponse.json([])
+          where.OR = myConditions
           break
+        }
 
         case 'department':
           // Sadece departmanıma atanan görevler
@@ -309,6 +335,15 @@ export async function POST(request: NextRequest) {
         category: true,
       },
     })
+
+    // ── ATAMA BİLDİRİMİ (in-app + e-posta) ──────────────────────────────
+    // Oluşturmada TÜM sorumlular "yeni eklenen"dir. E-postasız sorumluya
+    // e-posta sessizce atlanır; in-app bildirim User kaydı varsa yazılır.
+    // Hata görev oluşturmayı DÜŞÜRMEZ (servis içinde yutuluyor).
+    await atamaBildirimiGonder(
+      { id: task.id, title: task.title, dueDate: task.dueDate },
+      sorumlulariCoz(task.responsiblePersons),
+    )
 
     // E-posta bildirimlerini gönder
     const emailsToSend: string[] = [...(notificationEmails || [])]

@@ -1128,7 +1128,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
               <div className="space-y-2">
                 <Label>Sorumlu</Label>
                 <UserSearchCombobox
-                  value={newDecisionResponsible?.email}
+                  value={newDecisionResponsible?.email ?? undefined}
                   onSelect={setNewDecisionResponsible}
                   placeholder="Sorumlu sec..."
                 />

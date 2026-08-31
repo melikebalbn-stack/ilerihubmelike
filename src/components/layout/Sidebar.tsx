@@ -42,6 +42,7 @@ import {
   Scale,
   Truck,
   BookOpen,
+  ListChecks,
   GitBranch,
   FileWarning,
   MessageCircle,
@@ -153,6 +154,18 @@ const mainMenuItems = [
   // { name: "Takvim", icon: Calendar, href: "/calendar", roles: ["*"] }, // Şimdilik gizli
   { name: "Akademi", icon: GraduationCap, href: "/akademi", roles: ["*"] },
   { name: "Anketler", icon: ClipboardList, href: "/surveys", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+]
+
+// IFS Eğitim modülü — akademiden AYRILDI, kendi bölümü.
+// Görünürlük bu turda MEVCUT akademi izinleriyle (izin geçişi ayrı adım):
+//   Görevlerim → akademi.view (herkes), diğerleri → akademi.report.view,
+//   Eğitimler  → akademi.kurs.edit (authoring).
+// ifs.* anahtarlarına geçiş, guard'lar OR'a çevrildikten sonra yapılacak.
+const ifsMenuItems = [
+  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "akademi.kurs.edit" },
+  { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: "akademi.kurs.edit" },
+  { name: "Görevlerim", icon: ListChecks, href: "/ifs/gorevlerim", roles: [] as string[], permission: "akademi.view" },
+  { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: "akademi.report.view" },
 ]
 
 // Formlar alt menüsü
@@ -365,6 +378,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const [teknikOpen, setTeknikOpen] = useState(false)
+  const [ifsOpen, setIfsOpen] = useState(false)
   const [iproOpen, setIproOpen] = useState(false)
   const [qdmsOpen, setQdmsOpen] = useState(false)
   const [kaliteYonetimOpen, setKaliteYonetimOpen] = useState(false)
@@ -551,6 +565,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const filteredMainItems = filterItems(mainMenuItems)
   const filteredTeknikItems = filterItems(teknikMenuItems)
+  const filteredIfsItems = filterItems(ifsMenuItems as unknown as typeof mainMenuItems)
   // IPRO öğeleri permission alanını `string[]` (OR) tutuyor; filterItems param tipi
   // (typeof mainMenuItems) permission'ı `string` sanıyor. Süzme permission'ı runtime'da
   // string|string[] olarak okur (bkz. filterItems). Cast yalnız tip içindir; davranış korunur.
@@ -645,6 +660,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isTeknikActive = teknikMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname === '/it-reports' || pathname.startsWith('/it-reports/')
+
+  const isIfsActive = pathname === '/ifs' || pathname.startsWith('/ifs/')
 
   // IPRO menüsünde aktif sayfa var mı
   const isIproActive = pathname === '/ipro' || pathname.startsWith('/ipro/')
@@ -1160,6 +1177,34 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {teknikOpen && (
               <div className="space-y-1 ml-4">
                 {filteredTeknikItems.map(item => renderMenuItem(item))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* IFS — Eğitim modülü (akademiden ayrı) */}
+        {filteredIfsItems.length > 0 && (
+          <>
+            <button
+              onClick={() => setIfsOpen(!ifsOpen)}
+              className={cn(
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                isIfsActive
+                  ? "text-teal-300"
+                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+              )}
+            >
+              <BookOpen className="h-5 w-5" />
+              <span className="flex-1 text-left">IFS</span>
+              {ifsOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+            {ifsOpen && (
+              <div className="space-y-1 ml-4">
+                {filteredIfsItems.map(item => renderMenuItem(item))}
               </div>
             )}
           </>

@@ -10,11 +10,14 @@ import { ExamsReportTab } from "./_tabs/exams-report";
 import { CertificatesReportTab } from "./_tabs/certificates-report";
 import { DepartmentsReportTab } from "./_tabs/departments-report";
 import { DepartmentBoardTab } from "./_tabs/department-board";
-import { IfsEvaluationsTab } from "./_tabs/ifs-evaluations";
+// IFS sekmeleri /ifs/raporlar altına TAŞINDI; akademi kabuğu geçiş süresince
+// aynı bileşenleri oradan gösteriyor (kopya YOK). /ifs doğrulandıktan sonra
+// bu import'lar ve sekme kayıtları akademi tarafından kaldırılacak.
+import { IfsEvaluationsTab } from "@/app/(dashboard)/ifs/raporlar/_tabs/ifs-evaluations";
 import { IfsEvaluationReportTab } from "./_tabs/ifs-evaluation-report";
-import { IfsGorevDetayTab } from "./_tabs/ifs-gorev-detay";
-import { IfsRaporuTab } from "./_tabs/ifs-raporu";
-import { IfsKeyUserAtamaTab } from "./_tabs/ifs-keyuser-atama";
+import { IfsGorevDetayTab } from "@/app/(dashboard)/ifs/raporlar/_tabs/ifs-gorev-detay";
+import { IfsRaporuTab } from "@/app/(dashboard)/ifs/raporlar/_tabs/ifs-raporu";
+import { IfsKeyUserAtamaTab } from "@/app/(dashboard)/ifs/raporlar/_tabs/ifs-keyuser-atama";
 
 const TABS = [
   { id: "users", label: "Kullanıcılar" },

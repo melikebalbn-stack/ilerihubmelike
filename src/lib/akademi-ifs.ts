@@ -3,9 +3,14 @@
 // dosyaları handler dışı export kabul etmez (build-time "Route does not match"
 // hatası). Ad temizleme yalnız DISPLAY'de; veriye/import'a dokunmaz.
 
-/** Paket adından "IFS Geçiş · " prefix'ini kırp (departman görünen adı). */
+/**
+ * Paket adından IFS önekini kırp (departman görünen adı).
+ * İki biçim de kırpılır: "IFS Geçiş · X" ve "IFS · X".
+ * (Prod'daki paketler "IFS · Depo-Envanter" biçiminde; eski regex yalnız
+ * "IFS Geçiş · "yi tanıdığı için önek hiçbir ekranda kırpılmıyordu.)
+ */
 export function stripDeptPrefix(name: string): string {
-  return name.replace(/^IFS\s*Geçiş\s*·\s*/u, "").trim() || name;
+  return name.replace(/^IFS(\s*Geçiş)?\s*·\s*/u, "").trim() || name;
 }
 
 /** Kurs adından "<Departman> · " prefix'ini kırp (alan görünen adı). */

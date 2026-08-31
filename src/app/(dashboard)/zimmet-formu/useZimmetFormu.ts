@@ -20,12 +20,20 @@ import { zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
 // ikisi sapmaz). "Yazılım" → varsayılan DIGER + turDiger, ama "Office 365"
 // özel durumu var (bkz. buildSubmitPayload + tur.ts yazilimKaydi).
 //
-// SABIT_TUR_SECENEKLERI: dropdown'a sabit gelen 5 donanım türü ("Yazılım"
-// HARİÇ - o artık ZimmetTanim'da bir kök kayıt, TanimCombobox'ın DB'den
-// çektiği listede geliyor, korumalı olarak). ZIMMET_TUR_TO_ENUM genişletildi:
-// `string` indeksli - artık tür DB'den gelen (sabit olmayan) bir isim de
-// olabildiği için (`tur in ZIMMET_TUR_TO_ENUM` ile ayrım yapılıyor).
-export const SABIT_TUR_SECENEKLERI = ZIMMET_TUR_SECENEKLERI.filter((t) => t !== YAZILIM_KOK_ADI)
+// SABIT_TUR_SECENEKLERI: dropdown'a sabit gelen 6 tür (5 donanım + "Yazılım").
+// "Yazılım" bir ara ZimmetTanim'a taşınıp sabit listeden çıkarılmıştı, ama bu
+// DB'deki kök satırın (migration sonrası seed.sql ile eklenen) varlığına tür
+// dropdown'unun tamamını bağımlı kılıyordu - seed atlanırsa "Yazılım" hiç
+// seçilemiyor, yazılım zimmeti oluşturulamıyordu (Melih'in bulduğu kırılganlık).
+// Geri sabit listeye alındı: her ortamda garanti görünür. Alt-dal (hangi
+// yazılım) listesi için hâlâ gerçek bir DB kök id'sine ihtiyaç var - o artık
+// hem GET /api/zimmet-formu/tanim'in kendi kendini onarmasıyla (bkz. o route)
+// hem de burada garanti ediliyor; id bulunamazsa (ör. geçici hata) çağıran
+// taraf (ZimmetFormuStep1.tsx, ZimmetListesi.tsx) serbest metne düşer, hata
+// vermez. ZIMMET_TUR_TO_ENUM genişletildi: `string` indeksli - artık tür
+// DB'den gelen (sabit olmayan) bir isim de olabildiği için (`tur in
+// ZIMMET_TUR_TO_ENUM` ile ayrım yapılıyor).
+export const SABIT_TUR_SECENEKLERI = ZIMMET_TUR_SECENEKLERI
 export const ZIMMET_TUR_TO_ENUM: Record<string, string> = ZIMMET_SECENEK_TO_ENUM
 
 // Verilen (UI) tür adı + alt-dal metninden NİHAİ enum + turDiger'ı türetir -

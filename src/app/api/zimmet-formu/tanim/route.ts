@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { Prisma } from '@/generated/prisma'
-import { ZIMMET_TUR_SECENEKLERI } from '@/lib/zimmet/tur'
+import { ZIMMET_TUR_SECENEKLERI, YAZILIM_KOK_ADI } from '@/lib/zimmet/tur'
 import { esitlikIcinNormalize } from '@/lib/zimmet/arama'
 
 export const dynamic = 'force-dynamic'
@@ -17,8 +17,9 @@ const KOK_REZERVE_ADLAR = [...ZIMMET_TUR_SECENEKLERI, 'Office 365', 'Diğer'].ma
 
 // GET - Tür (kök, parentId=null) veya alt-dal (parentId=<id>) listesi.
 // ?parentId=null (veya parametre hiç verilmezse) → kök seviyesi (tür
-// dropdown'unun DB'den gelen kısmı - sabit 5 donanım türü + "Yazılım" ayrıca
-// istemci tarafında ekleniyor, bkz. TanimCombobox.tsx).
+// dropdown'unun DB'den gelen kısmı - sabit 5 donanım türü + "Yazılım" artık
+// istemci tarafında SABİT olarak sunuluyor, bkz. useZimmetFormu.ts
+// SABIT_TUR_SECENEKLERI / TanimCombobox.tsx haricTutulacaklar).
 // ?parentId=<id> → o tanımın alt-dalları (ör. Yazılım kökünün id'si → 8+
 // yazılım adı).
 // Yetki: zimmet-formu.create (form dolduran herkes okuyabilsin).
@@ -34,6 +35,34 @@ export async function GET(request: NextRequest) {
       where: { parentId, aktif: true },
       orderBy: [{ sira: 'asc' }, { ad: 'asc' }],
     })
+
+    // "Yazılım" kök satırı, alt-dal (yazılım) listesinin bağlanacağı gerçek
+    // bir id'ye ihtiyaç duyduğu için hâlâ DB'de gerçek bir ZimmetTanim satırı
+    // olmak ZORUNDA (bkz. tur.ts YAZILIM_KOK_ADI) - ama artık migration'dan
+    // sonra AYRICA elle seed.sql çalıştırılmasına bağımlı OLMASIN diye, kök
+    // seviyesi her okunduğunda satır yoksa burada kendini onarır. Gerçek
+    // `upsert` KULLANILAMIYOR - Prisma'nın ad_parentId bileşik unique
+    // filtresi parentId:null kabul etmiyor (Postgres'te de NULL'lar unique
+    // kısıtlamada birbirine eşit sayılmaz, bkz. seed.sql'deki aynı not) - bu
+    // yüzden seed.sql ile AYNI desen: find-then-create. Teorik olarak iki
+    // eşzamanlı istek ikisi de satırı "yok" görüp ikisi de create deneyebilir
+    // (yalnız satır hiç yokken, yani pratikte ilk migration sonrası çok kısa
+    // bir pencerede) - P2002 ise sonraki GET zaten mevcut satırı bulur, kritik
+    // değil. Başarısız olursa (ör. geçici DB hatası) sessizce yutulur -
+    // istemci tarafı zaten kök id bulunamazsa serbest metne düşecek şekilde
+    // tasarlandı (bkz. ZimmetFormuStep1.tsx, ZimmetListesi.tsx).
+    if (parentId === null && !liste.some((t) => t.ad === YAZILIM_KOK_ADI)) {
+      try {
+        const yazilimKoku =
+          (await prisma.zimmetTanim.findFirst({ where: { ad: YAZILIM_KOK_ADI, parentId: null } })) ??
+          (await prisma.zimmetTanim.create({ data: { ad: YAZILIM_KOK_ADI, parentId: null } }))
+        liste.push(yazilimKoku)
+        liste.sort((a, b) => a.sira - b.sira || a.ad.localeCompare(b.ad, 'tr'))
+      } catch (onarimHatasi) {
+        console.error('[GET /api/zimmet-formu/tanim] Yazılım kökü onarılamadı', onarimHatasi)
+      }
+    }
+
     return NextResponse.json(liste)
   } catch (err) {
     console.error('[GET /api/zimmet-formu/tanim]', err)

@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Boxes,
   Cpu,
   Download,
   Eye,
@@ -63,7 +64,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { getZimmetDurumRozeti, zimmetSahibiBaslik, zimmetSahibiAltBaslik } from '@/lib/zimmet/constants'
-import { cokluAlandaAra } from '@/lib/zimmet/arama'
+import { cokluAlandaAra, esitlikIcinNormalize } from '@/lib/zimmet/arama'
 import { temizleAciklama } from '@/lib/zimmet/aciklama'
 import { EK_ALAN_KATALOG, varsayilanEkAlanlar, type EkAlanKey } from '@/lib/zimmet/ek-alanlar'
 import { zorunluAlanlar, zimmetEksikAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
@@ -188,16 +189,19 @@ type FiltreKey = (typeof FILTRELER)[number]['key']
 // envanter kavramını karşılıyor; reddedilen kayıt bunun onay-akışı boyutu,
 // ayrı bir kart gerektirmiyor. Reddedilenler zaten "Reddedildi" filtre
 // sekmesinde ve satırdaki "IT Envanterinde" etiketinde ayrışıyor.
-type StatKey =
-  | 'toplam'
-  | 'NOTEBOOK_BILGISAYAR'
-  | 'DESKTOP_BILGISAYAR'
-  | 'CEP_TELEFONU'
-  | 'EL_TERMINALI'
-  | 'YAZICI'
-  | 'DIGER'
+//
+// StatKey artık kapalı bir union DEĞİL - ZimmetTanim'a eklenen YENİ türler
+// (ör. "Tablet") de birer kart/filtre anahtarı. Sabit anahtarlar (toplam,
+// enum adları) düz string olarak kalıyor; özel tür kartları `ozel:<TürAdı>`
+// öneki taşıyor (bkz. ozelTurKartlari/turKovasi) - bir kullanıcı "+ Yeni tür
+// ekle" ile birebir "toplam" veya "DIGER" gibi rezerve bir isim eklese bile
+// (KOK_REZERVE_ADLAR bunu engellemiyor, sadece Türkçe etiketleri engelliyor)
+// sabit anahtarlarla ÇAKIŞMASIN diye.
+type StatKey = string
 
-const STAT_KARTLARI: { key: StatKey; title: string; icon: typeof Package; color: string; bgColor: string }[] = [
+type StatKartTanimi = { key: StatKey; title: string; icon: typeof Package; color: string; bgColor: string }
+
+const SABIT_STAT_KARTLARI: StatKartTanimi[] = [
   { key: 'toplam', title: 'Toplam Zimmet', icon: Package, color: 'text-blue-600', bgColor: 'bg-blue-100' },
   { key: 'NOTEBOOK_BILGISAYAR', title: 'Notebook Bilgisayar', icon: Laptop, color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
   { key: 'DESKTOP_BILGISAYAR', title: 'Desktop Bilgisayar', icon: Cpu, color: 'text-violet-600', bgColor: 'bg-violet-100' },
@@ -207,6 +211,23 @@ const STAT_KARTLARI: { key: StatKey; title: string; icon: typeof Package; color:
   { key: 'DIGER', title: 'Yazılım', icon: Shapes, color: 'text-slate-600', bgColor: 'bg-slate-100' },
 ]
 
+// ZimmetTanim'a eklenen yeni türler ("Yazılım" hariç, bilinenOzelTurler zaten
+// onu içermiyor) için kart üretir - sabit kartlardan SONRA eklenir. Anahtar
+// `ozel:` önekiyle isim çakışmasından korunuyor (yukarıdaki not).
+function ozelTurKartAdi(ad: string): string {
+  return `ozel:${ad}`
+}
+
+function ozelTurKartlari(bilinenOzelTurler: readonly string[]): StatKartTanimi[] {
+  return bilinenOzelTurler.map((ad) => ({
+    key: ozelTurKartAdi(ad),
+    title: ad,
+    icon: Boxes,
+    color: 'text-teal-600',
+    bgColor: 'bg-teal-100',
+  }))
+}
+
 // Bir zimmetin hangi istatistik/filtre kovasına düştüğünü belirler - hem
 // hesaplaIstatistik hem de kart tıklamasıyla gelen tür filtresi (eslesirTurFiltresi)
 // AYNI mantığı kullanır (tek yerden, duplike edilmeden). SADECE cihaz türüne
@@ -215,10 +236,20 @@ const STAT_KARTLARI: { key: StatKey; title: string; icon: typeof Package; color:
 // LOGO/Mikrofon/Office 365 kartları kaldırıldığı için bu türler (gerçek enum
 // OFFICE_365/MIKROFON dahil, turDiger serbest metniyle "logo"/"mikrofon"
 // yazılanlar dahil) artık DIGER ("Yazılım") kovasına düşüyor.
-function turKovasi(zimmet: Pick<ZimmetItem, 'tur' | 'turDiger'>): Exclude<StatKey, 'toplam'> {
+// `bilinenOzelTurler` (ZimmetTanim kök tanımları, "Yazılım" hariç) verilirse:
+// turDiger'ın " · " öncesi ilk parçası bu listeden biriyle eşleşen DIGER
+// kayıtları artık "Yazılım"dan AYRILIP kendi türünün kovasına düşer (bkz.
+// tur.ts zimmetTurGosterim/turSecimindenTuret - AYNI eşleştirme mantığı).
+function turKovasi(zimmet: Pick<ZimmetItem, 'tur' | 'turDiger'>, bilinenOzelTurler: readonly string[] = []): StatKey {
   if (zimmet.tur === 'DIGER') {
-    const td = (zimmet.turDiger ?? '').trim().toLocaleLowerCase('tr-TR')
-    if (td === 'yazıcı' || td === 'yazici') return 'YAZICI'
+    const deger = (zimmet.turDiger ?? '').trim()
+    const tdLower = deger.toLocaleLowerCase('tr-TR')
+    if (tdLower === 'yazıcı' || tdLower === 'yazici') return 'YAZICI'
+    const ilkParca = deger.split('·')[0].trim()
+    const eslesenOzelTur = bilinenOzelTurler.find(
+      (ad) => esitlikIcinNormalize(ad) === esitlikIcinNormalize(ilkParca)
+    )
+    if (eslesenOzelTur) return ozelTurKartAdi(eslesenOzelTur)
     return 'DIGER'
   }
   if (
@@ -234,7 +265,10 @@ function turKovasi(zimmet: Pick<ZimmetItem, 'tur' | 'turDiger'>): Exclude<StatKe
   return 'DIGER'
 }
 
-function hesaplaIstatistik(zimmetler: ZimmetItem[]): Record<StatKey, number> {
+function hesaplaIstatistik(
+  zimmetler: ZimmetItem[],
+  bilinenOzelTurler: readonly string[] = []
+): Record<StatKey, number> {
   // Tür kırılımı yalnız GÜNCEL zimmetleri sayar (iade edilenler hariç).
   const guncel = zimmetler.filter((z) => z.iadeTarihi === null)
   const sayac: Record<StatKey, number> = {
@@ -246,7 +280,14 @@ function hesaplaIstatistik(zimmetler: ZimmetItem[]): Record<StatKey, number> {
     YAZICI: 0,
     DIGER: 0,
   }
-  for (const z of guncel) sayac[turKovasi(z)]++
+  for (const ad of bilinenOzelTurler) sayac[ozelTurKartAdi(ad)] = 0
+  // turKovasi her kayıt için TAM OLARAK bir kovaya karar verir (mutually
+  // exclusive) - bu yüzden diğer kovaların toplamı her zaman toplam'a (=
+  // guncel.length) eşit kalır, özel tür kartları eklendiğinde de bozulmaz.
+  for (const z of guncel) {
+    const kova = turKovasi(z, bilinenOzelTurler)
+    sayac[kova] = (sayac[kova] ?? 0) + 1
+  }
   return sayac
 }
 
@@ -281,9 +322,13 @@ function hesaplaDurumOzeti(zimmetler: ZimmetItem[]) {
 }
 
 // İstatistik kartına tıklayınca uygulanan tür filtresi - 'toplam' = filtre yok.
-function eslesirTurFiltresi(z: ZimmetItem, turFiltresi: StatKey): boolean {
+function eslesirTurFiltresi(
+  z: ZimmetItem,
+  turFiltresi: StatKey,
+  bilinenOzelTurler: readonly string[] = []
+): boolean {
   if (turFiltresi === 'toplam') return true
-  return turKovasi(z) === turFiltresi
+  return turKovasi(z, bilinenOzelTurler) === turFiltresi
 }
 
 // ── Arama (substring, tr-TR duyarlı) ────────────────────────────────────────
@@ -741,14 +786,22 @@ export function ZimmetListesi() {
     }
   }
 
-  const istatistik = useMemo(() => hesaplaIstatistik(zimmetler), [zimmetler])
+  const istatistik = useMemo(
+    () => hesaplaIstatistik(zimmetler, bilinenOzelTurler),
+    [zimmetler, bilinenOzelTurler]
+  )
   const durumOzeti = useMemo(() => hesaplaDurumOzeti(zimmetler), [zimmetler])
+
+  const tumStatKartlari = useMemo(
+    () => [...SABIT_STAT_KARTLARI, ...ozelTurKartlari(bilinenOzelTurler)],
+    [bilinenOzelTurler]
+  )
 
   const zimmetlerGorunen = useMemo(() => {
     const filtreli = zimmetler.filter(
       (z) =>
         eslesirFiltre(z, filtre) &&
-        eslesirTurFiltresi(z, turFiltresi) &&
+        eslesirTurFiltresi(z, turFiltresi, bilinenOzelTurler) &&
         eslesirDurumOzeti(z, durumOzetiFiltresi) &&
         eslesirArama(z, aramaDebounced)
     )
@@ -885,7 +938,12 @@ export function ZimmetListesi() {
   function handleDuzenleTurAilesiSecimi(ad: string, id: string | null) {
     if (ad === duzenleTurAilesi) return
     setDuzenleTurAilesi(ad)
-    setDuzenleTurAilesiId(id)
+    // "Yazılım" artık sabitSecenekler'den geldiği için TanimCombobox id=null
+    // döndürür - gerçek id'yi kokTanimlar'dan bul (kök kayıt yoksa null kalır,
+    // alt-dal kutusu serbest metne düşer, bkz. render).
+    setDuzenleTurAilesiId(
+      ad === YAZILIM_KOK_ADI ? (kokTanimlar.find((t) => t.ad === YAZILIM_KOK_ADI)?.id ?? null) : id
+    )
     setDuzenleAltDalSecimi('')
     setDuzenleAlan('turDiger', '')
   }
@@ -1054,8 +1112,8 @@ export function ZimmetListesi() {
         </div>
 
         {/* İstatistik kartları (güncel zimmetler — tür kırılımı) */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {STAT_KARTLARI.map((stat) => {
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {tumStatKartlari.map((stat) => {
             const Icon = stat.icon
             const aktif = turFiltresi === stat.key
             return (
@@ -1651,7 +1709,8 @@ export function ZimmetListesi() {
                     parentId={null}
                     value={duzenleTurAilesi}
                     onValueChange={handleDuzenleTurAilesiSecimi}
-                    korumaliAdlar={[YAZILIM_KOK_ADI]}
+                    sabitSecenekler={[YAZILIM_KOK_ADI]}
+                    haricTutulacaklar={[YAZILIM_KOK_ADI]}
                     placeholder="Tür seçin"
                     aramaPlaceholder="Tür ara..."
                     ekleEtiketi="Yeni tür ekle"
@@ -1659,35 +1718,51 @@ export function ZimmetListesi() {
                   />
                 </div>
 
-                {duzenleTurAilesiId && (
+                {(duzenleTurAilesiId || duzenleTurAilesi === YAZILIM_KOK_ADI) && (
                   <div className="col-span-2 space-y-1.5">
                     <Label htmlFor="duzenle-turDiger">
                       {duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : `${duzenleTurAilesi} - alt tür`}{' '}
                       {duzenleTurAilesi === YAZILIM_KOK_ADI ? <RequiredMark /> : null}
                     </Label>
-                    <TanimCombobox
-                      id="duzenle-turDiger"
-                      parentId={duzenleTurAilesiId}
-                      value={duzenleAltDalSecimi}
-                      onValueChange={handleDuzenleAltDalSecimi}
-                      placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
-                      ekleEtiketi="Yeni alt-dal ekle"
-                      className={
-                        duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleAltDalSecimi
-                          ? 'border-rose-300 ring-1 ring-rose-200'
-                          : ''
-                      }
-                    />
-                    {duzenleAltDalSecimi === 'Diğer' && (
+                    {duzenleTurAilesiId ? (
+                      <>
+                        <TanimCombobox
+                          id="duzenle-turDiger"
+                          parentId={duzenleTurAilesiId}
+                          value={duzenleAltDalSecimi}
+                          onValueChange={handleDuzenleAltDalSecimi}
+                          placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
+                          ekleEtiketi="Yeni alt-dal ekle"
+                          className={
+                            duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleAltDalSecimi
+                              ? 'border-rose-300 ring-1 ring-rose-200'
+                              : ''
+                          }
+                        />
+                        {duzenleAltDalSecimi === 'Diğer' && (
+                          <Input
+                            value={duzenleForm.turDiger}
+                            onChange={(e) => setDuzenleAlan('turDiger', e.target.value)}
+                            placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
+                            className={
+                              duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleForm.turDiger.trim()
+                                ? 'border-rose-300 ring-1 ring-rose-200'
+                                : ''
+                            }
+                          />
+                        )}
+                      </>
+                    ) : (
+                      // "Yazılım" kök tanımının id'si (henüz) çözülemedi (ör.
+                      // geçici ağ hatası - normal şartlarda GET
+                      // /api/zimmet-formu/tanim kendi kendini onardığı için
+                      // buraya düşülmez). Liste sunulamıyor ama form
+                      // KİLİTLENMEZ - serbest metin girilebilir.
                       <Input
                         value={duzenleForm.turDiger}
                         onChange={(e) => setDuzenleAlan('turDiger', e.target.value)}
-                        placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
-                        className={
-                          duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleForm.turDiger.trim()
-                            ? 'border-rose-300 ring-1 ring-rose-200'
-                            : ''
-                        }
+                        placeholder="Yazılımı yazın"
+                        className={!duzenleForm.turDiger.trim() ? 'border-rose-300 ring-1 ring-rose-200' : ''}
                       />
                     )}
                   </div>

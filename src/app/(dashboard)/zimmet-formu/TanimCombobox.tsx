@@ -51,10 +51,11 @@ interface TanimComboboxProps {
   // Tür seviyesinde önüne eklenen sabit seçenekler (5 donanım türü) - DB'de
   // karşılığı yok, düzenlenemez/silinemez (ikon hiç gösterilmez).
   sabitSecenekler?: string[]
-  // DB'den gelen ama yine de korumalı (düzenlenemez/silinemez) adlar - ör.
-  // "Yazılım" kökü: gerçek bir ZimmetTanim satırı (çocuklarını bağlamak için
-  // gerekli) ama kod tarafında ad===... tam eşleşmesiyle korunuyor.
-  korumaliAdlar?: string[]
+  // DB'den gelen listede olsa bile GÖSTERİLMEYECEK adlar - ör. "Yazılım" artık
+  // `sabitSecenekler`de sabit olarak sunuluyor (bkz. useZimmetFormu.ts
+  // SABIT_TUR_SECENEKLERI); aynı satır DB listesinde de varsa mükerrer
+  // görünmesin diye burada süzülüyor.
+  haricTutulacaklar?: string[]
   id?: string
   placeholder?: string
   aramaPlaceholder?: string
@@ -69,7 +70,7 @@ interface TanimComboboxProps {
 // Yetkili kullanıcı (zimmet-formu.view) satır üstü kalem/çöp ile
 // düzenleyip soft-delete edebiliyor, listenin altındaki "+ Yeni ... ekle" ile
 // yeni tanım ekleyebiliyor. Yetkisiz kullanıcı sadece seçer. "sabitSecenekler"
-// ve "korumaliAdlar"daki isimler hiçbir zaman ikon göstermez.
+// isimleri hiçbir zaman ikon göstermez.
 // "Diğer" DB'de bir satır DEĞİL - sabit, en sonda, düzenlenemez/silinemez -
 // seçilince dışarıda (bu bileşenin DIŞINDA, çağıran tarafta) serbest metin
 // input'u açılıyor.
@@ -78,7 +79,7 @@ export function TanimCombobox({
   value,
   onValueChange,
   sabitSecenekler = [],
-  korumaliAdlar = [],
+  haricTutulacaklar = [],
   id,
   placeholder = 'Seçin',
   aramaPlaceholder = 'Ara...',
@@ -116,8 +117,9 @@ export function TanimCombobox({
   }, [parentId])
 
   const filtrelenmis = useMemo(
-    () => liste.filter((item) => cokluAlandaAra([item.ad], arama)),
-    [liste, arama]
+    () =>
+      liste.filter((item) => !haricTutulacaklar.includes(item.ad) && cokluAlandaAra([item.ad], arama)),
+    [liste, arama, haricTutulacaklar]
   )
 
   async function yeniEkle() {
@@ -247,7 +249,6 @@ export function TanimCombobox({
                   )}
                   <CommandGroup>
                     {filtrelenmis.map((item) => {
-                      const korumali = korumaliAdlar.includes(item.ad)
                       return (
                         <CommandItem
                           key={item.id}
@@ -268,7 +269,7 @@ export function TanimCombobox({
                             />
                             <span className="truncate">{item.ad}</span>
                           </span>
-                          {yonetebilir && !korumali && (
+                          {yonetebilir && (
                             <span className="flex items-center gap-0.5 shrink-0">
                               <Button
                                 type="button"

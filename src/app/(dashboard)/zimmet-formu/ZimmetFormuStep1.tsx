@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,10 +52,34 @@ export function ZimmetFormuStep1({
   // hangi parentId'yi sorgulayacağı - TanimCombobox'ın onValueChange'i seçilen
   // satırın gerçek id'sini geri verir (bkz. TanimCombobox.tsx). Sabit 5
   // donanım türünde id her zaman null - alt-dal Combobox'ı hiç render edilmez.
+  // "Yazılım" da artık sabitSecenekler'den geldiği için id null gelir -
+  // gerçek id'si kokTanimlar'dan (aşağıda) ayrıca çözülüyor (bkz. handleTurSecimi).
   const [turAilesiId, setTurAilesiId] = useState<string | null>(null)
   // Alt-dal Combobox'ının canlı seçimi - Wizard her zaman YENİ kayıt
   // oluşturur (prefill yok), bu yüzden hep boş başlar.
   const [altDalSecimi, setAltDalSecimi] = useState('')
+  // Kök (parentId=null) tanımlar - SADECE "Yazılım"ın gerçek DB id'sini bulmak
+  // için (o artık sabitSecenekler'de, TanimCombobox kendi id'sini null
+  // döndürüyor). GET /api/zimmet-formu/tanim kendi kendini onardığı için
+  // (bkz. o route) bu liste normal şartlarda "Yazılım"ı hep içerir; içermezse
+  // (ör. geçici ağ hatası) turAilesiId null kalır, alt-dal kutusu serbest
+  // metne düşer - form KİLİTLENMEZ (bkz. aşağıdaki render).
+  const [kokTanimlar, setKokTanimlar] = useState<{ id: string; ad: string }[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/zimmet-formu/tanim?parentId=null')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((kokler: { id: string; ad: string }[]) => {
+        if (!cancelled) setKokTanimlar(Array.isArray(kokler) ? kokler : [])
+      })
+      .catch(() => {
+        if (!cancelled) setKokTanimlar([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const { enumTur } = turVeTurDigerNihai(data.tur, data.turDiger)
 
@@ -68,7 +92,10 @@ export function ZimmetFormuStep1({
   function handleTurSecimi(ad: string, id: string | null) {
     if (ad === data.tur) return
     setField('tur', ad)
-    setTurAilesiId(id)
+    // "Yazılım" sabitSecenekler'den seçildiği için TanimCombobox id=null
+    // döndürür - gerçek id'yi kokTanimlar'dan bul (kök kayıt yoksa null kalır,
+    // alt-dal kutusu serbest metne düşer, bkz. render).
+    setTurAilesiId(ad === YAZILIM_KOK_ADI ? (kokTanimlar.find((t) => t.ad === YAZILIM_KOK_ADI)?.id ?? null) : id)
     setAltDalSecimi('')
     setField('turDiger', '')
   }
@@ -189,7 +216,7 @@ export function ZimmetFormuStep1({
             value={data.tur}
             onValueChange={handleTurSecimi}
             sabitSecenekler={[...SABIT_TUR_SECENEKLERI]}
-            korumaliAdlar={[YAZILIM_KOK_ADI]}
+            haricTutulacaklar={[YAZILIM_KOK_ADI]}
             placeholder="Tür seçin"
             aramaPlaceholder="Tür ara..."
             ekleEtiketi="Yeni tür ekle"
@@ -197,36 +224,52 @@ export function ZimmetFormuStep1({
           />
         </div>
 
-        {turAilesiId && (
+        {(turAilesiId || data.tur === YAZILIM_KOK_ADI) && (
           <div className="space-y-2">
             <Label htmlFor="turDiger">
               {data.tur === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : `${data.tur} - alt tür`}{' '}
               {data.tur === YAZILIM_KOK_ADI ? <RequiredMark /> : <OptionalMark />}
             </Label>
-            <TanimCombobox
-              id="turDiger"
-              parentId={turAilesiId}
-              value={altDalSecimi}
-              onValueChange={handleAltDalSecimi}
-              placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
-              aramaPlaceholder="Ara..."
-              ekleEtiketi="Yeni alt-dal ekle"
-              className={
-                data.tur === YAZILIM_KOK_ADI && !altDalSecimi
-                  ? 'border-rose-300 ring-1 ring-rose-200'
-                  : ''
-              }
-            />
-            {altDalSecimi === 'Diğer' && (
+            {turAilesiId ? (
+              <>
+                <TanimCombobox
+                  id="turDiger"
+                  parentId={turAilesiId}
+                  value={altDalSecimi}
+                  onValueChange={handleAltDalSecimi}
+                  placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
+                  aramaPlaceholder="Ara..."
+                  ekleEtiketi="Yeni alt-dal ekle"
+                  className={
+                    data.tur === YAZILIM_KOK_ADI && !altDalSecimi
+                      ? 'border-rose-300 ring-1 ring-rose-200'
+                      : ''
+                  }
+                />
+                {altDalSecimi === 'Diğer' && (
+                  <Input
+                    value={data.turDiger}
+                    onChange={(e) => setField('turDiger', e.target.value)}
+                    placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
+                    className={
+                      data.tur === YAZILIM_KOK_ADI && !data.turDiger.trim()
+                        ? 'border-rose-300 ring-1 ring-rose-200'
+                        : ''
+                    }
+                  />
+                )}
+              </>
+            ) : (
+              // "Yazılım" kök tanımının id'si (henüz) çözülemedi (ör. geçici
+              // ağ hatası - normal şartlarda GET /api/zimmet-formu/tanim kendi
+              // kendini onardığı için buraya düşülmez). Yazılım listesi
+              // sunulamıyor ama form KİLİTLENMEZ - serbest metin girilebilir,
+              // Kaydet'te tur.ts yazilimKaydi normalize eder.
               <Input
                 value={data.turDiger}
                 onChange={(e) => setField('turDiger', e.target.value)}
-                placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
-                className={
-                  data.tur === YAZILIM_KOK_ADI && !data.turDiger.trim()
-                    ? 'border-rose-300 ring-1 ring-rose-200'
-                    : ''
-                }
+                placeholder="Yazılımı yazın"
+                className={!data.turDiger.trim() ? 'border-rose-300 ring-1 ring-rose-200' : ''}
               />
             )}
           </div>

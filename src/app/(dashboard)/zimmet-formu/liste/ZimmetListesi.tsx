@@ -74,6 +74,8 @@ import {
   altDalSecimindenTuret,
   ozelTurKaydi,
   YAZILIM_KOK_ADI,
+  YAZILIM_KOK_COZULEMEDI_PARENT_ID,
+  YAZILIM_ALT_DAL_SABIT_SECENEKLERI,
 } from '@/lib/zimmet/tur'
 import { ZimmetDurumBadge } from '../ZimmetDurumBadge'
 import { IslakImzaYukleDialog } from '../IslakImzaYukleDialog'
@@ -904,13 +906,24 @@ export function ZimmetListesi() {
       setDuzenleTurAilesiId(turAilesiId)
       turDigerPrefill = altDal
 
-      if (turAilesiId && altDal) {
-        try {
-          const res = await fetch(`/api/zimmet-formu/tanim?parentId=${turAilesiId}`)
-          const cocuklar: { ad: string }[] = res.ok ? await res.json() : []
-          setDuzenleAltDalSecimi(altDalSecimindenTuret(altDal, cocuklar.map((c) => c.ad)))
-        } catch {
-          setDuzenleAltDalSecimi('Diğer')
+      // "Yazılım" için 8 sabit fallback her zaman bilinen kabul edilir (DB'den
+      // bağımsız, bkz. tur.ts YAZILIM_ALT_DAL_SABIT_SECENEKLERI) - kök id
+      // çözülemese bile (tablo migration'ı uygulanmadı) mevcut kaydın
+      // "Office 365" gibi bilinen bir değeri "Diğer"e düşmeden doğru seçili
+      // gösterilsin.
+      const sabitCocuklar = turAdi === YAZILIM_KOK_ADI ? YAZILIM_ALT_DAL_SABIT_SECENEKLERI : []
+      if (altDal) {
+        if (turAilesiId) {
+          try {
+            const res = await fetch(`/api/zimmet-formu/tanim?parentId=${turAilesiId}`)
+            const cocuklar: { ad: string }[] = res.ok ? await res.json() : []
+            const bilinenCocuklar = [...new Set([...sabitCocuklar, ...cocuklar.map((c) => c.ad)])]
+            setDuzenleAltDalSecimi(altDalSecimindenTuret(altDal, bilinenCocuklar))
+          } catch {
+            setDuzenleAltDalSecimi(altDalSecimindenTuret(altDal, sabitCocuklar))
+          }
+        } else {
+          setDuzenleAltDalSecimi(altDalSecimindenTuret(altDal, sabitCocuklar))
         }
       } else {
         setDuzenleAltDalSecimi('')
@@ -1724,45 +1737,42 @@ export function ZimmetListesi() {
                       {duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : `${duzenleTurAilesi} - alt tür`}{' '}
                       {duzenleTurAilesi === YAZILIM_KOK_ADI ? <RequiredMark /> : null}
                     </Label>
-                    {duzenleTurAilesiId ? (
-                      <>
-                        <TanimCombobox
-                          id="duzenle-turDiger"
-                          parentId={duzenleTurAilesiId}
-                          value={duzenleAltDalSecimi}
-                          onValueChange={handleDuzenleAltDalSecimi}
-                          placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
-                          ekleEtiketi="Yeni alt-dal ekle"
-                          className={
-                            duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleAltDalSecimi
-                              ? 'border-rose-300 ring-1 ring-rose-200'
-                              : ''
-                          }
-                        />
-                        {duzenleAltDalSecimi === 'Diğer' && (
-                          <Input
-                            value={duzenleForm.turDiger}
-                            onChange={(e) => setDuzenleAlan('turDiger', e.target.value)}
-                            placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
-                            className={
-                              duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleForm.turDiger.trim()
-                                ? 'border-rose-300 ring-1 ring-rose-200'
-                                : ''
-                            }
-                          />
-                        )}
-                      </>
-                    ) : (
-                      // "Yazılım" kök tanımının id'si (henüz) çözülemedi (ör.
-                      // geçici ağ hatası - normal şartlarda GET
-                      // /api/zimmet-formu/tanim kendi kendini onardığı için
-                      // buraya düşülmez). Liste sunulamıyor ama form
-                      // KİLİTLENMEZ - serbest metin girilebilir.
+                    {/* Kök id'si (henüz) çözülemediyse (tablo migration'ı
+                        uygulanmadı veya geçici hata) bile dropdown gösterilir
+                        - sentinel parentId ile (bkz. tur.ts
+                        YAZILIM_KOK_COZULEMEDI_PARENT_ID), DB listesi boş
+                        gelir ama 8 sabit yazılım fallback'i + "+ Yeni ekle"
+                        YİNE görünür. Serbest metne hiç düşülmez. */}
+                    <TanimCombobox
+                      key={duzenleTurAilesi}
+                      id="duzenle-turDiger"
+                      parentId={duzenleTurAilesiId ?? YAZILIM_KOK_COZULEMEDI_PARENT_ID}
+                      value={duzenleAltDalSecimi}
+                      onValueChange={handleDuzenleAltDalSecimi}
+                      sabitSecenekler={
+                        duzenleTurAilesi === YAZILIM_KOK_ADI ? [...YAZILIM_ALT_DAL_SABIT_SECENEKLERI] : []
+                      }
+                      haricTutulacaklar={
+                        duzenleTurAilesi === YAZILIM_KOK_ADI ? [...YAZILIM_ALT_DAL_SABIT_SECENEKLERI] : []
+                      }
+                      placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
+                      ekleEtiketi="Yeni alt-dal ekle"
+                      className={
+                        duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleAltDalSecimi
+                          ? 'border-rose-300 ring-1 ring-rose-200'
+                          : ''
+                      }
+                    />
+                    {duzenleAltDalSecimi === 'Diğer' && (
                       <Input
                         value={duzenleForm.turDiger}
                         onChange={(e) => setDuzenleAlan('turDiger', e.target.value)}
-                        placeholder="Yazılımı yazın"
-                        className={!duzenleForm.turDiger.trim() ? 'border-rose-300 ring-1 ring-rose-200' : ''}
+                        placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
+                        className={
+                          duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleForm.turDiger.trim()
+                            ? 'border-rose-300 ring-1 ring-rose-200'
+                            : ''
+                        }
                       />
                     )}
                   </div>

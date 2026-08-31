@@ -10,7 +10,11 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { EK_ALAN_KATALOG, varsayilanEkAlanlar, type EkAlanKey } from '@/lib/zimmet/ek-alanlar'
 import { zorunluAlanlar } from '@/lib/zimmet/zorunlu-alanlar'
-import { YAZILIM_KOK_ADI } from '@/lib/zimmet/tur'
+import {
+  YAZILIM_KOK_ADI,
+  YAZILIM_KOK_COZULEMEDI_PARENT_ID,
+  YAZILIM_ALT_DAL_SABIT_SECENEKLERI,
+} from '@/lib/zimmet/tur'
 import { PersonelCombobox } from './PersonelCombobox'
 import { TanimCombobox } from './TanimCombobox'
 import {
@@ -62,8 +66,10 @@ export function ZimmetFormuStep1({
   // için (o artık sabitSecenekler'de, TanimCombobox kendi id'sini null
   // döndürüyor). GET /api/zimmet-formu/tanim kendi kendini onardığı için
   // (bkz. o route) bu liste normal şartlarda "Yazılım"ı hep içerir; içermezse
-  // (ör. geçici ağ hatası) turAilesiId null kalır, alt-dal kutusu serbest
-  // metne düşer - form KİLİTLENMEZ (bkz. aşağıdaki render).
+  // (ör. ZimmetTanim tablosunun migration'ı henüz uygulanmadı, ya da geçici
+  // ağ hatası) turAilesiId null kalır - alt-dal kutusu YİNE dropdown olarak
+  // render edilir, sadece sentinel parentId ile (bkz. render,
+  // YAZILIM_KOK_COZULEMEDI_PARENT_ID) - serbest metne DÜŞMEZ.
   const [kokTanimlar, setKokTanimlar] = useState<{ id: string; ad: string }[]>([])
 
   useEffect(() => {
@@ -94,7 +100,7 @@ export function ZimmetFormuStep1({
     setField('tur', ad)
     // "Yazılım" sabitSecenekler'den seçildiği için TanimCombobox id=null
     // döndürür - gerçek id'yi kokTanimlar'dan bul (kök kayıt yoksa null kalır,
-    // alt-dal kutusu serbest metne düşer, bkz. render).
+    // alt-dal kutusu yine dropdown gösterir, sentinel parentId ile - bkz. render).
     setTurAilesiId(ad === YAZILIM_KOK_ADI ? (kokTanimlar.find((t) => t.ad === YAZILIM_KOK_ADI)?.id ?? null) : id)
     setAltDalSecimi('')
     setField('turDiger', '')
@@ -230,46 +236,39 @@ export function ZimmetFormuStep1({
               {data.tur === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : `${data.tur} - alt tür`}{' '}
               {data.tur === YAZILIM_KOK_ADI ? <RequiredMark /> : <OptionalMark />}
             </Label>
-            {turAilesiId ? (
-              <>
-                <TanimCombobox
-                  id="turDiger"
-                  parentId={turAilesiId}
-                  value={altDalSecimi}
-                  onValueChange={handleAltDalSecimi}
-                  placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
-                  aramaPlaceholder="Ara..."
-                  ekleEtiketi="Yeni alt-dal ekle"
-                  className={
-                    data.tur === YAZILIM_KOK_ADI && !altDalSecimi
-                      ? 'border-rose-300 ring-1 ring-rose-200'
-                      : ''
-                  }
-                />
-                {altDalSecimi === 'Diğer' && (
-                  <Input
-                    value={data.turDiger}
-                    onChange={(e) => setField('turDiger', e.target.value)}
-                    placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
-                    className={
-                      data.tur === YAZILIM_KOK_ADI && !data.turDiger.trim()
-                        ? 'border-rose-300 ring-1 ring-rose-200'
-                        : ''
-                    }
-                  />
-                )}
-              </>
-            ) : (
-              // "Yazılım" kök tanımının id'si (henüz) çözülemedi (ör. geçici
-              // ağ hatası - normal şartlarda GET /api/zimmet-formu/tanim kendi
-              // kendini onardığı için buraya düşülmez). Yazılım listesi
-              // sunulamıyor ama form KİLİTLENMEZ - serbest metin girilebilir,
-              // Kaydet'te tur.ts yazilimKaydi normalize eder.
+            {/* "Yazılım" kök id'si (henüz) çözülemediyse (tablo migration'ı
+                uygulanmadı veya geçici hata) bile dropdown gösterilir - kök
+                yerine sentinel parentId geçirilir (bkz. tur.ts
+                YAZILIM_KOK_COZULEMEDI_PARENT_ID), DB listesi boş gelir ama
+                8 sabit yazılım fallback'i + "+ Yeni ekle" YİNE görünür.
+                Kullanıcı hiçbir zaman serbest metin input'una düşmez. */}
+            <TanimCombobox
+              key={data.tur}
+              id="turDiger"
+              parentId={turAilesiId ?? YAZILIM_KOK_COZULEMEDI_PARENT_ID}
+              value={altDalSecimi}
+              onValueChange={handleAltDalSecimi}
+              sabitSecenekler={data.tur === YAZILIM_KOK_ADI ? [...YAZILIM_ALT_DAL_SABIT_SECENEKLERI] : []}
+              haricTutulacaklar={data.tur === YAZILIM_KOK_ADI ? [...YAZILIM_ALT_DAL_SABIT_SECENEKLERI] : []}
+              placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
+              aramaPlaceholder="Ara..."
+              ekleEtiketi="Yeni alt-dal ekle"
+              className={
+                data.tur === YAZILIM_KOK_ADI && !altDalSecimi
+                  ? 'border-rose-300 ring-1 ring-rose-200'
+                  : ''
+              }
+            />
+            {altDalSecimi === 'Diğer' && (
               <Input
                 value={data.turDiger}
                 onChange={(e) => setField('turDiger', e.target.value)}
-                placeholder="Yazılımı yazın"
-                className={!data.turDiger.trim() ? 'border-rose-300 ring-1 ring-rose-200' : ''}
+                placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
+                className={
+                  data.tur === YAZILIM_KOK_ADI && !data.turDiger.trim()
+                    ? 'border-rose-300 ring-1 ring-rose-200'
+                    : ''
+                }
               />
             )}
           </div>

@@ -7,6 +7,16 @@ import { esitlikIcinNormalize } from './arama'
 // edilir.
 export const YAZILIM_KOK_ADI = 'Yazılım'
 
+// "Yazılım" kökünün gerçek id'si (henüz) çözülemediğinde (ör. ZimmetTanim
+// tablosunun migration'ı henüz uygulanmadı) alt-dal Combobox'ına `parentId`
+// olarak geçirilen sentinel değer - gerçek bir kayıtla ASLA eşleşmez, ama
+// `null` da DEĞİLDİR (TanimCombobox'ta parentId=null "kök seviyesi" anlamına
+// gelir - burada bu anlamla KARIŞMASIN diye). Combobox yine de normal şekilde
+// render olur (arama, "+ Yeni ekle"), sadece DB'den çekilen liste boş gelir -
+// kullanıcı hiçbir zaman serbest metin input'una düşmez (bkz.
+// ZimmetFormuStep1.tsx, ZimmetListesi.tsx).
+export const YAZILIM_KOK_COZULEMEDI_PARENT_ID = '__yazilim-kok-cozulemedi__'
+
 // DB'deki enum → gösterim etiketi. ZimmetTuru enum'una DOKUNULMADI (migration
 // gerekmesin diye) - OFFICE_365 ve DIGER değerleri DB'de aynen duruyor,
 // SADECE görüntüleme katmanında "Yazılım" adı altında birleştiriliyor.
@@ -107,6 +117,18 @@ export const ZIMMET_YAZILIM_SECENEKLERI = [
 ] as const
 
 export type ZimmetYazilimSecenegi = (typeof ZIMMET_YAZILIM_SECENEKLERI)[number]
+
+// Alt-dal (yazılım) Combobox'ının sabit fallback listesi - "Diğer" hariç (o
+// zaten TanimCombobox'ın kendisinde sabit olarak var, bkz. TanimCombobox.tsx
+// DIGER). ZimmetTanim'daki Yazılım kökünün altına DB'den gelen gerçek
+// satırlarla BİRLEŞTİRİLİR (haricTutulacaklar ile mükerrer engellenir, bkz.
+// ZimmetFormuStep1.tsx / ZimmetListesi.tsx) - migration henüz
+// uygulanmamışsa (tablo yok) veya kök kayıt bulunamazsa bile bu 8 yazılım
+// dropdown'da görünmeye devam eder (Melih'in kararı - eski davranış migration
+// olmadan da korunsun).
+export const YAZILIM_ALT_DAL_SABIT_SECENEKLERI = ZIMMET_YAZILIM_SECENEKLERI.filter(
+  (ad) => ad !== 'Diğer'
+)
 
 // DB'deki mevcut turDiger değeri listede yoksa (ör. "MAS Laptop", "Termal
 // Yazıcı" - eski Syteline verisinden, aslında yazılım değil donanım) "Diğer"

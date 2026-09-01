@@ -11,6 +11,10 @@ sıfırlanıyor, manuel olarak `/api/cron/init` çağrılana kadar tüm
 cron'lar uyuyor. 2026-05-02 ile 2026-05-04 arası personel evaluation
 mailleri bu sebeple gitmedi.
 
+In-process mekanizma 2026-09-01'de tamamen kaldırıldı (`src/lib/cron.ts`,
+`src/app/api/cron/init/route.ts` ve `node-cron` bağımlılığı silindi).
+Sistem cron artık tek tetikleyici.
+
 Çözüm: Linux `cron` daemon — PM2'den bağımsız, sistem reboot sonrası
 otomatik başlar, log'lu.
 
@@ -100,16 +104,12 @@ curl -sS --fail-with-body -X POST -H "x-cron-secret: $SECRET" \
 - `.env` içindeki `CRON_SECRET` değeri ile config'deki secret eşleşmeli
 
 ### Cron çift çalışıyor
-- In-process cron (`src/lib/cron.ts`) tekrar etkinleştirilmiş olabilir
-- `/api/cron/init` GET çağrısı yapılmamalı — sistem cron tek tetikleyici olmalı
-- isSchedulerInitialized guard çift register'ı önler ama yine de teyit et:
-  `pm2 logs ilerihub | grep "All notification schedulers initialized"`
-  → 1 kere görünmeli, restart sonrası 0 (sistem cron geçişinde tekrar 1 olmaz)
+- In-process cron kaldırıldı; tekrar eklenmediğini teyit et:
+  `grep -rn "node-cron" src/` → boş dönmeli
+- Aynı ucun `/etc/cron.d/ilerihub-cron` içinde iki satırı olabilir
 
 ## İlgili Kodlar
 
-- `src/lib/cron.ts` — DEPRECATED, in-process schedule mantığı
-- `src/app/api/cron/init/route.ts` — DEPRECATED, manuel debug için
 - `src/app/api/personnel/check-evaluations/route.ts` — endpoint
 - `src/app/api/akademi/cron/check-*/route.ts` — Akademi endpoint'leri
 
@@ -118,6 +118,10 @@ curl -sS --fail-with-body -X POST -H "x-cron-secret: $SECRET" \
 - **2026-05-04:** node-cron in-process'ten sistem cron'a taşındı.
   PM2 restart kaynaklı 3 günlük mail kaybı (3-4 Mayıs personel
   evaluation) bu değişiklikle çözüldü.
+- **2026-09-01:** In-process scheduler kalıntısı silindi. `(dashboard)/layout.tsx`
+  her mount'ta `/api/cron/init` çağırdığı için node-cron sessizce yeniden
+  kuruluyordu; header'sız çağrılan üç iş 401 alıyor, header'lı olanlar sistem
+  cron ile çift mail üretiyordu (17.08.2026'da aynı alıcıya 3 kopya).
 - **Auto-bootstrap denemesi:** Aynı tarihte instrumentation.ts hook'u
   ile auto-init denendi, Next.js v15 build pipeline'ını kırdı,
   geri alındı.

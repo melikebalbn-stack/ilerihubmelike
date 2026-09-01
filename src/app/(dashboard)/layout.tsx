@@ -4,7 +4,7 @@ import React from "react"
 import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 import { BottomNav } from "@/components/layout/BottomNav"
-import { useEffect, Suspense, useState } from "react"
+import { Suspense, useState } from "react"
 import { Toaster } from "sonner"
 import { cn } from "@/lib/utils"
 import { RouteChangeProvider } from "@/components/providers/route-change-provider"
@@ -74,20 +74,6 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  // Initialize cron scheduler on mount
-  useEffect(() => {
-    const initScheduler = async () => {
-      try {
-        await fetch('/api/cron/init')
-        console.log('✅ Cron scheduler initialized')
-      } catch (error) {
-        console.error('❌ Failed to initialize cron scheduler:', error)
-      }
-    }
-
-    initScheduler()
-  }, [])
-
   return (
     <Suspense fallback={null}>
       <RouteChangeProvider>

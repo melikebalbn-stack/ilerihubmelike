@@ -1,4 +1,5 @@
 // Faz 6 — Başvuru → Personel kaydı dönüşümü. TEK KAYNAK.
+import { personelFkAlanlari } from '@/lib/personnel/fk-cozum';
 //
 // Tasarım §G: işbaşı, başvuru kaydının personel kartına dönüştürülmesiyle olur. Dönüşüm
 // ATOMİKTİR: Personnel + PersonnelSensitive + (varsa) beden profili + EmploymentPeriod +
@@ -489,6 +490,15 @@ export async function personeleDonustur(opts: {
         sorumlu2: hiyerarsi.sorumlu2,
         sorumlu3: hiyerarsi.sorumlu3,
         jobApplicationId: app.id,
+        // FAZ 1 · ÇİFT YAZIM. `girdi.bolum` zaten DepartmentDefinition.name (serbest
+        // metin değil, bkz. yukarıdaki tip yorumu) → departmentId kesin çözülür.
+        // Sorumlu adları hiyerarşiden geliyor; çözülemezse FK null + uyarı logu.
+        ...(await personelFkAlanlari(tx, {
+          bolum: girdi.bolum,
+          birimSorumlusu: hiyerarsi.birimSorumlusu,
+          sorumlu2: hiyerarsi.sorumlu2,
+          sorumlu3: hiyerarsi.sorumlu3,
+        })),
       };
 
       let personnelId: string;

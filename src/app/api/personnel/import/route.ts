@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { personelFkAlanlari } from '@/lib/personnel/fk-cozum'
 import { prisma } from '@/lib/prisma'
 import { personelEklendiginde } from '@/lib/org/personel-koltuk-senkron'
 import * as XLSX from 'xlsx'
@@ -340,6 +341,19 @@ export async function POST(request: NextRequest) {
           const ustalikDate = parseDate(mapped.ustalikBelgesi)
           if (ustalikDate) personnelData.ustalikBelgesi = ustalikDate
         }
+
+        // FAZ 1 · ÇİFT YAZIM: metin alanları AYNEN yazılır (yukarıda kuruldu),
+        // yanlarına FK'lar doldurulur. Excel'den serbest metin geldiği için ad
+        // çözülemeyebilir → FK null + uyarı logu; SATIR REDDEDİLMEZ.
+        Object.assign(
+          personnelData,
+          await personelFkAlanlari(prisma, {
+            bolum: personnelData.bolum,
+            birimSorumlusu: personnelData.birimSorumlusu,
+            sorumlu2: personnelData.sorumlu2,
+            sorumlu3: personnelData.sorumlu3,
+          }),
+        )
 
         // Upsert personnel
         const existing = await prisma.personnel.findUnique({ where: { sicilNo } })

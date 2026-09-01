@@ -1,4 +1,5 @@
 // PR-PERSONNEL-DEPARTMENT-TRANSFER: Tek personelin bölüm değişiklik akışı.
+import { bolumFkCoz } from '@/lib/personnel/fk-cozum'
 //
 // POST: yeni transfer kaydı. Transaction'da:
 //   1. PersonnelDepartmentTransfer create
@@ -85,9 +86,15 @@ export async function POST(
         },
       })
 
+      // FAZ 1 · ÇİFT YAZIM: bolum metni + departmentId birlikte. Transfer TARİHÇESİ
+      // (personnel_department_transfer) metin kalır — tarihçe anlık görüntüdür.
       await tx.personnel.update({
         where: { id: personnel.id },
-        data: { bolum: newDepartment, updatedAt: new Date() },
+        data: {
+          bolum: newDepartment,
+          departmentId: await bolumFkCoz(tx, newDepartment),
+          updatedAt: new Date(),
+        },
       })
 
       await tx.permissionAuditLog.create({

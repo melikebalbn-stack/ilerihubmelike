@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { bolumFkCoz } from '@/lib/personnel/fk-cozum'
 import { prisma } from '@/lib/prisma'
 import { personelEklendiginde } from '@/lib/org/personel-koltuk-senkron'
 import { getAllADUsers } from '@/lib/azure-ad'
@@ -53,7 +54,12 @@ export async function POST(request: NextRequest) {
               azureAdId: adUser.id,
               azureAdEmail: email,
               ...(adUser.jobTitle && { gorev: adUser.jobTitle }),
-              ...(adUser.department && { bolum: adUser.department }),
+              // FAZ 1 · ÇİFT YAZIM: AD'nin department metni AYNEN yazılır; DD adıyla
+              // birebir tutmazsa (AD biçimi farklı olabilir) FK null kalır + uyarı loglanır.
+              ...(adUser.department && {
+                bolum: adUser.department,
+                departmentId: await bolumFkCoz(prisma, adUser.department),
+              }),
               ...(adUser.mobilePhone && { telefon: adUser.mobilePhone }),
             },
           })
@@ -105,6 +111,8 @@ export async function POST(request: NextRequest) {
                   iseGirisTarihi: entryDate,
                   gorev: adUser.jobTitle || 'Belirtilmemiş',
                   bolum: adUser.department || 'Belirtilmemiş',
+                  // Çözülemezse null — 'Belirtilmemiş' diye bir DepartmentDefinition yok.
+                  departmentId: await bolumFkCoz(prisma, adUser.department),
                   telefon: adUser.mobilePhone || null,
                   azureAdId: adUser.id,
                   azureAdEmail: email,

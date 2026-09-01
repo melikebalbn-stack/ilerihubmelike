@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { personelFkAlanlari } from '@/lib/personnel/fk-cozum'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
@@ -328,6 +329,23 @@ export async function PUT(
     if (body.mezuniyetYili) {
       body.mezuniyetYili = parseInt(body.mezuniyetYili) || null
     }
+
+    // FAZ 1 · ÇİFT YAZIM: metin alanları AYNEN güncellenir, yanlarına FK yazılır.
+    // Yalnız GÖNDERİLEN alanlar için anahtar üretilir — dokunulmayan alanın FK'sı
+    // sıfırlanmaz (kısmi güncelleme güvenliği).
+    Object.assign(
+      body,
+      await personelFkAlanlari(
+        prisma,
+        {
+          ...(body.bolum !== undefined ? { bolum: body.bolum } : {}),
+          ...(body.birimSorumlusu !== undefined ? { birimSorumlusu: body.birimSorumlusu } : {}),
+          ...(body.sorumlu2 !== undefined ? { sorumlu2: body.sorumlu2 } : {}),
+          ...(body.sorumlu3 !== undefined ? { sorumlu3: body.sorumlu3 } : {}),
+        },
+        personnelId,
+      ),
+    )
 
     // Yaka Aşama 1: efektif yaka/detay (body vermiyorsa mevcut değer). Aktif personelde
     // ikisi de zorunlu; her durumda yaka-detay tutarlı olmalı (YAKA_DETAY_MAP).

@@ -5505,7 +5505,7 @@ model OrgUnit {
   isActive Boolean @default(true)
 
   // İlişkiler
-  employees OrgEmployee[]
+  employees      OrgEmployee[]
   // Bu kutuyu karşılık gösteren bölüm tanımları (çoka-bir'in ters ucu).
   bolumTanimlari DepartmentDefinition[] @relation("DeptOrgUnit")
 
@@ -9164,10 +9164,32 @@ model Personnel {
   birimSorumlusu String?
   sorumlu2       String?
   sorumlu3       String?
-  bolumMuduru    String?
-  masrafMerkezi  String?
-  interKepMail   String?
-  ikametAdresi   String?
+
+  // ── FAZ 1 · METİN → FK GEÇİŞİ (çift yazım dönemi) ────────────────────────────
+  // Yukarıdaki dört METİN alanı KALIYOR ve yazılmaya devam ediyor; okuma tarafının
+  // (311 satır, 11 yetki noktası) hiçbiri bu turda değişmedi. FK'lar yalnız
+  // DOLDURULUYOR. Metinden okumayı FK'ya çevirmek Faz 2'nin işi.
+  //
+  // NEDEN: ad metni üzerinden eşleşme iki kez üretimde kırıldı — bölüm adları
+  // Title-Case'e çevrilince arşiv erişimi (30.08), sorumlu adları AD biçiminde
+  // yazıldığı için kart okutamama onaycısı (01.09). FK bu sınıf hatayı kapatır.
+  departmentId                 String?
+  department                   DepartmentDefinition? @relation("PersonnelDept", fields: [departmentId], references: [id], onDelete: SetNull)
+  // Sorumlular — Personnel'e SELF ilişki. Ters uçlar ayrı adlarla (Prisma
+  // self-relation'da her iki tarafı da isimlendirmek zorunda).
+  sorumlu1Id                   String?
+  sorumlu1                     Personnel?            @relation("PersonnelSorumlu1", fields: [sorumlu1Id], references: [id], onDelete: SetNull)
+  sorumlusu1OlduklarimPersonel Personnel[]           @relation("PersonnelSorumlu1")
+  sorumlu2Id                   String?
+  sorumlu2Ref                  Personnel?            @relation("PersonnelSorumlu2", fields: [sorumlu2Id], references: [id], onDelete: SetNull)
+  sorumlusu2OlduklarimPersonel Personnel[]           @relation("PersonnelSorumlu2")
+  sorumlu3Id                   String?
+  sorumlu3Ref                  Personnel?            @relation("PersonnelSorumlu3", fields: [sorumlu3Id], references: [id], onDelete: SetNull)
+  sorumlusu3OlduklarimPersonel Personnel[]           @relation("PersonnelSorumlu3")
+  bolumMuduru                  String?
+  masrafMerkezi                String?
+  interKepMail                 String?
+  ikametAdresi                 String?
 
   // Servis
   serviceRoute String?
@@ -9265,6 +9287,10 @@ model Personnel {
   @@index([bolum])
   @@index([yakaRengi])
   @@index([aktif])
+  @@index([departmentId])
+  @@index([sorumlu1Id])
+  @@index([sorumlu2Id])
+  @@index([sorumlu3Id])
 }
 
 // Envanter — Personel Beden Profili. Personel başına en fazla 1 satır (personnelId @unique).
@@ -9505,6 +9531,9 @@ model DepartmentDefinition {
   // tarafı ad metnine bağlı kalmadan eşler.
   orgUnitId String?
   orgUnit   OrgUnit? @relation("DeptOrgUnit", fields: [orgUnitId], references: [id], onDelete: SetNull)
+
+  // FAZ 1 · Personnel.departmentId'nin ters ucu (Personnel.bolum metni KALIYOR).
+  personeller Personnel[] @relation("PersonnelDept")
 
   @@index([parentId])
   @@index([isActive])
@@ -10233,9 +10262,9 @@ model ArsivBolum {
   olusturmaTarihi  DateTime  @default(now()) @map("olusturma_tarihi") @db.Timestamptz(3)
   guncellemeTarihi DateTime? @updatedAt @map("guncelleme_tarihi") @db.Timestamptz(3)
 
-  evrakTurleri ArsivEvrakTuru[]
-  koliler      ArsivKoli[]
-  sayaclar     ArsivSayac[]
+  evrakTurleri   ArsivEvrakTuru[]
+  koliler        ArsivKoli[]
+  sayaclar       ArsivSayac[]
   // Bu arşiv kutusunu gösteren bölümler (çoka-bir'in ters ucu).
   bolumTanimlari DepartmentDefinition[]
 

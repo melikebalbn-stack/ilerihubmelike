@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { personelFkAlanlari } from '@/lib/personnel/fk-cozum'
 import { prisma } from '@/lib/prisma'
 import { personelEklendiginde, type YeniPersonelSonuc } from '@/lib/org/personel-koltuk-senkron'
 import { requireUser } from '@/lib/auth/require-user'
@@ -185,6 +186,18 @@ export async function POST(request: NextRequest) {
     }
 
     personnelData.createdBy = user.id
+
+    // FAZ 1 · ÇİFT YAZIM: metin alanları AYNEN yazılır, yanlarına FK'lar doldurulur.
+    // Çözülemeyen ad → FK null + uyarı logu; kayıt yine oluşur (bkz. fk-cozum.ts).
+    Object.assign(
+      personnelData,
+      await personelFkAlanlari(prisma, {
+        bolum: personnelData.bolum,
+        birimSorumlusu: personnelData.birimSorumlusu,
+        sorumlu2: personnelData.sorumlu2,
+        sorumlu3: personnelData.sorumlu3,
+      }),
+    )
 
     // Beden profili: yalnız en az bir alan doluysa oluşturulur (boş kayıt yaratma).
     const bedenData = normalizeBeden(beden)

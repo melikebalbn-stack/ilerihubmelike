@@ -135,7 +135,15 @@ export async function GET() {
     kararVerilmis: 0,
     kayit: 0,
   });
+  // Kapsam DARALTILMIŞ ise (key user) boş kişi kümesi "süzme yok" değil
+  // "hiç kimse" demektir → tüm satırlar atlanır, sayımlar 0 kalır.
+  // Aksi halde key user, kendi bölümünde kimsesi olmayan paketlerde BAŞKA
+  // bölümlerin kayıt/talep sayılarını görüyordu (ölçüldü: Sistem Geliştirme
+  // key user'da 24, yöneticide 15 — daraltılmış görünüm geniş olandan fazlaydı).
+  // Kapsam "tumu" iken davranış DEĞİŞMEZ: daraltilmis=false → eski akış.
+  const daraltilmis = kapsam.bolumler !== null;
   const topla = (hedef: Sayac, gorevIds: string[], kisiler: Set<string>) => {
+    if (daraltilmis && kisiler.size === 0) return;
     for (const gid of gorevIds) {
       for (const e of gorevBazli.get(gid) ?? []) {
         // Atanmamış kişinin işareti sayıma girmez — payda atanmış kişi

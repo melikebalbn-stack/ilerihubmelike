@@ -13870,3 +13870,36 @@ model ServisIslemGecmisi {
   @@index([userId, tarih])
   @@map("servis_islem_gecmisi")
 }
+
+// ============================================================
+// AVANS FORMU (sandbox/nurgul) — Nurgül'ün sandbox modülü.
+// Birim sorumlusunun dönem bazlı avans talebi + çalışan satırları.
+// cherry-pick: sandbox/nurgul branch'inden feat/avans-formu'ya taşındı,
+// main'de karşılığı yok (Melih ile ayrıca değerlendirilecek).
+// ============================================================
+
+model AvansTalebi {
+  id             String   @id @default(cuid())
+  sorumluId      String // Personnel.id — formu gönderen birim sorumlusu (kendi giren beyaz yaka için de kendisi)
+  bolum          String
+  donemYil       Int
+  donemAy        Int
+  gonderimTarihi DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  satirlar AvansTalebiSatiri[]
+
+  @@unique([sorumluId, bolum, donemYil, donemAy], map: "uq_avans_talebi_sorumlu_donem")
+  @@index([donemYil, donemAy], map: "idx_avans_talebi_donem")
+}
+
+model AvansTalebiSatiri {
+  id             String      @id @default(cuid())
+  avansTalebiId  String
+  avansTalebi    AvansTalebi @relation(fields: [avansTalebiId], references: [id], onDelete: Cascade)
+  calisanId      String // Personnel.id
+  avansIstiyorMu Boolean
+
+  @@unique([avansTalebiId, calisanId], map: "uq_avans_satiri_talep_calisan")
+}

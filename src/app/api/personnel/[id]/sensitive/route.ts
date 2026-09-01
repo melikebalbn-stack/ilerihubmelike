@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { canViewSensitive, canEditSensitive } from '@/lib/personnel-sensitive-access'
+import { isIvBolumuFk } from '@/lib/auth/iv-bolum-fk'
 
 export const dynamic = 'force-dynamic'
 
@@ -116,11 +117,19 @@ export async function PUT(
     if (!canViewSensitive(user.role, session.user.permissions)) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
-    // Buton (client) ile AYNI helper — bolum burada DB'den (Personnel.bolum) alınır.
-    const actorBolum = user.personnelId
-      ? (await prisma.personnel.findUnique({ where: { id: user.personnelId }, select: { bolum: true } }))?.bolum
+    // FAZ 3a: acting-user'ın İK bölümü kontrolü FK öncelikli. `canEditSensitive`
+    // rol dalını koruyor; bölüm dalı `isIvBolumuFk`'ya taşındı (FK boşsa aynı
+    // normalize yoluna düşer, davranış birebir aynı).
+    // NOT: hassas veri SAYFASI (client) hâlâ `User.department` + canEditSensitive
+    // kullanıyor — o taraf User.department tabanlı 27 noktadan biri, kapsam dışı.
+    const actor = user.personnelId
+      ? await prisma.personnel.findUnique({
+          where: { id: user.personnelId },
+          select: { bolum: true, departmentId: true },
+        })
       : null
-    if (!canEditSensitive(user.role, actorBolum)) {
+    const rolIleYetkili = canEditSensitive(user.role, null)
+    if (!rolIleYetkili && !(await isIvBolumuFk(actor?.departmentId, actor?.bolum))) {
       return NextResponse.json({ error: 'Yetkisiz işlem' }, { status: 403 })
     }
 

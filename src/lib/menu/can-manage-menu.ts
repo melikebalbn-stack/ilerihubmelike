@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { isInsanVarliklari } from '@/lib/auth/personnel-access'
+import { isIvBolumuFk } from '@/lib/auth/iv-bolum-fk'
 
 // Menü yönetim yetkisi: HR/Admin rolleri VEYA İnsan Varlıkları bölümü (Melih onayı).
 // Tek doğruluk kaynağı — import + POST + DELETE aynı kuralı kullanır.
@@ -9,12 +9,11 @@ export async function canManageMenu(userId: string | undefined | null): Promise<
   if (!userId) return false
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, personnel: { select: { bolum: true } } },
+    select: { role: true, personnel: { select: { bolum: true, departmentId: true } } },
   })
   if (!user) return false
   if (MENU_ROLES.includes(user.role)) return true
-  // Bölüm adı SABİT LİSTEDEN değil, normalize önek eşleşmesiyle (tek kaynak
-  // personnel-access.ts). "İNSAN VARLIKLARI" / "İnsan Varlıkları Müdürlüğü" gibi
-  // yazım ve ek farkları kırmaz; DB'de ad değişse de çalışır.
-  return isInsanVarliklari(user.personnel?.bolum)
+  // FAZ 3a: karar Personnel.departmentId FK'sından. FK boşsa (pasif kayıt / FK'dan
+  // önceki veri) eski normalize önek eşleşmesine düşülür — davranış birebir aynı.
+  return isIvBolumuFk(user.personnel?.departmentId, user.personnel?.bolum)
 }

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { isInsanVarliklari } from '@/lib/auth/personnel-access'
+import { isIvBolumuFk } from '@/lib/auth/iv-bolum-fk'
 import { getManagedPersonnelIds } from './approvers'
 
 export type BulkCardScanAccessLevel = 'NONE' | 'FULL' | 'GRI' | 'SELF'
@@ -28,7 +28,11 @@ const DEMOTE_ROLES = ['SUPER_ADMIN', 'ADMIN']
 export async function getBulkCardScanAccess(userId: string): Promise<BulkCardScanAccess> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, personnelId: true, personnel: { select: { id: true, yakaRengi: true, bolum: true } } },
+    select: {
+      role: true,
+      personnelId: true,
+      personnel: { select: { id: true, yakaRengi: true, bolum: true, departmentId: true } },
+    },
   })
 
   const yakaRengi = user?.personnel?.yakaRengi
@@ -36,8 +40,8 @@ export async function getBulkCardScanAccess(userId: string): Promise<BulkCardSca
   const bolum = user?.personnel?.bolum ?? null
 
   // Fabrika görünürlüğü YALNIZ İnsan Varlıkları'ndan gelir (rol DEĞİL).
-  // isInsanVarliklari "İNSAN VARLIKLARI" + "…MÜDÜRLÜĞÜ" varyantlarını kapsar.
-  if (isInsanVarliklari(bolum)) {
+  // FAZ 3a: karar Personnel.departmentId FK'sından; FK boşsa eski normalize yolu.
+  if (await isIvBolumuFk(user?.personnel?.departmentId, bolum)) {
     return { level: 'FULL', personnelId, bolum }
   }
   // MAVI -> forma erişemez.

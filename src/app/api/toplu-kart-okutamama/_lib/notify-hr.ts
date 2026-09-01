@@ -103,3 +103,40 @@ export async function notifySubmitterOfDecision(
     console.error('[toplu-kart-okutamama] Karar bildirimi hatası:', err)
   }
 }
+
+/**
+ * Onaycısı hiç çözülemeyen SELF kayıt için İ.V. Müdürü'ne in-app bildirim.
+ *
+ * Kayıt BEKLIYOR'da doğar ama hiçbir onaycıya düşmez (1./2./3. Sorumlu adı
+ * eşleşmedi, eşleşen kişinin User'ı yok ve bölüm müdürü fallback'i de boş).
+ * Böyle bir kayıt kimsenin kuyruğunda görünmediği için sessizce asılı kalırdı;
+ * İ.V. Müdürü ApprovalPosition HR_MANAGER üzerinden çözülür.
+ */
+export async function notifyHrManagerOfUnresolvedApprover(
+  records: { adSoyad: string; tarih: Date }[]
+): Promise<void> {
+  if (records.length === 0) return
+
+  try {
+    const pozisyon = await prisma.approvalPosition.findFirst({
+      where: { code: 'HR_MANAGER', isActive: true, userId: { not: null } },
+      select: { userId: true },
+    })
+    if (!pozisyon?.userId) {
+      console.warn('[toplu-kart-okutamama] HR_MANAGER pozisyonu atanmamış — orphan kayıt bildirimi gönderilemedi')
+      return
+    }
+
+    await prisma.notification.createMany({
+      data: records.map((r) => ({
+        userId: pozisyon.userId as string,
+        title: 'Onaycısı çözülemeyen kart okutamama kaydı',
+        message: `Onaycısı çözülemeyen kart okutamama kaydı: ${r.adSoyad} ${r.tarih.toLocaleDateString('tr-TR')}`,
+        type: 'WARNING' as const,
+        link: '/forms/toplu-kart-okutamama',
+      })),
+    })
+  } catch (err) {
+    console.error('[toplu-kart-okutamama] Orphan kayıt bildirimi hatası:', err)
+  }
+}

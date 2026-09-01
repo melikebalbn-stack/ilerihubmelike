@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { birincilKoltukBul } from "@/lib/is-analizi/birincil-koltuk";
+import { adNormalize } from "@/lib/org/normalize-ad";
 
 // İş Analizi — amir (yönetici) çözümleme TEK KAYNAK.
 // Öncelik: (1) ORG ağacı, (2) Personnel.birimSorumlusu ismi, (3) yok.
@@ -17,8 +18,11 @@ export interface AmirSonuc {
 
 const MAX_HIYERARSI_DERINLIGI = 15;
 
+// Ad eşleşmesi TEK KAYNAK: @/lib/org/normalize-ad. Yereldeki eski tanım yalnız
+// büyük harf + boşluk sadeleştirmesi yapıyordu; aksan ve vekâlet eki ("V." öneki,
+// "(V)" soneki) taşıyan sorumlu yazımları eşleşmiyordu.
 function normalizeAd(s: string | null | undefined): string {
-  return (s ?? "").toLocaleUpperCase("tr").replace(/\s+/g, " ").trim();
+  return adNormalize(s ?? "");
 }
 
 // İsimden Personnel.id — normalize tam eşleşme. TEK eşleşmede döner; 0 veya >1'de null.

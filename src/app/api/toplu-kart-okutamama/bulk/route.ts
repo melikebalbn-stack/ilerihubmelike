@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
-import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from '../_lib/notify-hr'
+import {
+  notifyHrOfBulkCardScanRecords,
+  notifyApproverOfPendingRecord,
+  notifyHrManagerOfUnresolvedApprover,
+} from '../_lib/notify-hr'
 import { VALID_NEDEN } from '../_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
 import { resolveApprovers } from '../_lib/approvers'
@@ -55,7 +59,12 @@ export async function POST(request: NextRequest) {
     const errors: { personnelId: string; message: string }[] = []
     const createdSummaries: { sicilNo: string | null; adSoyad: string }[] = []
     // Kendi adına giren BEKLIYOR kayıtlar (onaylayıcıya bildirim için).
-    const pendingSelf: { approverIds: string[]; sicilNo: string | null; adSoyad: string }[] = []
+    const pendingSelf: {
+      approverIds: string[]
+      sicilNo: string | null
+      adSoyad: string
+      tarih: Date
+    }[] = []
 
     for (const item of items) {
       const personnel = personnelMap.get(item.personnelId)
@@ -125,6 +134,7 @@ export async function POST(request: NextRequest) {
           approverIds: [approverId, approverId2, approverId3].filter((id): id is string => !!id),
           sicilNo: personnel.sicilNo,
           adSoyad: personnel.adSoyad,
+          tarih: new Date(item.tarih),
         })
       }
     }
@@ -135,7 +145,14 @@ export async function POST(request: NextRequest) {
     }
     // Kendi adına BEKLIYOR kayıt(lar) → 1./2./3. Sorumlu'ya onay bildirimi (create/import deseni).
     for (const p of pendingSelf) {
-      notifyApproverOfPendingRecord(p.approverIds, { sicilNo: p.sicilNo, adSoyad: p.adSoyad }, user.name || user.email)
+      if (p.approverIds.length > 0) {
+        notifyApproverOfPendingRecord(p.approverIds, { sicilNo: p.sicilNo, adSoyad: p.adSoyad }, user.name || user.email)
+      }
+    }
+    // Orphan: BEKLIYOR ama hiçbir onaycıya düşmeyen kayıtlar → İ.V. Müdürü (tek çağrı).
+    const orphanlar = pendingSelf.filter((p) => p.approverIds.length === 0)
+    if (orphanlar.length > 0) {
+      notifyHrManagerOfUnresolvedApprover(orphanlar.map((p) => ({ adSoyad: p.adSoyad, tarih: p.tarih })))
     }
 
     return NextResponse.json({ created, errors })

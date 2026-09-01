@@ -36,3 +36,27 @@ export function normalizeAd(input: string): string {
   s = s.replace(/[^A-Z0-9]+/g, " ")
   return s.trim().replace(/\s+/g, " ")
 }
+
+/**
+ * Onay zinciri ad eşleşmesi — normalizeAd üstüne VEKÂLET eki temizliği.
+ *
+ * Personnel.birimSorumlusu/sorumlu2/sorumlu3 serbest metin alanları; saha
+ * kullanımında vekâleten bakan kişi "V.BEDRİ GÜLER" ya da "YASİN ÜLGEN (V)"
+ * diye yazılıyor. Bu yazımlar hiçbir Personnel.adSoyad'a eşleşmediği için
+ * onaycı null dönüyordu (ölçüm 2026-09-01: 352 atamanın 49'u çözülemiyordu).
+ *
+ * AYRI EXPORT, çünkü normalizeAd org koltuk/görev eşleşmesinde de kullanılıyor
+ * (koltuk-eslesme, pozisyon-secenekleri, GorevSecici, BolumSecici); oradaki
+ * metinlerde tek harflik "V" token'ı anlamlı olabilir. Kural yine TEK
+ * KAYNAKTA: adNormalize normalizeAd'i çağırır, kopyalamaz.
+ */
+export function adNormalize(input: string): string {
+  const s = normalizeAd(input)
+  if (!s) return ""
+  const parcalar = s.split(" ")
+  // Baştaki vekâlet öneki: "V." / "V " / "VK." → normalizeAd sonrası tek harflik token.
+  while (parcalar.length > 1 && (parcalar[0] === "V" || parcalar[0] === "VK")) parcalar.shift()
+  // Sondaki "(V)" soneki → normalizeAd parantezi boşluğa çevirdiği için son token "V".
+  while (parcalar.length > 1 && parcalar[parcalar.length - 1] === "V") parcalar.pop()
+  return parcalar.join(" ")
+}

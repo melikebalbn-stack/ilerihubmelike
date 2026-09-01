@@ -3,7 +3,11 @@ import { Prisma } from '@/generated/prisma'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from './_lib/access'
-import { notifyHrOfBulkCardScanRecords, notifyApproverOfPendingRecord } from './_lib/notify-hr'
+import {
+  notifyHrOfBulkCardScanRecords,
+  notifyApproverOfPendingRecord,
+  notifyHrManagerOfUnresolvedApprover,
+} from './_lib/notify-hr'
 import { VALID_NEDEN } from './_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from './_lib/duplicate-check'
 import { resolveApprovers, getManagedPersonnelIds } from './_lib/approvers'
@@ -259,11 +263,19 @@ export async function POST(request: NextRequest) {
       // Fire-and-forget: İnsan Varlıkları'na in-app bildirim (mail yok)
       notifyHrOfBulkCardScanRecords([{ sicilNo: record.sicilNo, adSoyad: record.adSoyad }], user.name || user.email)
     } else {
-      notifyApproverOfPendingRecord(
-        [record.approverId, record.approverId2, record.approverId3].filter((id): id is string => !!id),
-        { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
-        user.name || user.email
+      const onaycilar = [record.approverId, record.approverId2, record.approverId3].filter(
+        (id): id is string => !!id
       )
+      if (onaycilar.length > 0) {
+        notifyApproverOfPendingRecord(
+          onaycilar,
+          { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
+          user.name || user.email
+        )
+      } else {
+        // Orphan: BEKLIYOR ama kimseye düşmedi → İ.V. Müdürü haberdar edilir.
+        notifyHrManagerOfUnresolvedApprover([{ adSoyad: record.adSoyad, tarih: record.tarih }])
+      }
     }
 
     return NextResponse.json(record, { status: 201 })

@@ -5,7 +5,10 @@ import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
 import { VALID_NEDEN, NEDEN_LABELS, type KartOkutamamaNedeni } from '../_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
-import { notifyApproverOfPendingRecord } from '../_lib/notify-hr'
+import {
+  notifyApproverOfPendingRecord,
+  notifyHrManagerOfUnresolvedApprover,
+} from '../_lib/notify-hr'
 import { resolveApprovers, getManagedPersonnelIds } from '../_lib/approvers'
 import { selfEntryOnaydanMuafMi } from '../_lib/muafiyet'
 
@@ -312,14 +315,26 @@ export async function POST(request: NextRequest) {
       )
       results.created = toCreate.length
 
+      const orphanlar: { adSoyad: string; tarih: Date }[] = []
       for (const record of created) {
         if (record.onayDurumu === 'BEKLIYOR') {
-          notifyApproverOfPendingRecord(
-            [record.approverId, record.approverId2, record.approverId3].filter((id): id is string => !!id),
-            { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
-            user.name || user.email
+          const onaycilar = [record.approverId, record.approverId2, record.approverId3].filter(
+            (id): id is string => !!id
           )
+          if (onaycilar.length > 0) {
+            notifyApproverOfPendingRecord(
+              onaycilar,
+              { sicilNo: record.sicilNo, adSoyad: record.adSoyad },
+              user.name || user.email
+            )
+          } else {
+            orphanlar.push({ adSoyad: record.adSoyad, tarih: record.tarih })
+          }
         }
+      }
+      // Orphan: BEKLIYOR ama hiçbir onaycıya düşmeyen kayıtlar → İ.V. Müdürü (tek çağrı).
+      if (orphanlar.length > 0) {
+        notifyHrManagerOfUnresolvedApprover(orphanlar)
       }
     }
 

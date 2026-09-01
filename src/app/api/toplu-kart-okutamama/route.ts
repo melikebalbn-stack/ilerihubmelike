@@ -10,8 +10,7 @@ import {
 } from './_lib/notify-hr'
 import { VALID_NEDEN } from './_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from './_lib/duplicate-check'
-import { resolveApprovers, getManagedPersonnelIds } from './_lib/approvers'
-import { selfEntryOnaydanMuafMi } from './_lib/muafiyet'
+import { onayKarariBelirle, getManagedPersonnelIds } from './_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -217,26 +216,12 @@ export async function POST(request: NextRequest) {
     // (Full veya ekip/managed) DEĞİŞMEDİ — line 175 managed kapısından geçer, onaysız
     // (ONAYLANDI) doğar. Onaylayıcı 1./2./3. Sorumlu'dan çözülür — biri onaylar/reddederse
     // geçerli, sıra yok. Hiçbiri çözülemezse kayıt kimseye atanmadan BEKLIYOR kalır (orphan).
-    const isSelfEntry = personnel.id === access.personnelId
-
-    let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
-    let approverId: string | null = null
-    let approverId2: string | null = null
-    let approverId3: string | null = null
-    if (isSelfEntry) {
-      // MUAFİYET (2026-08): şemadaki departman müdürleri + ayardaki sicil listesi
-      // üst amir onayından muaftır — kayıt ONAYLANDI doğar, onaycı ATANMAZ ve
-      // doğrudan İV katmanına düşer (ivOnaylandi=false, İV kararı sürüyor).
-      // Muaf DEĞİLSE mevcut davranış birebir aynı: BEKLIYOR + 1./2./3. Sorumlu.
-      const muaf = await selfEntryOnaydanMuafMi(personnel.id)
-      if (!muaf) {
-        onayDurumu = 'BEKLIYOR'
-        const resolved = await resolveApprovers(personnel.id)
-        approverId = resolved.approverId
-        approverId2 = resolved.approverId2
-        approverId3 = resolved.approverId3
-      }
-    }
+    // Onay durumu + onaycılar TEK KAYNAK: onayKarariBelirle (create/bulk/import
+    // aynı yardımcıyı çağırır). MUAFİYET (2026-08) kuralı da orada.
+    const { onayDurumu, approverId, approverId2, approverId3 } = await onayKarariBelirle(
+      personnel.id,
+      access.personnelId
+    )
 
     const record = await prisma.bulkCardScanFailure.create({
       data: {

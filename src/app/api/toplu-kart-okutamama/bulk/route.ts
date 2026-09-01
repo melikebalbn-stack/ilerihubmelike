@@ -9,7 +9,7 @@ import {
 } from '../_lib/notify-hr'
 import { VALID_NEDEN } from '../_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from '../_lib/duplicate-check'
-import { resolveApprovers } from '../_lib/approvers'
+import { onayKarariBelirle } from '../_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,17 +98,12 @@ export async function POST(request: NextRequest) {
       // ile BİREBİR aynı kural; bulk yolundaki self-onay açığı kapatıldı). Diğer (gerçek
       // ekip) satırları FULL için onaysız (ONAYLANDI) kalır. resolveApprovers gönderen
       // kişiyi aday havuzundan dışlar (kendini-onaylama yok); hiçbiri çözülmezse orphan.
-      let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
-      let approverId: string | null = null
-      let approverId2: string | null = null
-      let approverId3: string | null = null
-      if (personnel.id === access.personnelId) {
-        onayDurumu = 'BEKLIYOR'
-        const resolved = await resolveApprovers(personnel.id)
-        approverId = resolved.approverId
-        approverId2 = resolved.approverId2
-        approverId3 = resolved.approverId3
-      }
+      // Karar create/import ile AYNI yardımcıdan — bu yol eskiden muafiyet
+      // kontrolünü atlıyordu (muaf kişi bulk'ta BEKLIYOR, create'te ONAYLANDI).
+      const { onayDurumu, approverId, approverId2, approverId3 } = await onayKarariBelirle(
+        personnel.id,
+        access.personnelId
+      )
 
       await prisma.bulkCardScanFailure.create({
         data: {

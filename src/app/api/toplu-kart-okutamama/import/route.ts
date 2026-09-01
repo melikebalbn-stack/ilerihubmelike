@@ -9,8 +9,7 @@ import {
   notifyApproverOfPendingRecord,
   notifyHrManagerOfUnresolvedApprover,
 } from '../_lib/notify-hr'
-import { resolveApprovers, getManagedPersonnelIds } from '../_lib/approvers'
-import { selfEntryOnaydanMuafMi } from '../_lib/muafiyet'
+import { onayKarariBelirle, getManagedPersonnelIds } from '../_lib/approvers'
 
 export const dynamic = 'force-dynamic'
 
@@ -261,21 +260,11 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      let onayDurumu: 'BEKLIYOR' | 'ONAYLANDI' = 'ONAYLANDI'
-      let approverId: string | null = null
-      let approverId2: string | null = null
-      let approverId3: string | null = null
-      // Kendi adına satır (FULL/İV dahil, kim import ederse etsin) → onaya tabi
-      // (create route ile aynı kural — rol onayı ATLATMAZ). Başkası/ekip satırı ONAYLANDI kalır.
-      if (personnel.id === access.personnelId && !(await selfEntryOnaydanMuafMi(personnel.id))) {
-        // Muafiyet create ucuyla AYNI kaynaktan (muafiyet.ts) — kanal fark etmez:
-        // muaf kişinin kendi satırı da ONAYLANDI doğar, onaycı atanmaz.
-        onayDurumu = 'BEKLIYOR'
-        const resolved = await resolveApprovers(personnel.id)
-        approverId = resolved.approverId
-        approverId2 = resolved.approverId2
-        approverId3 = resolved.approverId3
-      }
+      // Karar create/bulk ile AYNI yardımcıdan (muafiyet dahil).
+      const { onayDurumu, approverId, approverId2, approverId3 } = await onayKarariBelirle(
+        personnel.id,
+        access.personnelId
+      )
 
       toCreate.push({
         personnelId: personnel.id,

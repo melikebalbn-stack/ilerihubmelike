@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { adNormalize } from '@/lib/org/normalize-ad'
+import { selfEntryOnaydanMuafMi } from './muafiyet'
 
 export interface ResolvedApprovers {
   approverId: string | null
@@ -32,11 +33,16 @@ async function aktifAdayHavuzu(): Promise<Aday[]> {
  * Tam 1 eşleşme → user.id (User yoksa null); 0 eşleşme → null;
  * >1 eşleşme → null + uyarı (yanlış kişiye onay düşürmektense boş bırak).
  */
+export function adEsit(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = adNormalize(a ?? '')
+  return x !== '' && x === adNormalize(b ?? '')
+}
+
 export function resolveApproverByName(havuz: Aday[], name: string | null): string | null {
   const hedef = adNormalize(name ?? '')
   if (!hedef) return null
 
-  const eslesenler = havuz.filter((a) => adNormalize(a.adSoyad) === hedef)
+  const eslesenler = havuz.filter((a) => adEsit(a.adSoyad, hedef))
   if (eslesenler.length === 0) return null
   if (eslesenler.length > 1) {
     console.warn(`[onayci] belirsiz ad: ${name} -> ${eslesenler.length} eşleşme`)
@@ -56,8 +62,7 @@ async function bolumMudurundenOnayci(bolum: string | null): Promise<string | nul
   const tanimlar = await prisma.departmentDefinition.findMany({
     select: { name: true, mudurId: true, mudurYardimcisiId: true },
   })
-  const hedef = adNormalize(bolum)
-  const tanim = tanimlar.find((d) => adNormalize(d.name) === hedef)
+  const tanim = tanimlar.find((d) => adEsit(d.name, bolum))
   if (!tanim) return null
 
   for (const personnelId of [tanim.mudurId, tanim.mudurYardimcisiId]) {
@@ -141,18 +146,72 @@ export async function getManagedPersonnelIds(ownPersonnelId: string): Promise<st
   })
   if (!own) return []
 
-  const matches = await prisma.personnel.findMany({
+  // Eşleşme resolveApproverByName ile AYNI yöntem (adNormalize): eskiden `equals`
+  // kullanılıyordu ve "V.BEDRİ GÜLER" yazılı kayıtlar BEDRİ GÜLER'in ekibinde
+  // görünmüyordu — onaycı olarak çözülen kişi ekibini göremiyordu.
+  const adaylar = await prisma.personnel.findMany({
     where: {
       aktif: true,
       id: { not: ownPersonnelId },
       OR: [
-        { birimSorumlusu: { equals: own.adSoyad, mode: 'insensitive' } },
-        { sorumlu2: { equals: own.adSoyad, mode: 'insensitive' } },
-        { sorumlu3: { equals: own.adSoyad, mode: 'insensitive' } },
+        { birimSorumlusu: { not: null } },
+        { sorumlu2: { not: null } },
+        { sorumlu3: { not: null } },
       ],
     },
-    select: { id: true },
+    select: { id: true, birimSorumlusu: true, sorumlu2: true, sorumlu3: true },
   })
 
-  return matches.map((m) => m.id)
+  return adaylar
+    .filter((a) =>
+      [a.birimSorumlusu, a.sorumlu2, a.sorumlu3].some((ad) => adEsit(ad, own.adSoyad))
+    )
+    .map((a) => a.id)
+}
+
+export interface OnayKarari {
+  onayDurumu: 'BEKLIYOR' | 'ONAYLANDI'
+  approverId: string | null
+  approverId2: string | null
+  approverId3: string | null
+}
+
+/**
+ * Kayıt oluşturulurken onay durumunu ve onaycıları belirleyen TEK KAYNAK —
+ * create, bulk ve import yolları buradan çağırır.
+ *
+ * Kural (üç yolda birebir aynı):
+ *   - Başkası/ekip adına satır  → ONAYLANDI, onaycı atanmaz.
+ *   - Kendi adına + muaf        → ONAYLANDI, onaycı atanmaz (2026-08 muafiyeti;
+ *                                 kayıt doğrudan İV katmanına düşer).
+ *   - Kendi adına + muaf değil  → BEKLIYOR + 1./2./3. Sorumlu (çözülemezse
+ *                                 bölüm müdürü fallback'i, o da yoksa orphan:
+ *                                 BEKLIYOR ama onaycısız — çağıran taraf
+ *                                 notifyHrManagerOfUnresolvedApprover ile
+ *                                 İ.V. Müdürü'nü haberdar eder).
+ *
+ * Eskiden bulk yolu muafiyet kontrolünü ATLIYORDU: muaf bir kişi bulk ile kendi
+ * satırını girdiğinde BEKLIYOR doğuyor, aynı kişi create/import ile girdiğinde
+ * ONAYLANDI doğuyordu.
+ */
+export async function onayKarariBelirle(
+  personnelId: string,
+  gonderenPersonnelId: string | null
+): Promise<OnayKarari> {
+  const bos: OnayKarari = {
+    onayDurumu: 'ONAYLANDI',
+    approverId: null,
+    approverId2: null,
+    approverId3: null,
+  }
+  if (!gonderenPersonnelId || personnelId !== gonderenPersonnelId) return bos
+  if (await selfEntryOnaydanMuafMi(personnelId)) return bos
+
+  const resolved = await resolveApprovers(personnelId)
+  return {
+    onayDurumu: 'BEKLIYOR',
+    approverId: resolved.approverId,
+    approverId2: resolved.approverId2,
+    approverId3: resolved.approverId3,
+  }
 }

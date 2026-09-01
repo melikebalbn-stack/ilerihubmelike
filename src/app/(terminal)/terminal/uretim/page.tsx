@@ -211,6 +211,7 @@ export default async function UretimTerminalPage({
   return (
     <TerminalMenuClient
       operatorName={session.user.name ?? 'Operatör'}
+      canAdmin={canAdmin}
       departmanlar={zenginDepartmanlar}
       calisanTezgah={calisanTezgah}
       iproEksikKaynak={iproEksikKaynak}

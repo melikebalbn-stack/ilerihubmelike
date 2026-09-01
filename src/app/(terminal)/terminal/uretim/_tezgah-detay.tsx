@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
-import { Factory } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Factory, Play, Search, Loader2, ArrowLeft } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { TERMINAL_ACCENT } from '../_shared'
 
 // İzleme panosundaki tezgah detay modal'ının TERMINAL KOPYASI. Kaynak:
@@ -85,15 +87,29 @@ const trTarih2 = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString
 export function TezgahDetayModal({
   seciliTezgah,
   iproId,
+  canAdmin,
+  dept,
   onClose,
 }: {
   seciliTezgah: string | null
   iproId: string | null
+  /** ipro.admin — "Uzaktan iş başlat" akışını açar. */
+  canAdmin: boolean
+  /** Seçili departman (WC kodu) — açık iş emirlerini süzmek için. */
+  dept: string | null
   onClose: () => void
 }) {
   const [detay, setDetay] = useState<Detay | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [, tik] = useState(0)
+  // Uzaktan başlatma paneli açık mı + başarı sonrası detay yenileme sayacı.
+  const [baslatModu, setBaslatModu] = useState(false)
+  const [yenile, setYenile] = useState(0)
+
+  // Tezgah değişince paneli kapat (bir önceki tezgahtan taşınmasın).
+  useEffect(() => {
+    setBaslatModu(false)
+  }, [seciliTezgah])
 
   useEffect(() => {
     if (!seciliTezgah || !iproId) return
@@ -111,7 +127,7 @@ export function TezgahDetayModal({
     return () => {
       iptal = true
     }
-  }, [seciliTezgah, iproId])
+  }, [seciliTezgah, iproId, yenile])
 
   // Canlı süre için saniyelik tik.
   useEffect(() => {
@@ -204,6 +220,30 @@ export function TezgahDetayModal({
               </div>
             ) : (
               <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Boşta — açık iş yok.</p>
+            )}
+
+            {/* Uzaktan iş başlat — yalnız ipro.admin, IPRO tanımlı tezgahta, açık iş/duruş YOKKEN. */}
+            {canAdmin && iproId && !detay.aktifIs && detay.durum !== 'durusta' && (
+              baslatModu ? (
+                <UzaktanBaslatPanel
+                  tezgahId={iproId}
+                  tezgahKod={detay.kod}
+                  dept={dept}
+                  onIptal={() => setBaslatModu(false)}
+                  onBasarili={() => {
+                    setBaslatModu(false)
+                    setYenile((n) => n + 1)
+                  }}
+                />
+              ) : (
+                <Button
+                  onClick={() => setBaslatModu(true)}
+                  className="w-full gap-2 text-white"
+                  style={{ background: TERMINAL_ACCENT }}
+                >
+                  <Play className="h-4 w-4" /> Uzaktan iş başlat
+                </Button>
+              )
             )}
 
             {/* Üretim ilerleme */}
@@ -413,6 +453,257 @@ function Ph({ e }: { e: string }) {
     <div className="rounded-lg bg-slate-50 py-2">
       <div className="text-lg font-bold text-slate-300">—</div>
       <div className="text-[10px] text-slate-400">{e}</div>
+    </div>
+  )
+}
+
+type PanelPersonel = { id: string; adSoyad: string; sicilNo: string | null }
+type PanelIsEmri = {
+  id: string
+  ifsOrderNo: string
+  ifsOperationNo: number
+  stokKodu: string
+  stokAdi: string
+  isMerkezi: string
+  teslimTarihi: string
+  durum: string
+}
+
+/**
+ * Uzaktan iş başlat paneli (ipro.admin). Operatör (arama kutulu, TÜM aktif personel)
+ * + iş emri (departmanın açık operasyonları) seçtirir, onay adımı gösterir, sonra
+ * POST /api/terminal/uzaktan-basla çağırır. Başarıda onBasarili() → detay yenilenir.
+ * Yanıtlar apiSuccess (ok sarması yok) → başarı res.ok ile ölçülür.
+ */
+function UzaktanBaslatPanel({
+  tezgahId,
+  tezgahKod,
+  dept,
+  onIptal,
+  onBasarili,
+}: {
+  tezgahId: string
+  tezgahKod: string
+  dept: string | null
+  onIptal: () => void
+  onBasarili: () => void
+}) {
+  const [yukleniyor, setYukleniyor] = useState(true)
+  const [personel, setPersonel] = useState<PanelPersonel[]>([])
+  const [isEmirleri, setIsEmirleri] = useState<PanelIsEmri[]>([])
+  const [optHata, setOptHata] = useState<string | null>(null)
+  const [arama, setArama] = useState('')
+  const [seciliP, setSeciliP] = useState<PanelPersonel | null>(null)
+  const [seciliI, setSeciliI] = useState<PanelIsEmri | null>(null)
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [gonderHata, setGonderHata] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!dept) {
+      setYukleniyor(false)
+      setOptHata('Departman bilinmiyor — iş emri süzülemez')
+      return
+    }
+    let iptal = false
+    setYukleniyor(true)
+    fetch(`/api/terminal/uzaktan-basla/secenekler?dept=${encodeURIComponent(dept)}`, { cache: 'no-store' })
+      .then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => null) }))
+      .then(({ ok, d }) => {
+        if (iptal) return
+        if (ok && d) {
+          setPersonel(d.personel ?? [])
+          setIsEmirleri(d.isEmirleri ?? [])
+          setOptHata(d.ifsError ?? null)
+        } else {
+          setOptHata(d?.error ?? 'Seçenekler alınamadı')
+        }
+      })
+      .catch(() => !iptal && setOptHata('Bağlantı hatası'))
+      .finally(() => !iptal && setYukleniyor(false))
+    return () => {
+      iptal = true
+    }
+  }, [dept])
+
+  const suzulmusPersonel = useMemo(() => {
+    const q = arama.trim().toLocaleLowerCase('tr')
+    const liste = q
+      ? personel.filter(
+          (p) =>
+            p.adSoyad.toLocaleLowerCase('tr').includes(q) || (p.sicilNo ?? '').toLocaleLowerCase('tr').includes(q),
+        )
+      : personel
+    return liste.slice(0, 50) // uzun listeyi kırp (performans + kaydırma)
+  }, [personel, arama])
+
+  const gonder = async () => {
+    if (!seciliP || !seciliI) return
+    setGonderiliyor(true)
+    setGonderHata(null)
+    try {
+      const res = await fetch('/api/terminal/uzaktan-basla', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tezgahId,
+          personnelId: seciliP.id,
+          ifsOrderNo: seciliI.ifsOrderNo,
+          ifsOperationNo: seciliI.ifsOperationNo,
+        }),
+      })
+      if (res.ok) {
+        onBasarili()
+        return
+      }
+      const d = await res.json().catch(() => null)
+      const msg =
+        res.status === 409
+          ? (d?.error ?? 'Bu tezgahta zaten açık iş var')
+          : (d?.error ?? `Başlatılamadı (${res.status})`)
+      setGonderHata(msg)
+    } catch {
+      setGonderHata('Bağlantı hatası')
+    } finally {
+      setGonderiliyor(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onIptal}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border text-slate-500 transition-colors hover:bg-slate-50"
+          aria-label="Vazgeç"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <span className="text-sm font-semibold text-slate-800">Uzaktan iş başlat · {tezgahKod}</span>
+      </div>
+
+      {yukleniyor ? (
+        <p className="flex items-center gap-2 py-6 text-sm text-slate-400">
+          <Loader2 className="h-4 w-4 animate-spin" /> Seçenekler yükleniyor…
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {/* Operatör seçimi — arama kutulu combobox (tüm aktif personel) */}
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">Operatör</div>
+            {seciliP ? (
+              <div className="flex items-center justify-between rounded-lg border bg-slate-50 px-3 py-2">
+                <span className="text-sm font-medium text-slate-800">
+                  {seciliP.adSoyad}
+                  {seciliP.sicilNo ? <span className="ml-1 text-xs text-slate-400">· {seciliP.sicilNo}</span> : null}
+                </span>
+                <button type="button" onClick={() => setSeciliP(null)} className="text-xs text-slate-500 hover:underline">
+                  değiştir
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    value={arama}
+                    onChange={(e) => setArama(e.target.value)}
+                    placeholder="Ad veya sicil ile ara…"
+                    className="pl-8"
+                  />
+                </div>
+                <div className="mt-1.5 max-h-40 overflow-y-auto rounded-lg border">
+                  {suzulmusPersonel.length === 0 ? (
+                    <p className="px-3 py-2 text-sm text-slate-400">Personel bulunamadı.</p>
+                  ) : (
+                    suzulmusPersonel.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setSeciliP(p)
+                          setArama('')
+                        }}
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="text-slate-800">{p.adSoyad}</span>
+                        {p.sicilNo ? <span className="text-xs text-slate-400">{p.sicilNo}</span> : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* İş emri seçimi — departmanın açık operasyonları */}
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">İş emri</div>
+            {optHata && <p className="mb-1.5 text-xs text-amber-600">{optHata}</p>}
+            {seciliI ? (
+              <div className="flex items-center justify-between rounded-lg border bg-slate-50 px-3 py-2">
+                <span className="text-sm text-slate-800">
+                  <span className="font-medium">{seciliI.ifsOrderNo}</span>
+                  <span className="text-slate-400"> · Op {seciliI.ifsOperationNo}</span>
+                  <span className="ml-1 text-xs text-slate-500">{seciliI.stokAdi || seciliI.stokKodu}</span>
+                </span>
+                <button type="button" onClick={() => setSeciliI(null)} className="text-xs text-slate-500 hover:underline">
+                  değiştir
+                </button>
+              </div>
+            ) : isEmirleri.length === 0 ? (
+              <p className="rounded-lg border px-3 py-2 text-sm text-slate-400">
+                Bu departmanda açık iş emri yok.
+              </p>
+            ) : (
+              <div className="max-h-44 overflow-y-auto rounded-lg border">
+                {isEmirleri.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setSeciliI(o)}
+                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="text-sm text-slate-800">
+                      <span className="font-medium">{o.ifsOrderNo}</span>
+                      <span className="text-slate-400"> · Op {o.ifsOperationNo}</span>
+                      <span className="ml-1 text-xs text-slate-400">{o.isMerkezi}</span>
+                    </span>
+                    <span className="truncate text-xs text-slate-500">{o.stokAdi || o.stokKodu || '—'}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Onay + başlat */}
+          {seciliP && seciliI && (
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-sm text-slate-700">
+                <span className="font-semibold">{seciliP.adSoyad}</span> operatörü adına,{' '}
+                <span className="font-semibold">{tezgahKod}</span> tezgahında,{' '}
+                <span className="font-semibold">{seciliI.ifsOrderNo} · Op {seciliI.ifsOperationNo}</span> iş emri
+                başlatılacak.
+              </p>
+              {gonderHata && <p className="mt-2 text-sm text-red-600">{gonderHata}</p>}
+              <div className="mt-3 flex gap-2">
+                <Button
+                  onClick={gonder}
+                  disabled={gonderiliyor}
+                  className="flex-1 gap-2 text-white"
+                  style={{ background: TERMINAL_ACCENT }}
+                >
+                  {gonderiliyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  Onayla ve başlat
+                </Button>
+                <Button variant="outline" onClick={onIptal} disabled={gonderiliyor}>
+                  Vazgeç
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

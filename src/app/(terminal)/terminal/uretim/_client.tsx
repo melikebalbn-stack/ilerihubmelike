@@ -65,6 +65,8 @@ interface Tezgah {
 
 interface Props {
   operatorName: string
+  /** ipro.admin yetkisi — uzaktan iş başlat butonunu gösterir. */
+  canAdmin: boolean
   departmanlar: Departman[]
   /** Son 180 sn'de delta üreten, departmana eşlenmiş çalışan tezgah sayısı (M). */
   calisanTezgah: number
@@ -117,6 +119,7 @@ function tarihSaat(now: Date): string {
 
 export function TerminalMenuClient({
   operatorName,
+  canAdmin,
   departmanlar,
   calisanTezgah,
   iproEksikKaynak,
@@ -150,7 +153,13 @@ export function TerminalMenuClient({
             tezgahlar={tezgahlar}
             isEmri={seciliDeptIsEmri}
           />
-          <TezgahDetayModal seciliTezgah={seciliTezgah} iproId={seciliIproId} onClose={modalKapat} />
+          <TezgahDetayModal
+            seciliTezgah={seciliTezgah}
+            iproId={seciliIproId}
+            canAdmin={canAdmin}
+            dept={seciliDept}
+            onClose={modalKapat}
+          />
         </>
       ) : (
         <BolumSecim

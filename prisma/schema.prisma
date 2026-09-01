@@ -11452,6 +11452,11 @@ model IproProductionLog {
   // onDelete: Restrict — oturum silinirse üretim kaydı korunur (denetim izi).
   session            IproOperatorSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   personnelId        String
+  // Uzaktan (terminal) başlatma denetimi. Kiosk akışında ikisi de null kalır.
+  // baslatanUserId: işi terminalden başlatan kullanıcının User.id'si (operatör ≠ başlatan).
+  // kaynak: 'KIOSK' | 'TERMINAL' — enum DEĞİL (ALTER TYPE transaction sorunu); eski kayıtlar null.
+  baslatanUserId     String?
+  kaynak             String?
   ifsOperationId     String?
   // ifsOrderNo / ifsOperationNo nullable KALIR (geçmiş kayıtlar için NOT NULL yapılamaz).
   // Açık iş satırında ikisinin dolu olması "başla" endpoint'inde (uygulama katmanı) garanti edilir.

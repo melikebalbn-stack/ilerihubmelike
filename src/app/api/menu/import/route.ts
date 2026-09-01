@@ -59,8 +59,11 @@ export async function POST(request: NextRequest) {
     // ── ŞİRKET (catering) FORMATI → parse-catering-menu ──
     if (isCatering) {
       let gunler
+      let ozet
       try {
-        gunler = parseCateringMenu(buffer)
+        const sonuc = parseCateringMenu(buffer)
+        gunler = sonuc.gunler
+        ozet = sonuc.ozet
       } catch (e) {
         return NextResponse.json(
           { error: `Menü dosyası okunamadı: ${e instanceof Error ? e.message : 'format tanınmadı'}` },
@@ -74,6 +77,9 @@ export async function POST(request: NextRequest) {
         warnings: [] as string[],
         errors: [] as string[],
       }
+      // SESSİZ KAYBI ÖNLE: ayrıştırıcının dosya geneline dair uyarıları
+      // (atlanan gün sütunu, çözülemeyen tarih vb.) kullanıcıya taşınır.
+      cat.warnings.push(...ozet.uyarilar)
       for (const g of gunler) {
         try {
           const d = new Date(g.date)
@@ -90,7 +96,14 @@ export async function POST(request: NextRequest) {
           cat.errors.push(`${isoDate(g.date)}: ${err instanceof Error ? err.message : 'kayıt hatası'}`)
         }
       }
-      return NextResponse.json({ message: `${cat.success} günlük menü içe aktarıldı (şirket formatı)`, ...cat })
+      // Mesaj ARALIĞI da söyler — "21 gün aktarıldı" tek başına, ilk haftanın
+      // hiç görülmediğini gizliyordu (2026 Eylül vakası).
+      const aralik = ozet.ilkTarih && ozet.sonTarih ? ` — ${ozet.ilkTarih} .. ${ozet.sonTarih}` : ''
+      return NextResponse.json({
+        message: `${cat.success} günlük menü içe aktarıldı (şirket formatı)${aralik}`,
+        ...cat,
+        ozet,
+      })
     }
 
     // ── LEGACY (düz-satır) FORMAT — mevcut mantık AYNEN korundu ──

@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { ifsYuzde } from "@/lib/akademi/ifs-progress";
 import { stripDeptPrefix, stripAreaPrefix } from "@/lib/akademi-ifs";
+import { resolveAkademiUserId } from "@/lib/akademi-user";
+import {
+  IFS_EGITIM_OKUMA,
+  ifsEgitimKapsami,
+  ifsKapsamYok,
+} from "@/lib/akademi/ifs-kapsam";
 
 // IFS EĞİTİM YAPISI — /ifs/egitimler ekranının tek veri kaynağı (READ).
 //
@@ -11,8 +17,9 @@ import { stripDeptPrefix, stripAreaPrefix } from "@/lib/akademi-ifs";
 //   · ifs/departments     → yalnız alan sayısı, yalnız aktif paketler, ilerleme yok
 //   · ifs/areas           → tek paket, atama/değerlendirme sayıları yok
 //
-// Yetki: `akademi.kurs.edit` — ekranın bugün çağırdığı admin/packages ve
-// admin/courses uçlarının guard'ıyla AYNI.
+// Yetki: OR(akademi.kurs.edit, ifs.keyuser) — kapsam TEK KAYNAK'ta
+// (ifs-kapsam.ts). Key user için sayımlar KENDİ BÖLÜMLERİNDEKİ kişilerle
+// sınırlanır; yönetici için davranış DEĞİŞMEZ.
 //
 // YÜZDE: hesap TEK KAYNAK'ta — ifs-progress.ts (ifsYuzde). Yeni formül YOK.
 //   payda = toplam − FARKLI_DEPARTMAN, pay = BASARILI − (BASARILI ∧ FARKLI).
@@ -20,8 +27,19 @@ import { stripDeptPrefix, stripAreaPrefix } from "@/lib/akademi-ifs";
 // Ekranın üç durumu ayırabilmesi için `degerlendirilmisSatir` ve `kayitSayisi`
 // da dönüyor: 0 kayıt → "—", kayıt var ama karar yok → "Değerlendirilmedi".
 export async function GET() {
-  const { error } = await requirePermission("akademi.kurs.edit");
+  const { session, error } = await requirePermission(IFS_EGITIM_OKUMA);
   if (error) return error;
+  const callerId = await resolveAkademiUserId(session);
+  if (!callerId) {
+    return NextResponse.json(
+      { error: "Kullanıcı çözümlenemedi" },
+      { status: 401 }
+    );
+  }
+  const kapsam = await ifsEgitimKapsami(callerId);
+  if (!kapsam.yetkili) {
+    return NextResponse.json(ifsKapsamYok(), { status: 403 });
+  }
 
   const paketler = await prisma.coursePackage.findMany({
     where: { isIfs: true },
@@ -57,7 +75,16 @@ export async function GET() {
   ];
   const bolumKullanicilari = tumBolumler.length
     ? await prisma.user.findMany({
-        where: { isActive: true, personnel: { bolum: { in: tumBolumler } } },
+        where: {
+          isActive: true,
+          personnel: {
+            bolum: {
+              in: kapsam.bolumler
+                ? tumBolumler.filter((b) => kapsam.bolumler!.includes(b))
+                : tumBolumler,
+            },
+          },
+        },
         select: { id: true, personnel: { select: { bolum: true } } },
       })
     : [];
@@ -126,10 +153,29 @@ export async function GET() {
     }
   };
 
+  // Key user'da doğrudan atanmış (UserPackageAssignment) kişileri de bölüme göre
+  // süzmek gerekiyor — onlar bolumeGoreKisiler haritasından gelmiyor.
+  const kapsamdakiKisiler: Set<string> | null = kapsam.bolumler
+    ? new Set(
+        (
+          await prisma.user.findMany({
+            where: { personnel: { bolum: { in: kapsam.bolumler } } },
+            select: { id: true },
+          })
+        ).map((u) => u.id)
+      )
+    : null;
+
   const departmanlar = paketler.map((p) => {
     const ad = stripDeptPrefix(p.name);
 
-    const kisiler = new Set<string>(p.userAssignments.map((a) => a.userId));
+    // Key user kapsamı: doğrudan atanmış kişiler de bölüm süzgecinden geçer.
+    // (kapsamdakiKisiler yalnız key user'da doludur; yönetici için null.)
+    const kisiler = new Set<string>(
+      p.userAssignments
+        .map((a) => a.userId)
+        .filter((uid) => kapsamdakiKisiler === null || kapsamdakiKisiler.has(uid))
+    );
     for (const dp of p.departmentPackages)
       for (const uid of bolumeGoreKisiler.get(dp.bolum) ?? []) kisiler.add(uid);
 
@@ -178,6 +224,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
+    kapsam: kapsam.yonetici ? "tumu" : "kendi-bolumum",
     ozet: {
       departmanSayisi: departmanlar.length,
       alanSayisi: departmanlar.reduce((t, d) => t + d.alanSayisi, 0),

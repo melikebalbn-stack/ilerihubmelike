@@ -14,7 +14,12 @@ export async function GET(req: NextRequest) {
   const contents = await prisma.content.findMany({
     where: { courseId },
     orderBy: [{ isActive: "desc" }, { order: "asc" }],
-    include: { ifsMeta: true },
+    include: {
+      ifsMeta: true,
+      // Silmeden ÖNCE görünsün diye taşınıyor: DELETE ucu aynı sayı > 0 ise
+      // 409 döner.
+      _count: { select: { ifsEvaluations: true } },
+    },
   });
 
   return NextResponse.json({
@@ -37,8 +42,10 @@ export async function GET(req: NextRequest) {
             ifsEkran: c.ifsMeta.ifsEkran,
             refDocUrl: c.ifsMeta.refDocUrl,
             refVideoUrl: c.ifsMeta.refVideoUrl,
+            kaynak: c.ifsMeta.kaynak,
           }
         : null,
+      degerlendirmeSayisi: c._count.ifsEvaluations,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
     })),
@@ -64,6 +71,9 @@ export async function POST(req: NextRequest) {
       ifsEkran?: string | null;
       refDocUrl?: string | null;
       refVideoUrl?: string | null;
+      // IFS yönetim ekranından eklenen görev MANUEL işaretlenir; import onu
+      // silmez ve sırasını ezmez. Verilmezse IMPORT (şema varsayılanı).
+      kaynak?: "IMPORT" | "MANUEL";
     };
   };
   try {
@@ -140,6 +150,7 @@ export async function POST(req: NextRequest) {
                 ifsEkran: clean(m.ifsEkran),
                 refDocUrl: clean(m.refDocUrl),
                 refVideoUrl: clean(m.refVideoUrl),
+                kaynak: m.kaynak === "MANUEL" ? "MANUEL" : "IMPORT",
               },
             },
           }

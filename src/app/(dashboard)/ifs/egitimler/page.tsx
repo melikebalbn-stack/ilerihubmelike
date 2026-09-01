@@ -491,7 +491,7 @@ export default function IfsEgitimlerPage() {
                             title="Departmanı düzenle"
                             onClick={(ev) => {
                               ev.stopPropagation();
-                              router.push(`/akademi/admin/packages/${d.packageId}`);
+                              router.push(`/ifs/egitimler/${d.packageId}`);
                             }}
                             className="p-1 rounded"
                             style={{ color: "var(--ak-text-secondary)" }}

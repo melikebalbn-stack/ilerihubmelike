@@ -145,6 +145,9 @@ export interface AdminIfsTaskMeta {
   ifsEkran: string | null;
   refDocUrl: string | null;
   refVideoUrl: string | null;
+  // Görevi kim üretti: Excel içe aktarımı (IMPORT) mı, ekrandan elle eklenmiş
+  // (MANUEL) mi. Import yalnız IMPORT olanları siler/yeniden sıralar.
+  kaynak?: "IMPORT" | "MANUEL";
 }
 
 export interface AdminContentItem {
@@ -161,6 +164,9 @@ export interface AdminContentItem {
   isActive: boolean;
   // IFS-3b: yalnız type=GOREV içeriklerde dolu (1:1 IfsTaskMeta).
   ifsMeta: AdminIfsTaskMeta | null;
+  // Bu göreve girilmiş IfsTaskEvaluation sayısı. Silmeden ÖNCE görünsün diye
+  // listede taşınır; silme ucundaki 409 koruması da aynı sayıyı kullanır.
+  degerlendirmeSayisi?: number;
   createdAt: string;
   updatedAt: string;
 }

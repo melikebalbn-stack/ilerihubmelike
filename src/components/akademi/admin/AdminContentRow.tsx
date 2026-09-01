@@ -100,6 +100,19 @@ export function AdminContentRow({ content, onEdit, onDelete }: Props) {
           {!content.isActive && (
             <span className="text-xs text-gray-400">(pasif)</span>
           )}
+          {/* Elle eklenen görev: import onu silmez, sırasını ezmez. Excel'den
+              gelenlerde rozet yok — kalabalık etmesin. */}
+          {content.ifsMeta?.kaynak === "MANUEL" && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded shrink-0 font-medium"
+              style={{
+                background: "var(--ak-accent-glow)",
+                color: "var(--ak-accent)",
+              }}
+            >
+              MANUEL
+            </span>
+          )}
         </div>
         <div className="text-xs text-gray-500 flex items-center gap-2">
           <span>{content.type === "GOREV" ? "Görev" : content.type}</span>
@@ -113,6 +126,15 @@ export function AdminContentRow({ content, onEdit, onDelete }: Props) {
             <>
               <span>·</span>
               <span>{content.duration} dk</span>
+            </>
+          )}
+          {/* Silmeden ÖNCE görünür olsun: bu sayı > 0 ise DELETE 409 döner. */}
+          {!!content.degerlendirmeSayisi && (
+            <>
+              <span>·</span>
+              <span style={{ color: "var(--ak-orange)" }}>
+                {content.degerlendirmeSayisi} değerlendirme
+              </span>
             </>
           )}
           {content.fileSize && (

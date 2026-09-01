@@ -37,6 +37,8 @@ export interface AdminPackageDetail extends AdminPackageListItem {
     courseDifficulty: string;
     order: number;
     isRequired: boolean;
+    // IFS yönetim ekranı sol listesinde alan başına görev sayısı.
+    gorevSayisi?: number;
   }>;
   bolums: Array<{
     id: string;
@@ -50,6 +52,10 @@ export interface AdminPackageDetail extends AdminPackageListItem {
     userName: string | null;
     userEmail: string | null;
     assignedAt: string;
+    // Personnel.bolum — atama türünü (bireysel/bölüm) türetmek için. Kişinin
+    // bölümü paketin bölüm listesindeyse atama BÖLÜM üzerinden gelmiş sayılır;
+    // UserPackageAssignment satırı kaynağını taşımıyor.
+    userBolum?: string | null;
   }>;
 }
 

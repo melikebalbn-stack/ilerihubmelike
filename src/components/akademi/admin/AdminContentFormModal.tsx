@@ -28,6 +28,11 @@ interface Props {
   courseId: string;
   content?: AdminContentItem | null;
   onSaved: () => void;
+  // IFS yönetim ekranından açıldığında "MANUEL" geçilir: oluşturulan görev
+  // import'un silme/sıralama alanının dışında kalır. Verilmezse uç IMPORT
+  // yazar (akademi tarafındaki davranış değişmez). Yalnız create'te anlamlı —
+  // mevcut bir görevin kaynağı ekrandan değiştirilmez.
+  ifsKaynak?: "MANUEL";
 }
 
 export function AdminContentFormModal({
@@ -37,6 +42,7 @@ export function AdminContentFormModal({
   courseId,
   content,
   onSaved,
+  ifsKaynak,
 }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -125,6 +131,9 @@ export function AdminContentFormModal({
                 ifsEkran: ifsEkran.trim() || null,
                 refDocUrl: refDocUrl.trim() || null,
                 refVideoUrl: refVideoUrl.trim() || null,
+                ...(mode === "create" && ifsKaynak
+                  ? { kaynak: ifsKaynak }
+                  : {}),
               },
             }
           : {}),

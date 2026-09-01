@@ -23,14 +23,30 @@ export async function GET(
       packageCourses: {
         orderBy: { order: "asc" },
         include: {
-          course: { select: { id: true, title: true, difficulty: true } },
+          course: {
+            select: {
+              id: true,
+              title: true,
+              difficulty: true,
+              // IFS yönetim ekranı sol listesi alan başına görev sayısı gösterir.
+              _count: { select: { contents: true } },
+            },
+          },
         },
       },
       departmentPackages: { orderBy: { bolum: "asc" } },
       userAssignments: {
         orderBy: { assignedAt: "desc" },
         include: {
-          user: { select: { id: true, name: true, email: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              // Bölüm Personnel'den gelir (packages/bolums ucu da oradan besleniyor).
+              personnel: { select: { bolum: true } },
+            },
+          },
         },
       },
       _count: {
@@ -73,6 +89,7 @@ export async function GET(
       courseDifficulty: pc.course.difficulty,
       order: pc.order,
       isRequired: pc.isRequired,
+      gorevSayisi: pc.course._count.contents,
     })),
     bolums: pkg.departmentPackages.map((dp) => ({
       id: dp.id,
@@ -86,6 +103,7 @@ export async function GET(
       userName: ua.user.name,
       userEmail: ua.user.email,
       assignedAt: ua.assignedAt.toISOString(),
+      userBolum: ua.user.personnel?.bolum ?? null,
     })),
   };
 

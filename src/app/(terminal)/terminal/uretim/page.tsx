@@ -1,4 +1,7 @@
-import { requirePermission } from '@/lib/auth/require-permission'
+import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
+import { requireUser } from '@/lib/auth/require-user'
+import { hasPermission } from '@/lib/auth/has-permission'
 import { prisma } from '@/lib/prisma'
 import {
   getWorkCenterDepartments,
@@ -14,23 +17,21 @@ export const dynamic = 'force-dynamic'
 
 export const metadata = { title: 'IPRO' }
 
-// Üretim Terminali — ana menü (T1). Guard geçici: /uretim/bildirim ile aynı
-// admin.system.manage kontrolü (ayrı iş). İlk ekran bölüm (departman) seçimi;
-// her karta açık iş emri + tezgah sayısı iliştirilir. Alt akış (tezgah → iş emri)
-// ayrı iş — ?dept yalnız yer tutucuya gider.
+// Üretim Terminali — ana menü (T1). Guard: ipro.view | ipro.admin (/ipro/*
+// ekranlarıyla aynı desen). İlk ekran bölüm (departman) seçimi; her karta açık
+// iş emri + tezgah sayısı iliştirilir. Alt akış (tezgah → iş emri) ayrı iş —
+// ?dept yalnız yer tutucuya gider.
 export default async function UretimTerminalPage({
   searchParams,
 }: {
   searchParams: Promise<{ dept?: string; tezgah?: string }>
 }) {
-  const { session, error } = await requirePermission('admin.system.manage')
-  if (error) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Bu ekran için yetkiniz bulunmuyor.
-      </div>
-    )
-  }
+  const { session, error } = await requireUser()
+  if (error) redirect('/login')
+
+  const canView = await hasPermission('ipro.view')
+  const canAdmin = await hasPermission('ipro.admin')
+  if (!canView && !canAdmin) return <YetkisizErisim permission="ipro.view" />
 
   const { dept, tezgah } = await searchParams
   const seciliDept = typeof dept === 'string' && dept.trim() ? dept.trim() : null

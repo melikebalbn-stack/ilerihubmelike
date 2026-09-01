@@ -1,4 +1,7 @@
-import { requirePermission } from '@/lib/auth/require-permission'
+import { redirect } from 'next/navigation'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
+import { requireUser } from '@/lib/auth/require-user'
+import { hasPermission } from '@/lib/auth/has-permission'
 import type { TerminalIsEmri } from '@/lib/uretim/terminal-mock'
 import { getShopOrderOperation } from '@/lib/ifs/shop-order-operations'
 import { IsEmriDetayClient } from './_client'
@@ -9,17 +12,15 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-// Üretim Terminali — iş emri detay/başlat (E1). Guard geçici (admin.system.manage).
+// Üretim Terminali — iş emri detay/başlat (E1). Guard: ipro.view | ipro.admin.
 // id formatı `${orderNo}-${operationNo}`; kayıt GERÇEK IFS'ten (ShopOrderOperations).
 export default async function IsEmriDetayPage({ params }: PageProps) {
-  const { session, error } = await requirePermission('admin.system.manage')
-  if (error) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Bu ekran için yetkiniz bulunmuyor.
-      </div>
-    )
-  }
+  const { session, error } = await requireUser()
+  if (error) redirect('/login')
+
+  const canView = await hasPermission('ipro.view')
+  const canAdmin = await hasPermission('ipro.admin')
+  if (!canView && !canAdmin) return <YetkisizErisim permission="ipro.view" />
 
   const { id } = await params
   // id = `${orderNo}-${operationNo}` — son '-' den böl (orderNo tire içerebilir).

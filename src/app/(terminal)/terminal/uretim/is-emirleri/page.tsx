@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation'
-import { requirePermission } from '@/lib/auth/require-permission'
+import { YetkisizErisim } from '@/components/YetkisizErisim'
+import { requireUser } from '@/lib/auth/require-user'
+import { hasPermission } from '@/lib/auth/has-permission'
 import { getShopOrderOperations } from '@/lib/ifs/shop-order-operations'
 import { type IfsShopOrderOperation } from '@/lib/ifs/types'
 import { IsEmirleriClient } from './_client'
@@ -8,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 export const metadata = { title: 'IPRO — İş Emirleri' }
 
-// Üretim Terminali — iş emri listesi (E1). Guard geçici (admin.system.manage).
+// Üretim Terminali — iş emri listesi (E1). Guard: ipro.view | ipro.admin.
 // Veri GERÇEK IFS'ten (ShopOrderOperations). İş merkezi ?wc query'den gelir
 // (ana ekranda seçilir); ?wc yoksa seçim ekranına döner.
 export default async function IsEmirleriPage({
@@ -16,14 +18,12 @@ export default async function IsEmirleriPage({
 }: {
   searchParams: Promise<{ wc?: string }>
 }) {
-  const { session, error } = await requirePermission('admin.system.manage')
-  if (error) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Bu ekran için yetkiniz bulunmuyor.
-      </div>
-    )
-  }
+  const { session, error } = await requireUser()
+  if (error) redirect('/login')
+
+  const canView = await hasPermission('ipro.view')
+  const canAdmin = await hasPermission('ipro.admin')
+  if (!canView && !canAdmin) return <YetkisizErisim permission="ipro.view" />
 
   const { wc } = await searchParams
   const workCenter = typeof wc === 'string' && wc.trim() ? wc.trim() : null

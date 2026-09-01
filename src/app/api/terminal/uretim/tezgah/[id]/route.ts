@@ -8,11 +8,10 @@ export const dynamic = 'force-dynamic'
 
 // GET /api/terminal/uretim/tezgah/[id] → tek tezgah detayı (terminal kart tıklaması
 // → dialog). İzleme panosunun /api/ipro/izleme/tezgah/[id] route'unun TERMINAL İKİZİ:
-// aynı tezgahDetay(id) servisini çağırır ama guard terminal ekranıyla aynı
-// (admin.system.manage) — izleme panosu ipro.view/ipro.admin ister, operatörde
-// olmayabilir. id = ipro_tezgah.id (page.tsx iproId olarak geçirir). SALT OKUMA.
+// aynı tezgahDetay(id) servisini + aynı guard'ı (ipro.view | ipro.admin) kullanır.
+// id = ipro_tezgah.id (page.tsx iproId olarak geçirir). SALT OKUMA.
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('admin.system.manage')
+  const { error } = await requirePermission(['ipro.view', 'ipro.admin'])
   if (error) return error
   try {
     const { id } = await params

@@ -61,7 +61,18 @@ export async function ustAmirCoz(db: Db, mulakatciUserId: string): Promise<UstAm
     where: { id: mulakatciUserId },
     select: {
       personnelId: true,
-      personnel: { select: { id: true, bolum: true, aktif: true, adSoyad: true } },
+      // FAZ 2: bölüm tanımı FK üzerinden aynı sorguda. `isActive` de seçiliyor —
+      // aşağıdaki AKTİF bölüm şartı FK yolunda da uygulanmak zorunda.
+      personnel: {
+        select: {
+          id: true,
+          bolum: true,
+          aktif: true,
+          adSoyad: true,
+          departmentId: true,
+          department: { select: { name: true, mudurId: true, mudurYardimcisiId: true, isActive: true } },
+        },
+      },
     },
   });
   if (!user?.personnelId || !user.personnel) {
@@ -79,18 +90,25 @@ export async function ustAmirCoz(db: Db, mulakatciUserId: string): Promise<UstAm
     };
   }
   const bolum = (user.personnel.bolum ?? "").trim();
-  if (!bolum) {
-    return {
-      ok: false,
-      error: "Seçilen mülakatçının personel kaydında bölüm bilgisi yok. İnsan Varlıkları ile iletişime geçin.",
-    };
-  }
 
-  // (2) Bölüm → DepartmentDefinition (AKTİF). İsim eşleşmesi; alias/normalizasyon YOK.
-  const dept = await db.departmentDefinition.findFirst({
-    where: { name: bolum, isActive: true },
-    select: { name: true, mudurId: true, mudurYardimcisiId: true },
-  });
+  // (2) Bölüm → DepartmentDefinition (AKTİF).
+  // FK YOLU önce. `isActive` şartı KORUNUYOR: FK dolu ama bölüm pasifse eşleşme
+  // yok sayılır (eski `where: { name, isActive: true }` ile birebir aynı sonuç).
+  // FK boşsa (pasif kayıt / FK'dan önceki veri) eski isim eşleşmesine düşülür;
+  // alias/normalizasyon YOK, orada da olduğu gibi.
+  let dept = user.personnel.department?.isActive ? user.personnel.department : null;
+  if (!dept) {
+    if (!bolum) {
+      return {
+        ok: false,
+        error: "Seçilen mülakatçının personel kaydında bölüm bilgisi yok. İnsan Varlıkları ile iletişime geçin.",
+      };
+    }
+    dept = await db.departmentDefinition.findFirst({
+      where: { name: bolum, isActive: true },
+      select: { name: true, mudurId: true, mudurYardimcisiId: true, isActive: true },
+    });
+  }
   if (!dept) {
     return {
       ok: false,

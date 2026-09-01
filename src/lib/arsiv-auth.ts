@@ -38,7 +38,9 @@ export async function getArsivUserContext(): Promise<ArsivUserContext | null> {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return null
 
-  // Kullanıcı + bağlı personelin bölümü TEK sorguda; ayrı resolveUserBolum çağrısı yok.
+  // FAZ 2: kullanıcı + personel + BÖLÜM TANIMI tek sorguda. `department` ilişkisi
+  // Personnel.departmentId FK'sı üzerinden geliyor → arşiv kutusu ikinci sorgu
+  // olmadan çözülüyor (eskiden ayrı bir `departmentDefinition.findUnique` vardı).
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
     select: {
@@ -46,7 +48,13 @@ export async function getArsivUserContext(): Promise<ArsivUserContext | null> {
       email: true,
       role: true,
       isActive: true,
-      personnel: { select: { bolum: true } },
+      personnel: {
+        select: {
+          bolum: true,
+          departmentId: true,
+          department: { select: { arsivBolumId: true } },
+        },
+      },
     },
   })
   if (!user || !user.isActive) return null
@@ -56,13 +64,16 @@ export async function getArsivUserContext(): Promise<ArsivUserContext | null> {
 
   let arsivBolumId: number | null = null
   if (!isSuperAdmin) {
-    const bolum = user.personnel?.bolum
-    if (bolum) {
-      // FK üzerinden: bölüm tanımı hangi arşiv kutusunu gösteriyorsa o.
-      // DepartmentDefinition.name @unique — ad ile kayda erişmek kimlik araması,
-      // ArsivBolum.ad ile YETKİ eşleşmesi DEĞİL.
+    const personel = user.personnel
+    if (personel?.departmentId) {
+      // FK YOLU — ad karşılaştırması yok.
+      arsivBolumId = personel.department?.arsivBolumId ?? null
+    } else if (personel?.bolum) {
+      // GERİ DÜŞÜŞ: FK henüz dolmamış kayıtlar (pasif personel, FK'dan önce
+      // yazılmış veri, çözülemeyen bölüm adı). Faz 1'de yalnız AKTİF personelin
+      // FK'sı dolduruldu; bu dal onlar için eski davranışı birebir korur.
       const dept = await prisma.departmentDefinition.findUnique({
-        where: { name: bolum },
+        where: { name: personel.bolum },
         select: { arsivBolumId: true },
       })
       arsivBolumId = dept?.arsivBolumId ?? null

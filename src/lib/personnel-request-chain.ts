@@ -25,16 +25,31 @@ export async function resolveApprovers(db: Db, requesterId: string): Promise<Coz
   // (1) BÖLÜM MÜDÜRÜ: requester → personnelId → Personnel.bolum → DepartmentDefinition → mudurId → User
   const user = await db.user.findUnique({
     where: { id: requesterId },
-    select: { personnelId: true, personnel: { select: { bolum: true } } },
+    select: {
+      personnelId: true,
+      // FAZ 2: bölüm tanımı FK üzerinden aynı sorguda geliyor; `bolum` metni
+      // yalnız geri düşüş ve hata mesajı için okunuyor.
+      personnel: {
+        select: {
+          bolum: true,
+          departmentId: true,
+          department: { select: { mudurId: true, name: true } },
+        },
+      },
+    },
   });
   if (!user?.personnelId || !user.personnel) {
     return { ok: false, error: "Personel kaydınız bulunamadı. Onay zinciri kurulamıyor, İK ile iletişime geçin." };
   }
   const bolum = (user.personnel.bolum ?? "").trim();
-  if (!bolum) {
-    return { ok: false, error: "Personel kaydınızda bölüm bilgisi yok. İK ile iletişime geçin." };
+  // FK YOLU önce; FK boşsa (pasif kayıt / FK'dan önceki veri) eski ad eşleşmesine düş.
+  let deptDef = user.personnel.department ?? null;
+  if (!deptDef) {
+    if (!bolum) {
+      return { ok: false, error: "Personel kaydınızda bölüm bilgisi yok. İK ile iletişime geçin." };
+    }
+    deptDef = await db.departmentDefinition.findFirst({ where: { name: bolum }, select: { mudurId: true, name: true } });
   }
-  const deptDef = await db.departmentDefinition.findFirst({ where: { name: bolum }, select: { mudurId: true, name: true } });
   if (!deptDef) {
     return { ok: false, error: `Departmanınız ("${bolum}") sistemde tanımlı değil. İK ile iletişime geçin.` };
   }

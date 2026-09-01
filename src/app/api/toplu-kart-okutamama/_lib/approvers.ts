@@ -88,16 +88,34 @@ async function bolumMudurundenOnayci(bolum: string | null): Promise<string | nul
 export async function resolveApprovers(personnelId: string): Promise<ResolvedApprovers> {
   const personnel = await prisma.personnel.findUnique({
     where: { id: personnelId },
-    select: { birimSorumlusu: true, sorumlu2: true, sorumlu3: true, bolum: true },
+    select: {
+      birimSorumlusu: true,
+      sorumlu2: true,
+      sorumlu3: true,
+      bolum: true,
+      // FAZ 2 · FK YOLU. Faz 1'de doldurulan sorumlu1-3Id; bağlı Personnel'in
+      // User'ı buradan geliyor. `aktif` de seçiliyor: FK dolu ama kişi ayrılmışsa
+      // ad yolundaki `aktifAdayHavuzu` filtresiyle aynı davranış korunsun.
+      sorumlu1: { select: { aktif: true, user: { select: { id: true } } } },
+      sorumlu2Ref: { select: { aktif: true, user: { select: { id: true } } } },
+      sorumlu3Ref: { select: { aktif: true, user: { select: { id: true } } } },
+    },
   })
 
   if (!personnel) return { approverId: null, approverId2: null, approverId3: null }
 
+  // FK YOLU önce; FK boş (ya da bağlı kişi pasif / User'sız) ise slot bazında
+  // MEVCUT ad çözümüne düşülür. Ad yolu, dedup, kendi-kendini-onaylama engeli ve
+  // bölüm müdürü fallback'i AYNEN korunuyor — bu tur yalnız FK'yı öne alıyor.
   const havuz = await aktifAdayHavuzu()
+  const fkSlot = (
+    ref: { aktif: boolean; user: { id: string } | null } | null,
+  ): string | null => (ref?.aktif ? ref.user?.id ?? null : null)
+
   const resolved = [
-    resolveApproverByName(havuz, personnel.birimSorumlusu),
-    resolveApproverByName(havuz, personnel.sorumlu2),
-    resolveApproverByName(havuz, personnel.sorumlu3),
+    fkSlot(personnel.sorumlu1) ?? resolveApproverByName(havuz, personnel.birimSorumlusu),
+    fkSlot(personnel.sorumlu2Ref) ?? resolveApproverByName(havuz, personnel.sorumlu2),
+    fkSlot(personnel.sorumlu3Ref) ?? resolveApproverByName(havuz, personnel.sorumlu3),
   ]
 
   // Kişi KENDİ Sorumlu'su olarak tanımlıysa (kendi adı 1./2./3. Sorumlu alanında)

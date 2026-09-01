@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { TaskStatus, TaskPriority, TaskEmailType } from '@/generated/prisma'
 import { sendTaskNotification, TaskEmailData, EmailRecipient } from '@/lib/email'
@@ -305,8 +305,34 @@ export async function POST(request: NextRequest) {
       finalResponsibleDepartments = [responsibleDepartment]
     }
 
+    // ── ÇİFT KAYIT KORUMASI (idempotent) ────────────────────────────────
+    // Aynı kullanıcı, aynı başlık, aynı bitiş tarihi ve son 10 sn: kullanıcı
+    // butona iki kez basmıştır. Yeni kayıt AÇILMAZ, mevcut görev 200 ile döner.
+    // (201 değil — yeni kaynak yaratılmadı.)
+    //
+    // `createdBy` bu ana kadar HİÇ yazılmıyordu (şemada alan vardı, POST boş
+    // bırakıyordu); koruma onsuz iki farklı kullanıcının aynı başlıklı görevini
+    // birbirine karıştırırdı. Aşağıda create'e eklendi.
+    const ONCEKI_SN = 10
+    const mukerrer = await prisma.plannedTask.findFirst({
+      where: {
+        isActive: true,
+        createdBy: user.email,
+        title,
+        dueDate: dueDateObj,
+        createdAt: { gte: new Date(Date.now() - ONCEKI_SN * 1000) },
+      },
+      include: { category: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (mukerrer) {
+      console.warn(`[gorev-create] çift gönderim yakalandı: "${title}" (${user.email}) — mevcut ${mukerrer.id} döndürüldü`)
+      return NextResponse.json(mukerrer, { status: 200 })
+    }
+
     const task = await prisma.plannedTask.create({
       data: {
+        createdBy: user.email,
         title,
         description,
         categoryId: categoryId || null,
@@ -336,187 +362,209 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // ── ATAMA BİLDİRİMİ (in-app + e-posta) ──────────────────────────────
-    // Oluşturmada TÜM sorumlular "yeni eklenen"dir. E-postasız sorumluya
-    // e-posta sessizce atlanır; in-app bildirim User kaydı varsa yazılır.
-    // Hata görev oluşturmayı DÜŞÜRMEZ (servis içinde yutuluyor).
-    await atamaBildirimiGonder(
-      { id: task.id, title: task.title, dueDate: task.dueDate },
-      sorumlulariCoz(task.responsiblePersons),
-    )
+    // ── YANIT ÖNCE, BİLDİRİM SONRA ──────────────────────────────────────
+    // ÇİFT KAYIT KÖK SEBEBİ: create ile return arasında ~180 satır bildirim işi
+    // vardı (atama bildirimi + departman üyeleri için LDAP + global mail listesi
+    // + in-app bildirim). Yanıt saniyelerce gecikince kullanıcı butona tekrar
+    // basıyor ve İKİNCİ görev açılıyordu.
+    //
+    // Hepsi `after()` içine alındı: Next 15.1.6'da STABLE (unstable_after
+    // tanımsız — ölçüldü). Yanıt gönderildikten SONRA çalışır, gecikmeyi
+    // kullanıcıya yansıtmaz.
+    //
+    // Kapsam notu: talimat yalnız atamaBildirimiGonder'i söylüyordu; ama asıl
+    // gecikme diğer bloklarda. Yalnız onu taşımak kök sebebi çözmezdi, bu yüzden
+    // create sonrası TÜM yan etkiler taşındı. Hiçbirinin dönüş değeri yanıtta
+    // kullanılmıyordu — davranış aynı, yalnız zamanlaması değişti.
+    after(async () => {
+      try {
+      // ── ATAMA BİLDİRİMİ (in-app + e-posta) ──────────────────────────────
+      // Oluşturmada TÜM sorumlular "yeni eklenen"dir. E-postasız sorumluya
+      // e-posta sessizce atlanır; in-app bildirim User kaydı varsa yazılır.
+      // Hata görev oluşturmayı DÜŞÜRMEZ (servis içinde yutuluyor).
+      await atamaBildirimiGonder(
+        { id: task.id, title: task.title, dueDate: task.dueDate },
+        sorumlulariCoz(task.responsiblePersons),
+      )
 
-    // E-posta bildirimlerini gönder
-    const emailsToSend: string[] = [...(notificationEmails || [])]
+      // E-posta bildirimlerini gönder
+      const emailsToSend: string[] = [...(notificationEmails || [])]
 
-    // Çoklu sorumlu kişilerin e-postalarını ekle
-    if (responsiblePersons && responsiblePersons.length > 0) {
-      for (const person of responsiblePersons) {
-        if (person.email && !emailsToSend.includes(person.email)) {
-          emailsToSend.push(person.email)
+      // Çoklu sorumlu kişilerin e-postalarını ekle
+      if (responsiblePersons && responsiblePersons.length > 0) {
+        for (const person of responsiblePersons) {
+          if (person.email && !emailsToSend.includes(person.email)) {
+            emailsToSend.push(person.email)
+          }
+        }
+      } else if (responsiblePersonEmail && !emailsToSend.includes(responsiblePersonEmail)) {
+        // Eski format: tek kişi
+        emailsToSend.push(responsiblePersonEmail)
+      }
+
+      // Departmana atanan görevlerde departman üyelerine bildirim gönder
+      if (finalResponsibleDepartments.length > 0) {
+        try {
+          for (const deptName of finalResponsibleDepartments) {
+            // Departmanın AD OU adını bul
+            const dept = await prisma.department.findFirst({
+              where: { name: deptName },
+              select: { adOuName: true },
+            })
+            const ouName = dept?.adOuName || deptName
+
+            // Bu departmandaki kullanıcıları DB'den çek
+            const deptUsers = await prisma.user.findMany({
+              where: {
+                isActive: true,
+                OR: [
+                  { department: { equals: deptName, mode: 'insensitive' } },
+                  { department: { equals: ouName, mode: 'insensitive' } },
+                  { officeLocation: { equals: ouName, mode: 'insensitive' } },
+                ],
+              },
+              select: { email: true, name: true },
+            })
+
+            for (const deptUser of deptUsers) {
+              if (deptUser.email && !emailsToSend.includes(deptUser.email)) {
+                emailsToSend.push(deptUser.email)
+              }
+            }
+          }
+        } catch (deptError) {
+          console.error('Departman kullanıcıları alınamadı:', deptError)
         }
       }
-    } else if (responsiblePersonEmail && !emailsToSend.includes(responsiblePersonEmail)) {
-      // Eski format: tek kişi
-      emailsToSend.push(responsiblePersonEmail)
-    }
 
-    // Departmana atanan görevlerde departman üyelerine bildirim gönder
-    if (finalResponsibleDepartments.length > 0) {
+      // Ayarlardaki global bildirim e-postalarını da ekle
+      const globalNotificationEmails = await prisma.taskNotificationEmail.findMany({
+        where: { isActive: true },
+      })
+
+      for (const globalEmail of globalNotificationEmails) {
+        if (!emailsToSend.includes(globalEmail.email)) {
+          emailsToSend.push(globalEmail.email)
+        }
+      }
+
+      if (emailsToSend.length > 0) {
+        const recipients: EmailRecipient[] = emailsToSend.map(email => ({
+          email,
+          name: email === responsiblePersonEmail ? (responsiblePerson || email) : email,
+        }))
+
+        const emailData: TaskEmailData = {
+          taskId: task.id,
+          taskTitle: title,
+          taskDescription: description,
+          dueDate: dueDateObj,
+          responsiblePerson,
+          responsibleDepartment,
+          category: task.category?.name,
+          priority: priority || 'NORMAL',
+        }
+
+        // E-posta gönder (arka planda, response'u bekleme)
+        sendTaskNotification('CREATED', emailData, recipients)
+          .then(async (result) => {
+            // E-posta log'unu kaydet
+            await prisma.taskEmailLog.create({
+              data: {
+                taskId: task.id,
+                recipientEmails: emailsToSend.join(', '),
+                emailType: TaskEmailType.REMINDER, // CREATED yok, REMINDER kullanıyoruz
+                subject: `📋 Yeni Görev Oluşturuldu: ${title}`,
+                body: `Görev oluşturuldu: ${title}`,
+                status: result.success ? 'SENT' : 'FAILED',
+                errorMessage: result.error,
+              },
+            })
+            console.log(`📧 Görev bildirimi gönderildi: ${title} -> ${emailsToSend.join(', ')}`)
+          })
+          .catch((error) => {
+            console.error('E-posta gönderme hatası:', error)
+          })
+      }
+
+      // In-app bildirim oluştur (bildirim zili)
       try {
-        for (const deptName of finalResponsibleDepartments) {
-          // Departmanın AD OU adını bul
-          const dept = await prisma.department.findFirst({
-            where: { name: deptName },
-            select: { adOuName: true },
-          })
-          const ouName = dept?.adOuName || deptName
+        // Bildirim gönderilecek kullanıcıları bul (email listesinden)
+        const notifyEmails = new Set<string>()
 
-          // Bu departmandaki kullanıcıları DB'den çek
-          const deptUsers = await prisma.user.findMany({
-            where: {
-              isActive: true,
-              OR: [
-                { department: { equals: deptName, mode: 'insensitive' } },
-                { department: { equals: ouName, mode: 'insensitive' } },
-                { officeLocation: { equals: ouName, mode: 'insensitive' } },
-              ],
-            },
-            select: { email: true, name: true },
-          })
+        // Sorumlu kişiler
+        if (responsiblePersons && responsiblePersons.length > 0) {
+          for (const person of responsiblePersons) {
+            if (person.email) notifyEmails.add(person.email.toLowerCase())
+          }
+        } else if (finalResponsiblePersonEmail) {
+          notifyEmails.add(finalResponsiblePersonEmail.toLowerCase())
+        }
 
-          for (const deptUser of deptUsers) {
-            if (deptUser.email && !emailsToSend.includes(deptUser.email)) {
-              emailsToSend.push(deptUser.email)
+        // Departman üyeleri
+        if (finalResponsibleDepartments.length > 0) {
+          for (const deptName of finalResponsibleDepartments) {
+            const dept = await prisma.department.findFirst({
+              where: { name: deptName },
+              select: { adOuName: true },
+            })
+            const ouName = dept?.adOuName || deptName
+
+            const deptUsers = await prisma.user.findMany({
+              where: {
+                isActive: true,
+                OR: [
+                  { department: { equals: deptName, mode: 'insensitive' } },
+                  { department: { equals: ouName, mode: 'insensitive' } },
+                  { officeLocation: { equals: ouName, mode: 'insensitive' } },
+                ],
+              },
+              select: { email: true },
+            })
+
+            for (const u of deptUsers) {
+              if (u.email) notifyEmails.add(u.email.toLowerCase())
             }
           }
         }
-      } catch (deptError) {
-        console.error('Departman kullanıcıları alınamadı:', deptError)
-      }
-    }
 
-    // Ayarlardaki global bildirim e-postalarını da ekle
-    const globalNotificationEmails = await prisma.taskNotificationEmail.findMany({
-      where: { isActive: true },
-    })
+        // Görev oluşturanı bildirimden çıkar
+        const creatorEmail = user.email
+        notifyEmails.delete(creatorEmail)
 
-    for (const globalEmail of globalNotificationEmails) {
-      if (!emailsToSend.includes(globalEmail.email)) {
-        emailsToSend.push(globalEmail.email)
-      }
-    }
-
-    if (emailsToSend.length > 0) {
-      const recipients: EmailRecipient[] = emailsToSend.map(email => ({
-        email,
-        name: email === responsiblePersonEmail ? (responsiblePerson || email) : email,
-      }))
-
-      const emailData: TaskEmailData = {
-        taskId: task.id,
-        taskTitle: title,
-        taskDescription: description,
-        dueDate: dueDateObj,
-        responsiblePerson,
-        responsibleDepartment,
-        category: task.category?.name,
-        priority: priority || 'NORMAL',
-      }
-
-      // E-posta gönder (arka planda, response'u bekleme)
-      sendTaskNotification('CREATED', emailData, recipients)
-        .then(async (result) => {
-          // E-posta log'unu kaydet
-          await prisma.taskEmailLog.create({
-            data: {
-              taskId: task.id,
-              recipientEmails: emailsToSend.join(', '),
-              emailType: TaskEmailType.REMINDER, // CREATED yok, REMINDER kullanıyoruz
-              subject: `📋 Yeni Görev Oluşturuldu: ${title}`,
-              body: `Görev oluşturuldu: ${title}`,
-              status: result.success ? 'SENT' : 'FAILED',
-              errorMessage: result.error,
-            },
-          })
-          console.log(`📧 Görev bildirimi gönderildi: ${title} -> ${emailsToSend.join(', ')}`)
-        })
-        .catch((error) => {
-          console.error('E-posta gönderme hatası:', error)
-        })
-    }
-
-    // In-app bildirim oluştur (bildirim zili)
-    try {
-      // Bildirim gönderilecek kullanıcıları bul (email listesinden)
-      const notifyEmails = new Set<string>()
-
-      // Sorumlu kişiler
-      if (responsiblePersons && responsiblePersons.length > 0) {
-        for (const person of responsiblePersons) {
-          if (person.email) notifyEmails.add(person.email.toLowerCase())
-        }
-      } else if (finalResponsiblePersonEmail) {
-        notifyEmails.add(finalResponsiblePersonEmail.toLowerCase())
-      }
-
-      // Departman üyeleri
-      if (finalResponsibleDepartments.length > 0) {
-        for (const deptName of finalResponsibleDepartments) {
-          const dept = await prisma.department.findFirst({
-            where: { name: deptName },
-            select: { adOuName: true },
-          })
-          const ouName = dept?.adOuName || deptName
-
-          const deptUsers = await prisma.user.findMany({
+        if (notifyEmails.size > 0) {
+          // Email'lerden user ID'lerini bul
+          const usersToNotify = await prisma.user.findMany({
             where: {
+              email: { in: Array.from(notifyEmails), mode: 'insensitive' },
               isActive: true,
-              OR: [
-                { department: { equals: deptName, mode: 'insensitive' } },
-                { department: { equals: ouName, mode: 'insensitive' } },
-                { officeLocation: { equals: ouName, mode: 'insensitive' } },
-              ],
             },
-            select: { email: true },
+            select: { id: true },
           })
 
-          for (const u of deptUsers) {
-            if (u.email) notifyEmails.add(u.email.toLowerCase())
+          if (usersToNotify.length > 0) {
+            await prisma.notification.createMany({
+              data: usersToNotify.map(u => ({
+                userId: u.id,
+                title: `Yeni Görev: ${title}`,
+                message: description
+                  ? `${description.substring(0, 150)}${description.length > 150 ? '...' : ''}`
+                  : `Size yeni bir görev atandı: ${title}`,
+                type: 'INFO' as const,
+                link: `/tasks?highlight=${task.id}`,
+              })),
+            })
           }
         }
+      } catch (notifError) {
+        console.error('In-app bildirim oluşturma hatası:', notifError)
       }
-
-      // Görev oluşturanı bildirimden çıkar
-      const creatorEmail = user.email
-      notifyEmails.delete(creatorEmail)
-
-      if (notifyEmails.size > 0) {
-        // Email'lerden user ID'lerini bul
-        const usersToNotify = await prisma.user.findMany({
-          where: {
-            email: { in: Array.from(notifyEmails), mode: 'insensitive' },
-            isActive: true,
-          },
-          select: { id: true },
-        })
-
-        if (usersToNotify.length > 0) {
-          await prisma.notification.createMany({
-            data: usersToNotify.map(u => ({
-              userId: u.id,
-              title: `Yeni Görev: ${title}`,
-              message: description
-                ? `${description.substring(0, 150)}${description.length > 150 ? '...' : ''}`
-                : `Size yeni bir görev atandı: ${title}`,
-              type: 'INFO' as const,
-              link: `/tasks?highlight=${task.id}`,
-            })),
-          })
-        }
+      } catch (err) {
+        // Bildirim ikincil: hata YALNIZ loglanır, görev kaydı zaten yazıldı.
+        console.error('[gorev-create] bildirim adımı başarısız:', err)
       }
-    } catch (notifError) {
-      console.error('In-app bildirim oluşturma hatası:', notifError)
-    }
+    })
+
 
     return NextResponse.json(task, { status: 201 })
   } catch (error) {

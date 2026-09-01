@@ -27,8 +27,10 @@ import {
   TrendingUp,
   Users,
   Building2,
-  ListTodo
+  ListTodo,
+  Loader2
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart } from 'recharts'
 import {
   Card,
@@ -343,8 +345,18 @@ export default function TasksPage() {
     }
   }
 
+  // ── ÇİFT GÖNDERİM KORUMASI ────────────────────────────────────────────
+  // Sunucu tarafındaki idempotent koruma son savunma hattı; asıl çözüm butonu
+  // istek boyunca kilitlemek. İki state ayrı: iki form aynı anda açık olabilir.
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isCategorySubmitting, setIsCategorySubmitting] = useState(false)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Guard: React state güncellemesi asenkron, hızlı ikinci tıklama disabled
+    // özniteliği DOM'a yansımadan gelebilir.
+    if (isSubmitting) return
+    setIsSubmitting(true)
 
     try {
       const url = editingTask ? `/api/tasks/${editingTask.id}` : '/api/tasks'
@@ -360,16 +372,20 @@ export default function TasksPage() {
       })
 
       if (response.ok) {
+        toast.success(editingTask ? 'Görev güncellendi' : 'Görev kaydedildi')
         setShowTaskModal(false)
         resetForm()
         fetchTasks()
       } else {
-        const error = await response.json()
-        alert(error.error || 'Bir hata oluştu')
+        const error = await response.json().catch(() => ({}))
+        toast.error(error.error || 'Bir hata oluştu')
       }
     } catch (error) {
       console.error('Görev kaydedilemedi:', error)
-      alert('Görev kaydedilemedi')
+      toast.error('Görev kaydedilemedi — bağlantı hatası')
+    } finally {
+      // Hata yolunda da açılır; kullanıcı düzeltip tekrar deneyebilsin.
+      setIsSubmitting(false)
     }
   }
 
@@ -407,6 +423,8 @@ export default function TasksPage() {
 
   const handleCategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isCategorySubmitting) return
+    setIsCategorySubmitting(true)
 
     try {
       const response = await fetch('/api/tasks/categories', {
@@ -416,15 +434,19 @@ export default function TasksPage() {
       })
 
       if (response.ok) {
+        toast.success('Kategori kaydedildi')
         setShowCategoryModal(false)
         setCategoryFormData({ name: '', description: '', color: '#3b82f6' })
         fetchCategories()
       } else {
-        const error = await response.json()
-        alert(error.error || 'Bir hata oluştu')
+        const error = await response.json().catch(() => ({}))
+        toast.error(error.error || 'Bir hata oluştu')
       }
     } catch (error) {
       console.error('Kategori kaydedilemedi:', error)
+      toast.error('Kategori kaydedilemedi — bağlantı hatası')
+    } finally {
+      setIsCategorySubmitting(false)
     }
   }
 
@@ -1530,9 +1552,11 @@ export default function TasksPage() {
                 </button>
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={isSubmitting}
+                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 sm:py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {editingTask ? 'Güncelle' : 'Kaydet'}
+                  {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isSubmitting ? 'Kaydediliyor…' : editingTask ? 'Güncelle' : 'Kaydet'}
                 </button>
               </div>
             </form>
@@ -1613,9 +1637,11 @@ export default function TasksPage() {
                 </button>
                 <button
                   type="submit"
-                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={isCategorySubmitting}
+                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 sm:py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Kaydet
+                  {isCategorySubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isCategorySubmitting ? 'Kaydediliyor…' : 'Kaydet'}
                 </button>
               </div>
             </form>

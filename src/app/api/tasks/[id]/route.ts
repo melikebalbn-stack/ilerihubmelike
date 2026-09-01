@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { TaskStatus, TaskPriority } from '@/generated/prisma'
 import { getAllSubordinates } from '@/lib/ldap'
@@ -198,15 +198,26 @@ export async function PUT(
       },
     })
 
-    // ── ATAMA BİLDİRİMİ — YALNIZ YENİ EKLENENLER ────────────────────────
+    // ── ATAMA BİLDİRİMİ — YALNIZ YENİ EKLENENLER, YANITTAN SONRA ────────
     // Mevcut sorumlular her güncellemede tekrar bildirim ALMAZ; fark
     // yeniEklenenler() ile hesaplanır (sicil öncelikli eşleştirme).
+    //
+    // `after()` (Next 15.1.6'da stable): yanıt gönderildikten SONRA koşar.
+    // Await edilseydi kaydet düğmesi bildirim süresince kilitli kalır ve
+    // kullanıcı tekrar basmaya çalışırdı — POST'takiyle aynı çift-gönderim
+    // riski. Hata görev güncellemesini ETKİLEMEZ, yalnız loglanır.
     const yeniler = yeniEklenenler(oncekiSorumlular, sorumlulariCoz(task.responsiblePersons))
     if (yeniler.length > 0) {
-      await atamaBildirimiGonder(
-        { id: task.id, title: task.title, dueDate: task.dueDate },
-        yeniler,
-      )
+      after(async () => {
+        try {
+          await atamaBildirimiGonder(
+            { id: task.id, title: task.title, dueDate: task.dueDate },
+            yeniler,
+          )
+        } catch (err) {
+          console.error('[gorev-update] bildirim adımı başarısız:', err)
+        }
+      })
     }
 
     // NOT: Tekrarlayan görevler için yeni periyotlar artık timeline modal'ından manuel olarak oluşturuluyor

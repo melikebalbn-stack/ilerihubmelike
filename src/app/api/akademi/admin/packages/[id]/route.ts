@@ -160,7 +160,10 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requirePermission('akademi.kurs.edit');
+  // Paket silmek alan bağlarını, bölüm atamalarını ve referans dökümanlarını
+  // cascade ile götürür — kurs silmekle aynı ağırlıkta. Yetki de aynı olmalı:
+  // eskiden kurs.delete isterken paket kurs.edit ile silinebiliyordu.
+  const { error } = await requirePermission('akademi.kurs.delete');
   if (error) return error;
 
   const { id } = await params;

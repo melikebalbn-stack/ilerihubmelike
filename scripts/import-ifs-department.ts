@@ -169,7 +169,14 @@ async function main() {
           include: {
             course: {
               include: {
-                contents: { where: { type: 'GOREV' }, select: { id: true, title: true } },
+                contents: {
+                  where: { type: 'GOREV' },
+                  select: {
+                    id: true,
+                    title: true,
+                    ifsMeta: { select: { kaynak: true } },
+                  },
+                },
                 _count: { select: { packageCourses: true } },
               },
             },
@@ -181,6 +188,13 @@ async function main() {
     const desiredCourseTitles = new Set(areas.map((a) => a.courseTitle))
     const existingLinks = pkg?.packageCourses ?? []
 
+    // Elle eklenen görevler import'un yönetim alanı DIŞINDA. Excel bir görevi
+    // "yok" saydığında yalnız IMPORT kaynaklı olanı siler; MANUEL olan korunur.
+    // Meta satırı hiç yoksa (import'tan önceki eski kayıt) IMPORT sayılır —
+    // eski davranış aynen sürer, sessiz koruma yapılmaz.
+    const manuelMi = (c: { ifsMeta?: { kaynak: string } | null }) =>
+      c.ifsMeta?.kaynak === 'MANUEL'
+
     // Silinecek alanlar = pakette olup Excel'de olmayanlar
     const toDeleteAreas = existingLinks.filter(
       (l) => !desiredCourseTitles.has(l.course.title)
@@ -189,12 +203,19 @@ async function main() {
       (s, l) => s + l.course.contents.length,
       0
     )
+    // Alan komple silinirse manuel görevleri de gider (kurs cascade). Sessiz
+    // kalmasın diye planda ayrıca uyarılır.
+    const areaManuelCount = toDeleteAreas.reduce(
+      (s, l) => s + l.course.contents.filter(manuelMi).length,
+      0
+    )
 
     // ── PLAN ÖZETİ ──
     console.log('\n── PLAN ──')
     console.log(`Paket: ${pkg ? `mevcut (id=${pkg.id})` : 'YOK → oluşturulacak'}`)
     let createAreas = 0
     let updateAreas = 0
+    let manuelKorunan = 0
     for (const a of areas) {
       const ex = existingLinks.find((l) => l.course.title === a.courseTitle)
       if (ex) {
@@ -202,9 +223,13 @@ async function main() {
         const exTitles = new Set(ex.course.contents.map((c) => c.title))
         const desiredTitles = new Set(a.tasks.map((t) => t.title))
         const addT = a.tasks.filter((t) => !exTitles.has(t.title)).length
-        const delT = ex.course.contents.filter((c) => !desiredTitles.has(c.title)).length
+        const yetim = ex.course.contents.filter((c) => !desiredTitles.has(c.title))
+        const delT = yetim.filter((c) => !manuelMi(c)).length
+        const korunanT = yetim.filter(manuelMi).length
+        manuelKorunan += korunanT
         console.log(
-          `  ~ GÜNCELLE alan "${a.sheetName}": +${addT} görev ekle, ${a.tasks.length - addT} güncelle, -${delT} görev sil`
+          `  ~ GÜNCELLE alan "${a.sheetName}": +${addT} görev ekle, ${a.tasks.length - addT} güncelle, -${delT} görev sil` +
+            (korunanT ? `, ${korunanT} manuel görev korundu` : '')
         )
       } else {
         createAreas++
@@ -221,8 +246,15 @@ async function main() {
     }
     console.log(
       `\nÖZET: alan +${createAreas} / ~${updateAreas} / -${toDeleteAreas.length}` +
-        `  |  SİLİNECEK görev (alan silmeden): ${deleteTaskCount}`
+        `  |  SİLİNECEK görev (alan silmeden): ${deleteTaskCount}` +
+        `  |  ${manuelKorunan} manuel görev korundu`
     )
+    if (areaManuelCount) {
+      console.log(
+        `⚠  Silinecek alanların içinde ${areaManuelCount} MANUEL görev var — alan komple` +
+          ` kaldırıldığı için bunlar da silinir.`
+      )
+    }
 
     if (dryRun) {
       console.log('\n[DRY-RUN] Hiçbir yazma yapılmadı.')
@@ -275,16 +307,24 @@ async function main() {
           update: { order: a.sortOrder },
         })
 
-        // Mevcut GOREV görevleri.
+        // Mevcut GOREV görevleri (kaynağıyla birlikte — manuel olanı korumak için).
         const existingContents = await tx.content.findMany({
           where: { courseId, type: 'GOREV' },
-          select: { id: true, title: true },
+          select: {
+            id: true,
+            title: true,
+            order: true,
+            ifsMeta: { select: { kaynak: true } },
+          },
+          orderBy: { order: 'asc' },
         })
         const desiredTitles = new Set(a.tasks.map((t) => t.title))
 
-        // Excel'de olmayan görevleri sil (IfsTaskMeta cascade).
+        // Excel'de olmayan görevleri sil (IfsTaskMeta cascade) — YALNIZ IMPORT
+        // kaynaklı olanları. Elle eklenen görev Excel'de görünmez, o yüzden eski
+        // koşulsuz silme her import'ta ekrandan eklenen işi yok ediyordu.
         for (const c of existingContents) {
-          if (!desiredTitles.has(c.title)) {
+          if (!desiredTitles.has(c.title) && !manuelMi(c)) {
             await tx.content.delete({ where: { id: c.id } })
           }
         }
@@ -320,6 +360,7 @@ async function main() {
               ifsEkran: t.ifsEkran,
               refDocUrl: t.refDocUrl,
               refVideoUrl: t.refVideoUrl,
+              kaynak: 'IMPORT',
             },
             update: {
               modul: t.modul,
@@ -328,7 +369,26 @@ async function main() {
               refDocUrl: t.refDocUrl,
               refVideoUrl: t.refVideoUrl,
             },
+            // kaynak GÜNCELLENMEZ: başlığı Excel'e sonradan giren bir MANUEL
+            // görev IMPORT'a çevrilirse, başlık Excel'den çıktığı gün silinir.
           })
+        }
+
+        // Manuel görevleri Excel görevlerinden SONRAYA al. Sıraları kendi
+        // aralarında korunur; yalnız Excel bloğuyla (1..N) çakışan varsa
+        // kaydırılır — çakışma yoksa hiç yazma yapılmaz.
+        const manuelYetimler = existingContents.filter(
+          (c) => manuelMi(c) && !desiredTitles.has(c.title)
+        )
+        let kuyrukOrder = a.tasks.length + 1
+        for (const c of manuelYetimler) {
+          if (c.order < kuyrukOrder) {
+            await tx.content.update({
+              where: { id: c.id },
+              data: { order: kuyrukOrder },
+            })
+          }
+          kuyrukOrder = Math.max(kuyrukOrder, c.order) + 1
         }
       }
     })

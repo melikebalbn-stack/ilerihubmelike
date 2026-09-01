@@ -139,7 +139,7 @@ export async function PATCH(
 // HARD DELETE — içerik ve bağımlıları (ContentProgress/IfsTaskEvaluation/
 // IfsTaskMeta) kalıcı silinir. Pasifleştirme ayrı PATCH ile.
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { session, error } = await requirePermission('akademi.kurs.edit');
@@ -158,6 +158,29 @@ export async function DELETE(
     return NextResponse.json({ error: "İçerik bulunamadı" }, { status: 404 });
   }
 
+  // Silme HARD DELETE: IfsTaskEvaluation satırları cascade ile gider ve geri
+  // gelmez. Değerlendirilmiş bir görev kazara silinmesin diye 409 ile durdurulur;
+  // gerçekten isteniyorsa ?force=1 ile geçilir.
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  if (!force) {
+    const degerlendirmeler = await prisma.ifsTaskEvaluation.findMany({
+      where: { contentId: id },
+      select: { userId: true },
+    });
+    if (degerlendirmeler.length > 0) {
+      const kisiSayisi = new Set(degerlendirmeler.map((d) => d.userId)).size;
+      return NextResponse.json(
+        {
+          error: "Bu görevin değerlendirmeleri var — silinirse geri gelmez",
+          degerlendirmeSayisi: degerlendirmeler.length,
+          etkilenenKisi: kisiSayisi,
+          force: "Yine de silmek için ?force=1 ekleyin",
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   const counts = await prisma.$transaction((tx) => hardDeleteContent(tx, id));
 
   await logAuditEvent({
@@ -165,7 +188,7 @@ export async function DELETE(
     actorId: session.user.id,
     targetType: "AKADEMI_CONTENT",
     targetId: id,
-    details: { title: existing.title, courseId: existing.courseId, ...counts },
+    details: { title: existing.title, courseId: existing.courseId, force, ...counts },
   });
 
   return NextResponse.json({

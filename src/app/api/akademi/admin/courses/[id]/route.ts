@@ -95,7 +95,7 @@ export async function PATCH(
 // HARD DELETE — kurs ve TÜM bağımlıları kalıcı silinir (geri alınamaz).
 // Pasifleştirme (Aktif toggle) ayrı PATCH ile yapılır; burası kalıcı silme.
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { session, error } = await requirePermission("akademi.kurs.delete");
@@ -114,6 +114,40 @@ export async function DELETE(
     return NextResponse.json({ error: "Kurs bulunamadı" }, { status: 404 });
   }
 
+  // Alan silmek görev değerlendirmelerini (IfsTaskEvaluation) VE alan
+  // değerlendirmelerini (IfsCourseEvaluation) birlikte götürür — ikisi de
+  // cascade. Görev ucundaki kuralın aynısı burada da geçerli.
+  const force = req.nextUrl.searchParams.get("force") === "1";
+  if (!force) {
+    const [gorevDeg, alanDeg] = await Promise.all([
+      prisma.ifsTaskEvaluation.findMany({
+        where: { content: { courseId: id } },
+        select: { userId: true },
+      }),
+      prisma.ifsCourseEvaluation.findMany({
+        where: { courseId: id },
+        select: { userId: true },
+      }),
+    ]);
+    const toplam = gorevDeg.length + alanDeg.length;
+    if (toplam > 0) {
+      const kisiSayisi = new Set(
+        [...gorevDeg, ...alanDeg].map((d) => d.userId)
+      ).size;
+      return NextResponse.json(
+        {
+          error: "Bu alanın değerlendirmeleri var — silinirse geri gelmez",
+          degerlendirmeSayisi: toplam,
+          gorevDegerlendirmesi: gorevDeg.length,
+          alanDegerlendirmesi: alanDeg.length,
+          etkilenenKisi: kisiSayisi,
+          force: "Yine de silmek için ?force=1 ekleyin",
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   const counts = await prisma.$transaction((tx) => hardDeleteCourse(tx, id));
 
   await logAuditEvent({
@@ -121,7 +155,7 @@ export async function DELETE(
     actorId: session.user.id,
     targetType: "AKADEMI_COURSE",
     targetId: id,
-    details: { title: existing.title, isIfs: existing.isIfs, ...counts },
+    details: { title: existing.title, isIfs: existing.isIfs, force, ...counts },
   });
 
   return NextResponse.json({

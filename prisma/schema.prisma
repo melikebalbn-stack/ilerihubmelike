@@ -9614,16 +9614,26 @@ enum ContentType {
   GOREV
 }
 
+// IFS görevinin nereden geldiği. IMPORT: Excel içe aktarımının ürettiği/yönettiği
+// görev — sonraki import'ta başlığı sayfada yoksa silinir, sırası yeniden yazılır.
+// MANUEL: ekrandan elle eklenmiş görev — import ona dokunmaz (silmez, sırasını
+// ezmez), Excel görevlerinden SONRA sıralanır.
+enum IfsGorevKaynak {
+  IMPORT
+  MANUEL
+}
+
 // IFS-1: IFS görev meta verisi (Content type=GOREV ile 1:1). Content'i kirletmemek
 // için yan tablo. Konu = Content.title; referanslar tek URL (yüklenen dosya VEYA link).
 model IfsTaskMeta {
-  id          String  @id @default(cuid())
-  contentId   String  @unique
+  id          String         @id @default(cuid())
+  contentId   String         @unique
   modul       String?
   altModul    String?
   ifsEkran    String?
   refDocUrl   String?
   refVideoUrl String?
+  kaynak      IfsGorevKaynak @default(IMPORT)
 
   content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
 

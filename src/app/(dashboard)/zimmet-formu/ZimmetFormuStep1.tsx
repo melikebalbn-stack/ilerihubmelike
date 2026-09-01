@@ -14,6 +14,7 @@ import {
   YAZILIM_KOK_ADI,
   YAZILIM_KOK_COZULEMEDI_PARENT_ID,
   YAZILIM_ALT_DAL_SABIT_SECENEKLERI,
+  altDalSecimindenTuret,
 } from '@/lib/zimmet/tur'
 import { PersonelCombobox } from './PersonelCombobox'
 import { TanimCombobox } from './TanimCombobox'
@@ -86,6 +87,45 @@ export function ZimmetFormuStep1({
       cancelled = true
     }
   }, [])
+
+  // ZimmetFormuClient.tsx bu bileşeni {step === 0 && <ZimmetFormuStep1 .../>}
+  // ile koşullu render ediyor - "Geri" ile Adım 1'e her dönüşte bileşen
+  // BAŞTAN mount olur. turAilesiId ve altDalSecimi SADECE bu bileşenin local
+  // state'i (data.tur/data.turDiger gibi parent'ta KALICI değil) - remount'ta
+  // ikisi de sıfırlanıyordu, ama kokTanimlar henüz yüklenmemiş/data.tur zaten
+  // "Yazılım" veya özel bir tür olarak dolu gelebiliyor. Sonuç: kullanıcı
+  // "Yazılım" + "Office 365" seçip İleri gidip Geri dönünce alt-dal kutusu
+  // BOŞ görünüyordu (seçim aslında data.turDiger'da duruyordu, sadece UI
+  // bunu yansıtmıyordu). data.tur veya kokTanimlar değiştiğinde ikisini de
+  // kalıcı değerlerden yeniden türetir - kullanıcının CANLI seçimini (bkz.
+  // handleAltDalSecimi, data.turDiger'a yazar) ASLA ezmez çünkü data.turDiger
+  // dependency listesinde YOK, sadece mount/kokTanimlar-yüklenme anında okunur.
+  useEffect(() => {
+    if (!data.tur) {
+      setTurAilesiId(null)
+      setAltDalSecimi('')
+      return
+    }
+    if (data.tur === YAZILIM_KOK_ADI) {
+      setTurAilesiId(kokTanimlar.find((t) => t.ad === YAZILIM_KOK_ADI)?.id ?? null)
+      setAltDalSecimi(altDalSecimindenTuret(data.turDiger, YAZILIM_ALT_DAL_SABIT_SECENEKLERI))
+      return
+    }
+    if ((SABIT_TUR_SECENEKLERI as readonly string[]).includes(data.tur)) {
+      // Sabit 5 donanım türü - hiç alt-dalı yok, turAilesiId hep null kalır.
+      setTurAilesiId(null)
+      setAltDalSecimi('')
+      return
+    }
+    // DB'den gelen özel bir tür (ör. "Tablet") - kendi alt-dal listesi
+    // TanimCombobox'ın kendi fetch'inde, burada sadece kök id'si + ham
+    // değer gerekiyor (tam eşleşme kontrolü olmadan - "Diğer" ayrımı bu
+    // seviyede önemli değil, TanimCombobox değeri olduğu gibi gösterir).
+    const bulunan = kokTanimlar.find((t) => t.ad === data.tur)
+    setTurAilesiId(bulunan?.id ?? null)
+    setAltDalSecimi(data.turDiger || '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.tur, kokTanimlar])
 
   const { enumTur } = turVeTurDigerNihai(data.tur, data.turDiger)
 

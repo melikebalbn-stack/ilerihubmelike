@@ -17,6 +17,30 @@ import { ZIMMET_YAZILIM_SECENEKLERI } from './tur'
 export const DEFAULT_TESLIM_NOTU =
   'Cihaz hasarsız teslim edilmiştir, kullanım kurallarına uyulacaktır.'
 
+// ZimmetTanim üzerinden eklenen YENİ türler (ör. "Tablet") ve eski Syteline
+// devrinden gelen, hiçbir bilinen yazılımla eşleşmeyen serbest metin DIGER
+// kayıtları (ör. "MAS Laptop", "Termal Yazıcı" - bunlar aslen donanım, yazılım
+// değil) için - DEFAULT_TESLIM_NOTU yerine kullanılan, hukuki maddeleri eksiksiz
+// bir genel donanım metni. YAZICI metninden türetildi (Notebook/Desktop ile
+// AYNI şablonu paylaşıyor - şirket zaten bu şablonu 3 farklı cihazda kullanmış,
+// fiilen genel bir şablon) - SADECE cihaz adı ("yazıcı"/"Yazıcı" → "cihaz"/
+// "Cihaz", doğru ek: cihazın/Cihazda) değiştirildi, hukuki maddeler/TCK
+// atıfları/paragraf yapısı/noktalama BİREBİR aynı. Melih'in kararıyla ilk
+// satırdaki "IP adresi" de "seri numarası"na çevrildi (genel donanım için IP
+// adresi anlamsız).
+export const OZEL_TUR_TESLIM_NOTU = `Markası, modeli, seri numarası liste halinde ve ekipmanları işaretli olarak yazılı olan bir (1) adet cihaz eksiksiz ve sağlam olarak teslim edilmiştir.
+
+İlgili cihaz bilgi teknolojileri departmanı tarafından tarafınıza teslim edildikten sonra;
+
+- Bilgi teknolojileri tarafından onaysız veya habersiz olarak yüklenen yazılımlarda 5864 nolu Fikir ve Sanat Eserleri kanunun gereğince,
+- Mail msn gibi iletişim programları, Internet forumları, haber yorumları gibi benzer iletişim araçları ile hakaret ve sövme cürümlerinde, yasadışı yayınlarda TCK 125-200-426-427-480-490. Maddeleri gereğince,
+- Şirket içi veya şirket dışındaki bilgisayar ve cihaz sistemlerini ve servislerini yetkiniz dışında erişim ve dinleme halinde TCK 525. Madde gereğince;
+- Amaç dışı kullanımlarda ve ilgili cihazın (kullanıcı hatasından kaynaklanmayan donanım arızaları haricinde) zarar görmesi durumunda;
+
+İş bu maddelerde yazılı kanun ve durumların ihlali halinde tüm maddi, hukuki ve cezai sorumluluk teslim edilen kullanıcıya aittir. Bu sebeple şirketin uğrayacağı her türlü zararın teslim edilen kullanıcı tarafından tazmin edileceği kayıtsız şartsız kabul ve taahhüt edilmiştir.
+
+Teslim edilen cihaz satılamaz, takas edilemez ve bir başka kullanıcıya devredilemez. Cihazda lisansı olmayan hiçbir yazılım ve donanımın bulunmadığı kontrol edilerek teslim edilmiştir.`
+
 // OFFICE_365 ile DIGER (bilinen yazılım/lisans türleri) AYNI lisans metnini
 // paylaşır - tek sabitten okunur, iki yerde kopyalanmasın.
 const LISANS_TESLIM_NOTU =
@@ -118,15 +142,25 @@ Teslim edilen mikrofon; satılamaz, takas edilemez ve bir başka kullanıcıya d
 }
 
 // DIGER, türe göre sabit bir metne bağlı DEĞİL - turDiger'ın bilinen bir
-// yazılım adı olup olmadığına göre lisans metni ile donanım metni arasında
-// seçim yapılır (yukarıdaki bilinenYazilimMi). Bu yüzden ZIMMET_TESLIM_NOTLARI
-// sözlüğünde DIGER için ayrı bir girdi YOK - burada özel olarak ele alınıyor.
+// yazılım adı olup olmadığına göre lisans metni ile genel donanım metni
+// arasında seçim yapılır (yukarıdaki bilinenYazilimMi). Bu yüzden
+// ZIMMET_TESLIM_NOTLARI sözlüğünde DIGER için ayrı bir girdi YOK - burada özel
+// olarak ele alınıyor.
+//
+// "Bilinen yazılım değil" dalı OZEL_TUR_TESLIM_NOTU döner - bu hem ZimmetTanim
+// üzerinden eklenen YENİ türleri (ör. "Tablet") hem de eski Syteline devrinden
+// gelen, hiçbir bilinen yazılımla eşleşmeyen serbest metinleri (ör. "MAS
+// Laptop") KAPSAR - ikisini ayırt etmek için ayrıca ZimmetTanim'a bakmaya
+// gerek yok, ikisi de "bilinmeyen DIGER değeri, donanım kabul et" kovasına
+// düşüyor (Melih'in kararı - ikisi de zaten donanım). DEFAULT_TESLIM_NOTU
+// artık SADECE tur tamamen boşken (sihirbazın ilk hâli, henüz tür seçilmemiş)
+// kullanılıyor.
 export function varsayilanTeslimNotu(
   tur: ZimmetTuru | null | undefined,
   turDiger?: string | null
 ): string {
   if (tur === 'DIGER') {
-    return bilinenYazilimMi(turDiger) ? LISANS_TESLIM_NOTU : DEFAULT_TESLIM_NOTU
+    return bilinenYazilimMi(turDiger) ? LISANS_TESLIM_NOTU : OZEL_TUR_TESLIM_NOTU
   }
   return (tur && ZIMMET_TESLIM_NOTLARI[tur]) || DEFAULT_TESLIM_NOTU
 }

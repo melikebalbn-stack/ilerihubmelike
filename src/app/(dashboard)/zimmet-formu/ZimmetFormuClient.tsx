@@ -1,20 +1,53 @@
 'use client'
 
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useZimmetFormu, zimmetEksikZorunluAlanlar } from './useZimmetFormu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { useHasPermission } from '@/components/auth/can'
+import { useZimmetFormu, zimmetEksikZorunluAlanlar, type ZimmetFormuStep1Data } from './useZimmetFormu'
 import { ZimmetFormuStep1 } from './ZimmetFormuStep1'
 import { ZimmetFormuStep2 } from './ZimmetFormuStep2'
 import { ZimmetFormuStep3 } from './ZimmetFormuStep3'
 import { ZimmetFormuStep4 } from './ZimmetFormuStep4'
+
+// Adım 1'de "Geri"ye basınca çıkmadan önce veri kaybı uyarısı gösterilsin mi
+// diye - kullanıcı herhangi bir ana alanı doldurduysa (tür seçmek dahil)
+// "dolu" sayılır. Tüm ZimmetFormuStep1Data alanları string - INITIAL_STEP1
+// hepsi boş string olduğu için "herhangi biri boş değilse doldurulmuş" testi
+// hem basit hem eksiksiz (departman/unvan gibi zimmetSahibiId seçilince
+// otomatik dolan alanlar da zaten zimmetSahibiId dolu olduğu için ayrıca
+// kontrol gerektirmiyor).
+function step1DoldurulduMu(step1: ZimmetFormuStep1Data): boolean {
+  return Object.values(step1).some((deger) => deger.trim() !== '')
+}
 
 interface Props {
   teslimEdenAdi: string
 }
 
 export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
+  const router = useRouter()
+  // Liste ekranı da zimmet-formu.view arkasında (bkz. liste/page.tsx) - o
+  // yetkisi olmayan kullanıcı zaten oraya redirect'lenirdi, "Geri" ile
+  // yönlendirmeden ÖNCE aynı kontrolü client'ta da yaparak gereksiz bir
+  // redirect zincirinden kaçınıyoruz.
+  const listeyeDonebilir = useHasPermission('zimmet-formu.view')
+  const geriDonusHedefi = listeyeDonebilir ? '/zimmet-formu/liste' : '/dashboard'
+  const [cikisOnayAcik, setCikisOnayAcik] = useState(false)
+
   const {
     step,
     totalSteps,
@@ -51,6 +84,23 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
   const step1EksikAlanlar = zimmetEksikZorunluAlanlar(step1)
   const step1IlerlemeEngelli = step === 0 && step1EksikAlanlar.length > 0
   const ileriDisabled = isLastStep || step1IlerlemeEngelli
+
+  // Adım 1'de "Geri" artık disabled değil - formdan tamamen çıkıp listeye
+  // (yetkisi yoksa dashboard'a) döner. Form doldurulmuşsa veri kaybı uyarısı
+  // gösterilir, boşsa direkt çıkılır (gereksiz onay dialogu istenmiyordu).
+  const formDoluMu = useMemo(() => step1DoldurulduMu(step1), [step1])
+
+  function handleGeri() {
+    if (step > 0) {
+      prevStep()
+      return
+    }
+    if (formDoluMu) {
+      setCikisOnayAcik(true)
+      return
+    }
+    router.push(geriDonusHedefi)
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -112,7 +162,7 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
         )}
 
         <div className="mt-8 flex items-center justify-between">
-          <Button type="button" variant="outline" onClick={prevStep} disabled={step === 0}>
+          <Button type="button" variant="outline" onClick={handleGeri}>
             <ChevronLeft className="w-4 h-4 mr-1" />
             Geri
           </Button>
@@ -138,6 +188,23 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
           </TooltipProvider>
         </div>
       </div>
+
+      <AlertDialog open={cikisOnayAcik} onOpenChange={setCikisOnayAcik}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Formdan çıkılsın mı?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Girdiğiniz bilgiler kaybolacak, çıkmak istediğinize emin misiniz?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+            <AlertDialogAction onClick={() => router.push(geriDonusHedefi)}>
+              Çık
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

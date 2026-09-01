@@ -668,20 +668,20 @@ export default function TasksPage() {
   }, [tasks])
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6 text-sm">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <ListTodo className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500" />
             Planlı Görevler
           </h1>
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">Kurumsal görev ve hatırlatma yönetimi</p>
+          <p className="text-xs sm:text-xs text-gray-500 dark:text-gray-400 mt-1">Kurumsal görev ve hatırlatma yönetimi</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowCategoryModal(true)}
-            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
           >
             <Tag className="w-4 h-4" />
             <span className="hidden sm:inline">Kategori Ekle</span>
@@ -692,7 +692,7 @@ export default function TasksPage() {
               resetForm()
               setShowTaskModal(true)
             }}
-            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Yeni Görev</span>
@@ -709,7 +709,7 @@ export default function TasksPage() {
               <CalendarDays className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
+              <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">Toplam</p>
             </div>
           </div>
@@ -720,7 +720,7 @@ export default function TasksPage() {
               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 dark:text-yellow-400" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
+              <p className="text-lg sm:text-xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">Bekliyor</p>
             </div>
           </div>
@@ -731,7 +731,7 @@ export default function TasksPage() {
               <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.inProgress}</p>
+              <p className="text-lg sm:text-xl font-bold text-blue-600 dark:text-blue-400">{stats.inProgress}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">Devam</p>
             </div>
           </div>
@@ -742,7 +742,7 @@ export default function TasksPage() {
               <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-bold text-green-600 dark:text-green-400">{stats.completed}</p>
+              <p className="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400">{stats.completed}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">Bitti</p>
             </div>
           </div>
@@ -753,7 +753,7 @@ export default function TasksPage() {
               <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 dark:text-red-400" />
             </div>
             <div>
-              <p className="text-xl sm:text-2xl font-bold text-red-600 dark:text-red-400">{stats.overdue}</p>
+              <p className="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400">{stats.overdue}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">Gecikmiş</p>
             </div>
           </div>
@@ -765,7 +765,7 @@ export default function TasksPage() {
         <div className="flex gap-1 min-w-max">
           <button
             onClick={() => setViewMode('my')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-xs font-medium transition-colors whitespace-nowrap ${
               viewMode === 'my'
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -777,7 +777,7 @@ export default function TasksPage() {
           </button>
           <button
             onClick={() => setViewMode('department')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-xs font-medium transition-colors whitespace-nowrap ${
               viewMode === 'department'
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -789,7 +789,7 @@ export default function TasksPage() {
           </button>
           <button
             onClick={() => setViewMode('subordinates')}
-            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-xs font-medium transition-colors whitespace-nowrap ${
               viewMode === 'subordinates'
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -802,7 +802,7 @@ export default function TasksPage() {
           {isAdmin && (
             <button
               onClick={() => setViewMode('all')}
-              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-xs font-medium transition-colors whitespace-nowrap ${
                 viewMode === 'all'
                   ? 'bg-blue-600 text-white'
                   : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -827,14 +827,14 @@ export default function TasksPage() {
               placeholder="Görev ara..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full pl-10 pr-4 py-2 text-xs border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-xs border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="all">Durum</option>
               {Object.entries(statusLabels).map(([key, label]) => (
@@ -844,7 +844,7 @@ export default function TasksPage() {
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-xs border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="all">Öncelik</option>
               {Object.entries(priorityLabels).map(([key, label]) => (
@@ -854,7 +854,7 @@ export default function TasksPage() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-2 sm:px-3 py-2 text-xs sm:text-xs border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               <option value="all">Kategori</option>
               {categories.map((cat) => (
@@ -919,7 +919,7 @@ export default function TasksPage() {
                           className={`flex-1 min-w-0 ${task.isRecurring ? 'cursor-pointer' : ''}`}
                           onClick={() => task.isRecurring && openTimelineModal(task)}
                         >
-                          <h3 className={`text-sm sm:text-base font-medium text-gray-900 dark:text-white ${
+                          <h3 className={`text-xs sm:text-sm font-medium text-gray-900 dark:text-white ${
                             task.status === 'COMPLETED' ? 'line-through' : ''
                           } ${task.isRecurring ? 'hover:text-blue-600 dark:hover:text-blue-400' : ''}`}>
                             {task.title}
@@ -928,7 +928,7 @@ export default function TasksPage() {
                             )}
                           </h3>
                           {task.description && (
-                            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                            <p className="text-xs sm:text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
                               {task.description}
                             </p>
                           )}
@@ -1054,7 +1054,7 @@ export default function TasksPage() {
         <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-0 sm:p-4 overflow-y-auto">
           <div className="bg-white dark:bg-gray-800 rounded-none sm:rounded-xl w-full sm:max-w-2xl min-h-screen sm:min-h-0 sm:max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white dark:bg-gray-800 px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between z-10">
-              <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
+              <h2 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white">
                 {editingTask ? 'Görevi Düzenle' : 'Yeni Görev'}
               </h2>
               <button
@@ -1071,7 +1071,7 @@ export default function TasksPage() {
             <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
               {/* Title */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Görev Adı *
                 </label>
                 <input
@@ -1086,7 +1086,7 @@ export default function TasksPage() {
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Açıklama
                 </label>
                 <textarea
@@ -1101,7 +1101,7 @@ export default function TasksPage() {
               {/* Category and Priority */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Kategori
                   </label>
                   <select
@@ -1116,7 +1116,7 @@ export default function TasksPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Öncelik
                   </label>
                   <select
@@ -1134,7 +1134,7 @@ export default function TasksPage() {
               {/* Dates */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Başlangıç Tarihi
                   </label>
                   <input
@@ -1145,7 +1145,7 @@ export default function TasksPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Bitiş Tarihi *
                   </label>
                   <input
@@ -1160,7 +1160,7 @@ export default function TasksPage() {
 
               {/* Sorumlu Kişiler (Çoklu Seçim) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Sorumlu Kişiler
                 </label>
                 <UserSearchCombobox
@@ -1198,7 +1198,7 @@ export default function TasksPage() {
                     {formData.responsiblePersons.map((person, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm"
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs"
                       >
                         <User className="h-3 w-3" />
                         {person.name}
@@ -1225,7 +1225,7 @@ export default function TasksPage() {
 
               {/* Sorumlu Departmanlar (Çoklu Seçim) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Sorumlu Departmanlar
                 </label>
                 <select
@@ -1253,7 +1253,7 @@ export default function TasksPage() {
                     {formData.responsibleDepartments.map((dept, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full text-sm"
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full text-xs"
                       >
                         <Building2 className="h-3 w-3" />
                         {dept}
@@ -1279,7 +1279,7 @@ export default function TasksPage() {
 
               {/* Notification Emails */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Bildirim E-postaları
                 </label>
                 <div className="space-y-2">
@@ -1324,7 +1324,7 @@ export default function TasksPage() {
                       {formData.notificationEmails.map((email, index) => (
                         <span
                           key={index}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs"
                         >
                           {email}
                           <button
@@ -1358,13 +1358,13 @@ export default function TasksPage() {
                     onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm font-medium text-gray-700">Tekrarlayan Görev</span>
+                  <span className="text-xs font-medium text-gray-700">Tekrarlayan Görev</span>
                 </label>
 
                 {formData.isRecurring && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Tekrar Tipi
                       </label>
                       <select
@@ -1379,7 +1379,7 @@ export default function TasksPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Tekrar Aralığı
                       </label>
                       <input
@@ -1396,7 +1396,7 @@ export default function TasksPage() {
 
               {/* Reminder Days */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Hatırlatma Günleri
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -1447,7 +1447,7 @@ export default function TasksPage() {
                     })}
                     className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
                   />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                     🚨 Eskalasyon Gerektiren Kritik Görev
                   </span>
                 </label>
@@ -1456,7 +1456,7 @@ export default function TasksPage() {
                   <div className="space-y-4 pt-2">
                     {/* Eskalasyon Kategorisi */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Eskalasyon Kategorisi *
                       </label>
                       <div className="space-y-2">
@@ -1478,7 +1478,7 @@ export default function TasksPage() {
                               className="mt-0.5 w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
                             />
                             <div>
-                              <span className="text-sm font-medium text-gray-900 dark:text-white">{cat.label}</span>
+                              <span className="text-xs font-medium text-gray-900 dark:text-white">{cat.label}</span>
                               <p className="text-xs text-gray-500 dark:text-gray-400">{cat.description}</p>
                             </div>
                           </label>
@@ -1488,7 +1488,7 @@ export default function TasksPage() {
 
                     {/* Eskalasyon Seviyesi */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Eskalasyon Seviyesi *
                       </label>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -1512,7 +1512,7 @@ export default function TasksPage() {
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className={`w-2 h-2 rounded-full ${prio.color}`}></span>
-                                <span className="text-sm font-medium text-gray-900 dark:text-white">{prio.label}</span>
+                                <span className="text-xs font-medium text-gray-900 dark:text-white">{prio.label}</span>
                               </div>
                               <p className="text-xs text-gray-500 dark:text-gray-400 ml-4">{prio.description}</p>
                             </div>
@@ -1526,7 +1526,7 @@ export default function TasksPage() {
 
               {/* Notes */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Notlar
                 </label>
                 <textarea
@@ -1546,14 +1546,14 @@ export default function TasksPage() {
                     setShowTaskModal(false)
                     resetForm()
                   }}
-                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 >
                   İptal
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 sm:py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 sm:py-2 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                   {isSubmitting ? 'Kaydediliyor…' : editingTask ? 'Güncelle' : 'Kaydet'}
@@ -1569,7 +1569,7 @@ export default function TasksPage() {
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
           <div className="bg-white dark:bg-gray-800 rounded-t-xl sm:rounded-xl w-full sm:max-w-md">
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Yeni Kategori</h2>
+              <h2 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white">Yeni Kategori</h2>
               <button
                 onClick={() => setShowCategoryModal(false)}
                 className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -1580,7 +1580,7 @@ export default function TasksPage() {
 
             <form onSubmit={handleCategorySubmit} className="p-4 sm:p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Kategori Adı *
                 </label>
                 <input
@@ -1594,7 +1594,7 @@ export default function TasksPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Açıklama
                 </label>
                 <input
@@ -1607,7 +1607,7 @@ export default function TasksPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Renk
                 </label>
                 <div className="flex items-center gap-3">
@@ -1631,14 +1631,14 @@ export default function TasksPage() {
                 <button
                   type="button"
                   onClick={() => setShowCategoryModal(false)}
-                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 >
                   İptal
                 </button>
                 <button
                   type="submit"
                   disabled={isCategorySubmitting}
-                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 sm:py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2.5 sm:py-2 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isCategorySubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                   {isCategorySubmitting ? 'Kaydediliyor…' : 'Kaydet'}
@@ -1656,13 +1656,13 @@ export default function TasksPage() {
             {/* Header */}
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h2 className="text-base font-semibold text-gray-900 dark:text-white">
                   {timelineData?.rootTask.title || 'Görev Zaman Çizelgesi'}
                 </h2>
                 {timelineData?.rootTask.isRecurring && timelineData?.rootTask.recurrenceType && (
                   <div className="flex items-center gap-2 mt-1">
                     <RefreshCw className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
                       {recurrenceLabels[timelineData.rootTask.recurrenceType] || timelineData.rootTask.recurrenceType}
                       {timelineData.rootTask.recurrenceInterval && timelineData.rootTask.recurrenceInterval > 1 &&
                         ` (${timelineData.rootTask.recurrenceInterval}x)`}
@@ -1707,7 +1707,7 @@ export default function TasksPage() {
                   {/* Task Info */}
                   {timelineData.rootTask.description && (
                     <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-6">
-                      <p className="text-sm text-gray-600 dark:text-gray-300">{timelineData.rootTask.description}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-300">{timelineData.rootTask.description}</p>
                       <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
                         {timelineData.rootTask.responsiblePerson && (
                           <span className="flex items-center gap-1">
@@ -1785,7 +1785,7 @@ export default function TasksPage() {
                                   </p>
                                 )}
                                 {period.notes && (
-                                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 flex items-start gap-1">
+                                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 flex items-start gap-1">
                                     <MessageSquare className="w-3.5 h-3.5 mt-0.5 text-gray-400" />
                                     {period.notes}
                                   </p>
@@ -1876,7 +1876,7 @@ export default function TasksPage() {
                   setShowTimelineModal(false)
                   setTimelineData(null)
                 }}
-                className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
               >
                 Kapat
               </button>

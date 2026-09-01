@@ -174,6 +174,16 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([])
 
   const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
+  // Sunucu (PUT /api/tickets/[id]) DURUM değişikliğine izin verirken
+  // `userIsITStaff || isAssignee || isTicketTeamMember` bakıyor; ekran ise
+  // yalnız isITStaff'a bakıyordu → kendisine atanan talebin durumunu
+  // değiştirebilecek teknisyen kontrolü GÖREMİYORDU. Aynı kurala hizalandı.
+  // Atama/öncelik/talep tipi sunucuda da yalnız IT ekibinde → isITStaff'ta KALIR.
+  const isAssignee =
+    !!ticket?.assignedTo &&
+    ticket.assignedTo.toLowerCase() === (session?.user?.email ?? "").toLowerCase()
+  const durumDegistirebilir =
+    isITStaff || isAssignee || (ticket?.currentUserIsTeamMember ?? false)
 
   // loading/error/timeout artık useAuthenticatedData'da. Hata durumunda throw eder →
   // hook loadError'ı set eder (eski !ok / catch → setLoadError(true) davranışı korunur).
@@ -616,6 +626,32 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
                 <UserPlus className="h-4 w-4 mr-2" />
                 Üstlen
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Durum — atanan teknisyen / takım üyesi de değiştirebilir (sunucu da izin veriyor).
+            isITStaff bloğunun DIŞINDA: helpdesk-agent'ta helpdesk.admin yoktur. */}
+        {durumDegistirebilir && !isITStaff && (
+          <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+            <h4 className="font-medium mb-3 flex items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              Talep Durumu
+            </h4>
+            <div className="max-w-xs">
+              <Label className="text-xs">Durum</Label>
+              <Select value={ticket.status} onValueChange={(v) => handleUpdateTicket({ status: v } as Partial<Ticket>)} disabled={updatingTicket}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NEW">Yeni</SelectItem>
+                  <SelectItem value="ASSIGNED">Atandi</SelectItem>
+                  <SelectItem value="IN_PROGRESS">Islemde</SelectItem>
+                  <SelectItem value="PENDING">Beklemede</SelectItem>
+                  <SelectItem value="ON_HOLD">Askida</SelectItem>
+                  <SelectItem value="RESOLVED">Cozuldu</SelectItem>
+                  <SelectItem value="CLOSED">Kapatildi</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         )}

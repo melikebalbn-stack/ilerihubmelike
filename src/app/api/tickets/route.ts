@@ -45,12 +45,24 @@ export async function GET(request: NextRequest) {
       where.requesterEmail = userEmail
     } else if (viewMode === 'assigned') {
       // HAVUZ: "bana atanan" = kişiye atanmış VEYA üyesi olduğum takıma düşmüş.
-      // helpdesk.admin ŞART DEĞİL: takım üyesi helpdesk-agent rolünde olabilir
-      // (helpdesk.admin yalnız it-admin/super-admin'de) — kendi takımının havuzunu
-      // görebilmeli. Ne IT ekibi ne de herhangi bir takımın üyesiyse eski davranış:
-      // kendi açtıklarına düşer.
+      //
+      // ESKİDEN: `!userIsITStaff && myTeamIds.length === 0` → requesterEmail'e
+      // düşülüyordu. Sonuç: helpdesk-agent rolündeki ve hiçbir takımda olmayan bir
+      // teknisyene DOĞRUDAN atanmış talepler listede HİÇ görünmüyordu (sayaç ise
+      // stats/route.ts'te koşulsuz assignedToMeFilter kullandığı için doğru sayıyordu
+      // — rozet 2, liste 0). Kişisel atama takım üyeliğinden de helpdesk.admin'den de
+      // BAĞIMSIZDIR: `helpdesk.ticket.resolve` yeten koşuldur (talebi işleyebilen
+      // rol = helpdesk-agent / it-admin / super-admin; `helpdesk.ticket.view` temel
+      // `kullanici` rolünde olduğu için ayrım yapmıyordu).
+      //
+      // assignedToMeFilter takımsız durumu zaten doğru işliyor ({ assignedTo: email }),
+      // olduğu gibi kullanılıyor. İzni olmayan için eski davranış (requesterEmail) aynen.
       const myTeamIds = await getMyTeamIds(userEmail)
-      if (!userIsITStaff && myTeamIds.length === 0) {
+      const canSeeAssigned =
+        userIsITStaff ||
+        (session.user.permissions?.includes('helpdesk.ticket.resolve') ?? false) ||
+        myTeamIds.length > 0
+      if (!canSeeAssigned) {
         where.requesterEmail = userEmail
       } else {
         // AND ile ekleniyor: `where.OR` aşağıda ARAMA filtresi tarafından

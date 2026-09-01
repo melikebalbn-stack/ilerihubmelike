@@ -178,6 +178,13 @@ export default function ITSupportPage() {
 
   // PR-Y9c: saf RBAC, helpdesk.admin permission. Eski legacy (role/dept/ou fallback) kaldırıldı.
   const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
+  // "Bana Atanan" sekmesi kişisel atamayı gösterir; helpdesk.admin ŞART DEĞİL.
+  // helpdesk-agent rolündeki teknisyen kendisine atanan talebi görebilmeli —
+  // sekme gizliyken API düzeltmesi tek başına yetmiyordu. Koşul API ile AYNI:
+  // helpdesk.ticket.resolve (talebi işleyebilen rol). "Tumu"/"Aciklar"/"KPI"
+  // isITStaff'ta KALIR (kapsam dışı).
+  const banaAtananGorunur =
+    isITStaff || (session?.user?.permissions?.includes("helpdesk.ticket.resolve") ?? false)
 
   // Verileri yukle (loading/error/timeout artık useAuthenticatedData'da)
   const fetchData = async () => {
@@ -636,9 +643,9 @@ export default function ITSupportPage() {
                 <div className="flex items-center justify-between">
                   <TabsList className="flex-wrap h-auto gap-1">
                     <TabsTrigger value="my">Taleplerim</TabsTrigger>
+                    {banaAtananGorunur && <TabsTrigger value="assigned">Bana Atanan</TabsTrigger>}
                     {isITStaff && (
                       <>
-                        <TabsTrigger value="assigned">Bana Atanan</TabsTrigger>
                         <TabsTrigger value="all">Tumu</TabsTrigger>
                         <TabsTrigger value="open">Aciklar</TabsTrigger>
                         <TabsTrigger value="kpi">

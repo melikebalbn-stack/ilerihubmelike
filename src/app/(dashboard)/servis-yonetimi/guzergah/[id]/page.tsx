@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/dialog'
 import { ServisGecmisDialog, GecmisButonu } from '../../_components/ServisGecmisDialog'
 import { SaatlerDialog } from './SaatlerDialog'
+import { KapasitePanel } from './KapasitePanel'
 import type { GuzergahDurak, SeferDilimi } from './types'
 
 type Guzergah = { id: string; kod: string; ad: string; aktif: boolean }
@@ -294,6 +295,7 @@ export default function GuzergahDetayPage() {
             <TabsTrigger value="sofor-varsayilan">Varsayılan Şoförler</TabsTrigger>
             <TabsTrigger value="sorumlu">Servis Sorumluları</TabsTrigger>
             <TabsTrigger value="personel-atama">Personel Atamaları</TabsTrigger>
+            <TabsTrigger value="kapasite">Kapasite / Doluluk</TabsTrigger>
           </TabsList>
 
           <TabsContent value="duraklar" className="space-y-4">
@@ -410,6 +412,10 @@ export default function GuzergahDetayPage() {
               canRestore={canRestore}
               canHistory={canHistory}
             />
+          </TabsContent>
+
+          <TabsContent value="kapasite">
+            <KapasitePanel guzergahId={guzergahId} dilimler={dilimler} />
           </TabsContent>
         </Tabs>
       )}

@@ -37,19 +37,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ServisGecmisDialog, GecmisButonu } from '../../_components/ServisGecmisDialog'
+import { SaatlerDialog } from './SaatlerDialog'
+import type { GuzergahDurak, SeferDilimi } from './types'
 
 type Guzergah = { id: string; kod: string; ad: string; aktif: boolean }
 type SecilebilirDurak = { id: string; kod: string; ad: string }
-type SeferDilimi = { id: string; kod: string; ad: string; yon: 'GIDIS' | 'DONUS' }
-type GuzergahDurakSaat = { id: string; dilimId: string; saat: string; aktif: boolean; dilim: SeferDilimi }
-type GuzergahDurak = {
-  id: string
-  durakId: string
-  durak: { id: string; kod: string; ad: string; aktif: boolean }
-  sira: number
-  aktif: boolean
-  saatler: GuzergahDurakSaat[]
-}
 
 type ServisRol = 'ANA' | 'YEDEK'
 type SecilebilirArac = { id: string; plaka: string }
@@ -450,9 +442,12 @@ export default function GuzergahDetayPage() {
       </Dialog>
 
       <SaatlerDialog
+        guzergahId={guzergahId}
         guzergahDurak={saatDuzenlenen}
         dilimler={dilimler}
         canManage={canManage}
+        canPassive={canPassive}
+        canRestore={canRestore}
         onOpenChange={(open) => !open && setSaatDuzenlenen(null)}
         onSaved={yukle}
       />
@@ -559,108 +554,6 @@ function SiraliDurakSatiri({
         )}
       </div>
     </div>
-  )
-}
-
-function SaatlerDialog({
-  guzergahDurak,
-  dilimler,
-  canManage,
-  onOpenChange,
-  onSaved,
-}: {
-  guzergahDurak: GuzergahDurak | null
-  dilimler: SeferDilimi[]
-  canManage: boolean
-  onOpenChange: (open: boolean) => void
-  onSaved: () => void
-}) {
-  const [saatler, setSaatler] = useState<Record<string, string>>({})
-  const [hata, setHata] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!guzergahDurak) {
-      setSaatler({})
-      return
-    }
-    const baslangic: Record<string, string> = {}
-    for (const s of guzergahDurak.saatler) baslangic[s.dilimId] = s.saat
-    setSaatler(baslangic)
-  }, [guzergahDurak])
-
-  if (!guzergahDurak) {
-    return <Dialog open={false} onOpenChange={onOpenChange}><DialogContent /></Dialog>
-  }
-
-  async function kaydet(dilimId: string) {
-    setHata(null)
-    const saat = saatler[dilimId]?.trim()
-    if (!saat) return
-    const res = await fetch(`/api/servis-yonetimi/guzergah-durak/${guzergahDurak!.id}/saat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dilimId, saat }),
-    })
-    const json = await res.json()
-    if (!res.ok || !json.ok) {
-      setHata(json.message || 'Saat kaydedilemedi.')
-      return
-    }
-    onSaved()
-  }
-
-  async function pasiflestir(saatId: string, dilimId: string) {
-    setHata(null)
-    const res = await fetch(`/api/servis-yonetimi/guzergah-durak-saat/${saatId}/pasiflestir`, { method: 'POST' })
-    const json = await res.json()
-    if (!res.ok || !json.ok) {
-      setHata(json.message || 'Saat kaydı pasifleştirilemedi.')
-      return
-    }
-    setSaatler((s) => ({ ...s, [dilimId]: '' }))
-    onSaved()
-  }
-
-  return (
-    <Dialog open={!!guzergahDurak} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{guzergahDurak.durak.kod} — Dilim Saatleri</DialogTitle>
-        </DialogHeader>
-        {hata && <p className="text-sm text-red-600">{hata}</p>}
-        <div className="space-y-3">
-          {dilimler.length === 0 && (
-            <p className="text-sm text-muted-foreground">Aktif sefer dilimi yok — önce Sefer Dilimleri sekmesinden ekleyin.</p>
-          )}
-          {dilimler.map((dilim) => {
-            const mevcutSaat = guzergahDurak.saatler.find((s) => s.dilimId === dilim.id)
-            return (
-              <div key={dilim.id} className="flex items-center gap-2">
-                <Label className="w-40 shrink-0 text-sm font-normal">
-                  {dilim.kod} ({dilim.yon === 'GIDIS' ? 'Gidiş' : 'Dönüş'})
-                </Label>
-                <Input
-                  type="time"
-                  disabled={!canManage}
-                  value={saatler[dilim.id] || ''}
-                  onChange={(e) => setSaatler((s) => ({ ...s, [dilim.id]: e.target.value }))}
-                />
-                {canManage && (
-                  <>
-                    <Button size="sm" variant="outline" onClick={() => kaydet(dilim.id)}>Kaydet</Button>
-                    {mevcutSaat && (
-                      <Button size="sm" variant="ghost" onClick={() => pasiflestir(mevcutSaat.id, dilim.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </DialogContent>
-    </Dialog>
   )
 }
 

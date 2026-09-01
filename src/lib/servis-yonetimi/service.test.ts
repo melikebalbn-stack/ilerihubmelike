@@ -254,6 +254,7 @@ import {
   guncelleServisPersonelAtama,
   pasiflestirServisPersonelAtama,
   geriAlServisPersonelAtama,
+  transferServisPersonelAtama,
 } from './service'
 
 beforeEach(() => {
@@ -2911,5 +2912,100 @@ describe('ServisPersonelAtama — pasifleştir/geri-al (zaman bağımlı, satır
   it('zaten aktif atamayı tekrar geri almaz', async () => {
     mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'pa1', aktif: true })
     await expect(geriAlServisPersonelAtama('pa1', 'user-1')).rejects.toThrow('zaten aktif')
+  })
+})
+
+describe('ServisPersonelAtama — transferServisPersonelAtama (FAZ 1B: Alternatif Servis)', () => {
+  const eskiAtama = {
+    id: 'pa1', aktif: true, personnelId: 'personel-1', guzergahId: 'guzergah-1',
+    baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null,
+  }
+  const gecerliTransferForm = { guzergahId: 'guzergah-2', durakId: null, dilimIdleri: ['dilim-1'], transferTarihi: '2026-03-01' }
+
+  beforeEach(() => {
+    mocks.personelAtamaFindUnique.mockReset()
+    mocks.personelAtamaFindUnique.mockResolvedValueOnce(eskiAtama) // eskiAtama lookup
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: true })
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-2', aktif: true })
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'dilim-1', kod: 'S1', aktif: true }])
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1', aktif: false })
+    mocks.personelAtamaCreate.mockResolvedValue({ id: 'pa2' })
+    mocks.personelAtamaDilimCreateMany.mockResolvedValue({ count: 1 })
+    mocks.personelAtamaFindUnique.mockResolvedValueOnce({ id: 'pa2', ...gecerliTransferForm }) // sonuc lookup
+  })
+
+  it('eski atamayı kapatır + yeni atamayı TEK transaction içinde açar', async () => {
+    const data = await transferServisPersonelAtama('pa1', gecerliTransferForm, 'user-9')
+
+    expect(mocks.personelAtamaUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'pa1' },
+      data: { bitisTarihi: new Date('2026-03-01'), aktif: false, updatedById: 'user-9' },
+    }))
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        personnelId: 'personel-1', guzergahId: 'guzergah-2', durakId: null,
+        baslangicTarihi: new Date('2026-03-01'), bitisTarihi: null,
+        atamaKaynagi: 'MANUEL', createdById: 'user-9',
+      }),
+    }))
+    expect(mocks.personelAtamaDilimCreateMany).toHaveBeenCalledWith({ data: [{ atamaId: 'pa2', dilimId: 'dilim-1' }] })
+    expect(data.id).toBe('pa2')
+  })
+
+  it('eski atamanın personelId\'sini kullanır — formda personnelId YOK', () => {
+    expect(gecerliTransferForm).not.toHaveProperty('personnelId')
+  })
+
+  it('audit kaydında (PASIFLESTIRME ve OLUSTURMA, ikisinde de) "Alternatif Servis Önerisi ile transfer" açıklaması yazılır', async () => {
+    await transferServisPersonelAtama('pa1', gecerliTransferForm, 'user-9')
+
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ hedefId: 'pa1', islem: 'PASIFLESTIRME', aciklama: 'Alternatif Servis Önerisi ile transfer' }),
+    }))
+    expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ hedefId: 'pa2', islem: 'OLUSTURMA', hedefTipi: 'PERSONEL_ATAMA', aciklama: 'Alternatif Servis Önerisi ile transfer' }),
+    }))
+  })
+
+  it('pasif bir atama transfer edilemez', async () => {
+    mocks.personelAtamaFindUnique.mockReset()
+    mocks.personelAtamaFindUnique.mockResolvedValueOnce({ ...eskiAtama, aktif: false })
+    await expect(transferServisPersonelAtama('pa1', gecerliTransferForm, 'user-9')).rejects.toThrow('zaten pasif')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('eski atama bulunamazsa hata verir', async () => {
+    mocks.personelAtamaFindUnique.mockReset()
+    mocks.personelAtamaFindUnique.mockResolvedValueOnce(null)
+    await expect(transferServisPersonelAtama('yok', gecerliTransferForm, 'user-9')).rejects.toThrow('bulunamadı')
+  })
+
+  it('transfer tarihi eski atamanın başlangıcından önce olamaz', async () => {
+    await expect(
+      transferServisPersonelAtama('pa1', { ...gecerliTransferForm, transferTarihi: '2025-12-01' }, 'user-9'),
+    ).rejects.toThrow('başlangıç tarihinden önce olamaz')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('pasif güzergaha transfer edilemez', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-2', aktif: false })
+    await expect(transferServisPersonelAtama('pa1', gecerliTransferForm, 'user-9')).rejects.toThrow('Pasif güzergaha')
+  })
+
+  it('personelin başka bir aktif ataması varsa (çakışma) transfer reddedilir', async () => {
+    mocks.personelAtamaFindFirst.mockResolvedValue({
+      id: 'pa-baska', baslangicTarihi: new Date('2026-02-01'), bitisTarihi: null,
+      guzergah: { kod: 'G9', ad: 'Başka Güzergah' },
+    })
+    await expect(transferServisPersonelAtama('pa1', gecerliTransferForm, 'user-9'))
+      .rejects.toThrow('zaten "G9 — Başka Güzergah" güzergahına aktif bir ataması var')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('geçersiz form (güzergah/dilim eksik) ile hata verir, hiçbir sorgu atmaz', async () => {
+    await expect(transferServisPersonelAtama('pa1', { ...gecerliTransferForm, guzergahId: '', dilimIdleri: [] }, 'user-9'))
+      .rejects.toThrow('Güzergâh seçimi zorunludur.')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
   })
 })

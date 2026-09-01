@@ -1409,6 +1409,7 @@ function PersonelAtamalarPanel({
   })
   const [kapatilan, setKapatilan] = useState<PersonelAtama | null>(null)
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
+  const [alternatifIcinAtama, setAlternatifIcinAtama] = useState<PersonelAtama | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1544,6 +1545,11 @@ function PersonelAtamalarPanel({
                 {(canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisAtama(v)} />}
+                    {v.aktif && canPassive && canManage && (
+                      <Button size="sm" variant="outline" onClick={() => setAlternatifIcinAtama(v)}>
+                        Alternatif Servis Öner
+                      </Button>
+                    )}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -1642,6 +1648,197 @@ function PersonelAtamalarPanel({
           <DialogFooter><Button variant="destructive" onClick={kapat}>Kapat</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlternatifServisDialog
+        atama={alternatifIcinAtama}
+        dilimler={dilimler}
+        onOpenChange={(o) => !o && setAlternatifIcinAtama(null)}
+        onTransferEdildi={() => { setAlternatifIcinAtama(null); yukle() }}
+      />
     </div>
+  )
+}
+
+type AlternatifOneri = {
+  guzergahId: string
+  guzergahKod: string
+  guzergahAd: string
+  kategori: 'ORTAK_DURAK_BOS_KOLTUK' | 'MESAFE_ESIGI_ICINDE'
+  mesafeKm: number | null
+  enYakinDurak: { id: string; kod: string; ad: string } | null
+  uygunDilimIdleri: string[]
+}
+
+const ONERI_KATEGORI_ETIKETI: Record<AlternatifOneri['kategori'], string> = {
+  ORTAK_DURAK_BOS_KOLTUK: 'Ortak durak + boş koltuk',
+  MESAFE_ESIGI_ICINDE: 'Mesafe eşiği içinde',
+}
+
+// FAZ 1B — Alternatif Servis. Bu dialog YALNIZ öneri gösterir; transfer,
+// bir öneri seçilip form dolduruldıktan sonra AYRI bir onay adımıdır
+// (bkz. transferServisPersonelAtama, service.ts).
+function AlternatifServisDialog({
+  atama,
+  dilimler,
+  onOpenChange,
+  onTransferEdildi,
+}: {
+  atama: PersonelAtama | null
+  dilimler: SeferDilimi[]
+  onOpenChange: (open: boolean) => void
+  onTransferEdildi: () => void
+}) {
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const [hata, setHata] = useState<string | null>(null)
+  const [oneriler, setOneriler] = useState<AlternatifOneri[]>([])
+  const [secilenOneri, setSecilenOneri] = useState<AlternatifOneri | null>(null)
+  const [transferForm, setTransferForm] = useState({ durakId: '', dilimIdleri: [] as string[], transferTarihi: bugun() })
+
+  useEffect(() => {
+    if (!atama) {
+      setOneriler([])
+      setSecilenOneri(null)
+      setHata(null)
+      return
+    }
+    let iptal = false
+    setYukleniyor(true)
+    setHata(null)
+    fetch(`/api/servis-yonetimi/guzergah-personel-atama/${atama.id}/alternatif-oneriler`)
+      .then((res) => res.json().then((json) => ({ res, json })))
+      .then(({ res, json }) => {
+        if (iptal) return
+        if (!res.ok || !json.ok) {
+          setHata(json.message || 'Alternatif servis önerileri alınamadı.')
+          return
+        }
+        setOneriler(json.data)
+      })
+      .catch(() => { if (!iptal) setHata('Öneriler alınırken beklenmeyen bir hata oluştu.') })
+      .finally(() => { if (!iptal) setYukleniyor(false) })
+    return () => { iptal = true }
+  }, [atama])
+
+  function oneriSec(oneri: AlternatifOneri) {
+    setSecilenOneri(oneri)
+    setHata(null)
+    setTransferForm({
+      durakId: oneri.kategori === 'ORTAK_DURAK_BOS_KOLTUK' ? atama?.durak?.id || '' : oneri.enYakinDurak?.id || '',
+      dilimIdleri: oneri.uygunDilimIdleri,
+      transferTarihi: bugun(),
+    })
+  }
+
+  function transferDilimSecimDegistir(dilimId: string, secili: boolean) {
+    setTransferForm((f) => ({
+      ...f,
+      dilimIdleri: secili ? [...f.dilimIdleri, dilimId] : f.dilimIdleri.filter((id) => id !== dilimId),
+    }))
+  }
+
+  async function transferEt() {
+    if (!atama || !secilenOneri) return
+    setHata(null)
+    const res = await fetch(`/api/servis-yonetimi/guzergah-personel-atama/${atama.id}/transfer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        guzergahId: secilenOneri.guzergahId,
+        durakId: transferForm.durakId || null,
+        dilimIdleri: transferForm.dilimIdleri,
+        transferTarihi: transferForm.transferTarihi,
+      }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.ok) {
+      setHata(json.message || 'Transfer gerçekleştirilemedi.')
+      return
+    }
+    onTransferEdildi()
+  }
+
+  return (
+    <Dialog open={!!atama} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {secilenOneri ? 'Transferi Onayla' : 'Alternatif Servis Önerileri'}
+            {atama ? ` — ${atama.personnel.adSoyad}` : ''}
+          </DialogTitle>
+        </DialogHeader>
+        {hata && <p className="text-sm text-red-600">{hata}</p>}
+
+        {!secilenOneri && (
+          <div className="space-y-2">
+            {yukleniyor && <p className="text-sm text-muted-foreground">Yükleniyor...</p>}
+            {!yukleniyor && oneriler.length === 0 && !hata && (
+              <p className="text-sm text-muted-foreground">
+                Bu personel için uygun bir alternatif servis bulunamadı (ortak durak+boş koltuk yok, mesafe eşiği içinde de servis yok).
+              </p>
+            )}
+            {oneriler.map((oneri) => (
+              <div key={oneri.guzergahId} className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div className="font-medium">{oneri.guzergahKod} — {oneri.guzergahAd}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {ONERI_KATEGORI_ETIKETI[oneri.kategori]}
+                    {oneri.mesafeKm !== null && ` · ${oneri.mesafeKm.toFixed(1)} km`}
+                    {oneri.enYakinDurak && ` · En yakın durak: ${oneri.enYakinDurak.kod}`}
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => oneriSec(oneri)}>Bu Servise Transfer Et</Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {secilenOneri && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              <strong>{secilenOneri.guzergahKod} — {secilenOneri.guzergahAd}</strong> güzergâhına transfer ediliyor.
+              Eski atama otomatik kapatılacak, audit kaydına &quot;Alternatif Servis Önerisi ile transfer&quot; olarak işlenecek.
+            </p>
+            <div>
+              <Label>Sefer Dilimleri * (en az bir tane)</Label>
+              <div className="space-y-1 pt-1">
+                {dilimler.map((d) => (
+                  <label key={d.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={transferForm.dilimIdleri.includes(d.id)}
+                      onChange={(e) => transferDilimSecimDegistir(d.id, e.target.checked)}
+                    />
+                    {d.kod} ({d.yon === 'GIDIS' ? 'Gidiş' : 'Dönüş'})
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="alt-transfer-tarihi">Transfer Tarihi *</Label>
+              <Input
+                id="alt-transfer-tarihi"
+                type="date"
+                value={transferForm.transferTarihi}
+                onChange={(e) => setTransferForm((f) => ({ ...f, transferTarihi: e.target.value }))}
+              />
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          {secilenOneri && (
+            <Button variant="ghost" onClick={() => setSecilenOneri(null)}>Geri</Button>
+          )}
+          {secilenOneri && (
+            <Button
+              onClick={transferEt}
+              disabled={transferForm.dilimIdleri.length === 0 || !transferForm.transferTarihi}
+            >
+              Transferi Onayla
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

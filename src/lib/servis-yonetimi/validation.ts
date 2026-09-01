@@ -443,3 +443,29 @@ export function validateServisPersonelAtamaForm(form: ServisPersonelAtamaForm): 
 
   return { valid: errors.length === 0, errors }
 }
+
+// FAZ 1B — Alternatif Servis transferi: eski atama kapatılıp aynı personel
+// için yeni bir atama açılır (bkz. transferServisPersonelAtama, service.ts).
+// personnelId formda YOK — eski atamadan miras alınır, kullanıcı değiştiremez.
+export type ServisPersonelAtamaTransferForm = {
+  guzergahId: string
+  durakId?: string | null
+  dilimIdleri: string[]
+  transferTarihi: string
+}
+
+export function validateServisPersonelAtamaTransferForm(form: ServisPersonelAtamaTransferForm): ServisValidationResult {
+  const errors: string[] = []
+
+  if (!form.guzergahId?.trim()) errors.push('Güzergâh seçimi zorunludur.')
+  if (!form.dilimIdleri || form.dilimIdleri.filter((d) => d?.trim()).length === 0) {
+    errors.push('En az bir sefer dilimi seçilmelidir.')
+  }
+
+  const transferTarihi = parseDateOnly(form.transferTarihi)
+  if (!form.transferTarihi?.trim() || !transferTarihi) {
+    errors.push('Transfer tarihi zorunludur ve geçerli olmalıdır.')
+  }
+
+  return { valid: errors.length === 0, errors }
+}

@@ -15,6 +15,8 @@ import {
   validateServisSorumlusuForm,
   validateServisPersonelDurumForm,
   validateServisPersonelAtamaForm,
+  validateServisPersonelAtamaTransferForm,
+  type ServisPersonelAtamaTransferForm,
   type ServisFirmaForm,
   type ServisAracForm,
   type ServisDurakForm,
@@ -2022,5 +2024,108 @@ export async function geriAlServisPersonelAtama(id: string, updatedById: string)
       oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
     })
     return guncel
+  })
+}
+
+// FAZ 1B — Alternatif Servis transferi. alternatifServisOnerileriGetir()
+// (alternatif-servis.ts) YALNIZ öneri üretir; transfer AYRI, kullanıcı
+// onayı gerektiren bir adımdır. Mevcut "kapat + yeni aç" (tarihçe) deseni
+// TEK transaction'da uygulanır (create/pasiflestir fonksiyonlarını ayrı ayrı
+// çağırmak iki ayrı transaction açar — biri başarısız olursa tutarsız durum
+// kalabilirdi). Audit'e, sıradan manuel değişiklikten ayırt edilebilsin diye
+// açık bir aciklama yazılır.
+const ALTERNATIF_SERVIS_TRANSFER_ACIKLAMASI = 'Alternatif Servis Önerisi ile transfer'
+
+export async function transferServisPersonelAtama(
+  eskiAtamaId: string,
+  form: ServisPersonelAtamaTransferForm,
+  yapanId: string,
+) {
+  const { valid, errors } = validateServisPersonelAtamaTransferForm(form)
+  if (!valid) throw new Error(errors.join(' '))
+
+  const eskiAtama = await prisma.servisPersonelAtama.findUnique({ where: { id: eskiAtamaId } })
+  if (!eskiAtama) throw new Error('Personel ataması bulunamadı.')
+  if (!eskiAtama.aktif) throw new Error('Bu atama zaten pasif, transfer edilemez.')
+
+  const guzergahId = form.guzergahId.trim()
+  const durakId = form.durakId?.trim() || null
+  const transferTarihi = dateOnlyOrNull(form.transferTarihi)!
+  const dilimIdleri = [...new Set(form.dilimIdleri.map((d) => d.trim()).filter(Boolean))]
+
+  if (transferTarihi < eskiAtama.baslangicTarihi) {
+    throw new Error('Transfer tarihi, eski atamanın başlangıç tarihinden önce olamaz.')
+  }
+
+  const [personnel, guzergah, dilimler] = await Promise.all([
+    prisma.personnel.findUnique({ where: { id: eskiAtama.personnelId } }),
+    prisma.servisGuzergah.findUnique({ where: { id: guzergahId } }),
+    prisma.servisSeferDilimi.findMany({ where: { id: { in: dilimIdleri } } }),
+  ])
+  if (!personnel) throw new Error('Personel bulunamadı.')
+  if (!personnel.aktif) throw new Error('Pasif personel servise transfer edilemez.')
+  if (!guzergah) throw new Error('Güzergâh bulunamadı.')
+  if (!guzergah.aktif) throw new Error('Pasif güzergaha transfer yapılamaz.')
+
+  if (durakId) {
+    const guzergahDurak = await prisma.servisGuzergahDurak.findUnique({
+      where: { guzergahId_durakId: { guzergahId, durakId } },
+    })
+    if (!guzergahDurak) throw new Error('Bu durak, seçilen güzergahın bir durağı değil.')
+  }
+
+  if (dilimler.length !== dilimIdleri.length) throw new Error('Seçilen sefer dilimlerinden biri veya birkaçı bulunamadı.')
+  const pasifDilim = dilimler.find((d) => !d.aktif)
+  if (pasifDilim) throw new Error(`"${pasifDilim.kod}" dilimi pasif, atama yapılamaz.`)
+
+  const cakisan = await personelAtamaCakismasi(eskiAtama.personnelId, transferTarihi, null, eskiAtamaId)
+  if (cakisan) throw new Error(personelAtamaCakismaMesaji(cakisan))
+
+  return prisma.$transaction(async (tx) => {
+    await tx.servisPersonelAtama.update({
+      where: { id: eskiAtamaId },
+      data: { bitisTarihi: transferTarihi, aktif: false, updatedById: yapanId },
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: eskiAtamaId, islem: 'PASIFLESTIRME', yapanId,
+      oncekiDeger: { bitisTarihi: eskiAtama.bitisTarihi, aktif: true },
+      yeniDeger: { bitisTarihi: transferTarihi, aktif: false },
+      aciklama: ALTERNATIF_SERVIS_TRANSFER_ACIKLAMASI,
+    })
+
+    const yeniAtama = await tx.servisPersonelAtama.create({
+      data: {
+        personnelId: eskiAtama.personnelId,
+        guzergahId,
+        durakId,
+        baslangicTarihi: transferTarihi,
+        bitisTarihi: null,
+        atamaKaynagi: 'MANUEL',
+        createdById: yapanId,
+      },
+    })
+    await tx.servisPersonelAtamaDilim.createMany({
+      data: dilimIdleri.map((dilimId) => ({ atamaId: yeniAtama.id, dilimId })),
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: yeniAtama.id, islem: 'OLUSTURMA', yapanId,
+      yeniDeger: {
+        personnelId: eskiAtama.personnelId, guzergahId, durakId,
+        baslangicTarihi: transferTarihi, bitisTarihi: null, atamaKaynagi: 'MANUEL',
+      },
+      aciklama: ALTERNATIF_SERVIS_TRANSFER_ACIKLAMASI,
+    })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'PERSONEL_ATAMA_DILIM', hedefId: yeniAtama.id, islem: 'OLUSTURMA', yapanId,
+      yeniDeger: { dilimIdleri },
+      aciklama: ALTERNATIF_SERVIS_TRANSFER_ACIKLAMASI,
+    })
+
+    const sonuc = await tx.servisPersonelAtama.findUnique({
+      where: { id: yeniAtama.id },
+      include: servisPersonelAtamaInclude,
+    })
+    if (!sonuc) throw new Error('Transfer sonrası atama oluşturulamadı.')
+    return sonuc
   })
 }

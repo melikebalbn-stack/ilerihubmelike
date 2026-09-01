@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { servisKapasiteOzetiGetir } from './kapasite'
 
 // FAZ 1B — Alternatif Servis Önerisi. Bir personelin mevcut atamasına göre
 // (aynı durağa uğrayan + boş koltuğu olan servisler, yoksa mesafe eşiği
@@ -79,28 +80,6 @@ export function oneriSirala<T>(adaylar: OneriAday<T>[], esikKm: number): Oneri<T
       if (b.mesafeKm === null) return -1
       return a.mesafeKm - b.mesafeKm
     })
-}
-
-// ── GEÇİCİ boş-koltuk hesaplaması ───────────────────────────────────────────
-// TODO(kapasite-dalı): dev/elif/servis-yonetimi-shared-surfaces (veya onu
-// izleyen kapasite dalı) main'e girdiğinde bu fonksiyon CANONICAL kapasite
-// fonksiyonuyla değiştirilecek. Bu, yalnız ANLIK duruma bakan (zaman dilimi/
-// tarih aralığı FARKI GÖZETMEYEN, sadece "şu an aktif" kayıtları sayan) basit
-// bir yaklaşımdır — iki dal da main'e girmeden önce MUTLAKA reconcile
-// edilmeli. Elif bunu açık madde olarak takip ediyor.
-export async function bosKoltukSayisiGetirGECICI(guzergahId: string, dilimId: string): Promise<number> {
-  const [anaAraclar, doluKoltukSayisi] = await Promise.all([
-    prisma.servisGuzergahAracVarsayilan.findMany({
-      where: { guzergahId, dilimId, rol: 'ANA', aktif: true },
-      include: { arac: { select: { kapasite: true } } },
-    }),
-    prisma.servisPersonelAtama.count({
-      where: { guzergahId, aktif: true, dilimler: { some: { dilimId } } },
-    }),
-  ])
-  const kapasiteToplami = anaAraclar.reduce((toplam, v) => toplam + v.arac.kapasite, 0)
-
-  return Math.max(0, kapasiteToplami - doluKoltukSayisi)
 }
 
 // Prisma.Decimal (enlem/boylam) → number. Duck-type — audit.ts'teki
@@ -186,7 +165,7 @@ export async function alternatifServisOnerileriGetir(atamaId: string): Promise<A
       const dilimSonuclari = await Promise.all(
         dilimIdleri.map(async (dilimId) => ({
           dilimId,
-          bosKoltuk: await bosKoltukSayisiGetirGECICI(guzergah.id, dilimId),
+          bosKoltuk: (await servisKapasiteOzetiGetir(guzergah.id, dilimId)).bosKoltuk,
         })),
       )
       const uygunDilimIdleri = dilimSonuclari.filter((d) => d.bosKoltuk > 0).map((d) => d.dilimId)

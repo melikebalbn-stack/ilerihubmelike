@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   systemSettingFindUnique: vi.fn(),
-  guzergahAracVarsayilanFindMany: vi.fn(),
-  personelAtamaCount: vi.fn(),
+  servisKapasiteOzetiGetir: vi.fn(),
   personelAtamaFindUnique: vi.fn(),
   guzergahFindMany: vi.fn(),
 }))
@@ -11,18 +10,18 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     systemSetting: { findUnique: mocks.systemSettingFindUnique },
-    servisGuzergahAracVarsayilan: { findMany: mocks.guzergahAracVarsayilanFindMany },
-    servisPersonelAtama: { count: mocks.personelAtamaCount, findUnique: mocks.personelAtamaFindUnique },
+    servisPersonelAtama: { findUnique: mocks.personelAtamaFindUnique },
     servisGuzergah: { findMany: mocks.guzergahFindMany },
   },
 }))
+
+vi.mock('./kapasite', () => ({ servisKapasiteOzetiGetir: mocks.servisKapasiteOzetiGetir }))
 
 import {
   ALTERNATIF_ESIK_KM_AYAR_KEY,
   VARSAYILAN_ESIK_KM,
   alternatifEsikKmGetir,
   alternatifServisOnerileriGetir,
-  bosKoltukSayisiGetirGECICI,
   haversineKm,
   oneriSirala,
 } from './alternatif-servis'
@@ -130,39 +129,6 @@ describe('alternatifEsikKmGetir', () => {
   })
 })
 
-describe('bosKoltukSayisiGetirGECICI (GEÇİCİ — kapasite dalı canonical fonksiyonla değiştirecek)', () => {
-  it('aktif ANA araçların kapasite toplamından aktif dolu koltuk sayısını çıkarır', async () => {
-    mocks.guzergahAracVarsayilanFindMany.mockResolvedValue([
-      { arac: { kapasite: 16 } },
-      { arac: { kapasite: 20 } },
-    ])
-    mocks.personelAtamaCount.mockResolvedValue(30)
-
-    await expect(bosKoltukSayisiGetirGECICI('g1', 'd1')).resolves.toBe(6)
-    expect(mocks.guzergahAracVarsayilanFindMany).toHaveBeenCalledWith({
-      where: { guzergahId: 'g1', dilimId: 'd1', rol: 'ANA', aktif: true },
-      include: { arac: { select: { kapasite: true } } },
-    })
-    expect(mocks.personelAtamaCount).toHaveBeenCalledWith({
-      where: { guzergahId: 'g1', aktif: true, dilimler: { some: { dilimId: 'd1' } } },
-    })
-  })
-
-  it('dolu koltuk sayısı kapasiteyi aşarsa negatif değil 0 döner', async () => {
-    mocks.guzergahAracVarsayilanFindMany.mockResolvedValue([{ arac: { kapasite: 16 } }])
-    mocks.personelAtamaCount.mockResolvedValue(20)
-
-    await expect(bosKoltukSayisiGetirGECICI('g1', 'd1')).resolves.toBe(0)
-  })
-
-  it('hiç aktif ANA araç yoksa 0 döner', async () => {
-    mocks.guzergahAracVarsayilanFindMany.mockResolvedValue([])
-    mocks.personelAtamaCount.mockResolvedValue(0)
-
-    await expect(bosKoltukSayisiGetirGECICI('g1', 'd1')).resolves.toBe(0)
-  })
-})
-
 describe('alternatifServisOnerileriGetir', () => {
   const atamaTemel = {
     id: 'pa1',
@@ -174,13 +140,16 @@ describe('alternatifServisOnerileriGetir', () => {
   }
 
   function kapasiteMock(kapasiteByGuzergah: Record<string, number>, doluByGuzergah: Record<string, number>) {
-    mocks.guzergahAracVarsayilanFindMany.mockImplementation(async ({ where }: { where: { guzergahId: string } }) => {
-      const kapasite = kapasiteByGuzergah[where.guzergahId] ?? 0
-      return kapasite > 0 ? [{ arac: { kapasite } }] : []
+    mocks.servisKapasiteOzetiGetir.mockImplementation(async (guzergahId: string) => {
+      const kapasite = kapasiteByGuzergah[guzergahId] ?? 0
+      const atananPersonelSayisi = doluByGuzergah[guzergahId] ?? 0
+      return {
+        kapasite,
+        atananPersonelSayisi,
+        bosKoltuk: kapasite - atananPersonelSayisi,
+        dolulukOrani: kapasite > 0 ? (atananPersonelSayisi / kapasite) * 100 : 0,
+      }
     })
-    mocks.personelAtamaCount.mockImplementation(async ({ where }: { where: { guzergahId: string } }) =>
-      doluByGuzergah[where.guzergahId] ?? 0,
-    )
   }
 
   it('atama bulunamazsa hata fırlatır', async () => {

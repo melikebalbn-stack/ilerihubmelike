@@ -1,3 +1,14 @@
+// ⛔ DEVRE DIŞI (soru seti değişti — 02.09.2026)
+//
+// Bu script ANK-2026-002'nin ESKİ 11 soruluk setine ve 'aiopt###' seçenek
+// id'lerine bağlıydı. Anket redesign-ai-survey.ts ile 13 soruya geçirildi ve
+// ANONİM moda alındı; buradaki id'lerin hiçbiri artık mevcut değil. Prod'da
+// koşarsa ya patlar ya da anlamsız yanıt üretir.
+//
+// Yeniden gerekirse: soru/seçenek id'lerini DB'den okuyacak şekilde yaz.
+console.error('submit-ai-survey-tests.js DEVRE DISI: ANK-2026-002 soru seti degisti (02.09.2026).')
+process.exit(1)
+
 const { PrismaClient } = require('@prisma/client');
 const { v4: uuidv4 } = require('uuid');
 

@@ -3,6 +3,30 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { v4 as uuidv4 } from 'uuid'
+import { createHmac } from 'crypto'
+
+/**
+ * Anonim ankette TEK-YANIT anahtarı.
+ *
+ * Sorun: `allowMultipleResponses=false` kontrolü `respondentEmail` üzerinden
+ * yapılıyordu; anonim ankette bu alan null yazıldığı için kontrol HİÇ eşleşmiyor
+ * ve aynı kişi sınırsız yanıt gönderebiliyordu.
+ *
+ * Çözüm: anonymousId'yi rastgele uuid yerine (anket + kullanıcı) çiftinden
+ * TÜRETİLEN bir HMAC yap. Aynı kişi aynı ankete ikinci kez yanıt verdiğinde aynı
+ * değer üretilir → kontrol çalışır. Tek yönlü olduğu için kayıttan kimlik geri
+ * çözülemez; anahtar NEXTAUTH_SECRET.
+ */
+function anonimAnahtar(surveyId: string, email: string): string {
+  const gizli = process.env.NEXTAUTH_SECRET ?? ''
+  if (!gizli) {
+    // Anahtar yoksa türetme güvenli değil; rastgeleye düşülür (tek-yanıt
+    // garantisi kaybolur ama kimlik de sızmaz) ve durum LOGLANIR.
+    console.warn('[survey-respond] NEXTAUTH_SECRET yok → anonim tek-yanıt kontrolü devre dışı')
+    return uuidv4()
+  }
+  return createHmac('sha256', gizli).update(`${surveyId}:${email.toLowerCase().trim()}`).digest('hex')
+}
 
 // POST - Ankete yanıt ver
 export async function POST(
@@ -59,14 +83,12 @@ export async function POST(
 
     // Daha önce yanıtladı mı
     if (!survey.allowMultipleResponses) {
+      // Anonim ankette respondentEmail null yazılır → e-posta ile arama hiç
+      // eşleşmezdi. Türetilmiş anonymousId ile aranır (bkz. anonimAnahtar).
       const existingResponse = await prisma.surveyResponse.findFirst({
-        where: {
-          surveyId: id,
-          OR: [
-            { respondentEmail: userEmail },
-            ...(survey.isAnonymous ? [] : [])
-          ]
-        }
+        where: survey.isAnonymous
+          ? { surveyId: id, anonymousId: anonimAnahtar(id, userEmail) }
+          : { surveyId: id, respondentEmail: userEmail },
       })
 
       if (existingResponse) {
@@ -97,11 +119,15 @@ export async function POST(
       }
     }
 
-    // IP ve User Agent
-    const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0] ||
-                      request.headers.get('x-real-ip') ||
-                      'unknown'
-    const userAgent = request.headers.get('user-agent') || 'unknown'
+    // ANONİM ANKETTE İZ BIRAKMA: ipAddress + userAgent birlikte bir kişiyi
+    // pekâlâ işaret eder (de-anonimleştirme). Kimlik alanları null'a çekilirken
+    // bu ikisi koşulsuz yazılıyordu — anonim modda artık null.
+    const ipAddress = survey.isAnonymous
+      ? null
+      : request.headers.get('x-forwarded-for')?.split(',')[0] ||
+        request.headers.get('x-real-ip') ||
+        'unknown'
+    const userAgent = survey.isAnonymous ? null : request.headers.get('user-agent') || 'unknown'
 
     // Transaction ile yanıt oluştur
     const response = await prisma.$transaction(async (tx) => {
@@ -112,7 +138,7 @@ export async function POST(
           respondentEmail: survey.isAnonymous ? null : userEmail,
           respondentName: survey.isAnonymous ? null : (session.user.name || userEmail),
           respondentDepartment: survey.isAnonymous ? null : userDepartment,
-          anonymousId: survey.isAnonymous ? uuidv4() : null,
+          anonymousId: survey.isAnonymous ? anonimAnahtar(id, userEmail) : null,
           isComplete: true,
           completedAt: new Date(),
           ipAddress,

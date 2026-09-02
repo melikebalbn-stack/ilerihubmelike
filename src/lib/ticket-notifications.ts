@@ -25,7 +25,7 @@ import { prisma } from '@/lib/prisma'
 import { parseMembers } from '@/lib/tickets/team-members'
 import { sendEmail, generateTicketCreatedEmailContent } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
-import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
 
 // ════════════════════════════════════════════════════════════
 // TİP TANIMLARI
@@ -518,5 +518,119 @@ export async function dispatchTicketKapandi(
     })
   } catch (err) {
     console.error('[ticket-kapanis-notify] push failed:', err)
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// PUBLIC: TICKET YORUM BİLDİRİMİ
+// ════════════════════════════════════════════════════════════
+
+export type TicketYorumInfo = {
+  id: string
+  ticketNumber: string
+  subject: string
+  /** Talebi açan. */
+  requesterEmail: string
+  /** Atanan teknisyenin e-postası (null = havuzda / atanmamış). */
+  assignedTo: string | null
+}
+
+/**
+ * Yoruma göre karşı tarafa bildirim gönderir. Kanal: e-posta (kapanış
+ * bildirimiyle aynı şablon iskeleti, aynı hata yutma davranışı).
+ *
+ * KURALLAR:
+ *   - Dahili not (isInternal) → HİÇ bildirim. Dahili not talep sahibine
+ *     kapalıdır; haber vermek onu sızdırmak olurdu.
+ *   - Yorumu yazan ≠ talep sahibi (IT ekibi yanıtı) → TALEP SAHİBİNE gider.
+ *   - Yorumu yazan = talep sahibi → atanan teknisyene gider; ticket atanmamışsa
+ *     alıcı yok, yalnız log düşülür (havuza düşmüş talebin bildirimi ayrı iş).
+ *   - Kendine bildirim gönderilmez (alıcı = yazar ise atlanır).
+ *   - throw ETMEZ → yorum akışı bildirimden dolayı bozulmaz.
+ *
+ * ALICI ÇÖZÜMÜ kapanış bildiriminden bir noktada AYRILIYOR: orada alıcı User'da
+ * yoksa gönderim atlanıyor. Burada atlanmaz — e-posta kanalından (destek@) açılan
+ * talebin sahibi sistemde kayıtlı OLMAYABİLİR (mail-isle.ts bilinmeyen göndereni
+ * kabul ediyor) ve yanıtı görmesi gereken kişi tam olarak odur. User kaydı varsa
+ * adı oradan alınır, pasifse gönderilmez.
+ */
+export async function dispatchTicketYorum(
+  ticket: TicketYorumInfo,
+  yorum: { content: string; isInternal: boolean; authorEmail: string; authorName: string },
+): Promise<void> {
+  if (yorum.isInternal) return // dahili not → bildirim yok
+
+  const yazan = (yorum.authorEmail ?? '').toLowerCase().trim()
+  const acan = (ticket.requesterEmail ?? '').toLowerCase().trim()
+
+  // Yazan talep sahibiyse muhatap atanan teknisyendir, değilse talep sahibi.
+  const hedef =
+    yazan !== '' && yazan === acan ? (ticket.assignedTo ?? '').toLowerCase().trim() : acan
+
+  // Adres yoksa (talep atanmamış) veya adres değilse atla. mail-isle.ts
+  // gönderen çözülemediğinde requesterEmail'e '(bilinmiyor)' yazıyor — onu
+  // SMTP'ye götürmenin anlamı yok, hata olarak geri dönerdi.
+  if (hedef === '' || !hedef.includes('@')) {
+    console.log(`[ticket-yorum-notify] ${ticket.ticketNumber}: gecerli alici yok — atlandi`)
+    return
+  }
+  if (hedef === yazan) return // kendi yorumunu kendine haber verme
+
+  let user:
+    | { id: string; email: string; firstName: string | null; lastName: string | null; name: string | null; isActive: boolean }
+    | null = null
+  try {
+    user = await prisma.user.findFirst({
+      where: { email: hedef },
+      select: { id: true, email: true, firstName: true, lastName: true, name: true, isActive: true },
+    })
+  } catch (err) {
+    console.error('[ticket-yorum-notify] kullanıcı çözümlenemedi:', err)
+    return
+  }
+  if (user && !user.isActive) {
+    console.log(`[ticket-yorum-notify] ${ticket.ticketNumber}: alici pasif (${hedef}) — atlandi`)
+    return
+  }
+
+  // User yoksa (mail kanalından gelen dış talep sahibi) adres adın yerine geçer.
+  const r = user ? toRecipient(user) : { id: '', email: hedef, name: hedef }
+  const link = `/it-support?ticket=${ticket.ticketNumber}`
+  const title = `[Ticket #${ticket.ticketNumber}] Yeni yanıt`
+  const govde = yorum.content.trim()
+
+  try {
+    const text =
+      `Talebinize yeni bir yanıt eklendi.\n\n` +
+      `Talep No: ${ticket.ticketNumber}\n` +
+      `Konu: ${ticket.subject}\n` +
+      `Yanıtlayan: ${yorum.authorName}\n\n` +
+      `${govde}\n\n` +
+      `Talebe gitmek için:\n${ileriHubUrl(link)}\n\nİleri Group`
+    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f4f6f8;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
+          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
+        </td></tr>
+        <tr><td style="padding:22px 24px;">
+          <h1 style="margin:0 0 12px;font-size:18px;color:#1B4F72;">Talebinize yeni yanıt</h1>
+          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(ticket.subject)}</p>
+          <div style="margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid #1B4F72;border-radius:4px;">
+            <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;">${escapeHtml(yorum.authorName)}</p>
+            <p style="margin:0;font-size:14px;line-height:1.6;color:#1f2733;white-space:pre-wrap;">${escapeHtml(govde)}</p>
+          </div>
+          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe Git</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+    await sendEmail([{ name: r.name, email: r.email }], title, text, html)
+  } catch (err) {
+    console.error('[ticket-yorum-notify] email failed:', err)
   }
 }

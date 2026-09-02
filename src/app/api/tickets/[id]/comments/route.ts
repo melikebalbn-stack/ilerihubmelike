@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { getSlaAyar, getTatilMap } from '@/lib/sla'
 import { duraklatmaGecisi, ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
 import { canAccessTicket } from '@/lib/ticket-yetki'
+import { dispatchTicketYorum } from '@/lib/ticket-notifications'
 
 // GET - Ticket yorumları
 export async function GET(
@@ -177,6 +178,30 @@ export async function POST(
           performedByName: user.name ?? user.email,
         }
       })
+    }
+
+    // ── YORUM BİLDİRİMİ (best-effort) ───────────────────────────────────
+    // Yorum + timeline + SLA işleri BİTTİKTEN sonra; PUT'taki dispatch
+    // çağrılarıyla aynı kalıp (try/catch, hata yutulur, yanıt bloklanmaz).
+    // Dahili notta dispatch kendisi çıkıyor — koşul burada tekrarlanmıyor.
+    try {
+      await dispatchTicketYorum(
+        {
+          id: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          subject: ticket.subject,
+          requesterEmail: ticket.requesterEmail,
+          assignedTo: ticket.assignedTo,
+        },
+        {
+          content: comment.content,
+          isInternal: finalIsInternal,
+          authorEmail: comment.authorEmail,
+          authorName: comment.authorName,
+        },
+      )
+    } catch (err) {
+      console.error('[ticket-yorum-notify] dispatch failed:', err)
     }
 
     return NextResponse.json(comment, { status: 201 })

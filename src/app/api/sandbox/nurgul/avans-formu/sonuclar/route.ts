@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { canAccessSandbox } from '@/lib/sandbox-config'
 import { prisma } from '@/lib/prisma'
+import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 import { isSandboxOwner } from '../_lib/avans-formu-helpers'
 
 export const dynamic = 'force-dynamic'
@@ -121,6 +122,9 @@ export async function POST(request: NextRequest) {
   const donemYil = now.getFullYear()
   const donemAy = now.getMonth() + 1
 
+  const kilit = await donemKilidiKontrol(donemYil, donemAy)
+  if (kilit) return kilit
+
   const mevcutKayit = await prisma.avansTalebiSatiri.findFirst({
     where: {
       calisanId: personel.id,
@@ -204,6 +208,16 @@ export async function DELETE(request: NextRequest) {
   const body: unknown = await request.json().catch(() => null)
   if (!gecerliDeleteBody(body)) {
     return NextResponse.json({ error: 'Geçersiz istek gövdesi' }, { status: 400 })
+  }
+
+  // Silinecek satırın ait olduğu talebin dönemi kapalıysa değişiklik yasak.
+  const talep = await prisma.avansTalebi.findUnique({
+    where: { id: body.avansTalebiId },
+    select: { donemYil: true, donemAy: true },
+  })
+  if (talep) {
+    const kilit = await donemKilidiKontrol(talep.donemYil, talep.donemAy)
+    if (kilit) return kilit
   }
 
   await prisma.avansTalebiSatiri.deleteMany({

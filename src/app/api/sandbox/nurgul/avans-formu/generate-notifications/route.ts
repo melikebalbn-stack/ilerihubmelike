@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
+import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 import { isSandboxOwner } from '../_lib/avans-formu-helpers'
 import { dispatchAvansHatirlatma, dispatchAvansKendiHatirlatma } from '@/lib/sandbox/avans-notifications'
 
@@ -121,6 +122,11 @@ export async function POST(request: NextRequest) {
   }
 
   const dryRun = (body as PostBody | null)?.dryRun !== false
+
+  // Cari dönem kapalıysa hatırlatma gönderilmez (form zaten kilitli).
+  const now = new Date()
+  const kilit = await donemKilidiKontrol(now.getFullYear(), now.getMonth() + 1)
+  if (kilit) return kilit
 
   const sorumlular = await bulTumSorumlular()
   const sorumluIdSeti = new Set(sorumlular.map((s) => s.personnelId))

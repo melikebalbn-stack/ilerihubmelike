@@ -38,6 +38,14 @@ export async function GET(request: NextRequest) {
           serviceRoute: true,
           mobilePhone: true,
           employeeId: true,
+          // Ek alan (geriye uyumlu): bölüm/ünvan gösteriminde Personnel önceliklidir.
+          personnel: {
+            select: {
+              bolum: true,
+              gorev: true,
+              department: { select: { name: true } },
+            },
+          },
         },
         orderBy: { name: 'asc' },
       })

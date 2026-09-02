@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
+    // Bölüm/ünvan gösterimi Personnel'i önceler; User.department/jobTitle AD'den
+    // gelen serbest metin olduğu için yedekte kalır (bkz. settings/page.tsx yetkiliGosterim).
     const authorizedUsers = await prisma.overtimeAuthorizedUser.findMany({
       include: {
         user: {
@@ -45,6 +47,13 @@ export async function GET(request: NextRequest) {
             email: true,
             department: true,
             jobTitle: true,
+            personnel: {
+              select: {
+                bolum: true,
+                gorev: true,
+                department: { select: { name: true } },
+              },
+            },
           },
         },
       },

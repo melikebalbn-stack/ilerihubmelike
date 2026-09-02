@@ -51,6 +51,30 @@ import type {
   EmailTestData
 } from "@/types/settings"
 
+/** Mesai yetkili listesinde "Bölüm / Ünvan" satırının kaynağı.
+ *  User.department/jobTitle AD'den gelen serbest metindir (çoğu DepartmentDefinition ile
+ *  eşleşmez, bir kısmı boştur) → Personnel öncelikli, User yedek. */
+type YetkiliGosterimGirdisi = {
+  department?: string | null
+  jobTitle?: string | null
+  personnel?: {
+    bolum?: string | null
+    gorev?: string | null
+    department?: { name: string } | null
+  } | null
+}
+
+function yetkiliGosterim(u: YetkiliGosterimGirdisi): { bolum: string; unvan: string | null } {
+  const dolu = (v?: string | null) => (v && v.trim() ? v.trim() : null)
+  const bolum =
+    dolu(u.personnel?.department?.name) ??
+    dolu(u.personnel?.bolum) ??
+    dolu(u.department) ??
+    '-'
+  const unvan = dolu(u.personnel?.gorev) ?? dolu(u.jobTitle)
+  return { bolum, unvan }
+}
+
 export default function SettingsPage() {
   const { data: session } = useSession()
   const userRole = (session?.user as any)?.role || 'EMPLOYEE'
@@ -142,8 +166,8 @@ export default function SettingsPage() {
   const [emailTest, setEmailTest] = useState<EmailTestData>({ email: '', name: '', sending: false })
 
   // Mesai formu yetkili kullanıcılar
-  const [overtimeAuthUsers, setOvertimeAuthUsers] = useState<{ id: string; userId: string; user: { id: string; name: string; email: string; department: string | null; jobTitle: string | null } }[]>([])
-  const [overtimeAllUsers, setOvertimeAllUsers] = useState<{ id: string; name: string; email: string; department: string | null; jobTitle: string | null }[]>([])
+  const [overtimeAuthUsers, setOvertimeAuthUsers] = useState<{ id: string; userId: string; user: { id: string; name: string; email: string } & YetkiliGosterimGirdisi }[]>([])
+  const [overtimeAllUsers, setOvertimeAllUsers] = useState<({ id: string; name: string; email: string } & YetkiliGosterimGirdisi)[]>([])
   const [overtimeUserSearch, setOvertimeUserSearch] = useState('')
   const [overtimeUsersLoaded, setOvertimeUsersLoaded] = useState(false)
   const [overtimeAdding, setOvertimeAdding] = useState<string | null>(null)
@@ -1322,7 +1346,10 @@ export default function SettingsPage() {
                   <div>
                     <p className="text-sm font-medium">{auth.user.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {auth.user.department || '-'} {auth.user.jobTitle ? `/ ${auth.user.jobTitle}` : ''}
+                      {(() => {
+                        const g = yetkiliGosterim(auth.user)
+                        return `${g.bolum}${g.unvan ? ` / ${g.unvan}` : ''}`
+                      })()}
                     </p>
                   </div>
                   <Button
@@ -1384,7 +1411,10 @@ export default function SettingsPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{u.name}</p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {u.department || '-'} {u.jobTitle ? `/ ${u.jobTitle}` : ''}
+                          {(() => {
+                            const g = yetkiliGosterim(u)
+                            return `${g.bolum}${g.unvan ? ` / ${g.unvan}` : ''}`
+                          })()}
                         </p>
                       </div>
                       <Button

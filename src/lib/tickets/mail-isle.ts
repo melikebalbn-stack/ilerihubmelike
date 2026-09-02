@@ -14,7 +14,8 @@
  * (yoksayilmaliMi, `from` üzerinden). Kutu adresi burada hardcode DEĞİL —
  * çağıran (cron ucu) veriyor.
  *
- * BİLDİRİM: yeni ticket açıldığında dispatchTicketCreated çağrılır (IT ekibi =
+ * BİLDİRİM: yeni ticket açıldığında dispatchTicketCreated çağrılır (kategorisiz
+ * açıldığı için alıcı zinciri triage'a düşer; eski metin: IT ekibi =
  * Sistem Geliştirme departmanı; e-posta + uygulama içi + push). YORUM ekleme
  * dalında çağrılmaz — bu fazda yalnız yeni ticket.
  */
@@ -285,6 +286,7 @@ export async function tekMesajIsle(
         description: olusan.description,
         priority: olusan.priority,
         category: '(Kategorisiz)', // mail kanalı kategorisiz açıyor — IT triyaj edecek
+        categoryId: null, // → alıcı zinciri triage'a düşer (ticket_triage_email)
         requesterName: olusan.requesterName,
         requesterDept: olusan.requesterDept ?? '',
         createdAt: olusan.createdAt,

@@ -193,15 +193,19 @@ export interface SlaDakikalari {
  *
  * Bu tablo `src/app/api/tickets/route.ts` içindeki eski `calculateSLA`'nın
  * yerini alır. Rakamlar TAKVİM dakikasından İŞ dakikasına çevrildi: eskiden
- * NORMAL çözüm 1440dk (=24 takvim saati) idi, artık 1080dk (=2 iş günü,
- * 540dk/gün). Kritik/yüksek eşikleri aynı gün içinde kaldığı için değişmedi.
+ * NORMAL çözüm 1440dk (=24 takvim saati) idi. Kritik/yüksek eşikleri aynı gün
+ * içinde kaldığı için değişmedi.
+ *
+ * 02.09.2026: NORMAL tabanı 240/1080 → 480/2160 gevşetildi. Kategorisiz talep
+ * bu tabana düşüyor ve ölçümde (son 14 gün) ihlalli 7 talebin 4'ü kategorisizdi;
+ * 240dk yanıt bütçesi pratikte 1 iş gününden kısa kalıyordu.
  *
  * Anahtarlar TicketPriority enum değerleridir (TICKET_ önekine dikkat).
  */
 export const ONCELIK_SLA: Record<string, SlaDakikalari> = {
   TICKET_CRITICAL: { responseMin: 15, resolutionMin: 120 },
   TICKET_HIGH: { responseMin: 60, resolutionMin: 480 },
-  NORMAL: { responseMin: 240, resolutionMin: 1080 },
+  NORMAL: { responseMin: 480, resolutionMin: 2160 },
   TICKET_LOW: { responseMin: 480, resolutionMin: 2160 },
 }
 

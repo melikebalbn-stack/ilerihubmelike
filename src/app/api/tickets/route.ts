@@ -321,6 +321,10 @@ export async function POST(request: NextRequest) {
     //
     // Best-effort: tüm blok try/catch içinde, bildirim ticket'ı bozmaz.
     // Ticket zaten oluştu; buradaki hata yalnız loglanır.
+    // Atama yolunda bildirilen e-postalar — oluşturma bildirimi bunları ATLAR
+    // (aynı kişiye "atandı" + "yeni ticket" diye iki mail gitmesin). Talebi açan
+    // kişi de baştan kümede: kendi açtığı talebi kendine duyurmayız.
+    const zatenBildirilen: string[] = [user.email]
     try {
       if (ticket.assignedTo) {
         // Kendi kendine atama → bildirim yok (PUT yolundaki kuralla aynı).
@@ -335,7 +339,10 @@ export async function POST(request: NextRequest) {
               assignee.id,
               user.name ?? user.email,
             )
+            zatenBildirilen.push(ticket.assignedTo)
           }
+        } else {
+          zatenBildirilen.push(ticket.assignedTo)
         }
       } else if (ticket.assignedTeamId) {
         const team = await prisma.ticketTeam.findUnique({
@@ -343,12 +350,14 @@ export async function POST(request: NextRequest) {
           select: { name: true, members: true },
         })
         if (team) {
+          const uyeler = parseMembers(team.members).map((m) => m.email)
           await dispatchTicketToTeam(
             { id: ticket.id, ticketNumber: ticket.ticketNumber, subject: ticket.subject },
             team.name,
-            parseMembers(team.members).map((m) => m.email),
+            uyeler,
             user.email, // açan kişi üyeyse ona gitmesin
           )
+          zatenBildirilen.push(...uyeler)
         }
       }
     } catch (err) {
@@ -358,17 +367,21 @@ export async function POST(request: NextRequest) {
     // ── Bildirim dispatcher (PR-TKT-NTF-1A) ─────────────────────
     // Fire-and-forget: response'u bloklamaz. Hata olursa loglanır.
     // IT ekibi (Sistem Geliştirme dept'i) email + in-app + push alır.
-    void dispatchTicketCreated({
-      id: ticket.id,
-      ticketNumber: ticket.ticketNumber,
-      subject: ticket.subject,
-      description: ticket.description,
-      priority: ticket.priority,
-      category: ticket.category?.name ?? '(Kategorisiz)',
-      requesterName: ticket.requesterName,
-      requesterDept: ticket.requesterDept ?? '',
-      createdAt: ticket.createdAt,
-    }).catch((err) => {
+    void dispatchTicketCreated(
+      {
+        id: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        description: ticket.description,
+        priority: ticket.priority,
+        category: ticket.category?.name ?? '(Kategorisiz)',
+        categoryId: ticket.category?.id ?? null,
+        requesterName: ticket.requesterName,
+        requesterDept: ticket.requesterDept ?? '',
+        createdAt: ticket.createdAt,
+      },
+      zatenBildirilen,
+    ).catch((err) => {
       console.error('[ticket-notify] unhandled dispatch error:', err)
     })
     // ────────────────────────────────────────────────────────────

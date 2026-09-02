@@ -1,8 +1,8 @@
 /**
  * IT Ticket Bildirim Dispatcher (PR-TKT-NTF-1A)
  *
- * Yeni ticket açıldığında Sistem Geliştirme departmanındaki aktif
- * kullanıcılara 3 kanaldan bildirim gönderir:
+ * Yeni ticket açıldığında SORUMLU alıcılara 3 kanaldan bildirim gönderir
+ * (kural zinciri: kategori takımı → kategori varsayılan atananı → triage):
  *   1. Email (sendEmail + generateTicketCreatedEmailContent)
  *   2. In-app Notification (prisma.notification.createMany)
  *   3. Push Notification (sendPushToUser)
@@ -13,12 +13,16 @@
  *   - Recipient resolver: pattern-based DB sorgusu, runtime'da çalışır
  *     (statik kullanıcı listesi YOK).
  *
- * Recipient kuralı:
- *   isActive = true VE department adında "sistem gelistirme" geçen kullanıcılar
- *   (Türkçe karakterler unaccent ile normalize edilir; unaccent yoksa fallback)
+ * Recipient kuralı (bkz. resolveTicketRecipients):
+ *   a) kategori.defaultTeamId → takım üyeleri
+ *   b) kategori.defaultAssigneeEmail → o kişi
+ *   c) ikisi de yoksa → triage e-postası
+ *   Her üç kanal AYNI alıcı kümesini kullanır; atama yolunun zaten bildirdiği
+ *   kişiler ve talebi açan kişi kümeden düşülür (çift bildirim yok).
  */
 
 import { prisma } from '@/lib/prisma'
+import { parseMembers } from '@/lib/tickets/team-members'
 import { sendEmail, generateTicketCreatedEmailContent } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
@@ -40,6 +44,8 @@ export type TicketForDispatch = {
   description: string
   priority: string
   category: string
+  /** Alıcı zinciri buradan çözülür (null = kategorisiz → triage). */
+  categoryId: string | null
   requesterName: string
   requesterDept: string
   createdAt: Date
@@ -49,40 +55,80 @@ export type TicketForDispatch = {
 // IT RECIPIENT RESOLVER
 // ════════════════════════════════════════════════════════════
 
-/**
- * Sistem Geliştirme departmanındaki aktif kullanıcıları döner.
- *
- * Birinci tercih: PG `unaccent()` extension ile diakritik normalize + ILIKE.
- * Fallback: unaccent yoksa Prisma `contains` ile iki varyant taraması.
- */
-async function resolveITRecipients(): Promise<Recipient[]> {
-  // 1) unaccent ile dene
+/** Kategorisiz / tanımsız talepler için son halka. */
+const TRIAGE_KEY = 'ticket_triage_email'
+const TRIAGE_YEDEK = 'melih.dilben@ilerigroup.com'
+
+async function triageEpostasi(): Promise<string> {
+  const env = (process.env.TICKET_TRIAGE_EMAIL ?? '').trim()
+  if (env) return env
   try {
-    const rows = await prisma.$queryRaw<
-      Array<{ id: string; email: string; firstName: string | null; lastName: string | null; name: string | null }>
-    >`
-      SELECT id, email, "firstName", "lastName", name
-      FROM "User"
-      WHERE "isActive" = true
-        AND department IS NOT NULL
-        AND LOWER(unaccent(department)) LIKE '%sistem gelistirme%'
-    `
-    return rows.map(toRecipient)
+    const kayit = await prisma.systemSetting.findUnique({
+      where: { key: TRIAGE_KEY },
+      select: { value: true },
+    })
+    const v = (kayit?.value ?? '').trim()
+    if (v) return v
   } catch (err) {
-    console.warn('[ticket-notify] unaccent query failed, using fallback:', err)
+    console.error('[ticket-notify] triage ayari okunamadi:', err)
+  }
+  console.warn(`[ticket-notify] '${TRIAGE_KEY}' yok → yedek: ${TRIAGE_YEDEK}`)
+  return TRIAGE_YEDEK
+}
+
+/**
+ * Talep oluşturma bildiriminin alıcıları — KURAL ZİNCİRİ:
+ *
+ *   a) kategori.defaultTeamId dolu → TicketTeam.members
+ *   b) yoksa kategori.defaultAssigneeEmail dolu → yalnız o kişi
+ *   c) ikisi de yok / kategorisiz → triage (SystemSetting 'ticket_triage_email',
+ *      env TICKET_TRIAGE_EMAIL onu ezer)
+ *
+ * Eski davranış (kaldırıldı): User.department LIKE '%sistem gelistirme%' —
+ * kategori ne olursa olsun aynı 4 kişiye mail + in-app + push gidiyordu
+ * (ölçüm 01.09.2026: son 6 talebin altısında da "resolved 4 recipients").
+ *
+ * `haric` = bu bildirimi ZATEN almış olanlar (atama yolu) + talebi açan kişi.
+ */
+async function resolveTicketRecipients(
+  categoryId: string | null,
+  haric: string[],
+): Promise<Recipient[]> {
+  let epostalar: string[] = []
+
+  const kategori = categoryId
+    ? await prisma.ticketCategory.findUnique({
+        where: { id: categoryId },
+        select: {
+          defaultAssigneeEmail: true,
+          defaultTeam: { select: { name: true, members: true } },
+        },
+      })
+    : null
+
+  if (kategori?.defaultTeam) {
+    epostalar = parseMembers(kategori.defaultTeam.members).map((m) => m.email)
+  } else if (kategori?.defaultAssigneeEmail) {
+    epostalar = [kategori.defaultAssigneeEmail]
   }
 
-  // 2) Fallback: Türkçe karakter varyant taraması
+  if (epostalar.length === 0) {
+    epostalar = [await triageEpostasi()]
+  }
+
+  const haricSet = new Set(haric.map((e) => e.toLowerCase().trim()).filter(Boolean))
+  const benzersiz = [
+    ...new Set(epostalar.map((e) => e.toLowerCase().trim()).filter((e) => e !== '' && !haricSet.has(e))),
+  ]
+  if (benzersiz.length === 0) return []
+
   const users = await prisma.user.findMany({
-    where: {
-      isActive: true,
-      OR: [
-        { department: { contains: 'Sistem Geliştirme', mode: 'insensitive' } },
-        { department: { contains: 'Sistem Gelistirme', mode: 'insensitive' } },
-      ],
-    },
+    where: { email: { in: benzersiz }, isActive: true },
     select: { id: true, email: true, firstName: true, lastName: true, name: true },
   })
+  if (users.length === 0) {
+    console.warn(`[ticket-notify] alici e-postalari User'da bulunamadi/pasif: ${benzersiz.join(', ')}`)
+  }
   return users.map(toRecipient)
 }
 
@@ -198,20 +244,26 @@ async function sendPushNotifications(
  * Yeni ticket açıldığında çağrılır. Fire-and-forget — caller
  * `await dispatchTicketCreated(...)` YAPMAMALI.
  */
-export async function dispatchTicketCreated(ticket: TicketForDispatch): Promise<void> {
+export async function dispatchTicketCreated(
+  ticket: TicketForDispatch,
+  /** Atama yolunun ZATEN bildirdiği e-postalar + talebi açan (tekilleştirme). */
+  zatenBildirilen: string[] = [],
+): Promise<void> {
   const startedAt = Date.now()
   console.log(`[ticket-notify] dispatch started for ${ticket.ticketNumber}`)
 
   let recipients: Recipient[]
   try {
-    recipients = await resolveITRecipients()
+    recipients = await resolveTicketRecipients(ticket.categoryId, zatenBildirilen)
   } catch (err) {
-    console.error('[ticket-notify] resolveITRecipients failed:', err)
+    console.error('[ticket-notify] resolveTicketRecipients failed:', err)
     return
   }
 
   if (recipients.length === 0) {
-    console.warn('[ticket-notify] no IT recipients (Sistem Geliştirme dept boş?), dispatch skipped')
+    console.warn(
+      `[ticket-notify] alici yok (kategori=${ticket.category}, haric=${zatenBildirilen.length}) — dispatch atlandi`,
+    )
     return
   }
 

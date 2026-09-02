@@ -160,6 +160,9 @@ function KioskAkis() {
   const [operatorler, setOperatorler] = useState<Operator[]>([])
   const [operator, setOperator] = useState<Operator | null>(null)
   const [isler, setIsler] = useState<Is[]>([])
+  // İş listesi bölüm süzmesi (isler route'undan): filtreliMi=false → tüm işler + uyarı.
+  const [isFiltreliMi, setIsFiltreliMi] = useState(true)
+  const [isDepartmanAd, setIsDepartmanAd] = useState<string | null>(null)
   const [secilenIs, setSecilenIs] = useState<Is | null>(null) // onay ekranındaki iş
   const [aktifIs, setAktifIs] = useState<{ ifsOrderNo: string; ifsOperationNo: number; operasyon?: string } | null>(null)
   const [durusSebepler, setDurusSebepler] = useState<DurusSebep[]>([])
@@ -225,10 +228,17 @@ function KioskAkis() {
     if (!tezgah) return
     setHata(null)
     setYukleniyor(true)
-    const r = await apiGet<{ isler: Is[] }>(`/api/ipro/kiosk/isler?tezgahId=${tezgah.id}`)
+    const r = await apiGet<{
+      isler: Is[]
+      filtreliMi: boolean
+      departmanKod: string | null
+      departmanAd: string | null
+    }>(`/api/ipro/kiosk/isler?tezgahId=${tezgah.id}`)
     setYukleniyor(false)
     if (r.ok) {
       setIsler(r.data.isler)
+      setIsFiltreliMi(r.data.filtreliMi)
+      setIsDepartmanAd(r.data.departmanAd ?? r.data.departmanKod)
       setAdim('is-listesi')
     } else if (r.status === 503) {
       setHata('İş listesi alınamadı, tekrar deneyin')
@@ -424,8 +434,20 @@ function KioskAkis() {
         )}
 
         {!yukleniyor && adim === 'is-listesi' && (
-          <Secim baslik="İş Seç" altBaslik="Tüm açık işler listeleniyor" geriye={operatorCikis}>
-            {isler.length === 0 && <p className="text-2xl text-slate-500">Açık iş bulunamadı.</p>}
+          <Secim
+            baslik="İş Seç"
+            altBaslik={
+              isFiltreliMi
+                ? `${isDepartmanAd ?? ''} bölümünün açık iş emirleri`.trim()
+                : 'Tüm açık iş emirleri (bu tezgahın bölümü belirlenemedi)'
+            }
+            geriye={operatorCikis}
+          >
+            {isler.length === 0 && (
+              <p className="text-2xl text-slate-500">
+                {isFiltreliMi ? 'Bu bölümde açık iş emri yok' : 'Açık iş bulunamadı'}
+              </p>
+            )}
             {isler.map((is) => (
               <SecimKart key={is.id} onClick={() => { setSecilenIs(is); adimGec('is-onay') }}>
                 <div className="text-2xl font-bold">

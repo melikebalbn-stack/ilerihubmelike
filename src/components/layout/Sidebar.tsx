@@ -1215,23 +1215,36 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* IPRO — Üretim Takip Yönetimi */}
         {filteredIproItems.length > 0 && (
           <>
-            <button
-              onClick={() => setIproOpen(!iproOpen)}
+            {/* Başlık /ipro kapak sayfasına link; chevron alt menüyü açar/kapatır. */}
+            <div
               className={cn(
-                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                "flex items-center w-full rounded-lg text-sm font-medium transition-all duration-150",
                 isIproActive
                   ? "text-teal-300"
                   : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
               )}
             >
-              <Factory className="h-5 w-5" />
-              <span className="flex-1 text-left">IPRO Üretim Takip</span>
-              {iproOpen ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </button>
+              <Link
+                href="/ipro"
+                onClick={onClose}
+                className="flex flex-1 items-center space-x-3 px-3 py-2"
+              >
+                <Factory className="h-5 w-5" />
+                <span className="text-left">IPRO Üretim Takip</span>
+              </Link>
+              <button
+                onClick={() => setIproOpen(!iproOpen)}
+                aria-label="IPRO alt menüsünü aç/kapat"
+                aria-expanded={iproOpen}
+                className="px-2 py-2"
+              >
+                {iproOpen ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+            </div>
             {iproOpen && (
               <div className="space-y-1 ml-4">
                 {filteredIproItems.map(item => renderMenuItem(item))}

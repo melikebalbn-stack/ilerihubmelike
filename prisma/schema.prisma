@@ -5881,7 +5881,6 @@ model PublicJobApplication {
   email       String? // E-mail
 
   // Bize Nasıl Ulaştınız
-  referralSource      ReferralSource? // ESKİ sabit enum — geriye dönük güvence (DROP edilmedi)
   referralSourceOther String? // Diğer (açıklama)
   // Yeni: yönetilebilir kaynak sözlüğüne bağ (İK Tanımlar'dan yönetir). Göç: eski enum → bu FK.
   referralSourceId    String?
@@ -6210,13 +6209,6 @@ enum MaritalStatus {
   WIDOWED // Dul
 }
 
-enum ReferralSource {
-  AGENCY // Aracı Kurum
-  ISKUR // İŞ-KUR
-  WEBSITE // Web Sitesi
-  REFERENCE // Referans
-  OTHER // Diğer
-}
 
 enum JobApplicationStatus {
   // Akış-öncesi taslak durumları (KVKK → sağlık → tam başvuru). Tam submit'te PENDING.

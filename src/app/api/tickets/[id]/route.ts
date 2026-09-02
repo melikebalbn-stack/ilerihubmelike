@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { dispatchTicketAssigned, dispatchTicketKapandi } from '@/lib/ticket-notifications'
 import { parseMembers, isTeamMember } from '@/lib/tickets/team-members'
+import { ticketYetkileri } from '@/lib/ticket-yetki'
 import { getSlaAyar, getTatilMap, cozumSlaDakika, hesaplaSlaHedefleri } from '@/lib/sla'
 import { duraklatmaGecisi, ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
 import { z } from 'zod'
@@ -118,21 +119,15 @@ export async function PUT(
       return NextResponse.json({ error: 'Ticket bulunamadı' }, { status: 404 })
     }
 
-    // Yetki kontrolü: Normal kullanıcılar sadece kendi ticket'larını güncelleyebilir
-    // PR-EMAIL-NORMALIZE sonrası DB casing lowercase, user.email lowercase → match güvenli
-    const isOwner = existingTicket.requesterEmail === user.email
-    // İş 1: atanan teknisyen (assignedTo = e-posta) de ticket'ını yönetip KAPATABİLİR.
-    // Başkasının atanmadığı ticket'ta isAssignee false → yetki yok (eşleşme şart).
-    const isAssignee = !!existingTicket.assignedTo && existingTicket.assignedTo === user.email
-    // HAVUZ (Faz 3): ticket bir takıma düşmüşse o takımın ÜYELERİ de yönetip
-    // KAPATABİLİR — henüz kimse üstlenmemiş olsa bile (küçük iş için üstlenme
-    // zorunlu değil). Üyelik `members` JSON'ından, tek kaynak team-members.ts.
-    const isTicketTeamMember = isTeamMember(
-      parseMembers(existingTicket.assignedTeam?.members ?? null),
-      user.email,
+    // Yetki kontrolü: Normal kullanıcılar sadece kendi ticket'larını güncelleyebilir.
+    // Kural (owner / atanan teknisyen / takım üyesi / IT ekibi) ARTIK TEK KAYNAKTA:
+    // @/lib/ticket-yetki — yorum uçları da aynı fonksiyonu kullanıyor. Davranış
+    // değişmedi, yalnız buradan taşındı.
+    const { isTicketTeamMember, canChangeStatus, canAccess } = ticketYetkileri(
+      existingTicket,
+      { email: user.email, isITStaff: userIsITStaff },
     )
-    const canChangeStatus = userIsITStaff || isAssignee || isTicketTeamMember
-    if (!userIsITStaff && !isOwner && !isAssignee && !isTicketTeamMember) {
+    if (!canAccess) {
       return NextResponse.json({ error: 'Bu ticket\'ı güncelleme yetkiniz yok' }, { status: 403 })
     }
 

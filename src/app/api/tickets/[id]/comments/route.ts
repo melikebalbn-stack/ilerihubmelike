@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getSlaAyar, getTatilMap } from '@/lib/sla'
 import { duraklatmaGecisi, ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
+import { canAccessTicket } from '@/lib/ticket-yetki'
 
 // GET - Ticket yorumları
 export async function GET(
@@ -17,6 +18,24 @@ export async function GET(
     const { id: ticketId } = await params
     // Internal yorumları sadece IT staff görebilir.
     const isAdmin = session.user.permissions?.includes('helpdesk.admin') ?? false
+
+    // YETKİ: eskiden burada HİÇBİR kontrol yoktu — oturum açmış herkes, ticket
+    // id'sini bilmesi kâfi, başkasının talebinin yorumlarını okuyabiliyordu.
+    // Kural PUT ile aynı (owner / atanan / takım üyesi / IT ekibi), tek kaynak.
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        requesterEmail: true,
+        assignedTo: true,
+        assignedTeam: { select: { members: true } },
+      },
+    })
+    if (!ticket) {
+      return NextResponse.json({ error: 'Ticket bulunamadı' }, { status: 404 })
+    }
+    if (!canAccessTicket(ticket, { email: user.email, isITStaff: isAdmin })) {
+      return NextResponse.json({ error: 'Bu ticket\'ı görüntüleme yetkiniz yok' }, { status: 403 })
+    }
 
     const comments = await prisma.ticketComment.findMany({
       where: {
@@ -52,9 +71,10 @@ export async function POST(
       return NextResponse.json({ error: 'Yorum içeriği zorunludur' }, { status: 400 })
     }
 
-    // Ticket'ı kontrol et
+    // Ticket'ı kontrol et — takım üyeleri yetki kontrolünde gerekli (canAccessTicket)
     const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId }
+      where: { id: ticketId },
+      include: { assignedTeam: { select: { members: true } } },
     })
 
     if (!ticket) {
@@ -63,6 +83,13 @@ export async function POST(
 
     // PR-Y9a: Sadece IT staff dahili not ekleyebilir
     const isAdmin = session.user.permissions?.includes('helpdesk.admin') ?? false
+
+    // YETKİ: eskiden yalnız oturum aranıyordu → ticket id'sini bilen herkes
+    // başkasının talebine yorum yazabiliyordu. Kural PUT ile aynı, tek kaynak.
+    if (!canAccessTicket(ticket, { email: user.email, isITStaff: isAdmin })) {
+      return NextResponse.json({ error: 'Bu ticket\'a yorum yazma yetkiniz yok' }, { status: 403 })
+    }
+
     const finalIsInternal = isAdmin ? isInternal : false
 
     // Yorum oluştur

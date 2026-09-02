@@ -1,11 +1,11 @@
 "use client";
 
-// IFS Raporlar — dört sekmelik kabuk.
-// Sekme bileşenleri _tabs altında; akademi/admin/reports kabuğu geçiş süresince
-// AYNI bileşenleri buradan gösteriyor (kopya yok). /ifs doğrulandıktan sonra
-// akademi tarafındaki kayıtlar kaldırılacak.
+// IFS Raporlar — beş sekmelik kabuk. Tüm sekme bileşenleri _tabs altında.
 //
-// Görünürlük bu turda MEVCUT akademi izinleriyle: izin geçişi (ifs.*) ayrı adım.
+// "Değerlendirme Raporu" akademi/admin/reports'tan TAŞINDI (ifs-evaluation-report
+// + içinden çağırdığı ifs-bolum-report). Akademi kabuğunda artık IFS sekmesi YOK.
+//
+// Görünürlük hâlâ MEVCUT akademi izinleriyle: izin geçişi (ifs.*) ayrı adım.
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
@@ -13,12 +13,14 @@ import { useAkademiAuth } from "@/lib/akademi-auth";
 import { IfsRaporuTab } from "./_tabs/ifs-raporu";
 import { IfsGorevDetayTab } from "./_tabs/ifs-gorev-detay";
 import { IfsEvaluationsTab } from "./_tabs/ifs-evaluations";
+import { IfsEvaluationReportTab } from "./_tabs/ifs-evaluation-report";
 import { IfsKeyUserAtamaTab } from "./_tabs/ifs-keyuser-atama";
 
 const TABS = [
   { id: "rapor", label: "IFS Raporu" },
   { id: "gorev-bazli", label: "Görev Bazlı" },
   { id: "degerlendirme", label: "Görev Değerlendirme" },
+  { id: "degerlendirme-raporu", label: "Değerlendirme Raporu" },
   { id: "keyuser", label: "Key User Atama" },
 ] as const;
 
@@ -80,6 +82,7 @@ export default function IfsRaporlarPage() {
         {activeTab === "rapor" && <IfsRaporuTab />}
         {activeTab === "gorev-bazli" && <IfsGorevDetayTab />}
         {activeTab === "degerlendirme" && <IfsEvaluationsTab />}
+        {activeTab === "degerlendirme-raporu" && <IfsEvaluationReportTab />}
         {activeTab === "keyuser" && <IfsKeyUserAtamaTab />}
       </div>
     </div>

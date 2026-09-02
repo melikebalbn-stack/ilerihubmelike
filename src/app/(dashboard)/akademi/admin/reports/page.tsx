@@ -9,14 +9,9 @@ import { ExamsReportTab } from "./_tabs/exams-report";
 import { CertificatesReportTab } from "./_tabs/certificates-report";
 import { DepartmentsReportTab } from "./_tabs/departments-report";
 import { DepartmentBoardTab } from "./_tabs/department-board";
-// Dört IFS sekmesi (Görev Değerlendirme, Görev Bazlı, IFS Raporu, Key User
-// Atama) buradan KALDIRILDI — /ifs/raporlar'da birebir aynı bileşenlerle
-// duruyorlar, iki kabuktan aynı ekrana girilmesi için sebep kalmadı.
-// Bileşenler /ifs/raporlar/_tabs altında; silinmedi.
-//
-// "IFS Değerlendirme Raporu" KALIYOR: /ifs tarafında karşılığı YOK (grafikler +
-// ifs-aggregate + IfsBolumReportView). Taşınana kadar tek erişim yolu burası.
-import { IfsEvaluationReportTab } from "./_tabs/ifs-evaluation-report";
+// IFS sekmelerinin tamamı /ifs/raporlar altına taşındı — bu kabukta IFS YOK.
+// Son taşınan: "IFS Değerlendirme Raporu" (ifs-evaluation-report +
+// ifs-bolum-report), artık /ifs/raporlar'da "Değerlendirme Raporu" sekmesi.
 
 const TABS = [
   { id: "users", label: "Kullanıcılar" },
@@ -25,20 +20,18 @@ const TABS = [
   { id: "certificates", label: "Sertifikalar" },
   { id: "departments", label: "Bölümler" },
   { id: "department-board", label: "Departman Panosu" },
-  { id: "ifs-report", label: "IFS Değerlendirme Raporu" },
 ] as const;
 
 // Excel export'u olmayan (özel) sekmeler
-const NO_EXPORT_TABS = ["department-board", "ifs-report"];
+const NO_EXPORT_TABS = ["department-board"];
 
 type TabId = (typeof TABS)[number]["id"];
 
 export default function ReportsPage() {
   useAkademiAuth();
   const [activeTab, setActiveTab] = useState<TabId>("users");
-  // İzin süzgeci kalktı: tek kaydı "Key User Atama" sekmesine aitti, o sekme
-  // /ifs/raporlar'a bırakıldı. Kalan yedi sekmenin hiçbiri izin istemiyordu —
-  // görünürlük davranışı DEĞİŞMEDİ. (Zorlama zaten uçlarda.)
+  // İzin süzgeci yok: kalan altı sekmenin hiçbiri izin istemiyor (zorlama
+  // uçlarda). Süzgeç, IFS sekmeleriyle birlikte kalkmıştı.
 
   return (
     <div className="ak-animate-in space-y-4">
@@ -82,7 +75,6 @@ export default function ReportsPage() {
         {activeTab === "certificates" && <CertificatesReportTab />}
         {activeTab === "departments" && <DepartmentsReportTab />}
         {activeTab === "department-board" && <DepartmentBoardTab />}
-        {activeTab === "ifs-report" && <IfsEvaluationReportTab />}
       </div>
     </div>
   );

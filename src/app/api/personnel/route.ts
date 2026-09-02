@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { personelFkAlanlari } from '@/lib/personnel/fk-cozum'
+import { personelFkAlanlariIdOncelikli } from '@/lib/personnel/fk-cozum'
 import { prisma } from '@/lib/prisma'
 import { personelEklendiginde, type YeniPersonelSonuc } from '@/lib/org/personel-koltuk-senkron'
 import { requireUser } from '@/lib/auth/require-user'
@@ -188,15 +188,30 @@ export async function POST(request: NextRequest) {
     personnelData.createdBy = user.id
 
     // FAZ 1 · ÇİFT YAZIM: metin alanları AYNEN yazılır, yanlarına FK'lar doldurulur.
-    // Çözülemeyen ad → FK null + uyarı logu; kayıt yine oluşur (bkz. fk-cozum.ts).
+    // SORUMLU-FK-YAZMA: form seçiciden gelen sorumlu*Id ÖNCELİKLİ (doğrulanır);
+    // yoksa/geçersizse ad çözümüne düşülür. Çözülemeyen ad → FK null + uyarı logu;
+    // kayıt yine oluşur (bkz. fk-cozum.ts).
+    // Ham id'ler Personnel create'ine doğrudan GİTMEZ — yalnız çözücüye girdi olur.
+    const govdeIdler = {
+      sorumlu1Id: (personnelData as Record<string, unknown>).sorumlu1Id,
+      sorumlu2Id: (personnelData as Record<string, unknown>).sorumlu2Id,
+      sorumlu3Id: (personnelData as Record<string, unknown>).sorumlu3Id,
+    }
+    delete (personnelData as Record<string, unknown>).sorumlu1Id
+    delete (personnelData as Record<string, unknown>).sorumlu2Id
+    delete (personnelData as Record<string, unknown>).sorumlu3Id
     Object.assign(
       personnelData,
-      await personelFkAlanlari(prisma, {
-        bolum: personnelData.bolum,
-        birimSorumlusu: personnelData.birimSorumlusu,
-        sorumlu2: personnelData.sorumlu2,
-        sorumlu3: personnelData.sorumlu3,
-      }),
+      await personelFkAlanlariIdOncelikli(
+        prisma,
+        {
+          bolum: personnelData.bolum,
+          birimSorumlusu: personnelData.birimSorumlusu,
+          sorumlu2: personnelData.sorumlu2,
+          sorumlu3: personnelData.sorumlu3,
+        },
+        govdeIdler,
+      ),
     )
 
     // Beden profili: yalnız en az bir alan doluysa oluşturulur (boş kayıt yaratma).

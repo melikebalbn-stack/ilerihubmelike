@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { personelFkAlanlari } from '@/lib/personnel/fk-cozum'
+import { personelFkAlanlariIdOncelikli } from '@/lib/personnel/fk-cozum'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
@@ -84,6 +84,10 @@ export async function GET(
         sorumlu2: true,
         sorumlu3: true,
         bolumMuduru: true,
+        // SORUMLU-FK-YAZMA: düzenleme formu seçiciyi FK ile ön-doldurabilsin diye.
+        sorumlu1Id: true,
+        sorumlu2Id: true,
+        sorumlu3Id: true,
         masrafMerkezi: true,
         interKepMail: true,
         mailAdresi: true,
@@ -333,9 +337,20 @@ export async function PUT(
     // FAZ 1 · ÇİFT YAZIM: metin alanları AYNEN güncellenir, yanlarına FK yazılır.
     // Yalnız GÖNDERİLEN alanlar için anahtar üretilir — dokunulmayan alanın FK'sı
     // sıfırlanmaz (kısmi güncelleme güvenliği).
+    // SORUMLU-FK-YAZMA: gövdeden gelen sorumlu*Id ÖNCELİKLİ (var mı · aktif mi ·
+    // kendisi değil mi diye doğrulanır); geçersizse ad çözümüne düşülür. Ham id'ler
+    // Personnel update'ine doğrudan GİTMEZ — yalnız çözücüye girdi olur.
+    const govdeIdler = {
+      sorumlu1Id: body.sorumlu1Id,
+      sorumlu2Id: body.sorumlu2Id,
+      sorumlu3Id: body.sorumlu3Id,
+    }
+    delete body.sorumlu1Id
+    delete body.sorumlu2Id
+    delete body.sorumlu3Id
     Object.assign(
       body,
-      await personelFkAlanlari(
+      await personelFkAlanlariIdOncelikli(
         prisma,
         {
           ...(body.bolum !== undefined ? { bolum: body.bolum } : {}),
@@ -343,6 +358,7 @@ export async function PUT(
           ...(body.sorumlu2 !== undefined ? { sorumlu2: body.sorumlu2 } : {}),
           ...(body.sorumlu3 !== undefined ? { sorumlu3: body.sorumlu3 } : {}),
         },
+        govdeIdler,
         personnelId,
       ),
     )

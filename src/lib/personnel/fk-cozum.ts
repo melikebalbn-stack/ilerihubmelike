@@ -85,3 +85,68 @@ export async function personelFkAlanlari(
   if (metin.sorumlu3 !== undefined) out.sorumlu3Id = await sorumluFkCoz(db, metin.sorumlu3, kendiId)
   return out
 }
+
+/**
+ * SORUMLU-FK-YAZMA · GÖVDEDEN GELEN FK ÖNCELİĞİ.
+ *
+ * Personel formu artık seçilen adayın `Personnel.id`'sini de gönderiyor. Bu id
+ * DOĞRULANIR (var mı · aktif mi · kendisi değil mi); geçerliyse ad çözümü hiç
+ * çalışmaz. Geçersiz/boş ise ad çözümüne (`sorumluFkCoz`) DÜŞÜLÜR — import,
+ * Azure senkronu ve işe alım dönüşümü hâlâ yalnız metin gönderiyor.
+ *
+ * `undefined` gövde alanı = "dokunma" (kısmi güncelleme); yalnız gönderilen
+ * alanlar için anahtar üretilir.
+ */
+export interface SorumluIdGirdisi {
+  sorumlu1Id?: unknown
+  sorumlu2Id?: unknown
+  sorumlu3Id?: unknown
+}
+
+async function idDogrula(
+  db: DbClient,
+  ham: unknown,
+  kendiId?: string | null,
+): Promise<string | null> {
+  if (typeof ham !== 'string') return null
+  const id = ham.trim()
+  if (!id) return null
+  if (kendiId && id === kendiId) {
+    console.warn('[personnel-fk] gövdeden gelen id kişinin kendisi — reddedildi, ad çözümüne düşülüyor')
+    return null
+  }
+  const p = await db.personnel.findFirst({ where: { id, aktif: true }, select: { id: true } })
+  if (!p) {
+    console.warn(`[personnel-fk] gövdeden gelen id geçersiz/pasif: "${id}" — ad çözümüne düşülüyor`)
+    return null
+  }
+  return p.id
+}
+
+/**
+ * `personelFkAlanlari` ile AYNI sözleşme, ek olarak gövdeden gelen id'leri önceler.
+ * Bölüm alanı davranışı değişmez (BolumSecici FK'yı ayrı yoldan çözüyor).
+ */
+export async function personelFkAlanlariIdOncelikli(
+  db: DbClient,
+  metin: PersonelMetinAlanlari,
+  idler: SorumluIdGirdisi,
+  kendiId?: string | null,
+): Promise<PersonelFkAlanlari> {
+  const out = await personelFkAlanlari(db, metin, kendiId)
+
+  const slotlar = [
+    ['birimSorumlusu', 'sorumlu1Id'],
+    ['sorumlu2', 'sorumlu2Id'],
+    ['sorumlu3', 'sorumlu3Id'],
+  ] as const
+
+  for (const [metinAlani, fkAlani] of slotlar) {
+    // Metin gönderilmediyse o slota hiç dokunulmaz (kısmi güncelleme güvenliği).
+    if (metin[metinAlani] === undefined) continue
+    const gecerli = await idDogrula(db, idler[fkAlani], kendiId)
+    if (gecerli) out[fkAlani] = gecerli
+  }
+
+  return out
+}

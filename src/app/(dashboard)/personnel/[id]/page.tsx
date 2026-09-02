@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX, ArrowRightLeft, History, CalendarClock } from "lucide-react"
 import { periodDuration, formatDuration } from "@/lib/personnel-tenure"
-import { PersonnelAutocomplete } from "@/components/ui/personnel-autocomplete"
+import { PersonnelIdAutocomplete, type PersonelSecenegi } from "@/components/ui/personnel-autocomplete"
 import { PersonnelExitModal, type ExitData } from "@/components/personnel/PersonnelExitModal"
 import { PersonnelTransferModal } from "@/components/personnel/department-transfer/PersonnelTransferModal"
 import { PersonnelTransferHistory } from "@/components/personnel/department-transfer/PersonnelTransferHistory"
@@ -164,7 +164,11 @@ export default function PersonnelDetailPage() {
   // Seçili bölümün şema kutusu — GorevSecici FK süzmesi için.
   // BolumSecici seçim anında verir; sayfa açılışında null (ad kuralına düşülür).
   const [bolumOrgUnitId, setBolumOrgUnitId] = useState<string | null>(null)
-  const [personnelNames, setPersonnelNames] = useState<string[]>([])
+  // Aday listesi: /api/personnel/secici (aktif personel, MESAİ KAPSAMI FİLTRESİ YOK).
+  // Eskiden /api/overtime/personnel-list kullanılıyordu; o uç omurgada görevi
+  // olmayan kullanıcıya boş dizi döndürüp seçiciyi işlevsiz bırakıyordu.
+  const [personelAdaylari, setPersonelAdaylari] = useState<PersonelSecenegi[]>([])
+  const [adaylarYukleniyor, setAdaylarYukleniyor] = useState(true)
   // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer yüklenince/seçilince açılır.
   const [altBedenDiger, setAltBedenDiger] = useState(false)
   // PR-PERSONEL-CIKIS-FORMU
@@ -182,10 +186,11 @@ export default function PersonnelDetailPage() {
       .then(r => r.ok ? r.json() : [])
       .then((data: { name: string }[]) => setDepartments(data.map(d => d.name)))
       .catch(() => {})
-    fetch("/api/overtime/personnel-list")
+    fetch("/api/personnel/secici")
       .then(r => r.ok ? r.json() : [])
-      .then((data: { adSoyad: string }[]) => setPersonnelNames(data.map(p => p.adSoyad)))
+      .then((data: PersonelSecenegi[]) => setPersonelAdaylari(Array.isArray(data) ? data : []))
       .catch(() => {})
+      .finally(() => setAdaylarYukleniyor(false))
   }, [])
 
   useEffect(() => {
@@ -620,19 +625,42 @@ export default function PersonnelDetailPage() {
               </div>
               <div className="space-y-2">
                 <Label>1. Sorumlu</Label>
-                <PersonnelAutocomplete value={form.birimSorumlusu || ""} onChange={(v) => set("birimSorumlusu", v)} personnel={personnelNames} />
+                <PersonnelIdAutocomplete
+                  value={form.birimSorumlusu || ""}
+                  valueId={form.sorumlu1Id || null}
+                  onChange={(ad, pid) => setForm(prev => ({ ...prev, birimSorumlusu: ad, sorumlu1Id: pid }))}
+                  personnel={personelAdaylari}
+                  yukleniyor={adaylarYukleniyor}
+                />
               </div>
               <div className="space-y-2">
                 <Label>2. Sorumlu</Label>
-                <PersonnelAutocomplete value={form.sorumlu2 || ""} onChange={(v) => set("sorumlu2", v)} personnel={personnelNames} />
+                <PersonnelIdAutocomplete
+                  value={form.sorumlu2 || ""}
+                  valueId={form.sorumlu2Id || null}
+                  onChange={(ad, pid) => setForm(prev => ({ ...prev, sorumlu2: ad, sorumlu2Id: pid }))}
+                  personnel={personelAdaylari}
+                  yukleniyor={adaylarYukleniyor}
+                />
               </div>
               <div className="space-y-2">
                 <Label>3. Sorumlu</Label>
-                <PersonnelAutocomplete value={form.sorumlu3 || ""} onChange={(v) => set("sorumlu3", v)} personnel={personnelNames} />
+                <PersonnelIdAutocomplete
+                  value={form.sorumlu3 || ""}
+                  valueId={form.sorumlu3Id || null}
+                  onChange={(ad, pid) => setForm(prev => ({ ...prev, sorumlu3: ad, sorumlu3Id: pid }))}
+                  personnel={personelAdaylari}
+                  yukleniyor={adaylarYukleniyor}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Bölüm Müdürü</Label>
-                <PersonnelAutocomplete value={form.bolumMuduru || ""} onChange={(v) => set("bolumMuduru", v)} personnel={personnelNames} />
+                <PersonnelIdAutocomplete
+                  value={form.bolumMuduru || ""}
+                  onChange={(ad) => set("bolumMuduru", ad)}
+                  personnel={personelAdaylari}
+                  yukleniyor={adaylarYukleniyor}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Direkt / Endirekt</Label>

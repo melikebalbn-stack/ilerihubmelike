@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { NativeSelect as Select } from "@/components/ui/select"
 import { ArrowLeft, Save, Loader2 } from "lucide-react"
-import { PersonnelAutocomplete } from "@/components/ui/personnel-autocomplete"
+import { PersonnelIdAutocomplete, type PersonelSecenegi } from "@/components/ui/personnel-autocomplete"
 import { toast } from "sonner"
 import {
   KAN_GRUBU_LABELS,
@@ -52,6 +52,11 @@ type FormData = {
   sorumlu2: string
   sorumlu3: string
   bolumMuduru: string
+  // SORUMLU-FK-YAZMA: metin alanlarının yanında FK. Listeden seçimde dolar,
+  // elle yazımda null kalır → sunucu ad çözümüne düşer (fk-cozum.ts).
+  sorumlu1Id: string | null
+  sorumlu2Id: string | null
+  sorumlu3Id: string | null
   direktEndirekt: string
   asansorMekanik: string
   masrafMerkezi: string
@@ -111,6 +116,9 @@ const initialForm: FormData = {
   sorumlu2: "",
   sorumlu3: "",
   bolumMuduru: "",
+  sorumlu1Id: null,
+  sorumlu2Id: null,
+  sorumlu3Id: null,
   direktEndirekt: "",
   asansorMekanik: "",
   masrafMerkezi: "",
@@ -164,17 +172,22 @@ export default function NewPersonnelPage() {
   // Seçili bölümün şema kutusu — GorevSecici FK süzmesi için.
   // BolumSecici seçim anında verir; sayfa açılışında null (ad kuralına düşülür).
   const [bolumOrgUnitId, setBolumOrgUnitId] = useState<string | null>(null)
-  const [personnelNames, setPersonnelNames] = useState<string[]>([])
+  // Aday listesi: /api/personnel/secici (aktif personel, MESAİ KAPSAMI FİLTRESİ YOK).
+  // Eskiden /api/overtime/personnel-list kullanılıyordu; o uç omurgada görevi
+  // olmayan kullanıcıya boş dizi döndürüp seçiciyi işlevsiz bırakıyordu.
+  const [personelAdaylari, setPersonelAdaylari] = useState<PersonelSecenegi[]>([])
+  const [adaylarYukleniyor, setAdaylarYukleniyor] = useState(true)
 
   useEffect(() => {
     fetch("/api/settings/hr-departments")
       .then(r => r.ok ? r.json() : [])
       .then((data: { name: string }[]) => setDepartments(data.map(d => d.name)))
       .catch(() => {})
-    fetch("/api/overtime/personnel-list")
+    fetch("/api/personnel/secici")
       .then(r => r.ok ? r.json() : [])
-      .then((data: { adSoyad: string }[]) => setPersonnelNames(data.map(p => p.adSoyad)))
+      .then((data: PersonelSecenegi[]) => setPersonelAdaylari(Array.isArray(data) ? data : []))
       .catch(() => {})
+      .finally(() => setAdaylarYukleniyor(false))
     // Sıradaki sicil no önerisi — yalnız kullanıcı henüz bir şey yazmadıysa doldur.
     fetch("/api/personnel/next-sicil")
       .then(r => r.ok ? r.json() : null)
@@ -410,19 +423,46 @@ export default function NewPersonnelPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="birimSorumlusu">1. Sorumlu</Label>
-                <PersonnelAutocomplete id="birimSorumlusu" value={form.birimSorumlusu} onChange={(v) => set("birimSorumlusu", v)} personnel={personnelNames} />
+                <PersonnelIdAutocomplete
+                  id="birimSorumlusu"
+                  value={form.birimSorumlusu}
+                  valueId={form.sorumlu1Id}
+                  onChange={(ad, pid) => setForm(prev => ({ ...prev, birimSorumlusu: ad, sorumlu1Id: pid }))}
+                  personnel={personelAdaylari}
+                  yukleniyor={adaylarYukleniyor}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="sorumlu2">2. Sorumlu</Label>
-                <PersonnelAutocomplete id="sorumlu2" value={form.sorumlu2} onChange={(v) => set("sorumlu2", v)} personnel={personnelNames} />
+                <PersonnelIdAutocomplete
+                  id="sorumlu2"
+                  value={form.sorumlu2}
+                  valueId={form.sorumlu2Id}
+                  onChange={(ad, pid) => setForm(prev => ({ ...prev, sorumlu2: ad, sorumlu2Id: pid }))}
+                  personnel={personelAdaylari}
+                  yukleniyor={adaylarYukleniyor}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="sorumlu3">3. Sorumlu</Label>
-                <PersonnelAutocomplete id="sorumlu3" value={form.sorumlu3} onChange={(v) => set("sorumlu3", v)} personnel={personnelNames} />
+                <PersonnelIdAutocomplete
+                  id="sorumlu3"
+                  value={form.sorumlu3}
+                  valueId={form.sorumlu3Id}
+                  onChange={(ad, pid) => setForm(prev => ({ ...prev, sorumlu3: ad, sorumlu3Id: pid }))}
+                  personnel={personelAdaylari}
+                  yukleniyor={adaylarYukleniyor}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="bolumMuduru">Bölüm Müdürü</Label>
-                <PersonnelAutocomplete id="bolumMuduru" value={form.bolumMuduru} onChange={(v) => set("bolumMuduru", v)} personnel={personnelNames} />
+                <PersonnelIdAutocomplete
+                  id="bolumMuduru"
+                  value={form.bolumMuduru}
+                  onChange={(ad) => set("bolumMuduru", ad)}
+                  personnel={personelAdaylari}
+                  yukleniyor={adaylarYukleniyor}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="direktEndirekt">Direkt / Endirekt</Label>

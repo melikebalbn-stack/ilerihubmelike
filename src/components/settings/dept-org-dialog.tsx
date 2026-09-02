@@ -113,7 +113,12 @@ export function DeptOrgDialog({
   })
 
   useEffect(() => {
-    fetch("/api/overtime/personnel-list")
+    // Aday listesi: /api/personnel/secici — aktif personel, MESAİ KAPSAMI FİLTRESİ YOK.
+    // Eskiden /api/overtime/personnel-list kullanılıyordu; o uç resolveAllowedDepts
+    // ile mesai yazma kapsamına göre süzüyor ve omurgada görevi olmayan kullanıcıya
+    // BOŞ dizi döndürüyordu. Yeni ucun yetki kapısı bu ekranın kendi ucuyla
+    // (hr-departments) aynı: ADMIN|HR_MANAGER|SUPER_ADMIN veya İnsan Varlıkları.
+    fetch("/api/personnel/secici")
       .then((r) => (r.ok ? r.json() : []))
       .then((d: Person[]) => setPersonnel(Array.isArray(d) ? d : []))
       .catch(() => setPersonnel([]))

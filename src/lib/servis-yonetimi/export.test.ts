@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { GUZERGAH_LISTESI_HEADERS, guzergahListesiSatirlariOlustur, type GuzergahListesiKaynak } from './export'
+import {
+  GUZERGAH_LISTESI_HEADERS,
+  guzergahListesiSatirlariOlustur,
+  type GuzergahListesiKaynak,
+  dilimEtiketi,
+  guzergahDetayDuraklariniHazirla,
+  guzergahDetayAracAtamalariniHazirla,
+  guzergahDetaySoforAtamalariniHazirla,
+} from './export'
 
 function guzergah(overrides: Partial<GuzergahListesiKaynak> = {}): GuzergahListesiKaynak {
   return {
@@ -52,5 +60,69 @@ describe('guzergahListesiSatirlariOlustur', () => {
   it('durak sayısını (_count.duraklar) olduğu gibi geçirir', () => {
     const rows = guzergahListesiSatirlariOlustur([guzergah({ _count: { duraklar: 0 } })])
     expect(rows[1][4]).toBe(0)
+  })
+})
+
+describe('dilimEtiketi', () => {
+  it('GIDIS için "Gidiş", DONUS için "Dönüş" yazar', () => {
+    expect(dilimEtiketi({ kod: 'S1', yon: 'GIDIS' })).toBe('S1 (Gidiş)')
+    expect(dilimEtiketi({ kod: 'S1', yon: 'DONUS' })).toBe('S1 (Dönüş)')
+  })
+})
+
+describe('guzergahDetayDuraklariniHazirla', () => {
+  it('saatleri "dilim (yön): saat" biçiminde, virgülle ayırıp birleştirir', () => {
+    const sonuc = guzergahDetayDuraklariniHazirla([
+      {
+        sira: 1,
+        durak: { kod: 'D1', ad: 'Durak 1' },
+        saatler: [
+          { saat: '08:00', dilim: { kod: 'S1', yon: 'GIDIS' } },
+          { saat: '17:00', dilim: { kod: 'S1', yon: 'DONUS' } },
+        ],
+      },
+    ])
+    expect(sonuc).toEqual([
+      { sira: 1, durakKod: 'D1', durakAd: 'Durak 1', saatlerMetni: 'S1 (Gidiş): 08:00, S1 (Dönüş): 17:00' },
+    ])
+  })
+
+  it('hiç saati olmayan durak için em-dash ("—") yazar, hata vermez', () => {
+    const sonuc = guzergahDetayDuraklariniHazirla([{ sira: 1, durak: { kod: 'D1', ad: 'Durak 1' }, saatler: [] }])
+    expect(sonuc[0].saatlerMetni).toBe('—')
+  })
+
+  it('birden fazla durağı sırasıyla (girdi sırasını KORUYARAK) döner', () => {
+    const sonuc = guzergahDetayDuraklariniHazirla([
+      { sira: 1, durak: { kod: 'D1', ad: 'Durak 1' }, saatler: [] },
+      { sira: 2, durak: { kod: 'D2', ad: 'Durak 2' }, saatler: [] },
+    ])
+    expect(sonuc.map((s) => s.durakKod)).toEqual(['D1', 'D2'])
+  })
+})
+
+describe('guzergahDetayAracAtamalariniHazirla', () => {
+  it('dilim etiketini, plakayı, kapasiteyi ve rolü doğru eşler', () => {
+    const sonuc = guzergahDetayAracAtamalariniHazirla([
+      { dilim: { kod: 'S1', yon: 'GIDIS' }, arac: { plaka: '41ABC123', kapasite: 16 }, rol: 'ANA' },
+    ])
+    expect(sonuc).toEqual([{ dilimEtiket: 'S1 (Gidiş)', plaka: '41ABC123', kapasite: 16, rol: 'ANA' }])
+  })
+
+  it('boş listede boş dizi döner', () => {
+    expect(guzergahDetayAracAtamalariniHazirla([])).toEqual([])
+  })
+})
+
+describe('guzergahDetaySoforAtamalariniHazirla', () => {
+  it('dilim etiketini, ad soyadı ve rolü doğru eşler', () => {
+    const sonuc = guzergahDetaySoforAtamalariniHazirla([
+      { dilim: { kod: 'S1', yon: 'DONUS' }, sofor: { adSoyad: 'Ahmet Yılmaz' }, rol: 'YEDEK' },
+    ])
+    expect(sonuc).toEqual([{ dilimEtiket: 'S1 (Dönüş)', adSoyad: 'Ahmet Yılmaz', rol: 'YEDEK' }])
+  })
+
+  it('boş listede boş dizi döner', () => {
+    expect(guzergahDetaySoforAtamalariniHazirla([])).toEqual([])
   })
 })

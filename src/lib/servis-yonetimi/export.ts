@@ -54,3 +54,71 @@ export function guzergahListesiSatirlariOlustur(guzergahlar: GuzergahListesiKayn
   }
   return rows
 }
+
+// ── Adım 3: Güzergah Bazlı Detay (PDF) ──────────────────────────────────────
+// Kapsam notu: "kapasite özeti" bölümü BİLEREK YOK — kapasite motoru
+// (dev/elif/servis-yonetimi-faz1b-kapasite-motoru) henüz main'e girmedi,
+// export dalı ona bağımlı hale getirilmeyecek (Elif'in kararı — Adım 2 de
+// aynı gerekçeyle bekletiliyor). Motor main'e girip export dalı
+// güncellenince buraya eklenecek.
+//
+// Bu bölümdeki fonksiyonlar PDF ÜRETMEZ (bkz. src/lib/pdf/guzergah-detay-pdf.ts)
+// — yalnız ham Prisma sonucunu PDF'in beklediği düz/okunabilir şekle
+// (DTO) dönüştürür, DB'siz test edilir.
+
+export type DilimYon = 'GIDIS' | 'DONUS'
+
+export function dilimEtiketi(dilim: { kod: string; yon: DilimYon }): string {
+  return `${dilim.kod} (${dilim.yon === 'GIDIS' ? 'Gidiş' : 'Dönüş'})`
+}
+
+export type GuzergahDetayDurakKaynak = {
+  sira: number
+  durak: { kod: string; ad: string }
+  saatler: { saat: string; dilim: { kod: string; yon: DilimYon } }[]
+}
+
+export type GuzergahDetayDurakSatiri = {
+  sira: number
+  durakKod: string
+  durakAd: string
+  saatlerMetni: string
+}
+
+export function guzergahDetayDuraklariniHazirla(duraklar: GuzergahDetayDurakKaynak[]): GuzergahDetayDurakSatiri[] {
+  return duraklar.map((d) => ({
+    sira: d.sira,
+    durakKod: d.durak.kod,
+    durakAd: d.durak.ad,
+    saatlerMetni: d.saatler.length > 0 ? d.saatler.map((s) => `${dilimEtiketi(s.dilim)}: ${s.saat}`).join(', ') : '—',
+  }))
+}
+
+export type GuzergahDetayAracKaynak = { dilim: { kod: string; yon: DilimYon }; arac: { plaka: string; kapasite: number }; rol: string }
+export type GuzergahDetayAracSatiri = { dilimEtiket: string; plaka: string; kapasite: number; rol: string }
+
+export function guzergahDetayAracAtamalariniHazirla(atamalar: GuzergahDetayAracKaynak[]): GuzergahDetayAracSatiri[] {
+  return atamalar.map((a) => ({ dilimEtiket: dilimEtiketi(a.dilim), plaka: a.arac.plaka, kapasite: a.arac.kapasite, rol: a.rol }))
+}
+
+export type GuzergahDetaySoforKaynak = { dilim: { kod: string; yon: DilimYon }; sofor: { adSoyad: string }; rol: string }
+export type GuzergahDetaySoforSatiri = { dilimEtiket: string; adSoyad: string; rol: string }
+
+export function guzergahDetaySoforAtamalariniHazirla(atamalar: GuzergahDetaySoforKaynak[]): GuzergahDetaySoforSatiri[] {
+  return atamalar.map((a) => ({ dilimEtiket: dilimEtiketi(a.dilim), adSoyad: a.sofor.adSoyad, rol: a.rol }))
+}
+
+export type GuzergahDetayPdfData = {
+  guzergah: {
+    kod: string
+    ad: string
+    bolge: string | null
+    aktif: boolean
+    gecerlilikBaslangici: Date | null
+    gecerlilikBitisi: Date | null
+    yerleske: { kod: string; ad: string }
+  }
+  duraklar: GuzergahDetayDurakSatiri[]
+  aracAtamalari: GuzergahDetayAracSatiri[]
+  soforAtamalari: GuzergahDetaySoforSatiri[]
+}

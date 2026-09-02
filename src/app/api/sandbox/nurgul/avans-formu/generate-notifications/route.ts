@@ -68,6 +68,37 @@ async function bulDigerBeyazYakalar(sorumluIdSeti: Set<string>): Promise<Sorumlu
   return beyazYakalar.map((p) => ({ personnelId: p.id, adSoyad: p.adSoyad }))
 }
 
+/** Bu dönem (sorumluId + donemYil + donemAy) için zaten bir AvansTalebi girilmiş mi? */
+async function buDonemGirmisMi(
+  personnelId: string,
+  donemYil: number,
+  donemAy: number
+): Promise<boolean> {
+  const mevcut = await prisma.avansTalebi.findFirst({
+    where: { sorumluId: personnelId, donemYil, donemAy },
+    select: { id: true },
+  })
+  return !!mevcut
+}
+
+/**
+ * Verilen listeyi, bu dönem için zaten AvansTalebi girmiş olanları çıkararak
+ * filtreler — sorumlu ve kendi-giren akışlarında ikisinde de sorumluId
+ * kişinin kendi personnelId'si olduğu için aynı kontrol geçerli.
+ */
+async function girmemisOlanlariFiltrele(
+  adaylar: SorumluAdayi[],
+  donemYil: number,
+  donemAy: number
+): Promise<SorumluAdayi[]> {
+  const sonuc: SorumluAdayi[] = []
+  for (const aday of adaylar) {
+    const girmis = await buDonemGirmisMi(aday.personnelId, donemYil, donemAy)
+    if (!girmis) sonuc.push(aday)
+  }
+  return sonuc
+}
+
 /** KVKK: dry-run önizlemesinde tam e-posta gösterilmez. a***@ilerigroup.com gibi maskelenir. */
 function maskEmail(email: string): string {
   const atIndex = email.indexOf('@')
@@ -96,9 +127,16 @@ async function personelToAlici(s: SorumluAdayi): Promise<Alici> {
  * POST: Ayın 15'inde tetiklenecek cron endpoint'i.
  * İki tetikleme yolu vardır:
  *  1. Sistem cron: `x-cron-secret` header'ı CRON_SECRET ile eşleşirse.
- *  2. Manuel test: sandbox sahibinin (Nurgül) oturumuyla.
+ *     Bu yolda ayın 15'i olma guard'ı uygulanır — cron yanlışlıkla başka
+ *     bir günde de çalıştırılsa (örn. günlük kurulmuşsa), zararsız şekilde
+ *     no-op olur. Cron zaten sadece ayın 15'inde kurulsa da bu guard'ın
+ *     zararı yok.
+ *  2. Manuel test: sandbox sahibinin (Nurgül) oturumuyla — bu yolda gün
+ *     kontrolü UYGULANMAZ, 15'i beklemeden istenildiği an test edilebilir.
  * Varsayılan dryRun:true — gerçek gönderim SADECE açık { dryRun: false }
  * body'siyle tetiklenir.
+ * Ayrıca: bu dönem için zaten AvansTalebi girmiş olan sorumlu/kişiler
+ * listeden çıkarılır (tekrar hatırlatma/spam olmasın).
  */
 export async function POST(request: NextRequest) {
   const cronSecret = request.headers.get('x-cron-secret')
@@ -115,6 +153,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const now = new Date()
+  const donemYil = now.getFullYear()
+  const donemAy = now.getMonth() + 1
+
+  if (isCron && now.getDate() !== 15) {
+    return NextResponse.json({
+      skipped: true,
+      reason: `Bugün ayın ${now.getDate()}. günü — hatırlatma sadece ayın 15'inde gönderilir.`,
+    })
+  }
+
   const body: unknown = await request.json().catch(() => null)
   if (!gecerliBody(body)) {
     return NextResponse.json({ error: 'Geçersiz istek gövdesi' }, { status: 400 })
@@ -122,9 +171,19 @@ export async function POST(request: NextRequest) {
 
   const dryRun = (body as PostBody | null)?.dryRun !== false
 
-  const sorumlular = await bulTumSorumlular()
-  const sorumluIdSeti = new Set(sorumlular.map((s) => s.personnelId))
-  const digerBeyazYakalar = await bulDigerBeyazYakalar(sorumluIdSeti)
+  const tumSorumlular = await bulTumSorumlular()
+  const sorumluIdSeti = new Set(tumSorumlular.map((s) => s.personnelId))
+  const tumDigerBeyazYakalar = await bulDigerBeyazYakalar(sorumluIdSeti)
+
+  const sorumlular = await girmemisOlanlariFiltrele(tumSorumlular, donemYil, donemAy)
+  const digerBeyazYakalar = await girmemisOlanlariFiltrele(
+    tumDigerBeyazYakalar,
+    donemYil,
+    donemAy
+  )
+  const zatenGirmisSayisi =
+    tumSorumlular.length - sorumlular.length +
+    (tumDigerBeyazYakalar.length - digerBeyazYakalar.length)
 
   const sorumluAlicilar: Alici[] = await Promise.all(sorumlular.map(personelToAlici))
   const kendiAlicilar: Alici[] = await Promise.all(digerBeyazYakalar.map(personelToAlici))
@@ -147,7 +206,7 @@ export async function POST(request: NextRequest) {
     }))
 
     console.log(
-      `[avans-notify][dry-run] sorumlu: ${sorumluAlicilar.length}, kendi-giren: ${kendiAlicilar.length}, hesapsız: ${hesapsizSayisi}`,
+      `[avans-notify][dry-run] sorumlu: ${sorumluAlicilar.length}, kendi-giren: ${kendiAlicilar.length}, hesapsız: ${hesapsizSayisi}, zaten-girmiş: ${zatenGirmisSayisi}`,
       onizleme
     )
 
@@ -157,6 +216,7 @@ export async function POST(request: NextRequest) {
       kendiGirenSayisi: kendiAlicilar.length,
       gonderilebilirSayisi: sorumluGonderilebilir.length + kendiGonderilebilir.length,
       hesapsizSayisi,
+      zatenGirmisSayisi,
       onizleme,
     })
   }
@@ -180,5 +240,6 @@ export async function POST(request: NextRequest) {
     gonderildi: basariliSayisi,
     toplam: sorumluGonderilebilir.length + kendiGonderilebilir.length,
     hesapsizSayisi,
+    zatenGirmisSayisi,
   })
 }

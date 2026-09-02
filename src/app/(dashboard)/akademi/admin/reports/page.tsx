@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useSession } from "next-auth/react";
 import { FileSpreadsheet } from "lucide-react";
 import { useAkademiAuth } from "@/lib/akademi-auth";
 import { UsersReportTab } from "./_tabs/users-report";
@@ -10,14 +9,14 @@ import { ExamsReportTab } from "./_tabs/exams-report";
 import { CertificatesReportTab } from "./_tabs/certificates-report";
 import { DepartmentsReportTab } from "./_tabs/departments-report";
 import { DepartmentBoardTab } from "./_tabs/department-board";
-// IFS sekmeleri /ifs/raporlar altına TAŞINDI; akademi kabuğu geçiş süresince
-// aynı bileşenleri oradan gösteriyor (kopya YOK). /ifs doğrulandıktan sonra
-// bu import'lar ve sekme kayıtları akademi tarafından kaldırılacak.
-import { IfsEvaluationsTab } from "@/app/(dashboard)/ifs/raporlar/_tabs/ifs-evaluations";
+// Dört IFS sekmesi (Görev Değerlendirme, Görev Bazlı, IFS Raporu, Key User
+// Atama) buradan KALDIRILDI — /ifs/raporlar'da birebir aynı bileşenlerle
+// duruyorlar, iki kabuktan aynı ekrana girilmesi için sebep kalmadı.
+// Bileşenler /ifs/raporlar/_tabs altında; silinmedi.
+//
+// "IFS Değerlendirme Raporu" KALIYOR: /ifs tarafında karşılığı YOK (grafikler +
+// ifs-aggregate + IfsBolumReportView). Taşınana kadar tek erişim yolu burası.
 import { IfsEvaluationReportTab } from "./_tabs/ifs-evaluation-report";
-import { IfsGorevDetayTab } from "@/app/(dashboard)/ifs/raporlar/_tabs/ifs-gorev-detay";
-import { IfsRaporuTab } from "@/app/(dashboard)/ifs/raporlar/_tabs/ifs-raporu";
-import { IfsKeyUserAtamaTab } from "@/app/(dashboard)/ifs/raporlar/_tabs/ifs-keyuser-atama";
 
 const TABS = [
   { id: "users", label: "Kullanıcılar" },
@@ -26,43 +25,20 @@ const TABS = [
   { id: "certificates", label: "Sertifikalar" },
   { id: "departments", label: "Bölümler" },
   { id: "department-board", label: "Departman Panosu" },
-  { id: "ifs-evaluations", label: "Görev Değerlendirme" },
   { id: "ifs-report", label: "IFS Değerlendirme Raporu" },
-  { id: "ifs-gorev-detay", label: "Görev Bazlı" },
-  { id: "ifs-raporu", label: "IFS Raporu" },
-  // Yalnız akademi.admin görür — aşağıda gorunenTabs ile süzülüyor.
-  { id: "ifs-keyuser-atama", label: "Key User Atama" },
 ] as const;
 
-// Sekme görünürlüğü: id → gerekli izin. Listede olmayan sekme herkese açık
-// (mevcut davranış korunuyor); burada yalnız yeni admin-only sekme var.
-const TAB_IZIN: Partial<Record<TabIdRaw, string>> = {
-  "ifs-keyuser-atama": "akademi.admin",
-};
-type TabIdRaw = (typeof TABS)[number]["id"];
-
 // Excel export'u olmayan (özel) sekmeler
-const NO_EXPORT_TABS = [
-  "department-board",
-  "ifs-evaluations",
-  "ifs-report",
-  "ifs-gorev-detay",
-  "ifs-raporu",
-  "ifs-keyuser-atama",
-];
+const NO_EXPORT_TABS = ["department-board", "ifs-report"];
 
 type TabId = (typeof TABS)[number]["id"];
 
 export default function ReportsPage() {
-  const { data: session } = useSession();
   useAkademiAuth();
   const [activeTab, setActiveTab] = useState<TabId>("users");
-  const izinler = (session?.user as { permissions?: string[] } | undefined)?.permissions ?? [];
-  // Menü görünürlüğü kozmetik; asıl zorlama uçlarda (ifs-keyuser → akademi.admin).
-  const gorunenTabs = TABS.filter((t) => {
-    const gerekli = TAB_IZIN[t.id];
-    return !gerekli || izinler.includes(gerekli);
-  });
+  // İzin süzgeci kalktı: tek kaydı "Key User Atama" sekmesine aitti, o sekme
+  // /ifs/raporlar'a bırakıldı. Kalan yedi sekmenin hiçbiri izin istemiyordu —
+  // görünürlük davranışı DEĞİŞMEDİ. (Zorlama zaten uçlarda.)
 
   return (
     <div className="ak-animate-in space-y-4">
@@ -83,7 +59,7 @@ export default function ReportsPage() {
         style={{ borderColor: "var(--ak-border-divider)" }}
       >
         <div className="flex gap-1 overflow-x-auto">
-          {gorunenTabs.map((t) => (
+          {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
@@ -106,11 +82,7 @@ export default function ReportsPage() {
         {activeTab === "certificates" && <CertificatesReportTab />}
         {activeTab === "departments" && <DepartmentsReportTab />}
         {activeTab === "department-board" && <DepartmentBoardTab />}
-        {activeTab === "ifs-evaluations" && <IfsEvaluationsTab />}
         {activeTab === "ifs-report" && <IfsEvaluationReportTab />}
-        {activeTab === "ifs-gorev-detay" && <IfsGorevDetayTab />}
-        {activeTab === "ifs-raporu" && <IfsRaporuTab />}
-        {activeTab === "ifs-keyuser-atama" && <IfsKeyUserAtamaTab />}
       </div>
     </div>
   );

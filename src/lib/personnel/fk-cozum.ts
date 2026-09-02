@@ -57,15 +57,27 @@ export async function sorumluFkCoz(
 ): Promise<string | null> {
   const isim = temiz(ad)
   if (!isim) return null
-  const p = await db.personnel.findFirst({
+  // DETERMİNİSTİK: `findFirst` sıralamasızdı — aynı adda birden fazla aktif kayıt
+  // olsaydı hangisinin bağlanacağı rastgeleydi. `orderBy id ASC` + eşleşme sayısı.
+  const adaylar = await db.personnel.findMany({
     where: { adSoyad: isim, aktif: true, ...(haricId ? { id: { not: haricId } } : {}) },
     select: { id: true },
+    orderBy: { id: 'asc' },
   })
-  if (!p) {
+  if (adaylar.length === 0) {
     console.warn(`[personnel-fk] sorumlu çözülemedi: "${isim}" — FK null, metin korunuyor`)
     return null
   }
-  return p.id
+  // BELİRSİZLİKTE NULL — approvers.ts `resolveApproverByName` ile AYNI karar:
+  // yanlış kişiye FK yazmaktansa boş bırak, metin zaten korunuyor. (akademi-notify
+  // ise TERSİ davranır: orada null bildirimi tamamen keseceği için ilk kayıt seçilir.)
+  if (adaylar.length > 1) {
+    console.warn(
+      `[personnel-fk] belirsiz sorumlu adı: "${isim}" -> ${adaylar.length} aktif eşleşme; FK null (ilk aday ${adaylar[0].id} SEÇİLMEDİ)`,
+    )
+    return null
+  }
+  return adaylar[0].id
 }
 
 /**

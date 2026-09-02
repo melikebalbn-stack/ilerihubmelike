@@ -70,12 +70,26 @@ export async function POST(request: NextRequest) {
           const adSoyad = adUser.displayName
 
           // Check if a personnel exists with matching name (fuzzy)
-          const nameMatch = await prisma.personnel.findFirst({
+          // DETERMİNİSTİK: `findFirst` sıralamasızdı — aynı adda birden fazla bağsız
+          // kayıt varsa hangisine Azure kimliğinin yazılacağı rastgeleydi.
+          const adAdaylari = await prisma.personnel.findMany({
             where: {
               adSoyad: { equals: adSoyad, mode: 'insensitive' },
               azureAdEmail: null, // Only unlinked records
             },
+            orderBy: { id: 'asc' },
           })
+
+          // BELİRSİZLİKTE EŞLEŞTİRME YOK — fk-cozum.ts / approvers.ts ile AYNI karar:
+          // yanlış kişiye azureAdId yazmaktansa boş bırak (aşağıdaki "yeni kayıt aç"
+          // dalına düşer). (akademi-notify ise TERSİ davranır: orada null bildirimi
+          // tamamen keseceği için ilk kayıt seçilir.)
+          if (adAdaylari.length > 1) {
+            console.warn(
+              `[sync-azure] belirsiz ad: "${adSoyad}" -> ${adAdaylari.length} bağsız eşleşme; eşleştirme YAPILMADI (ilk aday ${adAdaylari[0].id} SEÇİLMEDİ)`,
+            )
+          }
+          const nameMatch = adAdaylari.length === 1 ? adAdaylari[0] : null
 
           if (nameMatch) {
             await prisma.personnel.update({

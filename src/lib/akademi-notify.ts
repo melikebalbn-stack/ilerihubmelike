@@ -71,13 +71,27 @@ export async function resolveRecipients(
   let manager: RecipientUser | null = null;
   const managerName = user.personnel?.bolumMuduru?.trim();
   if (managerName) {
-    const managerPersonnel = await prisma.personnel.findFirst({
+    // DETERMİNİSTİK: `findFirst` sıralamasızdı — aynı adda birden fazla aktif kayıt
+    // olsaydı bildirimin kime gideceği rastgeleydi. `orderBy id ASC` sabitliyor.
+    const yoneticiAdaylari = await prisma.personnel.findMany({
       where: {
         adSoyad: { equals: managerName, mode: "insensitive" },
         aktif: true,
       },
       select: { id: true },
+      orderBy: { id: "asc" },
     });
+
+    // BELİRSİZLİKTE İLK KAYIT SEÇİLİR — fk-cozum.ts / sync-azure'ın TERSİ. Orada
+    // null yazmak yalnız FK'yı boş bırakıyor (metin duruyor, veri kaybı yok); burada
+    // null dönmek bildirimi TAMAMEN keser. Yanlış kişiye bildirim gitmesi, hiç
+    // bildirim gitmemesinden iyidir; belirsizlik loga düşer.
+    if (yoneticiAdaylari.length > 1) {
+      console.warn(
+        `[akademi-notify] belirsiz yönetici adı: "${managerName}" -> ${yoneticiAdaylari.length} aktif eşleşme; ilk kayıt seçildi (${yoneticiAdaylari[0].id})`,
+      );
+    }
+    const managerPersonnel = yoneticiAdaylari[0] ?? null;
 
     if (managerPersonnel) {
       const managerUser = await prisma.user.findFirst({

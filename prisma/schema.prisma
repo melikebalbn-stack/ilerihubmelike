@@ -12274,10 +12274,12 @@ model BulkCardScanFailure {
   createdBy   User   @relation("BulkCardScanFailureCreator", fields: [createdById], references: [id])
 
   // Beyaz Yaka'nın kendisi için girdiği kayıtlar onay akışından geçer (SELF akışı).
-  // Onaylayıcı adayları Personnel.birimSorumlusu (1. Sorumlu) ve Personnel.sorumlu2
-  // (2. Sorumlu) isimlerinden çözülür (kayıt anındaki anlık kopya) — ikisinden
-  // hangisi önce onaylar/reddederse geçerli olur, sıra/zincir yok. İkisi de
-  // çözülemezse (isim yok veya eşleşen aktif kullanıcı yok) direkt onaylı sayılır.
+  // Onaylayıcı adayları önce FK'dan (Personnel.sorumlu1-3Id), FK boş/pasif/User'sızsa
+  // 1./2./3. Sorumlu isimlerinden çözülür (kayıt anındaki anlık kopya) — üçünden
+  // hangisi önce onaylar/reddederse geçerli olur, sıra/zincir yok. Belirsiz ad
+  // (>1 aktif eşleşme) atama YAPMAZ. Üçü de çözülemezse bölüm müdürü/müdür
+  // yardımcısı fallback'i devreye girer; o da yoksa kayıt BEKLIYOR'da onaycısız
+  // kalır (orphan) ve İ.V. Müdürü bilgilendirilir — ONAYLI SAYILMAZ.
   // Diğer tüm akışlar (Gri Yaka, FULL/İV/Admin) ONAYLANDI ile başlar — onay akışına girmez.
   onayDurumu  KartOkutamamaOnayDurumu @default(ONAYLANDI)
   approverId  String?

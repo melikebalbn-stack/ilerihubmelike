@@ -15,7 +15,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Pencil, Plus, Search } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Pencil,
+  Plus,
+  Search,
+} from "lucide-react";
 import {
   AMBER,
   IlerlemeCubuk,
@@ -51,6 +58,83 @@ interface KisilerVeri {
 }
 
 type Filtre = "tumu" | "atanmamis" | "pasif";
+
+// İndirme deseni ifs-raporu.tsx'teki raporIndir'in aynısı: blob + geçici
+// <a download> + revokeObjectURL, dosya adı Content-Disposition'dan.
+// Ayrı bir yol icat edilmedi; yalnız uç ve parametreler farklı.
+async function egitimIndir(
+  kapsam: "ozet" | "departman" | "kisi",
+  format: "xlsx" | "pdf",
+  ek?: { packageId?: string; userId?: string }
+): Promise<void> {
+  const qs = new URLSearchParams({ kapsam, format });
+  if (ek?.packageId) qs.set("packageId", ek.packageId);
+  if (ek?.userId) qs.set("userId", ek.userId);
+
+  const res = await fetch(
+    `/api/akademi/admin/reports/ifs-egitim-export?${qs.toString()}`
+  );
+  if (!res.ok) {
+    const msg = await res
+      .json()
+      .then((j) => j?.error)
+      .catch(() => null);
+    toast.error(
+      msg ??
+        (res.status === 401 || res.status === 403
+          ? "Bu raporu indirme yetkiniz yok"
+          : "Rapor indirilemedi")
+    );
+    return;
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("content-disposition") ?? "";
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+  const fallback = `IFS-${kapsam}.${format === "pdf" ? "pdf" : "xlsx"}`;
+  const filename = match ? decodeURIComponent(match[1]) : fallback;
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** İki küçük indirme düğmesi (XLSX / PDF) — üç yerde de aynı görünüm. */
+function IndirDugmeleri({
+  onIndir,
+  etiket,
+}: {
+  onIndir: (f: "xlsx" | "pdf") => void;
+  etiket: string;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1">
+      {(["xlsx", "pdf"] as const).map((f) => (
+        <button
+          key={f}
+          type="button"
+          title={`${etiket} — ${f.toUpperCase()}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onIndir(f);
+          }}
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border"
+          style={{
+            borderColor: "var(--ak-border-default)",
+            color: "var(--ak-text-secondary)",
+          }}
+        >
+          <Download size={12} />
+          {f.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function IfsEgitimlerPage() {
   const router = useRouter();
@@ -229,15 +313,21 @@ export default function IfsEgitimlerPage() {
             )}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/akademi/admin/packages")}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md font-medium text-white"
-          style={{ background: "#1B4F72" }}
-        >
-          <Plus size={14} />
-          Yeni departman
-        </button>
+        <div className="flex items-center gap-2">
+          <IndirDugmeleri
+            etiket="Özet dışa aktar"
+            onIndir={(f) => egitimIndir("ozet", f)}
+          />
+          <button
+            type="button"
+            onClick={() => router.push("/akademi/admin/packages")}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md font-medium text-white"
+            style={{ background: "#1B4F72" }}
+          >
+            <Plus size={14} />
+            Yeni departman
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -404,6 +494,18 @@ export default function IfsEgitimlerPage() {
                               </div>
                             )}
                             {kv && kv !== "yukleniyor" && (
+                              <div className="flex justify-end pb-2">
+                                <IndirDugmeleri
+                                  etiket={`${d.ad} dışa aktar`}
+                                  onIndir={(f) =>
+                                    egitimIndir("departman", f, {
+                                      packageId: d.packageId,
+                                    })
+                                  }
+                                />
+                              </div>
+                            )}
+                            {kv && kv !== "yukleniyor" && (
                               <table className="w-full text-xs">
                                 <thead>
                                   <tr style={{ color: "var(--ak-text-secondary)" }}>
@@ -504,6 +606,12 @@ export default function IfsEgitimlerPage() {
           onSonraki={() => kisiKaydir(1)}
           onKapat={() => setAcikKisi(null)}
           kaydediliyorCourseId={kaydediliyor}
+          onIndir={(f) =>
+            egitimIndir("kisi", f, {
+              packageId: modal.packageId,
+              userId: modal.userId,
+            })
+          }
           onKaydet={(courseId, seviye, not) =>
             kaydet(modal.packageId, modal.userId, courseId, seviye, not)
           }

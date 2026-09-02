@@ -10,7 +10,7 @@
 // kullanıyor, tek yerde dursun.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Check, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, Download, X } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 export type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ";
@@ -168,6 +168,8 @@ interface Props {
   /** courseId + taslak ile PATCH. Başarılıysa sayfa listeyi tazeler. */
   onKaydet: (courseId: string, seviye: Seviye | "", not: string) => Promise<void>;
   kaydediliyorCourseId: string | null;
+  /** Bu kişinin görev dökümünü dışarı aktarır (sayfadaki egitimIndir). */
+  onIndir: (format: "xlsx" | "pdf") => void;
 }
 
 export function KisiDetayModal({
@@ -181,6 +183,7 @@ export function KisiDetayModal({
   onKapat,
   onKaydet,
   kaydediliyorCourseId,
+  onIndir,
 }: Props) {
   // Değerlendirme şeridi: hangi alan (kurs) düzenleniyor + taslak.
   const [seciliCourseId, setSeciliCourseId] = useState<string>("");
@@ -287,6 +290,23 @@ export function KisiDetayModal({
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {/* Kişi export'u — sayfadaki listeyle aynı uç, kapsam=kisi. */}
+            {(["xlsx", "pdf"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                title={`Dışa aktar — ${f.toUpperCase()}`}
+                onClick={() => onIndir(f)}
+                className="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] rounded border"
+                style={{
+                  borderColor: "var(--ak-border-default)",
+                  color: "var(--ak-text-secondary)",
+                }}
+              >
+                <Download size={11} />
+                {f.toUpperCase()}
+              </button>
+            ))}
             <button
               type="button"
               title="Önceki kişi (↑)"

@@ -154,6 +154,18 @@ export async function PUT(
       return NextResponse.json({ error: 'Durum değiştirme yetkiniz yok' }, { status: 403 })
     }
 
+    // TEK ÇÖZÜM YOLU (Faz 1): RESOLVED'a buradan geçilemez. Bu yol
+    // resolvedBy / autoCloseAt damgalarını yazmıyor ve çözüm bildirimini
+    // göndermiyordu — aynı "çözüldü" durumunun iki farklı hâli oluşuyordu.
+    // Kapatma (CLOSED) yerinde: IT ekibi bir talebi elle kapatabilir ve
+    // mevcut kapanış/puanlama bildirimi aynen çalışır.
+    if (status === 'RESOLVED') {
+      return NextResponse.json(
+        { error: 'Çözüm için POST /api/tickets/[id]/cozum ucunu kullanın' },
+        { status: 400 },
+      )
+    }
+
     // HAVUZ "Üstlen" muafiyeti (dar kapsam): takım üyesi, KENDİ takımının HENÜZ
     // ATANMAMIŞ ticket'ını KENDİSİNE alabilir. Üç koşul birden aranır:
     //   1) isTicketTeamMember — bu ticket'ın assignedTeam.members'ında (herhangi

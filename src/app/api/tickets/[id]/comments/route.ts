@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getSlaAyar, getTatilMap } from '@/lib/sla'
-import { duraklatmaGecisi, ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
+import { ihlalDegerlendir, type TakvimBaglami } from '@/lib/sla/ihlal'
 import { canAccessTicket } from '@/lib/ticket-yetki'
 import { dispatchTicketYorum } from '@/lib/ticket-notifications'
 
@@ -66,7 +66,7 @@ export async function POST(
 
     const { id: ticketId } = await params
     const body = await request.json()
-    const { content, isInternal = false, isResolution = false, attachments } = body
+    const { content, isInternal = false, attachments } = body
 
     if (!content?.trim()) {
       return NextResponse.json({ error: 'Yorum içeriği zorunludur' }, { status: 400 })
@@ -101,7 +101,8 @@ export async function POST(
         authorName: user.name ?? user.email,
         content: content.trim(),
         isInternal: finalIsInternal,
-        isResolution,
+        // Çözüm rozetini YALNIZ /cozum ucu verir; istemci buradan işaretleyemez.
+        isResolution: false,
         attachments: attachments ? JSON.stringify(attachments) : null,
       }
     })
@@ -150,35 +151,11 @@ export async function POST(
       })
     }
 
-    // Çözüm notu ise durumu güncelle
-    if (isResolution && ticket.status !== 'RESOLVED' && ticket.status !== 'CLOSED') {
-      // RESOLVED kapalı durumdur: duraklatmadaysa birikim burada kapanır.
-      const durak = duraklatmaGecisi(ticket.status, 'RESOLVED', slaGirdi, slaSimdi, slaBaglam)
-      const karar = ihlalDegerlendir(slaGirdi, slaSimdi, slaBaglam)
-      await prisma.ticket.update({
-        where: { id: ticketId },
-        data: {
-          status: 'RESOLVED',
-          resolvedAt: slaSimdi,
-          resolutionSummary: content.trim(),
-          slaResolutionBreached: karar.cozumIhlali || ticket.slaResolutionBreached,
-          ...durak.guncelleme,
-        }
-      })
-
-      // Timeline kaydı
-      await prisma.ticketTimeline.create({
-        data: {
-          ticketId,
-          action: 'status_changed',
-          description: 'Durum değiştirildi',
-          oldValue: ticket.status,
-          newValue: 'RESOLVED',
-          performedBy: user.email,
-          performedByName: user.name ?? user.email,
-        }
-      })
-    }
+    // Faz 1: `isResolution` yorumu artık DURUMU DEĞİŞTİRMİYOR. Çözüm
+    // işaretlemenin tek yolu POST /api/tickets/[id]/cozum; burada yapılan
+    // güncelleme resolvedBy / autoCloseAt damgalarını bilmediği için iki farklı
+    // "çözüldü" hâli üretiyordu. Bayrak duruyor (yorumu "Çözüm" rozetiyle
+    // göstermek için) ama yalnız o uç tarafından set ediliyor.
 
     // ── YORUM BİLDİRİMİ (best-effort) ───────────────────────────────────
     // Yorum + timeline + SLA işleri BİTTİKTEN sonra; PUT'taki dispatch

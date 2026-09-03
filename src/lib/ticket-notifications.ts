@@ -634,3 +634,192 @@ export async function dispatchTicketYorum(
     console.error('[ticket-yorum-notify] email failed:', err)
   }
 }
+
+// ════════════════════════════════════════════════════════════
+// PUBLIC: ÇÖZÜM AKIŞI BİLDİRİMLERİ (Faz 1)
+// ════════════════════════════════════════════════════════════
+
+export type TicketCozumInfo = {
+  id: string
+  ticketNumber: string
+  subject: string
+  /** Talebi açan — çözüm bildirimi ONA gider. */
+  requesterEmail: string
+  /** Çözümü işaretleyen (görünen ad). */
+  cozenAd: string
+  /** Çözüm metni — boş bırakılmış olabilir (alan opsiyonel). */
+  cozumMetni: string | null
+  /** Kaç gün içinde itiraz edilebilir. */
+  itirazGunu: number
+}
+
+/**
+ * Talep "çözüldü" işaretlendiğinde TALEBİ AÇANA gider: çözüm metni (varsa),
+ * onay/itiraz daveti ve otomatik kapanma uyarısı.
+ *
+ * dispatchTicketKapandi'den AYRI tutuldu: o kapanışı ve puanlama davetini
+ * anlatıyor, bu ise henüz kapanmamış bir talebin onay isteğini. Kapanış maili
+ * yerinde duruyor ve talep gerçekten kapandığında aynen çalışmaya devam ediyor.
+ *
+ * Çözüm metni bir TicketComment olarak da yazılıyor ama o yolda
+ * dispatchTicketYorum ÇAĞRILMIYOR (bkz. cozum/route.ts) — yoksa aynı kişiye
+ * aynı metin iki kez giderdi.
+ *
+ * Alıcı çözümü dispatchTicketYorum ile aynı: User kaydı yoksa da gönderilir
+ * (mail kanalından açılan taleplerin sahibi sistemde olmayabilir), pasifse
+ * gönderilmez. throw ETMEZ.
+ */
+export async function dispatchTicketCozuldu(ticket: TicketCozumInfo): Promise<void> {
+  const hedef = (ticket.requesterEmail ?? '').toLowerCase().trim()
+  if (hedef === '' || !hedef.includes('@')) {
+    console.log(`[ticket-cozum-notify] ${ticket.ticketNumber}: gecerli alici yok — atlandi`)
+    return
+  }
+
+  const r = await alicimiCoz(hedef, '[ticket-cozum-notify]', ticket.ticketNumber)
+  if (!r) return
+
+  const link = `/it-support?ticket=${ticket.ticketNumber}`
+  const title = `Talebiniz çözüldü — onayınız bekleniyor: ${ticket.ticketNumber}`
+  const cozum = ticket.cozumMetni?.trim() || ''
+
+  try {
+    const text =
+      `Talebiniz çözüldü olarak işaretlendi.\n\n` +
+      `Talep No: ${ticket.ticketNumber}\n` +
+      `Konu: ${ticket.subject}\n` +
+      `Çözen: ${ticket.cozenAd}\n\n` +
+      (cozum ? `Çözüm:\n${cozum}\n\n` : '') +
+      `Sorun devam ediyorsa ${ticket.itirazGunu} gün içinde talebe girip ` +
+      `"Sorun devam ediyor" deyin; iş yeniden açılır.\n` +
+      `Bir şey yapmazsanız talep ${ticket.itirazGunu} gün sonra kendiliğinden kapanır.\n\n` +
+      `${ileriHubUrl(link)}\n\nİleri Group`
+
+    const cozumBlogu = cozum
+      ? `<div style="margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid #1B4F72;border-radius:4px;">
+           <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;">Çözüm · ${escapeHtml(ticket.cozenAd)}</p>
+           <p style="margin:0;font-size:14px;line-height:1.6;color:#1f2733;white-space:pre-wrap;">${escapeHtml(cozum)}</p>
+         </div>`
+      : ''
+
+    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f4f6f8;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
+          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
+        </td></tr>
+        <tr><td style="padding:22px 24px;">
+          <h1 style="margin:0 0 12px;font-size:18px;color:#166534;">Talebiniz çözüldü</h1>
+          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(ticket.subject)}</p>
+          ${cozumBlogu}
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
+            Sorun devam ediyorsa <strong>${ticket.itirazGunu} gün</strong> içinde talebe girip
+            &quot;Sorun devam ediyor&quot; deyin. Bir şey yapmazsanız talep kendiliğinden kapanır.
+          </p>
+          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe Git</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+    await sendEmail([{ name: r.name, email: r.email }], title, text, html)
+  } catch (err) {
+    console.error('[ticket-cozum-notify] email failed:', err)
+  }
+}
+
+export type TicketItirazInfo = {
+  id: string
+  ticketNumber: string
+  subject: string
+  /** İtiraz bildirimi ATANANA gider (null = havuzda, bildirim atlanır). */
+  assignedTo: string | null
+  /** İtiraz eden (talep sahibi) görünen adı. */
+  itirazEdenAd: string
+}
+
+/**
+ * Kullanıcı "sorun devam ediyor" dediğinde ATANAN TEKNİSYENE gider.
+ * Talep atanmamışsa (havuzda) alıcı yoktur, yalnız log düşülür.
+ * throw ETMEZ — itiraz akışı bildirimden dolayı bozulmaz.
+ */
+export async function dispatchTicketItiraz(ticket: TicketItirazInfo): Promise<void> {
+  const hedef = (ticket.assignedTo ?? '').toLowerCase().trim()
+  if (hedef === '' || !hedef.includes('@')) {
+    console.log(`[ticket-itiraz-notify] ${ticket.ticketNumber}: atanan yok — atlandi`)
+    return
+  }
+
+  const r = await alicimiCoz(hedef, '[ticket-itiraz-notify]', ticket.ticketNumber)
+  if (!r) return
+
+  const link = `/it-support?ticket=${ticket.ticketNumber}`
+  const title = `Sorun devam ediyor: ${ticket.ticketNumber}`
+
+  try {
+    const text =
+      `${ticket.itirazEdenAd}, çözümün sorunu gidermediğini bildirdi.\n\n` +
+      `Talep No: ${ticket.ticketNumber}\n` +
+      `Konu: ${ticket.subject}\n\n` +
+      `Talep yeniden "İşlemde" durumuna alındı ve üzerinizde.\n\n` +
+      `${ileriHubUrl(link)}\n\nİleri Group`
+    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f4f6f8;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
+          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
+        </td></tr>
+        <tr><td style="padding:22px 24px;">
+          <h1 style="margin:0 0 12px;font-size:18px;color:#b91c1c;">Sorun devam ediyor</h1>
+          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(ticket.subject)}</p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
+            <strong>${escapeHtml(ticket.itirazEdenAd)}</strong> çözümün sorunu gidermediğini bildirdi.
+            Talep yeniden &quot;İşlemde&quot; durumuna alındı ve üzerinizde.
+          </p>
+          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe Git</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+    await sendEmail([{ name: r.name, email: r.email }], title, text, html)
+  } catch (err) {
+    console.error('[ticket-itiraz-notify] email failed:', err)
+  }
+}
+
+/**
+ * Ortak alıcı çözümü: User varsa adı oradan, pasifse gönderme, hiç yoksa
+ * adresin kendisiyle devam et (mail kanalından gelen dış talep sahipleri).
+ * dispatchTicketYorum'daki mantığın aynısı — üçüncü kopyayı yazmamak için
+ * burada toplandı.
+ */
+async function alicimiCoz(
+  eposta: string,
+  etiket: string,
+  ticketNumber: string,
+): Promise<{ id: string; email: string; name: string } | null> {
+  let user:
+    | { id: string; email: string; firstName: string | null; lastName: string | null; name: string | null; isActive: boolean }
+    | null = null
+  try {
+    user = await prisma.user.findFirst({
+      where: { email: eposta },
+      select: { id: true, email: true, firstName: true, lastName: true, name: true, isActive: true },
+    })
+  } catch (err) {
+    console.error(`${etiket} kullanıcı çözümlenemedi:`, err)
+    return null
+  }
+  if (user && !user.isActive) {
+    console.log(`${etiket} ${ticketNumber}: alici pasif (${eposta}) — atlandi`)
+    return null
+  }
+  return user ? toRecipient(user) : { id: '', email: eposta, name: eposta }
+}

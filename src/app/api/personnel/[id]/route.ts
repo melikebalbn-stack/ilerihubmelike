@@ -380,9 +380,15 @@ export async function PUT(
     // Personnel update + beden profili upsert = TEK transaction.
     // Beden: yalnız en az bir alan doluysa upsert edilir (boş kayıt yaratma).
     const bedenData = normalizeBeden(bedenInput)
-    // Görev değiştiyse şemadaki ana koltuk da taşınır (kurul koltukları etkilenmez).
+    // Görev VEYA bölüm değiştiyse şemadaki ana koltuk da taşınır (kurul koltukları
+    // etkilenmez). Eşleşme `{bolum, gorev}` ÇİFTİNDEN çözülüyor; bu yüzden tetikleyici
+    // de iki alanı birlikte izler. Eskiden yalnız `gorev` izleniyordu ve bölüm tek
+    // başına değişince kişi eski bölümün kutusunda kalıyordu (03.09.2026 ölçümü).
     const gorevDegisti =
       typeof body.gorev === 'string' && body.gorev !== (existing.gorev ?? '')
+    const bolumDegisti =
+      typeof body.bolum === 'string' && body.bolum !== (existing.bolum ?? '')
+    const yerlesimDegisti = gorevDegisti || bolumDegisti
     let koltukSonuc: GorevDegisimSonuc | null = null
     const updatedPersonnel = await prisma.$transaction(async (tx) => {
       const updated = await tx.personnel.update({
@@ -396,7 +402,7 @@ export async function PUT(
           update: { ...bedenData, updatedById: user.id },
         })
       }
-      if (gorevDegisti) {
+      if (yerlesimDegisti) {
         koltukSonuc = await personelGoreviDegisti(tx, personnelId, { actorId: user.id })
       }
       return updated
@@ -412,18 +418,16 @@ export async function PUT(
         actorEmail: user.email,
         sicilNo: existing.sicilNo,
         changedFieldKeys: Object.keys(body),
-        ...(gorevDegisti
-          ? {
-              gorevDegisimi: { eski: existing.gorev, yeni: body.gorev },
-              koltuk: koltukSonuc,
-            }
-          : {}),
+        ...(gorevDegisti ? { gorevDegisimi: { eski: existing.gorev, yeni: body.gorev } } : {}),
+        ...(bolumDegisti ? { bolumDegisimi: { eski: existing.bolum, yeni: body.bolum } } : {}),
+        // Koltuk sonucu görev VEYA bölüm değişiminde yazılır — taşınmadıysa sebebiyle.
+        ...(yerlesimDegisti ? { koltuk: koltukSonuc } : {}),
       },
     })
 
     return NextResponse.json({
       ...updatedPersonnel,
-      ...(gorevDegisti ? { koltuk: koltukSonuc } : {}),
+      ...(yerlesimDegisti ? { koltuk: koltukSonuc } : {}),
     })
   } catch (error: any) {
     console.error('Personel güncellenirken hata:', error)

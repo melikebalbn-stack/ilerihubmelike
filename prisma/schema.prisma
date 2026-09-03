@@ -185,6 +185,7 @@ model User {
   bulkCardScanFailuresToApprove2 BulkCardScanFailure[] @relation("BulkCardScanFailureApprover2")
   bulkCardScanFailuresToApprove3 BulkCardScanFailure[] @relation("BulkCardScanFailureApprover3")
   bulkCardScanFailuresIvOnayladi BulkCardScanFailure[] @relation("BulkCardScanFailureIvApprover")
+  bulkCardScanBolumYetki         BulkCardScanBolumYetki?
 
   // Akademi Relations
   courseAssignments     UserCourseAssignment[]
@@ -12320,6 +12321,31 @@ model BulkCardScanFailure {
   @@index([approverId])
   @@index([approverId2])
   @@index([approverId3])
+}
+
+// Bölüm (paylaşımlı) hesabın Toplu Kart Okutamama kapsamı.
+// Bakımhane / Final Kalite / Preshane gibi hesapların Personnel karşılığı YOKTUR
+// (User.personnelId NULL) — bu yüzden kişiye bağlı GRİ kapsamı (adSoyad'ın başkasının
+// 1./2./3. Sorumlu alanında geçmesi) onlar için hiç doğmaz. Bu tablo o boşluğu
+// kapatır: kaydı olan hesap, bolumAdi'nin kapsadığı aktif personel için GRİ
+// seviyesinde kayıt girebilir.
+//
+// bolumAdi, Personnel.bolum VEYA Personnel.bolumDetay ile eşleşir (büyük/küçük harf
+// duyarsız, tam eşleşme). İki alan birden gerekiyor çünkü Kalite kırılımları
+// ("FİNAL KALİTE", "PROSES KALİTE") bolum'da değil YALNIZ bolumDetay'da yaşıyor;
+// bolum değerleri hepsi için "Kalite Müdürlüğü".
+model BulkCardScanBolumYetki {
+  id String @id @default(cuid())
+
+  // Hesap başına EN FAZLA bir kapsam — iki bölüme birden yetkili paylaşımlı hesap yok.
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  bolumAdi String
+
+  createdAt DateTime @default(now())
+
+  @@index([bolumAdi])
 }
 
 // ============================================================

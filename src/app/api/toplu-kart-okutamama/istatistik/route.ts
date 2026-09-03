@@ -50,8 +50,14 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Ekip kapsamı için yetkiniz yok' }, { status: 403 })
       }
       if (access.level === 'GRI') {
-        const managed = access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
-        personnelIds = [access.personnelId ?? '__none__', ...managed]
+        if (access.scopePersonnelIds) {
+          // Bölüm hesabı: kendi Personnel kaydı yok — kapsam yalnız bölümün personeli.
+          personnelIds =
+            access.scopePersonnelIds.length > 0 ? access.scopePersonnelIds : ['__none__']
+        } else {
+          const managed = access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
+          personnelIds = [access.personnelId ?? '__none__', ...managed]
+        }
       } // FULL → null (tümü)
     }
 

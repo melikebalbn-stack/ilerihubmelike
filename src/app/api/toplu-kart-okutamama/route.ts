@@ -182,7 +182,11 @@ export async function POST(request: NextRequest) {
     // GRI/SELF: kendi adına, ya da (varsa) 1./2./3. Sorumlusu olduğu kişiler
     // için kayıt açabilir — başkası için açamaz. Full'da kısıtlama yok.
     if ((access.level === 'GRI' || access.level === 'SELF') && personnelId !== access.personnelId) {
-      const managedIds = access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
+      // Bölüm hesabında kapsam hazır gelir (scopePersonnelIds); kişiye bağlı
+      // kullanıcıda eskisi gibi çağrı anında Sorumlu alanlarından çözülür.
+      const managedIds =
+        access.scopePersonnelIds ??
+        (access.personnelId ? await getManagedPersonnelIds(access.personnelId) : [])
       if (!managedIds.includes(personnelId)) {
         return NextResponse.json({ error: 'Sadece kendi adınıza veya ekibiniz için kayıt girebilirsiniz' }, { status: 403 })
       }

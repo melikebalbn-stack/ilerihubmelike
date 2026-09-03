@@ -75,7 +75,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const access = await getBulkCardScanAccess(user.id)
     if ((access.level === 'GRI' || access.level === 'SELF') && personnelId && personnelId !== record!.personnelId) {
-      const managedIds = access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
+      const managedIds =
+        access.scopePersonnelIds ??
+        (access.personnelId ? await getManagedPersonnelIds(access.personnelId) : [])
       if (personnelId !== access.personnelId && !managedIds.includes(personnelId)) {
         return NextResponse.json({ error: 'Sadece kendi adınıza veya ekibiniz için kayıt girebilirsiniz' }, { status: 403 })
       }

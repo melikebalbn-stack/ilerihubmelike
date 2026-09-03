@@ -48,8 +48,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (access.level === 'GRI' || access.level === 'SELF') {
-      if (scope === 'team' && access.personnelId) {
-        const managedIds = await getManagedPersonnelIds(access.personnelId)
+      if (scope === 'team') {
+        // Bölüm hesabında kapsam hazır gelir; kişiye bağlı kullanıcıda eskisi gibi
+        // Sorumlu alanlarından çözülür (personnelId yoksa kapsam boş → sonuç yok).
+        const managedIds =
+          access.scopePersonnelIds ??
+          (access.personnelId ? await getManagedPersonnelIds(access.personnelId) : [])
         where.id = { in: managedIds.length > 0 ? managedIds : ['__none__'] }
       } else {
         where.id = access.personnelId ?? '__none__'

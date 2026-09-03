@@ -228,7 +228,10 @@ export async function POST(request: NextRequest) {
     // GRI: kendi adına veya (varsa) 1./2./3. Sorumlusu olduğu kişiler için kayıt
     // açabilir — bölüm eşleşmesi yerine bu esas alınır (Full'da kısıtlama yok).
     const managedIds =
-      access.level === 'GRI' && access.personnelId ? await getManagedPersonnelIds(access.personnelId) : []
+      access.level === 'GRI'
+        ? access.scopePersonnelIds ??
+          (access.personnelId ? await getManagedPersonnelIds(access.personnelId) : [])
+        : []
 
     for (const p of parsed) {
       const personnel = p.sicilNo ? bySicil.get(p.sicilNo) : byAdSoyad.get(p.adSoyad.toLocaleLowerCase('tr'))

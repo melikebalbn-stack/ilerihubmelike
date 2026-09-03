@@ -122,3 +122,47 @@ export type GuzergahDetayPdfData = {
   aracAtamalari: GuzergahDetayAracSatiri[]
   soforAtamalari: GuzergahDetaySoforSatiri[]
 }
+
+// ── Adım 4: Personel Atama Listesi ──────────────────────────────────────────
+// KVKK (Elif'in açık talimatı): YALNIZ ad soyad, sicil no, servis/durak
+// ataması. Telefon/adres gibi personel alanları BİLEREK dahil edilmedi —
+// bu export'un hiçbir yerinde Personnel tablosundan bu iki alan dışında
+// (adSoyad, sicilNo) BAŞKA BİR ALAN seçilmemeli (route.ts'teki Prisma
+// select'i de bununla sınırlı tutulmalı, "kolaylık olsun" diye genişletilmesin).
+export const PERSONEL_ATAMA_LISTESI_HEADERS = [
+  'AD SOYAD',
+  'SİCİL NO',
+  'GÜZERGAH',
+  'DURAK',
+  'SEFER DİLİMLERİ',
+  'BAŞLANGIÇ TARİHİ',
+  'BİTİŞ TARİHİ',
+  'DURUM',
+] as const
+
+export type PersonelAtamaListesiKaynak = {
+  personnel: { adSoyad: string; sicilNo: string | null }
+  guzergah: { kod: string; ad: string }
+  durak: { kod: string; ad: string } | null
+  dilimler: { dilim: { kod: string; yon: DilimYon } }[]
+  baslangicTarihi: Date
+  bitisTarihi: Date | null
+  aktif: boolean
+}
+
+export function personelAtamaListesiSatirlariOlustur(atamalar: PersonelAtamaListesiKaynak[]): (string | number)[][] {
+  const rows: (string | number)[][] = [[...PERSONEL_ATAMA_LISTESI_HEADERS]]
+  for (const a of atamalar) {
+    rows.push([
+      a.personnel.adSoyad,
+      a.personnel.sicilNo ?? '',
+      `${a.guzergah.kod} — ${a.guzergah.ad}`,
+      a.durak ? `${a.durak.kod} — ${a.durak.ad}` : '',
+      a.dilimler.map((d) => dilimEtiketi(d.dilim)).join(', '),
+      tarihTR(a.baslangicTarihi),
+      tarihTR(a.bitisTarihi),
+      a.aktif ? 'Aktif' : 'Pasif',
+    ])
+  }
+  return rows
+}

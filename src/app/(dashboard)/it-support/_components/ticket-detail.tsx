@@ -11,13 +11,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, X, AlertTriangle, Loader2, Send, UserPlus, Settings2, Headphones, Clock, CheckCircle2, Paperclip, FileText } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ArrowLeft, X, AlertTriangle, Loader2, Send, UserPlus, Settings2, Headphones, Clock, CheckCircle2, Paperclip, FileText, Sparkles, ThumbsUp, RotateCcw } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { ticketAge, resolutionTime, isOpenStatus } from "../_lib/ticket-age"
 import { CategoryBadge } from "./category-badge"
 import { MemnuniyetKarti, MemnuniyetSonucu } from "./memnuniyet-karti"
 import { puanlayabilirMi } from "@/lib/tickets/memnuniyet"
+import { ITIRAZ_SURESI_GUN, kalanItirazGunu, cozulebilirMi } from "@/lib/tickets/cozum"
 import { ZIMMET_TUR_LABELS } from "@/lib/tickets/cihaz-etiket"
 import { toast } from "sonner"
 
@@ -63,6 +65,10 @@ interface Ticket {
   slaResolutionBreached?: boolean
   satisfactionRating?: number | null
   satisfactionComment?: string | null
+  // Çözüm akışı (Faz 1)
+  resolvedByName?: string | null
+  autoCloseAt?: string | null
+  objectionCount?: number | null
   createdAt: string
   closedAt?: string | null
   resolvedAt?: string | null
@@ -172,6 +178,11 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
   const [newComment, setNewComment] = useState("")
   const [sendingComment, setSendingComment] = useState(false)
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([])
+  // Çözüm akışı (Faz 1)
+  const [cozumModalAcik, setCozumModalAcik] = useState(false)
+  const [cozumMetni, setCozumMetni] = useState("")
+  const [cozumGonderiliyor, setCozumGonderiliyor] = useState(false)
+  const [onayGonderiliyor, setOnayGonderiliyor] = useState(false)
 
   const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
   // Sunucu (PUT /api/tickets/[id]) DURUM değişikliğine izin verirken
@@ -184,6 +195,15 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
     ticket.assignedTo.toLowerCase() === (session?.user?.email ?? "").toLowerCase()
   const durumDegistirebilir =
     isITStaff || isAssignee || (ticket?.currentUserIsTeamMember ?? false)
+
+  // Çözüm akışı türetmeleri: onay kartı YALNIZ talep sahibine görünür
+  // (sunucu da yalnız sahibi kabul ediyor — /cozum/onay 403).
+  const isOwner =
+    (ticket?.requesterEmail ?? "").toLowerCase() === (session?.user?.email ?? "").toLowerCase()
+  const kalanGun = kalanItirazGunu(
+    ticket?.autoCloseAt ? new Date(ticket.autoCloseAt) : null,
+    new Date(),
+  )
 
   // loading/error/timeout artık useAuthenticatedData'da. Hata durumunda throw eder →
   // hook loadError'ı set eder (eski !ok / catch → setLoadError(true) davranışı korunur).
@@ -301,6 +321,64 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
       assignedToName: session.user.name ?? session.user.email,
       status: "ASSIGNED",
     } as Partial<Ticket>)
+  }
+
+  // ── ÇÖZÜM AKIŞI (Faz 1) ───────────────────────────────────────────────
+  // Durum açılırındaki "Çözüldü" kaldırıldı: çözmenin tek yolu bu modal ve
+  // arkasındaki POST /api/tickets/[id]/cozum ucu (damgaları o yazıyor).
+  const handleCozumGonder = async () => {
+    if (!ticket) return
+    setCozumGonderiliyor(true)
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}/cozum`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Metin OPSİYONEL: boş gönderim geçerli bir çözümdür.
+        body: JSON.stringify({ cozum: cozumMetni.trim() }),
+      })
+      if (!res.ok) {
+        const hata = await res.json().catch(() => ({}))
+        throw new Error(hata?.error || "Çözüm kaydedilemedi")
+      }
+      setCozumModalAcik(false)
+      setCozumMetni("")
+      await fetchTicket()
+      toast.success(
+        cozumMetni.trim()
+          ? "Çözüldü olarak işaretlendi, çözüm arşive eklendi"
+          : "Çözüldü olarak işaretlendi",
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Çözüm kaydedilemedi")
+    } finally {
+      setCozumGonderiliyor(false)
+    }
+  }
+
+  const handleOnayKarari = async (karar: "ONAYLA" | "ITIRAZ") => {
+    if (!ticket) return
+    setOnayGonderiliyor(true)
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}/cozum/onay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ karar }),
+      })
+      if (!res.ok) {
+        const hata = await res.json().catch(() => ({}))
+        throw new Error(hata?.error || "İşlem başarısız")
+      }
+      await fetchTicket()
+      toast.success(
+        karar === "ONAYLA"
+          ? "Talep kapatıldı — dilerseniz hizmeti puanlayabilirsiniz"
+          : "Talep yeniden açıldı, IT ekibi bilgilendirildi",
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "İşlem başarısız")
+    } finally {
+      setOnayGonderiliyor(false)
+    }
   }
 
   // ── Ekler ────────────────────────────────────────────────────────────
@@ -648,11 +726,61 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
                   <SelectItem value="IN_PROGRESS">Islemde</SelectItem>
                   <SelectItem value="PENDING">Beklemede</SelectItem>
                   <SelectItem value="ON_HOLD">Askida</SelectItem>
-                  <SelectItem value="RESOLVED">Cozuldu</SelectItem>
                   <SelectItem value="CLOSED">Kapatildi</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+          </div>
+        )}
+
+        {/* ÇÖZÜLDÜ (Faz 1) — durum açılırında değil, ayrı eylem.
+            Tek çözüm yolu: modal → POST /api/tickets/[id]/cozum. */}
+        {durumDegistirebilir && cozulebilirMi(ticket.status) && (
+          <div className="p-4 rounded-lg border bg-muted/30 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-medium text-sm">Bu talep çözüldü mü?</p>
+              <p className="text-xs text-muted-foreground">
+                İşaretlediğinizde kullanıcıya bildirim gider; {ITIRAZ_SURESI_GUN} gün itiraz gelmezse talep kendiliğinden kapanır.
+              </p>
+            </div>
+            <Button onClick={() => setCozumModalAcik(true)} disabled={updatingTicket}>
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Çözüldü
+            </Button>
+          </div>
+        )}
+
+        {/* KULLANICI ONAYI (Faz 1) — talep sahibinin gördüğü kart. */}
+        {ticket.status === "RESOLVED" && isOwner && (
+          <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <span className="font-medium">Çözüldü — onayınız bekleniyor</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {ticket.resolvedByName ? `${ticket.resolvedByName} ` : ""}talebi çözüldü olarak işaretledi.
+              {kalanGun !== null && kalanGun > 0
+                ? ` İtiraz etmezseniz ${kalanGun} gün içinde kendiliğinden kapanacak.`
+                : " İtiraz etmezseniz kendiliğinden kapanacak."}
+            </p>
+            <div className="flex gap-2 justify-end mt-3 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={() => handleOnayKarari("ITIRAZ")}
+                disabled={onayGonderiliyor}
+                className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+              >
+                {onayGonderiliyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+                Sorun devam ediyor
+              </Button>
+              <Button onClick={() => handleOnayKarari("ONAYLA")} disabled={onayGonderiliyor}>
+                {onayGonderiliyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ThumbsUp className="h-4 w-4 mr-2" />}
+                Onaylıyorum, kapatılsın
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground text-right mt-2">
+              Onaylarsanız talep kapanır ve hizmeti puanlayabilirsiniz.
+            </p>
           </div>
         )}
 
@@ -674,7 +802,6 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
                     <SelectItem value="IN_PROGRESS">Islemde</SelectItem>
                     <SelectItem value="PENDING">Beklemede</SelectItem>
                     <SelectItem value="ON_HOLD">Askida</SelectItem>
-                    <SelectItem value="RESOLVED">Cozuldu</SelectItem>
                     <SelectItem value="CLOSED">Kapatildi</SelectItem>
                   </SelectContent>
                 </Select>
@@ -798,6 +925,60 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
           </div>
         </div>
       </CardContent>
+
+      {/* ÇÖZÜM MODAL'I — çözüm metni OPSİYONEL, buton her durumda aktif. */}
+      <Dialog open={cozumModalAcik} onOpenChange={setCozumModalAcik}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Talebi çözüldü olarak işaretle</DialogTitle>
+            <DialogDescription>
+              {ticket.ticketNumber} · {ticket.subject}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="cozum-metni" className="text-sm">
+                Çözüm Açıklaması{" "}
+                <span className="font-normal text-muted-foreground text-xs">
+                  — opsiyonel, boş bırakabilirsiniz
+                </span>
+              </Label>
+              <Textarea
+                id="cozum-metni"
+                className="mt-1.5 min-h-[120px]"
+                placeholder="Ne yaptığınızı birkaç cümleyle yazın…"
+                value={cozumMetni}
+                onChange={(e) => setCozumMetni(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-2 items-start rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+              <Sparkles className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>Çözümü yazarsanız arşive eklenir, benzer sorunlarda ekibe yol gösterir.</span>
+            </div>
+
+            <div className="flex gap-2 items-start rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <Clock className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>
+                Talep sahibinin <strong>{ITIRAZ_SURESI_GUN} gün</strong> itiraz süresi var. Bu sürede
+                &quot;Sorun devam ediyor&quot; demezse talep otomatik kapanır — ayrıca kapatmanıza gerek yok.
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCozumModalAcik(false)} disabled={cozumGonderiliyor}>
+              Vazgeç
+            </Button>
+            {/* Metin boş olsa da AKTİF — çözüm açıklaması zorunlu değil. */}
+            <Button onClick={handleCozumGonder} disabled={cozumGonderiliyor}>
+              {cozumGonderiliyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+              Çözüldü olarak işaretle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

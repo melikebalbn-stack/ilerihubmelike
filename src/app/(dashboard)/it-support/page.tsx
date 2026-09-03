@@ -40,6 +40,7 @@ import {
   X,
   BarChart3,
   Info,
+  BookOpen,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -394,6 +395,16 @@ export default function ITSupportPage() {
             <Info className="h-4 w-4 mr-2" />
             Kullanım Kılavuzu
           </Button>
+
+          {/* Çözüm Arşivi — yalnız IT ekibine. Sunucu da aynı kapıyı uyguluyor
+              (helpdesk.admin veya helpdesk.ticket.resolve). */}
+          {(session?.user?.permissions?.includes("helpdesk.admin") ||
+            session?.user?.permissions?.includes("helpdesk.ticket.resolve")) && (
+            <Button variant="outline" size="sm" onClick={() => router.push("/it-support/cozum-arsivi")}>
+              <BookOpen className="h-4 w-4 mr-2" />
+              Çözüm Arşivi
+            </Button>
+          )}
 
           <Button variant="outline" size="sm" onClick={retry} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />

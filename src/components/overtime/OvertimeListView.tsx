@@ -70,6 +70,11 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
   const kind = isVardiya ? "Vardiya" : "Mesai"
   // Liste tablosu yatay-kaydırma: üst şerit ile senkron (TopScrollbar)
   const listScrollRef = useRef<HTMLDivElement>(null)
+  // Form OLUŞTURMA yetkisi rol/izin sisteminde DEĞİL, OvertimeAuthorizedUser
+  // tablosunda (forms.admin bu kapıyı atlar; uç ikisini birlikte cevaplar).
+  // null = henüz bilinmiyor → düğme kapalı ama AÇIKLAMA YOK (yanlış alarm olmasın).
+  const [formAcabilir, setFormAcabilir] = useState<boolean | null>(null)
+
   const [forms, setForms] = useState<OvertimeForm[]>([])
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 5, total: 0, totalPages: 0 })
   const [loading, setLoading] = useState(true)
@@ -153,6 +158,29 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
     return found ? found.label : type
   }
 
+  // Yetki sorgusu — detay sayfasındaki `?check=me` deseniyle aynı.
+  useEffect(() => {
+    let iptal = false
+    async function yetkiSor() {
+      try {
+        const res = await apiFetch("/api/overtime/authorized-users?check=me")
+        if (res.__authHandled || iptal) return
+        if (res.ok) {
+          const data = await res.json()
+          if (!iptal) setFormAcabilir(data.authorized === true)
+        } else if (!iptal) {
+          // Uç cevap veremediyse mevcut davranışı koru: düğme açık kalsın,
+          // sunucu kapısı zaten 403 döndürür.
+          setFormAcabilir(true)
+        }
+      } catch {
+        if (!iptal) setFormAcabilir(true)
+      }
+    }
+    yetkiSor()
+    return () => { iptal = true }
+  }, [])
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
@@ -164,12 +192,27 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
             <p className="text-muted-foreground">Fazla mesai taleplerini oluşturun ve takip edin</p>
           </div>
         </div>
-        <Link href={`${basePath}/new`}>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Yeni {kind} Formu
-          </Button>
-        </Link>
+        <div className="flex flex-col items-start sm:items-end gap-1">
+          {formAcabilir === false ? (
+            <Button disabled>
+              <Plus className="h-4 w-4 mr-2" />
+              Yeni {kind} Formu
+            </Button>
+          ) : (
+            <Link href={`${basePath}/new`} aria-disabled={formAcabilir === null}>
+              <Button disabled={formAcabilir === null}>
+                <Plus className="h-4 w-4 mr-2" />
+                Yeni {kind} Formu
+              </Button>
+            </Link>
+          )}
+          {formAcabilir === false && (
+            <p className="max-w-xs text-[11px] text-muted-foreground sm:text-right">
+              {kind} formu oluşturma yetkiniz yok. Ayarlar &gt; Mesai Formu
+              Yetkilendirme&apos;den talep edebilirsiniz.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -297,12 +340,19 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
                     <div className="flex flex-col items-center gap-2">
                       <Clock className="h-8 w-8 text-muted-foreground" />
                       <p className="text-muted-foreground">Mesai formu bulunamadı</p>
-                      <Link href={`${basePath}/new`}>
-                        <Button variant="outline" size="sm" className="mt-2">
+                      {formAcabilir === false ? (
+                        <Button variant="outline" size="sm" className="mt-2" disabled>
                           <Plus className="h-4 w-4 mr-2" />
                           İlk {kind} Formunu Oluştur
                         </Button>
-                      </Link>
+                      ) : (
+                        <Link href={`${basePath}/new`}>
+                          <Button variant="outline" size="sm" className="mt-2" disabled={formAcabilir === null}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            İlk {kind} Formunu Oluştur
+                          </Button>
+                        </Link>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

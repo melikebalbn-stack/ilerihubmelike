@@ -24,6 +24,9 @@ export default async function KullaniciRolleriPage({ searchParams }: PageProps) 
       name: true,
       isSystem: true,
       _count: { select: { userRoles: true } },
+      // Rol seçim diyaloğunun "bu izin ne AÇMAZ" uyarısını üretebilmesi için
+      // izin anahtarları da taşınır (mesai izinleri form OLUŞTURMA vermez).
+      rolePermissions: { select: { permission: { select: { key: true } } } },
     },
     orderBy: [{ isSystem: 'desc' }, { name: 'asc' }],
   })
@@ -58,6 +61,7 @@ export default async function KullaniciRolleriPage({ searchParams }: PageProps) 
           slug: r.slug,
           name: r.name,
           userCount: r._count.userRoles,
+          permissionKeys: r.rolePermissions.map((rp) => rp.permission.key),
         }))}
         unassignedRoles={unassignedRoles.map((r) => ({ id: r.id, name: r.name }))}
         initialFilters={{

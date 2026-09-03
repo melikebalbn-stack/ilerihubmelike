@@ -32,6 +32,8 @@ interface RoleSummary {
   slug: string
   name: string
   userCount: number
+  /** Rolün izin anahtarları — diyalogdaki mesai uyarısı için. */
+  permissionKeys?: string[]
 }
 
 export interface UserRow {

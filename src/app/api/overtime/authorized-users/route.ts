@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
+import { resolveAllowedDepts } from '@/lib/overtime-performance'
 
 /**
  * GET: Yetkili kullanıcıları listele veya mevcut kullanıcının yetkisini kontrol et
@@ -60,7 +61,20 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'asc' },
     })
 
-    return apiSuccess(authorizedUsers)
+    // YAZMA KAPSAMI — listedeki her kullanıcı için `resolveAllowedDepts`.
+    // Form açma yetkisi (bu tablo) ile forma KİMİN eklenebileceği (omurga:
+    // DepartmentDefinition.mudurId/sorumlu1-4Id + alt ağaç) BİRBİRİNDEN BAĞIMSIZ;
+    // ikisi bir arada görünmediği için "form açar ama kimseyi ekleyemez" durumu
+    // yönetici tarafından fark edilmiyordu. undefined = tümü, [] = hiçbiri.
+    // Liste küçük (yetkili sayısı bir düzine mertebesinde) → döngü kabul edilebilir.
+    const kapsamli = await Promise.all(
+      authorizedUsers.map(async (a) => ({
+        ...a,
+        yazmaKapsami: (await resolveAllowedDepts(a.userId)) ?? null, // null = TÜM bölümler
+      })),
+    )
+
+    return apiSuccess(kapsamli)
   } catch (error) {
     return apiError('Yetkili kullanıcılar alınırken bir hata oluştu', 500, {
       endpoint: 'GET /api/overtime/authorized-users',

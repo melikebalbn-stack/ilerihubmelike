@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Cloud, Lock } from 'lucide-react'
+import { Loader2, Cloud, Lock, AlertTriangle } from 'lucide-react'
 import { getRoleVisual } from '@/lib/role-visuals'
 import type { UserRow } from './user-roles-list'
 
@@ -22,6 +22,8 @@ interface RoleSummary {
   slug: string
   name: string
   userCount: number
+  /** Rolün izin anahtarları — mesai uyarısını üretmek için (opsiyonel). */
+  permissionKeys?: string[]
 }
 
 interface Props {
@@ -53,6 +55,23 @@ export function UserRolesEditDialog({
   )
 
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(initialManualIds)
+
+  // MESAI UYARISI: mesai izinleri yalnız görüntüleme/rapor açar; form OLUŞTURMA
+  // yetkisi rol/izin sisteminde DEĞİL, OvertimeAuthorizedUser tablosundadır
+  // (Ayarlar > Mesai Formu Yetkilendirme). Rol adı ("Mesai Görüntüleyici (Tümü)")
+  // yanıltıcı okunduğu için burada açıkça söylenir. Azure'dan gelen roller de sayılır.
+  //
+  // KOŞUL: overtime.* VAR **ve** forms.admin YOK. forms.admin bu kapıyı zaten
+  // atlıyor (route.ts POST) — o rollerde (Admin, Super Admin, Departman Müdürü,
+  // Kalite Yöneticisi) uyarıyı göstermek yanıltıcı olurdu.
+  const mesaiIzniSecili = useMemo(() => {
+    const etkinIds = new Set<string>([...selectedRoleIds, ...azureRoles.map((r) => r.id)])
+    const etkinIzinler = new Set<string>(
+      allRoles.filter((r) => etkinIds.has(r.id)).flatMap((r) => r.permissionKeys ?? []),
+    )
+    if (etkinIzinler.has('forms.admin')) return false
+    return [...etkinIzinler].some((k) => k.startsWith('overtime.'))
+  }, [selectedRoleIds, azureRoles, allRoles])
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -259,6 +278,16 @@ export function UserRolesEditDialog({
               Boş = tüm bölümler. Yalnız mesai performans raporunu (overtime.report) etkiler.
             </p>
           </div>
+
+          {mesaiIzniSecili && (
+            <div className="flex items-start gap-1.5 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Mesai izinleri yalnız görüntüleme ve rapor içindir. Form oluşturma
+                yetkisi Ayarlar &gt; Mesai Formu Yetkilendirme&apos;den verilir.
+              </span>
+            </div>
+          )}
 
           {overLimit && (
             <div className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded">

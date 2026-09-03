@@ -166,7 +166,8 @@ export default function SettingsPage() {
   const [emailTest, setEmailTest] = useState<EmailTestData>({ email: '', name: '', sending: false })
 
   // Mesai formu yetkili kullanıcılar
-  const [overtimeAuthUsers, setOvertimeAuthUsers] = useState<{ id: string; userId: string; user: { id: string; name: string; email: string } & YetkiliGosterimGirdisi }[]>([])
+  // `yazmaKapsami`: null = TÜM bölümler · [] = HİÇBİRİ (form açar, personel ekleyemez) · [adlar]
+  const [overtimeAuthUsers, setOvertimeAuthUsers] = useState<{ id: string; userId: string; yazmaKapsami?: string[] | null; user: { id: string; name: string; email: string } & YetkiliGosterimGirdisi }[]>([])
   const [overtimeAllUsers, setOvertimeAllUsers] = useState<({ id: string; name: string; email: string } & YetkiliGosterimGirdisi)[]>([])
   const [overtimeUserSearch, setOvertimeUserSearch] = useState('')
   const [overtimeUsersLoaded, setOvertimeUsersLoaded] = useState(false)
@@ -1343,7 +1344,7 @@ export default function SettingsPage() {
             <div className="border rounded-lg divide-y">
               {overtimeAuthUsers.map((auth) => (
                 <div key={auth.id} className="flex items-center justify-between px-4 py-3">
-                  <div>
+                  <div className="min-w-0 pr-3">
                     <p className="text-sm font-medium">{auth.user.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {(() => {
@@ -1351,6 +1352,25 @@ export default function SettingsPage() {
                         return `${g.bolum}${g.unvan ? ` / ${g.unvan}` : ''}`
                       })()}
                     </p>
+                    {/* Yazma kapsamı — form AÇMA yetkisinden ayrı: forma kimin
+                        eklenebileceğini organizasyon omurgası belirler. */}
+                    {auth.yazmaKapsami === undefined ? null : auth.yazmaKapsami === null ? (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Yazma kapsamı: <span className="font-medium">Tüm bölümler</span>
+                      </p>
+                    ) : auth.yazmaKapsami.length === 0 ? (
+                      <div className="mt-1 flex items-start gap-1 rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span>
+                          Yazma kapsamı yok — form açar ama personel ekleyemez. Omurgada
+                          sorumlu olarak işaretlenmeli (Ayarlar &gt; Bölüm Organizasyonu).
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Yazma kapsamı: <span className="font-medium">{auth.yazmaKapsami.join(', ')}</span>
+                      </p>
+                    )}
                   </div>
                   <Button
                     variant="ghost"

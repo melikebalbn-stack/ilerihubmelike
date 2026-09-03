@@ -3,7 +3,8 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiBadRequest } from '@/lib/api-response'
 import { getShopOrderOperations } from '@/lib/ifs/shop-order-operations'
-import { isEmriWcDepartmanKoku } from '@/lib/ipro/departman-eslesme'
+import { getWorkCenters } from '@/lib/ifs/work-center-departments'
+import { wcDepartmani } from '@/lib/ipro/departman-eslesme'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic'
 // GET /api/terminal/uzaktan-basla/secenekler?dept=<WC departman kodu>
 // Uzaktan başlat formunun beslemesi: (1) TÜM aktif personel (matris filtresi YOK —
 // terminalden herkes seçilebilir), (2) o departmanın açık iş emri operasyonları
-// (getShopOrderOperations, W-prefixli WC → isEmriWcDepartmanKoku ile departmana eşlenir).
+// (getShopOrderOperations, WC → wcDepartmani ile departmana eşlenir: numerik+W-prefixli).
 // Guard: ipro.admin (uzaktan-basla ile aynı). SALT OKUMA.
 export async function GET(req: NextRequest) {
   const { error } = await requirePermission('ipro.admin')
@@ -40,9 +41,17 @@ export async function GET(req: NextRequest) {
   }[] = []
   let ifsError: string | null = null
   try {
+    // WC → departman İKİ KAYNAKLI (wcDepartmani): numerik WC (501→WPE) WorkCenterSet'ten,
+    // W-prefixli (WMM01→WMM) ad-kökünden. wcMap alınamazsa boş → ad-kökü fallback'i.
+    const wcMap = new Map<string, string>()
+    try {
+      for (const w of await getWorkCenters()) if (w.departmentNo) wcMap.set(w.workCenterNo, w.departmentNo)
+    } catch {
+      // WC metadata alınamadı → wcMap boş; wcDepartmani ad-köküne düşer.
+    }
     const ops = await getShopOrderOperations({})
     isEmirleri = ops
-      .filter((o) => isEmriWcDepartmanKoku(o.isMerkezi) === dept)
+      .filter((o) => wcDepartmani(o.isMerkezi, wcMap) === dept)
       .map((o) => ({
         id: o.id,
         ifsOrderNo: o.isEmriNo,

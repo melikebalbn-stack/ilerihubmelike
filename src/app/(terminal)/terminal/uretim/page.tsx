@@ -10,7 +10,7 @@ import {
 } from '@/lib/ifs/work-center-departments'
 import { getShopOrderOperations } from '@/lib/ifs/shop-order-operations'
 import { listVardiyalar } from '@/lib/ipro/takvim'
-import { isEmriWcDepartmanKoku } from '@/lib/ipro/departman-eslesme'
+import { wcDepartmani } from '@/lib/ipro/departman-eslesme'
 import { TerminalMenuClient } from './_client'
 
 export const dynamic = 'force-dynamic'
@@ -47,27 +47,10 @@ export default async function UretimTerminalPage({
   }
   const gecerliKodlar = new Set(departmanlar.map((d) => d.kod))
 
-  // Açık iş emri sayısı — departman bazında. WC W-prefixliyse harf köküyle
-  // (WPH01→WPH). Departmana bağlanamayan WC'ler (WYD, 502, 505, 90001) sayılmaz.
-  // İş emri IFS'i ayrı hata yolunda: alınamazsa sayı 0 kalır, ekran yine açılır.
-  const isEmriSayi = new Map<string, number>()
-  try {
-    const ops = await getShopOrderOperations({})
-    for (const o of ops) {
-      const kok = isEmriWcDepartmanKoku(o.isMerkezi)
-      if (kok && gecerliKodlar.has(kok)) {
-        isEmriSayi.set(kok, (isEmriSayi.get(kok) ?? 0) + 1)
-      }
-    }
-  } catch {
-    // iş emri sayısı yoksa rozet gösterilmez; bölüm listesi etkilenmez.
-  }
-
-  // IFS zinciri: departman (WorkCenterSet.DepartmentNo) → iş merkezi (WorkCenterNo)
-  //   → kaynak (Reference_WorkCenterResource.ResourceId) → ipro_tezgah.kod (DOĞRU anahtar).
-  // İki AYRI çağrı, AYRI hata yolu: kaynak alınamazsa tezgah sayıları 0, departman
-  // listesi ve iş emri sayıları etkilenmez. Numerik ifsWorkCenterNo/ifsResourceId BAYAT,
-  // kullanılmaz. Tezgah başına sorgu YOK.
+  // IFS WC → departman haritası (WorkCenterSet.DepartmentNo). Hem iş emri sayımı hem
+  // tezgah zinciri BUNU kullanır. W-prefixli/planlama WC'lerin DepartmentNo'su boş
+  // olabilir → wcDepartmani ad-kökü fallback'iyle çözer. Numerik ifsWorkCenterNo/
+  // ifsResourceId BAYAT, kullanılmaz. Tezgah başına sorgu YOK.
   const wcMap = new Map<string, string>() // workCenterNo → departmentNo
   try {
     for (const w of await getWorkCenters()) {
@@ -75,6 +58,22 @@ export default async function UretimTerminalPage({
     }
   } catch {
     // WC→departman alınamadı → kaynaklar departmana bağlanamaz, tezgah sayıları 0.
+  }
+
+  // Açık iş emri sayısı — departman bazında. WC → departman İKİ KAYNAKLI (wcDepartmani):
+  // numerik WC (501→WPE) WorkCenterSet.DepartmentNo'dan, W-prefixli (WMM01→WMM) ad-kökünden.
+  // Departmana bağlanamayan WC'ler (WYD, 90001) sayılmaz. İş emri IFS'i ayrı hata yolunda.
+  const isEmriSayi = new Map<string, number>()
+  try {
+    const ops = await getShopOrderOperations({})
+    for (const o of ops) {
+      const kok = wcDepartmani(o.isMerkezi, wcMap)
+      if (kok && gecerliKodlar.has(kok)) {
+        isEmriSayi.set(kok, (isEmriSayi.get(kok) ?? 0) + 1)
+      }
+    }
+  } catch {
+    // iş emri sayısı yoksa rozet gösterilmez; bölüm listesi etkilenmez.
   }
 
   let kaynaklar: Awaited<ReturnType<typeof getWorkCenterResources>> = []

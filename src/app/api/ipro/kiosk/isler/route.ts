@@ -7,7 +7,7 @@ import {
   getWorkCenterResources,
   getWorkCenterDepartments,
 } from '@/lib/ifs/work-center-departments'
-import { isEmriWcDepartmanKoku } from '@/lib/ipro/departman-eslesme'
+import { wcDepartmani } from '@/lib/ipro/departman-eslesme'
 
 /**
  * GET /api/ipro/kiosk/isler?tezgahId= — seçili tezgahın BÖLÜMÜNE ait açık operasyonlar.
@@ -16,10 +16,10 @@ import { isEmriWcDepartmanKoku } from '@/lib/ipro/departman-eslesme'
  *   ipro_tezgah.kod == IFS ResourceId
  *     → Reference_WorkCenterResource.WorkCenterNo (tezgahın iş merkezi)
  *       → WorkCenterSet.DepartmentNo (bölüm kodu; ör. WPH)
- * Açık işleri o bölüme süzeriz: operasyonun W-prefixli WC'si (WPH01, WCN01, WCN02…)
- * → isEmriWcDepartmanKoku ile İSİM KÖKÜNE indirilir (WPH01→WPH) ve bölüm koduyla
- * eşleştirilir. Böylece bir bölümün TÜM W-WC'leri (WCN01+WCN02) tek geçişte birleşir.
- * NOT: W-prefixli WC'lerin kendi DepartmentNo'su boş/tutarsız → o alanla değil, kökle eşlenir.
+ * Açık işleri o bölüme süzeriz: operasyonun WC'si (numerik 501 veya W-prefixli WMM01…)
+ * → wcDepartmani ile İKİ KAYNAKLI çözülür: önce WorkCenterSet.DepartmentNo (501→WPE,
+ * WPE01→WPE), boşsa ad-kökü (WMM01→WMM). Böylece hem numerik-WC iş emirleri hem bir
+ * bölümün TÜM W-WC'leri (WCN01+WCN02) tek geçişte birleşir.
  *
  * Bölüm belirlenemezse (IFS'te kaynak yok / eşleşme yok / metadata alınamadı) TÜM açık
  * işler döner (operatör işsiz kalmasın) ve filtreliMi=false bayrağı konur.
@@ -40,8 +40,10 @@ export async function GET(req: NextRequest) {
   // Bölüm çözümü — kaynak + WC metadata'sı PARALEL. Hata/eşleşme yoksa departmanKod null
   // (→ filtresiz tüm işler). Bu metadata çağrıları iş listesini BLOKLAMAZ.
   let departmanKod: string | null = null
+  const wcMap = new Map<string, string>() // workCenterNo → departmentNo (iş emri süzme için)
   try {
     const [kaynaklar, wcler] = await Promise.all([getWorkCenterResources(), getWorkCenters()])
+    for (const w of wcler) if (w.departmentNo) wcMap.set(w.workCenterNo, w.departmentNo)
     const kaynak = kaynaklar.find(
       (r) => r.resourceId.toLocaleLowerCase('tr-TR') === tezgahKod.toLocaleLowerCase('tr-TR'),
     )
@@ -67,7 +69,7 @@ export async function GET(req: NextRequest) {
   try {
     const tumIsler = await getShopOrderOperations({})
     if (departmanKod) {
-      const isler = tumIsler.filter((o) => isEmriWcDepartmanKoku(o.isMerkezi) === departmanKod)
+      const isler = tumIsler.filter((o) => wcDepartmani(o.isMerkezi, wcMap) === departmanKod)
       return apiSuccess({ isler, filtreliMi: true, departmanKod, departmanAd })
     }
     // Bölüm belirlenemedi → tüm açık işler (mevcut davranış).

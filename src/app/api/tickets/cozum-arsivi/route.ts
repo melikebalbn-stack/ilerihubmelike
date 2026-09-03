@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export function anahtar(categoryId: string | null, zimmetFormuId: string | null): string {
+function anahtar(categoryId: string | null, zimmetFormuId: string | null): string {
   return `${categoryId ?? '-'}|${zimmetFormuId ?? '-'}`
 }
 

@@ -39,6 +39,13 @@ export async function GET(
     select: { id: true, status: true, assignedManagerId: true },
   });
   if (!application) {
+    // TESHIS: bu uc izin verilen HEDEFLERI de doner; sessiz reddi UI'da "buton yok"
+    // olarak gorunur ve sebebi loglardan anlasilamazdi. KVKK: ad/TC/telefon YAZILMAZ.
+    console.warn("[stage-log] reddedildi:", {
+      applicationId: id,
+      reason: "basvuru bulunamadi",
+      user: session.user?.email ?? "(?)",
+    });
     return NextResponse.json({ error: "Başvuru bulunamadı" }, { status: 404 });
   }
 
@@ -51,6 +58,12 @@ export async function GET(
     applicationId: id,
   });
   if (roles.length === 0) {
+    console.warn("[stage-log] reddedildi:", {
+      applicationId: id,
+      status: application.status,
+      reason: "rol cozulemedi — kullanicinin bu basvuruda goruntuleme rolu yok",
+      user: session.user?.email ?? "(?)",
+    });
     return NextResponse.json({ error: "Bu başvuruyu görüntüleme yetkiniz yok" }, { status: 403 });
   }
 

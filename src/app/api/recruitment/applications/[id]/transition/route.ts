@@ -68,6 +68,14 @@ export async function POST(
   // Body doğrula
   const parsed = BodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
+    // Bu nokta `toStatus` cozulmeden once — redLog henuz kurulamadi, satir ici.
+    console.warn("[transition] reddedildi:", {
+      applicationId: id,
+      from: "(basvuru okunmadi)",
+      to: "(govde cozulemedi)",
+      reason: "govde semasi gecersiz",
+      user: session.user?.email ?? "(?)",
+    });
     return NextResponse.json(
       { error: "Geçersiz istek gövdesi", detay: parsed.error.flatten() },
       { status: 400 },
@@ -76,12 +84,28 @@ export async function POST(
   const { toStatus, note, assignedManagerId, rejectionReasonId, assessmentId, duzeltilecekAlanlar, kademeYorumu, mudurKarari } =
     parsed.data;
 
+  // ─── TESHIS LOGU (2026-09-03) ───────────────────────────────────────────────
+  // Basarisiz donuslerin (400/403/404) HICBIRI iz birakmiyordu; yalniz 500 dali
+  // console.error yaziyordu. 2-3 Eyl 2026'da "gecis hatasi" sikayeti loglardan
+  // dogrulanamadi — hangi kapinin kapandigi bilinemedi.
+  // KVKK: ad / TC / telefon YAZILMAZ. applicationId + kullanici e-postasi yeterli.
+  // DAVRANIS DEGISMEZ: yalniz log; her donus noktasi aynen eskisi gibi doner.
+  const redLog = (reason: string, from: string) =>
+    console.warn("[transition] reddedildi:", {
+      applicationId: id,
+      from,
+      to: toStatus,
+      reason,
+      user: session.user?.email ?? "(?)",
+    });
+
   // 2) Başvuruyu çek
   const application = await prisma.publicJobApplication.findUnique({
     where: { id },
     select: { id: true, status: true, assignedManagerId: true, fullName: true },
   });
   if (!application) {
+    redLog("basvuru bulunamadi", "(kayit yok)");
     return NextResponse.json({ error: "Başvuru bulunamadı" }, { status: 404 });
   }
 
@@ -97,6 +121,7 @@ export async function POST(
     applicationId: id,
   });
   if (roles.length === 0) {
+    redLog("rol cozulemedi — kullanicinin bu basvuruda gecis rolu yok", application.status);
     return NextResponse.json(
       { error: "Bu başvuru için geçiş yetkiniz yok" },
       { status: 403 },
@@ -107,6 +132,7 @@ export async function POST(
 
   // 4) İzin matrisi — rollerin BİRLEŞİK (union) izinli hedefleri. Otorite transitions.ts'te.
   if (!canTransitionAny(current, toStatus, roles)) {
+    redLog(`izin matrisi reddetti (roller: ${roles.join(",")})`, current);
     return NextResponse.json(
       {
         error: "Bu geçişe izin yok",
@@ -125,18 +151,21 @@ export async function POST(
   //     Gerekçe (blue-green rollback penceresi) → adaya-geri-gonder.ts.
   const bayrakEngeli = geriGondermeEngeli(toStatus);
   if (bayrakEngeli) {
+    redLog("kill-switch: ADAYA_GERI_GONDERILDI bayragi kapali", current);
     return NextResponse.json({ error: bayrakEngeli }, { status: 403 });
   }
 
   // 4c) FAZ 4 KILL SWITCH — aynı desen, TEKNIK_MULAKAT_UST_ONAY için.
   const ikiKademeEngel = ikiKademeEngeli(toStatus);
   if (ikiKademeEngel) {
+    redLog("kill-switch: teknik mulakat iki-kademe bayragi kapali", current);
     return NextResponse.json({ error: ikiKademeEngel }, { status: 403 });
   }
 
   // 4d) FAZ 6 KILL SWITCH — aynı desen, EVRAK_HAZIRLIK için.
   const donusturEngel = donusturEngeli(toStatus);
   if (donusturEngel) {
+    redLog("kill-switch: personele donustur (EVRAK_HAZIRLIK) bayragi kapali", current);
     return NextResponse.json({ error: donusturEngel }, { status: 403 });
   }
 
@@ -144,6 +173,7 @@ export async function POST(
   //     tanımlar) ama işbaşı, personel kaydı oluşturulmadan işaretlenemez: dönüşüm ve statü
   //     AYNI transaction'da yazılır (personele-donustur.ts). Bayraktan BAĞIMSIZ kural.
   if (sadeceFormlaMi(toStatus)) {
+    redLog("ISE_BASLADI yalniz 'Personele Donustur' formuyla isaretlenir", current);
     return NextResponse.json(
       {
         error:
@@ -168,6 +198,7 @@ export async function POST(
       otomatikAtanan = await otomatikAtananKullanici(toStatus);
     } catch (err) {
       if (err instanceof OtomatikAtamaError) {
+        redLog(`otomatik atama cozulemedi: ${err.message}`, current);
         return NextResponse.json({ error: err.message }, { status: err.httpStatus });
       }
       throw err;
@@ -206,6 +237,7 @@ export async function POST(
   // 2026-08 — müdür kademesinde İKİ karar da REVIEWING'e döner; hedef statü artık
   // olumlu/olumsuz ayrımını taşımıyor. Bu yüzden karar AÇIKÇA istenir.
   if (mudurKademesinde && toStatus === "REVIEWING" && !mudurKarari) {
+    redLog("mudur karari (olumlu/olumsuz) gonderilmedi", current);
     return NextResponse.json(
       { error: "Müdür kararı zorunlu (olumlu/olumsuz)" },
       { status: 400 },
@@ -218,6 +250,7 @@ export async function POST(
   const mudurOlumsuz = mudurKademesinde && toStatus === "REVIEWING" && mudurKarari === "REJECTED";
   const olumsuzGorus = teknikOlumsuz || mudurOlumsuz;
   if (olumsuzGorus && !kademeYorumu) {
+    redLog("olumsuz gorus icin kademe yorumu bos", current);
     return NextResponse.json(
       { error: "Olumsuz görüş için yorum zorunludur" },
       { status: 400 },
@@ -238,6 +271,7 @@ export async function POST(
     });
     const mulakatciId = birinci?.approverId ?? application.assignedManagerId;
     if (!mulakatciId) {
+      redLog("1. kademe mulakatcisi yok — ust amir zinciri kurulamadi", current);
       return NextResponse.json(
         { error: "1. kademe mülakatçısı bulunamadı — üst amir zinciri kurulamıyor." },
         { status: 400 },
@@ -245,6 +279,7 @@ export async function POST(
     }
     const sonuc = await ustAmirCoz(prisma, mulakatciId);
     if (!sonuc.ok) {
+      redLog(`ust amir cozulemedi: ${sonuc.error}`, current);
       return NextResponse.json({ error: sonuc.error }, { status: 400 });
     }
     if (sonuc.atlandi) {
@@ -266,6 +301,7 @@ export async function POST(
   //     (mevcut atama varsa ve yeni verilmediyse onu kullan; ikisi de yoksa 400.)
   const efektifManagerId = assignedManagerId ?? application.assignedManagerId ?? null;
   if (requiresAssignedManager(toStatus) && !efektifManagerId) {
+    redLog("assignedManagerId ne govdede ne kayitta var", current);
     return NextResponse.json(
       { error: `${toStatus} için assignedManagerId zorunludur` },
       { status: 400 },
@@ -323,12 +359,14 @@ export async function POST(
   // 5c) REJECTED → ret nedeni zorunlu (kök-neden analizi). Sunucu-taraflı guard; UI disabled tek
   //     başına yeterli değil. requiresRejectionReason TEK KAYNAK (transitions.ts).
   if (requiresRejectionReason(toStatus) && !rejectionReasonId) {
+    redLog("ret nedeni (rejectionReasonId) gonderilmedi", current);
     return NextResponse.json({ error: "Ret nedeni zorunlu" }, { status: 400 });
   }
 
   // 5d) SINAV → sınav seçimi zorunlu (geçişle aynı anda oturum açılır). Sunucu-taraflı guard.
   //     requiresAssessment TEK KAYNAK (transitions.ts).
   if (requiresAssessment(toStatus) && !assessmentId) {
+    redLog("sinav secimi (assessmentId) gonderilmedi", current);
     return NextResponse.json({ error: "Sınav seçimi zorunlu" }, { status: 400 });
   }
 
@@ -460,6 +498,7 @@ export async function POST(
   } catch (err) {
     // Sınav oturumu açılamadı (sınav yok/pasif) → geçiş geri alındı, anlaşılır 400.
     if (err instanceof AssessmentSessionError) {
+      redLog(`sinav oturumu acilamadi: ${err.message}`, current);
       return NextResponse.json({ error: err.message }, { status: err.httpStatus });
     }
     console.error("Başvuru geçişi başarısız:", err);

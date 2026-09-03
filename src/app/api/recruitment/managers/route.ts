@@ -112,6 +112,19 @@ export async function GET() {
   // 2b) User karşılığı OLMAYAN müdürler — sessizce düşmesin, İK eksik nedeni görsün.
   // (Şu an DB'de 0; veri değişirse — müdür Personnel'inin User hesabı yoksa — burada görünür.)
   const unmatchedPersonnelIds = [...personnelMeta.keys()].filter((pid) => !matchedPersonnelIds.has(pid));
+  // TESHIS: omurgada mudur/yrd. olup aktif User'a cozulemeyenler sessizce listeden
+  // dusuyordu; IK "mudur listede yok" dediginde logda hicbir iz olmuyordu.
+  // KVKK: ad YAZILMAZ — personnelId + bolum adi yeterli.
+  if (unmatchedPersonnelIds.length > 0) {
+    console.warn("[managers] User'a cozulemeyen mudur koltugu:", {
+      adet: unmatchedPersonnelIds.length,
+      kayitlar: unmatchedPersonnelIds.map((pid) => ({
+        personnelId: pid,
+        bolum: personnelMeta.get(pid)?.departmentName ?? null,
+        isDeputy: personnelMeta.get(pid)?.isDeputy ?? false,
+      })),
+    });
+  }
   let unmatchedManagers: { personnelId: string; adSoyad: string | null; departmentName: string | null; isDeputy: boolean }[] = [];
   if (unmatchedPersonnelIds.length > 0) {
     const personeller = await prisma.personnel.findMany({
@@ -170,22 +183,69 @@ export async function GET() {
     : [];
   const adByPersonnelId = new Map(koltukPersonel.map((p) => [p.id, p.adSoyad]));
 
+  // TESHIS: asagidaki her "atlanir" dalinin AYRI sebebi var ama disariya ayni sonuc
+  // ciktigi icin hangisinin tetiklendigi bilinemiyordu. KVKK: ad YAZILMAZ.
+  let atlananSayaci = 0;
+  const atlaLog = (sebep: string, personnelId: string | null, bolum: string | null | undefined) => {
+    atlananSayaci++;
+    console.warn("[managers] ust amir onizlemesi atlandi:", {
+      personnelId: personnelId ?? "(yok)",
+      bolum: bolum ?? "(yok)",
+      reason: sebep,
+    });
+  };
+
   function ustAmirOnizle(personnelId: string | null, bolum: string | null | undefined): ManagerOption["ustAmir"] {
-    if (!personnelId || !bolum) return { atlanir: true, ad: null, yol: null };
+    if (!personnelId || !bolum) {
+      atlaLog(!personnelId ? "personnelId yok (User personele bagli degil)" : "Personnel.bolum bos", personnelId, bolum);
+      return { atlanir: true, ad: null, yol: null };
+    }
     const d = deptByName.get(bolum.trim());
-    if (!d) return { atlanir: true, ad: null, yol: null };
+    if (!d) {
+      atlaLog("bolum adi aktif DepartmentDefinition'da bulunamadi", personnelId, bolum);
+      return { atlanir: true, ad: null, yol: null };
+    }
     const birinci = d.mudurYardimcisiId ?? d.mudurId;
-    if (!birinci) return { atlanir: true, ad: null, yol: null };
+    if (!birinci) {
+      atlaLog("bolumun mudur ve mudur yardimcisi koltugu BOS", personnelId, bolum);
+      return { atlanir: true, ad: null, yol: null };
+    }
     if (birinci !== personnelId) {
+      const ad = adByPersonnelId.get(birinci) ?? null;
+      if (!ad) {
+        // Koltuk dolu ama Personnel adi cozulemedi → UI'da adsiz secenek cikar.
+        console.warn("[managers] ust amir adi cozulemedi (adsiz donuluyor):", {
+          personnelId,
+          bolum,
+          ustAmirPersonnelId: birinci,
+          reason: "koltuk sahibi Personnel kaydi okunamadi",
+        });
+      }
       return {
         atlanir: false,
-        ad: adByPersonnelId.get(birinci) ?? null,
+        ad,
         yol: d.mudurYardimcisiId ? "MUDUR_YRD" : "MUDUR",
       };
     }
     // 1. adım kendisi → müdüre çık
-    if (!d.mudurId || d.mudurId === personnelId) return { atlanir: true, ad: null, yol: null };
-    return { atlanir: false, ad: adByPersonnelId.get(d.mudurId) ?? null, yol: "MUDUR" };
+    if (!d.mudurId || d.mudurId === personnelId) {
+      atlaLog(
+        !d.mudurId ? "1. adim kendisi ve bolumde mudur koltugu bos" : "1. adim da mudur de kendisi — zincir kapali",
+        personnelId,
+        bolum,
+      );
+      return { atlanir: true, ad: null, yol: null };
+    }
+    const ad = adByPersonnelId.get(d.mudurId) ?? null;
+    if (!ad) {
+      console.warn("[managers] ust amir adi cozulemedi (adsiz donuluyor):", {
+        personnelId,
+        bolum,
+        ustAmirPersonnelId: d.mudurId,
+        reason: "mudur koltugu Personnel kaydi okunamadi",
+      });
+    }
+    return { atlanir: false, ad, yol: "MUDUR" };
   }
   const tumAktif: ManagerOption[] = allUsers
     .filter((u) => !oneriUserIds.has(u.id))
@@ -202,6 +262,12 @@ export async function GET() {
     const b = bolumByUserId.get(o.id);
     o.ustAmir = ustAmirOnizle(b?.personnelId ?? null, b?.bolum);
   }
+
+  // Ozet: bir bakista "kac koltuk vardi, kaci listeye girdi, kaci elendi".
+  console.warn(
+    `[managers] omurgada ${personnelMeta.size} mudur, ${matchedPersonnelIds.size} cozuldu, ` +
+      `${unmatchedPersonnelIds.length} elendi (ust amir onizlemesi atlanan: ${atlananSayaci})`,
+  );
 
   return NextResponse.json({ onerilenler, tumAktif, unmatchedManagers });
 }

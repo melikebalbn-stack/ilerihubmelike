@@ -2450,8 +2450,28 @@ model Ticket {
   slaPausedMinutes Int       @default(0) // birikmiş duraklatma (iş dakikası)
 
   // Çözüm
-  resolutionSummary String? @db.Text // Çözüm özeti
+  resolutionSummary String? @db.Text // Çözüm özeti — EN GÜNCEL çözüm metni (arşiv bunu okur)
   rootCause         String? @db.Text // Kök neden
+
+  // ── Çözüm akışı (Faz 1) ───────────────────────────────────────────────────
+  // Çözüm TARİHÇESİ ayrı tabloda DEĞİL: her "Çözüldü" işaretlemesi
+  // TicketComment(isResolution=true) satırı yazar (metin + yazar + zaman orada
+  // zaten var). resolutionSummary onun denormalize son kopyasıdır — arşiv
+  // araması tek tabloda kalsın diye.
+  resolvedByEmail String? // Çözümü işaretleyen (e-posta)
+  resolvedByName  String? // Çözümü işaretleyen (görünen ad)
+
+  // Onay döngüsü: RESOLVED = "çözüldü, kullanıcı onayı bekleniyor".
+  // Yeni enum değeri GEREKMEDİ; CLOSED kapanışı, IN_PROGRESS itirazı karşılıyor.
+  //
+  // autoCloseAt HESAPLANMIYOR, YAZILIYOR: süre ileride 5 güne çıkarılırsa çoktan
+  // çözülmüş taleplerin sözü geriye dönük değişmesin diye her talep kendi
+  // bitiş anını taşır. NULL = otomatik kapanma yok (mevcut RESOLVED kayıtlar
+  // böyle kalır, cron onlara dokunmaz).
+  autoCloseAt     DateTime? // resolvedAt + itiraz süresi
+  autoClosed      Boolean   @default(false) // true = sessizlikle kapandı, false = kullanıcı onayladı
+  objectionCount  Int       @default(0) // "Sorun devam ediyor" kaç kez denildi
+  lastObjectionAt DateTime? // son itiraz anı
 
   // Memnuniyet
   satisfactionRating  Int? // 1-5 yıldız
@@ -2490,6 +2510,8 @@ model Ticket {
   @@index([zimmetFormuId])
   @@index([emailConversationId])
   @@index([emailMessageId])
+  // Otomatik kapanma cron'u: status=RESOLVED AND autoCloseAt <= now() taraması.
+  @@index([autoCloseAt])
 }
 
 // Ticket Tipleri (ITIL)

@@ -63,6 +63,9 @@ type Detay = {
   bugunDuruslar: DurusSatiri[]
   sureDagilimi: { calismaDk: number; durusDk: number; bostaDk: number; elapsedDk: number }
   uretim: { gerceklesen: number; planlanan: number | null }
+  // Açık işte canlı PLC üretimi (terminal route hesaplar): iş penceresi Σdelta + son sinyal.
+  // seriVar=false → hiç delta yok. Kapalı/geçmiş işlerde null (mevcut uretim davranışı).
+  canliUretim: { adet: number; seriVar: boolean; sonSinyal: string | null } | null
 }
 
 /** ms → "1s 12dk" / "12dk" / "45sn". Canlı süre için. */
@@ -78,6 +81,22 @@ function dkBicim(dk: number): string {
   return `${Math.floor(dk / 60)}s ${dk % 60}dk`
 }
 const trTarih2 = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('tr-TR') : '—')
+const trSaat = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'
+/** Türkçe ondalık (virgül). basamak: gösterilecek ondalık hane. */
+function trSayi(n: number, basamak = 1): string {
+  return n.toLocaleString('tr-TR', { minimumFractionDigits: basamak, maximumFractionDigits: basamak })
+}
+/**
+ * IFS çevrim faktörü + RunTimeCode → saniye/adet. UnitsHour (adet/saat) → 3600/faktör;
+ * HoursUnit (saat/adet) → faktör*3600. Faktör yok/0 veya bilinmeyen kod → null.
+ */
+function cevrimSaniye(faktor: number | null | undefined, kod: string | null | undefined): number | null {
+  if (!faktor || faktor <= 0) return null
+  if (kod === 'UnitsHour') return 3600 / faktor
+  if (kod === 'HoursUnit') return faktor * 3600
+  return null
+}
 
 /**
  * Terminal tezgah detay modal'ı. Açık/kapalı = `seciliTezgah` (ResourceId).
@@ -146,12 +165,33 @@ export function TezgahDetayModal({
       const end = d.bitisAt ? new Date(d.bitisAt).getTime() : Date.now()
       return a + Math.max(0, (end - new Date(d.baslangicAt).getTime()) / 60000)
     }, 0) ?? 0
-  const planCevrim =
-    aktif?.ifsMachRunFactor != null && aktif.ifsMachRunFactor > 0
-      ? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim()
-      : '—'
-  const uret = detay?.uretim
-  const yuzde = uret && uret.planlanan ? Math.min(100, Math.round((uret.gerceklesen / uret.planlanan) * 100)) : null
+  // Açık işte üretim = canlı PLC Σdelta (route'tan); kapalı/geçmişte mevcut gerceklesen.
+  const canli = detay?.canliUretim ?? null
+  const acikIsVar = !!aktif
+  const gerceklesenAdet = acikIsVar && canli ? canli.adet : (detay?.uretim.gerceklesen ?? 0)
+  const planlananAdet = detay?.uretim.planlanan ?? null
+  const yuzde =
+    planlananAdet && planlananAdet > 0
+      ? Math.min(100, Math.round((gerceklesenAdet / planlananAdet) * 100))
+      : null
+
+  // Çevrim — saniye birincil. Planlı: IFS faktör+kod. Gerçekleşen: iş süresi / Σdelta.
+  const planCevrimSn = cevrimSaniye(aktif?.ifsMachRunFactor, aktif?.ifsRunTimeCode)
+  const isSuresiSn =
+    aktif?.baslatildiAt ? Math.max(0, (Date.now() - new Date(aktif.baslatildiAt).getTime()) / 1000) : 0
+  const gercCevrimSn =
+    acikIsVar && canli && canli.adet > 0 && isSuresiSn > 0 ? isSuresiSn / canli.adet : null
+  const cevrimSapmaYuzde =
+    planCevrimSn && planCevrimSn > 0 && gercCevrimSn != null
+      ? Math.round(((gercCevrimSn - planCevrimSn) / planCevrimSn) * 100)
+      : null
+  // Grid'deki hızlı gösterim: saniye; çevrilemezse ham faktör+kod; yoksa —.
+  const planCevrimGrid =
+    planCevrimSn != null
+      ? `${trSayi(planCevrimSn, 0)} sn`
+      : aktif?.ifsMachRunFactor
+        ? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim()
+        : '—'
 
   const rozet =
     detay?.durum === 'durusta'
@@ -213,7 +253,7 @@ export function TezgahDetayModal({
                   <Alan2 e="Planlanan adet" d={aktif.ifsQtyDue != null ? String(aktif.ifsQtyDue) : '—'} />
                   <Alan2 e="Teslim" d={trTarih2(aktif.ifsDueDate)} />
                   <Alan2 e="İhtiyaç" d={trTarih2(aktif.ifsNeedDate)} />
-                  <Alan2 e="Planlı çevrim" d={planCevrim} />
+                  <Alan2 e="Planlı çevrim" d={planCevrimGrid} />
                   <Alan2 e="PLC" d={detay.sinyalli ? '📶 Sinyalli' : 'Sinyalsiz'} />
                   <Alan2 e="Başlangıç" d={aktif.baslatildiAt ? new Date(aktif.baslatildiAt).toLocaleTimeString('tr-TR') : '—'} />
                 </div>
@@ -246,40 +286,51 @@ export function TezgahDetayModal({
               )
             )}
 
-            {/* Üretim ilerleme */}
+            {/* Üretim ilerleme — açık işte CANLI PLC Σdelta; kapalıda kapanan iyi toplamı. */}
             <section>
               <SecBaslik>Üretim ilerleme</SecBaslik>
-              {uret && uret.planlanan ? (
+              {planlananAdet ? (
                 <>
                   <div className="mb-1 flex items-baseline justify-between text-sm">
                     <span className="font-semibold text-slate-700">
-                      {uret.gerceklesen} / {uret.planlanan}
+                      {gerceklesenAdet} / {planlananAdet}
                     </span>
-                    <span className="text-slate-500">%{yuzde}</span>
+                    <span className="text-slate-500">%{yuzde ?? 0}</span>
                   </div>
                   <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${yuzde}%` }} />
+                    <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${yuzde ?? 0}%` }} />
                   </div>
-                  <p className="mt-1 text-xs text-slate-400">bugün kapanan iyi toplamı; poller gelince canlı sayaçla zenginleşir</p>
+                  <UretimAciklama acikIsVar={acikIsVar} canli={canli} />
                 </>
+              ) : acikIsVar ? (
+                canli?.seriVar ? (
+                  <p className="text-sm text-slate-600">
+                    {gerceklesenAdet} adet üretildi (canlı PLC, son sinyal {trSaat(canli.sonSinyal)})
+                  </p>
+                ) : (
+                  <p className="text-sm text-amber-600">PLC sayacından sinyal gelmedi</p>
+                )
               ) : (
-                <p className="text-sm text-slate-400">Planlanan adet yok — {uret?.gerceklesen ?? 0} adet üretildi (bugün).</p>
+                <p className="text-sm text-slate-400">Planlanan adet yok — {gerceklesenAdet} adet üretildi (bugün).</p>
               )}
             </section>
 
-            {/* Çevrim karşılaştırma */}
+            {/* Çevrim — saniye birincil (MAS ile aynı birim); iki kutu + sapma uyarısı. */}
             <section>
-              <SecBaslik>Çevrim (planlı vs ort.)</SecBaslik>
-              <div className="flex items-center gap-4 text-sm">
-                <div>
-                  <span className="text-slate-400">planlı</span> <span className="font-semibold text-slate-700">{planCevrim}</span>
-                </div>
-                <div className="text-slate-300">|</div>
-                <div>
-                  <span className="text-slate-400">ort.</span> <span className="font-semibold text-slate-400">—</span>
-                </div>
-                <span className="ml-auto text-xs text-slate-400">ort. çevrim poller ile</span>
+              <SecBaslik>Çevrim (planlı vs gerçekleşen)</SecBaslik>
+              <div className="grid grid-cols-2 gap-2">
+                <CevrimKutu baslik="Planlı" sn={planCevrimSn} />
+                <CevrimKutu
+                  baslik="Gerçekleşen"
+                  sn={gercCevrimSn}
+                  uyari={cevrimSapmaYuzde != null && cevrimSapmaYuzde >= 20}
+                />
               </div>
+              {cevrimSapmaYuzde != null && cevrimSapmaYuzde >= 20 && (
+                <p className="mt-1.5 text-xs text-amber-600">
+                  Gerçekleşen çevrim planlının %{cevrimSapmaYuzde} üzerinde
+                </p>
+              )}
             </section>
 
             {/* Süre dağılımı */}
@@ -414,6 +465,41 @@ export function TezgahDetayModal({
 
 function SecBaslik({ children }: { children: ReactNode }) {
   return <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">{children}</h3>
+}
+
+// Üretim ilerleme çubuğu altı açıklaması — açık işte canlı PLC / sinyal yok; kapalıda kapanan toplam.
+function UretimAciklama({
+  acikIsVar,
+  canli,
+}: {
+  acikIsVar: boolean
+  canli: { seriVar: boolean; sonSinyal: string | null } | null
+}) {
+  if (!acikIsVar) {
+    return <p className="mt-1 text-xs text-slate-400">bugün kapanan iyi toplamı</p>
+  }
+  if (canli?.seriVar) {
+    return (
+      <p className="mt-1 text-xs text-slate-400">
+        canlı PLC sayacından (son sinyal {trSaat(canli.sonSinyal)}) · onaylı adet iş bitince girilir
+      </p>
+    )
+  }
+  return <p className="mt-1 text-xs text-amber-600">PLC sayacından sinyal gelmedi</p>
+}
+
+// Çevrim kutusu — saniye birincil, altında adet/saat (Türkçe ondalık). Uyarıda amber.
+function CevrimKutu({ baslik, sn, uyari }: { baslik: string; sn: number | null; uyari?: boolean }) {
+  const adetSaat = sn && sn > 0 ? 3600 / sn : null
+  return (
+    <div className={`rounded-lg border p-3 ${uyari ? 'border-amber-300 bg-amber-50' : ''}`}>
+      <div className="text-xs text-slate-400">{baslik}</div>
+      <div className={`text-lg font-semibold ${uyari ? 'text-amber-700' : 'text-slate-800'}`}>
+        {sn != null ? `${trSayi(sn, 0)} sn` : '—'}
+      </div>
+      {adetSaat != null && <div className="text-xs text-slate-500">{trSayi(adetSaat, 1)} adet/saat</div>}
+    </div>
+  )
 }
 function Alan2({ e, d, alt }: { e: string; d: string; alt?: string }) {
   return (

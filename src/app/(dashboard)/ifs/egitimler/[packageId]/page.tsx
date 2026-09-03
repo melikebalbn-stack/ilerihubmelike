@@ -18,7 +18,9 @@ export default async function IfsPaketYonetimPage({
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
 
-  const yetkili = await hasPermission("akademi.kurs.edit");
+  // OR: yeni ifs.admin ya da eski akademi.kurs.edit. ifs.keyuser BİLEREK YOK —
+  // key user değerlendirme girer, yapıyı değiştirmez.
+  const yetkili = await hasPermission(["ifs.admin", "akademi.kurs.edit"]);
   if (!yetkili) redirect("/ifs/egitimler?error=unauthorized");
 
   const { packageId } = await params;

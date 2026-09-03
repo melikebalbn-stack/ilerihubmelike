@@ -11,6 +11,9 @@ import { logAuditEvent } from "@/lib/audit-log";
 // grade.manual (geri uyum) veya tam admin. grade.manual ileride OR'dan çıkarılıp
 // daraltılabilir.
 const IFS_EVAL_WRITE = [
+  // IFS ayrıştırması: yeni anahtar başa, eski geriye uyum için duruyor.
+  // Oturumlar yenilenip roller atandıktan sonra akademi.* kaldırılacak.
+  "ifs.evaluate",
   "akademi.ifs.evaluate",
   "akademi.grade.manual",
   "akademi.admin",
@@ -23,7 +26,7 @@ const IFS_EVAL_WRITE = [
 // N+1 YOK: getUsersByBolum + GOREV içerikleri + ContentProgress (+ userId varsa
 // IfsTaskEvaluation) — per-user döngüde sorgu yok.
 export async function GET(req: NextRequest) {
-  const { session, error } = await requirePermission("akademi.report.view");
+  const { session, error } = await requirePermission(['ifs.rapor.view', 'akademi.report.view']);
   if (error) return error;
 
   const callerId = await resolveAkademiUserId(session);

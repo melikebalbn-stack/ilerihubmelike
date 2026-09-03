@@ -18,7 +18,7 @@ const querySchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const { session, error } = await requirePermission("akademi.report.view");
+  const { session, error } = await requirePermission(['ifs.rapor.view', 'akademi.report.view']);
   if (error) return error;
   const callerId = await resolveAkademiUserId(session);
   if (!callerId) {

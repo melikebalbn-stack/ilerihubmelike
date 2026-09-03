@@ -20,7 +20,7 @@ import { ifsYuzde } from "@/lib/akademi/ifs-progress";
 // "başarılı" işaretlenebiliyor — prod'da 8 satır; düzeltilmezse oran 100'ü
 // aşıyordu, bkz. %107 vakası).
 export async function GET(req: NextRequest) {
-  const { session, error } = await requirePermission("akademi.report.view");
+  const { session, error } = await requirePermission(['ifs.rapor.view', 'akademi.report.view']);
   if (error) return error;
 
   const callerId = await resolveAkademiUserId(session);

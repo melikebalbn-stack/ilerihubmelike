@@ -12,7 +12,7 @@ import { resolveUserBolum } from "@/lib/user-personnel";
 // akademi.admin => her bölüm, aksi halde yalnız kendi bölümü (başkası 403).
 // Kapsam, DEĞERLENDİRİLEN kişinin bölümü üzerinden belirlenir.
 export async function GET(req: NextRequest) {
-  const { session, error } = await requirePermission("akademi.report.view");
+  const { session, error } = await requirePermission(['ifs.rapor.view', 'akademi.report.view']);
   if (error) return error;
 
   const callerId = await resolveAkademiUserId(session);

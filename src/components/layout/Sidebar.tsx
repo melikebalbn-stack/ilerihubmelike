@@ -162,11 +162,15 @@ const mainMenuItems = [
 //   Görevlerim → akademi.view (herkes), diğerleri → akademi.report.view,
 //   Eğitimler  → akademi.kurs.edit (authoring).
 // ifs.* anahtarlarına geçiş, guard'lar OR'a çevrildikten sonra yapılacak.
+// IFS ayrıştırması: permission alanı string[] (OR) — filterItems bunu runtime'da
+// zaten destekliyor (IPRO öğeleri de böyle). Yeni ifs.* anahtarları başa, eski
+// akademi.* geriye uyum için duruyor; roller atanıp oturumlar yenilenince
+// (~4 sa) eski anahtarlar kaldırılacak.
 const ifsMenuItems = [
-  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "akademi.kurs.edit" },
-  { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: "akademi.kurs.edit" },
-  { name: "Görevlerim", icon: ListChecks, href: "/ifs/gorevlerim", roles: [] as string[], permission: "akademi.view" },
-  { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: "akademi.report.view" },
+  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: ["ifs.admin", "akademi.kurs.edit"] },
+  { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: ["ifs.admin", "akademi.kurs.edit"] },
+  { name: "Görevlerim", icon: ListChecks, href: "/ifs/gorevlerim", roles: [] as string[], permission: ["ifs.view", "akademi.view"] },
+  { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: ["ifs.rapor.view", "akademi.report.view"] },
 ]
 
 // Formlar alt menüsü

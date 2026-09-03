@@ -17,7 +17,7 @@ const postSchema = z.object({
 });
 
 export async function GET() {
-  const { error } = await requirePermission("akademi.admin");
+  const { error } = await requirePermission(['ifs.admin', 'akademi.admin']);
   if (error) return error;
 
   const atamalar = await prisma.ifsKeyUser.findMany({
@@ -59,7 +59,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { session, error } = await requirePermission("akademi.admin");
+  const { session, error } = await requirePermission(['ifs.admin', 'akademi.admin']);
   if (error) return error;
   const actorId = await resolveAkademiUserId(session);
   if (!actorId) {
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { error } = await requirePermission("akademi.admin");
+  const { error } = await requirePermission(['ifs.admin', 'akademi.admin']);
   if (error) return error;
 
   const id = req.nextUrl.searchParams.get("id")?.trim();

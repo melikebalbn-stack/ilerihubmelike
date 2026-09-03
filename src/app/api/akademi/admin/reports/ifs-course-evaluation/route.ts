@@ -11,6 +11,9 @@ import { logAuditEvent } from "@/lib/audit-log";
 // Yetki: OR(akademi.ifs.evaluate, akademi.grade.manual, akademi.admin).
 // Yazımdan sonra recomputeCourseProgress → isCompleted güncellenir. UI PR-3'te.
 const IFS_EVAL_WRITE = [
+  // IFS ayrıştırması: yeni anahtar başa, eski geriye uyum için duruyor.
+  // Oturumlar yenilenip roller atandıktan sonra akademi.* kaldırılacak.
+  "ifs.evaluate",
   "akademi.ifs.evaluate",
   "akademi.grade.manual",
   "akademi.admin",

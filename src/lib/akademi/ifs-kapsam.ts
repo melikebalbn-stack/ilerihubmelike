@@ -14,7 +14,17 @@ import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 // `bolumler === null` → sınırsız (yönetici). Dizi → yalnız o bölümler.
 // Boş dizi olamaz: key user'ın hiç ataması yoksa `yetkili:false` döner ve
 // çağıran 403 verir — fail-closed.
-export const IFS_EGITIM_OKUMA = ["akademi.kurs.edit", "ifs.keyuser"];
+// IFS ayrıştırması: yeni ifs.* anahtarları başa eklendi, eski akademi.*
+// anahtarları geriye uyum için DURUYOR. Roller kişilere atanıp oturumlar
+// yenilendikten (~4 sa) sonra eski anahtarlar kaldırılacak.
+export const IFS_EGITIM_OKUMA = [
+  "ifs.admin",
+  "akademi.kurs.edit",
+  "ifs.keyuser",
+];
+
+/** Yönetici sayılan anahtarlar — kapsam DARALTILMAZ, tüm kişiler görünür. */
+const IFS_YONETICI = ["ifs.admin", "akademi.kurs.edit"];
 
 export interface IfsKapsam {
   yetkili: boolean;
@@ -26,7 +36,11 @@ export interface IfsKapsam {
 
 export async function ifsEgitimKapsami(userId: string): Promise<IfsKapsam> {
   const perms = await getUserPermissions(userId);
-  const yonetici = perms.has("akademi.kurs.edit");
+  // DİKKAT: yönetici kararı guard listesiyle AYNI anahtar kümesinden gelmeli.
+  // ifs.admin yalnız IFS_EGITIM_OKUMA'ya eklenip buraya eklenmeseydi, sadece
+  // ifs.admin taşıyan kişi guard'ı geçer ama yonetici=false + keyUser=false
+  // olduğu için yetkili=false dönüp 403 yerdi — sessiz bir kapı.
+  const yonetici = IFS_YONETICI.some((k) => perms.has(k));
   const keyUser = perms.has("ifs.keyuser");
 
   if (yonetici) {

@@ -26,9 +26,10 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-// Sekme → gerekli izin. Listede olmayan sekme, sayfayı görebilen herkese açık.
-const TAB_IZIN: Partial<Record<TabId, string>> = {
-  keyuser: "akademi.admin",
+// Sekme → gerekli izinler (OR). Listede olmayan sekme, sayfayı görebilen
+// herkese açık. IFS ayrıştırması: yeni ifs.* başa, eski akademi.* geriye uyum.
+const TAB_IZIN: Partial<Record<TabId, string[]>> = {
+  keyuser: ["ifs.admin", "akademi.admin"],
 };
 
 export default function IfsRaporlarPage() {
@@ -41,7 +42,7 @@ export default function IfsRaporlarPage() {
   // Menü görünürlüğü kozmetik; asıl zorlama uçlarda.
   const gorunenTabs = TABS.filter((t) => {
     const gerekli = TAB_IZIN[t.id];
-    return !gerekli || izinler.includes(gerekli);
+    return !gerekli || gerekli.some((k) => izinler.includes(k));
   });
 
   return (

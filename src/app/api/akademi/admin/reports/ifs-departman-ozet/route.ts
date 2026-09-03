@@ -26,7 +26,7 @@ import { ifsYuzde } from "@/lib/akademi/ifs-progress";
 //                    değil "henüz değerlendirilmedi" demektir — ekran ikisini
 //                    ayırabilsin diye döner.
 export async function GET() {
-  const { session, error } = await requirePermission("akademi.report.view");
+  const { session, error } = await requirePermission(['ifs.rapor.view', 'akademi.report.view']);
   if (error) return error;
 
   const callerId = await resolveAkademiUserId(session);

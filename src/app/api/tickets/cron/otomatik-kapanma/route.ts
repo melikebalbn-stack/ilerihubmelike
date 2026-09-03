@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { dispatchTicketKapandi } from '@/lib/ticket-notifications'
 import { AZAMI_TOPLU_KAPANIS, ALARM_EPOSTASI, ITIRAZ_SURESI_GUN } from '@/lib/tickets/cozum'
 
 export const dynamic = 'force-dynamic'
@@ -21,6 +22,11 @@ export const dynamic = 'force-dynamic'
  * kapanma sessizce olursa fark edilmesi günler alır. Normal günlük hacim tek
  * haneli; eşiğin aşılması bir hata sinyalidir (ör. autoCloseAt'in yanlış
  * hesaplanması), meşru bir yığılma değil.
+ *
+ * KAPANIŞ BİLDİRİMİ: kapanan her talep için dispatchTicketKapandi çağrılır —
+ * elle kapanışla aynı dispatcher, aynı puanlama daveti, aynı tek-sefer damgası.
+ * Güvenlik ağı devreye girip tur durduğunda kapanan talep olmadığı için hiçbir
+ * bildirim gitmez.
  *
  * Auth: x-cron-secret (check-sla / check-mail ile birebir aynı desen).
  * Kuru koşu: ?dryRun=1 → hiçbir şey yazılmaz, adaylar raporlanır.
@@ -101,11 +107,8 @@ export async function POST(req: NextRequest) {
 
     for (const t of adaylar) {
       try {
-        // Kapanış + timeline tek işlemde. Kapanış BİLDİRİMİ GÖNDERİLMİYOR:
-        // kullanıcı çözüm anında zaten "3 gün içinde itiraz edin" maili aldı;
-        // sessiz kalarak onayladığı bir kapanışı ikinci kez haber vermek
-        // gürültü olur. Puanlama daveti de bu yüzden burada tetiklenmiyor —
-        // kullanıcı isterse talebe girip puanlar (pencere closedAt'ten işler).
+        // Kapanış + timeline tek işlemde. Kapanış bildirimi aşağıda, işlem
+        // BAŞARIYLA bittikten sonra (elle kapanışla aynı kalıp).
         await prisma.$transaction([
           prisma.ticket.update({
             where: { id: t.id },
@@ -129,6 +132,46 @@ export async function POST(req: NextRequest) {
           }),
         ])
         kapatilan.push(t.ticketNumber)
+
+        // ── KAPANIŞ BİLDİRİMİ + PUANLAMA DAVETİ (best-effort) ────────────
+        // Elle kapanışla AYNI kalıp: aynı dispatcher, aynı tek-sefer damgası
+        // ('satisfaction_requested' timeline kaydı), aynı hata yutma.
+        //
+        // kapatanEmail = null: kapatan "Sistem". dispatchTicketKapandi'nin
+        // "kendi kapattığına haber verme" kısa devresi `acan === (kapatan ?? '')`
+        // karşılaştırmasıdır; acan boşken zaten daha yukarıda dönüldüğü için
+        // null geçildiğinde bu koşul ASLA tutmaz — mail her zaman denenir.
+        //
+        // Bildirim hatası kapanışı geri almaz: talep kapandı, mail ikincildir.
+        try {
+          const zatenIstendi = await prisma.ticketTimeline.findFirst({
+            where: { ticketId: t.id, action: 'satisfaction_requested' },
+            select: { id: true },
+          })
+          if (!zatenIstendi) {
+            await dispatchTicketKapandi(
+              {
+                id: t.id,
+                ticketNumber: t.ticketNumber,
+                subject: t.subject,
+                requesterEmail: t.requesterEmail,
+                status: 'CLOSED',
+              },
+              null,
+            )
+            await prisma.ticketTimeline.create({
+              data: {
+                ticketId: t.id,
+                action: 'satisfaction_requested',
+                description: 'Değerlendirme daveti gönderildi',
+                performedBy: 'system',
+                performedByName: 'Sistem',
+              },
+            })
+          }
+        } catch (err) {
+          console.error('[ticket-otokapanma] kapanış bildirimi gönderilemedi:', t.ticketNumber, err)
+        }
       } catch (err) {
         const mesaj = err instanceof Error ? err.message : String(err)
         console.error('[ticket-otokapanma]', t.ticketNumber, mesaj)

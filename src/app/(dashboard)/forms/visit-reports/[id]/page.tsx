@@ -29,6 +29,7 @@ import {
 import { RecipientInput, Recipient } from "@/components/forms/RecipientInput"
 import Link from "next/link"
 import { format } from "date-fns"
+import { yonEtiket } from "@/lib/visit-reports/yon"
 import { tr } from "date-fns/locale"
 import { useSession } from "next-auth/react"
 // PDF is dynamically imported in handleDownloadPDF
@@ -73,6 +74,7 @@ interface VisitReport {
   visitTime: string
   companyName: string
   visitType: string
+  direction?: string
   location: string | null
   project: string | null
   meetingSummary: string
@@ -288,6 +290,8 @@ export default function VisitReportDetailPage() {
     return null
   }
 
+  // Yön etiketleri — eski kayıtlarda direction yoksa OUTGOING kabul edilir.
+  const yon = yonEtiket(report.direction)
   const ourPeople = report.participants.filter(p => p.company === "ILERI_GROUP")
   const theirPeople = report.participants.filter(p => p.company === "VISITED_COMPANY")
   const canApprove = session?.user?.permissions?.includes("forms.approve") ?? false
@@ -326,13 +330,13 @@ export default function VisitReportDetailPage() {
             </Link>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-xl lg:text-3xl font-bold">{report.reportNumber}</h1>
+                <h1 className="text-lg lg:text-2xl font-bold">{report.reportNumber}</h1>
                 <Badge variant={statusLabels[report.status]?.variant || "secondary"}>
                   {statusLabels[report.status]?.label || report.status}
                 </Badge>
               </div>
               <p className="text-muted-foreground">
-                {report.companyName} - {visitTypeLabels[report.visitType]}
+                {yon.rozet} · {report.companyName} - {visitTypeLabels[report.visitType]}
               </p>
             </div>
           </div>
@@ -378,14 +382,14 @@ export default function VisitReportDetailPage() {
           <div className="hidden print:block mb-6 pb-4 border-b-2 border-[#1e3a5f]">
             <div className="flex justify-between items-start">
               <div>
-                <h1 className="text-2xl font-bold text-[#1e3a5f]">İLERİ GRUP</h1>
-                <p className="text-sm text-gray-600">Savunma Sanayi Çözümleri</p>
+                <h1 className="text-xl font-bold text-[#1e3a5f]">İLERİ GRUP</h1>
+                <p className="text-xs text-gray-600">Savunma Sanayi Çözümleri</p>
               </div>
               <div className="text-right">
-                <div className="text-lg font-semibold text-[#1e3a5f] bg-gray-100 px-4 py-2 rounded">
+                <div className="text-base font-semibold text-[#1e3a5f] bg-gray-100 px-4 py-2 rounded">
                   {report.reportNumber}
                 </div>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 mt-1">
                   Oluşturma: {format(new Date(report.createdAt), "dd.MM.yyyy")}
                 </p>
               </div>
@@ -405,7 +409,7 @@ export default function VisitReportDetailPage() {
                 <div className="flex items-center gap-3">
                   <Calendar className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Ziyaret Tarihi</p>
+                    <p className="text-xs text-muted-foreground">Ziyaret Tarihi</p>
                     <p className="font-medium">
                       {format(new Date(report.visitDate), "dd MMMM yyyy, EEEE", { locale: tr })}
                     </p>
@@ -414,21 +418,21 @@ export default function VisitReportDetailPage() {
                 <div className="flex items-center gap-3">
                   <Clock className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Saat</p>
+                    <p className="text-xs text-muted-foreground">Saat</p>
                     <p className="font-medium">{report.visitTime}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <Building2 className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Firma</p>
+                    <p className="text-xs text-muted-foreground">{yon.firma}</p>
                     <p className="font-medium">{report.companyName}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <Briefcase className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Ziyaret Türü</p>
+                    <p className="text-xs text-muted-foreground">Ziyaret Türü</p>
                     <p className="font-medium">{visitTypeLabels[report.visitType]}</p>
                   </div>
                 </div>
@@ -436,7 +440,7 @@ export default function VisitReportDetailPage() {
                   <div className="flex items-center gap-3">
                     <MapPin className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <p className="text-sm text-muted-foreground">Konum</p>
+                      <p className="text-xs text-muted-foreground">{yon.yer}</p>
                       <p className="font-medium">{report.location}</p>
                     </div>
                   </div>
@@ -445,7 +449,7 @@ export default function VisitReportDetailPage() {
                   <div className="flex items-center gap-3">
                     <FileText className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <p className="text-sm text-muted-foreground">Proje/Konu</p>
+                      <p className="text-xs text-muted-foreground">Proje/Konu</p>
                       <p className="font-medium">{report.project}</p>
                     </div>
                   </div>
@@ -465,7 +469,7 @@ export default function VisitReportDetailPage() {
             <CardContent>
               <div className="grid gap-6 md:grid-cols-2">
                 <div>
-                  <h4 className="text-sm font-semibold text-muted-foreground mb-3">İleri Group&apos;tan</h4>
+                  <h4 className="text-xs font-semibold text-muted-foreground mb-3">{yon.bizimkiler}</h4>
                   <ul className="space-y-2">
                     {ourPeople.map((p) => (
                       <li key={p.id} className="flex items-center gap-2">
@@ -477,7 +481,7 @@ export default function VisitReportDetailPage() {
                   </ul>
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-muted-foreground mb-3">Görüşülen Kişiler</h4>
+                  <h4 className="text-xs font-semibold text-muted-foreground mb-3">{yon.onlar}</h4>
                   <ul className="space-y-2">
                     {theirPeople.map((p) => (
                       <li key={p.id} className="flex items-center gap-2">
@@ -556,7 +560,7 @@ export default function VisitReportDetailPage() {
               <CardContent className="space-y-4">
                 {report.additionalNotes && (
                   <div>
-                    <h4 className="text-sm font-semibold text-muted-foreground mb-2">Toplantı Notları</h4>
+                    <h4 className="text-xs font-semibold text-muted-foreground mb-2">Toplantı Notları</h4>
                     <div className="prose prose-sm max-w-none whitespace-pre-wrap">
                       {report.additionalNotes}
                     </div>
@@ -564,7 +568,7 @@ export default function VisitReportDetailPage() {
                 )}
                 {report.nextSteps && (
                   <div>
-                    <h4 className="text-sm font-semibold text-muted-foreground mb-2">Sonraki Adımlar</h4>
+                    <h4 className="text-xs font-semibold text-muted-foreground mb-2">Sonraki Adımlar</h4>
                     <div className="prose prose-sm max-w-none whitespace-pre-wrap">
                       {report.nextSteps}
                     </div>
@@ -612,7 +616,7 @@ export default function VisitReportDetailPage() {
           {/* Onay Bilgisi */}
           <Card className="print:shadow-none print:border-0">
             <CardContent className="pt-6">
-              <div className="flex justify-between items-center text-sm text-muted-foreground">
+              <div className="flex justify-between items-center text-xs text-muted-foreground">
                 <div>
                   <span>Oluşturan: </span>
                   <span className="font-medium text-foreground">{report.createdBy.name}</span>
@@ -655,7 +659,7 @@ export default function VisitReportDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm font-medium mb-1">Alıcılar</p>
+              <p className="text-xs font-medium mb-1">Alıcılar</p>
               <p className="text-xs text-muted-foreground">
                 İsim yazınca Active Directory&apos;den önerilecek, email otomatik gelecek. Manuel de ekleyebilirsiniz.
               </p>
@@ -706,7 +710,7 @@ export default function VisitReportDetailPage() {
                   return (
                     <div key={log.id} className="p-3 border rounded-lg bg-gray-50 space-y-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium">
+                        <p className="text-xs font-medium">
                           {log.sentByName || log.sentBy}
                         </p>
                         <p className="text-xs text-muted-foreground">

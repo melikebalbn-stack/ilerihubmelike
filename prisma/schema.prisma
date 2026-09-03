@@ -7585,8 +7585,11 @@ model VisitReport {
   visitDate   DateTime
   endDate     DateTime?
   visitTime   String // "10:00" formatında
-  companyName String // Ziyaret edilen firma
+  companyName String // OUTGOING: ziyaret edilen firma · INCOMING: ziyaretçi firma
   visitType   VisitType
+  /// Ziyaretin yönü. OUTGOING = biz gittik, INCOMING = bizi ziyaret ettiler.
+  /// Mevcut kayıtların tamamı giden ziyaret olduğu için varsayılan OUTGOING.
+  direction   VisitDirection @default(OUTGOING)
   location    String? // Ziyaret yeri/adres
   project     String? // İlgili proje/konu
 
@@ -7626,6 +7629,7 @@ model VisitReport {
   @@index([status])
   @@index([visitDate])
   @@index([companyName])
+  @@index([direction])
 }
 
 model VisitReportParticipant {
@@ -7648,7 +7652,10 @@ model VisitReportAction {
   report   VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   description String
-  responsible String // Sorumlu kişi/departman
+  responsible String // Sorumlu kişi/departman (serbest metin — harici kişi de olabilir)
+  /// Personel seçiciden geldiyse sicil; bildirim eşleşmesi buradan yapılır.
+  /// Serbest metin girildiyse null kalır (harici sorumlu).
+  responsibleSicilNo String?
   dueDate     DateTime?
   status      ActionItemStatus @default(PENDING)
   completedAt DateTime?
@@ -7687,6 +7694,11 @@ model VisitReportEmailLog {
   sentAt DateTime @default(now())
 
   @@index([reportId])
+}
+
+enum VisitDirection {
+  OUTGOING // Ziyarete gittik
+  INCOMING // Ziyaretçi ağırladık
 }
 
 enum VisitType {

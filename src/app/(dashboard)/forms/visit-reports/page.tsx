@@ -23,6 +23,7 @@ import {
 import { Plus, Search, FileText, Eye, Pencil, Trash2, Building2, Calendar, Users } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
+import { YON, yonEtiket } from "@/lib/visit-reports/yon"
 import { tr } from "date-fns/locale"
 
 interface Participant {
@@ -46,6 +47,7 @@ interface VisitReport {
   visitDate: string
   companyName: string
   visitType: string
+  direction?: string
   location: string | null
   project: string | null
   status: string
@@ -78,15 +80,19 @@ export default function VisitReportsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [directionFilter, setDirectionFilter] = useState<string>("all")
 
   useEffect(() => {
     fetchReports()
-  }, [statusFilter])
+  }, [statusFilter, directionFilter])
 
   async function fetchReports() {
     try {
       setLoading(true)
       const params = new URLSearchParams()
+      if (directionFilter !== "all") {
+        params.append("direction", directionFilter)
+      }
       if (statusFilter !== "all") {
         params.append("status", statusFilter)
       }
@@ -125,7 +131,7 @@ export default function VisitReportsPage() {
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl lg:text-3xl font-bold">Ziyaret Raporları</h1>
+          <h1 className="text-lg lg:text-2xl font-bold">Ziyaret Raporları</h1>
           <p className="text-muted-foreground">
             Müşteri ve tedarikçi ziyaret raporlarını yönetin
           </p>
@@ -142,42 +148,42 @@ export default function VisitReportsPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Toplam Rapor</CardTitle>
+            <CardTitle className="text-xs font-medium">Toplam Rapor</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{reports.length}</div>
+            <div className="text-xl font-bold">{reports.length}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Onay Bekleyen</CardTitle>
+            <CardTitle className="text-xs font-medium">Onay Bekleyen</CardTitle>
             <FileText className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-xl font-bold">
               {reports.filter(r => r.status === "PENDING").length}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Onaylanan</CardTitle>
+            <CardTitle className="text-xs font-medium">Onaylanan</CardTitle>
             <FileText className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-xl font-bold">
               {reports.filter(r => r.status === "APPROVED").length}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Açık Aksiyonlar</CardTitle>
+            <CardTitle className="text-xs font-medium">Açık Aksiyonlar</CardTitle>
             <Users className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-xl font-bold">
               {reports.reduce((sum, r) => sum + r.actionItems.filter(a => a.status !== "COMPLETED").length, 0)}
             </div>
           </CardContent>
@@ -197,6 +203,16 @@ export default function VisitReportsPage() {
                 className="pl-10"
               />
             </div>
+            <Select value={directionFilter} onValueChange={setDirectionFilter}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Yön" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tüm Yönler</SelectItem>
+                <SelectItem value="OUTGOING">{YON.OUTGOING.rozet}</SelectItem>
+                <SelectItem value="INCOMING">{YON.INCOMING.rozet}</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Durum" />
@@ -221,6 +237,7 @@ export default function VisitReportsPage() {
               <TableRow>
                 <TableHead>Rapor No</TableHead>
                 <TableHead>Ziyaret Tarihi</TableHead>
+                <TableHead>Yön</TableHead>
                 <TableHead>Firma</TableHead>
                 <TableHead>Tür</TableHead>
                 <TableHead>Katılımcı</TableHead>
@@ -233,13 +250,13 @@ export default function VisitReportsPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8">
+                  <TableCell colSpan={10} className="text-center py-8">
                     Yükleniyor...
                   </TableCell>
                 </TableRow>
               ) : filteredReports.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8">
+                  <TableCell colSpan={10} className="text-center py-8">
                     Rapor bulunamadı
                   </TableCell>
                 </TableRow>
@@ -252,6 +269,17 @@ export default function VisitReportsPage() {
                         <Calendar className="h-4 w-4 text-muted-foreground" />
                         {format(new Date(report.visitDate), "dd MMM yyyy", { locale: tr })}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          report.direction === "INCOMING"
+                            ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200"
+                            : "bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-200"
+                        }`}
+                      >
+                        {yonEtiket(report.direction).rozet}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

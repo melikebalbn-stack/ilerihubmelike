@@ -6,6 +6,9 @@ import { VisitReportForPDF } from "@/lib/pdf/visit-report-pdf-server"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { requireUser } from "@/lib/auth/require-user"
+import { after } from "next/server"
+import { aksiyonBildirimiGonder } from "@/lib/visit-reports/aksiyon-bildirimi"
+import { gecerliYon } from "@/lib/visit-reports/yon"
 
 // Rapor numarası oluştur: ZR-2025-001
 async function generateReportNumber(): Promise<string> {
@@ -39,6 +42,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const companyName = searchParams.get('company')
+    const direction = searchParams.get('direction')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
@@ -58,6 +62,11 @@ export async function GET(request: NextRequest) {
 
     if (companyName) {
       where.companyName = { contains: companyName, mode: 'insensitive' }
+    }
+
+    // Yön filtresi — geçersiz değer sessizce yok sayılır (filtre uygulanmaz).
+    if (direction === 'OUTGOING' || direction === 'INCOMING') {
+      where.direction = direction
     }
 
     const [reports, total] = await Promise.all([
@@ -101,6 +110,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const {
+      direction,
       visitDate,
       endDate,
       visitTime,
@@ -134,6 +144,7 @@ export async function POST(request: NextRequest) {
         visitTime,
         companyName,
         visitType: visitType as VisitType,
+        direction: gecerliYon(direction),
         location,
         project,
         meetingSummary,
@@ -149,9 +160,10 @@ export async function POST(request: NextRequest) {
           }))
         },
         actionItems: {
-          create: (actionItems || []).map((a: { description: string; responsible: string; dueDate?: string; status?: string }) => ({
+          create: (actionItems || []).map((a: { description: string; responsible: string; responsibleSicilNo?: string | null; dueDate?: string; status?: string }) => ({
             description: a.description,
             responsible: a.responsible,
+            responsibleSicilNo: a.responsibleSicilNo || null,
             dueDate: a.dueDate ? new Date(a.dueDate) : null,
             status: (a.status || 'PENDING') as ActionItemStatus
           }))
@@ -163,6 +175,28 @@ export async function POST(request: NextRequest) {
         actionItems: true
       }
     })
+
+    // Aksiyon bildirimi — yanıt gönderildikten SONRA (tasks paketindeki after()
+    // deseni): bildirim yavaşlığı rapor kaydını bekletmesin, hata kaydı bozmasın.
+    if (report.actionItems.length > 0) {
+      after(async () => {
+        try {
+          const sonuc = await aksiyonBildirimiGonder(
+            { id: report.id, reportNumber: report.reportNumber, companyName: report.companyName },
+            report.actionItems.map((a) => ({
+              description: a.description,
+              responsibleSicilNo: a.responsibleSicilNo,
+              dueDate: a.dueDate,
+            })),
+          )
+          if (sonuc.cozulemedi > 0) {
+            console.warn(`[ziyaret-aksiyon] ${report.reportNumber}: ${sonuc.cozulemedi} sorumlu User'a çözülemedi`)
+          }
+        } catch (err) {
+          console.error('[ziyaret-aksiyon] bildirim adımı başarısız:', err)
+        }
+      })
+    }
 
     // E-posta gönder (sadece SENT durumunda ve alıcılar varsa)
     if (status === 'SENT' && recipients && recipients.length > 0) {

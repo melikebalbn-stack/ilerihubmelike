@@ -19,6 +19,8 @@ import Link from "next/link"
 import { ParticipantInput, ExternalParticipantInput } from "@/components/forms/ParticipantInput"
 import { RecipientInput, Recipient } from "@/components/forms/RecipientInput"
 import { FileUploadDropzone, type UploadedFile } from "@/components/ui/file-upload-dropzone"
+import { UserSearchCombobox } from "@/components/user-search-combobox"
+import { YON, gecerliYon, type VisitDirection } from "@/lib/visit-reports/yon"
 
 interface Attachment {
   id: string
@@ -41,6 +43,9 @@ interface ActionItem {
   id?: string
   description: string
   responsible: string
+  responsibleSicilNo?: string
+  /** Yalniz UI: serbest metin modu (harici sorumlu). */
+  elleGiris?: boolean
   dueDate: string
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
 }
@@ -55,6 +60,10 @@ export default function EditVisitReportPage() {
   const [reportNumber, setReportNumber] = useState("")
 
   // Form state
+  // Yon kayittan gelir; eski kayitlarda alan yoksa OUTGOING.
+  const [direction, setDirection] = useState<VisitDirection>("OUTGOING")
+  const yon = YON[direction]
+
   const [visitDate, setVisitDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [visitTime, setVisitTime] = useState("")
@@ -128,6 +137,8 @@ export default function EditVisitReportPage() {
           title: p.title || ""
         })) : [{ name: "", title: "", company: "VISITED_COMPANY" }])
 
+        setDirection(gecerliYon(data.direction))
+
         // Aksiyonlar
         const actions = data.actionItems || []
         setActionItems(actions.length > 0 ? actions.map((a: ActionItem) => ({
@@ -192,7 +203,7 @@ export default function EditVisitReportPage() {
     setActionItems(actionItems.filter((_, i) => i !== index))
   }
 
-  function updateActionItem(index: number, field: keyof ActionItem, value: string) {
+  function updateActionItem(index: number, field: keyof ActionItem, value: string | boolean) {
     const updated = [...actionItems]
     updated[index] = { ...updated[index], [field]: value }
     setActionItems(updated)
@@ -263,6 +274,7 @@ export default function EditVisitReportPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          direction,
           visitDate,
           endDate: endDate || null,
           visitTime,
@@ -337,12 +349,38 @@ export default function EditVisitReportPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-xl lg:text-3xl font-bold">Raporu Duzenle</h1>
+          <h1 className="text-lg lg:text-2xl font-bold">Raporu Duzenle</h1>
           <p className="text-muted-foreground">
             {reportNumber} - {companyName}
           </p>
         </div>
       </div>
+
+      {/* Yon secimi — alan etiketleri buna bagli */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Ziyaret Yonu</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(["OUTGOING", "INCOMING"] as const).map((y) => (
+              <button
+                key={y}
+                type="button"
+                onClick={() => setDirection(y)}
+                className={`rounded-lg border p-4 text-left transition ${
+                  direction === y
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
+                    : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                }`}
+              >
+                <div className="font-medium text-gray-900 dark:text-white">{YON[y].kartBaslik}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">{YON[y].kartAciklama}</div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Temel Bilgiler */}
       <Card>
@@ -382,10 +420,10 @@ export default function EditVisitReportPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="companyName">Ziyaret Edilen Firma *</Label>
+              <Label htmlFor="companyName">{yon.firma} *</Label>
               <Input
                 id="companyName"
-                placeholder="Ornek: Roketsan A.S."
+                placeholder={yon.firmaPlaceholder}
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
               />
@@ -411,10 +449,10 @@ export default function EditVisitReportPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="location">Ziyaret Yeri / Adres</Label>
+              <Label htmlFor="location">{yon.yer}</Label>
               <Input
                 id="location"
-                placeholder="Ornek: Roketsan Elmadag Tesisleri"
+                placeholder={yon.yerPlaceholder}
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
               />
@@ -442,7 +480,7 @@ export default function EditVisitReportPage() {
             {/* Ileri Group'tan - AD ile autocomplete */}
             <div className="space-y-4">
               <div>
-                <Label className="text-base font-semibold">Ileri Group&apos;tan Gidenler</Label>
+                <Label className="text-sm font-semibold">{yon.bizimkiler}</Label>
                 <p className="text-xs text-muted-foreground mt-1">
                   Isim yazinca Active Directory&apos;den onerilecek
                 </p>
@@ -467,7 +505,7 @@ export default function EditVisitReportPage() {
             {/* Gorusulen Kisiler - Manuel giris */}
             <div className="space-y-4">
               <div>
-                <Label className="text-base font-semibold">Gorusulen Kisiler</Label>
+                <Label className="text-sm font-semibold">{yon.onlar}</Label>
                 <p className="text-xs text-muted-foreground mt-1">
                   Ziyaret edilen firmadan gorusulen kisiler
                 </p>
@@ -535,11 +573,34 @@ export default function EditVisitReportPage() {
                 )}
               </div>
               <div className="grid gap-2 md:grid-cols-3">
-                <Input
-                  placeholder="Sorumlu"
-                  value={action.responsible}
-                  onChange={(e) => updateActionItem(index, "responsible", e.target.value)}
-                />
+                <div className="space-y-1">
+                  {action.elleGiris ? (
+                    <Input
+                      placeholder="Sorumlu (harici kisi)"
+                      value={action.responsible}
+                      onChange={(e) => updateActionItem(index, "responsible", e.target.value)}
+                    />
+                  ) : (
+                    <UserSearchCombobox
+                      endpoint="/api/personnel/search"
+                      placeholder={action.responsible || "Sorumlu secin..."}
+                      onSelect={(u) => {
+                        updateActionItem(index, "responsible", u?.name ?? "")
+                        updateActionItem(index, "responsibleSicilNo", u?.sicilNo ?? "")
+                      }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline"
+                    onClick={() => {
+                      updateActionItem(index, "responsibleSicilNo", "")
+                      updateActionItem(index, "elleGiris", !action.elleGiris)
+                    }}
+                  >
+                    {action.elleGiris ? "Listeden sec" : "Listede yok, elle yaz"}
+                  </button>
+                </div>
                 <Input
                   type="date"
                   value={action.dueDate}
@@ -610,7 +671,7 @@ export default function EditVisitReportPage() {
           {/* Mevcut ekler */}
           {existingAttachments.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Mevcut Dosyalar</Label>
+              <Label className="text-xs font-medium">Mevcut Dosyalar</Label>
               <div className="grid gap-2">
                 {existingAttachments.map((att) => (
                   <div key={att.id} className="flex items-center gap-3 p-2 border rounded-lg bg-gray-50">
@@ -626,7 +687,7 @@ export default function EditVisitReportPage() {
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{att.fileName}</p>
+                      <p className="text-xs font-medium truncate">{att.fileName}</p>
                       <p className="text-xs text-muted-foreground">{formatFileSize(att.fileSize)}</p>
                     </div>
                     <a href={att.filePath} target="_blank" rel="noopener noreferrer">
@@ -651,7 +712,7 @@ export default function EditVisitReportPage() {
           {/* Yeni dosya ekleme */}
           <div className="space-y-2">
             {existingAttachments.length > 0 && (
-              <Label className="text-sm font-medium">Yeni Dosya Ekle</Label>
+              <Label className="text-xs font-medium">Yeni Dosya Ekle</Label>
             )}
             <FileUploadDropzone
               files={newFiles}
@@ -673,7 +734,7 @@ export default function EditVisitReportPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label className="text-base font-semibold">Alicilar</Label>
+            <Label className="text-sm font-semibold">Alicilar</Label>
             <p className="text-xs text-muted-foreground mt-1">
               Isim yazinca Active Directory&apos;den onerilecek, email otomatik gelecek. Manuel de ekleyebilirsiniz.
             </p>

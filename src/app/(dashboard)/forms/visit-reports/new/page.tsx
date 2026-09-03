@@ -20,6 +20,8 @@ import { ParticipantInput, ExternalParticipantInput } from "@/components/forms/P
 import { RecipientInput, Recipient } from "@/components/forms/RecipientInput"
 import { ReportPreviewModal } from "@/components/forms/ReportPreviewModal"
 import { FileUploadDropzone, type UploadedFile } from "@/components/ui/file-upload-dropzone"
+import { UserSearchCombobox } from "@/components/user-search-combobox"
+import { YON, type VisitDirection } from "@/lib/visit-reports/yon"
 
 interface Participant {
   name: string
@@ -30,6 +32,10 @@ interface Participant {
 }
 
 interface ActionItem {
+  /** Personel seçiciden geldiyse sicil; serbest metinde boş. */
+  responsibleSicilNo?: string
+  /** Yalnız UI: bu satırda serbest metin mi giriliyor (harici sorumlu). */
+  elleGiris?: boolean
   description: string
   responsible: string
   dueDate: string
@@ -42,6 +48,10 @@ export default function NewVisitReportPage() {
   const [showPreview, setShowPreview] = useState(false)
 
   // Form state
+  // Yön: yeni kayıtta varsayılan "gittik" (mevcut 7 kaydın tamamı bu yönde).
+  const [direction, setDirection] = useState<VisitDirection>("OUTGOING")
+  const yon = YON[direction]
+
   const [visitDate, setVisitDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [visitTime, setVisitTime] = useState("")
@@ -110,7 +120,7 @@ export default function NewVisitReportPage() {
     setActionItems(actionItems.filter((_, i) => i !== index))
   }
 
-  function updateActionItem(index: number, field: keyof ActionItem, value: string) {
+  function updateActionItem(index: number, field: keyof ActionItem, value: string | boolean) {
     const updated = [...actionItems]
     updated[index] = { ...updated[index], [field]: value }
     setActionItems(updated)
@@ -163,7 +173,13 @@ export default function NewVisitReportPage() {
       ]
 
       // Boş aksiyonları filtrele
-      const actions = actionItems.filter(a => a.description.trim())
+      // `elleGiris` yalnız UI durumu — API'ye gönderilmez.
+      const actions = actionItems
+        .filter(a => a.description.trim())
+        .map(({ elleGiris: _elleGiris, ...a }) => ({
+          ...a,
+          responsibleSicilNo: a.responsibleSicilNo || null,
+        }))
 
       // Boş alıcıları filtrele
       const validRecipients = recipients.filter(r => r.email.trim())
@@ -172,6 +188,7 @@ export default function NewVisitReportPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          direction,
           visitDate,
           endDate: endDate || null,
           visitTime,
@@ -235,12 +252,43 @@ export default function NewVisitReportPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-xl lg:text-3xl font-bold">Yeni Ziyaret Raporu</h1>
+          <h1 className="text-lg lg:text-2xl font-bold">Yeni Ziyaret Raporu</h1>
           <p className="text-muted-foreground">
             Müşteri veya tedarikçi ziyaret raporu oluşturun
           </p>
         </div>
       </div>
+
+      {/* Yön seçimi — alan etiketlerinin tamamı bu seçime bağlı */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Ziyaret Yönü</CardTitle>
+          <CardDescription>Raporun alan adları seçime göre değişir</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {(["OUTGOING", "INCOMING"] as const).map((y) => (
+              <button
+                key={y}
+                type="button"
+                onClick={() => {
+                  setDirection(y)
+                  // Yer alanı boşsa yönün önerisini koy; kullanıcı yazdıysa dokunma.
+                  if (!location.trim() && YON[y].yerVarsayilan) setLocation(YON[y].yerVarsayilan)
+                }}
+                className={`rounded-lg border p-4 text-left transition ${
+                  direction === y
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
+                    : "border-gray-200 hover:border-gray-300 dark:border-gray-700"
+                }`}
+              >
+                <div className="font-medium text-gray-900 dark:text-white">{YON[y].kartBaslik}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">{YON[y].kartAciklama}</div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Temel Bilgiler */}
       <Card>
@@ -280,10 +328,10 @@ export default function NewVisitReportPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="companyName">Ziyaret Edilen Firma *</Label>
+              <Label htmlFor="companyName">{yon.firma} *</Label>
               <Input
                 id="companyName"
-                placeholder="Örnek: Roketsan A.Ş."
+                placeholder={yon.firmaPlaceholder}
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
               />
@@ -309,10 +357,10 @@ export default function NewVisitReportPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="location">Ziyaret Yeri / Adres</Label>
+              <Label htmlFor="location">{yon.yer}</Label>
               <Input
                 id="location"
-                placeholder="Örnek: Roketsan Elmadağ Tesisleri"
+                placeholder={yon.yerPlaceholder}
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
               />
@@ -321,7 +369,7 @@ export default function NewVisitReportPage() {
               <Label htmlFor="project">İlgili Proje / Konu</Label>
               <Input
                 id="project"
-                placeholder="Örnek: Taşıyıcı Grup Projesi"
+                placeholder="Örnek: proje veya konu adı"
                 value={project}
                 onChange={(e) => setProject(e.target.value)}
               />
@@ -340,7 +388,7 @@ export default function NewVisitReportPage() {
             {/* İleri Group'tan - AD ile autocomplete */}
             <div className="space-y-4">
               <div>
-                <Label className="text-base font-semibold">İleri Group&apos;tan Gidenler</Label>
+                <Label className="text-sm font-semibold">{yon.bizimkiler}</Label>
                 <p className="text-xs text-muted-foreground mt-1">
                   İsim yazınca Active Directory&apos;den önerilecek
                 </p>
@@ -365,9 +413,9 @@ export default function NewVisitReportPage() {
             {/* Görüşülen Kişiler - Manuel giriş */}
             <div className="space-y-4">
               <div>
-                <Label className="text-base font-semibold">Görüşülen Kişiler</Label>
+                <Label className="text-sm font-semibold">{yon.onlar}</Label>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Ziyaret edilen firmadan görüşülen kişiler
+                  {yon.karsiTaraf} görüşülen kişiler
                 </p>
               </div>
               {theirPeople.map((person, index) => (
@@ -433,11 +481,35 @@ export default function NewVisitReportPage() {
                 )}
               </div>
               <div className="grid gap-2 md:grid-cols-3">
-                <Input
-                  placeholder="Sorumlu"
-                  value={action.responsible}
-                  onChange={(e) => updateActionItem(index, "responsible", e.target.value)}
-                />
+                <div className="space-y-1">
+                  {action.elleGiris ? (
+                    <Input
+                      placeholder="Sorumlu (harici kişi)"
+                      value={action.responsible}
+                      onChange={(e) => updateActionItem(index, "responsible", e.target.value)}
+                    />
+                  ) : (
+                    <UserSearchCombobox
+                      endpoint="/api/personnel/search"
+                      placeholder={action.responsible || "Sorumlu seçin..."}
+                      onSelect={(u) => {
+                        updateActionItem(index, "responsible", u?.name ?? "")
+                        updateActionItem(index, "responsibleSicilNo", u?.sicilNo ?? "")
+                      }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline"
+                    onClick={() => {
+                      // Serbest metne geçerken sicil düşer: harici sorumlunun sicili yok.
+                      updateActionItem(index, "responsibleSicilNo", "")
+                      updateActionItem(index, "elleGiris", !action.elleGiris)
+                    }}
+                  >
+                    {action.elleGiris ? "Listeden seç" : "Listede yok, elle yaz"}
+                  </button>
+                </div>
                 <Input
                   type="date"
                   value={action.dueDate}
@@ -505,7 +577,7 @@ export default function NewVisitReportPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label className="text-base font-semibold">Alıcılar</Label>
+            <Label className="text-sm font-semibold">Alıcılar</Label>
             <p className="text-xs text-muted-foreground mt-1">
               İsim yazınca Active Directory&apos;den önerilecek, email otomatik gelecek. Manuel de ekleyebilirsiniz.
             </p>
@@ -529,7 +601,7 @@ export default function NewVisitReportPage() {
       {/* Dosya / Fotoğraf */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Dosya / Fotoğraf</CardTitle>
+          <CardTitle className="text-base">Dosya / Fotoğraf</CardTitle>
           <CardDescription>Ziyaret ile ilgili fotoğraf ve belgeleri ekleyin</CardDescription>
         </CardHeader>
         <CardContent>

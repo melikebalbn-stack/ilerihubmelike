@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireUser } from "@/lib/auth/require-user"
+import { after } from "next/server"
+import { aksiyonBildirimiGonder, yeniVeyaDegisenAksiyonlar } from "@/lib/visit-reports/aksiyon-bildirimi"
+import { gecerliYon } from "@/lib/visit-reports/yon"
 import { VisitType, VisitReportStatus, ParticipantCompany, ActionItemStatus } from "@/generated/prisma"
 import { sendVisitReportEmail, VisitReportEmailData, EmailRecipient } from "@/lib/email"
 import { VisitReportForPDF } from "@/lib/pdf/visit-report-pdf-server"
@@ -99,8 +102,15 @@ export async function PUT(
       participants,
       actionItems,
       recipients,
-      status
+      status,
+      direction
     } = body
+
+    // Bildirim karşılaştırması için ÖNCEKİ aksiyonlar (transaction silmeden önce).
+    const oncekiAksiyonlar = await prisma.visitReportAction.findMany({
+      where: { reportId: id },
+      select: { description: true, responsibleSicilNo: true },
+    })
 
     // Transaction ile güncelle (currentUser zaten alındı)
     const report = await prisma.$transaction(async (tx) => {
@@ -117,6 +127,7 @@ export async function PUT(
           visitTime,
           companyName,
           visitType: visitType as VisitType,
+          ...(direction !== undefined ? { direction: gecerliYon(direction) } : {}),
           location,
           project,
           meetingSummary,
@@ -131,9 +142,10 @@ export async function PUT(
             }))
           },
           actionItems: {
-            create: (actionItems || []).map((a: { description: string; responsible: string; dueDate?: string; status?: string }) => ({
+            create: (actionItems || []).map((a: { description: string; responsible: string; responsibleSicilNo?: string | null; dueDate?: string; status?: string }) => ({
               description: a.description,
               responsible: a.responsible,
+              responsibleSicilNo: a.responsibleSicilNo || null,
               dueDate: a.dueDate ? new Date(a.dueDate) : null,
               status: (a.status || 'PENDING') as ActionItemStatus
             }))
@@ -146,6 +158,30 @@ export async function PUT(
         }
       })
     })
+
+    // Aksiyon bildirimi — YALNIZ yeni eklenen ya da sorumlusu değişen aksiyonlar.
+    // PUT tüm aksiyonları silip yeniden yazdığı için, filtre olmadan her
+    // düzenlemede aynı kişiye tekrar bildirim giderdi.
+    const yeniAksiyonlar = yeniVeyaDegisenAksiyonlar(
+      oncekiAksiyonlar.map((a) => ({ description: a.description, responsibleSicilNo: a.responsibleSicilNo })),
+      report.actionItems.map((a) => ({
+        description: a.description,
+        responsibleSicilNo: a.responsibleSicilNo,
+        dueDate: a.dueDate,
+      })),
+    )
+    if (yeniAksiyonlar.length > 0) {
+      after(async () => {
+        try {
+          await aksiyonBildirimiGonder(
+            { id: report.id, reportNumber: report.reportNumber, companyName: report.companyName },
+            yeniAksiyonlar,
+          )
+        } catch (err) {
+          console.error('[ziyaret-aksiyon] güncelleme bildirimi başarısız:', err)
+        }
+      })
+    }
 
     // E-posta gönder (sadece SENT durumunda ve alıcılar varsa)
     if (status === 'SENT' && recipients && recipients.length > 0) {

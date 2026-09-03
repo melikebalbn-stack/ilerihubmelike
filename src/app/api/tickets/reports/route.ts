@@ -2,6 +2,70 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 
+/**
+ * Atanan kişilerin GÖRÜNEN ADI — e-postadan çözülür.
+ *
+ * NEDEN: `Ticket.assignedToName` bir anlık görüntü kolonu ve ATAMA YOLUNA GÖRE
+ * BOŞ KALIYOR (POST /api/tickets:254 ve PUT /api/tickets/[id]:485 "LDAP'tan
+ * isim alınabilir" notuyla açıkça null yazıyor). Rapor tarafı bu kolona
+ * güvendiği için aynı kişi bazı ticket'larda adıyla, bazılarında e-postasıyla
+ * görünüyordu; hangisinin kazandığı `assigneeMap`e ilk giren ticket'a bağlıydı
+ * (sıra bağımlı → grafikte karışık liste).
+ *
+ * Sıra: User.email → Personnel (mailAdresi | azureAdEmail) → `assignedToName`
+ * (doluysa) → çözülemezse e-postanın KENDİSİ. E-posta asla kırpılmaz, '@'
+ * öncesinden isim uydurulmaz: yanlış isim göstermektense ham adresi göstermek
+ * yeğdir.
+ *
+ * Son basamak neden hâlâ duruyor: kişi User'dan da Personnel'den de silinmişse
+ * (işten ayrılma) elimizdeki tek ad o anlık görüntü kolonudur. Zincirin BAŞINDA
+ * değil SONUNDA olması önemli — sorunun kaynağı ona ÖNCE bakılmasıydı.
+ */
+async function kisiAdlariniCoz(emails: string[]): Promise<Map<string, string>> {
+  const ad = new Map<string, string>()
+  const benzersiz = Array.from(
+    new Set(emails.map((e) => e.toLowerCase().trim()).filter((e) => e !== '')),
+  )
+  if (benzersiz.length === 0) return ad
+
+  // 1) User — PR-EMAIL-NORMALIZE sonrası DB casing lowercase, `in` yeterli.
+  const users = await prisma.user.findMany({
+    where: { email: { in: benzersiz } },
+    select: { email: true, firstName: true, lastName: true, name: true },
+  })
+  for (const u of users) {
+    const tam = [u.firstName, u.lastName].filter(Boolean).join(' ').trim()
+    const gorunen = tam || u.name?.trim() || ''
+    if (gorunen) ad.set(u.email.toLowerCase(), gorunen)
+  }
+
+  // 2) Personnel — User'da olmayanlar için. Bu iki alan normalize DEĞİL, o
+  // yüzden alan başına insensitive eşitlik. Liste IT ekibi kadar kısa (tek
+  // haneli), OR maliyeti önemsiz.
+  const eksik = benzersiz.filter((e) => !ad.has(e))
+  if (eksik.length > 0) {
+    const personeller = await prisma.personnel.findMany({
+      where: {
+        OR: eksik.flatMap((e) => [
+          { mailAdresi: { equals: e, mode: 'insensitive' as const } },
+          { azureAdEmail: { equals: e, mode: 'insensitive' as const } },
+        ]),
+      },
+      select: { adSoyad: true, mailAdresi: true, azureAdEmail: true },
+    })
+    for (const p of personeller) {
+      const isim = p.adSoyad?.trim()
+      if (!isim) continue
+      for (const alan of [p.mailAdresi, p.azureAdEmail]) {
+        const anahtar = alan?.toLowerCase().trim()
+        if (anahtar && !ad.has(anahtar)) ad.set(anahtar, isim)
+      }
+    }
+  }
+
+  return ad
+}
+
 // GET - IT Raporları (Sadece IT Manager erişebilir)
 export async function GET(request: NextRequest) {
   try {
@@ -148,15 +212,28 @@ export async function GET(request: NextRequest) {
       avgSatisfaction: number
     }>()
 
+    // `assignedToName` anlık görüntüleri — zincirin SON basamağı için. API
+    // yanıtının şeklini bozmamak adına ayrı map'te tutuluyor.
+    // İLK DOLU olan kazanır (ilk ticket değil): boş kolonlu bir ticket'ın
+    // başta gelmesi artık adı e-postaya düşürmez.
+    const adAnlikGoruntu = new Map<string, string>()
+
     allTickets.forEach(t => {
       if (t.assignedTo) {
         const key = t.assignedTo
+        const anahtar = key.toLowerCase().trim()
+        const anlik = t.assignedToName?.trim()
+        if (anlik && !adAnlikGoruntu.has(anahtar)) adAnlikGoruntu.set(anahtar, anlik)
+
         let assignee = assigneeMap.get(key)
 
         if (!assignee) {
           assignee = {
             email: t.assignedTo,
-            name: t.assignedToName || t.assignedTo,
+            // Ad AŞAĞIDA tek seferde çözülür (kisiAdlariniCoz). Burada geçici
+            // olarak e-posta duruyor: `assignedToName`e bakılmıyor, çünkü sıra
+            // bağımlı ve boş olabilen bir kolondu — sorunun kaynağı oydu.
+            name: t.assignedTo,
             totalAssigned: 0,
             openCount: 0,
             resolved: 0,
@@ -207,6 +284,14 @@ export async function GET(request: NextRequest) {
       if (rated.length > 0) {
         assignee.avgSatisfaction = rated.reduce((sum, t) => sum + (t.satisfactionRating || 0), 0) / rated.length
       }
+    }
+
+    // Görünen adları TEK sorgu turunda çöz (kişi başına sorgu yok).
+    const adHaritasi = await kisiAdlariniCoz(Array.from(assigneeMap.keys()))
+    for (const assignee of assigneeMap.values()) {
+      const anahtar = assignee.email.toLowerCase().trim()
+      assignee.name =
+        adHaritasi.get(anahtar) || adAnlikGoruntu.get(anahtar) || assignee.email
     }
 
     const individualPerformance = Array.from(assigneeMap.values())

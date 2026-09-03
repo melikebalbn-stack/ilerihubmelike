@@ -289,7 +289,7 @@ describe('buAyNeDegistiGetir', () => {
     expect(sonuc.vardiyaDegistirenler).toEqual([])
   })
 
-  it('madde 2 — pasifleştirilen personelin ŞU AN aktif ataması YOKSA "ayrıldı" listesine düşer', async () => {
+  it('madde 2 — ay sonu itibarıyla başka geçerli ataması YOKSA "ayrıldı" listesine düşer', async () => {
     mocks.islemGecmisiFindMany.mockImplementation(async ({ where }: { where: { hedefTipi: string } }) =>
       where.hedefTipi === 'PERSONEL_ATAMA'
         ? [{ hedefId: 'atama-6', islem: 'PASIFLESTIRME', tarih: new Date('2026-03-20') }]
@@ -303,7 +303,7 @@ describe('buAyNeDegistiGetir', () => {
         dilimler: [{ dilimId: 's1' }],
       },
     ])
-    mocks.personelAtamaFindFirst.mockResolvedValue(null) // canlı aktif atama yok
+    mocks.personelAtamaFindFirst.mockResolvedValue(null) // ay sonunda geçerli atama yok
 
     const sonuc = await buAyNeDegistiGetir(2026, 3)
 
@@ -312,7 +312,7 @@ describe('buAyNeDegistiGetir', () => {
     ])
   })
 
-  it('pasifleştirilen personelin ŞU AN başka aktif ataması VARSA (transfer) "ayrıldı" SAYILMAZ', async () => {
+  it('ay sonu itibarıyla başka geçerli ataması VARSA (transfer) "ayrıldı" SAYILMAZ', async () => {
     mocks.islemGecmisiFindMany.mockImplementation(async ({ where }: { where: { hedefTipi: string } }) =>
       where.hedefTipi === 'PERSONEL_ATAMA'
         ? [{ hedefId: 'atama-7', islem: 'PASIFLESTIRME', tarih: new Date('2026-03-20') }]
@@ -326,11 +326,99 @@ describe('buAyNeDegistiGetir', () => {
         dilimler: [{ dilimId: 's1' }],
       },
     ])
-    mocks.personelAtamaFindFirst.mockResolvedValue({ id: 'atama-8', aktif: true }) // canlı aktif atama VAR
+    mocks.personelAtamaFindFirst.mockResolvedValue({ id: 'atama-8' }) // ay sonunda geçerli başka atama VAR
 
     const sonuc = await buAyNeDegistiGetir(2026, 3)
 
     expect(sonuc.servistenAyrilanlar).toEqual([])
+  })
+
+  it('DÜZELTME (Elif\'in sorusu üzerine): "ayrıldı" kontrolü aktif:true (canlı/şu an) DEĞİL, ay sonu tarihine göre (baslangicTarihi<=ayBitisi, bitisTarihi null veya >=ayBitisi) sorgulanır', async () => {
+    mocks.islemGecmisiFindMany.mockImplementation(async ({ where }: { where: { hedefTipi: string } }) =>
+      where.hedefTipi === 'PERSONEL_ATAMA'
+        ? [{ hedefId: 'atama-10', islem: 'PASIFLESTIRME', tarih: new Date('2026-07-20') }]
+        : [],
+    )
+    mocks.personelAtamaFindMany.mockResolvedValue([
+      {
+        id: 'atama-10', personnelId: 'p1', guzergahId: 'g1', durakId: 'd1',
+        baslangicTarihi: new Date('2026-01-01'),
+        personnel, guzergah: guzergahEski, durak: { kod: 'D1', ad: 'Durak 1' },
+        dilimler: [{ dilimId: 's1' }],
+      },
+    ])
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+
+    await buAyNeDegistiGetir(2026, 7)
+
+    const cagriParams = mocks.personelAtamaFindFirst.mock.calls[0][0]
+    expect(cagriParams.where).not.toHaveProperty('aktif')
+    expect(cagriParams.where.baslangicTarihi).toEqual({ lte: new Date('2026-07-31T23:59:59.999Z') })
+    expect(cagriParams.where.OR).toEqual([{ bitisTarihi: null }, { bitisTarihi: { gte: new Date('2026-07-31T23:59:59.999Z') } }])
+  })
+
+  it('DÜZELTME/KANIT: geçmiş ayda ayrılan bir personel, rapor ÇALIŞTIRILDIĞI ANDA (ör. Kasım\'da) tekrar aktif bir atamaya sahip olsa bile, o geçmiş ay (Temmuz) için hâlâ "ayrıldı" sayılır — sorgu tarihsel, canlı DB durumuna bakmıyor', async () => {
+    // Gerçek DB'de bu personelin Kasım'da açılan yeni ataması baslangicTarihi=2026-11-01'dir
+    // ve `baslangicTarihi <= 2026-07-31` şartını SAĞLAMAZ — yani sorgu onu hiç göremez.
+    // Mock, gerçek DB'nin bu filtreyle üreteceği sonucu (null) simüle ediyor.
+    mocks.islemGecmisiFindMany.mockImplementation(async ({ where }: { where: { hedefTipi: string } }) =>
+      where.hedefTipi === 'PERSONEL_ATAMA'
+        ? [{ hedefId: 'atama-11', islem: 'PASIFLESTIRME', tarih: new Date('2026-07-20') }]
+        : [],
+    )
+    mocks.personelAtamaFindMany.mockResolvedValue([
+      {
+        id: 'atama-11', personnelId: 'p1', guzergahId: 'g1', durakId: 'd1',
+        baslangicTarihi: new Date('2026-01-01'),
+        personnel, guzergah: guzergahEski, durak: { kod: 'D1', ad: 'Durak 1' },
+        dilimler: [{ dilimId: 's1' }],
+      },
+    ])
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+
+    const sonuc = await buAyNeDegistiGetir(2026, 7)
+
+    expect(sonuc.servistenAyrilanlar).toHaveLength(1)
+    expect(sonuc.servistenAyrilanlar[0].personnelId).toBe('p1')
+  })
+
+  it('DÜZELTME/KANIT: aynı personelin İKİ farklı ayda (Temmuz VE Ağustos) art arda transferi olsa bile, GEÇMİŞ ay (Temmuz) raporu yalnız Temmuz\'daki değişikliği yansıtır — Ağustos\'taki DAHA SONRAKİ değişiklik Temmuz sonucunu BOZMAZ', async () => {
+    // A1 (Ocak, G1) → A2 (15 Temmuz, G1→G2 transferi, BU AY) → A3 (20 Ağustos,
+    // G2→G3 transferi, RAPOR KAPSAMI DIŞINDA). "Önceki atama" sorgusu A2'nin KENDİ
+    // baslangicTarihi'nden (15 Temmuz) önceki kaydı arar — A3 (20 Ağustos) bu şartı
+    // (`baslangicTarihi < 2026-07-15`) hiç sağlamaz, sorgu ondan HABERSİZDİR.
+    mocks.islemGecmisiFindMany.mockImplementation(async ({ where }: { where: { hedefTipi: string } }) =>
+      where.hedefTipi === 'PERSONEL_ATAMA'
+        ? [{ hedefId: 'atama-temmuz', islem: 'OLUSTURMA', tarih: new Date('2026-07-15') }]
+        : [],
+    )
+    mocks.personelAtamaFindMany.mockResolvedValue([
+      {
+        id: 'atama-temmuz', personnelId: 'p1', guzergahId: 'g2', durakId: 'd1',
+        baslangicTarihi: new Date('2026-07-15'),
+        personnel, guzergah: { kod: 'G2', ad: 'Güzergah 2' }, durak: { kod: 'D1', ad: 'Durak 1' },
+        dilimler: [{ dilimId: 's1' }],
+      },
+    ])
+    mocks.personelAtamaFindFirst.mockResolvedValue({
+      guzergahId: 'g1', durakId: 'd1', guzergah: { kod: 'G1', ad: 'Güzergah 1' }, durak: { kod: 'D1', ad: 'Durak 1' },
+      dilimler: [{ dilimId: 's1' }],
+    })
+
+    const sonuc = await buAyNeDegistiGetir(2026, 7)
+
+    expect(sonuc.servisDegistirenler).toEqual([
+      {
+        personnelId: 'p1', adSoyad: 'Ahmet Yılmaz', sicilNo: '1234', bolum: 'Üretim',
+        eskiGuzergahKod: 'G1', eskiGuzergahAd: 'Güzergah 1',
+        yeniGuzergahKod: 'G2', yeniGuzergahAd: 'Güzergah 2',
+        tarih: new Date('2026-07-15'),
+      },
+    ])
+    // Kanıt: sorgunun tarih çapası TEMMUZ 15'in KENDİSİ — "bugün"/sabit bir "şimdi"
+    // değil. Ağustos'un (08-20) bu sorguya hiç girmediğini doğrudan gösterir.
+    const cagriParams = mocks.personelAtamaFindFirst.mock.calls[0][0]
+    expect(cagriParams.where.baslangicTarihi).toEqual({ lt: new Date('2026-07-15') })
   })
 
   it('madde 5 — aynı güzergah+dilim+rolde önceki araçtan farklıysa "araç değişti" listesine düşer', async () => {

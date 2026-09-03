@@ -249,14 +249,30 @@ async function personelAtamaDegisikliklerini(
       continue
     }
 
-    // PASIFLESTIRME: personelin ŞU AN (canlı) başka aktif ataması yoksa
-    // "ayrıldı" sayılır. Varsa (transfer/servis değişikliği) zaten
+    // PASIFLESTIRME: personelin RAPOR AYININ SONU İTİBARIYLA (bitis
+    // parametresi — "şu an"/sorgu anı DEĞİL) geçerli başka bir ataması
+    // yoksa "ayrıldı" sayılır. Varsa (transfer/servis değişikliği) zaten
     // OLUSTURMA tarafında madde 3/4/8'de yakalanmıştır — burada tekrar
     // "ayrılma" olarak SAYILMAZ.
-    const canliAktifAtama = await prisma.servisPersonelAtama.findFirst({
-      where: { personnelId: atama.personnelId, aktif: true },
+    //
+    // DÜZELTME (Elif'in sorusu üzerine): önceki sürüm burada `aktif:true`
+    // ile CANLI/sorgu-anı durumuna bakıyordu. Bu, GEÇMİŞ bir ay
+    // sorgulandığında yanlış sonuç verebiliyordu — örn. Temmuz'da ayrılan
+    // ama Kasım'da (rapor bugün çalıştırıldığında) tekrar servise
+    // başlayan biri, "Temmuz'da ne değişti" raporunda YANLIŞLIKLA
+    // "ayrılmadı" görünürdü. Şimdi `baslangicTarihi <= ayBitisi` VE
+    // (bitisTarihi null VEYA bitisTarihi >= ayBitisi) — yani "o ayın
+    // sonunda GEÇERLİ miydi" sorusu tarihsel olarak sorulur. Cari ay için
+    // davranış DEĞİŞMEDİ (ayBitisi ileri bir tarih olduğunda bu sorgu
+    // pratikte aktif:true ile aynı sonucu verir).
+    const ayBitisindeGecerliAtama = await prisma.servisPersonelAtama.findFirst({
+      where: {
+        personnelId: atama.personnelId,
+        baslangicTarihi: { lte: bitis },
+        OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: bitis } }],
+      },
     })
-    if (!canliAktifAtama) {
+    if (!ayBitisindeGecerliAtama) {
       sonuc.servistenAyrilanlar.push({
         ...personelOzetOlustur(atama.personnelId, atama.personnel),
         guzergahKod: atama.guzergah.kod,

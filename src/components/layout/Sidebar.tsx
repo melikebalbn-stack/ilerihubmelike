@@ -1226,7 +1226,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             >
               <Link
                 href="/ipro"
-                onClick={onClose}
+                onClick={(e) => {
+                  if (onClose) onClose()
+                  // /ipro, mevcut /ipro/* yolunun ön-eki → Next soft-nav no-op olur;
+                  // renderMenuItem handleClick deseniyle sert gezinme yap.
+                  if (pathname.startsWith('/ipro')) {
+                    e.preventDefault()
+                    window.location.href = '/ipro'
+                  }
+                }}
                 className="flex flex-1 items-center space-x-3 px-3 py-2"
               >
                 <Factory className="h-5 w-5" />

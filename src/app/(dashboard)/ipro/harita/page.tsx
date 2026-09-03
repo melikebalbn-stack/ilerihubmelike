@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
+import { KapakDonus } from '@/components/ipro/KapakDonus'
 import { HaritaCerceve } from '@/components/ipro/harita/HaritaCerceve'
 
 // Fabrika Haritası (izleme ekranı) — IPRO tezgahlarının izometrik temsili sahnesi.
@@ -30,6 +31,7 @@ export default async function IproHaritaPage({
   // negatif margin ile geri alıp tam ekran veririz; border yok.
   return (
     <div className="-m-4 h-[calc(100dvh-3.5rem)] lg:-m-6 lg:h-[calc(100dvh-4rem)]">
+      <KapakDonus />
       <HaritaCerceve src={src} />
     </div>
   )

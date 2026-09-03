@@ -3,6 +3,7 @@ import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { Factory } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
+import { KapakDonus } from '@/components/ipro/KapakDonus'
 import { TezgahlarClient } from '@/components/ipro/yonetim/TezgahlarClient'
 
 export const dynamic = 'force-dynamic'
@@ -18,6 +19,7 @@ export default async function IproTezgahlarPage() {
   return (
     <div className="container mx-auto max-w-7xl space-y-6 px-6 py-8">
       <div>
+        <KapakDonus />
         <h1 className="flex items-center gap-2 text-2xl font-bold text-[#1B4F72]">
           <Factory className="h-6 w-6" />
           Tezgahlar

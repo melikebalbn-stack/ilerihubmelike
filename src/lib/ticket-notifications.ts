@@ -445,19 +445,15 @@ export async function dispatchTicketKapandi(
   if (acan === '') return
   if (acan === (kapatanEmail ?? '').toLowerCase().trim()) return // kendi kapattı
 
-  let user: { id: string; email: string; firstName: string | null; lastName: string | null; name: string | null } | null = null
-  try {
-    user = await prisma.user.findFirst({
-      where: { email: acan, isActive: true },
-      select: { id: true, email: true, firstName: true, lastName: true, name: true },
-    })
-  } catch (err) {
-    console.error('[ticket-kapanis-notify] kullanıcı çözümlenemedi:', err)
-    return
-  }
-  if (!user) return
+  // Alıcı çözümü dispatchTicketYorum / dispatchTicketCozuldu ile AYNI kural
+  // (alicimiCoz): User kaydı yoksa da adrese gönderilir, pasifse gönderilmez.
+  // ESKİDEN buradaki sorgu `isActive: true` ile arıyor ve bulamazsa `return`
+  // ediyordu; e-posta kanalından (destek@) açılmış taleplerin sahibi sistemde
+  // kayıtlı olmadığı için kapanış maili HİÇ gitmiyordu — talebi maille açan
+  // kişi kapandığını hiç öğrenmiyordu.
+  const r = await alicimiCoz(acan, '[ticket-kapanis-notify]', ticket.ticketNumber)
+  if (!r) return
 
-  const r = toRecipient(user)
   const link = `/it-support?ticket=${ticket.ticketNumber}`
   const durumMetni = ticket.status === 'CLOSED' ? 'kapatıldı' : 'çözüldü'
   const title = `Talebiniz ${durumMetni}: ${ticket.ticketNumber}`
@@ -496,6 +492,17 @@ export async function dispatchTicketKapandi(
     await sendEmail([{ name: r.name, email: r.email }], title, text, html)
   } catch (err) {
     console.error('[ticket-kapanis-notify] email failed:', err)
+  }
+
+  // Kanal 2 ve 3 YALNIZ User kaydı olan alıcıya: ikisi de userId'ye dayanıyor.
+  // Sistemde kaydı olmayan (mail kanalı) talep sahibinde r.id boştur — o hâlde
+  // in-app kaydı FK hatası verir, push'un dayanacağı abonelik zaten yoktur.
+  // E-posta kanalı yukarıda çalıştı; bu ikisi sessizce atlanır.
+  if (!r.id) {
+    console.log(
+      `[ticket-kapanis-notify] ${ticket.ticketNumber}: alici User'da yok — yalnız e-posta gonderildi`,
+    )
+    return
   }
 
   // Kanal 2: in-app

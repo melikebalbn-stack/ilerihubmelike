@@ -7,7 +7,7 @@ import { logAuditEvent } from '@/lib/audit-log'
 import { computeTenure } from '@/lib/personnel-tenure'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
-import { personelPasiflestiginde, personelAktiflestiginde, personelGoreviDegisti, type GorevDegisimSonuc } from '@/lib/org/personel-koltuk-senkron'
+import { personelPasiflestiginde, personelAktiflestiginde, personelGoreviDegisti, personelEklendiginde, KOLTUK_YOK_SEBEBI, type GorevDegisimSonuc, type YeniPersonelSonuc } from '@/lib/org/personel-koltuk-senkron'
 
 export const dynamic = 'force-dynamic'
 
@@ -390,6 +390,9 @@ export async function PUT(
       typeof body.bolum === 'string' && body.bolum !== (existing.bolum ?? '')
     const yerlesimDegisti = gorevDegisti || bolumDegisti
     let koltukSonuc: GorevDegisimSonuc | null = null
+    // Taşıma "ana koltuğu yok" derse koltuk AÇILIR (aşağıda). Sonuç ayrı tutulur ki
+    // denetim kaydında "taşındı" ile "açıldı" karışmasın.
+    let koltukAcmaSonuc: YeniPersonelSonuc | null = null
     const updatedPersonnel = await prisma.$transaction(async (tx) => {
       const updated = await tx.personnel.update({
         where: { id: personnelId },
@@ -404,6 +407,16 @@ export async function PUT(
       }
       if (yerlesimDegisti) {
         koltukSonuc = await personelGoreviDegisti(tx, personnelId, { actorId: user.id })
+        // KOLTUK YOKSA AÇ: taşıma fonksiyonu yalnız TAŞIR (sözleşmesi bu, dokunulmadı).
+        // Koltuğu hiç açılmamış kişi — oluşturulurken görev/bölüm şemadaki bir kutuyla
+        // eşleşmediyse böyle olur (ör. ILR-01156: açılışta görev "ROBOT KAYNAK" idi,
+        // şemada "Robot Kaynak Opr." var) — sonradan alan düzeltilse bile koltuksuz
+        // kalıyordu. Artık düzeltme anında BİR KEZ açma denenir.
+        // `personelEklendiginde` idempotent: açık koltuk varsa "zaten acik koltugu var"
+        // ile erken döner, boş kutu yoksa/eşleşme yoksa sebebiyle döner — YENİ KUTU AÇMAZ.
+        if (koltukSonuc && !koltukSonuc.tasindi && koltukSonuc.sebep === KOLTUK_YOK_SEBEBI) {
+          koltukAcmaSonuc = await personelEklendiginde(tx, personnelId, { actorId: user.id })
+        }
       }
       return updated
     })
@@ -421,13 +434,16 @@ export async function PUT(
         ...(gorevDegisti ? { gorevDegisimi: { eski: existing.gorev, yeni: body.gorev } } : {}),
         ...(bolumDegisti ? { bolumDegisimi: { eski: existing.bolum, yeni: body.bolum } } : {}),
         // Koltuk sonucu görev VEYA bölüm değişiminde yazılır — taşınmadıysa sebebiyle.
+        // `koltukAcma` yalnız açma DENENDİYSE bulunur; "taşındı" ile karışmasın diye ayrı alan.
         ...(yerlesimDegisti ? { koltuk: koltukSonuc } : {}),
+        ...(koltukAcmaSonuc ? { koltukAcma: koltukAcmaSonuc } : {}),
       },
     })
 
     return NextResponse.json({
       ...updatedPersonnel,
       ...(yerlesimDegisti ? { koltuk: koltukSonuc } : {}),
+      ...(koltukAcmaSonuc ? { koltukAcma: koltukAcmaSonuc } : {}),
     })
   } catch (error: any) {
     console.error('Personel güncellenirken hata:', error)

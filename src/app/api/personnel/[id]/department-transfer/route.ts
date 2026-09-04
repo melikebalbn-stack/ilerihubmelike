@@ -1,12 +1,13 @@
 // PR-PERSONNEL-DEPARTMENT-TRANSFER: Tek personelin bölüm değişiklik akışı.
 import { bolumFkCoz } from '@/lib/personnel/fk-cozum'
-import { personelGoreviDegisti, type GorevDegisimSonuc } from '@/lib/org/personel-koltuk-senkron'
+import { personelGoreviDegisti, personelEklendiginde, KOLTUK_YOK_SEBEBI, type GorevDegisimSonuc, type YeniPersonelSonuc } from '@/lib/org/personel-koltuk-senkron'
 //
 // POST: yeni transfer kaydı. Transaction'da:
 //   1. PersonnelDepartmentTransfer create
 //   2. Personnel.bolum yeni bölümle güncelle
-//   3. permission_audit_log PERSONNEL_DEPARTMENT_TRANSFER kaydı
-//   4. Org şeması: ana koltuğu yeni bölümün kutusuna taşı (personelGoreviDegisti)
+//   3. Org şeması: ana koltuğu yeni bölümün kutusuna taşı (personelGoreviDegisti);
+//      ana koltuğu HİÇ yoksa bir kez açmayı dene (personelEklendiginde)
+//   4. permission_audit_log PERSONNEL_DEPARTMENT_TRANSFER kaydı (koltuk sonucu DAHİL)
 //
 // GET: bu personelin tüm geçmiş transferleri (desc).
 
@@ -71,6 +72,8 @@ export async function POST(
 
     // Koltuk sonucu yanıtta İK'ya döner (taşınmadıysa sebebiyle birlikte).
     let koltukSonuc: GorevDegisimSonuc = { tasindi: false, sebep: 'calistirilmadi' }
+    // Açma yalnız "ana koltuğu yok" durumunda denenir; taşıma sonucundan ayrı tutulur.
+    let koltukAcmaSonuc: YeniPersonelSonuc | null = null
     const result = await prisma.$transaction(async (tx) => {
       const transfer = await tx.personnelDepartmentTransfer.create({
         data: {
@@ -101,6 +104,50 @@ export async function POST(
         },
       })
 
+      // 2b. ORG ŞEMASI — ana koltuğu yeni bölümün kutusuna taşı.
+      //
+      // NEDEN BURADA: bölüm değişikliği bugüne dek YALNIZ Personnel'i güncelliyordu;
+      // kişi eski bölümün kutusunda oturmaya devam ediyordu (03.09.2026 ölçümü:
+      // ILR-01114 bugün Talaşlı İmalat → Mekanik Montaj transfer edildi ama koltuğu
+      // "CNC Torna Opr." kutusunda kaldı). Taşıma mantığı zaten `{bolum, gorev}`
+      // ÇİFTİNE göre çalışıyor — eksik olan tek şey çağrıydı.
+      //
+      // ROLLBACK YOK: fonksiyon ASLA throw etmez (kendi try/catch'i var) ve eşleşme
+      // bulunamazsa koltuğu YERİNDE bırakıp sebep döner. Bölüm değişikliği bir İK
+      // işlemidir; şema ikincildir — koltuk taşınamadı diye transfer kaydı ve bölüm
+      // güncellemesi geri alınmaz, yalnız loglanır.
+      koltukSonuc = await personelGoreviDegisti(tx, personnel.id, { actorId: user.id })
+
+      // KOLTUK YOKSA AÇ — taşıma fonksiyonu yalnız TAŞIR (sözleşmesi değişmedi).
+      // Koltuğu hiç açılmamış kişide bölüm transferi de sessiz kalıyordu; artık
+      // BİR KEZ açma denenir. `personelEklendiginde` idempotent ve YENİ KUTU AÇMAZ:
+      // boş kutu yoksa sebebiyle döner, transfer yine geçerli kalır.
+      if (!koltukSonuc.tasindi && koltukSonuc.sebep === KOLTUK_YOK_SEBEBI) {
+        koltukAcmaSonuc = await personelEklendiginde(tx, personnel.id, { actorId: user.id })
+      }
+
+      if (!koltukSonuc.tasindi && !koltukAcmaSonuc?.koltukAcildi) {
+        console.warn('[department-transfer] koltuk tasinmadi:', {
+          personnelId: personnel.id,
+          sicilNo: personnel.sicilNo,
+          eskiBolum: oldDepartment,
+          yeniBolum: newDepartment,
+          eskiKoltuk: koltukSonuc.eskiOrgUnitAdi ?? null,
+          reason: koltukSonuc.sebep ?? '(sebep yok)',
+          acmaDenendiMi: koltukAcmaSonuc !== null,
+          acmaSebebi: koltukAcmaSonuc?.sebep ?? null,
+        })
+      } else if (koltukAcmaSonuc?.koltukAcildi) {
+        console.info('[department-transfer] koltuk ACILDI (tasima degil):', {
+          personnelId: personnel.id,
+          sicilNo: personnel.sicilNo,
+          yeniBolum: newDepartment,
+          kutu: koltukAcmaSonuc.orgUnitAdi ?? null,
+        })
+      }
+
+      // 3. DENETİM KAYDI — koltuk adımından SONRA yazılır ki sonucu (taşındı / açıldı /
+      //    hiçbiri + sebep) aynı kayıtta görünsün. Sıra değişti, içerik korundu.
       await tx.permissionAuditLog.create({
         data: {
           action: 'PERSONNEL_DEPARTMENT_TRANSFER',
@@ -119,38 +166,36 @@ export async function POST(
             doktorOnayi: transfer.doktorOnayi,
             gerekceler: transfer.gerekceler,
             transferId: transfer.id,
+            // Prisma Json alanı düz nesne ister (arayüz tipi kabul etmiyor) — alanlar
+            // açıkça yazılıyor; `undefined` yerine null (Json'da undefined geçersiz).
+            koltuk: {
+              tasindi: koltukSonuc.tasindi,
+              sebep: koltukSonuc.sebep ?? null,
+              eskiKoltuk: koltukSonuc.eskiOrgUnitAdi ?? null,
+              yeniKoltuk: koltukSonuc.yeniOrgUnitAdi ?? null,
+            },
+            ...(koltukAcmaSonuc
+              ? {
+                  koltukAcma: {
+                    koltukAcildi: koltukAcmaSonuc.koltukAcildi,
+                    sebep: koltukAcmaSonuc.sebep ?? null,
+                    kutu: koltukAcmaSonuc.orgUnitAdi ?? null,
+                  },
+                }
+              : {}),
           },
         },
       })
 
-      // 4. ORG ŞEMASI — ana koltuğu yeni bölümün kutusuna taşı.
-      //
-      // NEDEN BURADA: bölüm değişikliği bugüne dek YALNIZ Personnel'i güncelliyordu;
-      // kişi eski bölümün kutusunda oturmaya devam ediyordu (03.09.2026 ölçümü:
-      // ILR-01114 bugün Talaşlı İmalat → Mekanik Montaj transfer edildi ama koltuğu
-      // "CNC Torna Opr." kutusunda kaldı). Taşıma mantığı zaten `{bolum, gorev}`
-      // ÇİFTİNE göre çalışıyor — eksik olan tek şey çağrıydı.
-      //
-      // ROLLBACK YOK: fonksiyon ASLA throw etmez (kendi try/catch'i var) ve eşleşme
-      // bulunamazsa koltuğu YERİNDE bırakıp sebep döner. Bölüm değişikliği bir İK
-      // işlemidir; şema ikincildir — koltuk taşınamadı diye transfer kaydı ve bölüm
-      // güncellemesi geri alınmaz, yalnız loglanır.
-      koltukSonuc = await personelGoreviDegisti(tx, personnel.id, { actorId: user.id })
-      if (!koltukSonuc.tasindi) {
-        console.warn('[department-transfer] koltuk tasinmadi:', {
-          personnelId: personnel.id,
-          sicilNo: personnel.sicilNo,
-          eskiBolum: oldDepartment,
-          yeniBolum: newDepartment,
-          eskiKoltuk: koltukSonuc.eskiOrgUnitAdi ?? null,
-          reason: koltukSonuc.sebep ?? '(sebep yok)',
-        })
-      }
-
       return transfer
     })
 
-    return NextResponse.json({ ok: true, transfer: result, koltuk: koltukSonuc })
+    return NextResponse.json({
+      ok: true,
+      transfer: result,
+      koltuk: koltukSonuc,
+      ...(koltukAcmaSonuc ? { koltukAcma: koltukAcmaSonuc } : {}),
+    })
   } catch (err) {
     console.error('Department transfer POST hatası:', err)
     return NextResponse.json({ error: 'İşlem başarısız' }, { status: 500 })

@@ -327,6 +327,19 @@ export async function personelEklendiginde(
   }
 }
 
+/**
+ * `personelGoreviDegisti` "ana koltuğu YOK" derken döndüğü sebep metni.
+ *
+ * NEDEN SABİT: çağıran taraf bu durumu ayırt edip `personelEklendiginde` ile koltuk
+ * AÇIYOR (taşıma fonksiyonu açmaz, sözleşmesi öyle). Çıplak metin karşılaştırması
+ * kırılgan olurdu — metin bir gün düzeltilse çağıranlar sessizce çalışmayı bırakırdı.
+ *
+ * TEK KAYNAK: aşağıdaki fonksiyon da bu sabiti döndürür (düz metin bırakılmadı) —
+ * metin değişse çağıranlar sessizce çalışmayı bırakmaz. Sözleşmenin geri kalanı
+ * (tasindi/sebep alanları, throw etmeme, yalnız TAŞIMA) aynen korunuyor.
+ */
+export const KOLTUK_YOK_SEBEBI = "semada ana koltugu yok";
+
 // ─── Görev değişti → koltuk taşı ───
 
 export interface GorevDegisimSonuc {
@@ -367,7 +380,7 @@ export async function personelGoreviDegisti(
     });
     const anaKoltuklar = koltuklar.filter((k) => !k.orgUnit?.code?.startsWith("ORG-KR-"));
     if (anaKoltuklar.length === 0) {
-      return { tasindi: false, sebep: "semada ana koltugu yok" };
+      return { tasindi: false, sebep: KOLTUK_YOK_SEBEBI };
     }
     if (anaKoltuklar.length > 1) {
       // İki ana koltuklu kişilerde hangisinin taşınacağı belirsiz — dokunmuyoruz.

@@ -3,9 +3,20 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { tezgahDetay } from '@/lib/ipro/izleme-service'
 import { prisma } from '@/lib/prisma'
 import { iproHata } from '@/lib/ipro/yonetim-hata'
+import { planliSaniyeHesapla } from '@/lib/ipro/oee-hesap'
+import { durusSaniyeCanli, oeeCanliBilesenleri } from '@/lib/ipro/oee-canli'
+import { gecerliTatilTip, tarihAnahtari, type IproTatilTip } from '@/lib/ipro/takvim-util'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+/** IFS çevrim faktörü + RunTimeCode → saniye/adet (modal cevrimSaniye ile aynı). Yok/0/bilinmeyen → null. */
+function cevrimSaniyeSrv(faktor: number | null | undefined, kod: string | null | undefined): number | null {
+  if (!faktor || faktor <= 0) return null
+  if (kod === 'UnitsHour') return 3600 / faktor
+  if (kod === 'HoursUnit') return faktor * 3600
+  return null
+}
 
 // GET /api/terminal/uretim/tezgah/[id] → tek tezgah detayı (terminal kart tıklaması
 // → dialog). İzleme panosunun /api/ipro/izleme/tezgah/[id] route'unun TERMINAL İKİZİ:
@@ -44,7 +55,73 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
-    return NextResponse.json({ ok: true, ...detay, canliUretim })
+    // AÇIK işte CANLI OEE — oee-canli.ts (SAF/DB helper) + planliSaniyeHesapla (oee-hesap, SAF).
+    // O dosyalara DOKUNULMADAN import edildi (pano-service ile aynı wiring). Availability +
+    // Performance canlı; Quality açık işte NULL (iyi/hurda iş bitince → oeeCanliBilesenleri null verir).
+    // idealSaniyeAdet: güvenilir IproIdealCevrim tercih; yoksa IFS planlı çevrime (MachRunFactor→sn) düşer.
+    let canliOee: {
+      availability: number | null
+      performance: number | null
+      oeeCanli: number | null
+      planliSaniye: number
+      durusSaniye: number
+      uretilen: number
+      idealSaniyeAdet: number | null
+      idealKaynak: 'OLCULEN' | 'IFS' | null
+      ornekSayisi: number
+    } | null = null
+    if (detay.aktifIs?.baslatildiAt) {
+      try {
+        const bas = new Date(detay.aktifIs.baslatildiAt)
+        const simdi = new Date()
+        const parcaKod = detay.aktifIs.ifsPartNo
+        const [vardiyalar, tatiller, ideal, durusSaniye] = await Promise.all([
+          prisma.iproVardiya.findMany({
+            where: { aktif: true },
+            select: { baslangicSaat: true, bitisSaat: true, ertesiGuneTasar: true },
+          }),
+          prisma.iproTatil.findMany({ select: { tarih: true, tip: true } }),
+          parcaKod
+            ? prisma.iproIdealCevrim.findUnique({
+                where: { tezgahKod_parcaKod: { tezgahKod: detay.kod, parcaKod } },
+                select: { idealSaniyeAdet: true, guvenilir: true, ornekSayisi: true },
+              })
+            : Promise.resolve(null),
+          durusSaniyeCanli(prisma, id, bas, simdi),
+        ])
+        const tatilMap = new Map<string, IproTatilTip>()
+        for (const t of tatiller) if (gecerliTatilTip(t.tip)) tatilMap.set(tarihAnahtari(t.tarih), t.tip)
+
+        const planliSaniye = planliSaniyeHesapla(bas, simdi, vardiyalar, tatilMap)
+        const uretilen = canliUretim?.adet ?? 0
+
+        // Güvenilir ölçülen ideal → onu; yoksa IFS planlı çevrimi (sn) referans al.
+        const ifsPlanSn = cevrimSaniyeSrv(detay.aktifIs.ifsMachRunFactor, detay.aktifIs.ifsRunTimeCode)
+        const idealSaniyeAdet = ideal?.guvenilir ? ideal.idealSaniyeAdet : (ifsPlanSn ?? null)
+        const idealKaynak: 'OLCULEN' | 'IFS' | null = ideal?.guvenilir
+          ? 'OLCULEN'
+          : ifsPlanSn != null
+            ? 'IFS'
+            : null
+
+        const b = oeeCanliBilesenleri({ planliSaniye, durusSaniye, uretilen, idealSaniyeAdet })
+        canliOee = {
+          availability: b.availability,
+          performance: b.performance,
+          oeeCanli: b.oeeCanli,
+          planliSaniye,
+          durusSaniye,
+          uretilen,
+          idealSaniyeAdet,
+          idealKaynak,
+          ornekSayisi: ideal?.ornekSayisi ?? 0,
+        }
+      } catch {
+        // Canlı OEE alınamadı → null; modal göstergeleri "—" gösterir.
+      }
+    }
+
+    return NextResponse.json({ ok: true, ...detay, canliUretim, canliOee })
   } catch (e) {
     return iproHata(e, 'Tezgah detayı alınamadı')
   }

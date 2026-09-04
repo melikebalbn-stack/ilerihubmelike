@@ -66,6 +66,19 @@ type Detay = {
   // Açık işte canlı PLC üretimi (terminal route hesaplar): iş penceresi Σdelta + son sinyal.
   // seriVar=false → hiç delta yok. Kapalı/geçmiş işlerde null (mevcut uretim davranışı).
   canliUretim: { adet: number; seriVar: boolean; sonSinyal: string | null } | null
+  // Açık işte canlı OEE (route: oee-canli.ts + planliSaniyeHesapla). Quality açık işte null →
+  // oeeCanli kalite hariç. idealKaynak: 'OLCULEN' (güvenilir ideal) | 'IFS' (planlı çevrim) | null.
+  canliOee: {
+    availability: number | null
+    performance: number | null
+    oeeCanli: number | null
+    planliSaniye: number
+    durusSaniye: number
+    uretilen: number
+    idealSaniyeAdet: number | null
+    idealKaynak: 'OLCULEN' | 'IFS' | null
+    ornekSayisi: number
+  } | null
 }
 
 /** ms → "1s 12dk" / "12dk" / "45sn". Canlı süre için. */
@@ -192,6 +205,23 @@ export function TezgahDetayModal({
       : aktif?.ifsMachRunFactor
         ? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim()
         : '—'
+
+  // Canlı OEE (açık işte route'tan). Null bileşenlerin sebebi UI'da tek satır gösterilir.
+  const co = detay?.canliOee ?? null
+  const calismaSn = co ? co.planliSaniye - co.durusSaniye : 0
+  const perfSebep = !co
+    ? ''
+    : co.idealSaniyeAdet == null
+      ? 'çevrim referansı yok'
+      : calismaSn <= 0
+        ? 'planlı süre yok'
+        : ''
+  const idealEtiket =
+    co?.idealKaynak === 'OLCULEN'
+      ? `ölçülen ideal (${co.ornekSayisi}/50)`
+      : co?.idealKaynak === 'IFS'
+        ? 'IFS planı'
+        : null
 
   const rozet =
     detay?.durum === 'durusta'
@@ -350,16 +380,33 @@ export function TezgahDetayModal({
               </section>
             )}
 
-            {/* Göstergeler (mini) */}
+            {/* Göstergeler — açık işte CANLI OEE (route); açık iş yoksa placeholder. */}
             <section>
               <SecBaslik>Göstergeler</SecBaslik>
-              <div className="grid grid-cols-4 gap-2">
-                <MiniKart e="OEE" />
-                <MiniKart e="Perf." />
-                <MiniKart e="Kull." />
-                <MiniKart e="Kalite" />
-              </div>
-              <p className="mt-1 text-xs text-slate-400">hesaplama sonra (OEE-HESAP)</p>
+              {co ? (
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    <OeeKart e="OEE" oran={co.oeeCanli} yildiz sebep="kull./perf. eksik" />
+                    <OeeKart e="Perf." oran={co.performance} sebep={perfSebep || 'hesaplanamadı'} />
+                    <OeeKart e="Kull." oran={co.availability} sebep="planlı süre yok (vardiya dışı)" />
+                    <OeeKart e="Kalite" oran={null} sebep="iş bitince" />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    canlı — kalite hariç (OEE*, iş bitince tamamlanır)
+                    {idealEtiket && <> · performans çevrimi: {idealEtiket}</>}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    <MiniKart e="OEE" />
+                    <MiniKart e="Perf." />
+                    <MiniKart e="Kull." />
+                    <MiniKart e="Kalite" />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">açık iş yok — OEE iş bitince motordan hesaplanır</p>
+                </>
+              )}
             </section>
 
             {/* PLC sayacı placeholder */}
@@ -531,6 +578,20 @@ function MiniKart({ e }: { e: string }) {
     <div className="rounded-lg border border-slate-200 py-2 text-center">
       <div className="text-lg font-bold text-slate-400">%—</div>
       <div className="text-[10px] uppercase tracking-wider text-slate-400">{e}</div>
+    </div>
+  )
+}
+// Canlı OEE göstergesi — oran (0..1) → %tam sayı; null → "—" + sebep. yildiz: kalite hariç işareti.
+function OeeKart({ e, oran, sebep, yildiz }: { e: string; oran: number | null; sebep?: string; yildiz?: boolean }) {
+  const pct = oran != null ? Math.round(oran * 100) : null
+  return (
+    <div className="rounded-lg border border-slate-200 py-2 text-center">
+      <div className="text-lg font-bold text-slate-700">
+        {pct != null ? `%${pct}` : <span className="text-slate-400">—</span>}
+        {yildiz && pct != null && <span className="text-amber-500" title="kalite hariç">*</span>}
+      </div>
+      <div className="text-[10px] uppercase tracking-wider text-slate-400">{e}</div>
+      {pct == null && sebep && <div className="mt-0.5 text-[9px] leading-tight text-slate-400">{sebep}</div>}
     </div>
   )
 }

@@ -162,15 +162,18 @@ const mainMenuItems = [
 //   Görevlerim → akademi.view (herkes), diğerleri → akademi.report.view,
 //   Eğitimler  → akademi.kurs.edit (authoring).
 // ifs.* anahtarlarına geçiş, guard'lar OR'a çevrildikten sonra yapılacak.
-// IFS ayrıştırması: permission alanı string[] (OR) — filterItems bunu runtime'da
-// zaten destekliyor (IPRO öğeleri de böyle). Yeni ifs.* anahtarları başa, eski
-// akademi.* geriye uyum için duruyor; roller atanıp oturumlar yenilenince
-// (~4 sa) eski anahtarlar kaldırılacak.
+// IFS ayrıştırması TAMAM: menü de yalnız ifs.* anahtarlarında. Eski akademi.*
+// anahtarları 4 Eyl 2026'da kaldırıldı — ölçüldü, eski anahtarı taşıyıp yeni
+// karşılığı olmayan KİMSE yoktu (dört eşlemede de 0 kişi).
+//
+// Menü görünürlüğü token'daki session.user.permissions'a bakar (uçlar gibi
+// anlık DB'ye DEĞİL); token 5 dk'da bir tazelenir. Rol değişiminden sonra
+// menünün görünmesi bu kadar gecikebilir — uçlar zaten açıktır.
 const ifsMenuItems = [
-  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: ["ifs.admin", "akademi.kurs.edit"] },
-  { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: ["ifs.admin", "akademi.kurs.edit"] },
-  { name: "Görevlerim", icon: ListChecks, href: "/ifs/gorevlerim", roles: [] as string[], permission: ["ifs.view", "akademi.view"] },
-  { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: ["ifs.rapor.view", "akademi.report.view"] },
+  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "ifs.admin" },
+  { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: "ifs.admin" },
+  { name: "Görevlerim", icon: ListChecks, href: "/ifs/gorevlerim", roles: [] as string[], permission: "ifs.view" },
+  { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: "ifs.rapor.view" },
 ]
 
 // Formlar alt menüsü

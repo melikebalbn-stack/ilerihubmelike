@@ -27,9 +27,10 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 // Sekme → gerekli izinler (OR). Listede olmayan sekme, sayfayı görebilen
-// herkese açık. IFS ayrıştırması: yeni ifs.* başa, eski akademi.* geriye uyum.
+// herkese açık. IFS ayrıştırması TAMAM: eski akademi.admin kaldırıldı.
+// Dizi biçimi korundu — ileride bir sekmeye ikinci anahtar gerekirse yapı hazır.
 const TAB_IZIN: Partial<Record<TabId, string[]>> = {
-  keyuser: ["ifs.admin", "akademi.admin"],
+  keyuser: ["ifs.admin"],
 };
 
 export default function IfsRaporlarPage() {

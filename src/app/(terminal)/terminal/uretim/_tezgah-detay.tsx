@@ -10,6 +10,9 @@ import {
   CircleCheck,
   AlertTriangle,
   TrendingDown,
+  CheckCircle2,
+  Plus,
+  Minus,
 } from 'lucide-react'
 import {
   Dialog,
@@ -138,14 +141,26 @@ const NABIZ_CSS = `
 `
 
 type AkisDurum = { renk: 'yesil' | 'amber' | 'kirmizi'; nabiz: boolean; metin: string }
+type AkisEsik = { yesilMs: number; amberMs: number }
 /**
- * Son sinyal yaşına göre canlılık durumu: <2dk yeşil (nabız), 2-15dk amber, 15dk+ kırmızı.
- * simdiMs render anında geçilir (1sn'lik tik ile tazelenir) → metin en az 15sn'de bir güncellenir.
+ * Canlılık eşikleri (ms) — TEK yer. Planlı çevrim (sn) varsa eşik ondan türer: yeşil <çevrim×2,
+ * amber çevrim×2..×5, kırmızı ×5 üstü. Enjeksiyon gibi uzun çevrimde (189 sn) normal çalışırken
+ * amber görünmesin diye. Her eşik [60sn, 30dk] arasına kısılır (çok kısa/uzun çevrim koruması).
+ * Planlı çevrim yoksa (null/0) sabit eşiklere düşer: 2dk / 15dk.
  */
-function akisDurumu(sonSinyal: string | null, simdiMs: number): AkisDurum {
+function akisEsikleri(planCevrimSn: number | null): AkisEsik {
+  if (planCevrimSn == null || planCevrimSn <= 0) return { yesilMs: 2 * 60000, amberMs: 15 * 60000 }
+  const kis = (ms: number) => Math.min(30 * 60000, Math.max(60000, ms))
+  return { yesilMs: kis(planCevrimSn * 2 * 1000), amberMs: kis(planCevrimSn * 5 * 1000) }
+}
+/**
+ * Son sinyal yaşına göre canlılık durumu. Eşikler akisEsikleri'nden gelir (çevrim bazlı ya da
+ * sabit). simdiMs render anında geçilir (1sn'lik tik ile tazelenir) → metin canlı güncellenir.
+ */
+function akisDurumu(sonSinyal: string | null, simdiMs: number, esik: AkisEsik): AkisDurum {
   const yas = sonSinyal ? simdiMs - new Date(sonSinyal).getTime() : Infinity
-  if (yas < 2 * 60000) return { renk: 'yesil', nabiz: true, metin: `canlı · ${sureBicim(yas)} önce` }
-  if (yas < 15 * 60000) return { renk: 'amber', nabiz: false, metin: `${sureBicim(yas)} önce` }
+  if (yas < esik.yesilMs) return { renk: 'yesil', nabiz: true, metin: `canlı · ${sureBicim(yas)} önce` }
+  if (yas < esik.amberMs) return { renk: 'amber', nabiz: false, metin: `${sureBicim(yas)} önce` }
   return { renk: 'kirmizi', nabiz: false, metin: sonSinyal ? `sinyal yok · ${sureBicim(yas)}` : 'sinyal yok' }
 }
 
@@ -172,13 +187,15 @@ export function TezgahDetayModal({
   const [detay, setDetay] = useState<Detay | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [, tik] = useState(0)
-  // Uzaktan başlatma paneli açık mı + başarı sonrası detay yenileme sayacı.
+  // Uzaktan başlatma / bitirme paneli açık mı + başarı sonrası detay yenileme sayacı.
   const [baslatModu, setBaslatModu] = useState(false)
+  const [bitirModu, setBitirModu] = useState(false)
   const [yenile, setYenile] = useState(0)
 
-  // Tezgah değişince paneli kapat (bir önceki tezgahtan taşınmasın).
+  // Tezgah değişince panelleri kapat (bir önceki tezgahtan taşınmasın).
   useEffect(() => {
     setBaslatModu(false)
+    setBitirModu(false)
   }, [seciliTezgah])
 
   useEffect(() => {
@@ -226,11 +243,6 @@ export function TezgahDetayModal({
       ? Math.min(100, Math.round((gerceklesenAdet / planlananAdet) * 100))
       : null
 
-  // Canlılık akış durumu — yalnız açık işte (son sinyal yaşından). Date.now() render anında
-  // okunur; 1sn'lik tik zaten yeniden render ettiği için metin/renk canlı tazelenir.
-  const akis = acikIsVar ? akisDurumu(canli?.sonSinyal ?? null, Date.now()) : null
-  const akisTaze = akis?.renk === 'yesil'
-
   // Çevrim — saniye birincil. Planlı: IFS faktör+kod. Gerçekleşen: iş süresi / Σdelta.
   const planCevrimSn = cevrimSaniye(aktif?.ifsMachRunFactor, aktif?.ifsRunTimeCode)
   const isSuresiSn =
@@ -248,6 +260,12 @@ export function TezgahDetayModal({
       : aktif?.ifsMachRunFactor
         ? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim()
         : '—'
+
+  // Canlılık akış durumu — yalnız açık işte. Eşik planlı çevrimden türer (uzun çevrimde amber
+  // yanlış-pozitifi önlenir); planlı çevrim yoksa sabit 2dk/15dk. Date.now() render anında okunur;
+  // 1sn'lik tik zaten yeniden render ettiği için metin/renk canlı tazelenir.
+  const akis = acikIsVar ? akisDurumu(canli?.sonSinyal ?? null, Date.now(), akisEsikleri(planCevrimSn)) : null
+  const akisTaze = akis?.renk === 'yesil'
 
   // Canlı OEE (açık işte route'tan). Null bileşenlerin sebebi UI'da tek satır gösterilir.
   const co = detay?.canliOee ?? null
@@ -356,6 +374,31 @@ export function TezgahDetayModal({
                   style={{ background: TERMINAL_ACCENT }}
                 >
                   <Play className="h-4 w-4" /> Uzaktan iş başlat
+                </Button>
+              )
+            )}
+
+            {/* İşi bitir — yalnız ipro.admin, IPRO tanımlı tezgahta, açık iş VARKEN, duruş YOKKEN.
+                Canlı sayaç üretimini ön dolgu olarak geçer; POST /api/terminal/uzaktan-bitir. */}
+            {canAdmin && iproId && detay.aktifIs && detay.durum !== 'durusta' && (
+              bitirModu ? (
+                <UzaktanBitirPanel
+                  productionLogId={detay.aktifIs.id}
+                  tezgahKod={detay.kod}
+                  onDolguIyi={gerceklesenAdet}
+                  onIptal={() => setBitirModu(false)}
+                  onBasarili={() => {
+                    setBitirModu(false)
+                    setYenile((n) => n + 1)
+                  }}
+                />
+              ) : (
+                <Button
+                  onClick={() => setBitirModu(true)}
+                  variant="outline"
+                  className="w-full gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> İşi bitir
                 </Button>
               )
             )}
@@ -722,6 +765,167 @@ function Ph({ e }: { e: string }) {
     <div className="rounded-lg bg-slate-50 py-2">
       <div className="text-lg font-bold text-slate-300">—</div>
       <div className="text-[10px] text-slate-400">{e}</div>
+    </div>
+  )
+}
+
+// Dokunmatik uyumlu sayı girişi — [−] [input] [+]. Negatife inmez; input inputMode=numeric.
+function StepperNum({
+  deger,
+  onChange,
+  renk,
+}: {
+  deger: string
+  onChange: (v: string) => void
+  renk: 'iyi' | 'hurda'
+}) {
+  const n = Number.parseInt(deger, 10)
+  const gecerli = Number.isInteger(n) && n >= 0
+  const set = (v: number) => onChange(String(Math.max(0, v)))
+  const metinRenk = renk === 'iyi' ? 'text-emerald-700' : 'text-red-600'
+  return (
+    <div className="flex items-stretch gap-2">
+      <button
+        type="button"
+        onClick={() => set((gecerli ? n : 0) - 1)}
+        className="flex min-h-12 w-12 items-center justify-center rounded-lg border text-slate-600 transition-colors hover:bg-slate-50 active:bg-slate-100"
+        aria-label="azalt"
+      >
+        <Minus className="h-5 w-5" />
+      </button>
+      <Input
+        value={deger}
+        onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ''))}
+        inputMode="numeric"
+        className={`min-h-12 flex-1 text-center text-2xl font-semibold ${metinRenk}`}
+      />
+      <button
+        type="button"
+        onClick={() => set((gecerli ? n : 0) + 1)}
+        className="flex min-h-12 w-12 items-center justify-center rounded-lg border text-slate-600 transition-colors hover:bg-slate-50 active:bg-slate-100"
+        aria-label="arttır"
+      >
+        <Plus className="h-5 w-5" />
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Terminalden iş bitir paneli (ipro.admin). İyi + hurda adedi girer (iyi ön dolgu = canlı
+ * sayaç üretimi, düzeltilebilir), onay adımında özet gösterir, sonra POST
+ * /api/terminal/uzaktan-bitir { productionLogId, qtyComplete, qtyScrap }. Başarıda onBasarili()
+ * → detay yenilenir (tezgah 'boşta' görünür, OEE kaydı oluşur). Yanıt apiSuccess → res.ok ile ölçülür.
+ */
+function UzaktanBitirPanel({
+  productionLogId,
+  tezgahKod,
+  onDolguIyi,
+  onIptal,
+  onBasarili,
+}: {
+  productionLogId: string
+  tezgahKod: string
+  /** Ön dolgu iyi adet — canlı PLC sayacından gelen üretim (düzeltilebilir). */
+  onDolguIyi: number
+  onIptal: () => void
+  onBasarili: () => void
+}) {
+  const [iyi, setIyi] = useState(String(Math.max(0, Math.round(onDolguIyi))))
+  const [hurda, setHurda] = useState('0')
+  const [onay, setOnay] = useState(false) // false: giriş adımı · true: onay adımı
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [hata, setHata] = useState<string | null>(null)
+
+  const iyiN = Number.parseInt(iyi, 10)
+  const hurdaN = Number.parseInt(hurda, 10)
+  const gecerli = Number.isInteger(iyiN) && iyiN >= 0 && Number.isInteger(hurdaN) && hurdaN >= 0
+
+  const gonder = async () => {
+    if (!gecerli) return
+    setGonderiliyor(true)
+    setHata(null)
+    try {
+      const res = await fetch('/api/terminal/uzaktan-bitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productionLogId, qtyComplete: iyiN, qtyScrap: hurdaN }),
+      })
+      if (res.ok) {
+        onBasarili()
+        return
+      }
+      const d = await res.json().catch(() => null)
+      setHata(d?.error ?? `Bitirilemedi (${res.status})`)
+    } catch {
+      setHata('Bağlantı hatası')
+    } finally {
+      setGonderiliyor(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onay ? () => setOnay(false) : onIptal}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border text-slate-500 transition-colors hover:bg-slate-50"
+          aria-label="Geri"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <span className="text-sm font-semibold text-slate-800">İşi bitir · {tezgahKod}</span>
+      </div>
+
+      {onay ? (
+        // Onay adımı — özet + geri dönülebilir onay.
+        <div className="space-y-3">
+          <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+            <span className="font-semibold text-emerald-700">{iyiN} iyi</span>,{' '}
+            <span className="font-semibold text-red-600">{hurdaN} hurda</span> ile iş kapatılacak.
+            {hurdaN > 0 && iyiN + hurdaN > 0 && (
+              <span className="ml-1 text-xs text-slate-500">(sayaç aşımı sunucuda doğrulanır)</span>
+            )}
+          </div>
+          {hata && <p className="text-sm text-red-600">{hata}</p>}
+          <div className="flex gap-2">
+            <Button
+              onClick={gonder}
+              disabled={gonderiliyor}
+              className="flex-1 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {gonderiliyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Onayla ve bitir
+            </Button>
+            <Button variant="outline" onClick={() => setOnay(false)} disabled={gonderiliyor}>
+              Geri
+            </Button>
+          </div>
+        </div>
+      ) : (
+        // Giriş adımı — iyi (ön dolgulu) + hurda.
+        <div className="space-y-4">
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">İyi adet</span>
+              <span className="text-[11px] text-slate-400">canlı sayaçtan ön dolgu</span>
+            </div>
+            <StepperNum deger={iyi} onChange={setIyi} renk="iyi" />
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">Hurda adet</div>
+            <StepperNum deger={hurda} onChange={setHurda} renk="hurda" />
+          </div>
+          <Button
+            onClick={() => setOnay(true)}
+            disabled={!gecerli}
+            className="w-full gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+          >
+            Devam <CheckCircle2 className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

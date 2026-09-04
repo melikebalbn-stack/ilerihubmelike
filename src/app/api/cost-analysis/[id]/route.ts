@@ -135,6 +135,30 @@ export async function PUT(
       }
     }
 
+    // ONAY İZİ — durum geçişine bağlı (2026-09-03).
+    // Bu uç eskiden YALNIZ `status` yazıyordu: arayüzden Onaylı yapılan kayıtta
+    // "kim/ne zaman onayladı" hiç kaydedilmiyordu (mevcut APPROVED kayıtlardaki
+    // approvedById uygulamadan değil, veri aktarımından geliyor). Geri Taslak'a
+    // çekilen kayıtta da eski onay izi asılı kalıyordu.
+    //
+    // YALNIZ durum GERÇEKTEN değiştiğinde yazılır: status göndermeyen (ya da
+    // aynı durumu gönderen) alan güncellemeleri approvedAt'i tazelemez.
+    // NOT: `user` requireUser'ın DB satırı; user.id === session.user.id ve
+    // approvedById FK'sının beklediği değer bu.
+    const yeniStatus = status || existingAnalysis.status
+    const onayIzi: { approvedById?: string | null; approvedAt?: Date | null } = {}
+    if (yeniStatus !== existingAnalysis.status) {
+      if (yeniStatus === 'APPROVED') {
+        onayIzi.approvedById = user.id
+        onayIzi.approvedAt = new Date()
+      } else if (yeniStatus === 'DRAFT' || yeniStatus === 'REJECTED') {
+        // Reddetmede de onay izi silinir: rejectionReason ayrı alanda tutulur,
+        // şemada rejectedById/rejectedAt YOK (bkz. rapor).
+        onayIzi.approvedById = null
+        onayIzi.approvedAt = null
+      }
+    }
+
     const analysis = await prisma.costAnalysis.update({
       where: { id },
       data: {
@@ -148,7 +172,8 @@ export async function PUT(
         customerId: customerId !== undefined ? (customerId || null) : existingAnalysis.customerId,
         overheadRate: overheadRate !== undefined ? parseFloat(overheadRate) : existingAnalysis.overheadRate,
         profitRate: profitRate !== undefined ? parseFloat(profitRate) : existingAnalysis.profitRate,
-        status: status || existingAnalysis.status,
+        status: yeniStatus,
+        ...onayIzi,
       },
       include: {
         category: true,

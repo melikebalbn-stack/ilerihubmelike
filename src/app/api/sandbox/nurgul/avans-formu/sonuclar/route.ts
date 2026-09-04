@@ -68,6 +68,7 @@ export async function GET(request: NextRequest) {
       calisanYakaRengi: yakaMap.get(s.calisanId) ?? null,
       avansIstiyorMu: s.avansIstiyorMu,
       gonderimTarihi: t.gonderimTarihi.toISOString(),
+      vekaletenMi: t.vekaletenMi,
     }))
   )
 

@@ -30,14 +30,16 @@ export async function GET() {
 
   const personel = await prisma.personnel.findUnique({
     where: { id: dbUser.personnelId },
-    select: { adSoyad: true, yakaRengi: true },
+    select: { adSoyad: true, yakaRengi: true, aktif: true },
   })
-  if (!personel) {
+  // aktif=false (işten ayrılmış) personel için her iki bayrak da kapalı —
+  // ayrılmış biri hâlâ oturum açabiliyor olsa bile avans menüsü görünmez.
+  if (!personel || !personel.aktif) {
     return NextResponse.json({ kendimGorunur: false, sorumluGorunur: false })
   }
 
   const kendimGorunur = personel.yakaRengi === 'BEYAZ' || personel.yakaRengi === 'GRI'
-  const bolumler = await bulSorumluBolumleri(personel.adSoyad)
+  const bolumEslesmeleri = await bulSorumluBolumleri(personel.adSoyad)
 
-  return NextResponse.json({ kendimGorunur, sorumluGorunur: bolumler.length > 0 })
+  return NextResponse.json({ kendimGorunur, sorumluGorunur: bolumEslesmeleri.length > 0 })
 }

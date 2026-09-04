@@ -36,6 +36,7 @@ type Satir = {
   calisanYakaRengi: 'MAVI' | 'BEYAZ' | null
   avansIstiyorMu: boolean
   gonderimTarihi: string
+  vekaletenMi: boolean
 }
 
 type AramaSonucu = { id: string; adSoyad: string; bolum: string | null; sicilNo: string | null }
@@ -264,7 +265,14 @@ export default function AvansSonuclarPage() {
               İK tarafından eklendi
             </Badge>
           ) : (
-            <span className="text-slate-600">{s.sorumluAdSoyad}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-600">{s.sorumluAdSoyad}</span>
+              {s.vekaletenMi && (
+                <Badge variant="outline" className="text-xs">
+                  Vekaleten girildi
+                </Badge>
+              )}
+            </div>
           )}
         </TableCell>
         <TableCell className="text-slate-600">

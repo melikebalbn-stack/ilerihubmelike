@@ -11,13 +11,16 @@ export const dynamic = 'force-dynamic'
  * Aynı (kendisi + bölüm + dönem) için ikinci gönderimde üzerine yazar (upsert).
  */
 
+// aktif=false (işten ayrılmış) personel avans talebi giremez — hâlâ oturum
+// açabiliyor olsa bile. bkz. avans-formu-helpers.ts PERSONEL_PASIF ile aynı kural.
 async function kendiPersonelKaydi(userId: string) {
   const dbUser = await prisma.user.findUnique({
     where: { id: userId },
     select: { personnelId: true },
   })
   if (!dbUser?.personnelId) return null
-  return prisma.personnel.findUnique({ where: { id: dbUser.personnelId } })
+  const personel = await prisma.personnel.findUnique({ where: { id: dbUser.personnelId } })
+  return personel?.aktif ? personel : null
 }
 
 export async function GET() {
@@ -32,7 +35,7 @@ export async function GET() {
 
   if (!personel) {
     return NextResponse.json(
-      { error: 'Bu kullanıcıya bağlı bir personel kaydı bulunamadı.' },
+      { error: 'Bu kullanıcıya bağlı, aktif bir personel kaydı bulunamadı.' },
       { status: 404 }
     )
   }
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
 
   if (!personel) {
     return NextResponse.json(
-      { error: 'Bu kullanıcıya bağlı bir personel kaydı bulunamadı.' },
+      { error: 'Bu kullanıcıya bağlı, aktif bir personel kaydı bulunamadı.' },
       { status: 404 }
     )
   }

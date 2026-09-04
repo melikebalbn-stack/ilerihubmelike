@@ -105,6 +105,11 @@ export async function POST(request: NextRequest) {
     const sonuclar: { bolum: string; avansTalebiId: string; satirSayisi: number }[] = []
 
     for (const [bolum, secimler] of bolumGruplari) {
+      // Vekil senaryosu (c): eşleşme sadece vekil işaretli alan(lar) üzerinden
+      // kurulduysa vekaletenMi=true. Asıl sorumlu işaretsiz bir alanla da
+      // eşleşiyorsa vekaletenBolumler'de bu bölüm YOKTUR → false kalır.
+      const vekaletenMi = sonuc.vekaletenBolumler.includes(bolum)
+
       const avansTalebi = await tx.avansTalebi.upsert({
         where: {
           sorumluId_bolum_donemYil_donemAy: {
@@ -119,10 +124,12 @@ export async function POST(request: NextRequest) {
           bolum,
           donemYil: body.donemYil,
           donemAy: body.donemAy,
+          vekaletenMi,
         },
         // Bos update: {} Prisma'da hicbir UPDATE sorgusu tetiklemez, @updatedAt
         // bump olmaz - duzeltme izinin kaybolmamasi icin aciktan set ediliyor.
-        update: { updatedAt: new Date() },
+        // vekaletenMi de güncel eşleşme durumuna göre tazelenir.
+        update: { updatedAt: new Date(), vekaletenMi },
       })
 
       await tx.avansTalebiSatiri.deleteMany({

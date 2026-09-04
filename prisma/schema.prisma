@@ -13887,6 +13887,10 @@ model AvansTalebi {
   gonderimTarihi DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  // Vekil senaryosu (c): sorumluId eşleşmesi "(V)"/"V." işaretli bir vekil
+  // alanı üzerinden kurulduysa true. Asıl sorumlunun kendisi eşleştiyse
+  // (aynı bölümde işaretsiz bir alan da eşleşiyorsa) false kalır.
+  vekaletenMi    Boolean  @default(false)
 
   satirlar AvansTalebiSatiri[]
 

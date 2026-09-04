@@ -145,6 +145,83 @@ function toRecipient(u: {
 }
 
 // ════════════════════════════════════════════════════════════
+// TICKET MAİLLERİ — TEK ÇIKIŞ NOKTASI
+// ════════════════════════════════════════════════════════════
+
+/**
+ * Ticket bildirimlerinin yanıt adresi.
+ *
+ * NEDEN: mailler SMTP_FROM (ilerihub@) adresinden gidiyor ama izlenen kutu
+ * destek@. Reply-To olmadan kullanıcının "yanıtla"sı ilerihub@'ya düşüyor,
+ * oradan hiçbir yere gitmiyordu — talebine cevap yazdığını sanan kullanıcının
+ * mesajı kayboluyordu.
+ */
+export const TICKET_REPLY_TO = 'destek@ilerigroup.com'
+
+/**
+ * Ticket bildirimi gönderir ve gönderilen mailin Message-ID'sini döndürür.
+ *
+ * Dispatcher'lar sendEmail'i DOĞRUDAN çağırmaz: Reply-To'nun beş ayrı çağrıya
+ * elle eklenmesi, birinin unutulmasıyla aynı hatayı geri getirirdi.
+ *
+ * Dönen messageId çağıran tarafından bir kayda damgalanır (TicketComment
+ * veya Ticket) — gelen yanıtın In-Reply-To/References başlığı bu değeri
+ * taşıyacağı için mail-isle.ticketBul() yanıtı doğru talebe iliştirir.
+ * Simülasyonda (SMTP yok) messageId üretilmez → undefined döner, damgalama
+ * sessizce atlanır.
+ */
+async function ticketMailGonder(
+  alici: { name: string; email: string },
+  konu: string,
+  metin: string,
+  html?: string,
+): Promise<string | undefined> {
+  const sonuc = await sendEmail([alici], konu, metin, html, undefined, {
+    replyTo: TICKET_REPLY_TO,
+  })
+  return sonuc.messageId
+}
+
+/**
+ * Giden mailin Message-ID'sini ilgili kayda damgalar.
+ *
+ * Öncelik YORUM satırı: her bildirim kendi yorumuna bağlanır, böylece aynı
+ * ticket'ın farklı mailleri birbirini ezmez. Yorum yoksa Ticket.emailMessageId
+ * kullanılır ama YALNIZ BOŞSA: e-posta kanalından açılan taleplerde orada
+ * gelen ilk mailin id'si duruyor ve onu ezmek o zinciri koparırdı.
+ *
+ * Hata YUTULUR: damga eksikse yalnız o mailin yanıtı thread'lenemez, bildirim
+ * yine gitmiştir.
+ */
+async function messageIdDamgala(
+  messageId: string | undefined,
+  hedef: { commentId?: string | null; ticketId: string },
+): Promise<void> {
+  if (!messageId) return // simülasyon veya gönderim başarısız
+  try {
+    if (hedef.commentId) {
+      await prisma.ticketComment.update({
+        where: { id: hedef.commentId },
+        data: { emailMessageId: messageId },
+      })
+      return
+    }
+    const t = await prisma.ticket.findUnique({
+      where: { id: hedef.ticketId },
+      select: { emailMessageId: true },
+    })
+    if (t && !t.emailMessageId) {
+      await prisma.ticket.update({
+        where: { id: hedef.ticketId },
+        data: { emailMessageId: messageId },
+      })
+    }
+  } catch (err) {
+    console.error('[ticket-notify] messageId damgalanamadı:', messageId, err)
+  }
+}
+
+// ════════════════════════════════════════════════════════════
 // KANAL 1: EMAIL
 // ════════════════════════════════════════════════════════════
 
@@ -167,7 +244,7 @@ async function sendEmails(recipients: Recipient[], ticket: TicketForDispatch): P
         },
         r.name,
       )
-      await sendEmail([{ name: r.name, email: r.email }], subject, body, html)
+      await ticketMailGonder({ name: r.name, email: r.email }, subject, body, html)
     } catch (err) {
       console.error(`[ticket-notify] email to ${r.email} failed:`, err)
     }
@@ -489,7 +566,9 @@ export async function dispatchTicketKapandi(
     </td></tr>
   </table>
 </body></html>`
-    await sendEmail([{ name: r.name, email: r.email }], title, text, html)
+    const messageId = await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
+    // Kapanış mailinin kendi yorum satırı yok → Ticket.emailMessageId (boşsa).
+    await messageIdDamgala(messageId, { ticketId: ticket.id })
   } catch (err) {
     console.error('[ticket-kapanis-notify] email failed:', err)
   }
@@ -563,7 +642,14 @@ export type TicketYorumInfo = {
  */
 export async function dispatchTicketYorum(
   ticket: TicketYorumInfo,
-  yorum: { content: string; isInternal: boolean; authorEmail: string; authorName: string },
+  yorum: {
+    content: string
+    isInternal: boolean
+    authorEmail: string
+    authorName: string
+    /** Damgalanacak yorum satırı — giden mailin Message-ID'si buraya yazılır. */
+    commentId?: string | null
+  },
 ): Promise<void> {
   if (yorum.isInternal) return // dahili not → bildirim yok
 
@@ -636,7 +722,9 @@ export async function dispatchTicketYorum(
     </td></tr>
   </table>
 </body></html>`
-    await sendEmail([{ name: r.name, email: r.email }], title, text, html)
+    const messageId = await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
+    // Yorumun KENDİ satırına damga: her yorum kendi zincirini taşır.
+    await messageIdDamgala(messageId, { commentId: yorum.commentId, ticketId: ticket.id })
   } catch (err) {
     console.error('[ticket-yorum-notify] email failed:', err)
   }
@@ -658,6 +746,8 @@ export type TicketCozumInfo = {
   cozumMetni: string | null
   /** Kaç gün içinde itiraz edilebilir. */
   itirazGunu: number
+  /** Çözüm metni yorum olarak yazıldıysa o satırın id'si (damgalama için). */
+  cozumYorumId?: string | null
 }
 
 /**
@@ -732,7 +822,9 @@ export async function dispatchTicketCozuldu(ticket: TicketCozumInfo): Promise<vo
     </td></tr>
   </table>
 </body></html>`
-    await sendEmail([{ name: r.name, email: r.email }], title, text, html)
+    const messageId = await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
+    // Çözüm metni yazıldıysa onun yorum satırına, yazılmadıysa Ticket'a.
+    await messageIdDamgala(messageId, { commentId: ticket.cozumYorumId, ticketId: ticket.id })
   } catch (err) {
     console.error('[ticket-cozum-notify] email failed:', err)
   }
@@ -795,7 +887,8 @@ export async function dispatchTicketItiraz(ticket: TicketItirazInfo): Promise<vo
     </td></tr>
   </table>
 </body></html>`
-    await sendEmail([{ name: r.name, email: r.email }], title, text, html)
+    const messageId = await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
+    await messageIdDamgala(messageId, { ticketId: ticket.id })
   } catch (err) {
     console.error('[ticket-itiraz-notify] email failed:', err)
   }

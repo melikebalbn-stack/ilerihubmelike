@@ -150,8 +150,13 @@ export async function sendEmail(
   subject: string,
   body: string,
   html?: string,
-  attachments?: EmailAttachment[]
-): Promise<{ success: boolean; error?: string }> {
+  attachments?: EmailAttachment[],
+  /**
+   * Ek başlıklar. `replyTo`: yanıtların gideceği adres — ticket bildirimlerinde
+   * destek@ kutusuna düşsün diye kullanılıyor (bkz. ticketMailGonder).
+   */
+  options?: { replyTo?: string }
+): Promise<{ success: boolean; error?: string; messageId?: string }> {
   // GUARD: test/staging mail koruması (env-gated). MAIL_RECIPIENT_OVERRIDE
   // doluysa TÜM alıcıları o adrese yönlendir + konuya "[STAGING]" ön-eki ekle.
   // Prod'da env boş → hiçbir değişiklik (normal gönderim).
@@ -197,12 +202,15 @@ export async function sendEmail(
   if (!smtp || forceSimulate) {
     console.log('📧 [EMAIL SIMULATION] ========================')
     console.log('To:', effectiveTo.map((r) => `${r.name} <${r.email}>`).join(', '))
+    if (options?.replyTo) console.log('Reply-To:', options.replyTo)
     console.log('Subject:', effectiveSubject)
     console.log('Body:')
     console.log(effectiveBody)
     console.log('============================================')
 
     await new Promise((resolve) => setTimeout(resolve, 100))
+    // messageId DÖNMEZ: simülasyonda gerçek bir Message-ID üretilmiyor.
+    // Çağıran taraf damgalamayı sessizce atlamalı (bkz. ticketMailGonder).
     return { success: true }
   }
 
@@ -217,10 +225,13 @@ export async function sendEmail(
       text: effectiveBody,
       html: effectiveHtml ?? effectiveBody.replace(/\n/g, '<br>'),
       ...(attachments && attachments.length ? { attachments } : {}),
+      ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
     })
 
     console.log('✅ E-posta gönderildi:', info.messageId)
-    return { success: true }
+    // messageId ÇAĞIRANA DÖNÜYOR: ticket bildirimlerinde kayda damgalanıp
+    // gelen yanıtın References başlığıyla eşleştirilecek (mail-isle.ticketBul).
+    return { success: true, messageId: info.messageId }
   } catch (error) {
     console.error('❌ E-posta gönderme hatası:', error)
     return {

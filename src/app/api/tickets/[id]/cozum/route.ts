@@ -89,9 +89,13 @@ export async function POST(
     // DİKKAT: bu yorum için dispatchTicketYorum ÇAĞRILMAZ — aşağıdaki
     // dispatchTicketCozuldu zaten aynı metni gönderiyor, ikisi birden giderse
     // kullanıcı aynı şeyi iki kez alır.
+    // Çözüm yorumunun id'si: giden çözüm mailinin Message-ID'si buraya
+    // damgalanacak (yanıt gelirse aynı talebe iliştirilsin).
+    let cozumYorumId: string | null = null
+
     await prisma.$transaction(async (tx) => {
       if (cozumHam) {
-        await tx.ticketComment.create({
+        const cozumYorumu = await tx.ticketComment.create({
           data: {
             ticketId,
             authorEmail: user.email,
@@ -100,7 +104,9 @@ export async function POST(
             isInternal: false,
             isResolution: true,
           },
+          select: { id: true },
         })
+        cozumYorumId = cozumYorumu.id
       }
 
       await tx.ticket.update({
@@ -144,6 +150,7 @@ export async function POST(
         cozenAd,
         cozumMetni: cozumHam || null,
         itirazGunu: ITIRAZ_SURESI_GUN,
+        cozumYorumId,
       })
     } catch (err) {
       console.error('[ticket-cozum] bildirim gönderilemedi:', ticket.ticketNumber, err)

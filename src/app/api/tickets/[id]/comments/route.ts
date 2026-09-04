@@ -175,6 +175,9 @@ export async function POST(
           isInternal: finalIsInternal,
           authorEmail: comment.authorEmail,
           authorName: comment.authorName,
+          // Giden mailin Message-ID'si bu satıra damgalanacak; kullanıcı
+          // maili yanıtlarsa References üzerinden aynı talebe iliştirilir.
+          commentId: comment.id,
         },
       )
     } catch (err) {

@@ -289,6 +289,10 @@ const strategicHrMenuItems = [
   { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "recruitment.view" },
   { name: "Envanter", icon: Boxes, href: "/envanter", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "envanter.view" },
   { name: "Servis Yönetimi", icon: Truck, href: "/servis-yonetimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view" },
+  // FAZ 1B-EK Madde 31 — "Bu Ay Ne Değişti?" özet ekranı. Ayrı bir satır
+  // (nested/expandable menü mekanizması bu dosyada YOK, mevcut düz liste
+  // deseni izlendi) — Servis Yönetimi ile AYNI permission (servis.view).
+  { name: "Servis: Bu Ay Ne Değişti?", icon: Truck, href: "/servis-yonetimi/bu-ay-ne-degisti", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view" },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   // VIEW gate = YILLIK_TAKVIM_VIEW_PERMISSIONS (yilliktakvim.view | yilliktakvim.admin, OR).
   // admin eklendi — yalnız admin izinli kullanıcı sayfayı açabildiği hâlde menüde göremiyordu.

@@ -48,7 +48,7 @@ const bosStatus = (): Record<OrnekStatusValue, number> => ({
 });
 
 export async function GET(req: NextRequest) {
-  const { session, error } = await requirePermission(['ifs.rapor.view', 'akademi.report.view']);
+  const { session, error } = await requirePermission("ifs.rapor.view");
   if (error) return error;
 
   const callerId = await resolveAkademiUserId(session);
@@ -78,7 +78,13 @@ export async function GET(req: NextRequest) {
 
   // Scope — ifs-evaluations ile aynı kural.
   const perms = await getUserPermissions(callerId);
-  const fullScope = perms.has("akademi.admin");
+  // KAPSAM KARARI — burada OR BİLEREK duruyor (guard'larda tek anahtara indirildi).
+  // Fark: guard kapıyı kapatır, 403 verir, hemen fark edilir. Kapsam kararı ise
+  // sessizce AZ VERİ gösterir — yönetici kendini kendi bölümüne daraltılmış bulur
+  // ve bunu kimse hata olarak bildirmez. Eski anahtarı burada bırakmak kimseyi
+  // içeri ALMAZ (guard zaten ifs.* istiyor); yalnız geçiş döneminde yanlış
+  // daraltmayı önler.
+  const fullScope = perms.has("ifs.admin") || perms.has("akademi.admin");
   const ownBolum = fullScope ? null : await resolveUserBolum(callerId);
   if (!fullScope) {
     if (!ownBolum || (bolum && ownBolum !== bolum)) {

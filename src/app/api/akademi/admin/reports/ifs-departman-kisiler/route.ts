@@ -20,7 +20,7 @@ import { ifsYuzde } from "@/lib/akademi/ifs-progress";
 // "başarılı" işaretlenebiliyor — prod'da 8 satır; düzeltilmezse oran 100'ü
 // aşıyordu, bkz. %107 vakası).
 export async function GET(req: NextRequest) {
-  const { session, error } = await requirePermission(['ifs.rapor.view', 'akademi.report.view']);
+  const { session, error } = await requirePermission("ifs.rapor.view");
   if (error) return error;
 
   const callerId = await resolveAkademiUserId(session);
@@ -37,7 +37,13 @@ export async function GET(req: NextRequest) {
   }
 
   const perms = await getUserPermissions(callerId);
-  const fullScope = perms.has("akademi.admin");
+  // KAPSAM KARARI — burada OR BİLEREK duruyor (guard'larda tek anahtara indirildi).
+  // Fark: guard kapıyı kapatır, 403 verir, hemen fark edilir. Kapsam kararı ise
+  // sessizce AZ VERİ gösterir — yönetici kendini kendi bölümüne daraltılmış bulur
+  // ve bunu kimse hata olarak bildirmez. Eski anahtarı burada bırakmak kimseyi
+  // içeri ALMAZ (guard zaten ifs.* istiyor); yalnız geçiş döneminde yanlış
+  // daraltmayı önler.
+  const fullScope = perms.has("ifs.admin") || perms.has("akademi.admin");
   if (!fullScope) {
     const ownBolum = await resolveUserBolum(callerId);
     if (!ownBolum || ownBolum !== bolum) {
@@ -203,8 +209,12 @@ export async function GET(req: NextRequest) {
   // buna bakarak karar verir. Karar SUNUCUDA verilir — istemci permissions dizisine
   // bakıp kendi kendine karar vermesin; zorlama zaten ifs-keyuser-degerlendirme
   // ucunda (aynı iki koşul: izin + o bölüme atanmış olma).
+  // Kapsam kararı: OR bilerek duruyor (yukarıdaki fullScope ile aynı gerekçe) —
+  // eski anahtar burada kimseyi içeri almaz, yalnız yanlışlıkla "düzenleyemez"
+  // görünmesini önler. Yazma zorlaması ifs-keyuser-degerlendirme ucunda, orada
+  // tek anahtar (ifs.keyuser).
   const keyUserYetkim =
-    perms.has("akademi.ifs.keyuser") &&
+    (perms.has("ifs.keyuser") || perms.has("akademi.ifs.keyuser")) &&
     (await prisma.ifsKeyUser.count({
       where: { bolum, userId: callerId },
     })) > 0;

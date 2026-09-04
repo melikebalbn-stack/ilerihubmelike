@@ -10,14 +10,22 @@ import { logAuditEvent } from "@/lib/audit-log";
 // IFS canlı değerlendirme yazma yetkisi (PR-2): OR — yeni izin, mevcut
 // grade.manual (geri uyum) veya tam admin. grade.manual ileride OR'dan çıkarılıp
 // daraltılabilir.
-const IFS_EVAL_WRITE = [
-  // IFS ayrıştırması: yeni anahtar başa, eski geriye uyum için duruyor.
-  // Oturumlar yenilenip roller atandıktan sonra akademi.* kaldırılacak.
-  "ifs.evaluate",
-  "akademi.ifs.evaluate",
-  "akademi.grade.manual",
-  "akademi.admin",
-];
+// IFS görev/alan değerlendirmesi yazma yetkisi — TEK ANAHTAR.
+//
+// Eskiden OR şuydu: akademi.ifs.evaluate + akademi.grade.manual + akademi.admin.
+// Üçü de kaldırıldı; kapı artık yalnız ifs.evaluate (IFS Eğitmeni / Super Admin).
+//
+// ÖLÇÜLDÜ (3 Eyl 2026, prod): bu daraltma ÜÇ kişiyi dışarıda bırakıyor —
+// Elif Karadeniz, Elif Yıldırım, Gokce Eksioglu. Üçü de yalnız grade.manual +
+// akademi.admin ile geçiyordu, ifs.evaluate taşımıyorlar. BİLEREK dışarıdalar:
+// IFS görev değerlendirmesi eğitmenin işi, akademi/İK yöneticiliğinin değil.
+// Üçünün bugüne kadar yazdığı IFS değerlendirmesi: 0 / 0 / 0.
+// Fiilen değerlendirme yazan üç kişi (Melike Balaban, Nurgul Tastan,
+// Melih Dilben) ifs.evaluate taşıyor — kimse kesilmiyor.
+//
+// Birine yeniden yetki gerekirse doğru yol bu diziyi genişletmek DEĞİL,
+// o kişiye "IFS Eğitmeni" rolünü vermektir.
+const IFS_EVAL_WRITE = ["ifs.evaluate"];
 
 // IFS-5a: Görev değerlendirme matrisi — READ (read-only).
 // Param: bolum (zorunlu) + courseId (IFS kursu/alanı) [+ opsiyonel userId].
@@ -26,7 +34,7 @@ const IFS_EVAL_WRITE = [
 // N+1 YOK: getUsersByBolum + GOREV içerikleri + ContentProgress (+ userId varsa
 // IfsTaskEvaluation) — per-user döngüde sorgu yok.
 export async function GET(req: NextRequest) {
-  const { session, error } = await requirePermission(['ifs.rapor.view', 'akademi.report.view']);
+  const { session, error } = await requirePermission("ifs.rapor.view");
   if (error) return error;
 
   const callerId = await resolveAkademiUserId(session);
@@ -50,7 +58,13 @@ export async function GET(req: NextRequest) {
 
   // Scope: müdür yalnız kendi bölümünü görebilir.
   const perms = await getUserPermissions(callerId);
-  const fullScope = perms.has("akademi.admin");
+  // KAPSAM KARARI — burada OR BİLEREK duruyor (guard'larda tek anahtara indirildi).
+  // Fark: guard kapıyı kapatır, 403 verir, hemen fark edilir. Kapsam kararı ise
+  // sessizce AZ VERİ gösterir — yönetici kendini kendi bölümüne daraltılmış bulur
+  // ve bunu kimse hata olarak bildirmez. Eski anahtarı burada bırakmak kimseyi
+  // içeri ALMAZ (guard zaten ifs.* istiyor); yalnız geçiş döneminde yanlış
+  // daraltmayı önler.
+  const fullScope = perms.has("ifs.admin") || perms.has("akademi.admin");
   // IFS-5b: eğitmen düzenleme yetkisi (UI editable vs read-only).
   // PR-2: yazma OR setiyle hizalı (yeni izin / grade.manual / admin).
   const canEdit = IFS_EVAL_WRITE.some((p) => perms.has(p));

@@ -10,14 +10,22 @@ import { logAuditEvent } from "@/lib/audit-log";
 // + notu. seviye=BASARILI → ders "tamamlandı" (CourseProgress.completedAt).
 // Yetki: OR(akademi.ifs.evaluate, akademi.grade.manual, akademi.admin).
 // Yazımdan sonra recomputeCourseProgress → isCompleted güncellenir. UI PR-3'te.
-const IFS_EVAL_WRITE = [
-  // IFS ayrıştırması: yeni anahtar başa, eski geriye uyum için duruyor.
-  // Oturumlar yenilenip roller atandıktan sonra akademi.* kaldırılacak.
-  "ifs.evaluate",
-  "akademi.ifs.evaluate",
-  "akademi.grade.manual",
-  "akademi.admin",
-];
+// IFS görev/alan değerlendirmesi yazma yetkisi — TEK ANAHTAR.
+//
+// Eskiden OR şuydu: akademi.ifs.evaluate + akademi.grade.manual + akademi.admin.
+// Üçü de kaldırıldı; kapı artık yalnız ifs.evaluate (IFS Eğitmeni / Super Admin).
+//
+// ÖLÇÜLDÜ (3 Eyl 2026, prod): bu daraltma ÜÇ kişiyi dışarıda bırakıyor —
+// Elif Karadeniz, Elif Yıldırım, Gokce Eksioglu. Üçü de yalnız grade.manual +
+// akademi.admin ile geçiyordu, ifs.evaluate taşımıyorlar. BİLEREK dışarıdalar:
+// IFS görev değerlendirmesi eğitmenin işi, akademi/İK yöneticiliğinin değil.
+// Üçünün bugüne kadar yazdığı IFS değerlendirmesi: 0 / 0 / 0.
+// Fiilen değerlendirme yazan üç kişi (Melike Balaban, Nurgul Tastan,
+// Melih Dilben) ifs.evaluate taşıyor — kimse kesilmiyor.
+//
+// Birine yeniden yetki gerekirse doğru yol bu diziyi genişletmek DEĞİL,
+// o kişiye "IFS Eğitmeni" rolünü vermektir.
+const IFS_EVAL_WRITE = ["ifs.evaluate"];
 
 const bodySchema = z.object({
   userId: z.string().trim().min(1, "userId gerekli"),

@@ -14,17 +14,13 @@ import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 // `bolumler === null` → sınırsız (yönetici). Dizi → yalnız o bölümler.
 // Boş dizi olamaz: key user'ın hiç ataması yoksa `yetkili:false` döner ve
 // çağıran 403 verir — fail-closed.
-// IFS ayrıştırması: yeni ifs.* anahtarları başa eklendi, eski akademi.*
-// anahtarları geriye uyum için DURUYOR. Roller kişilere atanıp oturumlar
-// yenilendikten (~4 sa) sonra eski anahtarlar kaldırılacak.
-export const IFS_EGITIM_OKUMA = [
-  "ifs.admin",
-  "akademi.kurs.edit",
-  "ifs.keyuser",
-];
+// IFS ayrıştırması TAMAM: eski akademi.* anahtarları kaldırıldı, kapı yalnız
+// ifs.* anahtarlarında. Geçiş 3 Eyl 2026'da ölçülerek yapıldı — eski anahtarı
+// taşıyıp yeni karşılığı olmayan kimse kalmamıştı (altı eşlemede de eksik: 0).
+export const IFS_EGITIM_OKUMA = ["ifs.admin", "ifs.keyuser"];
 
 /** Yönetici sayılan anahtarlar — kapsam DARALTILMAZ, tüm kişiler görünür. */
-const IFS_YONETICI = ["ifs.admin", "akademi.kurs.edit"];
+const IFS_YONETICI = ["ifs.admin"];
 
 export interface IfsKapsam {
   yetkili: boolean;

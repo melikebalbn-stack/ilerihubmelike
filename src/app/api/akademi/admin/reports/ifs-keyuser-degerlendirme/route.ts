@@ -27,7 +27,7 @@ const bodySchema = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
-  const { session, error } = await requirePermission(['ifs.keyuser', 'akademi.ifs.keyuser']);
+  const { session, error } = await requirePermission("ifs.keyuser");
   if (error) return error;
   const actorId = await resolveAkademiUserId(session);
   if (!actorId) {

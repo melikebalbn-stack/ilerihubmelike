@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { personelFkAlanlariIdOncelikli } from '@/lib/personnel/fk-cozum'
+import { degerlendirmeTarihleriniTamamla } from '@/lib/personnel/degerlendirme-tarihleri'
 import { prisma } from '@/lib/prisma'
 import { personelEklendiginde, type YeniPersonelSonuc } from '@/lib/org/personel-koltuk-senkron'
 import { requireUser } from '@/lib/auth/require-user'
@@ -150,6 +151,21 @@ export async function POST(request: NextRequest) {
     if (personnelData.altiAyDegerlendirme) {
       personnelData.altiAyDegerlendirme = new Date(personnelData.altiAyDegerlendirme)
     }
+    // DEĞERLENDİRME TARİHLERİ — sunucu tarafı tek kaynak. Gövdede açıkça DOLU
+    // gelen değer kazanır (İK elle girmiş olabilir); boş/null gelirse işe giriş
+    // tarihinden hesaplanır. Hesap eskiden YALNIZ istemcideydi ve yalnız kullanıcı
+    // giriş tarihini değiştirdiğinde çalışıyordu.
+    if (personnelData.iseGirisTarihi) {
+      const hesap = degerlendirmeTarihleriniTamamla(personnelData.iseGirisTarihi, {
+        denemeDegerlendirme: personnelData.denemeDegerlendirme,
+        altiAyDegerlendirme: personnelData.altiAyDegerlendirme,
+      })
+      if (hesap) {
+        personnelData.denemeDegerlendirme = hesap.denemeDegerlendirme
+        personnelData.altiAyDegerlendirme = hesap.altiAyDegerlendirme
+      }
+    }
+
     if (personnelData.ilkYardimciBelgesi) {
       personnelData.ilkYardimciBelgesi = new Date(personnelData.ilkYardimciBelgesi)
     }

@@ -1,5 +1,6 @@
 // Faz 6 — Başvuru → Personel kaydı dönüşümü. TEK KAYNAK.
 import { personelFkAlanlari } from '@/lib/personnel/fk-cozum';
+import { degerlendirmeTarihleri } from '@/lib/personnel/degerlendirme-tarihleri';
 //
 // Tasarım §G: işbaşı, başvuru kaydının personel kartına dönüştürülmesiyle olur. Dönüşüm
 // ATOMİKTİR: Personnel + PersonnelSensitive + (varsa) beden profili + EmploymentPeriod +
@@ -485,6 +486,10 @@ export async function personeleDonustur(opts: {
         bolumDetay: girdi.bolumDetay ?? null,
         gorev: girdi.gorev,
         iseGirisTarihi: giris,
+        // Deneme (2 ay) / ilk 6 ay değerlendirme tarihleri. Bu akış onları HİÇ
+        // yazmıyordu; işe alımdan gelen personelde alanlar boş kalıyordu
+        // (ILR-01156, 01.09.2026). Kural personel formlarıyla AYNI kaynaktan.
+        ...degerlendirmeTarihleri(giris),
         bolumMuduru: hiyerarsi.bolumMuduru,
         birimSorumlusu: hiyerarsi.birimSorumlusu,
         sorumlu2: hiyerarsi.sorumlu2,

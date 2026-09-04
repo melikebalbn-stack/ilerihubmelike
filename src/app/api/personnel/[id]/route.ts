@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { personelFkAlanlariIdOncelikli } from '@/lib/personnel/fk-cozum'
+import { degerlendirmeTarihleriniTamamla } from '@/lib/personnel/degerlendirme-tarihleri'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
@@ -344,6 +345,21 @@ export async function PUT(
     for (const field of dateFields) {
       if (body[field]) {
         body[field] = new Date(body[field])
+      }
+    }
+
+    // DEĞERLENDİRME TARİHLERİ — giriş tarihi gövdede geldiyse tamamlanır.
+    // Açıkça DOLU gelen değer korunur (İK elle girmiş olabilir); boş gelirse
+    // hesaplanır. İstemci formu bu alanları her kayıtta gönderiyor ama kullanıcı
+    // giriş tarihine dokunmadıysa BOŞ gönderiyordu — o yüzden boş = "hesapla".
+    if (body.iseGirisTarihi) {
+      const hesap = degerlendirmeTarihleriniTamamla(body.iseGirisTarihi, {
+        denemeDegerlendirme: body.denemeDegerlendirme,
+        altiAyDegerlendirme: body.altiAyDegerlendirme,
+      })
+      if (hesap) {
+        body.denemeDegerlendirme = hesap.denemeDegerlendirme
+        body.altiAyDegerlendirme = hesap.altiAyDegerlendirme
       }
     }
 

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX, ArrowRightLeft, History, CalendarClock, Network } from "lucide-react"
 import { periodDuration, formatDuration } from "@/lib/personnel-tenure"
+import { ayEkleIso } from "@/lib/personnel/degerlendirme-tarihleri"
 import { PersonnelIdAutocomplete, type PersonelSecenegi } from "@/components/ui/personnel-autocomplete"
 import { PersonnelExitModal, type ExitData } from "@/components/personnel/PersonnelExitModal"
 import { PersonnelTransferModal } from "@/components/personnel/department-transfer/PersonnelTransferModal"
@@ -226,16 +227,6 @@ export default function PersonnelDetailPage() {
     if (id) fetchData()
   }, [id])
 
-  const addMonths = (iso: string, months: number): string => {
-    if (!iso) return ""
-    const d = new Date(iso)
-    if (isNaN(d.getTime())) return ""
-    const day = d.getDate()
-    d.setMonth(d.getMonth() + months)
-    if (d.getDate() !== day) d.setDate(0)
-    return d.toISOString().split("T")[0]
-  }
-
   // Beden profilini (nested obje) flat form alanlarına aç. bedenProfili nested obje
   // input'lara bağlanmaz; PUT'ta da geri gönderilmez (handleSave strip eder).
   const applyBedenToForm = (fd: Record<string, any>, json: any) => {
@@ -257,8 +248,8 @@ export default function PersonnelDetailPage() {
       const next: Record<string, unknown> = { ...prev, [field]: value }
       // İşe giriş tarihi değişince deneme (2 ay) ve 6 ay değerlendirme tarihlerini otomatik hesapla
       if (field === "iseGirisTarihi" && typeof value === "string") {
-        next.denemeDegerlendirme = addMonths(value, 2) || null
-        next.altiAyDegerlendirme = addMonths(value, 6) || null
+        next.denemeDegerlendirme = ayEkleIso(value, 2) || null
+        next.altiAyDegerlendirme = ayEkleIso(value, 6) || null
       }
       // Yaka değişince yakaDetayi'yi sıfırla (tutarsız yaka-detay kombinasyonu kalmasın).
       if (field === "yakaRengi") {

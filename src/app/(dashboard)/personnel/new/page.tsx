@@ -16,6 +16,7 @@ import { NativeSelect as Select } from "@/components/ui/select"
 import { ArrowLeft, Save, Loader2 } from "lucide-react"
 import { PersonnelIdAutocomplete, type PersonelSecenegi } from "@/components/ui/personnel-autocomplete"
 import { toast } from "sonner"
+import { ayEkleIso } from "@/lib/personnel/degerlendirme-tarihleri"
 import {
   KAN_GRUBU_LABELS,
   CINSIYET_LABELS,
@@ -197,24 +198,13 @@ export default function NewPersonnelPage() {
       .catch(() => {})
   }, [])
 
-  const addMonths = (iso: string, months: number): string => {
-    if (!iso) return ""
-    const d = new Date(iso)
-    if (isNaN(d.getTime())) return ""
-    const day = d.getDate()
-    d.setMonth(d.getMonth() + months)
-    // Ay taşmasını düzelt (ör: 31 Ocak + 1 ay = 3 Mart yerine 28 Şubat)
-    if (d.getDate() !== day) d.setDate(0)
-    return d.toISOString().split("T")[0]
-  }
-
   const set = (field: keyof FormData, value: string | boolean) => {
     setForm((prev) => {
       const next = { ...prev, [field]: value }
       // İşe giriş tarihi değişince deneme (2 ay) ve 6 ay değerlendirme tarihlerini otomatik hesapla
       if (field === "iseGirisTarihi" && typeof value === "string") {
-        next.denemeDegerlendirme = addMonths(value, 2)
-        next.altiAyDegerlendirme = addMonths(value, 6)
+        next.denemeDegerlendirme = ayEkleIso(value, 2)
+        next.altiAyDegerlendirme = ayEkleIso(value, 6)
       }
       // Yaka değişince yakaDetayi'yi sıfırla (yaka=BEYAZ iken MAVI detay kalmasın — tutarlılık).
       if (field === "yakaRengi") {

@@ -3,10 +3,12 @@
 /**
  * Çözüm Arşivi — kapanan taleplerin çözüm notları + kronik sorunlar.
  *
- * İKİ SEKME, İKİ FARKLI KAYNAK (bilerek):
+ * İKİ SEKME:
  *   Arşiv  → yalnız ÇÖZÜM METNİ DOLU talepler (aranacak bir şey var).
- *   Kronik → TÜM talepler, çözüm yazılmamışlar dahil. "Tekrarlıyor ama kimse
- *            çözümünü yazmamış" durumu ancak böyle görünür.
+ *   Kronik → İT EKİBİNİN TANIMLADIĞI kronik sorunlar. Faz 1'deki otomatik
+ *            kategori+cihaz tekrar sayımı KALDIRILDI: "Grafik Tasarım"
+ *            altındaki 5 ayrı istek tek kronik sorun sayılıyordu. "Aynı sorun
+ *            mu" yargısı insanda.
  *
  * Erişim: IT ekibi (helpdesk.admin veya helpdesk.ticket.resolve). Sunucu da
  * aynı kapıyı uyguluyor — buradaki kontrol yalnız ekranı gizlemek için.
@@ -20,12 +22,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
-import { Search, Loader2, BookOpen, AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react"
+import {
+  Search, Loader2, BookOpen, AlertTriangle, ArrowLeft, RefreshCw, Plus, CheckCircle2, Link2,
+} from "lucide-react"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { toast } from "sonner"
@@ -46,22 +51,38 @@ interface ArsivKaydi {
   zimmetFormuId: string | null
   assetInfo: string | null
   objectionCount: number
-  tekrarSayisi: number
+  kronikSorunId: string | null
+  kronikSorun: { id: string; baslik: string; durum: string } | null
+  /** Kronik soruna bağlıysa o soruna bağlı talep sayısı; değilse null. */
+  kronikBagliTalep: number | null
 }
 
-interface KronikGrup {
-  anahtar: string
-  categoryId: string | null
-  kategoriAdi: string
-  kategoriRengi: string | null
-  zimmetFormuId: string | null
-  cihazMetni: string | null
-  tekrar: number
-  farkliKullanici: number
-  sonGorulme: string
-  cozumVar: boolean
-  ornekTicketId: string | null
-  basliklar: string[]
+interface KronikSorun {
+  id: string
+  baslik: string
+  aciklama: string | null
+  durum: "AKTIF" | "COZULDU"
+  cozumNotu: string | null
+  cozulenAt: string | null
+  cozenByName: string | null
+  createdByName: string
+  createdAt: string
+  bagliTalep: number
+  sonTalepTarihi: string | null
+}
+
+interface KronikDetay extends KronikSorun {
+  tickets: Array<{
+    id: string
+    ticketNumber: string
+    subject: string
+    status: string
+    createdAt: string
+    resolvedAt: string | null
+    resolutionSummary: string | null
+    resolvedByName: string | null
+    category: { name: string; color: string | null } | null
+  }>
 }
 
 interface Kategori {
@@ -81,18 +102,28 @@ export default function CozumArsiviPage() {
   const [sekme, setSekme] = useState("arsiv")
   const [yukleniyor, setYukleniyor] = useState(true)
   const [kayitlar, setKayitlar] = useState<ArsivKaydi[]>([])
-  const [kronik, setKronik] = useState<KronikGrup[]>([])
+  const [kronikler, setKronikler] = useState<KronikSorun[]>([])
   const [kategoriler, setKategoriler] = useState<Kategori[]>([])
   const [secili, setSecili] = useState<ArsivKaydi | null>(null)
 
-  // Filtreler
+  // Arşiv filtreleri
   const [q, setQ] = useState("")
   const [categoryId, setCategoryId] = useState(TUMU)
   const [cozen, setCozen] = useState(TUMU)
   const [baslangic, setBaslangic] = useState("")
   const [bitis, setBitis] = useState("")
-  const [kronikGun, setKronikGun] = useState("90")
-  const [kronikEsik, setKronikEsik] = useState("3")
+
+  // Kronik sekmesi
+  const [kronikDurum, setKronikDurum] = useState(TUMU)
+  const [kronikQ, setKronikQ] = useState("")
+  const [kronikDetay, setKronikDetay] = useState<KronikDetay | null>(null)
+  const [detayYukleniyor, setDetayYukleniyor] = useState(false)
+  const [yeniAcik, setYeniAcik] = useState(false)
+  const [yeniBaslik, setYeniBaslik] = useState("")
+  const [yeniAciklama, setYeniAciklama] = useState("")
+  const [kaydediliyor, setKaydediliyor] = useState(false)
+  const [cozumAcik, setCozumAcik] = useState(false)
+  const [cozumNotu, setCozumNotu] = useState("")
 
   const arsiviGetir = useCallback(async () => {
     const p = new URLSearchParams()
@@ -106,13 +137,14 @@ export default function CozumArsiviPage() {
     setKayitlar(await res.json())
   }, [q, categoryId, cozen, baslangic, bitis])
 
-  const kronigiGetir = useCallback(async () => {
-    const p = new URLSearchParams({ gun: kronikGun, esik: kronikEsik })
-    const res = await fetch(`/api/tickets/cozum-arsivi/kronik?${p.toString()}`)
+  const kronikleriGetir = useCallback(async () => {
+    const p = new URLSearchParams()
+    if (kronikDurum !== TUMU) p.set("durum", kronikDurum)
+    if (kronikQ.trim()) p.set("q", kronikQ.trim())
+    const res = await fetch(`/api/tickets/kronik?${p.toString()}`)
     if (!res.ok) throw new Error("Kronik sorunlar yüklenemedi")
-    const veri = await res.json()
-    setKronik(veri.gruplar ?? [])
-  }, [kronikGun, kronikEsik])
+    setKronikler(await res.json())
+  }, [kronikDurum, kronikQ])
 
   useEffect(() => {
     if (oturumDurumu !== "authenticated" || !itEkibi) return
@@ -120,9 +152,8 @@ export default function CozumArsiviPage() {
     ;(async () => {
       setYukleniyor(true)
       try {
-        await Promise.all([arsiviGetir(), kronigiGetir()])
+        await Promise.all([arsiviGetir(), kronikleriGetir()])
         if (!iptal) {
-          // Kategori listesi filtre açılırı için — mevcut uç.
           const kres = await fetch("/api/tickets/categories")
           if (kres.ok) setKategoriler(await kres.json())
         }
@@ -135,9 +166,8 @@ export default function CozumArsiviPage() {
     return () => {
       iptal = true
     }
-  }, [oturumDurumu, itEkibi, arsiviGetir, kronigiGetir])
+  }, [oturumDurumu, itEkibi, arsiviGetir, kronikleriGetir])
 
-  // Çözen kişi açılırı: gelen kayıtlardan türetilir (ayrı uç açmaya değmez).
   const cozenler = useMemo(() => {
     const m = new Map<string, string>()
     for (const k of kayitlar) {
@@ -145,6 +175,70 @@ export default function CozumArsiviPage() {
     }
     return Array.from(m.entries())
   }, [kayitlar])
+
+  const detayAc = async (id: string) => {
+    setDetayYukleniyor(true)
+    try {
+      const res = await fetch(`/api/tickets/kronik/${id}`)
+      if (!res.ok) throw new Error("Detay yüklenemedi")
+      setKronikDetay(await res.json())
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Detay yüklenemedi")
+    } finally {
+      setDetayYukleniyor(false)
+    }
+  }
+
+  const yeniKaydet = async () => {
+    if (!yeniBaslik.trim()) return
+    setKaydediliyor(true)
+    try {
+      const res = await fetch("/api/tickets/kronik", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baslik: yeniBaslik.trim(), aciklama: yeniAciklama.trim() }),
+      })
+      if (!res.ok) {
+        const h = await res.json().catch(() => ({}))
+        throw new Error(h?.error || "Kaydedilemedi")
+      }
+      setYeniAcik(false)
+      setYeniBaslik("")
+      setYeniAciklama("")
+      await kronikleriGetir()
+      toast.success("Kronik sorun tanımlandı")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Kaydedilemedi")
+    } finally {
+      setKaydediliyor(false)
+    }
+  }
+
+  const cozulduIsaretle = async () => {
+    if (!kronikDetay) return
+    // Not ZORUNLU — sunucu da 400 ile reddediyor; buton da boşken kapalı.
+    if (!cozumNotu.trim()) return
+    setKaydediliyor(true)
+    try {
+      const res = await fetch(`/api/tickets/kronik/${kronikDetay.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ durum: "COZULDU", cozumNotu: cozumNotu.trim() }),
+      })
+      if (!res.ok) {
+        const h = await res.json().catch(() => ({}))
+        throw new Error(h?.error || "İşlem başarısız")
+      }
+      setCozumAcik(false)
+      setCozumNotu("")
+      await Promise.all([kronikleriGetir(), detayAc(kronikDetay.id)])
+      toast.success("Kronik sorun çözüldü olarak işaretlendi")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "İşlem başarısız")
+    } finally {
+      setKaydediliyor(false)
+    }
+  }
 
   if (oturumDurumu === "loading") {
     return (
@@ -159,9 +253,7 @@ export default function CozumArsiviPage() {
       <div className="max-w-lg mx-auto py-20 text-center">
         <AlertTriangle className="h-8 w-8 mx-auto text-amber-500 mb-3" />
         <h1 className="text-lg font-semibold">Bu sayfaya erişim yetkiniz yok</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Çözüm arşivi IT ekibine açıktır.
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">Çözüm arşivi IT ekibine açıktır.</p>
         <Button variant="outline" className="mt-4" onClick={() => router.push("/it-support")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           IT Destek&apos;e dön
@@ -259,22 +351,15 @@ export default function CozumArsiviPage() {
 
           {kayitlar.length === 0 ? (
             <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">
-              Ölçütlere uyan çözüm yok. Çözüm notu yazılmamış talepler burada görünmez —
-              tekrar sayıları için &quot;Kronik Sorunlar&quot; sekmesine bakın.
+              Ölçütlere uyan çözüm yok.
             </CardContent></Card>
           ) : (
             <div className="space-y-3">
               {kayitlar.map((k) => (
-                <Card
-                  key={k.id}
-                  className="cursor-pointer transition-shadow hover:shadow-md"
-                  onClick={() => setSecili(k)}
-                >
+                <Card key={k.id} className="cursor-pointer transition-shadow hover:shadow-md" onClick={() => setSecili(k)}>
                   <CardContent className="pt-4">
                     <h3 className="font-medium">{k.subject}</h3>
-                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                      {k.resolutionSummary}
-                    </p>
+                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{k.resolutionSummary}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-muted-foreground">
                       {k.category && (
                         <Badge variant="secondary" style={k.category.color ? { backgroundColor: `${k.category.color}22`, color: k.category.color } : undefined}>
@@ -282,15 +367,15 @@ export default function CozumArsiviPage() {
                         </Badge>
                       )}
                       {k.assetInfo && <Badge variant="outline">{k.assetInfo}</Badge>}
-                      {k.tekrarSayisi > 1 && (
+                      {/* Rozet YALNIZ kronik bağı varsa: sayının arkasında insan yargısı var. */}
+                      {k.kronikSorun && (
                         <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">
-                          {k.tekrarSayisi} kez tekrarlandı
+                          <Link2 className="h-3 w-3 mr-1" />
+                          {k.kronikSorun.baslik} · {k.kronikBagliTalep} talep
                         </Badge>
                       )}
                       <span>{k.resolvedByName || k.resolvedByEmail || "—"}</span>
-                      <span>
-                        {k.resolvedAt ? format(new Date(k.resolvedAt), "d MMMM yyyy", { locale: tr }) : "—"}
-                      </span>
+                      <span>{k.resolvedAt ? format(new Date(k.resolvedAt), "d MMMM yyyy", { locale: tr }) : "—"}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -301,98 +386,90 @@ export default function CozumArsiviPage() {
 
         {/* ══════════ KRONİK ══════════ */}
         <TabsContent value="kronik" className="space-y-4 mt-4">
-          <div className="flex gap-2 items-start rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
-            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-            <span>
-              Bu sekme <b>tüm talepleri</b> sayar — çözüm notu yazılmamış olanlar dahil.
-              Böylece &quot;tekrarlıyor ama kimse çözümünü yazmamış&quot; durumları da görünür.
-            </span>
-          </div>
-
           <Card>
             <CardContent className="pt-5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                <div className="sm:col-span-2">
+                  <Label className="text-xs">Ara</Label>
+                  <Input
+                    className="mt-1"
+                    placeholder="Başlık veya açıklamada ara…"
+                    value={kronikQ}
+                    onChange={(e) => setKronikQ(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") kronikleriGetir().catch(() => toast.error("Arama başarısız"))
+                    }}
+                  />
+                </div>
                 <div>
-                  <Label className="text-xs">Dönem</Label>
-                  <Select value={kronikGun} onValueChange={setKronikGun}>
+                  <Label className="text-xs">Durum</Label>
+                  <Select value={kronikDurum} onValueChange={setKronikDurum}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="90">Son 90 gün</SelectItem>
-                      <SelectItem value="180">Son 180 gün</SelectItem>
-                      <SelectItem value="365">Son 1 yıl</SelectItem>
+                      <SelectItem value={TUMU}>Tümü</SelectItem>
+                      <SelectItem value="AKTIF">Aktif</SelectItem>
+                      <SelectItem value="COZULDU">Çözüldü</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label className="text-xs">En az tekrar</Label>
-                  <Select value={kronikEsik} onValueChange={setKronikEsik}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="3">3 kez</SelectItem>
-                      <SelectItem value="5">5 kez</SelectItem>
-                      <SelectItem value="10">10 kez</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => kronikleriGetir().catch(() => toast.error("Yükleme başarısız"))}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Uygula
+                  </Button>
+                  <Button onClick={() => setYeniAcik(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Yeni
+                  </Button>
                 </div>
-                <Button onClick={() => kronigiGetir().catch(() => toast.error("Yükleme başarısız"))} disabled={yukleniyor}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Uygula
-                </Button>
               </div>
             </CardContent>
           </Card>
 
-          {kronik.length === 0 ? (
+          {kronikler.length === 0 ? (
             <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">
-              Seçilen dönemde eşiği aşan tekrarlayan konu yok.
+              Henüz tanımlı kronik sorun yok. Tekrarlayan bir sorun gördüğünüzde
+              &quot;Yeni&quot; ile tanımlayın, sonra ilgili talepleri talep detayından bu soruna bağlayın.
             </CardContent></Card>
           ) : (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">
-                  Son {kronikGun} günde {kronikEsik}+ kez tekrarlayan {kronik.length} konu
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {kronik.map((g) => (
-                  <div key={g.anahtar} className="rounded-lg border p-3">
+            <div className="space-y-3">
+              {kronikler.map((k) => (
+                <Card key={k.id} className="cursor-pointer transition-shadow hover:shadow-md" onClick={() => detayAc(k.id)}>
+                  <CardContent className="pt-4">
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="secondary">{g.kategoriAdi}</Badge>
-                          {g.cihazMetni && <Badge variant="outline">{g.cihazMetni}</Badge>}
-                          {g.cozumVar ? (
-                            <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">
-                              Çözüm yazılmış
-                            </Badge>
+                          <h3 className="font-medium">{k.baslik}</h3>
+                          {k.durum === "COZULDU" ? (
+                            <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">Çözüldü</Badge>
                           ) : (
-                            <Badge variant="outline" className="text-muted-foreground">
-                              Çözüm yazılmamış
-                            </Badge>
+                            <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">Aktif</Badge>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground mt-2">
-                          {g.basliklar.join(" · ")}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {g.farkliKullanici} farklı kullanıcı · son görülme{" "}
-                          {format(new Date(g.sonGorulme), "d MMM yyyy", { locale: tr })}
+                        {k.aciklama && (
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{k.aciklama}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Tanımlayan {k.createdByName} ·{" "}
+                          {k.sonTalepTarihi
+                            ? `son talep ${format(new Date(k.sonTalepTarihi), "d MMM yyyy", { locale: tr })}`
+                            : "henüz bağlı talep yok"}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="text-2xl font-semibold tabular-nums">{g.tekrar}</div>
-                        <div className="text-xs text-muted-foreground">tekrar</div>
+                        <div className="text-2xl font-semibold tabular-nums">{k.bagliTalep}</div>
+                        <div className="text-xs text-muted-foreground">bağlı talep</div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* ══════════ DETAY ══════════ */}
+      {/* ══════════ ARŞİV DETAY ══════════ */}
       <Dialog open={!!secili} onOpenChange={(a) => !a && setSecili(null)}>
         <DialogContent className="sm:max-w-[660px] max-h-[85vh] overflow-auto">
           {secili && (
@@ -404,7 +481,6 @@ export default function CozumArsiviPage() {
                   {secili.resolvedAt ? format(new Date(secili.resolvedAt), "d MMMM yyyy", { locale: tr }) : "—"}
                 </DialogDescription>
               </DialogHeader>
-
               <div className="space-y-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Sorun</p>
@@ -417,7 +493,12 @@ export default function CozumArsiviPage() {
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                   {secili.category && <Badge variant="secondary">{secili.category.name}</Badge>}
                   {secili.assetInfo && <Badge variant="outline">{secili.assetInfo}</Badge>}
-                  {secili.tekrarSayisi > 1 && <Badge variant="outline">{secili.tekrarSayisi} kez tekrarlandı</Badge>}
+                  {secili.kronikSorun && (
+                    <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">
+                      <Link2 className="h-3 w-3 mr-1" />
+                      {secili.kronikSorun.baslik} · {secili.kronikBagliTalep} talep
+                    </Badge>
+                  )}
                   {secili.objectionCount > 0 && (
                     <Badge variant="outline" className="border-red-200 text-red-700 dark:text-red-400">
                       {secili.objectionCount} kez itiraz edildi
@@ -430,6 +511,165 @@ export default function CozumArsiviPage() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════ KRONİK DETAY ══════════ */}
+      <Dialog open={!!kronikDetay} onOpenChange={(a) => !a && setKronikDetay(null)}>
+        <DialogContent className="sm:max-w-[720px] max-h-[85vh] overflow-auto">
+          {detayYukleniyor && !kronikDetay ? (
+            <div className="py-10 flex justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : kronikDetay ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 flex-wrap">
+                  {kronikDetay.baslik}
+                  {kronikDetay.durum === "COZULDU" ? (
+                    <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">Çözüldü</Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">Aktif</Badge>
+                  )}
+                </DialogTitle>
+                <DialogDescription>
+                  {kronikDetay.bagliTalep} bağlı talep · tanımlayan {kronikDetay.createdByName} ·{" "}
+                  {format(new Date(kronikDetay.createdAt), "d MMMM yyyy", { locale: tr })}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {kronikDetay.aciklama && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Açıklama</p>
+                    <div className="rounded-md bg-muted p-3 text-sm whitespace-pre-wrap">{kronikDetay.aciklama}</div>
+                  </div>
+                )}
+
+                {kronikDetay.cozumNotu && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                      Kalıcı çözüm
+                      {kronikDetay.cozenByName ? ` · ${kronikDetay.cozenByName}` : ""}
+                      {kronikDetay.cozulenAt ? ` · ${format(new Date(kronikDetay.cozulenAt), "d MMM yyyy", { locale: tr })}` : ""}
+                    </p>
+                    <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm whitespace-pre-wrap dark:border-green-900 dark:bg-green-950/40">
+                      {kronikDetay.cozumNotu}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                    Bağlı talepler ({kronikDetay.tickets.length})
+                  </p>
+                  {kronikDetay.tickets.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Henüz talep bağlanmamış. Talep detayında &quot;Kronik soruna bağla&quot; ile bağlayın.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {kronikDetay.tickets.map((t) => (
+                        <div key={t.id} className="rounded-md border p-3">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="min-w-0">
+                              <button
+                                className="text-sm font-medium hover:underline text-left"
+                                onClick={() => router.push(`/it-support/${t.id}`)}
+                              >
+                                {t.ticketNumber} · {t.subject}
+                              </button>
+                              {t.resolutionSummary ? (
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {t.resolutionSummary}
+                                </p>
+                              ) : (
+                                <p className="text-xs text-muted-foreground mt-1 italic">Çözüm notu yazılmamış</p>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {format(new Date(t.createdAt), "d MMM yyyy", { locale: tr })}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter>
+                {kronikDetay.durum === "AKTIF" && (
+                  <Button onClick={() => { setCozumNotu(kronikDetay.cozumNotu ?? ""); setCozumAcik(true) }}>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Çözüldü olarak işaretle
+                  </Button>
+                )}
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════ YENİ KRONİK SORUN ══════════ */}
+      <Dialog open={yeniAcik} onOpenChange={setYeniAcik}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Yeni kronik sorun</DialogTitle>
+            <DialogDescription>
+              Tekrarlayan bir sorunu tanımlayın; ilgili talepleri sonra talep detayından bağlarsınız.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="k-baslik" className="text-sm">Başlık</Label>
+              <Input id="k-baslik" className="mt-1.5" placeholder="örn. VPN sertifikası her yıl süresi doluyor"
+                value={yeniBaslik} onChange={(e) => setYeniBaslik(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="k-aciklama" className="text-sm">
+                Açıklama <span className="text-muted-foreground text-xs font-normal">— opsiyonel</span>
+              </Label>
+              <Textarea id="k-aciklama" className="mt-1.5 min-h-[100px]"
+                placeholder="Belirtiler, hangi durumlarda tekrarlıyor…"
+                value={yeniAciklama} onChange={(e) => setYeniAciklama(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setYeniAcik(false)} disabled={kaydediliyor}>Vazgeç</Button>
+            <Button onClick={yeniKaydet} disabled={!yeniBaslik.trim() || kaydediliyor}>
+              {kaydediliyor && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Tanımla
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════ KRONİK ÇÖZÜLDÜ ══════════ */}
+      <Dialog open={cozumAcik} onOpenChange={setCozumAcik}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Kronik sorunu çözüldü olarak işaretle</DialogTitle>
+            <DialogDescription>{kronikDetay?.baslik}</DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label htmlFor="k-cozum" className="text-sm">
+              Kalıcı çözüm <span className="text-red-600">*</span>
+            </Label>
+            <Textarea id="k-cozum" className="mt-1.5 min-h-[130px]"
+              placeholder="Sorunun kökten nasıl giderildiğini yazın…"
+              value={cozumNotu} onChange={(e) => setCozumNotu(e.target.value)} />
+            {/* Ticket çözümünde metin opsiyoneldi; BURADA ZORUNLU — kronik
+                sorunun kalıcı çözümü bu kaydın tek arşiv değeri. */}
+            <p className="text-xs text-muted-foreground mt-2">
+              Zorunlu: kronik sorunun kalıcı çözümü, ileride aynı sorunla karşılaşan ekibin tek dayanağı.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCozumAcik(false)} disabled={kaydediliyor}>Vazgeç</Button>
+            <Button onClick={cozulduIsaretle} disabled={!cozumNotu.trim() || kaydediliyor}>
+              {kaydediliyor && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Çözüldü olarak işaretle
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

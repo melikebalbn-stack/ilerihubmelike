@@ -8,11 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ArrowLeft, X, AlertTriangle, Loader2, Send, UserPlus, Settings2, Headphones, Clock, CheckCircle2, Paperclip, FileText, Sparkles, ThumbsUp, RotateCcw } from "lucide-react"
+import { ArrowLeft, X, AlertTriangle, Loader2, Send, UserPlus, Settings2, Headphones, Clock, CheckCircle2, Paperclip, FileText, Sparkles, ThumbsUp, RotateCcw, Link2, Unlink, Plus } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { ticketAge, resolutionTime, isOpenStatus } from "../_lib/ticket-age"
@@ -69,6 +70,9 @@ interface Ticket {
   resolvedByName?: string | null
   autoCloseAt?: string | null
   objectionCount?: number | null
+  // Kronik sorun bağı (Faz 1.5) — bağ IT ekibi tarafından kurulur.
+  kronikSorunId?: string | null
+  kronikSorun?: { id: string; baslik: string; durum: string } | null
   createdAt: string
   closedAt?: string | null
   resolvedAt?: string | null
@@ -120,6 +124,13 @@ function eventIcon(action: string) {
   if (action === "status_changed") return <CheckCircle2 className="h-3 w-3" />
   if (action === "priority_changed") return <AlertTriangle className="h-3 w-3" />
   return <Settings2 className="h-3 w-3" />
+}
+
+interface KronikSecenek {
+  id: string
+  baslik: string
+  durum: string
+  bagliTalep: number
 }
 
 interface AssignableUser {
@@ -183,6 +194,13 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
   const [cozumMetni, setCozumMetni] = useState("")
   const [cozumGonderiliyor, setCozumGonderiliyor] = useState(false)
   const [onayGonderiliyor, setOnayGonderiliyor] = useState(false)
+  // Kronik sorun bağı (Faz 1.5)
+  const [kronikAcik, setKronikAcik] = useState(false)
+  const [kronikListe, setKronikListe] = useState<KronikSecenek[]>([])
+  const [kronikArama, setKronikArama] = useState("")
+  const [kronikSeciliId, setKronikSeciliId] = useState("")
+  const [kronikYeniBaslik, setKronikYeniBaslik] = useState("")
+  const [kronikIsleniyor, setKronikIsleniyor] = useState(false)
 
   const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
   // Sunucu (PUT /api/tickets/[id]) DURUM değişikliğine izin verirken
@@ -378,6 +396,62 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
       toast.error(e instanceof Error ? e.message : "İşlem başarısız")
     } finally {
       setOnayGonderiliyor(false)
+    }
+  }
+
+  // ── KRONİK SORUN BAĞI (Faz 1.5) ───────────────────────────────────────
+  // Yalnız IT ekibi: "aynı sorun mu" yargısı onlara ait (sunucu da aynı kapı).
+  const kronikleriGetir = async () => {
+    try {
+      const res = await fetch("/api/tickets/kronik?durum=AKTIF")
+      if (res.ok) setKronikListe(await res.json())
+    } catch {
+      // liste kritik değil — yeni tanımlama yolu açık kalır
+    }
+  }
+
+  const handleKronikBagla = async () => {
+    if (!ticket) return
+    const yeni = kronikYeniBaslik.trim()
+    if (!kronikSeciliId && !yeni) return
+    setKronikIsleniyor(true)
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}/kronik`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(yeni ? { baslik: yeni } : { kronikSorunId: kronikSeciliId }),
+      })
+      if (!res.ok) {
+        const h = await res.json().catch(() => ({}))
+        throw new Error(h?.error || "Bağlanamadı")
+      }
+      setKronikAcik(false)
+      setKronikSeciliId("")
+      setKronikYeniBaslik("")
+      await fetchTicket()
+      toast.success("Talep kronik soruna bağlandı")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bağlanamadı")
+    } finally {
+      setKronikIsleniyor(false)
+    }
+  }
+
+  const handleKronikKaldir = async () => {
+    if (!ticket) return
+    setKronikIsleniyor(true)
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}/kronik`, { method: "DELETE" })
+      if (!res.ok) {
+        const h = await res.json().catch(() => ({}))
+        throw new Error(h?.error || "Bağ kaldırılamadı")
+      }
+      await fetchTicket()
+      toast.success("Kronik sorun bağı kaldırıldı")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bağ kaldırılamadı")
+    } finally {
+      setKronikIsleniyor(false)
     }
   }
 
@@ -733,6 +807,51 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
           </div>
         )}
 
+        {/* KRONİK SORUN (Faz 1.5) — yalnız IT ekibi görür ve bağlar. */}
+        {isITStaff && (
+          <div className="p-4 rounded-lg border bg-muted/30">
+            {ticket.kronikSorun ? (
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Kronik sorun</p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">
+                      <Link2 className="h-3 w-3 mr-1" />
+                      {ticket.kronikSorun.baslik}
+                    </Badge>
+                    {ticket.kronikSorun.durum === "COZULDU" && (
+                      <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">
+                        Çözüldü
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleKronikKaldir} disabled={kronikIsleniyor}>
+                  {kronikIsleniyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Unlink className="h-4 w-4 mr-2" />}
+                  Bağı kaldır
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="font-medium text-sm">Bu talep tekrarlayan bir sorun mu?</p>
+                  <p className="text-xs text-muted-foreground">
+                    Kronik soruna bağlarsanız arşivde birlikte görünür ve tekrar sayısı anlam kazanır.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => { setKronikAcik(true); kronikleriGetir() }}
+                  disabled={kronikIsleniyor}
+                >
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Kronik soruna bağla
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ÇÖZÜLDÜ (Faz 1) — durum açılırında değil, ayrı eylem.
             Tek çözüm yolu: modal → POST /api/tickets/[id]/cozum. */}
         {durumDegistirebilir && cozulebilirMi(ticket.status) && (
@@ -975,6 +1094,84 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
             <Button onClick={handleCozumGonder} disabled={cozumGonderiliyor}>
               {cozumGonderiliyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
               Çözüldü olarak işaretle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* KRONİK SORUNA BAĞLA — mevcuttan seç VEYA yeni tanımla. */}
+      <Dialog open={kronikAcik} onOpenChange={setKronikAcik}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Kronik soruna bağla</DialogTitle>
+            <DialogDescription>
+              {ticket.ticketNumber} · {ticket.subject}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm">Mevcut kronik sorunlardan seç</Label>
+              <Input
+                className="mt-1.5"
+                placeholder="Listede ara…"
+                value={kronikArama}
+                onChange={(e) => setKronikArama(e.target.value)}
+              />
+              <div className="mt-2 max-h-[190px] overflow-auto rounded-md border divide-y">
+                {kronikListe.filter((k) =>
+                  k.baslik.toLowerCase().includes(kronikArama.toLowerCase()),
+                ).length === 0 ? (
+                  <p className="p-3 text-sm text-muted-foreground">
+                    Eşleşen kayıt yok — aşağıdan yeni tanımlayabilirsiniz.
+                  </p>
+                ) : (
+                  kronikListe
+                    .filter((k) => k.baslik.toLowerCase().includes(kronikArama.toLowerCase()))
+                    .map((k) => (
+                      <button
+                        key={k.id}
+                        type="button"
+                        onClick={() => { setKronikSeciliId(k.id); setKronikYeniBaslik("") }}
+                        className={`w-full text-left p-3 text-sm hover:bg-muted ${
+                          kronikSeciliId === k.id ? "bg-muted" : ""
+                        }`}
+                      >
+                        <span className="font-medium">{k.baslik}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{k.bagliTalep} talep</span>
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="kronik-yeni" className="text-sm">…veya yeni tanımla</Label>
+              <div className="flex gap-2 mt-1.5">
+                <Plus className="h-4 w-4 mt-2.5 shrink-0 text-muted-foreground" />
+                <Input
+                  id="kronik-yeni"
+                  placeholder="Yeni kronik sorun başlığı"
+                  value={kronikYeniBaslik}
+                  onChange={(e) => { setKronikYeniBaslik(e.target.value); if (e.target.value) setKronikSeciliId("") }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Açıklamayı sonra Çözüm Arşivi &gt; Kronik Sorunlar ekranından ekleyebilirsiniz.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setKronikAcik(false)} disabled={kronikIsleniyor}>
+              Vazgeç
+            </Button>
+            <Button
+              onClick={handleKronikBagla}
+              disabled={kronikIsleniyor || (!kronikSeciliId && !kronikYeniBaslik.trim())}
+            >
+              {kronikIsleniyor && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Bağla
             </Button>
           </DialogFooter>
         </DialogContent>

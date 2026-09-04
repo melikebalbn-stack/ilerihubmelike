@@ -137,6 +137,95 @@ export function alintiKirp(metin: string): string {
 }
 
 /**
+ * İMZA + GİZLİLİK METNİ KIRPMA.
+ *
+ * alintiKirp yalnız ALINTILANAN YANIT GEÇMİŞİNİ atıyordu; ilk mailde imza ve
+ * kurumsal disclaimer olduğu gibi açıklamaya giriyordu (ölçüm: TKT-2026-0043
+ * açıklamasının ~%90'ı iki dilli gizlilik metniydi, gerçek içerik tek satır).
+ *
+ * KURAL: MUHAFAZAKÂR. Şüphede kesmez. Her aday kesim noktası için iki koşul:
+ *   1) Desen yeterince ayırt edici olmalı (tek kelimelik selamlama YOK —
+ *      "Teşekkürler" tek başına gövde olabilir, onu kesmek içeriği yok eder)
+ *   2) Kesimden ÖNCE en az bir dolu satır kalmalı — aksi halde o aday atlanır
+ * En ERKEN geçerli aday kullanılır; hiçbiri yoksa metin olduğu gibi döner.
+ *
+ * Kırpma sonrası boş kalırsa (beklenmedik durum) ORİJİNAL metin döner —
+ * alintiKirp ile aynı emniyet.
+ */
+export function imzaKirp(metin: string, gondericiAd?: string | null): string {
+  const satirlar = metin.split('\n')
+
+  const sonrakiDolu = (i: number): number => {
+    for (let j = i + 1; j < satirlar.length; j++) {
+      if (satirlar[j].trim()) return j
+    }
+    return -1
+  }
+
+  // RFC 3676 imza ayracı: TEK BAŞINA "--" veya "-- ".
+  const imzaAyraci = /^\s*--\s*$/
+  // Kapanış kalıpları — YALNIZ tek başına satırda ve yalnız ayırt edici
+  // olanlar. "Teşekkürler" BİLEREK yok: gövdenin tamamı o olabilir.
+  const kapanis =
+    /^\s*(sayg[ıi]lar[ıi]mla|iyi çal[ıi]şmalar|iyi calismalar|best regards|kind regards|warm regards|sincerely|yours (sincerely|faithfully))\s*[,.!]?\s*$/i
+  // Kurumsal gizlilik metinleri (TR + EN) — çok ayırt edici, güvenle kesilir.
+  const disclaimer =
+    /(bu e-?posta\s*\(ve ekleri\)|bu e-?posta(n[ıi]n)?.{0,40}gizli bilgi|the contents of this e-?mail|this e-?mail (message )?(and any attachments )?(is|are) (intended|confidential))/i
+  // Şirket künye satırı (bu kurulumda tüm imzalarda var).
+  const sirketSatiri = /^\s*[İI]LER[İI][\s,.]*(A\.?\s*Ş\.?|GROUP)\s*$/i
+
+  /** İletişim satırı: telefon, tek başına e-posta veya tek başına URL. */
+  const iletisimSatiri = (satir: string): boolean => {
+    const t = satir.trim()
+    if (!t) return false
+    if (/^([GDTFMEPgdtfmep]|tel|gsm|cep|phone|mobile|fax|faks)?\s*[:.]?\s*\+?\d[\d\s().\-/]{7,}$/.test(t)) return true
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return true
+    if (/^(https?:\/\/|www\.)\S+$/i.test(t)) return true
+    return false
+  }
+
+  const ad = (gondericiAd ?? '').trim().toLowerCase()
+
+  let kesim = -1
+  for (let i = 0; i < satirlar.length; i++) {
+    const satir = satirlar[i]
+    const t = satir.trim()
+    if (!t) continue
+
+    // Kesimden önce dolu satır kalmıyorsa bu aday geçersiz (gövdeyi yok eder).
+    let oncesiDolu = false
+    for (let k = 0; k < i; k++) if (satirlar[k].trim()) { oncesiDolu = true; break }
+    if (!oncesiDolu) continue
+
+    if (imzaAyraci.test(satir) || kapanis.test(satir) || disclaimer.test(t) || sirketSatiri.test(satir)) {
+      kesim = i
+      break
+    }
+
+    // İletişim BLOĞU: tek telefon satırı kesmez (gövdede numara verilmiş
+    // olabilir), ARDIŞIK iki iletişim satırı imza sayılır.
+    if (iletisimSatiri(satir)) {
+      const j = sonrakiDolu(i)
+      if (j !== -1 && iletisimSatiri(satirlar[j])) {
+        kesim = i
+        break
+      }
+    }
+
+    // Gönderenin KENDİ adı tek başına bir satırda: imzanın başlangıcı.
+    // İlk dolu satır olamaz (yukarıdaki oncesiDolu kontrolü onu eliyor).
+    if (ad && t.toLowerCase() === ad) {
+      kesim = i
+      break
+    }
+  }
+
+  if (kesim === -1) return metin
+  const kirpilmis = satirlar.slice(0, kesim).join('\n').trim()
+  return kirpilmis ? kirpilmis : metin
+}
+
+/**
  * Gövde metni. contentType 'html' ise düz metne çevrilir, sonra alıntılanan
  * yanıt geçmişi kırpılır.
  * body boşsa bodyPreview'a düşülür (Graph bazı mesajlarda yalnız onu verir).
@@ -227,7 +316,12 @@ export function yanitMi(m: Pick<GraphMesaj, 'internetMessageHeaders'>): string[]
 
 /** Ticket açıklaması: gövde + (varsa) ek uyarısı. */
 export function aciklamaCoz(m: GraphMesaj): string {
-  const govde = govdeCoz(m)
+  // İmza/disclaimer kırpma BURADA, govdeCoz'da DEĞİL: govdeCoz'un çıktısı
+  // yoksayilmaliMi'nin "gövde boş mu" kararında da kullanılıyor; oraya
+  // koysaydık yalnızca imzadan oluşan bir mail sessizce yoksayılır hâle
+  // gelirdi. Bu fonksiyon ise yalnız KAYDEDİLEN metni üretiyor (yeni talebin
+  // açıklaması ve yanıt yorumunun gövdesi).
+  const govde = imzaKirp(govdeCoz(m), gondericiAdi(m))
   const taban = govde || '(Mail gövdesi boş)'
   return m.hasAttachments ? `${taban}\n\n${EK_NOTU}` : taban
 }

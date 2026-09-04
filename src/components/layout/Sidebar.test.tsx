@@ -398,3 +398,19 @@ describe('Sidebar — ADIM 5/6: Kalite grubu toparlama', () => {
     expect(screen.queryByText('Semboller')).not.toBeInTheDocument()
   })
 })
+
+describe('Sidebar — "Servis: Bu Ay Ne Değişti?" menü öğesi (FAZ 1B-EK Madde 31)', () => {
+  it('servis.view izni OLMAYAN kullanıcı menü öğesini GÖRMEZ — departman/rol fallback devreye girmez (permission tek belirleyici)', () => {
+    mockSession({ role: 'HR_MANAGER', department: 'İnsan Varlıkları', permissions: [] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.queryByText('Servis: Bu Ay Ne Değişti?')).not.toBeInTheDocument()
+  })
+
+  it('servis.view izni OLAN kullanıcı menü öğesini görür (departman/rol İV/HR_MANAGER olmasa bile)', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Servis: Bu Ay Ne Değişti?')).toBeInTheDocument()
+  })
+})

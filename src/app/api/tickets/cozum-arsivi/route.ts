@@ -7,7 +7,8 @@ import type { Prisma } from '@/generated/prisma'
  * GET /api/tickets/cozum-arsivi — çözüm arşivi listesi.
  *
  * KAPSAM: yalnız ÇÖZÜM METNİ DOLU talepler. Çözüm yazılmamış talep arşivde
- * görünmez (aranacak bir şey yoktur); tekrar sayısı ise kronik ucundan gelir.
+ * görünmez (aranacak bir şey yoktur). Tekrar rozeti yalnız talep bir kronik
+ * soruna bağlıysa gösterilir (Faz 1.5 — otomatik kategori sayımı kaldırıldı).
  *
  * Arama PostgreSQL ILIKE ile: konu + çözüm metni. Full-text index'e girilmedi —
  * bugün toplam 24 talep var; ILIKE bu ölçekte fazlasıyla yeter ve tsvector
@@ -88,22 +89,24 @@ export async function GET(request: NextRequest) {
         zimmetFormuId: true,
         assetInfo: true,
         objectionCount: true,
+        kronikSorunId: true,
+        kronikSorun: { select: { id: true, baslik: true, durum: true } },
       },
     })
 
-    // Tekrar sayısı: aynı gruplama anahtarındaki TÜM talepler (çözüm yazılmamış
-    // olanlar dahil) — kronik sekmesiyle aynı tanım, iki yerde farklı sayı
-    // görünmesin. Anahtar: categoryId + zimmetFormuId (ikisi de null olabilir).
-    const anahtarlar = kayitlar.map((k) => ({
-      categoryId: k.categoryId,
-      zimmetFormuId: k.zimmetFormuId,
-    }))
-    const tekrarHaritasi = await tekrarSayilari(anahtarlar)
+    // TEKRAR ROZETİ (Faz 1.5): kategori+cihaz sayımı KALDIRILDI — "Grafik
+    // Tasarım" altındaki 5 ayrı istek "5 kez tekrarlandı" görünüyordu. Rozet
+    // artık yalnız talep bir kronik soruna BAĞLIYSA çıkar ve sayı o kronik
+    // soruna bağlı talep sayısıdır; yani sayının arkasında insan yargısı var.
+    const kronikIdler = [
+      ...new Set(kayitlar.map((k) => k.kronikSorunId).filter((v): v is string => !!v)),
+    ]
+    const bagliSayilar = await kronikTalepSayilari(kronikIdler)
 
     return NextResponse.json(
       kayitlar.map((k) => ({
         ...k,
-        tekrarSayisi: tekrarHaritasi.get(anahtar(k.categoryId, k.zimmetFormuId)) ?? 1,
+        kronikBagliTalep: k.kronikSorunId ? bagliSayilar.get(k.kronikSorunId) ?? 1 : null,
       })),
     )
   } catch (error) {
@@ -112,27 +115,20 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function anahtar(categoryId: string | null, zimmetFormuId: string | null): string {
-  return `${categoryId ?? '-'}|${zimmetFormuId ?? '-'}`
-}
-
 /**
- * Verilen anahtarlar için toplam talep sayısı. Tek groupBy turu — kayıt başına
- * sorgu yok.
+ * Verilen kronik sorunlara bağlı talep sayıları — tek groupBy turu.
  */
-async function tekrarSayilari(
-  anahtarlar: Array<{ categoryId: string | null; zimmetFormuId: string | null }>,
-): Promise<Map<string, number>> {
+async function kronikTalepSayilari(idler: string[]): Promise<Map<string, number>> {
   const sonuc = new Map<string, number>()
-  if (anahtarlar.length === 0) return sonuc
+  if (idler.length === 0) return sonuc
 
   const gruplar = await prisma.ticket.groupBy({
-    by: ['categoryId', 'zimmetFormuId'],
-    where: { isActive: true },
+    by: ['kronikSorunId'],
+    where: { isActive: true, kronikSorunId: { in: idler } },
     _count: { _all: true },
   })
   for (const g of gruplar) {
-    sonuc.set(anahtar(g.categoryId, g.zimmetFormuId), g._count._all)
+    if (g.kronikSorunId) sonuc.set(g.kronikSorunId, g._count._all)
   }
   return sonuc
 }

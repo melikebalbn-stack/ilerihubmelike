@@ -1,7 +1,16 @@
 'use client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Factory, Play, Search, Loader2, ArrowLeft } from 'lucide-react'
+import {
+  Factory,
+  Play,
+  Search,
+  Loader2,
+  ArrowLeft,
+  CircleCheck,
+  AlertTriangle,
+  TrendingDown,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -111,6 +120,35 @@ function cevrimSaniye(faktor: number | null | undefined, kod: string | null | un
   return null
 }
 
+// OEE gösterge eşikleri — TEK yer. hedef = success sınırı, sinir = warning/danger sınırı.
+// Yüzde (0..100) bazlı. Renk: pct>=hedef success, sinir<=pct<hedef warning, pct<sinir danger.
+const OEE_ESIK = {
+  OEE: { hedef: 60, sinir: 45 },
+  PERF: { hedef: 85, sinir: 70 },
+  KULL: { hedef: 90, sinir: 75 },
+  KALITE: { hedef: 99, sinir: 95 },
+} as const
+
+// Canlılık nabzı — CSS keyframes (opacity+scale). prefers-reduced-motion'da kapanır.
+// Bu dosyaya özel; tailwind.config'e DOKUNMADAN inline <style> ile enjekte edilir.
+const NABIZ_CSS = `
+@keyframes iproNabiz { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.7); } }
+.ipro-nabiz { animation: iproNabiz 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ipro-nabiz { animation: none; } }
+`
+
+type AkisDurum = { renk: 'yesil' | 'amber' | 'kirmizi'; nabiz: boolean; metin: string }
+/**
+ * Son sinyal yaşına göre canlılık durumu: <2dk yeşil (nabız), 2-15dk amber, 15dk+ kırmızı.
+ * simdiMs render anında geçilir (1sn'lik tik ile tazelenir) → metin en az 15sn'de bir güncellenir.
+ */
+function akisDurumu(sonSinyal: string | null, simdiMs: number): AkisDurum {
+  const yas = sonSinyal ? simdiMs - new Date(sonSinyal).getTime() : Infinity
+  if (yas < 2 * 60000) return { renk: 'yesil', nabiz: true, metin: `canlı · ${sureBicim(yas)} önce` }
+  if (yas < 15 * 60000) return { renk: 'amber', nabiz: false, metin: `${sureBicim(yas)} önce` }
+  return { renk: 'kirmizi', nabiz: false, metin: sonSinyal ? `sinyal yok · ${sureBicim(yas)}` : 'sinyal yok' }
+}
+
 /**
  * Terminal tezgah detay modal'ı. Açık/kapalı = `seciliTezgah` (ResourceId).
  * IPRO karşılığı varsa `iproId` ile terminal route'undan detay çeker; yoksa
@@ -188,6 +226,11 @@ export function TezgahDetayModal({
       ? Math.min(100, Math.round((gerceklesenAdet / planlananAdet) * 100))
       : null
 
+  // Canlılık akış durumu — yalnız açık işte (son sinyal yaşından). Date.now() render anında
+  // okunur; 1sn'lik tik zaten yeniden render ettiği için metin/renk canlı tazelenir.
+  const akis = acikIsVar ? akisDurumu(canli?.sonSinyal ?? null, Date.now()) : null
+  const akisTaze = akis?.renk === 'yesil'
+
   // Çevrim — saniye birincil. Planlı: IFS faktör+kod. Gerçekleşen: iş süresi / Σdelta.
   const planCevrimSn = cevrimSaniye(aktif?.ifsMachRunFactor, aktif?.ifsRunTimeCode)
   const isSuresiSn =
@@ -233,6 +276,7 @@ export function TezgahDetayModal({
   return (
     <Dialog open={acik} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <style>{NABIZ_CSS}</style>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <Factory className="h-5 w-5" style={{ color: TERMINAL_ACCENT }} />
@@ -318,7 +362,10 @@ export function TezgahDetayModal({
 
             {/* Üretim ilerleme — açık işte CANLI PLC Σdelta; kapalıda kapanan iyi toplamı. */}
             <section>
-              <SecBaslik>Üretim ilerleme</SecBaslik>
+              <div className="flex items-center justify-between">
+                <SecBaslik>Üretim ilerleme</SecBaslik>
+                {akis && <AkisRozet durum={akis} />}
+              </div>
               {planlananAdet ? (
                 <>
                   <div className="mb-1 flex items-baseline justify-between text-sm">
@@ -328,7 +375,13 @@ export function TezgahDetayModal({
                     <span className="text-slate-500">%{yuzde ?? 0}</span>
                   </div>
                   <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${yuzde ?? 0}%` }} />
+                    {/* Çubuk rengi duruma bağlı: canlı (taze sinyal) → success (emerald), değilse muted (slate). */}
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${
+                        acikIsVar ? (akisTaze ? 'bg-emerald-500' : 'bg-slate-300') : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${yuzde ?? 0}%` }}
+                    />
                   </div>
                   <UretimAciklama acikIsVar={acikIsVar} canli={canli} />
                 </>
@@ -386,12 +439,13 @@ export function TezgahDetayModal({
               {co ? (
                 <>
                   <div className="grid grid-cols-4 gap-2">
-                    <OeeKart e="OEE" oran={co.oeeCanli} yildiz sebep="kull./perf. eksik" />
-                    <OeeKart e="Perf." oran={co.performance} sebep={perfSebep || 'hesaplanamadı'} />
-                    <OeeKart e="Kull." oran={co.availability} sebep="planlı süre yok (vardiya dışı)" />
-                    <OeeKart e="Kalite" oran={null} sebep="iş bitince" />
+                    <OeeKart e="OEE" oran={co.oeeCanli} esik={OEE_ESIK.OEE} yildiz sebep="kull./perf. eksik" />
+                    <OeeKart e="Perf." oran={co.performance} esik={OEE_ESIK.PERF} sebep={perfSebep || 'hesaplanamadı'} />
+                    <OeeKart e="Kull." oran={co.availability} esik={OEE_ESIK.KULL} sebep="planlı süre yok (vardiya dışı)" />
+                    <OeeKart e="Kalite" oran={null} esik={OEE_ESIK.KALITE} sebep="iş bitince" />
                   </div>
-                  <p className="mt-1 text-xs text-slate-400">
+                  <OeeLejant />
+                  <p className="mt-1.5 text-xs text-slate-400">
                     canlı — kalite hariç (OEE*, iş bitince tamamlanır)
                     {idealEtiket && <> · performans çevrimi: {idealEtiket}</>}
                   </p>
@@ -581,17 +635,85 @@ function MiniKart({ e }: { e: string }) {
     </div>
   )
 }
-// Canlı OEE göstergesi — oran (0..1) → %tam sayı; null → "—" + sebep. yildiz: kalite hariç işareti.
-function OeeKart({ e, oran, sebep, yildiz }: { e: string; oran: number | null; sebep?: string; yildiz?: boolean }) {
-  const pct = oran != null ? Math.round(oran * 100) : null
+// Canlılık rozeti — ÜRETİM İLERLEME başlığının sağında. Nokta + (yeşilde) nabız + yaş metni.
+// Renkler tema palet sınıflarından (emerald/amber/red) — hardcode hex yok.
+function AkisRozet({ durum }: { durum: AkisDurum }) {
+  const stil = {
+    yesil: { nokta: 'bg-emerald-500', metin: 'text-emerald-600' },
+    amber: { nokta: 'bg-amber-500', metin: 'text-amber-600' },
+    kirmizi: { nokta: 'bg-red-500', metin: 'text-red-600' },
+  }[durum.renk]
   return (
-    <div className="rounded-lg border border-slate-200 py-2 text-center">
-      <div className="text-lg font-bold text-slate-700">
-        {pct != null ? `%${pct}` : <span className="text-slate-400">—</span>}
-        {yildiz && pct != null && <span className="text-amber-500" title="kalite hariç">*</span>}
+    <span className={`flex items-center gap-1.5 text-xs font-medium ${stil.metin}`}>
+      <span className={`h-2 w-2 rounded-full ${stil.nokta} ${durum.nabiz ? 'ipro-nabiz' : ''}`} />
+      {durum.metin}
+    </span>
+  )
+}
+
+// OEE eşik → görsel seviye. hedef+üstü success, sınır-hedef arası warning, sınır altı danger, null nötr.
+// Renkler tema palet sınıflarından (emerald/amber/red); proje geneli semantik renk buradan gelir (hex yok).
+function oeeSeviye(pct: number | null, esik: { hedef: number; sinir: number }) {
+  if (pct == null) return { kutu: 'border-slate-200', metin: 'text-slate-700', Ikon: null }
+  if (pct >= esik.hedef) return { kutu: 'border-emerald-200 bg-emerald-50', metin: 'text-emerald-700', Ikon: CircleCheck }
+  if (pct >= esik.sinir) return { kutu: 'border-amber-200 bg-amber-50', metin: 'text-amber-700', Ikon: AlertTriangle }
+  return { kutu: 'border-red-200 bg-red-50', metin: 'text-red-700', Ikon: TrendingDown }
+}
+
+// Canlı OEE göstergesi — oran (0..1) → %tam sayı, renk-kodlu (eşiğe göre ikon+zemin).
+// null → nötr stil, ikon yok, sebep gösterilir. yildiz: OEE kalite hariç hesaplandı işareti (etikette).
+function OeeKart({
+  e,
+  oran,
+  esik,
+  sebep,
+  yildiz,
+}: {
+  e: string
+  oran: number | null
+  esik: { hedef: number; sinir: number }
+  sebep?: string
+  yildiz?: boolean
+}) {
+  const pct = oran != null ? Math.round(oran * 100) : null
+  const s = oeeSeviye(pct, esik)
+  const Ikon = s.Ikon
+  return (
+    <div className={`rounded-lg border py-2 text-center ${s.kutu}`}>
+      <div className={`flex items-center justify-center gap-1 ${s.metin}`}>
+        {Ikon && <Ikon className="h-4 w-4" />}
+        <span className="text-xl font-medium leading-none">{pct != null ? `%${pct}` : '—'}</span>
       </div>
-      <div className="text-[10px] uppercase tracking-wider text-slate-400">{e}</div>
-      {pct == null && sebep && <div className="mt-0.5 text-[9px] leading-tight text-slate-400">{sebep}</div>}
+      <div className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">
+        {e}
+        {yildiz && (
+          <span className="text-amber-500" title="kalite hariç">
+            *
+          </span>
+        )}
+      </div>
+      {pct != null ? (
+        <div className="text-[9px] text-slate-400">hedef %{esik.hedef}</div>
+      ) : sebep ? (
+        <div className="text-[9px] leading-tight text-slate-400">{sebep}</div>
+      ) : null}
+    </div>
+  )
+}
+
+// OEE kartları lejantı — ince ayırıcı + tek satır (ikon + 11px muted metin).
+function OeeLejant() {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-[11px] text-slate-400">
+      <span className="flex items-center gap-1">
+        <CircleCheck className="h-3 w-3 text-emerald-600" /> hedefte
+      </span>
+      <span className="flex items-center gap-1">
+        <AlertTriangle className="h-3 w-3 text-amber-600" /> sınırda
+      </span>
+      <span className="flex items-center gap-1">
+        <TrendingDown className="h-3 w-3 text-red-600" /> hedefin altında
+      </span>
     </div>
   )
 }

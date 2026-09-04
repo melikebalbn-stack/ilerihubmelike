@@ -240,7 +240,25 @@ export async function GET(
       },
     })
 
-    return NextResponse.json({ ...personnel, employmentSummary, lastClosedPeriod })
+    // ŞEMA KOLTUĞU — "Şemaya Yerleştir" düğmesi bunun BOŞ olmasına bakar.
+    // ANA koltuk = kurul/komite (ORG-KR-*) DIŞINDAKİ açık koltuk; filtre
+    // personel-koltuk-senkron.ts'teki `anaKoltuklar` ile AYNI kural.
+    // Personnel↔OrgEmployee arasında Prisma ilişkisi yok (personnelId düz kolon),
+    // bu yüzden ayrı sorgu.
+    const koltuklar = await prisma.orgEmployee.findMany({
+      where: { personnelId: id, isActive: true },
+      select: { id: true, orgUnit: { select: { code: true, name: true } } },
+    })
+    const anaKoltuklar = koltuklar
+      .filter((k) => !k.orgUnit?.code?.startsWith('ORG-KR-'))
+      .map((k) => ({ id: k.id, code: k.orgUnit?.code ?? null, ad: k.orgUnit?.name ?? null }))
+
+    return NextResponse.json({
+      ...personnel,
+      employmentSummary,
+      lastClosedPeriod,
+      anaKoltuklar,
+    })
   } catch (error) {
     console.error('Personel detayı alınırken hata:', error)
     return NextResponse.json({ error: 'Personel detayı alınırken bir hata oluştu' }, { status: 500 })

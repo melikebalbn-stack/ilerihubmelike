@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX, ArrowRightLeft, History, CalendarClock } from "lucide-react"
+import { ArrowLeft, Save, Loader2, Pencil, Shield, Eye, UserX, ArrowRightLeft, History, CalendarClock, Network } from "lucide-react"
 import { periodDuration, formatDuration } from "@/lib/personnel-tenure"
 import { PersonnelIdAutocomplete, type PersonelSecenegi } from "@/components/ui/personnel-autocomplete"
 import { PersonnelExitModal, type ExitData } from "@/components/personnel/PersonnelExitModal"
@@ -60,6 +60,9 @@ type EmploymentPeriodItem = {
 }
 
 type PersonnelData = {
+  // Şemadaki ANA koltuklar (kurul/komite hariç — sunucu süzer). Boş dizi =
+  // "Şemaya Yerleştir" düğmesi görünür.
+  anaKoltuklar?: { id: string; code: string | null; ad: string | null }[]
   id: string
   sicilNo: string
   adSoyad: string
@@ -179,6 +182,8 @@ export default function PersonnelDetailPage() {
   const [reentryDate, setReentryDate] = useState(() => new Date().toISOString().slice(0, 10))
   // PR-PERSONNEL-DEPARTMENT-TRANSFER
   const [showTransferModal, setShowTransferModal] = useState(false)
+  // "Şemaya Yerleştir" — yalnız ANA koltuğu olmayan aktif kişide görünür.
+  const [yerlestiriliyor, setYerlestiriliyor] = useState(false)
   const [transferRefreshKey, setTransferRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -364,6 +369,34 @@ export default function PersonnelDetailPage() {
     } catch {}
   }
 
+  // Şemaya yerleştir: kişinin bölüm+görevine uyan BOŞ kutuya oturtur.
+  // Sunucu YENİ KUTU AÇMAZ; oturtulamazsa sebebi aynen gösterilir (jenerik mesaj yok).
+  async function semayaYerlestir() {
+    setYerlestiriliyor(true)
+    try {
+      const res = await fetch(`/api/personnel/${id}/koltuk-ac`, { method: "POST" })
+      const sonuc = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(sonuc.error ?? "Yerleştirme başarısız")
+        return
+      }
+      if (sonuc.koltukAcildi) {
+        toast.success(`Şemaya yerleştirildi: ${sonuc.orgUnitAdi ?? "(kutu)"}`)
+      } else {
+        // Sebep sunucudan geldiği gibi gösterilir: "bos kadro yok", "pozisyon yok" …
+        toast.warning("Şemaya yerleştirilemedi", {
+          description: sonuc.sebep ?? "(sebep bildirilmedi)",
+          duration: 8000,
+        })
+      }
+      await refetchPersonnel()
+    } catch {
+      toast.error("Yerleştirme sırasında bir hata oluştu")
+    } finally {
+      setYerlestiriliyor(false)
+    }
+  }
+
   const saveExit = async (exitData: ExitData) => {
     const res = await fetch(`/api/personnel/${id}`, {
       method: "PATCH",
@@ -481,6 +514,23 @@ export default function PersonnelDetailPage() {
             <Button size="sm" variant="outline" onClick={() => setShowTransferModal(true)}>
               <ArrowRightLeft className="h-4 w-4 mr-2" />
               Bölüm Değiştir
+            </Button>
+          )}
+          {/* Şemada ana koltuğu YOKSA (kurul koltukları sayılmaz — sunucu süzüyor). */}
+          {isAdmin && !editMode && data.aktif && (data.anaKoltuklar?.length ?? 0) === 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={semayaYerlestir}
+              disabled={yerlestiriliyor}
+              title="Bölüm ve görevine uyan BOŞ kutuya oturtulur. Yeni kutu açılmaz; uygun boş kutu yoksa sebebi bildirilir."
+            >
+              {yerlestiriliyor ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Network className="h-4 w-4 mr-2" />
+              )}
+              Şemaya Yerleştir
             </Button>
           )}
           {isAdmin && !editMode && (

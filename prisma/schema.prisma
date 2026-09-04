@@ -2477,6 +2477,19 @@ model Ticket {
   satisfactionRating  Int? // 1-5 yıldız
   satisfactionComment String?
 
+  // ── Kronik sorun bağı (Faz 1.5) ───────────────────────────────────────────
+  // Kronik sorun bir YARGI, hesap değil: hangi taleplerin "aynı sorun" olduğuna
+  // IT ekibi karar verir ve bu FK ile bağlar. Faz 1'deki otomatik tespit
+  // (categoryId + zimmetFormuId sayımı) kaldırıldı — kategori bazlı gruplama
+  // yanlış pozitif üretiyordu ("Grafik Tasarım" altındaki 5 ayrı istek tek
+  // kronik sorun sayılıyordu; cihaz alanı %4 dolu olduğu için anahtar pratikte
+  // yalnız kategoriye iniyordu).
+  //
+  // onDelete: SetNull — kronik tanım silinirse talepler ayakta kalır, yalnız
+  // bağ kopar (zimmetFormu ilişkisiyle aynı tercih).
+  kronikSorunId String?
+  kronikSorun   KronikSorun? @relation(fields: [kronikSorunId], references: [id], onDelete: SetNull)
+
   // İlişkili Ticket (Parent/Child)
   parentTicketId String?
   parentTicket   Ticket?  @relation("TicketHierarchy", fields: [parentTicketId], references: [id])
@@ -2512,6 +2525,7 @@ model Ticket {
   @@index([emailMessageId])
   // Otomatik kapanma cron'u: status=RESOLVED AND autoCloseAt <= now() taraması.
   @@index([autoCloseAt])
+  @@index([kronikSorunId])
 }
 
 // Ticket Tipleri (ITIL)
@@ -2560,6 +2574,46 @@ enum TicketUrgency {
 }
 
 // Kaynak
+/**
+ * Kronik sorun — TEKRARLAYAN bir sorunun İNSAN TARAFINDAN tanımlanmış kaydı.
+ *
+ * Faz 1'de kronik tespiti otomatikti (kategori + cihaz bazlı tekrar sayımı) ve
+ * yanlış pozitif üretiyordu. Faz 1.5'te tespit manuele döndü: IT ekibi bir
+ * kronik sorun tanımlar ve ilgili talepleri ona bağlar (Ticket.kronikSorunId).
+ *
+ * cozumNotu ŞEMADA nullable: kayıt AKTIF doğar, kalıcı çözüm sonradan yazılır.
+ * COZULDU'ya geçerken ZORUNLU — ama bu bir uygulama kuralı (bkz. kronik uçları),
+ * çünkü zorunluluk duruma bağlı ve DB'de ifade edilemiyor. Ticket çözümündeki
+ * opsiyonellikle KARIŞTIRMA: orada amaç akışı tıkamamak, burada kalıcı çözümün
+ * arşiv değerini güvenceye almak.
+ */
+model KronikSorun {
+  id        String            @id @default(cuid())
+  baslik    String
+  aciklama  String?           @db.Text
+  durum     KronikSorunDurumu @default(AKTIF)
+
+  /** Kalıcı çözüm — COZULDU'ya geçişte zorunlu (uygulama kuralı). */
+  cozumNotu    String?   @db.Text
+  cozulenAt    DateTime?
+  cozenByEmail String?
+  cozenByName  String?
+
+  createdByEmail String
+  createdByName  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tickets Ticket[]
+
+  @@index([durum])
+}
+
+enum KronikSorunDurumu {
+  AKTIF // Tanımlı, kalıcı çözüm henüz yok
+  COZULDU // Kalıcı çözüm bulundu (cozumNotu dolu)
+}
+
 enum TicketSource {
   WEB_PORTAL // Web portalından
   EMAIL // Email ile

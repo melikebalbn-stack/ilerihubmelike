@@ -28,6 +28,12 @@ interface Props {
   onSaved: () => void;
   // contextual: "Yeni IFS Paketi" akışı true geçer → create body'sine isIfs:true.
   isIfs?: boolean;
+  // Ad ön eki (ör. "IFS · "). Verilirse CREATE modunda kullanıcı yalnız çıplak
+  // adı yazar, önek gönderimde başa eklenir ve alanın solunda sabit gösterilir.
+  // Prod'daki 10 IFS paketinin tamamı "IFS · <Departman>" deseninde; adı elle
+  // yazdırmak bu deseni bozmaya açıktı (stripDeptPrefix eşleşmezse ekranlarda
+  // ham ad görünür). EDIT modunda kullanılmaz — mevcut ad olduğu gibi düzenlenir.
+  adOnEki?: string;
 }
 
 const COLOR_OPTIONS = [
@@ -47,6 +53,7 @@ export function AdminPackageFormModal({
   existing,
   onSaved,
   isIfs = false,
+  adOnEki,
 }: Props) {
   const [form, setForm] = useState<PackageFormState>({
     name: "",
@@ -187,11 +194,18 @@ export function AdminPackageFormModal({
           : "/api/akademi/admin/packages";
       const method = mode === "edit" ? "PATCH" : "POST";
 
+      // Önek yalnız create'te ve prop verilmişse eklenir; edit'te ad olduğu
+      // gibi gider (kullanıcı zaten tam adı düzenliyor).
+      const tamAd =
+        mode === "create" && adOnEki
+          ? `${adOnEki}${form.name.trim()}`
+          : form.name.trim();
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name.trim(),
+          name: tamAd,
           description: form.description.trim() || null,
           iconColor: form.iconColor || null,
           coverImageUrl: form.coverImageUrl,
@@ -238,14 +252,37 @@ export function AdminPackageFormModal({
         <div className="space-y-4 py-2">
           <div>
             <Label htmlFor="pkg-name">Paket Adı *</Label>
-            <Input
-              id="pkg-name"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Örn. Yeni Çalışan Oryantasyonu"
-              maxLength={200}
-              className="mt-1.5"
-            />
+            {mode === "create" && adOnEki ? (
+              // Önek sabit ve düzenlenemez; kullanıcı yalnız departman adını yazar.
+              <div className="mt-1.5 flex items-center gap-2">
+                <span
+                  className="text-sm font-medium shrink-0 px-2 py-2 rounded border"
+                  style={{
+                    borderColor: "var(--ak-border-default)",
+                    background: "var(--ak-surface-secondary)",
+                    color: "var(--ak-text-secondary)",
+                  }}
+                >
+                  {adOnEki.trim()}
+                </span>
+                <Input
+                  id="pkg-name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="Örn. Lojistik"
+                  maxLength={200 - adOnEki.length}
+                />
+              </div>
+            ) : (
+              <Input
+                id="pkg-name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Örn. Yeni Çalışan Oryantasyonu"
+                maxLength={200}
+                className="mt-1.5"
+              />
+            )}
           </div>
 
           <div>

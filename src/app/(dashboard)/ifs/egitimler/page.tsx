@@ -23,6 +23,7 @@ import {
   Plus,
   Search,
 } from "lucide-react";
+import { AdminPackageFormModal } from "@/components/akademi/admin/AdminPackageFormModal";
 import {
   AMBER,
   IlerlemeCubuk,
@@ -148,14 +149,21 @@ export default function IfsEgitimlerPage() {
   const [kaydediliyor, setKaydediliyor] = useState<string | null>(null);
   const [arama, setArama] = useState("");
   const [filtre, setFiltre] = useState<Filtre>("tumu");
+  // "Yeni departman" artık akademiye atmıyor; aynı modal burada açılıyor.
+  const [yeniDeptAcik, setYeniDeptAcik] = useState(false);
 
-  useEffect(() => {
+  const yapiyiYukle = useCallback(() => {
+    setLoading(true);
     fetch("/api/akademi/admin/reports/ifs-egitim-yapisi")
       .then((r) => (r.ok ? r.json() : null))
       .then((d: Yapi | null) => setVeri(d))
       .catch(() => setVeri(null))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    yapiyiYukle();
+  }, [yapiyiYukle]);
 
   const deptAc = useCallback(
     (packageId: string) => {
@@ -320,7 +328,7 @@ export default function IfsEgitimlerPage() {
           />
           <button
             type="button"
-            onClick={() => router.push("/akademi/admin/packages")}
+            onClick={() => setYeniDeptAcik(true)}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md font-medium text-white"
             style={{ background: "#1B4F72" }}
           >
@@ -594,6 +602,21 @@ export default function IfsEgitimlerPage() {
           </div>
         </div>
       )}
+
+      {/* Yeni departman = yeni IFS paketi. Akademi'deki AdminPackageFormModal
+          KOPYALANMADI, olduğu gibi kullanılıyor: isIfs zaten destekliyordu,
+          ad öneki için tek opsiyonel prop (adOnEki) eklendi. */}
+      <AdminPackageFormModal
+        open={yeniDeptAcik}
+        onOpenChange={setYeniDeptAcik}
+        mode="create"
+        isIfs
+        adOnEki="IFS · "
+        onSaved={() => {
+          setYeniDeptAcik(false);
+          yapiyiYukle();
+        }}
+      />
 
       {modal && (
         <KisiDetayModal

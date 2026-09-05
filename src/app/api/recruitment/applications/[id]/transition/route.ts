@@ -234,6 +234,17 @@ export async function POST(
   // rol birleşimi geçiş HAKKINI genişletir, ama kararı veren yine atanan kişidir.
   const mudurKademesinde = roles.includes("MUDUR") && roluKademedeMi(current, "MUDUR");
 
+  // ── RET GERİ ALMA (2026-09) — REJECTED → REVIEWING ────────────────────────
+  // Nihai reddin iptali; gerekçe ZORUNLU. Ret kaydı silinmez, üstüne yazılır.
+  const retGeriAlma = current === "REJECTED" && toStatus === "REVIEWING";
+  if (retGeriAlma && !note?.trim()) {
+    redLog("ret geri alma gerekcesi bos", current);
+    return NextResponse.json(
+      { error: "Yeniden değerlendirmeye alma gerekçesi zorunludur" },
+      { status: 400 },
+    );
+  }
+
   // 2026-08 — müdür kademesinde İKİ karar da REVIEWING'e döner; hedef statü artık
   // olumlu/olumsuz ayrımını taşımıyor. Bu yüzden karar AÇIKÇA istenir.
   if (mudurKademesinde && toStatus === "REVIEWING" && !mudurKarari) {
@@ -345,6 +356,11 @@ export async function POST(
     );
   }
 
+  // Ret geri almada not FORMATLI: tarihçede "neden geri alındı" tek bakışta görünsün.
+  if (retGeriAlma) {
+    kademeNotParcalari.length = 0; // bu akışta kademe notu oluşmaz; güvence
+  }
+
   const efektifNote =
     toStatus === "ADAYA_GERI_GONDERILDI"
       ? geriGondermeNotu({ alanlar: duzeltilecekAlanlar ?? [], ikNotu: note ?? null }) || null
@@ -354,7 +370,9 @@ export async function POST(
           ? [note, `Otomatik atandı: ${otomatikAtanan.ad ?? otomatikAtanan.userId}`]
               .filter(Boolean)
               .join(" | ")
-          : (note ?? null);
+          : retGeriAlma
+            ? `Yeniden değerlendirmeye alındı: ${note!.trim()}`
+            : (note ?? null);
 
   // 5c) REJECTED → ret nedeni zorunlu (kök-neden analizi). Sunucu-taraflı guard; UI disabled tek
   //     başına yeterli değil. requiresRejectionReason TEK KAYNAK (transitions.ts).
@@ -384,6 +402,8 @@ export async function POST(
       actorName: session.user.name ?? null,
       // REJECTED'da guard'dan geçti; helper AYNI tx'te rejectionReasonId yazar + note'a etiket ekler.
       rejectionReasonId: rejectionReasonId ?? undefined,
+      // Ret geri alma: güncel ret nedeni temizlenir (tarihçe dokunulmaz, bkz. stage-log.ts).
+      retNedeniniTemizle: retGeriAlma || undefined,
       // SINAV'da guard'dan geçti; helper AYNI tx'te AssessmentSession açar + note'a sınav adı ekler.
       assessmentId: assessmentId ?? undefined,
       // 2026-08 — müdür kararı statüyle AYNI tx'te yazılır (karar + gerekçe + kim + ne zaman).

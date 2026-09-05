@@ -361,6 +361,8 @@ export default function JobApplicationDetailPage() {
       : undefined
   // Adaya geri gönderme modalı mı? (hedef bayrak kapalıyken zaten allowedTargets'ta yok)
   const isGeriGonder = txTarget === "ADAYA_GERI_GONDERILDI"
+  // RET GERİ ALMA (2026-09): REJECTED → REVIEWING. Gerekçe ZORUNLU (sunucu da guard'lar).
+  const retGeriAlma = workflow?.currentStatus === "REJECTED" && txTarget === "REVIEWING"
   // Başlık rozeti: aktif oturum varsa o, yoksa EN YENİ geçmiş oturum (gecmis zaten
   // createdAt DESC sıralı — assessment-session.ts). Yeni uç çağrılmaz, mevcut DTO kullanılır.
   const rozetOturumu = app?.sinavlar?.aktif ?? app?.sinavlar?.gecmis?.[0] ?? null
@@ -1191,11 +1193,17 @@ export default function JobApplicationDetailPage() {
                       // Faz 5 — karar kademesindeki kişi için REVIEWING "geri alma" değil
                       // OLUMSUZ GÖRÜŞ'tür. "İV Havuzu" ham etiketi bu kişiye anlamsız gelir.
                       const olumsuzButonu = kademeKarari && target === "REVIEWING"
+                      // RET GERİ ALMA: REJECTED'dan REVIEWING'e dönüş "İV Havuzu'na geçir"
+                      // değil, bir karar İPTALİdir — etiket bunu söylemeli.
+                      const geriAlButonu =
+                        workflow?.currentStatus === "REJECTED" && target === "REVIEWING"
                       const label = sinavDegistir
                         ? "Sınavı Değiştir"
-                        : olumsuzButonu
-                          ? "Olumsuz gorus (IV'ye dondur)"
-                          : STATUS_LABELS_TR[target as keyof typeof STATUS_LABELS_TR] || target
+                        : geriAlButonu
+                          ? "Yeniden Degerlendirmeye Al"
+                          : olumsuzButonu
+                            ? "Olumsuz gorus (IV'ye dondur)"
+                            : STATUS_LABELS_TR[target as keyof typeof STATUS_LABELS_TR] || target
                       return (
                         <Button
                           key={target}
@@ -1204,7 +1212,9 @@ export default function JobApplicationDetailPage() {
                           className="justify-start"
                           onClick={() => openTransition(target)}
                         >
-                          {isReject || olumsuzButonu ? (
+                          {geriAlButonu ? (
+                            <RotateCcw className="h-4 w-4 mr-2" />
+                          ) : isReject || olumsuzButonu ? (
                             <XCircle className="h-4 w-4 mr-2" />
                           ) : (
                             <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -1714,12 +1724,16 @@ export default function JobApplicationDetailPage() {
             <DialogTitle>
               {!txTarget
                 ? ""
-                : olumsuzGorus
-                  ? "Olumsuz gorus bildir"
-                  : `${STATUS_LABELS_TR[txTarget as keyof typeof STATUS_LABELS_TR] || txTarget} asamasina gecir`}
+                : retGeriAlma
+                  ? "Yeniden degerlendirmeye al"
+                  : olumsuzGorus
+                    ? "Olumsuz gorus bildir"
+                    : `${STATUS_LABELS_TR[txTarget as keyof typeof STATUS_LABELS_TR] || txTarget} asamasina gecir`}
             </DialogTitle>
             <DialogDescription>
-              {olumsuzGorus
+              {retGeriAlma
+                ? "Ret geri alinir ve basvuru IV Havuzu'na doner. Ret kaydi SILINMEZ, tarihcede kalir. Gerekce ZORUNLU."
+                : olumsuzGorus
                 ? "Basvuru IV Havuzu'na doner. Nihai reddi yalnizca IV verebilir; gerekce ZORUNLU."
                 : isGeriGonder
                   ? "Duzeltilecek alanlari isaretleyin. Aday YALNIZ alan adlarini gorur; notunuz ic kayittir."
@@ -1966,7 +1980,11 @@ export default function JobApplicationDetailPage() {
 
             <div>
               <Label>
-                {isGeriGonder ? "Ic not (adaya GITMEZ, opsiyonel)" : "Not (opsiyonel)"}
+                {retGeriAlma
+                  ? "Geri alma gerekcesi (ZORUNLU)"
+                  : isGeriGonder
+                    ? "Ic not (adaya GITMEZ, opsiyonel)"
+                    : "Not (opsiyonel)"}
               </Label>
               <Textarea
                 value={txNote}
@@ -1998,7 +2016,8 @@ export default function JobApplicationDetailPage() {
                 (requiresManager && !txManagerId) ||
                 (requiresReason && !txReasonId) ||
                 (requiresAssessment && !txAssessmentId) ||
-                (olumsuzGorus && !txKademeYorumu.trim())
+                (olumsuzGorus && !txKademeYorumu.trim()) ||
+                (retGeriAlma && !txNote.trim())
               }
             >
               {txSubmitting ? "Kaydediliyor..." : "Onayla"}

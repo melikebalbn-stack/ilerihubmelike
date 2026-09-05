@@ -116,6 +116,11 @@ export async function transitionApplicationStatus(args: {
   // REJECTED geçişinde ret nedeni. Verilirse PublicJobApplication.rejectionReasonId AYNI
   // tx'te yazılır ve StageLog note'una nedenin ETİKETİ (ham id değil) eklenir.
   rejectionReasonId?: string | null;
+  // RET GERİ ALMA (2026-09): REJECTED → REVIEWING'de güncel ret nedeni TEMİZLENİR.
+  // `rejectionReasonId` "güncel ret nedeni" alanıdır; başvuru artık reddedilmiş
+  // değilken dolu kalırsa raporlar yanıltır. TARİHÇE ETKİLENMEZ — ret StageLog
+  // satırı (nedeni etiketiyle birlikte) yerinde durur.
+  retNedeniniTemizle?: boolean;
   // SINAV geçişinde sınav. Verilirse AYNI tx'te AssessmentSession açılır (idempotent) +
   // StageLog note'una sınav ADI eklenir. Oturum açılamazsa tüm geçiş geri alınır.
   assessmentId?: string | null;
@@ -193,6 +198,10 @@ export async function transitionApplicationStatus(args: {
       extraData.mudurKarariNotu = args.mudurKarariNotu ?? null;
       extraData.mudurKarariTarihi = new Date();
       extraData.mudurKarariVeren = args.changedBy ?? null;
+    }
+
+    if (args.retNedeniniTemizle) {
+      extraData.rejectionReason = { disconnect: true };
     }
 
     if (args.rejectionReasonId) {

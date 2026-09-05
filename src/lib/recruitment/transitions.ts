@@ -193,8 +193,14 @@ export const ALLOWED_TRANSITIONS: Record<JobApplicationStatus, GecisSatiri> = {
     MUDUR: [],
   },
   REJECTED: {
-    // Terminal — geçiş yok.
-    IK: [],
+    // TERMİNAL DEĞİL (2026-09): İV nihai reddi GERİ ALABİLİR → başvuru İV Havuzu'na
+    // (REVIEWING) döner ve normal akışta devam eder. Ret kaydı SİLİNMEZ: StageLog'daki
+    // ret satırı yerinde kalır, geri alma ÜSTÜNE yeni satır olarak yazılır (personel
+    // "yeniden aktifleştirme" deseniyle aynı — kapanan dönem tarihçede kalır).
+    // GEREKÇE ZORUNLU: geri alma bir karar iptalidir, sebebi iz bırakmadan yapılamaz
+    // (transition/route.ts'te guard).
+    // YALNIZ İK: nihai ret zaten yalnız İV'nin yetkisindeydi; geri alma da öyle.
+    IK: ["REVIEWING"],
     MUDUR: [],
   },
   // ——— Eski enum artıkları — EMEKLİ (Faz 1) ———

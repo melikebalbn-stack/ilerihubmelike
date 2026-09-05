@@ -6,17 +6,10 @@ import { iproHata } from '@/lib/ipro/yonetim-hata'
 import { planliSaniyeHesapla } from '@/lib/ipro/oee-hesap'
 import { durusSaniyeCanli, oeeCanliBilesenleri } from '@/lib/ipro/oee-canli'
 import { gecerliTatilTip, tarihAnahtari, type IproTatilTip } from '@/lib/ipro/takvim-util'
+import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-
-/** IFS çevrim faktörü + RunTimeCode → saniye/adet (modal cevrimSaniye ile aynı). Yok/0/bilinmeyen → null. */
-function cevrimSaniyeSrv(faktor: number | null | undefined, kod: string | null | undefined): number | null {
-  if (!faktor || faktor <= 0) return null
-  if (kod === 'UnitsHour') return 3600 / faktor
-  if (kod === 'HoursUnit') return faktor * 3600
-  return null
-}
 
 // GET /api/terminal/uretim/tezgah/[id] → tek tezgah detayı (terminal kart tıklaması
 // → dialog). İzleme panosunun /api/ipro/izleme/tezgah/[id] route'unun TERMINAL İKİZİ:
@@ -96,7 +89,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         const uretilen = canliUretim?.adet ?? 0
 
         // Güvenilir ölçülen ideal → onu; yoksa IFS planlı çevrimi (sn) referans al.
-        const ifsPlanSn = cevrimSaniyeSrv(detay.aktifIs.ifsMachRunFactor, detay.aktifIs.ifsRunTimeCode)
+        const ifsPlanSn = cevrimSaniye(detay.aktifIs.ifsMachRunFactor, detay.aktifIs.ifsRunTimeCode)
         const idealSaniyeAdet = ideal?.guvenilir ? ideal.idealSaniyeAdet : (ifsPlanSn ?? null)
         const idealKaynak: 'OLCULEN' | 'IFS' | null = ideal?.guvenilir
           ? 'OLCULEN'

@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
 import { TERMINAL_ACCENT } from '../_shared'
 
 // İzleme panosundaki tezgah detay modal'ının TERMINAL KOPYASI. Kaynak:
@@ -111,16 +112,6 @@ const trSaat = (iso: string | null) =>
 /** Türkçe ondalık (virgül). basamak: gösterilecek ondalık hane. */
 function trSayi(n: number, basamak = 1): string {
   return n.toLocaleString('tr-TR', { minimumFractionDigits: basamak, maximumFractionDigits: basamak })
-}
-/**
- * IFS çevrim faktörü + RunTimeCode → saniye/adet. UnitsHour (adet/saat) → 3600/faktör;
- * HoursUnit (saat/adet) → faktör*3600. Faktör yok/0 veya bilinmeyen kod → null.
- */
-function cevrimSaniye(faktor: number | null | undefined, kod: string | null | undefined): number | null {
-  if (!faktor || faktor <= 0) return null
-  if (kod === 'UnitsHour') return 3600 / faktor
-  if (kod === 'HoursUnit') return faktor * 3600
-  return null
 }
 
 // OEE gösterge eşikleri — TEK yer. hedef = success sınırı, sinir = warning/danger sınırı.

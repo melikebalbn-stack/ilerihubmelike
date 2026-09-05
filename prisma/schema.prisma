@@ -11689,8 +11689,9 @@ model IproIdealCevrim {
 }
 
 // OEE — iş kapanınca hesaplanıp yazılan kayıt (1:1 kapalı iş). Sonradan değişmez (audit).
-// hesapKaynagi = TAM | PERF_YOK (ideal güvenilmez/yok) | PLANLI_YOK | CAKISMA_VAR (aynı tezgahta
-// zaman-örtüşen başka iş → atıf belirsiz, işaretlenir ama yine yazılır).
+// hesapKaynagi = TAM | PERF_IFS (performance ölçülen ideal yerine IFS planlı çevrimden) |
+// PERF_YOK (ideal + IFS planı yok) | PLANLI_YOK | CAKISMA_VAR (aynı tezgahta zaman-örtüşen
+// başka iş → atıf belirsiz, işaretlenir ama yine yazılır). String — enum değil, ALTER TYPE yok.
 model IproOeeKaydi {
   id              String   @id @default(cuid())
   productionLogId String   @unique // 1:1 kapalı iş

@@ -118,6 +118,29 @@ describe('oeeBilesenleri — formüller, null yayılımı, hesapKaynagi dalları
     expect(b.hesapKaynagi).toBe('PERF_YOK')
   })
 
+  it('PERF_IFS: ölçülen ideal yok ama IFS planı var → performance dolu, damga PERF_IFS', () => {
+    // idealSaniyeAdet IFS planından geliyor (idealKaynak='IFS'); formül TAM ile birebir aynı.
+    const b = oeeBilesenleri({ planliSaniye: 1000, durusSaniye: 100, uretilenAdet: 400, iyiAdet: 380, idealSaniyeAdet: 2, idealKaynak: 'IFS', cakismaVar: false })
+    expect(b.performance).toBeCloseTo(0.888888, 4) // 2*400/900 — TAM ile aynı formül
+    expect(b.oee).toBeCloseTo(0.9 * (800 / 900) * 0.95, 5)
+    expect(b.hesapKaynagi).toBe('PERF_IFS')
+  })
+
+  it('REGRESYON: ölçülen güvenilir ideal (idealKaynak=OLCULEN) → TAM (IFS’e düşmez)', () => {
+    const b = oeeBilesenleri({ planliSaniye: 1000, durusSaniye: 100, uretilenAdet: 400, iyiAdet: 380, idealSaniyeAdet: 2, idealKaynak: 'OLCULEN', cakismaVar: false })
+    expect(b.hesapKaynagi).toBe('TAM')
+  })
+
+  it('REGRESYON: idealKaynak verilmeden ideal dolu → TAM (geriye dönük uyum)', () => {
+    const b = oeeBilesenleri({ planliSaniye: 1000, durusSaniye: 100, uretilenAdet: 400, iyiAdet: 380, idealSaniyeAdet: 2, cakismaVar: false })
+    expect(b.hesapKaynagi).toBe('TAM')
+  })
+
+  it('CAKISMA_VAR IFS idealiyle bile öncelikli (PERF_IFS’i ezer)', () => {
+    const b = oeeBilesenleri({ planliSaniye: 1000, durusSaniye: 100, uretilenAdet: 400, iyiAdet: 380, idealSaniyeAdet: 2, idealKaynak: 'IFS', cakismaVar: true })
+    expect(b.hesapKaynagi).toBe('CAKISMA_VAR')
+  })
+
   it('PLANLI_YOK: planli 0 → availability null, oee null', () => {
     const b = oeeBilesenleri({ planliSaniye: 0, durusSaniye: 0, uretilenAdet: 400, iyiAdet: 400, idealSaniyeAdet: 2, cakismaVar: false })
     expect(b.availability).toBeNull()

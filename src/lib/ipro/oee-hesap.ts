@@ -8,6 +8,7 @@
 import type { PrismaClient } from '@/generated/prisma'
 import { gunDurumu, tarihAnahtari, gecerliTatilTip, type IproTatilTip } from '@/lib/ipro/takvim-util'
 import { idealCevrimGuncelle, araliklarKesisiyor } from '@/lib/ipro/ideal-cevrim'
+import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
 
 /** Türkiye sabit UTC+3 (DST yok). Sunucu UTC çalışır; vardiya saatleri YEREL girilir. */
 export const TR_OFFSET_DK = 180
@@ -77,7 +78,11 @@ export interface OeeGirdi {
   durusSaniye: number
   uretilenAdet: number
   iyiAdet: number
-  idealSaniyeAdet: number | null // güvenilir ideal yoksa null → performance null
+  idealSaniyeAdet: number | null // güvenilir ideal / IFS planı yoksa null → performance null
+  // idealSaniyeAdet'in KAYNAĞI (hesapKaynagi damgası için; FORMÜLÜ etkilemez):
+  //   'OLCULEN' → ölçülen güvenilir ideal (TAM), 'IFS' → IFS planlı çevrim fallback (PERF_IFS).
+  //   yok/null → OLCULEN varsayılır (geriye dönük uyum: eski çağrılar 'TAM' alır).
+  idealKaynak?: 'OLCULEN' | 'IFS' | null
   cakismaVar: boolean
 }
 
@@ -86,13 +91,16 @@ export interface OeeBilesen {
   performance: number | null
   quality: number | null
   oee: number | null
-  hesapKaynagi: string // TAM | PERF_YOK | PLANLI_YOK | CAKISMA_VAR
+  hesapKaynagi: string // TAM | PERF_IFS | PERF_YOK | PLANLI_YOK | CAKISMA_VAR
 }
 
 /**
  * OEE bileşenleri + hesapKaynagi. SAF — DB'siz test.
  * availability=(planli−durus)/planli · performance=(ideal×üretilen)/(planli−durus) · quality=iyi/üretilen.
- * Biri null ise oee null (null yayılımı). hesapKaynagi önceliği: CAKISMA_VAR > PLANLI_YOK > PERF_YOK > TAM.
+ * Biri null ise oee null (null yayılımı). hesapKaynagi önceliği:
+ * CAKISMA_VAR > PLANLI_YOK > PERF_YOK > (PERF_IFS | TAM).
+ * PERF_IFS: performance IFS planlı çevrimden (ölçülen güvenilir ideal yerine) hesaplandı;
+ * formül aynı, yalnız kaynak damgası farklı. idealKaynak yoksa TAM (geriye dönük uyum).
  */
 export function oeeBilesenleri(g: OeeGirdi): OeeBilesen {
   const calisma = g.planliSaniye - g.durusSaniye
@@ -109,7 +117,7 @@ export function oeeBilesenleri(g: OeeGirdi): OeeBilesen {
   if (g.cakismaVar) hesapKaynagi = 'CAKISMA_VAR'
   else if (g.planliSaniye <= 0) hesapKaynagi = 'PLANLI_YOK'
   else if (performance == null) hesapKaynagi = 'PERF_YOK'
-  else hesapKaynagi = 'TAM'
+  else hesapKaynagi = g.idealKaynak === 'IFS' ? 'PERF_IFS' : 'TAM'
 
   return { availability, performance, quality, oee, hesapKaynagi }
 }
@@ -224,6 +232,9 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
       hesapKaynagi: true,
       qtyComplete: true,
       qtyScrap: true,
+      // IFS planlı çevrim snapshot'ı (başla anında yazılır) — ölçülen ideal yoksa fallback kaynağı.
+      ifsMachRunFactor: true,
+      ifsRunTimeCode: true,
       tezgah: { select: { kod: true } },
     },
   })
@@ -247,7 +258,24 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
         select: { idealSaniyeAdet: true, guvenilir: true },
       })
     : null
-  const idealSaniyeAdet = ideal?.guvenilir ? ideal.idealSaniyeAdet : null
+  // idealSaniyeAdet seçimi (FORMÜL değişmez, yalnız KAYNAK genişler):
+  //  1) ölçülen güvenilir ideal varsa onu kullan → 'OLCULEN' (damga TAM),
+  //  2) yoksa IFS planlı çevrime (log snapshot'ından, sorgu YOK) düş → 'IFS' (damga PERF_IFS),
+  //  3) ikisi de yoksa null → performance null (damga PERF_YOK, mevcut davranış).
+  // idealCevrimGuncelle biriktikçe (1) devreye girer; olgunlaşınca IFS→ölçülen otomatik geçer.
+  const ifsPlanSn = cevrimSaniye(log.ifsMachRunFactor, log.ifsRunTimeCode)
+  let idealSaniyeAdet: number | null
+  let idealKaynak: 'OLCULEN' | 'IFS' | null
+  if (ideal?.guvenilir) {
+    idealSaniyeAdet = ideal.idealSaniyeAdet
+    idealKaynak = 'OLCULEN'
+  } else if (ifsPlanSn != null) {
+    idealSaniyeAdet = ifsPlanSn
+    idealKaynak = 'IFS'
+  } else {
+    idealSaniyeAdet = null
+    idealKaynak = null
+  }
 
   // 2) planliSaniye — vardiya+tatil kesişimi
   const [vardiyalar, tatiller] = await Promise.all([
@@ -271,7 +299,7 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
   const cakismaVar = await cakismaVarMi(prisma, log.tezgahId, log.id, bas, bit)
 
   // 6) bileşenler · 7) vardiya etiketi
-  const b = oeeBilesenleri({ planliSaniye, durusSaniye, uretilenAdet, iyiAdet, idealSaniyeAdet, cakismaVar })
+  const b = oeeBilesenleri({ planliSaniye, durusSaniye, uretilenAdet, iyiAdet, idealSaniyeAdet, idealKaynak, cakismaVar })
   const vardiyaId = await vardiyaBul(prisma, bas)
 
   await prisma.iproOeeKaydi.upsert({

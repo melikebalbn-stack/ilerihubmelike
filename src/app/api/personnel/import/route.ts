@@ -5,6 +5,7 @@ import { personelEklendiginde } from '@/lib/org/personel-koltuk-senkron'
 import * as XLSX from 'xlsx'
 import { EXCEL_COLUMN_MAP, YAKA_DETAY_MAP } from '@/lib/personnel-constants'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 
 export const dynamic = 'force-dynamic'
@@ -169,7 +170,82 @@ function addMonthsToDate(date: Date | null, months: number): Date | null {
   return d
 }
 
+/**
+ * Denetim izini yazar: 1 özet + N kayıt satırı.
+ *
+ * İMPORT'U ASLA DÜŞÜRMEZ: tümü try/catch içinde; log yazılamazsa yalnız
+ * console.error düşer, yüklenen veri geçerli kalır (veri > iz).
+ * Kayıt satırları özete `importId` ile bağlanır.
+ */
+async function denetimIziYaz(args: {
+  actorId: string
+  actorEmail: string
+  importId: string
+  dosyaAdi: string
+  satirSayisi: number
+  olusturulan: number
+  guncellenen: number
+  hataliSatir: number
+  alanSayaclari: Record<string, number>
+  kayitIzleri: { personnelId: string; sicilNo: string; islem: string; degisenAlanlar: string[] }[]
+  durum: 'TAMAMLANDI' | 'HATA'
+  hataMesaji?: string
+}): Promise<void> {
+  try {
+    await logAuditEvent({
+      action: 'PERSONNEL_BULK_IMPORT',
+      actorId: args.actorId,
+      targetType: 'PERSONNEL',
+      targetId: args.importId,
+      details: {
+        actorEmail: args.actorEmail,
+        importId: args.importId,
+        dosyaAdi: args.dosyaAdi,
+        satirSayisi: args.satirSayisi,
+        olusturulan: args.olusturulan,
+        guncellenen: args.guncellenen,
+        hataliSatir: args.hataliSatir,
+        // Alan bazlı sayaç: hangi alan kaç kayıtta değişti (DEĞER YOK).
+        alanSayaclari: args.alanSayaclari,
+        durum: args.durum,
+        ...(args.hataMesaji ? { hataMesaji: args.hataMesaji } : {}),
+      },
+    })
+  } catch (e) {
+    console.error('[import-audit] ozet kaydi yazilamadi:', e)
+  }
+
+  // Kayıt bazında iz — tekil düzenlemedeki (PERSONNEL_UPDATED) izlenebilirliğin
+  // toplu karşılığı. Biri patlarsa diğerleri yazılmaya devam eder.
+  for (const iz of args.kayitIzleri) {
+    try {
+      await logAuditEvent({
+        action: 'PERSONNEL_IMPORT_KAYIT',
+        actorId: args.actorId,
+        targetType: 'PERSONNEL',
+        // targetId = Personnel.id — PERSONNEL_UPDATED ile aynı gelenek, böylece
+        // kayıt bazlı bir geçmiş sorgusu tekil ve toplu izi birlikte görür.
+        targetId: iz.personnelId,
+        details: {
+          importId: args.importId,
+          sicilNo: iz.sicilNo,
+          islem: iz.islem,
+          // Yalnız alan ADLARI — eski/yeni değer KVKK gereği yazılmaz.
+          degisenAlanlar: iz.degisenAlanlar,
+        },
+      })
+    } catch (e) {
+      console.error(`[import-audit] kayit izi yazilamadi (${iz.sicilNo}):`, e)
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
+  // Hata dalında da iz bırakabilmek için durum dış kapsamda tutulur: try içinde
+  // patlarsa "nereye kadar işlendi" bilgisi kaybolmasın.
+  let izDurumu:
+    | (Omit<Parameters<typeof denetimIziYaz>[0], 'durum' | 'hataMesaji'>)
+    | null = null
   try {
     // PR-Y2.5-personnel: requireUser — Excel import + createdBy/updatedBy yazımı
     const { user, error } = await requireUser()
@@ -206,6 +282,44 @@ export async function POST(request: NextRequest) {
     let created = 0
     let updated = 0
     const errors: { row: number; message: string }[] = []
+
+    // ─── DENETİM İZİ (2026-09) ────────────────────────────────────────────────
+    // Bu uç HİÇBİR iz bırakmıyordu: 30.08.2026'da 783 Personnel satırı tek seferde
+    // değişti ve denetim kaydında karşılığı yok — kim, hangi dosyayla, neyi
+    // değiştirdi bilinmiyor. Toplu yükleme tekil düzenlemeden (PERSONNEL_UPDATED)
+    // daha geniş etki taşıdığı için iz ZORUNLU.
+    //
+    // İKİ KADEME (mevcut konvansiyonun ikisi de kullanılıyor):
+    //   · özet     → PERSONNEL_BULK_IMPORT  (PERSONNEL_BULK_BACKFILL deseni: tek satır)
+    //   · kayıt    → PERSONNEL_IMPORT_KAYIT (PERSONNEL_UPDATED deseni: personel başına)
+    // Kayıt satırları özete `importId` ile bağlanır.
+    //
+    // KVKK: DEĞER YAZILMAZ. Yalnız sicilNo + hangi alanların değiştiği (alan ADI).
+    // TC/IBAN/adres içerikleri denetim kaydına GİRMEZ.
+    const importId = `imp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+    const dosyaAdi = file.name || '(isimsiz)'
+    const alanSayaclari: Record<string, number> = {}
+    const kayitIzleri: {
+      personnelId: string
+      sicilNo: string
+      islem: 'OLUSTURULDU' | 'GUNCELLENDI'
+      degisenAlanlar: string[]
+    }[] = []
+    // Değer karşılaştırması: Date/null/undefined normalize edilir; içerik LOGLANMAZ.
+    const ayniMi = (a: unknown, b: unknown): boolean => {
+      if (a instanceof Date || b instanceof Date) {
+        const t = (v: unknown) => (v instanceof Date ? v.getTime() : v ? new Date(v as string).getTime() : null)
+        return t(a) === t(b)
+      }
+      const n = (v: unknown) => (v === null || v === undefined || v === '' ? null : String(v).trim())
+      return n(a) === n(b)
+    }
+    // Alanı hem satırın izine hem genel sayaca ekler. `alanlar` dizisi
+    // kayitIzleri'ndeki nesnenin İÇİNDEKİ referans — mutasyon oraya da yansır.
+    const izEkle = (alanlar: string[], alan: string) => {
+      alanlar.push(alan)
+      alanSayaclari[alan] = (alanSayaclari[alan] ?? 0) + 1
+    }
 
     for (let i = 0; i < rows.length; i++) {
       const rowNum = i + 2 // Excel row (header is 1)
@@ -359,20 +473,31 @@ export async function POST(request: NextRequest) {
         const existing = await prisma.personnel.findUnique({ where: { sicilNo } })
 
         let personnelId: string
+        // Hassas alanlar (TC/IBAN) aşağıda yazılıyor; izleri bu diziye eklenir.
+        let satirAlanlari: string[] = []
         if (existing) {
           delete personnelData.createdBy
+          // Denetim izi: YAZMADAN ÖNCE hangi alanların gerçekten değiştiğini bul.
+          // Yalnız alan ADI toplanır; eski/yeni DEĞER hiçbir yere yazılmaz (KVKK).
+          const degisenAlanlar = Object.keys(personnelData).filter(
+            (k) => k !== 'updatedBy' && !ayniMi((existing as Record<string, unknown>)[k], personnelData[k]),
+          )
           const updatedRecord = await prisma.personnel.update({
             where: { sicilNo },
             data: personnelData,
           })
           personnelId = updatedRecord.id
           updated++
+          for (const alan of degisenAlanlar) alanSayaclari[alan] = (alanSayaclari[alan] ?? 0) + 1
+          kayitIzleri.push({ personnelId, sicilNo, islem: 'GUNCELLENDI', degisenAlanlar })
+          satirAlanlari = degisenAlanlar
         } else {
           const createdRecord = await prisma.personnel.create({
             data: personnelData,
           })
           personnelId = createdRecord.id
           created++
+          kayitIzleri.push({ personnelId, sicilNo, islem: 'OLUSTURULDU', degisenAlanlar: [] })
           // Org koltugu — toplu ice aktarimda da yeni personel semada yer bulsun.
           // NOT: bu akista satir basina $transaction YOK (mevcut desen); helper
           // dogrudan prisma ile cagrilir. Eslesme yoksa koltuk acilmaz, import DEVAM eder.
@@ -401,6 +526,18 @@ export async function POST(request: NextRequest) {
         }
 
         if (hasSensitive) {
+          // Denetim izi: TC gerçekten değişti mi? Değer YALNIZ karşılaştırma için
+          // belleğe alınır, hiçbir yere yazılmaz (KVKK).
+          const tcOncesi =
+            existing && mapped.tcKimlikNo
+              ? (
+                  await prisma.personnelSensitive.findUnique({
+                    where: { personnelId },
+                    select: { tcKimlikNo: true },
+                  })
+                )?.tcKimlikNo ?? null
+              : null
+
           sensitiveData.updatedBy = user.id
           await prisma.personnelSensitive.upsert({
             where: { personnelId },
@@ -410,34 +547,87 @@ export async function POST(request: NextRequest) {
               ...sensitiveData,
             },
           })
+
+          if (existing && mapped.tcKimlikNo && !ayniMi(tcOncesi, sensitiveData.tcKimlikNo)) {
+            izEkle(satirAlanlari, 'tcKimlikNo')
+          }
         }
 
         // PR-1: banka bilgisi → PersonnelBankAccount (primary). IDEMPOTENT: hesabı olan kişiyi atla.
         const hasBankData = !!(mapped.bankaSube || mapped.bankaHesapNo || mapped.ibanNo)
         if (hasBankData) {
-          const accountCount = await prisma.personnelBankAccount.count({ where: { personnelId } })
-          if (accountCount === 0) {
+          // count yerine kaydın kendisi: yazma koşulu AYNI (hesap yoksa oluştur),
+          // ek olarak "Excel farklı IBAN getirdi ama atlandı" durumu ayırt edilebiliyor.
+          // orderBy determinist: önce primary, sonra en eski, eşitlikte id.
+          const mevcutHesap = await prisma.personnelBankAccount.findFirst({
+            where: { personnelId },
+            select: { ibanNo: true },
+            orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
+          })
+          const yeniIban = mapped.ibanNo ? mapped.ibanNo.toString().trim() : null
+          if (!mevcutHesap) {
             await prisma.personnelBankAccount.create({
               data: {
                 personnelId,
                 bankaSube: mapped.bankaSube ? mapped.bankaSube.toString().trim() : null,
                 hesapNo: mapped.bankaHesapNo ? mapped.bankaHesapNo.toString().trim() : null,
-                ibanNo: mapped.ibanNo ? mapped.ibanNo.toString().trim() : null,
+                ibanNo: yeniIban,
                 isPrimary: true,
                 aktif: true,
                 updatedBy: user.id,
               },
             })
+            if (existing && yeniIban) izEkle(satirAlanlari, 'ibanNo:yeni')
+          } else if (existing && yeniIban && !ayniMi(mevcutHesap.ibanNo, yeniIban)) {
+            // Hesap zaten var → bu uç mevcut hesabı GÜNCELLEMİYOR (idempotent).
+            // Excel farklı bir IBAN getirdiyse yazılmadı; iz bunu kayda geçirir.
+            izEkle(satirAlanlari, 'ibanNo:atlandi')
           }
         }
       } catch (rowError: any) {
         errors.push({ row: rowNum, message: rowError.message || 'Bilinmeyen hata' })
       }
+
+      // Her satırdan sonra tazelenir: beklenmeyen bir hata olursa hata dalı
+      // en son işlenen satıra kadarki sayaçlarla iz yazabilsin.
+      izDurumu = {
+        actorId: user.id,
+        actorEmail: user.email,
+        importId,
+        dosyaAdi,
+        satirSayisi: rows.length,
+        olusturulan: created,
+        guncellenen: updated,
+        hataliSatir: errors.length,
+        alanSayaclari,
+        kayitIzleri,
+      }
     }
 
-    return NextResponse.json({ created, updated, errors })
+    await denetimIziYaz({
+      actorId: user.id,
+      actorEmail: user.email,
+      importId,
+      dosyaAdi,
+      satirSayisi: rows.length,
+      olusturulan: created,
+      guncellenen: updated,
+      hataliSatir: errors.length,
+      alanSayaclari,
+      kayitIzleri,
+      durum: 'TAMAMLANDI',
+    })
+
+    return NextResponse.json({ created, updated, errors, importId })
   } catch (error) {
     console.error('Excel import hatası:', error)
+    // HATA DURUMUNDA DA İZ: nereye kadar işlendiği kaybolmasın. Sayaçlar try
+    // bloğunda tanımlı olduğu için burada erişilemez → her satırdan sonra
+    // tazelenen dış kapsamdaki `izDurumu` üzerinden yazılır. Hiç satır
+    // işlenmeden patladıysa (dosya okunamadı vb.) izDurumu null'dır, iz yazılmaz.
+    if (izDurumu) {
+      await denetimIziYaz({ ...izDurumu, durum: 'HATA', hataMesaji: error instanceof Error ? error.message : String(error) })
+    }
     return NextResponse.json({ error: 'Excel import sırasında bir hata oluştu' }, { status: 500 })
   }
 }

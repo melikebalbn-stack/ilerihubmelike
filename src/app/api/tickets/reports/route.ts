@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { ortalama, yuzde } from '@/lib/tickets/kpi'
 
 /**
  * Atanan kişilerin GÖRÜNEN ADI — e-postadan çözülür.
@@ -335,6 +336,61 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.totalOpen - a.totalOpen)
 
     // Günlük trend (son 7 gün)
+    // ── MEMNUNİYET ÖZETİ (Faz 2) ────────────────────────────────────────
+    // Ortalama ve puanlama oranı AYRI iki soru: ortalama "puan verenler ne
+    // dedi", oran "kaç kişi puan verdi". Oranın paydası anlamlıyken ortalamanın
+    // örneklemi 1 olabilir; ikisini tek sayıya indirmek yanıltır.
+    const puanlananlar = allTickets.filter((t) => t.satisfactionRating !== null)
+    const puanlanabilirler = allTickets.filter(
+      (t) => t.status === 'RESOLVED' || t.status === 'CLOSED',
+    )
+    const yildizDagilimi = [1, 2, 3, 4, 5].map((yildiz) => ({
+      yildiz,
+      adet: puanlananlar.filter((t) => t.satisfactionRating === yildiz).length,
+    }))
+    const memnuniyetOzeti = {
+      ortalama: ortalama(puanlananlar.map((t) => t.satisfactionRating as number)),
+      // n = payda (puanlanabilir talep sayısı), value = yüzde.
+      puanlamaOrani: yuzde(puanlananlar.length, puanlanabilirler.length),
+      puanlananSayisi: puanlananlar.length,
+      puanlanabilirSayisi: puanlanabilirler.length,
+      dagilim: yildizDagilimi,
+    }
+
+    // ── KRONİK ÖZETİ (Faz 2) ────────────────────────────────────────────
+    // DÖNEM FİLTRESİNE TABİ DEĞİL (bilerek): "aktif kronik" o anki durumdur,
+    // son 30 günde açılmış olması gerekmez. Yalnız "çözülen" penceresi 30 gün.
+    // Bağlı talep sayısı da tüm zamanları kapsar — kronik sorunun ağırlığı
+    // dönem seçimine göre değişmemeli.
+    const otuzGunOnce = new Date()
+    otuzGunOnce.setDate(otuzGunOnce.getDate() - 30)
+
+    const kronikler = await prisma.kronikSorun.findMany({
+      select: {
+        id: true,
+        baslik: true,
+        durum: true,
+        cozulenAt: true,
+        _count: { select: { tickets: true } },
+      },
+      orderBy: [{ durum: 'asc' }, { createdAt: 'desc' }],
+    })
+    const aktifler = kronikler.filter((k) => k.durum === 'AKTIF')
+    const kronikOzeti = {
+      aktifSayisi: aktifler.length,
+      aktifBagliTalep: aktifler.reduce((t, k) => t + k._count.tickets, 0),
+      son30GunCozulen: kronikler.filter(
+        (k) => k.durum === 'COZULDU' && k.cozulenAt !== null && k.cozulenAt >= otuzGunOnce,
+      ).length,
+      // Ekranda ilk 10 satır gösteriliyor; tamamı gerekirse kronik ucu var.
+      liste: kronikler.slice(0, 10).map((k) => ({
+        id: k.id,
+        baslik: k.baslik,
+        durum: k.durum,
+        bagliTalep: k._count.tickets,
+      })),
+    }
+
     const dailyTrend: { date: string; created: number; resolved: number }[] = []
     for (let i = 6; i >= 0; i--) {
       const date = new Date()
@@ -383,6 +439,9 @@ export async function GET(request: NextRequest) {
       individualPerformance,
       teamPerformance,
       dailyTrend,
+      // Faz 2 — mevcut alanların hiçbiri değişmedi, yalnız ikisi eklendi.
+      memnuniyetOzeti,
+      kronikOzeti,
     })
   } catch (error) {
     console.error('Rapor hatası:', error)

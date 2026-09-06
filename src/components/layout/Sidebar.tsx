@@ -205,7 +205,13 @@ const teknikMenuItems = [
   { name: "Yangın Güvenliği", icon: Flame, href: "/fire-safety", roles: ["QUALITY_MANAGER", "ADMIN"] },
   { name: "Tezgah Bakım", icon: Factory, href: "/maintenance", roles: ["*"] },
   { name: "Arşiv", icon: Archive, href: "/arsiv/koli", roles: ["*"] },
-  { name: "IT Raporları", icon: BarChart3, href: "/it-reports", roles: ["IT_MANAGER", "ADMIN"] },
+  // GÖRÜNÜRLÜK sayfa guard'ına bağlandı: /it-reports `admin.audit.view` arıyor
+  // (admin, bgys-sorumlusu, it-admin, super-admin). Eski `roles` listesi
+  // ["IT_MANAGER","ADMIN"] idi ve SUPER_ADMIN'i İÇERMİYORDU — filterItems'ta
+  // `roles.includes('SUPER_ADMIN')` koşulu tutmadığı için süper yönetici bu
+  // kalemi HİÇ görmüyordu, sayfayı açma yetkisi olmasına rağmen. Menü artık
+  // izni tekrar yorumlamıyor, sayfanınkini kullanıyor.
+  { name: "IT Raporları", icon: BarChart3, href: "/it-reports", roles: [] as string[], permission: "admin.audit.view" },
 ]
 
 // IPRO — MAS üretim takip modülü yönetimi (tanımlar + kiosk cihazları)

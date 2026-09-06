@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ListChecks, Plus, Users } from "lucide-react";
+import { ArrowLeft, ListChecks, Pencil, Plus, Settings2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,8 +21,17 @@ import { AdminContentFormModal } from "@/components/akademi/admin/AdminContentFo
 import { AdminDeleteConfirm } from "@/components/akademi/admin/AdminDeleteConfirm";
 import { AdminPackageUserPicker } from "@/components/akademi/admin/AdminPackageUserPicker";
 import { AdminPackageBolumPicker } from "@/components/akademi/admin/AdminPackageBolumPicker";
+import { AdminCourseFormModal } from "@/components/akademi/admin/AdminCourseFormModal";
+import { AdminPackageCoursesPicker } from "@/components/akademi/admin/AdminPackageCoursesPicker";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { stripDeptPrefix } from "@/lib/akademi-ifs";
-import type { AdminContentItem } from "@/types/akademi-admin";
+import type { AdminContentItem, AdminCourseListItem } from "@/types/akademi-admin";
 import type { AdminPackageDetail } from "@/types/akademi-package";
 
 // DELETE ucu değerlendirme varsa 409 + sayılarla döner.
@@ -44,6 +53,14 @@ export function PaketYonetim({ packageId }: { packageId: string }) {
   const [formAcik, setFormAcik] = useState(false);
   const [formMod, setFormMod] = useState<"create" | "edit">("create");
   const [duzenlenen, setDuzenlenen] = useState<AdminContentItem | null>(null);
+
+  // ── Alan (kurs) yönetimi ──
+  // Alan adı/aktiflik AdminCourseFormModal'da, sıra ve paket bağı
+  // AdminPackageCoursesPicker'da. İkisi de akademi'den, KOPYALANMADI.
+  const [alanModalAcik, setAlanModalAcik] = useState(false);
+  const [alanModu, setAlanModu] = useState<"create" | "edit">("create");
+  const [duzenlenenAlan, setDuzenlenenAlan] = useState<AdminCourseListItem | null>(null);
+  const [alanlariDuzenle, setAlanlariDuzenle] = useState(false);
 
   const [silinecek, setSilinecek] = useState<AdminContentItem | null>(null);
   const [cakisma, setCakisma] = useState<CakismaBilgisi | null>(null);
@@ -90,6 +107,75 @@ export function PaketYonetim({ packageId }: { packageId: string }) {
     paketiYukle();
     if (seciliCourseId) gorevleriYukle(seciliCourseId);
   }, [paketiYukle, gorevleriYukle, seciliCourseId]);
+
+  // Düzenleme için TAM kurs kaydı gerekiyor: modal edit'te description,
+  // thumbnail, category, duration, isActive alanlarının HEPSİNİ PATCH ediyor.
+  // Paket detayından uydurma bir kayıt beslemek bu alanları sessizce silerdi —
+  // o yüzden gerçek kaydı listeden alıyoruz (courses/[id] üzerinde GET yok).
+  //
+  // Parametreler MEVCUT olanlar, uca yeni parametre eklenmedi:
+  //   status=all   → varsayılan "active"; pasif alan da düzenlenebilsin
+  //   pageSize=100 → varsayılan 25; şemadaki üst sınır (prod'da 24 IFS kursu var,
+  //                  varsayılan sınıra bir kurs kalmıştı)
+  // 100'ü aşarsa kurs bulunamaz; o durumda aşağıdaki toast ile AÇIKÇA durulur,
+  // sessiz başarısızlık yok.
+  const alanDuzenle = useCallback(async (courseId: string) => {
+    const d = await fetch(
+      "/api/akademi/admin/courses?type=ifs&status=all&pageSize=100"
+    )
+      .then((r) => (r.ok ? r.json() : { courses: [] }))
+      .catch(() => ({ courses: [] }));
+    const kurs = (d.courses ?? []).find(
+      (c: AdminCourseListItem) => c.id === courseId
+    );
+    if (!kurs) {
+      toast.error("Alan bilgisi okunamadı");
+      return;
+    }
+    setDuzenlenenAlan(kurs);
+    setAlanModu("edit");
+    setAlanModalAcik(true);
+  }, []);
+
+  // "Yeni alan": kurs oluşturulur, sonra AYRI bir PUT ile pakete bağlanır
+  // (uç set-replace çalışıyor: mevcut liste + yeni kurs gönderilir).
+  // Bağlama başarısızsa kurs ortada kalır — kullanıcıya "Alanları düzenle"den
+  // elle ekleyebileceği söylenir, sessizce yutulmaz.
+  const yeniAlaniBagla = useCallback(
+    async (created: { id: string }) => {
+      if (!pkg) return;
+      const courses = [
+        ...pkg.courses.map((c) => ({
+          courseId: c.courseId,
+          order: c.order,
+          isRequired: c.isRequired,
+        })),
+        { courseId: created.id, order: pkg.courses.length, isRequired: true },
+      ];
+      try {
+        const res = await fetch(`/api/akademi/admin/packages/${packageId}/courses`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ courses }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          toast.error(
+            `Alan oluştu ama departmana bağlanamadı: ${err.error || "bilinmeyen hata"}. "Alanları düzenle"den elle ekleyebilirsiniz.`
+          );
+          return;
+        }
+        toast.success("Alan oluşturuldu ve departmana bağlandı");
+      } catch {
+        toast.error(
+          'Alan oluştu ama bağlama sırasında hata oluştu. "Alanları düzenle"den elle ekleyin.'
+        );
+      } finally {
+        paketiYukle();
+      }
+    },
+    [pkg, packageId, paketiYukle]
+  );
 
   const siralamaKaydet = useCallback(
     async (orderedIds: string[]) => {
@@ -215,8 +301,31 @@ export function PaketYonetim({ packageId }: { packageId: string }) {
         {/* ══ GÖREVLER ══ */}
         <TabsContent value="gorevler" className="mt-4">
           <div className="grid gap-4 md:grid-cols-[260px_1fr]">
-            {/* Sol: alan listesi */}
+            {/* Sol: alan listesi. Alan yönetimi İKİNCİL — görev listesi ana iş,
+                bu yüzden kalem yalnız hover'da, sıra/bağ ayrı bir modalda. */}
             <div className="space-y-1">
+              <div className="flex items-center justify-between px-1 pb-1">
+                <span
+                  className="text-[11px] uppercase tracking-wide font-medium"
+                  style={{ color: "var(--ak-text-tertiary)" }}
+                >
+                  Alanlar
+                </span>
+                <button
+                  type="button"
+                  title="Yeni alan"
+                  onClick={() => {
+                    setDuzenlenenAlan(null);
+                    setAlanModu("create");
+                    setAlanModalAcik(true);
+                  }}
+                  className="p-1 rounded"
+                  style={{ color: "var(--ak-text-secondary)" }}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+
               {pkg.courses.length === 0 && (
                 <p className="text-sm" style={{ color: "var(--ak-text-tertiary)" }}>
                   Bu departmanda alan yok.
@@ -225,27 +334,57 @@ export function PaketYonetim({ packageId }: { packageId: string }) {
               {pkg.courses.map((c) => {
                 const secili = c.courseId === seciliCourseId;
                 return (
-                  <button
+                  // Satırın kendisi button DEĞİL: içine kalem düğmesi giriyor,
+                  // iç içe button geçersiz HTML olurdu.
+                  <div
                     key={c.id}
-                    type="button"
-                    onClick={() => setSeciliCourseId(c.courseId)}
-                    className="w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between gap-2"
+                    className="group w-full px-3 py-2 rounded-md text-sm flex items-center gap-2"
                     style={{
                       background: secili ? "var(--ak-accent-glow)" : "transparent",
                       color: secili ? "var(--ak-accent)" : "var(--ak-text-primary)",
                       fontWeight: secili ? 600 : 400,
                     }}
                   >
-                    <span className="truncate">{stripDeptPrefix(c.courseTitle)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSeciliCourseId(c.courseId)}
+                      className="flex-1 min-w-0 text-left truncate"
+                    >
+                      {stripDeptPrefix(c.courseTitle)}
+                    </button>
+                    <button
+                      type="button"
+                      title="Alanı düzenle"
+                      onClick={() => alanDuzenle(c.courseId)}
+                      className="p-0.5 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
+                      style={{ color: "var(--ak-text-secondary)" }}
+                    >
+                      <Pencil size={12} />
+                    </button>
                     <span
                       className="text-xs shrink-0"
                       style={{ color: "var(--ak-text-tertiary)" }}
                     >
                       {c.gorevSayisi ?? 0}
                     </span>
-                  </button>
+                  </div>
                 );
               })}
+
+              {pkg.courses.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAlanlariDuzenle(true)}
+                  className="w-full mt-2 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded border"
+                  style={{
+                    borderColor: "var(--ak-border-default)",
+                    color: "var(--ak-text-secondary)",
+                  }}
+                >
+                  <Settings2 size={12} />
+                  Alanları düzenle
+                </button>
+              )}
             </div>
 
             {/* Sağ: seçili alanın görevleri */}
@@ -384,6 +523,50 @@ export function PaketYonetim({ packageId }: { packageId: string }) {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Alan formu — ad, açıklama, aktif/pasif. create'te isIfs + oluştur-bağla.
+          SİLME BU EKRANDA YOK: kurs silmek görev ve alan değerlendirmelerini
+          cascade ile götürüyor (409 koruması var ama ?force=1 ile aşılabiliyor);
+          bu karar yönetim ekranında verilmemeli, akademi tarafında kalıyor. */}
+      <AdminCourseFormModal
+        open={alanModalAcik}
+        onOpenChange={setAlanModalAcik}
+        mode={alanModu}
+        course={duzenlenenAlan}
+        categories={[]}
+        isIfs
+        onCreated={alanModu === "create" ? yeniAlaniBagla : undefined}
+        onSaved={() => {
+          setAlanModalAcik(false);
+          setDuzenlenenAlan(null);
+          tazele();
+        }}
+      />
+
+      {/* Alan sırası + departmandan çıkarma. */}
+      <Dialog open={alanlariDuzenle} onOpenChange={setAlanlariDuzenle}>
+        <DialogContent className="max-w-[720px]">
+          <DialogHeader>
+            <DialogTitle>Alanları düzenle — {departmanAdi}</DialogTitle>
+            <DialogDescription>
+              Sırayı sürükleyerek değiştirin, alan ekleyin ya da çıkarın.
+              <strong> Çıkarmak silmek değildir:</strong> alan bu departmandan
+              kopar, kursun kendisi ve içindeki görevler/değerlendirmeler
+              olduğu gibi kalır — başka bir departmana bağlanabilir.
+            </DialogDescription>
+          </DialogHeader>
+          {pkg.courses.length > 0 && (
+            <AdminPackageCoursesPicker
+              packageId={packageId}
+              initialCourses={pkg.courses}
+              isIfs
+              onSaved={() => {
+                paketiYukle();
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Görev formu — create'te kaynak MANUEL yazılır. */}
       {seciliCourseId && (

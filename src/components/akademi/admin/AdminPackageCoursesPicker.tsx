@@ -151,9 +151,20 @@ export function AdminPackageCoursesPicker({
 
   const loadAllCourses = useCallback(() => {
     // IFS pakette IFS kursları (type=ifs); normal pakette default (type=normal).
+    //
+    // pageSize=100: ucun varsayılanı 25, şemadaki üst sınır 100. Varsayılanla
+    // 25'ten sonraki kurslar listeye HİÇ gelmiyordu — "Kurs bulunamadı" deyip
+    // sessizce eksik çalışıyordu. Prod'da bugün 24 IFS + 1 akademi kursu var,
+    // yani varsayılan sınıra bir kurs kalmıştı. Uca YENİ parametre eklenmedi.
+    //
+    // status BİLEREK verilmedi (varsayılan "active" kalıyor): aşağıdaki seçim
+    // listesi zaten `c.isActive` ile süzüyor, yani status=all pasif kursları
+    // getirir ama ekranda göstermez — yalnız sayfa bütçesini yer ve aktif
+    // kursları dışarı itebilirdi. Pasif kursun pakete eklenebilmesi istenirse
+    // doğru yer bu URL değil, o istemci süzgeci (ayrı bir ürün kararı).
     const url = isIfs
-      ? "/api/akademi/admin/courses?type=ifs"
-      : "/api/akademi/admin/courses";
+      ? "/api/akademi/admin/courses?type=ifs&pageSize=100"
+      : "/api/akademi/admin/courses?pageSize=100";
     fetch(url)
       .then((r) => (r.ok ? r.json() : { courses: [] }))
       .then((data) => setAllCourses(data.courses ?? []))

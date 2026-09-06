@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { MetrikKarti } from "./_components/metrik-karti"
+import { MetrikKarti } from "@/components/tickets/metrik-karti"
 import type { Olcum } from "@/lib/tickets/kpi"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"

@@ -6,6 +6,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts"
 import { Loader2, AlertTriangle, Users, TicketCheck, Inbox, Star } from "lucide-react"
+import { MetrikKarti } from "@/components/tickets/metrik-karti"
+import { olcum } from "@/lib/tickets/kpi"
 
 const NAVY = "#1B4F72"
 
@@ -45,41 +47,6 @@ const ONCELIK_RENK: Record<string, string> = {
   TICKET_HIGH: "#ea580c",
   NORMAL: "#2563eb",
   TICKET_LOW: "#64748b",
-}
-
-/** Örneklem az/yoksa DÜRÜST metin — yanıltıcı sayı yerine.
- *  0 kayıt → değer HİÇ gösterilmez; <3 kayıt → değer + "N kayıttan" uyarısı. */
-function ornekNotu(n: number): { yeterli: boolean; not: string | null } {
-  if (n === 0) return { yeterli: false, not: "henüz veri yok" }
-  if (n < 3) return { yeterli: true, not: `yalnız ${n} kayıttan hesaplandı` }
-  return { yeterli: true, not: `${n} kayıt` }
-}
-
-function SureKarti({
-  baslik, deger, birim, ornek, ikon,
-}: { baslik: string; deger: number; birim: string; ornek: number; ikon: React.ReactNode }) {
-  const { yeterli, not } = ornekNotu(ornek)
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-          {ikon}
-          {baslik}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {yeterli ? (
-          <div className="text-2xl font-bold" style={{ color: NAVY }}>
-            {deger}
-            <span className="text-sm font-normal text-muted-foreground ml-1">{birim}</span>
-          </div>
-        ) : (
-          <div className="text-lg font-medium text-muted-foreground">Henüz veri yok</div>
-        )}
-        {not && <p className="text-xs text-muted-foreground mt-1">{not}</p>}
-      </CardContent>
-    </Card>
-  )
 }
 
 function OzetKarti({
@@ -290,25 +257,32 @@ export function KpiDashboard() {
 
       {/* D) Süre metrikleri — örneklem sayısına göre DÜRÜST */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <SureKarti
+        {/* Eşik ARTIK ORTAK: MetrikKarti + lib/tickets/kpi.YETERLI_ORNEKLEM.
+            Eskiden burada yerel bir ornekNotu() vardı ve n<3'te değeri YİNE
+            gösteriyordu; /it-reports ile aynı sayı iki farklı kurala göre
+            görünüyordu (memnuniyet n=1 iken biri gizliyor, öbürü "1/5" basıyordu). */}
+        <MetrikKarti
           baslik="Ort. ilk yanıt"
-          deger={s.avgResponseTime}
-          birim="saat"
-          ornek={s.respondedCount}
+          olcum={olcum(s.avgResponseTime, s.respondedCount)}
+          bicimle={(v) => `${v} saat`}
+          ornekEki={(n) => `${n} talepten`}
+          birim="talep"
           ikon={<Loader2 className="h-4 w-4" />}
         />
-        <SureKarti
+        <MetrikKarti
           baslik="Ort. çözüm"
-          deger={s.avgResolutionTime}
-          birim="saat"
-          ornek={s.resolvedCountForAvg}
+          olcum={olcum(s.avgResolutionTime, s.resolvedCountForAvg)}
+          bicimle={(v) => `${v} saat`}
+          ornekEki={(n) => `${n} talepten`}
+          birim="talep"
           ikon={<TicketCheck className="h-4 w-4" />}
         />
-        <SureKarti
+        <MetrikKarti
           baslik="Memnuniyet"
-          deger={s.avgSatisfaction}
-          birim="/ 5"
-          ornek={s.ratedCount}
+          olcum={olcum(s.avgSatisfaction, s.ratedCount)}
+          bicimle={(v) => `${v} / 5`}
+          ornekEki={(n) => `${n} puandan`}
+          birim="puan"
           ikon={<Star className="h-4 w-4" />}
         />
       </div>

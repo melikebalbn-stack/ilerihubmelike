@@ -13,6 +13,15 @@
  * Neden gizliyoruz: tek puandan üretilmiş "ortalama memnuniyet 1,0" gibi bir
  * rakam ekranda kişi hakkında yargıya dönüşür. Sayıyı saklamak veriyi
  * saklamak değil — örneklem yazılı olarak duruyor.
+ *
+ * ORTAK KONUM: hem /it-reports hem /it-support KPI sekmesi kullanıyor. Eskiden
+ * sekmenin kendi `ornekNotu()` fonksiyonu ve kendi eşiği (n<3) vardı; iki ekran
+ * aynı uçtan (api/tickets/reports) beslendiği hâlde aynı sayıyı farklı kurala
+ * göre gösteriyordu — memnuniyet n=1 iken biri gizliyor, öbürü "1/5" basıyordu.
+ *
+ * lib/recruitment/ornek-esigi.ts BİRLEŞTİRİLMEDİ: oradaki eşik istatistik değil
+ * MAHREMİYET gerekçeli (n=1 ortalama = tek kişinin verisi) ve değeri hiç
+ * döndürmüyor. Aynı sayı olması tesadüf.
  */
 
 import { Card, CardContent } from "@/components/ui/card"
@@ -31,6 +40,8 @@ export interface MetrikKartiProps {
   dipnot?: string
   /** Değeri renklendir (iyi/kötü). Yalnız yeterli veri varken uygulanır. */
   vurgu?: "iyi" | "kotu"
+  /** Başlık yanında küçük ikon (KPI panosundaki kartlar bunu kullanıyor). */
+  ikon?: React.ReactNode
 }
 
 export function yeterliVeri(olcum: Olcum): boolean {
@@ -45,6 +56,7 @@ export function MetrikKarti({
   birim = "kayıt",
   dipnot,
   vurgu,
+  ikon,
 }: MetrikKartiProps) {
   const yeterli = yeterliVeri(olcum)
 
@@ -58,7 +70,10 @@ export function MetrikKarti({
   return (
     <Card className={yeterli ? undefined : "bg-muted/40"}>
       <CardContent className="pt-4 pb-4">
-        <p className="text-xs text-muted-foreground">{baslik}</p>
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          {ikon}
+          {baslik}
+        </p>
 
         {yeterli ? (
           <>

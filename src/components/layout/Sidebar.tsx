@@ -205,13 +205,6 @@ const teknikMenuItems = [
   { name: "Yangın Güvenliği", icon: Flame, href: "/fire-safety", roles: ["QUALITY_MANAGER", "ADMIN"] },
   { name: "Tezgah Bakım", icon: Factory, href: "/maintenance", roles: ["*"] },
   { name: "Arşiv", icon: Archive, href: "/arsiv/koli", roles: ["*"] },
-  // GÖRÜNÜRLÜK sayfa guard'ına bağlandı: /it-reports `admin.audit.view` arıyor
-  // (admin, bgys-sorumlusu, it-admin, super-admin). Eski `roles` listesi
-  // ["IT_MANAGER","ADMIN"] idi ve SUPER_ADMIN'i İÇERMİYORDU — filterItems'ta
-  // `roles.includes('SUPER_ADMIN')` koşulu tutmadığı için süper yönetici bu
-  // kalemi HİÇ görmüyordu, sayfayı açma yetkisi olmasına rağmen. Menü artık
-  // izni tekrar yorumlamıyor, sayfanınkini kullanıyor.
-  { name: "IT Raporları", icon: BarChart3, href: "/it-reports", roles: [] as string[], permission: "admin.audit.view" },
 ]
 
 // IPRO — MAS üretim takip modülü yönetimi (tanımlar + kiosk cihazları)
@@ -340,6 +333,12 @@ const sistemGelistirmeMenuItems = [
   { name: "Yetkilendirme", icon: ShieldCheck, href: "/settings/roller", roles: ["SUPER_ADMIN"] },
   { name: "AD Eşleşme", icon: ShieldCheck, href: "/settings/personnel-ad-reconcile", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
   { name: "AD Grup Mapping", icon: ShieldCheck, href: "/settings/azure-ad-mapping", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
+  // IT Raporları — "İleri Teknik" grubundan buraya taşındı: ticket/SLA raporu
+  // bir IT yönetim ekranı, üretim/kalite araçlarının yanında değil.
+  // GÖRÜNÜRLÜK sayfa guard'ının aynısı: /it-reports `admin.audit.view` arıyor
+  // (admin, bgys-sorumlusu, it-admin, super-admin). Menü izni tekrar
+  // yorumlamıyor. İzleme kalemleriyle (Login Aktiviteleri, Yedekleme) bitişik.
+  { name: "IT Raporları", icon: BarChart3, href: "/it-reports", roles: [] as string[], permission: "admin.audit.view" },
   { name: "Login Aktiviteleri", icon: LogIn, href: "/login-logs", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Yedekleme", icon: HardDrive, href: "/backups", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   // Zimmet Teslim Formu — cihaz teslim tutanağı listesi/onay ekranı (offboarding
@@ -671,7 +670,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     ? searchableItems.filter(item => normalizeTr(item.name).includes(normalizedQuery))
     : []
 
-  // Teknik menüsünde aktif sayfa var mı kontrol et (IT Raporları dahil)
+  // Teknik menüsünde aktif sayfa var mı kontrol et
   const isTeknikActive = teknikMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) || pathname === '/it-reports' || pathname.startsWith('/it-reports/')

@@ -376,7 +376,7 @@ export function TezgahDetayModal({
                 <UzaktanBitirPanel
                   productionLogId={detay.aktifIs.id}
                   tezgahKod={detay.kod}
-                  onDolguIyi={gerceklesenAdet}
+                  plcToplam={canli?.seriVar ? canli.adet : null}
                   onIptal={() => setBitirModu(false)}
                   onBasarili={() => {
                     setBitirModu(false)
@@ -803,26 +803,33 @@ function StepperNum({
 }
 
 /**
- * Terminalden iş bitir paneli (ipro.admin). İyi + hurda adedi girer (iyi ön dolgu = canlı
- * sayaç üretimi, düzeltilebilir), onay adımında özet gösterir, sonra POST
- * /api/terminal/uzaktan-bitir { productionLogId, qtyComplete, qtyScrap }. Başarıda onBasarili()
- * → detay yenilenir (tezgah 'boşta' görünür, OEE kaydı oluşur). Yanıt apiSuccess → res.ok ile ölçülür.
+ * Terminalden iş bitir paneli (ipro.admin). İyi + hurda adedi girer, onay adımında özet
+ * gösterir, sonra POST /api/terminal/uzaktan-bitir { productionLogId, qtyComplete, qtyScrap }.
+ * Başarıda onBasarili() → detay yenilenir (tezgah 'boşta', OEE kaydı oluşur).
+ *
+ * ADET BAĞLANTISI: plcToplam (canlı Σdelta) doluysa TOPLAM SABİT referanstır → iyi+hurda=toplam;
+ * biri değişince diğeri otomatik türer (iyi=toplam−hurda). Bu, kapanışta is-bitir'in Σdelta'dan
+ * hesapladığı uretimAdet ile birebir tutarlı (aksi hâlde sayaç aşımı doğrulaması 400 verir).
+ * plcToplam null (PLC serisi yok) ise iki alan BAĞIMSIZ; toplam = kullanıcının girdiği iyi+hurda.
  */
 function UzaktanBitirPanel({
   productionLogId,
   tezgahKod,
-  onDolguIyi,
+  plcToplam,
   onIptal,
   onBasarili,
 }: {
   productionLogId: string
   tezgahKod: string
-  /** Ön dolgu iyi adet — canlı PLC sayacından gelen üretim (düzeltilebilir). */
-  onDolguIyi: number
+  /** Canlı PLC Σdelta toplamı (sabit referans). null → PLC serisi yok, alanlar bağımsız. */
+  plcToplam: number | null
   onIptal: () => void
   onBasarili: () => void
 }) {
-  const [iyi, setIyi] = useState(String(Math.max(0, Math.round(onDolguIyi))))
+  const toplamKilitli = plcToplam != null // true: iyi+hurda=toplam bağı · false: bağımsız
+  const toplam = plcToplam ?? 0
+  // Kilitliyken ön dolgu: hepsi iyi (toplam), hurda 0. Bağımsızken 0/0 (elle girilir).
+  const [iyi, setIyi] = useState(toplamKilitli ? String(toplam) : '0')
   const [hurda, setHurda] = useState('0')
   const [onay, setOnay] = useState(false) // false: giriş adımı · true: onay adımı
   const [gonderiliyor, setGonderiliyor] = useState(false)
@@ -831,6 +838,24 @@ function UzaktanBitirPanel({
   const iyiN = Number.parseInt(iyi, 10)
   const hurdaN = Number.parseInt(hurda, 10)
   const gecerli = Number.isInteger(iyiN) && iyiN >= 0 && Number.isInteger(hurdaN) && hurdaN >= 0
+
+  // [0, toplam] sınırı — kilitli modda ikisi de negatife inmez / toplamı aşmaz.
+  const kis = (n: number) => Math.max(0, Math.min(toplam, n))
+  // Kilitliyken karşı alan otomatik türer (iyi=toplam−hurda); bağımsızken serbest.
+  const iyiDegis = (v: string) => {
+    if (toplamKilitli) {
+      const n = kis(Number.parseInt(v, 10) || 0)
+      setIyi(String(n))
+      setHurda(String(toplam - n))
+    } else setIyi(v)
+  }
+  const hurdaDegis = (v: string) => {
+    if (toplamKilitli) {
+      const n = kis(Number.parseInt(v, 10) || 0)
+      setHurda(String(n))
+      setIyi(String(toplam - n))
+    } else setHurda(v)
+  }
 
   const gonder = async () => {
     if (!gecerli) return
@@ -895,19 +920,40 @@ function UzaktanBitirPanel({
           </div>
         </div>
       ) : (
-        // Giriş adımı — iyi (ön dolgulu) + hurda.
-        <div className="space-y-4">
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">İyi adet</span>
-              <span className="text-[11px] text-slate-400">canlı sayaçtan ön dolgu</span>
+        // Giriş adımı — toplam banner + bağlı (iyi=toplam−hurda) veya bağımsız iyi/hurda.
+        <div className="space-y-3">
+          {/* Toplam üretim — sabit referans (PLC) ya da elle. */}
+          {toplamKilitli ? (
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              Toplam üretim: <span className="font-semibold">{toplam}</span>{' '}
+              <span className="text-xs text-slate-500">(PLC sayacından)</span>
             </div>
-            <StepperNum deger={iyi} onChange={setIyi} renk="iyi" />
+          ) : (
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              Toplam: elle girilecek{' '}
+              <span className="text-xs">(PLC sayacı yok — iyi + hurda bağımsız)</span>
+            </div>
+          )}
+
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">İyi adet</div>
+            <StepperNum deger={iyi} onChange={iyiDegis} renk="iyi" />
           </div>
+
+          {/* Görsel bağ — toplam ortada. Kilitli: iyi+hurda=toplam; bağımsız: toplam=iyi+hurda. */}
+          <div className="flex items-center justify-center">
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              {toplamKilitli
+                ? `${iyiN >= 0 ? iyiN : 0} iyi + ${hurdaN >= 0 ? hurdaN : 0} hurda = ${toplam}`
+                : `toplam = ${(iyiN >= 0 ? iyiN : 0) + (hurdaN >= 0 ? hurdaN : 0)} (elle)`}
+            </span>
+          </div>
+
           <div>
             <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">Hurda adet</div>
-            <StepperNum deger={hurda} onChange={setHurda} renk="hurda" />
+            <StepperNum deger={hurda} onChange={hurdaDegis} renk="hurda" />
           </div>
+
           <Button
             onClick={() => setOnay(true)}
             disabled={!gecerli}

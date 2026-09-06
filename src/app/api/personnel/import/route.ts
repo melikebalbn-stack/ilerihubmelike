@@ -314,6 +314,18 @@ export async function POST(request: NextRequest) {
       const n = (v: unknown) => (v === null || v === undefined || v === '' ? null : String(v).trim())
       return n(a) === n(b)
     }
+    // Excel hücresi → yazılacak metin. Boş/whitespace ise null (DOKUNMA sinyali).
+    const metinDolu = (v: unknown): string | null => {
+      const t = v === null || v === undefined ? '' : String(v).trim()
+      return t === '' ? null : t
+    }
+    // IBAN tek biçime indirgenir: boşluksuz + BÜYÜK harf (TR öneki kaynakta zaten var).
+    // Hem karşılaştırma hem YAZMA bu biçim üzerinden — mevcut veri %93 boşluklu
+    // olduğu için yeni yazılanlar kanonik (26 hane) biçimde olur.
+    const ibanNormalize = (v: unknown): string | null => {
+      const t = metinDolu(v)
+      return t === null ? null : t.replace(/\s+/g, '').toUpperCase()
+    }
     // Alanı hem satırın izine hem genel sayaca ekler. `alanlar` dizisi
     // kayitIzleri'ndeki nesnenin İÇİNDEKİ referans — mutasyon oraya da yansır.
     const izEkle = (alanlar: string[], alan: string) => {
@@ -553,24 +565,29 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // PR-1: banka bilgisi → PersonnelBankAccount (primary). IDEMPOTENT: hesabı olan kişiyi atla.
+        // PR-1: banka bilgisi → PersonnelBankAccount (primary).
+        // IDEMPOTENT: hesabı olanı GÜNCELLE, alanlar aynıysa dokunma.
+        // (Eski davranış "hesabı olanı atla" idi; Excel'den gelen IBAN düzeltmeleri
+        //  sessizce kayboluyordu. Ekrandaki düzenleme zaten yerinde update yapıyor —
+        //  sensitive/route.ts — import artık onunla tutarlı.)
         const hasBankData = !!(mapped.bankaSube || mapped.bankaHesapNo || mapped.ibanNo)
         if (hasBankData) {
-          // count yerine kaydın kendisi: yazma koşulu AYNI (hesap yoksa oluştur),
-          // ek olarak "Excel farklı IBAN getirdi ama atlandı" durumu ayırt edilebiliyor.
           // orderBy determinist: önce primary, sonra en eski, eşitlikte id.
           const mevcutHesap = await prisma.personnelBankAccount.findFirst({
             where: { personnelId },
-            select: { ibanNo: true },
+            select: { id: true, bankaSube: true, hesapNo: true, ibanNo: true },
             orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
           })
-          const yeniIban = mapped.ibanNo ? mapped.ibanNo.toString().trim() : null
+          const yeniIban = ibanNormalize(mapped.ibanNo)
+          const yeniSube = metinDolu(mapped.bankaSube)
+          const yeniHesapNo = metinDolu(mapped.bankaHesapNo)
+
           if (!mevcutHesap) {
             await prisma.personnelBankAccount.create({
               data: {
                 personnelId,
-                bankaSube: mapped.bankaSube ? mapped.bankaSube.toString().trim() : null,
-                hesapNo: mapped.bankaHesapNo ? mapped.bankaHesapNo.toString().trim() : null,
+                bankaSube: yeniSube,
+                hesapNo: yeniHesapNo,
                 ibanNo: yeniIban,
                 isPrimary: true,
                 aktif: true,
@@ -578,10 +595,26 @@ export async function POST(request: NextRequest) {
               },
             })
             if (existing && yeniIban) izEkle(satirAlanlari, 'ibanNo:yeni')
-          } else if (existing && yeniIban && !ayniMi(mevcutHesap.ibanNo, yeniIban)) {
-            // Hesap zaten var → bu uç mevcut hesabı GÜNCELLEMİYOR (idempotent).
-            // Excel farklı bir IBAN getirdiyse yazılmadı; iz bunu kayda geçirir.
-            izEkle(satirAlanlari, 'ibanNo:atlandi')
+          } else {
+            // Genel kurgu: Excel dolu ve FARKLI ise yaz; Excel boşsa mevcut değere DOKUNMA.
+            // IBAN karşılaştırması normalize üzerinden — yalnız biçim farkı (boşluk /
+            // küçük harf) değişiklik SAYILMAZ, gereksiz update atılmaz.
+            const guncelleme: { bankaSube?: string; hesapNo?: string; ibanNo?: string } = {}
+            if (yeniIban && ibanNormalize(mevcutHesap.ibanNo) !== yeniIban) guncelleme.ibanNo = yeniIban
+            if (yeniSube && !ayniMi(mevcutHesap.bankaSube, yeniSube)) guncelleme.bankaSube = yeniSube
+            if (yeniHesapNo && !ayniMi(mevcutHesap.hesapNo, yeniHesapNo)) guncelleme.hesapNo = yeniHesapNo
+
+            // Hiçbir alan farklı değilse update ATMA: aynı dosya ikinci kez
+            // yüklendiğinde updatedAt/updatedBy kımıldamasın (idempotentlik).
+            if (Object.keys(guncelleme).length > 0) {
+              await prisma.personnelBankAccount.update({
+                where: { id: mevcutHesap.id },
+                data: { ...guncelleme, updatedBy: user.id },
+              })
+              if (existing && guncelleme.ibanNo) izEkle(satirAlanlari, 'ibanNo:guncellendi')
+              if (existing && guncelleme.bankaSube) izEkle(satirAlanlari, 'bankaSube')
+              if (existing && guncelleme.hesapNo) izEkle(satirAlanlari, 'hesapNo')
+            }
           }
         }
       } catch (rowError: any) {

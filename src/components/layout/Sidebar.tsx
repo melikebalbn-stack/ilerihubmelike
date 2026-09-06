@@ -202,7 +202,9 @@ const formsMenuItems = [
 
 // ILERI Teknik alt menüsü
 const teknikMenuItems = [
-  { name: "Yangın Güvenliği", icon: Flame, href: "/fire-safety", roles: ["QUALITY_MANAGER", "ADMIN"] },
+  // Sayfa guard'ı middleware ROL tabanlı: /fire-safety → [ADMIN, SUPER_ADMIN, QUALITY_MANAGER].
+  // SUPER_ADMIN eklendi — eskiden roles'ta yoktu, SA sayfayı açabildiği hâlde menüde göremiyordu.
+  { name: "Yangın Güvenliği", icon: Flame, href: "/fire-safety", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
   { name: "Tezgah Bakım", icon: Factory, href: "/maintenance", roles: ["*"] },
   { name: "Arşiv", icon: Archive, href: "/arsiv/koli", roles: ["*"] },
 ]
@@ -238,20 +240,17 @@ const strategicHrMenuItems = [
   { name: "Envanter", icon: Boxes, href: "/envanter", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "envanter.view" },
   { name: "Servis Yönetimi", icon: Truck, href: "/servis-yonetimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view" },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
-  { name: "Yıllık Çalışma Takvimi", icon: CalendarDays, href: "/strategic-hr/yillik-calisma-takvimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "yilliktakvim.view" },
+  // VIEW gate = YILLIK_TAKVIM_VIEW_PERMISSIONS (yilliktakvim.view | yilliktakvim.admin, OR).
+  // admin eklendi — yalnız admin izinli kullanıcı sayfayı açabildiği hâlde menüde göremiyordu.
+  { name: "Yıllık Çalışma Takvimi", icon: CalendarDays, href: "/strategic-hr/yillik-calisma-takvimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: ["yilliktakvim.view", "yilliktakvim.admin"] },
 ]
 
 // OFFB-3: İlişik Kesme / Zimmet İade — İK grubu girişi.
-// Görünür rol kümesi == offboarding.view izninin rol kümesi (OFFB-1 seed:
-// super-admin, hr-yoneticisi, it-admin, departman-muduru). UserRoleEnum
-// eşlemesi migrate-user-roles.ts'ten: super-admin→SUPER_ADMIN,
-// hr-yoneticisi→HR_MANAGER, it-admin→IT_MANAGER, departman-muduru→DEPT_HEAD
-// VE SUPERVISOR (ikisi de departman-muduru'ya maplenir → view erişimi var).
-// ADMIN dahil DEĞİL (admin slug'ı offboarding.view'a sahip değil).
-// departments[] clause'u YOK: filterItems OR değerlendirir; İK-dept'teki
-// view-yetkisiz roller (EMPLOYEE vb.) görmesin diye salt rol-bazlı gating.
+// Görünürlük sayfa guard'ıyla birebir: /offboarding VIEW gate = hasPermission('offboarding.view').
+// Eskiden rol listesiyle (offboarding.view'in seed rol kümesinin elle kopyası) süzülüyordu;
+// permission'a çevrildi — izin rol kümesi dışına verilirse artık kırılmaz (IPRO/zimmet deseni).
 const offboardingMenuItems = [
-  { name: "İlişik Kesme", icon: LogOut, href: "/offboarding", roles: ["SUPER_ADMIN", "HR_MANAGER", "IT_MANAGER", "DEPT_HEAD", "SUPERVISOR"] },
+  { name: "İlişik Kesme", icon: LogOut, href: "/offboarding", roles: [] as string[], permission: ["offboarding.view"] },
 ]
 
 // Personel yönetimi öğeleri — hepsi canSeeIk kapısıyla gösterilir. Önceden JSX
@@ -280,9 +279,12 @@ const qdmsMenuItems = [
 // Kalite — ölçüm/kalibrasyon modülleri (İleri Teknik'ten taşındı, "Kalite" üst grubunun doğrudan altında)
 const kaliteMenuItems = [
   { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"] },
-  { name: "Ölçüm Şablonları", icon: ClipboardList, href: "/kalite/sablonlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
-  { name: "Ölçüm Raporları", icon: ClipboardCheck, href: "/kalite/raporlar", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
-  { name: "Semboller", icon: Shapes, href: "/kalite/semboller", roles: ["QUALITY_MANAGER", "ADMIN", "SUPER_ADMIN"] },
+  // Görünürlük sayfa guard'larıyla birebir (permission OR): menü artık rol yorumlamıyor.
+  //  sablonlar VIEW gate = quality.template.manage | quality.report.create (hasPermission dizi=OR)
+  //  raporlar VIEW gate  = quality.report.read · semboller = quality.symbol.manage
+  { name: "Ölçüm Şablonları", icon: ClipboardList, href: "/kalite/sablonlar", roles: [] as string[], permission: ["quality.template.manage", "quality.report.create"] },
+  { name: "Ölçüm Raporları", icon: ClipboardCheck, href: "/kalite/raporlar", roles: [] as string[], permission: ["quality.report.read"] },
+  { name: "Semboller", icon: Shapes, href: "/kalite/semboller", roles: [] as string[], permission: ["quality.symbol.manage"] },
 ]
 
 // Hata Kodları (KAL-KYT-15) — "Kalite" grubunun sonuna, canSeeHataKodu ile eklenir.
@@ -331,16 +333,18 @@ const sandboxMenuItems = [
 // AD Eşleşme ve AD Grup Mapping: admin.system.manage permission'a uygun roller (super-admin + admin + it-admin)
 const sistemGelistirmeMenuItems = [
   { name: "Yetkilendirme", icon: ShieldCheck, href: "/settings/roller", roles: ["SUPER_ADMIN"] },
-  { name: "AD Eşleşme", icon: ShieldCheck, href: "/settings/personnel-ad-reconcile", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
-  { name: "AD Grup Mapping", icon: ShieldCheck, href: "/settings/azure-ad-mapping", roles: ["SUPER_ADMIN", "ADMIN", "IT_MANAGER"] },
-  // IT Raporları — "İleri Teknik" grubundan buraya taşındı: ticket/SLA raporu
-  // bir IT yönetim ekranı, üretim/kalite araçlarının yanında değil.
-  // GÖRÜNÜRLÜK sayfa guard'ının aynısı: /it-reports `admin.audit.view` arıyor
-  // (admin, bgys-sorumlusu, it-admin, super-admin). Menü izni tekrar
-  // yorumlamıyor. İzleme kalemleriyle (Login Aktiviteleri, Yedekleme) bitişik.
+  // AD sayfaları guard'ı SUPER_ADMIN-only (role !== 'SUPER_ADMIN' → YetkisizErisim); menü de
+  // SA-only oldu — eskiden ADMIN/IT_MANAGER menüde görüp sayfada YetkisizErisim alıyordu.
+  { name: "AD Eşleşme", icon: ShieldCheck, href: "/settings/personnel-ad-reconcile", roles: ["SUPER_ADMIN"] },
+  { name: "AD Grup Mapping", icon: ShieldCheck, href: "/settings/azure-ad-mapping", roles: ["SUPER_ADMIN"] },
+  // IT Raporları — "İleri Teknik" grubundan buraya taşındı (origin/main): ticket/SLA raporu
+  // bir IT yönetim ekranı. GÖRÜNÜRLÜK sayfa guard'ının aynısı: /it-reports `admin.audit.view`.
+  // İzleme kalemleriyle (Login Aktiviteleri, Yedekleme) bitişik.
   { name: "IT Raporları", icon: BarChart3, href: "/it-reports", roles: [] as string[], permission: "admin.audit.view" },
-  { name: "Login Aktiviteleri", icon: LogIn, href: "/login-logs", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
-  { name: "Yedekleme", icon: HardDrive, href: "/backups", roles: ["IT_MANAGER", "ADMIN", "SUPER_ADMIN"] },
+  // Görünürlük sayfa guard'larındaki permission ile birebir (rol yerine): login-logs VIEW gate
+  // = admin.audit.view, backups = admin.backup.manage. İzinli-ama-rolsüz kullanıcı artık görür.
+  { name: "Login Aktiviteleri", icon: LogIn, href: "/login-logs", roles: [] as string[], permission: ["admin.audit.view"] },
+  { name: "Yedekleme", icon: HardDrive, href: "/backups", roles: [] as string[], permission: ["admin.backup.manage"] },
   // Zimmet Teslim Formu — cihaz teslim tutanağı listesi/onay ekranı (offboarding
   // "Zimmet İade" ve envanter zimmetinden AYRI). "Zimmetlerim" (Formlar altında,
   // herkese açık) BUNDAN AYRI - kullanıcının kendi kayıtlarını gördüğü ekran.

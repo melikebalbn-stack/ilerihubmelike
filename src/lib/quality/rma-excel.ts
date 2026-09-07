@@ -95,6 +95,11 @@ function buildLabelToKey<T extends string>(labels: Record<T, string>): Map<strin
 
 const TIP_MAP = buildLabelToKey(RMA_TIP_LABELS)
 const IADE_TURU_MAP = buildLabelToKey(RMA_IADE_TURU_LABELS)
+// GERİYE UYUM: "Garanti" → "Müşteri Şikayeti" yeniden adlandırıldı (20260907120000).
+// Elde dolaşan eski şablonlar/dosyalar "Garanti" (ya da "GARANTI") yazıyor; etiket
+// haritası artık bunu tanımadığı için import "Tanınmayan İADE TÜRÜ" verirdi.
+// trNormalize her iki yazımı da aynı anahtara indirger → tek satır yeter.
+IADE_TURU_MAP.set(trNormalize('Garanti'), RmaIadeTuru.MUSTERI_SIKAYETI)
 const KARAR_MAP = buildLabelToKey(RMA_KARAR_LABELS)
 
 export const TIP_GECERLI_DEGERLER = Object.values(RMA_TIP_LABELS).join(', ')

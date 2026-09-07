@@ -12,5 +12,5 @@ export default async function RmaYeniPage() {
   if (error) redirect('/login')
   if (!canManageRma(session)) return <YetkisizErisim permission="rma.manage" />
 
-  return <RmaFormClient initial={null} canManage />
+  return <RmaFormClient initial={null} mod="full" />
 }

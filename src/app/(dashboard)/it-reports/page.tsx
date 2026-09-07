@@ -752,6 +752,7 @@ export default function ITReportsPage() {
                       : k.kaynak === "EMAIL" ? "E-posta (destek@)"
                       : k.kaynak === "PHONE" ? "Telefon (IT kaydetti)"
                       : k.kaynak === "WALK_IN" ? "Yuz yuze (IT kaydetti)"
+                      : k.kaynak === "INTERNAL" ? "IT kendi tespiti"
                       : k.kaynak
                     const enBuyuk = report.kaynakDagilimi?.kalemler[0]?.adet || 1
                     return (

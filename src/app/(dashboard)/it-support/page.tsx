@@ -174,7 +174,7 @@ export default function ITSupportPage() {
     // Başkası adına kayıt (yalnız IT ekibi doldurur)
     talepEdenEmail: "",
     talepEdenAd: "",
-    kanal: "PHONE" as "PHONE" | "WALK_IN",
+    kanal: "PHONE" as "PHONE" | "WALK_IN" | "INTERNAL",
   })
   const [submitting, setSubmitting] = useState(false)
 
@@ -297,7 +297,12 @@ export default function ITSupportPage() {
           assetInfo: cihazSecildi ? null : newTicket.assetInfo.trim() || null,
           // Boşsa sunucu yok sayar → kişi kendi adına açmış olur (eski davranış).
           talepEdenEmail: newTicket.talepEdenEmail || undefined,
-          kanal: newTicket.talepEdenEmail ? newTicket.kanal : undefined,
+          // Kanal iki durumda gönderilir: başkası adına (PHONE/WALK_IN) ve
+          // iç tespit (INTERNAL). Hiçbiri yoksa sunucu WEB_PORTAL'a düşer.
+          kanal:
+            newTicket.talepEdenEmail || newTicket.kanal === "INTERNAL"
+              ? newTicket.kanal
+              : undefined,
           attachments,
         }),
       })
@@ -452,14 +457,40 @@ export default function ITSupportPage() {
                     <UserSearchCombobox
                       value={newTicket.talepEdenEmail}
                       placeholder="Kendi adıma açıyorum"
+                      disabled={newTicket.kanal === "INTERNAL"}
                       onSelect={(u) =>
                         setNewTicket((p) => ({
                           ...p,
                           talepEdenEmail: u?.email ?? "",
                           talepEdenAd: u?.name ?? "",
+                          // Kişi seçilince "kendi tespitim" düşer: ikisi bir arada
+                          // çelişkili (sunucu da baskasiAdina'yı öncelikli sayıyor).
+                          kanal: u?.email ? (p.kanal === "INTERNAL" ? "PHONE" : p.kanal) : p.kanal,
                         }))
                       }
                     />
+
+                    {/* İÇ TESPİT — yalnız talep eden BOŞKEN anlamlı.
+                        İşaretlenince combobox kilitlenir; iki durum aynı anda
+                        seçilemez, akış tek yönlü kalır. */}
+                    {!newTicket.talepEdenEmail && (
+                      <label className="flex items-start gap-2 text-sm cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 accent-[#1B4F72]"
+                          checked={newTicket.kanal === "INTERNAL"}
+                          onChange={(e) =>
+                            setNewTicket((p) => ({ ...p, kanal: e.target.checked ? "INTERNAL" : "PHONE" }))
+                          }
+                        />
+                        <span>
+                          Bu talebi kendim tespit ettim
+                          <span className="block text-[11px] text-muted-foreground">
+                            Kullanıcı bildirmedi; proaktif iş olarak kaydedilir (KPI&apos;da ayrı sayılır).
+                          </span>
+                        </span>
+                      </label>
+                    )}
                     {newTicket.talepEdenEmail && (
                       <div className="flex items-center gap-4 flex-wrap pt-1">
                         <span className="text-xs text-muted-foreground">Nasıl geldi?</span>

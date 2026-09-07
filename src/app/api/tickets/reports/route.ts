@@ -356,7 +356,7 @@ export async function GET(request: NextRequest) {
       // Yüzdeler yalnız yeterli örneklemde anlamlı; value null ise ekran
       // sayıyı gösterip oranı gizler.
       oran: yuzde(kaynakToplam, kaynakToplam),
-      kalemler: (['WEB_PORTAL', 'EMAIL', 'PHONE', 'WALK_IN', 'CHAT', 'SYSTEM_AUTO'] as const)
+      kalemler: (['WEB_PORTAL', 'EMAIL', 'PHONE', 'WALK_IN', 'INTERNAL', 'CHAT', 'SYSTEM_AUTO'] as const)
         .map((kaynak) => ({
           kaynak,
           adet: kaynakSayilari[kaynak] ?? 0,

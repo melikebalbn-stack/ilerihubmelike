@@ -180,11 +180,11 @@ model User {
   overtimeEscalations       OvertimeApproval[]             @relation("OvertimeApprovalEscalatedTo")
 
   // Toplu Kart Okutamama Relations
-  bulkCardScanFailuresCreated    BulkCardScanFailure[] @relation("BulkCardScanFailureCreator")
-  bulkCardScanFailuresToApprove  BulkCardScanFailure[] @relation("BulkCardScanFailureApprover")
-  bulkCardScanFailuresToApprove2 BulkCardScanFailure[] @relation("BulkCardScanFailureApprover2")
-  bulkCardScanFailuresToApprove3 BulkCardScanFailure[] @relation("BulkCardScanFailureApprover3")
-  bulkCardScanFailuresIvOnayladi BulkCardScanFailure[] @relation("BulkCardScanFailureIvApprover")
+  bulkCardScanFailuresCreated    BulkCardScanFailure[]   @relation("BulkCardScanFailureCreator")
+  bulkCardScanFailuresToApprove  BulkCardScanFailure[]   @relation("BulkCardScanFailureApprover")
+  bulkCardScanFailuresToApprove2 BulkCardScanFailure[]   @relation("BulkCardScanFailureApprover2")
+  bulkCardScanFailuresToApprove3 BulkCardScanFailure[]   @relation("BulkCardScanFailureApprover3")
+  bulkCardScanFailuresIvOnayladi BulkCardScanFailure[]   @relation("BulkCardScanFailureIvApprover")
   bulkCardScanBolumYetki         BulkCardScanBolumYetki?
 
   // Akademi Relations
@@ -276,6 +276,10 @@ model User {
   servisPersonelDurumOlusturanlar     ServisPersonelDurum[]           @relation("ServisPersonelDurumOlusturan")
   servisPersonelDurumGuncelleyenler   ServisPersonelDurum[]           @relation("ServisPersonelDurumGuncelleyen")
   servisIslemYapilanlar               ServisIslemGecmisi[]            @relation("ServisIslemYapan")
+
+  // IV-FR-27 deneme değerlendirme — ters uçlar
+  denemeIkKapattigi DenemeDegerlendirme[]    @relation("DenemeIkKapatan")
+  denemeLoglari     DenemeDegerlendirmeLog[] @relation("DenemeLogAktor")
 }
 
 model VerificationToken {
@@ -2576,11 +2580,9 @@ enum TicketUrgency {
 // Kaynak
 /**
  * Kronik sorun — TEKRARLAYAN bir sorunun İNSAN TARAFINDAN tanımlanmış kaydı.
- *
  * Faz 1'de kronik tespiti otomatikti (kategori + cihaz bazlı tekrar sayımı) ve
  * yanlış pozitif üretiyordu. Faz 1.5'te tespit manuele döndü: IT ekibi bir
  * kronik sorun tanımlar ve ilgili talepleri ona bağlar (Ticket.kronikSorunId).
- *
  * cozumNotu ŞEMADA nullable: kayıt AKTIF doğar, kalıcı çözüm sonradan yazılır.
  * COZULDU'ya geçerken ZORUNLU — ama bu bir uygulama kuralı (bkz. kronik uçları),
  * çünkü zorunluluk duruma bağlı ve DB'de ifade edilemiyor. Ticket çözümündeki
@@ -2588,12 +2590,14 @@ enum TicketUrgency {
  * arşiv değerini güvenceye almak.
  */
 model KronikSorun {
-  id        String            @id @default(cuid())
-  baslik    String
-  aciklama  String?           @db.Text
-  durum     KronikSorunDurumu @default(AKTIF)
+  id       String            @id @default(cuid())
+  baslik   String
+  aciklama String?           @db.Text
+  durum    KronikSorunDurumu @default(AKTIF)
 
-  /** Kalıcı çözüm — COZULDU'ya geçişte zorunlu (uygulama kuralı). */
+  /**
+   * Kalıcı çözüm — COZULDU'ya geçişte zorunlu (uygulama kuralı).
+   */
   cozumNotu    String?   @db.Text
   cozulenAt    DateTime?
   cozenByEmail String?
@@ -6286,7 +6290,6 @@ enum MaritalStatus {
   WIDOWED // Dul
 }
 
-
 enum JobApplicationStatus {
   // Akış-öncesi taslak durumları (KVKK → sağlık → tam başvuru). Tam submit'te PENDING.
   CONSENT_PENDING // KVKK onayı verildi, sağlık bekliyor
@@ -7728,14 +7731,14 @@ model VisitReportAction {
   reportId String
   report   VisitReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
-  description String
-  responsible String // Sorumlu kişi/departman (serbest metin — harici kişi de olabilir)
+  description        String
+  responsible        String // Sorumlu kişi/departman (serbest metin — harici kişi de olabilir)
   /// Personel seçiciden geldiyse sicil; bildirim eşleşmesi buradan yapılır.
   /// Serbest metin girildiyse null kalır (harici sorumlu).
   responsibleSicilNo String?
-  dueDate     DateTime?
-  status      ActionItemStatus @default(PENDING)
-  completedAt DateTime?
+  dueDate            DateTime?
+  status             ActionItemStatus @default(PENDING)
+  completedAt        DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -9364,6 +9367,12 @@ model Personnel {
   servisAtamalari   ServisPersonelAtama[]
   servisSorumlulari ServisSorumlusu[]
   servisDurumlari   ServisPersonelDurum[]
+
+  // IV-FR-27 deneme değerlendirme — ters uçlar
+  denemeDegerlendirmeleri DenemeDegerlendirme[] @relation("DenemeDegerlendirmePersonel")
+  denemeDegerlendirdigi1  DenemeDegerlendirme[] @relation("DenemeDeg1")
+  denemeDegerlendirdigi2  DenemeDegerlendirme[] @relation("DenemeDeg2")
+  denemeOnayladigi        DenemeDegerlendirme[] @relation("DenemeOnaylayan")
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -14029,4 +14038,192 @@ model ServisIslemGecmisi {
   @@index([hedefTipi, hedefId, tarih])
   @@index([userId, tarih])
   @@map("servis_islem_gecmisi")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// IV-FR-27 · DENEME SÜRESİ DEĞERLENDİRME (Rev.2, 18.01.2021)
+//
+// 2 aylık ve 6 aylık deneme değerlendirmesi. İki form BİREBİR AYNI — tek şema,
+// tek kriter kataloğu, ayrım yalnız `tur` alanında (mevcut
+// PersonnelEvaluationEmailLog.type = TWO_MONTH/SIX_MONTH ayrımıyla tutarlı).
+//
+// PUAN: 20 kriter × 1-5 = ham toplam. Taban 20, tavan 100, ekstra dönüşüm YOK.
+// Geçme sınırı 60. İki değerlendirici varsa ORTALAMA alınır.
+//
+// Mevzuat: 4857 sayılı İş Kanunu "Deneme Süresi". ISO 9001:2015 / IATF 16949
+// Madde 7.2.2. Gizlilik: GİZLİ — formu yalnız o formun zincirindekiler
+// (dolduran + onaylayan) ve İV görür.
+// ════════════════════════════════════════════════════════════════════════════
+
+enum DenemeTur {
+  DENEME_2AY
+  ALTI_AY
+}
+
+enum DenemeKriterGrup {
+  MESLEKI // Mesleki Yeterlilik (1-5)
+  DAVRANISSAL // Davranışsal Yeterlilik (6-11)
+  BIREYSEL // Bireysel Yeterlilik (12-15)
+  CALISAN // Çalışanlar İçin Kriterler (16-20)
+}
+
+// Akış durumları. Geçişler deneme-transitions.ts'teki matriste; TAMAMLANDI ve
+// IPTAL terminal (boş satır).
+enum DenemeDurum {
+  TASLAK // cron açtı, henüz bildirim çıkmadı
+  DEGERLENDIRICI1_BEKLIYOR // 1. puan: mavi→sorumlu1, gri/beyaz→müdür yrd./müdür
+  MUDUR_YRD_BEKLIYOR // mavi: 2. puan müdür yardımcısında (doldur YA DA aktar)
+  MUDUR_BEKLIYOR // mavi: müdür yrd. aktardı ya da müdür yrd. yok
+  ONAY_BEKLIYOR // mavi: müdür onayı · beyaz: GMY onayı (onaylayan PUAN VERMEZ)
+  IK_BEKLIYOR // İV kapatacak
+  TAMAMLANDI
+  IPTAL
+}
+
+enum DenemeDegerlendiriciRol {
+  TAKIM_LIDERI // Personnel.sorumlu1Id (mavi yakada tipik olarak gri yaka)
+  MUDUR_YARDIMCISI // DepartmentDefinition.mudurYardimcisiId
+  MUDUR // DepartmentDefinition.mudurId
+}
+
+// Kriter kataloğu — IV-FR-27 Rev.2 ile seed edilir, `hr.admin` yönetebilir.
+// Revizyon değişirse eski satır aktif=false yapılır, YENİ satır açılır; açılmış
+// formlar `kriterRevizyon` snapshot'ı sayesinde kendi revizyonlarını gösterir.
+model DenemeKriter {
+  id        String           @id @default(cuid())
+  revizyon  String // "Rev.2" — form üzerindeki revizyon damgası
+  sira      Int // 1-20, form üzerindeki madde numarası
+  grup      DenemeKriterGrup
+  baslik    String // "İş Bilgisi"
+  aciklama  String           @db.Text // "Yaptığı işe ilişkin teorik ve pratik bilgi düzeyi"
+  aktif     Boolean          @default(true)
+  sortOrder Int              @default(0)
+
+  puanlar DenemePuan[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Aynı revizyonda aynı madde numarası tek olsun — seed idempotensinin dayanağı.
+  @@unique([revizyon, sira])
+  @@index([aktif, sortOrder])
+  @@map("deneme_kriter")
+}
+
+// Form başlığı. Kişi × tür başına TEK kayıt (@@unique) — cron her gün koşacağı
+// için çift form açılmasının şema seviyesindeki garantisi budur.
+model DenemeDegerlendirme {
+  id          String    @id @default(cuid())
+  personnelId String
+  personnel   Personnel @relation("DenemeDegerlendirmePersonel", fields: [personnelId], references: [id], onDelete: Cascade)
+  tur         DenemeTur
+
+  // Personnel.denemeDegerlendirme / altiAyDegerlendirme'den kopyalanır. Kaynak
+  // tarih sonradan düzeltilirse burası eskir — cron farkı yakalayıp günceller.
+  hedefTarih DateTime @db.Date
+
+  // Akış dallanması buna bakar (MAVI iki puan · GRI/BEYAZ tek puan). Form
+  // açıldığı andaki değer SNAPSHOT'lanır; kişinin yakası sonradan değişse bile
+  // açılmış formun akışı kaymaz.
+  yakaRengi String
+
+  // Kriter metinleri bu revizyondan okunur (form basılı kalite dokümanı).
+  kriterRevizyon String
+
+  durum DenemeDurum @default(TASLAK)
+
+  // ── Değerlendiriciler ──
+  // 1. puan her zaman var. 2. puan YALNIZ mavi yakada (müdür yrd. VEYA müdür —
+  // ikisi birden değil); gri/beyaz yakada null kalır.
+  degerlendirici1Id  String?
+  degerlendirici1    Personnel?               @relation("DenemeDeg1", fields: [degerlendirici1Id], references: [id])
+  degerlendirici1Rol DenemeDegerlendiriciRol?
+  degerlendirici2Id  String?
+  degerlendirici2    Personnel?               @relation("DenemeDeg2", fields: [degerlendirici2Id], references: [id])
+  degerlendirici2Rol DenemeDegerlendiriciRol?
+  degerlendirici1At  DateTime?
+  degerlendirici2At  DateTime?
+
+  // ── Puanlar ── ham toplam (20-100). Kriter satırlarından türetilir ama liste
+  // ve rapor kriterlere inmeden filtreleyebilsin diye denormalize YAZILIR.
+  // Grup toplamları ve genel toplam türetilmiştir, kolon tutulmaz.
+  puan1    Int?
+  puan2    Int?
+  ortalama Float? // iki puan varsa ortalama, tek puan varsa puan1
+  basarili Boolean? // ortalama >= 60. Türetilebilir ama karar anındaki hali YAZILIR.
+
+  // ── Onay (mavi: bölüm müdürü · beyaz: GMY) — onaylayan PUAN VERMEZ ──
+  onaylayanId String?
+  onaylayan   Personnel? @relation("DenemeOnaylayan", fields: [onaylayanId], references: [id])
+  onayTarihi  DateTime?
+  onayNotu    String?    @db.Text
+
+  // ── İV kapanışı ──
+  ikKapatanId     String?
+  ikKapatan       User?     @relation("DenemeIkKapatan", fields: [ikKapatanId], references: [id])
+  ikKapatmaTarihi DateTime?
+  // 60 altı kapanışta ZORUNLU (uygulama seviyesinde). Otomatik fesih/offboarding
+  // TETİKLENMEZ — yalnız kayıt tutulur.
+  fesihGerekce    String?   @db.Text
+
+  // ── Hatırlatma / eskalasyon (tasks/check-escalation deseni) ──
+  // 0 = hiç · 1 = 7 gün kala · 2 = 3 gün kala eskalasyon
+  hatirlatmaSeviyesi Int       @default(0)
+  sonHatirlatmaAt    DateTime?
+
+  puanlar DenemePuan[]
+  loglar  DenemeDegerlendirmeLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  @@unique([personnelId, tur])
+  @@index([durum])
+  @@index([hedefTarih])
+  @@index([tur, durum])
+  @@index([degerlendirici1Id])
+  @@index([degerlendirici2Id])
+  @@map("deneme_degerlendirme")
+}
+
+// Form × kriter × değerlendirici. Bir kriter için en fazla iki satır olur
+// (degerlendiriciSira 1 ve 2).
+model DenemePuan {
+  id              String              @id @default(cuid())
+  degerlendirmeId String
+  degerlendirme   DenemeDegerlendirme @relation(fields: [degerlendirmeId], references: [id], onDelete: Cascade)
+  kriterId        String
+  kriter          DenemeKriter        @relation(fields: [kriterId], references: [id])
+
+  degerlendiriciSira Int // 1 | 2
+  puan               Int // 1-5 (1 Çok Yetersiz · 5 Çok İyi)
+  not                String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([degerlendirmeId, kriterId, degerlendiriciSira])
+  @@index([degerlendirmeId])
+  @@index([kriterId])
+  @@map("deneme_puan")
+}
+
+// Append-only durum geçmişi (PublicJobApplicationStageLog deseni). Silinmez,
+// güncellenmez — kim ne zaman hangi geçişi yaptı.
+model DenemeDegerlendirmeLog {
+  id              String              @id @default(cuid())
+  degerlendirmeId String
+  degerlendirme   DenemeDegerlendirme @relation(fields: [degerlendirmeId], references: [id], onDelete: Cascade)
+
+  eskiDurum DenemeDurum?
+  yeniDurum DenemeDurum
+  aktorId   String?
+  aktor     User?        @relation("DenemeLogAktor", fields: [aktorId], references: [id])
+  aciklama  String?      @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([degerlendirmeId, createdAt])
+  @@map("deneme_degerlendirme_log")
 }

@@ -14,13 +14,15 @@ import type { CourseListItem } from "@/types/akademi";
 
 interface Props {
   course: CourseListItem;
-  // IFS Sv2'den gelindiğinde: kurs detayına bölüm origin'i taşı (geri-link bölüme dönsün).
+  // IFS Sv2'den gelindiğinde: bölüm origin'i taşınır (geri-link bölüme dönsün).
   ifsDept?: string;
 }
 
 export function CourseCard({ course, ifsDept }: Props) {
+  // IFS'ten gelindiyse IFS rotasında kalınır — kursiyer akademiye fırlamaz.
+  // ifsDept YOKSA akademi yolu AYNEN korunur (akademi kursiyerleri etkilenmez).
   const href = ifsDept
-    ? `/akademi/courses/${course.id}?ifsDept=${encodeURIComponent(ifsDept)}`
+    ? `/ifs/gorevlerim/${course.id}?dept=${encodeURIComponent(ifsDept)}`
     : `/akademi/courses/${course.id}`;
   return (
     <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>

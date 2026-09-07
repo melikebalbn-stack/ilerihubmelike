@@ -1,74 +1,79 @@
 "use client";
 
+// IFS GÖREVLERİM — alan detayı (drill-down Sv3).
+//
+// Eskiden Sv2'deki kart /akademi/courses/[id]?ifsDept=… adresine gidiyordu:
+// kursiyer IFS'ten akademiye fırlıyor, geri dönüş de iki sıçrama oluyordu
+// (/akademi/ifs → /ifs/gorevlerim). Artık üç seviye de /ifs altında.
+//
+// BİLEŞENLER KOPYALANMADI, akademi'den import edildi — CourseHero, ContentRow,
+// ContentViewerModal. ContentRow'un GOREV mantığı (Örnek Yaptım / Farklı Dept. /
+// Eğitim Gerekli + açıklama modalı) zaten `isGorev` ile ayrılmış durumda.
+// Uçlar da AYNI, yeni uç yazılmadı:
+//   GET  /api/akademi/courses/[id]
+//   POST /api/akademi/contents/[id]/progress       (GOREV dışı içerik)
+//   POST /api/akademi/contents/[id]/ifs-complete   (GOREV durum işaretleme)
+//
+// CourseExamsSection BİLEREK YOK: /api/akademi/exams bugün süzgeçsiz
+// (where { isActive: true }) — aktif her sınavı herkese listeliyor. Buraya
+// konsaydı IFS kursiyeri kendi alanıyla ilgisiz sınavları görürdü. Süzgeç
+// kararı verilip uygulandıktan sonra eklenebilir (prod-slot-durumu.md'de
+// "IFS SINAV: AÇIK KALAN İŞ" maddesi).
+
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { CourseHero } from "@/components/akademi/courses/CourseHero";
 import { ContentRow } from "@/components/akademi/courses/ContentRow";
 import { ContentViewerModal } from "@/components/akademi/courses/ContentViewerModal";
-import { CourseExamsSection } from "./_components/course-exams-section";
 import type { CourseDetail, ContentItem } from "@/types/akademi";
 
-export default function AkademiCourseDetailPage() {
+export default function IfsGorevlerimDetayPage() {
   const params = useParams();
-  const router = useRouter();
-  const id = params?.id as string;
+  const courseId = params?.courseId as string;
 
-  // ESKİ LİNK KORUMASI: IFS alan detayı /ifs/gorevlerim/[courseId] altına taşındı.
-  // Kayıtlı/paylaşılmış ?ifsDept= linkleri kırılmasın diye burada yönlendiriyoruz
-  // — /akademi/ifs ve /akademi/admin/ifs-training için kurduğumuz desenin aynısı.
-  // Parametre YOKSA sayfa eskisi gibi çalışır; akademi kursiyerleri etkilenmez.
+  // Geri dönüş TEK SIÇRAMA: ?dept= varsa o departmana, yoksa listeye.
   const searchParams = useSearchParams();
-  const ifsDept = searchParams.get("ifsDept");
-  useEffect(() => {
-    if (ifsDept && id) {
-      router.replace(
-        `/ifs/gorevlerim/${id}?dept=${encodeURIComponent(ifsDept)}`
-      );
-    }
-  }, [ifsDept, id, router]);
+  const dept = searchParams.get("dept");
+  const backHref = dept
+    ? `/ifs/gorevlerim?dept=${encodeURIComponent(dept)}`
+    : "/ifs/gorevlerim";
 
-  const backHref = "/akademi/courses";
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewerContent, setViewerContent] = useState<ContentItem | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
 
   const loadCourse = useCallback(() => {
-    if (!id) return;
+    if (!courseId) return;
     setLoading(true);
-    fetch(`/api/akademi/courses/${id}`)
+    fetch(`/api/akademi/courses/${courseId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => setCourse(data))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [courseId]);
 
   useEffect(() => {
-    if (id) loadCourse();
-  }, [id, loadCourse]);
+    if (courseId) loadCourse();
+  }, [courseId, loadCourse]);
 
   const handleMarkComplete = async (contentId: string) => {
     if (markingId) return;
     setMarkingId(contentId);
     try {
-      const res = await fetch(
-        `/api/akademi/contents/${contentId}/progress`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        }
-      );
+      const res = await fetch(`/api/akademi/contents/${contentId}/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
       if (!res.ok) {
         alert("İşlem başarısız oldu. Lütfen tekrar deneyin.");
         return;
       }
       await res.json();
       loadCourse();
-      if (viewerContent?.id === contentId) {
-        setViewerContent(null);
-      }
+      if (viewerContent?.id === contentId) setViewerContent(null);
     } catch {
       alert("Bir hata oluştu. Lütfen tekrar deneyin.");
     } finally {
@@ -76,7 +81,8 @@ export default function AkademiCourseDetailPage() {
     }
   };
 
-  // IFS-4: GOREV "Örnek Yaptım" / geri al — ayrı endpoint (atama guard + evaluation).
+  // GOREV durum işaretlemesi — ayrı uç (atama guard'ı + IfsTaskEvaluation).
+  // Açıklama YALNIZ ORNEK_YAPILDI'da zorunlu; uç bunu kendisi doğruluyor.
   const handleGorevDurum = async (
     contentId: string,
     durum: string,
@@ -90,9 +96,7 @@ export default function AkademiCourseDetailPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            aciklama ? { durum, aciklama } : { durum }
-          ),
+          body: JSON.stringify(aciklama ? { durum, aciklama } : { durum }),
         }
       );
       if (!res.ok) {
@@ -116,7 +120,7 @@ export default function AkademiCourseDetailPage() {
           className="text-sm text-center py-12"
           style={{ color: "var(--ak-text-tertiary)" }}
         >
-          Eğitim yükleniyor...
+          Alan yükleniyor...
         </div>
       </div>
     );
@@ -129,16 +133,14 @@ export default function AkademiCourseDetailPage() {
           className="ak-card-static p-8 text-center"
           style={{ color: "var(--ak-text-tertiary)" }}
         >
-          <div className="text-base font-semibold mb-3">
-            Eğitim bulunamadı
-          </div>
+          <div className="text-base font-semibold mb-3">Alan bulunamadı</div>
           <Link
             href={backHref}
             className="inline-flex items-center gap-2 text-sm font-semibold"
             style={{ color: "var(--ak-accent)" }}
           >
             <ArrowLeft className="w-4 h-4" />
-            Eğitimlere Dön
+            Görevlerime Dön
           </Link>
         </div>
       </div>
@@ -153,7 +155,7 @@ export default function AkademiCourseDetailPage() {
         style={{ color: "var(--ak-text-secondary)" }}
       >
         <ArrowLeft className="w-4 h-4" />
-        Eğitimlere Dön
+        Görevlerime Dön
       </Link>
 
       <CourseHero course={course} />
@@ -163,7 +165,7 @@ export default function AkademiCourseDetailPage() {
           className="text-base font-bold mb-3"
           style={{ color: "var(--ak-text-primary)" }}
         >
-          İçerikler ({course.contents.length})
+          Görevler ({course.contents.length})
         </h2>
       </div>
 
@@ -172,7 +174,7 @@ export default function AkademiCourseDetailPage() {
           className="ak-card-static p-6 text-center text-sm"
           style={{ color: "var(--ak-text-tertiary)" }}
         >
-          Bu eğitime henüz içerik eklenmemiş.
+          Bu alanda henüz görev yok.
         </div>
       ) : (
         <div className="space-y-2.5">
@@ -189,8 +191,6 @@ export default function AkademiCourseDetailPage() {
           ))}
         </div>
       )}
-
-      <CourseExamsSection courseId={course.id} />
 
       <ContentViewerModal
         content={viewerContent}

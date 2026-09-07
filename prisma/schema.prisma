@@ -284,6 +284,9 @@ model User {
   // Avans dönem kilidi (back-relations)
   avansDonemKapattiklari AvansDonemKapanis[]    @relation("AvansDonemKapatan")
   avansDonemLoglari      AvansDonemKapanisLog[] @relation("AvansDonemLogKullanici")
+
+  // KPI modülü — bu kullanıcının girdiği ölçümler (ters ilişki)
+  kpiMeasurementsEntered KPIMeasurement[]
 }
 
 model VerificationToken {
@@ -5609,6 +5612,8 @@ model OrgUnit {
   employees      OrgEmployee[]
   // Bu kutuyu karşılık gösteren bölüm tanımları (çoka-bir'in ters ucu).
   bolumTanimlari DepartmentDefinition[] @relation("DeptOrgUnit")
+  // KPI modülü — bu birime tanımlı KPI'lar (ters ilişki)
+  kpiDefinitions KPIDefinition[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -5690,6 +5695,9 @@ model OrgEmployee {
 
   // F1 - Personel loose ref
   personnelId String?
+
+  // KPI modülü — bu çalışanın sorumlu olduğu aksiyonlar (ters ilişki)
+  kpiActionsResponsible KPIAction[]
 
   @@index([orgUnitId])
   @@index([reportsToId])
@@ -14397,4 +14405,64 @@ model AvansDonemKapanisLog {
   aciklama    String?
 
   @@index([yil, ay], map: "idx_avans_donem_log")
+}
+
+model KPIDefinition {
+  id           String              @id @default(cuid())
+  orgUnitId    String
+  orgUnit      OrgUnit             @relation(fields: [orgUnitId], references: [id])
+  name         String
+  unit         String?
+  direction    String
+  frequency    String              @default("monthly")
+  active       Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  measurements KPIMeasurement[]
+  actions      KPIAction[]
+  baselines    KPIYearlyBaseline[]
+
+  @@unique([orgUnitId, name])
+}
+
+model KPIMeasurement {
+  id          String        @id @default(cuid())
+  kpiId       String
+  kpi         KPIDefinition @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  year        Int
+  month       Int
+  target      Float?
+  actual      Float?
+  enteredById String?
+  enteredBy   User?         @relation(fields: [enteredById], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([kpiId, year, month])
+}
+
+model KPIYearlyBaseline {
+  id      String        @id @default(cuid())
+  kpiId   String
+  kpi     KPIDefinition @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  year    Int
+  average Float
+
+  @@unique([kpiId, year])
+}
+
+model KPIAction {
+  id                String        @id @default(cuid())
+  kpiId             String
+  kpi               KPIDefinition @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  reason            String?
+  action            String?
+  responsibleId     String?
+  responsible       OrgEmployee?  @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
+  startDate         DateTime?     @db.Date
+  endDate           DateTime?     @db.Date
+  completionPercent Int?
+  status            String        @default("open")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { dispatchTicketCreated, dispatchTicketAssigned, dispatchTicketToTeam } from '@/lib/ticket-notifications'
+import { dispatchTicketCreated, dispatchTicketAssigned, dispatchTicketToTeam, dispatchTicketKaydedildi } from '@/lib/ticket-notifications'
 import { parseMembers } from '@/lib/tickets/team-members'
 import { requireUser } from '@/lib/auth/require-user'
 import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // PR-Y2.5-tickets: requireUser
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
 
     const body = await request.json()
@@ -167,6 +167,10 @@ export async function POST(request: NextRequest) {
       assetInfo,
       zimmetFormuId,
       attachments,
+      // BAŞKASI ADINA KAYIT (IT ekibi): talep sahibi bu kişi olur, kaydeden
+      // oturum sahibi olarak ayrıca saklanır.
+      talepEdenEmail,
+      kanal,
     } = body
 
     if (!subject?.trim() || !description?.trim()) {
@@ -175,6 +179,50 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // ── BAŞKASI ADINA KAYIT ──────────────────────────────────────────────
+    // Yalnız IT ekibi (helpdesk.admin) başkası adına talep açabilir. İzin
+    // yoksa gövdeden gelen talepEdenEmail YOK SAYILIR — 400 dönmüyoruz çünkü
+    // eski istemciler bu alanı hiç göndermiyor ve akış bozulmamalı.
+    //
+    // İSTEMCİYE GÜVENİLMEZ: seçilen kişinin ad/departman bilgisi gövdeden
+    // DEĞİL, User tablosundan okunuyor.
+    const itEkibi = session.user.permissions?.includes('helpdesk.admin') ?? false
+    const talepEdenHam =
+      itEkibi && typeof talepEdenEmail === 'string' ? talepEdenEmail.toLowerCase().trim() : ''
+    const baskasiAdina = talepEdenHam !== '' && talepEdenHam !== user.email.toLowerCase()
+
+    let talepSahibi = {
+      email: user.email,
+      name: user.name ?? user.email,
+      dept: user.department || null,
+    }
+    if (baskasiAdina) {
+      const secilen = await prisma.user.findUnique({
+        where: { email: talepEdenHam },
+        select: { email: true, firstName: true, lastName: true, name: true, department: true, isActive: true },
+      })
+      if (!secilen || !secilen.isActive) {
+        return NextResponse.json(
+          { error: 'Seçilen talep eden bulunamadı veya pasif' },
+          { status: 400 },
+        )
+      }
+      const tam = [secilen.firstName, secilen.lastName].filter(Boolean).join(' ').trim()
+      talepSahibi = {
+        email: secilen.email,
+        name: tam || secilen.name || secilen.email,
+        dept: secilen.department || null,
+      }
+    }
+
+    // Kanal: başkası adına kayıtta PHONE (varsayılan) veya WALK_IN.
+    // Kendi adına açılan talep WEB_PORTAL kalır — enum'a MANUEL eklenmedi.
+    const kaynak: 'WEB_PORTAL' | 'PHONE' | 'WALK_IN' = !baskasiAdina
+      ? 'WEB_PORTAL'
+      : kanal === 'WALK_IN'
+      ? 'WALK_IN'
+      : 'PHONE'
 
     // ── Zimmet (cihaz) bağı ──────────────────────────────────────────────
     // İSTEMCİYE GÜVENİLMEZ: gönderilen id gerçekten oturum sahibinin AKTİF ve
@@ -278,9 +326,13 @@ export async function POST(request: NextRequest) {
         impact,
         urgency,
         status: assignedTo ? 'ASSIGNED' : 'NEW',
-        requesterEmail: user.email,
-        requesterName: user.name ?? user.email,
-        requesterDept: user.department || null,
+        requesterEmail: talepSahibi.email,
+        requesterName: talepSahibi.name,
+        requesterDept: talepSahibi.dept,
+        // Kaydeden yalnız BAŞKASI ADINA açılan taleplerde dolu; kendi açtığında
+        // NULL kalır (mevcut kayıtlarla aynı anlam).
+        createdByEmail: baskasiAdina ? user.email : null,
+        createdByName: baskasiAdina ? (user.name ?? user.email) : null,
         location,
         assetInfo: cozulmusAssetInfo,
         zimmetFormuId: bagliZimmetId,
@@ -292,7 +344,7 @@ export async function POST(request: NextRequest) {
         responseDueAt: slaHedef.responseDueAt,
         resolutionDueAt: slaHedef.resolutionDueAt,
         attachments: attachments ? JSON.stringify(attachments) : null,
-        source: 'WEB_PORTAL',
+        source: kaynak,
       },
       include: {
         category: true,
@@ -384,6 +436,23 @@ export async function POST(request: NextRequest) {
     ).catch((err) => {
       console.error('[ticket-notify] unhandled dispatch error:', err)
     })
+    // ── BAŞKASI ADINA KAYIT: talep SAHİBİNE haber ver ───────────
+    // dispatchTicketCreated IT ekibine gidiyor ve talebi AÇANI alıcı
+    // kümesinden düşüyor; burada açan IT personeli, sahip başkası — sahip
+    // hiçbir şey almaz ve adına açılmış talepten habersiz kalırdı.
+    // Kendi adına açılan taleplerde çağrılmaz (baskasiAdina false).
+    if (baskasiAdina) {
+      void dispatchTicketKaydedildi({
+        id: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        subject: ticket.subject,
+        requesterEmail: ticket.requesterEmail,
+        kaydedenAd: user.name ?? user.email,
+        kanal: kaynak,
+      }).catch((err) => {
+        console.error('[ticket-kayit-notify] unhandled dispatch error:', err)
+      })
+    }
     // ────────────────────────────────────────────────────────────
 
     return NextResponse.json(ticket, { status: 201 })

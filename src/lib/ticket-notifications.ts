@@ -923,3 +923,90 @@ async function alicimiCoz(
   }
   return user ? toRecipient(user) : { id: '', email: eposta, name: eposta }
 }
+
+// ════════════════════════════════════════════════════════════
+// PUBLIC: BAŞKASI ADINA KAYIT BİLDİRİMİ
+// ════════════════════════════════════════════════════════════
+
+export type TicketKaydedildiInfo = {
+  id: string
+  ticketNumber: string
+  subject: string
+  /** Talep SAHİBİ — bildirim ona gider. */
+  requesterEmail: string
+  /** Kaydeden IT personelinin görünen adı. */
+  kaydedenAd: string
+  /** 'PHONE' | 'WALK_IN' — kullanıcıya "nasıl kaydedildi" diye anlatılır. */
+  kanal: string
+}
+
+/**
+ * IT ekibi bir talebi BAŞKASI ADINA kaydettiğinde talep SAHİBİNE gider.
+ *
+ * NEDEN AYRI BİR MAİL: dispatchTicketCreated IT ekibine "yeni talep var" diyor
+ * ve talebi açanı zaten alıcı kümesinden düşüyor. Burada talebi açan IT
+ * personeli, sahibi başkası — sahip hiçbir şey almazdı ve kendi adına açılmış
+ * bir talepten habersiz kalırdı. Mail açıkça "sizin adınıza kaydedildi" diyor;
+ * aksi halde kullanıcı tanımadığı bir talebin bildirimlerini almaya başlar.
+ *
+ * Kaydeden = talep sahibi ise ÇAĞRILMAZ (çağıran taraf kontrol ediyor).
+ * throw ETMEZ; alıcı çözümü diğer dispatcher'larla aynı (alicimiCoz).
+ */
+export async function dispatchTicketKaydedildi(ticket: TicketKaydedildiInfo): Promise<void> {
+  const hedef = (ticket.requesterEmail ?? '').toLowerCase().trim()
+  if (hedef === '' || !hedef.includes('@')) {
+    console.log(`[ticket-kayit-notify] ${ticket.ticketNumber}: gecerli alici yok — atlandi`)
+    return
+  }
+
+  const r = await alicimiCoz(hedef, '[ticket-kayit-notify]', ticket.ticketNumber)
+  if (!r) return
+
+  const kanalMetni = ticket.kanal === 'WALK_IN' ? 'yüz yüze görüşme' : 'telefon görüşmesi'
+  const link = `/it-support?ticket=${ticket.ticketNumber}`
+  const title = `Talebiniz kaydedildi: ${ticket.ticketNumber}`
+
+  try {
+    const text =
+      `Adınıza bir destek talebi kaydedildi.\n\n` +
+      `Talep No: ${ticket.ticketNumber}\n` +
+      `Konu: ${ticket.subject}\n` +
+      `Kaydeden: ${ticket.kaydedenAd} (IT ekibi)\n` +
+      `Kayıt yolu: ${kanalMetni}\n\n` +
+      `Talebin durumunu buradan izleyebilir, gelişmeleri e-posta ile alırsınız:\n` +
+      `${ileriHubUrl(link)}\n\nİleri Group`
+    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#f4f6f8;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
+          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
+        </td></tr>
+        <tr><td style="padding:22px 24px;">
+          <h1 style="margin:0 0 12px;font-size:18px;color:#1B4F72;">Talebiniz kaydedildi</h1>
+          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(ticket.subject)}</p>
+          <div style="margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid #1B4F72;border-radius:4px;">
+            <p style="margin:0;font-size:13px;line-height:1.6;color:#475569;">
+              Bu talep <strong>${escapeHtml(ticket.kaydedenAd)}</strong> (IT ekibi) tarafından,
+              ${kanalMetni} üzerine sizin adınıza kaydedildi.
+            </p>
+          </div>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
+            Talebin sahibi sizsiniz: gelişmeler size bildirilecek ve çözüm sonrası
+            hizmeti değerlendirmeniz istenecek.
+          </p>
+          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe Git</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+    await sendEmail([{ name: r.name, email: r.email }], title, text, html, undefined, {
+      replyTo: TICKET_REPLY_TO,
+    })
+  } catch (err) {
+    console.error('[ticket-kayit-notify] email failed:', err)
+  }
+}

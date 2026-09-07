@@ -39,7 +39,20 @@ import {
   Loader2,
   AlertCircle,
   X,
+  XCircle,
+  Trash2,
 } from "lucide-react"
+import { useSession } from "next-auth/react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import Link from "next/link"
 
@@ -107,6 +120,14 @@ type ImportData = {
 }
 
 export default function CostAnalysisPage() {
+  const { data: session } = useSession()
+  // Silme yalnız costanalysis.admin'de (API de aynı izni arıyor; buton
+  // gizlemek tek başına yetki DEĞİL, sunucu kapısı asıl kapıdır).
+  const canDelete = session?.user?.permissions?.includes("costanalysis.admin") ?? false
+
+  const [deleteTarget, setDeleteTarget] = useState<CostAnalysis | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
   const [analyses, setAnalyses] = useState<CostAnalysis[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -157,6 +178,29 @@ export default function CostAnalysisPage() {
     overheadRate: "25",
     profitRate: "20",
   })
+
+  // Analiz silme — onay AlertDialog'da alınır, burada yalnız istek atılır.
+  // APPROVED kaydı API 400 ile reddediyor; mesajı olduğu gibi toast'a basıyoruz
+  // (butonu gizlemek yerine sunucunun gerekçesini göstermek daha bilgilendirici).
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      setDeleting(true)
+      const res = await fetch(`/api/cost-analysis/${deleteTarget.id}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        toast.success("Analiz silindi")
+        setDeleteTarget(null)
+        await loadData()
+      } else {
+        toast.error(data?.error || "Analiz silinemedi")
+      }
+    } catch {
+      toast.error("Silme sırasında hata oluştu")
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   // Load data
   const loadData = async () => {
@@ -221,20 +265,23 @@ export default function CostAnalysisPage() {
     return () => clearTimeout(timer)
   }, [searchTerm])
 
+  // Durum etiketleri — CostAnalysisStatus enum'unun BEŞ değeri de karşılanır.
+  // REJECTED eskiden case'siz kalıp default'a düşüyor ve ekrana ham "REJECTED"
+  // basıyordu (canlıda 14 kaydın 12'si bu durumda).
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "APPROVED":
         return (
           <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
             <CheckCircle2 className="mr-1 h-3 w-3" />
-            Onaylı
+            Onaylandı
           </Badge>
         )
       case "PENDING_REVIEW":
         return (
           <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
             <Clock className="mr-1 h-3 w-3" />
-            İnceleme
+            İnceleniyor
           </Badge>
         )
       case "DRAFT":
@@ -244,11 +291,18 @@ export default function CostAnalysisPage() {
             Taslak
           </Badge>
         )
+      case "REJECTED":
+        return (
+          <Badge className="bg-red-100 text-red-800 hover:bg-red-100">
+            <XCircle className="mr-1 h-3 w-3" />
+            Reddedildi
+          </Badge>
+        )
       case "ARCHIVED":
         return (
           <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">
             <Archive className="mr-1 h-3 w-3" />
-            Arşiv
+            Arşivlendi
           </Badge>
         )
       default:
@@ -397,6 +451,7 @@ export default function CostAnalysisPage() {
     total: total,
     approved: analyses.filter((a) => a.status === "APPROVED").length,
     draft: analyses.filter((a) => a.status === "DRAFT").length,
+    rejected: analyses.filter((a) => a.status === "REJECTED").length,
     pending: analyses.filter((a) => a.status === "PENDING_REVIEW").length,
   }
 
@@ -462,11 +517,11 @@ export default function CostAnalysisPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taslak</CardTitle>
-            <FileEdit className="h-4 w-4 text-yellow-600" />
+            <CardTitle className="text-sm font-medium">Reddedildi</CardTitle>
+            <XCircle className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{stats.draft}</div>
+            <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
           </CardContent>
         </Card>
         <Card>
@@ -505,9 +560,10 @@ export default function CostAnalysisPage() {
             >
               <option value="all">Tüm Durumlar</option>
               <option value="DRAFT">Taslak</option>
-              <option value="PENDING_REVIEW">İncelemede</option>
-              <option value="APPROVED">Onaylı</option>
-              <option value="ARCHIVED">Arşiv</option>
+              <option value="PENDING_REVIEW">İnceleniyor</option>
+              <option value="APPROVED">Onaylandı</option>
+              <option value="REJECTED">Reddedildi</option>
+              <option value="ARCHIVED">Arşivlendi</option>
             </Select>
             <Select
               value={categoryFilter}
@@ -559,6 +615,7 @@ export default function CostAnalysisPage() {
                   <TableHead className="text-right">Maliyet</TableHead>
                   <TableHead className="text-right">Satış Fiyatı</TableHead>
                   <TableHead className="text-center">Kar %</TableHead>
+                  <TableHead>Tarih</TableHead>
                   <TableHead className="text-center">Durum</TableHead>
                   <TableHead className="text-right">Detay</TableHead>
                 </TableRow>
@@ -566,7 +623,7 @@ export default function CostAnalysisPage() {
               <TableBody>
                 {analyses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       {searchTerm ? "Arama sonucu bulunamadı" : "Henüz analiz eklenmemiş"}
                     </TableCell>
                   </TableRow>
@@ -616,11 +673,36 @@ export default function CostAnalysisPage() {
                           {formatPercent(analysis.profitRate)}
                         </span>
                       </TableCell>
+                      <TableCell className="text-muted-foreground whitespace-nowrap">
+                        {new Date(analysis.createdAt).toLocaleDateString("tr-TR")}
+                      </TableCell>
                       <TableCell className="text-center">
                         {getStatusBadge(analysis.status)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <ChevronRight className="h-4 w-4 text-muted-foreground inline" />
+                        <div className="flex items-center justify-end gap-1">
+                          {canDelete && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              title={
+                                analysis.status === "APPROVED"
+                                  ? "Onaylı analizler silinemez"
+                                  : "Analizi sil"
+                              }
+                              onClick={(e) => {
+                                // Satırın kendisi detaya yönlendiriyor; silme tıklaması
+                                // oraya sızmamalı.
+                                e.stopPropagation()
+                                setDeleteTarget(analysis)
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <ChevronRight className="h-4 w-4 text-muted-foreground inline" />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -1303,6 +1385,41 @@ export default function CostAnalysisPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Silme onayı — geri alınamaz işlem, sessiz silme YOK. */}
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(acik) => !acik && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Analizi sil</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget ? (
+                <>
+                  <span className="font-medium">
+                    {deleteTarget.code} — {deleteTarget.name}
+                  </span>
+                  <br />
+                  Bu analizi silmek istediğinize emin misiniz? Bu işlem geri alınamaz;
+                  malzeme, işçilik, dış hizmet ve diğer maliyet kalemleri de silinir.
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Vazgeç</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                // Dialog varsayılanı kapatmak; isteği kendimiz yönetiyoruz.
+                e.preventDefault()
+                handleDelete()
+              }}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? "Siliniyor..." : "Sil"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

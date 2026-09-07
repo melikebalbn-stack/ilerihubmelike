@@ -159,11 +159,14 @@ type Machine = {
   hourlyRate: number
 }
 
+// Liste sayfasındaki getStatusBadge ile AYNI etiket kümesi — REJECTED burada da
+// eksikti ve ham enum basılıyordu.
 const statusConfig: Record<string, { label: string; color: string }> = {
-  APPROVED: { label: "Onaylı", color: "bg-green-100 text-green-700" },
-  PENDING_REVIEW: { label: "İncelemede", color: "bg-blue-100 text-blue-700" },
+  APPROVED: { label: "Onaylandı", color: "bg-green-100 text-green-700" },
+  PENDING_REVIEW: { label: "İnceleniyor", color: "bg-blue-100 text-blue-700" },
   DRAFT: { label: "Taslak", color: "bg-yellow-100 text-yellow-700" },
-  ARCHIVED: { label: "Arşiv", color: "bg-gray-100 text-gray-700" },
+  REJECTED: { label: "Reddedildi", color: "bg-red-100 text-red-700" },
+  ARCHIVED: { label: "Arşivlendi", color: "bg-gray-100 text-gray-700" },
 }
 
 const laborTypeConfig: Record<string, { label: string; color: string }> = {

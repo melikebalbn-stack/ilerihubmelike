@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { denemeZinciriCoz } from '@/lib/deneme/deneme-zincir'
 import { adimSahibiRol } from '@/lib/deneme/deneme-yetki'
+import { denemeBildirimAcikMi, DENEME_BILDIRIM_ENV } from '@/lib/deneme/deneme-bayrak'
 import {
   generateDenemeDegerlendiriciEmail,
   generateDenemeEskalasyonEmail,
@@ -26,6 +27,8 @@ export type DenemeCronSonuc = {
   hatirlatma: number
   eskalasyon: number
   zatenVar: number
+  /** Bayrak kapalıyken gönderilmeyen bildirim sayısı. */
+  atlananBildirim: number
 }
 
 type Alici = { userId: string; email: string; name: string }
@@ -132,7 +135,9 @@ export async function denemeFormlariniIsle(args: {
 }): Promise<DenemeCronSonuc> {
   const kuru = !!args.kuruCalistirma
   const base = args.baseUrl ?? process.env.NEXTAUTH_URL ?? 'https://hub.ilerigroup.com'
-  const sonuc: DenemeCronSonuc = { acilan: 0, acilamayan: [], muaf: 0, hatirlatma: 0, eskalasyon: 0, zatenVar: 0 }
+  const sonuc: DenemeCronSonuc = { acilan: 0, acilamayan: [], muaf: 0, hatirlatma: 0, eskalasyon: 0, zatenVar: 0, atlananBildirim: 0 }
+  // Bayrak KAPALI → form açma çalışır, bildirim tarafı tamamen susar.
+  const bildirimAcik = denemeBildirimAcikMi()
 
   const [ikiAy, altiAy] = await Promise.all([
     prisma.personnel.findMany({
@@ -177,7 +182,7 @@ export async function denemeFormlariniIsle(args: {
         console.warn('[deneme-cron] zincir çözülemedi:', { sicilNo: kisi.sicilNo, tur, sebep: zincir.sebep })
         // İV bildirimi KİŞİ BAZINDA dedup'lanır (toplu mail bazında DEĞİL): aynı kişi
         // için 14 günde bir bildirilir, ama zinciri yeni kırılan biri beklemeden girer.
-        if (!(await zatenGonderildi(kisi.id, ZINCIR_HATASI_TIPI, args.dedupSince))) {
+        if (bildirimAcik && !(await zatenGonderildi(kisi.id, ZINCIR_HATASI_TIPI, args.dedupSince))) {
           zincirHatalari.push({
             personnelId: kisi.id, sicilNo: kisi.sicilNo ?? '(?)', adSoyad: kisi.adSoyad,
             tur: TUR_ETIKET[tur], sebep: zincir.sebep,
@@ -241,6 +246,9 @@ export async function denemeFormlariniIsle(args: {
 
     // 3 gün kala eskalasyon — seviye 2. Form hâlâ TAMAMLANDI değil.
     if (gunKala <= 3 && form.hatirlatmaSeviyesi < 2) {
+      // Bayrak kapalı: sayacı say, hatirlatmaSeviyesi'ne DOKUNMA — Faz 4'te
+      // açıldığında doğru seviyeden (0) başlasın.
+      if (!bildirimAcik) { sonuc.atlananBildirim++; continue }
       const tip = `${tur === 'DENEME_2AY' ? 'TWO_MONTH' : 'SIX_MONTH'}_ESKALASYON`
       if (!(await zatenGonderildi(kisi.id, tip, args.dedupSince))) {
         const sahip = await personelinKullanicisi(sahipPid)
@@ -275,6 +283,7 @@ export async function denemeFormlariniIsle(args: {
 
     // 7 gün kala hatırlatma — seviye 1. Adım sahibine mail + in-app.
     if (form.hatirlatmaSeviyesi < 1) {
+      if (!bildirimAcik) { sonuc.atlananBildirim++; continue }
       const tip = `${tur === 'DENEME_2AY' ? 'TWO_MONTH' : 'SIX_MONTH'}_DEGERLENDIRICI`
       if (!(await zatenGonderildi(kisi.id, tip, args.dedupSince))) {
         const sahip = await personelinKullanicisi(sahipPid)
@@ -296,7 +305,7 @@ export async function denemeFormlariniIsle(args: {
   }
 
   // Zincir çözülemeyenleri İV'ye TEK mailde bildir — kimse fark etmeden tıkanmasın.
-  if (!kuru && zincirHatalari.length) {
+  if (!kuru && bildirimAcik && zincirHatalari.length) {
     const iv = await ivAlicilari()
     if (iv.length) {
       const { subject, body, html } = generateDenemeZincirHatasiEmail(zincirHatalari)
@@ -310,6 +319,14 @@ export async function denemeFormlariniIsle(args: {
         for (const h of zincirHatalari) await gonderimiIsaretle(h.personnelId, ZINCIR_HATASI_TIPI, iv, subject)
       }
     }
+  }
+
+  if (!bildirimAcik && (sonuc.atlananBildirim > 0 || sonuc.acilamayan.length > 0)) {
+    console.log(
+      `[deneme-cron] bildirim bayragi KAPALI (${DENEME_BILDIRIM_ENV}) — ` +
+        `${sonuc.atlananBildirim} bildirim atlandi, ${sonuc.acilamayan.length} zincir hatasi bildirilmedi. ` +
+        `Form acma calisti: ${sonuc.acilan} yeni, ${sonuc.zatenVar} mevcut.`,
+    )
   }
 
   return sonuc

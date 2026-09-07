@@ -152,22 +152,22 @@ export function AdminPackageCoursesPicker({
   const loadAllCourses = useCallback(() => {
     // IFS pakette IFS kursları (type=ifs); normal pakette default (type=normal).
     //
-    // pageSize=100: ucun varsayılanı 25, şemadaki üst sınır 100. Varsayılanla
-    // 25'ten sonraki kurslar listeye HİÇ gelmiyordu — "Kurs bulunamadı" deyip
-    // sessizce eksik çalışıyordu. Prod'da bugün 24 IFS + 1 akademi kursu var,
-    // yani varsayılan sınıra bir kurs kalmıştı. Uca YENİ parametre eklenmedi.
+    // page=1 ZORUNLU. Uç iki dallı: `page` YOKSA legacy dala düşer ve
+    // type/status/pageSize'ı TAMAMEN yok sayıp bütün aktif kursları döndürür.
+    // Ölçüldü (canlı, 6 Eyl 2026): `?type=ifs` 25 kayıt getiriyordu — 24 IFS +
+    // 1 IFS-dışı kurs. Yani IFS paketine IFS-DIŞI kurs eklenebiliyordu.
+    // `page` verilince paginated dal çalışır, isIfs süzgeci gerçekten uygulanır
+    // ve yanıt `courses` yerine `items` anahtarıyla döner.
     //
-    // status BİLEREK verilmedi (varsayılan "active" kalıyor): aşağıdaki seçim
-    // listesi zaten `c.isActive` ile süzüyor, yani status=all pasif kursları
-    // getirir ama ekranda göstermez — yalnız sayfa bütçesini yer ve aktif
-    // kursları dışarı itebilirdi. Pasif kursun pakete eklenebilmesi istenirse
-    // doğru yer bu URL değil, o istemci süzgeci (ayrı bir ürün kararı).
+    // status verilmiyor (varsayılan "active"): aşağıdaki seçim listesi zaten
+    // `c.isActive` ile süzüyor, pasif kurs gelse de gösterilmez.
     const url = isIfs
-      ? "/api/akademi/admin/courses?type=ifs&pageSize=100"
-      : "/api/akademi/admin/courses?pageSize=100";
+      ? "/api/akademi/admin/courses?page=1&pageSize=100&type=ifs"
+      : "/api/akademi/admin/courses?page=1&pageSize=100&type=normal";
     fetch(url)
-      .then((r) => (r.ok ? r.json() : { courses: [] }))
-      .then((data) => setAllCourses(data.courses ?? []))
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      // items: paginated dal · courses: legacy dal (geriye uyum).
+      .then((data) => setAllCourses(data.items ?? data.courses ?? []))
       .catch(() => setAllCourses([]));
   }, [isIfs]);
 

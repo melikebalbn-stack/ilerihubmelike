@@ -40,7 +40,12 @@ export default function IfsSinavlarPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/akademi/admin/courses?type=ifs&status=all&limit=200")
+    // page=1 ZORUNLU: uç `page` yoksa legacy dala düşüp type/status/pageSize'ı
+    // TAMAMEN yok sayıyor ve TÜM aktif kursları döndürüyor (ölçüldü: type=ifs
+    // ile 25 kayıt geliyordu — 24 IFS + 1 IFS-dışı BGYS kursu). `page` ile
+    // paginated dal çalışır, süzgeçler uygulanır, yanıt anahtarı `items` olur.
+    // Eski `limit=200` şemada olmayan bir parametreydi, zod sessizce atıyordu.
+    fetch("/api/akademi/admin/courses?page=1&pageSize=100&type=ifs&status=all")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const list: IfsKurs[] = d?.courses ?? d?.items ?? [];

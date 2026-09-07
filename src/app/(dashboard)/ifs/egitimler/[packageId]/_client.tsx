@@ -113,19 +113,20 @@ export function PaketYonetim({ packageId }: { packageId: string }) {
   // Paket detayından uydurma bir kayıt beslemek bu alanları sessizce silerdi —
   // o yüzden gerçek kaydı listeden alıyoruz (courses/[id] üzerinde GET yok).
   //
-  // Parametreler MEVCUT olanlar, uca yeni parametre eklenmedi:
-  //   status=all   → varsayılan "active"; pasif alan da düzenlenebilsin
-  //   pageSize=100 → varsayılan 25; şemadaki üst sınır (prod'da 24 IFS kursu var,
-  //                  varsayılan sınıra bir kurs kalmıştı)
-  // 100'ü aşarsa kurs bulunamaz; o durumda aşağıdaki toast ile AÇIKÇA durulur,
-  // sessiz başarısızlık yok.
+  // page=1 ZORUNLU: uç `page` yoksa legacy dala düşüp type/status/pageSize'ı
+  // yok sayıyor — status=all da uygulanmıyordu, yani PASİF bir alan bulunamıyordu.
+  // `page` ile paginated dal çalışır; yanıt `items` anahtarıyla döner.
+  //   status=all   → pasif alan da düzenlenebilsin
+  //   pageSize=100 → şemadaki üst sınır (bugün 24 IFS alanı var)
+  // 100'ü aşarsa kurs bulunamaz; aşağıdaki toast ile AÇIKÇA durulur, sessiz
+  // başarısızlık yok.
   const alanDuzenle = useCallback(async (courseId: string) => {
     const d = await fetch(
-      "/api/akademi/admin/courses?type=ifs&status=all&pageSize=100"
+      "/api/akademi/admin/courses?page=1&pageSize=100&type=ifs&status=all"
     )
-      .then((r) => (r.ok ? r.json() : { courses: [] }))
-      .catch(() => ({ courses: [] }));
-    const kurs = (d.courses ?? []).find(
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .catch(() => ({ items: [] }));
+    const kurs = (d.items ?? d.courses ?? []).find(
       (c: AdminCourseListItem) => c.id === courseId
     );
     if (!kurs) {

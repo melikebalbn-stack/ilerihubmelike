@@ -10007,6 +10007,8 @@ model Exam {
   questions ExamQuestion[]
   attempts  UserExamAttempt[]
 
+  // Aynı sorgunun exams tarafı: courseId üzerinden kursa bağlanıyor, index yoktu.
+  @@index([courseId])
   @@map("exams")
 }
 
@@ -10059,6 +10061,11 @@ model UserExamAttempt {
   exam    Exam             @relation(fields: [examId], references: [id])
   answers UserExamAnswer[]
 
+  // IFS üçüncü kanaat (sınav sonucu) kişi × kurs bazında son denemeyi okuyacak:
+  //   user_exam_attempts ⋈ exams ON examId, GROUP BY userId, exams.courseId
+  // Bugün tabloda YALNIZ birincil anahtar index'i vardı ve sorgu iki Seq Scan
+  // ile çalışıyordu (11 satırda 0.3 ms — ölçekte kalıcı olmaz).
+  @@index([examId, userId])
   @@map("user_exam_attempts")
 }
 

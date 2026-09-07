@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { getSandboxBySlug } from '@/lib/sandbox-config'
+import { normalizeTr } from '@/lib/normalize-tr'
 
 /**
  * DEV-TEST-AS / generate-notifications guard: e-postanın sandbox sahibinin
@@ -70,6 +71,9 @@ function vekilIsaretiniAyikla(ham: string): { temizIsim: string; vekilMi: boolea
  * bakılır (örn. "V.R." ayıklanınca kalan "ORKUN KIRÇUVALOĞLU", hedef
  * "RAHMİ ORKUN KIRÇUVALOĞLU" içinde geçtiği için eşleşir). Vekil-dışı
  * girişlerde davranış değişmiyor — yanlış-pozitif riski büyümüyor.
+ * Karşılaştırma normalizeTr() ile yapılır (Ç/C, ı/i gibi varyantlar da eşleşsin);
+ * normalizeTr boşlukları sıkıştırmadığı için serbest metindeki çift boşluklar
+ * ayrıca burada tek boşluğa indirgenir (örn. "TUGAY  GENÇER" -> "tugay gençer").
  * vekilMi, eşleşme vekil işaretli alan üzerinden mi kuruldu bilgisini taşır
  * (AvansTalebi.vekaletenMi bunu kullanır — ayrı bir tespit mantığı yazılmaz).
  */
@@ -79,8 +83,8 @@ function alanEslesmeDetayi(
 ): { eslesti: boolean; vekilMi: boolean } {
   if (!ham) return { eslesti: false, vekilMi: false }
   const { temizIsim, vekilMi } = vekilIsaretiniAyikla(ham)
-  const hedef = hedefAdSoyad.trim().toLowerCase()
-  const temiz = temizIsim.toLowerCase()
+  const hedef = normalizeTr(hedefAdSoyad.trim()).replace(/\s+/g, ' ')
+  const temiz = normalizeTr(temizIsim).replace(/\s+/g, ' ')
   if (!temiz) return { eslesti: false, vekilMi }
   const eslesti = vekilMi ? hedef.includes(temiz) : hedef === temiz
   return { eslesti, vekilMi }

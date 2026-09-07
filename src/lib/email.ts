@@ -1406,3 +1406,102 @@ export async function sendMeasurementReportEmail(
     }
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// IV-FR-27 · Deneme Süresi Değerlendirme bildirimleri
+// (mevcut generateX() deseni: {subject, body, html} döner, gönderimi çağıran yapar)
+// ════════════════════════════════════════════════════════════════════════════
+
+type DenemeMailKisi = {
+  adSoyad: string
+  sicilNo: string | null
+  bolum: string
+  gorev: string
+  tur: string // "Deneme Süresi (2 Ay)" | "İlk 6 Ay"
+  hedefTarih: Date
+  gunKala: number
+  link: string
+}
+
+function denemeKisiSatiri(k: DenemeMailKisi): string {
+  return `${k.adSoyad} (${k.sicilNo ?? '-'})
+   📍 Bölüm: ${k.bolum}
+   👔 Görev: ${k.gorev}
+   ⏰ Değerlendirme Tarihi: ${k.hedefTarih.toLocaleDateString('tr-TR')} (${k.gunKala <= 0 ? 'bugün' : `${k.gunKala} gün sonra`})`
+}
+
+function denemeHtmlKart(satirlar: string[], baslik: string, link: string, vurgu: string): string {
+  return `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:640px">
+  <h2 style="color:${vurgu};margin:0 0 12px">${baslik}</h2>
+  <table style="border-collapse:collapse;width:100%;font-size:14px">
+    ${satirlar.map((s) => `<tr><td style="padding:6px 0;border-bottom:1px solid #eee">${s}</td></tr>`).join('')}
+  </table>
+  <p style="margin:18px 0"><a href="${link}" style="background:${vurgu};color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Formu Aç</a></p>
+  <p style="color:#666;font-size:12px">Bu e-posta ILERIHub İnsan Varlıkları Yönetim Sistemi tarafından otomatik gönderilmiştir.</p>
+</div>`
+}
+
+/** 7 gün kala — o anki adımın sahibine. */
+export function generateDenemeDegerlendiriciEmail(k: DenemeMailKisi): { subject: string; body: string; html: string } {
+  const subject = `📋 ${k.tur} Değerlendirmesi Sizde — ${k.adSoyad}`
+  const body = `${k.tur} değerlendirmesi sizin adımınızda bekliyor.
+
+${denemeKisiSatiri(k)}
+
+Formu doldurmak için: ${k.link}
+
+20 kriter, her biri 1-5 puan. Geçerli not 60.
+
+--
+ILERIHub İnsan Varlıkları Yönetim Sistemi`
+  const html = denemeHtmlKart(
+    [`<b>${k.adSoyad}</b> (${k.sicilNo ?? '-'})`, `Bölüm: ${k.bolum}`, `Görev: ${k.gorev}`,
+     `Değerlendirme tarihi: <b>${k.hedefTarih.toLocaleDateString('tr-TR')}</b> (${k.gunKala <= 0 ? 'bugün' : `${k.gunKala} gün sonra`})`],
+    `${k.tur} Değerlendirmesi Sizde`, k.link, '#2563eb',
+  )
+  return { subject, body, html }
+}
+
+/** 3 gün kala — adım sahibi + bölüm müdürü + İV. */
+export function generateDenemeEskalasyonEmail(
+  k: DenemeMailKisi & { durum: string },
+): { subject: string; body: string; html: string } {
+  const subject = `⚠️ GECİKİYOR — ${k.tur} Değerlendirmesi: ${k.adSoyad}`
+  const body = `${k.tur} değerlendirmesi HENÜZ TAMAMLANMADI ve tarihe ${k.gunKala <= 0 ? 'ulaşıldı' : `${k.gunKala} gün kaldı`}.
+
+${denemeKisiSatiri(k)}
+   📌 Formun bulunduğu aşama: ${k.durum}
+
+Form: ${k.link}
+
+--
+ILERIHub İnsan Varlıkları Yönetim Sistemi`
+  const html = denemeHtmlKart(
+    [`<b>${k.adSoyad}</b> (${k.sicilNo ?? '-'})`, `Bölüm: ${k.bolum}`, `Görev: ${k.gorev}`,
+     `Değerlendirme tarihi: <b>${k.hedefTarih.toLocaleDateString('tr-TR')}</b> (${k.gunKala <= 0 ? 'bugün' : `${k.gunKala} gün kaldı`})`,
+     `Aşama: <b>${k.durum}</b>`],
+    `${k.tur} Değerlendirmesi Gecikiyor`, k.link, '#dc2626',
+  )
+  return { subject, body, html }
+}
+
+/** Zinciri çözülemeyen kişiler — İV'ye tek mail (kimse fark etmeden tıkanmasın). */
+export function generateDenemeZincirHatasiEmail(
+  kayitlar: { sicilNo: string; adSoyad: string; tur: string; sebep: string }[], // personelId çağıran tarafta
+): { subject: string; body: string; html: string } {
+  const subject = `🚨 Deneme Değerlendirme Formu Açılamadı — ${kayitlar.length} personel`
+  const satirlar = kayitlar.map((r, i) => `${i + 1}. ${r.adSoyad} (${r.sicilNo}) — ${r.tur}
+   ⛔ ${r.sebep}`)
+  const body = `Aşağıdaki personel için değerlendirme zinciri kurulamadığından form AÇILAMADI.
+Eksik veri tamamlanana kadar bu kişilerin değerlendirmesi başlamayacaktır.
+
+${satirlar.join('\n\n')}
+
+--
+ILERIHub İnsan Varlıkları Yönetim Sistemi`
+  const html = denemeHtmlKart(
+    kayitlar.map((r) => `<b>${r.adSoyad}</b> (${r.sicilNo}) — ${r.tur}<br><span style="color:#dc2626">${r.sebep}</span>`),
+    'Deneme Değerlendirme Formu Açılamadı', '#', '#dc2626',
+  )
+  return { subject, body, html }
+}

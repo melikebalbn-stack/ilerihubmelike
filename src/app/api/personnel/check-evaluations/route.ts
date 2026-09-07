@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { requireUser } from '@/lib/auth/require-user'
+import { denemeFormlariniIsle } from '@/lib/deneme/deneme-bildirim'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +10,9 @@ export const dynamic = 'force-dynamic'
  * POST/GET: Personel bildirim kontrol sistemi:
  * 1. Deneme (2 ay) ve 6 ay değerlendirme tarihleri — 1 hafta önce bildirim
  * 2. Belge süreleri (İlk Yardım, Yangın Sertifikası, MYK) — 1 ay önce + süresi dolunca bildirim
+ * 3. IV-FR-27 deneme değerlendirme FORMU: pencereye girenler için form açma,
+ *    adım sahibine hatırlatma (7 gün) ve eskalasyon (3 gün) — bkz. deneme-bildirim.ts
+ *    (1. maddedeki İV maili KORUNUR, bu onun YANINA çalışır)
  *
  * İV ekibine e-posta gönderir. Tekrar gönderimi PersonnelEvaluationEmailLog ile engeller.
  *
@@ -210,12 +214,26 @@ async function runCheck() {
     }
   }
 
+  // ── 3. IV-FR-27 DEĞERLENDİRME FORMU (form açma + hatırlatma + eskalasyon) ──
+  // Ayrı modül; patlarsa yukarıdaki İV mailleri ve belge takibi etkilenmesin.
+  let deneme = null
+  try {
+    deneme = await denemeFormlariniIsle({
+      bugun: today,
+      pencereSonu: evalWindowEnd,
+      dedupSince,
+    })
+  } catch (e) {
+    console.error('[check-evaluations] deneme formu işlemi başarısız:', e)
+  }
+
   return {
     success: true,
     sent,
     recipientCount: hrRecipients.length,
     twoMonthCount: twoMonthList.length,
     sixMonthCount: sixMonthList.length,
+    deneme,
   }
 }
 

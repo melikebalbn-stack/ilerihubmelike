@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { MetrikKarti } from "@/components/tickets/metrik-karti"
+import { MetrikKarti, yeterliVeri } from "@/components/tickets/metrik-karti"
 import type { Olcum } from "@/lib/tickets/kpi"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +48,7 @@ import {
   FileDown,
   Eye,
   Repeat,
+  Inbox,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { YetkisizErisim } from "@/components/YetkisizErisim"
@@ -103,6 +104,11 @@ interface ReportData {
     puanlananSayisi: number
     puanlanabilirSayisi: number
     dagilim: Array<{ yildiz: number; adet: number }>
+  }
+  kaynakDagilimi?: {
+    toplam: number
+    oran: Olcum
+    kalemler: Array<{ kaynak: string; adet: number; yuzde: number }>
   }
   kronikOzeti?: {
     aktifSayisi: number
@@ -723,6 +729,58 @@ export default function ITReportsPage() {
           </Card>
 
           {/* Individual Performance */}
+          {/* ── KAYNAK DAĞILIMI ───────────────────────────────────────────
+              Talep hangi kanaldan geldi. HAM SAYILAR her zaman görünür;
+              yalnız YÜZDELER n<5'te gizlenir (3 talepten "%67 telefon"
+              çıkarmak yanıltıcı olur). */}
+          {report.kaynakDagilimi && report.kaynakDagilimi.kalemler.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Inbox className="h-5 w-5" />
+                  Talep Kaynagi
+                </CardTitle>
+                <CardDescription>
+                  Toplam {report.kaynakDagilimi.toplam} talep · son {period} gun
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {report.kaynakDagilimi.kalemler.map((k) => {
+                    const etiket =
+                      k.kaynak === "WEB_PORTAL" ? "Portal (kendi acti)"
+                      : k.kaynak === "EMAIL" ? "E-posta (destek@)"
+                      : k.kaynak === "PHONE" ? "Telefon (IT kaydetti)"
+                      : k.kaynak === "WALK_IN" ? "Yuz yuze (IT kaydetti)"
+                      : k.kaynak
+                    const enBuyuk = report.kaynakDagilimi?.kalemler[0]?.adet || 1
+                    return (
+                      <div key={k.kaynak} className="grid grid-cols-[180px_1fr_74px] gap-3 items-center text-sm">
+                        <span className="truncate">{etiket}</span>
+                        <span className="h-2 rounded-full bg-muted overflow-hidden">
+                          <span
+                            className="block h-full rounded-full bg-[#1B4F72]"
+                            style={{ width: `${Math.round((k.adet / enBuyuk) * 100)}%` }}
+                          />
+                        </span>
+                        <span className="text-right tabular-nums text-muted-foreground">
+                          {k.adet}
+                          {yeterliVeri(report.kaynakDagilimi!.oran) ? ` · %${k.yuzde}` : ""}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+                {!yeterliVeri(report.kaynakDagilimi.oran) && (
+                  <p className="text-[11px] text-muted-foreground mt-3">
+                    {report.kaynakDagilimi.toplam} talep — oranlar bu ornekleme gore
+                    yaniltici olurdu, yalniz adetler gosteriliyor.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* ── MEMNUNİYET + KRONİK ÖZETİ (Faz 2) ────────────────────────
               İkisi yan yana; dar ekranda alt alta — Öncelik/Talep Tipi
               çiftiyle aynı davranış. */}

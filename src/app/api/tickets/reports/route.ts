@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
         // select'ine eklenip aşağıda bellekte gruplanıyor.
         assignedTeamId: true,
         assignedTeam: { select: { name: true } },
+        source: true,
         categoryId: true,
         category: { select: { name: true, color: true } },
         createdAt: true,
@@ -336,6 +337,35 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.totalOpen - a.totalOpen)
 
     // Günlük trend (son 7 gün)
+    // ── KAYNAK DAĞILIMI ─────────────────────────────────────────────────
+    // Talep hangi kanaldan geldi. PHONE/WALK_IN "başkası adına kayıt"
+    // özelliğiyle doluyor (04.09 öncesi hiç kullanılmamıştı), WEB_PORTAL
+    // kullanıcının kendi açtığı, EMAIL destek@ kutusundan geleni.
+    //
+    // HAM SAYIMLAR: n<5 eşiği burada UYGULANMIYOR. Eşik ortalama/türetilmiş
+    // metrikler içindi (bkz. lib/tickets/kpi ve recruitment/ornek-esigi);
+    // "5 talep geldi" sayısını gizlemek bilgiyi yok eder. Eşik YÜZDELERE
+    // uygulanıyor — 3 talepten "%67 telefon" çıkarmak yanıltıcı olur.
+    const kaynakSayilari = allTickets.reduce<Record<string, number>>((acc, t) => {
+      acc[t.source] = (acc[t.source] ?? 0) + 1
+      return acc
+    }, {})
+    const kaynakToplam = allTickets.length
+    const kaynakDagilimi = {
+      toplam: kaynakToplam,
+      // Yüzdeler yalnız yeterli örneklemde anlamlı; value null ise ekran
+      // sayıyı gösterip oranı gizler.
+      oran: yuzde(kaynakToplam, kaynakToplam),
+      kalemler: (['WEB_PORTAL', 'EMAIL', 'PHONE', 'WALK_IN', 'CHAT', 'SYSTEM_AUTO'] as const)
+        .map((kaynak) => ({
+          kaynak,
+          adet: kaynakSayilari[kaynak] ?? 0,
+          yuzde: kaynakToplam > 0 ? Math.round(((kaynakSayilari[kaynak] ?? 0) / kaynakToplam) * 100) : 0,
+        }))
+        // Hiç kullanılmamış kanalları listeleme — bugün CHAT/SYSTEM_AUTO boş.
+        .filter((k) => k.adet > 0),
+    }
+
     // ── MEMNUNİYET ÖZETİ (Faz 2) ────────────────────────────────────────
     // Ortalama ve puanlama oranı AYRI iki soru: ortalama "puan verenler ne
     // dedi", oran "kaç kişi puan verdi". Oranın paydası anlamlıyken ortalamanın
@@ -442,6 +472,7 @@ export async function GET(request: NextRequest) {
       // Faz 2 — mevcut alanların hiçbiri değişmedi, yalnız ikisi eklendi.
       memnuniyetOzeti,
       kronikOzeti,
+      kaynakDagilimi,
     })
   } catch (error) {
     console.error('Rapor hatası:', error)

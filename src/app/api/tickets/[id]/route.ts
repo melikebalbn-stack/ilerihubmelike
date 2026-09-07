@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
 import { dispatchTicketAssigned, dispatchTicketKapandi } from '@/lib/ticket-notifications'
 import { parseMembers, isTeamMember } from '@/lib/tickets/team-members'
 import { ticketYetkileri } from '@/lib/ticket-yetki'
@@ -661,29 +662,95 @@ export async function PUT(
   }
 }
 
-// DELETE - Ticket sil (soft delete)
+// DELETE - Ticket KALICI sil
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-tickets: requireUser → user.role
     const { session, user, error } = await requireUser()
     if (error) return error
 
-    // Sadece admin silebilir
-    if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-      return NextResponse.json({ error: 'Yetkiniz yok' }, { status: 403 })
+    // YETKİ: helpdesk.ticket.delete. helpdesk.admin ya da SUPER_ADMIN olmak
+    // TEK BAŞINA YETMEZ — izin açıkça verilmiş olmalı. Silme geri alınamıyor;
+    // kapıyı role değil, ayrıca dağıtılan bir izne bağlıyoruz.
+    //
+    // ESKİ DAVRANIŞ (kaldırıldı): bu uç `isActive: false` ile SOFT delete
+    // yapıyordu ve rol kontrolü (ADMIN/SUPER_ADMIN) taşıyordu. Hiçbir ekran
+    // çağırmıyordu; kalıcı silme talebi gelince aynı uç bu işe alındı.
+    if (!session.user.permissions?.includes('helpdesk.ticket.delete')) {
+      return NextResponse.json(
+        { error: 'Talep silme yetkiniz yok' },
+        { status: 403 },
+      )
     }
 
     const { id } = await params
 
-    await prisma.ticket.update({
+    // Silinmeden ÖNCE oku: denetim kaydına ne sildiğimizi yazacağız ve
+    // silme sonrası bu bilgiye ulaşmanın yolu kalmıyor.
+    const ticket = await prisma.ticket.findUnique({
       where: { id },
-      data: { isActive: false }
+      select: {
+        id: true,
+        ticketNumber: true,
+        subject: true,
+        status: true,
+        requesterEmail: true,
+        assignedTo: true,
+        kronikSorunId: true,
+        createdAt: true,
+        _count: { select: { comments: true, timeline: true, workLogs: true } },
+      },
+    })
+    if (!ticket) {
+      return NextResponse.json({ error: 'Ticket bulunamadı' }, { status: 404 })
+    }
+
+    // İLİŞKİLİ KAYITLAR: TicketComment / TicketTimeline / TicketWorkLog
+    // şemada onDelete: Cascade taşıyor → DB tarafında birlikte siliniyor,
+    // elle silmeye gerek yok (kontrol edildi: schema.prisma).
+    //
+    // EmailIngestLog'a DOKUNULMUYOR: denetim kaydı ve FK'sı yok; ticketId
+    // kimliksiz kalır, bu bilinçli — mailin işlendiği gerçeği silinmemeli.
+    //
+    // KronikSorun: bağ Ticket tarafında (kronikSorunId), talep silinince
+    // yalnız bağ kopar; kronik kaydı yerinde kalır.
+    //
+    // Audit ÖNCE ve AYNI transaction'da: silme başarısız olursa denetim
+    // kaydı da geri alınır, "sildim" diyen ama silinmemiş kayıt kalmaz.
+    await prisma.$transaction(async (tx) => {
+      await logAuditEvent({
+        action: 'TICKET_DELETED',
+        actorId: user.id,
+        targetType: 'TICKET',
+        targetId: ticket.id,
+        details: {
+          ticketNumber: ticket.ticketNumber,
+          subject: ticket.subject,
+          status: ticket.status,
+          requesterEmail: ticket.requesterEmail,
+          assignedTo: ticket.assignedTo,
+          kronikSorunId: ticket.kronikSorunId,
+          createdAt: ticket.createdAt.toISOString(),
+          silinenYorum: ticket._count.comments,
+          silinenTimeline: ticket._count.timeline,
+          silinenWorkLog: ticket._count.workLogs,
+        },
+        tx,
+      })
+
+      await tx.ticket.delete({ where: { id } })
     })
 
-    return NextResponse.json({ success: true })
+    console.warn(
+      `[ticket-delete] ${ticket.ticketNumber} kalıcı silindi — ${user.email}`,
+    )
+
+    return NextResponse.json({
+      success: true,
+      ticketNumber: ticket.ticketNumber,
+    })
   } catch (error) {
     console.error('Ticket silme hatası:', error)
     return NextResponse.json({ error: 'İşlem başarısız' }, { status: 500 })

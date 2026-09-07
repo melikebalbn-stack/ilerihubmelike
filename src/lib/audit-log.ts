@@ -55,6 +55,10 @@ export type AuditTargetType =
   // İş başvurusu — İK'nın aday verisinde yaptığı düzeltmeler (beyaz liste alanları).
   // action: JOB_APPLICATION_UPDATED, details.degisiklikler = [{alan,etiket,eski,yeni}]
   | 'JOB_APPLICATION'
+  // IT talebi kalıcı silme (helpdesk.ticket.delete). action: TICKET_DELETED,
+  // details = ticket no/konu/durum + silinen yorum-timeline-worklog sayıları.
+  // Kayıt silinmeden ÖNCE ve aynı transaction'da yazılır.
+  | 'TICKET'
 
 export interface AuditLogParams {
   action: string

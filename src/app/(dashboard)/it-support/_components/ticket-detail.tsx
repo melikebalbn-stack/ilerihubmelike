@@ -42,6 +42,9 @@ interface Ticket {
   requesterEmail: string
   requesterName: string
   requesterDept: string | null
+  // Başkası adına kaydedildiyse dolu; kendi açtıysa null.
+  createdByEmail?: string | null
+  createdByName?: string | null
   assignedTo: string | null
   assignedToName: string | null
   location: string | null
@@ -665,6 +668,12 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
           <div>
             <p className="text-sm text-muted-foreground">Atanan</p>
             <p className="font-medium">{ticket.assignedToName || "Atanmadi"}</p>
+          </div>
+          {/* KAYDEDEN — yalnız başkası adına açılmış taleplerde. Talep sahibi
+              üstteki alanda; bu satır "bu talebi kim girdi" sorusunu yanıtlar. */}
+          <div className={ticket.createdByName ? "" : "hidden"}>
+            <p className="text-sm text-muted-foreground">Kaydeden</p>
+            <p className="font-medium">{ticket.createdByName}</p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Tip</p>

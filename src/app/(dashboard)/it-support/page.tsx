@@ -53,6 +53,7 @@ import { TicketDetail } from "./_components/ticket-detail"
 import { CategoryBadge } from "./_components/category-badge"
 import { KpiDashboard } from "./_components/kpi-dashboard"
 import { KullanimKilavuzu } from "./_components/kullanim-kilavuzu"
+import { UserSearchCombobox } from "@/components/user-search-combobox"
 import { ticketAge, resolutionTime, isOpenStatus } from "./_lib/ticket-age"
 
 interface TicketCategory {
@@ -170,6 +171,10 @@ export default function ITSupportPage() {
     location: "",
     assetInfo: "",
     zimmetFormuId: "",
+    // Başkası adına kayıt (yalnız IT ekibi doldurur)
+    talepEdenEmail: "",
+    talepEdenAd: "",
+    kanal: "PHONE" as "PHONE" | "WALK_IN",
   })
   const [submitting, setSubmitting] = useState(false)
 
@@ -290,6 +295,9 @@ export default function ITSupportPage() {
           zimmetFormuId: cihazSecildi ? newTicket.zimmetFormuId : null,
           // Cihaz seçildiyse assetInfo'yu sunucu üretir; istemci hiç göndermez.
           assetInfo: cihazSecildi ? null : newTicket.assetInfo.trim() || null,
+          // Boşsa sunucu yok sayar → kişi kendi adına açmış olur (eski davranış).
+          talepEdenEmail: newTicket.talepEdenEmail || undefined,
+          kanal: newTicket.talepEdenEmail ? newTicket.kanal : undefined,
           attachments,
         }),
       })
@@ -303,6 +311,9 @@ export default function ITSupportPage() {
           location: "",
           assetInfo: "",
           zimmetFormuId: "",
+          talepEdenEmail: "",
+          talepEdenAd: "",
+          kanal: "PHONE",
         })
         setEkDosyalar([])
         retry()
@@ -426,6 +437,56 @@ export default function ITSupportPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {/* BAŞKASI ADINA KAYIT — yalnız IT ekibine görünür.
+                    Telefonla/yüz yüze gelen işi kaydederken talep sahibi
+                    seçilir; boş bırakılırsa kişi kendi adına açmış olur
+                    (bugünkü davranış aynen korunur). */}
+                {isITStaff && (
+                  <div className="grid gap-2 rounded-lg border bg-muted/30 p-3">
+                    <Label htmlFor="talep-eden" className="text-sm">
+                      Talep eden{" "}
+                      <span className="font-normal text-muted-foreground text-xs">
+                        — opsiyonel; başkası adına kaydediyorsanız seçin
+                      </span>
+                    </Label>
+                    <UserSearchCombobox
+                      value={newTicket.talepEdenEmail}
+                      placeholder="Kendi adıma açıyorum"
+                      onSelect={(u) =>
+                        setNewTicket((p) => ({
+                          ...p,
+                          talepEdenEmail: u?.email ?? "",
+                          talepEdenAd: u?.name ?? "",
+                        }))
+                      }
+                    />
+                    {newTicket.talepEdenEmail && (
+                      <div className="flex items-center gap-4 flex-wrap pt-1">
+                        <span className="text-xs text-muted-foreground">Nasıl geldi?</span>
+                        {(["PHONE", "WALK_IN"] as const).map((k) => (
+                          <label key={k} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="kanal"
+                              value={k}
+                              checked={newTicket.kanal === k}
+                              onChange={() => setNewTicket((p) => ({ ...p, kanal: k }))}
+                              className="accent-[#1B4F72]"
+                            />
+                            {k === "PHONE" ? "Telefon" : "Yüz yüze"}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    {newTicket.talepEdenEmail && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Talebin sahibi {newTicket.talepEdenAd || newTicket.talepEdenEmail} olacak;
+                        bildirimler ve puanlama ona gider. Kaydeden olarak siz görünürsünüz.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="grid gap-2">
                   <Label htmlFor="subject">Konu *</Label>
                   <Input

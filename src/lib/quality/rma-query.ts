@@ -4,11 +4,19 @@
  * Liste ucu (GET /api/quality/rma) ve Excel export ucu
  * (GET /api/quality/rma/export) AYNI filtreyi kullansın diye buraya çıkarıldı;
  * iki uç ıraksamasın. Filtre: tip, musteriId, durum(acik|kapali),
- * from/to (irsaliyeTarihi), q (no | ürün kodu | müşteri adı).
+ * from/to (irsaliyeTarihi), q (no | ürün kodu | müşteri adı),
+ * sadeceBana (yalnız oturumun sorumlu olduğu kayıtlar).
  */
-import { RmaTip, Prisma } from '@/generated/prisma'
+import { RmaTip, RmaDurum, Prisma } from '@/generated/prisma'
 
-export function buildRmaWhere(sp: URLSearchParams): Prisma.RmaKayitWhereInput {
+/**
+ * @param benimPersonnelId Oturum sahibinin Personnel id'si (User.personnelId).
+ *   `sadeceBana=1` filtresi bunu kullanır; çağıran uç DB'den çözer.
+ */
+export function buildRmaWhere(
+  sp: URLSearchParams,
+  benimPersonnelId: string | null = null,
+): Prisma.RmaKayitWhereInput {
   const where: Prisma.RmaKayitWhereInput = {}
 
   const tip = sp.get('tip')
@@ -17,9 +25,14 @@ export function buildRmaWhere(sp: URLSearchParams): Prisma.RmaKayitWhereInput {
   const musteriId = sp.get('musteriId')
   if (musteriId) where.musteriId = musteriId
 
+  // Durum artık kolon (RmaDurum); kapanisTarihi'nden TÜRETİLMİYOR.
   const durum = sp.get('durum')
-  if (durum === 'acik') where.kapanisTarihi = null
-  else if (durum === 'kapali') where.kapanisTarihi = { not: null }
+  if (durum === 'acik') where.durum = RmaDurum.ACIK
+  else if (durum === 'kapali') where.durum = RmaDurum.KAPALI
+
+  // "Bana atananlar": personel bağlantısı olmayan kullanıcıda FAIL-CLOSED —
+  // '' hiçbir cuid ile eşleşmez, sonuç boş döner (tüm kayıtlar sızmaz).
+  if (sp.get('sadeceBana') === '1') where.sorumluId = benimPersonnelId ?? ''
 
   const from = sp.get('from')
   const to = sp.get('to')

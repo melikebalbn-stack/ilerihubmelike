@@ -10852,7 +10852,14 @@ enum RmaTip {
 enum RmaIadeTuru {
   GIRIS_KALITE
   HAT
-  GARANTI
+  MUSTERI_SIKAYETI
+}
+
+/// RMA/SMA kayıt durumu. ELLE seçilir — kapanisTarihi'nden TÜRETİLMEZ
+/// (eski davranış: durum alanı yoktu, API `kapanisTarihi ? KAPALI : ACIK` hesaplıyordu).
+enum RmaDurum {
+  ACIK
+  KAPALI
 }
 
 enum RmaKarar {
@@ -10865,8 +10872,8 @@ enum RmaKarar {
   URUN_BIZE_AIT_DEGIL
 }
 
-/// RMA/SMA iade başlık kaydı. Durum ALANI YOK: kapanisTarihi doluysa KAPALI,
-/// boşsa AÇIK (türetilmiş; API yanıtında hesaplanır, DB'de tutulmaz).
+/// RMA/SMA iade başlık kaydı. `durum` ELLE seçilir (bkz. RmaDurum); kapanisTarihi
+/// yalnız bilgi alanıdır — durum ondan türetilmez.
 model RmaKayit {
   id              String       @id @default(cuid())
   tip             RmaTip
@@ -10881,6 +10888,7 @@ model RmaKayit {
   sorumlu         Personnel?   @relation(fields: [sorumluId], references: [id], onDelete: SetNull)
   termin          DateTime?
   kapanisTarihi   DateTime?
+  durum           RmaDurum     @default(ACIK)
   maliyet         Decimal?     @db.Decimal(12, 2)
 
   // Audit — userId string (User FK/back-ref eklemez; mevcut audit deseni)
@@ -10890,10 +10898,12 @@ model RmaKayit {
   guncellemeTarihi DateTime @updatedAt
 
   satirlar RmaSatir[]
+  fotolar  RmaFoto[]
 
   @@index([musteriId])
   @@index([kapanisTarihi])
   @@index([irsaliyeTarihi])
+  @@index([durum])
 }
 
 /// RMA/SMA ürün satırı. Başlık silinince cascade.
@@ -10913,6 +10923,24 @@ model RmaSatir {
   reworkAdedi       Int?
   kokNeden          String?   @db.Text
   aksiyon           String?   @db.Text
+
+  @@index([rmaKayitId])
+}
+
+/// RMA/SMA kaydına eklenen fotoğraf. Başlık silinince cascade.
+///
+/// `dosyaYolu` = servis URL'i (`/api/files/uploads/kalite/rma/<YYYY>/<MM>/<ad>`);
+/// diskteki karşılığı `public/uploads/...` (bkz. lib/quality/rma-foto-dosya.ts).
+/// `yukleyenId` User'a FK DEĞİL — RmaKayit.olusturanId/guncelleyenId ile aynı audit deseni.
+model RmaFoto {
+  id         String   @id @default(cuid())
+  rmaKayitId String
+  rmaKayit   RmaKayit @relation(fields: [rmaKayitId], references: [id], onDelete: Cascade)
+  dosyaYolu  String
+  dosyaAdi   String
+  mimeType   String
+  yukleyenId String?
+  createdAt  DateTime @default(now())
 
   @@index([rmaKayitId])
 }

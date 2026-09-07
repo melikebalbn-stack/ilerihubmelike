@@ -1,23 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { canManageRma } from '@/lib/quality/rma-access'
+import { canManageRma, benimPersonnelId } from '@/lib/quality/rma-access'
 import { rmaKayitInput } from '@/lib/quality/rma-validators'
 import { generateNextRmaNo } from '@/lib/quality/rma-no'
 import { buildRmaWhere } from '@/lib/quality/rma-query'
+import { sorumluAtamaBildirimiGonder } from '@/lib/quality/rma-bildirim'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/quality/rma — liste. Auth: oturum (herkes okur).
- * Filtre: tip, musteriId, durum(acik|kapali), from/to (irsaliyeTarihi), q (no|urunKodu|müşteri adı). Sayfalama.
+ * Filtre: tip, musteriId, durum(acik|kapali), from/to (irsaliyeTarihi),
+ * q (no|urunKodu|müşteri adı), sadeceBana (sorumlusu oturum sahibi). Sayfalama.
  */
 export async function GET(request: NextRequest) {
-  const { error } = await requireSession()
+  const { userId, error } = await requireSession()
   if (error) return error
 
   const sp = request.nextUrl.searchParams
-  const where = buildRmaWhere(sp)
+  // personnelId YALNIZ "bana atananlar" filtresi açıkken çözülür (her listede fazladan sorgu olmasın).
+  const personnelId = sp.get('sadeceBana') === '1' ? await benimPersonnelId(userId) : null
+  const where = buildRmaWhere(sp, personnelId)
 
   const page = Math.max(1, Number.parseInt(sp.get('page') ?? '1', 10) || 1)
   const pageSize = Math.min(100, Math.max(1, Number.parseInt(sp.get('pageSize') ?? '20', 10) || 20))
@@ -38,9 +42,9 @@ export async function GET(request: NextRequest) {
     }),
   ])
 
+  // `durum` artık kolon — türetme YOK (bkz. 20260907120100_rma_durum).
   const items = rows.map((r) => ({
     ...r,
-    durum: r.kapanisTarihi ? 'KAPALI' : 'ACIK',
     satirSayisi: r._count.satirlar,
     toplamMiktar: r.satirlar.reduce((s, x) => s + x.iadeMiktari, 0),
     sorumluAd: r.sorumlu?.adSoyad ?? null,
@@ -94,6 +98,7 @@ export async function POST(request: NextRequest) {
         sorumluId: d.sorumluId ?? null,
         termin: d.termin ?? null,
         kapanisTarihi: d.kapanisTarihi ?? null,
+        durum: d.durum,
         maliyet: d.maliyet ?? null,
         olusturanId: userId,
         guncelleyenId: userId,
@@ -117,6 +122,20 @@ export async function POST(request: NextRequest) {
       include: { satirlar: { orderBy: { siraNo: 'asc' } }, musteri: { select: { name: true, code: true } } },
     })
   })
+
+  // Sorumlu ATANARAK oluşturulduysa haber ver (fire-and-forget; kaydı etkilemez).
+  if (created.sorumluId) {
+    void sorumluAtamaBildirimiGonder(
+      {
+        id: created.id,
+        no: created.no,
+        tip: created.tip,
+        musteriAdi: created.musteri?.name ?? null,
+        termin: created.termin,
+      },
+      created.sorumluId,
+    )
+  }
 
   return NextResponse.json(created, { status: 201 })
 }

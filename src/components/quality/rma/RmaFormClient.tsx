@@ -14,11 +14,18 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { MusteriSecici, type MusteriOption } from './MusteriSecici'
-import { RMA_TIP_OPTIONS, RMA_IADE_TURU_OPTIONS, RMA_KARAR_OPTIONS, RMA_KARAR_LABELS } from '@/lib/quality/rma-labels'
+import { RmaFotoPanel, type RmaFotoOzet } from './RmaFotoPanel'
+import {
+  RMA_TIP_OPTIONS, RMA_IADE_TURU_OPTIONS, RMA_KARAR_OPTIONS, RMA_KARAR_LABELS, RMA_DURUM_OPTIONS,
+} from '@/lib/quality/rma-labels'
+// TYPE-ONLY: rma-access sunucu tarafı (prisma) çeker; `import type` derlemede silinir.
+import type { RmaMod } from '@/lib/quality/rma-access'
 
 // ── Tipler ──
 interface SatirState {
   key: string
+  /** DB satır id'si — sorumlu kipinde PATCH hedefi. Yeni (kaydedilmemiş) satırda null. */
+  id: string | null
   urunKodu: string
   lotNo: string
   iadeMiktari: string
@@ -45,24 +52,33 @@ export interface RmaDetay {
   sorumlu?: { adSoyad: string; sicilNo: string | null } | null
   termin: string | null
   kapanisTarihi: string | null
+  durum: string
   maliyet: string | number | null
   satirlar: Array<{
+    id: string
     siraNo: number; urunKodu: string; lotNo: string | null; iadeMiktari: number
     musteriIadeSebebi: string; ilkIncelemeSonucu: string | null; karar: string | null
     kararAciklama: string | null; hurdaAdedi: number | null; reworkAdedi: number | null
     kokNeden: string | null; aksiyon: string | null
   }>
+  fotolar: RmaFotoOzet[]
 }
 
 interface Props {
   initial: RmaDetay | null // null = yeni
-  canManage: boolean
+  /**
+   * Yazma kipi (sunucuda rmaMod ile hesaplanır — lib/quality/rma-access.ts):
+   *   full    → tüm alanlar
+   *   sorumlu → YALNIZ kök neden + aksiyon (kayda sorumlu atanmış kişi, kayıt AÇIK)
+   *   ro      → salt okunur
+   */
+  mod: RmaMod
 }
 
 const isoToDateInput = (v: string | null): string => (v ? v.slice(0, 10) : '')
 let keySeq = 0
 const yeniSatir = (): SatirState => ({
-  key: `s${keySeq++}`, urunKodu: '', lotNo: '', iadeMiktari: '', musteriIadeSebebi: '',
+  key: `s${keySeq++}`, id: null, urunKodu: '', lotNo: '', iadeMiktari: '', musteriIadeSebebi: '',
   ilkIncelemeSonucu: '', karar: '', kararAciklama: '', hurdaAdedi: '', reworkAdedi: '', kokNeden: '', aksiyon: '',
 })
 
@@ -78,9 +94,12 @@ const KARAR_BADGE: Record<string, string> = {
 }
 const KARAR_LABELS = RMA_KARAR_LABELS as Record<string, string>
 
-export function RmaFormClient({ initial, canManage }: Props) {
+export function RmaFormClient({ initial, mod }: Props) {
   const router = useRouter()
-  const ro = !canManage // read-only
+  const ro = mod === 'ro' // hiçbir alan yazılamaz
+  // Başlık ve tüm satır alanları YALNIZ full kipinde açık; sorumlu kipinde
+  // yalnız kök neden + aksiyon yazılabilir (disabled={ro} olan iki alan).
+  const duzenlenebilir = mod === 'full'
 
   const [tip, setTip] = useState(initial?.tip ?? 'RMA')
   const [urunGelisTarihi, setUgt] = useState(isoToDateInput(initial?.urunGelisTarihi ?? null))
@@ -96,12 +115,14 @@ export function RmaFormClient({ initial, canManage }: Props) {
   )
   const [termin, setTermin] = useState(isoToDateInput(initial?.termin ?? null))
   const [kapanisTarihi, setKt] = useState(isoToDateInput(initial?.kapanisTarihi ?? null))
+  // Durum ELLE seçilir; kapanisTarihi'nden TÜRETİLMEZ (eski davranış kaldırıldı).
+  const [durum, setDurum] = useState(initial?.durum ?? 'ACIK')
   const [maliyet, setMaliyet] = useState(initial?.maliyet != null ? String(initial.maliyet) : '')
 
   const [satirlar, setSatirlar] = useState<SatirState[]>(
     initial && initial.satirlar.length
       ? initial.satirlar.map((s) => ({
-          key: `s${keySeq++}`, urunKodu: s.urunKodu, lotNo: s.lotNo ?? '',
+          key: `s${keySeq++}`, id: s.id, urunKodu: s.urunKodu, lotNo: s.lotNo ?? '',
           iadeMiktari: String(s.iadeMiktari), musteriIadeSebebi: s.musteriIadeSebebi,
           ilkIncelemeSonucu: s.ilkIncelemeSonucu ?? '', karar: s.karar ?? '',
           kararAciklama: s.kararAciklama ?? '', hurdaAdedi: s.hurdaAdedi != null ? String(s.hurdaAdedi) : '',
@@ -132,7 +153,7 @@ export function RmaFormClient({ initial, canManage }: Props) {
   // satır key'leri mount'ta stabildir (alan düzenlemesi key'i değiştirmez); doğrudan dahil.
   const snapshot = JSON.stringify({
     tip, urunGelisTarihi, irsaliyeTarihi, irsaliyeNo, musteriId: musteri?.id ?? null, iadeTuru,
-    sorumluId: sorumlu?.id ?? null, termin, kapanisTarihi, maliyet, satirlar,
+    sorumluId: sorumlu?.id ?? null, termin, kapanisTarihi, durum, maliyet, satirlar,
   })
   const ilkSnapshot = useRef<string | null>(null)
   if (ilkSnapshot.current === null) ilkSnapshot.current = snapshot
@@ -147,7 +168,7 @@ export function RmaFormClient({ initial, canManage }: Props) {
     return () => window.removeEventListener('beforeunload', handler)
   }, [dirty])
 
-  const kapali = kapanisTarihi !== ''
+  const kapali = durum === 'KAPALI'
 
   function updSatir(i: number, patch: Partial<SatirState>) {
     setSatirlar((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)))
@@ -202,7 +223,46 @@ export function RmaFormClient({ initial, canManage }: Props) {
     setOpenKeys((prev) => { const n = new Set(prev); n.delete(key); return n })
   }
 
+  /**
+   * Sorumlu kipi kaydı — YALNIZ kök neden + aksiyon.
+   * Başlık doğrulamaları (müşteri/iade türü/satır zorunluları) ÇALIŞMAZ; o alanlar
+   * gönderilmiyor ve API şeması (.strict()) fazlasını reddediyor.
+   */
+  async function sorumluKaydet() {
+    if (!initial) return
+    if (satirlar.some((s) => !s.id)) {
+      toast.error('Satır kimliği çözülemedi — sayfayı yenileyip tekrar deneyin')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/quality/rma/${initial.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          satirlar: satirlar.map((s) => ({
+            id: s.id,
+            kokNeden: s.kokNeden.trim() || null,
+            aksiyon: s.aksiyon.trim() || null,
+          })),
+        }),
+      })
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}))
+        throw new Error(e?.error ?? `Kaydedilemedi (HTTP ${res.status})`)
+      }
+      toast.success('Kök neden ve aksiyon güncellendi')
+      router.refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hata')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function kaydet() {
+    if (mod === 'sorumlu') return sorumluKaydet()
+
     // Hatalı satırları otomatik aç + hata göstergesini etkinleştir (kaydet mantığı değişmez).
     setTriedSave(true)
     const hataliKeys = satirlar.filter(satirGecersizMi).map((s) => s.key)
@@ -229,6 +289,7 @@ export function RmaFormClient({ initial, canManage }: Props) {
       sorumluId: sorumlu?.id ?? null,
       termin: termin || null,
       kapanisTarihi: kapanisTarihi || null,
+      durum,
       maliyet: maliyet.trim() ? Number(maliyet) : null,
       satirlar: satirlar.map((s, i) => ({
         siraNo: i + 1,
@@ -283,13 +344,18 @@ export function RmaFormClient({ initial, canManage }: Props) {
           {initial && !kapali && <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-xs font-semibold">AÇIK</span>}
         </div>
         {ro && <span className="text-xs text-slate-500">Salt-okunur (düzenleme yetkiniz yok)</span>}
+        {mod === 'sorumlu' && (
+          <span className="text-xs text-amber-700 text-right">
+            Bu kaydın sorumlusu olarak yalnız <strong>Kök Neden</strong> ve <strong>Aksiyon</strong> alanlarını düzenleyebilirsiniz
+          </span>
+        )}
       </div>
 
       {/* Üst blok */}
       <div className="rounded-md border bg-white p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <Label className="text-xs text-slate-600">Tip</Label>
-          <Select value={tip} onValueChange={setTip} disabled={ro}>
+          <Select value={tip} onValueChange={setTip} disabled={!duzenlenebilir}>
             <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
             <SelectContent>{RMA_TIP_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
           </Select>
@@ -300,32 +366,39 @@ export function RmaFormClient({ initial, canManage }: Props) {
         </div>
         <div>
           <Label className="text-xs text-slate-600">İade Türü</Label>
-          <Select value={iadeTuru || undefined} onValueChange={setIadeTuru} disabled={ro}>
+          <Select value={iadeTuru || undefined} onValueChange={setIadeTuru} disabled={!duzenlenebilir}>
             <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="—" /></SelectTrigger>
             <SelectContent>{RMA_IADE_TURU_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div className="md:col-span-2">
           <Label className="text-xs text-slate-600">Müşteri *</Label>
-          <div className="mt-1"><MusteriSecici value={musteri} onChange={setMusteri} disabled={ro} /></div>
+          <div className="mt-1"><MusteriSecici value={musteri} onChange={setMusteri} disabled={!duzenlenebilir} /></div>
         </div>
         <div>
           <Label className="text-xs text-slate-600">Sorumlu</Label>
-          <div className="mt-1"><MusteriSecici value={sorumlu} onChange={setSorumlu} disabled={ro} searchUrl="/api/quality/rma/sorumlu-ara" placeholder="Personel ara…" /></div>
+          <div className="mt-1"><MusteriSecici value={sorumlu} onChange={setSorumlu} disabled={!duzenlenebilir} searchUrl="/api/quality/rma/sorumlu-ara" placeholder="Personel ara…" /></div>
         </div>
-        <div><Label className="text-xs text-slate-600">Ürün Geliş Tarihi</Label><Input type="date" value={urunGelisTarihi} onChange={(e) => setUgt(e.target.value)} disabled={ro} className={`mt-1 ${inputCls}`} /></div>
-        <div><Label className="text-xs text-slate-600">İrsaliye Tarihi</Label><Input type="date" value={irsaliyeTarihi} onChange={(e) => setIt(e.target.value)} disabled={ro} className={`mt-1 ${inputCls}`} /></div>
-        <div><Label className="text-xs text-slate-600">İrsaliye No</Label><Input value={irsaliyeNo} onChange={(e) => setIno(e.target.value)} disabled={ro} className={`mt-1 ${inputCls}`} /></div>
-        <div><Label className="text-xs text-slate-600">Termin</Label><Input type="date" value={termin} onChange={(e) => setTermin(e.target.value)} disabled={ro} className={`mt-1 ${inputCls}`} /></div>
-        <div><Label className="text-xs text-slate-600">Kapanış Tarihi</Label><Input type="date" value={kapanisTarihi} onChange={(e) => setKt(e.target.value)} disabled={ro} className={`mt-1 ${inputCls}`} /></div>
-        <div><Label className="text-xs text-slate-600">Maliyet</Label><Input type="number" step="0.01" min="0" value={maliyet} onChange={(e) => setMaliyet(e.target.value)} disabled={ro} className={`mt-1 ${inputCls}`} /></div>
+        <div><Label className="text-xs text-slate-600">Ürün Geliş Tarihi</Label><Input type="date" value={urunGelisTarihi} onChange={(e) => setUgt(e.target.value)} disabled={!duzenlenebilir} className={`mt-1 ${inputCls}`} /></div>
+        <div><Label className="text-xs text-slate-600">İrsaliye Tarihi</Label><Input type="date" value={irsaliyeTarihi} onChange={(e) => setIt(e.target.value)} disabled={!duzenlenebilir} className={`mt-1 ${inputCls}`} /></div>
+        <div><Label className="text-xs text-slate-600">İrsaliye No</Label><Input value={irsaliyeNo} onChange={(e) => setIno(e.target.value)} disabled={!duzenlenebilir} className={`mt-1 ${inputCls}`} /></div>
+        <div><Label className="text-xs text-slate-600">Termin</Label><Input type="date" value={termin} onChange={(e) => setTermin(e.target.value)} disabled={!duzenlenebilir} className={`mt-1 ${inputCls}`} /></div>
+        <div><Label className="text-xs text-slate-600">Kapanış Tarihi</Label><Input type="date" value={kapanisTarihi} onChange={(e) => setKt(e.target.value)} disabled={!duzenlenebilir} className={`mt-1 ${inputCls}`} /></div>
+        <div>
+          <Label className="text-xs text-slate-600">Durum</Label>
+          <Select value={durum} onValueChange={setDurum} disabled={!duzenlenebilir}>
+            <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>{RMA_DURUM_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div><Label className="text-xs text-slate-600">Maliyet</Label><Input type="number" step="0.01" min="0" value={maliyet} onChange={(e) => setMaliyet(e.target.value)} disabled={!duzenlenebilir} className={`mt-1 ${inputCls}`} /></div>
       </div>
 
       {/* Ürün satırları — kart listesi */}
       <div className="rounded-md border bg-white p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-semibold text-slate-700">Ürün Satırları ({satirlar.length})</h2>
-          {!ro && (
+          {duzenlenebilir && (
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={sonSatiriKopyala} disabled={satirlar.length === 0}>
                 <Copy className="h-4 w-4 mr-1" />Son satırı kopyala
@@ -383,21 +456,27 @@ export function RmaFormClient({ initial, canManage }: Props) {
                           <Input
                             ref={(el) => { if (el) inputRefs.current.set(s.key, el); else inputRefs.current.delete(s.key) }}
                             value={s.urunKodu} onChange={(e) => updSatir(i, { urunKodu: e.target.value })}
-                            disabled={ro} className="mt-1 h-9 font-mono"
+                            disabled={!duzenlenebilir} className="mt-1 h-9 font-mono"
                           />
                         </div>
                         <div>
                           <Label className={kartLabel}>Lot No</Label>
-                          <Input value={s.lotNo} onChange={(e) => updSatir(i, { lotNo: e.target.value })} disabled={ro} className="mt-1 h-9" />
+                          <Input value={s.lotNo} onChange={(e) => updSatir(i, { lotNo: e.target.value })} disabled={!duzenlenebilir} className="mt-1 h-9" />
                         </div>
                         <div>
                           <Label className={kartLabel}>İade Miktarı *</Label>
-                          <Input type="number" min="1" value={s.iadeMiktari} onChange={(e) => updSatir(i, { iadeMiktari: e.target.value })} disabled={ro} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
+                          <Input type="number" min="1" value={s.iadeMiktari} onChange={(e) => updSatir(i, { iadeMiktari: e.target.value })} disabled={!duzenlenebilir} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
                         </div>
                       </div>
                       <div>
                         <Label className={kartLabel}>Müşteri İade Sebebi *</Label>
-                        <Textarea value={s.musteriIadeSebebi} onChange={(e) => updSatir(i, { musteriIadeSebebi: e.target.value })} disabled={ro} rows={2} className="mt-1" />
+                        <Textarea value={s.musteriIadeSebebi} onChange={(e) => updSatir(i, { musteriIadeSebebi: e.target.value })} disabled={!duzenlenebilir} rows={2} className="mt-1" />
+                      </div>
+                      {/* Kalite talebi: İlk İnceleme Sonucu, Müşteri İade Sebebi'nin HEMEN ALTINDA
+                          (eskiden "İnceleme sonucu" bölümündeydi). */}
+                      <div>
+                        <Label className={kartLabel}>İlk İnceleme Sonucu</Label>
+                        <Textarea value={s.ilkIncelemeSonucu} onChange={(e) => updSatir(i, { ilkIncelemeSonucu: e.target.value })} disabled={!duzenlenebilir} rows={2} className="mt-1" />
                       </div>
                     </div>
 
@@ -407,7 +486,7 @@ export function RmaFormClient({ initial, canManage }: Props) {
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
                           <Label className={kartLabel}>Karar</Label>
-                          <Select value={s.karar || 'none'} onValueChange={(v) => updSatir(i, { karar: v === 'none' ? '' : v })} disabled={ro}>
+                          <Select value={s.karar || 'none'} onValueChange={(v) => updSatir(i, { karar: v === 'none' ? '' : v })} disabled={!duzenlenebilir}>
                             <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">—</SelectItem>
@@ -417,21 +496,17 @@ export function RmaFormClient({ initial, canManage }: Props) {
                         </div>
                         <div>
                           <Label className={kartLabel}>Hurda Adedi</Label>
-                          <Input type="number" min="0" value={s.hurdaAdedi} onChange={(e) => updSatir(i, { hurdaAdedi: e.target.value })} disabled={ro} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
+                          <Input type="number" min="0" value={s.hurdaAdedi} onChange={(e) => updSatir(i, { hurdaAdedi: e.target.value })} disabled={!duzenlenebilir} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
                         </div>
                         <div>
                           <Label className={kartLabel}>Rework Adedi</Label>
-                          <Input type="number" min="0" value={s.reworkAdedi} onChange={(e) => updSatir(i, { reworkAdedi: e.target.value })} disabled={ro} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
+                          <Input type="number" min="0" value={s.reworkAdedi} onChange={(e) => updSatir(i, { reworkAdedi: e.target.value })} disabled={!duzenlenebilir} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
                         </div>
                       </div>
                       {he && <p className="text-xs text-red-600">{he} — kaydetmeden düzeltin.</p>}
                       <div>
                         <Label className={kartLabel}>Karar Açıklaması</Label>
-                        <Textarea value={s.kararAciklama} onChange={(e) => updSatir(i, { kararAciklama: e.target.value })} disabled={ro} rows={2} className="mt-1" />
-                      </div>
-                      <div>
-                        <Label className={kartLabel}>İlk İnceleme Sonucu</Label>
-                        <Textarea value={s.ilkIncelemeSonucu} onChange={(e) => updSatir(i, { ilkIncelemeSonucu: e.target.value })} disabled={ro} rows={2} className="mt-1" />
+                        <Textarea value={s.kararAciklama} onChange={(e) => updSatir(i, { kararAciklama: e.target.value })} disabled={!duzenlenebilir} rows={2} className="mt-1" />
                       </div>
                       <div>
                         <Label className={kartLabel}>Kök Neden</Label>
@@ -445,7 +520,7 @@ export function RmaFormClient({ initial, canManage }: Props) {
 
                     {/* Alt: sil (sol) · kapat (sağ) */}
                     <div className="flex items-center justify-between border-t border-slate-200 pt-3">
-                      {!ro ? (
+                      {duzenlenebilir ? (
                         <Button
                           type="button" variant="ghost" size="sm" onClick={() => satirSil(i)}
                           disabled={satirlar.length <= 1}
@@ -463,6 +538,14 @@ export function RmaFormClient({ initial, canManage }: Props) {
           })}
         </div>
       </div>
+
+      {initial ? (
+        <RmaFotoPanel rmaKayitId={initial.id} initial={initial.fotolar} canManage={duzenlenebilir} />
+      ) : (
+        <div className="rounded-md border bg-white p-4 text-sm text-slate-500">
+          Fotoğraf eklemek için önce kaydedin.
+        </div>
+      )}
 
       {!ro && (
         <div className="flex justify-end gap-2">

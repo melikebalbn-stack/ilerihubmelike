@@ -3,7 +3,7 @@
  * `no` OTOMATİK üretilir → istekte KABUL EDİLMEZ (şemada yok).
  */
 import { z } from 'zod'
-import { RmaTip, RmaIadeTuru, RmaKarar } from '@/generated/prisma'
+import { RmaTip, RmaIadeTuru, RmaKarar, RmaDurum } from '@/generated/prisma'
 
 const bosStr = z
   .string()
@@ -49,6 +49,9 @@ export const rmaKayitInput = z
     sorumluId: z.string().min(1).optional().nullable(),
     termin: z.coerce.date().optional().nullable(),
     kapanisTarihi: z.coerce.date().optional().nullable(),
+    // Durum ELLE seçilir; kapanisTarihi'nden türetilmez. Eski istemciler alanı
+    // göndermezse ACIK varsayılır (DB default'u ile aynı).
+    durum: z.nativeEnum(RmaDurum).default(RmaDurum.ACIK),
     maliyet: z.number().nonnegative().optional().nullable(),
     satirlar: z.array(rmaSatirInput).min(1, 'En az bir ürün satırı zorunlu'),
   })
@@ -79,3 +82,26 @@ export const rmaKayitInput = z
   })
 
 export type RmaKayitInput = z.infer<typeof rmaKayitInput>
+
+/**
+ * Sorumlu kolu PATCH şeması — kayda sorumlu atanmış, rma.manage'ı OLMAYAN kişi.
+ * YALNIZ satır bazında kokNeden + aksiyon. `.strict()`: başlık alanı ya da başka
+ * satır alanı gönderilirse istek 400 döner (sessizce yutulmaz).
+ */
+export const rmaSorumluPatchInput = z
+  .object({
+    satirlar: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1, 'Satır id zorunlu'),
+            kokNeden: bosStr,
+            aksiyon: bosStr,
+          })
+          .strict(),
+      )
+      .min(1, 'En az bir satır gerekli'),
+  })
+  .strict()
+
+export type RmaSorumluPatchInput = z.infer<typeof rmaSorumluPatchInput>

@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { benimPersonnelId } from '@/lib/quality/rma-access'
 import { buildRmaWhere } from '@/lib/quality/rma-query'
 import {
   RMA_TIP_LABELS,
   RMA_IADE_TURU_LABELS,
   RMA_KARAR_LABELS,
+  RMA_DURUM_LABELS,
 } from '@/lib/quality/rma-labels'
 import { EXPORT_HEADERS, formatDateTR } from '@/lib/quality/rma-excel'
 
@@ -18,10 +20,13 @@ export const dynamic = 'force-dynamic'
  * Kayıt bilgileri her satırda tekrar eder (Excel orijinal düzeni). Enum'lar Türkçe etiket.
  */
 export async function GET(request: NextRequest) {
-  const { error } = await requireSession()
+  const { userId, error } = await requireSession()
   if (error) return error
 
-  const where = buildRmaWhere(request.nextUrl.searchParams)
+  // Liste ucuyla AYNI filtre — "bana atananlar" da export'a yansır.
+  const sp = request.nextUrl.searchParams
+  const personnelId = sp.get('sadeceBana') === '1' ? await benimPersonnelId(userId) : null
+  const where = buildRmaWhere(sp, personnelId)
 
   const kayitlar = await prisma.rmaKayit.findMany({
     where,
@@ -37,7 +42,7 @@ export async function GET(request: NextRequest) {
   const rows: (string | number)[][] = [ [...EXPORT_HEADERS] ]
 
   for (const k of kayitlar) {
-    const durum = k.kapanisTarihi ? 'Kapalı' : 'Açık'
+    const durum = RMA_DURUM_LABELS[k.durum]
     const kayitAlanlari = [
       RMA_TIP_LABELS[k.tip],
       k.no,

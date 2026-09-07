@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Download, Loader2, Search, Upload, X } from 'lucide-react'
+import { Download, Loader2, Search, Upload, UserCheck, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,9 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [q, setQ] = useState('')
+  // "Bana atananlar": sorumluId = oturumun personnelId'si. Eşleştirme SUNUCUDA
+  // yapılır (session'da personnelId yok); personel bağlantısı yoksa sonuç boş döner.
+  const [sadeceBana, setSadeceBana] = useState(false)
   const [page, setPage] = useState(1)
 
   // Liste ucu + Excel export AYNI filtre string'ini kullansın (ıraksamasın).
@@ -60,8 +63,9 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
       p.set('to', e.toISOString())
     }
     if (q.trim()) p.set('q', q.trim())
+    if (sadeceBana) p.set('sadeceBana', '1')
     return p
-  }, [tip, musteri, durum, from, to, q])
+  }, [tip, musteri, durum, from, to, q, sadeceBana])
 
   const fetchList = useCallback(async () => {
     setLoading(true)
@@ -95,7 +99,7 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const hasFilters =
-    tip !== 'all' || musteri !== null || durum !== 'all' || from !== '' || to !== '' || q.trim() !== ''
+    tip !== 'all' || musteri !== null || durum !== 'all' || from !== '' || to !== '' || q.trim() !== '' || sadeceBana
 
   function reset<T>(setter: (v: T) => void) {
     return (v: T) => {
@@ -110,13 +114,25 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
     setFrom('')
     setTo('')
     setQ('')
+    setSadeceBana(false)
     setPage(1)
   }
 
   return (
     <div className="space-y-4">
-      {/* Araç çubuğu — Excel aktar/yükle */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      {/* Araç çubuğu — bana atananlar · Excel aktar/yükle */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button
+          variant={sadeceBana ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => { setSadeceBana((v) => !v); setPage(1) }}
+          aria-pressed={sadeceBana}
+          className={sadeceBana ? 'bg-[#1B4F72] hover:bg-[#1B4F72]/90 shrink-0' : 'shrink-0'}
+        >
+          <UserCheck className="h-4 w-4 mr-1 shrink-0" />
+          Bana atananlar
+        </Button>
+        <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={handleExport} className="shrink-0">
           <Download className="h-4 w-4 mr-1 shrink-0" />
           Excel&apos;e Aktar
@@ -132,6 +148,7 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
             Excel&apos;den Yükle
           </Button>
         )}
+        </div>
       </div>
 
       {canManage && (

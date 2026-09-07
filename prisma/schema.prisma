@@ -2408,6 +2408,17 @@ model Ticket {
   requesterDept  String?
   requesterPhone String?
 
+  // KAYDEDEN — talebi BAŞKASI ADINA açan kişi (IT ekibi telefon/yüz yüze gelen
+  // işi kaydettiğinde). requesterEmail talep SAHİBİdir: bildirim ona gider,
+  // puanlamayı o yapar. Kaydeden ayrıca görünsün diye burada.
+  //
+  // NULL = kişi kendi adına açtı (bugünkü davranış, mevcut 27 kayıt böyle).
+  // FK değil e-posta+ad ikilisi: modülde kişi her yerde böyle tutuluyor
+  // (assignedTo, resolvedByEmail) ve kaydeden sistemden çıksa bile kayıt
+  // okunur kalmalı.
+  createdByEmail String?
+  createdByName  String?
+
   // İlgili Lokasyon/Ekipman
   location  String? // Lokasyon bilgisi
   assetInfo String? // İlgili varlık bilgisi (bilgisayar adı vb.)

@@ -52,6 +52,16 @@ type IsSatiri = {
   ifsMachRunFactor: number | null
   ifsLaborRunFactor: number | null
   ifsRunTimeCode: string | null
+  // Kapanan işlerde route'un bağladığı OEE kaydı (1:1). aktifIs'te bulunmaz; motor
+  // tetiklenmemiş eski kayıtlarda null. hesapKaynagi: TAM|PERF_IFS|PERF_YOK|PLANLI_YOK|CAKISMA_VAR.
+  oee?: OeeKaydiOzet | null
+}
+type OeeKaydiOzet = {
+  oee: number | null
+  availability: number | null
+  performance: number | null
+  quality: number | null
+  hesapKaynagi: string
 }
 type DurusSatiri = {
   id: string
@@ -566,6 +576,7 @@ export function TezgahDetayModal({
                         <th className="px-2 py-1.5 text-left">Malzeme</th>
                         <th className="px-2 py-1.5 text-right">İyi</th>
                         <th className="px-2 py-1.5 text-right">Hurda</th>
+                        <th className="px-2 py-1.5 text-center">OEE</th>
                         <th className="px-2 py-1.5 text-right">Bitiş</th>
                       </tr>
                     </thead>
@@ -576,11 +587,15 @@ export function TezgahDetayModal({
                             {s.ifsOrderNo ?? '—'}
                             <span className="text-slate-400">/{s.ifsOperationNo ?? '—'}</span>
                           </td>
-                          <td className="max-w-[140px] truncate px-2 py-1.5" title={s.ifsPartNo ?? undefined}>
+                          {/* Malzeme daraltıldı (OEE sütununa yer açmak için); tam ad title'da */}
+                          <td className="max-w-[96px] truncate px-2 py-1.5" title={s.ifsPartDescription ?? s.ifsPartNo ?? undefined}>
                             {s.ifsPartDescription ?? s.ifsPartNo ?? '—'}
                           </td>
                           <td className="px-2 py-1.5 text-right font-medium text-emerald-600">{s.qtyComplete}</td>
                           <td className="px-2 py-1.5 text-right text-red-600">{s.qtyScrap}</td>
+                          <td className="px-2 py-1.5 text-center">
+                            <KapananOee oee={s.oee} />
+                          </td>
                           <td className="px-2 py-1.5 text-right text-slate-500">
                             {s.bitirildiAt ? new Date(s.bitirildiAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'}
                           </td>
@@ -692,6 +707,58 @@ function oeeSeviye(pct: number | null, esik: { hedef: number; sinir: number }) {
   if (pct >= esik.hedef) return { kutu: 'border-emerald-200 bg-emerald-50', metin: 'text-emerald-700', Ikon: CircleCheck }
   if (pct >= esik.sinir) return { kutu: 'border-amber-200 bg-amber-50', metin: 'text-amber-700', Ikon: AlertTriangle }
   return { kutu: 'border-red-200 bg-red-50', metin: 'text-red-700', Ikon: TrendingDown }
+}
+
+/** trYuzde: oran (0..1) → "%58" tam sayı; null → null. */
+function oranPct(oran: number | null): number | null {
+  return oran != null ? Math.round(oran * 100) : null
+}
+
+// Kapanan iş tablosu OEE hücresi — motordan yazılan kayıt (ipro_oee_kaydi). Renk OEE_ESIK.OEE
+// ile (canlı göstergelerle AYNI eşik). Değer varsa renkli %; OEE null ise "—" + hesapKaynagi
+// sebebi. Hover başlığında üç bileşen (Kull/Perf/Kalite) + PERF_IFS notu (yeni modal AÇMAZ).
+function KapananOee({ oee }: { oee?: OeeKaydiOzet | null }) {
+  if (!oee) return <span className="text-slate-300" title="hesaplanmadı">—</span>
+
+  const kull = oranPct(oee.availability)
+  const perf = oranPct(oee.performance)
+  const kal = oranPct(oee.quality)
+  const g = (v: number | null) => (v != null ? `%${v}` : '—')
+  const bilesen = `Kull. ${g(kull)} · Perf. ${g(perf)} · Kalite ${g(kal)}`
+  const ifsNot = oee.hesapKaynagi === 'PERF_IFS' ? ' · performans IFS planından türedi' : ''
+
+  const oeePct = oranPct(oee.oee)
+  if (oeePct == null) {
+    // OEE hesaplanamadı → sebep hesapKaynagi'ndan; bileşenler yine hover'da.
+    const sebep =
+      oee.hesapKaynagi === 'PERF_YOK'
+        ? 'performans hesaplanamadı'
+        : oee.hesapKaynagi === 'PLANLI_YOK'
+          ? 'planlı süre yok'
+          : oee.hesapKaynagi === 'CAKISMA_VAR'
+            ? 'çakışan iş'
+            : 'hesaplanmadı'
+    return (
+      <span className="text-slate-400" title={`${sebep} · ${bilesen}${ifsNot}`}>
+        —
+      </span>
+    )
+  }
+
+  const s = oeeSeviye(oeePct, OEE_ESIK.OEE)
+  return (
+    <span
+      title={`${bilesen}${ifsNot}`}
+      className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 font-medium ${s.kutu} ${s.metin}`}
+    >
+      %{oeePct}
+      {oee.hesapKaynagi === 'PERF_IFS' && (
+        <span className="text-amber-500" title="performans IFS planından türedi">
+          *
+        </span>
+      )}
+    </span>
+  )
 }
 
 // Canlı OEE göstergesi — oran (0..1) → %tam sayı, renk-kodlu (eşiğe göre ikon+zemin).

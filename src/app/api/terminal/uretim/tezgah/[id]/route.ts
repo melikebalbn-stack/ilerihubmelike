@@ -114,7 +114,61 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       }
     }
 
-    return NextResponse.json({ ok: true, ...detay, canliUretim, canliOee })
+    // BUGÜN KAPANAN işlere OEE kaydını bağla — TEK toplu sorgu (iş başına ayrı sorgu YASAK).
+    // bugunKapanan izleme-service'ten geliyor (o dosyaya DOKUNMADAN); her satırın id'si =
+    // IproProductionLog.id = ipro_oee_kaydi.productionLogId (1:1). OEE kaydı yoksa (motor
+    // tetiklenmemiş eski kayıt) null bağlanır. Yanıtta bugunKapanan zenginleştirilmiş sürümle
+    // OVERRIDE edilir (spread'den sonra geldiği için kazanır).
+    let bugunKapananOee = detay.bugunKapanan as Array<
+      (typeof detay.bugunKapanan)[number] & {
+        oee: {
+          oee: number | null
+          availability: number | null
+          performance: number | null
+          quality: number | null
+          hesapKaynagi: string
+        } | null
+      }
+    >
+    try {
+      const kapananIds = detay.bugunKapanan.map((k) => k.id)
+      if (kapananIds.length > 0) {
+        const kayitlar = await prisma.iproOeeKaydi.findMany({
+          where: { productionLogId: { in: kapananIds } },
+          select: {
+            productionLogId: true,
+            oee: true,
+            availability: true,
+            performance: true,
+            quality: true,
+            hesapKaynagi: true,
+          },
+        })
+        const oeeByLog = new Map(kayitlar.map((k) => [k.productionLogId, k]))
+        bugunKapananOee = detay.bugunKapanan.map((k) => {
+          const o = oeeByLog.get(k.id)
+          return {
+            ...k,
+            oee: o
+              ? {
+                  oee: o.oee,
+                  availability: o.availability,
+                  performance: o.performance,
+                  quality: o.quality,
+                  hesapKaynagi: o.hesapKaynagi,
+                }
+              : null,
+          }
+        })
+      } else {
+        bugunKapananOee = []
+      }
+    } catch {
+      // OEE bağlanamadı → kayıtlar oee:null ile döner (tablo "—" + "hesaplanmadı" gösterir).
+      bugunKapananOee = detay.bugunKapanan.map((k) => ({ ...k, oee: null }))
+    }
+
+    return NextResponse.json({ ok: true, ...detay, bugunKapanan: bugunKapananOee, canliUretim, canliOee })
   } catch (e) {
     return iproHata(e, 'Tezgah detayı alınamadı')
   }

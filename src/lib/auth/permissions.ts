@@ -98,6 +98,12 @@ export const PERMISSION_KEYS = {
   HELPDESK_TICKET_ASSIGN: 'helpdesk.ticket.assign',
   HELPDESK_TICKET_RESOLVE: 'helpdesk.ticket.resolve',
   HELPDESK_ADMIN: 'helpdesk.admin',
+  /**
+   * Talebi KALICI silme. helpdesk.admin'den ve super-admin'den AYRI tutuldu:
+   * silme geri alınamaz, bu yüzden "IT ekibinde olmak" ya da "süper yönetici
+   * olmak" tek başına yetmemeli — izin açıkça verilmiş olmalı.
+   */
+  HELPDESK_TICKET_DELETE: 'helpdesk.ticket.delete',
 
   // === MALİYET ANALİZİ ===
   COSTANALYSIS_VIEW: 'costanalysis.view',
@@ -268,6 +274,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'helpdesk.ticket.create': 'IT talep oluşturma',
   'helpdesk.ticket.view': 'IT talep görüntüleme',
   'helpdesk.ticket.assign': 'Talep atama',
+  'helpdesk.ticket.delete': 'Talebi kalıcı silme (geri alınamaz)',
   'helpdesk.ticket.resolve': 'Talep çözümleme',
   'helpdesk.admin': 'Helpdesk tam yönetim',
 

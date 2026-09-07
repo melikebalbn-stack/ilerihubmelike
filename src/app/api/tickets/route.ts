@@ -216,13 +216,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Kanal: başkası adına kayıtta PHONE (varsayılan) veya WALK_IN.
-    // Kendi adına açılan talep WEB_PORTAL kalır — enum'a MANUEL eklenmedi.
-    const kaynak: 'WEB_PORTAL' | 'PHONE' | 'WALK_IN' = !baskasiAdina
-      ? 'WEB_PORTAL'
-      : kanal === 'WALK_IN'
-      ? 'WALK_IN'
-      : 'PHONE'
+    // KANAL ÇÖZÜMÜ — üç ayrı durum:
+    //   başkası adına  → PHONE (varsayılan) veya WALK_IN
+    //   IT kendi tespiti → INTERNAL (talep eden BOŞ olmalı; proaktif iş)
+    //   diğer            → WEB_PORTAL (kullanıcı kendi açtı, eski davranış)
+    //
+    // INTERNAL yalnız IT ekibine açık: kanal bilgisi KPI'da proaktif/reaktif
+    // ayrımını taşıyor, herkesin işaretleyebilmesi ölçümü bozardı.
+    // "Başkası adına + kendi tespiti" çelişkili bir durum; baskasiAdina
+    // öncelikli, böylece istemci ikisini birden gönderse bile tutarlı kalır.
+    const icTespit = !baskasiAdina && itEkibi && kanal === 'INTERNAL'
+    const kaynak: 'WEB_PORTAL' | 'PHONE' | 'WALK_IN' | 'INTERNAL' = baskasiAdina
+      ? (kanal === 'WALK_IN' ? 'WALK_IN' : 'PHONE')
+      : icTespit
+      ? 'INTERNAL'
+      : 'WEB_PORTAL'
 
     // ── Zimmet (cihaz) bağı ──────────────────────────────────────────────
     // İSTEMCİYE GÜVENİLMEZ: gönderilen id gerçekten oturum sahibinin AKTİF ve

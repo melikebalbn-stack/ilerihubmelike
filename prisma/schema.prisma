@@ -2636,6 +2636,11 @@ enum TicketSource {
   WALK_IN // Yüz yüze
   CHAT // Chat ile
   SYSTEM_AUTO // Otomatik (monitoring vb.)
+  // IT ekibinin KENDİ TESPİTİ — proaktif iş. Diğer değerlerin hepsi
+  // "kullanıcı IT'ye hangi yoldan ulaştı" sorusunu yanıtlıyor; burada talep
+  // dışarıdan gelmedi, kanal yok. SYSTEM_AUTO'dan ayrı: orada makine (monitoring)
+  // üretiyor, burada insan yargısı var.
+  INTERNAL
 }
 
 // Ticket Yorumları

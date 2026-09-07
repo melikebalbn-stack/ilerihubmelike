@@ -275,6 +275,10 @@ model User {
   servisPersonelDurumOlusturanlar     ServisPersonelDurum[]           @relation("ServisPersonelDurumOlusturan")
   servisPersonelDurumGuncelleyenler   ServisPersonelDurum[]           @relation("ServisPersonelDurumGuncelleyen")
   servisIslemYapilanlar               ServisIslemGecmisi[]            @relation("ServisIslemYapan")
+
+  // Avans dönem kilidi (back-relations)
+  avansDonemKapattiklari AvansDonemKapanis[]    @relation("AvansDonemKapatan")
+  avansDonemLoglari      AvansDonemKapanisLog[] @relation("AvansDonemLogKullanici")
 }
 
 model VerificationToken {
@@ -13906,4 +13910,38 @@ model AvansTalebiSatiri {
   avansIstiyorMu Boolean
 
   @@unique([avansTalebiId, calisanId], map: "uq_avans_satiri_talep_calisan")
+}
+
+// Bir (yil, ay) dönemi kapatıldığında bu tabloda TEK bir satır bulunur —
+// @@unique([yil, ay]) tek doğruluk kaynağıdır: "bu dönem kapalı mı?" sorusu
+// tek satırla cevaplanır, geçmişe dönük girilen avans talebi bile otomatik
+// kilitli olur (bkz. src/lib/avans/donem-kilidi.ts). Dönem yeniden açılınca
+// satır SİLİNİR — kim kapattı/kim açtı geçmişi AvansDonemKapanisLog'da durur.
+model AvansDonemKapanis {
+  id            String   @id @default(cuid())
+  yil           Int
+  ay            Int
+  kapatanId     String
+  kapatan       User     @relation("AvansDonemKapatan", fields: [kapatanId], references: [id])
+  kapatmaTarihi DateTime @default(now())
+  aciklama      String?
+
+  @@unique([yil, ay], map: "uq_avans_donem_kapanis")
+  @@index([yil, ay], map: "idx_avans_donem_kapanis")
+}
+
+// Dönem kapatma/açma denetim kaydı — AvansDonemKapanis satırı açılışta
+// silindiği için "kim açtı, ne zaman" bilgisi burada kalıcı tutulur. Her
+// KAPAT ve AC işlemi buraya bir satır düşer (silinmez).
+model AvansDonemKapanisLog {
+  id          String   @id @default(cuid())
+  yil         Int
+  ay          Int
+  islem       String // 'KAPAT' | 'AC'
+  kullaniciId String
+  kullanici   User     @relation("AvansDonemLogKullanici", fields: [kullaniciId], references: [id])
+  tarih       DateTime @default(now())
+  aciklama    String?
+
+  @@index([yil, ay], map: "idx_avans_donem_log")
 }

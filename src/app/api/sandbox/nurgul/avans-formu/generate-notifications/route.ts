@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
+import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 import { isSandboxOwner } from '../_lib/avans-formu-helpers'
 import { dispatchAvansHatirlatma, dispatchAvansKendiHatirlatma } from '@/lib/sandbox/avans-notifications'
 
@@ -135,6 +136,8 @@ async function personelToAlici(s: SorumluAdayi): Promise<Alici> {
  *     kontrolü UYGULANMAZ, 15'i beklemeden istenildiği an test edilebilir.
  * Varsayılan dryRun:true — gerçek gönderim SADECE açık { dryRun: false }
  * body'siyle tetiklenir.
+ * Cari dönem kapatılmışsa (bkz. src/lib/avans/donem-kilidi.ts) hatırlatma hiç
+ * üretilmez — kilit kontrolü en başta yapılır.
  * Ayrıca: bu dönem için zaten AvansTalebi girmiş olan sorumlu/kişiler
  * listeden çıkarılır (tekrar hatırlatma/spam olmasın).
  */
@@ -170,6 +173,10 @@ export async function POST(request: NextRequest) {
   }
 
   const dryRun = (body as PostBody | null)?.dryRun !== false
+
+  // Cari dönem kapalıysa hatırlatma gönderilmez (form zaten kilitli).
+  const kilit = await donemKilidiKontrol(donemYil, donemAy)
+  if (kilit) return kilit
 
   const tumSorumlular = await bulTumSorumlular()
   const sorumluIdSeti = new Set(tumSorumlular.map((s) => s.personnelId))

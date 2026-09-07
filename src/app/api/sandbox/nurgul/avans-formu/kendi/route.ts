@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { canAccessSandbox } from '@/lib/sandbox-config'
 import { prisma } from '@/lib/prisma'
+import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 
 export const dynamic = 'force-dynamic'
 
@@ -99,6 +100,9 @@ export async function POST(request: NextRequest) {
   if (!gecerliBody(body)) {
     return NextResponse.json({ error: 'Geçersiz istek gövdesi' }, { status: 400 })
   }
+
+  const kilit = await donemKilidiKontrol(body.donemYil, body.donemAy)
+  if (kilit) return kilit
 
   const personel = await kendiPersonelKaydi(user.id)
 

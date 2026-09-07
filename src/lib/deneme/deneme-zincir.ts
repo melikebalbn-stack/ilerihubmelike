@@ -45,9 +45,39 @@ export type ZincirSonuc =
       /** Atlanan adımlar (değerlendirici == değerlendirilen) — şeffaflık için. */
       atlananlar: string[];
     }
-  | { ok: false; sebep: string };
+  /** Muaf: rol gereği form AÇILMAZ — hata DEĞİL (bkz. MUAF_POZISYON_KODLARI). */
+  | { ok: false; muaf: true; sebep: string }
+  | { ok: false; muaf?: false; sebep: string };
 
 const GMY_ADI = "Genel Müdür Yardımcısı";
+
+/**
+ * Deneme değerlendirmesinden MUAF pozisyonlar (Melih kararı): Genel Müdür ve
+ * Genel Müdür Yardımcısı. Muafiyet ROLE bağlı, kişiye DEĞİL — koltuk el
+ * değiştirirse yeni kişi kendiliğinden muaf olur, liste güncellemek gerekmez.
+ *
+ * KOD ile eşlenir, AD ile değil: kutu adı değişse de (ör. "Genel Müdür (CEO)")
+ * kod sabit kalır.
+ */
+export const MUAF_POZISYON_KODLARI = ["ORG-TF-GM", "ORG-TF-GMY"] as const;
+
+/**
+ * Kişi muaf bir pozisyon kutusunda mı oturuyor?
+ * YALNIZ ANA KOLTUKLARA bakar — kişi birden fazla koltukta olabilir; kurul ve
+ * komite koltukları (ORG-KR-*) muafiyet üretmez.
+ */
+async function muafPozisyondaMi(db: Db, personnelId: string): Promise<{ muaf: boolean; kutu?: string }> {
+  const koltuk = await db.orgEmployee.findFirst({
+    where: {
+      personnelId,
+      orgUnit: { code: { in: [...MUAF_POZISYON_KODLARI] }, isActive: true },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { orgUnit: { select: { code: true, name: true } } },
+  });
+  if (!koltuk?.orgUnit) return { muaf: false };
+  return { muaf: true, kutu: koltuk.orgUnit.name };
+}
 
 type PersonelOzet = {
   id: string;
@@ -136,6 +166,18 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
 
   if (!kisi) return { ok: false, sebep: "Personel kaydı bulunamadı." };
   if (!kisi.aktif) return { ok: false, sebep: "Personel pasif — deneme değerlendirmesi açılmaz." };
+
+  // MUAFİYET en başta: bölüm/şema bağı aranmadan önce. GENEL MÜDÜRLÜK bölümünün
+  // orgUnitId'si NULL olduğu için buradaki kişiler eskiden "şema bağı yok"
+  // hatasına düşüyordu; artık muafiyet cevabı önce geliyor.
+  const muafiyet = await muafPozisyondaMi(db, kisi.id);
+  if (muafiyet.muaf) {
+    return {
+      ok: false,
+      muaf: true,
+      sebep: `${muafiyet.kutu} pozisyonu deneme süresi değerlendirmesine tabi değildir.`,
+    };
+  }
 
   // Bölüm METİNDEN değil FK'dan. FK boşsa bloke — yanlış bölüme düşmesin.
   if (!kisi.departmentId || !kisi.department) {

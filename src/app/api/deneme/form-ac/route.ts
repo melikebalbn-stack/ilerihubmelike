@@ -73,6 +73,11 @@ export async function POST(request: NextRequest) {
 
   const zincir = await denemeZinciriCoz(prisma, personnelId);
   if (!zincir.ok) {
+    // MUAF: hata DEĞİL. Cron her gün deneyecek — 400 üretme, redLog'a yazma,
+    // log kirlenmesin. 200 + acilmadi/muaf ile sessizce geç.
+    if (zincir.muaf) {
+      return NextResponse.json({ acilmadi: true, muaf: true, sebep: zincir.sebep }, { status: 200 });
+    }
     denemeRedLog({ uc: "form-ac", formId: "(yok)", from: "-", to: "TASLAK", reason: zincir.sebep, user: aktorEmail });
     return NextResponse.json({ error: "Değerlendirme zinciri çözülemedi", sebep: zincir.sebep }, { status: 400 });
   }

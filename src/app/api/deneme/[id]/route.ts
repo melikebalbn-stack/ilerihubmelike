@@ -16,7 +16,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const form = await prisma.denemeDegerlendirme.findUnique({
     where: { id },
     include: {
-      personnel: { select: { sicilNo: true, adSoyad: true, bolum: true, gorev: true, yakaRengi: true, iseGirisTarihi: true } },
+      // Form başlığındaki künye alanları (IV-FR-27 üst bilgi bloğu)
+      personnel: {
+        select: {
+          sicilNo: true, adSoyad: true, bolum: true, bolumDetay: true, gorev: true,
+          yakaRengi: true, iseGirisTarihi: true,
+          denemeDegerlendirme: true, altiAyDegerlendirme: true,
+        },
+      },
       degerlendirici1: { select: { sicilNo: true, adSoyad: true, gorev: true } },
       degerlendirici2: { select: { sicilNo: true, adSoyad: true, gorev: true } },
       onaylayan: { select: { sicilNo: true, adSoyad: true, gorev: true } },

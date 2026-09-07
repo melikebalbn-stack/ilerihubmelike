@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ArrowLeft, X, AlertTriangle, Loader2, Send, UserPlus, Settings2, Headphones, Clock, CheckCircle2, Paperclip, FileText, Sparkles, ThumbsUp, RotateCcw, Link2, Unlink, Plus } from "lucide-react"
+import { ArrowLeft, X, AlertTriangle, Loader2, Send, UserPlus, Settings2, Headphones, Clock, CheckCircle2, Paperclip, FileText, Sparkles, ThumbsUp, RotateCcw, Link2, Unlink, Plus, Trash2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { ticketAge, resolutionTime, isOpenStatus } from "../_lib/ticket-age"
@@ -201,8 +201,14 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
   const [kronikSeciliId, setKronikSeciliId] = useState("")
   const [kronikYeniBaslik, setKronikYeniBaslik] = useState("")
   const [kronikIsleniyor, setKronikIsleniyor] = useState(false)
+  // Kalıcı silme (helpdesk.ticket.delete)
+  const [silmeAcik, setSilmeAcik] = useState(false)
+  const [silmeOnayMetni, setSilmeOnayMetni] = useState("")
+  const [siliniyor, setSiliniyor] = useState(false)
 
   const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
+  // Silme AYRI izin: IT ekibinde olmak ya da süper yönetici olmak yetmez.
+  const silebilir = session?.user?.permissions?.includes("helpdesk.ticket.delete") ?? false
   // Sunucu (PUT /api/tickets/[id]) DURUM değişikliğine izin verirken
   // `userIsITStaff || isAssignee || isTicketTeamMember` bakıyor; ekran ise
   // yalnız isITStaff'a bakıyordu → kendisine atanan talebin durumunu
@@ -452,6 +458,30 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
       toast.error(e instanceof Error ? e.message : "Bağ kaldırılamadı")
     } finally {
       setKronikIsleniyor(false)
+    }
+  }
+
+  const handleSil = async () => {
+    if (!ticket) return
+    // Onay metni ticket numarasıyla birebir eşleşmeli — yanlış sekmede
+    // yanlış talebi silmeyi zorlaştırır.
+    if (silmeOnayMetni.trim() !== ticket.ticketNumber) return
+    setSiliniyor(true)
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const hata = await res.json().catch(() => ({}))
+        throw new Error(hata?.error || "Talep silinemedi")
+      }
+      setSilmeAcik(false)
+      toast.success(`${ticket.ticketNumber} kalıcı olarak silindi`)
+      // Detay artık yok; listeye dön (modal içindeyse onClose, tam sayfada router).
+      if (onClose) onClose()
+      else router.push("/it-support")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Talep silinemedi")
+    } finally {
+      setSiliniyor(false)
     }
   }
 
@@ -987,6 +1017,30 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
           </div>
         )}
 
+        {/* TEHLİKELİ ALAN — yalnız helpdesk.ticket.delete izni olanda görünür.
+            IT ekibinde olmak ya da süper yönetici olmak yetmez. */}
+        {silebilir && (
+          <div className="p-4 rounded-lg border border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="font-medium text-sm text-red-800 dark:text-red-300">Talebi kalıcı sil</p>
+                <p className="text-xs text-muted-foreground">
+                  Talep, yorumları ve hareket geçmişi birlikte silinir. Bu işlem geri alınamaz.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => { setSilmeOnayMetni(""); setSilmeAcik(true) }}
+                disabled={siliniyor}
+                className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-400"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Sil
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Yorumlar */}
         <div>
           <h4 className="font-medium mb-3">Yorumlar & Aktivite</h4>
@@ -1172,6 +1226,64 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
             >
               {kronikIsleniyor && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Bağla
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* KALICI SİLME ONAYI — ticket numarasını yazdırıyor.
+          Yalnız "emin misiniz?" sormak, açık sekmeler arasında yanlış talebi
+          silmeyi engellemiyor; numara eşleşmesi bunu zorlaştırıyor. */}
+      <Dialog open={silmeAcik} onOpenChange={setSilmeAcik}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle className="text-red-700 dark:text-red-400">
+              Talebi kalıcı olarak sil
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-1">
+                <div className="font-medium text-foreground">{ticket.ticketNumber}</div>
+                <div>{ticket.subject}</div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="flex gap-2 items-start rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <div>
+                <strong>Bu işlem geri alınamaz.</strong> Talep, tüm yorumları ve hareket
+                geçmişi kalıcı olarak silinir. Kronik sorun kaydı silinmez, yalnız bağı kopar.
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="silme-onay" className="text-sm">
+                Onaylamak için talep numarasını yazın:{" "}
+                <span className="font-mono font-medium">{ticket.ticketNumber}</span>
+              </Label>
+              <Input
+                id="silme-onay"
+                className="mt-1.5 font-mono"
+                placeholder={ticket.ticketNumber}
+                value={silmeOnayMetni}
+                onChange={(e) => setSilmeOnayMetni(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSilmeAcik(false)} disabled={siliniyor}>
+              Vazgeç
+            </Button>
+            <Button
+              onClick={handleSil}
+              disabled={siliniyor || silmeOnayMetni.trim() !== ticket.ticketNumber}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {siliniyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Kalıcı olarak sil
             </Button>
           </DialogFooter>
         </DialogContent>

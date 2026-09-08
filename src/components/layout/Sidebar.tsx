@@ -159,8 +159,8 @@ const mainMenuItems = [
 
 // IFS Eğitim modülü — akademiden AYRILDI, kendi bölümü.
 // Görünürlük bu turda MEVCUT akademi izinleriyle (izin geçişi ayrı adım):
-//   Görevlerim → akademi.view (herkes), diğerleri → akademi.report.view,
-//   Eğitimler  → akademi.kurs.edit (authoring).
+//   (katalog) → akademi.view (herkes), diğerleri → akademi.report.view,
+//   (takip)   → akademi.kurs.edit (authoring).
 // ifs.* anahtarlarına geçiş, guard'lar OR'a çevrildikten sonra yapılacak.
 // IFS ayrıştırması TAMAM: menü de yalnız ifs.* anahtarlarında. Eski akademi.*
 // anahtarları 4 Eyl 2026'da kaldırıldı — ölçüldü, eski anahtarı taşıyıp yeni
@@ -170,9 +170,15 @@ const mainMenuItems = [
 // anlık DB'ye DEĞİL); token 5 dk'da bir tazelenir. Rol değişiminden sonra
 // menünün görünmesi bu kadar gecikebilir — uçlar zaten açıktır.
 const ifsMenuItems = [
-  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "ifs.admin" },
+  // ETİKET DÜZELTMESİ (2026-09-06): iki menü adı içerikleriyle ters düşüyordu.
+  //   /ifs/egitimler  yönetici takip ekranı (departman → KİŞİ, ilerleme, key-user
+  //                   kanaati) — "Eğitimler" adı katalog vaat ediyordu → "Eğitim Değerlendirme".
+  //   /ifs/gorevlerim eğitim KATALOĞU (departman → alan → içerik, atanma şartı yok)
+  //                   — "Görevlerim" adı görev listesi vaat ediyordu → "Eğitimler".
+  // Route'lar ve permission'lar DEĞİŞMEDİ; yalnız görünen adlar.
+  { name: "Eğitim Değerlendirme", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "ifs.admin" },
   { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: "ifs.admin" },
-  { name: "Görevlerim", icon: ListChecks, href: "/ifs/gorevlerim", roles: [] as string[], permission: "ifs.view" },
+  { name: "Eğitimler", icon: ListChecks, href: "/ifs/gorevlerim", roles: [] as string[], permission: "ifs.view" },
   { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: "ifs.rapor.view" },
 ]
 

@@ -140,7 +140,7 @@ export default function IfsGorevlerimDetayPage() {
             style={{ color: "var(--ak-accent)" }}
           >
             <ArrowLeft className="w-4 h-4" />
-            Görevlerime Dön
+            Eğitimlere Dön
           </Link>
         </div>
       </div>
@@ -155,7 +155,7 @@ export default function IfsGorevlerimDetayPage() {
         style={{ color: "var(--ak-text-secondary)" }}
       >
         <ArrowLeft className="w-4 h-4" />
-        Görevlerime Dön
+        Eğitimlere Dön
       </Link>
 
       <CourseHero course={course} />

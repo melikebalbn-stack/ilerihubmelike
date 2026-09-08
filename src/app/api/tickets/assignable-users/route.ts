@@ -18,12 +18,16 @@ export async function GET() {
     return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
   }
 
-  // IT ekibi = 'it-admin' VEYA 'helpdesk-agent' ROLÜ. helpdesk.admin izni super-admin'de
-  // de var ama üst yönetimi listeye sokar → super-admin BİLİNÇLİ hariç.
+  // IT ekibi = 'it-admin' / 'helpdesk-agent' / 'super-admin' ROLÜ.
+  // super-admin eskiden hariçti ("üst yönetimi listeye sokar" gerekçesiyle), ama
+  // pratikte super-admin ticket'ları fiilen üstleniyor ve BAŞKASI ona atayamıyordu:
+  // çağıranın kendisini başa ekleyen kural (aşağıda) yalnız kendi ekranını çözüyordu.
+  // super-admin rolü sayıca dar (RBAC'ta helpdesk.admin izni yalnız it-admin ve
+  // super-admin'de), listeyi şişirmez.
   const users = await prisma.user.findMany({
     where: {
       isActive: true,
-      userRoles: { some: { role: { slug: { in: ['it-admin', 'helpdesk-agent'] } } } },
+      userRoles: { some: { role: { slug: { in: ['it-admin', 'helpdesk-agent', 'super-admin'] } } } },
     },
     select: { id: true, name: true, email: true },
     orderBy: { name: 'asc' },

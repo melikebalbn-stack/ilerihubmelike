@@ -124,9 +124,9 @@ export async function personelAra(q: string, limit = 20) {
   const aranan = q.trim()
   if (aranan.length < 2) return []
 
-  // Aksan katlamalı arama SQL'de yapılamıyor: Postgres ILIKE aksan katlamaz
-  // ("celik" → "Çelik" bulmaz), unaccent eklentisi de kurulu değil. Aktif
-  // personel küçük bir küme (~190) olduğu için çekip JS'te filtreliyoruz.
+  // unaccent eklentisi kurulu (pg unaccent 1.1) ama iproNormalize'ın Türkçe ı/İ/i katlaması
+  // ile Postgres lower(unaccent()) birebir aynı değil. Aktif personel ~190 kayıt olduğu için
+  // kasıtlı olarak JS'te filtreliyoruz; SQL'e taşıma gereksiz.
   const aktifler = await prisma.personnel.findMany({
     where: { aktif: true },
     select: { id: true, adSoyad: true, sicilNo: true, bolum: true, gorev: true },

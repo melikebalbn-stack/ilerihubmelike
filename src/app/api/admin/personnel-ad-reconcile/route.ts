@@ -93,7 +93,7 @@ export async function GET() {
 
   // 4) Whitecollar fuzzy match: pg_trgm similarity > 0.4
   // Türkçe karakterleri normalize etmek için translate kullanıyoruz
-  // (unaccent extension yüklü değil, manuel translate yapıyoruz).
+  // (unaccent kurulu; Türkçe ı/İ katlaması için manuel translate tercih edildi).
   const whitecollarSuggestions = await prisma.$queryRaw<
     Array<{
       userId: string

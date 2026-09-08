@@ -13,6 +13,7 @@ import { sendEmail } from '@/lib/email'
 import { denemeZinciriCoz } from '@/lib/deneme/deneme-zincir'
 import { adimSahibiRol } from '@/lib/deneme/deneme-yetki'
 import { denemeBildirimAcikMi, DENEME_BILDIRIM_ENV } from '@/lib/deneme/deneme-bayrak'
+import { sentetikMailMi } from '@/lib/bluecollar-email'
 import {
   generateDenemeDegerlendiriciEmail,
   generateDenemeEskalasyonEmail,
@@ -29,9 +30,17 @@ export type DenemeCronSonuc = {
   zatenVar: number
   /** Bayrak kapalıyken gönderilmeyen bildirim sayısı. */
   atlananBildirim: number
+  /** Sentetik adres yüzünden maili ULAŞMAYAN alıcılar (in-app oluşturuldu). */
+  mailUlasmayan: { adSoyad: string; email: string; personel: string }[]
 }
 
-type Alici = { userId: string; email: string; name: string }
+type Alici = {
+  userId: string
+  email: string
+  name: string
+  /** Sentetik mavi yaka adresi — POSTA KUTUSU DEĞİL, mail adımı atlanır. */
+  sentetik?: boolean
+}
 
 /** Personnel → User (mail + in-app için). User hesabı yoksa null. */
 async function personelinKullanicisi(personnelId: string | null): Promise<Alici | null> {
@@ -41,7 +50,12 @@ async function personelinKullanicisi(personnelId: string | null): Promise<Alici 
     select: { id: true, email: true, name: true, personnel: { select: { adSoyad: true } } },
   })
   if (!u?.email) return null
-  return { userId: u.id, email: u.email, name: u.name || u.personnel?.adSoyad || u.email }
+  return {
+    userId: u.id,
+    email: u.email,
+    name: u.name || u.personnel?.adSoyad || u.email,
+    sentetik: sentetikMailMi(u.email),
+  }
 }
 
 /** İV ekibi — hr-notifications'taki ölçütün aynısı (User.department 'insan' içerir). */
@@ -81,6 +95,21 @@ function adimSahibiPersonelId(form: {
 async function gonder(
   alici: Alici, konu: string, govde: string, html: string, link: string, inAppBaslik: string,
 ): Promise<boolean> {
+  // SENTETİK ADRES: posta kutusu yok, gönderilse teslim edilmez. Mail adımını
+  // ATLA ama in-app bildirimi YİNE OLUŞTUR — kullanıcı sisteme giriyor, orada görür.
+  // false döner: "gönderildi" işareti konmaz, İV'ye ulaşmadığı bildirilir.
+  if (alici.sentetik) {
+    try {
+      await prisma.notification.create({
+        data: { userId: alici.userId, title: inAppBaslik, message: konu, type: 'INFO', link },
+      })
+    } catch (e) {
+      console.error('[deneme-bildirim] in-app:', e)
+    }
+    console.warn('[deneme-bildirim] sentetik adres — mail atlandi, in-app olusturuldu:', alici.email)
+    return false
+  }
+
   const [mailRes, inAppRes] = await Promise.allSettled([
     sendEmail([{ name: alici.name, email: alici.email }], konu, govde, html),
     prisma.notification.create({
@@ -135,7 +164,7 @@ export async function denemeFormlariniIsle(args: {
 }): Promise<DenemeCronSonuc> {
   const kuru = !!args.kuruCalistirma
   const base = args.baseUrl ?? process.env.NEXTAUTH_URL ?? 'https://hub.ilerigroup.com'
-  const sonuc: DenemeCronSonuc = { acilan: 0, acilamayan: [], muaf: 0, hatirlatma: 0, eskalasyon: 0, zatenVar: 0, atlananBildirim: 0 }
+  const sonuc: DenemeCronSonuc = { acilan: 0, acilamayan: [], muaf: 0, hatirlatma: 0, eskalasyon: 0, zatenVar: 0, atlananBildirim: 0, mailUlasmayan: [] }
   // Bayrak KAPALI → form açma çalışır, bildirim tarafı tamamen susar.
   const bildirimAcik = denemeBildirimAcikMi()
 
@@ -267,6 +296,9 @@ export async function denemeFormlariniIsle(args: {
           })
           let enAzBirGitti = false
           for (const a of benzersiz) {
+            if (a.sentetik) {
+              sonuc.mailUlasmayan.push({ adSoyad: a.name, email: a.email, personel: `${kisi.adSoyad} (${kisi.sicilNo})` })
+            }
             if (await gonder(a, subject, body, html, link, `${etiket} değerlendirmesi gecikiyor`)) enAzBirGitti = true
           }
           // Hiçbiri gitmediyse İŞARETLEME — yarın tekrar denensin.
@@ -293,6 +325,9 @@ export async function denemeFormlariniIsle(args: {
             adSoyad: kisi.adSoyad, sicilNo: kisi.sicilNo, bolum: kisi.bolum, gorev: kisi.gorev,
             tur: etiket, hedefTarih, gunKala, link,
           })
+          if (sahip.sentetik) {
+            sonuc.mailUlasmayan.push({ adSoyad: sahip.name, email: sahip.email, personel: `${kisi.adSoyad} (${kisi.sicilNo})` })
+          }
           if (await gonder(sahip, subject, body, html, link, `${etiket} değerlendirmesi sizde`)) {
             await gonderimiIsaretle(kisi.id, tip, [sahip], subject)
             await prisma.denemeDegerlendirme.update({
@@ -305,6 +340,29 @@ export async function denemeFormlariniIsle(args: {
   }
 
   // Zincir çözülemeyenleri İV'ye TEK mailde bildir — kimse fark etmeden tıkanmasın.
+  // Sentetik adres yüzünden ulaşılamayanlar İV'ye bildirilir — kimse "haberi var"
+  // sanmasın. in-app bildirim oluşturuldu, mail gitmedi.
+  if (!kuru && bildirimAcik && sonuc.mailUlasmayan.length) {
+    const iv = await ivAlicilari()
+    const satirlar = sonuc.mailUlasmayan
+      .map((m, i) => `${i + 1}. ${m.adSoyad} (${m.email}) — ${m.personel}`)
+      .join('\n')
+    const konu = `ℹ️ Deneme değerlendirme: ${sonuc.mailUlasmayan.length} değerlendiriciye e-posta ULAŞMADI`
+    const govde = `Aşağıdaki değerlendiricilerin sistem hesabı gerçek bir posta kutusuna bağlı değil
+(mavi yaka giriş adresi). E-posta GÖNDERİLMEDİ; uygulama içi bildirim oluşturuldu.
+
+${satirlar}
+
+Bu kişiler ILERIHub'a giriş yaptıklarında bildirimi göreceklerdir. Kalıcı çözüm için
+kurumsal e-posta hesabı açılması gerekir.
+
+--
+ILERIHub İnsan Varlıkları Yönetim Sistemi`
+    for (const a of iv) {
+      await gonder(a, konu, govde, govde.replace(/\n/g, '<br>'), `${base}/deneme`, 'Bildirim e-postası ulaşmadı')
+    }
+  }
+
   if (!kuru && bildirimAcik && zincirHatalari.length) {
     const iv = await ivAlicilari()
     if (iv.length) {
@@ -319,6 +377,13 @@ export async function denemeFormlariniIsle(args: {
         for (const h of zincirHatalari) await gonderimiIsaretle(h.personnelId, ZINCIR_HATASI_TIPI, iv, subject)
       }
     }
+  }
+
+  if (sonuc.mailUlasmayan.length) {
+    console.warn(
+      `[deneme-cron] ${sonuc.mailUlasmayan.length} aliciya mail ULASMADI (sentetik adres), ` +
+        `in-app bildirim olusturuldu: ${sonuc.mailUlasmayan.map((m) => m.email).join(', ')}`,
+    )
   }
 
   if (!bildirimAcik && (sonuc.atlananBildirim > 0 || sonuc.acilamayan.length > 0)) {

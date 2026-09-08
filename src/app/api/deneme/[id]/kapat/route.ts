@@ -40,18 +40,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   });
   if (!form) return NextResponse.json({ error: "Form bulunamadı" }, { status: 404 });
 
-  if (form.durum !== "IK_BEKLIYOR") {
-    denemeRedLog({ uc: "kapat", formId: id, from: form.durum, to: "TAMAMLANDI", reason: "durum kapanışa uygun değil", user: aktor.email });
-    return NextResponse.json({ error: "Form İK aşamasında değil" }, { status: 400 });
-  }
   const karar = parsed.data.karar;
-  const hedef = karar === "IPTAL" ? "IPTAL" : "TAMAMLANDI";
-  if (!gecisIzinli(form.durum, "IK", hedef)) {
-    return NextResponse.json({ error: "Bu geçişe izin verilmiyor" }, { status: 400 });
-  }
 
-  // İPTAL: gerekçe ZORUNLU, puan/sonuç aranmaz (form yarıda kesiliyor).
+  // ── İPTAL: HER AŞAMADA ──
+  // Geçiş matrisi (deneme-transitions.ts) İV'ye her durumdan IPTAL izni veriyor;
+  // uç bunu uygulamıyordu çünkü IK_BEKLIYOR kontrolü bu dalın ÖNÜNDEYDİ. Kontrol
+  // artık YALNIZ kapatma dalında. Terminal durumlar (TAMAMLANDI/IPTAL) matriste
+  // boş satır olduğu için gecisIzinli false döner → 400.
   if (karar === "IPTAL") {
+    if (!gecisIzinli(form.durum, "IK", "IPTAL")) {
+      denemeRedLog({ uc: "kapat", formId: id, from: form.durum, to: "IPTAL", reason: "gecis matriste izinli degil", user: aktor.email });
+      return NextResponse.json({ error: "Bu formda iptal işlemi yapılamaz" }, { status: 400 });
+    }
+    // Gerekçe ZORUNLU, puan/sonuç aranmaz (form yarıda kesiliyor).
     const gerekceIptal = parsed.data.fesihGerekce?.trim() ?? "";
     if (!gerekceIptal) {
       denemeRedLog({ uc: "kapat", formId: id, from: form.durum, to: "IPTAL", reason: "iptal gerekcesi bos", user: aktor.email });
@@ -72,6 +73,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ ok: true, durum: "IPTAL" });
   }
 
+  // ── KAPAT: YALNIZ İK aşamasında ──
+  if (form.durum !== "IK_BEKLIYOR") {
+    denemeRedLog({ uc: "kapat", formId: id, from: form.durum, to: "TAMAMLANDI", reason: "durum kapanışa uygun değil", user: aktor.email });
+    return NextResponse.json({ error: "Form İK aşamasında değil" }, { status: 400 });
+  }
   const ort = form.ortalama;
   if (ort === null) {
     denemeRedLog({ uc: "kapat", formId: id, from: form.durum, to: "TAMAMLANDI", reason: "puan yok", user: aktor.email });

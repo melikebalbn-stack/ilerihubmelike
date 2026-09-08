@@ -85,6 +85,7 @@ export default function DenemeFormPage() {
   const [kaydediyor, setKaydediyor] = useState(false)
   const [onayNotu, setOnayNotu] = useState("")
   const [fesihGerekce, setFesihGerekce] = useState("")
+  const [iptalGerekce, setIptalGerekce] = useState("")
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -145,6 +146,12 @@ export default function DenemeFormPage() {
   }, [form])
   // Salt okunur aşamalarda kriter satırında hangi kolonlar gösterilecek.
   const saltOkunurKolonlar = onayAsamasi || ikAsamasi
+  // İV her aşamada iptal edebilir (geçiş matrisi izinli). İK aşamasında iptal
+  // zaten kapanış bloğunda olduğu için burada ayrı kart çizilmez.
+  const ivIptalEdebilir =
+    roller.includes("IK") &&
+    !!form &&
+    !["TAMAMLANDI", "IPTAL", "IK_BEKLIYOR"].includes(form.durum)
 
   // CANLI hesap: grup toplamları + genel toplam + ortalama.
   const grupToplam = useMemo(() => {
@@ -240,7 +247,11 @@ export default function DenemeFormPage() {
       const res = await apiFetch(`/api/deneme/${id}/kapat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ karar, fesihGerekce: fesihGerekce.trim() || undefined }),
+        body: JSON.stringify({
+          karar,
+          // İptal kendi gerekçe alanını kullanır (İK bloğu dışında da çıkabiliyor).
+          fesihGerekce: (karar === "IPTAL" ? iptalGerekce : fesihGerekce).trim() || undefined,
+        }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(j?.error ?? "İşlem başarısız"); return }
@@ -604,10 +615,17 @@ export default function DenemeFormPage() {
               </>
             )}
 
+            <Textarea
+              placeholder="İptal gerekçesi (iptal edilecekse zorunlu)"
+              value={iptalGerekce}
+              onChange={(e) => setIptalGerekce(e.target.value)}
+              rows={2}
+            />
+
             <div className="flex flex-wrap justify-end gap-3">
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="outline" disabled={kaydediyor || !fesihGerekce.trim()}>
+                  <Button variant="outline" disabled={kaydediyor || !iptalGerekce.trim()}>
                     <X className="mr-2 h-4 w-4" /> İptal Et
                   </Button>
                 </AlertDialogTrigger>
@@ -642,6 +660,49 @@ export default function DenemeFormPage() {
                   <AlertDialogFooter>
                     <AlertDialogCancel>Vazgeç</AlertDialogCancel>
                     <AlertDialogAction onClick={() => kapat("KAPAT")}>Kapat</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── İV İPTAL (her aşamada) ── İK bloğu zaten kendi iptalini taşıyor,
+          burası onun DIŞINDAKİ aşamalar için: form yanlış açıldıysa İV kapatabilsin. */}
+      {ivIptalEdebilir && (
+        <Card>
+          <CardHeader className="border-b bg-muted/40 py-3">
+            <CardTitle className="text-base">İnsan Varlıkları — İptal</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 p-6">
+            <p className="text-sm text-muted-foreground">
+              Form yanlış açıldıysa ya da değerlendirme yapılmayacaksa iptal edilebilir.
+              İptal edilen form yeniden açılamaz.
+            </p>
+            <Textarea
+              placeholder="İptal gerekçesi (zorunlu)"
+              value={iptalGerekce}
+              onChange={(e) => setIptalGerekce(e.target.value)}
+              rows={2}
+            />
+            <div className="flex justify-end">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={kaydediyor || !iptalGerekce.trim()}>
+                    <X className="mr-2 h-4 w-4" /> İptal Et
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Form iptal edilsin mi?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Form iptal edilecek, geri alınamaz. Gerekçe zorunlu.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => kapat("IPTAL")}>İptal Et</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>

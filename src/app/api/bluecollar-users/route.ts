@@ -2,6 +2,7 @@ import { syncUserToAkademi } from '@/lib/akademi-sync'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { bluecollarEmailUret } from '@/lib/bluecollar-email'
 
 // GET - Mavi yaka kullanıcıları listele
 export async function GET(request: NextRequest) {
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest) {
 
     // Email oluştur (verilmediyse) — PR-EMAIL-NORMALIZE pattern: DB casing tutarlılığı için lowercase
     // Bu, ldap-sync.ts:332 ve auth.ts:320'den sonraki 3. yazım kaynağı
-    const rawEmail = email || `${employeeId}@bluecollar.ilerigroup.com`
+    const rawEmail = email || bluecollarEmailUret(employeeId)
     const userEmail = typeof rawEmail === 'string' ? rawEmail.toLowerCase() : rawEmail
 
     // Email benzersiz mi kontrol et

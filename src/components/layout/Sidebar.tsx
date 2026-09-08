@@ -183,26 +183,37 @@ const ifsMenuItems = [
 ]
 
 // Formlar alt menüsü
+// ALT GRUPLAR (2026-09-08): liste 11 kaleme çıkınca düz sıra okunmaz olmuştu;
+// `subgroup` yalnız GÖRSEL kümeleme içindir — hiçbir görünürlük koşulunu
+// etkilemez, filterItems bu alanı okumaz. Boş kalan alt grubun başlığı çizilmez.
+const FORM_ALT_GRUPLAR = [
+  { key: "genel", label: "Genel" },
+  { key: "iv", label: "İnsan Varlıkları" },
+  { key: "kalite", label: "Kalite" },
+] as const
+
+type FormAltGrup = (typeof FORM_ALT_GRUPLAR)[number]["key"]
+
 const formsMenuItems = [
-  { name: "Ziyaret Raporları", icon: FileText, href: "/forms/visit-reports", roles: ["*"] },
-  { name: "Toplantı Raporu", icon: Calendar, href: "/meetings", roles: ["*"] },
-  { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"] },
-  { name: "Vardiya Formu", icon: Clock, href: "/forms/vardiya", roles: ["*"] },
-  { name: "Mesai Performansı", icon: BarChart3, href: "/forms/overtime/performans", roles: ["*"] },
+  { name: "Ziyaret Raporları", icon: FileText, href: "/forms/visit-reports", roles: ["*"], subgroup: "genel" as FormAltGrup },
+  { name: "Toplantı Raporu", icon: Calendar, href: "/meetings", roles: ["*"], subgroup: "genel" as FormAltGrup },
+  { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"], subgroup: "iv" as FormAltGrup },
+  { name: "Vardiya Formu", icon: Clock, href: "/forms/vardiya", roles: ["*"], subgroup: "iv" as FormAltGrup },
+  { name: "Mesai Performansı", icon: BarChart3, href: "/forms/overtime/performans", roles: ["*"], subgroup: "iv" as FormAltGrup },
   // Görünürlük diğer form kalemleriyle aynı desende (roles: "*"); asıl erişim
   // layout guard + API'de (getBulkCardScanAccess). Statik dept filtresi GRI
   // yaka kullanıcıları yanlış gizleyeceğinden burada rol/dept ile daraltılmaz.
-  { name: "Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"] },
+  { name: "Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"], subgroup: "iv" as FormAltGrup },
   // İş Analizi Formu: oturumu olan herkes kendi formunu doldurur (roles: "*").
-  { name: "İş Analizi Formu", icon: ClipboardList, href: "/strategic-hr/is-analizi", roles: ["*"] },
+  { name: "İş Analizi Formu", icon: ClipboardList, href: "/strategic-hr/is-analizi", roles: ["*"], subgroup: "iv" as FormAltGrup },
   // RMA/SMA İade Formu (KAL-KYT-16): herkes görür; yazma yetkisi sayfa/API'de (canManageRma).
-  { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"] },
+  { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"], subgroup: "kalite" as FormAltGrup },
   // Zimmetlerim — kullanıcının kendi üzerine kayıtlı zimmet teslim tutanaklarını
   // görüp imzaladığı ekran. Herkese açık (permission YOK) - erişim zaten
   // sunucu tarafında zimmetSahibiId === user.id filtresiyle daraltılıyor
   // (bkz. API route). "Zimmet Teslim Formu" (liste/onay ekranı, zimmet-formu.view
   // gerektirir) Sistem Geliştirme altında AYRI kaldı.
-  { name: "Zimmetlerim", icon: Laptop, href: "/zimmet-formu/zimmetlerim", roles: ["*"] },
+  { name: "Zimmetlerim", icon: Laptop, href: "/zimmet-formu/zimmetlerim", roles: ["*"], subgroup: "genel" as FormAltGrup },
   // { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] }, // Şimdilik gizli
 ]
 
@@ -633,7 +644,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   // İş Analizi koşullu öğeler — SUNUCU bayrağı (iaFlags) ile; client'ta yetki hesaplanmaz.
-  const iaAmirItem = { name: "Onayımdaki İş Analizleri", icon: UserCheck, href: "/strategic-hr/is-analizi/onaylarim", roles: ["*"] }
+  const iaAmirItem = { name: "Onayımdaki İş Analizleri", icon: UserCheck, href: "/strategic-hr/is-analizi/onaylarim", roles: ["*"], subgroup: "iv" as FormAltGrup }
   // IV-FR-27 — İV grubunda (Melih kararı: liste sonuçları gösterdiği için yalnız İV).
   // Görünürlük menu-bayrak ucundan gelir ve artık SADECE ikMi() döner; zincirdeki
   // müdürler menüde GÖRMEZ, formlarına maildeki /deneme/<id> linkiyle ulaşırlar.
@@ -654,12 +665,23 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     denemeGorunur
   // Kadro talep — SUNUCU bayrağı (kadroTalepAcabilir) ile; client'ta yetki hesaplanmaz.
   // Link recruitment sayfasına (varsayılan "requests"/kadro talep sekmesine düşer).
-  const kadroTalepItem = { name: "Personel Talep Formu", icon: FileText, href: "/strategic-hr/kadro-talep", roles: ["*"] }
+  const kadroTalepItem = { name: "Personel Talep Formu", icon: FileText, href: "/strategic-hr/kadro-talep", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(iaFlags.amir ? [iaAmirItem] : []),
     ...(kadroTalepAcabilir ? [kadroTalepItem] : []),
   ]
+  // Formlar alt grupları — YETKİ FİLTRESİNDEN GEÇMİŞ listeden bölünür, yani
+  // görünürlük mantığı burada tekrarlanmaz. Alt grubu olmayan bir kalem
+  // (ileride eklenirse) "genel"e düşer, sessizce kaybolmaz.
+  const formsBySubgroup = FORM_ALT_GRUPLAR.map(({ key, label }) => ({
+    key,
+    label,
+    items: filteredFormsItems.filter(
+      (it) => ((it as { subgroup?: FormAltGrup }).subgroup ?? "genel") === key,
+    ),
+  }))
+
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 
@@ -681,7 +703,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // kapılarının çıktıları olduğu gibi kullanılıyor — kural burada TEKRARLANMIYOR.
   const searchableItems = flattenForSearch([
     { group: "Ana Menü", items: filteredMainItems },
-    { group: "Formlar", items: filteredFormsItems },
+    ...formsBySubgroup
+      .filter((g) => g.items.length > 0)
+      .map((g) => ({ group: `Formlar › ${g.label}`, items: g.items })),
     { group: "İnsan Varlıkları", items: filteredPersonnelItems },
     { group: "İnsan Varlıkları", items: filteredOffboardingItems },
     { group: "Stratejik İK", items: filteredStrategicHrItems },
@@ -702,7 +726,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // ve ağaç gizli olduğu için menü kilitlenirdi. Dar mod = her zaman normal ağaç.
   const isSearching = expanded && normalizedQuery.length > 0
   const searchResults = isSearching
-    ? searchableItems.filter(item => normalizeTr(item.name).includes(normalizedQuery))
+    ? searchableItems.filter(
+        item =>
+          normalizeTr(item.name).includes(normalizedQuery) ||
+          // Grup/alt grup adıyla da bulunabilsin: "insan varlıkları" yazan
+          // kullanıcı Mesai Formu'nu adını bilmeden bulur.
+          normalizeTr(item.group).includes(normalizedQuery),
+      )
     : []
 
   // Teknik menüsünde aktif sayfa var mı kontrol et
@@ -1030,7 +1060,23 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </button>
             {formsOpen && (
               <div className="space-y-1 ml-4">
-                {filteredFormsItems.map(item => renderMenuItem(item))}
+                {/* Dar modda alt başlık çizilmez (yer yok); öğeler düz sırada
+                    kalır — mevcut davranış birebir korunur. */}
+                {expanded
+                  ? formsBySubgroup
+                      .filter(g => g.items.length > 0)
+                      .map(g => (
+                        <div key={g.key} className="space-y-1">
+                          <div
+                            data-testid={`form-subgroup-${g.key}`}
+                            className="px-3 pt-2 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-white/25 select-none"
+                          >
+                            {g.label}
+                          </div>
+                          {g.items.map(item => renderMenuItem(item))}
+                        </div>
+                      ))
+                  : filteredFormsItems.map(item => renderMenuItem(item))}
               </div>
             )}
           </>

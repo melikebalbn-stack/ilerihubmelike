@@ -215,3 +215,48 @@ describe('Sidebar — regresyon kontrolü: mainMenuItems (filterItems) DEĞİŞM
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
   })
 })
+
+describe('Sidebar — Formlar grubu alt başlıkları', () => {
+  function acFormlarGrubunu() {
+    fireEvent.click(screen.getByText('Formlar'))
+  }
+
+  it('Formlar açıldığında alt başlıklar render edilir ve öğeler altlarında görünür', () => {
+    // roles:["*"] kalemler herkeste görünür → Genel/İV/Kalite üçü de dolu.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
+    renderSidebar()
+    acFormlarGrubunu()
+
+    // Metinle değil test kancasıyla: "Kalite" / "İnsan Varlıkları" sidebar'da
+    // başka grup başlıklarında da geçiyor.
+    expect(screen.getByTestId('form-subgroup-genel')).toHaveTextContent('Genel')
+    expect(screen.getByTestId('form-subgroup-iv')).toHaveTextContent('İnsan Varlıkları')
+    expect(screen.getByTestId('form-subgroup-kalite')).toHaveTextContent('Kalite')
+
+    // Öğelerin kendisi hâlâ yerinde (alt gruplama görünürlüğü değiştirmedi).
+    expect(screen.getByText('Ziyaret Raporları')).toBeInTheDocument()
+    expect(screen.getByText('Mesai Formu')).toBeInTheDocument()
+    expect(screen.getByText('RMA/SMA İade Formu')).toBeInTheDocument()
+  })
+
+  it('alt grubun tek öğesi görünmüyorsa başlığı da çizilmez', () => {
+    // Kalite alt grubunda TEK kalem var: RMA/SMA İade Formu (roles:["*"]).
+    // Öğe DOM'da varsa başlık da olmalı; ikisi birlikte var/yok olur.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
+    const { unmount } = renderSidebar()
+    acFormlarGrubunu()
+    const rmaVar = screen.queryByText('RMA/SMA İade Formu') !== null
+    const kaliteBaslikVar = screen.queryByTestId('form-subgroup-kalite') !== null
+    expect(kaliteBaslikVar).toBe(rmaVar)
+    unmount()
+  })
+
+  it('aramada "insan varlıkları" yazınca Mesai Formu sonuçlarda gelir (grup adıyla eşleşme)', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
+    renderSidebar()
+    fireEvent.change(screen.getByLabelText('Menüde ara'), {
+      target: { value: 'insan varlıkları' },
+    })
+    expect(screen.getByText('Mesai Formu')).toBeInTheDocument()
+  })
+})

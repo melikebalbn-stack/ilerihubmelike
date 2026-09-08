@@ -174,6 +174,9 @@ export const PERMISSION_KEYS = {
   YILLIK_TAKVIM_ATTACHMENT_MANAGE: 'yilliktakvim.attachment.manage',
   YILLIK_TAKVIM_NOTIFICATION_MANAGE: 'yilliktakvim.notification.manage',
   YILLIK_TAKVIM_ADMIN: 'yilliktakvim.admin',
+
+  // === ENTEGRASYON (Syteline → IFS malzeme senkronu) ===
+  ENTEGRASYON_SYTELINE: 'entegrasyon.syteline',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -204,6 +207,7 @@ export const MODULE_LABELS: Record<string, string> = {
   rma: 'RMA/SMA İade Formu',
   servis: 'Servis Yönetimi',
   yilliktakvim: 'Yıllık Çalışma Takvimi',
+  entegrasyon: 'Entegrasyonlar (Syteline/IFS)',
 };
 
 /**
@@ -328,4 +332,6 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'yilliktakvim.attachment.manage': 'Yıllık çalışma takvimi ek ve kanıtlarını yönetme',
   'yilliktakvim.notification.manage': 'Yıllık çalışma takvimi bildirim kurallarını yönetme ve çalıştırma',
   'yilliktakvim.admin': 'Yıllık çalışma takvimi tam yönetim',
+
+  'entegrasyon.syteline': 'Syteline→IFS malzeme senkronu izleme paneli — durum görme, dry-run/çalıştır/yeniden dene',
 };

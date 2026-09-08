@@ -368,6 +368,11 @@ const sistemGelistirmeMenuItems = [
   { name: "Zimmet Teslim Formu", icon: Laptop, href: "/zimmet-formu/liste", roles: [] as string[], permission: "zimmet-formu.view" },
 ]
 
+// Entegrasyonlar (Syteline → IFS malzeme senkronu). Görünürlük permission ile (IPRO deseni).
+const entegrasyonMenuItems = [
+  { name: "Syteline Malzeme", icon: Boxes, href: "/entegrasyon/syteline", roles: [] as string[], permission: "entegrasyon.syteline" },
+]
+
 // Alt menü öğeleri
 const bottomMenuItems = [
   { name: "IT Destek", icon: Headphones, href: "/it-support", roles: ["*"] },
@@ -423,6 +428,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [iso27001Open, setIso27001Open] = useState(false)
   const [formsOpen, setFormsOpen] = useState(false)
   const [sistemGelistirmeOpen, setSistemGelistirmeOpen] = useState(false)
+  const [entegrasyonOpen, setEntegrasyonOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
   // Menü araması. Boşken normal grup ağacı render edilir (hiçbir şey değişmez);
   // doluyken ağaç gizlenip düz sonuç listesi gösterilir. Grupların açık/kapalı
@@ -485,6 +491,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       pathname.startsWith('/backups')
     ) {
       setSistemGelistirmeOpen(true)
+    }
+    if (pathname.startsWith('/entegrasyon')) {
+      setEntegrasyonOpen(true)
     }
   }, [pathname])
 
@@ -683,6 +692,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   }))
 
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
+  // Entegrasyon öğeleri permission alanını string tutuyor; filterItems cast (IPRO/zimmet deseni).
+  const filteredEntegrasyonItems = filterItems(entegrasyonMenuItems as unknown as typeof mainMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 
   // Sandbox: SUPER_ADMIN tümünü görür, diğerleri sadece kendi sandbox'ını
@@ -716,6 +727,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { group: "İleri Teknik", items: filteredTeknikItems },
     { group: "IPRO", items: filteredIproItems },
     { group: "Sistem Geliştirme", items: filteredSistemGelistirmeItems },
+    { group: "Entegrasyon", items: filteredEntegrasyonItems },
     { group: "Diğer", items: filteredBottomItems },
     { group: "Sandbox", items: filteredSandboxItems },
   ])
@@ -778,6 +790,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   ) || pathname.startsWith('/forms/') || pathname.startsWith('/meetings/')
 
   // Sistem Geliştirme menüsünde aktif sayfa var mı kontrol et (Login Aktiviteleri + Yedekleme dahil)
+  const isEntegrasyonActive = pathname.startsWith('/entegrasyon')
   const isSistemGelistirmeActive = sistemGelistirmeMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) ||
@@ -1274,6 +1287,34 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {teknikOpen && (
               <div className="space-y-1 ml-4">
                 {filteredTeknikItems.map(item => renderMenuItem(item))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Entegrasyon Grubu (Syteline → IFS) */}
+        {filteredEntegrasyonItems.length > 0 && (
+          <>
+            <button
+              onClick={() => setEntegrasyonOpen(!entegrasyonOpen)}
+              className={cn(
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                isEntegrasyonActive
+                  ? "text-teal-300"
+                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+              )}
+            >
+              <Network className="h-5 w-5" />
+              <span className="flex-1 text-left">Entegrasyon</span>
+              {entegrasyonOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+            {entegrasyonOpen && (
+              <div className="space-y-1 ml-4">
+                {filteredEntegrasyonItems.map(item => renderMenuItem(item))}
               </div>
             )}
           </>

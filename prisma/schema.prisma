@@ -14271,3 +14271,38 @@ model DenemeDegerlendirmeLog {
   @@index([degerlendirmeId, createdAt])
   @@map("deneme_degerlendirme_log")
 }
+
+// ============================================================
+// Syteline (MSSQL) → Hub → IFS tek-yönlü MALZEME senkronu
+// feat/syteline-part-sync v1 (yalnız oluşturma). Kaynak: item_mst.
+// ============================================================
+model SyteSyncKayit {
+  id               String    @id @default(cuid())
+  entity           String // 'MALZEME'
+  kaynakAnahtar    String // Syteline item (= IFS PartNo adayı)
+  hash             String // sha256(katalog + envanter alanları) — değişiklik tespiti
+  durum            String // 'BEKLIYOR' | 'YAZILDI' | 'HATA' | 'ATLANDI'
+  ifsAnahtar       String? // yazıldıysa IFS PartNo
+  hata             String?
+  denemeSayisi     Int       @default(0)
+  sonDenemeAt      DateTime?
+  kaynakRecordDate DateTime // item_mst.RecordDate (watermark ilerletme)
+  payload          Json // mapper çıktısı (katalog+envanter) — audit
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([entity, kaynakAnahtar])
+  @@index([entity, durum])
+  @@map("syte_sync_kayit")
+}
+
+model SyteSyncDurum {
+  entity        String    @id // 'MALZEME'
+  sonRecordDate DateTime? // en son işlenen RecordDate (watermark)
+  sonCalismaAt  DateTime?
+  calisiyorAt   DateTime? // basit kilit — 15 dk'dan eskiyse yoksay (çift çalışma önleme)
+  sonOzet       Json? // { okunan, bekleyen, yazilan, hata }
+  updatedAt     DateTime  @updatedAt
+
+  @@map("syte_sync_durum")
+}

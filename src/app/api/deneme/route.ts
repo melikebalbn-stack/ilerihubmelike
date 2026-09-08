@@ -1,7 +1,15 @@
-// GET /api/deneme — liste.
-// İV tüm formları görür; diğerleri YALNIZ kendi zincirindekileri
-// (degerlendirici1 / degerlendirici2 / onaylayan). Bölüm bazlı geniş erişim YOK.
-// Filtreler: durum, tur, yaka, tarih aralığı.
+// GET /api/deneme — liste. YALNIZ İV.
+//
+// Liste puanları, ortalamayı ve başarılı/başarısız sonucunu döndürüyor; bu bilgi
+// İnsan Varlıkları'na aittir. Zincirdeki müdürler burayı GÖRMEZ (403) — onlar
+// maildeki /deneme/<id> bağlantısıyla yalnız KENDİ formlarını açar; form ekranının
+// görünürlük kuralı (zincirdekiler + İV) DEĞİŞMEDİ.
+//
+// Personel kartındaki "Deneme Değerlendirme" bölümü de bu ucu çağırıyor
+// (?personnelId=…) — dolayısıyla o bölüm de yalnız İV'de görünür hâle gelir
+// (403 → bileşen boş liste sayar → kart hiç çizilmez).
+//
+// Filtreler: durum, tur, yaka, bolum, personnelId, tarih aralığı, hepsi.
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -50,6 +58,13 @@ export async function GET(request: NextRequest) {
   const { aktor, error } = await aktoruCoz();
   if (error) return error;
 
+  // İV KAPISI: liste yalnız İnsan Varlıkları'nın. Eski "kendi zincirindekileri
+  // görür" kapsamı KALKTI (Melih kararı — sonuçlar İV dışına gösterilmez).
+  if (!ikMi(aktor)) {
+    denemeRedLog({ uc: "liste", formId: "(liste)", from: "-", to: "-", reason: "İV yetkisi yok", user: aktor.email });
+    return NextResponse.json({ error: "Bu listeye erişim yetkiniz yok" }, { status: 403 });
+  }
+
   const sp = request.nextUrl.searchParams;
   const parsed = filtre.safeParse({
     durum: sp.get("durum") ?? undefined,
@@ -81,16 +96,6 @@ export async function GET(request: NextRequest) {
     if (f.bitis) (where.hedefTarih as Prisma.DateTimeFilter).lte = new Date(f.bitis);
   }
 
-  // GİZLİLİK: İV değilse yalnız kendi zincirindekiler. Personnel bağı yoksa boş liste.
-  if (!ikMi(aktor)) {
-    if (!aktor.personnelId) return NextResponse.json({ formlar: [], toplam: 0, kapsam: "kendi" });
-    where.OR = [
-      { degerlendirici1Id: aktor.personnelId },
-      { degerlendirici2Id: aktor.personnelId },
-      { onaylayanId: aktor.personnelId },
-    ];
-  }
-
   const formlar = await prisma.denemeDegerlendirme.findMany({
     where,
     orderBy: [{ hedefTarih: "asc" }, { id: "asc" }],
@@ -106,5 +111,5 @@ export async function GET(request: NextRequest) {
   });
 
   const satirlar = formlar.map((x) => ({ ...x, adimSahibi: adimSahibiAdi(x) }));
-  return NextResponse.json({ formlar: satirlar, toplam: satirlar.length, kapsam: ikMi(aktor) ? "tumu" : "kendi" });
+  return NextResponse.json({ formlar: satirlar, toplam: satirlar.length, kapsam: "tumu" });
 }

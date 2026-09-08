@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { NativeSelect as Select } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Loader2, ClipboardList, RotateCcw, Eye } from "lucide-react"
+import { Loader2, ClipboardList, RotateCcw, Eye, ShieldAlert } from "lucide-react"
 import { apiFetch } from "@/lib/api-fetch"
 import { cn } from "@/lib/utils"
 
@@ -45,7 +45,7 @@ const gun = (t: string) => Math.round((new Date(t).getTime() - new Date().setHou
 
 export default function DenemeListesiPage() {
   const [satirlar, setSatirlar] = useState<Satir[]>([])
-  const [kapsam, setKapsam] = useState<"tumu" | "kendi">("kendi")
+  const [yetkisiz, setYetkisiz] = useState(false)
   const [yukleniyor, setYukleniyor] = useState(true)
   const [f, setF] = useState({ durum: "", tur: "", yaka: "", bolum: "", baslangic: "", bitis: "", hepsi: "false" })
 
@@ -55,10 +55,15 @@ export default function DenemeListesiPage() {
       const qs = new URLSearchParams()
       for (const [k, v] of Object.entries(f)) if (v && !(k === "hepsi" && v === "false")) qs.set(k, v)
       const res = await apiFetch(`/api/deneme?${qs.toString()}`)
-      if (!res.ok) { setSatirlar([]); return }
+      if (!res.ok) {
+        setSatirlar([])
+        // 403: liste yalnız İV'nin. Doldurucular formlarına mail linkiyle ulaşır.
+        setYetkisiz(res.status === 403)
+        return
+      }
       const j = await res.json()
       setSatirlar(j.formlar ?? [])
-      setKapsam(j.kapsam ?? "kendi")
+      setYetkisiz(false)
     } finally {
       setYukleniyor(false)
     }
@@ -71,6 +76,19 @@ export default function DenemeListesiPage() {
     [satirlar],
   )
 
+  if (!yukleniyor && yetkisiz) {
+    return (
+      <div className="mx-auto max-w-lg py-16 text-center">
+        <ShieldAlert className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+        <h1 className="mb-2 text-lg font-semibold">Bu listeye erişim yetkiniz yok</h1>
+        <p className="text-sm text-muted-foreground">
+          Deneme değerlendirme listesi İnsan Varlıkları'na özeldir. Size düşen bir
+          değerlendirme varsa formun bağlantısı e-posta ile gönderilir.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -79,7 +97,7 @@ export default function DenemeListesiPage() {
             <ClipboardList className="h-5 w-5" /> Deneme Süresi Değerlendirmeleri
           </h1>
           <p className="text-sm text-muted-foreground">
-            IV-FR-27 · {kapsam === "tumu" ? "tüm formlar" : "zincirinizdeki formlar"} · {satirlar.length} kayıt
+            IV-FR-27 · tüm formlar · {satirlar.length} kayıt
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void yukle()}>

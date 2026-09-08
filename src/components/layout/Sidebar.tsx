@@ -457,10 +457,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         pathname.startsWith('/arsiv')) {
       setTeknikOpen(true)
     }
-    // /deneme (IV-FR-27) Formlar grubunda — /meetings gibi kök rotası var,
-    // grubun açılması için açıkça listelenir.
-    if (pathname.startsWith('/forms') || pathname.startsWith('/meetings') || pathname.startsWith('/deneme')) {
+    if (pathname.startsWith('/forms') || pathname.startsWith('/meetings')) {
       setFormsOpen(true)
+    }
+    // /deneme (IV-FR-27) İV grubunda — kök rotası olduğu için açıkça listelenir.
+    if (pathname.startsWith('/deneme')) {
+      setIkOpen(true)
     }
     if (
       pathname.startsWith('/settings/roller') ||
@@ -632,7 +634,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   // İş Analizi koşullu öğeler — SUNUCU bayrağı (iaFlags) ile; client'ta yetki hesaplanmaz.
   const iaAmirItem = { name: "Onayımdaki İş Analizleri", icon: UserCheck, href: "/strategic-hr/is-analizi/onaylarim", roles: ["*"] }
-  // IV-FR-27 — Formlar grubunda; görünürlük menu-bayrak ucundan (İV ya da zincirde olmak).
+  // IV-FR-27 — İV grubunda (Melih kararı: liste sonuçları gösterdiği için yalnız İV).
+  // Görünürlük menu-bayrak ucundan gelir ve artık SADECE ikMi() döner; zincirdeki
+  // müdürler menüde GÖRMEZ, formlarına maildeki /deneme/<id> linkiyle ulaşırlar.
   const denemeItem = { name: "Deneme Değerlendirme", icon: ClipboardList, href: "/deneme", roles: ["*"] }
   const iaIkItem = { name: "İş Analizi Onayları", icon: ClipboardCheck, href: "/strategic-hr/is-analizi/ik-onay", roles: ["*"] }
 
@@ -644,18 +648,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // İV grubu görünürlüğü: en az bir alt öğe görünüyorsa başlık gösterilir
   // (4 personnel öğesi canSeeIk ile; offboarding + strategicHr kendi kitleleriyle).
   const showIkGroup =
-    canSeeIk || filteredOffboardingItems.length > 0 || filteredStrategicHrItems.length > 0
+    canSeeIk || filteredOffboardingItems.length > 0 || filteredStrategicHrItems.length > 0 ||
+    // İV yetkisi olup canSeeIk kapısından geçmeyen kullanıcı da grubu görebilsin,
+    // yoksa menü öğesi hesaplanır ama grup hiç çizilmediği için görünmezdi.
+    denemeGorunur
   // Kadro talep — SUNUCU bayrağı (kadroTalepAcabilir) ile; client'ta yetki hesaplanmaz.
   // Link recruitment sayfasına (varsayılan "requests"/kadro talep sekmesine düşer).
   const kadroTalepItem = { name: "Personel Talep Formu", icon: FileText, href: "/strategic-hr/kadro-talep", roles: ["*"] }
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(iaFlags.amir ? [iaAmirItem] : []),
-    // IV-FR-27 — Formlar altında (Melih kararı). Görünürlük menu-bayrak ucundan:
-    // İV ya da en az bir formun zincirinde olmak. Rota /deneme kalıyor; Formlar
-    // menüsündeki /meetings, /kalite/rma, /zimmet-formu gibi öğeler de kendi
-    // kök rotalarını kullanıyor — /forms/* zorunlu değil.
-    ...(denemeGorunur ? [denemeItem] : []),
     ...(kadroTalepAcabilir ? [kadroTalepItem] : []),
   ]
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
@@ -1169,6 +1171,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           <div className="space-y-1 ml-4">
             {filteredPersonnelItems.map(item => renderMenuItem(item))}
             {filteredOffboardingItems.map(item => renderMenuItem(item))}
+            {/* IV-FR-27 deneme değerlendirme listesi — SUNUCU bayrağı (yalnız İV). */}
+            {denemeGorunur && renderMenuItem(denemeItem)}
             {/* {renderMenuItem({ name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"] })} */}
 
             {/* Stratejik IK */}

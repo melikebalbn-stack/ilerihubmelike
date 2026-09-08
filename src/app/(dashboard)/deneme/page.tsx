@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { NativeSelect as Select } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Loader2, ClipboardList, RotateCcw } from "lucide-react"
+import { Loader2, ClipboardList, RotateCcw, Eye } from "lucide-react"
 import { apiFetch } from "@/lib/api-fetch"
 import { cn } from "@/lib/utils"
 
@@ -137,16 +137,17 @@ export default function DenemeListesiPage() {
                 <th>Hedef Tarih</th><th>Durum</th><th>Adım Sahibi</th>
                 <th className="text-right">1. Puan</th><th className="text-right">2. Puan</th>
                 <th className="text-right">Ortalama</th><th>Sonuç</th>
+                <th className="text-right">İşlemler</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {yukleniyor && (
-                <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">
+                <tr><td colSpan={12} className="p-8 text-center text-muted-foreground">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </td></tr>
               )}
               {!yukleniyor && satirlar.length === 0 && (
-                <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">
+                <tr><td colSpan={12} className="p-8 text-center text-muted-foreground">
                   Görüntüleyebileceğiniz değerlendirme yok.
                 </td></tr>
               )}
@@ -166,9 +167,7 @@ export default function DenemeListesiPage() {
                     )}
                   >
                     <td>
-                      <Link href={`/deneme/${s.id}`} className="font-medium hover:underline">
-                        {s.personnel.adSoyad}
-                      </Link>
+                      <div className="font-medium">{s.personnel.adSoyad}</div>
                       <div className="text-xs text-muted-foreground">{s.personnel.sicilNo}</div>
                     </td>
                     <td><Badge variant={s.tur === "DENEME_2AY" ? "secondary" : "default"}>
@@ -197,6 +196,17 @@ export default function DenemeListesiPage() {
                           {s.basarili ? "BAŞARILI" : "BAŞARISIZ"}
                         </Badge>
                       )}
+                    </td>
+                    {/* Mevcut form listelerindeki desen (OvertimeListView): sağda
+                        "İşlemler" sütunu, ghost ikon buton, Eye + title="Görüntüle". */}
+                    <td className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Link href={`/deneme/${s.id}`}>
+                          <Button variant="ghost" size="icon" title="Görüntüle">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 )

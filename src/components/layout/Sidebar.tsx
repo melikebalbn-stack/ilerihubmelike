@@ -451,7 +451,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         pathname.startsWith('/arsiv')) {
       setTeknikOpen(true)
     }
-    if (pathname.startsWith('/forms') || pathname.startsWith('/meetings')) {
+    // /deneme (IV-FR-27) Formlar grubunda — /meetings gibi kök rotası var,
+    // grubun açılması için açıkça listelenir.
+    if (pathname.startsWith('/forms') || pathname.startsWith('/meetings') || pathname.startsWith('/deneme')) {
       setFormsOpen(true)
     }
     if (
@@ -624,15 +626,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   // İş Analizi koşullu öğeler — SUNUCU bayrağı (iaFlags) ile; client'ta yetki hesaplanmaz.
   const iaAmirItem = { name: "Onayımdaki İş Analizleri", icon: UserCheck, href: "/strategic-hr/is-analizi/onaylarim", roles: ["*"] }
-  // IV-FR-27 — görünürlük menu-bayrak ucundan (İV ya da zincirde olmak).
+  // IV-FR-27 — Formlar grubunda; görünürlük menu-bayrak ucundan (İV ya da zincirde olmak).
   const denemeItem = { name: "Deneme Değerlendirme", icon: ClipboardList, href: "/deneme", roles: ["*"] }
   const iaIkItem = { name: "İş Analizi Onayları", icon: ClipboardCheck, href: "/strategic-hr/is-analizi/ik-onay", roles: ["*"] }
 
   const filteredStrategicHrItems = [
     ...filterStrategicHrItems(strategicHrMenuItems),
     ...(iaFlags.ik ? [iaIkItem] : []),
-    // IV-FR-27 — recruitment/performance ile aynı çatı altında.
-    ...(denemeGorunur ? [denemeItem] : []),
   ]
   const filteredOffboardingItems = filterItems(offboardingMenuItems)
   // İV grubu görünürlüğü: en az bir alt öğe görünüyorsa başlık gösterilir
@@ -645,6 +645,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(iaFlags.amir ? [iaAmirItem] : []),
+    // IV-FR-27 — Formlar altında (Melih kararı). Görünürlük menu-bayrak ucundan:
+    // İV ya da en az bir formun zincirinde olmak. Rota /deneme kalıyor; Formlar
+    // menüsündeki /meetings, /kalite/rma, /zimmet-formu gibi öğeler de kendi
+    // kök rotalarını kullanıyor — /forms/* zorunlu değil.
+    ...(denemeGorunur ? [denemeItem] : []),
     ...(kadroTalepAcabilir ? [kadroTalepItem] : []),
   ]
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)

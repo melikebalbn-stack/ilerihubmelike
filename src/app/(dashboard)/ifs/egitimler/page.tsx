@@ -306,7 +306,7 @@ export default function IfsEgitimlerPage() {
     <div className="ak-animate-in space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Eğitim Değerlendirme</h1>
+          <h1 className="text-2xl font-semibold">IFS Eğitimleri</h1>
           <p className="text-sm" style={{ color: "var(--ak-text-secondary)" }}>
             {veri
               ? `${veri.ozet.departmanSayisi} departman · ${veri.ozet.alanSayisi} alan · ${veri.ozet.gorevSayisi} görev`

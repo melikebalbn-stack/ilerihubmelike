@@ -9,5 +9,5 @@ export default async function AkademiIfsRedirect({
 }) {
   const sp = await searchParams;
   const dept = typeof sp.dept === "string" ? sp.dept : undefined;
-  redirect(dept ? `/ifs/gorevlerim?dept=${encodeURIComponent(dept)}` : "/ifs/gorevlerim");
+  redirect(dept ? `/ifs/odevler?dept=${encodeURIComponent(dept)}` : "/ifs/odevler");
 }

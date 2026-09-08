@@ -170,15 +170,15 @@ const mainMenuItems = [
 // anlık DB'ye DEĞİL); token 5 dk'da bir tazelenir. Rol değişiminden sonra
 // menünün görünmesi bu kadar gecikebilir — uçlar zaten açıktır.
 const ifsMenuItems = [
-  // ETİKET DÜZELTMESİ (2026-09-06): iki menü adı içerikleriyle ters düşüyordu.
-  //   /ifs/egitimler  yönetici takip ekranı (departman → KİŞİ, ilerleme, key-user
-  //                   kanaati) — "Eğitimler" adı katalog vaat ediyordu → "Eğitim Değerlendirme".
-  //   /ifs/gorevlerim eğitim KATALOĞU (departman → alan → içerik, atanma şartı yok)
-  //                   — "Görevlerim" adı görev listesi vaat ediyordu → "Eğitimler".
-  // Route'lar ve permission'lar DEĞİŞMEDİ; yalnız görünen adlar.
-  { name: "Eğitim Değerlendirme", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "ifs.admin" },
+  // ADLANDIRMA (2026-09-08): 06.09'daki etiket takası URL ile adı ters bırakmıştı
+  // (/ifs/gorevlerim rotası menüde "Eğitimler" görünüyordu). Rota /ifs/odevler'e
+  // taşındı, ad da "Ödevler" oldu — ikisi artık hizalı.
+  //   /ifs/odevler    KURSİYER kataloğu: departman → alan → içerik + işaretleme
+  //   /ifs/egitimler  YÖNETİCİ takip ekranı: departman → kişi, ilerleme, kanaat
+  // Kursiyer girdisi başta: en geniş kitle (ifs.view 168 kişide).
+  { name: "Ödevler", icon: ListChecks, href: "/ifs/odevler", roles: [] as string[], permission: "ifs.view" },
+  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "ifs.admin" },
   { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: "ifs.admin" },
-  { name: "Eğitimler", icon: ListChecks, href: "/ifs/gorevlerim", roles: [] as string[], permission: "ifs.view" },
   { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: "ifs.rapor.view" },
 ]
 

@@ -22,7 +22,7 @@ export function CourseCard({ course, ifsDept }: Props) {
   // IFS'ten gelindiyse IFS rotasında kalınır — kursiyer akademiye fırlamaz.
   // ifsDept YOKSA akademi yolu AYNEN korunur (akademi kursiyerleri etkilenmez).
   const href = ifsDept
-    ? `/ifs/gorevlerim/${course.id}?dept=${encodeURIComponent(ifsDept)}`
+    ? `/ifs/odevler/${course.id}?dept=${encodeURIComponent(ifsDept)}`
     : `/akademi/courses/${course.id}`;
   return (
     <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>

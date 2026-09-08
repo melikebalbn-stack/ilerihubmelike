@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Download, Loader2, Search, Upload, UserCheck, X } from 'lucide-react'
+import { BarChart3, Download, Loader2, Search, Upload, UserCheck, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { MusteriSecici, type MusteriOption } from './MusteriSecici'
 import { RmaImportDialog } from './RmaImportDialog'
+import { RmaKpiDialog } from './RmaKpiDialog'
 import { RMA_TIP_LABELS, RMA_IADE_TURU_LABELS } from '@/lib/quality/rma-labels'
 
 interface RmaRow {
@@ -38,6 +39,7 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [kpiOpen, setKpiOpen] = useState(false)
 
   const [tip, setTip] = useState('all')
   const [musteri, setMusteri] = useState<MusteriOption | null>(null)
@@ -133,6 +135,10 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
           Bana atananlar
         </Button>
         <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" size="sm" onClick={() => setKpiOpen(true)} className="shrink-0">
+          <BarChart3 className="h-4 w-4 mr-1 shrink-0" />
+          KPI
+        </Button>
         <Button variant="outline" size="sm" onClick={handleExport} className="shrink-0">
           <Download className="h-4 w-4 mr-1 shrink-0" />
           Excel&apos;e Aktar
@@ -150,6 +156,13 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
         )}
         </div>
       </div>
+
+      {/* KPI modalı: listedeki AKTİF filtre aynen geçer (buildFilterParams TEK KAYNAK). */}
+      <RmaKpiDialog
+        open={kpiOpen}
+        onOpenChange={setKpiOpen}
+        filtreParams={buildFilterParams().toString()}
+      />
 
       {canManage && (
         <RmaImportDialog

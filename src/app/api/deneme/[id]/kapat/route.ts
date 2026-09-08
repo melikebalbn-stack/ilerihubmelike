@@ -11,7 +11,12 @@ import { gecisIzinli, DENEME_GECME_PUANI, denemeBasariliMi } from "@/lib/deneme/
 
 export const dynamic = "force-dynamic";
 
-const govde = z.object({ fesihGerekce: z.string().max(4000).optional(), not: z.string().max(2000).optional() });
+const govde = z.object({
+  /** KAPAT → TAMAMLANDI · IPTAL → IPTAL (gerekçe zorunlu). Varsayılan KAPAT. */
+  karar: z.enum(["KAPAT", "IPTAL"]).default("KAPAT"),
+  fesihGerekce: z.string().max(4000).optional(),
+  not: z.string().max(2000).optional(),
+});
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -39,8 +44,32 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     denemeRedLog({ uc: "kapat", formId: id, from: form.durum, to: "TAMAMLANDI", reason: "durum kapanışa uygun değil", user: aktor.email });
     return NextResponse.json({ error: "Form İK aşamasında değil" }, { status: 400 });
   }
-  if (!gecisIzinli(form.durum, "IK", "TAMAMLANDI")) {
+  const karar = parsed.data.karar;
+  const hedef = karar === "IPTAL" ? "IPTAL" : "TAMAMLANDI";
+  if (!gecisIzinli(form.durum, "IK", hedef)) {
     return NextResponse.json({ error: "Bu geçişe izin verilmiyor" }, { status: 400 });
+  }
+
+  // İPTAL: gerekçe ZORUNLU, puan/sonuç aranmaz (form yarıda kesiliyor).
+  if (karar === "IPTAL") {
+    const gerekceIptal = parsed.data.fesihGerekce?.trim() ?? "";
+    if (!gerekceIptal) {
+      denemeRedLog({ uc: "kapat", formId: id, from: form.durum, to: "IPTAL", reason: "iptal gerekcesi bos", user: aktor.email });
+      return NextResponse.json({ error: "İptal için gerekçe zorunludur" }, { status: 400 });
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.denemeDegerlendirme.update({
+        where: { id },
+        data: { durum: "IPTAL", fesihGerekce: gerekceIptal, ikKapatanId: aktor.userId, ikKapatmaTarihi: new Date() },
+      });
+      await tx.denemeDegerlendirmeLog.create({
+        data: {
+          degerlendirmeId: id, eskiDurum: form.durum, yeniDurum: "IPTAL",
+          aktorId: aktor.userId, aciklama: `İV iptal etti: ${gerekceIptal}`,
+        },
+      });
+    });
+    return NextResponse.json({ ok: true, durum: "IPTAL" });
   }
 
   const ort = form.ortalama;

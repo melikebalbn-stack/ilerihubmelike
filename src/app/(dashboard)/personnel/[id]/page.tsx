@@ -6,6 +6,7 @@ import { useRouter, useSearchParams, useParams } from "next/navigation"
 import Link from "next/link"
 import { canAccessPersonnel } from "@/lib/auth/personnel-access"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DenemeFormlariKarti } from "./_components/DenemeFormlariKarti"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -1001,6 +1002,10 @@ export default function PersonnelDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* IV-FR-27 — Deneme Değerlendirme formları. Kart YALNIZ kullanıcının
+          görebileceği form varsa çizilir (yetki + varlık kontrolü bileşenin içinde). */}
+      <DenemeFormlariKarti personnelId={data.id} />
 
       {/* Faz 6 — Başvuru Dosyası. YALNIZ bu kart bir başvurudan doğduysa çıkar;
           eski kayıtlarda jobApplication null olduğu için hiç render edilmez.

@@ -21,7 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { AlertCircle, ArrowLeft, Loader2, Save, Send, ShieldAlert, UserCog } from "lucide-react"
+import { AlertCircle, ArrowLeft, Check, Loader2, Save, Send, ShieldAlert, Undo2, UserCog, X } from "lucide-react"
 import { toast } from "sonner"
 import { apiFetch } from "@/lib/api-fetch"
 
@@ -83,6 +83,8 @@ export default function DenemeFormPage() {
   const [puanlar, setPuanlar] = useState<Record<string, number>>({})
   const [notlar, setNotlar] = useState<Record<string, string>>({})
   const [kaydediyor, setKaydediyor] = useState(false)
+  const [onayNotu, setOnayNotu] = useState("")
+  const [fesihGerekce, setFesihGerekce] = useState("")
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -132,6 +134,18 @@ export default function DenemeFormPage() {
   }, [form])
   const ikiKolon = dolduranSira === 2 && Object.keys(birinciPuanlar).length > 0
 
+  // ── ONAY ve İK aşamaları: puan GİRİLMEZ, iki değerlendiricinin puanları salt okunur ──
+  const roller = veri?.yetki.roller ?? []
+  const onayAsamasi = form?.durum === "ONAY_BEKLIYOR" && roller.includes("ONAYLAYAN")
+  const ikAsamasi = form?.durum === "IK_BEKLIYOR" && roller.includes("IK")
+  const ikinciPuanlar = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const p of form?.puanlar ?? []) if (p.degerlendiriciSira === 2) m[p.kriterId] = p.puan
+    return m
+  }, [form])
+  // Salt okunur aşamalarda kriter satırında hangi kolonlar gösterilecek.
+  const saltOkunurKolonlar = onayAsamasi || ikAsamasi
+
   // CANLI hesap: grup toplamları + genel toplam + ortalama.
   const grupToplam = useMemo(() => {
     const t: Record<string, number> = {}
@@ -147,6 +161,8 @@ export default function DenemeFormPage() {
   const tamami = kriterler.length > 0 && dolu === kriterler.length
   const notOrtalamasi = dolu > 0 ? genelToplam / dolu : 0
   const dusuk = tamami && genelToplam < GECME_PUANI
+  // Kayıtlı ortalamaya göre — onay/İK aşamasında karar bunun üzerinden verilir.
+  const kayitliDusuk = (form?.ortalama ?? 0) < GECME_PUANI
 
   const govde = () =>
     Object.entries(puanlar).map(([kriterId, puan]) => ({
@@ -189,6 +205,53 @@ export default function DenemeFormPage() {
       await yukle()
     } catch {
       toast.error("Aktarılamadı")
+    } finally {
+      setKaydediyor(false)
+    }
+  }
+
+  async function onayla(karar: "ONAYLA" | "GERI_GONDER") {
+    if (karar === "GERI_GONDER" && !onayNotu.trim()) {
+      toast.error("Geri gönderme için gerekçe zorunludur")
+      return
+    }
+    setKaydediyor(true)
+    try {
+      const res = await apiFetch(`/api/deneme/${id}/onayla`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ karar, not: onayNotu.trim() || undefined }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error(j?.error ?? "İşlem başarısız"); return }
+      toast.success(karar === "ONAYLA" ? "Form onaylandı" : "Form geri gönderildi")
+      setOnayNotu("")
+      await yukle()
+    } catch {
+      toast.error("İşlem başarısız")
+    } finally {
+      setKaydediyor(false)
+    }
+  }
+
+  async function kapat(karar: "KAPAT" | "IPTAL" = "KAPAT") {
+    setKaydediyor(true)
+    try {
+      const res = await apiFetch(`/api/deneme/${id}/kapat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ karar, fesihGerekce: fesihGerekce.trim() || undefined }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error(j?.error ?? "İşlem başarısız"); return }
+      toast.success(
+        karar === "IPTAL"
+          ? "Değerlendirme iptal edildi"
+          : `Değerlendirme kapatıldı — ${j.basarili ? "BAŞARILI" : "BAŞARISIZ"}`,
+      )
+      await yukle()
+    } catch {
+      toast.error("Kapatılamadı")
     } finally {
       setKaydediyor(false)
     }
@@ -321,14 +384,30 @@ export default function DenemeFormPage() {
                       <p className="font-medium">{k.baslik}</p>
                       <p className="text-xs text-muted-foreground">{k.aciklama}</p>
                     </div>
-                    {ikiKolon && (
+                    {ikiKolon && !saltOkunurKolonlar && (
                       <div className="ml-auto shrink-0 rounded-md border bg-muted/50 px-3 py-1 text-center">
                         <div className="text-[10px] uppercase text-muted-foreground">1. değerlendirici</div>
                         <div className="text-sm font-semibold tabular-nums">{birinciPuanlar[k.id] ?? "—"}</div>
                       </div>
                     )}
+                    {saltOkunurKolonlar && (
+                      // Onay/İK aşaması: PUAN GİRİLMEZ. Verilmiş puanlar kolon kolon okunur.
+                      <div className="ml-auto flex shrink-0 gap-2">
+                        <div className="rounded-md border bg-muted/50 px-3 py-1 text-center">
+                          <div className="text-[10px] uppercase text-muted-foreground">1. değ.</div>
+                          <div className="text-sm font-semibold tabular-nums">{birinciPuanlar[k.id] ?? "—"}</div>
+                        </div>
+                        {form.degerlendirici2 && (
+                          <div className="rounded-md border bg-muted/50 px-3 py-1 text-center">
+                            <div className="text-[10px] uppercase text-muted-foreground">2. değ.</div>
+                            <div className="text-sm font-semibold tabular-nums">{ikinciPuanlar[k.id] ?? "—"}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
+                  {!saltOkunurKolonlar && (
                   <RadioGroup
                     value={puanlar[k.id]?.toString() ?? ""}
                     onValueChange={(v) => setPuanlar((s) => ({ ...s, [k.id]: Number(v) }))}
@@ -344,6 +423,7 @@ export default function DenemeFormPage() {
                       </div>
                     ))}
                   </RadioGroup>
+                  )}
 
                   {doldurabilir && (
                     <Textarea
@@ -361,27 +441,58 @@ export default function DenemeFormPage() {
         )
       })}
 
-      {/* ── TOPLAM ── */}
-      <Card className={dusuk ? "border-destructive" : undefined}>
+      {/* ── TOPLAM ── Salt okunur aşamalarda KAYITLI puanlar, doldururken canlı hesap. */}
+      <Card className={(saltOkunurKolonlar ? kayitliDusuk : dusuk) ? "border-destructive" : undefined}>
         <CardContent className="flex flex-wrap items-center justify-between gap-4 p-6">
-          <div>
-            <div className="text-sm text-muted-foreground">Genel Toplam</div>
-            <div className={`text-3xl font-bold tabular-nums ${dusuk ? "text-destructive" : ""}`}>
-              {genelToplam}
-              <span className="ml-1 text-base font-normal text-muted-foreground">/ 100</span>
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Not Ortalaması</div>
-            <div className={`text-3xl font-bold tabular-nums ${dusuk ? "text-destructive" : ""}`}>
-              {notOrtalamasi.toFixed(2)}
-            </div>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {dolu} / {kriterler.length} kriter dolduruldu
-          </div>
+          {saltOkunurKolonlar ? (
+            <>
+              <div>
+                <div className="text-sm text-muted-foreground">1. Değerlendirici</div>
+                <div className={`text-2xl font-bold tabular-nums ${(form.puan1 ?? 0) < GECME_PUANI ? "text-destructive" : ""}`}>
+                  {form.puan1 ?? "—"}
+                </div>
+              </div>
+              {form.degerlendirici2 && (
+                <div>
+                  <div className="text-sm text-muted-foreground">2. Değerlendirici</div>
+                  <div className={`text-2xl font-bold tabular-nums ${(form.puan2 ?? 0) < GECME_PUANI ? "text-destructive" : ""}`}>
+                    {form.puan2 ?? "—"}
+                  </div>
+                </div>
+              )}
+              <div>
+                <div className="text-sm text-muted-foreground">Not Ortalaması</div>
+                <div className={`text-3xl font-bold tabular-nums ${kayitliDusuk ? "text-destructive" : ""}`}>
+                  {form.ortalama?.toFixed(2) ?? "—"}
+                  <span className="ml-1 text-base font-normal text-muted-foreground">/ 100</span>
+                </div>
+              </div>
+              <Badge variant={kayitliDusuk ? "destructive" : "default"} className="text-sm">
+                {kayitliDusuk ? "BAŞARISIZ" : "BAŞARILI"}
+              </Badge>
+            </>
+          ) : (
+            <>
+              <div>
+                <div className="text-sm text-muted-foreground">Genel Toplam</div>
+                <div className={`text-3xl font-bold tabular-nums ${dusuk ? "text-destructive" : ""}`}>
+                  {genelToplam}
+                  <span className="ml-1 text-base font-normal text-muted-foreground">/ 100</span>
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Not Ortalaması</div>
+                <div className={`text-3xl font-bold tabular-nums ${dusuk ? "text-destructive" : ""}`}>
+                  {notOrtalamasi.toFixed(2)}
+                </div>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {dolu} / {kriterler.length} kriter dolduruldu
+              </div>
+            </>
+          )}
         </CardContent>
-        {dusuk && (
+        {(saltOkunurKolonlar ? kayitliDusuk : dusuk) && (
           <CardContent className="pt-0">
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -393,6 +504,151 @@ export default function DenemeFormPage() {
           </CardContent>
         )}
       </Card>
+
+      {/* ── ONAY BLOKU (ONAY_BEKLIYOR · onaylayan PUAN VERMEZ) ── */}
+      {onayAsamasi && (
+        <Card>
+          <CardHeader className="border-b bg-muted/40 py-3">
+            <CardTitle className="text-base">Onay</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 p-6">
+            <p className="text-sm text-muted-foreground">
+              Değerlendirme puanları yukarıda. Onaylarsanız form İnsan Varlıkları'na geçer;
+              geri gönderirseniz bir önceki adıma döner. <strong>Bu aşamada puan verilmez.</strong>
+            </p>
+            <Textarea
+              placeholder="Onay notu (geri göndermede zorunlu)"
+              value={onayNotu}
+              onChange={(e) => setOnayNotu(e.target.value)}
+              rows={3}
+            />
+            <div className="flex flex-wrap justify-end gap-3">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={kaydediyor || !onayNotu.trim()}>
+                    <Undo2 className="mr-2 h-4 w-4" /> Geri Gönder
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Form geri gönderilsin mi?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Form bir önceki adıma dönecek ve yeniden doldurulması istenecek.
+                      Gerekçeniz kayda geçer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => onayla("GERI_GONDER")}>Geri Gönder</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button disabled={kaydediyor}>
+                    <Check className="mr-2 h-4 w-4" /> Onayla
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Form onaylansın mı?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Onaydan sonra form İnsan Varlıkları aşamasına geçer.
+                      Not ortalaması {form.ortalama?.toFixed(2) ?? "—"}.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => onayla("ONAYLA")}>Onayla</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── İK KAPATMA BLOKU (IK_BEKLIYOR · yalnız İV) ── */}
+      {ikAsamasi && (
+        <Card className={kayitliDusuk ? "border-destructive" : undefined}>
+          <CardHeader className="border-b bg-muted/40 py-3">
+            <CardTitle className="text-base">İnsan Varlıkları — Kapanış</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 p-6">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-muted-foreground">Sonuç:</span>
+              <Badge variant={kayitliDusuk ? "destructive" : "default"}>
+                {kayitliDusuk ? "BAŞARISIZ" : "BAŞARILI"}
+              </Badge>
+              <span className="text-muted-foreground">
+                (not ortalaması {form.ortalama?.toFixed(2) ?? "—"} · geçme notu {GECME_PUANI})
+              </span>
+            </div>
+
+            {kayitliDusuk && (
+              <>
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Gerekçe zorunlu</AlertTitle>
+                  <AlertDescription>
+                    Gerekçeli tutanak ve belge sunulması gerekmektedir.
+                  </AlertDescription>
+                </Alert>
+                <Textarea
+                  placeholder="Fesih gerekçesi (zorunlu)"
+                  value={fesihGerekce}
+                  onChange={(e) => setFesihGerekce(e.target.value)}
+                  rows={4}
+                />
+              </>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={kaydediyor || !fesihGerekce.trim()}>
+                    <X className="mr-2 h-4 w-4" /> İptal Et
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Değerlendirme iptal edilsin mi?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Form iptal edilecek ve bir daha işlem yapılamayacak. Gerekçeniz kayda geçer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => kapat("IPTAL")}>İptal Et</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button disabled={kaydediyor || (kayitliDusuk && !fesihGerekce.trim())}>
+                    <Check className="mr-2 h-4 w-4" /> Kapat
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Değerlendirme kapatılsın mı?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Sonuç {kayitliDusuk ? "BAŞARISIZ" : "BAŞARILI"} olarak kaydedilecek ve
+                      form tamamlanacak. Bu işlem geri alınamaz.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => kapat("KAPAT")}>Kapat</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── EYLEMLER ── */}
       {doldurabilir && (

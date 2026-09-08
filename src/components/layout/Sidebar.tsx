@@ -414,6 +414,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // İş Analizi menü bayrakları — SUNUCUDAN (amir DB sorgusu + ik OR mantığı iaRolCozumle'de).
   const [iaFlags, setIaFlags] = useState<{ amir: boolean; ik: boolean }>({ amir: false, ik: false })
   const [kadroTalepAcabilir, setKadroTalepAcabilir] = useState(false)
+  const [denemeGorunur, setDenemeGorunur] = useState(false)
 
   // Collapse/pin (yalnız masaüstü; mobil sheet'te isOpen=true → her zaman geniş)
   const { collapsed, pinned, hovering, setCollapsed, setPinned, setHovering } = useSidebar()
@@ -496,6 +497,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         if (!r.ok) return
         const d = await r.json()
         setIaFlags({ amir: !!d.amir, ik: !!d.ik })
+      })
+      .catch(() => {})
+  }, [session])
+
+  // IV-FR-27 deneme değerlendirme menü bayrağı — SUNUCUDA hesaplanır (İV ya da
+  // en az bir formun zincirinde olmak). Client'ta yetki HESAPLANMAZ.
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/deneme/menu-bayrak')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setDenemeGorunur(!!d.gorunur)
       })
       .catch(() => {})
   }, [session])
@@ -610,11 +624,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   // İş Analizi koşullu öğeler — SUNUCU bayrağı (iaFlags) ile; client'ta yetki hesaplanmaz.
   const iaAmirItem = { name: "Onayımdaki İş Analizleri", icon: UserCheck, href: "/strategic-hr/is-analizi/onaylarim", roles: ["*"] }
+  // IV-FR-27 — görünürlük menu-bayrak ucundan (İV ya da zincirde olmak).
+  const denemeItem = { name: "Deneme Değerlendirme", icon: ClipboardList, href: "/deneme", roles: ["*"] }
   const iaIkItem = { name: "İş Analizi Onayları", icon: ClipboardCheck, href: "/strategic-hr/is-analizi/ik-onay", roles: ["*"] }
 
   const filteredStrategicHrItems = [
     ...filterStrategicHrItems(strategicHrMenuItems),
     ...(iaFlags.ik ? [iaIkItem] : []),
+    // IV-FR-27 — recruitment/performance ile aynı çatı altında.
+    ...(denemeGorunur ? [denemeItem] : []),
   ]
   const filteredOffboardingItems = filterItems(offboardingMenuItems)
   // İV grubu görünürlüğü: en az bir alt öğe görünüyorsa başlık gösterilir

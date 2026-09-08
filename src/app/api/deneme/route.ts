@@ -16,9 +16,35 @@ const filtre = z.object({
   durum: z.enum(["TASLAK", "DEGERLENDIRICI1_BEKLIYOR", "MUDUR_YRD_BEKLIYOR", "MUDUR_BEKLIYOR", "ONAY_BEKLIYOR", "IK_BEKLIYOR", "TAMAMLANDI", "IPTAL"]).optional(),
   tur: z.enum(["DENEME_2AY", "ALTI_AY"]).optional(),
   yaka: z.enum(["MAVI", "GRI", "BEYAZ"]).optional(),
+  bolum: z.string().optional(),
+  personnelId: z.string().optional(),
   baslangic: z.string().optional(),
   bitis: z.string().optional(),
+  /** true → kapanmışlar dahil. Varsayılan: yalnız AÇIK formlar. */
+  hepsi: z.enum(["true", "false"]).optional(),
 });
+
+/** Durumdan o anki adımın sahibinin ADI — liste kolonu için. */
+function adimSahibiAdi(f: {
+  durum: string
+  degerlendirici1: { adSoyad: string } | null
+  degerlendirici2: { adSoyad: string } | null
+  onaylayan: { adSoyad: string } | null
+}): string | null {
+  switch (f.durum) {
+    case "DEGERLENDIRICI1_BEKLIYOR":
+      return f.degerlendirici1?.adSoyad ?? null;
+    case "MUDUR_YRD_BEKLIYOR":
+    case "MUDUR_BEKLIYOR":
+      return f.degerlendirici2?.adSoyad ?? null;
+    case "ONAY_BEKLIYOR":
+      return f.onaylayan?.adSoyad ?? null;
+    case "IK_BEKLIYOR":
+      return "İnsan Varlıkları";
+    default:
+      return null;
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { aktor, error } = await aktoruCoz();
@@ -29,8 +55,11 @@ export async function GET(request: NextRequest) {
     durum: sp.get("durum") ?? undefined,
     tur: sp.get("tur") ?? undefined,
     yaka: sp.get("yaka") ?? undefined,
+    bolum: sp.get("bolum") ?? undefined,
+    personnelId: sp.get("personnelId") ?? undefined,
     baslangic: sp.get("baslangic") ?? undefined,
     bitis: sp.get("bitis") ?? undefined,
+    hepsi: sp.get("hepsi") ?? undefined,
   });
   if (!parsed.success) {
     denemeRedLog({ uc: "liste", formId: "(liste)", from: "-", to: "-", reason: "filtre geçersiz", user: aktor.email });
@@ -39,7 +68,11 @@ export async function GET(request: NextRequest) {
   const f = parsed.data;
 
   const where: Prisma.DenemeDegerlendirmeWhereInput = {};
+  // Varsayılan kapsam: AÇIK formlar. `durum` verilirse ya da hepsi=true ise kapsam açılır.
+  if (!f.durum && f.hepsi !== "true") where.durum = { notIn: ["TAMAMLANDI", "IPTAL"] };
   if (f.durum) where.durum = f.durum;
+  if (f.bolum) where.personnel = { bolum: f.bolum };
+  if (f.personnelId) where.personnelId = f.personnelId;
   if (f.tur) where.tur = f.tur;
   if (f.yaka) where.yakaRengi = f.yaka;
   if (f.baslangic || f.bitis) {
@@ -72,5 +105,6 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({ formlar, toplam: formlar.length, kapsam: ikMi(aktor) ? "tumu" : "kendi" });
+  const satirlar = formlar.map((x) => ({ ...x, adimSahibi: adimSahibiAdi(x) }));
+  return NextResponse.json({ formlar: satirlar, toplam: satirlar.length, kapsam: ikMi(aktor) ? "tumu" : "kendi" });
 }

@@ -76,6 +76,11 @@ export function adimSahibiRol(durum: DenemeDurum): DenemeRol | null {
  * "bölüm müdürüyüm" demek yetmez, o formun degerlendirici2Id'si olmak gerekir.
  */
 export function adimSahibiMi(form: FormYetkiOzet, aktor: Aktor): boolean {
+  // İK aşaması Personnel bağı GEREKTİRMEZ — yetki izinden gelir. Bu kontrol
+  // pid kontrolünden ÖNCE olmalı: Personnel kaydı olmayan İV kullanıcısı da
+  // formu kapatabilmeli (aksi hâlde form İK aşamasında kilitlenirdi).
+  if (form.durum === "IK_BEKLIYOR") return ikMi(aktor);
+
   const pid = aktor.personnelId;
   if (!pid) return false;
   switch (form.durum) {
@@ -86,8 +91,6 @@ export function adimSahibiMi(form: FormYetkiOzet, aktor: Aktor): boolean {
       return form.degerlendirici2Id === pid;
     case "ONAY_BEKLIYOR":
       return form.onaylayanId === pid;
-    case "IK_BEKLIYOR":
-      return ikMi(aktor);
     default:
       return false;
   }

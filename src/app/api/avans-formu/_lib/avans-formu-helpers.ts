@@ -187,17 +187,17 @@ export async function bulSorumluVeEkibi(userId: string): Promise<SorumluEkibiSon
 
 /** GET/POST route'larında ok:false durumunu kullanıcıya gösterilecek mesaja çevirir. */
 export function sonucHataMesaji(reason: 'PERSONEL_YOK' | 'PERSONEL_PASIF' | 'EKIP_BOS'): string {
-  if (reason === 'EKIP_BOS') return 'Sorumlusu olduğunuz birimde kayıtlı mavi yaka personel bulunamadı.'
+  if (reason === 'EKIP_BOS') return 'Herhangi bir bölümde sorumlu olarak tanımlı değilsiniz.'
   if (reason === 'PERSONEL_PASIF') return 'Personel kaydınız aktif değil.'
-  return 'Bu kullanıcıya bağlı bir personel kaydı bulunamadı.'
+  return 'Hesabınıza bağlı personel kaydı bulunamadı. İK ile iletişime geçin.'
 }
 
 /**
  * GET/POST route'larında ok:false durumunu HTTP status koduna çevirir.
- * EKIP_BOS = kişi gerçekten sorumlu değil (ya da sorumlu olduğu yerde ekip
- * boş) → 403 (yetki reddi, rol kontrolü değil — veri kaynaklı). PERSONEL_YOK
- * ve PERSONEL_PASIF için 404 korunuyor (Melih'in onayı bekleniyor, bkz. rapor).
+ * Üçü de yetki reddi (403) — "kaynak yok" değil, "bu forma erişimin yok"
+ * (Melih'in kararı: 404 "link bozuk" izlenimi veriyor, 403 gerçek sebebi
+ * anlatıyor). Rol kontrolü değil, veri kaynaklı.
  */
-export function sonucHataStatus(reason: 'PERSONEL_YOK' | 'PERSONEL_PASIF' | 'EKIP_BOS'): number {
-  return reason === 'EKIP_BOS' ? 403 : 404
+export function sonucHataStatus(_reason: 'PERSONEL_YOK' | 'PERSONEL_PASIF' | 'EKIP_BOS'): number {
+  return 403
 }

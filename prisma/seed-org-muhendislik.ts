@@ -134,7 +134,7 @@ const NODES: SeedNode[] = [
     code: "ORG-MH-P06",
     parentCode: "ORG-MH-P05",
     unitType: "POSITION",
-    name: "Proje Sorumluları",
+    name: "Proje Sorumlusu",
     level: 3,
     sortOrder: 0,
     approvedHeadcount: 3,

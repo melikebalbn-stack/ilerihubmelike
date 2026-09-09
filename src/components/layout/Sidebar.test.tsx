@@ -260,3 +260,35 @@ describe('Sidebar — Formlar grubu alt başlıkları', () => {
     expect(screen.getByText('Mesai Formu')).toBeInTheDocument()
   })
 })
+
+describe('Sidebar — ADIM 2: form olmayan öğelerin taşınması', () => {
+  it('Mesai Performansı Formlar grubunun ALTINDA değil (Formlar kapalıyken de görünür, tek kopya)', () => {
+    // Sıradan kullanıcı: showIkGroup false → öğe üst seviyede tek başına render
+    // edilir. Formlar kapalı olduğu hâlde görünmesi, Formlar'dan çıktığının kanıtı.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
+    renderSidebar()
+    expect(screen.getByText('Mesai Performansı')).toBeInTheDocument()
+
+    // Formlar açılınca da tek kopya kalır (iki yerde birden çizilmiyor).
+    fireEvent.click(screen.getByText('Formlar'))
+    expect(screen.getAllByText('Mesai Performansı')).toHaveLength(1)
+  })
+
+  it('yalnız amir bayrağı olan kullanıcıda Stratejik İK grubu görünür ve "Onayımdaki İş Analizleri" ORADA', async () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
+    // Sunucu bayrağı: amir=true, ik=false. Diğer menü-bayrak uçları kapalı.
+    global.fetch = vi.fn().mockImplementation((url: string) =>
+      String(url).includes('/api/strategic-hr/is-analizi/menu-bayrak')
+        ? Promise.resolve({ ok: true, json: async () => ({ amir: true, ik: false }) })
+        : Promise.reject(new Error('test ortamında fetch yok'))
+    ) as unknown as typeof fetch
+    renderSidebar()
+
+    // İV grubu YALNIZ bu öğe sayesinde açılır (filteredStrategicHrItems.length > 0).
+    fireEvent.click(await screen.findByText('İV'))
+    fireEvent.click(screen.getByText('Stratejik İK'))
+
+    const link = screen.getByText('Onayımdaki İş Analizleri').closest('a')
+    expect(link).toHaveAttribute('href', '/strategic-hr/is-analizi/onaylarim')
+  })
+})

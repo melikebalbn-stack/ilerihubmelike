@@ -31,7 +31,7 @@ export type DenemeCronSonuc = {
   /** Bayrak kapalıyken gönderilmeyen bildirim sayısı. */
   atlananBildirim: number
   /** Sentetik adres yüzünden maili ULAŞMAYAN alıcılar (in-app oluşturuldu). */
-  mailUlasmayan: { adSoyad: string; email: string; personel: string }[]
+  mailUlasmayan: { personnelId: string; adSoyad: string; email: string; personel: string }[]
 }
 
 type Alici = {
@@ -124,22 +124,28 @@ function sonrakiHalkaPersonelId(form: {
  * Dönüş: mail GERÇEKTEN gitti mi — gönderim işareti buna bakar. Mail patlarsa
  * işaretlemeyiz, yarın tekrar denenir (mevcut uçtaki `if (r.success)` deseni).
  */
+/** Tek alıcıya bildirim sonucu. `mail` gitmese de `inApp` oluştuysa BİLDİRİLMİŞ sayılır. */
+type GonderimSonuc = { mail: boolean; inApp: boolean }
+
 async function gonder(
   alici: Alici, konu: string, govde: string, html: string, link: string, inAppBaslik: string,
-): Promise<boolean> {
+): Promise<GonderimSonuc> {
   // SENTETİK ADRES: posta kutusu yok, gönderilse teslim edilmez. Mail adımını
   // ATLA ama in-app bildirimi YİNE OLUŞTUR — kullanıcı sisteme giriyor, orada görür.
-  // false döner: "gönderildi" işareti konmaz, İV'ye ulaşmadığı bildirilir.
+  // `mail:false, inApp:true` → çağıran BİLDİRİLDİ sayar ve işaretler; aksi hâlde
+  // her gün aynı in-app bildirimi tekrar üretilirdi (2026-09-09 gözlemi).
   if (alici.sentetik) {
+    let inApp = false
     try {
       await prisma.notification.create({
         data: { userId: alici.userId, title: inAppBaslik, message: konu, type: 'INFO', link },
       })
+      inApp = true
     } catch (e) {
       console.error('[deneme-bildirim] in-app:', e)
     }
     console.warn('[deneme-bildirim] sentetik adres — mail atlandi, in-app olusturuldu:', alici.email)
-    return false
+    return { mail: false, inApp }
   }
 
   const [mailRes, inAppRes] = await Promise.allSettled([
@@ -148,16 +154,17 @@ async function gonder(
       data: { userId: alici.userId, title: inAppBaslik, message: konu, type: 'INFO', link },
     }),
   ])
+  const inApp = inAppRes.status === 'fulfilled'
   if (inAppRes.status === 'rejected') console.error('[deneme-bildirim] in-app:', inAppRes.reason)
   if (mailRes.status === 'rejected') {
     console.error('[deneme-bildirim] mail:', mailRes.reason)
-    return false
+    return { mail: false, inApp }
   }
   if (!mailRes.value?.success) {
     console.error('[deneme-bildirim] mail gonderilemedi:', mailRes.value?.error)
-    return false
+    return { mail: false, inApp }
   }
-  return true
+  return { mail: true, inApp }
 }
 
 /** Aynı kişi+tip için son 14 günde gönderildi mi (mevcut uçla AYNI tablo/ölçüt). */
@@ -169,14 +176,32 @@ async function zatenGonderildi(personnelId: string, type: string, dedupSince: Da
   return !!log
 }
 
-async function gonderimiIsaretle(personnelId: string, type: string, alicilar: Alici[], subject: string) {
+/**
+ * Gönderim işareti. `PersonnelEvaluationEmailLog`'da ayrı bir details kolonu YOK;
+ * maili ulaşmayan alıcı adresin yanına "(in-app)" eklenerek kayda geçer — böylece
+ * geriye dönük bakan biri kime mail gittiğini, kime yalnız uygulama içi bildirim
+ * bırakıldığını ayırt edebilir.
+ */
+async function gonderimiIsaretle(
+  personnelId: string,
+  type: string,
+  alicilar: Alici[],
+  subject: string,
+  mailsizAlicilar: Set<string> = new Set(),
+) {
+  const liste = alicilar
+    .map((a) => (mailsizAlicilar.has(a.userId) ? `${a.email} (in-app)` : a.email))
+    .join(', ')
   await prisma.personnelEvaluationEmailLog.create({
-    data: { personnelId, type, recipientEmails: alicilar.map((a) => a.email).join(', '), subject },
+    data: { personnelId, type, recipientEmails: liste, subject },
   })
 }
 
 /** Zinciri çözülemeyen kişi bildirimi — kişi bazında 14 gün dedup. */
 const ZINCIR_HATASI_TIPI = 'ZINCIR_HATASI'
+
+/** Maili ulaşmayan alıcı bildirimi — kişi bazında 14 gün dedup (ZINCIR_HATASI deseni). */
+const MAIL_ULASMADI_TIPI = 'MAIL_ULASMADI'
 
 const TUR_ETIKET: Record<DenemeTur, string> = {
   DENEME_2AY: 'Deneme Süresi (2 Ay)',
@@ -328,16 +353,20 @@ export async function denemeFormlariniIsle(args: {
             adSoyad: kisi.adSoyad, sicilNo: kisi.sicilNo, bolum: kisi.bolum, gorev: kisi.gorev,
             tur: etiket, hedefTarih, gunKala, durum: form.durum, link,
           })
-          let enAzBirGitti = false
+          let enAzBiriBildirildi = false
+          const mailsiz = new Set<string>()
           for (const a of benzersiz) {
-            if (a.sentetik) {
-              sonuc.mailUlasmayan.push({ adSoyad: a.name, email: a.email, personel: `${kisi.adSoyad} (${kisi.sicilNo})` })
+            const r = await gonder(a, subject, body, html, link, `${etiket} değerlendirmesi gecikiyor`)
+            if (!r.mail && r.inApp) {
+              mailsiz.add(a.userId)
+              sonuc.mailUlasmayan.push({ personnelId: kisi.id, adSoyad: a.name, email: a.email, personel: `${kisi.adSoyad} (${kisi.sicilNo})` })
             }
-            if (await gonder(a, subject, body, html, link, `${etiket} değerlendirmesi gecikiyor`)) enAzBirGitti = true
+            // Mail ya da in-app — biri olduysa o alıcı bildirilmiş sayılır.
+            if (r.mail || r.inApp) enAzBiriBildirildi = true
           }
-          // Hiçbiri gitmediyse İŞARETLEME — yarın tekrar denensin.
-          if (enAzBirGitti) {
-            await gonderimiIsaretle(kisi.id, tip, benzersiz, subject)
+          // Hiç kimseye ne mail ne in-app ulaştıysa İŞARETLEME — yarın tekrar denensin.
+          if (enAzBiriBildirildi) {
+            await gonderimiIsaretle(kisi.id, tip, benzersiz, subject, mailsiz)
             await prisma.denemeDegerlendirme.update({
               where: { id: form.id }, data: { hatirlatmaSeviyesi: 2, sonHatirlatmaAt: new Date() },
             })
@@ -359,11 +388,14 @@ export async function denemeFormlariniIsle(args: {
             adSoyad: kisi.adSoyad, sicilNo: kisi.sicilNo, bolum: kisi.bolum, gorev: kisi.gorev,
             tur: etiket, hedefTarih, gunKala, link,
           })
-          if (sahip.sentetik) {
-            sonuc.mailUlasmayan.push({ adSoyad: sahip.name, email: sahip.email, personel: `${kisi.adSoyad} (${kisi.sicilNo})` })
+          const r = await gonder(sahip, subject, body, html, link, `${etiket} değerlendirmesi sizde`)
+          if (!r.mail && r.inApp) {
+            sonuc.mailUlasmayan.push({ personnelId: kisi.id, adSoyad: sahip.name, email: sahip.email, personel: `${kisi.adSoyad} (${kisi.sicilNo})` })
           }
-          if (await gonder(sahip, subject, body, html, link, `${etiket} değerlendirmesi sizde`)) {
-            await gonderimiIsaretle(kisi.id, tip, [sahip], subject)
+          // Mail gitmese de in-app oluştuysa BİLDİRİLMİŞ sayılır → seviye ilerler,
+          // log yazılır, ertesi gün tekrar üretilmez. Hiçbiri olmadıysa işaretlenmez.
+          if (r.mail || r.inApp) {
+            await gonderimiIsaretle(kisi.id, tip, [sahip], subject, r.mail ? new Set() : new Set([sahip.userId]))
             await prisma.denemeDegerlendirme.update({
               where: { id: form.id }, data: { hatirlatmaSeviyesi: 1, sonHatirlatmaAt: new Date() },
             })
@@ -376,12 +408,22 @@ export async function denemeFormlariniIsle(args: {
   // Zincir çözülemeyenleri İV'ye TEK mailde bildir — kimse fark etmeden tıkanmasın.
   // Sentetik adres yüzünden ulaşılamayanlar İV'ye bildirilir — kimse "haberi var"
   // sanmasın. in-app bildirim oluşturuldu, mail gitmedi.
-  if (!kuru && bildirimAcik && sonuc.mailUlasmayan.length) {
+  // KİŞİ BAZINDA 14 GÜN DEDUP (ZINCIR_HATASI deseni): aynı personelin formu için
+  // aynı ulaşılamayan alıcı 14 günde bir bildirilir; yeni bir vaka çıkarsa beklemeden
+  // girer. Aksi hâlde form ilerlemediği sürece İV her gün aynı maili alırdı.
+  const bildirilecek: typeof sonuc.mailUlasmayan = []
+  if (!kuru && bildirimAcik) {
+    for (const m of sonuc.mailUlasmayan) {
+      if (!(await zatenGonderildi(m.personnelId, MAIL_ULASMADI_TIPI, args.dedupSince))) bildirilecek.push(m)
+    }
+  }
+
+  if (!kuru && bildirimAcik && bildirilecek.length) {
     const iv = await ivAlicilari()
-    const satirlar = sonuc.mailUlasmayan
+    const satirlar = bildirilecek
       .map((m, i) => `${i + 1}. ${m.adSoyad} (${m.email}) — ${m.personel}`)
       .join('\n')
-    const konu = `ℹ️ Deneme değerlendirme: ${sonuc.mailUlasmayan.length} değerlendiriciye e-posta ULAŞMADI`
+    const konu = `ℹ️ Deneme değerlendirme: ${bildirilecek.length} değerlendiriciye e-posta ULAŞMADI`
     const govde = `Aşağıdaki değerlendiricilerin sistem hesabı gerçek bir posta kutusuna bağlı değil
 (mavi yaka giriş adresi). E-posta GÖNDERİLMEDİ; uygulama içi bildirim oluşturuldu.
 
@@ -392,8 +434,14 @@ kurumsal e-posta hesabı açılması gerekir.
 
 --
 ILERIHub İnsan Varlıkları Yönetim Sistemi`
+    let gitti = false
     for (const a of iv) {
-      await gonder(a, konu, govde, govde.replace(/\n/g, '<br>'), `${base}/deneme`, 'Bildirim e-postası ulaşmadı')
+      const r = await gonder(a, konu, govde, govde.replace(/\n/g, '<br>'), `${base}/deneme`, 'Bildirim e-postası ulaşmadı')
+      if (r.mail || r.inApp) gitti = true
+    }
+    // Bildirim çıktıysa her VAKA için ayrı işaret — 14 gün boyunca tekrarlanmaz.
+    if (gitti) {
+      for (const m of bildirilecek) await gonderimiIsaretle(m.personnelId, MAIL_ULASMADI_TIPI, iv, konu)
     }
   }
 
@@ -403,7 +451,8 @@ ILERIHub İnsan Varlıkları Yönetim Sistemi`
       const { subject, body, html } = generateDenemeZincirHatasiEmail(zincirHatalari)
       let gitti = false
       for (const a of iv) {
-        if (await gonder(a, subject, body, html, `${base}/personnel`, 'Deneme değerlendirme zinciri kurulamadı')) gitti = true
+        const r = await gonder(a, subject, body, html, `${base}/personnel`, 'Deneme değerlendirme zinciri kurulamadı')
+        if (r.mail || r.inApp) gitti = true
       }
       // Mail gittiyse HER KİŞİ için ayrı işaret — 14 gün boyunca o kişi tekrar
       // listeye girmez, ama başka biri kırılırsa ertesi gün mail yine çıkar.

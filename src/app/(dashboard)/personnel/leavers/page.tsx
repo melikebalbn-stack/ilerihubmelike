@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { NativeSelect as Select } from '@/components/ui/select'
-import { UserMinus, Loader2, RefreshCcw, Search } from 'lucide-react'
+import { UserMinus, Loader2, RefreshCcw, Search, FileDown } from 'lucide-react'
+import { toast } from 'sonner'
 
 // PR-EXIT-READ-FROM-PERIODS: her satır = bir kapalı EmploymentPeriod (dönem).
 interface Leaver {
@@ -125,16 +126,48 @@ export default function LeaversListPage() {
 
   const hasFilter = !!(from || to || bolum || taraf || tip || q)
 
+  // Excel: EKRANDAKİ FİLTRELERİN AYNISI uca gider (sunucu tarafında aynı sorgu
+  // çekirdeği kullanılır), böylece inen dosya ekranda görülenle birebir aynıdır.
+  const handleExport = async () => {
+    try {
+      const params = new URLSearchParams()
+      if (from) params.set('from', from)
+      if (to) params.set('to', to)
+      if (bolum) params.set('bolum', bolum)
+      if (taraf) params.set('taraf', taraf)
+      if (tip) params.set('tip', tip)
+      if (q) params.set('q', q)
+      const res = await fetch(`/api/personnel/leavers/export?${params}`)
+      if (!res.ok) throw new Error('Export hatası')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `ayrilan_personel_${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Excel dosyası indirildi')
+    } catch (err: any) {
+      toast.error(err?.message || 'Export başarısız')
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <UserMinus className="h-6 w-6 text-[#1B4F72]" />
-          Ayrılan Personel
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Kapanmış istihdam dönemleri — her çıkış ayrı satır (çıkış-giriş geçmişi dahil).
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <UserMinus className="h-6 w-6 text-[#1B4F72]" />
+            Ayrılan Personel
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Kapanmış istihdam dönemleri — her çıkış ayrı satır (çıkış-giriş geçmişi dahil).
+          </p>
+        </div>
+        <Button variant="outline" onClick={handleExport} disabled={loading || leavers.length === 0}>
+          <FileDown className="mr-2 h-4 w-4" />
+          Excel'e Aktar
+        </Button>
       </div>
 
       {/* KPI Kartları */}

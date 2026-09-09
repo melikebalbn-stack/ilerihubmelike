@@ -57,7 +57,7 @@ const profiles = [
     aiTools: ["aiopt001"], // Sadece ChatGPT
     frequency: "aiopt011", // Proje bazlı
     purposes: ["aiopt020", "aiopt017"], // Araştırma, Çeviri
-    taskDescription: "Teknik dökümanların çevirisi ve makine bakım prosedürleri araştırması",
+    taskDescription: "Teknik dokümanların çevirisi ve makine bakım prosedürleri araştırması",
     beforeTime: "240", // 4 saat
     afterTime: "90", // 1.5 saat
     monthlyFreq: "4",

@@ -26,7 +26,7 @@ const TABS: {
   { href: "/akademi/admin/courses", label: "Kurslar", icon: BookOpen },
   { href: "/akademi/admin/packages", label: "Paketler", icon: Package },
   // "IFS Eğitimleri" girdisi KALDIRILDI: akademi menüsünden tıklayan kullanıcıyı
-  // /akademi/admin/ifs-training üzerinden /ifs/egitimler'e fırlatıyordu. IFS'e
+  // /akademi/admin/ifs-training üzerinden /ifs/degerlendirme'ye fırlatıyordu. IFS'e
   // sol menüdeki kendi bölümünden girilir. Yönlendirme dosyası DURUYOR —
   // kayıtlı/paylaşılmış eski linkler kırılmasın.
   { href: "/akademi/admin/exams", label: "Sınavlar", icon: FileQuestion },

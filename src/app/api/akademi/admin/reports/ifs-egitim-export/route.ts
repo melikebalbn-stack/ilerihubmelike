@@ -17,7 +17,7 @@ import { generateIfsEgitimPdfBuffer } from "@/lib/akademi/ifs-egitim-pdf";
 
 export const dynamic = "force-dynamic";
 
-// IFS EĞİTİM EXPORT — /ifs/egitimler ekranının üç kırılımı için xlsx/pdf.
+// IFS EĞİTİM EXPORT — /ifs/degerlendirme ekranının üç kırılımı için xlsx/pdf.
 //
 // Yetki ve kapsam ifs-paket-kisiler ile AYNI: requirePermission(IFS_EGITIM_OKUMA)
 // + ifsEgitimKapsami. Key user yalnız kendi bölümünü dışarı aktarabilir —

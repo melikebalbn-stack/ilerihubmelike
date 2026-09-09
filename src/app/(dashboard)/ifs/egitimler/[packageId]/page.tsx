@@ -1,28 +1,13 @@
-import { getServerSession } from "next-auth";
+// Kalıcı yönlendirme: departman YÖNETİM ekranı /ifs/degerlendirme/[packageId]
+// altına taşındı. Kök /ifs/egitimler yönlendirme DEĞİL — orası artık kursiyer
+// tarafı eğitim dokümanı kataloğu; yalnız bu alt yol eski hedefe gider.
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
-import { hasPermission } from "@/lib/auth/has-permission";
-import { PaketYonetim } from "./_client";
 
-// IFS DEPARTMAN YÖNETİMİ — /ifs/egitimler'deki kalem ikonunun hedefi.
-//
-// Yetki kapısı BİLEREK dar: yalnız akademi.kurs.edit. ifs.keyuser tek başına
-// bu sayfayı AÇMAZ — key user değerlendirme girer, yapıyı (alan/görev/atama)
-// değiştirmez. Aynı kural uçlarda da geçerli (contents, packages/* hepsi
-// akademi.kurs.edit istiyor), yani ekranı gizlemek tek savunma değil.
-export default async function IfsPaketYonetimPage({
+export default async function IfsEgitimlerPaketRedirect({
   params,
 }: {
   params: Promise<{ packageId: string }>;
 }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) redirect("/login");
-
-  // Yalnız ifs.admin — eski akademi.kurs.edit kaldırıldı. ifs.keyuser BİLEREK
-  // YOK: key user değerlendirme girer, yapıyı değiştirmez.
-  const yetkili = await hasPermission("ifs.admin");
-  if (!yetkili) redirect("/ifs/egitimler?error=unauthorized");
-
   const { packageId } = await params;
-  return <PaketYonetim packageId={packageId} />;
+  redirect(`/ifs/degerlendirme/${packageId}`);
 }

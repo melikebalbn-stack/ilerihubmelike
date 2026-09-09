@@ -173,11 +173,16 @@ const ifsMenuItems = [
   // ADLANDIRMA (2026-09-08): 06.09'daki etiket takası URL ile adı ters bırakmıştı
   // (/ifs/gorevlerim rotası menüde "Eğitimler" görünüyordu). Rota /ifs/odevler'e
   // taşındı, ad da "Ödevler" oldu — ikisi artık hizalı.
-  //   /ifs/odevler    KURSİYER kataloğu: departman → alan → içerik + işaretleme
-  //   /ifs/egitimler  YÖNETİCİ takip ekranı: departman → kişi, ilerleme, kanaat
-  // Kursiyer girdisi başta: en geniş kitle (ifs.view 168 kişide).
+  //   /ifs/odevler        KURSİYER kataloğu: departman → alan → içerik + işaretleme
+  //   /ifs/egitimler      KURSİYER dokümanları: departman → referans PDF listesi
+  //   /ifs/degerlendirme  YÖNETİCİ takip ekranı: departman → kişi, ilerleme, kanaat
+  // ADLANDIRMA (2026-09-08, ikinci tur): "Eğitimler" yönetici tablosunu
+  // gösteriyordu; o ekran /ifs/degerlendirme'ye taşındı ve adı "Eğitim
+  // Değerlendirme" oldu. /ifs/egitimler artık adının söylediği şeyi yapıyor.
+  // Kursiyer girdileri başta: en geniş kitle (ifs.view 166 kişide).
   { name: "Ödevler", icon: ListChecks, href: "/ifs/odevler", roles: [] as string[], permission: "ifs.view" },
-  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "ifs.admin" },
+  { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "ifs.view" },
+  { name: "Eğitim Değerlendirme", icon: ClipboardCheck, href: "/ifs/degerlendirme", roles: [] as string[], permission: "ifs.admin" },
   { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: "ifs.admin" },
   { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: "ifs.rapor.view" },
 ]

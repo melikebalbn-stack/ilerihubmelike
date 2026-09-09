@@ -8,7 +8,7 @@ import {
 } from "@/lib/akademi/ifs-kapsam";
 import { ifsEgitimYapisi } from "@/lib/akademi/ifs-rapor-veri";
 
-// IFS EĞİTİM YAPISI — /ifs/egitimler ekranının veri kaynağı (READ).
+// IFS EĞİTİM YAPISI — /ifs/degerlendirme ekranının veri kaynağı (READ).
 //
 // Yetki: OR(akademi.kurs.edit, ifs.keyuser) — kapsam TEK KAYNAK'ta
 // (ifs-kapsam.ts). Hesap da TEK KAYNAK'ta (ifs-rapor-veri.ts) — export ucu

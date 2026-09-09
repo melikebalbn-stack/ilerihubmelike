@@ -254,7 +254,7 @@ export function PaketYonetim({ packageId }: { packageId: string }) {
         <p className="text-sm" style={{ color: "var(--ak-text-secondary)" }}>
           Departman bulunamadı.
         </p>
-        <Button variant="outline" onClick={() => router.push("/ifs/egitimler")}>
+        <Button variant="outline" onClick={() => router.push("/ifs/degerlendirme")}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Eğitimlere dön
         </Button>
@@ -268,7 +268,7 @@ export function PaketYonetim({ packageId }: { packageId: string }) {
       <div className="space-y-3">
         <button
           type="button"
-          onClick={() => router.push("/ifs/egitimler")}
+          onClick={() => router.push("/ifs/degerlendirme")}
           className="inline-flex items-center gap-1.5 text-sm"
           style={{ color: "var(--ak-text-secondary)" }}
         >

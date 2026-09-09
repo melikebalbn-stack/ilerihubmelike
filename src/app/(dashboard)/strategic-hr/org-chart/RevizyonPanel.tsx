@@ -145,7 +145,7 @@ export default function RevizyonPanel({
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Revizyon Geçmişi</DialogTitle>
-          <DialogDescription>{kokAd} — döküman revizyon kayıtları</DialogDescription>
+          <DialogDescription>{kokAd} — doküman revizyon kayıtları</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

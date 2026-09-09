@@ -3,7 +3,8 @@
 // IFS ÖDEVLER — kursiyer tarafı katalog, 3 seviyeli drill-down.
 // ADLANDIRMA (2026-09-08): rota /ifs/gorevlerim idi; menüde "Eğitimler"
 // yazıyordu, yani URL ile etiket ters düşüyordu. İkisi de "Ödevler"e
-// hizalandı. /ifs/egitimler ise YÖNETİCİ takip ekranı — ayrı sayfa.
+// hizalandı. /ifs/egitimler = eğitim dokümanı kataloğu (kursiyer),
+// /ifs/degerlendirme = YÖNETİCİ takip ekranı — üçü ayrı sayfa.
 // Sv1 Departman (isIfs paketler) → Sv2 Alan (paket kursları, CourseCard reuse) →
 // Sv3 İçerik (mevcut courses/[id] GOREV görünümü). Ad temizleme yalnız DISPLAY'de.
 // IFS-6 SÜSLEME (dev): kapak banner + görsel departman kartları (gradient + ikon).
@@ -316,7 +317,7 @@ export default function AkademiIfsPage() {
                         className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#173A57] bg-white px-3.5 py-2 rounded-lg whitespace-nowrap shrink-0"
                       >
                         <ExternalLink className="w-[15px] h-[15px]" />
-                        Dökümanı aç
+                        Dokümanı aç
                       </a>
                     </div>
                   </div>

@@ -41,10 +41,12 @@ export interface PartSyncOzet {
  * Syteline → IFS malzeme senkronu (v1, yalnız oluşturma).
  * dryRun=true: DB'ye YAZMAZ, yalnız ne yapılacağını raporlar (IFS'e de yazmaz, watermark ilerlemez).
  */
-export async function runPartSync(opts: { dryRun?: boolean } = {}): Promise<PartSyncOzet> {
+export async function runPartSync(opts: { dryRun?: boolean; batch?: number } = {}): Promise<PartSyncOzet> {
   const dryRun = !!opts.dryRun
   const contract = getIfsConfig().contract
-  const batch = Number(process.env.SYTE_SYNC_BATCH ?? 50) || 50
+  // batch override (route'tan ?batch=N, 1-500 kısıtlı gelir); yoksa SYTE_SYNC_BATCH env, o da yoksa 50.
+  const envBatch = Number(process.env.SYTE_SYNC_BATCH ?? 50) || 50
+  const batch = opts.batch && opts.batch > 0 ? Math.min(500, Math.floor(opts.batch)) : envBatch
 
   // (a) watermark
   const durum = await prisma.syteSyncDurum.findUnique({ where: { entity: ENTITY } })

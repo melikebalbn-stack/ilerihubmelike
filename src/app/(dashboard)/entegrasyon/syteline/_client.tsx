@@ -42,6 +42,7 @@ export function SytelineClient({
   const [filtre, setFiltre] = useState<(typeof DURUMLAR)[number]>('HEPSI')
   const [mesaj, setMesaj] = useState<string | null>(null)
   const [calisiyor, setCalisiyor] = useState<null | 'dry' | 'real' | string>(null)
+  const [batch, setBatch] = useState('') // boş = SYTE_SYNC_BATCH env varsayılanı
 
   const gorunen = filtre === 'HEPSI' ? kayitlar : kayitlar.filter((k) => k.durum === filtre)
 
@@ -49,10 +50,12 @@ export function SytelineClient({
     setCalisiyor(dryRun ? 'dry' : 'real')
     setMesaj(null)
     try {
+      const bN = Number.parseInt(batch, 10)
+      const batchVal = Number.isInteger(bN) && bN >= 1 && bN <= 500 ? bN : undefined
       const r = await fetch('/api/entegrasyon/syteline/calistir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun }),
+        body: JSON.stringify({ dryRun, batch: batchVal }),
       })
       const d = await r.json().catch(() => null)
       if (r.ok) {
@@ -121,6 +124,17 @@ export function SytelineClient({
             {calisiyor === 'dry' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
             Dry-run çalıştır
           </Button>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            inputMode="numeric"
+            value={batch}
+            onChange={(e) => setBatch(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="batch"
+            title="Bu çalışmada IFS'e yazılacak azami kayıt (1-500). Boş = varsayılan."
+            className="h-9 w-20 rounded-lg border px-2 text-sm"
+          />
           <Button onClick={() => calistir(false)} disabled={calisiyor !== null} className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700">
             {calisiyor === 'real' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             Şimdi çalıştır

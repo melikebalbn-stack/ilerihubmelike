@@ -16,6 +16,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1'
+  // ?batch=N (1-500). Geçersiz/yok → undefined (runPartSync SYTE_SYNC_BATCH'e düşer).
+  const batchRaw = Number(req.nextUrl.searchParams.get('batch'))
+  const batch = Number.isInteger(batchRaw) && batchRaw >= 1 && batchRaw <= 500 ? batchRaw : undefined
 
   // Kilit — dryRun kilit almaz (yan etkisiz). Gerçek çalışmada çift-çalışma önlenir.
   if (!dryRun) {
@@ -35,7 +38,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const ozet = await runPartSync({ dryRun })
+    const ozet = await runPartSync({ dryRun, batch })
     return NextResponse.json({ ok: true, ...ozet })
   } catch (e) {
     console.error('[syteline-malzeme-cron] hata', e)

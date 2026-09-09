@@ -13,8 +13,11 @@ export async function POST(req: NextRequest) {
   if (error) return error
   const body = await req.json().catch(() => null)
   const dryRun = body?.dryRun === true
+  // batch (1-500) — geçersiz/yok → undefined (SYTE_SYNC_BATCH env'e düşer).
+  const b = Number(body?.batch)
+  const batch = Number.isInteger(b) && b >= 1 && b <= 500 ? b : undefined
   try {
-    const ozet = await runPartSync({ dryRun })
+    const ozet = await runPartSync({ dryRun, batch })
     return apiSuccess(ozet)
   } catch (e) {
     return apiError((e as Error)?.message ?? 'Senkron çalıştırılamadı', 500)

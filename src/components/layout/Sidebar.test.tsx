@@ -235,7 +235,7 @@ describe('Sidebar — Formlar grubu alt başlıkları', () => {
 
     // Öğelerin kendisi hâlâ yerinde (alt gruplama görünürlüğü değiştirmedi).
     expect(screen.getByText('Ziyaret Raporları')).toBeInTheDocument()
-    expect(screen.getByText('Mesai Formu')).toBeInTheDocument()
+    expect(screen.getByText('Vardiya Formu')).toBeInTheDocument()
     expect(screen.getByText('RMA/SMA İade Formu')).toBeInTheDocument()
   })
 
@@ -251,26 +251,29 @@ describe('Sidebar — Formlar grubu alt başlıkları', () => {
     unmount()
   })
 
-  it('aramada "insan varlıkları" yazınca Mesai Formu sonuçlarda gelir (grup adıyla eşleşme)', () => {
+  it('aramada "insan varlıkları" yazınca Vardiya Formu sonuçlarda gelir (grup adıyla eşleşme)', () => {
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
     renderSidebar()
     fireEvent.change(screen.getByLabelText('Menüde ara'), {
       target: { value: 'insan varlıkları' },
     })
-    expect(screen.getByText('Mesai Formu')).toBeInTheDocument()
+    expect(screen.getByText('Vardiya Formu')).toBeInTheDocument()
   })
 })
 
 describe('Sidebar — ADIM 2: form olmayan öğelerin taşınması', () => {
-  it('Mesai Performansı Formlar grubunun ALTINDA değil (Formlar kapalıyken de görünür, tek kopya)', () => {
-    // Sıradan kullanıcı: showIkGroup false → öğe üst seviyede tek başına render
-    // edilir. Formlar kapalı olduğu hâlde görünmesi, Formlar'dan çıktığının kanıtı.
+  it('Mesai Performansı Formlar › Üretim ALTINDA, İV grubunda değil ve tek kopya (ADIM 4 geri alımı)', () => {
+    // ADIM 2'de İV grubuna alınmıştı; ADIM 4'te Formlar'a döndü. Formlar kapalıyken
+    // görünmemesi, artık üst seviyede ayrı render EDİLMEDİĞİNİN kanıtı.
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
     renderSidebar()
-    expect(screen.getByText('Mesai Performansı')).toBeInTheDocument()
+    expect(screen.queryByText('Mesai Performansı')).not.toBeInTheDocument()
 
-    // Formlar açılınca da tek kopya kalır (iki yerde birden çizilmiyor).
     fireEvent.click(screen.getByText('Formlar'))
+    const uretimKutu = screen.getByTestId('form-subgroup-uretim').parentElement as HTMLElement
+    expect(
+      Array.from(uretimKutu.querySelectorAll('a')).map((a) => a.textContent?.trim()),
+    ).toEqual(['Mesai Formu', 'Mesai Performansı'])
     expect(screen.getAllByText('Mesai Performansı')).toHaveLength(1)
   })
 
@@ -318,13 +321,22 @@ describe('Sidebar — ADIM 3: Genel alt grubu + Üretim alt grubu', () => {
     expect(screen.getAllByText('IT Destek Talebi')).toHaveLength(1)
   })
 
-  it('Üretim alt grubunun öğesi yok → başlığı çizilmez; "it destek" araması IT Destek Talebini bulur', () => {
+  it('Üretim başlığı ARTIK çizilir (2 öğe) ve İV alt grubu 4 öğeye düştü; "it destek" araması çalışıyor', () => {
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
     renderSidebar()
     fireEvent.click(screen.getByText('Formlar'))
 
     expect(screen.getByTestId('form-subgroup-genel')).toBeInTheDocument()
-    expect(screen.queryByTestId('form-subgroup-uretim')).not.toBeInTheDocument()
+    // ADIM 3'te boştu, başlık çizilmiyordu; ADIM 4 iki öğe taşıdı.
+    const uretimKutu = screen.getByTestId('form-subgroup-uretim').parentElement as HTMLElement
+    expect(uretimKutu.querySelectorAll('a')).toHaveLength(2)
+
+    // Mesai Formu + Mesai Performansı çıkınca İV'de koşulsuz 3 kalem kalır;
+    // Personel Talep Formu sunucu bayrağına bağlı (testte kapalı).
+    const ivKutu = screen.getByTestId('form-subgroup-iv').parentElement as HTMLElement
+    expect(
+      Array.from(ivKutu.querySelectorAll('a')).map((a) => a.textContent?.trim()),
+    ).toEqual(['Vardiya Formu', 'Kart Okutamama', 'İş Analizi Formu'])
 
     // Arama kaynağı formsBySubgroup'tan besleniyor → öğe "Formlar › Genel" grubunda.
     fireEvent.change(screen.getByLabelText('Menüde ara'), { target: { value: 'it destek' } })

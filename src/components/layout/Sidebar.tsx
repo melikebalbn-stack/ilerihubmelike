@@ -197,9 +197,8 @@ const FORM_ALT_GRUPLAR = [
   { key: "genel", label: "Genel" },
   { key: "iv", label: "İnsan Varlıkları" },
   { key: "kalite", label: "Kalite" },
-  // Üretim: şu an öğesi YOK. formsBySubgroup + render/arama zaten
-  // items.length > 0 süzgecinden geçtiği için başlık çizilmez.
-  // Üretim formu eklenince subgroup: "uretim" ver, başlık kendiliğinden açılır.
+  // Üretim: mesai formu + mesai performans raporu burada. Yeni bir üretim
+  // formu eklenince subgroup: "uretim" vermek yeterli; başlık zaten çizili.
   { key: "uretim", label: "Üretim" },
 ] as const
 
@@ -213,7 +212,13 @@ const formsMenuItems = [
   { name: "IT Destek Talebi", icon: Headphones, href: "/it-support", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Ziyaret Raporları", icon: FileText, href: "/forms/visit-reports", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Toplantı Raporu", icon: Calendar, href: "/meetings", roles: ["*"], subgroup: "genel" as FormAltGrup },
-  { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"], subgroup: "iv" as FormAltGrup },
+  { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"], subgroup: "uretim" as FormAltGrup },
+  // Mesai Performansı — mesai formunun raporu, aynı kitle. Görünürlük AYNEN
+  // "herkes" (roles: ["*"]): sunucu kapısı `overtime.report` izni VEYA omurga
+  // kapsamı (kendi bölümünün müdürü/sorumlusu) — ikinci kol oturumda taşınmadığı
+  // için menüde ifade EDİLEMEZ; izne daraltmak kapsamı olan sorumlulara menü
+  // erişimini kaybettirirdi (sayfa 403'ü zaten kendi gösteriyor).
+  { name: "Mesai Performansı", icon: BarChart3, href: "/forms/overtime/performans", roles: ["*"], subgroup: "uretim" as FormAltGrup },
   { name: "Vardiya Formu", icon: Clock, href: "/forms/vardiya", roles: ["*"], subgroup: "iv" as FormAltGrup },
   // Görünürlük diğer form kalemleriyle aynı desende (roles: "*"); asıl erişim
   // layout guard + API'de (getBulkCardScanAccess). Statik dept filtresi GRI
@@ -673,12 +678,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // müdürler menüde GÖRMEZ, formlarına maildeki /deneme/<id> linkiyle ulaşırlar.
   const denemeItem = { name: "Deneme Değerlendirme", icon: ClipboardList, href: "/deneme", roles: ["*"] }
   const iaIkItem = { name: "İş Analizi Onayları", icon: ClipboardCheck, href: "/strategic-hr/is-analizi/ik-onay", roles: ["*"] }
-  // Mesai Performansı — form DEĞİL rapor; Formlar'dan İV'ye taşındı. Görünürlük
-  // eskisiyle AYNEN "herkes" (roles: ["*"]): sunucu kapısı `overtime.report` izni
-  // VEYA omurga kapsamı (kendi bölümünün müdürü/sorumlusu) — ikinci kol oturumda
-  // taşınmadığı için menüde ifade EDİLEMEZ; izne daraltmak kapsamı olan
-  // sorumlulara menü erişimini kaybettirirdi (sayfa 403'ü zaten kendi gösteriyor).
-  const mesaiPerformansItem = { name: "Mesai Performansı", icon: BarChart3, href: "/forms/overtime/performans", roles: ["*"] }
 
   const filteredStrategicHrItems = [
     ...filterStrategicHrItems(strategicHrMenuItems),
@@ -729,15 +728,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Personel öğeleri — tümü canSeeIk kapısında (JSX'teki eski satır-satır
   // `canSeeIk && renderMenuItem(...)` ile birebir aynı sonuç).
   const filteredPersonnelItems = canSeeIk ? personnelMenuItems : []
-  // İV grubunun personel bloğu: "Personel Yönetimi"nin hemen ardında Mesai
-  // Performansı. Öğe personnelMenuItems dizisine KONAMAZ, çünkü o dizi tümden
-  // canSeeIk kapısında; İK olmayan kullanıcı erişimi kaybederdi. Grup hiç
-  // çizilmediğinde (showIkGroup false) öğe aşağıda tek başına render edilir.
-  const ikPersonnelBlock = [
-    ...filteredPersonnelItems.slice(0, 1),
-    mesaiPerformansItem,
-    ...filteredPersonnelItems.slice(1),
-  ]
 
   // ── Menü araması ──────────────────────────────────────────────────────────
   // KAYNAK: yalnızca YETKİ FİLTRESİNDEN GEÇMİŞ listeler. Böylece kullanıcının
@@ -749,7 +739,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     ...formsBySubgroup
       .filter((g) => g.items.length > 0)
       .map((g) => ({ group: `Formlar › ${g.label}`, items: g.items })),
-    { group: "İnsan Varlıkları", items: ikPersonnelBlock },
+    { group: "İnsan Varlıkları", items: filteredPersonnelItems },
     { group: "İnsan Varlıkları", items: filteredOffboardingItems },
     { group: "Stratejik İK", items: filteredStrategicHrItems },
     { group: "Kalite", items: filteredKaliteItems },
@@ -1238,11 +1228,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </>
         )}
 
-        {/* Mesai Performansı — İV grubu hiç çizilmiyorsa (showIkGroup false)
-            erişim kaybolmasın diye üst seviyede tek başına. Grup çizildiğinde
-            ikPersonnelBlock içinde zaten var; iki yerde birden ASLA çıkmaz. */}
-        {!showIkGroup && renderMenuItem(mesaiPerformansItem)}
-
         {/* İK */}
         {showIkGroup && (
         <button
@@ -1265,7 +1250,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
         {showIkGroup && ikOpen && (
           <div className="space-y-1 ml-4">
-            {ikPersonnelBlock.map(item => renderMenuItem(item))}
+            {filteredPersonnelItems.map(item => renderMenuItem(item))}
             {filteredOffboardingItems.map(item => renderMenuItem(item))}
             {/* IV-FR-27 deneme değerlendirme listesi — SUNUCU bayrağı (yalnız İV). */}
             {denemeGorunur && renderMenuItem(denemeItem)}

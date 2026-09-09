@@ -6,22 +6,17 @@
 // duruyor, aynı görünürlerse hangisinde olduğun anlaşılmıyor. Burada tek
 // sütunlu sade liste var, açılınca dokümanlar satırın altında iner.
 //
-// Uçlar MEVCUT: /api/akademi/ifs/departments (paket listesi) +
-// /api/akademi/ifs/areas?packageId= (referenceDocs içinde döner). Doküman
-// sayısını tek başına veren uç YOK; yeni uç yazmamak için paket başına bir
-// areas çağrısı yapılıyor (10 IFS paketi, sayfa açılışında bir kez) ve sonuç
-// saklanıyor — satır açıldığında ikinci istek gitmiyor.
+// Veri TEK uçtan: /api/akademi/ifs/documents. Eskiden departments + paket
+// başına bir areas çağrısı vardı (10 paket = 11 istek); areas ucu bu ekran için
+// fazla iş yapıyordu (kurslar, içerik sayımı, kullanıcı ilerlemesi) — oysa
+// gereken yalnız referenceDocs.
+//
+// Dokümansız paket uçta filtreleniyor, buraya HİÇ GELMİYOR: "0 doküman" satırı
+// ve "henüz yüklenmemiş" dalı bu yüzden yok. Tek istek olduğu için ayrı bir
+// "sayılar hazır" durumu da gerekmiyor.
 
 import { useEffect, useState } from "react";
 import { BookOpen, ChevronDown, ChevronRight, ExternalLink, FileText } from "lucide-react";
-
-interface Department {
-  packageId: string;
-  name: string;
-  displayName: string;
-  courseCount: number;
-  coverImageUrl: string | null;
-}
 
 interface ReferenceDoc {
   id: string;
@@ -30,45 +25,33 @@ interface ReferenceDoc {
   sortOrder: number;
 }
 
+interface DocGroup {
+  packageId: string;
+  name: string;
+  displayName: string;
+  docs: ReferenceDoc[];
+}
+
 export function IfsEgitimDokumanlari() {
-  const [departmanlar, setDepartmanlar] = useState<Department[]>([]);
-  const [dokumanlar, setDokumanlar] = useState<Record<string, ReferenceDoc[]>>({});
+  const [gruplar, setGruplar] = useState<DocGroup[]>([]);
   const [listeYukleniyor, setListeYukleniyor] = useState(true);
-  const [sayilarHazir, setSayilarHazir] = useState(false);
   const [acikPaket, setAcikPaket] = useState<string | null>(null);
 
   useEffect(() => {
     let iptal = false;
 
     (async () => {
-      let liste: Department[] = [];
+      let liste: DocGroup[] = [];
       try {
-        const r = await fetch("/api/akademi/ifs/departments");
-        const d = r.ok ? await r.json() : { departments: [] };
-        liste = d.departments ?? [];
+        const r = await fetch("/api/akademi/ifs/documents");
+        const d = r.ok ? await r.json() : { groups: [] };
+        liste = d.groups ?? [];
       } catch {
         liste = [];
       }
       if (iptal) return;
-      setDepartmanlar(liste);
+      setGruplar(liste);
       setListeYukleniyor(false);
-
-      const sonuc = await Promise.all(
-        liste.map(async (dep) => {
-          try {
-            const r = await fetch(
-              `/api/akademi/ifs/areas?packageId=${encodeURIComponent(dep.packageId)}`
-            );
-            const j = r.ok ? await r.json() : { referenceDocs: [] };
-            return [dep.packageId, (j.referenceDocs ?? []) as ReferenceDoc[]] as const;
-          } catch {
-            return [dep.packageId, [] as ReferenceDoc[]] as const;
-          }
-        })
-      );
-      if (iptal) return;
-      setDokumanlar(Object.fromEntries(sonuc));
-      setSayilarHazir(true);
     })();
 
     return () => {
@@ -101,7 +84,7 @@ export function IfsEgitimDokumanlari() {
             <div key={i} className="h-14 rounded-lg animate-pulse" style={{ background: "var(--ak-surface-2)" }} />
           ))}
         </div>
-      ) : departmanlar.length === 0 ? (
+      ) : gruplar.length === 0 ? (
         <div
           className="rounded-lg border p-8 text-center text-sm"
           style={{ color: "var(--ak-text-secondary)" }}
@@ -110,9 +93,9 @@ export function IfsEgitimDokumanlari() {
         </div>
       ) : (
         <div className="space-y-2">
-          {departmanlar.map((dep) => {
+          {gruplar.map((dep) => {
             const acik = acikPaket === dep.packageId;
-            const docs = dokumanlar[dep.packageId] ?? [];
+            const docs = dep.docs;
             return (
               <div key={dep.packageId} className="rounded-lg border overflow-hidden">
                 <button
@@ -131,21 +114,13 @@ export function IfsEgitimDokumanlari() {
                     className="text-xs px-2 py-1 rounded-md whitespace-nowrap shrink-0"
                     style={{ background: "var(--ak-surface-2)", color: "var(--ak-text-secondary)" }}
                   >
-                    {sayilarHazir ? `${docs.length} doküman` : "…"}
+                    {`${docs.length} doküman`}
                   </span>
                 </button>
 
                 {acik && (
                   <div className="px-4 pb-3 pt-1 border-t">
-                    {!sayilarHazir ? (
-                      <div className="py-3 text-sm" style={{ color: "var(--ak-text-secondary)" }}>
-                        Yükleniyor…
-                      </div>
-                    ) : docs.length === 0 ? (
-                      <div className="py-3 text-sm" style={{ color: "var(--ak-text-secondary)" }}>
-                        Bu departman için eğitim dokümanı henüz yüklenmemiş.
-                      </div>
-                    ) : (
+                    {
                       <div className="space-y-2 pt-2">
                         {docs.map((doc) => (
                           <div
@@ -173,7 +148,7 @@ export function IfsEgitimDokumanlari() {
                           </div>
                         ))}
                       </div>
-                    )}
+                    }
                   </div>
                 )}
               </div>

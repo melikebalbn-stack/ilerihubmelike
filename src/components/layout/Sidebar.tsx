@@ -179,10 +179,13 @@ const ifsMenuItems = [
   // gösteriyordu; o ekran /ifs/degerlendirme'ye taşındı ve adı "Eğitim
   // Değerlendirme" oldu. /ifs/egitimler artık adının söylediği şeyi yapıyor.
   // Kursiyer girdileri başta: en geniş kitle (ifs.view 166 kişide).
-  { name: "Ödevler", icon: ListChecks, href: "/ifs/odevler", roles: [] as string[], permission: "ifs.view" },
+  // SIRA VE AD (Melih, 09.09): kursiyer ekranları başta, yönetici ekranları
+  // sonra; "Ödevler" → "IFS Ödevleri" (menüde tek başına "Ödevler" hangi
+  // modülün ödevi olduğunu söylemiyordu). Route ve permission DEĞİŞMEDİ.
   { name: "Eğitimler", icon: BookOpen, href: "/ifs/egitimler", roles: [] as string[], permission: "ifs.view" },
-  { name: "Eğitim Değerlendirme", icon: ClipboardCheck, href: "/ifs/degerlendirme", roles: [] as string[], permission: "ifs.admin" },
+  { name: "IFS Ödevleri", icon: ListChecks, href: "/ifs/odevler", roles: [] as string[], permission: "ifs.view" },
   { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: "ifs.admin" },
+  { name: "Eğitim Değerlendirme", icon: ClipboardCheck, href: "/ifs/degerlendirme", roles: [] as string[], permission: "ifs.admin" },
   { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: "ifs.rapor.view" },
 ]
 

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Play, FlaskConical, RotateCcw, Loader2 } from 'lucide-react'
+import { Play, FlaskConical, RotateCcw, Loader2, Search, Plus, Trash2 } from 'lucide-react'
 
 export type SyteKayitRow = {
   id: string
@@ -19,6 +19,15 @@ export type SyteDurumBilgi = {
   calisiyorAt: string | null
   sonOzet: Record<string, number> | null
 }
+export type SyteEslemeRow = {
+  id: string
+  entity: string
+  tip: string
+  kaynakDeger: string
+  hedefDeger: string
+  aktif: boolean
+  not: string | null
+}
 
 const DURUMLAR = ['HEPSI', 'BEKLIYOR', 'YAZILDI', 'HATA', 'ATLANDI'] as const
 const rozet: Record<string, string> = {
@@ -27,22 +36,75 @@ const rozet: Record<string, string> = {
   HATA: 'bg-red-100 text-red-700',
   ATLANDI: 'bg-slate-100 text-slate-500',
 }
+const katRozet: Record<string, string> = {
+  IFS_TEMEL_VERI: 'bg-sky-100 text-sky-700',
+  SYTELINE_VERI: 'bg-amber-100 text-amber-700',
+  HUB_ESLEME: 'bg-violet-100 text-violet-700',
+}
+const TIPLER = ['BIRIM', 'URUN_KODU', 'MUHASEBE_GRUBU'] as const
 const trTarih = (iso: string | null) => (iso ? new Date(iso).toLocaleString('tr-TR') : '—')
 
-export function SytelineClient({
+const ENTITY_SEKME = [
+  { key: 'MALZEME', label: 'Malzeme', hazir: true },
+  { key: 'MUSTERI', label: 'Müşteri', hazir: false },
+  { key: 'IS_EMRI', label: 'İş Emri', hazir: false },
+] as const
+
+export function SytelineClient(props: {
+  sayac: Record<string, number>
+  durum: SyteDurumBilgi
+  kayitlar: SyteKayitRow[]
+  eslemeler: SyteEslemeRow[]
+}) {
+  const [entity, setEntity] = useState<(typeof ENTITY_SEKME)[number]['key']>('MALZEME')
+  return (
+    <div className="mx-auto max-w-6xl space-y-6 p-4">
+      <h1 className="text-xl font-bold text-slate-800">Syteline → IFS Entegrasyonu</h1>
+      {/* Entity sekmeleri */}
+      <div className="flex gap-2 border-b">
+        {ENTITY_SEKME.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => s.hazir && setEntity(s.key)}
+            disabled={!s.hazir}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
+              entity === s.key ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500'
+            } ${s.hazir ? 'hover:text-slate-800' : 'cursor-not-allowed opacity-50'}`}
+          >
+            {s.label}
+            {!s.hazir && <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] text-slate-400">yakında</span>}
+          </button>
+        ))}
+      </div>
+
+      {entity === 'MALZEME' ? (
+        <MalzemeSekmesi {...props} />
+      ) : (
+        <div className="rounded-xl border bg-slate-50 p-10 text-center text-slate-400">
+          Bu entity yakında — henüz senkron tanımlı değil.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MalzemeSekmesi({
   sayac,
   durum,
   kayitlar,
+  eslemeler,
 }: {
   sayac: Record<string, number>
   durum: SyteDurumBilgi
   kayitlar: SyteKayitRow[]
+  eslemeler: SyteEslemeRow[]
 }) {
   const router = useRouter()
   const [filtre, setFiltre] = useState<(typeof DURUMLAR)[number]>('HEPSI')
   const [mesaj, setMesaj] = useState<string | null>(null)
   const [calisiyor, setCalisiyor] = useState<null | 'dry' | 'real' | string>(null)
-  const [batch, setBatch] = useState('') // boş = SYTE_SYNC_BATCH env varsayılanı
+  const [batch, setBatch] = useState('')
 
   const gorunen = filtre === 'HEPSI' ? kayitlar : kayitlar.filter((k) => k.durum === filtre)
 
@@ -110,19 +172,16 @@ export function SytelineClient({
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Syteline → IFS Malzeme Senkronu</h1>
-          <p className="text-sm text-slate-500">
-            Son çalışma: {trTarih(durum.sonCalismaAt)}
-            {durum.calisiyorAt ? ' · ⏳ şu an çalışıyor' : ''} · Watermark: {trTarih(durum.sonRecordDate)}
-          </p>
-        </div>
+        <p className="text-sm text-slate-500">
+          Son çalışma: {trTarih(durum.sonCalismaAt)}
+          {durum.calisiyorAt ? ' · ⏳ şu an çalışıyor' : ''} · Watermark: {trTarih(durum.sonRecordDate)}
+        </p>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => calistir(true)} disabled={calisiyor !== null} className="gap-2">
             {calisiyor === 'dry' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
-            Dry-run çalıştır
+            Dry-run
           </Button>
           <input
             type="number"
@@ -144,77 +203,288 @@ export function SytelineClient({
 
       {mesaj && <div className="rounded-lg border bg-slate-50 px-4 py-2 text-sm text-slate-700">{mesaj}</div>}
 
-      {/* Durum sayaçları */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {(['BEKLIYOR', 'YAZILDI', 'HATA', 'ATLANDI'] as const).map((d) => (
-          <div key={d} className="rounded-xl border p-4 text-center">
-            <div className="text-2xl font-bold text-slate-800">{sayac[d] ?? 0}</div>
-            <div className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${rozet[d]}`}>{d}</div>
-          </div>
-        ))}
-      </div>
+      <EksiklerKart />
+      <EslemelerKart eslemeler={eslemeler} />
 
-      {/* Filtre */}
-      <div className="flex flex-wrap gap-2">
-        {DURUMLAR.map((d) => (
+      {/* Kuyruk kartı (durum sayaçları + filtre + tablo) */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Kuyruk</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {(['BEKLIYOR', 'YAZILDI', 'HATA', 'ATLANDI'] as const).map((d) => (
+            <div key={d} className="rounded-xl border p-4 text-center">
+              <div className="text-2xl font-bold text-slate-800">{sayac[d] ?? 0}</div>
+              <div className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${rozet[d]}`}>{d}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {DURUMLAR.map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setFiltre(d)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${filtre === d ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              {d}
+            </button>
+          ))}
+          <span className="ml-auto self-center text-xs text-slate-400">son 200 kayıt · {gorunen.length} gösteriliyor</span>
+        </div>
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="px-3 py-2 text-left">Kaynak (item)</th>
+                <th className="px-3 py-2 text-left">Durum</th>
+                <th className="px-3 py-2 text-left">Hata</th>
+                <th className="px-3 py-2 text-right">Deneme</th>
+                <th className="px-3 py-2 text-left">Güncelleme</th>
+                <th className="px-3 py-2 text-right">İşlem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gorunen.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-slate-400">Kayıt yok.</td>
+                </tr>
+              ) : (
+                gorunen.map((k) => (
+                  <tr key={k.id} className="border-t">
+                    <td className="px-3 py-2 font-medium text-slate-800">{k.kaynakAnahtar}</td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${rozet[k.durum] ?? 'bg-slate-100 text-slate-500'}`}>
+                        {k.durum}
+                      </span>
+                    </td>
+                    <td className="max-w-[360px] truncate px-3 py-2 text-red-600" title={k.hata ?? undefined}>{k.hata ?? '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{k.denemeSayisi}</td>
+                    <td className="px-3 py-2 text-slate-500">{trTarih(k.updatedAt)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {k.durum === 'HATA' && (
+                        <button
+                          type="button"
+                          onClick={() => yenidenDene(k.id)}
+                          disabled={calisiyor !== null}
+                          className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          {calisiyor === k.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                          Yeniden dene
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type EksikSebep = { sebep: string; adet: number; kategori: string; ornekler: string[] }
+
+function EksiklerKart() {
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const [okunan, setOkunan] = useState<number | null>(null)
+  const [sebepler, setSebepler] = useState<EksikSebep[] | null>(null)
+  const [hata, setHata] = useState<string | null>(null)
+
+  async function analiz() {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const r = await fetch('/api/entegrasyon/syteline/eksikler?entity=MALZEME', { cache: 'no-store' })
+      const d = await r.json().catch(() => null)
+      if (r.ok) {
+        setOkunan(d?.okunan ?? 0)
+        setSebepler(d?.sebepler ?? [])
+      } else setHata(d?.error ?? `Hata ${r.status}`)
+    } catch {
+      setHata('Bağlantı hatası')
+    } finally {
+      setYukleniyor(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Eksikler analizi</h2>
+        <Button variant="outline" size="sm" onClick={analiz} disabled={yukleniyor} className="gap-2">
+          {yukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          Analiz et
+        </Button>
+      </div>
+      {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {sebepler == null ? (
+        <p className="text-sm text-slate-400">
+          “Analiz et” — tüm aktif Syteline malzemeleri mapper’dan geçirilip (DB’ye yazmadan) hata dağılımı çıkarılır.
+        </p>
+      ) : sebepler.length === 0 ? (
+        <p className="text-sm text-emerald-600">Eksik yok — {okunan} satırın tümü eşlenebiliyor. ✅</p>
+      ) : (
+        <>
+          <p className="mb-2 text-xs text-slate-500">{okunan} satır tarandı · {sebepler.length} farklı sebep</p>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Sebep</th>
+                  <th className="px-3 py-2 text-right">Adet</th>
+                  <th className="px-3 py-2 text-left">Kategori</th>
+                  <th className="px-3 py-2 text-left">Örnekler (ilk 5)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sebepler.map((s) => (
+                  <tr key={s.sebep} className="border-t">
+                    <td className="px-3 py-2 font-medium text-slate-800">{s.sebep}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{s.adet}</td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${katRozet[s.kategori] ?? 'bg-slate-100 text-slate-500'}`}>
+                        {s.kategori}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{s.ornekler.join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function EslemelerKart({ eslemeler }: { eslemeler: SyteEslemeRow[] }) {
+  const router = useRouter()
+  const [tip, setTip] = useState<(typeof TIPLER)[number]>('BIRIM')
+  const [kaynak, setKaynak] = useState('')
+  const [hedef, setHedef] = useState('')
+  const [bekliyor, setBekliyor] = useState(false)
+  const [hata, setHata] = useState<string | null>(null)
+
+  const liste = eslemeler.filter((e) => e.tip === tip)
+
+  async function ekle() {
+    if (!kaynak.trim() || !hedef.trim()) return
+    setBekliyor(true)
+    setHata(null)
+    try {
+      const r = await fetch('/api/entegrasyon/syteline/esleme', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity: 'MALZEME', tip, kaynakDeger: kaynak.trim(), hedefDeger: hedef.trim() }),
+      })
+      if (r.ok) {
+        setKaynak('')
+        setHedef('')
+        router.refresh()
+      } else {
+        const d = await r.json().catch(() => null)
+        setHata(d?.error ?? `Hata ${r.status}`)
+      }
+    } catch {
+      setHata('Bağlantı hatası')
+    } finally {
+      setBekliyor(false)
+    }
+  }
+
+  async function sil(id: string) {
+    setBekliyor(true)
+    setHata(null)
+    try {
+      const r = await fetch('/api/entegrasyon/syteline/esleme', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      if (r.ok) router.refresh()
+      else {
+        const d = await r.json().catch(() => null)
+        setHata(d?.error ?? `Hata ${r.status}`)
+      }
+    } catch {
+      setHata('Bağlantı hatası')
+    } finally {
+      setBekliyor(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border p-4">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Eşlemeler (Syteline → IFS)</h2>
+      <div className="mb-3 flex gap-2">
+        {TIPLER.map((t) => (
           <button
-            key={d}
+            key={t}
             type="button"
-            onClick={() => setFiltre(d)}
-            className={`rounded-full px-3 py-1 text-xs font-medium ${filtre === d ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            onClick={() => setTip(t)}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${tip === t ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
-            {d}
+            {t}
           </button>
         ))}
-        <span className="ml-auto self-center text-xs text-slate-400">son 200 kayıt · {gorunen.length} gösteriliyor</span>
       </div>
-
-      {/* Tablo */}
+      {hata && <p className="mb-2 text-sm text-red-600">{hata}</p>}
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-500">
             <tr>
-              <th className="px-3 py-2 text-left">Kaynak (item)</th>
-              <th className="px-3 py-2 text-left">Durum</th>
-              <th className="px-3 py-2 text-left">Hata</th>
-              <th className="px-3 py-2 text-right">Deneme</th>
-              <th className="px-3 py-2 text-left">Güncelleme</th>
+              <th className="px-3 py-2 text-left">Kaynak (Syteline)</th>
+              <th className="px-3 py-2 text-left">Hedef (IFS)</th>
+              <th className="px-3 py-2 text-left">Not</th>
               <th className="px-3 py-2 text-right">İşlem</th>
             </tr>
           </thead>
           <tbody>
-            {gorunen.length === 0 ? (
+            {liste.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-slate-400">Kayıt yok.</td>
+                <td colSpan={4} className="px-3 py-4 text-center text-slate-400">Bu tipte eşleme yok.</td>
               </tr>
             ) : (
-              gorunen.map((k) => (
-                <tr key={k.id} className="border-t">
-                  <td className="px-3 py-2 font-medium text-slate-800">{k.kaynakAnahtar}</td>
-                  <td className="px-3 py-2">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${rozet[k.durum] ?? 'bg-slate-100 text-slate-500'}`}>
-                      {k.durum}
-                    </span>
-                  </td>
-                  <td className="max-w-[360px] truncate px-3 py-2 text-red-600" title={k.hata ?? undefined}>{k.hata ?? '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{k.denemeSayisi}</td>
-                  <td className="px-3 py-2 text-slate-500">{trTarih(k.updatedAt)}</td>
+              liste.map((e) => (
+                <tr key={e.id} className="border-t">
+                  <td className="px-3 py-2 font-medium text-slate-800">{e.kaynakDeger}</td>
+                  <td className="px-3 py-2">{e.hedefDeger}</td>
+                  <td className="px-3 py-2 text-xs text-slate-400">{e.not ?? '—'}</td>
                   <td className="px-3 py-2 text-right">
-                    {k.durum === 'HATA' && (
-                      <button
-                        type="button"
-                        onClick={() => yenidenDene(k.id)}
-                        disabled={calisiyor !== null}
-                        className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        {calisiyor === k.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                        Yeniden dene
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => sil(e.id)}
+                      disabled={bekliyor}
+                      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Sil
+                    </button>
                   </td>
                 </tr>
               ))
             )}
+            {/* Ekleme satırı */}
+            <tr className="border-t bg-slate-50/60">
+              <td className="px-3 py-2">
+                <input value={kaynak} onChange={(e) => setKaynak(e.target.value)} placeholder="ör. LT / 9999" className="h-8 w-full rounded border px-2 text-sm" />
+              </td>
+              <td className="px-3 py-2">
+                <input value={hedef} onChange={(e) => setHedef(e.target.value)} placeholder="ör. l / 153" className="h-8 w-full rounded border px-2 text-sm" />
+              </td>
+              <td className="px-3 py-2 text-xs text-slate-400">upsert (aynı kaynak varsa hedef güncellenir)</td>
+              <td className="px-3 py-2 text-right">
+                <button
+                  type="button"
+                  onClick={ekle}
+                  disabled={bekliyor || !kaynak.trim() || !hedef.trim()}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {bekliyor ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Ekle
+                </button>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>

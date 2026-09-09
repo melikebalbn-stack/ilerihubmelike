@@ -35,10 +35,11 @@ export async function getMalzemeler(watermark: Date): Promise<SytelineMalzemeSat
     rq.input('site', sql.NVarChar, cfg.site)
     siteClause = ' AND site_ref = @site'
   }
+  // product_code <> '9999' → test parçalarını dışla (TESTA/TESTB… vb.).
   const query =
     `SELECT site_ref, item, description, u_m, product_code, p_m_t_code, ` +
     `family_code, stat, lot_tracked, revision, drawing_nbr, RecordDate ` +
-    `FROM item_mst WHERE stat = 'A' AND RecordDate > @wm${siteClause} ` +
+    `FROM item_mst WHERE stat = 'A' AND RecordDate > @wm AND (product_code IS NULL OR product_code <> '9999')${siteClause} ` +
     `ORDER BY RecordDate, item`
   const res = await rq.query<SytelineMalzemeSatiri>(query)
   return res.recordset

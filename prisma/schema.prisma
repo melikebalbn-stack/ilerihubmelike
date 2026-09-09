@@ -14306,3 +14306,20 @@ model SyteSyncDurum {
 
   @@map("syte_sync_durum")
 }
+
+// Syteline → IFS değer çevirici (feat/syteline-cevirici). Birim/ürün kodu/muhasebe grubu
+// eşlemeleri DB'den; boşsa mapper sabit BIRIM_HARITASI fallback'ine düşer.
+model SyteEsleme {
+  id          String   @id @default(cuid())
+  entity      String // 'MALZEME'
+  tip         String // 'BIRIM' | 'URUN_KODU' | 'MUHASEBE_GRUBU'
+  kaynakDeger String // Syteline değeri (ör. 'LT', '9999')
+  hedefDeger  String // IFS değeri (ör. 'l')
+  aktif       Boolean  @default(true)
+  not         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([entity, tip, kaynakDeger])
+  @@map("syte_esleme")
+}

@@ -17,11 +17,24 @@ export interface MalzemeGirdi {
 }
 
 /** IFS referans setleri + hedef contract (orkestratör IFS'ten çekip geçirir). */
+/**
+ * Hub eşleme tabloları (SyteEsleme'den). Boş/eksik ise mapper sabit fallback'e düşer.
+ *  - birim:    kaynak (BÜYÜK harf) → IFS UnitCode
+ *  - urunKodu: TAM product_code → IFS PartProductCode (ilk-3-hane kuralını EZER)
+ *  - muhasebe: family_code → IFS AccountingGroup
+ */
+export interface SyteEslemeHaritalari {
+  birim?: Map<string, string>
+  urunKodu?: Map<string, string>
+  muhasebe?: Map<string, string>
+}
+
 export interface MalzemeReferans {
   birimler: string[]
   muhasebeGruplari: string[]
   urunKodlari: string[]
   contract: string
+  esleme?: SyteEslemeHaritalari
 }
 
 /**
@@ -97,26 +110,37 @@ export function malzemeMapla(satir: MalzemeGirdi, ref: MalzemeReferans): Malzeme
   const description = (satir.description ?? '').trim()
   if (!description) return { hata: `açıklama boş: ${partNo}` }
 
-  // Birim: sabit harita (büyük harf anahtar) → IFS kodu; yoksa lowercase. Sonra IFS LOV kontrolü.
+  const esleme = ref.esleme ?? {}
+  // Birim: DB eşlemesi (SyteEsleme/BIRIM) öncelik → yoksa sabit BIRIM_HARITASI → yoksa lowercase.
+  // Her halde IFS birim LOV kontrolü. (DB boşsa eski davranış korunur.)
   const uHam = (satir.u_m ?? '').trim()
   if (!uHam) return { hata: `birim boş: ${partNo}` }
-  const unit = BIRIM_HARITASI[uHam.toUpperCase()] ?? uHam.toLowerCase()
+  const uUpper = uHam.toUpperCase()
+  const unit = esleme.birim?.get(uUpper) ?? BIRIM_HARITASI[uUpper] ?? uHam.toLowerCase()
   const birimSet = new Set(ref.birimler.map((u) => u.trim().toLowerCase()))
   if (!birimSet.has(unit.toLowerCase())) return { hata: `birim yok: ${uHam}` }
 
-  // PartProductCode = product_code'un İLK 3 HANESİ (1510101 → 151). <3 hane veya rakam-dışı →
-  // geçersiz. Sonra IFS ürün-kodu LOV'unda varlık kontrolü (aynen).
+  // PartProductCode: TAM product_code için URUN_KODU override VARSA o öncelikli; yoksa İLK 3 HANE
+  // (1510101 → 151; <3 hane / rakam-dışı → geçersiz). Sonra IFS ürün-kodu LOV kontrolü.
   const pcHam = (satir.product_code ?? '').trim()
   if (!pcHam) return { hata: `ürün kodu boş: ${partNo}` }
-  const ilk3 = pcHam.slice(0, 3)
-  if (pcHam.length < 3 || !/^\d{3}$/.test(ilk3)) return { hata: `ürün kodu geçersiz: ${pcHam}` }
+  const pcOverride = esleme.urunKodu?.get(pcHam)
+  let urunKodu: string
+  if (pcOverride) {
+    urunKodu = pcOverride
+  } else {
+    const ilk3 = pcHam.slice(0, 3)
+    if (pcHam.length < 3 || !/^\d{3}$/.test(ilk3)) return { hata: `ürün kodu geçersiz: ${pcHam}` }
+    urunKodu = ilk3
+  }
   const urunSet = new Set(ref.urunKodlari.map((c) => c.trim()))
-  if (!urunSet.has(ilk3)) return { hata: `ürün kodu yok: ${ilk3}` }
+  if (!urunSet.has(urunKodu)) return { hata: `ürün kodu yok: ${urunKodu}` }
 
-  // AccountingGroup: family_code IFS grup listesinde varsa aynen; yoksa '*'.
+  // AccountingGroup: MUHASEBE_GRUBU override öncelik → yoksa family_code IFS grubunda varsa aynen → yoksa '*'.
   const family = (satir.family_code ?? '').trim()
   const grupSet = new Set(ref.muhasebeGruplari.map((g) => g.trim()))
-  const accountingGroup = family && grupSet.has(family) ? family : '*'
+  const grpOverride = esleme.muhasebe?.get(family)
+  const accountingGroup = grpOverride ?? (family && grupSet.has(family) ? family : '*')
 
   const typeCode: 'Manufactured' | 'PurchasedRaw' =
     (satir.p_m_t_code ?? '').trim() === 'M' ? 'Manufactured' : 'PurchasedRaw'
@@ -128,7 +152,7 @@ export function malzemeMapla(satir: MalzemeGirdi, ref: MalzemeReferans): Malzeme
     Description: description,
     UnitMeas: unit,
     TypeCode: typeCode,
-    PartProductCode: ilk3,
+    PartProductCode: urunKodu,
     AccountingGroup: accountingGroup,
     PartStatus: 'A',
     PlannerBuyer: '*',

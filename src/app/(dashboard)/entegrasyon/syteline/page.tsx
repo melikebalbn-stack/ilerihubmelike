@@ -3,7 +3,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { prisma } from '@/lib/prisma'
-import { SytelineClient, type SyteKayitRow, type SyteDurumBilgi } from './_client'
+import { SytelineClient, type SyteKayitRow, type SyteDurumBilgi, type SyteEslemeRow } from './_client'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +15,7 @@ export default async function SytelinePage() {
   if (error) redirect('/login')
   if (!(await hasPermission('entegrasyon.syteline'))) return <YetkisizErisim permission="entegrasyon.syteline" />
 
-  const [gruplar, durum, kayitlar] = await Promise.all([
+  const [gruplar, durum, kayitlar, eslemeRows] = await Promise.all([
     prisma.syteSyncKayit.groupBy({ by: ['durum'], where: { entity: ENTITY }, _count: { _all: true } }),
     prisma.syteSyncDurum.findUnique({ where: { entity: ENTITY } }),
     prisma.syteSyncKayit.findMany({
@@ -23,6 +23,11 @@ export default async function SytelinePage() {
       orderBy: { updatedAt: 'desc' },
       take: 200,
       select: { id: true, kaynakAnahtar: true, durum: true, hata: true, denemeSayisi: true, updatedAt: true },
+    }),
+    prisma.syteEsleme.findMany({
+      where: { entity: ENTITY },
+      orderBy: [{ tip: 'asc' }, { kaynakDeger: 'asc' }],
+      select: { id: true, entity: true, tip: true, kaynakDeger: true, hedefDeger: true, aktif: true, not: true },
     }),
   ])
 
@@ -44,5 +49,15 @@ export default async function SytelinePage() {
     updatedAt: k.updatedAt.toISOString(),
   }))
 
-  return <SytelineClient sayac={sayac} durum={durumBilgi} kayitlar={rows} />
+  const eslemeler: SyteEslemeRow[] = eslemeRows.map((e) => ({
+    id: e.id,
+    entity: e.entity,
+    tip: e.tip,
+    kaynakDeger: e.kaynakDeger,
+    hedefDeger: e.hedefDeger,
+    aktif: e.aktif,
+    not: e.not,
+  }))
+
+  return <SytelineClient sayac={sayac} durum={durumBilgi} kayitlar={rows} eslemeler={eslemeler} />
 }

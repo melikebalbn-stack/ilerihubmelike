@@ -13,7 +13,13 @@ import {
   IfsHttpError,
 } from '@/lib/ifs/part-sync'
 import { getMalzemeler } from '@/lib/syteline/malzeme'
-import { malzemeMapla, type MalzemeReferans, type MalzemeEnvanter, type MalzemeKatalog } from './malzeme-mapper'
+import {
+  malzemeMapla,
+  type MalzemeReferans,
+  type MalzemeEnvanter,
+  type MalzemeKatalog,
+  type SyteEslemeHaritalari,
+} from './malzeme-mapper'
 
 const ENTITY = 'MALZEME'
 const WATERMARK_MIN = new Date('1900-01-01T00:00:00Z')
@@ -21,6 +27,70 @@ const MAX_DENEME = 5
 
 /** Tipli obje → Prisma Json input (adlandırılmış interface'lerde index-signature yok). */
 const asJson = (v: unknown): Prisma.InputJsonValue => v as Prisma.InputJsonValue
+
+/**
+ * SyteEsleme (aktif) satırlarını mapper haritalarına dönüştürür. BIRIM anahtarı BÜYÜK harf.
+ * Tablo yok/okuma hatası → boş haritalar (mapper sabit fallback'e düşer; çalışan sync korunur).
+ */
+async function eslemeHaritalari(): Promise<SyteEslemeHaritalari> {
+  const harita: SyteEslemeHaritalari = { birim: new Map(), urunKodu: new Map(), muhasebe: new Map() }
+  try {
+    const rows = await prisma.syteEsleme.findMany({
+      where: { entity: ENTITY, aktif: true },
+      select: { tip: true, kaynakDeger: true, hedefDeger: true },
+    })
+    for (const r of rows) {
+      if (r.tip === 'BIRIM') harita.birim!.set(r.kaynakDeger.toUpperCase(), r.hedefDeger)
+      else if (r.tip === 'URUN_KODU') harita.urunKodu!.set(r.kaynakDeger, r.hedefDeger)
+      else if (r.tip === 'MUHASEBE_GRUBU') harita.muhasebe!.set(r.kaynakDeger, r.hedefDeger)
+    }
+  } catch {
+    /* SyteEsleme okunamadı → boş harita (fallback). */
+  }
+  return harita
+}
+
+export interface EksikSebep {
+  sebep: string
+  adet: number
+  kategori: 'IFS_TEMEL_VERI' | 'SYTELINE_VERI' | 'HUB_ESLEME'
+  ornekler: string[] // ilk 5 kaynakAnahtar
+}
+
+function sebepKategori(sebep: string): EksikSebep['kategori'] {
+  if (sebep.startsWith('birim yok') || sebep.startsWith('ürün kodu yok')) return 'IFS_TEMEL_VERI'
+  if (sebep.includes('boş') || sebep.includes('geçersiz')) return 'SYTELINE_VERI'
+  return 'HUB_ESLEME'
+}
+
+/**
+ * EKSİKLER analizi — dryRun mantığıyla (DB'ye YAZMADAN) TÜM aktif Syteline malzemelerini
+ * mapper'dan geçirip hata dağılımını çıkarır. Her sebep için adet + kategori + ilk 5 örnek.
+ */
+export async function eksiklerAnalizi(): Promise<{ okunan: number; sebepler: EksikSebep[] }> {
+  const contract = getIfsConfig().contract
+  const [satirlar, birimler, muhasebeGruplari, urunKodlari, esleme] = await Promise.all([
+    getMalzemeler(WATERMARK_MIN), // tümü (9999 zaten SQL'de dışlandı)
+    listIsoUnits(),
+    listAccountingGroups(),
+    listProductCodes(),
+    eslemeHaritalari(),
+  ])
+  const ref: MalzemeReferans = { birimler, muhasebeGruplari, urunKodlari, contract, esleme }
+  const agg = new Map<string, { adet: number; ornekler: string[] }>()
+  for (const s of satirlar) {
+    const r = malzemeMapla(s, ref)
+    if (!('hata' in r)) continue
+    const cur = agg.get(r.hata) ?? { adet: 0, ornekler: [] }
+    cur.adet++
+    if (cur.ornekler.length < 5) cur.ornekler.push((s.item ?? '').trim())
+    agg.set(r.hata, cur)
+  }
+  const sebepler = [...agg.entries()]
+    .map(([sebep, v]) => ({ sebep, adet: v.adet, kategori: sebepKategori(sebep), ornekler: v.ornekler }))
+    .sort((a, b) => b.adet - a.adet)
+  return { okunan: satirlar.length, sebepler }
+}
 
 export interface PartSyncOzet {
   dryRun: boolean
@@ -52,14 +122,15 @@ export async function runPartSync(opts: { dryRun?: boolean; batch?: number } = {
   const durum = await prisma.syteSyncDurum.findUnique({ where: { entity: ENTITY } })
   const watermark = durum?.sonRecordDate ?? WATERMARK_MIN
 
-  // (b) Syteline satırları (TÜMÜ, limit yok) + IFS referans setleri (run başına BİR KEZ)
-  const [satirlar, birimler, muhasebeGruplari, urunKodlari] = await Promise.all([
+  // (b) Syteline satırları (TÜMÜ, limit yok) + IFS referans setleri + Hub eşlemeleri (run başına BİR KEZ)
+  const [satirlar, birimler, muhasebeGruplari, urunKodlari, esleme] = await Promise.all([
     getMalzemeler(watermark),
     listIsoUnits(),
     listAccountingGroups(),
     listProductCodes(),
+    eslemeHaritalari(),
   ])
-  const ref: MalzemeReferans = { birimler, muhasebeGruplari, urunKodlari, contract }
+  const ref: MalzemeReferans = { birimler, muhasebeGruplari, urunKodlari, contract, esleme }
 
   // (c) her satır → mapper → sayım (bellekte) + upsert (dryRun'da DB'ye yazmaz)
   let atlanan = 0

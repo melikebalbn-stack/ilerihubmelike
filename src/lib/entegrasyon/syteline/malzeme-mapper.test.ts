@@ -91,6 +91,29 @@ describe('malzemeMapla — Syteline → IFS eşleme', () => {
     expect('hata' in r && r.hata.startsWith('ürün kodu geçersiz')).toBe(true)
   })
 
+  // ── Eşleme (SyteEsleme) param'ları — const fallback + override ──
+  it('esleme YOK → sabit BIRIM_HARITASI fallback (eski davranış)', () => {
+    expect(ok(malzemeMapla({ ...temel, u_m: 'LT' }, REF)).envanter.UnitMeas).toBe('l')
+  })
+  it('BIRIM eşleme override → const’u ezer', () => {
+    const ref = { ...REF, esleme: { birim: new Map([['AD', 'kg']]) } }
+    // 'kg' REF.birimler'de var → override kazanır (const AD→ad yerine kg).
+    expect(ok(malzemeMapla({ ...temel, u_m: 'AD' }, ref)).envanter.UnitMeas).toBe('kg')
+  })
+  it('URUN_KODU override → ilk-3-hane kuralını EZER (9999 → 153)', () => {
+    const ref = { ...REF, esleme: { urunKodu: new Map([['9999', '153']]) } }
+    const r = ok(malzemeMapla({ ...temel, product_code: '9999' }, ref))
+    expect(r.envanter.PartProductCode).toBe('153') // ilk-3 olsaydı '999' → LOV'da yok
+  })
+  it('URUN_KODU override IFS LOV’da yoksa yine "ürün kodu yok"', () => {
+    const ref = { ...REF, esleme: { urunKodu: new Map([['9999', '888']]) } }
+    expect(malzemeMapla({ ...temel, product_code: '9999' }, ref)).toEqual({ hata: 'ürün kodu yok: 888' })
+  })
+  it('MUHASEBE_GRUBU override → family_code IFS grubunda olmasa bile eşlenir', () => {
+    const ref = { ...REF, esleme: { muhasebe: new Map([['99999', '153']]) } }
+    expect(ok(malzemeMapla({ ...temel, family_code: '99999' }, ref)).envanter.AccountingGroup).toBe('153')
+  })
+
   it('açıklama boş → hata', () => {
     const r = malzemeMapla({ ...temel, description: '   ' }, REF)
     expect('hata' in r && r.hata.startsWith('açıklama boş')).toBe(true)

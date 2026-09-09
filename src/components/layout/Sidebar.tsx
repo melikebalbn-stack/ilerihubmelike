@@ -148,7 +148,6 @@ const mainMenuItems = [
   { name: "Mesajlar", icon: MessageSquare, href: "/messages", roles: ["*"] },
   { name: "Duyurular", icon: Megaphone, href: "/announcements", roles: ["*"] },
   { name: "Çalışan Rehberi", icon: Users, href: "/employees", roles: ["*"] },
-  { name: "Öneri Sistemi", icon: Lightbulb, href: "/suggestions", roles: ["*"] },
   { name: "Maliyet Analizi", icon: Calculator, href: "/cost-analysis", roles: ["SUPER_ADMIN"], emails: ["kadir.kocakoglu@ilerigroup.com", "hilmi.ileri@ilerigroup.com", "halit.ileri@ilerigroup.com", "eren.ileri@ilerigroup.com", "koray.ileri@ilerigroup.com", "gurhan.horbay@ilerigroup.com"] },
   { name: "Planlı Görevler", icon: CalendarCheck, href: "/tasks", roles: ["*"] },
   // { name: "SSS", icon: HelpCircle, href: "/faq", roles: ["*"] }, // Şimdilik gizli
@@ -195,11 +194,20 @@ const FORM_ALT_GRUPLAR = [
   { key: "genel", label: "Genel" },
   { key: "iv", label: "İnsan Varlıkları" },
   { key: "kalite", label: "Kalite" },
+  // Üretim: şu an öğesi YOK. formsBySubgroup + render/arama zaten
+  // items.length > 0 süzgecinden geçtiği için başlık çizilmez.
+  // Üretim formu eklenince subgroup: "uretim" ver, başlık kendiliğinden açılır.
+  { key: "uretim", label: "Üretim" },
 ] as const
 
 type FormAltGrup = (typeof FORM_ALT_GRUPLAR)[number]["key"]
 
 const formsMenuItems = [
+  // Ana Menü'den taşındı — talep/öneri girişi, form niteliğinde. Koşul AYNEN "herkes".
+  { name: "Öneri Sistemi", icon: Lightbulb, href: "/suggestions", roles: ["*"], subgroup: "genel" as FormAltGrup },
+  // Alt menüden ("Diğer") taşındı. Aynı href; sayfa içindeki IT ekibi paneli
+  // kendi yetkisiyle çalışmaya devam ediyor, dokunulmadı. Koşul AYNEN "herkes".
+  { name: "IT Destek Talebi", icon: Headphones, href: "/it-support", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Ziyaret Raporları", icon: FileText, href: "/forms/visit-reports", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Toplantı Raporu", icon: Calendar, href: "/meetings", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"], subgroup: "iv" as FormAltGrup },
@@ -379,7 +387,6 @@ const entegrasyonMenuItems = [
 
 // Alt menü öğeleri
 const bottomMenuItems = [
-  { name: "IT Destek", icon: Headphones, href: "/it-support", roles: ["*"] },
   { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN", "QUALITY_MANAGER"], departments: ["Kalite", "Laboratuvar"] },
 ]
 

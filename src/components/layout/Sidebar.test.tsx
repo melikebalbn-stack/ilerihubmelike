@@ -292,3 +292,42 @@ describe('Sidebar — ADIM 2: form olmayan öğelerin taşınması', () => {
     expect(link).toHaveAttribute('href', '/strategic-hr/is-analizi/onaylarim')
   })
 })
+
+describe('Sidebar — ADIM 3: Genel alt grubu + Üretim alt grubu', () => {
+  it('Genel alt grubu TAM 5 öğe ve istenen sırada (Öneri, IT Destek Talebi, Ziyaret, Toplantı, Zimmetlerim)', () => {
+    // Beşi de roles:["*"] → sıradan kullanıcıda hepsi görünür.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
+    renderSidebar()
+    fireEvent.click(screen.getByText('Formlar'))
+
+    // Başlık + öğeleri saran <div key={g.key}> kutusu: içindeki <a>'lar
+    // alt grubun öğeleridir, DOM sırası = dizideki sıra.
+    const genelKutu = screen.getByTestId('form-subgroup-genel').parentElement as HTMLElement
+    const adlar = Array.from(genelKutu.querySelectorAll('a')).map((a) => a.textContent?.trim())
+    expect(adlar).toEqual([
+      'Öneri Sistemi',
+      'IT Destek Talebi',
+      'Ziyaret Raporları',
+      'Toplantı Raporu',
+      'Zimmetlerim',
+    ])
+
+    // Taşınan iki öğe eski yerlerinde DEĞİL: mainMenuItems ve bottomMenuItems
+    // her zaman çizildiği için isim tek kopya kalmalı (yalnız Formlar › Genel'de).
+    expect(screen.getAllByText('Öneri Sistemi')).toHaveLength(1)
+    expect(screen.getAllByText('IT Destek Talebi')).toHaveLength(1)
+  })
+
+  it('Üretim alt grubunun öğesi yok → başlığı çizilmez; "it destek" araması IT Destek Talebini bulur', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
+    renderSidebar()
+    fireEvent.click(screen.getByText('Formlar'))
+
+    expect(screen.getByTestId('form-subgroup-genel')).toBeInTheDocument()
+    expect(screen.queryByTestId('form-subgroup-uretim')).not.toBeInTheDocument()
+
+    // Arama kaynağı formsBySubgroup'tan besleniyor → öğe "Formlar › Genel" grubunda.
+    fireEvent.change(screen.getByLabelText('Menüde ara'), { target: { value: 'it destek' } })
+    expect(screen.getByText('IT Destek Talebi')).toBeInTheDocument()
+  })
+})

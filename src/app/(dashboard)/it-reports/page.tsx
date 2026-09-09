@@ -6,6 +6,7 @@ import { MetrikKarti, yeterliVeri } from "@/components/tickets/metrik-karti"
 import type { Olcum } from "@/lib/tickets/kpi"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { DeltaBadge } from "@/components/ui/delta-badge"
 import {
   Select,
   SelectContent,
@@ -171,6 +172,20 @@ export default function ITReportsPage() {
   // IT raporları audit kapsamında — admin.audit.view permission'ı
   // (admin, bgys-sorumlusu, it-admin, super-admin)
   const canAccessReports = session?.user?.permissions?.includes("admin.audit.view") ?? false
+
+  /**
+   * Son gunun bir onceki gune gore yuzde degisimi (dailyTrend zaten ekranda cizilen veri).
+   * Iki gunden az veri varsa NaN, onceki gun 0 ise Infinity doner; DeltaBadge ikisini de
+   * "—" olarak gosterir — "%NaN" ya da "%Infinity" ekrana dusmez.
+   */
+  const gunlukDegisim = (alan: "created" | "resolved") => {
+    const t = report?.dailyTrend ?? []
+    if (t.length < 2) return Number.NaN
+    const son = t[t.length - 1][alan]
+    const onceki = t[t.length - 2][alan]
+    if (onceki === 0) return Number.POSITIVE_INFINITY
+    return ((son - onceki) / onceki) * 100
+  }
 
   const fetchReport = async () => {
     setLoading(true)
@@ -682,9 +697,21 @@ export default function ITReportsPage() {
           {/* Daily Trend */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex flex-wrap items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
                 Son 7 Gunluk Trend
+                <span className="ml-auto flex items-center gap-3 text-xs font-normal text-muted-foreground">
+                  {/* Son gun onceki gune gore. Acilan talepte ARTIS kotu (good="down"),
+                      cozulende artis iyi. Onceki gun 0 ise oran hesaplanamaz -> rozet "—" gosterir. */}
+                  <span className="flex items-center gap-1.5">
+                    Acilan
+                    <DeltaBadge value={gunlukDegisim("created")} good="down" />
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    Cozulen
+                    <DeltaBadge value={gunlukDegisim("resolved")} good="up" />
+                  </span>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>

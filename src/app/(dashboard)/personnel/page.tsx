@@ -111,18 +111,45 @@ const formatDate = (dateStr: string | null) => {
 }
 
 // ── Personnel Tab ──
+const YAKA_QUERY_DEGERLERI = ["BEYAZ", "MAVI", "GRI"]
+
 function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
   const { departments: bolumler, loading: bolumlerYukleniyor, hata: bolumHatasi } = useDepartments()
+  const listeParams = useSearchParams()
+  const listeRouter = useRouter()
+  const yakaQuery = (listeParams.get("yaka") || "").toUpperCase()
   const [personnel, setPersonnel] = useState<Personnel[]>([])
   const [loading, setLoading] = useState(true)
   const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, limit: 25, total: 0, totalPages: 1 })
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [bolum, setBolum] = useState("")
-  const [yaka, setYaka] = useState("")
+  // Derin bağlantı: /personnel?yaka=GRI (Personel Dashboard kartlarındaki rozet buraya gelir).
+  // Yalnız bilinen değerler kabul edilir — serbest metin API'ye taşınmasın.
+  const [yaka, setYaka] = useState(() => (YAKA_QUERY_DEGERLERI.includes(yakaQuery) ? yakaQuery : ""))
   const [durum, setDurum] = useState("AKTIF")
   const [sortBy, setSortBy] = useState("adSoyad")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  // URL bu filtrenin TEK doğrusu: geri/ileri tuşu ya da başka bir rozetten gelen
+  // ikinci tıklama bileşeni yeniden monte etmez, useState başlatıcısı bir daha koşmaz.
+  // Bu efekt olmadan adres çubuğu "yaka=BEYAZ" derken liste GRI kalabiliyordu.
+  useEffect(() => {
+    const q = YAKA_QUERY_DEGERLERI.includes(yakaQuery) ? yakaQuery : ""
+    setYaka(prev => (prev === q ? prev : q))
+    setPagination(prev => (prev.page === 1 ? prev : { ...prev, page: 1 }))
+  }, [yakaQuery])
+
+  // state -> URL: elle yapılan seçim adres çubuğundaki derin bağlantıyla çelişmesin,
+  // yoksa sekme değiştirip dönünce eski yaka geri gelirdi.
+  const yakaSec = (deger: string) => {
+    setYaka(deger)
+    setPagination(prev => ({ ...prev, page: 1 }))
+    const url = new URL(window.location.href)
+    if (deger) url.searchParams.set("yaka", deger)
+    else url.searchParams.delete("yaka")
+    listeRouter.replace(url.pathname + url.search, { scroll: false })
+  }
 
   const handleSort = (field: string) => {
     if (sortBy === field) {
@@ -225,7 +252,7 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
                 <option key={b} value={b}>{b}</option>
               ))}
             </Select>
-            <Select value={yaka} onChange={(e) => { setYaka(e.target.value); setPagination(prev => ({ ...prev, page: 1 })) }}>
+            <Select value={yaka} onChange={(e) => yakaSec(e.target.value)}>
               <option value="">Tümü (Yaka)</option>
               <option value="MAVI">Mavi Yaka</option>
               <option value="BEYAZ">Beyaz Yaka</option>

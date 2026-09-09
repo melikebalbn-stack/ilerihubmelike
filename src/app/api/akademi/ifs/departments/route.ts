@@ -1,16 +1,20 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/lib/auth/require-permission";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { stripDeptPrefix } from "@/lib/akademi-ifs";
 import { NextResponse } from "next/server";
 
 // IFS-6 Sv1: Departman = aktif isIfs CoursePackage'lar. Katalog davranışı —
-// atanma şartı yok, herkes görebilir. Görünen ad = paket adından "IFS Geçiş · "
-// prefix'i DISPLAY'de kırpılmış (veriye dokunulmaz).
-
+// ATAMA şartı yok (atanmamış departman da görünür), ama izin şartı VAR.
+// Görünen ad = paket adından "IFS Geçiş · " prefix'i DISPLAY'de kırpılmış.
+//
+// YETKİ (09.09.2026): eskiden yalnız oturum aranıyordu, yani giriş yapan
+// herkes IFS katalogunu okuyabiliyordu. ifs.view'a bağlandı — sayfa kapısıyla
+// aynı anahtar. Ölçüm: izni taşımayan 7 aktif hesap kaldı, hepsi terminal/kiosk.
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const { session, error } = await requirePermission("ifs.view");
+  if (error) return error;
+
   const userId = await resolveAkademiUserId(session);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

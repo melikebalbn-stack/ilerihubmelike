@@ -21,7 +21,10 @@ export default async function IfsPaketYonetimPage({
   // Yalnız ifs.admin — eski akademi.kurs.edit kaldırıldı. ifs.keyuser BİLEREK
   // YOK: key user değerlendirme girer, yapıyı değiştirmez.
   const yetkili = await hasPermission("ifs.admin");
-  if (!yetkili) redirect("/ifs/degerlendirme?error=unauthorized");
+  // Hedef /ifs/degerlendirme DEGIL: kok sayfa da artik ayni ifs.admin kapisini
+  // tasiyor, oraya atmak yetkisiz kullaniciyi ikinci bir sicramaya sokardi.
+  // /ifs altindaki tum yetkisiz yonlendirmeler tek hedefe gider.
+  if (!yetkili) redirect("/?error=unauthorized");
 
   const { packageId } = await params;
   return <PaketYonetim packageId={packageId} />;

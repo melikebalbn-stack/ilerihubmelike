@@ -41,6 +41,7 @@ import {
   BarChart3,
   Info,
   BookOpen,
+  AlertTriangle,
 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -50,6 +51,7 @@ import { useAuthenticatedData } from "@/hooks/use-authenticated-data"
 import { formatDistanceToNow } from "date-fns"
 import { tr } from "date-fns/locale"
 import { TicketDetail } from "./_components/ticket-detail"
+import { SplitBadge } from "@/components/ui/split-badge"
 import { CategoryBadge } from "./_components/category-badge"
 import { KpiDashboard } from "./_components/kpi-dashboard"
 import { KullanimKilavuzu } from "./_components/kullanim-kilavuzu"
@@ -184,6 +186,9 @@ export default function ITSupportPage() {
 
   // PR-Y9c: saf RBAC, helpdesk.admin permission. Eski legacy (role/dept/ou fallback) kaldırıldı.
   const isITStaff = session?.user?.permissions?.includes("helpdesk.admin") ?? false
+  // /it-reports helpdesk.admin ile DEGIL admin.audit.view ile aciliyor; rozeti yalniz
+  // raporu gercekten gorebilene goster, yoksa "Yetkisiz Erisim" ekranina goturur.
+  const raporGorebilir = session?.user?.permissions?.includes("admin.audit.view") ?? false
   // "Bana Atanan" sekmesi kişisel atamayı gösterir; helpdesk.admin ŞART DEĞİL.
   // helpdesk-agent rolündeki teknisyen kendisine atanan talebi görebilmeli —
   // sekme gizliyken API düzeltmesi tek başına yetmiyordu. Koşul API ile AYNI:
@@ -724,10 +729,21 @@ export default function ITSupportPage() {
                 </CardHeader>
               </Card>
               {stats.summary.slaBreached > 0 && (
-                <Card className="border-red-300">
+                <Card className="border-rose-300">
                   <CardHeader className="pb-2">
-                    <CardDescription className="text-red-500">SLA Ihlali</CardDescription>
-                    <CardTitle className="text-xl sm:text-3xl text-red-500">{stats.summary.slaBreached}</CardTitle>
+                    <CardDescription className="text-rose-600">SLA Ihlali</CardDescription>
+                    <CardTitle className="text-xl sm:text-3xl text-rose-600">{stats.summary.slaBreached}</CardTitle>
+                    {/* Liste ici filtreler yerel durumda tutuluyor; ihlalin dokumu SLA raporunda. */}
+                    {raporGorebilir && (
+                      <SplitBadge
+                        className="mt-2 w-fit"
+                        label={`${stats.summary.slaBreached} talep`}
+                        action="Raporu ac"
+                        href="/it-reports"
+                        tone="rose"
+                        icon={<AlertTriangle className="h-3 w-3" />}
+                      />
+                    )}
                   </CardHeader>
                 </Card>
               )}

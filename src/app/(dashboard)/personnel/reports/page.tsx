@@ -6,6 +6,7 @@ import { Users, Briefcase, Wrench, HardHat, BarChart3, PieChart as PieChartIcon,
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts"
+import { SplitBadge } from "@/components/ui/split-badge"
 
 interface BolumSatir { bolum: string; sayi: number; oran: number }
 
@@ -211,8 +212,8 @@ export default function PersonnelReportsPage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Summary Cards — bes kart tek satirda (xl); kart olculeri p-4 / text-2xl / h-8 w-8 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         {/* Toplam */}
         <div className="relative overflow-hidden bg-white border border-slate-200 rounded-xl p-4 before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-teal-500">
           <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center mb-3">
@@ -233,6 +234,13 @@ export default function PersonnelReportsPage() {
           <p className="text-[11px] text-slate-400 mt-1.5">
             %{ozet.toplamCalisan > 0 ? (ozet.beyazYaka / ozet.toplamCalisan * 100).toFixed(1) : 0} oranı
           </p>
+          <SplitBadge
+            className="mt-2"
+            label={`${ozet.beyazYaka} kişi`}
+            action="Listele"
+            href="/personnel?tab=personel&yaka=BEYAZ"
+            tone="blue"
+          />
         </div>
 
         {/* Mavi Yaka */}
@@ -245,6 +253,13 @@ export default function PersonnelReportsPage() {
           <p className="text-[11px] text-slate-400 mt-1.5">
             %{ozet.toplamCalisan > 0 ? (ozet.maviYaka / ozet.toplamCalisan * 100).toFixed(1) : 0} oranı
           </p>
+          <SplitBadge
+            className="mt-2"
+            label={`${ozet.maviYaka} kişi`}
+            action="Listele"
+            href="/personnel?tab=personel&yaka=MAVI"
+            tone="violet"
+          />
         </div>
 
         {/* Gri Yaka — üretim birim sorumluları. Renk pasta grafiğiyle AYNI (COLORS.gri #6b7280 ≈ slate-500). */}
@@ -257,6 +272,13 @@ export default function PersonnelReportsPage() {
           <p className="text-[11px] text-slate-400 mt-1.5">
             %{ozet.toplamCalisan > 0 ? (ozet.griYaka / ozet.toplamCalisan * 100).toFixed(1) : 0} oranı
           </p>
+          <SplitBadge
+            className="mt-2"
+            label={`${ozet.griYaka} kişi`}
+            action="Listele"
+            href="/personnel?tab=personel&yaka=GRI"
+            tone="slate"
+          />
         </div>
 
         {/* Kadın/Erkek */}

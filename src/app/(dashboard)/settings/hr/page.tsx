@@ -238,20 +238,12 @@ export default function HRSettingsPage() {
           <Briefcase className="h-6 w-6 text-primary" />
           <div>
             <h1 className="text-2xl font-bold">İV Ayarları</h1>
-            <p className="text-sm text-muted-foreground">Görev tanımları, bölümler ve İnsan Varlıkları yapılandırması</p>
+            <p className="text-sm text-muted-foreground">Bölümler ve İnsan Varlıkları yapılandırması</p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ManageableList
-          title="Görev Tanımları"
-          subtitle="Personel formundaki görev seçenekleri"
-          icon={Briefcase}
-          apiUrl="/api/settings/job-titles"
-          placeholder="Yeni görev adı..."
-        />
-
         <ManageableList
           title="Bölüm Tanımları"
           subtitle="Personel formundaki bölüm seçenekleri"

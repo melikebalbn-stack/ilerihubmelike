@@ -54,13 +54,9 @@ export async function GET(
 
     const { id } = await params
 
-    // Aktif whitelist'ler (Ayarlar → İV Tanımları)
-    const [activeBolumRows, activeGorevRows] = await Promise.all([
-      prisma.departmentDefinition.findMany({ where: { isActive: true }, select: { name: true } }),
-      prisma.jobTitle.findMany({ where: { isActive: true }, select: { name: true } }),
-    ])
-    const activeBolumSet = new Set(activeBolumRows.map(d => d.name))
-    const activeGorevSet = new Set(activeGorevRows.map(j => j.name))
+    // 09.09.2026: bolum/gorev beyaz liste süzgeci kaldırıldı — liste ucuyla
+    // birebir aynı ölçüt (yalnız Personnel.aktif), yoksa listede görünen kişinin
+    // detayı 404 dönerdi.
 
     // Personnel-only kayıt (User link'i yok) — mavi yaka çoğunlukla
     if (id.startsWith('personnel-')) {
@@ -70,9 +66,6 @@ export async function GET(
         include: { user: { select: { extension3cx: true } } },
       })
       if (!p) return NOT_FOUND
-      if (!activeBolumSet.has(p.bolum)) return NOT_FOUND
-      if (!activeGorevSet.has(p.gorev)) return NOT_FOUND
-
       const employee: EmployeeDetail = {
         id,
         name: p.adSoyad,
@@ -108,10 +101,6 @@ export async function GET(
       select: { id: true, extension3cx: true, personnel: { select: { bolum: true, gorev: true } } },
     })
     if (!linked) return NOT_FOUND
-    if (linked.personnel) {
-      if (!activeBolumSet.has(linked.personnel.bolum)) return NOT_FOUND
-      if (!activeGorevSet.has(linked.personnel.gorev)) return NOT_FOUND
-    }
 
     // Yönetici (LDAP'tan)
     let manager: EmployeeDetail['manager'] = null

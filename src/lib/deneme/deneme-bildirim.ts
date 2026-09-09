@@ -88,6 +88,38 @@ function adimSahibiPersonelId(form: {
 }
 
 /**
+ * Zincirdeki BİR SONRAKİ halka (Personnel id). Form açılırken yazılan alanlardan
+ * türetilir — zincir çözücüsü YENİDEN ÇAĞRILMAZ.
+ *
+ * Eskalasyon bunu da bilgilendirir: form gecikiyorsa yalnız o anki adım sahibini
+ * değil, formun DÜŞECEĞİ kişiyi de haberdar etmek gerekir. Örnek: Preshane'de
+ * Orhan Çakmak (takım lideri) gönderdiğinde form Bedri Güler'e (müdür yrd.)
+ * düşer; eskiden yalnız bölüm müdürü (Samet Taşlı) uyarılıyor, Bedri Güler
+ * ATLANIYORDU.
+ */
+function sonrakiHalkaPersonelId(form: {
+  durum: DenemeDurum
+  degerlendirici2Id: string | null
+  onaylayanId: string | null
+}): string | null {
+  switch (form.durum) {
+    case 'DEGERLENDIRICI1_BEKLIYOR':
+      // Mavi yaka: 2. değerlendirici. Gri/beyaz (tek puan): varsa onaylayan.
+      return form.degerlendirici2Id ?? form.onaylayanId
+    case 'MUDUR_YRD_BEKLIYOR':
+      // Müdür yrd. doldurunca bölüm müdürü onaylar.
+      return form.onaylayanId
+    case 'MUDUR_BEKLIYOR':
+    case 'ONAY_BEKLIYOR':
+    case 'IK_BEKLIYOR':
+      // Sonraki halka İK — İV alıcı listesinde zaten var.
+      return null
+    default:
+      return null
+  }
+}
+
+/**
  * Mail + in-app birlikte. Biri patlarsa diğeri gitmeye devam eder.
  * Dönüş: mail GERÇEKTEN gitti mi — gönderim işareti buna bakar. Mail patlarsa
  * işaretlemeyiz, yarın tekrar denenir (mevcut uçtaki `if (r.success)` deseni).
@@ -281,12 +313,14 @@ export async function denemeFormlariniIsle(args: {
       const tip = `${tur === 'DENEME_2AY' ? 'TWO_MONTH' : 'SIX_MONTH'}_ESKALASYON`
       if (!(await zatenGonderildi(kisi.id, tip, args.dedupSince))) {
         const sahip = await personelinKullanicisi(sahipPid)
+        // ZİNCİRDEN türetilen sonraki halka — formun düşeceği kişi de uyarılır.
+        const sonraki = await personelinKullanicisi(sonrakiHalkaPersonelId(form))
         const dept = await prisma.personnel.findUnique({
           where: { id: kisi.id }, select: { department: { select: { mudurId: true } } },
         })
         const mudur = await personelinKullanicisi(dept?.department?.mudurId ?? null)
         const iv = await ivAlicilari()
-        const alicilar = [sahip, mudur, ...iv].filter((a): a is Alici => !!a)
+        const alicilar = [sahip, sonraki, mudur, ...iv].filter((a): a is Alici => !!a)
         const benzersiz = [...new Map(alicilar.map((a) => [a.userId, a])).values()]
         sonuc.eskalasyon++
         if (!kuru && benzersiz.length) {

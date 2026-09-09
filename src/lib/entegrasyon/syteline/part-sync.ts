@@ -12,7 +12,7 @@ import {
   createInventoryPart,
   IfsHttpError,
 } from '@/lib/ifs/part-sync'
-import { getMalzemeler } from '@/lib/syteline/malzeme'
+import { getMalzemeler, getMalzemelerByItems } from '@/lib/syteline/malzeme'
 import {
   malzemeMapla,
   type MalzemeReferans,
@@ -201,12 +201,44 @@ export async function runPartSync(opts: { dryRun?: boolean; batch?: number } = {
         take: batch,
       })
 
+  // İşlenecek kayıtları GÜNCEL eşleme ile yeniden map etmek için kaynak Syteline satırlarını
+  // tek sorguda çek (payload eski eşlemeyi taşıyabilir; eşleme değişikliği kuyruğa da yansısın).
+  const kaynakSatirMap = new Map<string, Awaited<ReturnType<typeof getMalzemelerByItems>>[number]>()
+  if (islenecekler.length > 0) {
+    const satirlarByItem = await getMalzemelerByItems(islenecekler.map((k) => k.kaynakAnahtar))
+    for (const s of satirlarByItem) kaynakSatirMap.set((s.item ?? '').trim(), s)
+  }
+
   let yazilan = 0
   let hata = 0
   for (const kayit of islenecekler) {
-    const payload = kayit.payload as { katalog?: MalzemeKatalog; envanter?: MalzemeEnvanter } | null
-    const envanter = payload?.envanter
-    const katalog = payload?.katalog
+    // Öncelik: kaynaktan güncel map. Syteline'da bulunamazsa (pasifleşmiş/silinmiş) eski payload'a düş.
+    let katalog: MalzemeKatalog | undefined
+    let envanter: MalzemeEnvanter | undefined
+    const kaynakSatir = kaynakSatirMap.get(kayit.kaynakAnahtar)
+    if (kaynakSatir) {
+      const yeni = malzemeMapla(kaynakSatir, ref)
+      if ('hata' in yeni) {
+        // Güncel eşlemeyle artık kaynak hatası (ör. birim/ürün kodu) — IFS'e gidilmez, deneme artmaz.
+        await prisma.syteSyncKayit.update({
+          where: { id: kayit.id },
+          data: { durum: 'HATA', hata: yeni.hata, payload: asJson({ hata: yeni.hata }) },
+        })
+        hata++
+        continue
+      }
+      katalog = yeni.katalog
+      envanter = yeni.envanter
+      // Payload'ı güncel map ile tazele (sonraki turlar da doğru değeri görsün).
+      await prisma.syteSyncKayit.update({
+        where: { id: kayit.id },
+        data: { hash: yeni.hash, payload: asJson({ katalog: yeni.katalog, envanter: yeni.envanter }) },
+      })
+    } else {
+      const payload = kayit.payload as { katalog?: MalzemeKatalog; envanter?: MalzemeEnvanter } | null
+      envanter = payload?.envanter
+      katalog = payload?.katalog
+    }
     if (!envanter || !katalog) {
       // Mapper hatası kalıntısı — IFS'e gidilmez (BEKLIYOR filtresine düşmemeli ama garanti).
       continue

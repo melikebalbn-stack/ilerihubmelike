@@ -44,3 +44,33 @@ export async function getMalzemeler(watermark: Date): Promise<SytelineMalzemeSat
   const res = await rq.query<SytelineMalzemeSatiri>(query)
   return res.recordset
 }
+
+/**
+ * Belirli item kodlarının GÜNCEL aktif satırlarını getirir (watermark'sız). Kuyruğu işlerken
+ * kayıtları payload'dan değil, güncel eşleme ile YENİDEN map etmek için kullanılır — böylece
+ * eşleme değişiklikleri bekleyen kayıtlara da yansır. Parametreli IN — string birleştirme YOK.
+ * Boş liste → boş dizi (sorgu atılmaz).
+ */
+export async function getMalzemelerByItems(items: string[]): Promise<SytelineMalzemeSatiri[]> {
+  const temiz = [...new Set(items.map((i) => i.trim()).filter(Boolean))]
+  if (temiz.length === 0) return []
+  const cfg = getSytelineConfig()
+  const pool = await sytePool()
+  const rq = pool.request()
+  const yerTutucular: string[] = []
+  temiz.forEach((it, idx) => {
+    rq.input(`i${idx}`, sql.NVarChar, it)
+    yerTutucular.push(`@i${idx}`)
+  })
+  let siteClause = ''
+  if (cfg.site) {
+    rq.input('site', sql.NVarChar, cfg.site)
+    siteClause = ' AND site_ref = @site'
+  }
+  const query =
+    `SELECT site_ref, item, description, u_m, product_code, p_m_t_code, ` +
+    `family_code, stat, lot_tracked, revision, drawing_nbr, RecordDate ` +
+    `FROM item_mst WHERE stat = 'A' AND item IN (${yerTutucular.join(', ')})${siteClause}`
+  const res = await rq.query<SytelineMalzemeSatiri>(query)
+  return res.recordset
+}

@@ -25,6 +25,19 @@ export interface MalzemeReferans {
 }
 
 /**
+ * Syteline birim → IFS ISO birim eşlemesi (büyük harf anahtar). Haritada yoksa u_m lowercase
+ * denenir; her iki halde de IFS birim LOV'unda varlık kontrolü uygulanır.
+ */
+export const BIRIM_HARITASI: Record<string, string> = {
+  AD: 'ad',
+  LT: 'l',
+  GR: 'g',
+  PKT: 'pkg',
+  RU: 'ru',
+  TOP: 'top',
+}
+
+/**
  * PartCatalog kontrol/enum sabitleri — HUBTEST-0001 create'inde doğrulanan set.
  * LotTrackingCode şimdilik SABİT 'NotLotTracking'; ileride Syteline lot_tracked'a bağlanacak (v2).
  */
@@ -84,15 +97,21 @@ export function malzemeMapla(satir: MalzemeGirdi, ref: MalzemeReferans): Malzeme
   const description = (satir.description ?? '').trim()
   if (!description) return { hata: `açıklama boş: ${partNo}` }
 
-  const unit = (satir.u_m ?? '').trim().toLowerCase()
-  if (!unit) return { hata: `birim boş: ${partNo}` }
+  // Birim: sabit harita (büyük harf anahtar) → IFS kodu; yoksa lowercase. Sonra IFS LOV kontrolü.
+  const uHam = (satir.u_m ?? '').trim()
+  if (!uHam) return { hata: `birim boş: ${partNo}` }
+  const unit = BIRIM_HARITASI[uHam.toUpperCase()] ?? uHam.toLowerCase()
   const birimSet = new Set(ref.birimler.map((u) => u.trim().toLowerCase()))
-  if (!birimSet.has(unit)) return { hata: `birim yok: ${(satir.u_m ?? '').trim()}` }
+  if (!birimSet.has(unit.toLowerCase())) return { hata: `birim yok: ${uHam}` }
 
-  const urun = (satir.product_code ?? '').trim()
-  if (!urun) return { hata: `ürün kodu boş: ${partNo}` }
+  // PartProductCode = product_code'un İLK 3 HANESİ (1510101 → 151). <3 hane veya rakam-dışı →
+  // geçersiz. Sonra IFS ürün-kodu LOV'unda varlık kontrolü (aynen).
+  const pcHam = (satir.product_code ?? '').trim()
+  if (!pcHam) return { hata: `ürün kodu boş: ${partNo}` }
+  const ilk3 = pcHam.slice(0, 3)
+  if (pcHam.length < 3 || !/^\d{3}$/.test(ilk3)) return { hata: `ürün kodu geçersiz: ${pcHam}` }
   const urunSet = new Set(ref.urunKodlari.map((c) => c.trim()))
-  if (!urunSet.has(urun)) return { hata: `ürün kodu yok: ${urun}` }
+  if (!urunSet.has(ilk3)) return { hata: `ürün kodu yok: ${ilk3}` }
 
   // AccountingGroup: family_code IFS grup listesinde varsa aynen; yoksa '*'.
   const family = (satir.family_code ?? '').trim()
@@ -109,7 +128,7 @@ export function malzemeMapla(satir: MalzemeGirdi, ref: MalzemeReferans): Malzeme
     Description: description,
     UnitMeas: unit,
     TypeCode: typeCode,
-    PartProductCode: urun,
+    PartProductCode: ilk3,
     AccountingGroup: accountingGroup,
     PartStatus: 'A',
     PlannerBuyer: '*',

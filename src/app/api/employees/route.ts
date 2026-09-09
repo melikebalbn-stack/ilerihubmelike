@@ -44,26 +44,13 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
-    // Aktif whitelist'ler (Ayarlar → İV Tanımları)
-    const [activeDepartments, activeJobTitles] = await Promise.all([
-      prisma.departmentDefinition.findMany({
-        where: { isActive: true },
-        select: { name: true },
-      }),
-      prisma.jobTitle.findMany({
-        where: { isActive: true },
-        select: { name: true },
-      }),
-    ])
-    const activeBolumNames = activeDepartments.map(d => d.name)
-    const activeGorevNames = activeJobTitles.map(j => j.name)
-
-    // Personnel master — Personnel.aktif=true VE bolum/gorev whitelist'lerinde olmalı
+    // Personnel master — TEK ölçüt Personnel.aktif.
+    // 09.09.2026: bolum/gorev beyaz liste süzgeci kaldırıldı. JobTitle listesi
+    // serbest metin girilen Personnel.gorev ile tutmuyordu; 189 aktif personelin
+    // yalnız 98'i rehberde görünüyordu — eksik olanlar "yok" sanılıyordu.
     const personnelList = await prisma.personnel.findMany({
       where: {
         aktif: true,
-        bolum: { in: activeBolumNames },
-        gorev: { in: activeGorevNames },
       },
       include: {
         user: {

@@ -20,6 +20,9 @@ import { NextResponse } from "next/server";
 // Sıralama paket ADINA göre: sortOrder yalnız paket İÇİNDEKİ dokümanları
 // sıralar ve 9 kaydın 8'inde 0 — paketler arası sıralama için kullanılamaz.
 //
+// coverImageUrl kart kapağı için döner — AYNI CoursePackage kaydından, yani
+// Ödevler ekranındaki kapakla birebir aynı görsel; ayrıca yükleme gerekmiyor.
+//
 // Guard ifs.view seviyesinde, departments/areas ile aynı desen. Kişi verisi,
 // ilerleme ya da değerlendirme DÖNMEZ.
 
@@ -27,6 +30,8 @@ export interface IfsDocumentGroup {
   packageId: string;
   name: string;
   displayName: string;
+  /** Kart kapağı; null ise ekran gradient + tematik ikona düşer. */
+  coverImageUrl: string | null;
   docs: { id: string; title: string; fileUrl: string; sortOrder: number }[];
 }
 
@@ -47,6 +52,7 @@ export async function GET() {
     packageId: p.id,
     name: p.name,
     displayName: stripDeptPrefix(p.name),
+    coverImageUrl: p.coverImageUrl,
     docs: p.referenceDocs.map((d) => ({
       id: d.id,
       title: d.title,

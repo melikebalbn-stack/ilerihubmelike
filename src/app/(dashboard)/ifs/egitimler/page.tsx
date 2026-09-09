@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
@@ -12,6 +13,10 @@ import { IfsEgitimDokumanlari } from "./_client";
 //
 // Yetki ifs.view — Ödevler ile AYNI kitle (izin "Kullanıcı" rolünde, yani
 // pratikte herkes). Eğitim dokümanı bilerek geniş açık.
+//
+// Suspense ŞART: istemci bileşeni Sv1→Sv2 seçimini ?dept= ile URL'e yansıtmak
+// için useSearchParams kullanıyor; sınır olmadan Next bu sayfayı ön-render
+// edemez (build hatası).
 export default async function IfsEgitimlerPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
@@ -19,5 +24,9 @@ export default async function IfsEgitimlerPage() {
   const yetkili = await hasPermission("ifs.view");
   if (!yetkili) redirect("/?error=unauthorized");
 
-  return <IfsEgitimDokumanlari />;
+  return (
+    <Suspense fallback={null}>
+      <IfsEgitimDokumanlari />
+    </Suspense>
+  );
 }

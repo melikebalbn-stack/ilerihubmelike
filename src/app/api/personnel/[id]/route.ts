@@ -309,6 +309,11 @@ export async function PUT(
     delete body.employmentPeriods
     delete body.employmentSummary
     delete body.lastClosedPeriod // GET-türetilmiş salt-okuma nesne; şema alanı değil
+    // ŞEMA KOLTUĞU (2026-09-09 REGRESYON): GET `anaKoltuklar` döndürüyor ("Şemaya
+    // Yerleştir" düğmesi buna bakar) ama silme listesine konmamıştı; düzenleme ekranı
+    // nesnenin TAMAMINI geri gönderdiği için Prisma her update'i reddediyordu.
+    // OrgEmployee'den TÜRETİLİR, Personnel kolonu DEĞİL.
+    delete body.anaKoltuklar
     delete body.aktif // toggle artık PATCH ile yapılıyor
     // Beden: nested obje ayrı upsert edilir; personnel.update data'sına girmemeli.
     // bedenProfili = GET'ten dönen salt-okuma nested obje (varsa) — silinir.

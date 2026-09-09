@@ -1,17 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { getSandboxBySlug } from '@/lib/sandbox-config'
 import { normalizeTr } from '@/lib/normalize-tr'
-
-/**
- * DEV-TEST-AS / generate-notifications guard: e-postanın sandbox sahibinin
- * (Nurgül) e-postasıyla TAM eşleşip eşleşmediğini kontrol eder. SUPER_ADMIN
- * rolü tek başına yeterli değildir — ör. Melih de SUPER_ADMIN ama owner
- * e-postası bu değil, bu yüzden etkilenmez.
- */
-export function isSandboxOwner(email: string): boolean {
-  const ownerEmail = getSandboxBySlug('nurgul')?.ownerEmail
-  return !!ownerEmail && email.toLowerCase() === ownerEmail.toLowerCase()
-}
 
 export type SorumluPersonel = {
   id: string

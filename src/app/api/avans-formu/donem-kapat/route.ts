@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
-import { canAccessSandbox } from '@/lib/sandbox-config'
 import { prisma } from '@/lib/prisma'
-import { isSandboxOwner } from '../_lib/avans-formu-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,10 +19,10 @@ export const dynamic = 'force-dynamic'
  * donem-kilidi.ts) uygulanır; bu uç yalnızca kilidi kurar/kaldırır.
  */
 
-// sonuclar/route.ts DELETE ile AYNI İK kapısı (HR_MANAGER | SUPER_ADMIN |
-// sandbox sahibi) — ayrı bir yetki deseni uydurulmadı.
-function ikYetkisiVar(role: string, email: string): boolean {
-  return role === 'HR_MANAGER' || role === 'SUPER_ADMIN' || isSandboxOwner(email)
+// sonuclar/route.ts DELETE ile AYNI İK kapısı (HR_MANAGER | SUPER_ADMIN) —
+// ayrı bir yetki deseni uydurulmadı.
+function ikYetkisiVar(role: string): boolean {
+  return role === 'HR_MANAGER' || role === 'SUPER_ADMIN'
 }
 
 function gecerliDonem(body: unknown): body is { yil: number; ay: number; aciklama?: string } {
@@ -44,10 +42,7 @@ export async function GET() {
   const { user, error } = await requireUser()
   if (error) return error
 
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-  }
-  if (!ikYetkisiVar(user.role, user.email)) {
+  if (!ikYetkisiVar(user.role)) {
     return NextResponse.json({ error: 'Bu ekrana sadece İK erişebilir.' }, { status: 403 })
   }
 
@@ -69,10 +64,7 @@ export async function POST(request: NextRequest) {
   const { user, error } = await requireUser()
   if (error) return error
 
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-  }
-  if (!ikYetkisiVar(user.role, user.email)) {
+  if (!ikYetkisiVar(user.role)) {
     return NextResponse.json({ error: 'Bu işlem sadece İK tarafından yapılabilir.' }, { status: 403 })
   }
 
@@ -119,10 +111,7 @@ export async function DELETE(request: NextRequest) {
   const { user, error } = await requireUser()
   if (error) return error
 
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-  }
-  if (!ikYetkisiVar(user.role, user.email)) {
+  if (!ikYetkisiVar(user.role)) {
     return NextResponse.json({ error: 'Bu işlem sadece İK tarafından yapılabilir.' }, { status: 403 })
   }
 

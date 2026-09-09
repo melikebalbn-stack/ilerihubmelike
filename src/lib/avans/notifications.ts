@@ -1,5 +1,5 @@
 /**
- * Avans Formu Hatırlatma Bildirimi (sandbox/nurgul).
+ * Avans Formu Hatırlatma Bildirimi.
  *
  * Her ayın 15'inde birim sorumlularına "avans formunu 18'ine kadar
  * doldurun" hatırlatması 3 kanaldan gönderilir:
@@ -23,7 +23,7 @@ export type AvansHatirlatmaRecipient = {
   name: string
 }
 
-const AVANS_FORMU_LINK = '/sandbox/nurgul/avans-formu'
+const AVANS_FORMU_LINK = '/avans-formu'
 
 function esc(s: string): string {
   return s

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
-import { canAccessSandbox } from '@/lib/sandbox-config'
 import { prisma } from '@/lib/prisma'
 import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
-import { isSandboxOwner } from '../_lib/avans-formu-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,10 +17,7 @@ export async function GET(request: NextRequest) {
   const { user, error } = await requireUser()
   if (error) return error
 
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-  }
-  if (user.role !== 'HR_MANAGER' && user.role !== 'SUPER_ADMIN' && !isSandboxOwner(user.email)) {
+  if (user.role !== 'HR_MANAGER' && user.role !== 'SUPER_ADMIN') {
     return NextResponse.json({ error: 'Bu ekrana sadece İK erişebilir.' }, { status: 403 })
   }
 
@@ -96,10 +91,7 @@ export async function POST(request: NextRequest) {
   const { user, error } = await requireUser()
   if (error) return error
 
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-  }
-  if (user.role !== 'HR_MANAGER' && user.role !== 'SUPER_ADMIN' && !isSandboxOwner(user.email)) {
+  if (user.role !== 'HR_MANAGER' && user.role !== 'SUPER_ADMIN') {
     return NextResponse.json({ error: 'Bu ekrana sadece İK erişebilir.' }, { status: 403 })
   }
 
@@ -199,10 +191,7 @@ export async function DELETE(request: NextRequest) {
   const { user, error } = await requireUser()
   if (error) return error
 
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-  }
-  if (user.role !== 'HR_MANAGER' && user.role !== 'SUPER_ADMIN' && !isSandboxOwner(user.email)) {
+  if (user.role !== 'HR_MANAGER' && user.role !== 'SUPER_ADMIN') {
     return NextResponse.json({ error: 'Bu ekrana sadece İK erişebilir.' }, { status: 403 })
   }
 

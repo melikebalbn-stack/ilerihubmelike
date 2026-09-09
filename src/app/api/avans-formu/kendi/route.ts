@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
-import { canAccessSandbox } from '@/lib/sandbox-config'
 import { prisma } from '@/lib/prisma'
 import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 
@@ -27,10 +26,6 @@ async function kendiPersonelKaydi(userId: string) {
 export async function GET() {
   const { user, error } = await requireUser()
   if (error) return error
-
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-  }
 
   const personel = await kendiPersonelKaydi(user.id)
 
@@ -91,10 +86,6 @@ function gecerliBody(body: unknown): body is PostBody {
 export async function POST(request: NextRequest) {
   const { user, error } = await requireUser()
   if (error) return error
-
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-  }
 
   const body: unknown = await request.json().catch(() => null)
   if (!gecerliBody(body)) {

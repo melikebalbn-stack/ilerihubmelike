@@ -79,7 +79,7 @@ export default function AvansSonuclarPage() {
     if (donemYilFiltre !== 'tumu') params.set('donemYil', donemYilFiltre)
     if (donemAyFiltre !== 'tumu') params.set('donemAy', donemAyFiltre)
     const qs = params.toString()
-    fetch(`/api/sandbox/nurgul/avans-formu/sonuclar${qs ? `?${qs}` : ''}`)
+    fetch(`/api/avans-formu/sonuclar${qs ? `?${qs}` : ''}`)
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => null)
@@ -105,7 +105,7 @@ export default function AvansSonuclarPage() {
       return
     }
     const zamanlayici = setTimeout(() => {
-      fetch(`/api/sandbox/nurgul/avans-formu/sonuclar/personel-ara?q=${encodeURIComponent(arama)}`)
+      fetch(`/api/avans-formu/sonuclar/personel-ara?q=${encodeURIComponent(arama)}`)
         .then(async (res) => {
           if (!res.ok) return []
           const json = (await res.json()) as { sonuclar?: AramaSonucu[] }
@@ -120,7 +120,7 @@ export default function AvansSonuclarPage() {
   async function kisiEkle(personelId: string, force = false) {
     setEkleniyor(true)
     try {
-      const res = await fetch('/api/sandbox/nurgul/avans-formu/sonuclar', {
+      const res = await fetch('/api/avans-formu/sonuclar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ personelId, force }),
@@ -153,7 +153,7 @@ export default function AvansSonuclarPage() {
     )
     if (!onay) return
     try {
-      const res = await fetch('/api/sandbox/nurgul/avans-formu/sonuclar', {
+      const res = await fetch('/api/avans-formu/sonuclar', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ avansTalebiId, calisanId }),

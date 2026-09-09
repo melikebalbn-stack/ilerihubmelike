@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
-import { canAccessSandbox } from '@/lib/sandbox-config'
 import { prisma } from '@/lib/prisma'
 import { bulSorumluBolumleri } from '../_lib/avans-formu-helpers'
 
@@ -15,10 +14,6 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const { user, error } = await requireUser()
   if (error) return error
-
-  if (!canAccessSandbox('nurgul', user.email, user.role)) {
-    return NextResponse.json({ kendimGorunur: false, sorumluGorunur: false })
-  }
 
   const dbUser = await prisma.user.findUnique({
     where: { id: user.id },

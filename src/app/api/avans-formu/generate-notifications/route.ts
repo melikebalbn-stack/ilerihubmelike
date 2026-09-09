@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
 import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
-import { isSandboxOwner } from '../_lib/avans-formu-helpers'
-import { dispatchAvansHatirlatma, dispatchAvansKendiHatirlatma } from '@/lib/sandbox/avans-notifications'
+import { dispatchAvansHatirlatma, dispatchAvansKendiHatirlatma } from '@/lib/avans/notifications'
 
 export const dynamic = 'force-dynamic'
 
@@ -132,7 +131,7 @@ async function personelToAlici(s: SorumluAdayi): Promise<Alici> {
  *     bir günde de çalıştırılsa (örn. günlük kurulmuşsa), zararsız şekilde
  *     no-op olur. Cron zaten sadece ayın 15'inde kurulsa da bu guard'ın
  *     zararı yok.
- *  2. Manuel test: sandbox sahibinin (Nurgül) oturumuyla — bu yolda gün
+ *  2. Manuel tetik: İK (HR_MANAGER | SUPER_ADMIN) oturumuyla — bu yolda gün
  *     kontrolü UYGULANMAZ, 15'i beklemeden istenildiği an test edilebilir.
  * Varsayılan dryRun:true — gerçek gönderim SADECE açık { dryRun: false }
  * body'siyle tetiklenir.
@@ -148,9 +147,9 @@ export async function POST(request: NextRequest) {
   if (!isCron) {
     const { user, error } = await requireUser()
     if (error) return error
-    if (!isSandboxOwner(user.email)) {
+    if (user.role !== 'HR_MANAGER' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json(
-        { error: 'Bu işlem sadece sandbox sahibi tarafından veya cron ile çalıştırılabilir' },
+        { error: 'Bu işlem sadece İK tarafından veya cron ile çalıştırılabilir' },
         { status: 403 }
       )
     }

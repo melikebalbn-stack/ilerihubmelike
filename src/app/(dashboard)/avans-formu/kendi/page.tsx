@@ -8,19 +8,11 @@ import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Wallet, Clock } from 'lucide-react'
 
-type Personel = {
-  id: string
-  adSoyad: string
-  bolum: string | null
-  isSelf: boolean
-}
-
 type ApiResponse = {
-  sorumlu: { id: string; adSoyad: string }
-  bolumler: string[]
-  personel: Personel[]
+  personel: { id: string; adSoyad: string; bolum: string; gorev: string | null }
   donemYil: number
   donemAy: number
+  mevcutSecim: boolean | null
 }
 
 function baslar(adSoyad: string) {
@@ -38,24 +30,28 @@ function sonBasvuruTarihi(donemYil: number, donemAy: number): string {
   return tarih.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-export default function AvansFormuPage() {
+export default function AvansFormuKendiPage() {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [hataMesaji, setHataMesaji] = useState<string | null>(null)
-  const [secimler, setSecimler] = useState<Record<string, boolean>>({})
+  const [secim, setSecim] = useState(false)
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [gonderildi, setGonderildi] = useState(false)
 
   useEffect(() => {
-    fetch('/api/sandbox/nurgul/avans-formu')
+    fetch('/api/avans-formu/kendi')
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => null)
-          throw new Error(body?.error ?? 'Liste alınamadı')
+          throw new Error(body?.error ?? 'Bilgi alınamadı')
         }
         return res.json()
       })
-      .then((json: ApiResponse) => setData(json))
+      .then((json: ApiResponse) => {
+        setData(json)
+        setSecim(json.mevcutSecim ?? false)
+        setGonderildi(false)
+      })
       .catch((err) => setHataMesaji(err.message))
       .finally(() => setLoading(false))
   }, [])
@@ -64,22 +60,18 @@ export default function AvansFormuPage() {
     if (!data) return
     setGonderiliyor(true)
     try {
-      const now = new Date()
-      const res = await fetch('/api/sandbox/nurgul/avans-formu', {
+      const res = await fetch('/api/avans-formu/kendi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          donemYil: now.getFullYear(),
-          donemAy: now.getMonth() + 1,
-          secimler: data.personel.map((p) => ({
-            personelId: p.id,
-            avansIstiyorMu: secimler[p.id] ?? false,
-          })),
+          donemYil: data.donemYil,
+          donemAy: data.donemAy,
+          avansIstiyorMu: secim,
         }),
       })
       const sonucBody = await res.json().catch(() => null)
       if (!res.ok) throw new Error(sonucBody?.error ?? 'Form gönderilemedi')
-      toast.success('Avans formu kaydedildi')
+      toast.success('Avans talebiniz kaydedildi')
       setGonderildi(true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Form gönderilemedi')
@@ -88,13 +80,9 @@ export default function AvansFormuPage() {
     }
   }
 
-  const secilenSayisi = data
-    ? data.personel.filter((p) => secimler[p.id]).length
-    : 0
-
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="max-w-2xl mx-auto px-4 pt-8 pb-24 space-y-6">
+      <div className="max-w-xl mx-auto px-4 pt-8 pb-24 space-y-6">
         <div className="flex items-center gap-3">
           <div
             className="flex h-11 w-11 items-center justify-center rounded-xl"
@@ -103,10 +91,8 @@ export default function AvansFormuPage() {
             <Wallet className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Avans Formu</h1>
-            <p className="text-sm text-slate-500">
-              Ekibiniz için avans talebi bildiriniz
-            </p>
+            <h1 className="text-xl font-semibold text-slate-900">Avans Talebi</h1>
+            <p className="text-sm text-slate-500">Bu döneme ait avans talebinizi belirtiniz</p>
           </div>
         </div>
 
@@ -130,13 +116,7 @@ export default function AvansFormuPage() {
           </div>
         )}
 
-        {loading && (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-[72px] w-full rounded-xl" />
-            ))}
-          </div>
-        )}
+        {loading && <Skeleton className="h-[72px] w-full rounded-xl" />}
 
         {!loading && hataMesaji && (
           <p className="text-sm text-red-600">{hataMesaji}</p>
@@ -144,49 +124,36 @@ export default function AvansFormuPage() {
 
         {!loading && data && (
           <>
-            <div className="flex items-center justify-between px-1">
-              <p className="text-sm font-medium text-slate-600">Personel Listesi</p>
-              <p className="text-xs text-slate-400">
-                {secilenSayisi} / {data.personel.length} işaretlendi
-              </p>
-            </div>
-
-            <div className="space-y-2.5">
-              {data.personel.map((p) => (
-                <Card key={p.id} className="border-slate-200 shadow-none">
-                  <CardContent className="py-3.5 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
-                        style={{ backgroundColor: p.isSelf ? '#1B4F72' : '#64748b' }}
-                      >
-                        {baslar(p.adSoyad)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
-                          {p.adSoyad}
-                          {p.isSelf && (
-                            <span className="ml-2 text-xs font-normal text-slate-400">
-                              (siz)
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-slate-500 truncate">{p.bolum ?? '—'}</p>
-                      </div>
-                    </div>
-                    <Switch
-                      id={`switch-${p.id}`}
-                      checked={secimler[p.id] ?? false}
-                      onCheckedChange={(checked) => {
-                        setSecimler((prev) => ({ ...prev, [p.id]: checked }))
-                        setGonderildi(false)
-                      }}
-                      className="data-[state=checked]:bg-emerald-600 shrink-0"
-                    />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <Card className="border-slate-200 shadow-none">
+              <CardContent className="py-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+                    style={{ backgroundColor: '#1B4F72' }}
+                  >
+                    {baslar(data.personel.adSoyad)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-900 truncate">
+                      {data.personel.adSoyad}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {data.personel.gorev ?? '—'}
+                      {data.personel.bolum ? ` · ${data.personel.bolum}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="switch-kendi"
+                  checked={secim}
+                  onCheckedChange={(checked) => {
+                    setSecim(checked)
+                    setGonderildi(false)
+                  }}
+                  className="data-[state=checked]:bg-emerald-600 shrink-0"
+                />
+              </CardContent>
+            </Card>
 
             <div className="flex justify-end pt-2">
               <Button

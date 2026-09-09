@@ -157,36 +157,33 @@ describe('Sidebar RBAC Dalga 1 — menü görünürlüğü sayfa guard’ıyla h
     expect(screen.getByText('Yedekleme')).toBeInTheDocument()
   })
 
-  // 6/7/8) Kalite ölçüm kümesi — ADIM 5'te MENÜDEN GİZLENDİ (hidden: true).
-  // Sayfa/route/izin duruyor; menüde izin sahibine bile çıkmıyor. Eski testler
-  // "izinli GÖRÜR" diyordu; kural tersine döndüğü için beklenti de tersine çevrildi.
+  // 6/7/8) Kalite ölçüm kümesi — ADIM 5'te MENÜDEN GİZLENDİ (hidden: true),
+  // ADIM 6'da Kalibrasyon + RMA da Formlar'a taşındı. Bu kullanıcılarda Kalite
+  // grubunun üç kolu da boş → grup HİÇ çizilmiyor, o yüzden ac('Kalite') YOK.
+  // Kalem zaten DOM'da olmadığı için doğrudan sorgulamak daha güçlü bir kanıt.
   it('quality.symbol.manage izinli kullanıcı bile Semboller’i GÖRMEZ (hidden)', () => {
     mockSession({ role: 'KULLANICI', permissions: ['quality.symbol.manage'] })
     renderSidebar()
-    ac('Kalite') // grup her zaman render (Kalibrasyon roles:"*")
     expect(screen.queryByText('Semboller')).not.toBeInTheDocument()
   })
   it('quality.report.read izinli kullanıcı bile Ölçüm Raporları’nı GÖRMEZ (hidden)', () => {
     mockSession({ role: 'KULLANICI', permissions: ['quality.report.read'] })
     renderSidebar()
-    ac('Kalite')
     expect(screen.queryByText('Ölçüm Raporları')).not.toBeInTheDocument()
   })
   it('quality.report.create izinli kullanıcı bile Ölçüm Şablonları’nı GÖRMEZ (hidden)', () => {
     mockSession({ role: 'KULLANICI', permissions: ['quality.report.create'] })
     renderSidebar()
-    ac('Kalite')
     expect(screen.queryByText('Ölçüm Şablonları')).not.toBeInTheDocument()
   })
-  it('yetkisiz KULLANICI kalite ölçüm kalemlerini GÖRMEZ; Kalibrasyon + RMA duruyor', () => {
+  it('yetkisiz KULLANICI ölçüm kalemlerini GÖRMEZ ve Kalite grubu toggle’ı HİÇ çizilmez', () => {
     mockSession({ role: 'KULLANICI', department: 'Üretim' })
     renderSidebar()
-    ac('Kalite')
-    expect(screen.getByText('Kalibrasyon')).toBeInTheDocument() // roles:"*" korundu
-    expect(screen.getByText('RMA/SMA İade Formu')).toBeInTheDocument() // ADIM 5'te buraya taşındı
     expect(screen.queryByText('Semboller')).not.toBeInTheDocument()
     expect(screen.queryByText('Ölçüm Şablonları')).not.toBeInTheDocument()
     expect(screen.queryByText('Ölçüm Raporları')).not.toBeInTheDocument()
+    // Formlar kapalıyken "Kalite" metni yalnız grup toggle'ından gelebilirdi.
+    expect(screen.queryByText('Kalite')).not.toBeInTheDocument()
   })
 
   // 10) Offboarding — sayfa offboarding.view.
@@ -241,13 +238,15 @@ describe('Sidebar — Formlar grubu alt başlıkları', () => {
     expect(screen.getByText('Vardiya Formu')).toBeInTheDocument()
   })
 
-  it('öğesi kalmayan alt grubun başlığı çizilmez (Kalite alt grubu ADIM 5 ile boşaldı)', () => {
-    // Tek kalemi olan RMA/SMA İade Formu Kalite GRUBUNA taşındı; FORM_ALT_GRUPLAR'da
-    // "kalite" tanımı duruyor ama items.length > 0 süzgeci başlığı çizdirmiyor.
+  it('Formlar › Kalite başlığı GERİ GELDİ: Kalibrasyon → RMA sırasıyla (ADIM 6)', () => {
+    // ADIM 5'te boşalmıştı, başlık çizilmiyordu; ADIM 6 iki kalem taşıdı.
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
     renderSidebar()
     acFormlarGrubunu()
-    expect(screen.queryByTestId('form-subgroup-kalite')).not.toBeInTheDocument()
+    const kaliteKutu = screen.getByTestId('form-subgroup-kalite').parentElement as HTMLElement
+    expect(
+      Array.from(kaliteKutu.querySelectorAll('a')).map((a) => a.textContent?.trim()),
+    ).toEqual(['Kalibrasyon', 'RMA/SMA İade Formu'])
   })
 
   it('aramada "insan varlıkları" yazınca Vardiya Formu sonuçlarda gelir (grup adıyla eşleşme)', () => {
@@ -343,7 +342,7 @@ describe('Sidebar — ADIM 3: Genel alt grubu + Üretim alt grubu', () => {
   })
 })
 
-describe('Sidebar — ADIM 5: Kalite grubu toparlama', () => {
+describe('Sidebar — ADIM 5/6: Kalite grubu toparlama', () => {
   it('gizlenen üç ölçüm kalemi ARAMADA da çıkmaz (izinli kullanıcıda bile)', () => {
     // searchableItems filterItems'tan geçen listelerden besleniyor → hidden
     // kalem ağaçta olmadığı gibi aramada da yok. Üçünün de izni verildi.
@@ -360,17 +359,42 @@ describe('Sidebar — ADIM 5: Kalite grubu toparlama', () => {
     }
   })
 
-  it('RMA/SMA İade Formu Kalite grubunda, Formlar altında DEĞİL ve tek kopya', () => {
+  // (a) ADIM 6 — yetkisiz kullanıcı
+  it('yetkisiz kullanıcıda Kalite GRUBU yok; Kalibrasyon + RMA Formlar › Kalite\'de ve tek kopya', () => {
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
     renderSidebar()
 
-    // Kalite grubu kapalıyken öğe DOM'da yok → Formlar'dan çıktığının kanıtı.
-    fireEvent.click(screen.getByText('Formlar'))
+    // Formlar kapalıyken ikisi de DOM'da değil → Kalite grubundan çıktıklarının kanıtı.
+    expect(screen.queryByText('Kalibrasyon')).not.toBeInTheDocument()
     expect(screen.queryByText('RMA/SMA İade Formu')).not.toBeInTheDocument()
 
-    // Kalite grubu açılınca tek kopya, doğru href ile.
-    fireEvent.click(screen.getByText('Kalite'))
+    fireEvent.click(screen.getByText('Formlar'))
+    const kaliteKutu = screen.getByTestId('form-subgroup-kalite').parentElement as HTMLElement
+    expect(
+      Array.from(kaliteKutu.querySelectorAll('a')).map((a) => a.textContent?.trim()),
+    ).toEqual(['Kalibrasyon', 'RMA/SMA İade Formu'])
+    expect(screen.getAllByText('Kalibrasyon')).toHaveLength(1)
     expect(screen.getAllByText('RMA/SMA İade Formu')).toHaveLength(1)
     expect(screen.getByText('RMA/SMA İade Formu').closest('a')).toHaveAttribute('href', '/kalite/rma')
+    expect(screen.getByText('Kalibrasyon').closest('a')).toHaveAttribute('href', '/calibration')
+  })
+
+  // (b) ADIM 6 — koşullu kalem yetkilisi: grup toggle koşulu DEĞİŞMEDİ
+  it('quality.hatakodu.manage izinlisinde Kalite grubu VAR ve içinde YALNIZ koşullu öğeler', () => {
+    // canSeeHataKodu = canAccessKalite VEYA quality.hatakodu.manage; bu kullanıcıda
+    // yalnız izin kolu doğru. canSeeUygunsuzluk de canSeeHataKodu'ndan geliyor.
+    // filteredKaliteItems (3 hidden) ve filteredQdmsItems/Audits boş → grup YALNIZ
+    // bu iki koşullu kalemle çiziliyor; toggle koşuluna hiç dokunulmadı.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['quality.hatakodu.manage'] })
+    renderSidebar()
+
+    fireEvent.click(screen.getByText('Kalite'))
+    expect(screen.getByText('Hata Kodları')).toBeInTheDocument()
+    expect(screen.getByText('Uygunsuzluk Kayıtları')).toBeInTheDocument()
+    // Taşınan iki kalem grupta DEĞİL (Formlar açılmadı, hiç görünmemeliler).
+    expect(screen.queryByText('Kalibrasyon')).not.toBeInTheDocument()
+    expect(screen.queryByText('RMA/SMA İade Formu')).not.toBeInTheDocument()
+    // Gizli üçlü de yok.
+    expect(screen.queryByText('Semboller')).not.toBeInTheDocument()
   })
 })

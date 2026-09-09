@@ -232,6 +232,13 @@ const formsMenuItems = [
   // (bkz. API route). "Zimmet Teslim Formu" (liste/onay ekranı, zimmet-formu.view
   // gerektirir) Sistem Geliştirme altında AYRI kaldı.
   { name: "Zimmetlerim", icon: Laptop, href: "/zimmet-formu/zimmetlerim", roles: ["*"], subgroup: "genel" as FormAltGrup },
+  // Kalite grubundan taşındı (ADIM 6): ikisi de "herkes"e açık kalemlerdi ve
+  // Kalite grubunun tek görünür içeriğiydi. Formlar › Kalite altına alındı;
+  // Kalite grubu artık YALNIZ koşullu kalemleriyle (Hata Kodları / Uygunsuzluk /
+  // QDMS / Denetimler) ve yalnız yetkilisine çiziliyor. roles:["*"] AYNEN.
+  { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"], subgroup: "kalite" as FormAltGrup },
+  // RMA/SMA İade Formu (KAL-KYT-16): yazma yetkisi sayfa/API'de (canManageRma).
+  { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"], subgroup: "kalite" as FormAltGrup },
   // { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] }, // Şimdilik gizli
 ]
 
@@ -312,13 +319,12 @@ const qdmsMenuItems = [
 ]
 
 // Kalite — ölçüm/kalibrasyon modülleri (İleri Teknik'ten taşındı, "Kalite" üst grubunun doğrudan altında)
+// ADIM 6: Kalibrasyon ve RMA "Formlar › Kalite" alt grubuna taşındı — bu listede
+// GÖRÜNÜR kalem KALMADI. Sonuç bilinçli: Kalite grubu toggle'ı
+// (filteredKaliteItems || filteredQdmsItems || filteredAuditsItems) DEĞİŞTİRİLMEDİ,
+// dolayısıyla sıradan kullanıcıda grup hiç çizilmez; Hata Kodları / Uygunsuzluk /
+// QDMS / Denetimler yetkilileri grubu ve kendi kalemlerini görmeye devam eder.
 const kaliteMenuItems = [
-  { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"] },
-  // RMA/SMA İade Formu (KAL-KYT-16): Formlar'dan Kalite grubuna taşındı — form
-  // değil, kalite modülü. Görünürlük AYNEN "herkes"; yazma yetkisi sayfa/API'de
-  // (canManageRma). Kalite grubu toggle'ı Kalibrasyon (roles:["*"]) sayesinde
-  // herkeste açık, dolayısıyla taşıma kimsenin erişimini kaybettirmez.
-  { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"] },
   // ── MENÜDEN GİZLİ (hidden: true) ────────────────────────────────────────
   // Sayfalar, route'lar ve izinler DURUYOR; yalnız menü girişi kapalı. Geri
   // açmak için ilgili satırdan `hidden: true` alanını silmek yeterli.

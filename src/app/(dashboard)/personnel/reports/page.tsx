@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Users, Briefcase, Wrench, BarChart3, PieChart as PieChartIcon, ArrowLeft, Download, Printer } from "lucide-react"
+import { Users, Briefcase, Wrench, HardHat, BarChart3, PieChart as PieChartIcon, ArrowLeft, Download, Printer } from "lucide-react"
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts"
@@ -22,15 +22,17 @@ interface ReportData {
   yakaCinsiyetTablosu: {
     beyaz: { genel: number; erkek: number; kadin: number; engelli: number }
     mavi: { genel: number; erkek: number; kadin: number; engelli: number }
+    gri: { genel: number; erkek: number; kadin: number; engelli: number }
     toplam: { genel: number; erkek: number; kadin: number; engelli: number }
   }
   beyazYakaBolumler: BolumSatir[]
   maviYakaBolumler: BolumSatir[]
+  griYakaBolumler: BolumSatir[]
   direktBolumler: BolumSatir[]
   endirektBolumler: BolumSatir[]
   istatistik: {
     kadinErkekOrani: number
-    beyazMaviOrani: number
+    beyazYakaOrani: number
     muhendislerOrtCalismaSuresi: number
     muhendisSayisi: number
     muhendisOrani: number
@@ -103,7 +105,7 @@ export default function PersonnelReportsPage() {
     <div className="p-6 text-sm text-slate-500">Veri yüklenemedi.</div>
   )
 
-  const { ozet, cinsiyetDagilimi, yakaCinsiyetTablosu, beyazYakaBolumler, maviYakaBolumler, direktBolumler, endirektBolumler, istatistik, asansorMekanik, ozelGrup } = data
+  const { ozet, cinsiyetDagilimi, yakaCinsiyetTablosu, beyazYakaBolumler, maviYakaBolumler, griYakaBolumler, direktBolumler, endirektBolumler, istatistik, asansorMekanik, ozelGrup } = data
 
   const yakaPieData = [
     { name: "Beyaz Yaka", value: ozet.beyazYaka },
@@ -133,6 +135,7 @@ export default function PersonnelReportsPage() {
 
   const beyazBarData = beyazYakaBolumler.slice(0, 15).map(b => ({ name: b.bolum, sayi: b.sayi }))
   const maviBarData = maviYakaBolumler.slice(0, 15).map(b => ({ name: b.bolum, sayi: b.sayi }))
+  const griBarData = griYakaBolumler.slice(0, 15).map(b => ({ name: b.bolum, sayi: b.sayi }))
 
   const handleExport = () => {
     const rows: string[] = []
@@ -152,6 +155,7 @@ export default function PersonnelReportsPage() {
     rows.push("Yaka,Genel,Erkek,Kadın,Engelli")
     rows.push(`Beyaz,${yakaCinsiyetTablosu.beyaz.genel},${yakaCinsiyetTablosu.beyaz.erkek},${yakaCinsiyetTablosu.beyaz.kadin},${yakaCinsiyetTablosu.beyaz.engelli}`)
     rows.push(`Mavi,${yakaCinsiyetTablosu.mavi.genel},${yakaCinsiyetTablosu.mavi.erkek},${yakaCinsiyetTablosu.mavi.kadin},${yakaCinsiyetTablosu.mavi.engelli}`)
+    rows.push(`Gri,${yakaCinsiyetTablosu.gri.genel},${yakaCinsiyetTablosu.gri.erkek},${yakaCinsiyetTablosu.gri.kadin},${yakaCinsiyetTablosu.gri.engelli}`)
     rows.push(`Toplam,${yakaCinsiyetTablosu.toplam.genel},${yakaCinsiyetTablosu.toplam.erkek},${yakaCinsiyetTablosu.toplam.kadin},${yakaCinsiyetTablosu.toplam.engelli}`)
     rows.push("")
     rows.push("Beyaz Yaka Bölüm Dağılımı")
@@ -161,6 +165,10 @@ export default function PersonnelReportsPage() {
     rows.push("Mavi Yaka Bölüm Dağılımı")
     rows.push("Bölüm,Sayi,Oran")
     maviYakaBolumler.forEach(b => rows.push(`${b.bolum},${b.sayi},${b.oran}`))
+    rows.push("")
+    rows.push("Gri Yaka Bölüm Dağılımı")
+    rows.push("Bölüm,Sayi,Oran")
+    griYakaBolumler.forEach(b => rows.push(`${b.bolum},${b.sayi},${b.oran}`))
 
     const blob = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
@@ -239,6 +247,18 @@ export default function PersonnelReportsPage() {
           </p>
         </div>
 
+        {/* Gri Yaka — üretim birim sorumluları. Renk pasta grafiğiyle AYNI (COLORS.gri #6b7280 ≈ slate-500). */}
+        <div className="relative overflow-hidden bg-white border border-slate-200 rounded-xl p-4 before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-slate-500">
+          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mb-3">
+            <HardHat className="w-4 h-4 text-slate-500" />
+          </div>
+          <p className="text-2xl font-bold font-mono text-slate-500">{ozet.griYaka}</p>
+          <p className="text-xs font-medium text-slate-500 mt-1">Gri Yaka</p>
+          <p className="text-[11px] text-slate-400 mt-1.5">
+            %{ozet.toplamCalisan > 0 ? (ozet.griYaka / ozet.toplamCalisan * 100).toFixed(1) : 0} oranı
+          </p>
+        </div>
+
         {/* Kadın/Erkek */}
         <div className="relative overflow-hidden bg-white border border-slate-200 rounded-xl p-4 before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-rose-500">
           <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center mb-3">
@@ -291,6 +311,16 @@ export default function PersonnelReportsPage() {
                 <td className="px-4 py-2.5 text-center text-xs font-mono text-teal-600">{yakaCinsiyetTablosu.mavi.erkek}</td>
                 <td className="px-4 py-2.5 text-center text-xs font-mono text-rose-500">{yakaCinsiyetTablosu.mavi.kadin}</td>
                 <td className="px-4 py-2.5 text-center text-xs font-mono text-amber-600">{yakaCinsiyetTablosu.mavi.engelli}</td>
+              </tr>
+              <tr className="border-b border-slate-50 hover:bg-slate-50/60">
+                <td className="px-4 py-2.5 text-xs font-semibold text-slate-500 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+                  GRİ YAKA
+                </td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono font-semibold text-slate-800">{yakaCinsiyetTablosu.gri.genel}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-teal-600">{yakaCinsiyetTablosu.gri.erkek}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-rose-500">{yakaCinsiyetTablosu.gri.kadin}</td>
+                <td className="px-4 py-2.5 text-center text-xs font-mono text-amber-600">{yakaCinsiyetTablosu.gri.engelli}</td>
               </tr>
               <tr className="bg-slate-50 font-semibold">
                 <td className="px-4 py-2.5 text-xs font-bold text-slate-700">TOPLAM</td>
@@ -367,7 +397,7 @@ export default function PersonnelReportsPage() {
         </div>
       </div>
 
-      {/* Two Bar Charts - Beyaz/Mavi Yaka Bölüm Dağılımı */}
+      {/* Bar Charts - Beyaz/Mavi/Gri Yaka Bölüm Dağılımı */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Beyaz Yaka Bölümler */}
         <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -412,6 +442,30 @@ export default function PersonnelReportsPage() {
                 <YAxis type="category" dataKey="name" width={130} fontSize={10} tick={{ fill: "#475569" }} />
                 <Tooltip formatter={(value: number) => [value, "Kişi"]} />
                 <Bar dataKey="sayi" fill={COLORS.mavi} radius={[0, 4, 4, 0]} barSize={18} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Gri Yaka Bölümler */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+              Gri Yaka Bölüm Dağılımı
+            </h3>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+              {griYakaBolumler.length} bölüm
+            </span>
+          </div>
+          <div style={{ height: Math.max(300, griBarData.length * 28) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={griBarData} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" fontSize={11} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" width={130} fontSize={10} tick={{ fill: "#475569" }} />
+                <Tooltip formatter={(value: number) => [value, "Kişi"]} />
+                <Bar dataKey="sayi" fill={COLORS.gri} radius={[0, 4, 4, 0]} barSize={18} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -525,7 +579,7 @@ export default function PersonnelReportsPage() {
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <StatCard label="Kadın Oranı" value={`%${istatistik.kadinErkekOrani}`} sub={`${cinsiyetDagilimi.kadin} kadın / ${ozet.toplamCalisan} toplam`} />
-          <StatCard label="Beyaz Yaka Oranı" value={`%${istatistik.beyazMaviOrani}`} sub={`${ozet.beyazYaka} beyaz / ${ozet.toplamCalisan} toplam`} />
+          <StatCard label="Beyaz Yaka Oranı" value={`%${istatistik.beyazYakaOrani}`} sub={`${ozet.beyazYaka} beyaz / ${ozet.toplamCalisan} toplam`} />
           <StatCard label="Mühendis Sayısı" value={`${istatistik.muhendisSayisi}`} sub={`%${istatistik.muhendisOrani} toplam oran`} />
           <StatCard label="Mühendis Ort. Çalışma" value={`${istatistik.muhendislerOrtCalismaSuresi} yıl`} sub="Ortalama kıdem" />
           <StatCard label="AR-GE Çalışan Oranı" value={`%${istatistik.argeCalisanOrani}`} sub="Mühendislik + AR-GE bölümleri" />

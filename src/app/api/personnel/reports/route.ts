@@ -48,6 +48,10 @@ export async function GET() {
     // Yaka-Cinsiyet cross tabulation
     const beyazPersonel = personnel.filter(p => p.yakaRengi === 'BEYAZ')
     const maviPersonel = personnel.filter(p => p.yakaRengi === 'MAVI')
+    // Yaka Aşama 1: GRİ yaka (üretim birim sorumluları). Tablo/kart/bölüm kırılımı
+    // eksikti; TOPLAM satırı tüm aktif personelden hesaplandığı için 189 gösterip
+    // satırlar 176'da kalıyordu (13 kişi hiçbir satırda görünmüyordu).
+    const griPersonel = personnel.filter(p => p.yakaRengi === 'GRI')
 
     const yakaCinsiyetTablosu = {
       beyaz: {
@@ -61,6 +65,12 @@ export async function GET() {
         erkek: maviPersonel.filter(p => p.cinsiyet === 'MALE').length,
         kadin: maviPersonel.filter(p => p.cinsiyet === 'FEMALE').length,
         engelli: maviPersonel.filter(p => p.engelli === true).length,
+      },
+      gri: {
+        genel: griPersonel.length,
+        erkek: griPersonel.filter(p => p.cinsiyet === 'MALE').length,
+        kadin: griPersonel.filter(p => p.cinsiyet === 'FEMALE').length,
+        engelli: griPersonel.filter(p => p.engelli === true).length,
       },
       toplam: {
         genel: toplamCalisan,
@@ -96,6 +106,20 @@ export async function GET() {
         bolum,
         sayi,
         oran: maviYaka > 0 ? +(sayi / maviYaka * 100).toFixed(1) : 0,
+      }))
+
+    // Bolum dagilimi: GRİ Yaka by bolum (beyaz/mavi ile AYNI desen)
+    const griBolumMap: Record<string, number> = {}
+    griPersonel.forEach(p => {
+      const key = p.bolum || 'Belirtilmemiş'
+      griBolumMap[key] = (griBolumMap[key] || 0) + 1
+    })
+    const griYakaBolumler = Object.entries(griBolumMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([bolum, sayi]) => ({
+        bolum,
+        sayi,
+        oran: griYaka > 0 ? +(sayi / griYaka * 100).toFixed(1) : 0,
       }))
 
     // Direkt/Endirekt bolum dagilimi
@@ -158,7 +182,11 @@ export async function GET() {
     const yulesekLisansMezunOrani = toplamCalisan > 0 ? +(yuksekLisansMezunlar.length / toplamCalisan * 100).toFixed(1) : 0
 
     const kadinErkekOrani = toplamCalisan > 0 ? +(kadin / toplamCalisan * 100).toFixed(1) : 0
-    const beyazMaviOrani = toplamCalisan > 0 ? +(beyazYaka / toplamCalisan * 100).toFixed(1) : 0
+    // AD DÜZELTMESİ: hesap beyazYaka / TÜM personel — yani "beyaz/mavi" değil,
+    // beyaz yakanın toplam içindeki payı. Ekrandaki etiket ("Beyaz Yaka Oranı") ve
+    // alt metin ("59 beyaz / 189 toplam") zaten doğruydu; yanıltıcı olan değişken
+    // adıydı. Hesap DEĞİŞMEDİ — kullanıcının okuduğu sayı aynı kalır.
+    const beyazYakaOrani = toplamCalisan > 0 ? +(beyazYaka / toplamCalisan * 100).toFixed(1) : 0
 
     // Asansor/Mekanik dagilimi
     const asansorSayisi = personnel.filter(p => p.asansorMekanik === 'ASANSOR').length
@@ -179,6 +207,7 @@ export async function GET() {
       yakaCinsiyetTablosu,
       beyazYakaBolumler,
       maviYakaBolumler,
+      griYakaBolumler,
       direktBolumler: Object.entries(direktBolumler)
         .sort((a, b) => b[1] - a[1])
         .map(([bolum, sayi]) => ({ bolum, sayi, oran: direkt > 0 ? +(sayi / direkt * 100).toFixed(1) : 0 })),
@@ -187,7 +216,7 @@ export async function GET() {
         .map(([bolum, sayi]) => ({ bolum, sayi, oran: endirekt > 0 ? +(sayi / endirekt * 100).toFixed(1) : 0 })),
       istatistik: {
         kadinErkekOrani,
-        beyazMaviOrani,
+        beyazYakaOrani,
         muhendislerOrtCalismaSuresi,
         muhendisSayisi,
         muhendisOrani,

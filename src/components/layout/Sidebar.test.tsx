@@ -157,31 +157,33 @@ describe('Sidebar RBAC Dalga 1 — menü görünürlüğü sayfa guard’ıyla h
     expect(screen.getByText('Yedekleme')).toBeInTheDocument()
   })
 
-  // 6/7/8) Kalite kümesi — sayfa permission'ları (OR).
-  it('quality.symbol.manage izinli kullanıcı Semboller’i GÖRÜR', () => {
+  // 6/7/8) Kalite ölçüm kümesi — ADIM 5'te MENÜDEN GİZLENDİ (hidden: true).
+  // Sayfa/route/izin duruyor; menüde izin sahibine bile çıkmıyor. Eski testler
+  // "izinli GÖRÜR" diyordu; kural tersine döndüğü için beklenti de tersine çevrildi.
+  it('quality.symbol.manage izinli kullanıcı bile Semboller’i GÖRMEZ (hidden)', () => {
     mockSession({ role: 'KULLANICI', permissions: ['quality.symbol.manage'] })
     renderSidebar()
     ac('Kalite') // grup her zaman render (Kalibrasyon roles:"*")
-    expect(screen.getByText('Semboller')).toBeInTheDocument()
-    expect(screen.queryByText('Ölçüm Raporları')).not.toBeInTheDocument()
+    expect(screen.queryByText('Semboller')).not.toBeInTheDocument()
   })
-  it('quality.report.read izinli kullanıcı Ölçüm Raporları’nı GÖRÜR', () => {
+  it('quality.report.read izinli kullanıcı bile Ölçüm Raporları’nı GÖRMEZ (hidden)', () => {
     mockSession({ role: 'KULLANICI', permissions: ['quality.report.read'] })
     renderSidebar()
     ac('Kalite')
-    expect(screen.getByText('Ölçüm Raporları')).toBeInTheDocument()
+    expect(screen.queryByText('Ölçüm Raporları')).not.toBeInTheDocument()
   })
-  it('quality.report.create izinli kullanıcı Ölçüm Şablonları’nı GÖRÜR (OR kolu)', () => {
+  it('quality.report.create izinli kullanıcı bile Ölçüm Şablonları’nı GÖRMEZ (hidden)', () => {
     mockSession({ role: 'KULLANICI', permissions: ['quality.report.create'] })
     renderSidebar()
     ac('Kalite')
-    expect(screen.getByText('Ölçüm Şablonları')).toBeInTheDocument()
+    expect(screen.queryByText('Ölçüm Şablonları')).not.toBeInTheDocument()
   })
-  it('yetkisiz KULLANICI kalite ölçüm kalemlerini GÖRMEZ (Kalibrasyon hariç)', () => {
+  it('yetkisiz KULLANICI kalite ölçüm kalemlerini GÖRMEZ; Kalibrasyon + RMA duruyor', () => {
     mockSession({ role: 'KULLANICI', department: 'Üretim' })
     renderSidebar()
     ac('Kalite')
     expect(screen.getByText('Kalibrasyon')).toBeInTheDocument() // roles:"*" korundu
+    expect(screen.getByText('RMA/SMA İade Formu')).toBeInTheDocument() // ADIM 5'te buraya taşındı
     expect(screen.queryByText('Semboller')).not.toBeInTheDocument()
     expect(screen.queryByText('Ölçüm Şablonları')).not.toBeInTheDocument()
     expect(screen.queryByText('Ölçüm Raporları')).not.toBeInTheDocument()
@@ -222,7 +224,8 @@ describe('Sidebar — Formlar grubu alt başlıkları', () => {
   }
 
   it('Formlar açıldığında alt başlıklar render edilir ve öğeler altlarında görünür', () => {
-    // roles:["*"] kalemler herkeste görünür → Genel/İV/Kalite üçü de dolu.
+    // roles:["*"] kalemler herkeste görünür → Genel/Üretim/İV dolu.
+    // (Kalite alt grubu ADIM 5'te boşaldı, ayrı testte.)
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
     renderSidebar()
     acFormlarGrubunu()
@@ -230,25 +233,21 @@ describe('Sidebar — Formlar grubu alt başlıkları', () => {
     // Metinle değil test kancasıyla: "Kalite" / "İnsan Varlıkları" sidebar'da
     // başka grup başlıklarında da geçiyor.
     expect(screen.getByTestId('form-subgroup-genel')).toHaveTextContent('Genel')
+    expect(screen.getByTestId('form-subgroup-uretim')).toHaveTextContent('Üretim')
     expect(screen.getByTestId('form-subgroup-iv')).toHaveTextContent('İnsan Varlıkları')
-    expect(screen.getByTestId('form-subgroup-kalite')).toHaveTextContent('Kalite')
 
     // Öğelerin kendisi hâlâ yerinde (alt gruplama görünürlüğü değiştirmedi).
     expect(screen.getByText('Ziyaret Raporları')).toBeInTheDocument()
     expect(screen.getByText('Vardiya Formu')).toBeInTheDocument()
-    expect(screen.getByText('RMA/SMA İade Formu')).toBeInTheDocument()
   })
 
-  it('alt grubun tek öğesi görünmüyorsa başlığı da çizilmez', () => {
-    // Kalite alt grubunda TEK kalem var: RMA/SMA İade Formu (roles:["*"]).
-    // Öğe DOM'da varsa başlık da olmalı; ikisi birlikte var/yok olur.
+  it('öğesi kalmayan alt grubun başlığı çizilmez (Kalite alt grubu ADIM 5 ile boşaldı)', () => {
+    // Tek kalemi olan RMA/SMA İade Formu Kalite GRUBUNA taşındı; FORM_ALT_GRUPLAR'da
+    // "kalite" tanımı duruyor ama items.length > 0 süzgeci başlığı çizdirmiyor.
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
-    const { unmount } = renderSidebar()
+    renderSidebar()
     acFormlarGrubunu()
-    const rmaVar = screen.queryByText('RMA/SMA İade Formu') !== null
-    const kaliteBaslikVar = screen.queryByTestId('form-subgroup-kalite') !== null
-    expect(kaliteBaslikVar).toBe(rmaVar)
-    unmount()
+    expect(screen.queryByTestId('form-subgroup-kalite')).not.toBeInTheDocument()
   })
 
   it('aramada "insan varlıkları" yazınca Vardiya Formu sonuçlarda gelir (grup adıyla eşleşme)', () => {
@@ -341,5 +340,37 @@ describe('Sidebar — ADIM 3: Genel alt grubu + Üretim alt grubu', () => {
     // Arama kaynağı formsBySubgroup'tan besleniyor → öğe "Formlar › Genel" grubunda.
     fireEvent.change(screen.getByLabelText('Menüde ara'), { target: { value: 'it destek' } })
     expect(screen.getByText('IT Destek Talebi')).toBeInTheDocument()
+  })
+})
+
+describe('Sidebar — ADIM 5: Kalite grubu toparlama', () => {
+  it('gizlenen üç ölçüm kalemi ARAMADA da çıkmaz (izinli kullanıcıda bile)', () => {
+    // searchableItems filterItems'tan geçen listelerden besleniyor → hidden
+    // kalem ağaçta olmadığı gibi aramada da yok. Üçünün de izni verildi.
+    mockSession({
+      role: 'KULLANICI',
+      permissions: ['quality.symbol.manage', 'quality.report.read', 'quality.report.create'],
+    })
+    renderSidebar()
+    for (const q of ['ölçüm', 'sembol']) {
+      fireEvent.change(screen.getByLabelText('Menüde ara'), { target: { value: q } })
+      expect(screen.queryByText('Ölçüm Şablonları')).not.toBeInTheDocument()
+      expect(screen.queryByText('Ölçüm Raporları')).not.toBeInTheDocument()
+      expect(screen.queryByText('Semboller')).not.toBeInTheDocument()
+    }
+  })
+
+  it('RMA/SMA İade Formu Kalite grubunda, Formlar altında DEĞİL ve tek kopya', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
+    renderSidebar()
+
+    // Kalite grubu kapalıyken öğe DOM'da yok → Formlar'dan çıktığının kanıtı.
+    fireEvent.click(screen.getByText('Formlar'))
+    expect(screen.queryByText('RMA/SMA İade Formu')).not.toBeInTheDocument()
+
+    // Kalite grubu açılınca tek kopya, doğru href ile.
+    fireEvent.click(screen.getByText('Kalite'))
+    expect(screen.getAllByText('RMA/SMA İade Formu')).toHaveLength(1)
+    expect(screen.getByText('RMA/SMA İade Formu').closest('a')).toHaveAttribute('href', '/kalite/rma')
   })
 })

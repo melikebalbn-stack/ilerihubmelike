@@ -226,8 +226,6 @@ const formsMenuItems = [
   { name: "Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"], subgroup: "iv" as FormAltGrup },
   // İş Analizi Formu: oturumu olan herkes kendi formunu doldurur (roles: "*").
   { name: "İş Analizi Formu", icon: ClipboardList, href: "/strategic-hr/is-analizi", roles: ["*"], subgroup: "iv" as FormAltGrup },
-  // RMA/SMA İade Formu (KAL-KYT-16): herkes görür; yazma yetkisi sayfa/API'de (canManageRma).
-  { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"], subgroup: "kalite" as FormAltGrup },
   // Zimmetlerim — kullanıcının kendi üzerine kayıtlı zimmet teslim tutanaklarını
   // görüp imzaladığı ekran. Herkese açık (permission YOK) - erişim zaten
   // sunucu tarafında zimmetSahibiId === user.id filtresiyle daraltılıyor
@@ -316,12 +314,20 @@ const qdmsMenuItems = [
 // Kalite — ölçüm/kalibrasyon modülleri (İleri Teknik'ten taşındı, "Kalite" üst grubunun doğrudan altında)
 const kaliteMenuItems = [
   { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"] },
+  // RMA/SMA İade Formu (KAL-KYT-16): Formlar'dan Kalite grubuna taşındı — form
+  // değil, kalite modülü. Görünürlük AYNEN "herkes"; yazma yetkisi sayfa/API'de
+  // (canManageRma). Kalite grubu toggle'ı Kalibrasyon (roles:["*"]) sayesinde
+  // herkeste açık, dolayısıyla taşıma kimsenin erişimini kaybettirmez.
+  { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"] },
+  // ── MENÜDEN GİZLİ (hidden: true) ────────────────────────────────────────
+  // Sayfalar, route'lar ve izinler DURUYOR; yalnız menü girişi kapalı. Geri
+  // açmak için ilgili satırdan `hidden: true` alanını silmek yeterli.
   // Görünürlük sayfa guard'larıyla birebir (permission OR): menü artık rol yorumlamıyor.
   //  sablonlar VIEW gate = quality.template.manage | quality.report.create (hasPermission dizi=OR)
   //  raporlar VIEW gate  = quality.report.read · semboller = quality.symbol.manage
-  { name: "Ölçüm Şablonları", icon: ClipboardList, href: "/kalite/sablonlar", roles: [] as string[], permission: ["quality.template.manage", "quality.report.create"] },
-  { name: "Ölçüm Raporları", icon: ClipboardCheck, href: "/kalite/raporlar", roles: [] as string[], permission: ["quality.report.read"] },
-  { name: "Semboller", icon: Shapes, href: "/kalite/semboller", roles: [] as string[], permission: ["quality.symbol.manage"] },
+  { name: "Ölçüm Şablonları", icon: ClipboardList, href: "/kalite/sablonlar", roles: [] as string[], permission: ["quality.template.manage", "quality.report.create"], hidden: true },
+  { name: "Ölçüm Raporları", icon: ClipboardCheck, href: "/kalite/raporlar", roles: [] as string[], permission: ["quality.report.read"], hidden: true },
+  { name: "Semboller", icon: Shapes, href: "/kalite/semboller", roles: [] as string[], permission: ["quality.symbol.manage"], hidden: true },
 ]
 
 // Hata Kodları (KAL-KYT-15) — "Kalite" grubunun sonuna, canSeeHataKodu ile eklenir.
@@ -588,6 +594,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const canSeeQdms = canAccessKalite(userRole, userDepartment, userOu) || userPermissions.includes('qdms.view')
 
   const filterItems = (items: typeof mainMenuItems) => items.filter(item => {
+    // `hidden: true` — menüden GİZLİ kalem. Her şeyden önce elenir (permission
+    // dahil): sayfa/route/izin dokunulmadan yalnız menü girişi kapatılır.
+    // searchableItems de bu süzgeçten geçen listelerden beslendiği için
+    // gizli kalem aramada da ÇIKMAZ.
+    if ((item as { hidden?: boolean }).hidden) return false
+
     // Permission tabanlı erişim: item'da `permission` varsa TEK belirleyici
     // odur (rol/departman/e-posta clause'ları değerlendirilmez). Menü
     // görünürlüğü kozmetiktir; asıl zorlama sayfa ve API guard'larındadır.

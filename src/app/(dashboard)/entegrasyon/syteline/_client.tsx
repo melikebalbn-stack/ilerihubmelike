@@ -56,11 +56,25 @@ export function SytelineClient({
       })
       const d = await r.json().catch(() => null)
       if (r.ok) {
-        setMesaj(
-          `${dryRun ? 'Dry-run' : 'Çalışma'} bitti — okunan ${d?.okunan ?? 0}, yazılan ${d?.yazilan ?? 0}, ` +
-            `bekleyen ${d?.bekleyen ?? 0}, hata ${d?.hata ?? 0}, atlanan ${d?.atlanan ?? 0}`,
-        )
-        if (!dryRun) router.refresh()
+        if (dryRun) {
+          const dag = d?.hataDagilimi ?? {}
+          const ilk = Object.entries(dag)
+            .sort((a, b) => (b[1] as number) - (a[1] as number))
+            .slice(0, 3)
+            .map(([k, n]) => `${k} (${n})`)
+            .join(' · ')
+          setMesaj(
+            `Dry-run bitti — okunan ${d?.okunan ?? 0}, uygun ${d?.uygun ?? 0}, hatalı ${d?.hataliSatir ?? 0}` +
+              (ilk ? ` · en sık: ${ilk}` : '') +
+              ' (DB’ye yazılmadı)',
+          )
+        } else {
+          setMesaj(
+            `Çalışma bitti — okunan ${d?.okunan ?? 0}, yazılan ${d?.yazilan ?? 0}, ` +
+              `bekleyen ${d?.bekleyen ?? 0}, hata ${d?.hata ?? 0}, atlanan ${d?.atlanan ?? 0}`,
+          )
+          router.refresh()
+        }
       } else setMesaj(`Hata: ${d?.error ?? r.status}`)
     } catch {
       setMesaj('Bağlantı hatası')

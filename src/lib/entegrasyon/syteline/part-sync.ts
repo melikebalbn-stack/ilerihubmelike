@@ -25,11 +25,16 @@ const asJson = (v: unknown): Prisma.InputJsonValue => v as Prisma.InputJsonValue
 export interface PartSyncOzet {
   dryRun: boolean
   okunan: number // Syteline'dan çekilen satır
-  bekleyen: number // çalışma sonrası BEKLIYOR sayısı
+  // Mapper sonuçları — bu çalışmada bellekte sayıldı (dryRun'da da dolu; DB'ye yazılmaz).
+  uygun: number // mapper'dan geçen (IFS'e yazılabilir) satır
+  hataliSatir: number // mapper'ın kaynak hatasıyla elediği satır
+  hataDagilimi: Record<string, number> // { "birim yok: XX": n, "ürün kodu yok: YY": n, ... }
+  ornekHatalar: { item: string; hata: string }[] // ilk 20 (item + hata)
+  bekleyen: number // çalışma sonrası BEKLIYOR sayısı (DB)
   yazilan: number // bu çalışmada IFS'e yazılan
-  hata: number // bu çalışmada HATA'ya düşen
+  hata: number // bu çalışmada IFS yazımında HATA'ya düşen
   atlanan: number // hash aynı + YAZILDI (dokunulmadı)
-  hatalar: { kaynakAnahtar: string; durum: string; hata: string | null; deneme: number }[] // ilk 20
+  hatalar: { kaynakAnahtar: string; durum: string; hata: string | null; deneme: number }[] // DB'deki HATA'lardan ilk 20
 }
 
 /**
@@ -45,23 +50,31 @@ export async function runPartSync(opts: { dryRun?: boolean } = {}): Promise<Part
   const durum = await prisma.syteSyncDurum.findUnique({ where: { entity: ENTITY } })
   const watermark = durum?.sonRecordDate ?? WATERMARK_MIN
 
-  // (b) Syteline satırları + IFS referans setleri (run başına BİR KEZ)
+  // (b) Syteline satırları (TÜMÜ, limit yok) + IFS referans setleri (run başına BİR KEZ)
   const [satirlar, birimler, muhasebeGruplari, urunKodlari] = await Promise.all([
-    getMalzemeler(watermark, 500),
+    getMalzemeler(watermark),
     listIsoUnits(),
     listAccountingGroups(),
     listProductCodes(),
   ])
   const ref: MalzemeReferans = { birimler, muhasebeGruplari, urunKodlari, contract }
 
-  // (c) her satır → mapper → upsert (dryRun'da DB'ye yazmaz)
+  // (c) her satır → mapper → sayım (bellekte) + upsert (dryRun'da DB'ye yazmaz)
   let atlanan = 0
+  let uygun = 0
+  let hataliSatir = 0
+  const hataDagilimi: Record<string, number> = {}
+  const ornekHatalar: { item: string; hata: string }[] = []
   for (const satir of satirlar) {
     const kaynakAnahtar = (satir.item ?? '').trim()
     if (!kaynakAnahtar) continue
     const sonuc = malzemeMapla(satir, ref)
 
     if ('hata' in sonuc) {
+      // Bellekte say (dryRun'da da) — hata dağılımı + ilk 20 örnek.
+      hataliSatir++
+      hataDagilimi[sonuc.hata] = (hataDagilimi[sonuc.hata] ?? 0) + 1
+      if (ornekHatalar.length < 20) ornekHatalar.push({ item: kaynakAnahtar, hata: sonuc.hata })
       if (!dryRun) {
         await prisma.syteSyncKayit.upsert({
           where: { entity_kaynakAnahtar: { entity: ENTITY, kaynakAnahtar } },
@@ -75,6 +88,9 @@ export async function runPartSync(opts: { dryRun?: boolean } = {}): Promise<Part
       }
       continue
     }
+
+    uygun++ // mapper'dan geçti (IFS'e yazılabilir)
+    if (dryRun) continue // dryRun: DB'ye dokunma; sayım yeterli
 
     const mevcut = await prisma.syteSyncKayit.findUnique({
       where: { entity_kaynakAnahtar: { entity: ENTITY, kaynakAnahtar } },
@@ -185,5 +201,17 @@ export async function runPartSync(opts: { dryRun?: boolean } = {}): Promise<Part
     })
   ).map((h) => ({ kaynakAnahtar: h.kaynakAnahtar, durum: h.durum, hata: h.hata, deneme: h.denemeSayisi }))
 
-  return { dryRun, okunan: satirlar.length, bekleyen, yazilan, hata, atlanan, hatalar }
+  return {
+    dryRun,
+    okunan: satirlar.length,
+    uygun,
+    hataliSatir,
+    hataDagilimi,
+    ornekHatalar,
+    bekleyen,
+    yazilan,
+    hata,
+    atlanan,
+    hatalar,
+  }
 }

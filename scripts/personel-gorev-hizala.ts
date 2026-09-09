@@ -33,13 +33,15 @@ const KOLTUKLULARI_DA = process.argv.includes("--koltuklulari-da-hizala");
 //    yanlış değiştirirdi.
 //
 // KAPSAM: yalnız KOLTUKSUZ personel. Aynı görev metnini taşıyıp ZATEN doğru kutuda
-//    oturanlara dokunulmaz (ör. 4 "PRES OPERATÖRÜ" hâlihazırda Preshane Operatörü
+//    oturanlara dokunulmaz (ör. 4 "PRES OPERATÖRÜ" hâlihazırda Pres Operatörü
 //    kutusunda). Onların görev metni de hizalanmak istenirse: --koltuklulari-da-hizala
 //    (ayrı karar; koltuk yerleşimini DEĞİŞTİRMEZ, yalnız metni eşitler).
 const GOREV_ESLEME: { eski: string; bolum: string; yeni: string; beklenen: number }[] = [
   { eski: "MONTAJ OPERATÖRÜ", bolum: "MEKANİK MONTAJ", yeni: "Mekanik Montaj Operatörü", beklenen: 2 },
   { eski: "KALIP OPERATÖRÜ", bolum: "KALIPHANE", yeni: "Kalıphane Operatörü", beklenen: 1 },
-  { eski: "PRES OPERATÖRÜ", bolum: "PRESHANE", yeni: "Preshane Operatörü", beklenen: 1 },
+  // 09.09.2026 unvan esitleme turu: kutu "Preshane Operatörü" -> "Pres Operatörü"
+  // olarak birlestirildi; eski hedef yazili kalsaydi bu betik birlestirmeyi geri alirdi.
+  { eski: "PRES OPERATÖRÜ", bolum: "PRESHANE", yeni: "Pres Operatörü", beklenen: 1 },
   { eski: "CNC TORNA OPERATÖRÜ", bolum: "TALAŞLI İMALAT", yeni: "Talaşlı İmalat Operatörü", beklenen: 1 },
   { eski: "CNC OPERATÖRÜ", bolum: "TALAŞLI İMALAT", yeni: "Talaşlı İmalat Operatörü", beklenen: 1 },
   { eski: "İDARİ İŞLER PERSONELİ", bolum: "İDARİ İŞLER", yeni: "İdari İşler", beklenen: 1 },

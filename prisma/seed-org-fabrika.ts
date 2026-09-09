@@ -439,7 +439,7 @@ const NODES: SeedNode[] = [
     code: "ORG-FB-P34",
     parentCode: "ORG-FB-P13",
     unitType: "POSITION",
-    name: "Preshane Operatörü",
+    name: "Pres Operatörü",
     level: 5,
     sortOrder: 0,
     approvedHeadcount: 4,

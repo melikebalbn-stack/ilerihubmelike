@@ -138,7 +138,7 @@ const NODES: SeedNode[] = [
     code: "ORG-SA-P07",
     parentCode: "ORG-SA-P01",
     unitType: "POSITION",
-    name: "Satın Alma Uzmanı",
+    name: "Satınalma Uzmanı",
     level: 2,
     sortOrder: 5,
     approvedHeadcount: 1,

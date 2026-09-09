@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Play, FlaskConical, RotateCcw, Loader2, Search, Plus, Trash2 } from 'lucide-react'
+import { Play, FlaskConical, RotateCcw, Loader2, Search, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 export type SyteKayitRow = {
   id: string
@@ -29,7 +29,14 @@ export type SyteEslemeRow = {
   not: string | null
 }
 
-const DURUMLAR = ['HEPSI', 'BEKLIYOR', 'YAZILDI', 'HATA', 'ATLANDI'] as const
+// Kuyruk filtre butonları — user spec: Tümü / BEKLIYOR / YAZILDI / HATA (ATLANDI yok).
+const FILTRELER = [
+  { key: '', label: 'Tümü' },
+  { key: 'BEKLIYOR', label: 'BEKLIYOR' },
+  { key: 'YAZILDI', label: 'YAZILDI' },
+  { key: 'HATA', label: 'HATA' },
+] as const
+const SAYFA = 50
 const rozet: Record<string, string> = {
   BEKLIYOR: 'bg-amber-100 text-amber-700',
   YAZILDI: 'bg-emerald-100 text-emerald-700',
@@ -53,7 +60,6 @@ const ENTITY_SEKME = [
 export function SytelineClient(props: {
   sayac: Record<string, number>
   durum: SyteDurumBilgi
-  kayitlar: SyteKayitRow[]
   eslemeler: SyteEslemeRow[]
 }) {
   const [entity, setEntity] = useState<(typeof ENTITY_SEKME)[number]['key']>('MALZEME')
@@ -92,21 +98,18 @@ export function SytelineClient(props: {
 function MalzemeSekmesi({
   sayac,
   durum,
-  kayitlar,
   eslemeler,
 }: {
   sayac: Record<string, number>
   durum: SyteDurumBilgi
-  kayitlar: SyteKayitRow[]
   eslemeler: SyteEslemeRow[]
 }) {
   const router = useRouter()
-  const [filtre, setFiltre] = useState<(typeof DURUMLAR)[number]>('HEPSI')
   const [mesaj, setMesaj] = useState<string | null>(null)
-  const [calisiyor, setCalisiyor] = useState<null | 'dry' | 'real' | string>(null)
+  const [calisiyor, setCalisiyor] = useState<null | 'dry' | 'real'>(null)
   const [batch, setBatch] = useState('')
-
-  const gorunen = filtre === 'HEPSI' ? kayitlar : kayitlar.filter((k) => k.durum === filtre)
+  // Gerçek çalışma sonrası Kuyruk listesini yeniden çektirmek için sinyal.
+  const [kuyrukYenile, setKuyrukYenile] = useState(0)
 
   async function calistir(dryRun: boolean) {
     setCalisiyor(dryRun ? 'dry' : 'real')
@@ -139,31 +142,9 @@ function MalzemeSekmesi({
               `bekleyen ${d?.bekleyen ?? 0}, hata ${d?.hata ?? 0}, atlanan ${d?.atlanan ?? 0}`,
           )
           router.refresh()
+          setKuyrukYenile((n) => n + 1)
         }
       } else setMesaj(`Hata: ${d?.error ?? r.status}`)
-    } catch {
-      setMesaj('Bağlantı hatası')
-    } finally {
-      setCalisiyor(null)
-    }
-  }
-
-  async function yenidenDene(id: string) {
-    setCalisiyor(id)
-    setMesaj(null)
-    try {
-      const r = await fetch('/api/entegrasyon/syteline/yeniden-dene', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      })
-      if (r.ok) {
-        setMesaj('Kayıt yeniden denemeye alındı (BEKLIYOR).')
-        router.refresh()
-      } else {
-        const d = await r.json().catch(() => null)
-        setMesaj(`Hata: ${d?.error ?? r.status}`)
-      }
     } catch {
       setMesaj('Bağlantı hatası')
     } finally {
@@ -205,78 +186,196 @@ function MalzemeSekmesi({
 
       <EksiklerKart />
       <EslemelerKart eslemeler={eslemeler} />
+      <KuyrukKart sayac={sayac} disYenile={kuyrukYenile} />
+    </div>
+  )
+}
 
-      {/* Kuyruk kartı (durum sayaçları + filtre + tablo) */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Kuyruk</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {(['BEKLIYOR', 'YAZILDI', 'HATA', 'ATLANDI'] as const).map((d) => (
-            <div key={d} className="rounded-xl border p-4 text-center">
-              <div className="text-2xl font-bold text-slate-800">{sayac[d] ?? 0}</div>
-              <div className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${rozet[d]}`}>{d}</div>
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {DURUMLAR.map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setFiltre(d)}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${filtre === d ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {d}
-            </button>
-          ))}
-          <span className="ml-auto self-center text-xs text-slate-400">son 200 kayıt · {gorunen.length} gösteriliyor</span>
-        </div>
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500">
+// Kuyruk kartı — server-side filtre (durum + kaynakAnahtar araması) + 50'şer sayfalama.
+// Varsayılan görünüm HATA; uzun listeyi baştan yüklemez. disYenile artınca (gerçek çalışma
+// sonrası) mevcut sorguyu yeniden çeker.
+function KuyrukKart({ sayac, disYenile }: { sayac: Record<string, number>; disYenile: number }) {
+  const router = useRouter()
+  const [durum, setDurum] = useState<string>('HATA')
+  const [qGirdi, setQGirdi] = useState('')
+  const [q, setQ] = useState('')
+  const [skip, setSkip] = useState(0)
+  const [rows, setRows] = useState<SyteKayitRow[]>([])
+  const [toplam, setToplam] = useState(0)
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const [hata, setHata] = useState<string | null>(null)
+  const [deneniyor, setDeneniyor] = useState<string | null>(null)
+
+  const yukle = useCallback(async () => {
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const p = new URLSearchParams({ entity: 'MALZEME', durum, q, skip: String(skip), take: String(SAYFA) })
+      const r = await fetch(`/api/entegrasyon/syteline/kuyruk?${p}`, { cache: 'no-store' })
+      const d = await r.json().catch(() => null)
+      if (r.ok) {
+        setRows(d?.rows ?? [])
+        setToplam(d?.toplam ?? 0)
+      } else setHata(d?.error ?? `Hata ${r.status}`)
+    } catch {
+      setHata('Bağlantı hatası')
+    } finally {
+      setYukleniyor(false)
+    }
+  }, [durum, q, skip])
+
+  useEffect(() => {
+    void yukle()
+  }, [yukle, disYenile])
+
+  async function yenidenDene(id: string) {
+    setDeneniyor(id)
+    setHata(null)
+    try {
+      const r = await fetch('/api/entegrasyon/syteline/yeniden-dene', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      if (r.ok) {
+        router.refresh()
+        await yukle()
+      } else {
+        const d = await r.json().catch(() => null)
+        setHata(`Hata: ${d?.error ?? r.status}`)
+      }
+    } catch {
+      setHata('Bağlantı hatası')
+    } finally {
+      setDeneniyor(null)
+    }
+  }
+
+  const sayfaBas = toplam === 0 ? 0 : skip + 1
+  const sayfaSon = Math.min(skip + SAYFA, toplam)
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Kuyruk</h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {(['BEKLIYOR', 'YAZILDI', 'HATA', 'ATLANDI'] as const).map((d) => (
+          <div key={d} className="rounded-xl border p-4 text-center">
+            <div className="text-2xl font-bold text-slate-800">{sayac[d] ?? 0}</div>
+            <div className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${rozet[d]}`}>{d}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtre: durum butonları + kaynakAnahtar arama */}
+      <div className="flex flex-wrap items-center gap-2">
+        {FILTRELER.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => {
+              setDurum(f.key)
+              setSkip(0)
+            }}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${durum === f.key ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            {f.label}
+          </button>
+        ))}
+        <form
+          className="ml-auto flex items-center gap-1"
+          onSubmit={(e) => {
+            e.preventDefault()
+            setSkip(0)
+            setQ(qGirdi.trim())
+          }}
+        >
+          <input
+            value={qGirdi}
+            onChange={(e) => setQGirdi(e.target.value)}
+            placeholder="item ara…"
+            className="h-8 w-40 rounded-lg border px-2 text-sm"
+          />
+          <button type="submit" className="inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-xs text-slate-600 hover:bg-slate-50">
+            <Search className="h-3.5 w-3.5" /> Ara
+          </button>
+        </form>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-slate-500">
+            <tr>
+              <th className="px-3 py-2 text-left">Kaynak (item)</th>
+              <th className="px-3 py-2 text-left">Durum</th>
+              <th className="px-3 py-2 text-left">Hata</th>
+              <th className="px-3 py-2 text-right">Deneme</th>
+              <th className="px-3 py-2 text-left">Güncelleme</th>
+              <th className="px-3 py-2 text-right">İşlem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {yukleniyor ? (
               <tr>
-                <th className="px-3 py-2 text-left">Kaynak (item)</th>
-                <th className="px-3 py-2 text-left">Durum</th>
-                <th className="px-3 py-2 text-left">Hata</th>
-                <th className="px-3 py-2 text-right">Deneme</th>
-                <th className="px-3 py-2 text-left">Güncelleme</th>
-                <th className="px-3 py-2 text-right">İşlem</th>
+                <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
+                  <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {gorunen.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-slate-400">Kayıt yok.</td>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center text-slate-400">Kayıt yok.</td>
+              </tr>
+            ) : (
+              rows.map((k) => (
+                <tr key={k.id} className="border-t">
+                  <td className="px-3 py-2 font-medium text-slate-800">{k.kaynakAnahtar}</td>
+                  <td className="px-3 py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${rozet[k.durum] ?? 'bg-slate-100 text-slate-500'}`}>
+                      {k.durum}
+                    </span>
+                  </td>
+                  <td className="max-w-[360px] truncate px-3 py-2 text-red-600" title={k.hata ?? undefined}>{k.hata ?? '—'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{k.denemeSayisi}</td>
+                  <td className="px-3 py-2 text-slate-500">{trTarih(k.updatedAt)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {k.durum === 'HATA' && (
+                      <button
+                        type="button"
+                        onClick={() => yenidenDene(k.id)}
+                        disabled={deneniyor !== null}
+                        className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {deneniyor === k.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                        Yeniden dene
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              ) : (
-                gorunen.map((k) => (
-                  <tr key={k.id} className="border-t">
-                    <td className="px-3 py-2 font-medium text-slate-800">{k.kaynakAnahtar}</td>
-                    <td className="px-3 py-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${rozet[k.durum] ?? 'bg-slate-100 text-slate-500'}`}>
-                        {k.durum}
-                      </span>
-                    </td>
-                    <td className="max-w-[360px] truncate px-3 py-2 text-red-600" title={k.hata ?? undefined}>{k.hata ?? '—'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{k.denemeSayisi}</td>
-                    <td className="px-3 py-2 text-slate-500">{trTarih(k.updatedAt)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {k.durum === 'HATA' && (
-                        <button
-                          type="button"
-                          onClick={() => yenidenDene(k.id)}
-                          disabled={calisiyor !== null}
-                          className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          {calisiyor === k.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                          Yeniden dene
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Sayfalama */}
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <span>{hata ? <span className="text-red-600">{hata}</span> : `${toplam} kayıt · ${sayfaBas}–${sayfaSon}`}</span>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setSkip((s) => Math.max(0, s - SAYFA))}
+            disabled={skip === 0 || yukleniyor}
+            className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 hover:bg-slate-50 disabled:opacity-40"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" /> Önceki
+          </button>
+          <button
+            type="button"
+            onClick={() => setSkip((s) => s + SAYFA)}
+            disabled={sayfaSon >= toplam || yukleniyor}
+            className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 hover:bg-slate-50 disabled:opacity-40"
+          >
+            Sonraki <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { prisma } from '@/lib/prisma'
-import { SytelineClient, type SyteKayitRow, type SyteDurumBilgi, type SyteEslemeRow } from './_client'
+import { SytelineClient, type SyteDurumBilgi, type SyteEslemeRow } from './_client'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,15 +15,11 @@ export default async function SytelinePage() {
   if (error) redirect('/login')
   if (!(await hasPermission('entegrasyon.syteline'))) return <YetkisizErisim permission="entegrasyon.syteline" />
 
-  const [gruplar, durum, kayitlar, eslemeRows] = await Promise.all([
+  // Kuyruk listesi artık istemciden /api/entegrasyon/syteline/kuyruk ile çekiliyor (filtre+sayfalama);
+  // burada yalnız durum sayaçları + son çalışma bilgisi + eşlemeler yüklenir.
+  const [gruplar, durum, eslemeRows] = await Promise.all([
     prisma.syteSyncKayit.groupBy({ by: ['durum'], where: { entity: ENTITY }, _count: { _all: true } }),
     prisma.syteSyncDurum.findUnique({ where: { entity: ENTITY } }),
-    prisma.syteSyncKayit.findMany({
-      where: { entity: ENTITY },
-      orderBy: { updatedAt: 'desc' },
-      take: 200,
-      select: { id: true, kaynakAnahtar: true, durum: true, hata: true, denemeSayisi: true, updatedAt: true },
-    }),
     prisma.syteEsleme.findMany({
       where: { entity: ENTITY },
       orderBy: [{ tip: 'asc' }, { kaynakDeger: 'asc' }],
@@ -40,15 +36,6 @@ export default async function SytelinePage() {
     calisiyorAt: durum?.calisiyorAt?.toISOString() ?? null,
     sonOzet: (durum?.sonOzet as Record<string, number> | null) ?? null,
   }
-  const rows: SyteKayitRow[] = kayitlar.map((k) => ({
-    id: k.id,
-    kaynakAnahtar: k.kaynakAnahtar,
-    durum: k.durum,
-    hata: k.hata,
-    denemeSayisi: k.denemeSayisi,
-    updatedAt: k.updatedAt.toISOString(),
-  }))
-
   const eslemeler: SyteEslemeRow[] = eslemeRows.map((e) => ({
     id: e.id,
     entity: e.entity,
@@ -59,5 +46,5 @@ export default async function SytelinePage() {
     not: e.not,
   }))
 
-  return <SytelineClient sayac={sayac} durum={durumBilgi} kayitlar={rows} eslemeler={eslemeler} />
+  return <SytelineClient sayac={sayac} durum={durumBilgi} eslemeler={eslemeler} />
 }

@@ -191,3 +191,13 @@ export function sonucHataMesaji(reason: 'PERSONEL_YOK' | 'PERSONEL_PASIF' | 'EKI
   if (reason === 'PERSONEL_PASIF') return 'Personel kaydınız aktif değil.'
   return 'Bu kullanıcıya bağlı bir personel kaydı bulunamadı.'
 }
+
+/**
+ * GET/POST route'larında ok:false durumunu HTTP status koduna çevirir.
+ * EKIP_BOS = kişi gerçekten sorumlu değil (ya da sorumlu olduğu yerde ekip
+ * boş) → 403 (yetki reddi, rol kontrolü değil — veri kaynaklı). PERSONEL_YOK
+ * ve PERSONEL_PASIF için 404 korunuyor (Melih'in onayı bekleniyor, bkz. rapor).
+ */
+export function sonucHataStatus(reason: 'PERSONEL_YOK' | 'PERSONEL_PASIF' | 'EKIP_BOS'): number {
+  return reason === 'EKIP_BOS' ? 403 : 404
+}

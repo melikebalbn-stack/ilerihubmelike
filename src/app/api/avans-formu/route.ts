@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
 import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
-import { bulSorumluVeEkibi, sonucHataMesaji } from './_lib/avans-formu-helpers'
+import { bulSorumluVeEkibi, sonucHataMesaji, sonucHataStatus } from './_lib/avans-formu-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +18,10 @@ export async function GET(request: NextRequest) {
   const sonuc = await bulSorumluVeEkibi(user.id)
 
   if (!sonuc.ok) {
-    return NextResponse.json({ error: sonucHataMesaji(sonuc.reason) }, { status: 404 })
+    return NextResponse.json(
+      { error: sonucHataMesaji(sonuc.reason) },
+      { status: sonucHataStatus(sonuc.reason) }
+    )
   }
 
   const now = new Date()
@@ -74,7 +77,10 @@ export async function POST(request: NextRequest) {
 
   const sonuc = await bulSorumluVeEkibi(user.id)
   if (!sonuc.ok) {
-    return NextResponse.json({ error: sonucHataMesaji(sonuc.reason) }, { status: 404 })
+    return NextResponse.json(
+      { error: sonucHataMesaji(sonuc.reason) },
+      { status: sonucHataStatus(sonuc.reason) }
+    )
   }
 
   const izinliPersonelMap = new Map(sonuc.personel.map((p) => [p.id, p]))

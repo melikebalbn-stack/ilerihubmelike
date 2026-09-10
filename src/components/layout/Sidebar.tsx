@@ -303,6 +303,9 @@ const personnelMenuItems = [
   { name: "İK Raporları", icon: BarChart3, href: "/personnel/reports", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
   { name: "Bölüm Değişiklikleri", icon: ArrowRightLeft, href: "/personnel/department-transfers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
   { name: "Ayrılan Personel", icon: UserMinus, href: "/personnel/leavers", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
+  // Avans Talepleri — dönem bazlı sonuç ekranı + dönem kapatma. Sunucu kapısı
+  // HR_MANAGER | SUPER_ADMIN (bkz. api/avans-formu/sonuclar, donem-kapat).
+  { name: "Avans Talepleri", icon: Wallet, href: "/avans-formu/sonuclar", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR", "IK"] },
 ]
 
 // Kalite Yönetim Sistemi (KYS) alt menüsü
@@ -469,6 +472,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [iaFlags, setIaFlags] = useState<{ amir: boolean; ik: boolean }>({ amir: false, ik: false })
   const [kadroTalepAcabilir, setKadroTalepAcabilir] = useState(false)
   const [denemeGorunur, setDenemeGorunur] = useState(false)
+  const [avansBayrak, setAvansBayrak] = useState<{ kendim: boolean; sorumlu: boolean }>({ kendim: false, sorumlu: false })
 
   // Collapse/pin (yalnız masaüstü; mobil sheet'te isOpen=true → her zaman geniş)
   const { collapsed, pinned, hovering, setCollapsed, setPinned, setHovering } = useSidebar()
@@ -583,6 +587,20 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         if (!r.ok) return
         const d = await r.json()
         setKadroTalepAcabilir(!!d.talepAcabilir)
+      })
+      .catch(() => {})
+  }, [session])
+
+  // Avans formu menü bayrakları — SUNUCUDA hesaplanır (kendim: aktif BEYAZ/GRİ
+  // yaka · sorumlu: herhangi bir bölümde sorumlu olarak geçen aktif personel).
+  // Client'ta yetki HESAPLANMAZ.
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/avans-formu/menu-bayrak')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setAvansBayrak({ kendim: !!d.kendimGorunur, sorumlu: !!d.sorumluGorunur })
       })
       .catch(() => {})
   }, [session])
@@ -716,9 +734,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Kadro talep — SUNUCU bayrağı (kadroTalepAcabilir) ile; client'ta yetki hesaplanmaz.
   // Link recruitment sayfasına (varsayılan "requests"/kadro talep sekmesine düşer).
   const kadroTalepItem = { name: "Personel Talep Formu", icon: FileText, href: "/strategic-hr/kadro-talep", roles: ["*"], subgroup: "iv" as FormAltGrup }
+  // Avans formu — SUNUCU bayraklariyla (avansBayrak); client'ta yetki hesaplanmaz.
+  const avansKendimItem = { name: "Avans Talebim", icon: Wallet, href: "/avans-formu/kendi", roles: ["*"], subgroup: "iv" as FormAltGrup }
+  const avansSorumluItem = { name: "Avans Formu (Ekibim)", icon: Wallet, href: "/avans-formu", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(kadroTalepAcabilir ? [kadroTalepItem] : []),
+    ...(avansBayrak.kendim ? [avansKendimItem] : []),
+    ...(avansBayrak.sorumlu ? [avansSorumluItem] : []),
   ]
   // Formlar alt grupları — YETKİ FİLTRESİNDEN GEÇMİŞ listeden bölünür, yani
   // görünürlük mantığı burada tekrarlanmaz. Alt grubu olmayan bir kalem

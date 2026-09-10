@@ -98,5 +98,16 @@ export const config = {
     '/meetings/:path*',
     '/personnel/:path*',
     '/envanter/:path*',
+    // IFS (2026-09): oturumsuz istek KENARDA kesilsin. Öncesinde /ifs matcher'da
+    // yoktu; istek sayfaya ulaşıyor, sayfa guard'ı redirect("/login") çağırıyor
+    // ama Next akışla yanıt verdiği için istemci HTTP 200 + login kabuğu alıyordu
+    // ve callbackUrl kayboluyordu. Buradan geçince 307 + callbackUrl oluyor.
+    //
+    // İZİN KONTROLÜ BURADA DEĞİL: roleRequirements'ta /ifs girdisi YOK ve o tablo
+    // zaten eski rol enum'una bakıyor (ifs.* permission'larından haberi yok).
+    // Oturumlu-ama-yetkisiz kullanıcı buradan GEÇER, sayfa guard'ına takılır
+    // (hasPermission ifs.view / ifs.admin / ifs.rapor.view). İki katman
+    // çakışmaz; middleware oturumu, sayfa izni bakar.
+    '/ifs/:path*',
   ],
 };

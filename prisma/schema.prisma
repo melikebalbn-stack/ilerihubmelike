@@ -280,6 +280,10 @@ model User {
   // IV-FR-27 deneme değerlendirme — ters uçlar
   denemeIkKapattigi DenemeDegerlendirme[]    @relation("DenemeIkKapatan")
   denemeLoglari     DenemeDegerlendirmeLog[] @relation("DenemeLogAktor")
+
+  // Avans dönem kilidi (back-relations)
+  avansDonemKapattiklari AvansDonemKapanis[]    @relation("AvansDonemKapatan")
+  avansDonemLoglari      AvansDonemKapanisLog[] @relation("AvansDonemLogKullanici")
 }
 
 model VerificationToken {
@@ -14322,4 +14326,75 @@ model SyteEsleme {
 
   @@unique([entity, tip, kaynakDeger])
   @@map("syte_esleme")
+}
+
+// ============================================================
+// AVANS FORMU (sandbox/nurgul) — Nurgül'ün sandbox modülü.
+// Birim sorumlusunun dönem bazlı avans talebi + çalışan satırları.
+// cherry-pick: sandbox/nurgul branch'inden feat/avans-formu'ya taşındı,
+// main'de karşılığı yok (Melih ile ayrıca değerlendirilecek).
+// ============================================================
+
+model AvansTalebi {
+  id             String   @id @default(cuid())
+  sorumluId      String // Personnel.id — formu gönderen birim sorumlusu (kendi giren beyaz yaka için de kendisi)
+  bolum          String
+  donemYil       Int
+  donemAy        Int
+  gonderimTarihi DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  // Vekil senaryosu (c): sorumluId eşleşmesi "(V)"/"V." işaretli bir vekil
+  // alanı üzerinden kurulduysa true. Asıl sorumlunun kendisi eşleştiyse
+  // (aynı bölümde işaretsiz bir alan da eşleşiyorsa) false kalır.
+  vekaletenMi    Boolean  @default(false)
+
+  satirlar AvansTalebiSatiri[]
+
+  @@unique([sorumluId, bolum, donemYil, donemAy], map: "uq_avans_talebi_sorumlu_donem")
+  @@index([donemYil, donemAy], map: "idx_avans_talebi_donem")
+}
+
+model AvansTalebiSatiri {
+  id             String      @id @default(cuid())
+  avansTalebiId  String
+  avansTalebi    AvansTalebi @relation(fields: [avansTalebiId], references: [id], onDelete: Cascade)
+  calisanId      String // Personnel.id
+  avansIstiyorMu Boolean
+
+  @@unique([avansTalebiId, calisanId], map: "uq_avans_satiri_talep_calisan")
+}
+
+// Bir (yil, ay) dönemi kapatıldığında bu tabloda TEK bir satır bulunur —
+// @@unique([yil, ay]) tek doğruluk kaynağıdır: "bu dönem kapalı mı?" sorusu
+// tek satırla cevaplanır, geçmişe dönük girilen avans talebi bile otomatik
+// kilitli olur (bkz. src/lib/avans/donem-kilidi.ts). Dönem yeniden açılınca
+// satır SİLİNİR — kim kapattı/kim açtı geçmişi AvansDonemKapanisLog'da durur.
+model AvansDonemKapanis {
+  id            String   @id @default(cuid())
+  yil           Int
+  ay            Int
+  kapatanId     String
+  kapatan       User     @relation("AvansDonemKapatan", fields: [kapatanId], references: [id])
+  kapatmaTarihi DateTime @default(now())
+  aciklama      String?
+
+  @@unique([yil, ay], map: "uq_avans_donem_kapanis")
+  @@index([yil, ay], map: "idx_avans_donem_kapanis")
+}
+
+// Dönem kapatma/açma denetim kaydı — AvansDonemKapanis satırı açılışta
+// silindiği için "kim açtı, ne zaman" bilgisi burada kalıcı tutulur. Her
+// KAPAT ve AC işlemi buraya bir satır düşer (silinmez).
+model AvansDonemKapanisLog {
+  id          String   @id @default(cuid())
+  yil         Int
+  ay          Int
+  islem       String // 'KAPAT' | 'AC'
+  kullaniciId String
+  kullanici   User     @relation("AvansDonemLogKullanici", fields: [kullaniciId], references: [id])
+  tarih       DateTime @default(now())
+  aciklama    String?
+
+  @@index([yil, ay], map: "idx_avans_donem_log")
 }

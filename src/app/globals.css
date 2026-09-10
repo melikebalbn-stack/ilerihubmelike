@@ -561,3 +561,71 @@
     border: 1px solid #6b7280 !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Personel Dashboard yazdırma (/personnel/reports)
+   Org şemasındaki desenin aynısı: named @page + gövde sınıfı ile sınırlandırma.
+   Named page sayesinde YATAY yön yalnız bu ekrana uygulanır; 5S formu ve
+   diğer A4 dikey çıktılar etkilenmez.
+--------------------------------------------------------------------------- */
+@page personel-yatay {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
+@media print {
+  /* Yazdırma alanının atası olmayan, kendisi olmayan ve içinde bulunmayan
+     her şey kaldırılır: sidebar, üst bar, bildirim zili, sağ paneller. */
+  body.personel-yazdir *:not(:has(#personel-yazdir-alani)):not(#personel-yazdir-alani):not(#personel-yazdir-alani *) {
+    display: none !important;
+  }
+  /* Ataların yerleşimi çıktıyı bozmasın */
+  body.personel-yazdir *:has(#personel-yazdir-alani) {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+    background: #fff !important;
+  }
+  body.personel-yazdir #personel-yazdir-alani {
+    page: personel-yatay;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  /* Geri / Excel / Yazdır düğmeleri ve rozetler — print:hidden zaten var,
+     genel print bloğundaki `.flex { display: flex !important }` ezmesin diye
+     burada tekrar sabitleniyor. */
+  body.personel-yazdir #personel-yazdir-alani .print\:hidden,
+  body.personel-yazdir #personel-yazdir-alani [class*="print:hidden"] {
+    display: none !important;
+  }
+  /* Özet kartları tek satır */
+  body.personel-yazdir #personel-yazdir-alani [data-yazdir-kartlar] {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  /* Tablolar ve kartlar sayfa ortasından bölünmesin */
+  body.personel-yazdir #personel-yazdir-alani table,
+  body.personel-yazdir #personel-yazdir-alani thead,
+  body.personel-yazdir #personel-yazdir-alani tr,
+  body.personel-yazdir #personel-yazdir-alani > div > div {
+    /* Tek tek kartlar bölünmesin; sayfadan uzun olabilecek bölüm sarmalayıcısına
+       avoid verilmez — verilirse boş sayfa üretir. */
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  /* Kaydırma kutuları kağıtta tamamen açılır */
+  body.personel-yazdir #personel-yazdir-alani .overflow-y-auto,
+  body.personel-yazdir #personel-yazdir-alani .overflow-x-auto {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}

@@ -80,6 +80,7 @@ import {
   CalendarDays,
   Gauge,
   Laptop,
+  Wallet,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, createContext, useContext } from "react"

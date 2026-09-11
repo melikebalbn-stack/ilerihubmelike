@@ -21,6 +21,9 @@ export const dynamic = 'force-dynamic'
  *   ?dryRun=1          → mail ATILMAZ; alıcılar + özet JSON döner (html=1 ile ham HTML)
  *   ?weekStart=YYYY-MM-DD → o haftayı rapor haftası kabul et (test); prod'da boş
  *   ?force=1           → aynı hafta daha önce gönderilmiş olsa da tekrar gönder
+ *   ?testTo=<adres>    → YALNIZ o adrese gönderir: gerçek alıcılar ve CC yok,
+ *                        idempotans kontrolü atlanır, GONDERILDI yerine
+ *                        TEST_GONDERIM denetim kaydı yazılır (gerçek gönderimi bloklamaz)
  *
  * İdempotency: aynı hafta için başarılı denetim kaydı varsa gönderim atlanır
  * (cron çift tetiklenirse ikinci mail gitmez).
@@ -84,6 +87,10 @@ async function handle(req: NextRequest) {
   const force = searchParams.get('force') === '1'
   const hamHtml = searchParams.get('html') === '1'
   const wsParam = searchParams.get('weekStart')
+  const testTo = searchParams.get('testTo')?.trim() || null
+  if (testTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testTo)) {
+    return NextResponse.json({ error: 'testTo geçerli bir e-posta adresi olmalı' }, { status: 400 })
+  }
 
   // weekStart verilirse: o Pazartesi'nin HAFTASI raporlanır. oncekiHaftaAraligi
   // "referansın önceki haftası"nı döndürdüğü için referans = weekStart + 7 gün.
@@ -111,6 +118,7 @@ async function handle(req: NextRequest) {
     alicilar: gecerli.map((a) => ({ sicilNo: a.sicilNo, ad: adGuzelle(a.adSoyad), email: a.email })),
     atlanan: atlanan.map((a) => ({ sicilNo: a.sicilNo, ad: a.adSoyad, neden: a.neden })),
     cc: [...CC_ADRESLERI],
+    testTo,
     kadro: veri.rapor.ozet,
     hareket: { giren: veri.girenler.length, cikan: veri.cikanlar.length },
   }
@@ -118,6 +126,23 @@ async function handle(req: NextRequest) {
   if (dryRun) {
     if (hamHtml) return new NextResponse(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
     return NextResponse.json({ ok: true, dryRun: true, konu, ...ozet })
+  }
+
+  // Test gönderimi: tek adres, CC yok, idempotans yok, ayrı denetim kaydı.
+  if (testTo) {
+    const sonuc = await sendEmail(
+      [{ email: testTo, name: testTo }],
+      `[TEST] ${konu}`,
+      text,
+      html,
+    )
+    const durum = sonuc.success ? 'TEST_GONDERIM' : 'TEST_HATA'
+    await logAuditEvent({
+      action: AUDIT_ACTION, actorId: AUDIT_ACTOR, targetType: 'PERSONNEL_WEEKLY_REPORT', targetId: veri.haftaAnahtari,
+      details: { ...ozet, alicilar: [{ email: testTo }], cc: [], durum, messageId: sonuc.messageId ?? null, hata: sonuc.error ?? null },
+    })
+    console.log(`[personel-haftalik] ${veri.haftaAnahtari}: ${durum} testTo=${testTo}${sonuc.messageId ? ' id=' + sonuc.messageId : ''}`)
+    return NextResponse.json({ ok: sonuc.success, ...ozet, durum, messageId: sonuc.messageId ?? null }, { status: sonuc.success ? 200 : 502 })
   }
 
   if (gecerli.length === 0) {

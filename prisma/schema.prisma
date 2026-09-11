@@ -10017,3 +10017,57 @@ model OffboardingAccessItem {
 
   @@index([formId])
 }
+
+// --- Sandbox/Melike: Fatura Takip modülü ---
+
+enum InvoiceCategory {
+  GENEL
+  SISTEM_GELISTIRME
+}
+
+enum InvoiceCurrency {
+  TRY
+  USD
+  EUR
+}
+
+model Invoice {
+  id            String          @id @default(cuid())
+  invoiceDate   DateTime        @db.Date
+  companyName   String
+  invoiceNumber String          @unique
+  amount        Decimal         @db.Decimal(14, 2)
+  currency      InvoiceCurrency @default(TRY)
+  exchangeRate  Decimal         @db.Decimal(10, 4)
+  amountTRY     Decimal         @db.Decimal(14, 2)
+  amountEUR     Decimal         @db.Decimal(14, 2)
+  category      InvoiceCategory @default(GENEL)
+  note          String?
+  createdById   String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([invoiceDate])
+  @@index([category])
+  @@index([companyName])
+}
+
+model InvoiceMonthlyRevenue {
+  id          String   @id @default(cuid())
+  month       DateTime @unique @db.Date
+  revenueTRY  Decimal  @db.Decimal(16, 2)
+  note        String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TcmbRateCache {
+  id        String          @id @default(cuid())
+  date      DateTime        @db.Date
+  currency  InvoiceCurrency
+  rate      Decimal         @db.Decimal(10, 4)
+  createdAt DateTime        @default(now())
+
+  @@unique([date, currency])
+}

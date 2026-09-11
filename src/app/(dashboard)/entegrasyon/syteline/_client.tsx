@@ -28,8 +28,9 @@ export type SyteEslemeRow = {
   aktif: boolean
   not: string | null
 }
+type Entity = 'MALZEME' | 'IS_EMRI'
 
-// Kuyruk filtre butonları — user spec: Tümü / BEKLIYOR / YAZILDI / HATA (ATLANDI yok).
+// Kuyruk filtre butonları — Tümü / BEKLIYOR / YAZILDI / HATA (ATLANDI yok).
 const FILTRELER = [
   { key: '', label: 'Tümü' },
   { key: 'BEKLIYOR', label: 'BEKLIYOR' },
@@ -48,20 +49,44 @@ const katRozet: Record<string, string> = {
   SYTELINE_VERI: 'bg-amber-100 text-amber-700',
   HUB_ESLEME: 'bg-violet-100 text-violet-700',
 }
-const TIPLER = ['BIRIM', 'URUN_KODU', 'MUHASEBE_GRUBU'] as const
+// Eşleme tipleri + eşleme/kuyruk yardımcı metinleri entity'ye göre.
+const ENTITY_CONFIG: Record<Entity, {
+  tipler: readonly string[]
+  eslemePlaceholder: { kaynak: string; hedef: string }
+  kaynakBaslik: string
+  aramaPlaceholder: string
+  eksikMetin: string
+}> = {
+  MALZEME: {
+    tipler: ['BIRIM', 'URUN_KODU', 'MUHASEBE_GRUBU'],
+    eslemePlaceholder: { kaynak: 'ör. LT / 9999', hedef: 'ör. l / 153' },
+    kaynakBaslik: 'Kaynak (item)',
+    aramaPlaceholder: 'item ara…',
+    eksikMetin: 'tüm aktif Syteline malzemeleri mapper’dan geçirilip (DB’ye yazmadan) hata dağılımı çıkarılır.',
+  },
+  IS_EMRI: {
+    tipler: ['TEZGAH'],
+    eslemePlaceholder: { kaynak: 'Syteline RESID (ör. KM01)', hedef: 'IFS ResourceId (ör. LZ01)' },
+    kaynakBaslik: 'Kaynak (job)',
+    aramaPlaceholder: 'job ara…',
+    eksikMetin: 'tüm serbest Syteline iş emirleri mapper’dan geçirilip (DB’ye yazmadan) hata dağılımı çıkarılır.',
+  },
+}
 const trTarih = (iso: string | null) => (iso ? new Date(iso).toLocaleString('tr-TR') : '—')
 
 const ENTITY_SEKME = [
   { key: 'MALZEME', label: 'Malzeme', hazir: true },
+  { key: 'IS_EMRI', label: 'İş Emri', hazir: true },
   { key: 'MUSTERI', label: 'Müşteri', hazir: false },
-  { key: 'IS_EMRI', label: 'İş Emri', hazir: false },
 ] as const
 
-export function SytelineClient(props: {
-  sayac: Record<string, number>
-  durum: SyteDurumBilgi
-  eslemeler: SyteEslemeRow[]
-}) {
+export type SytelineClientProps = {
+  sayac: Record<Entity, Record<string, number>>
+  durum: Record<Entity, SyteDurumBilgi>
+  eslemeler: Record<Entity, SyteEslemeRow[]>
+}
+
+export function SytelineClient(props: SytelineClientProps) {
   const [entity, setEntity] = useState<(typeof ENTITY_SEKME)[number]['key']>('MALZEME')
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4">
@@ -84,8 +109,13 @@ export function SytelineClient(props: {
         ))}
       </div>
 
-      {entity === 'MALZEME' ? (
-        <MalzemeSekmesi {...props} />
+      {entity === 'MALZEME' || entity === 'IS_EMRI' ? (
+        <SekmeIcerik
+          entity={entity}
+          sayac={props.sayac[entity] ?? {}}
+          durum={props.durum[entity]}
+          eslemeler={props.eslemeler[entity] ?? []}
+        />
       ) : (
         <div className="rounded-xl border bg-slate-50 p-10 text-center text-slate-400">
           Bu entity yakında — henüz senkron tanımlı değil.
@@ -95,11 +125,13 @@ export function SytelineClient(props: {
   )
 }
 
-function MalzemeSekmesi({
+function SekmeIcerik({
+  entity,
   sayac,
   durum,
   eslemeler,
 }: {
+  entity: Entity
   sayac: Record<string, number>
   durum: SyteDurumBilgi
   eslemeler: SyteEslemeRow[]
@@ -108,7 +140,6 @@ function MalzemeSekmesi({
   const [mesaj, setMesaj] = useState<string | null>(null)
   const [calisiyor, setCalisiyor] = useState<null | 'dry' | 'real'>(null)
   const [batch, setBatch] = useState('')
-  // Gerçek çalışma sonrası Kuyruk listesini yeniden çektirmek için sinyal.
   const [kuyrukYenile, setKuyrukYenile] = useState(0)
 
   async function calistir(dryRun: boolean) {
@@ -120,7 +151,7 @@ function MalzemeSekmesi({
       const r = await fetch('/api/entegrasyon/syteline/calistir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun, batch: batchVal }),
+        body: JSON.stringify({ dryRun, batch: batchVal, entity }),
       })
       const d = await r.json().catch(() => null)
       if (r.ok) {
@@ -156,8 +187,8 @@ function MalzemeSekmesi({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
-          Son çalışma: {trTarih(durum.sonCalismaAt)}
-          {durum.calisiyorAt ? ' · ⏳ şu an çalışıyor' : ''} · Watermark: {trTarih(durum.sonRecordDate)}
+          Son çalışma: {trTarih(durum?.sonCalismaAt ?? null)}
+          {durum?.calisiyorAt ? ' · ⏳ şu an çalışıyor' : ''} · Watermark: {trTarih(durum?.sonRecordDate ?? null)}
         </p>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => calistir(true)} disabled={calisiyor !== null} className="gap-2">
@@ -184,18 +215,18 @@ function MalzemeSekmesi({
 
       {mesaj && <div className="rounded-lg border bg-slate-50 px-4 py-2 text-sm text-slate-700">{mesaj}</div>}
 
-      <EksiklerKart />
-      <EslemelerKart eslemeler={eslemeler} />
-      <KuyrukKart sayac={sayac} disYenile={kuyrukYenile} />
+      <EksiklerKart entity={entity} />
+      <EslemelerKart entity={entity} eslemeler={eslemeler} />
+      <KuyrukKart entity={entity} sayac={sayac} disYenile={kuyrukYenile} />
     </div>
   )
 }
 
 // Kuyruk kartı — server-side filtre (durum + kaynakAnahtar araması) + 50'şer sayfalama.
-// Varsayılan görünüm HATA; uzun listeyi baştan yüklemez. disYenile artınca (gerçek çalışma
-// sonrası) mevcut sorguyu yeniden çeker.
-function KuyrukKart({ sayac, disYenile }: { sayac: Record<string, number>; disYenile: number }) {
+// Varsayılan görünüm HATA; uzun listeyi baştan yüklemez. disYenile artınca sorguyu yeniden çeker.
+function KuyrukKart({ entity, sayac, disYenile }: { entity: Entity; sayac: Record<string, number>; disYenile: number }) {
   const router = useRouter()
+  const cfg = ENTITY_CONFIG[entity]
   const [durum, setDurum] = useState<string>('HATA')
   const [qGirdi, setQGirdi] = useState('')
   const [q, setQ] = useState('')
@@ -210,7 +241,7 @@ function KuyrukKart({ sayac, disYenile }: { sayac: Record<string, number>; disYe
     setYukleniyor(true)
     setHata(null)
     try {
-      const p = new URLSearchParams({ entity: 'MALZEME', durum, q, skip: String(skip), take: String(SAYFA) })
+      const p = new URLSearchParams({ entity, durum, q, skip: String(skip), take: String(SAYFA) })
       const r = await fetch(`/api/entegrasyon/syteline/kuyruk?${p}`, { cache: 'no-store' })
       const d = await r.json().catch(() => null)
       if (r.ok) {
@@ -222,7 +253,7 @@ function KuyrukKart({ sayac, disYenile }: { sayac: Record<string, number>; disYe
     } finally {
       setYukleniyor(false)
     }
-  }, [durum, q, skip])
+  }, [entity, durum, q, skip])
 
   useEffect(() => {
     void yukle()
@@ -292,7 +323,7 @@ function KuyrukKart({ sayac, disYenile }: { sayac: Record<string, number>; disYe
           <input
             value={qGirdi}
             onChange={(e) => setQGirdi(e.target.value)}
-            placeholder="item ara…"
+            placeholder={cfg.aramaPlaceholder}
             className="h-8 w-40 rounded-lg border px-2 text-sm"
           />
           <button type="submit" className="inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-xs text-slate-600 hover:bg-slate-50">
@@ -305,7 +336,7 @@ function KuyrukKart({ sayac, disYenile }: { sayac: Record<string, number>; disYe
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-500">
             <tr>
-              <th className="px-3 py-2 text-left">Kaynak (item)</th>
+              <th className="px-3 py-2 text-left">{cfg.kaynakBaslik}</th>
               <th className="px-3 py-2 text-left">Durum</th>
               <th className="px-3 py-2 text-left">Hata</th>
               <th className="px-3 py-2 text-right">Deneme</th>
@@ -384,7 +415,7 @@ function KuyrukKart({ sayac, disYenile }: { sayac: Record<string, number>; disYe
 
 type EksikSebep = { sebep: string; adet: number; kategori: string; ornekler: string[] }
 
-function EksiklerKart() {
+function EksiklerKart({ entity }: { entity: Entity }) {
   const [yukleniyor, setYukleniyor] = useState(false)
   const [okunan, setOkunan] = useState<number | null>(null)
   const [sebepler, setSebepler] = useState<EksikSebep[] | null>(null)
@@ -394,7 +425,7 @@ function EksiklerKart() {
     setYukleniyor(true)
     setHata(null)
     try {
-      const r = await fetch('/api/entegrasyon/syteline/eksikler?entity=MALZEME', { cache: 'no-store' })
+      const r = await fetch(`/api/entegrasyon/syteline/eksikler?entity=${entity}`, { cache: 'no-store' })
       const d = await r.json().catch(() => null)
       if (r.ok) {
         setOkunan(d?.okunan ?? 0)
@@ -418,9 +449,7 @@ function EksiklerKart() {
       </div>
       {hata && <p className="text-sm text-red-600">{hata}</p>}
       {sebepler == null ? (
-        <p className="text-sm text-slate-400">
-          “Analiz et” — tüm aktif Syteline malzemeleri mapper’dan geçirilip (DB’ye yazmadan) hata dağılımı çıkarılır.
-        </p>
+        <p className="text-sm text-slate-400">“Analiz et” — {ENTITY_CONFIG[entity].eksikMetin}</p>
       ) : sebepler.length === 0 ? (
         <p className="text-sm text-emerald-600">Eksik yok — {okunan} satırın tümü eşlenebiliyor. ✅</p>
       ) : (
@@ -458,9 +487,10 @@ function EksiklerKart() {
   )
 }
 
-function EslemelerKart({ eslemeler }: { eslemeler: SyteEslemeRow[] }) {
+function EslemelerKart({ entity, eslemeler }: { entity: Entity; eslemeler: SyteEslemeRow[] }) {
   const router = useRouter()
-  const [tip, setTip] = useState<(typeof TIPLER)[number]>('BIRIM')
+  const cfg = ENTITY_CONFIG[entity]
+  const [tip, setTip] = useState<string>(cfg.tipler[0])
   const [kaynak, setKaynak] = useState('')
   const [hedef, setHedef] = useState('')
   const [bekliyor, setBekliyor] = useState(false)
@@ -476,7 +506,7 @@ function EslemelerKart({ eslemeler }: { eslemeler: SyteEslemeRow[] }) {
       const r = await fetch('/api/entegrasyon/syteline/esleme', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity: 'MALZEME', tip, kaynakDeger: kaynak.trim(), hedefDeger: hedef.trim() }),
+        body: JSON.stringify({ entity, tip, kaynakDeger: kaynak.trim(), hedefDeger: hedef.trim() }),
       })
       if (r.ok) {
         setKaynak('')
@@ -518,7 +548,7 @@ function EslemelerKart({ eslemeler }: { eslemeler: SyteEslemeRow[] }) {
     <div className="rounded-xl border p-4">
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">Eşlemeler (Syteline → IFS)</h2>
       <div className="mb-3 flex gap-2">
-        {TIPLER.map((t) => (
+        {cfg.tipler.map((t) => (
           <button
             key={t}
             type="button"
@@ -567,10 +597,10 @@ function EslemelerKart({ eslemeler }: { eslemeler: SyteEslemeRow[] }) {
             {/* Ekleme satırı */}
             <tr className="border-t bg-slate-50/60">
               <td className="px-3 py-2">
-                <input value={kaynak} onChange={(e) => setKaynak(e.target.value)} placeholder="ör. LT / 9999" className="h-8 w-full rounded border px-2 text-sm" />
+                <input value={kaynak} onChange={(e) => setKaynak(e.target.value)} placeholder={cfg.eslemePlaceholder.kaynak} className="h-8 w-full rounded border px-2 text-sm" />
               </td>
               <td className="px-3 py-2">
-                <input value={hedef} onChange={(e) => setHedef(e.target.value)} placeholder="ör. l / 153" className="h-8 w-full rounded border px-2 text-sm" />
+                <input value={hedef} onChange={(e) => setHedef(e.target.value)} placeholder={cfg.eslemePlaceholder.hedef} className="h-8 w-full rounded border px-2 text-sm" />
               </td>
               <td className="px-3 py-2 text-xs text-slate-400">upsert (aynı kaynak varsa hedef güncellenir)</td>
               <td className="px-3 py-2 text-right">

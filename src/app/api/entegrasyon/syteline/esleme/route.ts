@@ -6,7 +6,8 @@ import { apiSuccess, apiBadRequest, apiNotFound } from '@/lib/api-response'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const TIPLER = ['BIRIM', 'URUN_KODU', 'MUHASEBE_GRUBU'] as const
+// MALZEME: BIRIM/URUN_KODU/MUHASEBE_GRUBU · IS_EMRI: TEZGAH (Syteline RESID → IFS ResourceId)
+const TIPLER = ['BIRIM', 'URUN_KODU', 'MUHASEBE_GRUBU', 'TEZGAH'] as const
 type Tip = (typeof TIPLER)[number]
 
 // Syteline→IFS değer eşleme yönetimi. Guard: entegrasyon.syteline (tümü).

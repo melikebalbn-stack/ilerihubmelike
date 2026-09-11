@@ -11,14 +11,13 @@ import {
   listShopOrderOperationNos,
   IfsHttpError,
 } from '@/lib/ifs/is-emri-sync'
-import { getIsEmrileri, getIsEmrileriByJobs, getIsEmriOperasyonlari } from '@/lib/syteline/is-emri'
+import { getIsEmrileri, getIsEmrileriByJobs, getIsEmriOperasyonlari, type SytelineIsEmriBaslik } from '@/lib/syteline/is-emri'
 import {
   isEmriMapla,
   type IsEmriReferans,
   type IsEmriEslemeHaritalari,
   type IsEmriBaslikCikti,
   type IsEmriOperasyonCikti,
-  type IsEmriBaslikGirdi,
 } from './is-emri-mapper'
 
 const ENTITY = 'IS_EMRI'
@@ -53,9 +52,9 @@ async function eslemeHaritalari(): Promise<IsEmriEslemeHaritalari> {
  * suffix null ise 0 varsayılır (Syteline operasyon sorgusu için).
  */
 async function operasyonlariTopla(
-  basliklar: Awaited<ReturnType<typeof getIsEmrileri>>,
-): Promise<{ job: string; baslik: IsEmriBaslikGirdi; operasyonlar: Awaited<ReturnType<typeof getIsEmriOperasyonlari>> }[]> {
-  const out: { job: string; baslik: IsEmriBaslikGirdi; operasyonlar: Awaited<ReturnType<typeof getIsEmriOperasyonlari>> }[] = []
+  basliklar: SytelineIsEmriBaslik[],
+): Promise<{ job: string; baslik: SytelineIsEmriBaslik; operasyonlar: Awaited<ReturnType<typeof getIsEmriOperasyonlari>> }[]> {
+  const out: { job: string; baslik: SytelineIsEmriBaslik; operasyonlar: Awaited<ReturnType<typeof getIsEmriOperasyonlari>> }[] = []
   for (const b of basliklar) {
     const job = (b.job ?? '').trim()
     if (!job) continue
@@ -203,7 +202,7 @@ export async function runIsEmriSync(opts: { dryRun?: boolean; batch?: number } =
       })
 
   // İşlenecekleri GÜNCEL eşlemeyle yeniden map etmek için kaynak başlık+operasyonları çek.
-  const kaynakMap = new Map<string, { baslik: IsEmriBaslikGirdi; operasyonlar: Awaited<ReturnType<typeof getIsEmriOperasyonlari>> }>()
+  const kaynakMap = new Map<string, { baslik: SytelineIsEmriBaslik; operasyonlar: Awaited<ReturnType<typeof getIsEmriOperasyonlari>> }>()
   if (islenecekler.length > 0) {
     const basliklar2 = await getIsEmrileriByJobs(islenecekler.map((k) => k.kaynakAnahtar))
     const isler2 = await operasyonlariTopla(basliklar2)

@@ -1,13 +1,15 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { apiSuccess, apiNoContent, apiBadRequest, apiNotFound, apiError } from '@/lib/api-response'
+import { apiSuccess, apiNoContent, apiBadRequest, apiNotFound, apiForbidden, apiError } from '@/lib/api-response'
+import { canAccessFaturaTakip } from '../_lib/access'
 
 // DELETE — fatura kaydını sil
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { error } = await requireUser()
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const { id } = await params
     const existing = await prisma.invoice.findUnique({ where: { id } })
@@ -26,8 +28,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 // PATCH — sadece kategori güncelleme (Genel <-> Sistem Geliştirme)
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { error } = await requireUser()
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const { id } = await params
     const body = await request.json()

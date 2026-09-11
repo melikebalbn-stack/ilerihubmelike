@@ -52,6 +52,8 @@ interface MonthSummary {
   genel: number
   sistemGelistirme: number
   toplamTRY: number
+  genelTRY: number
+  sistemGelistirmeTRY: number
 }
 
 interface Summary {
@@ -271,18 +273,26 @@ export default function FaturaTakipPage() {
                 <TableRow>
                   <TableHead>Ay</TableHead>
                   <TableHead className="text-right">Fatura Toplamı (₺)</TableHead>
+                  <TableHead className="text-right">Genel (₺)</TableHead>
+                  <TableHead className="text-right">Sistem Geliştirme (₺)</TableHead>
                   <TableHead className="text-right w-40">Ciro (₺)</TableHead>
-                  <TableHead className="text-right">Oran</TableHead>
+                  <TableHead className="text-right">Toplam Oran</TableHead>
+                  <TableHead className="text-right">Sist. Gel. Oranı</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {summary.months.map((m) => {
                   const ciroVal = revenues[m.key] ?? 0
                   const oran = ciroVal > 0 ? (m.toplamTRY / ciroVal) * 100 : null
+                  const oranSG = ciroVal > 0 ? (m.sistemGelistirmeTRY / ciroVal) * 100 : null
                   return (
                     <TableRow key={m.key}>
                       <TableCell>{formatMonthLabel(m.key)}</TableCell>
                       <TableCell className="text-right">{formatTL(m.toplamTRY)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{formatTL(m.genelTRY)}</TableCell>
+                      <TableCell className="text-right" style={{ color: NAVY }}>
+                        {formatTL(m.sistemGelistirmeTRY)}
+                      </TableCell>
                       <TableCell className="text-right">
                         <Input
                           value={revenues[m.key] ?? ''}
@@ -295,6 +305,9 @@ export default function FaturaTakipPage() {
                       </TableCell>
                       <TableCell className="text-right font-semibold" style={{ color: oran == null ? '#BBB' : NAVY }}>
                         {oran == null ? '—' : `${oran.toFixed(2)}%`}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold" style={{ color: oranSG == null ? '#BBB' : '#993C1D' }}>
+                        {oranSG == null ? '—' : `${oranSG.toFixed(2)}%`}
                       </TableCell>
                     </TableRow>
                   )

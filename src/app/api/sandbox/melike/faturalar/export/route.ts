@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { apiError } from '@/lib/api-response'
+import { apiForbidden, apiError } from '@/lib/api-response'
 import { categoryToLabel } from '../_lib/excel'
+import { canAccessFaturaTakip } from '../_lib/access'
 
 // GET ?template=1 — boş şablon (başlıklar + 1 örnek satır); aksi halde mevcut tüm faturalar
 export async function GET(request: NextRequest) {
   try {
-    const { error } = await requireUser()
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const { searchParams } = new URL(request.url)
     const isTemplate = searchParams.get('template') === '1'

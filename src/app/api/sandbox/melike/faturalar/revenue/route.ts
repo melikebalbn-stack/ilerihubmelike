@@ -1,13 +1,15 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { apiSuccess, apiBadRequest, apiError } from '@/lib/api-response'
+import { apiSuccess, apiBadRequest, apiForbidden, apiError } from '@/lib/api-response'
+import { canAccessFaturaTakip } from '../_lib/access'
 
 // GET — tüm ciro kayıtları (ay -> ciro)
 export async function GET() {
   try {
-    const { error } = await requireUser()
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const rows = await prisma.invoiceMonthlyRevenue.findMany({ orderBy: { month: 'asc' } })
     return apiSuccess({
@@ -26,6 +28,7 @@ export async function PUT(request: NextRequest) {
   try {
     const { user, error } = await requireUser()
     if (error) return error
+    if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const body = await request.json()
     const { month, revenueTRY } = body

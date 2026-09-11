@@ -2,9 +2,10 @@ import { NextRequest } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { apiSuccess, apiBadRequest, apiError } from '@/lib/api-response'
+import { apiSuccess, apiBadRequest, apiForbidden, apiError } from '@/lib/api-response'
 import { labelToCategory, labelToCurrency, parseExcelDate, parseExcelAmount } from '../_lib/excel'
 import { getRateForDate } from '../_lib/tcmb'
+import { canAccessFaturaTakip } from '../_lib/access'
 
 interface RowResult {
   row: number
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user, error } = await requireUser()
     if (error) return error
+    if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const formData = await request.formData()
     const file = formData.get('file') as File | null

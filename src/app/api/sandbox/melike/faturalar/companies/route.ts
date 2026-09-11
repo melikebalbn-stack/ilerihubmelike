@@ -1,13 +1,15 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { apiSuccess, apiError } from '@/lib/api-response'
+import { apiSuccess, apiForbidden, apiError } from '@/lib/api-response'
+import { canAccessFaturaTakip } from '../_lib/access'
 
 // GET ?q=... — daha önce girilen firma adlarından öneri listesi (3+ karakterden itibaren)
 export async function GET(request: NextRequest) {
   try {
-    const { error } = await requireUser()
+    const { user, error } = await requireUser()
     if (error) return error
+    if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const { searchParams } = new URL(request.url)
     const q = searchParams.get('q')?.trim() || ''

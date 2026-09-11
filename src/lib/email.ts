@@ -155,7 +155,15 @@ export async function sendEmail(
    * Ek başlıklar. `replyTo`: yanıtların gideceği adres — ticket bildirimlerinde
    * destek@ kutusuna düşsün diye kullanılıyor (bkz. ticketMailGonder).
    */
-  options?: { replyTo?: string }
+  options?: {
+    replyTo?: string
+    /**
+     * Bilgi (CC) alıcıları. Test modu / MAIL_RECIPIENT_OVERRIDE aktifken CC
+     * TAMAMEN DÜŞÜRÜLÜR — yönlendirme guard'ı yalnız `to`'yu değiştirdiği için
+     * aksi hâlde gerçek adrese sızardı.
+     */
+    cc?: EmailRecipient[]
+  }
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   // GUARD: test/staging mail koruması (env-gated). MAIL_RECIPIENT_OVERRIDE
   // doluysa TÜM alıcıları o adrese yönlendir + konuya "[STAGING]" ön-eki ekle.
@@ -164,6 +172,7 @@ export async function sendEmail(
   let effectiveSubject = subject
   let effectiveBody = body
   let effectiveHtml = html
+  let effectiveCc = options?.cc ?? []
   let forceSimulate = false
 
   const original = to.map((r) => r.email).join(', ') || '(boş)'
@@ -179,6 +188,7 @@ export async function sendEmail(
     if (testEmail) {
       console.warn(`🧪 NOTIFY_TEST_MODE AKTİF — mail gerçek alıcıya GİTMİYOR. Orijinal:[${original}] → ${testEmail}`)
       effectiveTo = [{ email: testEmail, name: to[0]?.name ?? 'TEST' }]
+      effectiveCc = []
       effectiveSubject = `[TEST → gerçek alıcı: ${original}] ${subject}`
       effectiveBody = `${body}\n\n---\n[NOTIFY_TEST_MODE] Bu e-posta normalde şu alıcı(lar)a giderdi: ${original}`
       effectiveHtml = `${html ?? body.replace(/\n/g, '<br>')}<hr><p style="color:#b91c1c">[NOTIFY_TEST_MODE] Gerçek alıcı(lar): ${original}</p>`
@@ -192,6 +202,7 @@ export async function sendEmail(
     if (override) {
       console.log(`✉️  mail override → gerçek:${original} yerine ${override}`)
       effectiveTo = [{ email: override, name: to[0]?.name ?? 'STAGING' }]
+      effectiveCc = []
       effectiveSubject = subject.startsWith('[STAGING]') ? subject : `[STAGING] ${subject}`
     }
   }
@@ -202,6 +213,7 @@ export async function sendEmail(
   if (!smtp || forceSimulate) {
     console.log('📧 [EMAIL SIMULATION] ========================')
     console.log('To:', effectiveTo.map((r) => `${r.name} <${r.email}>`).join(', '))
+    if (effectiveCc.length) console.log('Cc:', effectiveCc.map((r) => `${r.name} <${r.email}>`).join(', '))
     if (options?.replyTo) console.log('Reply-To:', options.replyTo)
     console.log('Subject:', effectiveSubject)
     console.log('Body:')
@@ -226,6 +238,7 @@ export async function sendEmail(
       html: effectiveHtml ?? effectiveBody.replace(/\n/g, '<br>'),
       ...(attachments && attachments.length ? { attachments } : {}),
       ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
+      ...(effectiveCc.length ? { cc: effectiveCc.map((r) => `${r.name} <${r.email}>`).join(', ') } : {}),
     })
 
     console.log('✅ E-posta gönderildi:', info.messageId)

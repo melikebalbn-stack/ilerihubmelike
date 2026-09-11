@@ -59,6 +59,7 @@ export type AuditTargetType =
   // details = ticket no/konu/durum + silinen yorum-timeline-worklog sayıları.
   // Kayıt silinmeden ÖNCE ve aynı transaction'da yazılır.
   | 'TICKET'
+  | 'PERSONNEL_WEEKLY_REPORT'
 
 export interface AuditLogParams {
   action: string

@@ -1,10 +1,22 @@
 name: CI
 
 on:
+  # Push (main + tüm dallar): YALNIZ type-check koşar (kota: 2000 dk/ay, 5 job'lu
+  # tam set ayın 5'inde kotayı bitiriyordu — bkz. 05.09 ve 26.08 kesintileri).
   push:
-    branches: [main, develop]
+    branches: ['**']
+  # Tam set (lint/test/build/e2e): PR, elle tetikleme ve haftalık zamanlama.
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'   # Pazartesi 03:00 UTC (06:00 TR), main üzerinde
+
+# Aynı ref'e art arda push → önceki run iptal (kota). Grup ref bazlı; farklı
+# dallar birbirini iptal etmez.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: '20.x'
@@ -15,6 +27,7 @@ env:
 jobs:
   lint:
     name: Lint
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -56,6 +69,7 @@ jobs:
 
   test:
     name: Test
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -98,6 +112,7 @@ jobs:
 
   build:
     name: Build
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     needs: [lint, type-check, test]
     services:
@@ -141,6 +156,7 @@ jobs:
 
   e2e:
     name: E2E Tests
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     needs: [build]
     services:

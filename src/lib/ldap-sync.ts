@@ -15,6 +15,8 @@ import { prisma } from './prisma'
 import { UserRoleEnum as Role } from '@/generated/prisma'
 import { logger } from './logger'
 import { sendEmail } from './email'
+import { isSystemAccount } from './auth/sistem-hesaplari'
+import { varsayilanRoluGaranti } from './auth/varsayilan-rol'
 
 // PR-LDAP-DEBOUNCE: AD-disabled sinyali kaç ardışık sync turunda görülürse pasifleştirilir.
 // Bayat/partial uac okuması tek turda yanlış-pasifleştirmesin diye debounce.
@@ -42,24 +44,10 @@ const ROLE_OVERRIDES: Record<string, Role> = {
   'sami.tekoglu@ilerigroup.com': Role.QUALITY_MANAGER,
 }
 
-// Ortak/sistem hesapları (senkronizasyondan hariç)
-const SYSTEM_ACCOUNTS = [
-  '1.toplantiodasi@ilerigroup.com',
-  '2.kattoplantiodasi@ilerigroup.com',
-  '2.toplantiodasi@ilerigroup.com',
-  'bakimhane@ilerigroup.com',
-  'depomail@ilerigroup.com',
-  'kaliphane@ilerigroup.com',
-  'final.kalite@ilerigroup.com',
-  'final.kalite2@ilerigroup.com',
-  'giris.kalite@ilerigroup.com',
-  'giris.kalite2@ilerigroup.com',
-  'kalite.proses@ilerigroup.com',
-  'kalite.proses2@ilerigroup.com',
-  'koordinat@ilerigroup.com',
-  'preshane.barkod@ilerigroup.com',
-  'yemekhane@ilerigroup.com',
-]
+// Ortak/sistem hesapları (senkronizasyondan hariç) — liste ve isSystemAccount
+// ./auth/sistem-hesaplari.ts'e TAŞINDI: giriş yolu (auth.ts) ve varsayılan rol
+// ataması da aynı listeye bakıyor. Dışarıdan import edenler için yeniden export.
+export { SYSTEM_ACCOUNTS, isSystemAccount } from './auth/sistem-hesaplari'
 
 // Son sync durumu (in-memory)
 let lastSyncStatus: SyncStatus = {
@@ -148,11 +136,6 @@ export function inferRoleFromJobTitle(
 
   const isAssistant = /(yard[ıi]mc|asistan|vekil)/i.test(title)
   return isAssistant ? Role.SUPERVISOR : Role.DEPT_HEAD
-}
-
-/** Bir kullanıcının sistem/ortak hesap olup olmadığını kontrol et */
-function isSystemAccount(email: string): boolean {
-  return SYSTEM_ACCOUNTS.includes(email.toLowerCase())
 }
 
 /**
@@ -485,6 +468,13 @@ async function upsertUser(
       resolvedUserId = created.id
     }
   }
+
+  // VARSAYILAN ROL (11.09.2026): hiç RBAC rolü yoksa "kullanici". Emniyet kemeri —
+  // asıl kapı auth.ts giriş upsert'i; burası girişten önce senkronla doğan ya da
+  // bir şekilde rolsüz kalmış hesabı ≤6 saatte yakalar. Sistem hesapları zaten
+  // validUsers süzgecinde elendi, yardımcı yine de kendi kontrol eder. Idempotent,
+  // fırlatmaz; mevcut rollü kullanıcıda no-op (206 kişiye dokunmaz).
+  await varsayilanRoluGaranti(resolvedUserId, emailLower, 'ldap-sync')
 
   // PR-Y4a: AD grupları → user_role tablosu (source='azure_ad') diff
   await syncUserAzureRoles(resolvedUserId, groups, mappingByGroupCN)

@@ -4,6 +4,7 @@ import { authenticateUser, determineUserRole, getEmailFromDN } from '@/lib/ldap'
 import { prisma } from '@/lib/prisma';
 import { UserRoleEnum as Role, LoginStatus } from '@/generated/prisma';
 import { inferRoleFromJobTitle, extractGroupCNs } from '@/lib/ldap-sync';
+import { varsayilanRoluGaranti } from '@/lib/auth/varsayilan-rol';
 import { checkRateLimit, resetRateLimit, getRateLimitKey } from '@/lib/rate-limit';
 import { verifyPin } from '@/lib/pin-utils';
 
@@ -445,12 +446,15 @@ export const authOptions: NextAuthOptions = {
           const maxRetries = 3;
           let dbSyncSuccess = false;
           let lastDbError: unknown = null;
+          // Upsert'in GERÇEK id'si: e-postayla eşleşen kayıt ad_* olmayabilir
+          // (mavi yaka cuid). Rol yazarken `ad_${username}` varsayımı yanlış olur.
+          let dbUserId: string | null = null;
 
           for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
               // PR-Y4-PRE: AD grup CN listesi
               const groups = extractGroupCNs(ldapUser.memberOf);
-              await prisma.user.upsert({
+              const dbUser = await prisma.user.upsert({
                 where: { email: userEmail },
                 update: {
                   name: ldapUser.displayName,
@@ -470,7 +474,9 @@ export const authOptions: NextAuthOptions = {
                   isActive: true,
                   groups,
                 },
+                select: { id: true },
               });
+              dbUserId = dbUser.id;
               dbSyncSuccess = true;
               break;
             } catch (dbError) {
@@ -492,6 +498,15 @@ export const authOptions: NextAuthOptions = {
             });
             // Login devam eder ama kullanıcı DB'de olmayabilir
             // İleride bir background job ile sync edilebilir
+          }
+
+          // VARSAYILAN ROL (11.09.2026): yeni hesap burada doğuyor ama rol
+          // yazılmıyordu — kişi biri elle ekleyene kadar rolsüz kalıyordu.
+          // Hiç RBAC rolü yoksa "kullanici" verilir; sistem/terminal hesabı
+          // atlanır; source='manual' (LDAP senkronu silmesin). Yardımcı ASLA
+          // fırlatmaz — rol atanamazsa loglar, giriş devam eder.
+          if (dbSyncSuccess && dbUserId) {
+            await varsayilanRoluGaranti(dbUserId, userEmail, 'login');
           }
 
           // Üst yönetim için session role'ünü de SUPER_ADMIN yap

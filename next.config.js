@@ -1,4 +1,27 @@
 const { withSentryConfig } = require('@sentry/nextjs')
+const { PHASE_PRODUCTION_BUILD } = require('next/constants')
+
+// ─── Prod slot worktree'lerinde ELLE build engeli ─────────────────────────
+// package.json "build" → scripts/guard-build.sh ayni kontrolu yapar; bu blok
+// ciplak `npx next build` / `next build` cagrilari icindir (package.json'i
+// atlarlar). YALNIZ PHASE_PRODUCTION_BUILD'de calisir: `next start` ve
+// `next dev` etkilenmez. Config, `next build` .next'i temizlemeden ONCE
+// yuklendigi icin (next/dist/build/index.js: load-next-config → cleanDistDir)
+// reddedilen build .next'e DOKUNMAZ. Arka plan: 2026-09-10 aktif slotta elle
+// build → BUILD_ID/manifest yok → canli 503 + ChunkLoadError.
+const PROD_SLOT_DIRS = [
+  '/home/rokunet/projects/ilerihub',
+  '/home/rokunet/projects/ilerihub-green',
+]
+function prodSlotBuildGuard() {
+  const cwd = process.cwd()
+  const inProdSlot = PROD_SLOT_DIRS.some((d) => cwd === d || cwd.startsWith(d + '/'))
+  if (inProdSlot && process.env.ILERIHUB_DEPLOY !== '1') {
+    console.error("❌ Prod slot worktree'sinde elle build YASAK. ilerihub-build'de çalış, deploy.sh ile çık.")
+    console.error(`   cwd: ${cwd}`)
+    process.exit(1)
+  }
+}
 
 // PWA: vanilla service worker public/sw.js (PR-PWA-2, 3 May 2026)
 // 29 Apr 2026 incident sonrası next-pwa wrapper'ı kaldırıldı; SW elle yazılı,
@@ -119,7 +142,12 @@ const sentryWebpackPluginOptions = {
 // SENTRY_AUTH_TOKEN yoksa (CI'da ve mevcut prod .env'de yok) source-map upload
 // zaten yapılmıyordu → plugin'i TAMAMEN atla; CI + prod build belleğini düşürür.
 // Runtime Sentry SDK (instrumentation/sentry.*.config) bundan etkilenmez.
-module.exports = process.env.SENTRY_AUTH_TOKEN
-  ? withSentryConfig(nextConfig, sentryWebpackPluginOptions)
-  : nextConfig
+// Phase fonksiyonu: Next config'i (phase, ctx) ile cagirir; guard yalniz
+// build fazinda kosar, donen config eskisiyle birebir ayni.
+module.exports = (phase) => {
+  if (phase === PHASE_PRODUCTION_BUILD) prodSlotBuildGuard()
+  return process.env.SENTRY_AUTH_TOKEN
+    ? withSentryConfig(nextConfig, sentryWebpackPluginOptions)
+    : nextConfig
+}
 

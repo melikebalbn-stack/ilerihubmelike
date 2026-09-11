@@ -1,0 +1,21 @@
+# ILERIHub — Haftalık Personel Raporu (Halit İleri + Gürhan Horbay, CC melih.dilben)
+# Kapsam: bir önceki hafta, Pazartesi 00:00 – Pazar 23:59 Europe/Istanbul.
+#
+# CRON-TZ: cron UTC koşuyor. Hedef Pazartesi 08:00 Europe/Istanbul (UTC+3, yaz
+# saati yok) → 05:00 UTC. Sunucu saat dilimi değişirse bu satır da değişmeli.
+#
+# Auth: mesai performans cron'uyla aynı — x-cron-secret = CRON_SECRET (.env).
+# Idempotent: aynı hafta için başarılı denetim kaydı varsa uç nokta tekrar göndermez.
+# Elle tetik / önizleme:
+#   curl -sS -H "x-cron-secret: <CRON_SECRET>" "https://hub.ilerigroup.com/api/cron/personel-haftalik?dryRun=1"
+#   (…&html=1 → ham HTML; dryRun olmadan → gerçek gönderim; &force=1 → aynı haftayı tekrar gönder)
+#
+# Deploy (uç nokta CANLIYA çıktıktan sonra):
+#   /etc/cron.d/ilerihub-cron dosyasına aşağıdaki satırı ekle (secret'ı .env'den al)
+#   sudo service cron reload
+SHELL=/bin/bash
+PATH=/usr/bin:/bin
+MAILTO=""
+
+# Haftalık personel raporu — Pazartesi 08:00 TR (05:00 UTC), önceki hafta → Halit İleri, Gürhan Horbay
+0 5 * * 1 rokunet { curl -sS --fail-with-body -w '\n[\%{http_code}] cron/personel-haftalik\n' -X POST -H "x-cron-secret: <CRON_SECRET>" --resolve hub.ilerigroup.com:443:127.0.0.1 https://hub.ilerigroup.com/api/cron/personel-haftalik || { rc=$?; echo "[$(date -Is)] CRON-FAIL cron/personel-haftalik curl=$rc"; }; } >> /var/log/ilerihub-cron.log 2>&1

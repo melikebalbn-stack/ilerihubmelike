@@ -45,10 +45,10 @@ export function buildPersonnelWeeklyText(veri: HaftalikPersonelRaporu, opts: Haf
     ...veri.rapor.tumBolumler.slice(0, opts.bolumLimiti ?? 12).map(b => `  ${b.bolum}: ${b.sayi} (%${b.oran})`),
   ]
   if (veri.girenler.length > 0) {
-    satirlar.push('', 'Bu hafta işe girenler:', ...veri.girenler.map(g => `  ${g.adSoyad} — ${g.bolum} / ${g.gorev} (${g.tarih})`))
+    satirlar.push('', `Hafta içinde işe girenler (${veri.tarihMetni}):`, ...veri.girenler.map(g => `  ${g.adSoyad} — ${g.bolum} / ${g.gorev} (${g.tarih})`))
   }
   if (veri.cikanlar.length > 0) {
-    satirlar.push('', 'Bu hafta işten çıkanlar:', ...veri.cikanlar.map(c => `  ${c.adSoyad} — ${c.bolum} / ${c.gorev} (${c.tarih})`))
+    satirlar.push('', `Hafta içinde işten çıkanlar (${veri.tarihMetni}):`, ...veri.cikanlar.map(c => `  ${c.adSoyad} — ${c.bolum} / ${c.gorev} (${c.tarih})`))
   }
   satirlar.push('', `Canlı görünüm: ${opts.sayfaUrl}`)
   return satirlar.join('\n')
@@ -130,7 +130,7 @@ export function buildPersonnelWeeklyHtml(veri: HaftalikPersonelRaporu, opts: Haf
       <!-- 1) Üst şerit -->
       <tr><td style="background-color:${TEAL};padding:20px 24px;">
         <div style="font-family:${FONT};font-size:19px;font-weight:bold;color:#ffffff;">${escapeHtml(opts.baslik)}</div>
-        <div style="font-family:${FONT};font-size:13px;color:#cbfbf1;padding-top:4px;">${escapeHtml(veri.tarihMetni)}</div>
+        <div style="font-family:${FONT};font-size:13px;color:#cbfbf1;padding-top:4px;">Hafta: ${escapeHtml(veri.tarihMetni)} &nbsp;·&nbsp; Pazartesi–Pazar, Europe/Istanbul</div>
       </td></tr>
 
       <tr><td style="padding:22px 24px;">
@@ -177,11 +177,11 @@ export function buildPersonnelWeeklyHtml(veri: HaftalikPersonelRaporu, opts: Haf
           ${bolumler.map(barSatiri).join('')}
         </table>
 
-        <!-- 5) Bu hafta giren / cikan -->
-        ${hareketTablosu('Bu Hafta İşe Girenler', veri.girenler, '#0d9488')}
-        ${hareketTablosu('Bu Hafta İşten Çıkanlar', veri.cikanlar, '#e11d48')}
+        <!-- 5) Rapor haftasinda giren / cikan -->
+        ${hareketTablosu('Hafta İçinde İşe Girenler', veri.girenler, '#0d9488')}
+        ${hareketTablosu('Hafta İçinde İşten Çıkanlar', veri.cikanlar, '#e11d48')}
         ${veri.girenler.length === 0 && veri.cikanlar.length === 0
-          ? `<div style="font-family:${FONT};font-size:12px;color:${SOLUK};margin-top:22px;padding:10px 12px;background-color:#f8fafc;">Bu hafta işe giren veya işten çıkan personel yok.</div>`
+          ? `<div style="font-family:${FONT};font-size:12px;color:${SOLUK};margin-top:22px;padding:10px 12px;background-color:#f8fafc;">${escapeHtml(veri.tarihMetni)} haftasında işe giren veya işten çıkan personel yok.</div>`
           : ''}
 
         <!-- 6) Canli gorunum -->

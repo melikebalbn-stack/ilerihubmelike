@@ -1,5 +1,6 @@
 /**
  * Haftalık Personel Raporu maili — önizleme üretici / test göndericisi.
+ * Rapor haftası: bir ÖNCEKİ hafta, Europe/Istanbul (cron ile aynı hesap).
  *
  *   npx tsx scripts/personel-haftalik-mail-onizleme.ts              → yalnız HTML dosyası
  *   npx tsx scripts/personel-haftalik-mail-onizleme.ts --gonder <e-posta>

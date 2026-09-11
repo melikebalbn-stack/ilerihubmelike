@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2 } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, FileSpreadsheet } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -28,6 +28,7 @@ import {
   YAxis,
 } from 'recharts'
 import { InvoiceFormDialog } from './_components/InvoiceFormDialog'
+import { ImportDialog } from './_components/ImportDialog'
 
 const NAVY = '#1B4F72'
 
@@ -80,6 +81,7 @@ export default function FaturaTakipPage() {
   const [revenues, setRevenues] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState<'ALL' | Category>('ALL')
   const [search, setSearch] = useState('')
 
@@ -202,9 +204,14 @@ export default function FaturaTakipPage() {
             Genel / Sistem Geliştirme ayrımı · TCMB € dönüşümü · aylık ciro kıyası
           </p>
         </div>
-        <Button style={{ backgroundColor: NAVY }} onClick={() => setShowForm(true)}>
-          <Plus className="mr-1.5 h-4 w-4" /> Yeni Fatura Ekle
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Excel İçe/Dışa Aktar
+          </Button>
+          <Button style={{ backgroundColor: NAVY }} onClick={() => setShowForm(true)}>
+            <Plus className="mr-1.5 h-4 w-4" /> Yeni Fatura Ekle
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
@@ -402,6 +409,15 @@ export default function FaturaTakipPage() {
         open={showForm}
         onOpenChange={setShowForm}
         onCreated={() => {
+          loadInvoices()
+          loadSummary()
+        }}
+      />
+
+      <ImportDialog
+        open={showImport}
+        onOpenChange={setShowImport}
+        onImported={() => {
           loadInvoices()
           loadSummary()
         }}

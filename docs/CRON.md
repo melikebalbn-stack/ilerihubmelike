@@ -37,7 +37,7 @@ kırdığı için geri alındı** (240+ crash loop, 2026-05-04).
 | 09:45 | POST `/api/personnel/check-evaluations` | Personel 2ay/6ay değerlendirme + belge süreleri |
 | 10:00 | POST `/api/akademi/cron/check-deadlines` | Akademi son tarih kontrolü |
 | 10:30 | POST `/api/akademi/cron/check-certificates` | Akademi sertifika geçerlilik |
-| Pzt 05:00 UTC (08:00 TR) | POST `/api/cron/personel-haftalik` | Haftalık personel raporu (önceki hafta) → Halit İleri, Gürhan Horbay; CC melih.dilben. Şablon: `scripts/cron/ilerihub-personel-haftalik.template`. **Henüz /etc/cron.d'ye eklenmedi** — uç nokta canlıya çıkınca. |
+| Pzt 05:00 UTC (08:00 TR) | POST `/api/cron/personel-haftalik` | Haftalık personel raporu (önceki hafta) → Halit İleri, Gürhan Horbay; CC melih.dilben. Şablon: `scripts/cron/ilerihub-personel-haftalik.template`. Uç nokta CANLI (59a218851, dryRun 200 doğrulandı 11.09). cron.d'ye ekleme root ister: `sudo ~/scripts/cron-personel-haftalik-ekle.sh` (yedek alır, secret'ı .env'den okur, reload eder). |
 
 Akademi endpoint'leri `x-cron-secret` header'ı ile auth.
 Diğerleri internal localhost erişimine açık.

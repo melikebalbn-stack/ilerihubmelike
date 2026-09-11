@@ -11,8 +11,8 @@
 #   (…&html=1 → ham HTML; dryRun olmadan → gerçek gönderim; &force=1 → aynı haftayı tekrar gönder)
 #
 # Deploy (uç nokta CANLIYA çıktıktan sonra):
-#   /etc/cron.d/ilerihub-cron dosyasına aşağıdaki satırı ekle (secret'ı .env'den al)
-#   sudo service cron reload
+#   sudo ~/scripts/cron-personel-haftalik-ekle.sh
+#   (yedek alır, aşağıdaki satırı secret'ı .env'den okuyarak /etc/cron.d/ilerihub-cron'a ekler, cron'u reload eder)
 SHELL=/bin/bash
 PATH=/usr/bin:/bin
 MAILTO=""

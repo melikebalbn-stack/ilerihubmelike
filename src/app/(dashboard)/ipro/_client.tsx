@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useState } from 'react'
 import {
   Activity,
-  Gauge,
   MonitorCog,
   Map,
   ClipboardList,
@@ -23,8 +22,7 @@ type Pill = { name: string; href: string; icon: LucideIcon }
 // Ana modül kartları (görselli). slug → public/ipro-kapak/<slug>.png (henüz yok → placeholder).
 // İkonlar Sidebar iproMenuItems ile aynı.
 const ANA_KARTLAR: Kart[] = [
-  { name: 'İzleme Panosu', href: '/ipro/izleme', icon: Activity, slug: 'izleme', desc: 'Tezgahlarda kim çalışıyor, hangi iş, ne zaman başladı' },
-  { name: 'OEE Pano', href: '/ipro/oee', icon: Gauge, slug: 'oee', canli: true, desc: 'Kullanılabilirlik, performans, kalite — tezgah bazında' },
+  { name: 'İzleme Ekranı', href: '/ipro/izleme', icon: Activity, slug: 'izleme', canli: true, desc: 'Kim çalışıyor, hangi iş; OEE (Kullanılabilirlik/Performans/Kalite) tek ekranda' },
   { name: 'Üretim Terminali', href: '/terminal/uretim', icon: MonitorCog, slug: 'terminal', desc: 'Bölüm, tezgah ve iş emri takibi' },
   { name: 'Fabrika Haritası', href: '/ipro/harita', icon: Map, slug: 'harita', canli: true, desc: 'Tezgahların fabrika yerleşimi üzerinde canlı durumu' },
   { name: 'İş Emirleri', href: '/ipro/is-emirleri', icon: ClipboardList, slug: 'is-emirleri', desc: 'IFS açık iş emirleri ve ILERIHub iş geçmişi' },

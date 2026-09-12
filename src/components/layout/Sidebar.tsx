@@ -78,7 +78,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CalendarDays,
-  Gauge,
   Laptop,
   Wallet,
 } from "lucide-react"
@@ -259,8 +258,7 @@ const teknikMenuItems = [
 // item'da permission varsa roles/dept değerlendirilmez (zimmet-formu deseni). Kiosk/IFS/Sinyal
 // için roles'taki DEPT_HEAD boşluğu kapandı — artık ipro.view'li DEPT_HEAD de guard'la tutarlı görür.
 const iproMenuItems = [
-  { name: "İzleme Panosu", icon: Activity, href: "/ipro/izleme", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
-  { name: "OEE Pano", icon: Gauge, href: "/ipro/oee", roles: [] as string[], permission: ["ipro.view", "ipro.admin"], note: "canlı" },
+  { name: "İzleme Ekranı", icon: Activity, href: "/ipro/izleme", roles: [] as string[], permission: ["ipro.view", "ipro.admin"], note: "canlı" },
   { name: "İş Emirleri", icon: ClipboardList, href: "/ipro/is-emirleri", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
   { name: "Üretim Terminali", icon: MonitorCog, href: "/terminal/uretim", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
   { name: "Fabrika Haritası", icon: Map, href: "/ipro/harita", roles: [] as string[], permission: ["ipro.view", "ipro.admin"], note: "canlı" },

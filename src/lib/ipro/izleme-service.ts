@@ -1,6 +1,7 @@
 import 'server-only'
 import { prisma } from '@/lib/prisma'
 import { statusCek, fizikselDurum } from '@/lib/ipro/fiziksel-aktivite'
+import { tezgahlarinCanliOee, IDEAL_ESIK, type OeeCanliKart } from '@/lib/ipro/oee-pano-service'
 
 /**
  * IPRO izleme panosu — SALT OKUMA veri katmanı (FAZ 2).
@@ -44,6 +45,8 @@ export type TezgahKart = {
     baslangicAt: string // ISO
     sebep: string | null
   } | null
+  /** Canlı OEE bileşenleri — YALNIZ panoData({ oee:true }) çağrısında ve açık iş varsa dolu. */
+  canliOee?: OeeCanliKart | null
 }
 
 export type GunOzeti = {
@@ -51,6 +54,10 @@ export type GunOzeti = {
   toplamIyi: number
   toplamHurda: number
   aktifOperator: number // açık oturum sayısı (distinct personel)
+  // Kart durum sayaçları (OEE görünümü şeridi) — her çağrıda dolu.
+  calisiyor: number
+  durusta: number
+  bosta: number
 }
 
 export type IfsKuyruk = {
@@ -61,6 +68,7 @@ export type IfsKuyruk = {
 
 export type PanoData = {
   olusturuldu: string // ISO — istemci "en son … güncellendi" için
+  esik: number // OEE ideal güvenilirlik eşiği (X/esik gösterimi)
   tezgahlar: TezgahKart[]
   ozet: GunOzeti
   kuyruk: IfsKuyruk
@@ -73,11 +81,12 @@ function gununBasi(): Date {
   return d
 }
 
-export async function panoData(): Promise<PanoData> {
+export async function panoData(opts: { oee?: boolean } = {}): Promise<PanoData> {
   const bugun = gununBasi()
+  const simdi = new Date()
 
-  // ── Tek turda topla: tezgahlar + açık işler + gün özeti + kuyruk + açık duruşlar ──
-  const [tezgahlar, acikIsler, acikDuruslar, kapananBugun, toplamlar, acikOturumlar, bekleyen, enEski, hatali, statusByKod] =
+  // ── Tek turda topla: tezgahlar + açık işler + gün özeti + kuyruk + açık duruşlar + faz2 son-hareket ──
+  const [tezgahlar, acikIsler, acikDuruslar, kapananBugun, toplamlar, acikOturumlar, bekleyen, enEski, hatali, statusByKod, faz2Rows] =
     await Promise.all([
     prisma.iproTezgah.findMany({
       where: { aktif: true },
@@ -125,6 +134,11 @@ export async function panoData(): Promise<PanoData> {
     }),
     prisma.iproProductionLog.count({ where: { ifsCompleteHata: { not: null } } }),
     statusCek(), // poller /status — CANLI fiziksel aktivite; down/timeout → null → katman atlanır (pano yine açılır)
+    // SOĞUK-BAŞLANGIÇ FIX: Faz 2 serisinden (disk) son-180sn hareketli tezgah kodları. fizikselDurum
+    // bellek Map'i restart'ta sıfırlanır; bu deploy'dan ETKİLENMEZ → OEE panosuyla aynı durum mantığı.
+    prisma.$queryRaw<{ tezgahKod: string }[]>`
+      SELECT DISTINCT "tezgahKod" FROM ipro_sayac_okuma WHERE ts > now() - interval '180 seconds'
+    `,
   ])
 
   // ── Açık işlerdeki operatör adlarını ikinci sorguyla eşle (FK yok) ──
@@ -142,21 +156,37 @@ export async function panoData(): Promise<PanoData> {
     : []
   const personById = new Map(personeller.map((p) => [p.id, p]))
 
+  // Faz2 son-180sn hareketli tezgah kodları — fizikselDurum'a EK 'calisiyor' kaynağı (soğuk-başlangıç-bağışık).
+  const faz2SonHareket = new Set(faz2Rows.map((r) => r.tezgahKod))
+
+  // Canlı OEE — yalnız istenirse (oee/ikisi görünümü). Açık iş sayısı kadar aggregate.
+  const canliByTezgah = opts.oee
+    ? await tezgahlarinCanliOee(prisma, tezgahlar, acikIsler, simdi)
+    : new Map<string, OeeCanliKart>()
+
+  let calisiyorN = 0
+  let durustaN = 0
+  let bostaN = 0
   const kartlar: TezgahKart[] = tezgahlar.map((t) => {
     const acik = acikByTezgah.get(t.id)
     const durus = durusByTezgah.get(t.id)
     const person = acik ? personById.get(acik.personnelId) : null
     const calisiyor = !!(acik && acik.baslatildiAt)
-    // Öncelik: KİOSK açık duruş → KİOSK açık iş → PLC FİZİKSEL (sayaç hareketi) → bosta.
-    // Kiosk kaydı KAZANIR (operatör esas). Fiziksel katman yalnız kayıt yokken devreye girer.
-    // SINIR: "çalışıyor" PLC sayaç hareketinden EKLENİR (yeşil canlanır); "duruşta" YALNIZ
-    // kiosk kaydından gelir — duruş biti sahada hiç 1 olmuyor (0/214), fiziksel 'durusta' ölü dal.
-    // Duruş bitinin otomatik gelmesi AYRI SAHA İŞİ (PLC bit set etmiyor).
+    // Öncelik: KİOSK açık duruş → KİOSK açık iş → PLC fiziksel hareket VEYA Faz2-son-180sn → bosta.
+    // Kiosk kaydı KAZANIR (operatör esas). "durusta" YALNIZ kiosk kaydından (duruş biti 0/214 ölü dal).
+    // fizikselDurum (bellek, ısınma ister) ile faz2SonHareket (disk, ısınmasız) aynı sayaç sinyalinden
+    // türer → çelişmez; Faz2 soğuk-başlangıçta 2-poll ısınmayı atlar. OEE panosuyla AYNI mantık.
+    const fiz = fizikselDurum(t.kod, statusByKod)
     const durum: KartDurum = durus
       ? 'durusta'
       : calisiyor
         ? 'calisiyor'
-        : (fizikselDurum(t.kod, statusByKod) ?? 'bosta')
+        : fiz === 'calisiyor' || faz2SonHareket.has(t.kod)
+          ? 'calisiyor'
+          : (fiz ?? 'bosta')
+    if (durum === 'calisiyor') calisiyorN++
+    else if (durum === 'durusta') durustaN++
+    else bostaN++
     return {
       id: t.id,
       kod: t.kod,
@@ -179,17 +209,22 @@ export async function panoData(): Promise<PanoData> {
       durus: durus
         ? { baslangicAt: durus.baslangic.toISOString(), sebep: durus.durusSebebi?.ad ?? null }
         : null,
+      canliOee: opts.oee ? (canliByTezgah.get(t.id) ?? null) : undefined,
     }
   })
 
   return {
-    olusturuldu: new Date().toISOString(),
+    olusturuldu: simdi.toISOString(),
+    esik: IDEAL_ESIK,
     tezgahlar: kartlar,
     ozet: {
       kapananIs: kapananBugun,
       toplamIyi: toplamlar._sum.qtyComplete ?? 0,
       toplamHurda: toplamlar._sum.qtyScrap ?? 0,
       aktifOperator: new Set(acikOturumlar.map((o) => o.personnelId)).size,
+      calisiyor: calisiyorN,
+      durusta: durustaN,
+      bosta: bostaN,
     },
     kuyruk: {
       bekleyen,

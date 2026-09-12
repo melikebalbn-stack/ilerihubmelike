@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Activity, AlertTriangle, Factory, Maximize, Minimize, Package, RefreshCw, Search, Signal } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -15,7 +16,86 @@ import {
 
 const POLL_MS = 10_000
 
+// Görünüm modu — üst anahtar. URL ?g= ile senkron (yenilenince korunur), localStorage YOK.
+type Gorunum = 'durum' | 'oee' | 'ikisi'
+const GORUNUMLER: { key: Gorunum; etiket: string }[] = [
+  { key: 'durum', etiket: 'Durum' },
+  { key: 'oee', etiket: 'OEE' },
+  { key: 'ikisi', etiket: 'İkisi' },
+]
+
 type Durum = 'calisiyor' | 'durusta' | 'bosta'
+
+type CanliOee = {
+  availability: number | null
+  performance: number | null
+  quality: null
+  oeeCanli: number | null
+  durum: 'CANLI_KISMI' | 'PLANLI_YOK'
+  planliSaniye: number
+  durusSaniye: number
+  uretilen: number
+  idealGuvenilir: boolean
+  ornekSayisi: number
+}
+
+// OEE renk eşiği (görsel, OeePano ile hizalı): ≥%85 yeşil, ≥%60 amber, <%60 kırmızı, null gri.
+function oeeRenk(v: number | null): string {
+  if (v == null) return '#94a3b8'
+  if (v >= 0.85) return '#10b981'
+  if (v >= 0.6) return '#d99b3c'
+  return '#e11d48'
+}
+function oeeYuzde(v: number | null): string {
+  return v == null ? '—' : `%${Math.round(v * 100)}`
+}
+
+// Inline SVG halka gösterge (shadcn'de gauge yok — SVG serbest). 58px varsayılan (birleşik kart).
+function Halka({ deger, boyut = 58, kalinlik = 7, etiket }: { deger: number | null; boyut?: number; kalinlik?: number; etiket?: string }) {
+  const r = (boyut - kalinlik) / 2
+  const cevre = 2 * Math.PI * r
+  const oran = deger == null ? 0 : Math.max(0, Math.min(1, deger))
+  const renk = oeeRenk(deger)
+  return (
+    <div className="relative inline-flex items-center justify-center" style={{ width: boyut, height: boyut }}>
+      <svg width={boyut} height={boyut} className="-rotate-90">
+        <circle cx={boyut / 2} cy={boyut / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={kalinlik} />
+        <circle
+          cx={boyut / 2}
+          cy={boyut / 2}
+          r={r}
+          fill="none"
+          stroke={renk}
+          strokeWidth={kalinlik}
+          strokeLinecap="round"
+          strokeDasharray={cevre}
+          strokeDashoffset={cevre * (1 - oran)}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center leading-none">
+        <span className="text-[11px] font-bold" style={{ color: renk }}>{oeeYuzde(deger)}</span>
+        {etiket ? <span className="mt-0.5 text-[8px] text-slate-400">{etiket}</span> : null}
+      </div>
+    </div>
+  )
+}
+
+// Bir tezgahın 4 halkası (Kullan./Perf./Kalite/OEE). Veri yoksa boş halka + tire.
+function OeeSerit({ c, tv, esik }: { c: CanliOee | null; tv: boolean; esik: number }) {
+  return (
+    <div className="mt-2 flex items-center justify-between gap-1 border-t pt-2">
+      <Halka deger={c?.availability ?? null} etiket="Kullan." />
+      <Halka deger={c?.performance ?? null} etiket="Perf." />
+      <Halka deger={null} etiket="Kalite" />
+      <Halka deger={c?.oeeCanli ?? null} etiket="OEE" />
+      {c && !c.idealGuvenilir ? (
+        <span className={`ml-1 shrink-0 text-[8px] ${tv ? 'text-slate-500' : 'text-slate-400'}`} title="ideal çevrim güvenilirlik">
+          {c.ornekSayisi}/{esik}
+        </span>
+      ) : null}
+    </div>
+  )
+}
 
 type Calisan = {
   adSoyad: string | null
@@ -37,11 +117,13 @@ type Tezgah = {
   durum: Durum
   calisan: Calisan | null
   durus: Durus | null
+  canliOee?: CanliOee | null
 }
 type Pano = {
   olusturuldu: string
+  esik: number
   tezgahlar: Tezgah[]
-  ozet: { kapananIs: number; toplamIyi: number; toplamHurda: number; aktifOperator: number }
+  ozet: { kapananIs: number; toplamIyi: number; toplamHurda: number; aktifOperator: number; calisiyor: number; durusta: number; bosta: number }
   kuyruk: { bekleyen: number; enEskiBeklemeAt: string | null; hataliKayit: number }
 }
 
@@ -89,6 +171,10 @@ function sureBicim(ms: number): string {
 }
 
 export function IzlemeClient() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const urlG = searchParams.get('g')
   const [pano, setPano] = useState<Pano | null>(null)
   const [ilkYukleme, setIlkYukleme] = useState(true)
   const [hata, setHata] = useState(false)
@@ -96,13 +182,25 @@ export function IzlemeClient() {
   const [grup, setGrup] = useState<string>('hepsi')
   const [tvModu, setTvModu] = useState(false)
   const [seciliId, setSeciliId] = useState<string | null>(null)
+  const [gorunum, setGorunum] = useState<Gorunum>(urlG === 'oee' || urlG === 'ikisi' ? urlG : 'durum')
   // Süre etiketlerini her saniye tazelemek için (fetch'ten bağımsız).
   const [, tik] = useState(0)
   const tvRef = useRef<HTMLDivElement>(null)
+  const oeeIstenir = gorunum === 'oee' || gorunum === 'ikisi'
+
+  // Görünüm değişince URL ?g= güncelle (yenilenince korunur; 'durum' → query temizlenir).
+  const gorunumSec = useCallback(
+    (g: Gorunum) => {
+      setGorunum(g)
+      const qs = g === 'durum' ? '' : `?g=${g}`
+      router.replace(`${pathname}${qs}`, { scroll: false })
+    },
+    [router, pathname],
+  )
 
   const yukle = useCallback(async () => {
     try {
-      const res = await fetch('/api/ipro/izleme', { cache: 'no-store' })
+      const res = await fetch(`/api/ipro/izleme${oeeIstenir ? '?oee=1' : ''}`, { cache: 'no-store' })
       const data = await res.json()
       if (res.ok && data?.ok) {
         setPano(data)
@@ -115,7 +213,7 @@ export function IzlemeClient() {
     } finally {
       setIlkYukleme(false)
     }
-  }, [])
+  }, [oeeIstenir])
 
   // Polling — sekme gizliyken durur (gereksiz istek + pil).
   useEffect(() => {
@@ -222,18 +320,32 @@ export function IzlemeClient() {
         </div>
       </div>
 
-      {/* Gösterge kartları (OEE/PERF/KULL/KALİTE) — YERLEŞİM; hesaplama AYRI İŞ (OEE-HESAP backlog). */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Gosterge etiket="OEE" renk="text-sky-300" />
-        <Gosterge etiket="Performans" renk="text-emerald-300" />
-        <Gosterge etiket="Kullanılabilirlik" renk="text-amber-300" />
-        <Gosterge etiket="Kalite" renk="text-violet-300" />
-      </div>
+      {/* OEE / İkisi görünümünde durum sayaç şeridi (Çalışıyor/Duruşta/Boşta). Durum görünümünde gizli. */}
+      {oeeIstenir && (
+        <div className="mb-4 grid grid-cols-3 gap-3">
+          <DurumSayac etiket="Çalışıyor" deger={pano?.ozet.calisiyor ?? 0} renk="text-emerald-300" />
+          <DurumSayac etiket="Duruşta" deger={pano?.ozet.durusta ?? 0} renk="text-red-300" />
+          <DurumSayac etiket="Boşta" deger={pano?.ozet.bosta ?? 0} renk="text-slate-400" />
+        </div>
+      )}
 
       {/* Araç çubuğu — TV modunda gizli */}
       {!tvModu && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[220px] flex-1">
+          {/* Görünüm anahtarı: Durum | OEE | İkisi */}
+          <div className="flex rounded-lg border p-0.5">
+            {GORUNUMLER.map((g) => (
+              <button
+                key={g.key}
+                type="button"
+                onClick={() => gorunumSec(g.key)}
+                className={`rounded-md px-3 py-1 text-xs font-medium ${gorunum === g.key ? 'bg-[#1B4F72] text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+              >
+                {g.etiket}
+              </button>
+            ))}
+          </div>
+          <div className="relative min-w-[200px] flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <Input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Tezgah, ad veya operatör ara…" className="pl-8" />
           </div>
@@ -264,7 +376,7 @@ export function IzlemeClient() {
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
           {gosterilen.map((t) => (
-            <Kart key={t.id} tezgah={t} tv={tvModu} onClick={() => setSeciliId(t.id)} />
+            <Kart key={t.id} tezgah={t} tv={tvModu} gorunum={gorunum} esik={pano?.esik ?? 50} onClick={() => setSeciliId(t.id)} />
           ))}
         </div>
       )}
@@ -281,17 +393,21 @@ export function IzlemeClient() {
         </div>
       )}
 
-      {/* Kart detay dialog — TV modunda da açılabilir; portal body'ye gider */}
-      <DetayDialog tezgahId={seciliId} onClose={() => setSeciliId(null)} />
+      {/* Kart detay dialog — TV modunda da açılabilir; portal body'ye gider. OEE bileşenleri pano'dan. */}
+      <DetayDialog
+        tezgahId={seciliId}
+        canliOee={pano?.tezgahlar.find((t) => t.id === seciliId)?.canliOee ?? null}
+        esik={pano?.esik ?? 50}
+        onClose={() => setSeciliId(null)}
+      />
     </div>
   )
 }
 
-/** OEE/PERF/KULL/KALİTE göstergesi — bu turda placeholder "%—". Hesaplama OEE-HESAP (backlog). */
-function Gosterge({ etiket, renk }: { etiket: string; renk: string }) {
+function DurumSayac({ etiket, deger, renk }: { etiket: string; deger: number; renk: string }) {
   return (
     <div className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-center">
-      <div className={`text-3xl font-bold ${renk}`}>%—</div>
+      <div className={`text-3xl font-bold ${renk}`}>{deger}</div>
       <div className="mt-0.5 text-xs uppercase tracking-wider text-slate-400">{etiket}</div>
     </div>
   )
@@ -306,7 +422,7 @@ function Ozet({ etiket, deger, renk = '' }: { etiket: string; deger: number; ren
   )
 }
 
-function Kart({ tezgah, tv, onClick }: { tezgah: Tezgah; tv: boolean; onClick: () => void }) {
+function Kart({ tezgah, tv, gorunum, esik, onClick }: { tezgah: Tezgah; tv: boolean; gorunum: Gorunum; esik: number; onClick: () => void }) {
   const c = tezgah.calisan
   const durum = tezgah.durum
   const sure = c ? sureBicim(Date.now() - new Date(c.baslatildiAt).getTime()) : null
@@ -327,6 +443,29 @@ function Kart({ tezgah, tv, onClick }: { tezgah: Tezgah; tv: boolean; onClick: (
   // Metin: TV'de her durumda açık renk (okunurluk). Işıklı zeminde koyu.
   const anaMetin = tv ? 'text-slate-100' : 'text-slate-900'
   const altMetin = tv ? 'text-slate-300' : 'text-slate-500'
+  const durumEtiket = durum === 'calisiyor' ? 'Çalışıyor' : durum === 'durusta' ? 'DURUŞTA' : 'boşta'
+  const durumRenk = durum === 'calisiyor' ? 'text-emerald-500' : durum === 'durusta' ? 'text-red-500' : altMetin
+
+  // Künye bloğu (durum + ikisi görünümünde). OEE görünümünde gizli.
+  const kunye =
+    durum === 'calisiyor' && c ? (
+      <div className="mt-2 space-y-1">
+        <p className={`truncate text-sm font-medium ${anaMetin}`}>{c.adSoyad ?? c.sicilNo ?? '—'}</p>
+        <Satir etiket="İş emri" deger={c.ifsOrderNo ?? '—'} tv={tv} />
+        <Satir etiket="Operasyon" deger={c.ifsOperationNo != null ? String(c.ifsOperationNo) : '—'} tv={tv} />
+        <Satir etiket="Malzeme" deger={c.ifsPartDescription ?? c.ifsPartNo ?? '—'} tv={tv} baslik={c.ifsPartNo ?? undefined} />
+        <Satir etiket="Duruş" deger="—" tv={tv} />
+        <p className="pt-0.5 text-xs font-semibold text-emerald-500">{sure}</p>
+      </div>
+    ) : durum === 'durusta' ? (
+      <div className="mt-2 space-y-1">
+        <p className="text-sm font-semibold text-red-500">DURUŞTA</p>
+        <Satir etiket="Sebep" deger={tezgah.durus?.sebep ?? '—'} tv={tv} />
+        <p className="pt-0.5 text-xs font-semibold text-red-500">{durusSure}</p>
+      </div>
+    ) : (
+      <p className={`mt-2 text-sm ${altMetin}`}>boşta</p>
+    )
 
   return (
     <button
@@ -343,23 +482,18 @@ function Kart({ tezgah, tv, onClick }: { tezgah: Tezgah; tv: boolean; onClick: (
       </div>
       <p className={`truncate text-xs ${altMetin}`}>{tezgah.ad}</p>
 
-      {durum === 'calisiyor' && c ? (
-        <div className="mt-2 space-y-1">
-          <p className={`truncate text-sm font-medium ${anaMetin}`}>{c.adSoyad ?? c.sicilNo ?? '—'}</p>
-          <Satir etiket="İş emri" deger={c.ifsOrderNo ?? '—'} tv={tv} />
-          <Satir etiket="Operasyon" deger={c.ifsOperationNo != null ? String(c.ifsOperationNo) : '—'} tv={tv} />
-          <Satir etiket="Malzeme" deger={c.ifsPartDescription ?? c.ifsPartNo ?? '—'} tv={tv} baslik={c.ifsPartNo ?? undefined} />
-          <Satir etiket="Duruş" deger="—" tv={tv} />
-          <p className="pt-0.5 text-xs font-semibold text-emerald-500">{sure}</p>
-        </div>
-      ) : durum === 'durusta' ? (
-        <div className="mt-2 space-y-1">
-          <p className="text-sm font-semibold text-red-500">DURUŞTA</p>
-          <Satir etiket="Sebep" deger={tezgah.durus?.sebep ?? '—'} tv={tv} />
-          <p className="pt-0.5 text-xs font-semibold text-red-500">{durusSure}</p>
-        </div>
+      {gorunum === 'oee' ? (
+        <>
+          <p className={`mt-1 text-xs font-semibold ${durumRenk}`}>{durumEtiket}{durum === 'calisiyor' && sure ? ` · ${sure}` : ''}</p>
+          <OeeSerit c={tezgah.canliOee ?? null} tv={tv} esik={esik} />
+        </>
+      ) : gorunum === 'ikisi' ? (
+        <>
+          {kunye}
+          <OeeSerit c={tezgah.canliOee ?? null} tv={tv} esik={esik} />
+        </>
       ) : (
-        <p className={`mt-2 text-sm ${altMetin}`}>boşta</p>
+        kunye
       )}
     </button>
   )
@@ -382,7 +516,7 @@ function dkBicim(dk: number): string {
 }
 const trTarih2 = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('tr-TR') : '—')
 
-function DetayDialog({ tezgahId, onClose }: { tezgahId: string | null; onClose: () => void }) {
+function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string | null; canliOee: CanliOee | null; esik: number; onClose: () => void }) {
   const [detay, setDetay] = useState<Detay | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [, tik] = useState(0)
@@ -538,16 +672,39 @@ function DetayDialog({ tezgahId, onClose }: { tezgahId: string | null; onClose: 
               </section>
             )}
 
-            {/* Göstergeler (mini) */}
+            {/* OEE göstergeleri — canlı (açık iş + OEE görünümü). Yoksa placeholder. */}
             <section>
-              <SecBaslik>Göstergeler</SecBaslik>
-              <div className="grid grid-cols-4 gap-2">
-                <MiniKart e="OEE" />
-                <MiniKart e="Perf." />
-                <MiniKart e="Kull." />
-                <MiniKart e="Kalite" />
-              </div>
-              <p className="mt-1 text-xs text-slate-400">hesaplama sonra (OEE-HESAP)</p>
+              <SecBaslik>OEE (canlı)</SecBaslik>
+              {canliOee ? (
+                <>
+                  <div className="grid grid-cols-4 place-items-center gap-2">
+                    <Halka deger={canliOee.oeeCanli} boyut={72} kalinlik={8} etiket="OEE" />
+                    <Halka deger={canliOee.availability} boyut={72} kalinlik={8} etiket="Kullan." />
+                    <Halka deger={canliOee.performance} boyut={72} kalinlik={8} etiket="Perf." />
+                    <Halka deger={null} boyut={72} kalinlik={8} etiket="Kalite" />
+                  </div>
+                  <div className="mt-2 space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                    <p>• Üretilen (canlı): <b>{canliOee.uretilen}</b> adet · planlı süre {Math.round(canliOee.planliSaniye / 60)}dk · duruş {Math.round(canliOee.durusSaniye / 60)}dk</p>
+                    <p>• <b>Kalite</b> açık işte hesaplanmaz — iş bitince; <b>tam OEE iş kapanınca</b> motordan.</p>
+                    {!canliOee.idealGuvenilir ? (
+                      <p>• <b>Performans</b> için ideal çevrim güvenilir değil — veri birikiyor (<b>{canliOee.ornekSayisi}/{esik}</b>).</p>
+                    ) : null}
+                    {canliOee.durum === 'PLANLI_YOK' ? <p>• Planlı süre 0 (vardiya/tatil dışı) — Kullanılabilirlik hesaplanamıyor.</p> : null}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    <MiniKart e="OEE" />
+                    <MiniKart e="Perf." />
+                    <MiniKart e="Kull." />
+                    <MiniKart e="Kalite" />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {detay.aktifIs ? 'OEE görünümüne geçince canlı hesaplanır.' : 'Açık iş yok — OEE hesaplanmaz.'}
+                  </p>
+                </>
+              )}
             </section>
 
             {/* PLC sayacı placeholder */}

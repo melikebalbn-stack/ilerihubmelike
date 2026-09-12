@@ -26,6 +26,9 @@ const SytelineConfigSchema = z.object({
     .transform((v) => v == null || v === '' ? true : v === 'true' || v === '1'),
   // Bir çalışmada IFS'e yazılacak azami kayıt sayısı.
   SYTE_SYNC_BATCH: z.coerce.number().int().positive().default(50),
+  // İş emri senkronu alt sınır: job_date >= bu tarih (ISO). Boşsa is-emri.ts bugünü kullanır.
+  // Amaç: eski/devir iş emirlerini dışlamak (phase-in engeli — malzemeler IFS'e yeni senkronlandı).
+  SYTE_ISEMRI_BASLANGIC: z.string().optional(),
 })
 
 export interface SytelineConfig {
@@ -38,6 +41,7 @@ export interface SytelineConfig {
   encrypt: boolean
   trustServerCertificate: boolean
   batch: number
+  isEmriBaslangic?: string
 }
 
 let cached: SytelineConfig | null = null
@@ -64,6 +68,7 @@ export function getSytelineConfig(): SytelineConfig {
     encrypt: d.SYTELINE_ENCRYPT,
     trustServerCertificate: d.SYTELINE_TRUST_CERT,
     batch: d.SYTE_SYNC_BATCH,
+    isEmriBaslangic: d.SYTE_ISEMRI_BASLANGIC?.trim() || undefined,
   }
   return cached
 }

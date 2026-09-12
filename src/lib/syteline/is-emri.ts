@@ -27,21 +27,35 @@ export interface SytelineIsEmriOperasyon {
 }
 
 /**
+ * İş emri alt sınırı: SYTE_ISEMRI_BASLANGIC (ISO) varsa o, yoksa bugünün (UTC) başı.
+ * Amaç: job_date bu tarihten eski iş emirlerini dışlamak (phase-in engeli — malzemeler IFS'e
+ * yeni senkronlandığı için eski iş emirleri ShopOrd.STAR_BEFORE_PHASEIN2 verir).
+ */
+function isEmriBaslangicTarihi(): Date {
+  const cfg = getSytelineConfig()
+  if (cfg.isEmriBaslangic) return new Date(cfg.isEmriBaslangic)
+  const g = new Date()
+  return new Date(Date.UTC(g.getUTCFullYear(), g.getUTCMonth(), g.getUTCDate()))
+}
+
+/**
  * Watermark'tan (`>`) sonraki serbest bırakılmış (stat='R') üretim (type='J') iş emri başlıkları.
  * site env'de tanımlıysa site_ref ile süzülür. ORDER BY RecordDate, job → deterministik watermark.
  */
 export async function getIsEmrileri(watermark: Date): Promise<SytelineIsEmriBaslik[]> {
   const cfg = getSytelineConfig()
   const pool = await sytePool()
-  const rq = pool.request().input('wm', sql.DateTime2, watermark)
+  const rq = pool.request().input('wm', sql.DateTime2, watermark).input('baslangic', sql.DateTime2, isEmriBaslangicTarihi())
   let siteClause = ''
   if (cfg.site) {
     rq.input('site', sql.NVarChar, cfg.site)
     siteClause = ' AND site_ref = @site'
   }
+  // job_date >= @baslangic (eski/devir iş emirlerini dışla) + item NOT LIKE 'TEST%' (test parçaları).
   const query =
     `SELECT job, suffix, item, qty_released, job_date, stat, description, RecordDate ` +
-    `FROM job_mst WHERE type = 'J' AND stat = 'R' AND RecordDate > @wm${siteClause} ` +
+    `FROM job_mst WHERE type = 'J' AND stat = 'R' AND RecordDate > @wm ` +
+    `AND job_date >= @baslangic AND item NOT LIKE 'TEST%'${siteClause} ` +
     `ORDER BY RecordDate, job`
   const res = await rq.query<SytelineIsEmriBaslik>(query)
   return res.recordset
@@ -57,7 +71,7 @@ export async function getIsEmrileriByJobs(jobs: string[]): Promise<SytelineIsEmr
   if (temiz.length === 0) return []
   const cfg = getSytelineConfig()
   const pool = await sytePool()
-  const rq = pool.request()
+  const rq = pool.request().input('baslangic', sql.DateTime2, isEmriBaslangicTarihi())
   const yerTutucular: string[] = []
   temiz.forEach((j, idx) => {
     rq.input(`j${idx}`, sql.NVarChar, j)
@@ -68,9 +82,11 @@ export async function getIsEmrileriByJobs(jobs: string[]): Promise<SytelineIsEmr
     rq.input('site', sql.NVarChar, cfg.site)
     siteClause = ' AND site_ref = @site'
   }
+  // Aynı alt sınır + test filtresi (getIsEmrileri ile tutarlı — remap'te de aynı kümede kal).
   const query =
     `SELECT job, suffix, item, qty_released, job_date, stat, description, RecordDate ` +
-    `FROM job_mst WHERE type = 'J' AND stat = 'R' AND job IN (${yerTutucular.join(', ')})${siteClause} ` +
+    `FROM job_mst WHERE type = 'J' AND stat = 'R' AND job IN (${yerTutucular.join(', ')}) ` +
+    `AND job_date >= @baslangic AND item NOT LIKE 'TEST%'${siteClause} ` +
     `ORDER BY job, suffix`
   const res = await rq.query<SytelineIsEmriBaslik>(query)
   return res.recordset

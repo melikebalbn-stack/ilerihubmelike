@@ -50,15 +50,16 @@ function oeeYuzde(v: number | null): string {
   return v == null ? '—' : `%${Math.round(v * 100)}`
 }
 
-// Inline SVG halka gösterge (shadcn'de gauge yok — SVG serbest). 58px varsayılan (birleşik kart).
+// Inline SVG halka gösterge (shadcn'de gauge yok — SVG serbest). Responsive: dar kartta küçülür
+// (width:100%, max 58px, aspect-ratio 1). viewBox sabit boyut üzerinden çizer, ölçek CSS ile.
 function Halka({ deger, boyut = 58, kalinlik = 7, etiket }: { deger: number | null; boyut?: number; kalinlik?: number; etiket?: string }) {
   const r = (boyut - kalinlik) / 2
   const cevre = 2 * Math.PI * r
   const oran = deger == null ? 0 : Math.max(0, Math.min(1, deger))
   const renk = oeeRenk(deger)
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: boyut, height: boyut }}>
-      <svg width={boyut} height={boyut} className="-rotate-90">
+    <div className="relative mx-auto flex aspect-square w-full items-center justify-center" style={{ maxWidth: boyut }}>
+      <svg viewBox={`0 0 ${boyut} ${boyut}`} className="h-full w-full -rotate-90">
         <circle cx={boyut / 2} cy={boyut / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={kalinlik} />
         <circle
           cx={boyut / 2}
@@ -80,18 +81,21 @@ function Halka({ deger, boyut = 58, kalinlik = 7, etiket }: { deger: number | nu
   )
 }
 
-// Bir tezgahın 4 halkası (Kullan./Perf./Kalite/OEE). Veri yoksa boş halka + tire.
+// Bir tezgahın 4 halkası (Kullan./Perf./Kalite/OEE). 4 eşit sütun grid — hücreler min-w-0 ile
+// taşmayı keser, halkalar kartın içine sığar. Veri yoksa boş halka + tire. Güvenilirlik notu alt satır.
 function OeeSerit({ c, tv, esik }: { c: CanliOee | null; tv: boolean; esik: number }) {
   return (
-    <div className="mt-2 flex items-center justify-between gap-1 border-t pt-2">
-      <Halka deger={c?.availability ?? null} etiket="Kullan." />
-      <Halka deger={c?.performance ?? null} etiket="Perf." />
-      <Halka deger={null} etiket="Kalite" />
-      <Halka deger={c?.oeeCanli ?? null} etiket="OEE" />
+    <div className="mt-2 border-t pt-2">
+      <div className="grid grid-cols-4 gap-1">
+        <div className="min-w-0"><Halka deger={c?.availability ?? null} etiket="Kullan." /></div>
+        <div className="min-w-0"><Halka deger={c?.performance ?? null} etiket="Perf." /></div>
+        <div className="min-w-0"><Halka deger={null} etiket="Kalite" /></div>
+        <div className="min-w-0"><Halka deger={c?.oeeCanli ?? null} etiket="OEE" /></div>
+      </div>
       {c && !c.idealGuvenilir ? (
-        <span className={`ml-1 shrink-0 text-[8px] ${tv ? 'text-slate-500' : 'text-slate-400'}`} title="ideal çevrim güvenilirlik">
+        <p className={`mt-1 text-right text-[8px] ${tv ? 'text-slate-500' : 'text-slate-400'}`} title="ideal çevrim güvenilirlik">
           {c.ornekSayisi}/{esik}
-        </span>
+        </p>
       ) : null}
     </div>
   )

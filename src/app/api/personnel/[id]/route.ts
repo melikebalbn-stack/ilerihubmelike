@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { personelFkAlanlariIdOncelikli } from '@/lib/personnel/fk-cozum'
-import { degerlendirmeTarihleriniTamamla } from '@/lib/personnel/degerlendirme-tarihleri'
+import { personelPutGovdesiniHazirla } from '@/lib/personnel/put-govde'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
@@ -286,121 +285,15 @@ export async function PUT(
       return NextResponse.json({ error: 'Personel bulunamadı' }, { status: 404 })
     }
 
-    const body = await request.json()
+    const ham = await request.json()
+    // ?dryRun=1 — gövde boru hattını (beyaz liste, normalize, FK çözümü, doğrulama)
+    // koşturur, YAZMAZ ve denetim kaydı ÜRETMEZ; yazılacak veriyi döndürür.
+    const dryRun = new URL(request.url).searchParams.get('dryRun') === '1'
 
-    // Remove fields that should not be updated directly
-    delete body.id
-    delete body.createdAt
-    delete body.updatedAt
-    delete body.sensitive
-    // PR-PERSONEL-CIKIS-FORMU: exit alanları yalnızca PATCH üzerinden değişir
-    delete body.exitDate
-    delete body.exitParty
-    delete body.exitCode
-    delete body.exitReason
-    delete body.exitRootCause
-    delete body.exitTurnoverType
-    delete body.exitGeneralNote
-    delete body.exitRecordedAt
-    delete body.exitRecordedById
-    delete body.exitRecordedBy
-    delete body.workingPeriod
-    // PR-C: salt-görüntüleme alanları — update body'sine girmez
-    delete body.employmentPeriods
-    delete body.employmentSummary
-    delete body.lastClosedPeriod // GET-türetilmiş salt-okuma nesne; şema alanı değil
-    // ŞEMA KOLTUĞU (2026-09-09 REGRESYON): GET `anaKoltuklar` döndürüyor ("Şemaya
-    // Yerleştir" düğmesi buna bakar) ama silme listesine konmamıştı; düzenleme ekranı
-    // nesnenin TAMAMINI geri gönderdiği için Prisma her update'i reddediyordu.
-    // OrgEmployee'den TÜRETİLİR, Personnel kolonu DEĞİL.
-    delete body.anaKoltuklar
-    delete body.aktif // toggle artık PATCH ile yapılıyor
-    // Beden: nested obje ayrı upsert edilir; personnel.update data'sına girmemeli.
-    // bedenProfili = GET'ten dönen salt-okuma nested obje (varsa) — silinir.
-    const bedenInput = body.beden
-    delete body.beden
-    delete body.bedenProfili
-    // Faz 6 REGRESYONU (2026-08-17): GET bu iki alanı da döndürüyor, düzenleme ekranı
-    // nesnenin TAMAMINI geri gönderiyordu. `jobApplication` bir İLİŞKİ anahtarı olduğu
-    // için Prisma checked `PersonnelUpdateInput` varyantına geçiyor ve orada skaler FK
-    // `jobApplicationId` geçersiz argüman oluyor → "Unknown argument `jobApplicationId`"
-    // → HER personel kaydı 500 veriyordu (15-17 Ağustos arası canlıydı).
-    // Başvuru bağı yalnız dönüşüm akışında kurulur (personele-donustur.ts); bu ekrandan
-    // DEĞİŞTİRİLMEZ, bu yüzden ikisi de gövdeden düşürülür.
-    delete body.jobApplication
-    delete body.jobApplicationId
-    // Sistem alanları — düzenleme ekranından EZİLMEMELİ. GET bunları döndürüyor, ekran da
-    // nesnenin tamamını geri gönderiyor; silinmezse `createdBy` kaydı ilk oluşturanın değil
-    // son kaydedenin formundaki değere düşebilir. Azure bağı da yalnız LDAP/AD senkronundan
-    // yazılır (bkz. ldap-sync), personel formundan değil.
-    delete body.createdBy
-    delete body.azureAdId
-    delete body.azureAdEmail
-
-    // Boş stringleri null'a çevir (Prisma enum/date/int hataları için)
-    for (const key of Object.keys(body)) {
-      if (body[key] === '') body[key] = null
-    }
-
-    // Parse date fields (null değerler atlanır)
-    const dateFields = [
-      'iseGirisTarihi', 'denemeDegerlendirme', 'altiAyDegerlendirme',
-      'ilkYardimciBelgesi', 'kalfalikBelgesi', 'ustalikBelgesi', 'yanginSertifikasi', 'mykBelgesiTarihi',
-    ]
-    for (const field of dateFields) {
-      if (body[field]) {
-        body[field] = new Date(body[field])
-      }
-    }
-
-    // DEĞERLENDİRME TARİHLERİ — giriş tarihi gövdede geldiyse tamamlanır.
-    // Açıkça DOLU gelen değer korunur (İK elle girmiş olabilir); boş gelirse
-    // hesaplanır. İstemci formu bu alanları her kayıtta gönderiyor ama kullanıcı
-    // giriş tarihine dokunmadıysa BOŞ gönderiyordu — o yüzden boş = "hesapla".
-    if (body.iseGirisTarihi) {
-      const hesap = degerlendirmeTarihleriniTamamla(body.iseGirisTarihi, {
-        denemeDegerlendirme: body.denemeDegerlendirme,
-        altiAyDegerlendirme: body.altiAyDegerlendirme,
-      })
-      if (hesap) {
-        body.denemeDegerlendirme = hesap.denemeDegerlendirme
-        body.altiAyDegerlendirme = hesap.altiAyDegerlendirme
-      }
-    }
-
-    // Parse int fields
-    if (body.mezuniyetYili) {
-      body.mezuniyetYili = parseInt(body.mezuniyetYili) || null
-    }
-
-    // FAZ 1 · ÇİFT YAZIM: metin alanları AYNEN güncellenir, yanlarına FK yazılır.
-    // Yalnız GÖNDERİLEN alanlar için anahtar üretilir — dokunulmayan alanın FK'sı
-    // sıfırlanmaz (kısmi güncelleme güvenliği).
-    // SORUMLU-FK-YAZMA: gövdeden gelen sorumlu*Id ÖNCELİKLİ (var mı · aktif mi ·
-    // kendisi değil mi diye doğrulanır); geçersizse ad çözümüne düşülür. Ham id'ler
-    // Personnel update'ine doğrudan GİTMEZ — yalnız çözücüye girdi olur.
-    const govdeIdler = {
-      sorumlu1Id: body.sorumlu1Id,
-      sorumlu2Id: body.sorumlu2Id,
-      sorumlu3Id: body.sorumlu3Id,
-    }
-    delete body.sorumlu1Id
-    delete body.sorumlu2Id
-    delete body.sorumlu3Id
-    Object.assign(
-      body,
-      await personelFkAlanlariIdOncelikli(
-        prisma,
-        {
-          ...(body.bolum !== undefined ? { bolum: body.bolum } : {}),
-          ...(body.birimSorumlusu !== undefined ? { birimSorumlusu: body.birimSorumlusu } : {}),
-          ...(body.sorumlu2 !== undefined ? { sorumlu2: body.sorumlu2 } : {}),
-          ...(body.sorumlu3 !== undefined ? { sorumlu3: body.sorumlu3 } : {}),
-        },
-        govdeIdler,
-        personnelId,
-      ),
-    )
+    // BEYAZ LİSTE (PERSONNEL-PUT-BEYAZ-LISTE, 12.09.2026): kara liste (delete body.X)
+    // kalktı. Yalnız IZINLI_ALANLAR alınır; gövdedeki tanınmayan anahtarlar atılır ve
+    // denetim kaydına `atilanAlanlar` olarak yazılır. Detay: @/lib/personnel/put-govde.
+    const { data: body, atilanAlanlar, bedenInput } = await personelPutGovdesiniHazirla(prisma, ham, personnelId)
 
     // Yaka Aşama 1: efektif yaka/detay (body vermiyorsa mevcut değer). Aktif personelde
     // ikisi de zorunlu; her durumda yaka-detay tutarlı olmalı (YAKA_DETAY_MAP).
@@ -419,6 +312,10 @@ export async function PUT(
     // Personnel update + beden profili upsert = TEK transaction.
     // Beden: yalnız en az bir alan doluysa upsert edilir (boş kayıt yaratma).
     const bedenData = normalizeBeden(bedenInput)
+
+    if (dryRun) {
+      return NextResponse.json({ dryRun: true, data: body, beden: bedenData, atilanAlanlar })
+    }
     // Görev VEYA bölüm değiştiyse şemadaki ana koltuk da taşınır (kurul koltukları
     // etkilenmez). Eşleşme `{bolum, gorev}` ÇİFTİNDEN çözülüyor; bu yüzden tetikleyici
     // de iki alanı birlikte izler. Eskiden yalnız `gorev` izleniyordu ve bölüm tek
@@ -470,6 +367,8 @@ export async function PUT(
         actorEmail: user.email,
         sicilNo: existing.sicilNo,
         changedFieldKeys: Object.keys(body),
+        // Beyaz liste dışı kalıp sessizce atılan gövde anahtarları — boşsa da yazılır.
+        atilanAlanlar,
         ...(gorevDegisti ? { gorevDegisimi: { eski: existing.gorev, yeni: body.gorev } } : {}),
         ...(bolumDegisti ? { bolumDegisimi: { eski: existing.bolum, yeni: body.bolum } } : {}),
         // Koltuk sonucu görev VEYA bölüm değişiminde yazılır — taşınmadıysa sebebiyle.

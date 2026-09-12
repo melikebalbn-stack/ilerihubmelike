@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 
-// OEE Pano, İzleme Ekranı'na birleşti. Eski adres → /ipro/izleme?g=oee (kalıcı yönlendirme).
+// OEE Pano, İzleme Ekranı'na birleşti (tek görünüm, hep OEE hesaplı). Eski adres → /ipro/izleme.
 export default function IproOeeRedirect() {
-  redirect('/ipro/izleme?g=oee')
+  redirect('/ipro/izleme')
 }

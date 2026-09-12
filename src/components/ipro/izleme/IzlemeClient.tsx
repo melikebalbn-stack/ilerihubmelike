@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Activity, AlertTriangle, Factory, Maximize, Minimize, Package, RefreshCw, Search, Signal } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -15,14 +14,6 @@ import {
 } from '@/components/ui/dialog'
 
 const POLL_MS = 10_000
-
-// Görünüm modu — üst anahtar. URL ?g= ile senkron (yenilenince korunur), localStorage YOK.
-type Gorunum = 'durum' | 'oee' | 'ikisi'
-const GORUNUMLER: { key: Gorunum; etiket: string }[] = [
-  { key: 'durum', etiket: 'Durum' },
-  { key: 'oee', etiket: 'OEE' },
-  { key: 'ikisi', etiket: 'İkisi' },
-]
 
 type Durum = 'calisiyor' | 'durusta' | 'bosta'
 
@@ -175,10 +166,6 @@ function sureBicim(ms: number): string {
 }
 
 export function IzlemeClient() {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const urlG = searchParams.get('g')
   const [pano, setPano] = useState<Pano | null>(null)
   const [ilkYukleme, setIlkYukleme] = useState(true)
   const [hata, setHata] = useState(false)
@@ -186,25 +173,14 @@ export function IzlemeClient() {
   const [grup, setGrup] = useState<string>('hepsi')
   const [tvModu, setTvModu] = useState(false)
   const [seciliId, setSeciliId] = useState<string | null>(null)
-  const [gorunum, setGorunum] = useState<Gorunum>(urlG === 'oee' || urlG === 'ikisi' ? urlG : 'durum')
   // Süre etiketlerini her saniye tazelemek için (fetch'ten bağımsız).
   const [, tik] = useState(0)
   const tvRef = useRef<HTMLDivElement>(null)
-  const oeeIstenir = gorunum === 'oee' || gorunum === 'ikisi'
-
-  // Görünüm değişince URL ?g= güncelle (yenilenince korunur; 'durum' → query temizlenir).
-  const gorunumSec = useCallback(
-    (g: Gorunum) => {
-      setGorunum(g)
-      const qs = g === 'durum' ? '' : `?g=${g}`
-      router.replace(`${pathname}${qs}`, { scroll: false })
-    },
-    [router, pathname],
-  )
 
   const yukle = useCallback(async () => {
     try {
-      const res = await fetch(`/api/ipro/izleme${oeeIstenir ? '?oee=1' : ''}`, { cache: 'no-store' })
+      // Tek görünüm: çalışan künyesi + canlı OEE halkaları → her zaman oee=1.
+      const res = await fetch('/api/ipro/izleme?oee=1', { cache: 'no-store' })
       const data = await res.json()
       if (res.ok && data?.ok) {
         setPano(data)
@@ -217,7 +193,7 @@ export function IzlemeClient() {
     } finally {
       setIlkYukleme(false)
     }
-  }, [oeeIstenir])
+  }, [])
 
   // Polling — sekme gizliyken durur (gereksiz istek + pil).
   useEffect(() => {
@@ -324,31 +300,16 @@ export function IzlemeClient() {
         </div>
       </div>
 
-      {/* OEE / İkisi görünümünde durum sayaç şeridi (Çalışıyor/Duruşta/Boşta). Durum görünümünde gizli. */}
-      {oeeIstenir && (
-        <div className="mb-4 grid grid-cols-3 gap-3">
-          <DurumSayac etiket="Çalışıyor" deger={pano?.ozet.calisiyor ?? 0} renk="text-emerald-300" />
-          <DurumSayac etiket="Duruşta" deger={pano?.ozet.durusta ?? 0} renk="text-red-300" />
-          <DurumSayac etiket="Boşta" deger={pano?.ozet.bosta ?? 0} renk="text-slate-400" />
-        </div>
-      )}
+      {/* Durum sayaç şeridi (Çalışıyor/Duruşta/Boşta) — her zaman görünür. */}
+      <div className="mb-4 grid grid-cols-3 gap-3">
+        <DurumSayac etiket="Çalışıyor" deger={pano?.ozet.calisiyor ?? 0} renk="text-emerald-300" />
+        <DurumSayac etiket="Duruşta" deger={pano?.ozet.durusta ?? 0} renk="text-red-300" />
+        <DurumSayac etiket="Boşta" deger={pano?.ozet.bosta ?? 0} renk="text-slate-400" />
+      </div>
 
       {/* Araç çubuğu — TV modunda gizli */}
       {!tvModu && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          {/* Görünüm anahtarı: Durum | OEE | İkisi */}
-          <div className="flex rounded-lg border p-0.5">
-            {GORUNUMLER.map((g) => (
-              <button
-                key={g.key}
-                type="button"
-                onClick={() => gorunumSec(g.key)}
-                className={`rounded-md px-3 py-1 text-xs font-medium ${gorunum === g.key ? 'bg-[#1B4F72] text-white' : 'text-slate-500 hover:bg-slate-100'}`}
-              >
-                {g.etiket}
-              </button>
-            ))}
-          </div>
           <div className="relative min-w-[200px] flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <Input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Tezgah, ad veya operatör ara…" className="pl-8" />
@@ -380,7 +341,7 @@ export function IzlemeClient() {
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
           {gosterilen.map((t) => (
-            <Kart key={t.id} tezgah={t} tv={tvModu} gorunum={gorunum} esik={pano?.esik ?? 50} onClick={() => setSeciliId(t.id)} />
+            <Kart key={t.id} tezgah={t} tv={tvModu} esik={pano?.esik ?? 50} onClick={() => setSeciliId(t.id)} />
           ))}
         </div>
       )}
@@ -426,7 +387,7 @@ function Ozet({ etiket, deger, renk = '' }: { etiket: string; deger: number; ren
   )
 }
 
-function Kart({ tezgah, tv, gorunum, esik, onClick }: { tezgah: Tezgah; tv: boolean; gorunum: Gorunum; esik: number; onClick: () => void }) {
+function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik: number; onClick: () => void }) {
   const c = tezgah.calisan
   const durum = tezgah.durum
   const sure = c ? sureBicim(Date.now() - new Date(c.baslatildiAt).getTime()) : null
@@ -447,10 +408,8 @@ function Kart({ tezgah, tv, gorunum, esik, onClick }: { tezgah: Tezgah; tv: bool
   // Metin: TV'de her durumda açık renk (okunurluk). Işıklı zeminde koyu.
   const anaMetin = tv ? 'text-slate-100' : 'text-slate-900'
   const altMetin = tv ? 'text-slate-300' : 'text-slate-500'
-  const durumEtiket = durum === 'calisiyor' ? 'Çalışıyor' : durum === 'durusta' ? 'DURUŞTA' : 'boşta'
-  const durumRenk = durum === 'calisiyor' ? 'text-emerald-500' : durum === 'durusta' ? 'text-red-500' : altMetin
 
-  // Künye bloğu (durum + ikisi görünümünde). OEE görünümünde gizli.
+  // Tek görünüm: çalışan künyesi (durum) + canlı OEE halka şeridi.
   const kunye =
     durum === 'calisiyor' && c ? (
       <div className="mt-2 space-y-1">
@@ -486,19 +445,8 @@ function Kart({ tezgah, tv, gorunum, esik, onClick }: { tezgah: Tezgah; tv: bool
       </div>
       <p className={`truncate text-xs ${altMetin}`}>{tezgah.ad}</p>
 
-      {gorunum === 'oee' ? (
-        <>
-          <p className={`mt-1 text-xs font-semibold ${durumRenk}`}>{durumEtiket}{durum === 'calisiyor' && sure ? ` · ${sure}` : ''}</p>
-          <OeeSerit c={tezgah.canliOee ?? null} tv={tv} esik={esik} />
-        </>
-      ) : gorunum === 'ikisi' ? (
-        <>
-          {kunye}
-          <OeeSerit c={tezgah.canliOee ?? null} tv={tv} esik={esik} />
-        </>
-      ) : (
-        kunye
-      )}
+      {kunye}
+      <OeeSerit c={tezgah.canliOee ?? null} tv={tv} esik={esik} />
     </button>
   )
 }

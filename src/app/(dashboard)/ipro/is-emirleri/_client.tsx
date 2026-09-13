@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { RefreshCw, Search } from 'lucide-react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Download, Loader2, RefreshCw, Search } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -70,7 +72,7 @@ function isDurumRozet(durum: 'ACIK' | 'KAPALI') {
   )
 }
 
-export function IsEmirleriClient() {
+export function IsEmirleriClient({ aktarYetkisi }: { aktarYetkisi: boolean }) {
   return (
     <Tabs defaultValue="acik" className="space-y-4">
       <TabsList>
@@ -78,7 +80,7 @@ export function IsEmirleriClient() {
         <TabsTrigger value="gecmis">İş Geçmişi</TabsTrigger>
       </TabsList>
       <TabsContent value="acik">
-        <AcikSekme />
+        <AcikSekme aktarYetkisi={aktarYetkisi} />
       </TabsContent>
       <TabsContent value="gecmis">
         <GecmisSekme />
@@ -87,13 +89,23 @@ export function IsEmirleriClient() {
   )
 }
 
+// İş merkezi (IFS WC kodu) → tezgahın MAS grubu (bölüm). Eşleme yoksa 'belirlenemedi'.
+const BOLUM_YOK = 'belirlenemedi'
+
 // ───────── Sekme 1: IFS canlı açık iş emirleri ─────────
-function AcikSekme() {
+function AcikSekme({ aktarYetkisi }: { aktarYetkisi: boolean }) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [items, setItems] = useState<IfsIsEmri[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
+  const [aktariliyor, setAktariliyor] = useState(false)
   const [hata, setHata] = useState<string | null>(null)
   const [arama, setArama] = useState('')
   const [durumFiltre, setDurumFiltre] = useState<string>('hepsi')
+  const [bolum, setBolum] = useState<string>(searchParams.get('bolum') || 'hepsi')
+  // IFS WC kodu → MAS grubu (bölüm) haritası — tezgah listesinden.
+  const [wcBolum, setWcBolum] = useState<Map<string, string>>(new Map())
 
   const cek = useCallback(async () => {
     setYukleniyor(true)
@@ -115,19 +127,85 @@ function AcikSekme() {
     }
   }, [])
 
+  // WC → bölüm haritasını bir kez çek (tezgah yönetim ucu; ipro.view yeterli).
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/ipro/yonetim/tezgahlar', { cache: 'no-store' })
+        const data = await res.json().catch(() => ({}))
+        const m = new Map<string, string>()
+        for (const t of (data?.tezgahlar ?? []) as { ifsWorkCenterNo: string | null; masGrupAdi: string | null }[]) {
+          if (t.ifsWorkCenterNo) m.set(String(t.ifsWorkCenterNo), t.masGrupAdi ?? BOLUM_YOK)
+        }
+        setWcBolum(m)
+      } catch {
+        /* harita yoksa tüm iş emirleri 'belirlenemedi' grubuna düşer */
+      }
+    })()
+  }, [])
+
   useEffect(() => {
     void cek()
   }, [cek])
 
+  const bolumSec = useCallback(
+    (b: string) => {
+      setBolum(b)
+      const p = new URLSearchParams(searchParams.toString())
+      if (b === 'hepsi') p.delete('bolum')
+      else p.set('bolum', b)
+      const qs = p.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [router, pathname, searchParams],
+  )
+
+  const isEmriBolum = useCallback((i: IfsIsEmri) => wcBolum.get(String(i.isMerkezi)) ?? BOLUM_YOK, [wcBolum])
+
   const durumlar = useMemo(() => [...new Set(items.map((i) => i.durum))].sort(), [items])
+  // Bölüm dropdown seçenekleri + sayı (iş emirlerinin ait olduğu bölümler).
+  const bolumler = useMemo(() => {
+    const say = new Map<string, number>()
+    items.forEach((i) => {
+      const b = isEmriBolum(i)
+      say.set(b, (say.get(b) ?? 0) + 1)
+    })
+    return [...say.entries()].map(([ad, sayi]) => ({ ad, sayi })).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
+  }, [items, isEmriBolum])
+
   const gosterilen = useMemo(() => {
     const q = arama.trim().toLocaleLowerCase('tr-TR')
     return items.filter((i) => {
       if (durumFiltre !== 'hepsi' && i.durum !== durumFiltre) return false
+      if (bolum !== 'hepsi' && isEmriBolum(i) !== bolum) return false
       if (!q) return true
       return `${i.isEmriNo} ${i.stokKodu} ${i.stokAdi} ${i.isMerkezi}`.toLocaleLowerCase('tr-TR').includes(q)
     })
-  }, [items, arama, durumFiltre])
+  }, [items, arama, durumFiltre, bolum, isEmriBolum])
+
+  // GEÇİCİ — canlıya geçişte kaldırılacak: Syteline'dan iş emirlerini IFS'e aktar (manuel tetik).
+  async function aktar() {
+    setAktariliyor(true)
+    try {
+      const res = await fetch('/api/entegrasyon/syteline/calistir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity: 'IS_EMRI', batch: 50, bolum }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) {
+        const bolumNot = d?.bolumUygulandi === false ? " · bölüm filtresi sync'te uygulanmadı (tüm iş emirleri)" : ''
+        toast.success(`Aktarım bitti — okunan ${d?.okunan ?? 0}, yazılan ${d?.yazilan ?? 0}, hata ${d?.hata ?? 0}${bolumNot}`)
+        void cek()
+      } else {
+        toast.error(d?.error ?? 'Aktarım başarısız')
+      }
+    } catch {
+      toast.error('Bağlantı hatası')
+    } finally {
+      setAktariliyor(false)
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -145,10 +223,31 @@ function AcikSekme() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={bolum} onValueChange={bolumSec}>
+          <SelectTrigger className="h-9 w-56 text-xs">
+            <span className="shrink-0 text-slate-500">Bölüm:</span>
+            <span className="min-w-0 flex-1 truncate text-left"><SelectValue /></span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="hepsi">Tüm bölümler ({items.length})</SelectItem>
+            {bolumler.map((b) => (
+              <SelectItem key={b.ad} value={b.ad}>{b.ad} ({b.sayi})</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <span className="text-xs text-slate-400">{gosterilen.length} / {items.length}</span>
-        <Button variant="ghost" size="icon" className="ml-auto h-9 w-9" onClick={() => void cek()} title="Yenile">
-          <RefreshCw className={`h-4 w-4 ${yukleniyor ? 'animate-spin' : ''}`} />
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => void cek()} disabled={yukleniyor}>
+            <RefreshCw className={`h-4 w-4 ${yukleniyor ? 'animate-spin' : ''}`} />
+            Yenile
+          </Button>
+          {aktarYetkisi && (
+            <Button size="sm" className="h-9 gap-1.5 bg-[#1B4F72] text-white hover:bg-[#153c58]" onClick={() => void aktar()} disabled={aktariliyor}>
+              {aktariliyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Syteline&apos;dan aktar
+            </Button>
+          )}
+        </div>
       </div>
 
       {hata ? (

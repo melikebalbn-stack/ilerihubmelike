@@ -16,6 +16,9 @@ export default async function IproIsEmirleriPage() {
   const canAdmin = await hasPermission('ipro.admin')
   if (!canView && !canAdmin) return <YetkisizErisim permission="ipro.view" />
 
+  // "Syteline'dan aktar" butonu: ipro.admin VEYA entegrasyon.syteline.
+  const aktarYetkisi = canAdmin || (await hasPermission('entegrasyon.syteline'))
+
   return (
     <div className="container mx-auto max-w-[1600px] space-y-4 px-6 py-8">
       <div>
@@ -28,7 +31,7 @@ export default async function IproIsEmirleriPage() {
           Açık iş emirleri IFS&apos;ten canlı; iş geçmişi ILERIHub kayıtlarından. Salt okuma.
         </p>
       </div>
-      <IsEmirleriClient />
+      <IsEmirleriClient aktarYetkisi={aktarYetkisi} />
     </div>
   )
 }

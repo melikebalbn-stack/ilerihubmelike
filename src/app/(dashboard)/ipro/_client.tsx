@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
 import {
   Activity,
   MonitorCog,
@@ -89,29 +88,21 @@ export function IproKapakClient({ izinliHedefler }: { izinliHedefler: string[] }
 }
 
 function ModulKart({ kart }: { kart: Kart }) {
-  const [gorselHata, setGorselHata] = useState(false)
   const Icon = kart.icon
   return (
     <Link
       href={kart.href}
       className="group flex flex-col overflow-hidden rounded-2xl border bg-card shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm"
     >
-      {/* Görsel alanı — public/ipro-kapak/<slug>.png (yoksa nötr placeholder). */}
-      <div className="relative h-[132px] w-full overflow-hidden bg-muted">
-        {gorselHata ? (
-          <div className="flex h-full w-full items-center justify-center">
-            <span className="text-xs text-muted-foreground">ekran görüntüsü</span>
-          </div>
-        ) : (
-          // next/image DEĞİL (logo deseni); dosya gelene kadar onError → placeholder.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/ipro-kapak/${kart.slug}.png`}
-            alt={kart.name}
-            onError={() => setGorselHata(true)}
-            className="h-full w-full object-cover"
-          />
-        )}
+      {/* Görsel alanı — public/ipro-kapak/<slug>.png (800x450, 16:9). */}
+      <div className="relative aspect-video w-full overflow-hidden bg-muted">
+        {/* next/image DEĞİL (logo deseni — statik public asset). */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/ipro-kapak/${kart.slug}.png`}
+          alt={kart.name}
+          className="h-full w-full object-cover"
+        />
         {kart.canli && (
           <span className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white bg-green-600">
             CANLI

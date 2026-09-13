@@ -1,10 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Activity, AlertTriangle, Factory, Maximize, Minimize, Package, RefreshCw, Search, Signal } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -16,6 +18,13 @@ import {
 const POLL_MS = 10_000
 
 type Durum = 'calisiyor' | 'durusta' | 'bosta'
+type DurumFiltre = 'tumu' | Durum
+const DURUM_FILTRELER: { key: DurumFiltre; etiket: string }[] = [
+  { key: 'tumu', etiket: 'Tümü' },
+  { key: 'calisiyor', etiket: 'Çalışıyor' },
+  { key: 'durusta', etiket: 'Duruşta' },
+  { key: 'bosta', etiket: 'Boşta' },
+]
 
 type CanliOee = {
   availability: number | null
@@ -166,16 +175,38 @@ function sureBicim(ms: number): string {
 }
 
 export function IzlemeClient() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [pano, setPano] = useState<Pano | null>(null)
   const [ilkYukleme, setIlkYukleme] = useState(true)
   const [hata, setHata] = useState(false)
   const [arama, setArama] = useState('')
-  const [grup, setGrup] = useState<string>('hepsi')
+  // Bölüm + durum filtresi URL query'de (?bolum=, ?durum=) — yenilenince korunur.
+  const [bolum, setBolum] = useState<string>(searchParams.get('bolum') || 'hepsi')
+  const durumIlk = searchParams.get('durum')
+  const [durum, setDurum] = useState<DurumFiltre>(
+    durumIlk === 'calisiyor' || durumIlk === 'durusta' || durumIlk === 'bosta' ? durumIlk : 'tumu',
+  )
   const [tvModu, setTvModu] = useState(false)
   const [seciliId, setSeciliId] = useState<string | null>(null)
   // Süre etiketlerini her saniye tazelemek için (fetch'ten bağımsız).
   const [, tik] = useState(0)
   const tvRef = useRef<HTMLDivElement>(null)
+
+  // Filtre seçimini URL'e yaz (varsayılanlar query'den düşer). bolum/durum tek yerde senkron.
+  const filtreYaz = useCallback(
+    (yeniBolum: string, yeniDurum: DurumFiltre) => {
+      const p = new URLSearchParams()
+      if (yeniBolum !== 'hepsi') p.set('bolum', yeniBolum)
+      if (yeniDurum !== 'tumu') p.set('durum', yeniDurum)
+      const qs = p.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [router, pathname],
+  )
+  const bolumSec = useCallback((b: string) => { setBolum(b); filtreYaz(b, durum) }, [filtreYaz, durum])
+  const durumSec = useCallback((d: DurumFiltre) => { setDurum(d); filtreYaz(bolum, d) }, [filtreYaz, bolum])
 
   const yukle = useCallback(async () => {
     try {
@@ -245,10 +276,14 @@ export function IzlemeClient() {
     return () => document.removeEventListener('fullscreenchange', onFs)
   }, [])
 
-  const gruplar = useMemo(() => {
-    const set = new Set<string>()
-    pano?.tezgahlar.forEach((t) => set.add(t.masGrupAdi ?? '(grupsuz)'))
-    return [...set].sort((a, b) => a.localeCompare(b, 'tr'))
+  // Bölümler + her birinin tezgah sayısı (dropdown'da yanında gösterilir). Kod sırası.
+  const bolumler = useMemo(() => {
+    const say = new Map<string, number>()
+    pano?.tezgahlar.forEach((t) => {
+      const b = t.masGrupAdi ?? '(grupsuz)'
+      say.set(b, (say.get(b) ?? 0) + 1)
+    })
+    return [...say.entries()].map(([ad, sayi]) => ({ ad, sayi })).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
   }, [pano])
 
   const gosterilen = useMemo(() => {
@@ -258,7 +293,8 @@ export function IzlemeClient() {
     const oncelik: Record<Durum, number> = { durusta: 0, calisiyor: 1, bosta: 2 }
     return pano.tezgahlar
       .filter((t) => {
-        if (grup !== 'hepsi' && (t.masGrupAdi ?? '(grupsuz)') !== grup) return false
+        if (bolum !== 'hepsi' && (t.masGrupAdi ?? '(grupsuz)') !== bolum) return false
+        if (durum !== 'tumu' && t.durum !== durum) return false
         if (!q) return true
         return (
           t.kod.toLocaleLowerCase('tr').includes(q) ||
@@ -268,9 +304,7 @@ export function IzlemeClient() {
       })
       // Durum öncelikli, aynı durumda kod sırası (filtre/arama bu sıralamanın içinde).
       .sort((a, b) => oncelik[a.durum] - oncelik[b.durum] || a.kod.localeCompare(b.kod, 'tr'))
-  }, [pano, arama, grup])
-
-  const calisanSayisi = gosterilen.filter((t) => t.durum === 'calisiyor').length
+  }, [pano, arama, bolum, durum])
 
   return (
     <div
@@ -307,26 +341,48 @@ export function IzlemeClient() {
         <DurumSayac etiket="Boşta" deger={pano?.ozet.bosta ?? 0} renk="text-slate-400" />
       </div>
 
-      {/* Araç çubuğu — TV modunda gizli */}
+      {/* Araç çubuğu — TV modunda gizli. Bölüm + Durum açılır listeler + arama + sonuç sayacı. */}
       {!tvModu && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[200px] flex-1">
+          {/* Bölüm dropdown — trigger'da kısa (truncate), listede tam ad + tezgah sayısı */}
+          <Select value={bolum} onValueChange={bolumSec}>
+            <SelectTrigger className="h-9 w-[220px] gap-1" aria-label="Bölüm filtresi">
+              <span className="shrink-0 text-slate-400">Bölüm:</span>
+              <span className="min-w-0 flex-1 truncate text-left">
+                <SelectValue />
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hepsi">Hepsi ({pano?.tezgahlar.length ?? 0})</SelectItem>
+              {bolumler.map((b) => (
+                <SelectItem key={b.ad} value={b.ad}>
+                  {b.ad} ({b.sayi})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Durum dropdown */}
+          <Select value={durum} onValueChange={(v) => durumSec(v as DurumFiltre)}>
+            <SelectTrigger className="h-9 w-[170px] gap-1" aria-label="Durum filtresi">
+              <span className="shrink-0 text-slate-400">Durum:</span>
+              <span className="min-w-0 flex-1 truncate text-left">
+                <SelectValue />
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {DURUM_FILTRELER.map((d) => (
+                <SelectItem key={d.key} value={d.key}>{d.etiket}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="relative min-w-[180px] flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <Input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Tezgah, ad veya operatör ara…" className="pl-8" />
           </div>
-          <div className="flex flex-wrap gap-1">
-            <Button variant={grup === 'hepsi' ? 'default' : 'outline'} size="sm" onClick={() => setGrup('hepsi')}>
-              Hepsi
-            </Button>
-            {gruplar.map((g) => (
-              <Button key={g} variant={grup === g ? 'default' : 'outline'} size="sm" onClick={() => setGrup(g)}>
-                {g}
-              </Button>
-            ))}
-          </div>
-          <Badge variant="outline">
-            {calisanSayisi} çalışıyor / {gosterilen.length}
-          </Badge>
+
+          <Badge variant="outline">{gosterilen.length} tezgah</Badge>
         </div>
       )}
 

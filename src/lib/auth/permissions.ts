@@ -160,6 +160,10 @@ export const PERMISSION_KEYS = {
   // === Kalite Uygunsuzluk (KAL-KYT-15 Bölüm 2) ===
   UYGUNSUZLUK_MANAGE: 'uygunsuzluk.manage',
 
+  // === FİF — Faaliyet İstek Formu (KAL-FR-10) ===
+  FIF_VIEW: 'fif.view',
+  FIF_MANAGE: 'fif.manage',
+
   // === SERVİS YÖNETİMİ ===
   SERVIS_VIEW: 'servis.view',
   SERVIS_TANIM_MANAGE: 'servis.tanim.manage',
@@ -205,6 +209,7 @@ export const MODULE_LABELS: Record<string, string> = {
   ipro: 'IPRO Üretim Takip',
   qdms: 'Kalite Yönetim Sistemi',
   rma: 'RMA/SMA İade Formu',
+  fif: 'FİF (Faaliyet İstek Formu)',
   servis: 'Servis Yönetimi',
   yilliktakvim: 'Yıllık Çalışma Takvimi',
   entegrasyon: 'Entegrasyonlar (Syteline/IFS)',
@@ -319,6 +324,8 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'rma.manage': 'RMA/SMA iade formu yönetim — oluştur/düzenle/sil',
   'quality.hatakodu.manage': 'Kalite hata kodları (KAL-KYT-15) yönetim — oluştur/düzenle/pasifleştir',
   'uygunsuzluk.manage': 'Kalite uygunsuzluk formu (KAL-KYT-15) yönetim — oluştur/düzenle/sil',
+  'fif.view': 'FİF (Faaliyet İstek Formu, KAL-FR-10) görüntüleme — kendi/kendi bölümüne düşen',
+  'fif.manage': 'FİF (KAL-FR-10) yönetim — oluştur/düzenle/iptal, etkinlik değerlendir',
 
   'servis.view': 'Servis yönetimi modülünü görüntüleme',
   'servis.tanim.manage': 'Servis yönetimi tanım verisi (firma/yerleşke/güzergâh) yönetimi — oluştur/düzenle/pasifleştir/geri al',

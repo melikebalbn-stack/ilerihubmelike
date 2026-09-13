@@ -9634,6 +9634,10 @@ model DepartmentDefinition {
   // Kiosk/Workstation Faz 1: bu bölüme bağlı tezgahlar
   workstations Workstation[]
 
+  // FİF (KAL-FR-10) — bu bölümün sorumlu/yayınlayan olduğu formlar (back-ref).
+  fifSorumluOlan    Fif[] @relation("FifSorumluBolum")
+  fifYayinlayanOlan Fif[] @relation("FifYayinlayanBolum")
+
   // Arşiv bölümü — METİN AD EŞLEŞMESİ YERİNE FK. Arşiv erişimi (arsiv-auth.ts)
   // eskiden Personnel.bolum metnini ArsivBolum.ad ile birebir karşılaştırıyordu;
   // bölüm adları Title-Case'e çevrilince eşleşme koptu ve arşiv fiilen yalnız
@@ -14466,4 +14470,176 @@ model KPIAction {
   status            String        @default("open")
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
+}
+
+// ============================================================================
+// FİF — Faaliyet İstek Formu (KAL-FR-10 Rev 3) · Faz 1
+// Kalite düzeltici/önleyici faaliyet istek/takip formu. Bölüm alanları
+// DepartmentDefinition FK (deneme değerlendirme zincirinin okuduğu omurga);
+// müdür seçilen bölümden otomatik dolar, kayıtta User snapshot'ı tutulur.
+// Kullanıcı alanları audit deseniyle DÜZ STRING (User FK/back-ref eklemez;
+// RmaKayit.olusturanId / KaliteUygunsuzluk deseniyle birebir).
+// ============================================================================
+enum FifTur {
+  DUZELTICI
+  ONLEYICI
+}
+
+enum FifDurum {
+  TASLAK
+  ONAY_BEKLIYOR
+  FAALIYET
+  KAPATMA_BEKLIYOR
+  ETKINLIK
+  KAPANDI
+  IPTAL
+}
+
+/// Faaliyet satırı sonucu: YT=yapılamadı/termin, ES=erken/süreç, K=kapandı (Rev 3).
+enum FifSonuc {
+  YT
+  ES
+  K
+}
+
+/// Ek-1 kök neden balık kılçığı kategorileri (9 kategori, Rev 3).
+enum FifKokNedenKategori {
+  INSAN
+  MAKINE
+  MALZEME
+  CEVRE
+  METOD
+  OLCUM
+  YONETIM
+  EMNIYET
+  GUVENLIK
+}
+
+enum FifEtkinlikMadde {
+  KAPATMA
+  TEKRAR_ETMEME
+}
+
+enum FifEkTip {
+  ONCE
+  SONRA
+}
+
+model Fif {
+  id      String   @id @default(cuid())
+  /// "FIF-2026-001" — yıl bazlı atomik sayaç (fif-no.ts, advisory lock, tx içinde).
+  kayitNo String   @unique
+  tur     FifTur
+  tarih   DateTime @default(now())
+
+  // Bölümler — DepartmentDefinition FK (omurga). onDelete SetNull: bölüm silinse
+  // form kalır, alan boşalır.
+  sorumluBolumId    String?
+  sorumluBolum      DepartmentDefinition? @relation("FifSorumluBolum", fields: [sorumluBolumId], references: [id], onDelete: SetNull)
+  yayinlayanBolumId String?
+  yayinlayanBolum   DepartmentDefinition? @relation("FifYayinlayanBolum", fields: [yayinlayanBolumId], references: [id], onDelete: SetNull)
+
+  // Kullanıcı alanları — DÜZ STRING (audit deseni, User FK yok). Onaylayanlar
+  // bölüm seçilince müdürden otomatik dolar, kayıtta snapshot olarak saklanır.
+  hazirlayanUserId          String?
+  izlemeSorumlusuUserId     String?
+  sorumluOnaylayanUserId    String?
+  yayinlayanOnaylayanUserId String?
+  uygulamaSorumlusuUserId   String?
+  takipSorumlusuUserId      String?
+
+  denetlemeAdi      String?
+  uygunsuzlukTanimi String?   @db.Text
+  standartMadde     String?
+  ekTerminNedeni    String?   @db.Text
+  kokNedenAnalizi   String?   @db.Text
+  kapatmaTarihi     DateTime?
+
+  // Etkinlik değerlendirme kutucukları (Rev 3 son sayfa)
+  kysDegisikligi       Boolean @default(false)
+  riskFirsatGuncelleme Boolean @default(false)
+  ogrenilenDers        Boolean @default(false)
+
+  durum FifDurum @default(TASLAK)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  faaliyetler FifFaaliyet[]
+  etkinlikler FifEtkinlik[]
+  kokNedenler FifKokNeden[]
+  besNedenler FifBesNeden[]
+  ekler       FifEk[]
+
+  @@index([durum])
+  @@index([sorumluBolumId])
+  @@index([tarih])
+}
+
+model FifFaaliyet {
+  id               String    @id @default(cuid())
+  fifId            String
+  fif              Fif       @relation(fields: [fifId], references: [id], onDelete: Cascade)
+  sira             Int
+  aciklama         String    @db.Text
+  hedefTarih       DateTime?
+  gerceklesenTarih DateTime?
+  sonuc            FifSonuc?
+  parafUserId      String?
+  parafTarihi      DateTime?
+
+  @@index([fifId])
+}
+
+model FifEtkinlik {
+  id               String           @id @default(cuid())
+  fifId            String
+  fif              Fif              @relation(fields: [fifId], references: [id], onDelete: Cascade)
+  madde            FifEtkinlikMadde
+  planlananTarih   DateTime?
+  gerceklesenTarih DateTime?
+  uygun            Boolean?
+  onayUserId       String?
+  onayTarihi       DateTime?
+
+  @@index([fifId])
+}
+
+/// Ek-1 balık kılçığı (kategori bazlı kök neden notları).
+model FifKokNeden {
+  id       String              @id @default(cuid())
+  fifId    String
+  fif      Fif                 @relation(fields: [fifId], references: [id], onDelete: Cascade)
+  kategori FifKokNedenKategori
+  aciklama String              @db.Text
+
+  @@index([fifId])
+}
+
+/// 5 Neden analizi (Ek-1).
+model FifBesNeden {
+  id            String  @id @default(cuid())
+  fifId         String
+  fif           Fif     @relation(fields: [fifId], references: [id], onDelete: Cascade)
+  muhtemelSebep String  @db.Text
+  neden1        String? @db.Text
+  neden2        String? @db.Text
+  neden3        String? @db.Text
+  neden4        String? @db.Text
+  neden5        String? @db.Text
+
+  @@index([fifId])
+}
+
+/// Ek-2 öncesi/sonrası foto. dosyaYolu = servis URL'i; public/uploads/fif/ altında.
+model FifEk {
+  id        String   @id @default(cuid())
+  fifId     String
+  fif       Fif      @relation(fields: [fifId], references: [id], onDelete: Cascade)
+  tip       FifEkTip
+  dosyaYolu String
+  createdAt DateTime @default(now())
+
+  @@index([fifId])
 }

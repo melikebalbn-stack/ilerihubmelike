@@ -97,6 +97,7 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
       P.BGYS_DOCUMENT_VIEW,
       P.CALISAN_REHBERI_VIEW,
       P.FORMS_ADMIN,
+      P.FIF_MANAGE,
     ],
   },
   {

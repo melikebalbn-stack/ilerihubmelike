@@ -239,6 +239,8 @@ const formsMenuItems = [
   { name: "Kalibrasyon", icon: Wrench, href: "/calibration", roles: ["*"], subgroup: "kalite" as FormAltGrup },
   // RMA/SMA İade Formu (KAL-KYT-16): yazma yetkisi sayfa/API'de (canManageRma).
   { name: "RMA/SMA İade Formu", icon: Package, href: "/kalite/rma", roles: ["*"], subgroup: "kalite" as FormAltGrup },
+  // FİF (KAL-FR-10): herkes görür/açar (fif.view); düzenleme sayfa/API'de (canManageFif).
+  { name: "FİF (Faaliyet İstek)", icon: ClipboardList, href: "/kalite/fif", roles: ["*"], subgroup: "kalite" as FormAltGrup },
   // { name: "Proje Bar", icon: BarChart3, href: "/forms/project-bar", roles: ["*"] }, // Şimdilik gizli
 ]
 
@@ -345,6 +347,10 @@ const hataKoduMenuItem = { name: "Hata Kodları", icon: ListTree, href: "/kalite
 
 // Uygunsuzluk (KAL-KYT-15 Bölüm 2) — hata kodlarıyla AYNI kitle (canSeeHataKodu).
 const uygunsuzlukMenuItem = { name: "Uygunsuzluk Kayıtları", icon: ClipboardX, href: "/kalite/uygunsuzluk", roles: [] as string[] }
+
+// FİF Yönetimi (KAL-FR-10) — Kalite grubunda, canManageFif kitlesine (canAccessKalite
+// VEYA fif.manage). Aynı /kalite/fif; sayfa panel içinde role göre davranır.
+const fifYonetimMenuItem = { name: "FİF Yönetimi", icon: ClipboardList, href: "/kalite/fif", roles: [] as string[] }
 
 // Denetimler alt menüsü (ISO 27001 dahil)
 // Kalite Sistem Departmanı tüm ISO 27001 modülünü görebilir (Sızma Testleri hariç)
@@ -699,10 +705,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // (canManageUygunsuzluk = 'uygunsuzluk.manage' VEYA canAccessKalite; ikinci
   //  kol zaten canSeeHataKodu içinde, o yüzden yalnız izin kolu ekleniyor.)
   const canSeeUygunsuzluk = canSeeHataKodu || userPermissions.includes('uygunsuzluk.manage')
+  // FİF Yönetimi kitlesi = canManageFif client karşılığı: canAccessKalite VEYA fif.manage.
+  const canSeeFifYonetim =
+    canAccessKalite(userRole, userDepartment, userOu) || userPermissions.includes('fif.manage')
   const filteredKaliteItems = [
     ...filterItems(kaliteMenuItems),
     ...(canSeeHataKodu ? [hataKoduMenuItem] : []),
     ...(canSeeUygunsuzluk ? [uygunsuzlukMenuItem] : []),
+    ...(canSeeFifYonetim ? [fifYonetimMenuItem] : []),
   ]
   const filteredAuditsItems = filterItems(auditsMenuItems)
   const filteredIso27001Items = filterItems(iso27001MenuItems)

@@ -6,9 +6,8 @@ import { ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
- * IPRO alt sayfalarından kapak sayfasına (/ipro) iki parçalı rozet geri butonu (tremor "Badge 11"
- * deseni): sol koyu/dolgulu ikon+etiket, dikey ayraç, sağ eylem. accent mavi, beyaz metin,
- * radius var(--radius), 13px; hover'da bir ton koyulaşır.
+ * IPRO alt sayfalarından kapak sayfasına (/ipro) tek parça accent dolgulu rozet geri butonu:
+ * ← ikon + "IPRO Üretim Takip"; radius var(--radius), 13px, beyaz metin, hover'da bir ton koyulaşır.
  *
  * NOT: /ipro, mevcut yolun (/ipro/harita…) ön-ekidir → Next <Link> soft-nav bu durumda güvenilmez
  * (Sidebar renderMenuItem handleClick aynı deseni kullanıyor). Ön-ek eşleşince sert gezinme fallback.
@@ -26,17 +25,12 @@ export function KapakDonus({ className }: { className?: string }) {
         }
       }}
       className={cn(
-        'group mb-3 inline-flex items-center overflow-hidden rounded-[var(--radius)] text-[13px] font-medium text-white shadow-sm',
+        'mb-3 inline-flex items-center gap-1.5 rounded-[var(--radius)] bg-[#1B4F72] px-3 py-1.5 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-[#153c58]',
         className,
       )}
     >
-      <span className="flex items-center gap-1.5 bg-[#1B4F72] px-3 py-1.5 transition-colors group-hover:bg-[#153c58]">
-        <ArrowLeft className="h-3.5 w-3.5" />
-        IPRO Üretim Takip
-      </span>
-      <span className="border-l border-white/25 bg-[#2a6ea3] px-3 py-1.5 transition-colors group-hover:bg-[#215a84]">
-        Kapak
-      </span>
+      <ArrowLeft className="h-3.5 w-3.5" />
+      IPRO Üretim Takip
     </Link>
   )
 }

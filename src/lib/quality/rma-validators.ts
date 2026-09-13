@@ -32,6 +32,7 @@ export const rmaSatirInput = z.object({
   kararAciklama: bosStr,
   hurdaAdedi: z.number().int().min(0).optional().nullable(),
   reworkAdedi: z.number().int().min(0).optional().nullable(),
+  musteriIadeAdedi: z.number().int().min(0).optional().nullable(),
   kokNeden: bosStr,
   aksiyon: bosStr,
 })
@@ -58,12 +59,12 @@ export const rmaKayitInput = z
   .superRefine((data, ctx) => {
     // hurda + rework <= iadeMiktari (satır bazında, hangi satır belirtilir)
     data.satirlar.forEach((s, i) => {
-      const toplam = (s.hurdaAdedi ?? 0) + (s.reworkAdedi ?? 0)
+      const toplam = (s.hurdaAdedi ?? 0) + (s.reworkAdedi ?? 0) + (s.musteriIadeAdedi ?? 0)
       if (toplam > s.iadeMiktari) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['satirlar', i],
-          message: `Satır ${s.siraNo}: hurda (${s.hurdaAdedi ?? 0}) + rework (${s.reworkAdedi ?? 0}) = ${toplam}, iade miktarını (${s.iadeMiktari}) aşamaz`,
+          message: `Satır ${s.siraNo}: hurda (${s.hurdaAdedi ?? 0}) + rework (${s.reworkAdedi ?? 0}) + müşteri iade (${s.musteriIadeAdedi ?? 0}) = ${toplam}, iade miktarını (${s.iadeMiktari}) aşamaz`,
         })
       }
     })

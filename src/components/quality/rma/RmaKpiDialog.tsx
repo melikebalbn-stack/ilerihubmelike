@@ -329,8 +329,8 @@ export function RmaKpiDialog({
                 )}
               </div>
               <div className="space-y-2">
-                <BolumBaslik>Hurda / Rework</BolumBaslik>
-                <div className="grid grid-cols-2 gap-3">
+                <BolumBaslik>Hurda / Rework / Müşteri İade</BolumBaslik>
+                <div className="grid grid-cols-3 gap-3">
                   <StatKart
                     baslik="Hurda adedi"
                     deger={data.hurdaRework.hurda}
@@ -340,6 +340,11 @@ export function RmaKpiDialog({
                     baslik="Rework adedi"
                     deger={data.hurdaRework.rework}
                     alt={`iade miktarının ${yuzdeMetni(data.hurdaRework.reworkOran, data.hurdaRework.rework)}'i`}
+                  />
+                  <StatKart
+                    baslik="Müşteri iade adedi"
+                    deger={data.hurdaRework.musteriIade}
+                    alt={`iade miktarının ${yuzdeMetni(data.hurdaRework.musteriIadeOran, data.hurdaRework.musteriIade)}'i`}
                   />
                 </div>
               </div>

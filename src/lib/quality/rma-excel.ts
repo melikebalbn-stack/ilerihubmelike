@@ -36,6 +36,7 @@ export const IMPORT_COLS = {
   kararAciklama: 'KARAR AÇIKLAMASI',
   hurdaAdedi: 'HURDA ADEDİ',
   reworkAdedi: 'REWORK ADEDİ',
+  musteriIadeAdedi: 'MÜŞTERİ İADE ADEDİ',
   kokNeden: 'KÖK NEDEN',
   aksiyon: 'AKSİYON',
 } as const
@@ -65,6 +66,7 @@ export const EXPORT_HEADERS = [
   'KARAR AÇIKLAMASI',
   'HURDA ADEDİ',
   'REWORK ADEDİ',
+  'MÜŞTERİ İADE ADEDİ',
   'KÖK NEDEN',
   'AKSİYON',
 ] as const

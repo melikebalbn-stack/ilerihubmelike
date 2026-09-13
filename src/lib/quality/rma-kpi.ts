@@ -46,9 +46,11 @@ export type RmaKpi = {
   hurdaRework: {
     hurda: number
     rework: number
+    musteriIade: number
     iadeMiktari: number
     hurdaOran: number
     reworkOran: number
+    musteriIadeOran: number
   }
   yetersiz: {
     kapanmaSuresi: Metrik<{ ortalamaGun: number; medyanGun: number; kapaliSayi: number }>
@@ -155,7 +157,7 @@ export async function rmaKpiHesapla(
     prisma.rmaSatir.aggregate({
       where: satirWhere,
       _count: { _all: true },
-      _sum: { iadeMiktari: true, hurdaAdedi: true, reworkAdedi: true },
+      _sum: { iadeMiktari: true, hurdaAdedi: true, reworkAdedi: true, musteriIadeAdedi: true },
     }),
 
     prisma.rmaKayit.groupBy({ by: ['tip'], where, _count: { _all: true } }),
@@ -218,6 +220,7 @@ export async function rmaKpiHesapla(
   const toplamMiktar = satirOzet._sum.iadeMiktari ?? 0
   const hurda = satirOzet._sum.hurdaAdedi ?? 0
   const rework = satirOzet._sum.reworkAdedi ?? 0
+  const musteriIade = satirOzet._sum.musteriIadeAdedi ?? 0
 
   // ── #2 tip kırılımı ──
   const tipKirilim = (['RMA', 'SMA'] as RmaTip[]).map((tip) => {
@@ -376,9 +379,11 @@ export async function rmaKpiHesapla(
     hurdaRework: {
       hurda,
       rework,
+      musteriIade,
       iadeMiktari: toplamMiktar,
       hurdaOran: yuzde(hurda, toplamMiktar),
       reworkOran: yuzde(rework, toplamMiktar),
+      musteriIadeOran: yuzde(musteriIade, toplamMiktar),
     },
     yetersiz: { kapanmaSuresi, acikKapali, iadeTuru, sorumluYuk, kokNeden },
   }

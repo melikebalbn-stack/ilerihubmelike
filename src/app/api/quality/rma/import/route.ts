@@ -45,6 +45,7 @@ interface SatirAlan {
   kararAciklama: string | null
   hurdaAdedi: number | null
   reworkAdedi: number | null
+  musteriIadeAdedi: number | null
   kokNeden: string | null
   aksiyon: string | null
 }
@@ -188,17 +189,21 @@ export async function POST(request: NextRequest) {
       else karar = p
     }
 
-    // hurda / rework (opsiyonel, >=0)
+    // hurda / rework / müşteri iade (opsiyonel, >=0)
     const hurdaN = numOrNull(cell(row, 'hurdaAdedi'))
     const reworkN = numOrNull(cell(row, 'reworkAdedi'))
+    const musteriIadeN = numOrNull(cell(row, 'musteriIadeAdedi'))
     let hurdaAdedi: number | null = null
     let reworkAdedi: number | null = null
+    let musteriIadeAdedi: number | null = null
     if (hurdaN === 'NaN' || (typeof hurdaN === 'number' && (!Number.isInteger(hurdaN) || hurdaN < 0))) { rowHata('HURDA ADEDİ 0 veya üzeri tam sayı olmalı'); satirGecerli = false }
     else hurdaAdedi = hurdaN as number | null
     if (reworkN === 'NaN' || (typeof reworkN === 'number' && (!Number.isInteger(reworkN) || reworkN < 0))) { rowHata('REWORK ADEDİ 0 veya üzeri tam sayı olmalı'); satirGecerli = false }
     else reworkAdedi = reworkN as number | null
-    if (satirGecerli && (hurdaAdedi ?? 0) + (reworkAdedi ?? 0) > iadeMiktari) {
-      rowHata(`Hurda (${hurdaAdedi ?? 0}) + rework (${reworkAdedi ?? 0}) iade miktarını (${iadeMiktari}) aşamaz`)
+    if (musteriIadeN === 'NaN' || (typeof musteriIadeN === 'number' && (!Number.isInteger(musteriIadeN) || musteriIadeN < 0))) { rowHata('MÜŞTERİ İADE ADEDİ 0 veya üzeri tam sayı olmalı'); satirGecerli = false }
+    else musteriIadeAdedi = musteriIadeN as number | null
+    if (satirGecerli && (hurdaAdedi ?? 0) + (reworkAdedi ?? 0) + (musteriIadeAdedi ?? 0) > iadeMiktari) {
+      rowHata(`Hurda (${hurdaAdedi ?? 0}) + rework (${reworkAdedi ?? 0}) + müşteri iade (${musteriIadeAdedi ?? 0}) iade miktarını (${iadeMiktari}) aşamaz`)
       satirGecerli = false
     }
 
@@ -234,6 +239,7 @@ export async function POST(request: NextRequest) {
       kararAciklama: str(cell(row, 'kararAciklama')) || null,
       hurdaAdedi,
       reworkAdedi,
+      musteriIadeAdedi,
       kokNeden: str(cell(row, 'kokNeden')) || null,
       aksiyon: str(cell(row, 'aksiyon')) || null,
     }
@@ -358,6 +364,7 @@ export async function POST(request: NextRequest) {
                 kararAciklama: s.kararAciklama,
                 hurdaAdedi: s.hurdaAdedi,
                 reworkAdedi: s.reworkAdedi,
+                musteriIadeAdedi: s.musteriIadeAdedi,
                 kokNeden: s.kokNeden,
                 aksiyon: s.aksiyon,
               })),

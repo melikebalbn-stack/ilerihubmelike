@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
         s?.kararAciklama ?? '',
         s?.hurdaAdedi ?? '',
         s?.reworkAdedi ?? '',
+        s?.musteriIadeAdedi ?? '',
         s?.kokNeden ?? '',
         s?.aksiyon ?? '',
       ])

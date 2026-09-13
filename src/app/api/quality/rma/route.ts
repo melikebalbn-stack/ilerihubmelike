@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
             kararAciklama: s.kararAciklama ?? null,
             hurdaAdedi: s.hurdaAdedi ?? null,
             reworkAdedi: s.reworkAdedi ?? null,
+            musteriIadeAdedi: s.musteriIadeAdedi ?? null,
             kokNeden: s.kokNeden ?? null,
             aksiyon: s.aksiyon ?? null,
           })),

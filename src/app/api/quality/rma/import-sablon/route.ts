@@ -43,6 +43,7 @@ export async function GET() {
     [C.kararAciklama]: 'Yeniden işlenecek',
     [C.hurdaAdedi]: 2,
     [C.reworkAdedi]: 8,
+    [C.musteriIadeAdedi]: 0,
     [C.kokNeden]: 'Taşıma hasarı',
     [C.aksiyon]: 'Ambalaj güçlendirildi',
   }
@@ -66,6 +67,7 @@ export async function GET() {
     [C.kararAciklama]: '',
     [C.hurdaAdedi]: 5,
     [C.reworkAdedi]: 0,
+    [C.musteriIadeAdedi]: 0,
     [C.kokNeden]: '',
     [C.aksiyon]: '',
   }

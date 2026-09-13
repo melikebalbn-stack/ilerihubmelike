@@ -35,6 +35,7 @@ interface SatirState {
   kararAciklama: string
   hurdaAdedi: string
   reworkAdedi: string
+  musteriIadeAdedi: string
   kokNeden: string
   aksiyon: string
 }
@@ -58,7 +59,7 @@ export interface RmaDetay {
     id: string
     siraNo: number; urunKodu: string; lotNo: string | null; iadeMiktari: number
     musteriIadeSebebi: string; ilkIncelemeSonucu: string | null; karar: string | null
-    kararAciklama: string | null; hurdaAdedi: number | null; reworkAdedi: number | null
+    kararAciklama: string | null; hurdaAdedi: number | null; reworkAdedi: number | null; musteriIadeAdedi: number | null
     kokNeden: string | null; aksiyon: string | null
   }>
   fotolar: RmaFotoOzet[]
@@ -79,7 +80,7 @@ const isoToDateInput = (v: string | null): string => (v ? v.slice(0, 10) : '')
 let keySeq = 0
 const yeniSatir = (): SatirState => ({
   key: `s${keySeq++}`, id: null, urunKodu: '', lotNo: '', iadeMiktari: '', musteriIadeSebebi: '',
-  ilkIncelemeSonucu: '', karar: '', kararAciklama: '', hurdaAdedi: '', reworkAdedi: '', kokNeden: '', aksiyon: '',
+  ilkIncelemeSonucu: '', karar: '', kararAciklama: '', hurdaAdedi: '', reworkAdedi: '', musteriIadeAdedi: '', kokNeden: '', aksiyon: '',
 })
 
 // Karar rozeti tint'leri — portalın mevcut badge tint paleti (bkz. RmaListTable Açık/Kapalı).
@@ -126,7 +127,7 @@ export function RmaFormClient({ initial, mod }: Props) {
           iadeMiktari: String(s.iadeMiktari), musteriIadeSebebi: s.musteriIadeSebebi,
           ilkIncelemeSonucu: s.ilkIncelemeSonucu ?? '', karar: s.karar ?? '',
           kararAciklama: s.kararAciklama ?? '', hurdaAdedi: s.hurdaAdedi != null ? String(s.hurdaAdedi) : '',
-          reworkAdedi: s.reworkAdedi != null ? String(s.reworkAdedi) : '', kokNeden: s.kokNeden ?? '', aksiyon: s.aksiyon ?? '',
+          reworkAdedi: s.reworkAdedi != null ? String(s.reworkAdedi) : '', musteriIadeAdedi: s.musteriIadeAdedi != null ? String(s.musteriIadeAdedi) : '', kokNeden: s.kokNeden ?? '', aksiyon: s.aksiyon ?? '',
         }))
       : [yeniSatir()],
   )
@@ -177,7 +178,8 @@ export function RmaFormClient({ initial, mod }: Props) {
     const iade = Number(s.iadeMiktari)
     const h = Number(s.hurdaAdedi || 0)
     const r = Number(s.reworkAdedi || 0)
-    if (s.iadeMiktari && iade >= 1 && h + r > iade) return `hurda+rework (${h + r}) > iade (${iade})`
+    const m = Number(s.musteriIadeAdedi || 0)
+    if (s.iadeMiktari && iade >= 1 && h + r + m > iade) return `hurda+rework+müşteri iade (${h + r + m}) > iade (${iade})`
     return null
   }
   // Zorunlu-alan + çelişki: kapalı kartta hata göstergesi + kaydette otomatik-açma için.
@@ -302,6 +304,7 @@ export function RmaFormClient({ initial, mod }: Props) {
         kararAciklama: s.kararAciklama.trim() || null,
         hurdaAdedi: s.hurdaAdedi.trim() ? Number(s.hurdaAdedi) : null,
         reworkAdedi: s.reworkAdedi.trim() ? Number(s.reworkAdedi) : null,
+        musteriIadeAdedi: s.musteriIadeAdedi.trim() ? Number(s.musteriIadeAdedi) : null,
         kokNeden: s.kokNeden.trim() || null,
         aksiyon: s.aksiyon.trim() || null,
       })),
@@ -483,7 +486,7 @@ export function RmaFormClient({ initial, mod }: Props) {
                     {/* İnceleme sonucu */}
                     <div className="space-y-3 border-t border-slate-200 pt-3">
                       <h3 className={bolumBaslik}>İnceleme sonucu</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                         <div>
                           <Label className={kartLabel}>Karar</Label>
                           <Select value={s.karar || 'none'} onValueChange={(v) => updSatir(i, { karar: v === 'none' ? '' : v })} disabled={!duzenlenebilir}>
@@ -501,6 +504,10 @@ export function RmaFormClient({ initial, mod }: Props) {
                         <div>
                           <Label className={kartLabel}>Rework Adedi</Label>
                           <Input type="number" min="0" value={s.reworkAdedi} onChange={(e) => updSatir(i, { reworkAdedi: e.target.value })} disabled={!duzenlenebilir} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
+                        </div>
+                        <div>
+                          <Label className={kartLabel}>Müşteri İade Adedi</Label>
+                          <Input type="number" min="0" value={s.musteriIadeAdedi} onChange={(e) => updSatir(i, { musteriIadeAdedi: e.target.value })} disabled={!duzenlenebilir} className={`mt-1 h-9 ${he ? 'border-red-400' : ''}`} />
                         </div>
                       </div>
                       {he && <p className="text-xs text-red-600">{he} — kaydetmeden düzeltin.</p>}

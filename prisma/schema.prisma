@@ -10938,6 +10938,7 @@ model RmaSatir {
   kararAciklama     String?   @db.Text
   hurdaAdedi        Int?
   reworkAdedi       Int?
+  musteriIadeAdedi  Int?
   kokNeden          String?   @db.Text
   aksiyon           String?   @db.Text
 

@@ -59,6 +59,7 @@ export default async function RmaDetayPage({ params }: { params: Promise<{ id: s
       kararAciklama: s.kararAciklama,
       hurdaAdedi: s.hurdaAdedi,
       reworkAdedi: s.reworkAdedi,
+      musteriIadeAdedi: s.musteriIadeAdedi,
       kokNeden: s.kokNeden,
       aksiyon: s.aksiyon,
     })),

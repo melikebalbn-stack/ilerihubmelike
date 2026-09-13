@@ -466,6 +466,25 @@
   animation: aurora-text 4s ease-in-out infinite;
 }
 
+/* IPRO tezgahlar — "Sinyalli" etiketi yavaş yanıp söner (2sn döngü, opacity 1↔0.45). */
+@keyframes ipro-sinyal-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.ipro-sinyal-blink {
+  animation: ipro-sinyal-blink 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ipro-sinyal-blink {
+    animation: none;
+  }
+}
+
 .bg-aurora {
   background-image: linear-gradient(
     90deg,

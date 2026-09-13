@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { OperatorBadge, TERMINAL_ACCENT } from '../_shared'
 import { TezgahDetayModal } from './_tezgah-detay'
+import { KapakDonus } from '@/components/ipro/KapakDonus'
 
 interface Vardiya {
   kod: string
@@ -216,6 +217,7 @@ function UstBar({
             <span className="text-xs tabular-nums text-muted-foreground">{tarihSaat(now)}</span>
           </div>
         )}
+        <KapakDonus className="mb-0" />
         <Link
           href="/dashboard"
           aria-label="Hub'a dön"

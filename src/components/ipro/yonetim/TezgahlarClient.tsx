@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Pencil, RefreshCw, Signal } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -27,13 +28,30 @@ type Durum = 'hepsi' | 'aktif' | 'pasif'
 type Sinyal = 'hepsi' | 'sinyalli' | 'sinyalsiz'
 
 export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [tezgahlar, setTezgahlar] = useState<Tezgah[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [arama, setArama] = useState('')
   const [durum, setDurum] = useState<Durum>('hepsi')
   const [sinyal, setSinyal] = useState<Sinyal>('hepsi')
+  // Bölüm (MAS grubu) filtresi URL query'de (?bolum=), yenilenince korunur.
+  const [bolum, setBolum] = useState<string>(searchParams.get('bolum') || 'hepsi')
   const [duzenlenen, setDuzenlenen] = useState<Tezgah | null>(null)
   const [senkronlaniyor, setSenkronlaniyor] = useState(false)
+
+  const bolumSec = useCallback(
+    (b: string) => {
+      setBolum(b)
+      const p = new URLSearchParams(searchParams.toString())
+      if (b === 'hepsi') p.delete('bolum')
+      else p.set('bolum', b)
+      const qs = p.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [router, pathname, searchParams],
+  )
 
   async function yukle() {
     setYukleniyor(true)
@@ -72,6 +90,16 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
     void yukle()
   }, [])
 
+  // MAS grubu (bölüm) listesi + tezgah sayısı — dropdown seçenekleri.
+  const bolumler = useMemo(() => {
+    const say = new Map<string, number>()
+    tezgahlar.forEach((t) => {
+      const b = t.masGrupAdi ?? '(grupsuz)'
+      say.set(b, (say.get(b) ?? 0) + 1)
+    })
+    return [...say.entries()].map(([ad, sayi]) => ({ ad, sayi })).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
+  }, [tezgahlar])
+
   const gosterilen = useMemo(() => {
     const q = arama.trim().toLocaleLowerCase('tr')
     return tezgahlar.filter((t) => {
@@ -79,6 +107,7 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
       if (durum === 'pasif' && t.aktif) return false
       if (sinyal === 'sinyalli' && !t.sinyalli) return false
       if (sinyal === 'sinyalsiz' && t.sinyalli) return false
+      if (bolum !== 'hepsi' && (t.masGrupAdi ?? '(grupsuz)') !== bolum) return false
       if (!q) return true
       return (
         t.kod.toLocaleLowerCase('tr').includes(q) ||
@@ -86,7 +115,7 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
         (t.masGrupAdi ?? '').toLocaleLowerCase('tr').includes(q)
       )
     })
-  }, [tezgahlar, arama, durum, sinyal])
+  }, [tezgahlar, arama, durum, sinyal, bolum])
 
   const kolonlar: SiralanabilirKolon<Tezgah>[] = [
     { key: 'kod', label: 'Kod', primary: true, siralanabilir: true },
@@ -102,7 +131,7 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
       // görüntüsü tek bir noktaya iniyor ve tabloda artefakt gibi duruyordu.
       render: (t) =>
         t.sinyalli ? (
-          <span className="inline-flex items-center gap-1.5 text-emerald-700">
+          <span className="ipro-sinyal-blink inline-flex items-center gap-1.5 text-emerald-700">
             <Signal className="h-4 w-4 shrink-0" />
             Sinyalli
           </span>
@@ -166,6 +195,17 @@ export function TezgahlarClient({ canEdit }: { canEdit: boolean }) {
               { deger: 'hepsi', etiket: 'Hepsi' },
               { deger: 'sinyalli', etiket: 'Sinyalli' },
               { deger: 'sinyalsiz', etiket: 'Sinyalsiz' },
+            ],
+          },
+        ]}
+        dropdownlar={[
+          {
+            ad: 'Bölüm',
+            secili: bolum,
+            sec: bolumSec,
+            secenekler: [
+              { deger: 'hepsi', etiket: `Hepsi (${tezgahlar.length})` },
+              ...bolumler.map((b) => ({ deger: b.ad, etiket: `${b.ad} (${b.sayi})` })),
             ],
           },
         ]}

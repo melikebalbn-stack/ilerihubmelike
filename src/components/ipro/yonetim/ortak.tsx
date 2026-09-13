@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ResponsiveTable, type ResponsiveColumn } from '@/components/ui/responsive-table'
@@ -51,7 +52,11 @@ export async function iproYaz(
 }
 
 export function AktifRozet({ aktif }: { aktif: boolean }) {
-  return aktif ? <Badge variant="secondary">Aktif</Badge> : <Badge variant="outline">Pasif</Badge>
+  return aktif ? (
+    <Badge className="border-transparent bg-emerald-600 text-white hover:bg-emerald-600">Aktif</Badge>
+  ) : (
+    <Badge variant="outline" className="text-slate-500">Pasif</Badge>
+  )
 }
 
 /**
@@ -140,6 +145,7 @@ export function ListeAracCubugu({
   onArama,
   placeholder,
   gruplar = [],
+  dropdownlar = [],
   gosterilen,
   toplam,
   children,
@@ -148,6 +154,8 @@ export function ListeAracCubugu({
   onArama: (v: string) => void
   placeholder: string
   gruplar?: FiltreGrubu[]
+  /** Çok seçenekli filtreler için açılır liste (buton çubuğu yerine). Trigger kısa, listede tam. */
+  dropdownlar?: FiltreGrubu[]
   gosterilen: number
   toplam: number
   /** Sağa yerleşen ek içerik — "Yeni" butonu gibi. */
@@ -174,6 +182,22 @@ export function ListeAracCubugu({
             </Button>
           ))}
         </div>
+      ))}
+
+      {dropdownlar.map((g, i) => (
+        <Select key={g.ad ?? `dd${i}`} value={g.secili} onValueChange={g.sec}>
+          <SelectTrigger className="h-9 w-[200px] gap-1" aria-label={g.ad}>
+            {g.ad && <span className="shrink-0 text-slate-500">{g.ad}:</span>}
+            <span className="min-w-0 flex-1 truncate text-left">
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            {g.secenekler.map((s) => (
+              <SelectItem key={s.deger} value={s.deger}>{s.etiket}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ))}
 
       <Badge variant="outline">

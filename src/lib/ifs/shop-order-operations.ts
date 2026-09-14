@@ -37,7 +37,6 @@ const SELECT_FIELDS = [
   'RemainingQty',
   'RevisedDueDate',
   'NeedDate',
-  'EarliestStartDate',
   'MachRunFactor',
   'LaborRunFactor',
   'RunTimeCode',
@@ -59,7 +58,6 @@ interface RawShopOrderOperation {
   RemainingQty?: number | null
   RevisedDueDate?: string | null
   NeedDate?: string | null
-  EarliestStartDate?: string | null
   MachRunFactor?: number | null
   LaborRunFactor?: number | null
   RunTimeCode?: string | null
@@ -131,9 +129,9 @@ function toTerminal(r: RawShopOrderOperation): IfsShopOrderOperation {
     operasyonNo: operationNo,
     stokKodu: r.PartNo ?? '',
     stokAdi: r.PartDescription ?? '',
-    // DateTimeOffset ("2026-07-03T17:00:00Z") → yyyy-MM-dd. EarliestStartDate = iş emri açılış
-    // (bu operasyon setinde DateEntered yok; iş emri seviyesindeki en erken başlangıç kullanılır).
-    acilisTarihi: r.EarliestStartDate ? String(r.EarliestStartDate).slice(0, 10) : '',
+    // Açılış tarihi operasyon setinde yok → ShopOrds başlığındaki DateEntered'dan sonradan doldurulur.
+    acilisTarihi: '',
+    // RevisedDueDate/NeedDate DateTimeOffset ("2026-07-03T17:00:00Z") → yyyy-MM-dd.
     teslimTarihi: r.RevisedDueDate ? String(r.RevisedDueDate).slice(0, 10) : '',
     ihtiyacTarihi: r.NeedDate ? String(r.NeedDate).slice(0, 10) : '',
     miktar: num(r.RevisedQtyDue),
@@ -145,6 +143,51 @@ function toTerminal(r: RawShopOrderOperation): IfsShopOrderOperation {
     runTimeCode: r.RunTimeCode ?? '',
     durum,
   }
+}
+
+/**
+ * OrderNo → DateEntered (gerçek açılış tarihi) haritası, ShopOrds başlığından. `in` bu projeksiyonda
+ * desteklenmiyor (500) → OR filtresi; URL uzunluğu için 50'şerli batch. IFS hatası → o batch atlanır
+ * (açılış boş kalır, liste bloklanmaz). DateEntered zaten yyyy-MM-dd (Edm.Date).
+ */
+async function fetchShopOrdDates(orderNos: string[]): Promise<Map<string, string>> {
+  const uniq = [...new Set(orderNos.filter(Boolean))]
+  const harita = new Map<string, string>()
+  if (uniq.length === 0) return harita
+  const { contract } = getIfsConfig()
+  const token = await getIfsAccessToken()
+  const BATCH = 50
+  for (let i = 0; i < uniq.length; i += BATCH) {
+    const dilim = uniq.slice(i, i + BATCH)
+    const orCond = dilim.map((o) => `OrderNo eq '${esc(o)}'`).join(' or ')
+    const filter = `Contract eq '${esc(contract)}' and (${orCond})`
+    const url =
+      `${mainRoot()}ShopOrderHandling.svc/ShopOrds` +
+      `?$filter=${encodeURIComponent(filter)}&$select=OrderNo,DateEntered&$top=250`
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      cache: 'no-store',
+    })
+    if (!res.ok) continue
+    const body = await res.json().catch(() => null)
+    const value = (body as { value?: { OrderNo?: string | null; DateEntered?: string | null }[] })?.value
+    if (Array.isArray(value)) {
+      for (const r of value) {
+        if (r.OrderNo && r.DateEntered && !harita.has(String(r.OrderNo))) {
+          harita.set(String(r.OrderNo), String(r.DateEntered).slice(0, 10))
+        }
+      }
+    }
+  }
+  return harita
+}
+
+/** Operasyon listesine ShopOrds başlığındaki DateEntered'ı (açılış) eşler. */
+async function acilisEsle(ops: IfsShopOrderOperation[]): Promise<IfsShopOrderOperation[]> {
+  const tarihMap = await fetchShopOrdDates(ops.map((o) => o.isEmriNo))
+  for (const o of ops) o.acilisTarihi = tarihMap.get(o.isEmriNo) ?? ''
+  return ops
 }
 
 /** teslimTarihi artan; boş tarihler sona. */
@@ -168,7 +211,8 @@ export async function getShopOrderOperations(params: {
   conds.push(`OperStatusCode ne ${OPER_STATUS_ENUM}'Closed'`)
 
   const rows = await fetchOperations(conds.join(' and '), 200)
-  return rows.map(toTerminal).sort(byTeslim)
+  const ops = await acilisEsle(rows.map(toTerminal))
+  return ops.sort(byTeslim)
 }
 
 /** Tek operasyonu OrderNo + OperationNo ile getirir; yoksa null. */
@@ -182,5 +226,7 @@ export async function getShopOrderOperation(
     `and OperationNo eq ${operationNo}`
 
   const rows = await fetchOperations(filter, 1)
-  return rows.length ? toTerminal(rows[0]) : null
+  if (!rows.length) return null
+  const [op] = await acilisEsle([toTerminal(rows[0])])
+  return op
 }

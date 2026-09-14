@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { canManageUygunsuzluk } from '@/lib/quality/uygunsuzluk-access'
 import { buildUygunsuzlukWhere } from '@/lib/quality/uygunsuzluk-query'
 import { UYGUNSUZLUK_KARAR_LABELS, redOrani } from '@/lib/quality/uygunsuzluk-labels'
 import {
@@ -27,8 +28,17 @@ export const dynamic = 'force-dynamic'
  * ise hücre BOŞ bırakılır — "%0" ya da "#DIV/0!" YAZILMAZ.
  */
 export async function GET(request: NextRequest) {
-  const { error } = await requireSession()
+  const { session, error } = await requireSession()
   if (error) return error
+
+  // YETKİ (2026-09-13): rma/export ile aynı ayrım. Liste herkese açık ama tüm
+  // kayıtları xlsx olarak indirmek yalnız canManageUygunsuzluk. RMA'daki
+  // `sadeceBana` istisnası burada YOK — uygunsuzlukta sorumlu kipi ve kendi
+  // kayıtlarını süzen bir parametre tanımlı değil (buildUygunsuzlukWhere yalnız
+  // filtre alır), o yüzden koşul tek parça.
+  if (!canManageUygunsuzluk(session)) {
+    return NextResponse.json({ error: 'Uygunsuzluk dışarı aktarma yetkiniz yok' }, { status: 403 })
+  }
 
   const where = buildUygunsuzlukWhere(request.nextUrl.searchParams)
 

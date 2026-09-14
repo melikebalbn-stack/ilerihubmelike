@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { benimPersonnelId } from '@/lib/quality/rma-access'
+import { benimPersonnelId, canManageRma } from '@/lib/quality/rma-access'
 import { buildRmaWhere } from '@/lib/quality/rma-query'
 import {
   RMA_TIP_LABELS,
@@ -20,12 +20,23 @@ export const dynamic = 'force-dynamic'
  * Kayıt bilgileri her satırda tekrar eder (Excel orijinal düzeni). Enum'lar Türkçe etiket.
  */
 export async function GET(request: NextRequest) {
-  const { userId, error } = await requireSession()
+  const { session, userId, error } = await requireSession()
   if (error) return error
 
   // Liste ucuyla AYNI filtre — "bana atananlar" da export'a yansır.
   const sp = request.nextUrl.searchParams
-  const personnelId = sp.get('sadeceBana') === '1' ? await benimPersonnelId(userId) : null
+  const sadeceBana = sp.get('sadeceBana') === '1'
+
+  // YETKİ (2026-09-13): TÜM kayıtların xlsx'i yalnız canManageRma. Liste ekranı
+  // herkese açık (rma.manage yok, 152 kişi salt okur) ama tam RMA geçmişini
+  // dosya olarak indirmek okumakla aynı şey değil — ölçüldü: rolsüz oturum
+  // 115 kaydı müşteri adıyla indirebiliyordu. `sadeceBana=1` BİLEREK dışarıda:
+  // sorumlu kipindeki kişinin kendi kayıtlarını indirmesi tasarım (rmaMod).
+  if (!sadeceBana && !canManageRma(session)) {
+    return NextResponse.json({ error: 'RMA dışarı aktarma yetkiniz yok' }, { status: 403 })
+  }
+
+  const personnelId = sadeceBana ? await benimPersonnelId(userId) : null
   const where = buildRmaWhere(sp, personnelId)
 
   const kayitlar = await prisma.rmaKayit.findMany({

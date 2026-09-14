@@ -89,12 +89,7 @@ export const config = {
     '/fire-safety/:path*',
     '/settings/:path*',
     '/employees/:path*',
-    '/departments/:path*',
     '/announcements/:path*',
-    '/documents/:path*',
-    '/leaves/:path*',
-    '/attendance/:path*',
-    '/helpdesk/:path*',
     '/meetings/:path*',
     '/personnel/:path*',
     '/envanter/:path*',
@@ -109,5 +104,12 @@ export const config = {
     // (hasPermission ifs.view / ifs.admin / ifs.rapor.view). İki katman
     // çakışmaz; middleware oturumu, sayfa izni bakar.
     '/ifs/:path*',
+    // KALİTE (2026-09-13): /ifs ile aynı gerekçe — 14 sayfanın hepsi requireUser()
+    // ile korunuyor ama matcher'da olmadığı için oturumsuz istek sayfaya ulaşıp
+    // 200 + login kabuğu alıyor, callbackUrl kayboluyordu. Kapsam değişikliği,
+    // davranış değil: izin kontrolü yine sayfada (canManageRma/Uygunsuzluk/HataKodu).
+    // Ölü kayıtlar (departments, documents, leaves, attendance, helpdesk) aynı
+    // turda silindi — 18.01.2026 ilk commit'ten kalma, hiç dizinleri olmadı.
+    '/kalite/:path*',
   ],
 };

@@ -139,10 +139,14 @@ export function RmaListTable({ canManage = false }: { canManage?: boolean }) {
           <BarChart3 className="h-4 w-4 mr-1 shrink-0" />
           KPI
         </Button>
-        <Button variant="outline" size="sm" onClick={handleExport} className="shrink-0">
-          <Download className="h-4 w-4 mr-1 shrink-0" />
-          Excel&apos;e Aktar
-        </Button>
+        {/* Uçla AYNI kural (rma/export): tüm kayıtlar yalnız canManage; "Sadece Bana"
+            açıkken herkes kendi kayıtlarını indirebilir (sorumlu kipi). */}
+        {(canManage || sadeceBana) && (
+          <Button variant="outline" size="sm" onClick={handleExport} className="shrink-0">
+            <Download className="h-4 w-4 mr-1 shrink-0" />
+            Excel&apos;e Aktar
+          </Button>
+        )}
         {canManage && (
           <Button
             variant="outline"

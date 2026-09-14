@@ -145,10 +145,13 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
     <div className="space-y-4">
       {/* Araç çubuğu — Excel aktar/yükle */}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={handleExport} className="shrink-0">
-          <Download className="h-4 w-4 mr-1 shrink-0" />
-          Excel&apos;e Aktar
-        </Button>
+        {/* Uçla AYNI kural (uygunsuzluk/export): tüm kayıtlar yalnız canManage. */}
+        {canManage && (
+          <Button variant="outline" size="sm" onClick={handleExport} className="shrink-0">
+            <Download className="h-4 w-4 mr-1 shrink-0" />
+            Excel&apos;e Aktar
+          </Button>
+        )}
         {canManage && (
           <Button
             variant="outline"

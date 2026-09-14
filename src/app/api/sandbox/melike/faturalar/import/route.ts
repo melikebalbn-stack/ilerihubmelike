@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { apiSuccess, apiBadRequest, apiForbidden, apiError } from '@/lib/api-response'
-import { labelToCategory, labelToCurrency, parseExcelDate, parseExcelAmount } from '../_lib/excel'
+import { matchDepartment, labelToCurrency, parseExcelDate, parseExcelAmount } from '../_lib/excel'
 import { getRateForDate } from '../_lib/tcmb'
 import { canAccessFaturaTakip } from '../_lib/access'
 
@@ -15,7 +15,7 @@ interface RowResult {
 }
 
 // POST — multipart/form-data, field: file (.xlsx/.xls/.csv)
-// Beklenen sütunlar: Tarih, Firma, Fatura No, Tutar, Para Birimi (ops., vars.TRY), Kategori (ops., vars.Genel), Not (ops.)
+// Beklenen sütunlar: Tarih, Firma, Fatura No, Tutar, Para Birimi (ops., vars.TRY), Bölüm (ops., vars.Genel), Not (ops.)
 export async function POST(request: NextRequest) {
   try {
     const { user, error } = await requireUser()
@@ -37,6 +37,10 @@ export async function POST(request: NextRequest) {
     const existingNumbers = new Set(
       (await prisma.invoice.findMany({ select: { invoiceNumber: true } })).map((i) => i.invoiceNumber)
     )
+    const departments = await prisma.orgUnit.findMany({
+      where: { unitType: 'DEPARTMENT', level: 3 },
+      select: { id: true, name: true },
+    })
 
     const results: RowResult[] = []
     let created = 0
@@ -50,7 +54,7 @@ export async function POST(request: NextRequest) {
       const dateStr = parseExcelDate(row['Tarih'])
       const amount = parseExcelAmount(row['Tutar'])
       const currency = labelToCurrency(row['Para Birimi'])
-      const category = labelToCategory(row['Kategori'])
+      const department = matchDepartment(row['Bölüm'] ?? row['Kategori'], departments)
       const note = (row['Not'] ?? '').toString().trim() || null
 
       if (!invoiceNumber) {
@@ -90,7 +94,8 @@ export async function POST(request: NextRequest) {
             exchangeRate: eurRate,
             amountTRY,
             amountEUR,
-            category,
+            departmentOrgUnitId: department.id,
+            departmentName: department.name,
             note,
             createdById: user.id,
           },

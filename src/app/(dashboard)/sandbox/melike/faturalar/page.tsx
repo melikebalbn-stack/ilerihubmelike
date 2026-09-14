@@ -7,7 +7,13 @@ import { getSandboxBySlug, canAccessSandbox } from '@/lib/sandbox-config'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -32,8 +38,12 @@ import { ImportDialog } from './_components/ImportDialog'
 
 const NAVY = '#1B4F72'
 
-type Category = 'GENEL' | 'SISTEM_GELISTIRME'
 type Currency = 'TRY' | 'USD' | 'EUR'
+
+interface Department {
+  id: string
+  name: string
+}
 
 interface Invoice {
   id: string
@@ -44,7 +54,8 @@ interface Invoice {
   currency: Currency
   amountTRY: string
   amountEUR: string
-  category: Category
+  departmentOrgUnitId: string | null
+  departmentName: string | null
 }
 
 interface MonthSummary {
@@ -56,9 +67,16 @@ interface MonthSummary {
   sistemGelistirmeTRY: number
 }
 
+interface DepartmentTotal {
+  label: string
+  eur: number
+  tl: number
+}
+
 interface Summary {
   totals: { genel: number; sistemGelistirme: number; toplam: number; oran: number }
   months: MonthSummary[]
+  departments: DepartmentTotal[]
 }
 
 function formatEur(n: number) {
@@ -84,8 +102,9 @@ export default function FaturaTakipPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [filter, setFilter] = useState<'ALL' | Category>('ALL')
+  const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
   const [search, setSearch] = useState('')
+  const [departments, setDepartments] = useState<Department[]>([])
 
   useEffect(() => {
     if (status === 'loading') return
@@ -103,7 +122,7 @@ export default function FaturaTakipPage() {
 
   const loadInvoices = useCallback(async () => {
     const params = new URLSearchParams()
-    if (filter !== 'ALL') params.set('category', filter)
+    if (filter !== 'ALL') params.set('department', filter)
     if (search.trim()) params.set('search', search.trim())
     const res = await fetch(`/api/sandbox/melike/faturalar?${params.toString()}`)
     if (res.ok) {
@@ -127,11 +146,19 @@ export default function FaturaTakipPage() {
     }
   }, [])
 
+  const loadDepartments = useCallback(async () => {
+    const res = await fetch('/api/sandbox/melike/faturalar/departments')
+    if (res.ok) {
+      const data = await res.json()
+      setDepartments(data.departments ?? [])
+    }
+  }, [])
+
   useEffect(() => {
     if (!authorized) return
     setLoading(true)
-    Promise.all([loadInvoices(), loadSummary(), loadRevenues()]).finally(() => setLoading(false))
-  }, [authorized, loadInvoices, loadSummary, loadRevenues])
+    Promise.all([loadInvoices(), loadSummary(), loadRevenues(), loadDepartments()]).finally(() => setLoading(false))
+  }, [authorized, loadInvoices, loadSummary, loadRevenues, loadDepartments])
 
   // Filtre/arama değiştiğinde sadece liste yenilensin (özet/ciro sabit kalır)
   useEffect(() => {
@@ -148,12 +175,11 @@ export default function FaturaTakipPage() {
     }
   }
 
-  async function handleCategoryToggle(inv: Invoice) {
-    const next: Category = inv.category === 'GENEL' ? 'SISTEM_GELISTIRME' : 'GENEL'
-    const res = await fetch(`/api/sandbox/melike/faturalar/${inv.id}`, {
+  async function handleDepartmentChange(invoiceId: string, departmentOrgUnitId: string) {
+    const res = await fetch(`/api/sandbox/melike/faturalar/${invoiceId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category: next }),
+      body: JSON.stringify({ departmentOrgUnitId: departmentOrgUnitId === 'GENEL' ? null : departmentOrgUnitId }),
     })
     if (res.ok) {
       loadInvoices()
@@ -318,26 +344,59 @@ export default function FaturaTakipPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
+          <p className="mb-3 text-xs text-muted-foreground/80">
+            Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel).
+          </p>
+          {!summary?.departments.length ? (
+            <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Bölüm</TableHead>
+                  <TableHead className="text-right">Toplam (₺)</TableHead>
+                  <TableHead className="text-right">Toplam (€)</TableHead>
+                  <TableHead className="text-right">Pay</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {summary.departments.map((d) => {
+                  const pay = summary.totals.toplam > 0 ? (d.eur / summary.totals.toplam) * 100 : 0
+                  return (
+                    <TableRow key={d.label}>
+                      <TableCell style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}>
+                        {d.label}
+                      </TableCell>
+                      <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{pay.toFixed(1)}%</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1.5">
-          {(
-            [
-              { key: 'ALL', label: 'Tümü' },
-              { key: 'GENEL', label: 'Genel' },
-              { key: 'SISTEM_GELISTIRME', label: 'Sistem Geliştirme' },
-            ] as const
-          ).map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                filter === f.key ? 'border-[#1B4F72] bg-[#EAF1F6] text-[#1B4F72]' : 'border-input text-muted-foreground'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <Select value={filter} onValueChange={setFilter}>
+          <SelectTrigger className="w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Tümü</SelectItem>
+            <SelectItem value="GENEL">Genel</SelectItem>
+            {departments.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <div className="relative ml-auto min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -358,7 +417,7 @@ export default function FaturaTakipPage() {
               <TableHead>Fatura No</TableHead>
               <TableHead className="text-right">Tutar</TableHead>
               <TableHead className="text-right">€ Karşılığı</TableHead>
-              <TableHead>Kategori</TableHead>
+              <TableHead>Bölüm</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -389,18 +448,22 @@ export default function FaturaTakipPage() {
                   </TableCell>
                   <TableCell className="text-right font-semibold">{formatEur(Number(inv.amountEUR))}</TableCell>
                   <TableCell>
-                    <Badge
-                      onClick={() => handleCategoryToggle(inv)}
-                      className="cursor-pointer"
-                      style={
-                        inv.category === 'SISTEM_GELISTIRME'
-                          ? { backgroundColor: '#EAF1F6', color: NAVY }
-                          : { backgroundColor: '#F1EFE8', color: '#5F5E5A' }
-                      }
-                      variant="outline"
+                    <Select
+                      value={inv.departmentOrgUnitId || 'GENEL'}
+                      onValueChange={(v) => handleDepartmentChange(inv.id, v)}
                     >
-                      {inv.category === 'SISTEM_GELISTIRME' ? 'Sistem Geliştirme' : 'Genel'}
-                    </Badge>
+                      <SelectTrigger className="h-7 w-44 text-xs" style={{ color: inv.departmentOrgUnitId ? NAVY : '#5F5E5A' }}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GENEL">Genel</SelectItem>
+                        {departments.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>
                     <button

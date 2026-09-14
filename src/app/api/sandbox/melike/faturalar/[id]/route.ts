@@ -25,7 +25,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 }
 
-// PATCH — sadece kategori güncelleme (Genel <-> Sistem Geliştirme)
+// PATCH — bölüm güncelleme. body: { departmentOrgUnitId: string | null } (null = Genel)
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user, error } = await requireUser()
@@ -34,16 +34,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const { id } = await params
     const body = await request.json()
-    const { category } = body
+    const { departmentOrgUnitId } = body
 
-    if (!['GENEL', 'SISTEM_GELISTIRME'].includes(category)) {
-      return apiBadRequest('Geçersiz kategori')
+    let departmentName: string | null = null
+    if (departmentOrgUnitId) {
+      const dept = await prisma.orgUnit.findUnique({ where: { id: departmentOrgUnitId }, select: { name: true } })
+      if (!dept) return apiBadRequest('Geçersiz bölüm')
+      departmentName = dept.name
     }
 
     const existing = await prisma.invoice.findUnique({ where: { id } })
     if (!existing) return apiNotFound('Fatura bulunamadı')
 
-    const invoice = await prisma.invoice.update({ where: { id }, data: { category } })
+    const invoice = await prisma.invoice.update({
+      where: { id },
+      data: { departmentOrgUnitId: departmentOrgUnitId || null, departmentName },
+    })
     return apiSuccess({ invoice })
   } catch (error) {
     return apiError('Fatura güncellenirken bir hata oluştu', 500, {

@@ -10020,11 +10020,6 @@ model OffboardingAccessItem {
 
 // --- Sandbox/Melike: Fatura Takip modülü ---
 
-enum InvoiceCategory {
-  GENEL
-  SISTEM_GELISTIRME
-}
-
 enum InvoiceCurrency {
   TRY
   USD
@@ -10041,14 +10036,18 @@ model Invoice {
   exchangeRate  Decimal         @db.Decimal(10, 4)
   amountTRY     Decimal         @db.Decimal(14, 2)
   amountEUR     Decimal         @db.Decimal(14, 2)
-  category      InvoiceCategory @default(GENEL)
+  // Bölüm (organizasyon şemasındaki OrgUnit.id, Müdürlük seviyesi). null = "Genel".
+  // OrgUnit başka modülün tablosu olduğu için formal Prisma @relation KURULMUYOR —
+  // sadece id + görünen ad snapshot'ı tutuluyor (org şeması değişse de geçmiş fatura kaydı bozulmasın diye).
+  departmentOrgUnitId String?
+  departmentName      String?
   note          String?
   createdById   String
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
   @@index([invoiceDate])
-  @@index([category])
+  @@index([departmentOrgUnitId])
   @@index([companyName])
 }
 

@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { apiForbidden, apiError } from '@/lib/api-response'
-import { categoryToLabel } from '../_lib/excel'
+import { departmentLabel } from '../_lib/excel'
 import { canAccessFaturaTakip } from '../_lib/access'
 
 // GET ?template=1 — boş şablon (başlıklar + 1 örnek satır); aksi halde mevcut tüm faturalar
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
           'Para Birimi': 'TRY',
           'TL Karşılığı': '',
           '€ Karşılığı': '',
-          Kategori: 'Genel',
+          Bölüm: 'Genel',
           Not: '',
         },
       ]
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         'Para Birimi': inv.currency,
         'TL Karşılığı': Number(inv.amountTRY),
         '€ Karşılığı': Number(inv.amountEUR),
-        Kategori: categoryToLabel(inv.category),
+        Bölüm: departmentLabel(inv.departmentName),
         Not: inv.note ?? '',
       }))
     }

@@ -1,15 +1,14 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { InvoiceCategory, InvoiceCurrency, Prisma } from '@/generated/prisma'
+import { InvoiceCurrency, Prisma } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { apiSuccess, apiCreated, apiBadRequest, apiForbidden, apiError } from '@/lib/api-response'
 import { getRateForDate } from './_lib/tcmb'
 import { canAccessFaturaTakip } from './_lib/access'
 
-const CATEGORIES: InvoiceCategory[] = ['GENEL', 'SISTEM_GELISTIRME']
 const CURRENCIES: InvoiceCurrency[] = ['TRY', 'USD', 'EUR']
 
-// GET ?category=&search= — fatura listesi
+// GET ?department=<orgUnitId>|GENEL&search= — fatura listesi
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await requireUser()
@@ -17,12 +16,14 @@ export async function GET(request: NextRequest) {
     if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const { searchParams } = new URL(request.url)
-    const category = searchParams.get('category')
+    const department = searchParams.get('department')
     const search = searchParams.get('search')?.trim()
 
     const where: Prisma.InvoiceWhereInput = {}
-    if (category && CATEGORIES.includes(category as InvoiceCategory)) {
-      where.category = category as InvoiceCategory
+    if (department === 'GENEL') {
+      where.departmentOrgUnitId = null
+    } else if (department) {
+      where.departmentOrgUnitId = department
     }
     if (search) {
       where.OR = [
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const body = await request.json()
-    const { invoiceDate, companyName, invoiceNumber, amount, currency, category, note } = body
+    const { invoiceDate, companyName, invoiceNumber, amount, currency, departmentOrgUnitId, note } = body
 
     if (!invoiceDate) return apiBadRequest('Fatura tarihi gerekli')
     if (!companyName?.trim()) return apiBadRequest('Firma adı gerekli')
@@ -61,7 +62,13 @@ export async function POST(request: NextRequest) {
     const amountNum = Number(amount)
     if (!amount || isNaN(amountNum) || amountNum <= 0) return apiBadRequest('Geçerli bir tutar gir')
     if (!CURRENCIES.includes(currency)) return apiBadRequest('Geçersiz para birimi')
-    if (!CATEGORIES.includes(category)) return apiBadRequest('Geçersiz kategori')
+
+    let departmentName: string | null = null
+    if (departmentOrgUnitId) {
+      const dept = await prisma.orgUnit.findUnique({ where: { id: departmentOrgUnitId }, select: { name: true } })
+      if (!dept) return apiBadRequest('Geçersiz bölüm')
+      departmentName = dept.name
+    }
 
     const existing = await prisma.invoice.findUnique({ where: { invoiceNumber: invoiceNumber.trim() } })
     if (existing) return apiBadRequest('Bu fatura no zaten kayıtlı')
@@ -89,7 +96,8 @@ export async function POST(request: NextRequest) {
         exchangeRate: eurRate,
         amountTRY,
         amountEUR,
-        category,
+        departmentOrgUnitId: departmentOrgUnitId || null,
+        departmentName,
         note: note?.trim() || null,
         createdById: user.id,
       },

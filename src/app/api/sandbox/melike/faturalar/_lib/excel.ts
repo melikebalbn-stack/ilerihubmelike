@@ -1,10 +1,5 @@
 import * as XLSX from 'xlsx'
 
-export const CATEGORY_LABELS: Record<string, string> = {
-  GENEL: 'Genel',
-  SISTEM_GELISTIRME: 'Sistem Geliştirme',
-}
-
 export const EXPORT_HEADERS = [
   'Tarih',
   'Firma',
@@ -13,18 +8,45 @@ export const EXPORT_HEADERS = [
   'Para Birimi',
   'TL Karşılığı',
   '€ Karşılığı',
-  'Kategori',
+  'Bölüm',
   'Not',
 ] as const
 
-export function categoryToLabel(category: string): string {
-  return CATEGORY_LABELS[category] ?? category
+function normalize(s: string): string {
+  return s
+    .replace(/[İIı]/g, 'i')
+    .replace(/[Şş]/g, 's')
+    .replace(/[Ğğ]/g, 'g')
+    .replace(/[Çç]/g, 'c')
+    .replace(/[Öö]/g, 'o')
+    .replace(/[Üü]/g, 'u')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-export function labelToCategory(value: unknown): 'GENEL' | 'SISTEM_GELISTIRME' {
-  const v = (value ?? '').toString().trim().toLocaleUpperCase('tr-TR')
-  if (v.includes('SISTEM') || v.includes('SİSTEM')) return 'SISTEM_GELISTIRME'
-  return 'GENEL'
+export function departmentLabel(name: string | null | undefined): string {
+  return name ?? 'Genel'
+}
+
+/** Excel'deki serbest metin "Bölüm" hücresini gerçek OrgUnit listesiyle eşleştirir. Eşleşme yoksa Genel (null) döner. */
+export function matchDepartment(
+  value: unknown,
+  departments: { id: string; name: string }[]
+): { id: string | null; name: string | null } {
+  const raw = (value ?? '').toString().trim()
+  if (!raw) return { id: null, name: null }
+
+  const v = normalize(raw)
+  if (v === 'genel') return { id: null, name: null }
+
+  const exact = departments.find((d) => normalize(d.name) === v)
+  if (exact) return { id: exact.id, name: exact.name }
+
+  const partial = departments.find((d) => normalize(d.name).includes(v) || v.includes(normalize(d.name)))
+  if (partial) return { id: partial.id, name: partial.name }
+
+  return { id: null, name: null }
 }
 
 export function labelToCurrency(value: unknown): 'TRY' | 'USD' | 'EUR' {

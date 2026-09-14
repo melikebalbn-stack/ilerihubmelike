@@ -20,8 +20,12 @@ interface Props {
   onCreated: () => void
 }
 
+interface Department {
+  id: string
+  name: string
+}
+
 type Currency = 'TRY' | 'USD' | 'EUR'
-type Category = 'GENEL' | 'SISTEM_GELISTIRME'
 
 const emptyForm = {
   invoiceDate: '',
@@ -29,7 +33,7 @@ const emptyForm = {
   invoiceNumber: '',
   amount: '',
   currency: 'TRY' as Currency,
-  category: 'GENEL' as Category,
+  departmentOrgUnitId: '', // '' = Genel
   note: '',
 }
 
@@ -38,13 +42,19 @@ export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [preview, setPreview] = useState<{ eur: number; rate: number } | null>(null)
+  const [departments, setDepartments] = useState<Department[]>([])
 
   useEffect(() => {
     if (!open) {
       setForm(emptyForm)
       setErrors({})
       setPreview(null)
+      return
     }
+    fetch('/api/sandbox/melike/faturalar/departments')
+      .then((res) => (res.ok ? res.json() : { departments: [] }))
+      .then((data) => setDepartments(data.departments ?? []))
+      .catch(() => setDepartments([]))
   }, [open])
 
   useEffect(() => {
@@ -103,6 +113,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
         body: JSON.stringify({
           ...form,
           amount: parseFloat(form.amount.replace(',', '.')),
+          departmentOrgUnitId: form.departmentOrgUnitId || null,
         }),
       })
       if (!res.ok) {
@@ -193,23 +204,23 @@ export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
           )}
 
           <div className="space-y-1.5">
-            <Label>Kategori</Label>
-            <div className="flex gap-2">
-              {(['GENEL', 'SISTEM_GELISTIRME'] as Category[]).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setForm({ ...form, category: k })}
-                  className={`flex-1 rounded-md border py-2 text-sm font-semibold transition-colors ${
-                    form.category === k
-                      ? 'border-[#1B4F72] bg-[#EAF1F6] text-[#1B4F72]'
-                      : 'border-input bg-background text-muted-foreground'
-                  }`}
-                >
-                  {k === 'GENEL' ? 'Genel' : 'Sistem Geliştirme'}
-                </button>
-              ))}
-            </div>
+            <Label>Bölüm</Label>
+            <Select
+              value={form.departmentOrgUnitId || 'GENEL'}
+              onValueChange={(v) => setForm({ ...form, departmentOrgUnitId: v === 'GENEL' ? '' : v })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="GENEL">Genel</SelectItem>
+                {departments.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {errors.submit && <p className="text-xs text-destructive">{errors.submit}</p>}

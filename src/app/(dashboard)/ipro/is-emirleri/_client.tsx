@@ -52,6 +52,28 @@ function trTarihSaat(iso: string | null): string {
   return new Date(iso).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', dateStyle: 'short', timeStyle: 'short' })
 }
 
+/** yyyy-MM-dd → gg.aa.yyyy (sıfır dolgulu). Boş/geçersizse '—'. */
+function gunAyYil(s: string | null): string {
+  if (!s) return '—'
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s)
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : s
+}
+
+/** Geçen süre (Türkçe, en büyük birim tek başına): "3 gün önce" / "5 saat önce" / "12 dk önce".
+ * 1 dk'dan az → "az önce"; gelecek/boş → ''. Girdi yyyy-MM-dd (gün başı, yerel). */
+function gecenSure(s: string | null): string {
+  if (!s || !/^\d{4}-\d{2}-\d{2}/.test(s)) return ''
+  const fark = Date.now() - new Date(`${s.slice(0, 10)}T00:00:00`).getTime()
+  if (fark < 0) return ''
+  const dk = Math.floor(fark / 60000)
+  if (dk < 1) return 'az önce'
+  const saat = Math.floor(dk / 60)
+  const gun = Math.floor(saat / 24)
+  if (gun >= 1) return `${gun} gün önce`
+  if (saat >= 1) return `${saat} saat önce`
+  return `${dk} dk önce`
+}
+
 function ifsDurumRozet(durum: string) {
   const stil =
     durum === 'ISLENEBILIR'
@@ -286,8 +308,13 @@ function AcikSekme({ aktarYetkisi }: { aktarYetkisi: boolean }) {
                     </TableCell>
                     <TableCell>{i.isMerkezi || '—'}</TableCell>
                     <TableCell className="text-right">{i.miktar} / {i.kalanMiktar}</TableCell>
-                    <TableCell>{i.acilisTarihi || '—'}</TableCell>
-                    <TableCell>{i.teslimTarihi || '—'}</TableCell>
+                    <TableCell>
+                      <div>{gunAyYil(i.acilisTarihi)}</div>
+                      {gecenSure(i.acilisTarihi) ? (
+                        <div className="text-[11px] text-slate-400">{gecenSure(i.acilisTarihi)}</div>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>{gunAyYil(i.teslimTarihi)}</TableCell>
                     <TableCell>{ifsDurumRozet(i.durum)}</TableCell>
                   </TableRow>
                 ))

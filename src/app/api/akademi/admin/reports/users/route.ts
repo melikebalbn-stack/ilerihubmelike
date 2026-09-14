@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
+import {
+  parseAkademiType,
+  viaCourseWhere,
+  viaOptionalCourseWhere,
+} from "@/lib/akademi/admin-type-filter";
 import type { Prisma } from "@/generated/prisma";
 
 export async function GET(req: NextRequest) {
@@ -10,6 +15,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search")?.trim() ?? "";
   const bolum = searchParams.get("bolum")?.trim();
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  const { type, error: typeError } = parseAkademiType(searchParams);
+  if (typeError) return typeError;
 
   const where: Prisma.UserWhereInput = {};
   if (search) {
@@ -48,11 +56,15 @@ export async function GET(req: NextRequest) {
 
   const [progressRows, attemptRows] = await Promise.all([
     prisma.courseProgress.findMany({
-      where: { userId: { in: userIds } },
+      where: { ...viaCourseWhere(type), userId: { in: userIds } },
       select: { userId: true, percentage: true, completedAt: true },
     }),
     prisma.userExamAttempt.findMany({
-      where: { userId: { in: userIds }, status: "COMPLETED" },
+      where: {
+        exam: viaOptionalCourseWhere(type),
+        userId: { in: userIds },
+        status: "COMPLETED",
+      },
       select: { userId: true, score: true, passed: true },
     }),
   ]);

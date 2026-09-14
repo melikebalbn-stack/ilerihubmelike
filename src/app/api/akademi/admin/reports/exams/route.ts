@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { parseAkademiType, viaOptionalCourseWhere } from "@/lib/akademi/admin-type-filter";
 import { isAutoScored } from "@/lib/akademi/question-types";
 import { scoreQuestion } from "@/lib/akademi/scoring";
 
@@ -11,11 +12,16 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const examId = searchParams.get("examId");
 
+  // examId verilmişse tekil rapor — type süzgeci uygulanmaz.
   if (examId) {
     return getSingleExamReport(examId);
   }
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  const { type, error: typeError } = parseAkademiType(searchParams);
+  if (typeError) return typeError;
 
   const exams = await prisma.exam.findMany({
+    where: viaOptionalCourseWhere(type),
     select: {
       id: true,
       title: true,

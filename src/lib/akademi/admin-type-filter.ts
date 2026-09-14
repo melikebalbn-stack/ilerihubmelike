@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma";
 
 /**
@@ -40,4 +41,30 @@ export function viaOptionalCourseWhere(
   if (type === "all") return {};
   if (type === "ifs") return { OR: [{ course: { isIfs: true } }] };
   return { OR: [{ course: { isIfs: false } }, { courseId: null }] };
+}
+
+/**
+ * Query string'den type'ı okur. Parametre adı varsayılan `type`; `reports/export`
+ * gibi `type`'ı başka anlamda kullanan uçlar `scope` verir.
+ * Geçersiz değer → 400 (fail-closed: sessizce "all"a düşmez).
+ */
+export function parseAkademiType(
+  searchParams: URLSearchParams,
+  param: "type" | "scope" = "type"
+): { type: AkademiType; error: null } | { type: null; error: NextResponse } {
+  const parsed = akademiTypeSchema.safeParse(searchParams.get(param) ?? undefined);
+  if (!parsed.success) {
+    return {
+      type: null,
+      error: NextResponse.json({ error: `Geçersiz ${param}` }, { status: 400 }),
+    };
+  }
+  return { type: parsed.data, error: null };
+}
+
+/** UserCourseAssignment → assignment → course zinciri. */
+export function viaAssignmentWhere(
+  type: AkademiType
+): { assignment?: { course: Prisma.CourseWhereInput } } {
+  return type === "all" ? {} : { assignment: { course: { isIfs: type === "ifs" } } };
 }

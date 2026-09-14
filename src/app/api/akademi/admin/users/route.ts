@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
+import {
+  parseAkademiType,
+  viaAssignmentWhere,
+  viaCourseWhere,
+} from "@/lib/akademi/admin-type-filter";
 import { resolveUserDisplayName } from "@/lib/akademi-helpers";
 
 export async function GET(req: NextRequest) {
@@ -8,6 +13,11 @@ export async function GET(req: NextRequest) {
   if (error) return error;
 
   const search = req.nextUrl.searchParams.get("search")?.trim().toLowerCase();
+  // Kullanıcı listesi süzülmez (IFS keyuser atama da bu listeyi kullanır);
+  // yalnız atama/tamamlama sayaçları kurs türüne göre süzülür.
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  const { type, error: typeError } = parseAkademiType(req.nextUrl.searchParams);
+  if (typeError) return typeError;
 
   const users = await prisma.user.findMany({
     where: search
@@ -48,12 +58,13 @@ export async function GET(req: NextRequest) {
       }),
       prisma.userCourseAssignment.groupBy({
         by: ["userId"],
-        where: { userId: { in: userIds } },
+        where: { ...viaAssignmentWhere(type), userId: { in: userIds } },
         _count: { _all: true },
       }),
       prisma.courseProgress.groupBy({
         by: ["userId"],
         where: {
+          ...viaCourseWhere(type),
           userId: { in: userIds },
           completedAt: { not: null },
         },

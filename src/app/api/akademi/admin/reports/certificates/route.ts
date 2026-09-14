@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { parseAkademiType, viaOptionalCourseWhere } from "@/lib/akademi/admin-type-filter";
 import type { Prisma } from "@/generated/prisma";
 
 export async function GET(req: NextRequest) {
@@ -10,8 +11,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const courseId = searchParams.get("courseId");
   const expiredOnly = searchParams.get("expiredOnly") === "true";
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  const { type, error: typeError } = parseAkademiType(searchParams);
+  if (typeError) return typeError;
 
-  const where: Prisma.AkademiCertificateWhereInput = {};
+  // AND: viaOptionalCourseWhere kendi OR'unu taşır, üstteki OR/courseId ile çakışmasın.
+  const where: Prisma.AkademiCertificateWhereInput = {
+    AND: [viaOptionalCourseWhere(type)],
+  };
   if (courseId) where.courseId = courseId;
   if (expiredOnly) {
     where.validUntil = { lt: new Date() };

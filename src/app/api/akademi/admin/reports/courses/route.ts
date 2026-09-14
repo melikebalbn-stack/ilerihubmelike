@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { courseTypeWhere, parseAkademiType } from "@/lib/akademi/admin-type-filter";
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const { error } = await requirePermission('akademi.report.view');
   if (error) return error;
 
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  const { type, error: typeError } = parseAkademiType(req.nextUrl.searchParams);
+  if (typeError) return typeError;
+
   const courses = await prisma.course.findMany({
+    where: courseTypeWhere(type),
     select: {
       id: true,
       title: true,

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { getLinkedBolums } from "@/lib/user-personnel";
+import {
+  courseTypeWhere,
+  parseAkademiType,
+  viaCourseWhere,
+  viaOptionalCourseWhere,
+} from "@/lib/akademi/admin-type-filter";
 import * as XLSX from "xlsx";
 
 type ExportType =
@@ -18,6 +24,13 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const typeParam = (searchParams.get("type") ?? "all") as ExportType;
+  // `type` burada sayfa seçimi; IFS/normal ayrımı `scope` ile (varsayılan normal).
+  const { type: scope, error: scopeError } = parseAkademiType(searchParams, "scope");
+  if (scopeError) return scopeError;
+  const courseW = courseTypeWhere(scope);
+  const progressW = viaCourseWhere(scope);
+  const examW = viaOptionalCourseWhere(scope);
+  const certW = viaOptionalCourseWhere(scope);
 
   const wb = XLSX.utils.book_new();
 
@@ -35,11 +48,11 @@ export async function GET(req: NextRequest) {
     const userIds = users.map((u) => u.id);
     const [progressRows, attemptRows] = await Promise.all([
       prisma.courseProgress.findMany({
-        where: { userId: { in: userIds } },
+        where: { ...progressW, userId: { in: userIds } },
         select: { userId: true, completedAt: true },
       }),
       prisma.userExamAttempt.findMany({
-        where: { userId: { in: userIds }, status: "COMPLETED" },
+        where: { exam: examW, userId: { in: userIds }, status: "COMPLETED" },
         select: { userId: true, score: true, passed: true },
       }),
     ]);
@@ -85,6 +98,7 @@ export async function GET(req: NextRequest) {
 
   if (typeParam === "all" || typeParam === "courses") {
     const courses = await prisma.course.findMany({
+      where: courseW,
       include: {
         progress: { select: { completedAt: true } },
         _count: {
@@ -110,6 +124,7 @@ export async function GET(req: NextRequest) {
 
   if (typeParam === "all" || typeParam === "exams") {
     const exams = await prisma.exam.findMany({
+      where: examW,
       include: {
         attempts: { select: { status: true, passed: true, score: true } },
         course: { select: { title: true } },
@@ -148,6 +163,7 @@ export async function GET(req: NextRequest) {
 
   if (typeParam === "all" || typeParam === "certificates") {
     const certs = await prisma.akademiCertificate.findMany({
+      where: certW,
       include: {
         user: {
           select: {
@@ -201,17 +217,18 @@ export async function GET(req: NextRequest) {
         }
         const [completed, passed, certs] = await Promise.all([
           prisma.courseProgress.count({
-            where: { userId: { in: userIds }, completedAt: { not: null } },
+            where: { ...progressW, userId: { in: userIds }, completedAt: { not: null } },
           }),
           prisma.userExamAttempt.count({
             where: {
+              exam: examW,
               userId: { in: userIds },
               status: "COMPLETED",
               passed: true,
             },
           }),
           prisma.akademiCertificate.count({
-            where: { userId: { in: userIds } },
+            where: { ...certW, userId: { in: userIds } },
           }),
         ]);
         return {

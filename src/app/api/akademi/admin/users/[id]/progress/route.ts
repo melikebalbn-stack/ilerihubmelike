@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
 import { prisma } from "@/lib/prisma";
+import {
+  parseAkademiType,
+  viaAssignmentWhere,
+  viaCourseWhere,
+} from "@/lib/akademi/admin-type-filter";
 import { resolveUserDisplayName } from "@/lib/akademi-helpers";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { error } = await requirePermission('akademi.admin');
@@ -14,6 +19,10 @@ export async function GET(
   if (!id) {
     return NextResponse.json({ error: "ID gerekli" }, { status: 400 });
   }
+  // XP geçmişi süzülmez (kurs bağı yok); atama ve ilerleme kurs türüne göre.
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  const { type, error: typeError } = parseAkademiType(req.nextUrl.searchParams);
+  if (typeError) return typeError;
 
   const user = await prisma.user.findUnique({
     where: { id },
@@ -35,7 +44,7 @@ export async function GET(
   const [xp, assignments, progresses, history, levels] = await Promise.all([
     prisma.userXp.findUnique({ where: { userId: id } }),
     prisma.userCourseAssignment.findMany({
-      where: { userId: id },
+      where: { ...viaAssignmentWhere(type), userId: id },
       include: {
         assignment: {
           include: {
@@ -48,7 +57,7 @@ export async function GET(
       orderBy: { assignedAt: "desc" },
     }),
     prisma.courseProgress.findMany({
-      where: { userId: id },
+      where: { ...viaCourseWhere(type), userId: id },
       select: {
         courseId: true,
         percentage: true,

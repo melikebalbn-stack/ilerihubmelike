@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { canManageFif } from '@/lib/quality/fif-access'
+import { fifKapsamindaMi } from '@/lib/quality/fif-access'
 import { fifInput } from '@/lib/quality/fif-validators'
 import { FifDurum } from '@/generated/prisma'
 
@@ -9,9 +9,10 @@ export const dynamic = 'force-dynamic'
 
 /** GET /api/kalite/fif/[id] — detay. Auth: oturum (herkes okur). */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requireSession()
+  const { session, error } = await requireSession()
   if (error) return error
   const { id } = await params
+
 
   const item = await prisma.fif.findUnique({
     where: { id },
@@ -26,11 +27,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     },
   })
   if (!item) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
+  if (!(await fifKapsamindaMi(session, item))) {
+    return NextResponse.json({ error: 'Bu FİF kapsamınızda değil' }, { status: 403 })
+  }
   return NextResponse.json({ item })
 }
 
 /**
- * PUT /api/kalite/fif/[id] — güncelle. Auth: canManageFif.
+ * PUT /api/kalite/fif/[id] — güncelle. Auth: kapsam (kendi/hazırlayan/bölüm; manage tümü).
  * Faz 1: başlık alanları + faaliyet/kök neden/5 neden/etkinlik listeleri
  * yerinde değiştirilir (deleteMany + create). kayitNo/durum bu uçtan DEĞİŞMEZ
  * (durum geçişleri Faz 2). İPTAL için DELETE kullanılır.
@@ -38,13 +42,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { session, error } = await requireSession()
   if (error) return error
-  if (!canManageFif(session)) {
-    return NextResponse.json({ error: 'FİF düzenleme yetkiniz yok' }, { status: 403 })
-  }
   const { id } = await params
 
-  const mevcut = await prisma.fif.findUnique({ where: { id }, select: { id: true, durum: true } })
+  const mevcut = await prisma.fif.findUnique({
+    where: { id },
+    select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true },
+  })
   if (!mevcut) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
+  if (!(await fifKapsamindaMi(session, mevcut))) {
+    return NextResponse.json({ error: 'Bu FİF kapsamınızda değil' }, { status: 403 })
+  }
   if (mevcut.durum === FifDurum.IPTAL) {
     return NextResponse.json({ error: 'İptal edilmiş FİF düzenlenemez' }, { status: 409 })
   }
@@ -131,16 +138,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   return NextResponse.json({ item: updated })
 }
 
-/** DELETE /api/kalite/fif/[id] — İPTAL (soft). Auth: canManageFif. Kayıt silinmez. */
+/** DELETE /api/kalite/fif/[id] — İPTAL (soft). Auth: kapsam. Kayıt silinmez. */
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { session, error } = await requireSession()
   if (error) return error
-  if (!canManageFif(session)) {
-    return NextResponse.json({ error: 'FİF iptal yetkiniz yok' }, { status: 403 })
-  }
   const { id } = await params
-  const mevcut = await prisma.fif.findUnique({ where: { id }, select: { id: true } })
+  const mevcut = await prisma.fif.findUnique({
+    where: { id },
+    select: { id: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true },
+  })
   if (!mevcut) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
+  if (!(await fifKapsamindaMi(session, mevcut))) {
+    return NextResponse.json({ error: 'Bu FİF kapsamınızda değil' }, { status: 403 })
+  }
 
   await prisma.fif.update({ where: { id }, data: { durum: FifDurum.IPTAL } })
   return NextResponse.json({ ok: true })

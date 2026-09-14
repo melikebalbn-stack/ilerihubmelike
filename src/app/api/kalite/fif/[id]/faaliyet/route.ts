@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { canManageFif } from '@/lib/quality/fif-access'
+import { fifKapsamindaMi } from '@/lib/quality/fif-access'
 import { fifFaaliyetInput } from '@/lib/quality/fif-validators'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-/** Tek faaliyet satırı ekle/düzenle/sil. Auth: canManageFif. FİF iptalse reddedilir. */
+/** Tek faaliyet satırı ekle/düzenle/sil. Auth: kapsam. FİF iptalse reddedilir. */
 async function yetkiVeFif(id: string) {
   const { session, error } = await requireSession()
   if (error) return { error }
-  if (!canManageFif(session)) {
-    return { error: NextResponse.json({ error: 'Faaliyet düzenleme yetkiniz yok' }, { status: 403 }) }
-  }
-  const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, durum: true } })
+  const fif = await prisma.fif.findUnique({
+    where: { id },
+    select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true },
+  })
   if (!fif) return { error: NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 }) }
+  if (!(await fifKapsamindaMi(session, fif))) {
+    return { error: NextResponse.json({ error: 'Bu FİF kapsamınızda değil' }, { status: 403 }) }
+  }
   if (fif.durum === 'IPTAL') return { error: NextResponse.json({ error: 'İptal edilmiş FİF' }, { status: 409 }) }
   return { error: null as null }
 }

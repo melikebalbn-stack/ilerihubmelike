@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { fifNoPrefix, parseFifNo } from './fif-no'
 import { fifInput, FIF_ZORUNLU_ALANLAR } from './fif-validators'
+import { fifRecordInScope } from './fif-access'
 
 describe('fif-no — kayıt no biçim + yıl geçişi', () => {
   it('prefix yıl bazlı', () => {
@@ -68,5 +69,32 @@ describe('fif-validators — Faz 1 zorunluluk (tek kaynak)', () => {
   it('faaliyet satırı açıklaması zorunlu (alt kayıt tutarlılık)', () => {
     const r = fifInput.safeParse({ ...gecerli, faaliyetler: [{ sira: 1, aciklama: '' }] })
     expect(r.success).toBe(false)
+  })
+})
+
+describe('fif-access — kapsam predicate (fifRecordInScope, DB\'siz)', () => {
+  const kayit = {
+    createdById: 'baskaUser',
+    hazirlayanUserId: 'baskaUser',
+    sorumluBolumId: 'deptX',
+    yayinlayanBolumId: null,
+  }
+
+  it('manage → TÜMÜ görür (ilgisiz kayıt bile)', () => {
+    const ctx = { userId: 'u1', isManage: true, deptIds: [] }
+    expect(fifRecordInScope(ctx, kayit)).toBe(true)
+  })
+
+  it('hazırlayan/kendi → kendi açtığı veya hazırlayan olduğu kaydı görür', () => {
+    const ctx = { userId: 'u1', isManage: false, deptIds: [] }
+    expect(fifRecordInScope(ctx, { ...kayit, createdById: 'u1' })).toBe(true)
+    expect(fifRecordInScope(ctx, { ...kayit, hazirlayanUserId: 'u1' })).toBe(true)
+    // bölümü de eşleşiyorsa görür
+    expect(fifRecordInScope({ ...ctx, deptIds: ['deptX'] }, kayit)).toBe(true)
+  })
+
+  it('ilgisiz/boş → görmez (farklı user, bölüm eşleşmez, oturumsuz)', () => {
+    expect(fifRecordInScope({ userId: 'u1', isManage: false, deptIds: ['deptY'] }, kayit)).toBe(false)
+    expect(fifRecordInScope({ userId: null, isManage: false, deptIds: [] }, kayit)).toBe(false)
   })
 })

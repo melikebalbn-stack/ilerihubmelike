@@ -1,18 +1,17 @@
 import { redirect, notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth/require-user'
-import { canManageFif } from '@/lib/quality/fif-access'
+import { fifKapsamindaMi } from '@/lib/quality/fif-access'
 import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { prisma } from '@/lib/prisma'
 import { FifFormClient } from '@/components/quality/fif/FifFormClient'
 
 export const dynamic = 'force-dynamic'
 
-/** FİF detay/düzenleme. Okuma herkes; düzenleme canManageFif (form içi read-only değil,
- *  yetkisiz kullanıcı Faz 1'de düzenleme uçlarında 403 alır — form gösterimi bilgi amaçlı). */
+/** FİF detay/düzenleme. Kapsam: manage tümü; diğer kullanıcı kendi/hazırlayan/bölüm
+ *  kayıtları (fifKapsamindaMi). Kapsam dışıysa YetkisizErisim. */
 export default async function FifDetayPage({ params }: { params: Promise<{ id: string }> }) {
   const { session, error } = await requireUser()
   if (error) redirect('/login')
-  if (!canManageFif(session)) return <YetkisizErisim permission="fif.manage" />
 
   const { id } = await params
   const fif = await prisma.fif.findUnique({
@@ -20,6 +19,7 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
     include: { faaliyetler: { orderBy: { sira: 'asc' } } },
   })
   if (!fif) notFound()
+  if (!(await fifKapsamindaMi(session, fif))) return <YetkisizErisim permission="fif.view" />
 
   const initial = {
     id: fif.id,

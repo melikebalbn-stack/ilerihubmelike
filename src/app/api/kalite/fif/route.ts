@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { canManageFif } from '@/lib/quality/fif-access'
+import { fifWhereForUser } from '@/lib/quality/fif-access'
 import { fifInput } from '@/lib/quality/fif-validators'
 import { generateNextFifNo } from '@/lib/quality/fif-no'
 import { normalizeTr } from '@/lib/normalize-tr'
@@ -15,14 +15,16 @@ export const dynamic = 'force-dynamic'
  * Not (Faz 1 açık nokta): kapsam daraltma (kendi/kendi bölümü) YOK — tümü döner.
  */
 export async function GET(request: NextRequest) {
-  const { error } = await requireSession()
+  const { session, error } = await requireSession()
   if (error) return error
 
   const sp = request.nextUrl.searchParams
   const page = Math.max(1, Number.parseInt(sp.get('page') ?? '1', 10) || 1)
   const pageSize = Math.min(100, Math.max(1, Number.parseInt(sp.get('pageSize') ?? '20', 10) || 20))
 
-  const where: Prisma.FifWhereInput = {}
+  // Kapsam TEK YERDE: manage → tümü, diğer → kendi/hazırlayan/bölüm (fif-access).
+  const kapsam = await fifWhereForUser(session)
+  const where: Prisma.FifWhereInput = { ...kapsam }
   const durum = sp.get('durum')
   if (durum && durum in FifDurum) where.durum = durum as FifDurum
 
@@ -68,16 +70,14 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/kalite/fif — oluştur. Auth: canManageFif.
+ * POST /api/kalite/fif — oluştur. Auth: oturum (herkes TASLAK açabilir).
  * `kayitNo` OTOMATİK (yıl bazlı, kayıt ile AYNI transaction) — advisory lock
  * erken bırakılmasın. Durum TASLAK. Kullanıcı/bölüm alanları düz string id.
  */
 export async function POST(request: NextRequest) {
-  const { session, userId, error } = await requireSession()
+  const { userId, error } = await requireSession()
   if (error) return error
-  if (!canManageFif(session)) {
-    return NextResponse.json({ error: 'FİF oluşturma yetkiniz yok' }, { status: 403 })
-  }
+  // Oluşturma: oturumu olan HERKES yeni FİF (TASLAK) açabilir (kapsam düzeltmesi).
 
   const body = await request.json().catch(() => null)
   const parsed = fifInput.safeParse(body)

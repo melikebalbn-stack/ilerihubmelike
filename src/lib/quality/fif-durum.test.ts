@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { FifDurum, FifSonuc } from '@/generated/prisma'
-import { gecisYapabilirMi, uygunGecisler, altKayitDuzenlenebilir, esKuraliGecerli, type FifGecisState, type FifGecisCtx } from './fif-durum'
+import { gecisYapabilirMi, uygunGecisler, altKayitDuzenlenebilir, esKuraliGecerli, esGecmisAciklamasi, type FifGecisState, type FifGecisCtx } from './fif-durum'
 
 const HAZIRLAYAN = 'uHazir'
 const YAYINLAYAN = 'uYayin'
@@ -146,5 +146,57 @@ describe('fif-durum — geçersiz geçiş + yardımcılar', () => {
     expect(esKuraliGecerli(FifDurum.FAALIYET, FifSonuc.ES, '').ok).toBe(false)
     expect(esKuraliGecerli(FifDurum.FAALIYET, FifSonuc.ES, 'gecikme').ok).toBe(true)
     expect(esKuraliGecerli(FifDurum.FAALIYET, FifSonuc.K, null).ok).toBe(true)
+  })
+})
+
+describe('fif-durum — Faz 3: ES geçmiş açıklaması', () => {
+  it('eski→yeni tarih + neden birleştirir', () => {
+    expect(esGecmisAciklamasi('2026-09-20', '2026-10-05', 'tedarik gecikmesi'))
+      .toBe('ES: 2026-09-20 → 2026-10-05, neden: tedarik gecikmesi')
+  })
+  it('eski tarih null ise — ile gösterir', () => {
+    expect(esGecmisAciklamasi(null, '2026-10-05', 'x')).toBe('ES: — → 2026-10-05, neden: x')
+  })
+})
+
+describe('fif-durum — Faz 3: etkinlik upsert ön koşulu (KAPANDI kapısı)', () => {
+  const base = () => ({
+    durum: FifDurum.ETKINLIK, createdById: 'h', hazirlayanUserId: 'h', yayinlayanOnaylayanUserId: 'y',
+    sorumluOnaylayanUserId: 's', izlemeSorumlusuUserId: 'i', takipSorumlusuUserId: 't',
+    sorumluBolumId: 'd', uygunsuzlukTanimi: 'x', tur: 'DUZELTICI', faaliyetler: [],
+  }) as unknown as FifGecisState
+  const ctx = { userId: 't', isManage: false, sorumluBolumMudurUserId: null }
+  it('yalnız KAPATMA uygun → KAPANDI reddedilir (TEKRAR_ETMEME eksik)', () => {
+    const s = { ...base(), etkinlikler: [{ madde: 'KAPATMA', uygun: true }] }
+    expect(gecisYapabilirMi(ctx, s, FifDurum.KAPANDI).ok).toBe(false)
+  })
+  it('ikisi de uygun → KAPANDI olur', () => {
+    const s = { ...base(), etkinlikler: [{ madde: 'KAPATMA', uygun: true }, { madde: 'TEKRAR_ETMEME', uygun: true }] }
+    expect(gecisYapabilirMi(ctx, s, FifDurum.KAPANDI).ok).toBe(true)
+  })
+  it('biri uygun değil → KAPANDI reddedilir', () => {
+    const s = { ...base(), etkinlikler: [{ madde: 'KAPATMA', uygun: true }, { madde: 'TEKRAR_ETMEME', uygun: false }] }
+    expect(gecisYapabilirMi(ctx, s, FifDurum.KAPANDI).ok).toBe(false)
+  })
+  it('biri uygun null → KAPANDI reddedilir', () => {
+    const s = { ...base(), etkinlikler: [{ madde: 'KAPATMA', uygun: true }, { madde: 'TEKRAR_ETMEME', uygun: null }] }
+    expect(gecisYapabilirMi(ctx, s, FifDurum.KAPANDI).ok).toBe(false)
+  })
+})
+
+describe('fif-durum — Faz 3: Ek-1/Ek-2 düzenleme kilidi (altKayitDuzenlenebilir)', () => {
+  const c = (m = false) => ({ userId: 'u', isManage: m, sorumluBolumMudurUserId: null })
+  it('FAALIYET ve sonrası açık (TASLAK/FAALIYET/ETKINLIK/KAPATMA_BEKLIYOR)', () => {
+    for (const dr of [FifDurum.TASLAK, FifDurum.FAALIYET, FifDurum.ETKINLIK, FifDurum.KAPATMA_BEKLIYOR]) {
+      expect(altKayitDuzenlenebilir(c(), dr)).toBe(true)
+    }
+  })
+  it('KAPANDI kilitli (manage hariç)', () => {
+    expect(altKayitDuzenlenebilir(c(false), FifDurum.KAPANDI)).toBe(false)
+    expect(altKayitDuzenlenebilir(c(true), FifDurum.KAPANDI)).toBe(true)
+  })
+  it('IPTAL kilitli (manage hariç)', () => {
+    expect(altKayitDuzenlenebilir(c(false), FifDurum.IPTAL)).toBe(false)
+    expect(altKayitDuzenlenebilir(c(true), FifDurum.IPTAL)).toBe(true)
   })
 })

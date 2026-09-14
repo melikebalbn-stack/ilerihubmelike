@@ -164,3 +164,9 @@ export function esKuraliGecerli(durum: FifDurum, sonuc: FifSonuc | null | undefi
   }
   return OK
 }
+
+
+/** ES (ek süre) geçmiş açıklaması — FifGecmis.aciklama için TEK KAYNAK biçim. */
+export function esGecmisAciklamasi(eskiTarih: string | null, yeniTarih: string, neden: string): string {
+  return `ES: ${eskiTarih ?? '—'} → ${yeniTarih}, neden: ${neden}`
+}

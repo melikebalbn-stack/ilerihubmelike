@@ -1,11 +1,12 @@
 import { redirect, notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth/require-user'
 import { fifKapsamindaMi, canManageFif } from '@/lib/quality/fif-access'
-import { uygunGecisler, type FifGecisCtx } from '@/lib/quality/fif-durum'
+import { uygunGecisler, altKayitDuzenlenebilir, type FifGecisCtx } from '@/lib/quality/fif-durum'
 import { YetkisizErisim } from '@/components/YetkisizErisim'
 import { prisma } from '@/lib/prisma'
 import { FifFormClient } from '@/components/quality/fif/FifFormClient'
 import { FifDurumPanel } from '@/components/quality/fif/FifDurumPanel'
+import { FifEklerPanel } from '@/components/quality/fif/FifEklerPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,9 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
     include: {
       faaliyetler: { orderBy: { sira: 'asc' } },
       etkinlikler: true,
+      kokNedenler: true,
+      besNedenler: true,
+      ekler: { orderBy: { createdAt: 'asc' } },
       gecmis: { orderBy: { createdAt: 'desc' } },
     },
   })
@@ -74,6 +78,16 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
       <h1 className="text-2xl font-bold text-[#1B4F72]">FİF Detay</h1>
       <FifDurumPanel fifId={fif.id} durum={fif.durum} gecisler={gecisler} gecmis={gecmis} />
       <FifFormClient initial={initial} />
+      <FifEklerPanel
+        fifId={fif.id}
+        durum={fif.durum}
+        duzenlenebilir={altKayitDuzenlenebilir(ctx, fif.durum)}
+        faaliyetler={fif.faaliyetler.map((f) => ({ id: f.id, sira: f.sira, aciklama: f.aciklama, hedefTarih: f.hedefTarih ? f.hedefTarih.toISOString() : null, sonuc: f.sonuc }))}
+        etkinlikler={fif.etkinlikler.map((e) => ({ madde: e.madde, planlananTarih: e.planlananTarih ? e.planlananTarih.toISOString() : null, gerceklesenTarih: e.gerceklesenTarih ? e.gerceklesenTarih.toISOString() : null, uygun: e.uygun }))}
+        kokNedenler={fif.kokNedenler.map((k) => ({ kategori: k.kategori, aciklama: k.aciklama }))}
+        besNedenler={fif.besNedenler.map((b) => ({ muhtemelSebep: b.muhtemelSebep, neden1: b.neden1, neden2: b.neden2, neden3: b.neden3, neden4: b.neden4, neden5: b.neden5 }))}
+        ekler={fif.ekler.map((e) => ({ id: e.id, tip: e.tip, dosyaYolu: e.dosyaYolu }))}
+      />
     </div>
   )
 }

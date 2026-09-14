@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -48,7 +49,10 @@ export function FifDurumPanel({
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) { setHata(d.error ?? 'Geçiş başarısız'); setGonderiliyor(false); return }
-      setModal(null); setNeden(''); router.refresh()
+      setModal(null); setNeden('')
+      // IPTAL sonrası kayıt işlemsiz kalır; listeye dön. Diğer geçişlerde detayda kal.
+      if (g.hedef === 'IPTAL') { toast.success('FİF iptal edildi'); router.push('/kalite/fif') }
+      router.refresh()
     } catch { setHata('Ağ hatası'); setGonderiliyor(false) }
   }
 

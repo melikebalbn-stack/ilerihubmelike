@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { FifDurum, FifSonuc } from '@/generated/prisma'
-import { gecisYapabilirMi, uygunGecisler, altKayitDuzenlenebilir, esKuraliGecerli, esGecmisAciklamasi, type FifGecisState, type FifGecisCtx } from './fif-durum'
+import { gecisYapabilirMi, uygunGecisler, altKayitDuzenlenebilir, esKuraliGecerli, esGecmisAciklamasi, hardDeleteEdilebilir, type FifGecisState, type FifGecisCtx } from './fif-durum'
 
 const HAZIRLAYAN = 'uHazir'
 const YAYINLAYAN = 'uYayin'
@@ -198,5 +198,25 @@ describe('fif-durum — Faz 3: Ek-1/Ek-2 düzenleme kilidi (altKayitDuzenlenebil
   it('IPTAL kilitli (manage hariç)', () => {
     expect(altKayitDuzenlenebilir(c(false), FifDurum.IPTAL)).toBe(false)
     expect(altKayitDuzenlenebilir(c(true), FifDurum.IPTAL)).toBe(true)
+  })
+})
+
+describe('fif-durum — iptal/sil 404 fix: IPTAL salt-okunur, hard delete redirect', () => {
+  const st = (durum: FifDurum) => ({
+    durum, createdById: 'h', hazirlayanUserId: 'h', yayinlayanOnaylayanUserId: 'y',
+    sorumluOnaylayanUserId: 's', izlemeSorumlusuUserId: 'i', takipSorumlusuUserId: 't',
+    sorumluBolumId: 'd', uygunsuzlukTanimi: 'x', tur: 'DUZELTICI', faaliyetler: [], etkinlikler: [],
+  }) as unknown as FifGecisState
+  const ctx = { userId: 'h', isManage: true, sorumluBolumMudurUserId: null }
+
+  it('IPTAL durumunda yapılabilecek geçiş YOK (detay salt-okunur açılır)', () => {
+    expect(uygunGecisler(ctx, st(FifDurum.IPTAL))).toEqual([])
+  })
+  it('IPTAL kaydına yeni geçiş de reddedilir (KAPANDI dahil)', () => {
+    expect(gecisYapabilirMi(ctx, st(FifDurum.IPTAL), FifDurum.FAALIYET).ok).toBe(false)
+    expect(gecisYapabilirMi(ctx, st(FifDurum.IPTAL), FifDurum.IPTAL).ok).toBe(false)
+  })
+  it('boş TASLAK hard delete → true (handler bu durumda listeye redirect eder)', () => {
+    expect(hardDeleteEdilebilir(FifDurum.TASLAK, false)).toBe(true)
   })
 })

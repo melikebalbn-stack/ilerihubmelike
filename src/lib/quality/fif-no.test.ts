@@ -119,3 +119,11 @@ describe('fif-durum — hardDeleteEdilebilir (TASLAK boş)', () => {
     }
   })
 })
+
+describe('fif-access — IPTAL kaydı kapsam dışı DEĞİL (detay salt-okunur açılabilir)', () => {
+  it('kendi açtığı IPTAL kaydı kapsamda (fifRecordInScope durumdan bağımsız)', () => {
+    const ctx = { userId: 'u1', isManage: false, deptIds: [] }
+    const iptalKayit = { createdById: 'u1', hazirlayanUserId: null, sorumluBolumId: 'x', yayinlayanBolumId: null }
+    expect(fifRecordInScope(ctx, iptalKayit)).toBe(true)
+  })
+})

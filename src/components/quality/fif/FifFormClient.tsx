@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -134,11 +135,20 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
     } catch { setHata('Ağ hatası'); setKaydediyor(false) }
   }
 
+  const taslakMi = initial?.durum === 'TASLAK'
   async function iptalEt() {
-    if (!duzenleme || !confirm('FİF iptal edilsin mi? (kayıt silinmez)')) return
+    if (!duzenleme) return
+    const soru = taslakMi ? 'Taslak silinsin mi?' : 'FİF iptal edilsin mi?'
+    if (!confirm(soru)) return
     setKaydediyor(true)
     const r = await fetch(`/api/kalite/fif/${initial!.id}`, { method: 'DELETE' })
-    if (r.ok) { router.refresh() } else { setHata('İptal başarısız'); setKaydediyor(false) }
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) { setHata(d.error ?? 'İşlem başarısız'); setKaydediyor(false); return }
+    // Hard delete → kayıt yok; IPTAL → kayıt var ama işlem yok. Her iki hâlde de
+    // detayda kalınırsa 404 (hard) / boş ekran olur; listeye dön + toast.
+    toast.success(d.silindi === 'hard' ? 'Taslak silindi' : 'FİF iptal edildi')
+    router.push('/kalite/fif')
+    router.refresh()
   }
 
   return (
@@ -259,7 +269,7 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
 
       <div className="flex gap-3">
         {!iptalli && <Button onClick={kaydet} disabled={kaydediyor} className="bg-[#1B4F72] hover:bg-[#1B4F72]/90">{kaydediyor ? 'Kaydediliyor…' : 'Kaydet'}</Button>}
-        {duzenleme && !iptalli && <Button variant="outline" onClick={iptalEt} disabled={kaydediyor} className="text-red-600 border-red-300">İptal Et</Button>}
+        {duzenleme && !iptalli && <Button variant="outline" onClick={iptalEt} disabled={kaydediyor} className="text-red-600 border-red-300">{taslakMi ? 'Taslağı Sil' : 'İptal Et'}</Button>}
       </div>
     </div>
   )

@@ -54,9 +54,13 @@ export default function AdminAkademiDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // type=normal: bu pano yalnız akademi kurslarını sayar; IFS verisi
+    // /ifs/raporlar'da. (Uçların varsayılanı da normal — burada açık yazıldı.)
     Promise.all([
-      fetch("/api/akademi/admin/stats").then((r) => r.json()),
-      fetch("/api/akademi/admin/reports/recent-activity").then((r) => r.json()),
+      fetch("/api/akademi/admin/stats?type=normal").then((r) => r.json()),
+      fetch("/api/akademi/admin/reports/recent-activity?type=normal").then((r) =>
+        r.json()
+      ),
     ])
       .then(([s, a]) => {
         setStats(s);

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
+import {
+  akademiTypeSchema,
+  viaCourseWhere,
+  viaOptionalCourseWhere,
+} from "@/lib/akademi/admin-type-filter";
 
 type ActivityEvent = {
   type: "exam_attempt" | "certificate" | "course_complete";
@@ -10,13 +15,25 @@ type ActivityEvent = {
   detail: string;
 };
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const { error } = await requirePermission('akademi.report.view');
   if (error) return error;
 
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  const parsedType = akademiTypeSchema.safeParse(
+    req.nextUrl.searchParams.get("type") ?? undefined
+  );
+  if (!parsedType.success) {
+    return NextResponse.json({ error: "Geçersiz type" }, { status: 400 });
+  }
+  const type = parsedType.data;
+  const examW = viaOptionalCourseWhere(type); // Exam.course opsiyonel
+  const certW = viaOptionalCourseWhere(type); // AkademiCertificate.course opsiyonel
+  const progressW = viaCourseWhere(type); // CourseProgress.course zorunlu
+
   const [recentAttempts, recentCerts, recentCompletions] = await Promise.all([
     prisma.userExamAttempt.findMany({
-      where: { status: { in: ["COMPLETED", "PENDING_REVIEW"] } },
+      where: { exam: examW, status: { in: ["COMPLETED", "PENDING_REVIEW"] } },
       take: 10,
       orderBy: { completedAt: "desc" },
       include: {
@@ -25,6 +42,7 @@ export async function GET(_req: NextRequest) {
       },
     }),
     prisma.akademiCertificate.findMany({
+      where: certW,
       take: 10,
       orderBy: { issuedAt: "desc" },
       include: {
@@ -33,7 +51,7 @@ export async function GET(_req: NextRequest) {
       },
     }),
     prisma.courseProgress.findMany({
-      where: { completedAt: { not: null } },
+      where: { ...progressW, completedAt: { not: null } },
       take: 10,
       orderBy: { completedAt: "desc" },
       include: {

@@ -11644,6 +11644,10 @@ model IproProductionLog {
   // kaynak: 'KIOSK' | 'TERMINAL' — enum DEĞİL (ALTER TYPE transaction sorunu); eski kayıtlar null.
   baslatanUserId     String?
   kaynak             String?
+  // MAS MES ayna idempotency anahtarı (Production.ProductionMaster.Id / ProductionDetail.Id).
+  // kaynak='MAS' kayıtlarda dolu; kiosk/terminal kayıtlarda null. Aşağıdaki @@unique ile mükerrer önlenir.
+  masProductionMasterId Int?
+  masProductionDetayId  Int?
   ifsOperationId     String?
   // ifsOrderNo / ifsOperationNo nullable KALIR (geçmiş kayıtlar için NOT NULL yapılamaz).
   // Açık iş satırında ikisinin dolu olması "başla" endpoint'inde (uygulama katmanı) garanti edilir.
@@ -11691,6 +11695,10 @@ model IproProductionLog {
   @@index([ifsCompleteYazildi])
   @@index([sessionId])
   @@index([personnelId, ifsOrderNo, ifsOperationNo])
+  @@index([masProductionMasterId], map: "ipro_prodlog_mas_idx")
+  // MAS ayna idempotency: aynı MAS üretim+iş emri+operasyon iki kez yazılmasın.
+  // Nullable alanlar → non-MAS (kiosk) kayıtlar NULL kalır, Postgres NULL'ları unique saymaz (çakışmaz).
+  @@unique([masProductionMasterId, ifsOrderNo, ifsOperationNo], map: "ipro_prodlog_mas_uq")
   // Partial UNIQUE (açık iş tekilliği) Prisma @@unique ile ifade edilemez —
   // migration.sql'e ELLE eklenir: WHERE durum = 'ACIK'.
   @@map("ipro_production_log")

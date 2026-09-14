@@ -9,7 +9,9 @@ import { masPool, sql } from './client'
  */
 export interface MasUretimSatiri {
   masId: number
+  masDetayId: number | null
   startDateTime: Date | null
+  endDateTime: Date | null
   tezgahKod: string | null
   createdBy: string | null
   workOrderNo: string | null
@@ -41,7 +43,8 @@ export interface MasDurusSatiri {
 
 // ProductionMaster + WorkCenter + ProductionDetail + WorkOrder + Operation (teyit edilmiş JOIN).
 const URETIM_SELECT =
-  `SELECT pm.Id AS masId, pm.StartDateTime AS startDateTime, wc.Code AS tezgahKod, ` +
+  `SELECT pm.Id AS masId, pd.Id AS masDetayId, pm.StartDateTime AS startDateTime, pm.EndDateTime AS endDateTime, ` +
+  `wc.Code AS tezgahKod, ` +
   `pm.CreatedBy AS createdBy, wo.WorkOrderNo AS workOrderNo, o.Code AS operasyonNo, ` +
   `pd.Amount AS amount, pd.ReportedAmount AS reportedAmount, pd.CycleTime AS cycleTime, ` +
   `pd.CounterMultiplier AS counterMultiplier, pd.CounterDivider AS counterDivider, pd.IsFinished AS isFinished ` +

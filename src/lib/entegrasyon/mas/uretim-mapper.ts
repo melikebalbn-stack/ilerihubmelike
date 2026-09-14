@@ -63,7 +63,9 @@ export interface MasUretimGirdi {
  */
 export interface MasIsGrubu {
   anahtar: string // workOrderNo ?? `PM:${masId}`
+  masProductionMasterId: number | string // ilk satırın PM'i — IPRO upsert idempotency anahtarı
   workOrderNo: string | null
+  operasyonNo: string | null // temsili (ilk görülen) — operasyonlar birleşti, adet tekrar
   tezgahKod: string | null
   employeeNo: string | null
   adet: number
@@ -79,7 +81,9 @@ export function isEmirineGrupla(girdiler: MasUretimGirdi[]): MasIsGrubu[] {
     if (!mevcut) {
       gruplar.set(anahtar, {
         anahtar,
+        masProductionMasterId: g.masId,
         workOrderNo: (g.workOrderNo ?? '').trim() || null,
+        operasyonNo: (g.operasyonNo ?? '').trim() || null,
         tezgahKod: g.tezgahKod,
         employeeNo: g.employeeNo,
         adet,
@@ -89,6 +93,11 @@ export function isEmirineGrupla(girdiler: MasUretimGirdi[]): MasIsGrubu[] {
       // Aynı iş emri: adet tekrar edilmiş → max (tekrar edilen değerde max = o değer).
       mevcut.adet = Math.max(mevcut.adet, adet)
       mevcut.satirSayisi++
+      // Temsili operasyon DETERMİNİSTİK olmalı (açık ve kapanan senkron aynı değeri bulsun) → min.
+      const yeniOp = (g.operasyonNo ?? '').trim()
+      if (yeniOp && (!mevcut.operasyonNo || Number(yeniOp) < Number(mevcut.operasyonNo))) mevcut.operasyonNo = yeniOp
+      // masProductionMasterId de deterministik: en küçük (satır sırası bağımsız).
+      if (Number(g.masId) < Number(mevcut.masProductionMasterId)) mevcut.masProductionMasterId = g.masId
     }
   }
   return [...gruplar.values()]

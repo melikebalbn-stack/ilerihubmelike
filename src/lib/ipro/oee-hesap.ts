@@ -218,7 +218,13 @@ function tatilAltSinir(basUtc: Date): Date {
  * mantığı çağıranın try/catch'inde — ama içeride de ideal-guncelle try/catch'li (OEE'yi durdurmasın).
  * Sıra: önce ideali güncelle (bu işin gözlemi dahil), sonra OEE hesapla-yaz.
  */
-export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId: string): Promise<void> {
+export async function oeeKaydiHesaplaVeYaz(
+  prisma: PrismaClient,
+  productionLogId: string,
+  // secenek.masAdedi: MAS aynası SİNYALSİZ tezgahta üretilen adedi MAS'tan geçirir → uretilenAdet
+  // olarak kullanılır ve hesapKaynagi'na '/MAS' damgası eklenir. Verilmezse mevcut davranış (IPRO PLC).
+  secenek?: { masAdedi?: number | null },
+): Promise<void> {
   const log = await prisma.iproProductionLog.findUnique({
     where: { id: productionLogId },
     select: {
@@ -294,12 +300,14 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
 
   // 3) durusSaniye · 4) miktarlar · 5) çakışma
   const durusSaniye = await durusSaniyeHesapla(prisma, log.tezgahId, bas, bit)
-  const uretilenAdet = log.uretimAdet ?? log.qtyComplete + log.qtyScrap
+  const uretilenAdet = secenek?.masAdedi != null ? secenek.masAdedi : (log.uretimAdet ?? log.qtyComplete + log.qtyScrap)
   const iyiAdet = log.qtyComplete
   const cakismaVar = await cakismaVarMi(prisma, log.tezgahId, log.id, bas, bit)
 
   // 6) bileşenler · 7) vardiya etiketi
   const b = oeeBilesenleri({ planliSaniye, durusSaniye, uretilenAdet, iyiAdet, idealSaniyeAdet, idealKaynak, cakismaVar })
+  // Sinyalsiz MAS aynasında kaynak damgasına '/MAS' eklenir (adet MAS'tan geldi — audit).
+  const hesapKaynagi = secenek?.masAdedi != null ? `${b.hesapKaynagi}/MAS` : b.hesapKaynagi
   const vardiyaId = await vardiyaBul(prisma, bas)
 
   await prisma.iproOeeKaydi.upsert({
@@ -318,7 +326,7 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
       performance: b.performance,
       quality: b.quality,
       oee: b.oee,
-      hesapKaynagi: b.hesapKaynagi,
+      hesapKaynagi,
     },
     update: {
       tezgahKod,
@@ -333,7 +341,7 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
       performance: b.performance,
       quality: b.quality,
       oee: b.oee,
-      hesapKaynagi: b.hesapKaynagi,
+      hesapKaynagi,
       hesaplananAt: new Date(),
     },
   })

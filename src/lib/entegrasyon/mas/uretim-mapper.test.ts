@@ -87,4 +87,27 @@ describe('isEmirineGrupla', () => {
     expect(r).toHaveLength(2)
     expect(r.map((x) => x.anahtar).sort()).toEqual(['PM:5', 'PM:6'])
   })
+
+  it('temsili masProductionMasterId + operasyonNo DETERMİNİSTİK (min) — satır sırasından bağımsız', () => {
+    const artan = isEmirineGrupla([
+      g({ masId: 100, operasyonNo: '10' }),
+      g({ masId: 90, operasyonNo: '20' }),
+    ])
+    const azalan = isEmirineGrupla([
+      g({ masId: 90, operasyonNo: '20' }),
+      g({ masId: 100, operasyonNo: '10' }),
+    ])
+    // İki farklı sırada da aynı temsili değerler (min) → idempotent upsert anahtarı.
+    expect(artan[0].masProductionMasterId).toBe(90)
+    expect(artan[0].operasyonNo).toBe('10')
+    expect(azalan[0].masProductionMasterId).toBe(90)
+    expect(azalan[0].operasyonNo).toBe('10')
+  })
+
+  it('grup masProductionMasterId + operasyonNo alanları dolu', () => {
+    const r = isEmirineGrupla([g({ masId: 42, operasyonNo: '30', workOrderNo: 'WO-9' })])
+    expect(r[0].masProductionMasterId).toBe(42)
+    expect(r[0].operasyonNo).toBe('30')
+    expect(r[0].workOrderNo).toBe('WO-9')
+  })
 })

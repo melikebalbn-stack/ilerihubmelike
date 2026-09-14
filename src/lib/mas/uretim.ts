@@ -106,7 +106,7 @@ export async function acikDuruslar(): Promise<MasDurusSatiri[]> {
   const res = await pool.request().query<MasDurusSatiri>(
     `SELECT pdt.Id AS id, pdt.ProductionMasterId AS masId, wc.Code AS tezgahKod, ` +
       `pdt.StartDateTime AS baslangic, pdt.Duration AS sureSn, ` +
-      `d.Code AS sebepKod, d.Name AS sebepAd, pdt.StartComment AS not ` +
+      `d.Code AS sebepKod, d.Name AS sebepAd, pdt.StartComment AS [not] ` +
       `FROM Production.ProductionDowntime pdt ` +
       `JOIN Loss.Downtime d ON d.Id = pdt.DowntimeId ` +
       `LEFT JOIN Organization.WorkCenter wc ON wc.Id = pdt.WorkCenterId ` +

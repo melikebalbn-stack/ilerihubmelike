@@ -37,6 +37,7 @@ const SELECT_FIELDS = [
   'RemainingQty',
   'RevisedDueDate',
   'NeedDate',
+  'EarliestStartDate',
   'MachRunFactor',
   'LaborRunFactor',
   'RunTimeCode',
@@ -58,6 +59,7 @@ interface RawShopOrderOperation {
   RemainingQty?: number | null
   RevisedDueDate?: string | null
   NeedDate?: string | null
+  EarliestStartDate?: string | null
   MachRunFactor?: number | null
   LaborRunFactor?: number | null
   RunTimeCode?: string | null
@@ -129,7 +131,9 @@ function toTerminal(r: RawShopOrderOperation): IfsShopOrderOperation {
     operasyonNo: operationNo,
     stokKodu: r.PartNo ?? '',
     stokAdi: r.PartDescription ?? '',
-    // RevisedDueDate/NeedDate DateTimeOffset ("2026-07-03T17:00:00Z") → yyyy-MM-dd.
+    // DateTimeOffset ("2026-07-03T17:00:00Z") → yyyy-MM-dd. EarliestStartDate = iş emri açılış
+    // (bu operasyon setinde DateEntered yok; iş emri seviyesindeki en erken başlangıç kullanılır).
+    acilisTarihi: r.EarliestStartDate ? String(r.EarliestStartDate).slice(0, 10) : '',
     teslimTarihi: r.RevisedDueDate ? String(r.RevisedDueDate).slice(0, 10) : '',
     ihtiyacTarihi: r.NeedDate ? String(r.NeedDate).slice(0, 10) : '',
     miktar: num(r.RevisedQtyDue),

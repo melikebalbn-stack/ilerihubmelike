@@ -20,6 +20,7 @@ type IfsIsEmri = {
   isMerkezi: string
   stokKodu: string
   stokAdi: string
+  acilisTarihi: string
   teslimTarihi: string
   miktar: number
   kalanMiktar: number
@@ -265,6 +266,7 @@ function AcikSekme({ aktarYetkisi }: { aktarYetkisi: boolean }) {
                 <TableHead>Parça</TableHead>
                 <TableHead>İş Merkezi</TableHead>
                 <TableHead className="text-right">Miktar / Kalan</TableHead>
+                <TableHead>Açılış</TableHead>
                 <TableHead>Teslim</TableHead>
                 <TableHead>Durum</TableHead>
               </TableRow>
@@ -272,7 +274,7 @@ function AcikSekme({ aktarYetkisi }: { aktarYetkisi: boolean }) {
             <TableBody>
               {gosterilen.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-slate-400">Açık iş emri bulunamadı.</TableCell>
+                  <TableCell colSpan={7} className="py-8 text-center text-slate-400">Açık iş emri bulunamadı.</TableCell>
                 </TableRow>
               ) : (
                 gosterilen.map((i) => (
@@ -284,6 +286,7 @@ function AcikSekme({ aktarYetkisi }: { aktarYetkisi: boolean }) {
                     </TableCell>
                     <TableCell>{i.isMerkezi || '—'}</TableCell>
                     <TableCell className="text-right">{i.miktar} / {i.kalanMiktar}</TableCell>
+                    <TableCell>{i.acilisTarihi || '—'}</TableCell>
                     <TableCell>{i.teslimTarihi || '—'}</TableCell>
                     <TableCell>{ifsDurumRozet(i.durum)}</TableCell>
                   </TableRow>

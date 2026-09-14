@@ -9,6 +9,7 @@ export interface IfsShopOrderOperation {
   operasyonNo: number
   stokKodu: string
   stokAdi: string
+  acilisTarihi: string   // yyyy-MM-dd (EarliestStartDate — bu sette DateEntered yok; iş emri açılış tarihi)
   teslimTarihi: string   // yyyy-MM-dd (RevisedDueDate)
   ihtiyacTarihi: string  // yyyy-MM-dd (NeedDate)
   miktar: number         // RevisedQtyDue — planlanan adet

@@ -75,7 +75,10 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="container mx-auto px-6 py-8 space-y-6">
-      <h1 className="text-2xl font-bold text-[#1B4F72]">FİF Detay</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-bold text-[#1B4F72]">FİF Detay</h1>
+        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400 border rounded px-2 py-0.5">KAL-FR-10 · Rev 3</span>
+      </div>
       <FifDurumPanel fifId={fif.id} durum={fif.durum} gecisler={gecisler} gecmis={gecmis} />
       <FifFormClient initial={initial} />
       <FifEklerPanel

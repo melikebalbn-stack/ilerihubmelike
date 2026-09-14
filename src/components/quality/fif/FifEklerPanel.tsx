@@ -34,6 +34,7 @@ export function FifEklerPanel({
   const [mesgul, setMesgul] = useState(false)
 
   const ro = !duzenlenebilir
+  const etkRo = ro || durum !== 'ETKINLIK'  // etkinlik yalnız ETKINLIK aşamasında
 
   // ── ETKINLIK ──
   const etkMap = (m: string) => etkinlikler.find((e) => e.madde === m)
@@ -126,16 +127,21 @@ export function FifEklerPanel({
 
         {sekme === 'etkinlik' && (
           <div className="space-y-4">
+            {durum !== 'ETKINLIK' && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                Henüz etkinlik aşamasında değil (durum: {durum}). Alanlar salt-okunur; FİF "Etkinlik" aşamasına geldiğinde doldurulacak.
+              </p>
+            )}
             <p className="text-xs text-slate-500">İki madde de "Uygun" olunca FİF "Kapat (Etkin)" ile kapatılabilir. Onay = kaydeden + tarih otomatik.</p>
             {(['KAPATMA', 'TEKRAR_ETMEME'] as const).map((m) => (
               <div key={m} className="border rounded p-3 space-y-2">
                 <div className="font-medium text-sm">{m === 'KAPATMA' ? 'Kapatma etkinliği' : 'Tekrar etmeme etkinliği'}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div><Label className="text-xs">Planlanan</Label><Input type="date" className="mt-1 h-9" value={iso(etk[m].planlananTarih)} disabled={ro} onChange={(e) => setEtk((p) => ({ ...p, [m]: { ...p[m], planlananTarih: e.target.value } }))} /></div>
-                  <div><Label className="text-xs">Gerçekleşen</Label><Input type="date" className="mt-1 h-9" value={iso(etk[m].gerceklesenTarih)} disabled={ro} onChange={(e) => setEtk((p) => ({ ...p, [m]: { ...p[m], gerceklesenTarih: e.target.value } }))} /></div>
+                  <div><Label className="text-xs">Planlanan</Label><Input type="date" className="mt-1 h-9" value={iso(etk[m].planlananTarih)} disabled={etkRo} onChange={(e) => setEtk((p) => ({ ...p, [m]: { ...p[m], planlananTarih: e.target.value } }))} /></div>
+                  <div><Label className="text-xs">Gerçekleşen</Label><Input type="date" className="mt-1 h-9" value={iso(etk[m].gerceklesenTarih)} disabled={etkRo} onChange={(e) => setEtk((p) => ({ ...p, [m]: { ...p[m], gerceklesenTarih: e.target.value } }))} /></div>
                   <div>
                     <Label className="text-xs">Değerlendirme</Label>
-                    <Select value={etk[m].uygun === null ? 'none' : etk[m].uygun ? 'evet' : 'hayir'} disabled={ro}
+                    <Select value={etk[m].uygun === null ? 'none' : etk[m].uygun ? 'evet' : 'hayir'} disabled={etkRo}
                       onValueChange={(v) => setEtk((p) => ({ ...p, [m]: { ...p[m], uygun: v === 'none' ? null : v === 'evet' } }))}>
                       <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -146,7 +152,7 @@ export function FifEklerPanel({
                     </Select>
                   </div>
                 </div>
-                {!ro && <Button size="sm" className="bg-[#1B4F72]" disabled={mesgul} onClick={() => etkKaydet(m)}>Kaydet</Button>}
+                {!etkRo && <Button size="sm" className="bg-[#1B4F72]" disabled={mesgul} onClick={() => etkKaydet(m)}>Kaydet</Button>}
               </div>
             ))}
           </div>

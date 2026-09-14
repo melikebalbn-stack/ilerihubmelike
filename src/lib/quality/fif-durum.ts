@@ -170,3 +170,9 @@ export function esKuraliGecerli(durum: FifDurum, sonuc: FifSonuc | null | undefi
 export function esGecmisAciklamasi(eskiTarih: string | null, yeniTarih: string, neden: string): string {
   return `ES: ${eskiTarih ?? '—'} → ${yeniTarih}, neden: ${neden}`
 }
+
+
+/** TASLAK + alt kaydı YOK ise hard delete edilebilir (aksi hâlde IPTAL akışı). */
+export function hardDeleteEdilebilir(durum: FifDurum, altKayitVar: boolean): boolean {
+  return durum === FifDurum.TASLAK && !altKayitVar
+}

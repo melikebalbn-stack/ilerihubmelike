@@ -60,10 +60,13 @@ export const fifEtkinlikInput = z.object({
 
 /** Ana FİF girişi (create/update ortak). */
 export const fifInput = z.object({
-  // ── Faz 1 zorunlu ──
-  tur: z.nativeEnum(FifTur),
-  sorumluBolumId: z.string().min(1, 'Sorumlu bölüm zorunlu'),
-  uygunsuzlukTanimi: z.string().trim().min(1, 'Tespit (uygunsuzluk tanımı) zorunlu'),
+  // TASLAK serbest kayıt: hiçbir alan POST/PUT'ta ZORUNLU DEĞİL. FIF_ZORUNLU_ALANLAR
+  // (tur+sorumluBolum+tespit) yalnız "Onaya Gönder" geçişinde uygulanır
+  // (fif-durum.ts → zorunluAlanlarTam). Böylece kullanıcı boş taslak açıp
+  // sekmeleri kademeli doldurabilir.
+  tur: z.nativeEnum(FifTur).default(FifTur.DUZELTICI),
+  sorumluBolumId: idOpsiyonel,
+  uygunsuzlukTanimi: bosStr,
 
   // ── opsiyonel ──
   tarih: z.coerce.date().optional(),

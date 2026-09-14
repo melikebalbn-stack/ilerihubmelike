@@ -104,9 +104,8 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
 
   async function kaydet() {
     setHata(null)
-    if (!tur) return setHata('Tür zorunlu')
-    if (!sorumluBolumId) return setHata('Sorumlu bölüm zorunlu')
-    if (!uygunsuzlukTanimi.trim()) return setHata('Tespit (uygunsuzluk tanımı) zorunlu')
+    // Taslak kısmi kaydedilebilir — zorunlu alanlar "Onaya Gönder" geçişinde
+    // uygulanır (fif-durum ön koşulu). Burada engel yok.
     setKaydediyor(true)
     const payload = {
       tur, tarih, sorumluBolumId,
@@ -259,7 +258,7 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
       {hata && <p className="text-sm text-red-600">{hata}</p>}
 
       <div className="flex gap-3">
-        {!iptalli && <Button onClick={kaydet} disabled={kaydediyor} className="bg-[#1B4F72] hover:bg-[#1B4F72]/90">{kaydediyor ? 'Kaydediliyor…' : duzenleme ? 'Güncelle' : 'Taslak Oluştur'}</Button>}
+        {!iptalli && <Button onClick={kaydet} disabled={kaydediyor} className="bg-[#1B4F72] hover:bg-[#1B4F72]/90">{kaydediyor ? 'Kaydediliyor…' : 'Kaydet'}</Button>}
         {duzenleme && !iptalli && <Button variant="outline" onClick={iptalEt} disabled={kaydediyor} className="text-red-600 border-red-300">İptal Et</Button>}
       </div>
     </div>

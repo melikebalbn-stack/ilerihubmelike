@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { fifKapsamindaMi } from '@/lib/quality/fif-access'
+import { fifKapsamindaMi, canManageFif } from '@/lib/quality/fif-access'
 import { fifInput } from '@/lib/quality/fif-validators'
+import { gecisYapabilirMi, hardDeleteEdilebilir } from '@/lib/quality/fif-durum'
 import { FifDurum } from '@/generated/prisma'
 
 export const dynamic = 'force-dynamic'
@@ -69,7 +70,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       data: {
         tur: d.tur,
         tarih: d.tarih ?? undefined,
-        sorumluBolumId: d.sorumluBolumId,
+        sorumluBolumId: d.sorumluBolumId ?? null,
         yayinlayanBolumId: d.yayinlayanBolumId ?? null,
         hazirlayanUserId: d.hazirlayanUserId ?? null,
         izlemeSorumlusuUserId: d.izlemeSorumlusuUserId ?? null,
@@ -78,7 +79,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         uygulamaSorumlusuUserId: d.uygulamaSorumlusuUserId ?? null,
         takipSorumlusuUserId: d.takipSorumlusuUserId ?? null,
         denetlemeAdi: d.denetlemeAdi ?? null,
-        uygunsuzlukTanimi: d.uygunsuzlukTanimi,
+        uygunsuzlukTanimi: d.uygunsuzlukTanimi ?? null,
         standartMadde: d.standartMadde ?? null,
         ekTerminNedeni: d.ekTerminNedeni ?? null,
         kokNedenAnalizi: d.kokNedenAnalizi ?? null,
@@ -139,19 +140,52 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 /** DELETE /api/kalite/fif/[id] — İPTAL (soft). Auth: kapsam. Kayıt silinmez. */
+/**
+ * DELETE — TASLAK + alt kaydı YOK ise HARD DELETE (kayıt tamamen silinir; kayıt no
+ * boşluğu kabul — o numara bir daha kullanılmaz). Aksi hâlde soft IPTAL.
+ * Yetki: kapsam (hazırlayan/manage). Kalite/geçmiş için IPTAL akışı gecisYapabilirMi
+ * ile korunur.
+ */
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { session, error } = await requireSession()
   if (error) return error
   const { id } = await params
   const mevcut = await prisma.fif.findUnique({
     where: { id },
-    select: { id: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true },
+    select: {
+      id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true,
+      _count: { select: { faaliyetler: true, etkinlikler: true, kokNedenler: true, besNedenler: true, ekler: true } },
+    },
   })
   if (!mevcut) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
   if (!(await fifKapsamindaMi(session, mevcut))) {
     return NextResponse.json({ error: 'Bu FİF kapsamınızda değil' }, { status: 403 })
   }
 
-  await prisma.fif.update({ where: { id }, data: { durum: FifDurum.IPTAL } })
-  return NextResponse.json({ ok: true })
+  const altKayitVar =
+    mevcut._count.faaliyetler + mevcut._count.etkinlikler + mevcut._count.kokNedenler +
+    mevcut._count.besNedenler + mevcut._count.ekler > 0
+
+  // Boş TASLAK → hard delete (FifGecmis cascade siler).
+  if (hardDeleteEdilebilir(mevcut.durum, altKayitVar)) {
+    await prisma.fif.delete({ where: { id } })
+    return NextResponse.json({ ok: true, silindi: 'hard' })
+  }
+
+  // Aksi hâlde IPTAL (kalite izi korunur). gecisYapabilirMi ile yetki teyidi.
+  const iptal = gecisYapabilirMi(
+    { userId: session.user.id, isManage: canManageFif(session), sorumluBolumMudurUserId: null },
+    { durum: mevcut.durum, createdById: mevcut.createdById, hazirlayanUserId: mevcut.hazirlayanUserId,
+      yayinlayanOnaylayanUserId: null, sorumluOnaylayanUserId: null, izlemeSorumlusuUserId: null,
+      takipSorumlusuUserId: null, sorumluBolumId: mevcut.sorumluBolumId, uygunsuzlukTanimi: null, tur: null,
+      faaliyetler: [], etkinlikler: [] },
+    FifDurum.IPTAL,
+  )
+  if (!iptal.ok) return NextResponse.json({ error: iptal.sebep }, { status: 403 })
+
+  await prisma.$transaction(async (tx) => {
+    await tx.fif.update({ where: { id }, data: { durum: FifDurum.IPTAL } })
+    await tx.fifGecmis.create({ data: { fifId: id, eskiDurum: mevcut.durum, yeniDurum: FifDurum.IPTAL, userId: session.user.id, aciklama: 'İptal (silme talebi — alt kayıt mevcut)' } })
+  })
+  return NextResponse.json({ ok: true, silindi: 'iptal' })
 }

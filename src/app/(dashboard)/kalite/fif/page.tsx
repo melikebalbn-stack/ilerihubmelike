@@ -1,9 +1,8 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { Plus, ClipboardList } from 'lucide-react'
+import { ClipboardList } from 'lucide-react'
 import { requireUser } from '@/lib/auth/require-user'
-import { Button } from '@/components/ui/button'
 import { FifListTable } from '@/components/quality/fif/FifListTable'
+import { YeniFifButton } from '@/components/quality/fif/YeniFifButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,12 +24,7 @@ export default async function FifListPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-1">Düzeltici/önleyici faaliyet istek ve takibi (KAL-FR-10 Rev 3)</p>
         </div>
-        <Button asChild className="bg-[#1B4F72] hover:bg-[#1B4F72]/90 shrink-0">
-          <Link href="/kalite/fif/yeni" className="inline-flex items-center gap-1 whitespace-nowrap shrink-0">
-            <Plus className="h-4 w-4 shrink-0" />
-            Yeni FİF
-          </Link>
-        </Button>
+        <YeniFifButton />
       </div>
       <FifListTable />
     </div>

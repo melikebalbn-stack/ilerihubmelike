@@ -246,7 +246,7 @@ describe('Sidebar — Formlar grubu alt başlıkları', () => {
     const kaliteKutu = screen.getByTestId('form-subgroup-kalite').parentElement as HTMLElement
     expect(
       Array.from(kaliteKutu.querySelectorAll('a')).map((a) => a.textContent?.trim()),
-    ).toEqual(['Kalibrasyon', 'RMA/SMA İade Formu'])
+    ).toEqual(['Kalibrasyon', 'RMA/SMA İade Formu', 'FİF (Faaliyet İstek)'])
   })
 
   it('aramada "insan varlıkları" yazınca Vardiya Formu sonuçlarda gelir (grup adıyla eşleşme)', () => {
@@ -372,7 +372,7 @@ describe('Sidebar — ADIM 5/6: Kalite grubu toparlama', () => {
     const kaliteKutu = screen.getByTestId('form-subgroup-kalite').parentElement as HTMLElement
     expect(
       Array.from(kaliteKutu.querySelectorAll('a')).map((a) => a.textContent?.trim()),
-    ).toEqual(['Kalibrasyon', 'RMA/SMA İade Formu'])
+    ).toEqual(['Kalibrasyon', 'RMA/SMA İade Formu', 'FİF (Faaliyet İstek)'])
     expect(screen.getAllByText('Kalibrasyon')).toHaveLength(1)
     expect(screen.getAllByText('RMA/SMA İade Formu')).toHaveLength(1)
     expect(screen.getByText('RMA/SMA İade Formu').closest('a')).toHaveAttribute('href', '/kalite/rma')

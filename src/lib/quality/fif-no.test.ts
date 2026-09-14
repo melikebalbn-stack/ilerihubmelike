@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { fifNoPrefix, parseFifNo } from './fif-no'
 import { fifInput, FIF_ZORUNLU_ALANLAR } from './fif-validators'
 import { fifRecordInScope } from './fif-access'
+import { hardDeleteEdilebilir } from './fif-durum'
+import { FifDurum } from '@/generated/prisma'
 
 describe('fif-no — kayıt no biçim + yıl geçişi', () => {
   it('prefix yıl bazlı', () => {
@@ -42,14 +44,19 @@ describe('fif-validators — Faz 1 zorunluluk (tek kaynak)', () => {
     expect(fifInput.safeParse(gecerli).success).toBe(true)
   })
 
-  it('sorumluBolumId eksikse reddeder', () => {
+  it('sorumluBolumId olmadan da TASLAK olarak GEÇER (zorunluluk Onaya Gönder\'de)', () => {
     const { sorumluBolumId, ...eksik } = gecerli
     void sorumluBolumId
-    expect(fifInput.safeParse(eksik).success).toBe(false)
+    expect(fifInput.safeParse(eksik).success).toBe(true)
   })
 
-  it('tespit (uygunsuzlukTanimi) boşsa reddeder', () => {
-    expect(fifInput.safeParse({ ...gecerli, uygunsuzlukTanimi: '   ' }).success).toBe(false)
+  it('tespit boş da GEÇER (TASLAK serbest kayıt)', () => {
+    expect(fifInput.safeParse({ ...gecerli, uygunsuzlukTanimi: '   ' }).success).toBe(true)
+  })
+  it('hiç alan olmadan boş taslak GEÇER (tur default DUZELTICI)', () => {
+    const r = fifInput.safeParse({})
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.tur).toBe('DUZELTICI')
   })
 
   it('geçersiz tür reddeder', () => {
@@ -96,5 +103,19 @@ describe('fif-access — kapsam predicate (fifRecordInScope, DB\'siz)', () => {
   it('ilgisiz/boş → görmez (farklı user, bölüm eşleşmez, oturumsuz)', () => {
     expect(fifRecordInScope({ userId: 'u1', isManage: false, deptIds: ['deptY'] }, kayit)).toBe(false)
     expect(fifRecordInScope({ userId: null, isManage: false, deptIds: [] }, kayit)).toBe(false)
+  })
+})
+
+describe('fif-durum — hardDeleteEdilebilir (TASLAK boş)', () => {
+  it('TASLAK + alt kayıt yok → hard delete edilebilir', () => {
+    expect(hardDeleteEdilebilir(FifDurum.TASLAK, false)).toBe(true)
+  })
+  it('TASLAK ama alt kayıt var → hard delete EDİLEMEZ (IPTAL akışı)', () => {
+    expect(hardDeleteEdilebilir(FifDurum.TASLAK, true)).toBe(false)
+  })
+  it('TASLAK dışı durum → hard delete EDİLEMEZ', () => {
+    for (const d of [FifDurum.ONAY_BEKLIYOR, FifDurum.FAALIYET, FifDurum.KAPANDI, FifDurum.IPTAL]) {
+      expect(hardDeleteEdilebilir(d, false)).toBe(false)
+    }
   })
 })

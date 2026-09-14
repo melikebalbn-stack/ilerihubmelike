@@ -1,3 +1,26 @@
+/**
+ * ⚠ TEK SEFERLİK GÖÇ BETİĞİ — ELLE ÇALIŞTIRMADAN ÖNCE OKU
+ *
+ * Amaç: legacy User.role enum'unu (SUPER_ADMIN/ADMIN/.../EMPLOYEE) RBAC user_role
+ * satırlarına çevirmek. SON KOŞUM: 05.05.2026 10:20 (182 satır, assigned_by NULL).
+ * 14.09.2026'da `seed:authz` zincirinden ÇIKARILDI; yalnız `npm run migrate:user-roles`
+ * ile bilinçli koşulur.
+ *
+ * NEDEN ZİNCİRDE DEĞİL — bugünkü prod'da yeniden koşarsa:
+ *   - Terminal/kiosk hesaplarını SÜZMEZ (SYSTEM_ACCOUNTS'ı bilmez): paylaşımlı
+ *     bakimhane/final.kalite/kalite.proses hesaplarına `kullanici` verir →
+ *     izin.create + helpdesk.ticket.create, kimin yaptığı bilinmez.
+ *   - Pasif hesapları SÜZMEZ (isActive'e bakmaz): ayrılmış personele rol yazar.
+ *   - Legacy enum'a göre DEPT_HEAD/SUPERVISOR → departman-muduru, ADMIN → admin dağıtır;
+ *     o enum LDAP senkronunda UNVANDAN türetiliyor (inferRoleFromJobTitle), 05.05'teki
+ *     anlamını taşımıyor → yetki genişlemesi.
+ *   - `kullanici` için artık gerek yok: giriş (auth.ts) ve LDAP senkronu
+ *     varsayilanRoluGaranti ile hiç rolü olmayana otomatik veriyor (11.09.2026).
+ *
+ * Idempotent (findUnique → create), ama idempotent olması güvenli olduğu anlamına
+ * gelmez. Elle koşmadan önce: etkilenecek kullanıcıları SELECT ile ölç, isActive ve
+ * SYSTEM_ACCOUNTS süzgeçlerini ekle ya da hedefi daralt.
+ */
 import { PrismaClient } from '../src/generated/prisma'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'

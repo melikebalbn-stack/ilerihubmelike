@@ -16,7 +16,7 @@
     "seed:permissions": "npx tsx prisma/seed-permissions.ts",
     "seed:roles": "npx tsx prisma/seed-roles.ts",
     "migrate:user-roles": "npx tsx prisma/migrate-user-roles.ts",
-    "seed:authz": "npm run seed:permissions && npm run seed:roles && npm run migrate:user-roles"
+    "seed:authz": "npm run seed:permissions && npm run seed:roles"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

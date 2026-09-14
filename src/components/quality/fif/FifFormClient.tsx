@@ -21,6 +21,10 @@ export type FifInitial = {
   sorumluBolumId: string | null
   yayinlayanBolumId: string | null
   sorumluOnaylayanUserId: string | null
+  yayinlayanOnaylayanUserId: string | null
+  izlemeSorumlusuUserId: string | null
+  uygulamaSorumlusuUserId: string | null
+  takipSorumlusuUserId: string | null
   denetlemeAdi: string | null
   uygunsuzlukTanimi: string | null
   standartMadde: string | null
@@ -45,6 +49,11 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
   const [yayinlayanBolumId, setYayinlayanBolumId] = useState(initial?.yayinlayanBolumId ?? '')
   const [onaylayanAd, setOnaylayanAd] = useState<string>('')
   const [sorumluOnaylayanUserId, setSorumluOnaylayanUserId] = useState(initial?.sorumluOnaylayanUserId ?? '')
+  const [yayinlayanOnaylayanUserId, setYayinlayanOnaylayanUserId] = useState(initial?.yayinlayanOnaylayanUserId ?? '')
+  const [yayinlayanOnaylayanAd, setYayinlayanOnaylayanAd] = useState('')
+  const [izlemeSorumlusuUserId, setIzlemeSorumlusuUserId] = useState(initial?.izlemeSorumlusuUserId ?? '')
+  const [uygulamaSorumlusuUserId, setUygulamaSorumlusuUserId] = useState(initial?.uygulamaSorumlusuUserId ?? '')
+  const [takipSorumlusuUserId, setTakipSorumlusuUserId] = useState(initial?.takipSorumlusuUserId ?? '')
   const [denetlemeAdi, setDenetlemeAdi] = useState(initial?.denetlemeAdi ?? '')
   const [uygunsuzlukTanimi, setUygunsuzlukTanimi] = useState(initial?.uygunsuzlukTanimi ?? '')
   const [standartMadde, setStandartMadde] = useState(initial?.standartMadde ?? '')
@@ -71,6 +80,17 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
       else { setSorumluOnaylayanUserId(''); setOnaylayanAd('(müdür tanımlı değil)') }
     } catch { /* sessiz */ }
   }
+  // Yayınlayan bölüm seçilince yayınlayan onaylayan (müdür) otomatik dolar.
+  async function yayinlayanMuduruGetir(bolumId: string) {
+    if (!bolumId) { setYayinlayanOnaylayanAd(''); setYayinlayanOnaylayanUserId(''); return }
+    try {
+      const r = await fetch(`/api/kalite/fif/bolum-muduru?bolumId=${bolumId}`)
+      if (!r.ok) return
+      const d = await r.json()
+      if (d.onaylayan) { setYayinlayanOnaylayanUserId(d.onaylayan.userId); setYayinlayanOnaylayanAd(d.onaylayan.ad) }
+      else { setYayinlayanOnaylayanUserId(''); setYayinlayanOnaylayanAd('(müdür tanımlı değil)') }
+    } catch { /* sessiz */ }
+  }
 
   function addFaaliyet() {
     setFaaliyetler((p) => [...p, { sira: p.length + 1, aciklama: '', hedefTarih: '' }])
@@ -92,6 +112,10 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
       tur, tarih, sorumluBolumId,
       yayinlayanBolumId: yayinlayanBolumId || null,
       sorumluOnaylayanUserId: sorumluOnaylayanUserId || null,
+      yayinlayanOnaylayanUserId: yayinlayanOnaylayanUserId || null,
+      izlemeSorumlusuUserId: izlemeSorumlusuUserId || null,
+      uygulamaSorumlusuUserId: uygulamaSorumlusuUserId || null,
+      takipSorumlusuUserId: takipSorumlusuUserId || null,
       denetlemeAdi: denetlemeAdi || null,
       uygunsuzlukTanimi,
       standartMadde: standartMadde || null,
@@ -162,7 +186,7 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
           </div>
           <div>
             <Label className={kartLabel}>Yayınlayan Bölüm</Label>
-            <Select value={yayinlayanBolumId || 'none'} onValueChange={(v) => setYayinlayanBolumId(v === 'none' ? '' : v)} disabled={ro}>
+            <Select value={yayinlayanBolumId || 'none'} onValueChange={(v) => { const nv = v === 'none' ? '' : v; setYayinlayanBolumId(nv); yayinlayanMuduruGetir(nv) }} disabled={ro}>
               <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Seçin" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">—</SelectItem>
@@ -174,6 +198,20 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
             <Label className={kartLabel}>Sorumlu Onaylayan (müdür — otomatik)</Label>
             <Input className="mt-1 h-9" value={onaylayanAd || (sorumluOnaylayanUserId ? 'Seçili' : '')} readOnly placeholder="bölüm seçince dolar" />
           </div>
+        </div>
+      </div>
+
+      {/* 1b. Sorumlular / onaylayanlar */}
+      <div className="rounded-md border bg-white p-4 space-y-3">
+        <h3 className={bolumBaslik}>Sorumlular</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label className={kartLabel}>Yayınlayan Onaylayan (müdür — otomatik)</Label>
+            <Input className="mt-1 h-9" value={yayinlayanOnaylayanAd || (yayinlayanOnaylayanUserId ? 'Seçili' : '')} readOnly placeholder="yayınlayan bölüm seçince dolar" />
+          </div>
+          <UserSecici label="İzleme Sorumlusu" value={izlemeSorumlusuUserId} onChange={setIzlemeSorumlusuUserId} disabled={ro} />
+          <UserSecici label="Uygulama Sorumlusu" value={uygulamaSorumlusuUserId} onChange={setUygulamaSorumlusuUserId} disabled={ro} />
+          <UserSecici label="Takip Sorumlusu" value={takipSorumlusuUserId} onChange={setTakipSorumlusuUserId} disabled={ro} />
         </div>
       </div>
 
@@ -224,6 +262,49 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
         {!iptalli && <Button onClick={kaydet} disabled={kaydediyor} className="bg-[#1B4F72] hover:bg-[#1B4F72]/90">{kaydediyor ? 'Kaydediliyor…' : duzenleme ? 'Güncelle' : 'Taslak Oluştur'}</Button>}
         {duzenleme && !iptalli && <Button variant="outline" onClick={iptalEt} disabled={kaydediyor} className="text-red-600 border-red-300">İptal Et</Button>}
       </div>
+    </div>
+  )
+}
+
+
+/** Basit kullanıcı seçici: arama → seç. Seçili userId'yi parent tutar. */
+function UserSecici({ label, value, onChange, disabled }: { label: string; value: string; onChange: (id: string) => void; disabled?: boolean }) {
+  const [q, setQ] = useState('')
+  const [sonuc, setSonuc] = useState<{ userId: string; ad: string; bolum: string }[]>([])
+  const [secili, setSecili] = useState<string>('')
+  const [acik, setAcik] = useState(false)
+  useEffect(() => {
+    if (q.trim().length < 2) { setSonuc([]); return }
+    let iptal = false
+    const t = setTimeout(() => {
+      fetch(`/api/kalite/fif/kullanici-ara?q=${encodeURIComponent(q.trim())}`)
+        .then((r) => (r.ok ? r.json() : { kullanicilar: [] }))
+        .then((d) => { if (!iptal) setSonuc(d.kullanicilar ?? []) })
+        .catch(() => {})
+    }, 250)
+    return () => { iptal = true; clearTimeout(t) }
+  }, [q])
+  return (
+    <div className="relative">
+      <Label className="text-xs font-medium text-slate-600">{label}</Label>
+      {value && !acik ? (
+        <div className="mt-1 flex items-center gap-2">
+          <span className="text-sm">{secili || 'Seçili'}</span>
+          {!disabled && <button type="button" className="text-xs text-red-500" onClick={() => { onChange(''); setSecili(''); setAcik(true) }}>temizle</button>}
+        </div>
+      ) : (
+        <Input className="mt-1 h-9" value={q} onChange={(e) => { setQ(e.target.value); setAcik(true) }} disabled={disabled} placeholder="ad ile ara…" />
+      )}
+      {acik && sonuc.length > 0 && (
+        <div className="absolute z-10 mt-1 w-full max-h-48 overflow-auto rounded-md border bg-white shadow">
+          {sonuc.map((u) => (
+            <button key={u.userId} type="button" className="block w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50"
+              onClick={() => { onChange(u.userId); setSecili(u.ad); setAcik(false); setQ('') }}>
+              {u.ad} <span className="text-slate-400 text-xs">{u.bolum}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

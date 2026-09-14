@@ -14560,13 +14560,16 @@ model Fif {
   riskFirsatGuncelleme Boolean @default(false)
   ogrenilenDers        Boolean @default(false)
 
-  durum FifDurum @default(TASLAK)
+  durum     FifDurum @default(TASLAK)
+  /// Son red gerekçesi (ONAY_BEKLIYOR→TASLAK / KAPATMA_BEKLIYOR→FAALIYET). Faz 2.
+  redNedeni String?  @db.Text
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdById String?
 
   faaliyetler FifFaaliyet[]
+  gecmis      FifGecmis[]
   etkinlikler FifEtkinlik[]
   kokNedenler FifKokNeden[]
   besNedenler FifBesNeden[]
@@ -14640,6 +14643,20 @@ model FifEk {
   tip       FifEkTip
   dosyaYolu String
   createdAt DateTime @default(now())
+
+  @@index([fifId])
+}
+
+/// FİF durum geçiş günlüğü (Faz 2). Her geçişte bir satır; userId düz string (audit deseni).
+model FifGecmis {
+  id        String    @id @default(cuid())
+  fifId     String
+  fif       Fif       @relation(fields: [fifId], references: [id], onDelete: Cascade)
+  eskiDurum FifDurum?
+  yeniDurum FifDurum
+  userId    String?
+  aciklama  String?   @db.Text
+  createdAt DateTime  @default(now())
 
   @@index([fifId])
 }

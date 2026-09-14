@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { fifKapsamindaMi } from '@/lib/quality/fif-access'
+import { fifKapsamindaMi, canManageFif } from '@/lib/quality/fif-access'
+import { altKayitDuzenlenebilir, esKuraliGecerli } from '@/lib/quality/fif-durum'
 import { fifFaaliyetInput } from '@/lib/quality/fif-validators'
 import { z } from 'zod'
 
@@ -13,14 +14,22 @@ async function yetkiVeFif(id: string) {
   if (error) return { error }
   const fif = await prisma.fif.findUnique({
     where: { id },
-    select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true },
+    select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true, ekTerminNedeni: true },
   })
   if (!fif) return { error: NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 }) }
   if (!(await fifKapsamindaMi(session, fif))) {
     return { error: NextResponse.json({ error: 'Bu FİF kapsamınızda değil' }, { status: 403 }) }
   }
-  if (fif.durum === 'IPTAL') return { error: NextResponse.json({ error: 'İptal edilmiş FİF' }, { status: 409 }) }
-  return { error: null as null }
+  const manage = canManageFif(session)
+  // Durum kilidi: KAPANDI/IPTAL'da düzenleme yok (manage hariç); ayrıca faaliyet
+  // satırı yalnız FAALIYET durumunda düzenlenir (manage her durumda).
+  if (!altKayitDuzenlenebilir({ userId: session?.user?.id ?? null, isManage: manage }, fif.durum)) {
+    return { error: NextResponse.json({ error: 'Bu durumda düzenleme yapılamaz' }, { status: 409 }) }
+  }
+  if (!manage && fif.durum !== 'FAALIYET') {
+    return { error: NextResponse.json({ error: 'Faaliyet satırları yalnız FAALIYET aşamasında düzenlenir' }, { status: 409 }) }
+  }
+  return { error: null as null, durum: fif.durum, ekTerminNedeni: fif.ekTerminNedeni }
 }
 
 /** POST — yeni faaliyet satırı. */
@@ -35,6 +44,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Geçersiz veri', issues: parsed.error.flatten() }, { status: 400 })
   }
   const f = parsed.data
+  const es = esKuraliGecerli(g.durum, f.sonuc ?? null, g.ekTerminNedeni)
+  if (!es.ok) return NextResponse.json({ error: es.sebep }, { status: 400 })
   const created = await prisma.fifFaaliyet.create({
     data: {
       fifId: id, sira: f.sira, aciklama: f.aciklama,
@@ -63,6 +74,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Geçersiz veri', issues: parsed.error.flatten() }, { status: 400 })
   }
   const f = parsed.data
+  const es = esKuraliGecerli(g.durum, f.sonuc ?? null, g.ekTerminNedeni)
+  if (!es.ok) return NextResponse.json({ error: es.sebep }, { status: 400 })
   const updated = await prisma.fifFaaliyet.update({
     where: { id: faaliyetId },
     data: {

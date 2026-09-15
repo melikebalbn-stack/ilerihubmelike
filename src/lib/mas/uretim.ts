@@ -1,5 +1,6 @@
 import 'server-only'
 import { masPool, sql } from './client'
+import { masTarih } from './tarih'
 
 /**
  * MAS MES üretim/duruş SALT OKUMA. Şema 14.09 canlı MAS (SQL Server 2022) üzerinde teyit edildi:
@@ -44,6 +45,16 @@ export interface MasDurusSatiri {
   not: string | null
 }
 
+// MAS datetime'ları yerel(İstanbul)-yanlış-UTC → doğru UTC. TÜM tarih alanları buradan geçer (masTarih).
+function uretimTarihNormalize(r: MasUretimSatiri): MasUretimSatiri {
+  return {
+    ...r,
+    startDateTime: masTarih(r.startDateTime),
+    endDateTime: masTarih(r.endDateTime),
+    deliveryDateTime: masTarih(r.deliveryDateTime),
+  }
+}
+
 // ProductionMaster + WorkCenter + ProductionDetail + WorkOrder + Operation (teyit edilmiş JOIN).
 const URETIM_SELECT =
   `SELECT pm.Id AS masId, pd.Id AS masDetayId, pm.StartDateTime AS startDateTime, pm.EndDateTime AS endDateTime, ` +
@@ -64,7 +75,7 @@ export async function acikUretimler(): Promise<MasUretimSatiri[]> {
   const res = await pool
     .request()
     .query<MasUretimSatiri>(`${URETIM_SELECT} WHERE pm.EndDateTime IS NULL AND pm.Active = 1 ORDER BY pm.Id DESC`)
-  return res.recordset
+  return res.recordset.map(uretimTarihNormalize)
 }
 
 /**
@@ -87,7 +98,7 @@ export async function kapananUretimler(opts: { sinceId?: number; sinceDate?: Dat
   const res = await rq.query<MasUretimSatiri>(
     `${URETIM_SELECT.replace('SELECT ', `SELECT ${top}`)} WHERE ${conds.join(' AND ')} ORDER BY pm.Id ASC`,
   )
-  return res.recordset
+  return res.recordset.map(uretimTarihNormalize)
 }
 
 /** Açık üretimlerin operatörleri (ProductionUser.EndDateTime IS NULL) → Auth.User.EmployeeNo. */
@@ -134,5 +145,6 @@ export async function acikDuruslar(opts: { saat?: number } = {}): Promise<MasDur
         `AND pdt.StartDateTime >= DATEADD(HOUR, -@saat, SYSDATETIME()) ` +
         `ORDER BY pdt.StartDateTime DESC`,
     )
-  return res.recordset
+  // Duruş başlangıcı da MAS yerel-yanlış-UTC → doğru UTC. (Bu sorgu yalnız açık duruş → bitiş yok.)
+  return res.recordset.map((r) => ({ ...r, baslangic: masTarih(r.baslangic) }))
 }

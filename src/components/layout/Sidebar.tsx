@@ -187,7 +187,6 @@ const ifsMenuItems = [
   { name: "IFS Ödevleri", icon: ListChecks, href: "/ifs/odevler", roles: [] as string[], permission: "ifs.view" },
   { name: "Sınavlar", icon: ClipboardList, href: "/ifs/sinavlar", roles: [] as string[], permission: "ifs.admin" },
   { name: "Eğitim Değerlendirme", icon: ClipboardCheck, href: "/ifs/degerlendirme", roles: [] as string[], permission: "ifs.admin" },
-  { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: [] as string[], permission: "ifs.rapor.view" },
 ]
 
 // Formlar alt menüsü
@@ -486,6 +485,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // İş Analizi menü bayrakları — SUNUCUDAN (amir DB sorgusu + ik OR mantığı iaRolCozumle'de).
   const [iaFlags, setIaFlags] = useState<{ amir: boolean; ik: boolean }>({ amir: false, ik: false })
   const [kadroTalepAcabilir, setKadroTalepAcabilir] = useState(false)
+  const [ifsRaporGorunur, setIfsRaporGorunur] = useState(false)
   const [denemeGorunur, setDenemeGorunur] = useState(false)
   const [avansBayrak, setAvansBayrak] = useState<{ kendim: boolean; sorumlu: boolean }>({ kendim: false, sorumlu: false })
 
@@ -609,6 +609,20 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       .catch(() => {})
   }, [session])
 
+  // IFS Raporlar — DİNAMİK kural (ifs.rapor.view VEYA görev MÜDÜR VEYA bölüm
+  // Sistem Geliştirme). Client'ta hesaplanamaz; sunucu bayrağı (sayfa guard'ıyla
+  // birebir canIfsRaporView). Route ve permission statik filtreden ÇIKARILDI.
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/ifs/rapor-menu-bayrak')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setIfsRaporGorunur(!!d.gorunur)
+      })
+      .catch(() => {})
+  }, [session])
+
   // Avans formu menü bayrakları — SUNUCUDA hesaplanır (kendim: aktif BEYAZ/GRİ
   // yaka · sorumlu: herhangi bir bölümde sorumlu olarak geçen aktif personel).
   // Client'ta yetki HESAPLANMAZ.
@@ -700,7 +714,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const filteredMainItems = filterItems(mainMenuItems)
   const filteredTeknikItems = filterItems(teknikMenuItems)
-  const filteredIfsItems = filterItems(ifsMenuItems as unknown as typeof mainMenuItems)
+  const ifsRaporItem = { name: "Raporlar", icon: BarChart3, href: "/ifs/raporlar", roles: ["*"] }
+  const filteredIfsItems = [
+    ...filterItems(ifsMenuItems as unknown as typeof mainMenuItems),
+    ...(ifsRaporGorunur ? [ifsRaporItem] : []),
+  ]
   // IPRO öğeleri permission alanını `string[]` (OR) tutuyor; filterItems param tipi
   // (typeof mainMenuItems) permission'ı `string` sanıyor. Süzme permission'ı runtime'da
   // string|string[] olarak okur (bkz. filterItems). Cast yalnız tip içindir; davranış korunur.

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { requireSession } from "@/lib/auth/require-session";
+import { canIfsRaporView } from "@/lib/ifs/rapor-erisim";
 import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { getUsersByBolum, resolveUserBolum } from "@/lib/user-personnel";
@@ -34,8 +36,11 @@ const IFS_EVAL_WRITE = ["ifs.evaluate"];
 // N+1 YOK: getUsersByBolum + GOREV içerikleri + ContentProgress (+ userId varsa
 // IfsTaskEvaluation) — per-user döngüde sorgu yok.
 export async function GET(req: NextRequest) {
-  const { session, error } = await requirePermission("ifs.rapor.view");
+  const { session, userId: oturumUserId, error } = await requireSession();
   if (error) return error;
+  if (!(await canIfsRaporView(oturumUserId))) {
+    return NextResponse.json({ error: "IFS rapor görüntüleme yetkiniz yok" }, { status: 403 });
+  }
 
   const callerId = await resolveAkademiUserId(session);
   if (!callerId) {

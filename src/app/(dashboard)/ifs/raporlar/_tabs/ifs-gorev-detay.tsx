@@ -105,7 +105,7 @@ export function IfsGorevDetayTab() {
 
   // Scope + bölümler + IFS kursları — ifs-evaluations sekmesiyle aynı kaynaklar.
   useEffect(() => {
-    fetch("/api/akademi/admin/reports/department-board")
+    fetch("/api/akademi/admin/reports/department-board?type=ifs")
       .then((r) => (r.ok ? r.json() : null))
       .then((m: BoardMeta | null) => setMeta(m))
       .catch(() => setMeta(null));

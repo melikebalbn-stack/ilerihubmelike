@@ -116,7 +116,7 @@ export function IfsEvaluationsTab() {
 
   // Scope + bölümler (department-board meta reuse) + IFS kursları
   useEffect(() => {
-    fetch("/api/akademi/admin/reports/department-board")
+    fetch("/api/akademi/admin/reports/department-board?type=ifs")
       .then((r) => (r.ok ? r.json() : null))
       .then((m: BoardMeta | null) => {
         setMeta(m);

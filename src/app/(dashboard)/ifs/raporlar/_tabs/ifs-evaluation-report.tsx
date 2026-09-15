@@ -152,7 +152,7 @@ export function IfsEvaluationReportTab() {
         if (ifs.length) setCourseId(ifs[0].id);
       })
       .catch(() => setCourses([]));
-    fetch("/api/akademi/admin/reports/department-board")
+    fetch("/api/akademi/admin/reports/department-board?type=ifs")
       .then((r) => (r.ok ? r.json() : null))
       .then((m) => setBolums(m?.bolums ?? []))
       .catch(() => setBolums([]));

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
+import { parseAkademiType, viaOptionalCourseWhere } from "@/lib/akademi/admin-type-filter";
 
 export async function GET(req: NextRequest) {
   const { error } = await requirePermission('akademi.kurs.edit');
@@ -9,6 +10,11 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search")?.trim() ?? "";
   const courseId = searchParams.get("courseId");
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  // courseId verilmişse zaten tek kursa daraltılmış → type YOK SAYILIR
+  // (/ifs/sinavlar bu ucu ?courseId=<IFS kurs> ile çağırır).
+  const { type, error: typeError } = parseAkademiType(searchParams);
+  if (typeError) return typeError;
 
   const where: Record<string, unknown> = {};
   if (search) {
@@ -18,6 +24,8 @@ export async function GET(req: NextRequest) {
     ];
   }
   if (courseId) where.courseId = courseId;
+  // AND: viaOptionalCourseWhere kendi OR'unu taşır, arama OR'u ile çakışmasın.
+  else where.AND = [viaOptionalCourseWhere(type)];
 
   const exams = await prisma.exam.findMany({
     where,

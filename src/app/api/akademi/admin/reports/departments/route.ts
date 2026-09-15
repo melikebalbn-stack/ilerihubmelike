@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
+import {
+  parseAkademiType,
+  viaCourseWhere,
+  viaOptionalCourseWhere,
+} from "@/lib/akademi/admin-type-filter";
 import { getLinkedBolums } from "@/lib/user-personnel";
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const { error } = await requirePermission('akademi.report.view');
   if (error) return error;
+
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  // Bölüm/kullanıcı listesi süzülmez; kurs tamamlama, deneme, sertifika sayaçları süzülür.
+  const { type, error: typeError } = parseAkademiType(req.nextUrl.searchParams);
+  if (typeError) return typeError;
+  const progressW = viaCourseWhere(type);
+  const examW = viaOptionalCourseWhere(type);
+  const certW = viaOptionalCourseWhere(type);
 
   const bolums = await getLinkedBolums();
 
@@ -31,20 +44,21 @@ export async function GET(_req: NextRequest) {
       const [completedCourses, attempts, passedAttempts, certs] =
         await Promise.all([
           prisma.courseProgress.count({
-            where: { userId: { in: userIds }, completedAt: { not: null } },
+            where: { ...progressW, userId: { in: userIds }, completedAt: { not: null } },
           }),
           prisma.userExamAttempt.count({
-            where: { userId: { in: userIds }, status: "COMPLETED" },
+            where: { exam: examW, userId: { in: userIds }, status: "COMPLETED" },
           }),
           prisma.userExamAttempt.count({
             where: {
+              exam: examW,
               userId: { in: userIds },
               status: "COMPLETED",
               passed: true,
             },
           }),
           prisma.akademiCertificate.count({
-            where: { userId: { in: userIds } },
+            where: { ...certW, userId: { in: userIds } },
           }),
         ]);
 

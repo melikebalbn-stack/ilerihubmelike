@@ -9,6 +9,7 @@ import {
   resolveUserBolum,
 } from "@/lib/user-personnel";
 import { buildDepartmentBoard } from "@/lib/akademi-department-board";
+import { parseAkademiType } from "@/lib/akademi/admin-type-filter";
 
 // PR-3: Canlı departman panosu (read-only). Kim yaptı / kim geciken.
 // - bolum YOK  -> meta (scope + izinli bölümler + paket filtresi seçenekleri)
@@ -38,6 +39,14 @@ export async function GET(req: NextRequest) {
 
   const bolum = req.nextUrl.searchParams.get("bolum")?.trim() || null;
   const packageId = req.nextUrl.searchParams.get("packageId")?.trim() || null;
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  // Meta modunda paket listesi (CoursePackage.isIfs), board modunda atamalar
+  // (assignment.course.isIfs) süzülür; scope/bölüm listesi süzülmez.
+  // Çağıranlar: akademi department-board sekmesi (normal), /ifs/raporlar üç
+  // sekmesi (type=ifs — yalnız scope+bolums kullanırlar).
+  const { type, error: typeError } = parseAkademiType(req.nextUrl.searchParams);
+  if (typeError) return typeError;
+  const isIfsW = type === "all" ? {} : { isIfs: type === "ifs" };
 
   // --- META modu (bölüm seçilmemiş): selector verisi ---
   if (!bolum) {
@@ -47,7 +56,7 @@ export async function GET(req: NextRequest) {
         ? [ownBolum]
         : [];
     const packages = await prisma.coursePackage.findMany({
-      where: { isActive: true },
+      where: { isActive: true, ...isIfsW },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     });
@@ -103,9 +112,10 @@ export async function GET(req: NextRequest) {
   const assignments = await prisma.userCourseAssignment.findMany({
     where: {
       userId: { in: userIds },
-      ...(courseIdFilter
-        ? { assignment: { courseId: { in: courseIdFilter } } }
-        : {}),
+      assignment: {
+        ...(courseIdFilter ? { courseId: { in: courseIdFilter } } : {}),
+        ...(type === "all" ? {} : { course: isIfsW }),
+      },
     },
     select: {
       userId: true,

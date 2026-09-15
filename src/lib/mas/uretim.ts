@@ -100,17 +100,35 @@ export async function acikOperatorler(): Promise<MasOperatorSatiri[]> {
   return res.recordset
 }
 
-/** Açık duruşlar: Production.ProductionDowntime (EndDateTime IS NULL) + Loss.Downtime (kod/ad). */
-export async function acikDuruslar(): Promise<MasDurusSatiri[]> {
+/** MAS_DURUS_SAAT (varsayılan 24): açık duruşta yalnız son N saati al — 2017 çöp kayıtları eler. */
+function durusSaat(): number {
+  const n = Number(process.env.MAS_DURUS_SAAT)
+  return Number.isFinite(n) && n > 0 ? n : 24
+}
+
+/**
+ * Açık duruşlar: Production.ProductionDowntime (EndDateTime IS NULL) + Loss.Downtime (kod/ad).
+ * İki süzgeç (14.09 ölçümü: 219 açık duruşun 190'ı 2017 tarihli çöp, tezgahsız değil ama bayat):
+ *  - WorkCenterId IS NOT NULL → tezgahı çözülemeyen duruş alınmaz (MAS'ta duruş tezgahı WorkCenterId'den
+ *    gelir, ProductionMasterId neredeyse hep NULL — o kolon ayraç DEĞİL).
+ *  - StartDateTime >= son MAS_DURUS_SAAT saat → eski/çöp kayıtları eler (son 24s'te ~29 gerçek duruş).
+ */
+export async function acikDuruslar(opts: { saat?: number } = {}): Promise<MasDurusSatiri[]> {
   const pool = await masPool()
-  const res = await pool.request().query<MasDurusSatiri>(
-    `SELECT pdt.Id AS id, pdt.ProductionMasterId AS masId, wc.Code AS tezgahKod, ` +
-      `pdt.StartDateTime AS baslangic, pdt.Duration AS sureSn, ` +
-      `d.Code AS sebepKod, d.Name AS sebepAd, pdt.StartComment AS [not] ` +
-      `FROM Production.ProductionDowntime pdt ` +
-      `JOIN Loss.Downtime d ON d.Id = pdt.DowntimeId ` +
-      `LEFT JOIN Organization.WorkCenter wc ON wc.Id = pdt.WorkCenterId ` +
-      `WHERE pdt.EndDateTime IS NULL AND pdt.Active = 1 ORDER BY pdt.StartDateTime DESC`,
-  )
+  const saat = opts.saat != null && opts.saat > 0 ? opts.saat : durusSaat()
+  const res = await pool
+    .request()
+    .input('saat', sql.Int, saat)
+    .query<MasDurusSatiri>(
+      `SELECT pdt.Id AS id, pdt.ProductionMasterId AS masId, wc.Code AS tezgahKod, ` +
+        `pdt.StartDateTime AS baslangic, pdt.Duration AS sureSn, ` +
+        `d.Code AS sebepKod, d.Name AS sebepAd, pdt.StartComment AS [not] ` +
+        `FROM Production.ProductionDowntime pdt ` +
+        `JOIN Loss.Downtime d ON d.Id = pdt.DowntimeId ` +
+        `JOIN Organization.WorkCenter wc ON wc.Id = pdt.WorkCenterId ` +
+        `WHERE pdt.EndDateTime IS NULL AND pdt.Active = 1 ` +
+        `AND pdt.StartDateTime >= DATEADD(HOUR, -@saat, SYSDATETIME()) ` +
+        `ORDER BY pdt.StartDateTime DESC`,
+    )
   return res.recordset
 }

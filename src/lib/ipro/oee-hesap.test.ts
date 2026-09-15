@@ -136,9 +136,12 @@ describe('oeeBilesenleri — formüller, null yayılımı, hesapKaynagi dalları
     expect(b.hesapKaynagi).toBe('TAM')
   })
 
-  it('CAKISMA_VAR IFS idealiyle bile öncelikli (PERF_IFS’i ezer)', () => {
+  it('COKLU_IS IFS idealiyle bile öncelikli (PERF_IFS’i ezer) + perf/quality/oee NULL', () => {
     const b = oeeBilesenleri({ planliSaniye: 1000, durusSaniye: 100, uretilenAdet: 400, iyiAdet: 380, idealSaniyeAdet: 2, idealKaynak: 'IFS', cakismaVar: true })
-    expect(b.hesapKaynagi).toBe('CAKISMA_VAR')
+    expect(b.hesapKaynagi).toBe('COKLU_IS')
+    expect(b.performance).toBeNull()
+    expect(b.quality).toBeNull()
+    expect(b.oee).toBeNull()
   })
 
   it('PLANLI_YOK: planli 0 → availability null, oee null', () => {
@@ -149,11 +152,32 @@ describe('oeeBilesenleri — formüller, null yayılımı, hesapKaynagi dalları
     expect(b.hesapKaynagi).toBe('PLANLI_YOK')
   })
 
-  it('CAKISMA_VAR: her şey dolu olsa bile çakışma işareti öncelikli', () => {
+  it('COKLU_IS: çakışmada perf/quality/oee NULL, availability KORUNUR (yanlış >1 değer yazılmaz)', () => {
     const b = oeeBilesenleri({ planliSaniye: 1000, durusSaniye: 100, uretilenAdet: 400, iyiAdet: 380, idealSaniyeAdet: 2, cakismaVar: true })
-    expect(b.hesapKaynagi).toBe('CAKISMA_VAR')
-    // bileşenler yine hesaplanır (yazılır, işaretlenir)
-    expect(b.oee).not.toBeNull()
+    expect(b.hesapKaynagi).toBe('COKLU_IS')
+    expect(b.availability).toBeCloseTo(0.9, 5) // availability iş penceresinden bağımsız → kalır
+    expect(b.performance).toBeNull()
+    expect(b.quality).toBeNull()
+    expect(b.oee).toBeNull()
+  })
+
+  it('COKLU_IS: aşırı adet (iyi>üretilen) bile >1 quality YAZMAZ → null', () => {
+    // Eski CAKISMA_VAR bunu quality=2000/483≈4.14, oee>1 yazıyordu; artık null.
+    const b = oeeBilesenleri({ planliSaniye: 1000, durusSaniye: 100, uretilenAdet: 483, iyiAdet: 2000, idealSaniyeAdet: 2, cakismaVar: true })
+    expect(b.quality).toBeNull()
+    expect(b.oee).toBeNull()
+    expect(b.hesapKaynagi).toBe('COKLU_IS')
+  })
+
+  it('SİNYALSİZ MAS: MAS adedi (uretilen) + IFS çevrim → performance dolu, PERF_IFS', () => {
+    // Sinyalsiz tezgahta ayna log'a uretimAdet=MAS adedi yazar; ideal ölçülemez ama ifsMachRunFactor'dan
+    // türeyen IFS çevrimi (idealSaniyeAdet, idealKaynak='IFS') performansı verir. Çevrim yoksa → PERF_YOK.
+    const varCevrim = oeeBilesenleri({ planliSaniye: 3600, durusSaniye: 0, uretilenAdet: 900, iyiAdet: 850, idealSaniyeAdet: 3, idealKaynak: 'IFS', cakismaVar: false })
+    expect(varCevrim.performance).toBeCloseTo((3 * 900) / 3600, 5) // 0.75
+    expect(varCevrim.hesapKaynagi).toBe('PERF_IFS')
+    const yokCevrim = oeeBilesenleri({ planliSaniye: 3600, durusSaniye: 0, uretilenAdet: 900, iyiAdet: 850, idealSaniyeAdet: null, cakismaVar: false })
+    expect(yokCevrim.performance).toBeNull()
+    expect(yokCevrim.hesapKaynagi).toBe('PERF_YOK')
   })
 
   it('null yayılımı: uretilen 0 → quality null → oee null', () => {

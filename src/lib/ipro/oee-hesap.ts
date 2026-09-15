@@ -98,13 +98,21 @@ export interface OeeBilesen {
  * OEE bileşenleri + hesapKaynagi. SAF — DB'siz test.
  * availability=(planli−durus)/planli · performance=(ideal×üretilen)/(planli−durus) · quality=iyi/üretilen.
  * Biri null ise oee null (null yayılımı). hesapKaynagi önceliği:
- * CAKISMA_VAR > PLANLI_YOK > PERF_YOK > (PERF_IFS | TAM).
+ * COKLU_IS (perf+quality+oee null) > PLANLI_YOK > PERF_YOK > (PERF_IFS | TAM).
  * PERF_IFS: performance IFS planlı çevrimden (ölçülen güvenilir ideal yerine) hesaplandı;
  * formül aynı, yalnız kaynak damgası farklı. idealKaynak yoksa TAM (geriye dönük uyum).
  */
 export function oeeBilesenleri(g: OeeGirdi): OeeBilesen {
   const calisma = g.planliSaniye - g.durusSaniye
   const availability = g.planliSaniye > 0 ? calisma / g.planliSaniye : null
+
+  // ÇOKLU İŞ: aynı tezgahta zaman-örtüşen başka MAS işi varsa üretim TEK işe atfedilemez →
+  // performance ve quality (dolayısıyla oee) NULL bırakılır (yanlış >1 değer YAZMA). availability
+  // iş penceresi/adetten bağımsızdır → mevcut mantıkla korunur. Damga: COKLU_IS.
+  if (g.cakismaVar) {
+    return { availability, performance: null, quality: null, oee: null, hesapKaynagi: 'COKLU_IS' }
+  }
+
   const performance =
     g.idealSaniyeAdet != null && calisma > 0 ? (g.idealSaniyeAdet * g.uretilenAdet) / calisma : null
   const quality = g.uretilenAdet > 0 ? g.iyiAdet / g.uretilenAdet : null
@@ -114,8 +122,7 @@ export function oeeBilesenleri(g: OeeGirdi): OeeBilesen {
       : null
 
   let hesapKaynagi: string
-  if (g.cakismaVar) hesapKaynagi = 'CAKISMA_VAR'
-  else if (g.planliSaniye <= 0) hesapKaynagi = 'PLANLI_YOK'
+  if (g.planliSaniye <= 0) hesapKaynagi = 'PLANLI_YOK'
   else if (performance == null) hesapKaynagi = 'PERF_YOK'
   else hesapKaynagi = g.idealKaynak === 'IFS' ? 'PERF_IFS' : 'TAM'
 
@@ -218,13 +225,7 @@ function tatilAltSinir(basUtc: Date): Date {
  * mantığı çağıranın try/catch'inde — ama içeride de ideal-guncelle try/catch'li (OEE'yi durdurmasın).
  * Sıra: önce ideali güncelle (bu işin gözlemi dahil), sonra OEE hesapla-yaz.
  */
-export async function oeeKaydiHesaplaVeYaz(
-  prisma: PrismaClient,
-  productionLogId: string,
-  // secenek.masAdedi: MAS aynası SİNYALSİZ tezgahta üretilen adedi MAS'tan geçirir → uretilenAdet
-  // olarak kullanılır ve hesapKaynagi'na '/MAS' damgası eklenir. Verilmezse mevcut davranış (IPRO PLC).
-  secenek?: { masAdedi?: number | null },
-): Promise<void> {
+export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId: string): Promise<void> {
   const log = await prisma.iproProductionLog.findUnique({
     where: { id: productionLogId },
     select: {
@@ -300,14 +301,15 @@ export async function oeeKaydiHesaplaVeYaz(
 
   // 3) durusSaniye · 4) miktarlar · 5) çakışma
   const durusSaniye = await durusSaniyeHesapla(prisma, log.tezgahId, bas, bit)
-  const uretilenAdet = secenek?.masAdedi != null ? secenek.masAdedi : (log.uretimAdet ?? log.qtyComplete + log.qtyScrap)
+  // uretilenAdet: log.uretimAdet (sinyalli→PLC delta, sinyalsiz MAS→ayna MAS adedini log'a yazar) ??
+  // fallback qtyComplete+qtyScrap. Ayrı 'masAdedi' parametresine gerek yok — kaynak log'da.
+  const uretilenAdet = log.uretimAdet ?? log.qtyComplete + log.qtyScrap
   const iyiAdet = log.qtyComplete
   const cakismaVar = await cakismaVarMi(prisma, log.tezgahId, log.id, bas, bit)
 
   // 6) bileşenler · 7) vardiya etiketi
   const b = oeeBilesenleri({ planliSaniye, durusSaniye, uretilenAdet, iyiAdet, idealSaniyeAdet, idealKaynak, cakismaVar })
-  // Sinyalsiz MAS aynasında kaynak damgasına '/MAS' eklenir (adet MAS'tan geldi — audit).
-  const hesapKaynagi = secenek?.masAdedi != null ? `${b.hesapKaynagi}/MAS` : b.hesapKaynagi
+  const hesapKaynagi = b.hesapKaynagi
   const vardiyaId = await vardiyaBul(prisma, bas)
 
   await prisma.iproOeeKaydi.upsert({

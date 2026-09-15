@@ -201,22 +201,36 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     const bitirildiAt = meta?.endDateTime ?? simdi
     const sinyalli = log.tezgah._count.plcPinler > 0
 
-    // Sinyalli tezgah: IPRO PLC delta (uretimAdet) → mevcut OEE yolu. Sinyalsiz: MAS adedi.
+    // uretimAdet: SİNYALLİ → IPRO PLC delta; SİNYALSİZ → MAS adedi (log'a yazılır ki oeeHesaplanabilir
+    // guard'ı [uretimAdet!=null] geçsin ve OEE MAS adedinden hesaplansın). log.hesapKaynagi sinyalsizde
+    // 'MAS' (audit); performans log'daki ifsMachRunFactor/ifsRunTimeCode'dan (yoksa PERF_YOK).
     let uretimAdet: number | null = null
+    let logHesapKaynagi: string | null = null
     if (sinyalli && log.baslatildiAt) {
       try {
         uretimAdet = (await isPenceresiDeltaToplami(prisma, log.tezgah.kod, log.baslatildiAt, bitirildiAt)).toplam
       } catch {
         uretimAdet = null
       }
+    } else if (!sinyalli) {
+      uretimAdet = Math.round(g.adet)
+      logHesapKaynagi = 'MAS'
     }
     await prisma.iproProductionLog.update({
       where: { id: log.id },
-      data: { durum: 'KAPALI', bitirildiAt, qtyComplete: g.adet, tamamlandi: !!meta?.isFinished, uretimAdet },
+      data: {
+        durum: 'KAPALI',
+        bitirildiAt,
+        qtyComplete: Math.round(g.adet),
+        tamamlandi: !!meta?.isFinished,
+        uretimAdet,
+        ...(logHesapKaynagi ? { hesapKaynagi: logHesapKaynagi } : {}),
+      },
     })
-    // OEE: sinyalli → mevcut (PLC delta, uretimAdet log'da); sinyalsiz → MAS adedinden (hesapKaynagi '/MAS').
+    // OEE: uretilen adet log'dan okunur (sinyalli PLC delta / sinyalsiz MAS adedi). Çoklu işte
+    // (cakisma) perf+quality+oee null, hesapKaynagi COKLU_IS — oee-hesap içinde.
     try {
-      await oeeKaydiHesaplaVeYaz(prisma, log.id, sinyalli ? undefined : { masAdedi: g.adet })
+      await oeeKaydiHesaplaVeYaz(prisma, log.id)
     } catch {
       /* OEE hatası ayna'yı bloklamasın */
     }

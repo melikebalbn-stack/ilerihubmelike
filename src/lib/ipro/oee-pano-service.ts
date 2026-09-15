@@ -22,6 +22,8 @@ export type OeeCanliKart = {
   uretilen: number
   idealGuvenilir: boolean
   ornekSayisi: number // X — güvenilirlik eşiği (X/esik)
+  // Çoklu açık iş varsa performance/oee güvenilir atfedilemez → null; sebep burada (COKLU_IS).
+  hesapKaynagi: string | null
 }
 
 // İdeal güvenilirlik eşiği — oee-canli/ideal-cevrim ile hizalı (X/esik gösterimi).
@@ -70,27 +72,43 @@ export async function tezgahlarinCanliOee(
     : []
   const idealByKey = new Map(idealler.map((i) => [`${i.tezgahKod}|${i.parcaKod}`, i]))
 
+  // Tezgah başına grupla: aynı tezgahta 2+ açık iş varsa TEK kart üretilir (union pencere,
+  // en erken başlangıç). Çoklu işte üretim tek işe atfedilemez → performance/oee null, sebep COKLU_IS.
+  const islerByTezgah = new Map<string, CanliOeeAcikIs[]>()
+  for (const a of acikIsler) {
+    const arr = islerByTezgah.get(a.tezgahId)
+    if (arr) arr.push(a)
+    else islerByTezgah.set(a.tezgahId, [a])
+  }
+
   const canliByTezgah = new Map<string, OeeCanliKart>()
   await Promise.all(
-    acikIsler.map(async (a) => {
-      if (!a.baslatildiAt) return
-      const tezgahKod = kodById.get(a.tezgahId)
+    [...islerByTezgah.entries()].map(async ([tezgahId, isler]) => {
+      const tezgahKod = kodById.get(tezgahId)
       if (!tezgahKod) return
+      const baslar = isler.map((i) => i.baslatildiAt).filter((d): d is Date => !!d)
+      if (!baslar.length) return
+      const bas = new Date(Math.min(...baslar.map((d) => d.getTime())))
+      const cokluIs = isler.length > 1
       const [{ toplam: uretilen }, durusSaniye] = await Promise.all([
-        isPenceresiDeltaToplami(prisma, tezgahKod, a.baslatildiAt, simdi),
-        durusSaniyeCanli(prisma, a.tezgahId, a.baslatildiAt, simdi),
+        isPenceresiDeltaToplami(prisma, tezgahKod, bas, simdi),
+        durusSaniyeCanli(prisma, tezgahId, bas, simdi),
       ])
-      const planliSaniye = planliSaniyeHesapla(a.baslatildiAt, simdi, vardiyalar, tatilMap)
-      const ideal = a.ifsPartNo ? idealByKey.get(`${tezgahKod}|${a.ifsPartNo}`) : undefined
+      const planliSaniye = planliSaniyeHesapla(bas, simdi, vardiyalar, tatilMap)
+      // İdeal çevrim yalnız tek işte anlamlı (performance oradan gelir); çoklu işte hiç kullanılmaz.
+      const ideal = !cokluIs && isler[0].ifsPartNo ? idealByKey.get(`${tezgahKod}|${isler[0].ifsPartNo}`) : undefined
       const idealSaniyeAdet = ideal?.guvenilir ? ideal.idealSaniyeAdet : null
       const b = oeeCanliBilesenleri({ planliSaniye, durusSaniye, uretilen, idealSaniyeAdet })
-      canliByTezgah.set(a.tezgahId, {
+      canliByTezgah.set(tezgahId, {
         ...b,
+        performance: cokluIs ? null : b.performance,
+        oeeCanli: cokluIs ? null : b.oeeCanli,
+        hesapKaynagi: cokluIs ? 'COKLU_IS' : null,
         planliSaniye,
         durusSaniye,
         uretilen,
-        idealGuvenilir: !!ideal?.guvenilir,
-        ornekSayisi: ideal?.ornekSayisi ?? 0,
+        idealGuvenilir: !cokluIs && !!ideal?.guvenilir,
+        ornekSayisi: cokluIs ? 0 : (ideal?.ornekSayisi ?? 0),
       })
     }),
   )

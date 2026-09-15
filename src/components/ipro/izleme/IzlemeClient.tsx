@@ -37,6 +37,7 @@ type CanliOee = {
   uretilen: number
   idealGuvenilir: boolean
   ornekSayisi: number
+  hesapKaynagi: string | null
 }
 
 // OEE renk eşiği (görsel, OeePano ile hizalı): ≥%85 yeşil, ≥%60 amber, <%60 kırmızı, null gri.
@@ -92,7 +93,11 @@ function OeeSerit({ c, tv, esik }: { c: CanliOee | null; tv: boolean; esik: numb
         <div className="min-w-0"><Halka deger={null} etiket="Kalite" /></div>
         <div className="min-w-0"><Halka deger={c?.oeeCanli ?? null} etiket="OEE" /></div>
       </div>
-      {c && !c.idealGuvenilir ? (
+      {c?.hesapKaynagi === 'COKLU_IS' ? (
+        <p className={`mt-1 text-right text-[8px] ${tv ? 'text-amber-400' : 'text-amber-600'}`} title="çoklu açık iş — performans tek işe atfedilemez">
+          çoklu iş · perf. yok
+        </p>
+      ) : c && !c.idealGuvenilir ? (
         <p className={`mt-1 text-right text-[8px] ${tv ? 'text-slate-500' : 'text-slate-400'}`} title="ideal çevrim güvenilirlik">
           {c.ornekSayisi}/{esik}
         </p>
@@ -120,6 +125,7 @@ type Tezgah = {
   sinyalli: boolean
   durum: Durum
   calisan: Calisan | null
+  isler: Calisan[]
   durus: Durus | null
   canliOee?: CanliOee | null
 }
@@ -159,6 +165,7 @@ type Detay = {
   sinyalli: boolean
   durum: Durum
   aktifIs: IsSatiri | null
+  aktifIsler: IsSatiri[]
   durus: Durus | null
   bugunKapanan: IsSatiri[]
   bugunDuruslar: DurusSatiri[]
@@ -465,9 +472,31 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
   const anaMetin = tv ? 'text-slate-100' : 'text-slate-900'
   const altMetin = tv ? 'text-slate-300' : 'text-slate-500'
 
-  // Tek görünüm: çalışan künyesi (durum) + canlı OEE halka şeridi.
+  // Çoklu açık iş (aynı tezgahta paralel iş emirleri): işleri alt alta kompakt listele.
+  const isler = tezgah.isler ?? []
+  const cokluIs = durum === 'calisiyor' && isler.length > 1
+
+  // Tek görünüm: çalışan künyesi (durum) + canlı OEE halka şeridi. 2+ iş → kompakt liste.
   const kunye =
-    durum === 'calisiyor' && c ? (
+    cokluIs ? (
+      <div className="mt-2 space-y-1">
+        <p className={`text-xs font-semibold ${anaMetin}`}>{isler.length} açık iş</p>
+        {isler.slice(0, 2).map((is, i) => (
+          <div key={i} className="border-l-2 border-emerald-500/60 pl-1.5">
+            <p className={`truncate text-xs font-medium ${anaMetin}`}>
+              {is.ifsOrderNo ?? '—'}
+              {is.ifsOperationNo != null ? <span className={altMetin}> /{is.ifsOperationNo}</span> : null}
+            </p>
+            <p className={`truncate text-[11px] ${altMetin}`}>
+              {(is.adSoyad ?? is.sicilNo ?? '—') + ' · ' + sureBicim(Date.now() - new Date(is.baslatildiAt).getTime())}
+            </p>
+          </div>
+        ))}
+        {isler.length > 2 ? (
+          <p className={`text-[11px] font-medium ${altMetin}`}>+{isler.length - 2} iş daha</p>
+        ) : null}
+      </div>
+    ) : durum === 'calisiyor' && c ? (
       <div className="mt-2 space-y-1">
         <p className={`truncate text-sm font-medium ${anaMetin}`}>{c.adSoyad ?? c.sicilNo ?? '—'}</p>
         <Satir etiket="İş emri" deger={c.ifsOrderNo ?? '—'} tv={tv} />
@@ -554,6 +583,8 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
   }, [])
 
   const acik = !!tezgahId
+  const aktifIsler = detay?.aktifIsler ?? []
+  const cokluIs = aktifIsler.length > 1
   const aktif = detay?.aktifIs
   const aktifSure = aktif?.baslatildiAt ? sureBicim(Date.now() - new Date(aktif.baslatildiAt).getTime()) : '—'
   const durusSure = detay?.durus ? sureBicim(Date.now() - new Date(detay.durus.baslangicAt).getTime()) : null
@@ -604,6 +635,33 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                 <div className="mt-1 flex items-baseline justify-between">
                   <span className="text-xl font-bold text-red-700">{detay.durus?.sebep ?? 'Duruş'}</span>
                   <span className="font-mono text-lg text-red-600">{durusSure}</span>
+                </div>
+              </div>
+            ) : cokluIs ? (
+              <div>
+                <div className="mb-3 flex items-baseline justify-between">
+                  <span className="text-lg font-bold text-slate-800">{aktifIsler.length} açık iş (paralel)</span>
+                  <span className="text-xs font-medium text-amber-600">performans çoklu iş nedeniyle atlanır</span>
+                </div>
+                <div className="space-y-2">
+                  {aktifIsler.map((is) => (
+                    <div key={is.id} className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+                      <div className="mb-1.5 flex items-baseline justify-between">
+                        <span className="font-semibold text-slate-800">👤 {is.operator ?? '—'}</span>
+                        <span className="font-mono text-sm font-semibold text-emerald-600">
+                          {is.baslatildiAt ? sureBicim(Date.now() - new Date(is.baslatildiAt).getTime()) : '—'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+                        <Alan2 e="İş emri" d={`${is.ifsOrderNo ?? '—'} · Op ${is.ifsOperationNo ?? '—'}`} />
+                        <Alan2 e="Malzeme" d={is.ifsPartNo ?? '—'} alt={is.ifsPartDescription ?? undefined} />
+                        <Alan2 e="Planlanan adet" d={is.ifsQtyDue != null ? String(is.ifsQtyDue) : '—'} />
+                        <Alan2 e="Teslim" d={trTarih2(is.ifsDueDate)} />
+                        <Alan2 e="Başlangıç" d={is.baslatildiAt ? new Date(is.baslatildiAt).toLocaleTimeString('tr-TR') : '—'} />
+                        <Alan2 e="Tamamlanan" d={String(is.qtyComplete)} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : aktif ? (
@@ -694,7 +752,9 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                   <div className="mt-2 space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
                     <p>• Üretilen (canlı): <b>{canliOee.uretilen}</b> adet · planlı süre {Math.round(canliOee.planliSaniye / 60)}dk · duruş {Math.round(canliOee.durusSaniye / 60)}dk</p>
                     <p>• <b>Kalite</b> açık işte hesaplanmaz — iş bitince; <b>tam OEE iş kapanınca</b> motordan.</p>
-                    {!canliOee.idealGuvenilir ? (
+                    {canliOee.hesapKaynagi === 'COKLU_IS' ? (
+                      <p>• <b>Performans</b> hesaplanmadı — tezgahta <b>çoklu açık iş</b> var, üretim tek işe atfedilemez.</p>
+                    ) : !canliOee.idealGuvenilir ? (
                       <p>• <b>Performans</b> için ideal çevrim güvenilir değil — veri birikiyor (<b>{canliOee.ornekSayisi}/{esik}</b>).</p>
                     ) : null}
                     {canliOee.durum === 'PLANLI_YOK' ? <p>• Planlı süre 0 (vardiya/tatil dışı) — Kullanılabilirlik hesaplanamıyor.</p> : null}

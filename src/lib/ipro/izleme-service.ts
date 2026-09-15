@@ -18,6 +18,17 @@ import { tezgahlarinCanliOee, IDEAL_ESIK, type OeeCanliKart } from '@/lib/ipro/o
 /** Kart durumu — renk mantığı: çalışıyor=yeşil, duruşta=kırmızı, boşta=gri. */
 export type KartDurum = 'calisiyor' | 'durusta' | 'bosta'
 
+/** Kart üzerindeki tek açık iş (çoklu-iş listesinin bir elemanı). */
+export type KartIs = {
+  adSoyad: string | null
+  sicilNo: string | null
+  ifsOrderNo: string | null
+  ifsOperationNo: number | null
+  ifsPartNo: string | null // malzeme kodu (başla anında IFS snapshot)
+  ifsPartDescription: string | null // malzeme adı
+  baslatildiAt: string // ISO — süre istemcide hesaplanır (canlı sayaç)
+}
+
 export type TezgahKart = {
   id: string
   kod: string
@@ -26,16 +37,13 @@ export type TezgahKart = {
   aktif: boolean
   sinyalli: boolean
   durum: KartDurum
-  /** Açık iş varsa dolu — kart "çalışıyor" görünür. */
-  calisan: {
-    adSoyad: string | null
-    sicilNo: string | null
-    ifsOrderNo: string | null
-    ifsOperationNo: number | null
-    ifsPartNo: string | null // malzeme kodu (başla anında IFS snapshot)
-    ifsPartDescription: string | null // malzeme adı
-    baslatildiAt: string // ISO — süre istemcide hesaplanır (canlı sayaç)
-  } | null
+  /** Açık iş varsa dolu — kart "çalışıyor" görünür. Çoklu işte İLK (en erken) iş (geriye-uyum). */
+  calisan: KartIs | null
+  /**
+   * Tezgahın TÜM açık işleri (en erken başlangıç önce). Tek iş → 1 eleman; 2+ → çoklu-iş kartı.
+   * Aynı tezgahta paralel iş emirleri ayrı satır olarak tutulur (MAS aynası) → burada hepsi listelenir.
+   */
+  isler: KartIs[]
   /**
    * Açık duruş (IproMachineDowntime, bitis=null). DÜRÜST SINIR: kioskta duruş
    * akışı henüz YOK → bu her zaman null. Veri (FAZ 2.5 / PLC) gelince kart otomatik
@@ -142,7 +150,16 @@ export async function panoData(opts: { oee?: boolean } = {}): Promise<PanoData> 
   ])
 
   // ── Açık işlerdeki operatör adlarını ikinci sorguyla eşle (FK yok) ──
-  const acikByTezgah = new Map(acikIsler.map((a) => [a.tezgahId, a]))
+  // Tezgah başına TÜM açık işler (en erken başlangıç önce) — çoklu-iş gösterimi için.
+  const islerByTezgah = new Map<string, typeof acikIsler>()
+  for (const a of acikIsler) {
+    const arr = islerByTezgah.get(a.tezgahId)
+    if (arr) arr.push(a)
+    else islerByTezgah.set(a.tezgahId, [a])
+  }
+  for (const arr of islerByTezgah.values()) {
+    arr.sort((x, y) => (x.baslatildiAt?.getTime() ?? 0) - (y.baslatildiAt?.getTime() ?? 0))
+  }
   // İlk (en eski) açık duruş her tezgah için — kırmızı kart sinyali.
   const durusByTezgah = new Map<string, (typeof acikDuruslar)[number]>()
   for (const d of acikDuruslar) if (!durusByTezgah.has(d.tezgahId)) durusByTezgah.set(d.tezgahId, d)
@@ -168,10 +185,24 @@ export async function panoData(opts: { oee?: boolean } = {}): Promise<PanoData> 
   let durustaN = 0
   let bostaN = 0
   const kartlar: TezgahKart[] = tezgahlar.map((t) => {
-    const acik = acikByTezgah.get(t.id)
+    const tIsler = islerByTezgah.get(t.id) ?? []
+    const acik = tIsler[0] // en erken açık iş (primary)
     const durus = durusByTezgah.get(t.id)
-    const person = acik ? personById.get(acik.personnelId) : null
     const calisiyor = !!(acik && acik.baslatildiAt)
+    const isler: KartIs[] = tIsler
+      .filter((i) => i.baslatildiAt)
+      .map((i) => {
+        const p = personById.get(i.personnelId)
+        return {
+          adSoyad: p?.adSoyad ?? null,
+          sicilNo: p?.sicilNo ?? null,
+          ifsOrderNo: i.ifsOrderNo,
+          ifsOperationNo: i.ifsOperationNo,
+          ifsPartNo: i.ifsPartNo,
+          ifsPartDescription: i.ifsPartDescription,
+          baslatildiAt: i.baslatildiAt!.toISOString(),
+        }
+      })
     // Öncelik: KİOSK açık duruş → KİOSK açık iş → PLC fiziksel hareket VEYA Faz2-son-180sn → bosta.
     // Kiosk kaydı KAZANIR (operatör esas). "durusta" YALNIZ kiosk kaydından (duruş biti 0/214 ölü dal).
     // fizikselDurum (bellek, ısınma ister) ile faz2SonHareket (disk, ısınmasız) aynı sayaç sinyalinden
@@ -195,17 +226,8 @@ export async function panoData(opts: { oee?: boolean } = {}): Promise<PanoData> 
       aktif: t.aktif,
       sinyalli: t._count.plcPinler > 0,
       durum,
-      calisan: calisiyor
-        ? {
-            adSoyad: person?.adSoyad ?? null,
-            sicilNo: person?.sicilNo ?? null,
-            ifsOrderNo: acik!.ifsOrderNo,
-            ifsOperationNo: acik!.ifsOperationNo,
-            ifsPartNo: acik!.ifsPartNo,
-            ifsPartDescription: acik!.ifsPartDescription,
-            baslatildiAt: acik!.baslatildiAt!.toISOString(),
-          }
-        : null,
+      calisan: calisiyor ? isler[0] : null,
+      isler,
       durus: durus
         ? { baslangicAt: durus.baslangic.toISOString(), sebep: durus.durusSebebi?.ad ?? null }
         : null,
@@ -274,7 +296,8 @@ export type TezgahDetay = {
   aktif: boolean
   sinyalli: boolean
   durum: KartDurum
-  aktifIs: TezgahIsSatiri | null // ACIK satır (varsa)
+  aktifIs: TezgahIsSatiri | null // İLK ACIK satır (geriye-uyum; çoklu işte en erken)
+  aktifIsler: TezgahIsSatiri[] // TÜM açık işler (paralel iş emirleri), en erken başlangıç önce
   durus: { baslangicAt: string; sebep: string | null } | null
   bugunKapanan: TezgahIsSatiri[] // bugün KAPANMIŞ işler, en yeni önce
   bugunDuruslar: TezgahDurusSatiri[] // bugün başlayan + hâlâ açık duruşlar, en yeni önce
@@ -370,7 +393,10 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
     ifsRunTimeCode: s.ifsRunTimeCode,
   })
 
-  const aktif = satirlar.find((s) => s.durum === 'ACIK')
+  const aktifler = satirlar
+    .filter((s) => s.durum === 'ACIK')
+    .sort((a, b) => (a.baslatildiAt?.getTime() ?? 0) - (b.baslatildiAt?.getTime() ?? 0))
+  const aktif = aktifler[0]
   const kapananlar = satirlar.filter((s) => s.durum === 'KAPALI')
   const calisiyor = !!(aktif && aktif.baslatildiAt)
   const durum: KartDurum = durus ? 'durusta' : calisiyor ? 'calisiyor' : 'bosta'
@@ -393,7 +419,8 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
   const bostaDk = Math.max(0, elapsedDk - calismaDk - durusDk)
   const yuvarla = (n: number) => Math.round(n)
 
-  const gerceklesen = kapananlar.reduce((a, s) => a + s.qtyComplete, 0) + (aktif?.qtyComplete ?? 0)
+  const gerceklesen =
+    kapananlar.reduce((a, s) => a + s.qtyComplete, 0) + aktifler.reduce((a, s) => a + s.qtyComplete, 0)
 
   return {
     id: tezgah.id,
@@ -404,6 +431,7 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
     sinyalli: tezgah._count.plcPinler > 0,
     durum,
     aktifIs: aktif ? map(aktif) : null,
+    aktifIsler: aktifler.map(map),
     durus: durus ? { baslangicAt: durus.baslangic.toISOString(), sebep: durus.durusSebebi?.ad ?? null } : null,
     bugunKapanan: kapananlar.map(map),
     bugunDuruslar: duruslar.map((d) => ({

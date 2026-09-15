@@ -3,16 +3,22 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
+import { parseAkademiType, viaOptionalCourseWhere } from "@/lib/akademi/admin-type-filter";
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const userId = await resolveAkademiUserId(session);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
+  // Kurssuz sınav akademi sayılır. IFS ekranı ileride ?type=ifs ile kullanabilir.
+  const { type, error: typeError } = parseAkademiType(req.nextUrl.searchParams);
+  if (typeError) return typeError;
+
   const exams = await prisma.exam.findMany({
-    where: { isActive: true },
+    where: { ...viaOptionalCourseWhere(type), isActive: true },
     include: {
       course: { select: { id: true, title: true } },
       _count: { select: { questions: true } },

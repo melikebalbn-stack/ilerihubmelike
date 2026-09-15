@@ -14,7 +14,8 @@ export async function GET() {
     return NextResponse.json({ error: "User ID missing" }, { status: 400 });
   }
 
-  const packages = await getUserPackages(userId);
+  // Akademi paneli widget'ı: IFS paketleri /ifs/odevler'de, burada yalnız normal.
+  const packages = await getUserPackages(userId, { isIfs: false });
 
   return NextResponse.json({ packages });
 }

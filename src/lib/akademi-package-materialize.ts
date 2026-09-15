@@ -297,7 +297,15 @@ export async function applyPackageDueDate(
   };
 }
 
-export async function getUserPackages(userId: string) {
+/**
+ * Kişinin görebildiği paketler (bölüm bağı + direkt atama).
+ * `opts.isIfs`: verilmezse ESKİ davranış (IFS + normal hepsi); `false` → yalnız
+ * normal paketler (akademi paneli widget'ı), `true` → yalnız IFS.
+ */
+export async function getUserPackages(
+  userId: string,
+  opts: { isIfs?: boolean } = {}
+) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -314,6 +322,7 @@ export async function getUserPackages(userId: string) {
   const packages = await prisma.coursePackage.findMany({
     where: {
       isActive: true,
+      ...(opts.isIfs === undefined ? {} : { isIfs: opts.isIfs }),
       OR: [
         ...(bolum ? [{ departmentPackages: { some: { bolum } } }] : []),
         ...(directPackageIds.length > 0

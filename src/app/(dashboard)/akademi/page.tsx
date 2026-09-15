@@ -4,7 +4,7 @@ import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ArrowRight, Factory } from "lucide-react";
 import { StatCard } from "@/components/akademi/dashboard/StatCard";
 import { CourseListItem } from "@/components/akademi/dashboard/CourseListItem";
 import { MyPackagesWidget } from "@/components/akademi/MyPackagesWidget";
@@ -16,9 +16,10 @@ export default async function AkademiDashboardPage() {
   const userId = await resolveAkademiUserId(session);
   if (!userId) redirect("/login");
 
-  const [user, myCourses] = await Promise.all([
+  const [user, myCourses, ifsAssignmentCount] = await Promise.all([
     fetchUser(userId),
     fetchMyCourses(userId),
+    countIfsAssignments(userId),
   ]);
 
   const firstName = user
@@ -72,6 +73,35 @@ export default async function AkademiDashboardPage() {
           delayIndex={3}
         />
       </div>
+
+      {ifsAssignmentCount > 0 && (
+        <Link
+          href="/ifs/odevler"
+          className="ak-card-static p-4 mb-6 flex items-center gap-3 ak-animate-in"
+          style={{ color: "var(--ak-text-primary)" }}
+        >
+          <Factory
+            className="w-5 h-5 shrink-0"
+            style={{ color: "var(--ak-accent)" }}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold">
+              IFS geçiş eğitimleriniz IFS Ödevleri sayfasında
+            </div>
+            <div
+              className="text-xs"
+              style={{ color: "var(--ak-text-secondary)" }}
+            >
+              {ifsAssignmentCount} IFS eğitimi size atanmış — ilerleme ve
+              görevler orada takip ediliyor.
+            </div>
+          </div>
+          <ArrowRight
+            className="w-4 h-4 shrink-0"
+            style={{ color: "var(--ak-accent)" }}
+          />
+        </Link>
+      )}
 
       <MyPackagesWidget />
 
@@ -129,10 +159,20 @@ async function fetchUser(userId: string) {
   });
 }
 
+// IFS-6: IFS kursları akademi panelinde listelenmez — kişinin IFS ataması
+// varsa yukarıdaki yönlendirme kartı /ifs/odevler'e götürür. Kayıtlara
+// (atama/ilerleme) dokunulmaz; yalnız bu listeden çıkar. courses/my ile aynı.
+async function countIfsAssignments(userId: string): Promise<number> {
+  return prisma.userCourseAssignment.count({
+    where: { userId, assignment: { course: { isIfs: true, isActive: true } } },
+  });
+}
+
 async function fetchMyCourses(userId: string): Promise<CourseListItemType[]> {
   const courses = await prisma.course.findMany({
     where: {
       isActive: true,
+      isIfs: false,
       directAssignments: {
         some: { userAssignments: { some: { userId } } },
       },

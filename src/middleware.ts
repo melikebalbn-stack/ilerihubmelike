@@ -111,5 +111,13 @@ export const config = {
     // Ölü kayıtlar (departments, documents, leaves, attendance, helpdesk) aynı
     // turda silindi — 18.01.2026 ilk commit'ten kalma, hiç dizinleri olmadı.
     '/kalite/:path*',
+    // YÖNETİM + SİSTEM GELİŞTİRME (2026-09): /ifs, /kalite ile aynı gerekçe — sayfalar
+    // requireUser()/hasPermission ile korunuyor ama matcher'da olmadıkları için oturumsuz
+    // istek sayfaya ulaşıp 200 + login kabuğu alıyor, callbackUrl kayboluyordu. Buradan
+    // geçince 307 + callbackUrl olur. İzin kontrolü yine sayfada (KPI: kpi.view/manage;
+    // Fatura Takip: canAccessFaturaTakip). (/yonetim backlog'daydı; /sistem-gelistirme
+    // faturalar taşınınca eklendi.)
+    '/yonetim/:path*',
+    '/sistem-gelistirme/:path*',
   ],
 };

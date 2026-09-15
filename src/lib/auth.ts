@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { UserRoleEnum as Role, LoginStatus } from '@/generated/prisma';
 import { inferRoleFromJobTitle, extractGroupCNs } from '@/lib/ldap-sync';
 import { varsayilanRoluGaranti } from '@/lib/auth/varsayilan-rol';
+import { ayrilanGirisKontrol, AyrilanPersonelError } from '@/lib/auth/ayrilan-giris-kapisi';
 import { checkRateLimit, resetRateLimit, getRateLimitKey } from '@/lib/rate-limit';
 import { verifyPin } from '@/lib/pin-utils';
 
@@ -438,6 +439,21 @@ export const authOptions: NextAuthOptions = {
             `${ldapUser.username}@ilerigroup.com`
           ).toLowerCase();
 
+          // AYRILAN PERSONEL KAPISI (15.09.2026): İK çıkışı yapılmış kişi AD'de
+          // açık kalsa da giremez. Upsert'ten ÖNCE — aşağıdaki upsert
+          // isActive=true yazar, lastLoginAt ilerler; reddedilen giriş iz bırakmasın.
+          const ayrilan = await ayrilanGirisKontrol(userEmail, ldapUser.displayName);
+          if (ayrilan.engelle) {
+            console.warn('[AUTH] ayrılan personel girişi reddedildi:', {
+              email: userEmail,
+              username: ldapUser.username,
+              yol: ayrilan.yol,
+              sicilNo: ayrilan.sicilNo,
+              adSoyad: ayrilan.adSoyad,
+            });
+            throw new AyrilanPersonelError();
+          }
+
           // Kullanıcıyı veritabanına kaydet veya güncelle (upsert)
           const baseRole = mapLdapRoleToPrismaRole(role, userEmail);
           const prismaRole = inferRoleFromJobTitle(ldapUser.title, baseRole);
@@ -547,6 +563,10 @@ export const authOptions: NextAuthOptions = {
             status: LoginStatus.FAILED,
             errorMessage: errorMsg,
           });
+
+          // Ayrılan personel reddi kullanıcıya OLDUĞU GİBİ gösterilir; genel
+          // metne çevrilirse kişi şifresini yanlış sanıp denemeye devam eder.
+          if (error instanceof AyrilanPersonelError) throw error;
 
           console.error('Kimlik doğrulama hatası:', error);
           throw new Error('Giriş yapılırken bir hata oluştu');

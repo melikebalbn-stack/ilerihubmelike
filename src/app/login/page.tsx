@@ -46,7 +46,12 @@ function LoginForm() {
       });
 
       if (result?.error) {
-        setErrorMessage('Geçersiz kullanıcı adı veya şifre');
+        // Ayrılan personel kapısı (auth.ts) kendi metnini gönderir; onu maskeleme.
+        setErrorMessage(
+          result.error.includes('pasif durumda')
+            ? result.error
+            : 'Geçersiz kullanıcı adı veya şifre'
+        );
         setIsLoading(false);
       } else if (result?.ok) {
         router.push(callbackUrl);

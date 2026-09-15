@@ -181,6 +181,10 @@ export const PERMISSION_KEYS = {
 
   // === ENTEGRASYON (Syteline → IFS malzeme senkronu) ===
   ENTEGRASYON_SYTELINE: 'entegrasyon.syteline',
+
+  // === YÖNETİM (KPI takibi) ===
+  KPI_VIEW: 'kpi.view',
+  KPI_MANAGE: 'kpi.manage',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -213,6 +217,7 @@ export const MODULE_LABELS: Record<string, string> = {
   servis: 'Servis Yönetimi',
   yilliktakvim: 'Yıllık Çalışma Takvimi',
   entegrasyon: 'Entegrasyonlar (Syteline/IFS)',
+  kpi: 'Yönetim — KPI',
 };
 
 /**
@@ -341,4 +346,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'yilliktakvim.admin': 'Yıllık çalışma takvimi tam yönetim',
 
   'entegrasyon.syteline': 'Syteline→IFS malzeme senkronu izleme paneli — durum görme, dry-run/çalıştır/yeniden dene',
+
+  'kpi.view': 'Yönetim KPI panelini görüntüleme (departman KPI tabloları, grafikler, aksiyonlar)',
+  'kpi.manage': 'KPI tanımı ekleme, aylık ölçüm girme/güncelleme, aksiyon ekleme',
 };

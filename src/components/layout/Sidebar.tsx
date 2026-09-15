@@ -413,6 +413,11 @@ const entegrasyonMenuItems = [
   { name: "Syteline Malzeme", icon: Boxes, href: "/entegrasyon/syteline", roles: [] as string[], permission: "entegrasyon.syteline" },
 ]
 
+// Yönetim modülü (KPI takibi). Görünürlük permission ile (IPRO/Entegrasyon deseni).
+const yonetimMenuItems = [
+  { name: "KPI Takibi", icon: BarChart3, href: "/yonetim/kpi", roles: [] as string[], permission: "kpi.view" },
+]
+
 // Alt menü öğeleri
 const bottomMenuItems = [
   { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN", "QUALITY_MANAGER"], departments: ["Kalite", "Laboratuvar"] },
@@ -468,6 +473,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [formsOpen, setFormsOpen] = useState(false)
   const [sistemGelistirmeOpen, setSistemGelistirmeOpen] = useState(false)
   const [entegrasyonOpen, setEntegrasyonOpen] = useState(false)
+  const [yonetimOpen, setYonetimOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
   // Menü araması. Boşken normal grup ağacı render edilir (hiçbir şey değişmez);
   // doluyken ağaç gizlenip düz sonuç listesi gösterilir. Grupların açık/kapalı
@@ -534,6 +540,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
     if (pathname.startsWith('/entegrasyon')) {
       setEntegrasyonOpen(true)
+    }
+    if (pathname.startsWith('/yonetim')) {
+      setYonetimOpen(true)
     }
   }, [pathname])
 
@@ -766,6 +775,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
   // Entegrasyon öğeleri permission alanını string tutuyor; filterItems cast (IPRO/zimmet deseni).
   const filteredEntegrasyonItems = filterItems(entegrasyonMenuItems as unknown as typeof mainMenuItems)
+  // Yönetim öğeleri de permission alanını string tutuyor; aynı cast.
+  const filteredYonetimItems = filterItems(yonetimMenuItems as unknown as typeof mainMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 
   // Sandbox: SUPER_ADMIN tümünü görür, diğerleri sadece kendi sandbox'ını
@@ -800,6 +811,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { group: "IPRO", items: filteredIproItems },
     { group: "Sistem Geliştirme", items: filteredSistemGelistirmeItems },
     { group: "Entegrasyon", items: filteredEntegrasyonItems },
+    { group: "Yönetim", items: filteredYonetimItems },
     { group: "Diğer", items: filteredBottomItems },
     { group: "Sandbox", items: filteredSandboxItems },
   ])
@@ -863,6 +875,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   // Sistem Geliştirme menüsünde aktif sayfa var mı kontrol et (Login Aktiviteleri + Yedekleme dahil)
   const isEntegrasyonActive = pathname.startsWith('/entegrasyon')
+  const isYonetimActive = pathname.startsWith('/yonetim')
   const isSistemGelistirmeActive = sistemGelistirmeMenuItems.some(item =>
     pathname === item.href || pathname.startsWith(item.href + "/")
   ) ||
@@ -1387,6 +1400,34 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {entegrasyonOpen && (
               <div className="space-y-1 ml-4">
                 {filteredEntegrasyonItems.map(item => renderMenuItem(item))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Yönetim Grubu (KPI takibi) */}
+        {filteredYonetimItems.length > 0 && (
+          <>
+            <button
+              onClick={() => setYonetimOpen(!yonetimOpen)}
+              className={cn(
+                "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                isYonetimActive
+                  ? "text-teal-300"
+                  : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+              )}
+            >
+              <Target className="h-5 w-5" />
+              <span className="flex-1 text-left">Yönetim</span>
+              {yonetimOpen ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+            {yonetimOpen && (
+              <div className="space-y-1 ml-4">
+                {filteredYonetimItems.map(item => renderMenuItem(item))}
               </div>
             )}
           </>

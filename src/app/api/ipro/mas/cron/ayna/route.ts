@@ -15,7 +15,11 @@ export async function POST(req: NextRequest) {
   if (!secret || secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const dryRun = req.nextUrl.searchParams.get('dryRun') === '1'
+  const sp = req.nextUrl.searchParams
+  const dryRun = sp.get('dryRun') === '1'
+  const limitRaw = sp.get('limit')
+  const limit = limitRaw != null && /^\d+$/.test(limitRaw) ? Number(limitRaw) : null
+  const durusDahil = sp.get('durus') !== '0' // ?durus=0 → duruşları atla
 
   if (!dryRun) {
     const mevcut = await prisma.syteSyncDurum.findUnique({ where: { entity: ENTITY }, select: { calisiyorAt: true } })
@@ -31,8 +35,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const ozet = await runMasAyna({ dryRun })
-    return NextResponse.json({ ok: true, ...ozet })
+    const ozet = await runMasAyna({ dryRun, limit, durusDahil })
+    return NextResponse.json({ ok: true, limit, durusDahil, ...ozet })
   } catch (e) {
     console.error('[mas-ayna-cron] hata', e)
     return NextResponse.json({ ok: false, error: (e as Error)?.message ?? 'cron hata' }, { status: 500 })

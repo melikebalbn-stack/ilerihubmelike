@@ -42,8 +42,10 @@ function girdiye(satirlar: MasUretimSatiri[], opByMas: Map<number, string>): Mas
   }))
 }
 
-export async function runMasAyna(opts: { dryRun?: boolean } = {}): Promise<MasAynaOzet> {
+export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null; durusDahil?: boolean } = {}): Promise<MasAynaOzet> {
   const dryRun = !!opts.dryRun
+  const limit = opts.limit != null && opts.limit > 0 ? Math.floor(opts.limit) : null
+  const durusDahil = opts.durusDahil !== false // default: duruşlar dahil
   const simdi = new Date()
   const dun = new Date(simdi.getTime() - 24 * 3600 * 1000)
 
@@ -75,8 +77,13 @@ export async function runMasAyna(opts: { dryRun?: boolean } = {}): Promise<MasAy
     if (!acikMeta.has(a)) acikMeta.set(a, { startDateTime: s.startDateTime, masDetayId: s.masDetayId })
   }
 
-  // ── (a) AÇIK üretimler ──
-  for (const g of isEmirineGrupla(girdiye(acikSatir, opByMas))) {
+  // ── (a) AÇIK üretimler ── (limit için deterministik sıra: masProductionMasterId artan)
+  const acikGruplar = isEmirineGrupla(girdiye(acikSatir, opByMas)).sort(
+    (a, b) => Number(a.masProductionMasterId) - Number(b.masProductionMasterId),
+  )
+  let islenenAcik = 0 // eşleşme koşullarını geçip işlenen grup sayısı (limit bunu sınırlar)
+  for (const g of acikGruplar) {
+    if (limit != null && islenenAcik >= limit) break
     const tz = g.tezgahKod ? tezgahByKod.get(g.tezgahKod) : undefined
     if (!tz) {
       ozet.atlanan.push({ sebep: 'tezgah_eslesmedi', anahtar: g.anahtar, detay: g.tezgahKod ?? '—' })
@@ -89,6 +96,7 @@ export async function runMasAyna(opts: { dryRun?: boolean } = {}): Promise<MasAy
       continue
     }
     ozet.acikUygun++
+    islenenAcik++ // eşleşen grup; limit'e bu sayı bakılır (atlananlar bütçe harcamaz)
     if (dryRun) continue
 
     const meta = acikMeta.get(g.anahtar)
@@ -178,7 +186,8 @@ export async function runMasAyna(opts: { dryRun?: boolean } = {}): Promise<MasAy
     ozet.kapatilan++
   }
 
-  // ── (c) DURUŞLAR → IproMachineDowntime aç/kapat ──
+  // ── (c) DURUŞLAR → IproMachineDowntime aç/kapat ── (durus=0 ile tümüyle atlanır)
+  if (durusDahil) {
   const acikDurusTezgahlari = new Set<string>() // MAS'ta hâlâ açık duruşu olan tezgah id'leri
   for (const d of duruslar) {
     const tz = d.tezgahKod ? tezgahByKod.get(d.tezgahKod) : undefined
@@ -217,6 +226,7 @@ export async function runMasAyna(opts: { dryRun?: boolean } = {}): Promise<MasAy
       }
     }
   }
+  } // durusDahil
 
   return ozet
 }

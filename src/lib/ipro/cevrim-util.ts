@@ -13,3 +13,14 @@ export function cevrimSaniye(faktor: number | null | undefined, kod: string | nu
   if (kod === 'HoursUnit') return faktor * 3600
   return null
 }
+
+/**
+ * TERS dönüşüm: saniye/adet → IFS çevrim faktörü + RunTimeCode.
+ * HoursUnit (saat/adet) yönünde: faktör = saniye/3600. cevrimSaniye ile TAM round-trip yapar
+ * (cevrimSaniye(saniye/3600, 'HoursUnit') === saniye). Saniye yok/0 → null.
+ * MAS CycleTime (saniye/adet) → ifsMachRunFactor/ifsRunTimeCode yazımı için.
+ */
+export function saniyeToCevrim(saniye: number | null | undefined): { faktor: number; kod: 'HoursUnit' } | null {
+  if (!saniye || saniye <= 0) return null
+  return { faktor: saniye / 3600, kod: 'HoursUnit' }
+}

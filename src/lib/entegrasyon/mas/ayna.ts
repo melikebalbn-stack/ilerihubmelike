@@ -4,6 +4,7 @@ import { acikUretimler, kapananUretimler, acikOperatorler, acikDuruslar, type Ma
 import { isEmirineGrupla, employeeNoToSicilNo, type MasUretimGirdi } from './uretim-mapper'
 import { oeeKaydiHesaplaVeYaz } from '@/lib/ipro/oee-hesap'
 import { isPenceresiDeltaToplami } from '@/lib/ipro/faz2-delta'
+import { saniyeToCevrim } from '@/lib/ipro/cevrim-util'
 
 /**
  * MAS MES → IPRO ayna (yazma). Açık üretim → IproProductionLog ACIK; kapanan → KAPALI + OEE;
@@ -70,11 +71,43 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, eslesmeyenDurusSebepleri: [], atlanan: [],
   }
 
-  // Grup anahtarı → ilk satır meta (başlangıç, detayId) — mapper bunları taşımaz.
-  const acikMeta = new Map<string, { startDateTime: Date | null; masDetayId: number | null }>()
+  // Grup anahtarı → ilk satır meta (başlangıç, detayId + IFS alanları) — mapper bunları taşımaz.
+  // Description/planlananAdet/deliveryDateTime/cycleTime iş emri bazında (operasyonlarda aynı) → ilk satır yeter.
+  type AcikMeta = {
+    startDateTime: Date | null
+    masDetayId: number | null
+    description: string | null
+    planlananAdet: number | null
+    deliveryDateTime: Date | null
+    cycleTime: number | null
+  }
+  const acikMeta = new Map<string, AcikMeta>()
   for (const s of acikSatir) {
     const a = HG_ANAHTAR(s.workOrderNo, s.masId)
-    if (!acikMeta.has(a)) acikMeta.set(a, { startDateTime: s.startDateTime, masDetayId: s.masDetayId })
+    if (!acikMeta.has(a))
+      acikMeta.set(a, {
+        startDateTime: s.startDateTime,
+        masDetayId: s.masDetayId,
+        description: s.description,
+        planlananAdet: s.planlananAdet,
+        deliveryDateTime: s.deliveryDateTime,
+        cycleTime: s.cycleTime,
+      })
+  }
+
+  // Grup + meta → IFS alanları (açılış create ve mevcut açık update için ORTAK; her tur MAS güncel adediyle).
+  const ifsAlanlari = (g: { adet: number }, meta: AcikMeta | undefined) => {
+    const cevrim = saniyeToCevrim(meta?.cycleTime ?? null)
+    const adet = Math.round(g.adet)
+    return {
+      ifsPartDescription: meta?.description ?? null,
+      ifsQtyDue: meta?.planlananAdet != null ? Math.round(meta.planlananAdet) : null,
+      ifsDueDate: meta?.deliveryDateTime ?? null,
+      ifsMachRunFactor: cevrim?.faktor ?? null,
+      ifsRunTimeCode: cevrim?.kod ?? null,
+      qtyComplete: adet,
+      uretimAdet: adet,
+    }
   }
 
   // ── (a) AÇIK üretimler ── (limit için deterministik sıra: masProductionMasterId artan)
@@ -117,7 +150,9 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
       })
     }
 
-    // IproProductionLog: idempotency anahtarıyla ara → yoksa aç, varsa (ACIK) dokunma (mükerrer önle).
+    const ifsData = ifsAlanlari(g, meta)
+
+    // IproProductionLog: idempotency anahtarıyla ara → yoksa aç; varsa (ACIK) MAS güncel alanlarıyla güncelle.
     const mevcut = await prisma.iproProductionLog.findFirst({
       where: { masProductionMasterId: masId, ifsOrderNo, ifsOperationNo: opNo },
       select: { id: true, durum: true },
@@ -128,12 +163,14 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
           tezgahId: tz.id, sessionId: session.id, personnelId: personId, kaynak: KAYNAK,
           masProductionMasterId: masId, masProductionDetayId: meta?.masDetayId ?? null,
           ifsOrderNo, ifsOperationNo: opNo, durum: 'ACIK', baslatildiAt,
-          qtyComplete: 0, qtyScrap: 0,
+          qtyScrap: 0, ...ifsData,
         },
       })
       ozet.acilan++
     } else if (mevcut.durum === 'ACIK') {
-      ozet.guncellenen++ // zaten açık — idempotent, ek yazma yok
+      // Zaten açık: IFS alanları + güncel adet yenilenir (MAS'ta adet/plan/teslim değişebilir).
+      await prisma.iproProductionLog.update({ where: { id: mevcut.id }, data: ifsData })
+      ozet.guncellenen++
     }
   }
 

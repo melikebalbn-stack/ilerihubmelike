@@ -16,9 +16,12 @@ export interface MasUretimSatiri {
   createdBy: string | null
   workOrderNo: string | null
   operasyonNo: string | null
+  description: string | null // WorkOrder.Description → ifsPartDescription
+  planlananAdet: number | null // WorkOrder.Amount → ifsQtyDue
+  deliveryDateTime: Date | null // WorkOrder.DeliveryDateTime → ifsDueDate
   amount: number | null
   reportedAmount: number | null
-  cycleTime: number | null
+  cycleTime: number | null // COALESCE(pd.CycleTime, wo.CycleTime) saniye/adet
   counterMultiplier: number | null
   counterDivider: number | null
   isFinished: boolean | null
@@ -46,7 +49,8 @@ const URETIM_SELECT =
   `SELECT pm.Id AS masId, pd.Id AS masDetayId, pm.StartDateTime AS startDateTime, pm.EndDateTime AS endDateTime, ` +
   `wc.Code AS tezgahKod, ` +
   `pm.CreatedBy AS createdBy, wo.WorkOrderNo AS workOrderNo, o.Code AS operasyonNo, ` +
-  `pd.Amount AS amount, pd.ReportedAmount AS reportedAmount, pd.CycleTime AS cycleTime, ` +
+  `wo.Description AS description, wo.Amount AS planlananAdet, wo.DeliveryDateTime AS deliveryDateTime, ` +
+  `pd.Amount AS amount, pd.ReportedAmount AS reportedAmount, COALESCE(pd.CycleTime, wo.CycleTime) AS cycleTime, ` +
   `pd.CounterMultiplier AS counterMultiplier, pd.CounterDivider AS counterDivider, pd.IsFinished AS isFinished ` +
   `FROM Production.ProductionMaster pm ` +
   `JOIN Organization.WorkCenter wc ON wc.Id = pm.WorkCenterId ` +

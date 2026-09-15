@@ -1,4 +1,10 @@
-/**
+/* ============================================================================================
+ * ⛔⛔⛔  TEK SEFERLİK — İDEMPOTENT DEĞİL, TEKRAR ÇALIŞTIRMA!  ⛔⛔⛔
+ * Bu script 15.09.2026 prod'da bir kez UYGULANDI (29 log + 17 duruş, −3s düzeltildi).
+ * Yeniden --apply çalıştırmak zamanları BİR KEZ DAHA −3s kaydırır (veriyi BOZAR). Arşiv/kanıt amaçlı
+ * durur; tekrar gerekirse ölçüp yeniden yazılmalı. Rapor modu (--apply'sız) güvenlidir.
+ * ============================================================================================
+ *
  * TEK SEFERLİK düzeltme: MAS kaynaklı IPRO kayıtlarında +3s (İstanbul yerel-yanlış-UTC) kayması olan
  * datetime alanlarını doğru UTC'ye çeker. Düzeltme masTarih() ile yapılır (SABİT -3 DEĞİL, IANA/DST).
  *

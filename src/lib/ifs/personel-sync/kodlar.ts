@@ -70,10 +70,10 @@ export const EMPLOYEE_PASIF_DESTEKLI = false
 /**
  * IFS Çalışan Statüsü temel verisi (EmployeeStatusHandling.EmployeeStatuses, key CompanyId+SeqNo).
  * Sistemde `*` (aktif, SeqNo 1) ve `**` (ön kayıt, SeqNo 2) var; Hub'da pasife alınan kişi için
- * AYRILDI statüsü eklenir. Entity'de açıklama alanı YOK — kod (≤20) etiketin kendisidir.
+ * ISTEN AYRILMIS statüsü eklenir. Entity'de açıklama alanı YOK — kod (≤20) etiketin kendisidir.
  */
 export const IFS_CALISAN_STATULERI = [
-  { EmployeeStatus: 'AYRILDI', Active: false, Preliminary: false, StatusObsolete: false, BusPlanInclude: false },
+  { EmployeeStatus: 'ISTEN AYRILMIS', Active: false, Preliminary: false, StatusObsolete: false, BusPlanInclude: false },
 ] as const
 
 /** Karar 2 — MAVI/GRI personeli olsa da shop-floor'a alınmayan bölümler. */

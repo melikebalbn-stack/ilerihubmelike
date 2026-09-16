@@ -1,4 +1,12 @@
 /**
+ * ⚠️  ARTIK KULLANILMIYOR — BGYS örnek verisi 16.09.2026'da prod'dan silindi.
+ *
+ * Bu betiğin bastığı kurslar/içerikler artık canlıda yok; PROD'DA KOŞMA.
+ * Eşlikçisi seed-akademi-exam.ts aynı tarihte KALDIRILDI: "ilk kursu"
+ * (findFirst orderBy id) seçtiği için koşulursa örnek sınavı rastgele bir
+ * gerçek kursa bağlıyordu. Bu dosya yalnız boş bir sandbox DB'ye kukla kurs
+ * basmak için duruyor.
+ *
  * Akademi seed script — dummy data ile UI testi için.
  *
  * Çalıştırma (repo root'tan):

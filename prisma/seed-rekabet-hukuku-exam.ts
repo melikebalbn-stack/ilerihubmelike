@@ -5,7 +5,7 @@
  * Idempotent:
  *   - Kurs `ak_course_rekabet` upsert (varsa alanları güncellenir, içerik/atama silinmez).
  *   - Aynı başlıklı sınav varsa silinir, sonra yeniden kurulur
- *     (seed-akademi-exam.ts deseni). Sınav silinince sorular/seçenekler cascade.
+ *     (eski seed-akademi-exam.ts deseni — o dosya 16.09.2026'da kaldırıldı). Sınav silinince sorular/seçenekler cascade.
  *
  * Çalıştırma:
  *   npx tsx prisma/seed-rekabet-hukuku-exam.ts

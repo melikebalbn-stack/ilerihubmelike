@@ -9,22 +9,25 @@
 // "Görev Bazlı" sekmesi ve ifs-gorev-detay ucu bu ekrandan BAĞIMSIZ, duruyor.
 
 import { Fragment, useCallback, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 
-type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ";
+type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ" | "YENIDEN_DEGERLENDIRILECEK";
 
 const SEVIYE_LABEL: Record<Seviye, string> = {
   BASARILI: "Başarılı",
   EGITIM_GEREKLI: "Eğitime İhtiyacı Var",
   BASARISIZ: "Başarısız",
+  YENIDEN_DEGERLENDIRILECEK: "Yeniden Değerlendirilecek",
 };
 const SEVIYE_STYLE: Record<Seviye, React.CSSProperties> = {
   BASARILI: { background: "rgba(16,185,129,0.15)", color: "rgb(6,120,90)" },
   EGITIM_GEREKLI: { background: "rgba(245,158,11,0.15)", color: "rgb(180,120,10)" },
   BASARISIZ: { background: "rgba(239,68,68,0.15)", color: "rgb(180,40,40)" },
+  YENIDEN_DEGERLENDIRILECEK: { background: "rgba(59,130,246,0.15)", color: "rgb(30,80,170)" },
 };
 
 interface BolumRow {
@@ -58,6 +61,8 @@ interface KisiRow {
   pct: number;
   degerlendirme: DegerlendirmeAlan;
   egitimIhtiyaci: number;
+  /** Son "Eğitim Verildi" kaydı (varsa) — rozet altında gösterilir. */
+  sonEgitim: { tarih: string; egitmenAd: string } | null;
   keyUser: DegerlendirmeAlan;
 }
 interface KisilerData {
@@ -103,9 +108,15 @@ function YuzdeHucre({ pct, degerlendirilmis }: { pct: number; degerlendirilmis: 
   return <>%{pct}</>;
 }
 
-/** seviye + altında giren kişi adı; veri yoksa "—". */
-function DegerlendirmeHucre({ d }: { d: DegerlendirmeAlan }) {
-  if (!d.seviye && !d.not && !d.girenAd) {
+/** seviye + altında giren kişi adı (+ varsa son eğitim izi); veri yoksa "—". */
+function DegerlendirmeHucre({
+  d,
+  sonEgitim,
+}: {
+  d: DegerlendirmeAlan;
+  sonEgitim?: { tarih: string; egitmenAd: string } | null;
+}) {
+  if (!d.seviye && !d.not && !d.girenAd && !sonEgitim) {
     return (
       <span className="text-xs" style={{ color: "var(--ak-text-tertiary)" }}>
         —
@@ -122,6 +133,11 @@ function DegerlendirmeHucre({ d }: { d: DegerlendirmeAlan }) {
       {d.girenAd && (
         <div className="text-[11px]" style={{ color: "var(--ak-text-tertiary)" }}>
           {d.girenAd}
+        </div>
+      )}
+      {sonEgitim && (
+        <div className="text-[11px]" style={{ color: "rgb(30,80,170)" }}>
+          Eğitim: {sonEgitim.tarih.split("-").reverse().join(".")} · {sonEgitim.egitmenAd}
         </div>
       )}
     </div>
@@ -192,6 +208,16 @@ export function IfsRaporuTab() {
   const [kaydediliyor, setKaydediliyor] = useState<string | null>(null);
   // `${bolum}|${format}` — hangi düğme yüklemede
   const [indiriliyor, setIndiriliyor] = useState<string | null>(null);
+  // "Eğitim Verildi" aksiyonu — yalnız ifs.evaluate / ifs.admin sahibine
+  // (ifs-evaluation-report.tsx ile aynı desen). Zorlama sunucuda (POST ucu).
+  const { data: session } = useSession();
+  const perms = (session?.user as { permissions?: string[] } | undefined)?.permissions ?? [];
+  const canEvaluate = perms.includes("ifs.evaluate") || perms.includes("ifs.admin");
+  // Mini form — anahtar `${userId}|${courseId}`; tek satırda açık kalır.
+  const [egitimFormAcik, setEgitimFormAcik] = useState<string | null>(null);
+  const [egitimTarih, setEgitimTarih] = useState("");
+  const [egitimNot, setEgitimNot] = useState("");
+  const [egitimKaydediyor, setEgitimKaydediyor] = useState(false);
 
   useEffect(() => {
     fetch("/api/akademi/admin/reports/ifs-departman-ozet")
@@ -260,6 +286,58 @@ export function IfsRaporuTab() {
         );
     },
     [acikEgitim, egitimler]
+  );
+
+  /** Bölüm satırlarını paneli KAPATMADAN sunucudan taze çek. */
+  const bolumYenile = useCallback(async (bolum: string) => {
+    const r = await fetch(
+      `/api/akademi/admin/reports/ifs-departman-kisiler?bolum=${encodeURIComponent(bolum)}`
+    ).catch(() => null);
+    const d: KisilerData | null = r && r.ok ? await r.json() : null;
+    if (d) setKisiler((p) => ({ ...p, [bolum]: d }));
+  }, []);
+
+  const egitimVerildiKaydet = useCallback(
+    async (bolum: string, s: KisiRow) => {
+      const k = `${s.userId}|${s.courseId}`;
+      if (!egitimTarih) {
+        toast.error("Eğitim tarihi gerekli");
+        return;
+      }
+      setEgitimKaydediyor(true);
+      try {
+        const res = await fetch("/api/akademi/admin/reports/ifs-egitim-verildi", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: s.userId,
+            courseId: s.courseId,
+            tarih: egitimTarih,
+            not: egitimNot.trim() || null,
+          }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          toast.error(body?.error || "Eğitim kaydı yazılamadı");
+          return;
+        }
+        toast.success(
+          `Eğitim kaydedildi — ${body?.temizlenenIsaret ?? 0} görev işareti temizlendi, ders yeniden değerlendirilecek`
+        );
+        setEgitimFormAcik(null);
+        // Eğitim istenen görev listesi artık boş — önbelleği düşür, satırı yenile.
+        setEgitimler((p) => {
+          const n = { ...p };
+          delete n[k];
+          return n;
+        });
+        setAcikEgitim((a) => (a === k ? null : a));
+        await bolumYenile(bolum);
+      } finally {
+        setEgitimKaydediyor(false);
+      }
+    },
+    [egitimTarih, egitimNot, bolumYenile]
   );
 
   const keyUserKaydet = useCallback(
@@ -459,7 +537,70 @@ export function IfsRaporuTab() {
                               />
                             </td>
                             <td className="px-2 py-1.5 align-top">
-                              <DegerlendirmeHucre d={s.degerlendirme} />
+                              <DegerlendirmeHucre d={s.degerlendirme} sonEgitim={s.sonEgitim} />
+                              {canEvaluate &&
+                                s.degerlendirme.seviye === "EGITIM_GEREKLI" &&
+                                egitimFormAcik !== k && (
+                                  <button
+                                    type="button"
+                                    className="mt-1 block text-[11px] font-medium underline underline-offset-2"
+                                    style={{ color: "#1B4F72" }}
+                                    onClick={() => {
+                                      setEgitimFormAcik(k);
+                                      setEgitimTarih(new Date().toISOString().slice(0, 10));
+                                      setEgitimNot("");
+                                    }}
+                                  >
+                                    Eğitim Verildi
+                                  </button>
+                                )}
+                              {canEvaluate && egitimFormAcik === k && (
+                                <div
+                                  className="mt-1 flex flex-col gap-1 rounded border p-2 min-w-[170px]"
+                                  style={{ borderColor: "var(--ak-border-default)" }}
+                                >
+                                  <label className="text-[11px]" style={{ color: "var(--ak-text-secondary)" }}>
+                                    Tarih
+                                    <input
+                                      type="date"
+                                      value={egitimTarih}
+                                      onChange={(e) => setEgitimTarih(e.target.value)}
+                                      className="mt-0.5 block h-7 w-full rounded border px-1 text-xs bg-white"
+                                      style={{ borderColor: "var(--ak-border-default)" }}
+                                    />
+                                  </label>
+                                  <label className="text-[11px]" style={{ color: "var(--ak-text-secondary)" }}>
+                                    Not (opsiyonel)
+                                    <input
+                                      type="text"
+                                      value={egitimNot}
+                                      onChange={(e) => setEgitimNot(e.target.value)}
+                                      placeholder="eğitim notu"
+                                      className="mt-0.5 block h-7 w-full rounded border px-1 text-xs bg-white"
+                                      style={{ borderColor: "var(--ak-border-default)" }}
+                                    />
+                                  </label>
+                                  <div className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      disabled={egitimKaydediyor}
+                                      className="rounded px-2 py-0.5 text-[11px] text-white disabled:opacity-50"
+                                      style={{ background: "#1B4F72" }}
+                                      onClick={() => egitimVerildiKaydet(detay.bolum, s)}
+                                    >
+                                      {egitimKaydediyor ? "…" : "Kaydet"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded border px-2 py-0.5 text-[11px]"
+                                      style={{ borderColor: "var(--ak-border-default)" }}
+                                      onClick={() => setEgitimFormAcik(null)}
+                                    >
+                                      Vazgeç
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </td>
                             <td className="px-2 py-1.5 text-right align-top">
                               {s.egitimIhtiyaci > 0 ? (

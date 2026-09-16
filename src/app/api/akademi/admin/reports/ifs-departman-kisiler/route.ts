@@ -168,6 +168,28 @@ export async function GET(req: NextRequest) {
     disKisiler.map((u) => [u.id, u.name ?? u.email ?? u.id])
   );
 
+  // Son "Eğitim Verildi" kaydı (kişi × kurs başına en yeni) — rozet altında
+  // "Eğitim: dd.MM.yyyy · Ad". ifs-aggregate.ts ile aynı mantık.
+  const egitimKayitlari = await prisma.ifsEgitimKaydi.findMany({
+    where: { userId: { in: userIds }, course: { isIfs: true } },
+    orderBy: { tarih: "desc" },
+    select: {
+      userId: true,
+      courseId: true,
+      tarih: true,
+      egitmen: { select: { name: true, email: true } },
+    },
+  });
+  const sonEgitimOf = new Map<string, { tarih: string; egitmenAd: string }>();
+  for (const e of egitimKayitlari) {
+    const k = `${e.userId}|${e.courseId}`;
+    if (sonEgitimOf.has(k)) continue; // desc sıralı → ilk görülen en yeni
+    sonEgitimOf.set(k, {
+      tarih: e.tarih.toISOString().slice(0, 10),
+      egitmenAd: e.egitmen?.name ?? e.egitmen?.email ?? "—",
+    });
+  }
+
   const satirlar = [...sayac.entries()]
     .map(([key, c]) => {
       const [userId, courseId] = key.split("|");
@@ -196,6 +218,7 @@ export async function GET(req: NextRequest) {
           girenAt: d?.seviye || d?.not ? (d.updatedAt?.toISOString() ?? null) : null,
         },
         egitimIhtiyaci: c.egitimIhtiyaci,
+        sonEgitim: sonEgitimOf.get(key) ?? null,
         keyUser: {
           seviye: d?.keyUserSeviye ?? null,
           not: d?.keyUserNot ?? null,

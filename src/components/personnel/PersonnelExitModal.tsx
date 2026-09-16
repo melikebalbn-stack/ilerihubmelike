@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { NativeSelect as Select } from '@/components/ui/select'
 import { Loader2 } from 'lucide-react'
+import { CIKIS_DEVIR_TIPLERI, CIKIS_TARAFLARI, SGK_CIKIS_KODLARI } from '@/lib/sgk-cikis-kodlari'
 
 export interface ExitData {
   exitDate: string
@@ -51,8 +52,9 @@ const EMPTY: ExitData = {
   exitGeneralNote: '',
 }
 
-const PARTY_OPTIONS = ['İŞÇİ', 'İŞVEREN', 'KARŞILIKLI']
-const TURNOVER_OPTIONS = ['İSTENEN', 'İSTENMEYEN']
+// Sözlükler tek kaynaktan (sunucu aynı listeyle doğrular).
+const PARTY_OPTIONS: readonly string[] = CIKIS_TARAFLARI
+const TURNOVER_OPTIONS: readonly string[] = CIKIS_DEVIR_TIPLERI
 
 function calcWorkingPeriod(hire: string | null, exit: string): { years: number; months: number } | null {
   if (!hire || !exit) return null
@@ -163,13 +165,21 @@ export function PersonnelExitModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="exitCode">Çıkış Kodu *</Label>
-            <Input
+            <Label htmlFor="exitCode">Çıkış Kodu (SGK) *</Label>
+            {/* SGK-CIKIS-KODU: serbest metin yerine resmi liste; eski kayıttaki serbest değer
+                listede yoksa seçili görünmez (initialData düzenlemesinde yeniden seçilmesi gerekir). */}
+            <Select
               id="exitCode"
-              placeholder="Örn. İSTİFA - DENEME"
               value={data.exitCode}
               onChange={(e) => setData({ ...data, exitCode: e.target.value })}
-            />
+            >
+              <option value="">Seçiniz</option>
+              {SGK_CIKIS_KODLARI.map((k) => (
+                <option key={k.kod} value={k.kod}>
+                  {k.kod} — {k.aciklama}
+                </option>
+              ))}
+            </Select>
           </div>
 
           <div className="space-y-2">

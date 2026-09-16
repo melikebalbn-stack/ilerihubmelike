@@ -8,6 +8,7 @@ import { logAuditEvent } from '@/lib/audit-log'
 import { computeTenure } from '@/lib/personnel-tenure'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
+import { CIKIS_DEVIR_TIPLERI, CIKIS_TARAFLARI, sgkCikisKoduGecerliMi } from '@/lib/sgk-cikis-kodlari'
 import { personelPasiflestiginde, personelAktiflestiginde, personelGoreviDegisti, personelEklendiginde, KOLTUK_YOK_SEBEBI, type GorevDegisimSonuc, type YeniPersonelSonuc } from '@/lib/org/personel-koltuk-senkron'
 
 export const dynamic = 'force-dynamic'
@@ -406,6 +407,23 @@ export async function PUT(
   }
 }
 
+// SGK-CIKIS-KODU (16.09.2026): exitCode artık SGK işten ayrılış kodu (tek kaynak
+// src/lib/sgk-cikis-kodlari.ts); exitParty / exitTurnoverType sabit sözlükten. Yalnız YENİ
+// yazımlar doğrulanır — eski EmploymentPeriod kayıtlarındaki serbest metin (İSTİFA, İŞÇİ-DENEME…)
+// okunmaya devam eder, geriye dönük doğrulama yok.
+function cikisAlanlariniDogrula(b: { exitCode?: unknown; exitParty?: unknown; exitTurnoverType?: unknown }): string | null {
+  if (b.exitCode !== undefined && b.exitCode !== null && b.exitCode !== '' && !sgkCikisKoduGecerliMi(String(b.exitCode))) {
+    return `Çıkış kodu SGK işten ayrılış kodu olmalı (ör. 03); gelen: "${String(b.exitCode).slice(0, 40)}"`
+  }
+  if (b.exitParty !== undefined && b.exitParty !== null && b.exitParty !== '' && !(CIKIS_TARAFLARI as readonly string[]).includes(String(b.exitParty).trim())) {
+    return `Çıkış tarafı şunlardan biri olmalı: ${CIKIS_TARAFLARI.join(', ')}`
+  }
+  if (b.exitTurnoverType !== undefined && b.exitTurnoverType !== null && b.exitTurnoverType !== '' && !(CIKIS_DEVIR_TIPLERI as readonly string[]).includes(String(b.exitTurnoverType).trim())) {
+    return `Devir tipi şunlardan biri olmalı: ${CIKIS_DEVIR_TIPLERI.join(', ')}`
+  }
+  return null
+}
+
 // PR-PERSONEL-CIKIS-FORMU: Pasife alma + çıkış bilgileri akışı.
 //
 // 4 senaryo (mutually exclusive — order matters):
@@ -448,6 +466,9 @@ export async function PATCH(
           { status: 400 }
         )
       }
+
+      const dogrulamaHatasi = cikisAlanlariniDogrula(body)
+      if (dogrulamaHatasi) return NextResponse.json({ error: dogrulamaHatasi }, { status: 400 })
 
       const exitDateVal = new Date(body.exitDate)
       const recordedAt = new Date()
@@ -616,6 +637,8 @@ export async function PATCH(
 
     // SENARYO 3: Pasif personel için exit alanları düzenleme
     if (personnel.aktif === false && body.aktif !== true) {
+      const exitDogrulama = cikisAlanlariniDogrula(body)
+      if (exitDogrulama) return NextResponse.json({ error: exitDogrulama }, { status: 400 })
       const exitKeys = ['exitDate', 'exitParty', 'exitCode', 'exitReason', 'exitRootCause', 'exitTurnoverType', 'exitGeneralNote']
       const data: Record<string, unknown> = {}
       for (const k of exitKeys) {

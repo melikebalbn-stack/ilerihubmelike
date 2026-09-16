@@ -48,14 +48,62 @@ export type NotifyContext = {
 /**
  * Bir kullanıcı için 3 alıcı grubunu çözer:
  *  - Kullanıcının kendisi
- *  - Yönetici: User.managerId (LDAP hiyerarşisi). 16.09.2026'ya kadar
- *    Personnel.bolumMuduru SERBEST METNİNDEN çözülüyordu → GM'nin doğrudan
- *    müdür yazıldığı 25 kişide her sınav sonucu Genel Müdür'e gidiyordu.
+ *  - Yönetici: User.managerId (LDAP hiyerarşisi). managerId YOKSA (bluecollar
+ *    ve LDAP dışı hesaplar — prod'da aktif 171'in 116'sı) Personnel.bolumMuduru
+ *    serbest metnine düşer; ama çözülen kişi GENEL MÜDÜR / GM YARDIMCISI
+ *    (Personnel.gorev) ise yönetici SAYILMAZ — 16.09.2026'ya kadar bu yüzden her
+ *    sınav sonucu Genel Müdür'e gidiyordu. EXAM_* olaylarında yönetici kanalı
+ *    zaten kapalı; fallback yalnız diğer olaylar için anlamlı.
  *  - İK ekibi: RBAC rol slug `hr-yoneticisi` (süresi dolmamış atama, aktif
  *    kullanıcı). Eskisi Personnel.bolum ILIKE '%insan%' idi — bölüm adına
  *    bağımlıydı; akademi.report.view SEÇİLMEDİ (23 kişi: GM/GMY/müdürler dahil).
  */
 export const HR_ROLE_SLUG = "hr-yoneticisi";
+
+/** Personnel.gorev bu deseni içeriyorsa (GENEL MÜDÜR, GENEL MÜDÜR YARDIMCISI) fallback yöneticisi olamaz. */
+const UST_YONETIM_GOREV = /genel\s*m[uü]d[uü]r/i;
+
+/**
+ * managerId yoksa: Personnel.bolumMuduru metni → aktif Personnel → User.
+ * Üst yönetim unvanlı (GM/GMY) eşleşme null döner. Belirsizlikte ilk kayıt
+ * (id ASC) — hiç bildirim gitmemesindense yanlış kişiye gitmesi tercih edildi,
+ * belirsizlik loga düşer.
+ */
+async function fallbackManagerFromBolumMuduru(
+  userId: string
+): Promise<RecipientUser | null> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { personnel: { select: { bolumMuduru: true } } },
+  });
+  const managerName = u?.personnel?.bolumMuduru?.trim();
+  if (!managerName) return null;
+
+  const adaylar = await prisma.personnel.findMany({
+    where: { adSoyad: { equals: managerName, mode: "insensitive" }, aktif: true },
+    select: { id: true, gorev: true },
+    orderBy: { id: "asc" },
+  });
+  if (adaylar.length > 1) {
+    console.warn(
+      `[akademi-notify] belirsiz bolumMuduru: "${managerName}" -> ${adaylar.length} aktif eşleşme; ilk kayıt (${adaylar[0].id})`
+    );
+  }
+  const aday = adaylar[0];
+  if (!aday) return null;
+  if (aday.gorev && UST_YONETIM_GOREV.test(aday.gorev)) {
+    console.info(
+      `[akademi-notify] bolumMuduru üst yönetim (${aday.gorev}) — fallback yönetici atlandı (user ${userId})`
+    );
+    return null;
+  }
+  const mu = await prisma.user.findFirst({
+    where: { personnelId: aday.id, isActive: true },
+    select: { id: true, email: true, name: true },
+  });
+  if (!mu || mu.id === userId) return null;
+  return { id: mu.id, email: mu.email, name: nn(mu.name, mu.email) };
+}
 
 export async function resolveRecipients(
   userId: string
@@ -80,9 +128,12 @@ export async function resolveRecipients(
       name: nn(user.manager.name, user.manager.email),
     };
   } else {
-    console.warn(
-      `[akademi-notify] Manager not resolved for user ${userId} (managerId yok/pasif/kendisi)`
-    );
+    manager = await fallbackManagerFromBolumMuduru(userId);
+    if (!manager) {
+      console.warn(
+        `[akademi-notify] Manager not resolved for user ${userId} (managerId yok/pasif/kendisi; bolumMuduru fallback da yok/üst yönetim)`
+      );
+    }
   }
 
   const now = new Date();

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ifsKuyrugaEkle, personelKuyrukKayitlari } from "@/lib/ifs/personel-sync/kuyruk";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { logAuditEvent } from "@/lib/audit-log";
@@ -120,6 +121,8 @@ export async function POST(req: Request) {
     },
     select: { id: true, displayName: true },
   });
+
+  await ifsKuyrugaEkle(prisma, personelKuyrukKayitlari(personnelId), "HOOK:org-uye-ata");
 
   await logAuditEvent({
     action: "ORG_UYE_ATAMA",

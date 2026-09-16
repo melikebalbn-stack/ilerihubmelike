@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ifsKuyrugaEkle } from '@/lib/ifs/personel-sync/kuyruk'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -122,6 +123,8 @@ export async function PUT(request: NextRequest) {
     }
 
     const dept = await prisma.departmentDefinition.update({ where: { id }, data })
+    // IFS senkron kuyruğu: bölüm adı/şema bağı değişti → bağlı org birimi ve bölüm personeli yeniden değerlendirilsin.
+    if (dept.orgUnitId) await ifsKuyrugaEkle(prisma, [{ varlikTipi: 'ORG', hubId: dept.orgUnitId }], 'HOOK:hr-department-put')
     return NextResponse.json(dept)
   } catch (error: unknown) {
     if ((error as { code?: string }).code === 'P2002') return NextResponse.json({ error: 'Bu bölüm adı zaten mevcut' }, { status: 409 })

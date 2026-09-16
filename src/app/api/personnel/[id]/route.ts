@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ifsKuyrugaEkle, personelKuyrukKayitlari } from '@/lib/ifs/personel-sync/kuyruk'
 import { personelPutGovdesiniHazirla } from '@/lib/personnel/put-govde'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
@@ -357,6 +358,9 @@ export async function PUT(
       return updated
     })
 
+    // IFS senkron kuyruğu (faz 1): kişi katmanları yeniden değerlendirilsin. Ateşle-unut.
+    await ifsKuyrugaEkle(prisma, personelKuyrukKayitlari(personnelId), 'HOOK:personnel-put')
+
     // PR-AUDIT-LOG-EXPANSION (KVKK)
     await logAuditEvent({
       action: 'PERSONNEL_UPDATED',
@@ -492,8 +496,9 @@ export async function PATCH(
         })
 
         // KVKK: kayıt anahtarları + tarih saklanır, açıklama metni saklanmaz
+        await ifsKuyrugaEkle(prisma, personelKuyrukKayitlari(id), 'HOOK:personnel-deactivate')
         await logAuditEvent({
-          action: 'PERSONNEL_DEACTIVATED',
+          action: 'PERSONNEL_DEACTIVATED', // IFS kuyruğu aşağıda (pasifleştirme → EmploymentEndDate + SF Blocked)
           actorId: user.id,
           targetType: 'PERSONNEL',
           targetId: id,
@@ -583,8 +588,9 @@ export async function PATCH(
           return { updated: u, newPeriodId: np.id }
         })
 
+        await ifsKuyrugaEkle(prisma, personelKuyrukKayitlari(id), 'HOOK:personnel-reactivate')
         await logAuditEvent({
-          action: 'PERSONNEL_REACTIVATED',
+          action: 'PERSONNEL_REACTIVATED', // IFS kuyruğu aşağıda (yeniden-aktif faz 1'de tespit+rapor)
           actorId: user.id,
           targetType: 'PERSONNEL',
           targetId: id,

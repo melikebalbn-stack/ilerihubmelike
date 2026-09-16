@@ -60,6 +60,7 @@ export type AuditTargetType =
   // Kayıt silinmeden ÖNCE ve aynı transaction'da yazılır.
   | 'TICKET'
   | 'PERSONNEL_WEEKLY_REPORT'
+  | 'IFS_PERSONEL_SYNC'
 
 export interface AuditLogParams {
   action: string

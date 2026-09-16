@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ifsKuyrugaEkle } from "@/lib/ifs/personel-sync/kuyruk";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { logAuditEvent } from "@/lib/audit-log";
@@ -83,6 +84,8 @@ export async function POST(req: Request) {
     targetId: created.code,
     details: { name: created.name, unitType: created.unitType, parentId: created.parentId },
   });
+
+  await ifsKuyrugaEkle(prisma, [{ varlikTipi: created.unitType === "POSITION" ? "POZISYON" : "ORG", hubId: created.id }], "HOOK:org-birim-ekle");
 
   return NextResponse.json({ ok: true, birim: created });
 }

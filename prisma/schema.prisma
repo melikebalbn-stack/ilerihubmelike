@@ -14747,3 +14747,28 @@ model TcmbRateCache {
 
   @@unique([date, currency])
 }
+
+// ============================================================
+// Hub → IFS PERSONEL senkronu kuyruğu (feat/ifs-personel-sync faz 1).
+// Kaynak: Personnel / DepartmentDefinition / OrgUnit. Hedef: IFS ILERI2/ILER2.
+// Kuyruk = "bu Hub kaydına yeniden bak" işareti; asıl fark hesabı planlayıcıda
+// (src/lib/ifs/personel-sync). SyteSyncKayit deseniyle.
+// ============================================================
+model IfsPersonelSyncKayit {
+  id           String    @id @default(cuid())
+  varlikTipi   String // 'ORG' | 'POZISYON' | 'LABOR_CLASS' | 'EMPLOYEE' | 'SF_EMPLOYEE' | 'SF_SITE'
+  hubId        String // DepartmentDefinition.id / OrgUnit.id / Personnel.id
+  ifsAnahtar   String? // OrgCode / PosCode / LaborClassNo / EmpNo
+  durum        String    @default("BEKLIYOR") // 'BEKLIYOR' | 'ISLENDI' | 'HATA' | 'ATLANDI'
+  islem        String? // son turda uygulanan: 'CREATE' | 'UPDATE' | 'PASIF' | 'NOOP'
+  hata         String?   @db.Text
+  denemeSayisi Int       @default(0)
+  sonDenemeAt  DateTime?
+  tetik        String? // kuyruğa kim yazdı: 'HOOK:personnel-put' | 'CRON:tam-tarama' | 'PILOT'
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([varlikTipi, hubId])
+  @@index([durum])
+  @@map("ifs_personel_sync_kayit")
+}

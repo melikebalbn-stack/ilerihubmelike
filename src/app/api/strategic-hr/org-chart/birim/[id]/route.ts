@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ifsKuyrugaEkle } from "@/lib/ifs/personel-sync/kuyruk";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { logAuditEvent } from "@/lib/audit-log";
@@ -99,6 +100,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // parent degistiyse alt agacin level'lari kayar — tazele.
   if (degisiklikler.parentId) await seviyeleriTazele(guncel.id, guncel.level);
+
+  // IFS senkron kuyruğu: ad/üst değişti → org birimi ya da pozisyon yeniden değerlendirilsin.
+  await ifsKuyrugaEkle(prisma, [{ varlikTipi: guncel.unitType === "POSITION" ? "POZISYON" : "ORG", hubId: guncel.id }], "HOOK:org-birim-guncelle");
 
   await logAuditEvent({
     action: degisiklikler.parentId ? "ORG_BIRIM_PARENT_DEGISTI" : "ORG_BIRIM_GUNCELLE",

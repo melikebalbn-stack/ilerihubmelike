@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ifsKuyrugaEkle, personelKuyrukKayitlari } from "@/lib/ifs/personel-sync/kuyruk";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { logAuditEvent } from "@/lib/audit-log";
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
 
   const oncesi = await prisma.orgEmployee.findUnique({
     where: { id: orgEmployeeId },
-    select: { id: true, displayName: true, orgUnitId: true, orgUnit: { select: { name: true, code: true } } },
+    select: { id: true, displayName: true, orgUnitId: true, personnelId: true, orgUnit: { select: { name: true, code: true } } },
   });
 
   const guncel = await prisma.orgEmployee.update({
@@ -39,6 +40,9 @@ export async function POST(req: Request) {
     data: { orgUnitId: hedefOrgUnitId },
     select: { id: true, displayName: true, orgUnitId: true, orgUnit: { select: { name: true, code: true } } },
   });
+
+  // IFS senkron kuyruğu: koltuk değişti → kişinin pozisyon ataması yeniden değerlendirilsin.
+  if (oncesi?.personnelId) await ifsKuyrugaEkle(prisma, personelKuyrukKayitlari(oncesi.personnelId), "HOOK:org-uye-tasi");
 
   await logAuditEvent({
     action: "ORG_UYE_TASIMA",

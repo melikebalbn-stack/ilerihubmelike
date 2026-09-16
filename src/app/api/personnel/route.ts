@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ifsKuyrugaEkle, personelKuyrukKayitlari } from '@/lib/ifs/personel-sync/kuyruk'
 import { personelFkAlanlariIdOncelikli } from '@/lib/personnel/fk-cozum'
 import { degerlendirmeTarihleriniTamamla } from '@/lib/personnel/degerlendirme-tarihleri'
 import { prisma } from '@/lib/prisma'
@@ -314,6 +315,9 @@ export async function POST(request: NextRequest) {
         })
       }
     }
+
+    // IFS senkron kuyruğu (faz 1). Ateşle-unut.
+    await ifsKuyrugaEkle(prisma, personelKuyrukKayitlari(newPersonnel.id), 'HOOK:personnel-create')
 
     return NextResponse.json(
       {

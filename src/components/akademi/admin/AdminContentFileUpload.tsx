@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Upload, X, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { AdminContentType } from "@/types/akademi-admin";
+import { maxUploadMB } from "@/lib/akademi-upload-config";
 
 interface Props {
   contentType: AdminContentType;
@@ -20,12 +21,6 @@ const ACCEPT_MAP: Record<string, string> = {
   QUIZ: "",
 };
 
-const MAX_MB_MAP: Record<string, number> = {
-  VIDEO: 500,
-  PDF: 50,
-  DOCUMENT: 50,
-  QUIZ: 0,
-};
 
 export function AdminContentFileUpload({
   contentType,
@@ -43,7 +38,8 @@ export function AdminContentFileUpload({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const accept = ACCEPT_MAP[contentType] ?? "";
-  const maxMB = MAX_MB_MAP[contentType] ?? 0;
+  // Tek kaynak: FILE_CONFIGS (sunucuyla aynı sayı).
+  const maxMB = maxUploadMB(contentType);
 
   const handleFile = async (file: File) => {
     setError(null);
@@ -82,6 +78,9 @@ export function AdminContentFileUpload({
               } catch {
                 reject(new Error("Geçersiz sunucu yanıtı"));
               }
+            } else if (xhr.status === 413) {
+              // nginx (client_max_body_size) ya da uygulama sınırı — gövde JSON olmayabilir.
+              reject(new Error(`Dosya çok büyük (maksimum ${maxMB} MB)`));
             } else {
               try {
                 const err = JSON.parse(xhr.responseText);

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { writeFile } from "fs/promises";
+import { createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
+import { Readable } from "stream";
 import {
   FILE_CONFIGS,
   ensureUploadDirs,
@@ -15,7 +17,8 @@ import {
 } from "@/lib/akademi-upload";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// 200 MB video yavaş hatta 60 sn'ye sığmıyordu; nginx proxy_read_timeout 300 ile hizalı.
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const { error } = await requirePermission('akademi.kurs.edit');
@@ -79,9 +82,9 @@ export async function POST(req: NextRequest) {
   if (file.size > maxBytes) {
     return NextResponse.json(
       {
-        error: `Dosya boyutu ${config.maxSizeMB}MB'yi aşamaz (${Math.round(
+        error: `Dosya çok büyük (maksimum ${config.maxSizeMB} MB — ${Math.round(
           file.size / 1024 / 1024
-        )}MB gönderildi)`,
+        )} MB gönderildi)`,
       },
       { status: 413 }
     );
@@ -102,8 +105,11 @@ export async function POST(req: NextRequest) {
   const absolutePath = getAbsoluteUploadPath(subdir, fileName);
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(absolutePath, buffer);
+    // Stream: dosya RAM'e alınmaz (200 MB video × Buffer = PM2 1536M sınırına yaklaşıyordu).
+    await pipeline(
+      Readable.fromWeb(file.stream() as import("stream/web").ReadableStream),
+      createWriteStream(absolutePath, { flags: "wx" })
+    );
   } catch {
     await cleanupPartialUpload(absolutePath);
     return NextResponse.json({ error: "Dosya yazılamadı" }, { status: 500 });

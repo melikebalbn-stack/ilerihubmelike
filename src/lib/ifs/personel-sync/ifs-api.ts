@@ -10,7 +10,7 @@
  * senkron çağırmaz). PATCH daima If-Match: ETag. Yazma başlıkları IFS UI'nin
  * gönderdiğiyle aynı (IEEE754Compatible, x-ifs-accept-warnings).
  */
-import { IFS_COMPANY, IFS_CONTRACT, IFS_STRUCTURE, SICIL_ONEKI } from './kodlar'
+import { IFS_COMPANY, IFS_CONTRACT, IFS_STRUCTURE, IFS_STRUCT_BU_ID, SICIL_ONEKI } from './kodlar'
 
 export interface IfsBaglanti {
   mainRoot: string
@@ -148,6 +148,39 @@ export const patchEmployeeFile = async (empNo: string, g: Record<string, unknown
   const mevcut = await getEmployeeFile(empNo)
   if (!mevcut.etag) throw new IfsSyncHatasi(0, 'ETag yok', empFileAnahtari(empNo))
   return istek(empFileAnahtari(empNo), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': mevcut.etag } })
+}
+
+/**
+ * ORG/POZİSYON ATAMASI — SingleEmployeeAssignmentsHandling (IFS "Assignments" sihirbazı, 16.09 kanıtlı):
+ *   1) POST VrtSinEmpAssigns {CompanyId, EmpNo}          → sanal satır (Objkey + ETag)
+ *   2) PATCH VrtSinEmpAssigns(Objkey) If-Match          → OrgCodeNew/PosCodeNew/ValidFromNew/… (OptionSel=SetPrimary)
+ *   3) POST FinishWizardPlaceSendEmp {Objkey,CompanyId,EmpNo} → 204; birincil atama yeni org/pos'a taşınır,
+ *      eski atama ValidFromNew−1'de kapanır. CompanyPersons görünümünde OrgCode/PosCode anında yenilenir.
+ * Cron'dan sürülebilir: 3 istek, sanal satır tek kullanımlık, sonuç GET ile doğrulanır.
+ */
+const SEA = 'SingleEmployeeAssignmentsHandling.svc/'
+export async function atamaDegistir(empNo: string, orgCode: string, posCode: string, validFrom: string): Promise<{ status: number; objkey: string }> {
+  const sanal = await istek<{ Objkey: string }>(`${SEA}VrtSinEmpAssigns`, { method: 'POST', body: JSON.stringify({ CompanyId: IFS_COMPANY, EmpNo: empNo }) })
+  const objkey = sanal.body.Objkey
+  const yol = `${SEA}VrtSinEmpAssigns(Objkey='${q(objkey)}')`
+  await istek(yol, {
+    method: 'PATCH',
+    headers: { 'If-Match': sanal.etag ?? '*' },
+    body: JSON.stringify({
+      OptionSel: 'SetPrimary', AssignmentType: 'Primary',
+      OrgCodeNew: orgCode, PosCodeNew: posCode, ValidFromNew: validFrom, ValidToNew: '2099-12-31',
+      OrgType: 'COMPANY', StrcBuId: IFS_STRUCT_BU_ID, ExistPosition: 1, PrimaryJob: false, ExcludeFromOrgChartNew: false,
+    }),
+  })
+  const bitir = await istek(`${SEA}FinishWizardPlaceSendEmp`, { method: 'POST', body: JSON.stringify({ Objkey: objkey, CompanyId: IFS_COMPANY, EmpNo: empNo }) })
+  // Sihirbaz 204 dönse de FinMsg/ErrorMsg taşıyabilir — kontrol et.
+  const son = await istek<{ ErrorMsg?: string | null; FinMsg?: string | null }>(yol).catch(() => null)
+  if (son?.body?.ErrorMsg) throw new IfsSyncHatasi(bitir.status, `atama sihirbazı: ${son.body.ErrorMsg}`, yol)
+  const dogrula = await getEmployee(empNo)
+  if (!dogrula || dogrula.body.OrgCode !== orgCode || dogrula.body.PosCode !== posCode) {
+    throw new IfsSyncHatasi(bitir.status, `atama doğrulanamadı: org=${dogrula?.body.OrgCode} pos=${dogrula?.body.PosCode} (beklenen ${orgCode}/${posCode})`, yol)
+  }
+  return { status: bitir.status, objkey }
 }
 
 // ── Shop-floor ───────────────────────────────────────────────────────────

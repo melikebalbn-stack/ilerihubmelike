@@ -6,7 +6,7 @@
  */
 import type { prisma as PrismaTip } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
-import { IfsSyncHatasi, createEmployee, createLaborClass, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchLaborClass, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
+import { IfsSyncHatasi, atamaDegistir, createEmployee, createLaborClass, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchLaborClass, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
 import type { KuyrukDeposu } from './kuyruk'
 import type { PlanKalemi, SenkronPlani } from './plan'
 
@@ -32,7 +32,15 @@ async function yaz(k: PlanKalemi): Promise<number> {
     case 'POZISYON': return (k.islem === 'CREATE' ? await createPosition(g) : await patchPosition(k.ifsAnahtar, g, etag)).status
     case 'LABOR_CLASS': return (k.islem === 'CREATE' ? await createLaborClass(g) : await patchLaborClass(k.ifsAnahtar, g, etag)).status
     // CREATE EmployeesHandling'de; UPDATE PersonnelFileHandling'de (kendi GET→ETag'i ile; CompanyPersons PATCH kabul etmiyor).
-    case 'EMPLOYEE': return (k.islem === 'CREATE' ? await createEmployee(g) : await patchEmployeeFile(k.ifsAnahtar, g)).status
+    case 'EMPLOYEE': {
+      if (k.islem === 'CREATE') return (await createEmployee(g)).status
+      // Atama sihirbazı + (varsa) Employee File PATCH.
+      const { _atama, ...alanlar } = g as { _atama?: { OrgCode: string; PosCode: string; ValidFrom: string } } & Record<string, unknown>
+      let st = 204
+      if (_atama) st = (await atamaDegistir(k.ifsAnahtar, _atama.OrgCode, _atama.PosCode, _atama.ValidFrom)).status
+      if (Object.keys(alanlar).length) st = (await patchEmployeeFile(k.ifsAnahtar, alanlar)).status
+      return st
+    }
     case 'SF_EMPLOYEE': return (await createSfEmployee(k.ifsAnahtar)).status
     case 'SF_SITE': {
       if (k.islem === 'CREATE') return (await createSfSite(k.ifsAnahtar, String(g.PrimaryLaborClass))).status

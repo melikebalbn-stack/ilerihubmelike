@@ -227,13 +227,19 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
     logger.info('LDAP-SYNC', `LDAP: ${ldapUsers.length} toplam, ${validUsers.length} geçerli kullanıcı`)
 
     // 2. DB'deki mevcut kullanıcıları çek (karşılaştırma için)
+    // AYRILAN KORUMASI (15.09.2026): Personnel FK'sı olup İK'da çıkışı yapılmış
+    // (Personnel.aktif=false) kullanıcıların id kümesi de aynı sorguda gelir —
+    // upsertUser bu kişilerde isActive'i true'ya ÇEKMEZ. Kullanıcı başına ek
+    // sorgu yok (ölçüm: 94 kullanıcıda ilişki-select +86 ms, ayrı sorgu +170 ms,
+    // tek küme 7 ms).
     const dbUsers = await prisma.user.findMany({
-      select: { id: true, email: true, isActive: true },
+      select: { id: true, email: true, isActive: true, personnel: { select: { aktif: true } } },
     })
     lastSyncStatus.totalDb = dbUsers.length
 
     const dbEmailSet = new Set(dbUsers.map(u => u.email.toLowerCase()))
     const dbIdSet = new Set(dbUsers.map(u => u.id))
+    const ayrilanIdSet = new Set(dbUsers.filter(u => u.personnel?.aktif === false).map(u => u.id))
     const ldapEmailSet = new Set(validUsers.map(u => u.email!.toLowerCase()))
 
     // 3. Manager DN -> email çözümleme (batch)
@@ -257,7 +263,7 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
 
       await Promise.all(batch.map(async (ldapUser) => {
         try {
-          const candidate = await upsertUser(ldapUser, managerEmailMap, mappingByGroupCN)
+          const candidate = await upsertUser(ldapUser, managerEmailMap, mappingByGroupCN, ayrilanIdSet)
           if (candidate) deactivateCandidates.push(candidate)
 
           if (dbEmailSet.has(ldapUser.email!.toLowerCase()) || dbIdSet.has(`ad_${ldapUser.username}`)) {
@@ -367,10 +373,32 @@ export async function syncLDAPUsersToDb(): Promise<SyncStatus> {
 }
 
 /** Tek bir LDAP kullanıcısını DB'ye upsert et */
+/**
+ * AYRILAN KORUMASI: AD'de hesap açık kalsa da İK çıkışı yapılmış kişide
+ * (User.personnelId → Personnel.aktif=false) senkron isActive'i true'ya çekmez;
+ * mevcut değer korunur. disabledStreak'e dokunulmaz — o AD durumunu izler.
+ * FK'sız hesaplarda davranış değişmez (ad eşleşmesi giriş kapısında, burada değil).
+ * NEDEN: computeActivityFields(disabled=false) her turda isActive:true yazıyordu;
+ * elle/cron ile kapatılan ayrılan hesabı ≤6 saatte geri açıyordu (15.09 ölçümü:
+ * Ahmet Hacıhaliloğlu ILR-01002 böyle 3 haftadır "aktif").
+ */
+function ayrilanKorumasi(
+  fields: { disabledStreak: number; lastDisabledSeenAt?: Date; isActive?: boolean },
+  userId: string,
+  email: string,
+  ayrilanIdSet: Set<string>,
+): typeof fields {
+  if (fields.isActive !== true || !ayrilanIdSet.has(userId)) return fields
+  const { isActive: _atla, ...kalan } = fields
+  console.log(`[LDAP-SYNC] ayrılan koruması: isActive=true yazılmadı (Personnel.aktif=false): ${email} (id=${userId})`)
+  return kalan
+}
+
 async function upsertUser(
   ldapUser: LDAPUser,
   managerEmailMap: Map<string, string>,
-  mappingByGroupCN: Map<string, string>
+  mappingByGroupCN: Map<string, string>,
+  ayrilanIdSet: Set<string> = new Set(),
 ): Promise<{ id: string; email: string } | null> {
   const email = ldapUser.email!.trim()
   const emailLower = email.toLowerCase()
@@ -423,7 +451,7 @@ async function upsertUser(
     deactivateCandidate = act.candidate
     await prisma.user.update({
       where: { id: userId },
-      data: { ...adFields, ...managerData, ...act.fields },
+      data: { ...adFields, ...managerData, ...ayrilanKorumasi(act.fields, userId, emailLower, ayrilanIdSet) },
     })
     resolvedUserId = userId
   } else {
@@ -447,7 +475,7 @@ async function upsertUser(
       deactivateCandidate = act.candidate
       await prisma.user.update({
         where: { id: existingByEmail.id },
-        data: { ...adFields, ...managerData, ...act.fields },
+        data: { ...adFields, ...managerData, ...ayrilanKorumasi(act.fields, existingByEmail.id, emailLower, ayrilanIdSet) },
       })
       resolvedUserId = existingByEmail.id
     } else {

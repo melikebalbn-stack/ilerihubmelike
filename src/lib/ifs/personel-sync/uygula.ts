@@ -6,7 +6,7 @@
  */
 import type { prisma as PrismaTip } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
-import { IfsSyncHatasi, atamaDegistir, createEmployee, createLaborClass, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchLaborClass, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
+import { IfsSyncHatasi, atamaDegistir, createEmployee, createLaborClass, createLeavingCause, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchLaborClass, patchLeavingCause, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
 import type { KuyrukDeposu } from './kuyruk'
 import type { PlanKalemi, SenkronPlani } from './plan'
 
@@ -28,6 +28,7 @@ async function yaz(k: PlanKalemi): Promise<number> {
   const g = k.govde ?? {}
   const etag = k.etag ?? ''
   switch (k.varlik) {
+    case 'AYRILMA_NEDENI': return (k.islem === 'CREATE' ? await createLeavingCause(g) : await patchLeavingCause(Number(k.ifsAnahtar), g, etag)).status
     case 'ORG': return (k.islem === 'CREATE' ? await createOrg(g) : await patchOrg(k.ifsAnahtar, g, etag)).status
     case 'POZISYON': return (k.islem === 'CREATE' ? await createPosition(g) : await patchPosition(k.ifsAnahtar, g, etag)).status
     case 'LABOR_CLASS': return (k.islem === 'CREATE' ? await createLaborClass(g) : await patchLaborClass(k.ifsAnahtar, g, etag)).status

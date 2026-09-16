@@ -97,6 +97,19 @@ async function tumu<T>(yol: string): Promise<T[]> {
   return out
 }
 
+// ── Ayrılma nedeni (SGK kodları) ─────────────────────────────────────────
+/**
+ * ReasonsForLeavingHandling.LeavingCauses → LeavingCause (key LeavingCauseId: Decimal).
+ * "Ayrılma Nedenleri" temel verisi; şirketten bağımsız. GET 16.09'da 403 — ILERIHUB_SHOPFLOOR
+ * permission set'ine ReasonsForLeavingHandling grant'i gerekiyor.
+ */
+export interface IfsLeavingCause { LeavingCauseId: number; LeavingCauseType: string | null; LeavingInitiatedBy: 'Employer' | 'Employee' | null; LeavingComments?: string | null; '@odata.etag'?: string }
+const LC_SET_AYRILMA = 'ReasonsForLeavingHandling.svc/LeavingCauses'
+export const ayrilmaAnahtari = (id: number) => `${LC_SET_AYRILMA}(LeavingCauseId=${id})`
+export const listLeavingCauses = () => tumu<IfsLeavingCause>(`${LC_SET_AYRILMA}?$select=LeavingCauseId,LeavingCauseType,LeavingInitiatedBy,LeavingComments&$top=500`)
+export const createLeavingCause = (g: Record<string, unknown>) => istek(LC_SET_AYRILMA, { method: 'POST', body: JSON.stringify(g) })
+export const patchLeavingCause = (id: number, g: Record<string, unknown>, etag: string) => istek(ayrilmaAnahtari(id), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': etag } })
+
 // ── Org birimi ───────────────────────────────────────────────────────────
 export interface IfsOrg { OrgCode: string; OrgName: string; SupOrgCode: string | null; ValidFrom: string; ValidTo: string; OrgType?: string | null; '@odata.etag'?: string }
 const ORG_SET = 'OrganizationUnitsHandling.svc/CompanyOrgAlls'

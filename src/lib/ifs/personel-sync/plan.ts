@@ -2,7 +2,7 @@
  * Hub → IFS personel senkronu — PLANLAYICI (faz 1). Yazmaz.
  *
  * Hub'ı ve IFS'in güncel durumunu okur, varlık sırasıyla ne yapılacağını hesaplar:
- *   ORG (üstten alta) → POZISYON → LABOR_CLASS → EMPLOYEE (önce PASIF) → SF_EMPLOYEE → SF_SITE
+ *   AYRILMA_NEDENI (SGK kodları, temel veri) → ORG (üstten alta) → POZISYON → LABOR_CLASS → EMPLOYEE (önce PASIF) → SF_EMPLOYEE → SF_SITE
  * Her kalem CREATE | UPDATE | PASIF | NOOP | ATLA. ATLA'nın sebebi her zaman yazılır
  * (koltuksuz kişi, kod sınırı, yeniden-aktif, labor class yok…). Uygulayıcı
  * (uygula.ts) bu planı sırayla yürütür; dryRun = plan çıktısının kendisi.
@@ -14,13 +14,14 @@ import {
   laborClassAciklamasi, laborClassKodu, orgKodu, posKodu, sicilSenkronKapsamindaMi, type KaynakTuru,
 } from './kodlar'
 import {
-  listEmployees, listLaborClasses, listOrgs, listPositions, listSfEmployees, listSfSites,
-  type IfsEmployee, type IfsLaborClass, type IfsOrg, type IfsPos, type IfsSfEmployee, type IfsSfSite,
+  IfsSyncHatasi, listEmployees, listLaborClasses, listLeavingCauses, listOrgs, listPositions, listSfEmployees, listSfSites,
+  type IfsEmployee, type IfsLaborClass, type IfsLeavingCause, type IfsOrg, type IfsPos, type IfsSfEmployee, type IfsSfSite,
 } from './ifs-api'
+import { SGK_CIKIS_KODLARI, sgkBaslatan } from '@/lib/sgk-cikis-kodlari'
 
-export type VarlikTipi = 'ORG' | 'POZISYON' | 'LABOR_CLASS' | 'EMPLOYEE' | 'SF_EMPLOYEE' | 'SF_SITE'
+export type VarlikTipi = 'AYRILMA_NEDENI' | 'ORG' | 'POZISYON' | 'LABOR_CLASS' | 'EMPLOYEE' | 'SF_EMPLOYEE' | 'SF_SITE'
 export type Islem = 'CREATE' | 'UPDATE' | 'PASIF' | 'NOOP' | 'ATLA'
-export const VARLIK_SIRASI: VarlikTipi[] = ['ORG', 'POZISYON', 'LABOR_CLASS', 'EMPLOYEE', 'SF_EMPLOYEE', 'SF_SITE']
+export const VARLIK_SIRASI: VarlikTipi[] = ['AYRILMA_NEDENI', 'ORG', 'POZISYON', 'LABOR_CLASS', 'EMPLOYEE', 'SF_EMPLOYEE', 'SF_SITE']
 
 export interface PlanKalemi {
   varlik: VarlikTipi
@@ -177,6 +178,12 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
   const [ifsOrgs, ifsPos, ifsLcs, ifsEmps, ifsSfEmps, ifsSfSites] = await Promise.all([
     listOrgs(), listPositions(), listLaborClasses(), listEmployees(), listSfEmployees(), listSfSites(),
   ])
+  // Ayrılma nedenleri: grant yoksa (403) plan durmaz — kalemler ATLA(GRANT_YOK) olur.
+  let ifsAyrilma: IfsLeavingCause[] | null = null
+  try { ifsAyrilma = await listLeavingCauses() } catch (e) {
+    if (e instanceof IfsSyncHatasi && e.status === 403) uyarilar.push('AYRILMA_NEDENI: ReasonsForLeavingHandling 403 — grant yok, kalemler atlandı')
+    else throw e
+  }
   const ifsOrgMap = new Map<string, IfsOrg>(ifsOrgs.map((o) => [o.OrgCode, o]))
   const ifsPosMap = new Map<string, IfsPos>(ifsPos.map((p) => [p.PosCode, p]))
   const ifsLcMap = new Map<string, IfsLaborClass>(ifsLcs.map((l) => [l.LaborClassNo, l]))
@@ -202,6 +209,24 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
   const posDahil = (id: string) => !daralt || gerekliPos.has(id)
   const lcDahil = (kod: string) => !daralt || gerekliLc.has(kod)
   const kisiDahil = (k: HubKisi) => !sec.hedefler || sec.hedefler.EMPLOYEE?.has(k.id) || sec.hedefler.SF_EMPLOYEE?.has(k.id) || sec.hedefler.SF_SITE?.has(k.id) || !!sec.siciller
+
+  // ── AYRILMA_NEDENI: SGK 47 kodu → IFS LeavingCause (şirketten bağımsız temel veri; kapsamdan bağımsız hep planlanır) ──
+  // LeavingCauseId = kodun sayısal hâli (01 → 1); LeavingCauseType = "02 Deneme süreli…" (≤100); LeavingInitiatedBy işçi/işveren.
+  if (!sec.hedefler || sec.hedefler.AYRILMA_NEDENI) {
+    const ifsAyrilmaMap = new Map<number, IfsLeavingCause>((ifsAyrilma ?? []).map((a) => [Number(a.LeavingCauseId), a]))
+    for (const k of SGK_CIKIS_KODLARI) {
+      const id = Number(k.kod)
+      const hedef = { LeavingCauseType: `${k.kod} ${k.aciklama}`.slice(0, 100), LeavingInitiatedBy: sgkBaslatan(k.kod) }
+      const etiket = `SGK ${k.kod} · ${k.aciklama.slice(0, 60)}`
+      if (ifsAyrilma === null) { kalemler.push({ varlik: 'AYRILMA_NEDENI', hubId: k.kod, ifsAnahtar: String(id), etiket, islem: 'ATLA', sebep: 'GRANT_YOK: ReasonsForLeavingHandling 403' }); continue }
+      const m = ifsAyrilmaMap.get(id)
+      if (!m) kalemler.push({ varlik: 'AYRILMA_NEDENI', hubId: k.kod, ifsAnahtar: String(id), etiket, islem: 'CREATE', govde: { LeavingCauseId: id, ...hedef } })
+      else {
+        const f = fark(m as unknown as Record<string, unknown>, hedef)
+        kalemler.push({ varlik: 'AYRILMA_NEDENI', hubId: k.kod, ifsAnahtar: String(id), etiket, islem: Object.keys(f).length ? 'UPDATE' : 'NOOP', fark: f, govde: Object.fromEntries(Object.entries(f).map(([a, v]) => [a, v.yeni])), etag: m['@odata.etag'] ?? null })
+      }
+    }
+  }
 
   // ── ORG: üstten alta (derinlik sırası) ──────────────────────────────────
   const derinlik = (o: HubOrg): number => { let d = 0, p = o.parentId; while (p && hubOrgs.has(p)) { d++; p = hubOrgs.get(p)!.parentId } return d }

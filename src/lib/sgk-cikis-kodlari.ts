@@ -18,6 +18,15 @@ export interface SgkCikisKodu {
   kidem?: boolean
 }
 
+/**
+ * IFS LeavingCause.LeavingInitiatedBy (enum yalnız Employer | Employee). İşçi iradesiyle
+ * biten sözleşmeler Employee; işveren feshi, sözleşme/işyeri bitişi, ölüm, KHK, re'sen vb. Employer.
+ */
+export const SGK_ISCI_BASLATAN: ReadonlySet<string> = new Set(['02', '03', '08', '09', '12', '13', '14', '23', '24', '25', '33', '35', '38'])
+export function sgkBaslatan(kod: string): 'Employer' | 'Employee' {
+  return SGK_ISCI_BASLATAN.has(kod) ? 'Employee' : 'Employer'
+}
+
 export const SGK_CIKIS_KODLARI: readonly SgkCikisKodu[] = [
   { kod: '01', aciklama: 'Deneme süreli iş sözleşmesinin işverence feshi' },
   { kod: '02', aciklama: 'Deneme süreli iş sözleşmesinin işçi tarafından feshi' },

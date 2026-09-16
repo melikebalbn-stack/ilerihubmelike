@@ -48,9 +48,15 @@ export type NotifyContext = {
 /**
  * Bir kullanıcı için 3 alıcı grubunu çözer:
  *  - Kullanıcının kendisi
- *  - Bölüm müdürü (Personnel.bolumMuduru → Personnel.adSoyad → User)
- *  - İK ekibi (Personnel.bolum ILIKE '%insan%' → User'lar)
+ *  - Yönetici: User.managerId (LDAP hiyerarşisi). 16.09.2026'ya kadar
+ *    Personnel.bolumMuduru SERBEST METNİNDEN çözülüyordu → GM'nin doğrudan
+ *    müdür yazıldığı 25 kişide her sınav sonucu Genel Müdür'e gidiyordu.
+ *  - İK ekibi: RBAC rol slug `hr-yoneticisi` (süresi dolmamış atama, aktif
+ *    kullanıcı). Eskisi Personnel.bolum ILIKE '%insan%' idi — bölüm adına
+ *    bağımlıydı; akademi.report.view SEÇİLMEDİ (23 kişi: GM/GMY/müdürler dahil).
  */
+export const HR_ROLE_SLUG = "hr-yoneticisi";
+
 export async function resolveRecipients(
   userId: string
 ): Promise<RecipientGroup> {
@@ -60,76 +66,40 @@ export async function resolveRecipients(
       id: true,
       email: true,
       name: true,
-      personnel: {
-        select: { bolumMuduru: true, bolum: true, sicilNo: true },
-      },
+      manager: { select: { id: true, email: true, name: true, isActive: true } },
     },
   });
 
   if (!user) throw new Error(`User ${userId} not found`);
 
   let manager: RecipientUser | null = null;
-  const managerName = user.personnel?.bolumMuduru?.trim();
-  if (managerName) {
-    // DETERMİNİSTİK: `findFirst` sıralamasızdı — aynı adda birden fazla aktif kayıt
-    // olsaydı bildirimin kime gideceği rastgeleydi. `orderBy id ASC` sabitliyor.
-    const yoneticiAdaylari = await prisma.personnel.findMany({
-      where: {
-        adSoyad: { equals: managerName, mode: "insensitive" },
-        aktif: true,
-      },
-      select: { id: true },
-      orderBy: { id: "asc" },
-    });
-
-    // BELİRSİZLİKTE İLK KAYIT SEÇİLİR — fk-cozum.ts / sync-azure'ın TERSİ. Orada
-    // null yazmak yalnız FK'yı boş bırakıyor (metin duruyor, veri kaybı yok); burada
-    // null dönmek bildirimi TAMAMEN keser. Yanlış kişiye bildirim gitmesi, hiç
-    // bildirim gitmemesinden iyidir; belirsizlik loga düşer.
-    if (yoneticiAdaylari.length > 1) {
-      console.warn(
-        `[akademi-notify] belirsiz yönetici adı: "${managerName}" -> ${yoneticiAdaylari.length} aktif eşleşme; ilk kayıt seçildi (${yoneticiAdaylari[0].id})`,
-      );
-    }
-    const managerPersonnel = yoneticiAdaylari[0] ?? null;
-
-    if (managerPersonnel) {
-      const managerUser = await prisma.user.findFirst({
-        where: { personnelId: managerPersonnel.id },
-        select: { id: true, email: true, name: true },
-      });
-      if (managerUser) {
-        manager = {
-          id: managerUser.id,
-          email: managerUser.email,
-          name: nn(managerUser.name, managerUser.email),
-        };
-      }
-    }
-
-    if (!manager) {
-      console.warn(
-        `[akademi-notify] Manager not resolved for user ${userId} ` +
-          `(sicilNo=${user.personnel?.sicilNo}, bolumMuduru="${user.personnel?.bolumMuduru}")`
-      );
-    }
+  if (user.manager && user.manager.isActive && user.manager.id !== user.id) {
+    manager = {
+      id: user.manager.id,
+      email: user.manager.email,
+      name: nn(user.manager.name, user.manager.email),
+    };
+  } else {
+    console.warn(
+      `[akademi-notify] Manager not resolved for user ${userId} (managerId yok/pasif/kendisi)`
+    );
   }
 
-  const hrPersonnel = await prisma.personnel.findMany({
+  const now = new Date();
+  const hrRaw = await prisma.user.findMany({
     where: {
-      aktif: true,
-      bolum: { contains: "insan", mode: "insensitive" },
+      isActive: true,
+      id: { not: user.id },
+      userRoles: {
+        some: {
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          role: { slug: HR_ROLE_SLUG },
+        },
+      },
     },
-    select: { id: true },
+    select: { id: true, email: true, name: true },
+    orderBy: { id: "asc" },
   });
-  const hrPersonnelIds = hrPersonnel.map((p) => p.id);
-
-  const hrRaw = hrPersonnelIds.length
-    ? await prisma.user.findMany({
-        where: { personnelId: { in: hrPersonnelIds } },
-        select: { id: true, email: true, name: true },
-      })
-    : [];
   const hr: RecipientUser[] = hrRaw.map((h) => ({
     id: h.id,
     email: h.email,
@@ -192,14 +162,21 @@ function buildInAppMessage(ctx: NotifyContext): string {
   return `${ctx.courseTitle} eğitimi için bildirim.`;
 }
 
+/** Sınav sonucu olayları: yönetici kanalı KAPALI — yalnız kullanıcı + İK (16.09.2026). */
+const MANAGER_CHANNEL_OFF: ReadonlySet<AkademiEventType> = new Set([
+  "EXAM_PASSED",
+  "EXAM_FAILED",
+]);
+
 /**
  * 9 event tipi için ortak gönderim fonksiyonu.
- * In-app notification + mail (3 alıcı grubuna).
+ * In-app: kullanıcı + İK. Mail: kullanıcı + (EXAM_* hariç) yönetici + İK.
  */
 export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
   const recipients = await resolveRecipients(ctx.userId);
+  const managerEnabled = !MANAGER_CHANNEL_OFF.has(ctx.eventType);
 
-  // 1) In-app — sadece kullanıcının kendisi (yönetici/İK in-app yok, mail var)
+  // 1) In-app — kullanıcının kendisi
   try {
     const customTitle =
       typeof ctx.data.title === "string" ? ctx.data.title : null;
@@ -218,7 +195,24 @@ export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
     console.error(`[akademi-notify] in-app failed for ${ctx.userId}:`, err);
   }
 
-  // 2) Mail — 3 alıcı grubu
+  // 1b) In-app — İK (her birine ayrı kayıt; başlık kişiyi belirtir)
+  if (recipients.hr.length) {
+    try {
+      await prisma.akademiNotification.createMany({
+        data: recipients.hr.map((h) => ({
+          userId: h.id,
+          type: ctx.eventType,
+          title: `${buildInAppTitle(ctx)} — ${recipients.user.name}`,
+          message: `${recipients.user.name}: ${ctx.courseTitle} (${buildInAppTitle(ctx).toLowerCase()})`,
+          link: ctx.link ?? null,
+        })),
+      });
+    } catch (err) {
+      console.error(`[akademi-notify] in-app (HR) failed:`, err);
+    }
+  }
+
+  // 2) Mail — kullanıcı + (kanal açıksa) yönetici + İK
   const content = dispatchTemplate(ctx, recipients);
 
   // Kullanıcıya
@@ -236,8 +230,8 @@ export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
     );
   }
 
-  // Müdüre (varsa)
-  if (recipients.manager?.email) {
+  // Yöneticiye (varsa ve olay için kanal açıksa — EXAM_* için KAPALI)
+  if (managerEnabled && recipients.manager?.email) {
     sendEmail(
       [{ email: recipients.manager.email, name: recipients.manager.name }],
       content.subject,

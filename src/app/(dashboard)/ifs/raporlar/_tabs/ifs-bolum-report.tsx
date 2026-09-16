@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 const ILERI = "#1B4F72";
 
 type Durum = "YOLUNDA" | "GECIKTI" | "TARIHSIZ";
-type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ";
+type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ" | "YENIDEN_DEGERLENDIRILECEK";
 interface KursRow {
   courseId: string;
   kursAd: string;
@@ -61,11 +61,13 @@ const SEVIYE_LABEL: Record<Seviye, string> = {
   BASARILI: "Başarılı",
   EGITIM_GEREKLI: "Eğitim Gerekli",
   BASARISIZ: "Başarısız",
+  YENIDEN_DEGERLENDIRILECEK: "Yeniden Değerlendirilecek",
 };
 const SEVIYE_CLS: Record<Seviye, string> = {
   BASARILI: "bg-emerald-100 text-emerald-800 hover:bg-emerald-100",
   EGITIM_GEREKLI: "bg-amber-100 text-amber-800 hover:bg-amber-100",
   BASARISIZ: "bg-red-100 text-red-700 hover:bg-red-100",
+  YENIDEN_DEGERLENDIRILECEK: "bg-blue-100 text-blue-800 hover:bg-blue-100",
 };
 
 function fmtDate(iso: string | null): string {

@@ -10,12 +10,13 @@ import { ifsYuzde } from "./ifs-progress";
 // sorgusu; gruplama JS'te.
 
 export type OrnekStatus = "PENDING" | "BASARILI" | "TEKRAR_GEREKLI";
-export type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ";
+export type Seviye = "BASARILI" | "EGITIM_GEREKLI" | "BASARISIZ" | "YENIDEN_DEGERLENDIRILECEK";
 
 export interface IfsSeviyeDist {
   BASARILI: number;
   EGITIM_GEREKLI: number;
   BASARISIZ: number;
+  YENIDEN_DEGERLENDIRILECEK: number;
   DEGERLENDIRILMEDI: number;
 }
 export interface IfsStatusDist {
@@ -33,6 +34,7 @@ export const emptySeviye = (): IfsSeviyeDist => ({
   BASARILI: 0,
   EGITIM_GEREKLI: 0,
   BASARISIZ: 0,
+  YENIDEN_DEGERLENDIRILECEK: 0,
   DEGERLENDIRILMEDI: 0,
 });
 
@@ -52,6 +54,8 @@ export interface IfsKisiRow {
   pct: number;
   seviye: Seviye | null;
   not: string | null;
+  /// Son "Eğitim Verildi" kaydı (varsa) — UI'da "Eğitim: 16.09.2026 · Nurgül".
+  sonEgitim: { tarih: string; egitmenAd: string } | null;
   // IFS-DURUM: kursiyer-tarafı sayaçlar.
   farkliDepartman: number;
   egitimGerekli: number;
@@ -179,6 +183,23 @@ export async function computeIfsAggregate(
       : [],
   ]);
 
+  // Son eğitim kaydı (user başına en yeni) — "Eğitim Verildi" izini UI'da göstermek için.
+  const egitimKayitlari = uids.length
+    ? await prisma.ifsEgitimKaydi.findMany({
+        where: { courseId, userId: { in: uids } },
+        orderBy: { tarih: "desc" },
+        select: { userId: true, tarih: true, egitmen: { select: { name: true, email: true } } },
+      })
+    : [];
+  const sonEgitimByUser = new Map<string, { tarih: string; egitmenAd: string }>();
+  for (const k of egitimKayitlari) {
+    if (sonEgitimByUser.has(k.userId)) continue; // desc sıralı → ilk görülen en yeni
+    sonEgitimByUser.set(k.userId, {
+      tarih: k.tarih.toISOString().slice(0, 10),
+      egitmenAd: k.egitmen?.name ?? k.egitmen?.email ?? "—",
+    });
+  }
+
   const basariliByUser = new Map<string, number>();
   // Hem BASARILI hem FARKLI_DEPARTMAN olan görevler. FARKLI_DEPARTMAN paydadan
   // düştüğü için bunlar PAYDAN DA düşmeli — aksi halde pay paydayı aşıyor
@@ -235,6 +256,7 @@ export async function computeIfsAggregate(
         ),
         seviye: (ce?.seviye ?? null) as Seviye | null,
         not: ce?.not ?? null,
+        sonEgitim: sonEgitimByUser.get(u.id) ?? null,
         farkliDepartman: farkliByUser.get(u.id) ?? 0,
         egitimGerekli: egitimByUser.get(u.id) ?? 0,
       };
@@ -262,7 +284,7 @@ export async function computeIfsAggregate(
         farkliByUser.get(uid) ?? 0
       );
       const sev = seviyeByUser.get(uid);
-      if (sev === "BASARILI" || sev === "EGITIM_GEREKLI" || sev === "BASARISIZ")
+      if (sev === "BASARILI" || sev === "EGITIM_GEREKLI" || sev === "BASARISIZ" || sev === "YENIDEN_DEGERLENDIRILECEK")
         seviyeDist[sev]++;
       else seviyeDist.DEGERLENDIRILMEDI++;
     }

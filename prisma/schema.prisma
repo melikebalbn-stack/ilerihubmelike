@@ -199,6 +199,8 @@ model User {
   ifsCourseEvaluations  IfsCourseEvaluation[]
   ifsKeyUserEvaluations IfsCourseEvaluation[]   @relation("IfsKeyUser")
   ifsKeyUserAtamalari   IfsKeyUser[]            @relation("IfsKeyUserAtama")
+  ifsEgitimKayitlari    IfsEgitimKaydi[]        @relation("IfsEgitimKaydiUser")
+  verdigiIfsEgitimleri  IfsEgitimKaydi[]        @relation("IfsEgitimKaydiEgitmen")
   userAchievements      UserAchievement[]
   userBadges            UserBadge[]
   userXp                UserXp[]
@@ -9724,6 +9726,7 @@ model Course {
   exams                Exam[]
   certificates         AkademiCertificate[]
   ifsCourseEvaluations IfsCourseEvaluation[]
+  ifsEgitimKayitlari   IfsEgitimKaydi[]
 
   @@map("courses")
 }
@@ -9844,6 +9847,8 @@ enum IfsCourseSeviye {
   BASARILI
   EGITIM_GEREKLI
   BASARISIZ
+  /// "Eğitim Verildi" aksiyonu sonrası — ders eğitmen tarafından yeniden değerlendirilmeyi bekler.
+  YENIDEN_DEGERLENDIRILECEK
 }
 
 model IfsCourseEvaluation {
@@ -9871,6 +9876,27 @@ model IfsCourseEvaluation {
   @@index([courseId])
   @@index([keyUserId])
   @@map("ifs_course_evaluations")
+}
+
+/// "Eğitim Verildi" aksiyonu — bir kullanıcıya bir IFS dersi için verilen eğitim
+/// kaydı. Kayıt sonrası o user×course için ifs_task_evaluations "eğitim gerekli"
+/// işaretleri temizlenir ve ders seviyesi YENIDEN_DEGERLENDIRILECEK'e çekilir.
+model IfsEgitimKaydi {
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  egitmenId String
+  tarih     DateTime @db.Date
+  not       String?  @db.Text
+  createdAt DateTime @default(now())
+
+  user    User   @relation("IfsEgitimKaydiUser", fields: [userId], references: [id])
+  egitmen User   @relation("IfsEgitimKaydiEgitmen", fields: [egitmenId], references: [id])
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([userId, courseId])
+  @@index([courseId])
+  @@map("ifs_egitim_kayitlari")
 }
 
 // IFS key user ataması — hangi bölümün key user'ı kim.
@@ -11632,73 +11658,73 @@ enum IproIsDurum {
 }
 
 model IproProductionLog {
-  id                 String              @id @default(cuid())
-  tezgahId           String
-  tezgah             IproTezgah          @relation(fields: [tezgahId], references: [id])
-  sessionId          String
+  id                    String              @id @default(cuid())
+  tezgahId              String
+  tezgah                IproTezgah          @relation(fields: [tezgahId], references: [id])
+  sessionId             String
   // onDelete: Restrict — oturum silinirse üretim kaydı korunur (denetim izi).
-  session            IproOperatorSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
-  personnelId        String
+  session               IproOperatorSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  personnelId           String
   // Uzaktan (terminal) başlatma denetimi. Kiosk akışında ikisi de null kalır.
   // baslatanUserId: işi terminalden başlatan kullanıcının User.id'si (operatör ≠ başlatan).
   // kaynak: 'KIOSK' | 'TERMINAL' — enum DEĞİL (ALTER TYPE transaction sorunu); eski kayıtlar null.
-  baslatanUserId     String?
-  kaynak             String?
+  baslatanUserId        String?
+  kaynak                String?
   // MAS MES ayna idempotency anahtarı (Production.ProductionMaster.Id / ProductionDetail.Id).
   // kaynak='MAS' kayıtlarda dolu; kiosk/terminal kayıtlarda null. Aşağıdaki @@unique ile mükerrer önlenir.
   masProductionMasterId Int?
   masProductionDetayId  Int?
-  ifsOperationId     String?
+  ifsOperationId        String?
   // ifsOrderNo / ifsOperationNo nullable KALIR (geçmiş kayıtlar için NOT NULL yapılamaz).
   // Açık iş satırında ikisinin dolu olması "başla" endpoint'inde (uygulama katmanı) garanti edilir.
-  ifsOrderNo         String?
-  ifsOperationNo     Int?
+  ifsOrderNo            String?
+  ifsOperationNo        Int?
   // Malzeme snapshot — "başla" anında IFS ShopOrderOperations'tan otoriter çekilir
   // (server-side re-fetch; client input'una GÜVENİLMEZ). IFS erişilemezse null kalır,
   // iş yine başlar (yumuşak hata). Pano/detay bunları gösterir; her poll'da IFS'e GİDİLMEZ.
-  ifsPartNo          String?
-  ifsPartDescription String?
+  ifsPartNo             String?
+  ifsPartDescription    String?
   // Plan snapshot (başla anında ShopOrderOperations'tan; salt gösterim, additive).
-  ifsQtyDue          Int? // RevisedQtyDue — planlanan üretim adeti
-  ifsDueDate         DateTime? // RevisedDueDate — teslim tarihi
-  ifsNeedDate        DateTime? // NeedDate — ihtiyaç tarihi
-  ifsMachRunFactor   Float? // MachRunFactor — planlı makine çevrim (birim: ifsRunTimeCode)
-  ifsLaborRunFactor  Float? // LaborRunFactor — planlı işçilik çevrim
-  ifsRunTimeCode     String? // RunTimeCode — çevrim birimi (ör. HoursUnit)
-  qtyComplete        Int                 @default(0)
-  qtyScrap           Int                 @default(0)
-  hurdaSebebiKod     String?
-  plcSayacBaslangic  Int?
-  plcSayacBitis      Int?
+  ifsQtyDue             Int? // RevisedQtyDue — planlanan üretim adeti
+  ifsDueDate            DateTime? // RevisedDueDate — teslim tarihi
+  ifsNeedDate           DateTime? // NeedDate — ihtiyaç tarihi
+  ifsMachRunFactor      Float? // MachRunFactor — planlı makine çevrim (birim: ifsRunTimeCode)
+  ifsLaborRunFactor     Float? // LaborRunFactor — planlı işçilik çevrim
+  ifsRunTimeCode        String? // RunTimeCode — çevrim birimi (ör. HoursUnit)
+  qtyComplete           Int                 @default(0)
+  qtyScrap              Int                 @default(0)
+  hurdaSebebiKod        String?
+  plcSayacBaslangic     Int?
+  plcSayacBitis         Int?
   // FAZ 2 (IPRO_FAZ2_DELTA): kapanışta iş penceresindeki Σ delta özeti + hesabın kaynağı.
-  uretimAdet         Int? // makine sayacından gerçekleşen toplam (Σ delta veya çıkarma)
-  hesapKaynagi       String? // 'DELTA' (zaman serisi Σ) | 'CIKARMA' (bitiş−başlangıç) — audit marker
+  uretimAdet            Int? // makine sayacından gerçekleşen toplam (Σ delta veya çıkarma)
+  hesapKaynagi          String? // 'DELTA' (zaman serisi Σ) | 'CIKARMA' (bitiş−başlangıç) — audit marker
   // İş yaşam döngüsü: default KAPALI — mevcut/eski kayıtlar bitmiş sayılır.
   // "başla" endpoint'i ACIK üretir; "bitir"/"durdur" KAPALI'ya çeker.
-  durum              IproIsDurum         @default(KAPALI)
-  baslatildiAt       DateTime? // "başla" anı; açık iş için dolu
-  bitirildiAt        DateTime? // "bitir"/"durdur" anı; kapanınca dolu
-  tamamlandi         Boolean             @default(false) // ACIK dogar false; kiosk "bitir" is-bitir'de true yazar. Eski kayitlar true.
+  durum                 IproIsDurum         @default(KAPALI)
+  baslatildiAt          DateTime? // "başla" anı; açık iş için dolu
+  bitirildiAt           DateTime? // "bitir"/"durdur" anı; kapanınca dolu
+  tamamlandi            Boolean             @default(false) // ACIK dogar false; kiosk "bitir" is-bitir'de true yazar. Eski kayitlar true.
   // IFS geri-yazım — çift bayrak. reportQuantityComplete (iyi) + reportQuantityScrap (hurda)
   // AYRI action'lar; biri başarıp biri başarısız olabilir → ayrı izlenir.
   // Eski ifsYazildi/ifsHata şimdilik dokunulmadan duruyor (ileride temizlenir — ayrı iş).
-  ifsCompleteYazildi Boolean             @default(false) // iyi (qtyComplete) IFS'e gitti mi
-  ifsScrapYazildi    Boolean             @default(false) // hurda (qtyScrap) IFS'e gitti mi
-  ifsCompleteHata    String? // iyi yazım hatası
-  ifsScrapHata       String? // hurda yazım hatası
-  ifsYazildi         Boolean             @default(false)
-  ifsHata            String?
-  createdAt          DateTime            @default(now())
+  ifsCompleteYazildi    Boolean             @default(false) // iyi (qtyComplete) IFS'e gitti mi
+  ifsScrapYazildi       Boolean             @default(false) // hurda (qtyScrap) IFS'e gitti mi
+  ifsCompleteHata       String? // iyi yazım hatası
+  ifsScrapHata          String? // hurda yazım hatası
+  ifsYazildi            Boolean             @default(false)
+  ifsHata               String?
+  createdAt             DateTime            @default(now())
 
+  // MAS ayna idempotency: aynı MAS üretim+iş emri+operasyon iki kez yazılmasın.
+  // Nullable alanlar → non-MAS (kiosk) kayıtlar NULL kalır, Postgres NULL'ları unique saymaz (çakışmaz).
+  @@unique([masProductionMasterId, ifsOrderNo, ifsOperationNo], map: "ipro_prodlog_mas_uq")
   @@index([tezgahId, createdAt])
   @@index([ifsYazildi])
   @@index([ifsCompleteYazildi])
   @@index([sessionId])
   @@index([personnelId, ifsOrderNo, ifsOperationNo])
   @@index([masProductionMasterId], map: "ipro_prodlog_mas_idx")
-  // MAS ayna idempotency: aynı MAS üretim+iş emri+operasyon iki kez yazılmasın.
-  // Nullable alanlar → non-MAS (kiosk) kayıtlar NULL kalır, Postgres NULL'ları unique saymaz (çakışmaz).
-  @@unique([masProductionMasterId, ifsOrderNo, ifsOperationNo], map: "ipro_prodlog_mas_uq")
   // Partial UNIQUE (açık iş tekilliği) Prisma @@unique ile ifade edilemez —
   // migration.sql'e ELLE eklenir: WHERE durum = 'ACIK'.
   @@map("ipro_production_log")
@@ -14680,22 +14706,22 @@ enum InvoiceCurrency {
 }
 
 model Invoice {
-  id            String          @id @default(cuid())
-  invoiceDate   DateTime        @db.Date
-  companyName   String
-  invoiceNumber String          @unique
-  amount        Decimal         @db.Decimal(14, 2)
-  currency      InvoiceCurrency @default(TRY)
-  exchangeRate  Decimal         @db.Decimal(10, 4)
-  amountTRY     Decimal         @db.Decimal(14, 2)
-  amountEUR     Decimal         @db.Decimal(14, 2)
+  id                  String          @id @default(cuid())
+  invoiceDate         DateTime        @db.Date
+  companyName         String
+  invoiceNumber       String          @unique
+  amount              Decimal         @db.Decimal(14, 2)
+  currency            InvoiceCurrency @default(TRY)
+  exchangeRate        Decimal         @db.Decimal(10, 4)
+  amountTRY           Decimal         @db.Decimal(14, 2)
+  amountEUR           Decimal         @db.Decimal(14, 2)
   // Bölüm (OrgUnit.id, Müdürlük seviyesi). null = "Genel".
   departmentOrgUnitId String?
   departmentName      String?
-  note          String?
-  createdById   String
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  note                String?
+  createdById         String
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   @@index([invoiceDate])
   @@index([departmentOrgUnitId])

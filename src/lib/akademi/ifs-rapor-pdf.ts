@@ -22,6 +22,7 @@ const SEVIYE_LABEL: Record<string, string> = {
   BASARILI: "Başarılı",
   EGITIM_GEREKLI: "Eğitim Gerekli",
   BASARISIZ: "Başarısız",
+  YENIDEN_DEGERLENDIRILECEK: "Yeniden Değerlendirilecek",
   DEGERLENDIRILMEDI: "Değerlendirilmedi",
 };
 
@@ -44,6 +45,7 @@ const SEVIYE_COLOR: Record<string, [number, number, number]> = {
   BASARILI: [22, 163, 74],
   EGITIM_GEREKLI: [202, 138, 4],
   BASARISIZ: [220, 38, 38],
+  YENIDEN_DEGERLENDIRILECEK: [37, 99, 235],
 };
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";

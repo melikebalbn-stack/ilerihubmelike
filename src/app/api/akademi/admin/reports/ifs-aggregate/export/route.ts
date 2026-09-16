@@ -54,6 +54,7 @@ const SEVIYE_LABEL: Record<string, string> = {
   BASARILI: "Başarılı",
   EGITIM_GEREKLI: "Eğitim Gerekli",
   BASARISIZ: "Başarısız",
+  YENIDEN_DEGERLENDIRILECEK: "Yeniden Değerlendirilecek",
   DEGERLENDIRILMEDI: "Değerlendirilmedi",
 };
 const seviyeText = (s: Seviye | null): string =>

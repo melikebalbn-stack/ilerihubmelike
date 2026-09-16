@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { ArrowLeft, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 import {
   BarChart,
   Bar,
@@ -38,11 +39,13 @@ const COLOR = {
   BASARISIZ: "#dc2626",
   PENDING: "#9ca3af",
   DEGERLENDIRILMEDI: "#9ca3af",
+  YENIDEN_DEGERLENDIRILECEK: "#2563eb",
 } as const;
 const SEVIYE_LABEL: Record<string, string> = {
   BASARILI: "Başarılı",
   EGITIM_GEREKLI: "Eğitime İhtiyacı Var",
   BASARISIZ: "Başarısız",
+  YENIDEN_DEGERLENDIRILECEK: "Yeniden Değerlendirilecek",
   DEGERLENDIRILMEDI: "Değerlendirilmedi",
 };
 
@@ -78,6 +81,7 @@ interface KisiRow {
   pct: number;
   seviye: string | null;
   not: string | null;
+  sonEgitim: { tarih: string; egitmenAd: string } | null;
 }
 interface BolumData {
   mode: "bolum";
@@ -119,6 +123,12 @@ function SeviyeBadge({ seviye }: { seviye: string | null }) {
     return (
       <Badge variant="secondary">{SEVIYE_LABEL.DEGERLENDIRILMEDI}</Badge>
     );
+  if (seviye === "YENIDEN_DEGERLENDIRILECEK")
+    return (
+      <span className="inline-block rounded-full px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-800">
+        {SEVIYE_LABEL.YENIDEN_DEGERLENDIRILECEK}
+      </span>
+    );
   const variant =
     seviye === "BASARILI"
       ? "default"
@@ -140,6 +150,11 @@ export function IfsEvaluationReportTab() {
   const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
   // PR-IFS-RAPOR-2b: Bölüm Görünümü varsayılan; Paket Görünümü ikincil.
   const [view, setView] = useState<"bolum" | "paket">("bolum");
+  // "Eğitim Verildi" aksiyonu — yalnız ifs.evaluate / ifs.admin sahibine.
+  const { data: session } = useSession();
+  const perms = (session?.user as { permissions?: string[] } | undefined)?.permissions ?? [];
+  const canEvaluate = perms.includes("ifs.evaluate") || perms.includes("ifs.admin");
+
 
   useEffect(() => {
     fetch("/api/akademi/admin/courses?includeInactive=true")
@@ -394,7 +409,7 @@ export function IfsEvaluationReportTab() {
           ) : data.mode === "bolum" ? (
             <BolumView data={data} onDrill={(b) => setBolum(b)} />
           ) : (
-            <KisiView data={data} onBack={() => setBolum("")} />
+            <KisiView data={data} onBack={() => setBolum("")} courseId={courseId} canEvaluate={canEvaluate} onSaved={load} />
           )}
         </>
       )}
@@ -516,10 +531,39 @@ function BolumView({
 function KisiView({
   data,
   onBack,
+  courseId,
+  canEvaluate,
+  onSaved,
 }: {
   data: KisiData;
   onBack: () => void;
+  courseId: string;
+  canEvaluate: boolean;
+  onSaved: () => void;
 }) {
+  const [egitimAcik, setEgitimAcik] = useState<string | null>(null); // userId
+  const [egitimTarih, setEgitimTarih] = useState(new Date().toISOString().slice(0, 10));
+  const [egitimNot, setEgitimNot] = useState("");
+  const [egitimKaydediyor, setEgitimKaydediyor] = useState(false);
+
+  async function egitimVerildiKaydet(userId: string) {
+    if (!courseId) return;
+    setEgitimKaydediyor(true);
+    try {
+      const r = await fetch("/api/akademi/admin/reports/ifs-egitim-verildi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, courseId, tarih: egitimTarih, not: egitimNot || null }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { toast.error(d.error ?? "Kayıt başarısız"); setEgitimKaydediyor(false); return; }
+      toast.success("Eğitim kaydedildi — ders yeniden değerlendirilecek");
+      setEgitimAcik(null); setEgitimNot(""); setEgitimTarih(new Date().toISOString().slice(0, 10));
+      setEgitimKaydediyor(false);
+      onSaved();
+    } catch { toast.error("Ağ hatası"); setEgitimKaydediyor(false); }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
@@ -581,7 +625,44 @@ function KisiView({
                       %{u.pct}
                     </td>
                     <td className="px-4 py-3">
-                      <SeviyeBadge seviye={u.seviye} />
+                      <div className="flex flex-col gap-1">
+                        <SeviyeBadge seviye={u.seviye} />
+                        {u.sonEgitim && (
+                          <span className="text-[11px] text-blue-700">
+                            Eğitim: {u.sonEgitim.tarih.split("-").reverse().join(".")} · {u.sonEgitim.egitmenAd}
+                          </span>
+                        )}
+                        {canEvaluate && u.seviye === "EGITIM_GEREKLI" && egitimAcik !== u.userId && (
+                          <button
+                            type="button"
+                            className="self-start text-[11px] font-medium text-[#1B4F72] underline"
+                            onClick={() => { setEgitimAcik(u.userId); setEgitimTarih(new Date().toISOString().slice(0, 10)); setEgitimNot(""); }}
+                          >
+                            Eğitim Verildi
+                          </button>
+                        )}
+                        {canEvaluate && egitimAcik === u.userId && (
+                          <div className="mt-1 flex flex-col gap-1 rounded border p-2 bg-slate-50">
+                            <label className="text-[11px] text-slate-600">Tarih
+                              <input type="date" value={egitimTarih} onChange={(e) => setEgitimTarih(e.target.value)}
+                                className="mt-0.5 block h-7 w-full rounded border px-1 text-xs" />
+                            </label>
+                            <label className="text-[11px] text-slate-600">Not (opsiyonel)
+                              <input type="text" value={egitimNot} onChange={(e) => setEgitimNot(e.target.value)}
+                                className="mt-0.5 block h-7 w-full rounded border px-1 text-xs" placeholder="eğitim notu" />
+                            </label>
+                            <div className="flex gap-1">
+                              <button type="button" disabled={egitimKaydediyor}
+                                className="rounded bg-[#1B4F72] px-2 py-0.5 text-[11px] text-white disabled:opacity-50"
+                                onClick={() => egitimVerildiKaydet(u.userId)}>
+                                {egitimKaydediyor ? "..." : "Kaydet"}
+                              </button>
+                              <button type="button" className="rounded border px-2 py-0.5 text-[11px]"
+                                onClick={() => setEgitimAcik(null)}>Vazgeç</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td
                       className="px-4 py-3 text-xs"

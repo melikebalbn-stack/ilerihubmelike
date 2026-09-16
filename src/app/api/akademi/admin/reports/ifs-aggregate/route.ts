@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
         pct: k.pct,
         seviye: k.seviye,
         not: k.not,
+        sonEgitim: k.sonEgitim,
       })),
     });
   }

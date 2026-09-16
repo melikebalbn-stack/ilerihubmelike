@@ -110,6 +110,21 @@ export const listLeavingCauses = () => tumu<IfsLeavingCause>(`${LC_SET_AYRILMA}?
 export const createLeavingCause = (g: Record<string, unknown>) => istek(LC_SET_AYRILMA, { method: 'POST', body: JSON.stringify(g) })
 export const patchLeavingCause = (id: number, g: Record<string, unknown>, etag: string) => istek(ayrilmaAnahtari(id), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': etag } })
 
+// ── Çalışan statüsü ──────────────────────────────────────────────────────
+/**
+ * Okuma: EmployeesHandling.AllStatuses (LOV, grant var). Yazma: EmployeeStatusHandling.EmployeeStatuses
+ * (key CompanyId+SeqNo; 16.09 GET 403 → ILERIHUB_SHOPFLOOR'a EmployeeStatusHandling grant'i gerekiyor).
+ */
+export interface IfsEmployeeStatus { CompanyId: string; SeqNo: number; EmployeeStatus: string; Active: boolean | null; Preliminary?: boolean | null; StatusObsolete?: boolean | null; BusPlanInclude?: boolean | null; '@odata.etag'?: string }
+const ES_SET = 'EmployeeStatusHandling.svc/EmployeeStatuses'
+export const statuAnahtari = (seqNo: number) => `${ES_SET}(CompanyId='${IFS_COMPANY}',SeqNo=${seqNo})`
+export const listEmployeeStatuses = () => tumu<IfsEmployeeStatus>(`EmployeesHandling.svc/AllStatuses?$filter=${enc(`CompanyId eq '${IFS_COMPANY}'`)}&$top=100`)
+export const createEmployeeStatus = (g: Record<string, unknown>) => istek(ES_SET, { method: 'POST', body: JSON.stringify({ CompanyId: IFS_COMPANY, ...g }) })
+export const patchEmployeeStatus = async (seqNo: number, g: Record<string, unknown>) => {
+  const mevcut = await istek<IfsEmployeeStatus>(statuAnahtari(seqNo)) // ETag yazma projeksiyonundan alınır (LOV ETag'i geçersiz)
+  return istek(statuAnahtari(seqNo), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': mevcut.etag ?? '*' } })
+}
+
 // ── Org birimi ───────────────────────────────────────────────────────────
 export interface IfsOrg { OrgCode: string; OrgName: string; SupOrgCode: string | null; ValidFrom: string; ValidTo: string; OrgType?: string | null; '@odata.etag'?: string }
 const ORG_SET = 'OrganizationUnitsHandling.svc/CompanyOrgAlls'

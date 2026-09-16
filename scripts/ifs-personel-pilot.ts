@@ -18,7 +18,7 @@ import { prisma } from '../src/lib/prisma'
 import { planla, planOzetiMetni } from '../src/lib/ifs/personel-sync/plan'
 import { uygula } from '../src/lib/ifs/personel-sync/uygula'
 import { BellekKuyruk } from '../src/lib/ifs/personel-sync/kuyruk'
-import { ayrilmaAnahtari, getEmployee, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
+import { ayrilmaAnahtari, listEmployeeStatuses, getEmployee, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
 
 const arg = (ad: string) => { const i = process.argv.indexOf(ad); return i >= 0 ? process.argv[i + 1] : undefined }
 const YAZ = process.argv.includes('--yaz')
@@ -52,6 +52,7 @@ async function main() {
       let ok = false, detay = ''
       try {
         if (k.varlik === 'AYRILMA_NEDENI') { const { body } = await istek<{ LeavingCauseType: string; LeavingInitiatedBy: string }>(ayrilmaAnahtari(Number(k.ifsAnahtar))); ok = body.LeavingCauseType === (k.govde?.LeavingCauseType ?? body.LeavingCauseType); detay = `${body.LeavingCauseType} · ${body.LeavingInitiatedBy}` }
+        else if (k.varlik === 'CALISAN_STATUSU') { const l = await listEmployeeStatuses(); const b = l.find((x) => x.EmployeeStatus === k.hubId); ok = !!b && b.Active === (k.govde?.Active ?? b.Active); detay = b ? `seq=${b.SeqNo} aktif=${b.Active} prelim=${b.Preliminary}` : 'YOK' }
         else if (k.varlik === 'ORG') { const { body } = await istek<IfsOrg>(orgAnahtari(k.ifsAnahtar)); ok = body.OrgName === (k.govde?.OrgName ?? body.OrgName); detay = `${body.OrgName} sup=${body.SupOrgCode}` }
         else if (k.varlik === 'POZISYON') { const { body } = await istek<IfsPos>(posAnahtari(k.ifsAnahtar)); ok = body.PositionTitle === (k.govde?.PositionTitle ?? body.PositionTitle); detay = body.PositionTitle }
         else if (k.varlik === 'LABOR_CLASS') { const { body } = await istek<{ value?: Array<{ LaborClassNo: string }> }>(`ShopFloorEmployeesHandling.svc/Reference_LaborClass?$filter=Contract%20eq%20'ILER2'%20and%20LaborClassNo%20eq%20'${k.ifsAnahtar}'`); ok = (body.value?.length ?? 0) > 0; detay = ok ? 'var' : 'yok' }

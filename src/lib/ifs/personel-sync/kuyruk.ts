@@ -29,7 +29,7 @@ export interface KuyrukDeposu {
   sonuc(k: Pick<KuyrukKaydi, 'varlikTipi' | 'hubId'>, s: { durum: KuyrukDurumu; islem?: Islem; ifsAnahtar?: string; hata?: string | null }): Promise<void>
 }
 
-const SIRA: VarlikTipi[] = ['AYRILMA_NEDENI', 'ORG', 'POZISYON', 'LABOR_CLASS', 'EMPLOYEE', 'SF_EMPLOYEE', 'SF_SITE']
+const SIRA: VarlikTipi[] = ['AYRILMA_NEDENI', 'CALISAN_STATUSU', 'ORG', 'POZISYON', 'LABOR_CLASS', 'EMPLOYEE', 'SF_EMPLOYEE', 'SF_SITE']
 
 export class PrismaKuyruk implements KuyrukDeposu {
   constructor(private readonly db: typeof PrismaTip) {}

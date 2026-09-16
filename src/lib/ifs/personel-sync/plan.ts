@@ -2,7 +2,7 @@
  * Hub → IFS personel senkronu — PLANLAYICI (faz 1). Yazmaz.
  *
  * Hub'ı ve IFS'in güncel durumunu okur, varlık sırasıyla ne yapılacağını hesaplar:
- *   AYRILMA_NEDENI (SGK kodları, temel veri) → ORG (üstten alta) → POZISYON → LABOR_CLASS → EMPLOYEE (önce PASIF) → SF_EMPLOYEE → SF_SITE
+ *   AYRILMA_NEDENI (SGK kodları) → CALISAN_STATUSU (AYRILDI) → ORG (üstten alta) → POZISYON → LABOR_CLASS → EMPLOYEE (önce PASIF) → SF_EMPLOYEE → SF_SITE
  * Her kalem CREATE | UPDATE | PASIF | NOOP | ATLA. ATLA'nın sebebi her zaman yazılır
  * (koltuksuz kişi, kod sınırı, yeniden-aktif, labor class yok…). Uygulayıcı
  * (uygula.ts) bu planı sırayla yürütür; dryRun = plan çıktısının kendisi.
@@ -14,14 +14,15 @@ import {
   laborClassAciklamasi, laborClassKodu, orgKodu, posKodu, sicilSenkronKapsamindaMi, type KaynakTuru,
 } from './kodlar'
 import {
-  IfsSyncHatasi, listEmployees, listLaborClasses, listLeavingCauses, listOrgs, listPositions, listSfEmployees, listSfSites,
-  type IfsEmployee, type IfsLaborClass, type IfsLeavingCause, type IfsOrg, type IfsPos, type IfsSfEmployee, type IfsSfSite,
+  IfsSyncHatasi, listEmployeeStatuses, listEmployees, listLaborClasses, listLeavingCauses, listOrgs, listPositions, listSfEmployees, listSfSites,
+  type IfsEmployee, type IfsEmployeeStatus, type IfsLaborClass, type IfsLeavingCause, type IfsOrg, type IfsPos, type IfsSfEmployee, type IfsSfSite,
 } from './ifs-api'
 import { SGK_CIKIS_KODLARI, sgkBaslatan } from '@/lib/sgk-cikis-kodlari'
+import { IFS_CALISAN_STATULERI } from './kodlar'
 
-export type VarlikTipi = 'AYRILMA_NEDENI' | 'ORG' | 'POZISYON' | 'LABOR_CLASS' | 'EMPLOYEE' | 'SF_EMPLOYEE' | 'SF_SITE'
+export type VarlikTipi = 'AYRILMA_NEDENI' | 'CALISAN_STATUSU' | 'ORG' | 'POZISYON' | 'LABOR_CLASS' | 'EMPLOYEE' | 'SF_EMPLOYEE' | 'SF_SITE'
 export type Islem = 'CREATE' | 'UPDATE' | 'PASIF' | 'NOOP' | 'ATLA'
-export const VARLIK_SIRASI: VarlikTipi[] = ['AYRILMA_NEDENI', 'ORG', 'POZISYON', 'LABOR_CLASS', 'EMPLOYEE', 'SF_EMPLOYEE', 'SF_SITE']
+export const VARLIK_SIRASI: VarlikTipi[] = ['AYRILMA_NEDENI', 'CALISAN_STATUSU', 'ORG', 'POZISYON', 'LABOR_CLASS', 'EMPLOYEE', 'SF_EMPLOYEE', 'SF_SITE']
 
 export interface PlanKalemi {
   varlik: VarlikTipi
@@ -224,6 +225,24 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
       else {
         const f = fark(m as unknown as Record<string, unknown>, hedef)
         kalemler.push({ varlik: 'AYRILMA_NEDENI', hubId: k.kod, ifsAnahtar: String(id), etiket, islem: Object.keys(f).length ? 'UPDATE' : 'NOOP', fark: f, govde: Object.fromEntries(Object.entries(f).map(([a, v]) => [a, v.yeni])), etag: m['@odata.etag'] ?? null })
+      }
+    }
+  }
+
+  // ── CALISAN_STATUSU: AYRILDI (okuma LOV'dan; yazma EmployeeStatusHandling, grant bekliyor olabilir) ──
+  if (!sec.hedefler || sec.hedefler.CALISAN_STATUSU) {
+    let statuler: IfsEmployeeStatus[] = []
+    try { statuler = await listEmployeeStatuses() } catch (e) { uyarilar.push(`CALISAN_STATUSU okunamadı: ${(e as Error).message}`) }
+    const enBuyukSeq = statuler.reduce((m, s) => Math.max(m, Number(s.SeqNo) || 0), 0)
+    let sonrakiSeq = enBuyukSeq + 1
+    for (const st of IFS_CALISAN_STATULERI) {
+      const m = statuler.find((s) => s.EmployeeStatus === st.EmployeeStatus)
+      const hedef = { Active: st.Active, Preliminary: st.Preliminary, StatusObsolete: st.StatusObsolete }
+      const etiket = `Statü ${st.EmployeeStatus} (aktif=${st.Active})`
+      if (!m) kalemler.push({ varlik: 'CALISAN_STATUSU', hubId: st.EmployeeStatus, ifsAnahtar: String(sonrakiSeq++), etiket, islem: 'CREATE', govde: { SeqNo: sonrakiSeq - 1, EmployeeStatus: st.EmployeeStatus, ...hedef, BusPlanInclude: st.BusPlanInclude } })
+      else {
+        const f = fark(m as unknown as Record<string, unknown>, hedef)
+        kalemler.push({ varlik: 'CALISAN_STATUSU', hubId: st.EmployeeStatus, ifsAnahtar: String(m.SeqNo), etiket, islem: Object.keys(f).length ? 'UPDATE' : 'NOOP', fark: f, govde: Object.fromEntries(Object.entries(f).map(([a, v]) => [a, v.yeni])) })
       }
     }
   }

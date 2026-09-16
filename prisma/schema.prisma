@@ -14756,7 +14756,7 @@ model TcmbRateCache {
 // ============================================================
 model IfsPersonelSyncKayit {
   id           String    @id @default(cuid())
-  varlikTipi   String // 'AYRILMA_NEDENI' | 'ORG' | 'POZISYON' | 'LABOR_CLASS' | 'EMPLOYEE' | 'SF_EMPLOYEE' | 'SF_SITE'
+  varlikTipi   String // 'AYRILMA_NEDENI' | 'CALISAN_STATUSU' | 'ORG' | 'POZISYON' | 'LABOR_CLASS' | 'EMPLOYEE' | 'SF_EMPLOYEE' | 'SF_SITE'
   hubId        String // DepartmentDefinition.id / OrgUnit.id / Personnel.id
   ifsAnahtar   String? // OrgCode / PosCode / LaborClassNo / EmpNo
   durum        String    @default("BEKLIYOR") // 'BEKLIYOR' | 'ISLENDI' | 'HATA' | 'ATLANDI'

@@ -8,6 +8,7 @@ import type { prisma as PrismaTip } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
 import { IfsSyncHatasi, atamaDegistir, createEmployee, createEmployeeStatus, createLaborClass, createLeavingCause, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchEmployeeStatus, patchLaborClass, patchLeavingCause, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
 import type { KuyrukDeposu } from './kuyruk'
+import { IFS_SYNC_AKTOR_ID } from './kodlar'
 import type { PlanKalemi, SenkronPlani } from './plan'
 
 export interface KalemSonucu extends Pick<PlanKalemi, 'varlik' | 'hubId' | 'ifsAnahtar' | 'etiket' | 'islem' | 'sebep'> {
@@ -61,6 +62,14 @@ export async function uygula(
   opts: { dryRun: boolean; kuyruk?: KuyrukDeposu; actorId?: string },
 ): Promise<UygulamaSonucu> {
   const sonuclar: KalemSonucu[] = []
+  // Denetim aktörü GERÇEK bir User olmalı (FK). Yoksa denetim atlanır — yazım etkilenmez.
+  const aktorId = opts.actorId ?? IFS_SYNC_AKTOR_ID
+  const aktorVar = !opts.dryRun && !!(await db.user.findUnique({ where: { id: aktorId }, select: { id: true } }))
+  if (!opts.dryRun && !aktorVar) console.warn(`[ifs-personel-sync] denetim aktörü '${aktorId}' User tablosunda yok — permission_audit_log satırları ATLANIYOR`)
+  const denetim = async (targetId: string, details: Record<string, unknown>) => {
+    if (!aktorVar) return
+    await logAuditEvent({ action: AUDIT_ACTION, actorId: aktorId, targetType: 'IFS_PERSONEL_SYNC', targetId, details })
+  }
   const hataliAnahtarlar = new Set<string>() // aynı kişide EMPLOYEE hata aldıysa SF katmanlarını deneme
   const hataliLc = new Set<string>()
   for (const k of plan.kalemler) {
@@ -81,10 +90,7 @@ export async function uygula(
       const http = await yaz(k)
       sonuclar.push({ ...temel, durum: 'YAZILDI', http })
       await opts.kuyruk?.sonuc(kk, { durum: 'ISLENDI', islem: k.islem, ifsAnahtar: k.ifsAnahtar })
-      await logAuditEvent({
-        action: AUDIT_ACTION, actorId: opts.actorId ?? 'cron:ifs-personel-sync', targetType: 'IFS_PERSONEL_SYNC', targetId: `${k.varlik}:${k.ifsAnahtar}`,
-        details: { varlik: k.varlik, hubId: k.hubId, islem: k.islem, etiket: k.etiket, govde: k.govde ?? null, fark: k.fark ?? null, http },
-      })
+      await denetim(`${k.varlik}:${k.ifsAnahtar}`, { varlik: k.varlik, hubId: k.hubId, islem: k.islem, etiket: k.etiket, govde: k.govde ?? null, fark: k.fark ?? null, http })
     } catch (e) {
       const hata = e instanceof IfsSyncHatasi ? `${e.status} ${e.detay}` : (e as Error).message
       const http = e instanceof IfsSyncHatasi ? e.status : undefined
@@ -92,10 +98,7 @@ export async function uygula(
       if (k.varlik === 'EMPLOYEE') hataliAnahtarlar.add(k.ifsAnahtar)
       if (k.varlik === 'LABOR_CLASS') hataliLc.add(k.ifsAnahtar)
       await opts.kuyruk?.sonuc(kk, { durum: 'HATA', islem: k.islem, ifsAnahtar: k.ifsAnahtar, hata })
-      await logAuditEvent({
-        action: AUDIT_ACTION, actorId: opts.actorId ?? 'cron:ifs-personel-sync', targetType: 'IFS_PERSONEL_SYNC', targetId: `${k.varlik}:${k.ifsAnahtar}`,
-        details: { varlik: k.varlik, hubId: k.hubId, islem: k.islem, etiket: k.etiket, govde: k.govde ?? null, hata, http },
-      })
+      await denetim(`${k.varlik}:${k.ifsAnahtar}`, { varlik: k.varlik, hubId: k.hubId, islem: k.islem, etiket: k.etiket, govde: k.govde ?? null, hata, http })
     }
   }
   const ozet = { yazildi: 0, hata: 0, atlandi: 0, noop: 0 }

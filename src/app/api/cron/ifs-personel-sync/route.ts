@@ -4,6 +4,7 @@ import { planla, planOzetiMetni, type VarlikTipi } from '@/lib/ifs/personel-sync
 import { uygula } from '@/lib/ifs/personel-sync/uygula'
 import { PrismaKuyruk } from '@/lib/ifs/personel-sync/kuyruk'
 import { ifsBaglanti } from '@/lib/ifs/personel-sync/ifs-api'
+import { IFS_SYNC_AKTOR_ID } from '@/lib/ifs/personel-sync/kodlar'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -46,7 +47,7 @@ async function handle(req: NextRequest) {
       for (const k of kuyrukKayitlari) (hedefler[k.varlikTipi] ??= new Set()).add(k.hubId)
     }
     const plan = await planla(prisma, siciller ? { siciller } : hedefler ? { hedefler } : {})
-    const sonuc = await uygula(prisma, plan, { dryRun, kuyruk: dryRun ? undefined : kuyruk, actorId: 'cron:ifs-personel-sync' })
+    const sonuc = await uygula(prisma, plan, { dryRun, kuyruk: dryRun ? undefined : kuyruk, actorId: IFS_SYNC_AKTOR_ID })
     console.log(`[ifs-personel-sync] ${dryRun ? 'DRY' : 'YAZ'} host=${hostTest ? 'test' : 'PROD'} kuyruk=${kuyrukKayitlari.length} yazıldı=${sonuc.ozet.yazildi} hata=${sonuc.ozet.hata} atlandı=${sonuc.ozet.atlandi}`)
     return NextResponse.json({
       ok: sonuc.ozet.hata === 0, dryRun, hostTest, kuyruk: kuyrukKayitlari.length, batch,

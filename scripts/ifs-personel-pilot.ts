@@ -20,6 +20,7 @@ import { prisma } from '../src/lib/prisma'
 import { planla, planOzetiMetni } from '../src/lib/ifs/personel-sync/plan'
 import { uygula } from '../src/lib/ifs/personel-sync/uygula'
 import { BellekKuyruk } from '../src/lib/ifs/personel-sync/kuyruk'
+import { IFS_SYNC_AKTOR_ID } from '../src/lib/ifs/personel-sync/kodlar'
 import { ayrilmaAnahtari, listEmployeeStatuses, getEmployee, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
 
 const arg = (ad: string) => { const i = process.argv.indexOf(ad); return i >= 0 ? process.argv[i + 1] : undefined }
@@ -53,7 +54,7 @@ async function main() {
 
   const kuyruk = new BellekKuyruk()
   await kuyruk.ekle(plan.kalemler.map((k) => ({ varlikTipi: k.varlik, hubId: k.hubId, tetik: 'PILOT' })))
-  const sonuc = await uygula(prisma, plan, { dryRun: !YAZ, kuyruk, actorId: 'pilot:ifs-personel-sync' })
+  const sonuc = await uygula(prisma, plan, { dryRun: !YAZ, kuyruk, actorId: IFS_SYNC_AKTOR_ID })
   console.log(`\nUygulama (${sonuc.dryRun ? 'KURU' : 'GERÇEK'}): yazıldı ${sonuc.ozet.yazildi} · hata ${sonuc.ozet.hata} · atlandı ${sonuc.ozet.atlandi} · noop ${sonuc.ozet.noop}`)
   for (const s of sonuc.kalemler.filter((x) => x.durum === 'HATA')) console.log(`  ✗ ${s.varlik} ${s.ifsAnahtar}: ${s.hata}`)
 

@@ -184,3 +184,11 @@ export function ifsTarih(d: Date | string | null | undefined): string | null {
 export function sicilSenkronKapsamindaMi(sicilNo: string | null | undefined): sicilNo is string {
   return typeof sicilNo === 'string' && sicilNo.startsWith(SICIL_ONEKI)
 }
+
+/**
+ * Denetim aktörü — permission_audit_log.actor_id User FK'sıdır; 'cron:…' gibi
+ * sahte id'ler FK'ya takılıp satırı sessizce düşürüyordu (16.09: 548+38 kayıt kayboldu).
+ * Sistem hesabı (User.id = 'sistem', isActive=false, rolsüz, ldap-sync 'ad_' dışını
+ * ellemez) oluşturulana kadar aktör yoksa denetim satırı ATLANIR, tek uyarı basılır.
+ */
+export const IFS_SYNC_AKTOR_ID = process.env.IFS_SYNC_AKTOR_ID ?? 'sistem'

@@ -40,6 +40,8 @@ interface Aksiyon {
   completionPercent: number | null
   status: string
   responsibleName: string | null
+  startDate: string | null
+  endDate: string | null
 }
 
 interface Baseline {
@@ -136,6 +138,9 @@ function AksiyonEkleDialog({ kpiId, onCreated }: { kpiId: string; onCreated: () 
   const [reason, setReason] = useState('')
   const [action, setAction] = useState('')
   const [responsibleId, setResponsibleId] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [completionPercent, setCompletionPercent] = useState('0')
   const [adaylar, setAdaylar] = useState<SorumluAday[]>([])
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
@@ -154,10 +159,17 @@ function AksiyonEkleDialog({ kpiId, onCreated }: { kpiId: string; onCreated: () 
       const res = await fetch(`/api/sandbox/melike/kpi/${kpiId}/aksiyon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason, action, responsibleId: responsibleId || null }),
+        body: JSON.stringify({
+          reason,
+          action,
+          responsibleId: responsibleId || null,
+          startDate: startDate || null,
+          endDate: endDate || null,
+          completionPercent: completionPercent === '' ? 0 : Number(completionPercent),
+        }),
       })
       if (res.ok) {
-        setReason(''); setAction(''); setResponsibleId('')
+        setReason(''); setAction(''); setResponsibleId(''); setStartDate(''); setEndDate(''); setCompletionPercent('0')
         setAcik(false)
         onCreated()
       }
@@ -203,6 +215,26 @@ function AksiyonEkleDialog({ kpiId, onCreated }: { kpiId: string; onCreated: () 
                 )}
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Label>Başlangıç Tarihi</Label>
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="flex-1">
+              <Label>Bitiş Tarihi</Label>
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Tamamlanma Yüzdesi</Label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={completionPercent}
+              onChange={e => setCompletionPercent(e.target.value)}
+            />
           </div>
         </div>
         <DialogFooter>
@@ -264,7 +296,9 @@ function DuzenlenebilirHucre({
   )
 }
 
-function KpiVeriTablosu({ kpi, yillar, onChanged }: { kpi: Kpi; yillar: number[]; onChanged: () => void }) {
+function KpiVeriTablosu({
+  kpi, yillar, onChanged, aktifYil, onAktifYilChange,
+}: { kpi: Kpi; yillar: number[]; onChanged: () => void; aktifYil: number | null; onAktifYilChange: (y: number) => void }) {
   const [ekstraYillar, setEkstraYillar] = useState<number[]>([])
   const tumYillar = useMemo(
     () => Array.from(new Set([...yillar, ...ekstraYillar])).sort((a, b) => b - a),
@@ -273,10 +307,10 @@ function KpiVeriTablosu({ kpi, yillar, onChanged }: { kpi: Kpi; yillar: number[]
 
   // Aktif dönem: aynı anda sadece İKİ yıl (aktif + bir önceki) karşılaştırılır,
   // geçmiş tüm yıllar alt alta gösterilmez — yukarıdaki düğmelerle dönem değiştirilir.
-  const [aktifYil, setAktifYil] = useState<number | null>(null)
+  // (aktifYil üst bileşende tutulur ki Aksiyonlar listesi de aynı döneme göre filtrelenebilsin.)
   useEffect(() => {
-    if (aktifYil == null && tumYillar.length > 0) setAktifYil(tumYillar[0])
-  }, [aktifYil, tumYillar])
+    if (aktifYil == null && tumYillar.length > 0) onAktifYilChange(tumYillar[0])
+  }, [aktifYil, tumYillar, onAktifYilChange])
   const gosterilenYillar = aktifYil == null ? [] : [aktifYil, aktifYil - 1]
 
   // Ortalama sütunu: aylık verisi olan yıllar için KENDİSİ hesaplanır (elle
@@ -320,7 +354,7 @@ function KpiVeriTablosu({ kpi, yillar, onChanged }: { kpi: Kpi; yillar: number[]
               variant={y === aktifYil ? 'default' : 'outline'}
               className="h-7 text-xs"
               style={y === aktifYil ? { backgroundColor: NAVY } : undefined}
-              onClick={() => setAktifYil(y)}
+              onClick={() => onAktifYilChange(y)}
             >
               {y} vs {y - 1}
             </Button>
@@ -333,7 +367,7 @@ function KpiVeriTablosu({ kpi, yillar, onChanged }: { kpi: Kpi; yillar: number[]
           onClick={() => {
             const yeniYil = (tumYillar[0] ?? new Date().getFullYear() - 1) + 1
             setEkstraYillar(prev => [...prev, yeniYil])
-            setAktifYil(yeniYil)
+            onAktifYilChange(yeniYil)
           }}
         >
           <PlusCircle className="h-3 w-3 mr-1" />
@@ -464,6 +498,21 @@ export default function MelikeKpiPage() {
     return Array.from(new Set(secili.measurements.map(m => m.year))).sort((a, b) => b - a)
   }, [secili])
 
+  // Aksiyonlar listesinin de tablo ile aynı aktif döneme göre filtrelenebilmesi
+  // için aktif yıl burada (üst bileşende) tutuluyor.
+  const [aktifYil, setAktifYil] = useState<number | null>(null)
+  useEffect(() => { setAktifYil(null) }, [secili?.id])
+  const gosterilenYillar = aktifYil == null ? [] : [aktifYil, aktifYil - 1]
+  const donemAksiyonlari = useMemo(() => {
+    if (!secili) return []
+    if (aktifYil == null) return secili.actions
+    return secili.actions.filter(a => {
+      if (!a.startDate) return true
+      const yil = new Date(a.startDate).getFullYear()
+      return gosterilenYillar.includes(yil)
+    })
+  }, [secili, aktifYil, gosterilenYillar])
+
 // Tek grafik: solda geçmiş yılların ortalaması (Ort. sütunları), sağında
   // en güncel iki yılın ay-ay karşılaştırması (sütun) + hedef çizgisi — hepsi
   // aynı x ekseninde yan yana (Excel'deki orijinal grafik gibi).
@@ -578,7 +627,14 @@ export default function MelikeKpiPage() {
                   {yillar.length > 0 && (
                     <div className="mt-4 pt-4 border-t">
                       <p className="text-xs text-muted-foreground mb-2">Hücreye tıklayıp değeri düzenleyebilirsin</p>
-                      <KpiVeriTablosu key={secili.id} kpi={secili} yillar={yillar} onChanged={yukle} />
+                      <KpiVeriTablosu
+                        key={secili.id}
+                        kpi={secili}
+                        yillar={yillar}
+                        onChanged={yukle}
+                        aktifYil={aktifYil}
+                        onAktifYilChange={setAktifYil}
+                      />
                     </div>
                   )}
                 </CardContent>
@@ -586,12 +642,17 @@ export default function MelikeKpiPage() {
 
               <Card>
                 <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                  <CardTitle className="text-base">Aksiyonlar</CardTitle>
+                  <div>
+                    <CardTitle className="text-base">Aksiyonlar</CardTitle>
+                    {aktifYil != null && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{aktifYil} vs {aktifYil - 1} dönemine ait</p>
+                    )}
+                  </div>
                   <AksiyonEkleDialog kpiId={secili.id} onCreated={yukle} />
                 </CardHeader>
                 <CardContent>
-                  {secili.actions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-4">Bu KPI için aksiyon kaydı yok</p>
+                  {donemAksiyonlari.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4">Bu dönem için aksiyon kaydı yok</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -600,15 +661,19 @@ export default function MelikeKpiPage() {
                             <th className="pb-2 pr-4">Neden</th>
                             <th className="pb-2 pr-4">Aksiyon</th>
                             <th className="pb-2 pr-4">Sorumlu</th>
+                            <th className="pb-2 pr-4">Başlangıç</th>
+                            <th className="pb-2 pr-4">Bitiş</th>
                             <th className="pb-2 pr-4">Tamamlanma</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {secili.actions.map(a => (
+                          {donemAksiyonlari.map(a => (
                             <tr key={a.id} className="border-b last:border-0">
                               <td className="py-2 pr-4">{a.reason ?? '—'}</td>
                               <td className="py-2 pr-4">{a.action ?? '—'}</td>
                               <td className="py-2 pr-4">{a.responsibleName ?? '—'}</td>
+                              <td className="py-2 pr-4">{a.startDate ? new Date(a.startDate).toLocaleDateString('tr-TR') : '—'}</td>
+                              <td className="py-2 pr-4">{a.endDate ? new Date(a.endDate).toLocaleDateString('tr-TR') : '—'}</td>
                               <td className="py-2 pr-4">%{a.completionPercent ?? 0}</td>
                             </tr>
                           ))}

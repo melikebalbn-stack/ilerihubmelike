@@ -81,6 +81,7 @@ type Detay = {
   sinyalli: boolean
   durum: Durum
   aktifIs: IsSatiri | null
+  aktifIsler: IsSatiri[] // TÜM açık işler (paralel iş emirleri); tek iş → 1 eleman
   durus: Durus | null
   bugunKapanan: IsSatiri[]
   bugunDuruslar: DurusSatiri[]
@@ -115,6 +116,12 @@ function dkBicim(dk: number): string {
   if (dk < 1) return '0dk'
   if (dk < 60) return `${dk}dk`
   return `${Math.floor(dk / 60)}s ${dk % 60}dk`
+}
+// Geçen süre — baslatildiAt gelecekteyse/geçersizse "—" (negatif süre gösterme; TZ sapması güvenliği).
+function gecenSureBicim(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const ms = Date.now() - new Date(iso).getTime()
+  return ms >= 0 ? sureBicim(ms) : '—'
 }
 const trTarih2 = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('tr-TR') : '—')
 const trSaat = (iso: string | null) =>
@@ -190,13 +197,14 @@ export function TezgahDetayModal({
   const [, tik] = useState(0)
   // Uzaktan başlatma / bitirme paneli açık mı + başarı sonrası detay yenileme sayacı.
   const [baslatModu, setBaslatModu] = useState(false)
-  const [bitirModu, setBitirModu] = useState(false)
+  // Bitirilmekte olan işin productionLogId'si (çoklu işte her işin kendi butonu → yanlış işi bitirme yok).
+  const [bitirId, setBitirId] = useState<string | null>(null)
   const [yenile, setYenile] = useState(0)
 
   // Tezgah değişince panelleri kapat (bir önceki tezgahtan taşınmasın).
   useEffect(() => {
     setBaslatModu(false)
-    setBitirModu(false)
+    setBitirId(null)
   }, [seciliTezgah])
 
   useEffect(() => {
@@ -226,7 +234,9 @@ export function TezgahDetayModal({
   const acik = !!seciliTezgah
   const tanimsiz = acik && !iproId
   const aktif = detay?.aktifIs
-  const aktifSure = aktif?.baslatildiAt ? sureBicim(Date.now() - new Date(aktif.baslatildiAt).getTime()) : '—'
+  const aktifIsler = detay?.aktifIsler ?? []
+  const cokluIs = aktifIsler.length > 1
+  const aktifSure = gecenSureBicim(aktif?.baslatildiAt)
   const durusSure = detay?.durus ? sureBicim(Date.now() - new Date(detay.durus.baslangicAt).getTime()) : null
   const sd = detay?.sureDagilimi
   const toplamDurusDk =
@@ -334,6 +344,58 @@ export function TezgahDetayModal({
                   <span className="font-mono text-lg text-red-600">{durusSure}</span>
                 </div>
               </div>
+            ) : cokluIs ? (
+              // ÇOKLU İŞ: aynı tezgahta paralel iş emirleri. Her iş kendi kartında + kendi "bitir"
+              // butonu (yanlış işi bitirme yok). Performans çoklu işte atlanır (izleme ile aynı metin).
+              <div>
+                <div className="mb-2 flex items-baseline justify-between">
+                  <span className="text-lg font-bold text-slate-800">{aktifIsler.length} açık iş (paralel)</span>
+                  <span className="text-xs font-medium text-amber-600">performans çoklu iş nedeniyle atlanır</span>
+                </div>
+                <div className="space-y-2">
+                  {aktifIsler.map((is) => (
+                    <div key={is.id} className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+                      <div className="mb-1.5 flex items-baseline justify-between">
+                        <span className="font-semibold text-slate-800">👤 {is.operator ?? '—'}</span>
+                        <span className="font-mono text-sm font-semibold text-emerald-600">{gecenSureBicim(is.baslatildiAt)}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+                        <Alan2 e="İş emri" d={`${is.ifsOrderNo ?? '—'} · Op ${is.ifsOperationNo ?? '—'}`} />
+                        <Alan2 e="Malzeme" d={is.ifsPartNo ?? '—'} alt={is.ifsPartDescription ?? undefined} />
+                        <Alan2 e="Planlanan adet" d={is.ifsQtyDue != null ? String(is.ifsQtyDue) : '—'} />
+                        <Alan2 e="Teslim" d={trTarih2(is.ifsDueDate)} />
+                        <Alan2 e="Başlangıç" d={is.baslatildiAt ? new Date(is.baslatildiAt).toLocaleTimeString('tr-TR') : '—'} />
+                        <Alan2 e="Tamamlanan" d={String(is.qtyComplete)} />
+                      </div>
+                      {canAdmin && iproId && detay.durum !== 'durusta' && (
+                        bitirId === is.id ? (
+                          <div className="mt-3">
+                            <UzaktanBitirPanel
+                              productionLogId={is.id}
+                              tezgahKod={detay.kod}
+                              plcToplam={null}
+                              onIptal={() => setBitirId(null)}
+                              onBasarili={() => {
+                                setBitirId(null)
+                                setYenile((n) => n + 1)
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <Button
+                            onClick={() => setBitirId(is.id)}
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                          >
+                            <CheckCircle2 className="h-4 w-4" /> Bu işi bitir
+                          </Button>
+                        )
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : aktif ? (
               <div>
                 <div className="mb-3 flex items-baseline justify-between">
@@ -381,21 +443,21 @@ export function TezgahDetayModal({
 
             {/* İşi bitir — yalnız ipro.admin, IPRO tanımlı tezgahta, açık iş VARKEN, duruş YOKKEN.
                 Canlı sayaç üretimini ön dolgu olarak geçer; POST /api/terminal/uzaktan-bitir. */}
-            {canAdmin && iproId && detay.aktifIs && detay.durum !== 'durusta' && (
-              bitirModu ? (
+            {!cokluIs && canAdmin && iproId && detay.aktifIs && detay.durum !== 'durusta' && (
+              bitirId === detay.aktifIs.id ? (
                 <UzaktanBitirPanel
                   productionLogId={detay.aktifIs.id}
                   tezgahKod={detay.kod}
                   plcToplam={canli?.seriVar ? canli.adet : null}
-                  onIptal={() => setBitirModu(false)}
+                  onIptal={() => setBitirId(null)}
                   onBasarili={() => {
-                    setBitirModu(false)
+                    setBitirId(null)
                     setYenile((n) => n + 1)
                   }}
                 />
               ) : (
                 <Button
-                  onClick={() => setBitirModu(true)}
+                  onClick={() => setBitirId(detay.aktifIs!.id)}
                   variant="outline"
                   className="w-full gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
                 >

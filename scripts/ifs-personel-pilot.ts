@@ -18,7 +18,7 @@ import { prisma } from '../src/lib/prisma'
 import { planla, planOzetiMetni } from '../src/lib/ifs/personel-sync/plan'
 import { uygula } from '../src/lib/ifs/personel-sync/uygula'
 import { BellekKuyruk } from '../src/lib/ifs/personel-sync/kuyruk'
-import { getEmployee, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
+import { ayrilmaAnahtari, getEmployee, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
 
 const arg = (ad: string) => { const i = process.argv.indexOf(ad); return i >= 0 ? process.argv[i + 1] : undefined }
 const YAZ = process.argv.includes('--yaz')
@@ -51,7 +51,8 @@ async function main() {
     for (const k of plan.kalemler.filter((x) => x.islem === 'CREATE' || x.islem === 'UPDATE')) {
       let ok = false, detay = ''
       try {
-        if (k.varlik === 'ORG') { const { body } = await istek<IfsOrg>(orgAnahtari(k.ifsAnahtar)); ok = body.OrgName === (k.govde?.OrgName ?? body.OrgName); detay = `${body.OrgName} sup=${body.SupOrgCode}` }
+        if (k.varlik === 'AYRILMA_NEDENI') { const { body } = await istek<{ LeavingCauseType: string; LeavingInitiatedBy: string }>(ayrilmaAnahtari(Number(k.ifsAnahtar))); ok = body.LeavingCauseType === (k.govde?.LeavingCauseType ?? body.LeavingCauseType); detay = `${body.LeavingCauseType} · ${body.LeavingInitiatedBy}` }
+        else if (k.varlik === 'ORG') { const { body } = await istek<IfsOrg>(orgAnahtari(k.ifsAnahtar)); ok = body.OrgName === (k.govde?.OrgName ?? body.OrgName); detay = `${body.OrgName} sup=${body.SupOrgCode}` }
         else if (k.varlik === 'POZISYON') { const { body } = await istek<IfsPos>(posAnahtari(k.ifsAnahtar)); ok = body.PositionTitle === (k.govde?.PositionTitle ?? body.PositionTitle); detay = body.PositionTitle }
         else if (k.varlik === 'LABOR_CLASS') { const { body } = await istek<{ value?: Array<{ LaborClassNo: string }> }>(`ShopFloorEmployeesHandling.svc/Reference_LaborClass?$filter=Contract%20eq%20'ILER2'%20and%20LaborClassNo%20eq%20'${k.ifsAnahtar}'`); ok = (body.value?.length ?? 0) > 0; detay = ok ? 'var' : 'yok' }
         else if (k.varlik === 'EMPLOYEE') { const c = await getEmployee(k.ifsAnahtar); const b = c?.body; ok = !!b && b.OrgCode === (k.govde?.EmpOrgCode ?? k.govde?.OrgCode ?? b.OrgCode) && b.PosCode === (k.govde?.EmpPosCode ?? k.govde?.PosCode ?? b.PosCode); detay = b ? `org=${b.OrgCode} pos=${b.PosCode} giriş=${b.EmploymentDate} bitiş=${b.EmploymentEndDate} ad=${b.InternalDisplayName} cins=${b.Gender} master=${b.MasterEmployment}` : 'YOK' }

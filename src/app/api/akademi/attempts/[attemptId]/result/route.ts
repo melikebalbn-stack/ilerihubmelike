@@ -45,14 +45,22 @@ export async function GET(
     );
   }
 
+  // CEVAP ANAHTARI SIZINTISI KAPATILDI (16.09.2026): bu uç kullanıcıya soru
+  // listesi, seçenekler, isCorrect ve explanation DÖNDÜRMEZ — 3 hakkı olan biri
+  // ilk denemeden sonra anahtarı görüp ikincide %100 alıyordu. Yalnız özet.
+  // Soru bazlı görünüm admin puanlama ucunda (akademi.grade.manual) kalır.
   const answerMap = new Map(attempt.answers.map((a) => [a.questionId, a]));
 
-  const detailedQuestions = attempt.exam.questions.map((q) => {
-    const answer = answerMap.get(q.id);
-    const isAuto = isAutoScoredType(q.type);
+  let totalEarned = 0;
+  let totalMax = 0;
+  let autoGradedCount = 0;
+  let manualPending = 0;
 
-    let autoScore: { earnedPoints: number; isCorrect: boolean } | null = null;
-    if (isAuto) {
+  for (const q of attempt.exam.questions) {
+    const answer = answerMap.get(q.id);
+    totalMax += q.points;
+    if (isAutoScoredType(q.type)) {
+      autoGradedCount += 1;
       const ans = answer
         ? {
             questionId: q.id,
@@ -72,47 +80,13 @@ export async function GET(
         },
         ans
       );
-      autoScore = { earnedPoints: r.earnedPoints, isCorrect: r.isCorrect };
+      totalEarned += r.earnedPoints;
+    } else if (answer?.gradedAt && answer.manualScore !== null) {
+      totalEarned += answer.manualScore;
+    } else {
+      manualPending += 1;
     }
-
-    return {
-      id: q.id,
-      question: q.question,
-      type: q.type,
-      points: q.points,
-      order: q.order,
-      explanation: q.explanation,
-      isManualGraded: q.isManualGraded,
-      matrixConfig: q.matrixConfig,
-      allowedFileTypes: q.allowedFileTypes,
-      options: q.options.map((o) => ({
-        id: o.id,
-        text: o.text,
-        isCorrect: o.isCorrect,
-      })),
-      userAnswer: answer
-        ? {
-            optionId: answer.optionId,
-            selectedOptionIds: answer.selectedOptionIds,
-            textAnswer: answer.textAnswer,
-            ratingValue: answer.ratingValue,
-            scaleValue: answer.scaleValue,
-            dateValue: answer.dateValue,
-            fileUrl: answer.fileUrl,
-            matrixAnswer: answer.matrixAnswer,
-          }
-        : null,
-      autoScore,
-      manualGrade:
-        !isAuto && answer
-          ? {
-              score: answer.manualScore,
-              feedback: answer.manualFeedback,
-              gradedAt: answer.gradedAt,
-            }
-          : null,
-    };
-  });
+  }
 
   return NextResponse.json({
     attempt: {
@@ -128,6 +102,12 @@ export async function GET(
       title: attempt.exam.title,
       passingScore: attempt.exam.passingScore,
     },
-    questions: detailedQuestions,
+    summary: {
+      totalEarned,
+      totalMax,
+      questionCount: attempt.exam.questions.length,
+      autoGradedCount,
+      manualPending,
+    },
   });
 }

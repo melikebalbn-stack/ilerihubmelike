@@ -45,6 +45,12 @@ interface Department {
   name: string
 }
 
+interface Allocation {
+  departmentOrgUnitId: string
+  departmentName: string
+  percentage: string
+}
+
 interface Invoice {
   id: string
   invoiceDate: string
@@ -56,6 +62,7 @@ interface Invoice {
   amountEUR: string
   departmentOrgUnitId: string | null
   departmentName: string | null
+  allocations: Allocation[]
 }
 
 interface MonthSummary {
@@ -448,22 +455,32 @@ export default function FaturaTakipPage() {
                   </TableCell>
                   <TableCell className="text-right font-semibold">{formatEur(Number(inv.amountEUR))}</TableCell>
                   <TableCell>
-                    <Select
-                      value={inv.departmentOrgUnitId || 'GENEL'}
-                      onValueChange={(v) => handleDepartmentChange(inv.id, v)}
-                    >
-                      <SelectTrigger className="h-7 w-44 text-xs" style={{ color: inv.departmentOrgUnitId ? NAVY : '#5F5E5A' }}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="GENEL">Genel</SelectItem>
-                        {departments.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.name}
-                          </SelectItem>
+                    {inv.allocations.length > 0 ? (
+                      <div className="text-xs" title="Birden fazla bölüme bölünmüş — düzeltmek için Yeni Fatura'daki gibi silip yeniden ekle">
+                        {inv.allocations.map((a) => (
+                          <div key={a.departmentOrgUnitId} style={{ color: NAVY }}>
+                            {a.departmentName} <span className="text-muted-foreground">%{Number(a.percentage)}</span>
+                          </div>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </div>
+                    ) : (
+                      <Select
+                        value={inv.departmentOrgUnitId || 'GENEL'}
+                        onValueChange={(v) => handleDepartmentChange(inv.id, v)}
+                      >
+                        <SelectTrigger className="h-7 w-44 text-xs" style={{ color: inv.departmentOrgUnitId ? NAVY : '#5F5E5A' }}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="GENEL">Genel</SelectItem>
+                          {departments.map((d) => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </TableCell>
                   <TableCell>
                     <button

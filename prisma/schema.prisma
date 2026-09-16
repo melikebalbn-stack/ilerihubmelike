@@ -10054,9 +10054,28 @@ model Invoice {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
+  // Birden fazla bölüme yüzdeyle bölünmüş faturalar için (opsiyonel).
+  // Doluysa: departmentOrgUnitId/departmentName yok sayılır, gerçek dağılım burada.
+  allocations InvoiceDepartmentAllocation[]
+
   @@index([invoiceDate])
   @@index([departmentOrgUnitId])
   @@index([companyName])
+}
+
+model InvoiceDepartmentAllocation {
+  id                  String   @id @default(cuid())
+  invoiceId           String
+  invoice             Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  departmentOrgUnitId String
+  departmentName      String
+  percentage          Decimal  @db.Decimal(5, 2)
+  amountTRY           Decimal  @db.Decimal(14, 2)
+  amountEUR           Decimal  @db.Decimal(14, 2)
+  createdAt           DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([departmentOrgUnitId])
 }
 
 model InvoiceMonthlyRevenue {

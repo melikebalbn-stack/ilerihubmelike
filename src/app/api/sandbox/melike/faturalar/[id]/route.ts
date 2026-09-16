@@ -25,7 +25,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   }
 }
 
-// PATCH — bölüm güncelleme. body: { departmentOrgUnitId: string | null } (null = Genel)
+// PATCH — tek bölüme geçiş/düzeltme. body: { departmentOrgUnitId: string | null } (null = Genel)
+// NOT: Çoklu bölüm (%) bölünmesi sadece fatura oluşturulurken yapılabiliyor; burada
+// bir fatura tek bölüme sabitlenir ve varsa önceki yüzde dağılımı silinir.
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user, error } = await requireUser()
@@ -48,7 +50,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const invoice = await prisma.invoice.update({
       where: { id },
-      data: { departmentOrgUnitId: departmentOrgUnitId || null, departmentName },
+      data: {
+        departmentOrgUnitId: departmentOrgUnitId || null,
+        departmentName,
+        allocations: { deleteMany: {} },
+      },
+      include: { allocations: true },
     })
     return apiSuccess({ invoice })
   } catch (error) {

@@ -13,7 +13,33 @@ export async function GET() {
     if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const invoices = await prisma.invoice.findMany({
-      select: { invoiceDate: true, amountEUR: true, amountTRY: true, departmentName: true },
+      select: {
+        invoiceDate: true,
+        amountEUR: true,
+        amountTRY: true,
+        departmentName: true,
+        allocations: { select: { departmentName: true, amountEUR: true, amountTRY: true } },
+      },
+    })
+
+    // Her faturayı bölüm(ler)ine göre parçalara ayır (çoklu bölümlü faturalar %'ye göre bölünür)
+    const parts = invoices.flatMap((inv) => {
+      if (inv.allocations.length > 0) {
+        return inv.allocations.map((a) => ({
+          invoiceDate: inv.invoiceDate,
+          label: a.departmentName,
+          eur: Number(a.amountEUR),
+          tl: Number(a.amountTRY),
+        }))
+      }
+      return [
+        {
+          invoiceDate: inv.invoiceDate,
+          label: inv.departmentName ?? 'Genel',
+          eur: Number(inv.amountEUR),
+          tl: Number(inv.amountTRY),
+        },
+      ]
     })
 
     let genel = 0
@@ -24,31 +50,27 @@ export async function GET() {
     >()
     const byDepartment = new Map<string, { eur: number; tl: number }>()
 
-    for (const inv of invoices) {
-      const eur = Number(inv.amountEUR)
-      const tl = Number(inv.amountTRY)
-      const label = inv.departmentName ?? 'Genel'
+    for (const part of parts) {
+      const dept = byDepartment.get(part.label) ?? { eur: 0, tl: 0 }
+      dept.eur += part.eur
+      dept.tl += part.tl
+      byDepartment.set(part.label, dept)
 
-      const dept = byDepartment.get(label) ?? { eur: 0, tl: 0 }
-      dept.eur += eur
-      dept.tl += tl
-      byDepartment.set(label, dept)
-
-      const key = inv.invoiceDate.toISOString().slice(0, 7)
+      const key = part.invoiceDate.toISOString().slice(0, 7)
       if (!monthly.has(key)) {
         monthly.set(key, { genel: 0, sistemGelistirme: 0, toplamTRY: 0, genelTRY: 0, sistemGelistirmeTRY: 0 })
       }
       const bucket = monthly.get(key)!
-      bucket.toplamTRY += tl
+      bucket.toplamTRY += part.tl
 
-      if (label === SISTEM_GELISTIRME_LABEL) {
-        sistemGelistirme += eur
-        bucket.sistemGelistirme += eur
-        bucket.sistemGelistirmeTRY += tl
+      if (part.label === SISTEM_GELISTIRME_LABEL) {
+        sistemGelistirme += part.eur
+        bucket.sistemGelistirme += part.eur
+        bucket.sistemGelistirmeTRY += part.tl
       } else {
-        genel += eur
-        bucket.genel += eur
-        bucket.genelTRY += tl
+        genel += part.eur
+        bucket.genel += part.eur
+        bucket.genelTRY += part.tl
       }
     }
 

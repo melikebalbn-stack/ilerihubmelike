@@ -33,7 +33,10 @@ export async function GET(request: NextRequest) {
         },
       ]
     } else {
-      const invoices = await prisma.invoice.findMany({ orderBy: { invoiceDate: 'desc' } })
+      const invoices = await prisma.invoice.findMany({
+        orderBy: { invoiceDate: 'desc' },
+        include: { allocations: { orderBy: { percentage: 'desc' } } },
+      })
       rows = invoices.map((inv) => ({
         Tarih: inv.invoiceDate.toISOString().slice(0, 10),
         Firma: inv.companyName,
@@ -42,7 +45,10 @@ export async function GET(request: NextRequest) {
         'Para Birimi': inv.currency,
         'TL Karşılığı': Number(inv.amountTRY),
         '€ Karşılığı': Number(inv.amountEUR),
-        Bölüm: departmentLabel(inv.departmentName),
+        Bölüm:
+          inv.allocations.length > 0
+            ? inv.allocations.map((a) => `${a.departmentName} %${Number(a.percentage)}`).join(', ')
+            : departmentLabel(inv.departmentName),
         Not: inv.note ?? '',
       }))
     }

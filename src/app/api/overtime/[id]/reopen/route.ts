@@ -17,16 +17,16 @@ interface RouteParams {
  * status DRAFT + currentStep 0 → oluşturan tekrar düzenleyip gönderebilir.
  * Bayat onaylara DOKUNULMAZ — form yeniden gönderilince submit route onları siler.
  *
- * Yetki: yalnız forms.admin. Yalnız REJECTED form kabul edilir.
+ * Yetki: yalnız overtime.report.all (MESAİ-KAPSAM 16.09.2026: forms.admin mesaide anahtar değil). Yalnız REJECTED form kabul edilir.
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { session, user, error } = await requireUser()
     if (error) return error
 
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    const isAdmin = session.user.permissions?.includes('overtime.report.all') ?? false
     if (!isAdmin) {
-      return apiError('Bu işlem için yetkiniz yok (forms.admin gerekli)', 403)
+      return apiError('Bu işlem için yetkiniz yok (overtime.report.all gerekli)', 403)
     }
 
     const { id } = await params

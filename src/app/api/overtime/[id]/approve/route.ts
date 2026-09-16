@@ -33,7 +33,8 @@ interface RouteParams {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — approverId = user.id
-    // PR-FORMS-RBAC: forms.admin override (mevcut approver-chain logic'i korunur)
+    // MESAİ-KAPSAM (16.09.2026): forms.admin override KALKTI. Onay = atanmış onaycı
+    // VEYA super-admin ROLÜ. Kapsam (koltuk/report.all) onay yetkisi DOĞURMAZ.
     const { session, user, error } = await requireUser()
     if (error) return error
 
@@ -89,13 +90,28 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return apiBadRequest('Bekleyen onay kaydı bulunamadı')
     }
 
-    // Yetki kontrolü: Atanmış kişi mi veya admin mi?
+    // Yetki kontrolü: atanmış onaycı VEYA super-admin rolü.
     // Çift-onaycı: adım eskale olmuşsa ASIL onaycı (approverId) VE yedek (escalatedToId)
     // ikisi de onaylayabilir. Eskale olmamışsa escalatedToId boş → yalnız asıl.
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    // NEDEN kapsam değil: onaycılar Mesai Formu ayarlarından (ApprovalPosition/onay
+    // zinciri) belirlenir; bir formu görebilmek (koltuk kapsamı, overtime.report.all —
+    // Üretim Planlama / Yönetim Raporu Alıcısı) onay yetkisi doğurmaz. Tek istisna
+    // super-admin rolü (acil müdahale). Rol slug'ı oturumda yok → DB'den okunur.
     const isAssignedApprover =
       pendingApproval.approverId === user.id ||
       pendingApproval.escalatedToId === user.id
+    let isAdmin = false
+    if (!isAssignedApprover) {
+      const sa = await prisma.userRole.findFirst({
+        where: {
+          userId: user.id,
+          role: { slug: 'super-admin' },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        select: { userId: true },
+      })
+      isAdmin = !!sa
+    }
 
     if (!isAdmin && !isAssignedApprover) {
       return apiError(

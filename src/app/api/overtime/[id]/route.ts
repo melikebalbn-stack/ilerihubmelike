@@ -77,7 +77,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // sorumlusu (formda kendi bölümünün personeli varsa). Sorumlu, gerçekleşen adet
     // girebilmek için formu açabilmeli.
     const perms = session.user.permissions ?? []
-    const isAdmin = perms.includes('forms.admin')
+    // MESAİ-KAPSAM (16.09.2026): "admin" = overtime.report.all; forms.admin mesaide anahtar değil.
+    const isAdmin = perms.includes('overtime.report.all')
     // Salt-okuma görüntüleme: view.all → herhangi bir form; view.dept → resolveAllowedDepts
     // kapsamı (aşağıdaki isDeptResponsible ile AYNI mekanizma, ayrı dal gerekmez).
     // Bu permission'lar YAZMA açmaz — PUT/approve/personnel route'ları değişmedi.
@@ -105,7 +106,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Hedef adet üst-kapısı (frontend readonly sinyali): yalnız Fabrika Müdürü
-    // (Personnel.gorev — User.jobTitle DEĞİL, AD casing bozuk) veya forms.admin.
+    // (Personnel.gorev — User.jobTitle DEĞİL, AD casing bozuk) veya overtime.report.all.
     const meForTarget = await prisma.user.findUnique({
       where: { id: user.id },
       select: { personnel: { select: { gorev: true } } },
@@ -183,8 +184,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return apiNotFound('Mesai formu bulunamadı')
     }
 
-    // Sadece form sahibi veya admin güncelleyebilir
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    // Sadece form sahibi veya admin (overtime.report.all) güncelleyebilir
+    const isAdmin = session.user.permissions?.includes('overtime.report.all') ?? false
     if (existingForm.createdById !== user.id && !isAdmin) {
       return apiError('Bu formu güncelleme yetkiniz yok', 403)
     }
@@ -359,8 +360,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return apiNotFound('Mesai formu bulunamadı')
     }
 
-    // Sadece form sahibi veya admin silebilir
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    // Sadece form sahibi veya admin (overtime.report.all) silebilir
+    const isAdmin = session.user.permissions?.includes('overtime.report.all') ?? false
     if (existingForm.createdById !== user.id && !isAdmin) {
       return apiError('Bu formu silme yetkiniz yok', 403)
     }

@@ -50,10 +50,10 @@ async function checkPersonnelEditAccess(
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role check
-    // PR-FORMS-RBAC: forms.admin permission
+    // MESAİ-KAPSAM (16.09.2026): admin = overtime.report.all (forms.admin mesaide anahtar değil)
     const { session, user, error } = await requireUser()
     if (error) return error
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    const isAdmin = session.user.permissions?.includes('overtime.report.all') ?? false
 
     const { id } = await params
 
@@ -142,10 +142,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role check
-    // PR-FORMS-RBAC: forms.admin permission
+    // MESAİ-KAPSAM (16.09.2026): admin = overtime.report.all (forms.admin mesaide anahtar değil)
     const { session, user, error } = await requireUser()
     if (error) return error
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    const isAdmin = session.user.permissions?.includes('overtime.report.all') ?? false
 
     const { id } = await params
 
@@ -227,7 +227,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     // PR-Y2.5-overtime: requireUser — ownership/role/authorized-user check
-    // PR-FORMS-RBAC: forms.admin permission
+    // MESAİ-KAPSAM (16.09.2026): admin = overtime.report.all (forms.admin mesaide anahtar değil)
     const { session, user, error } = await requireUser()
     if (error) return error
 
@@ -254,7 +254,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     // Yetki kontrolü: form sahibi, admin, mesai formu yetkili kullanıcısı VEYA
     // omurga birim sorumlusu (kendi bölümü satırları — satır-bazlı).
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    const isAdmin = session.user.permissions?.includes('overtime.report.all') ?? false
     const isCreator = form.createdById === user.id
     let isAuthorizedOvertimeUser = false
     if (!isAdmin && !isCreator) {
@@ -279,7 +279,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Hedef adet üst-kapısı: yalnız Fabrika Müdürü (Personnel.gorev) VEYA forms.admin.
+    // Hedef adet üst-kapısı: yalnız Fabrika Müdürü (Personnel.gorev) VEYA overtime.report.all.
     // ⚠ User.jobTitle KULLANILMAZ (AD ASCII-folded/casing bozuk) — Personnel.gorev otorite.
     // Mevcut satır-yazma yetkisi (fullAccess/omurga) KORUNUR; bu yalnız HEDEF için üst-kapı.
     const meForTarget = await prisma.user.findUnique({

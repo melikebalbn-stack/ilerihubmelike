@@ -71,7 +71,7 @@ export default function OvertimeListView({ formTipi = "MESAI" }: { formTipi?: Ov
   // Liste tablosu yatay-kaydırma: üst şerit ile senkron (TopScrollbar)
   const listScrollRef = useRef<HTMLDivElement>(null)
   // Form OLUŞTURMA yetkisi rol/izin sisteminde DEĞİL, OvertimeAuthorizedUser
-  // tablosunda (forms.admin bu kapıyı atlar; uç ikisini birlikte cevaplar).
+  // tablosunda (overtime.report.all bu kapıyı atlar; uç ikisini birlikte cevaplar).
   // null = henüz bilinmiyor → düğme kapalı ama AÇIKLAMA YOK (yanlış alarm olmasın).
   const [formAcabilir, setFormAcabilir] = useState<boolean | null>(null)
 

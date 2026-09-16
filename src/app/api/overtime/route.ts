@@ -51,7 +51,8 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')))
 
     const perms = session.user.permissions ?? []
-    const isAdmin = perms.includes('forms.admin')
+    // MESAİ-KAPSAM (16.09.2026): forms.admin mesai görünürlüğünü AÇMAZ; şirket geneli
+    // anahtarı overtime.report.all (Super Admin/Üretim Planlama/Yönetim Raporu).
     const canViewAll = perms.includes('overtime.view.all') // salt-okuma, TÜM formlar
     const canViewDept = perms.includes('overtime.view.dept') // salt-okuma, kendi bölüm(ler)i
     // Yönetim raporu izni (report.all) rapor katmanında TÜM bölümleri açar
@@ -70,32 +71,44 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = { formTipi }
 
     // Görünürlük önceliği (ilk eşleşen kazanır):
-    //   forms.admin > overtime.view.all > overtime.report.all > overtime.view.dept > self-scope
-    // view.*/report.all salt-okuma: liste/detay görünür, yazma yolları (POST/PUT/approve/
+    //   overtime.report.all > overtime.view.all > overtime.view.dept > self-scope
+    // view.* salt-okuma: liste/detay görünür, yazma yolları (POST/PUT/approve/
     // gerçekleşen-giriş) ayrıca korunur — burada değişmez.
-    if (isAdmin || canViewAll || canReportAll) {
+    if (canViewAll || canReportAll) {
       // Tüm formlar (formTipi'ye göre). Kapsam filtresi yok.
-    } else if (canViewDept) {
-      // Departman scope — performans raporuyla AYNI resolveAllowedDepts semantiği:
-      //   undefined = kapsam sınırsız (ör. report.all da varsa) → filtre yok
-      //   [] = hiçbiri → in:[] hiçbir personel satırıyla eşleşmez → boş liste (doğru)
-      //   [adlar] = o bölümler
-      // "Formun bölümü" = OvertimePersonnel.workDepartment (raporun süzdüğü alanla tutarlı).
-      const allowedDepts = await resolveAllowedDepts(user.id)
-      if (allowedDepts !== undefined) {
-        where.personnel = { some: { workDepartment: { in: allowedDepts } } }
-      }
     } else {
-      // Self-scope: kendi oluşturduğu / onaycı olduğu / personel olduğu formlar
-      where.OR = [
+      // Self-scope: kendi oluşturduğu / onaycı olduğu (asıl VEYA eskale yedek) / personel
+      // olduğu formlar. Onaycının listede bulması gereken formlar buradan gelir.
+      const selfScope: Record<string, unknown>[] = [
         { createdById: user.id },
-        { approvals: { some: { approverId: user.id } } },
+        { approvals: { some: { OR: [{ approverId: user.id }, { escalatedToId: user.id }] } } },
         // OvertimePersonnel.userId YOK; bağ personnelId (Personnel FK). User↔Personnel
         // linki yoksa bu dalı ekleme ([id] route'undaki erişim mantığıyla aynı).
         ...(user.personnelId
           ? [{ personnel: { some: { personnelId: user.personnelId } } }]
           : []),
       ]
+      if (canViewDept) {
+        // Departman scope — performans raporuyla AYNI resolveAllowedDepts semantiği:
+        //   undefined = kapsam sınırsız → filtre yok
+        //   [] = hiçbiri → yalnız self-scope
+        //   [adlar] = o bölümler + self-scope
+        // "Formun bölümü" = OvertimePersonnel.workDepartment (raporun süzdüğü alanla tutarlı).
+        // MESAİ-KAPSAM (16.09.2026): self-scope ARTIK EKLENİR — view.dept alan onaycı
+        // (ör. İK adımı, 30 günde 62 karar) kendi bölümü dışındaki bekleyen formu
+        // listede görmeliydi; eski dal onu düşürüyordu.
+        const allowedDepts = await resolveAllowedDepts(user.id)
+        if (allowedDepts !== undefined) {
+          where.OR = [
+            ...selfScope,
+            ...(allowedDepts.length > 0
+              ? [{ personnel: { some: { workDepartment: { in: allowedDepts } } } }]
+              : []),
+          ]
+        }
+      } else {
+        where.OR = selfScope
+      }
     }
 
     // Durum filtresi
@@ -210,8 +223,9 @@ export async function POST(request: NextRequest) {
     const { session, user, error } = await requireUser()
     if (error) return error
 
-    // Yetki kontrolü: Admin değilse yetkili kullanıcı listesinde olmalı
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    // Yetki kontrolü: report.all değilse yetkili kullanıcı listesinde olmalı
+    // (MESAİ-KAPSAM: forms.admin bu kapıyı artık açmaz)
+    const isAdmin = session.user.permissions?.includes('overtime.report.all') ?? false
     if (!isAdmin) {
       const authorized = await prisma.overtimeAuthorizedUser.findUnique({
         where: { userId: user.id },

@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
 
     // Sidebar hafif kontrol modu
     if (check === 'me') {
-      // Admin her zaman yetkili
-      if (session.user.permissions?.includes('forms.admin')) {
+      // report.all her zaman yetkili (MESAİ-KAPSAM 16.09.2026: forms.admin değil)
+      if (session.user.permissions?.includes('overtime.report.all')) {
         return apiSuccess({ authorized: true })
       }
 
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Admin kontrolü (liste görüntüleme)
-    if (!session.user.permissions?.includes('forms.admin')) {
+    if (!session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     // PR-Y2.5-overtime: requireUser — admin role check
     const { session, user, error } = await requireUser()
     if (error) return error
-    if (!session.user.permissions?.includes('forms.admin')) {
+    if (!session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
@@ -155,7 +155,7 @@ export async function DELETE(request: NextRequest) {
     // PR-Y2.5-overtime: requireUser — admin role check
     const { session, user, error } = await requireUser()
     if (error) return error
-    if (!session.user.permissions?.includes('forms.admin')) {
+    if (!session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 

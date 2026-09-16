@@ -192,7 +192,7 @@ export default function OvertimeDetailPage() {
   const [savingActual, setSavingActual] = useState(false)
   // Hedef adet üst-kapısı (backend GET'ten): yalnız Fabrika Müdürü/admin hedefi düzenler.
   const [canEditTarget, setCanEditTarget] = useState(false)
-  // forms.admin (GET'ten) — reddedileni "Yeniden Aç" butonu için.
+  // overtime.report.all (GET'ten, alan adı tarihsel: currentUserIsFormsAdmin) — "Yeniden Aç" butonu için.
   const [isFormsAdmin, setIsFormsAdmin] = useState(false)
 
   const fetchAllPersonnelItems = useCallback(async () => {
@@ -427,7 +427,7 @@ export default function OvertimeDetailPage() {
     }
   }
 
-  // Reddedilmiş formu düzenlemeye döndür (yalnız forms.admin; REJECTED → DRAFT).
+  // Reddedilmiş formu düzenlemeye döndür (yalnız overtime.report.all; REJECTED → DRAFT).
   async function handleReopen() {
     if (!window.confirm("Form düzenlemeye döndürülecek, oluşturan yeniden düzenleyip gönderebilecek. Devam edilsin mi?")) return
     try {
@@ -664,7 +664,7 @@ export default function OvertimeDetailPage() {
             </Button>
           </div>
         )}
-        {/* Reddedileni kurtarma: yalnız forms.admin + REJECTED → düzenlemeye döndür. */}
+        {/* Reddedileni kurtarma: yalnız overtime.report.all + REJECTED → düzenlemeye döndür. */}
         {form.status === "REJECTED" && isFormsAdmin && (
           <Button variant="outline" size="sm" onClick={handleReopen} disabled={submitting}>
             {submitting ? (

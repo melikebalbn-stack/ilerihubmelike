@@ -53,10 +53,18 @@ beforeEach(() => {
 })
 
 describe('GET /api/overtime — görünürlük önceliği', () => {
-  it('forms.admin → TÜM formlar (scope filtresi yok)', async () => {
-    const where = await whereFor(['forms.admin'])
+  it('overtime.report.all → TÜM formlar (scope filtresi yok)', async () => {
+    const where = await whereFor(['overtime.report.all'])
     expect(where.formTipi).toBe('MESAI')
     expect(where.OR).toBeUndefined()
+    expect(where.personnel).toBeUndefined()
+    expect(resolveAllowedDeptsMock).not.toHaveBeenCalled()
+  })
+
+  // MESAİ-KAPSAM (16.09.2026): forms.admin mesai görünürlüğünü AÇMAZ → self-scope'a düşer.
+  it('forms.admin tek başına → self-scope (mesai anahtarı değil)', async () => {
+    const where = await whereFor(['forms.admin'])
+    expect(where.OR).toBeDefined()
     expect(where.personnel).toBeUndefined()
     expect(resolveAllowedDeptsMock).not.toHaveBeenCalled()
   })
@@ -68,17 +76,26 @@ describe('GET /api/overtime — görünürlük önceliği', () => {
     expect(resolveAllowedDeptsMock).not.toHaveBeenCalled()
   })
 
-  it('overtime.view.dept → workDepartment IN allowedDepts (self-scope YOK)', async () => {
+  // MESAİ-KAPSAM (16.09.2026): view.dept = koltuk kapsamı + self-scope (onaycı kendi
+  // bölümü dışındaki bekleyen formu da listede görür).
+  it('overtime.view.dept → self-scope OR workDepartment IN allowedDepts', async () => {
     resolveAllowedDeptsMock.mockResolvedValue(['İDARİ İŞLER'])
     const where = await whereFor(['overtime.view.dept'])
-    expect(where.personnel).toEqual({ some: { workDepartment: { in: ['İDARİ İŞLER'] } } })
-    expect(where.OR).toBeUndefined()
+    expect(where.personnel).toBeUndefined()
+    expect(where.OR).toEqual([
+      { createdById: 'u1' },
+      { approvals: { some: { OR: [{ approverId: 'u1' }, { escalatedToId: 'u1' }] } } },
+      { personnel: { some: { workDepartment: { in: ['İDARİ İŞLER'] } } } },
+    ])
   })
 
-  it('view.dept + allowedDepts=[] → in:[] (hiçbir form eşleşmez → boş liste)', async () => {
+  it('view.dept + allowedDepts=[] → yalnız self-scope (bölüm dalı yok)', async () => {
     resolveAllowedDeptsMock.mockResolvedValue([])
     const where = await whereFor(['overtime.view.dept'])
-    expect(where.personnel).toEqual({ some: { workDepartment: { in: [] } } })
+    expect(where.OR).toEqual([
+      { createdById: 'u1' },
+      { approvals: { some: { OR: [{ approverId: 'u1' }, { escalatedToId: 'u1' }] } } },
+    ])
   })
 
   it('view.dept + allowedDepts=undefined (kapsam sınırsız) → filtre yok', async () => {
@@ -88,8 +105,8 @@ describe('GET /api/overtime — görünürlük önceliği', () => {
     expect(where.OR).toBeUndefined()
   })
 
-  it('öncelik: forms.admin > view.dept (admin kazanır, resolveAllowedDepts çağrılmaz)', async () => {
-    const where = await whereFor(['forms.admin', 'overtime.view.dept'])
+  it('öncelik: report.all > view.dept (report.all kazanır, resolveAllowedDepts çağrılmaz)', async () => {
+    const where = await whereFor(['overtime.report.all', 'overtime.view.dept'])
     expect(where.personnel).toBeUndefined()
     expect(resolveAllowedDeptsMock).not.toHaveBeenCalled()
   })

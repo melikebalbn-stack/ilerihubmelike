@@ -376,7 +376,12 @@ async function getDeptSubtreeNames(seedIds: string[]): Promise<string[]> {
 
 /**
  * FAZ-B2b: kullanıcının görebileceği mesai-rapor bölümleri.
- *   a) forms.admin (admin/super-admin) → undefined (TÜM bölümler) — DEĞİŞMEZ
+ *   a) overtime.report.all → undefined (TÜM bölümler). forms.admin ARTIK BURADA YOK
+ *      (16.09.2026): forms.admin form modülünün genel yönetici anahtarı (ziyaret
+ *      raporu vb.); mesai görünürlük/yazma/onay anahtarı overtime.report.all.
+ *      Şirket geneli görmesi gereken rol (Super Admin, Üretim Planlama, Yönetim
+ *      Raporu) bu izni taşır; forms.admin taşıyıp report.all taşımayan koltuk
+ *      kapsamına (c) düşer.
  *   b) gorunurBolumler dolu           → o liste (manuel override korunur)
  *   c) boş → OMURGADAN TÜRET: kişinin görevli (müdür/müd.yrd./sorumlu1-3) olduğu
  *            bölümler + ALT AĞAÇLARI (müdür → kendi + tüm alt shop-floor).
@@ -385,8 +390,7 @@ async function getDeptSubtreeNames(seedIds: string[]): Promise<string[]> {
  */
 export async function resolveAllowedDepts(userId: string): Promise<string[] | undefined> {
   const perms = await getUserPermissions(userId)
-  if (perms.has('forms.admin')) return undefined // (a) admin → tümü
-  if (perms.has('overtime.report.all')) return undefined // (a2) yönetim raporu → tümü (kapsam sınırsız)
+  if (perms.has('overtime.report.all')) return undefined // (a) yönetim raporu → tümü (kapsam sınırsız)
 
   const u = await prisma.user.findUnique({
     where: { id: userId },

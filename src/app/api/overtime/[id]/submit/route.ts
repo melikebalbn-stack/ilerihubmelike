@@ -41,8 +41,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return apiNotFound('Mesai formu bulunamadı')
     }
 
-    // Sadece form sahibi veya admin gönderebilir
-    const isAdmin = session.user.permissions?.includes('forms.admin') ?? false
+    // Sadece form sahibi veya admin (overtime.report.all) gönderebilir
+    const isAdmin = session.user.permissions?.includes('overtime.report.all') ?? false
     if (form.createdById !== user.id && !isAdmin) {
       return apiError('Bu formu onaya gönderme yetkiniz yok', 403)
     }

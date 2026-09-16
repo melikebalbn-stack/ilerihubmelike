@@ -61,15 +61,15 @@ export function UserRolesEditDialog({
   // (Ayarlar > Mesai Formu Yetkilendirme). Rol adı ("Mesai Görüntüleyici (Tümü)")
   // yanıltıcı okunduğu için burada açıkça söylenir. Azure'dan gelen roller de sayılır.
   //
-  // KOŞUL: overtime.* VAR **ve** forms.admin YOK. forms.admin bu kapıyı zaten
-  // atlıyor (route.ts POST) — o rollerde (Admin, Super Admin, Departman Müdürü,
-  // Kalite Yöneticisi) uyarıyı göstermek yanıltıcı olurdu.
+  // KOŞUL: overtime.* VAR **ve** overtime.report.all YOK. report.all bu kapıyı zaten
+  // atlıyor (route.ts POST; MESAİ-KAPSAM 16.09.2026 — eskiden forms.admin'di) — o
+  // rollerde (Super Admin, Üretim Planlama, Yönetim Raporu) uyarı yanıltıcı olurdu.
   const mesaiIzniSecili = useMemo(() => {
     const etkinIds = new Set<string>([...selectedRoleIds, ...azureRoles.map((r) => r.id)])
     const etkinIzinler = new Set<string>(
       allRoles.filter((r) => etkinIds.has(r.id)).flatMap((r) => r.permissionKeys ?? []),
     )
-    if (etkinIzinler.has('forms.admin')) return false
+    if (etkinIzinler.has('overtime.report.all')) return false
     return [...etkinIzinler].some((k) => k.startsWith('overtime.'))
   }, [selectedRoleIds, azureRoles, allRoles])
   const [saving, setSaving] = useState(false)

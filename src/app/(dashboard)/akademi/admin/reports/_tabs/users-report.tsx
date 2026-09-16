@@ -22,6 +22,8 @@ export function UsersReportTab() {
   const [search, setSearch] = useState("");
   const [bolums, setBolums] = useState<string[]>([]);
   const [bolumFilter, setBolumFilter] = useState("");
+  // Varsayılan KAPALI: tüm aktif kullanıcılar (bluecollar dahil) listelenir.
+  const [onlyAssigned, setOnlyAssigned] = useState(false);
 
   useEffect(() => {
     fetch("/api/akademi/admin/reports/departments")
@@ -41,12 +43,13 @@ export function UsersReportTab() {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (bolumFilter) params.set("bolum", bolumFilter);
+    if (onlyAssigned) params.set("onlyAssigned", "1");
     fetch(`/api/akademi/admin/reports/users?${params}`)
       .then((r) => r.json())
       .then((d) => setUsers(d.users ?? []))
       .catch(() => setUsers([]))
       .finally(() => setLoading(false));
-  }, [search, bolumFilter]);
+  }, [search, bolumFilter, onlyAssigned]);
 
   useEffect(() => {
     const t = setTimeout(load, 200);
@@ -83,6 +86,17 @@ export function UsersReportTab() {
             </option>
           ))}
         </select>
+        <label
+          className="flex items-center gap-2 px-3 py-2 text-sm border rounded-md bg-white cursor-pointer select-none"
+          style={{ borderColor: "var(--ak-border-default)" }}
+        >
+          <input
+            type="checkbox"
+            checked={onlyAssigned}
+            onChange={(e) => setOnlyAssigned(e.target.checked)}
+          />
+          Yalnız akademi ataması olanlar
+        </label>
       </div>
 
       {loading && (

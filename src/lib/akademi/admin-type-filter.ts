@@ -68,3 +68,26 @@ export function viaAssignmentWhere(
 ): { assignment?: { course: Prisma.CourseWhereInput } } {
   return type === "all" ? {} : { assignment: { course: { isIfs: type === "ifs" } } };
 }
+
+/**
+ * "Yalnız akademi ataması olanlar": kullanıcının (type kapsamında) en az bir
+ * kurs ataması, kurs ilerlemesi veya sınav denemesi olması. User.where'e OR ile eklenir.
+ */
+export function userHasAkademiTraceWhere(type: AkademiType): Prisma.UserWhereInput {
+  return {
+    OR: [
+      { courseAssignments: { some: viaAssignmentWhere(type) } },
+      { courseProgresses: { some: viaCourseWhere(type) } },
+      { examAttempts: { some: { exam: viaOptionalCourseWhere(type) } } },
+    ],
+  };
+}
+
+/**
+ * Raporlarda "kullanıcı" tabanı: aktif hesaplar, kiosk terminal hesabı hariç.
+ * Bluecollar (sicil@bluecollar) hesapları KALIR — zorunlu eğitim atanabiliyor.
+ */
+export const reportUserBaseWhere: Prisma.UserWhereInput = {
+  isActive: true,
+  role: { not: "KIOSK" },
+};

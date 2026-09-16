@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
 import {
   parseAkademiType,
+  reportUserBaseWhere,
+  userHasAkademiTraceWhere,
   viaCourseWhere,
   viaOptionalCourseWhere,
 } from "@/lib/akademi/admin-type-filter";
@@ -18,17 +20,23 @@ export async function GET(req: NextRequest) {
   // type=normal (default) → IFS gizli; ifs → yalnız IFS; all → hepsi.
   const { type, error: typeError } = parseAkademiType(searchParams);
   if (typeError) return typeError;
+  // onlyAssigned=1 → yalnız (type kapsamında) atama/ilerleme/deneme izi olanlar.
+  const onlyAssigned = searchParams.get("onlyAssigned") === "1";
 
-  const where: Prisma.UserWhereInput = {};
+  // Taban: aktif hesap, KIOSK rolü hariç (bluecollar kalır). Arama OR'u ve
+  // "iz var" OR'u çakışmasın diye AND dizisinde birleşir.
+  const and: Prisma.UserWhereInput[] = [reportUserBaseWhere];
   if (search) {
-    where.OR = [
-      { name: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-    ];
+    and.push({
+      OR: [
+        { name: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ],
+    });
   }
-  if (bolum) {
-    where.personnel = { bolum };
-  }
+  if (bolum) and.push({ personnel: { bolum } });
+  if (onlyAssigned) and.push(userHasAkademiTraceWhere(type));
+  const where: Prisma.UserWhereInput = { AND: and };
 
   const users = await prisma.user.findMany({
     where,

@@ -5,6 +5,8 @@ import { getLinkedBolums } from "@/lib/user-personnel";
 import {
   courseTypeWhere,
   parseAkademiType,
+  reportUserBaseWhere,
+  userHasAkademiTraceWhere,
   viaCourseWhere,
   viaOptionalCourseWhere,
 } from "@/lib/akademi/admin-type-filter";
@@ -31,11 +33,19 @@ export async function GET(req: NextRequest) {
   const progressW = viaCourseWhere(scope);
   const examW = viaOptionalCourseWhere(scope);
   const certW = viaOptionalCourseWhere(scope);
+  // Kullanıcılar sheet'i, Raporlar › Kullanıcılar sekmesiyle aynı süzgeç.
+  const onlyAssigned = searchParams.get("onlyAssigned") === "1";
 
   const wb = XLSX.utils.book_new();
 
   if (typeParam === "all" || typeParam === "users") {
     const users = await prisma.user.findMany({
+      where: {
+        AND: [
+          reportUserBaseWhere,
+          ...(onlyAssigned ? [userHasAkademiTraceWhere(scope)] : []),
+        ],
+      },
       select: {
         id: true,
         name: true,

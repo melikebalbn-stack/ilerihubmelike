@@ -119,7 +119,7 @@ export interface IfsLaborClass { LaborClassNo: string; LaborClassDescription: st
 export const listLaborClasses = () => tumu<IfsLaborClass>(`ShopFloorEmployeesHandling.svc/Reference_LaborClass?$filter=${enc(`Contract eq '${IFS_CONTRACT}'`)}&$select=LaborClassNo,LaborClassDescription,Objstate&$top=200`)
 const LC_SET = 'ManufacturingLaborClassesHandling.svc/LaborClassSet'
 export const lcAnahtari = (no: string) => `${LC_SET}(LaborClassNo='${q(no)}',Contract='${IFS_CONTRACT}')`
-export const createLaborClass = (g: Record<string, unknown>) => istek(LC_SET, { method: 'POST', body: JSON.stringify({ Contract: IFS_CONTRACT, ...g }) })
+export const createLaborClass = (g: Record<string, unknown>) => istek(LC_SET, { method: 'POST', body: JSON.stringify({ Contract: IFS_CONTRACT, Company: IFS_COMPANY, CodePart: 'B', ...g }) }) // Company+CodePart zorunlu (pilot 16.09; mevcut WMM: CodePart B)
 export const patchLaborClass = (no: string, g: Record<string, unknown>, etag: string) => istek(lcAnahtari(no), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': etag } })
 
 // ── Çalışan ──────────────────────────────────────────────────────────────
@@ -127,18 +127,28 @@ export interface IfsEmployee {
   EmpNo: string; PersonId: string | null; Fname: string | null; Lname: string | null; InternalDisplayName: string | null
   OrgCode: string | null; PosCode: string | null; EmpOrgCode?: string | null; EmpPosCode?: string | null
   EmploymentDate: string | null; EmploymentEndDate: string | null; ValidFrom: string | null; ValidTo: string | null
-  Gender: string | null; FreeField1: string | null; FreeField2: string | null; EntitledToOvertime: boolean | null; MasterEmployment: boolean | null
+  Gender: string | null; EntitledToOvertime: boolean | null; MasterEmployment: boolean | null
   '@odata.etag'?: string
 }
 const EMP_SET = 'EmployeesHandling.svc/CompanyPersons'
 export const empAnahtari = (empNo: string) => `${EMP_SET}(CompanyId='${IFS_COMPANY}',EmpNo='${q(empNo)}')`
-const EMP_SELECT = 'EmpNo,PersonId,Fname,Lname,InternalDisplayName,OrgCode,PosCode,EmpOrgCode,EmpPosCode,EmploymentDate,EmploymentEndDate,ValidFrom,ValidTo,Gender,FreeField1,FreeField2,EntitledToOvertime,MasterEmployment'
+const EMP_SELECT = 'EmpNo,PersonId,Fname,Lname,InternalDisplayName,OrgCode,PosCode,EmpOrgCode,EmpPosCode,EmploymentDate,EmploymentEndDate,ValidFrom,ValidTo,Gender,EntitledToOvertime,MasterEmployment'
 /** Yalnız senkron kapsamındaki (ILR-) çalışanlar. */
 export const listEmployees = () => tumu<IfsEmployee>(`${EMP_SET}?$filter=${enc(`CompanyId eq '${IFS_COMPANY}' and startswith(EmpNo,'${SICIL_ONEKI}')`)}&$select=${EMP_SELECT}&$top=500`)
 export const listAllEmployees = () => tumu<IfsEmployee>(`${EMP_SET}?$filter=${enc(`CompanyId eq '${IFS_COMPANY}'`)}&$select=${EMP_SELECT}&$top=500`)
 export const getEmployee = async (empNo: string) => { try { return await istek<IfsEmployee>(`${empAnahtari(empNo)}?$select=${EMP_SELECT}`) } catch (e) { if (e instanceof IfsSyncHatasi && e.status === 404) return null; throw e } }
 export const createEmployee = (g: Record<string, unknown>) => istek(EMP_SET, { method: 'POST', body: JSON.stringify({ CompanyId: IFS_COMPANY, ...g }) })
-export const patchEmployee = (empNo: string, g: Record<string, unknown>, etag: string) => istek(empAnahtari(empNo), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': etag } })
+// NOT: CompanyPersons PATCH yok (500 ODP_ILLEGAL_STATE, pilot 16.09) — güncelleme için patchEmployeeFile.
+
+/** Çalışan GÜNCELLEME: PersonnelFileHandling (Employee File). GET → ETag → PATCH If-Match. Yalnız EMPLOYEE_PATCH_ALANLARI. */
+export interface IfsEmployeeFile { EmpNo: string; EmploymentDate: string | null; MasterEmployment: boolean | null; OrgCode: string | null; PosCode: string | null; EmployeeStatus: string | null; '@odata.etag'?: string }
+export const empFileAnahtari = (empNo: string) => `PersonnelFileHandling.svc/CompanyPersonSet(CompanyId='${IFS_COMPANY}',EmpNo='${q(empNo)}')`
+export const getEmployeeFile = (empNo: string) => istek<IfsEmployeeFile>(empFileAnahtari(empNo))
+export const patchEmployeeFile = async (empNo: string, g: Record<string, unknown>) => {
+  const mevcut = await getEmployeeFile(empNo)
+  if (!mevcut.etag) throw new IfsSyncHatasi(0, 'ETag yok', empFileAnahtari(empNo))
+  return istek(empFileAnahtari(empNo), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': mevcut.etag } })
+}
 
 // ── Shop-floor ───────────────────────────────────────────────────────────
 export interface IfsSfEmployee { EmployeeId: string; PersonId: string | null; '@odata.etag'?: string }

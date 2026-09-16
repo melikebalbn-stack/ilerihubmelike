@@ -9,7 +9,7 @@
  */
 import type { prisma as PrismaTip } from '@/lib/prisma'
 import {
-  EMPLOYEE_PATCH_DESTEKLI, EMPLOYEE_SABITLERI, IFS_ACIK_UCLU_TARIH, IFS_ORG_TERM, IFS_STRUCTURE, IFS_STRUCT_BU_ID, IFS_ORG_VALID_FROM, IFS_ORG_VALID_TO, KAYNAKHANE_BOLUM, KURUL_KOD_ONEKI,
+  EMPLOYEE_PASIF_DESTEKLI, EMPLOYEE_PATCH_ALANLARI, EMPLOYEE_SABITLERI, IFS_ACIK_UCLU_TARIH, IFS_LABOR_CLASS_SABITLERI, IFS_ORG_TERM, IFS_STRUCTURE, IFS_STRUCT_BU_ID, IFS_ORG_VALID_FROM, IFS_ORG_VALID_TO, KAYNAKHANE_BOLUM, KURUL_KOD_ONEKI,
   KodTuretmeHatasi, adSoyadAyir, baslikHali, bolumShopFloorMu, ifsCinsiyet, ifsTarih, kaynakTuru, kisiShopFloorMu,
   laborClassAciklamasi, laborClassKodu, orgKodu, posKodu, sicilSenkronKapsamindaMi, type KaynakTuru,
 } from './kodlar'
@@ -229,7 +229,7 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
   // ── LABOR_CLASS ─────────────────────────────────────────────────────────
   for (const lc of [...hubLcs.values()].filter((l) => lcDahil(l.kod))) {
     const m = ifsLcMap.get(lc.kod)
-    if (!m) kalemler.push({ varlik: 'LABOR_CLASS', hubId: lc.kod, ifsAnahtar: lc.kod, etiket: lc.aciklama, islem: 'CREATE', govde: { LaborClassNo: lc.kod, LaborClassDescription: lc.aciklama } })
+    if (!m) kalemler.push({ varlik: 'LABOR_CLASS', hubId: lc.kod, ifsAnahtar: lc.kod, etiket: lc.aciklama, islem: 'CREATE', govde: { LaborClassNo: lc.kod, LaborClassDescription: lc.aciklama, ...IFS_LABOR_CLASS_SABITLERI } })
     else {
       const f = fark(m as unknown as Record<string, unknown>, { LaborClassDescription: lc.aciklama })
       kalemler.push({ varlik: 'LABOR_CLASS', hubId: lc.kod, ifsAnahtar: lc.kod, etiket: lc.aciklama, islem: Object.keys(f).length ? 'UPDATE' : 'NOOP', fark: f, govde: Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.yeni])), etag: m['@odata.etag'] ?? null })
@@ -246,9 +246,9 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
       if (!m) continue // IFS'te yok, pasif — hiçbir şey yapma
       const bitis = ifsTarih(k.cikisTarihi) ?? bugun
       const acik = !m.EmploymentEndDate || m.EmploymentEndDate >= IFS_ACIK_UCLU_TARIH || m.EmploymentEndDate > bugun
-      if (acik) empKalemleri.push(EMPLOYEE_PATCH_DESTEKLI
+      if (acik) empKalemleri.push(EMPLOYEE_PASIF_DESTEKLI
         ? { varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'PASIF', govde: { EmploymentEndDate: bitis, ValidTo: bitis }, etag: m['@odata.etag'] ?? null, sebep: `Hub pasif (çıkış ${bitis})` }
-        : { varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: `IFS_PATCH_YOK: Hub pasif (çıkış ${bitis}) ama CompanyPersons PATCH desteklenmiyor — Employee File projeksiyonu bekleniyor; shop-floor Blocked uygulanır` })
+        : { varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: `IFS_PASIF_YOLU_YOK: Hub pasif (çıkış ${bitis}); istihdam bitişi EmploymentPeriodsHandling.EmpEmployedTimes ister (403) — shop-floor Blocked uygulanır` })
       else empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'NOOP', sebep: 'zaten kapalı' })
       const s = ifsSfsMap.get(k.sicilNo)
       if (s && s.Objstate === 'Active') sfsKalemleri.push({ varlik: 'SF_SITE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'PASIF', govde: { Objstate: 'Blocked' }, etag: s['@odata.etag'] ?? null, sebep: 'Hub pasif → SetBlocked' })
@@ -269,7 +269,7 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
     const hedef: Record<string, unknown> = {
       Fname, Lname, InternalDisplayName: gorunenAd,
       OrgCode: org.ifsKod, PosCode: k.koltuk.ifsKod,
-      EmploymentDate: giris, EmploymentEndDate: IFS_ACIK_UCLU_TARIH,
+      EmploymentDate: giris, MasterEmployment: EMPLOYEE_SABITLERI.MasterEmployment,
       ...(cinsiyet ? { Gender: cinsiyet } : {}),
       // FreeField1/2 (yaka, bölüm adı) CREATE gövdesinde gönderilir ama pilot 16.09: IFS bu
       // projeksiyonda KALICI YAZMIYOR (round-trip null). Fark hesabına alınmaz — yoksa her
@@ -288,13 +288,15 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
       })
     } else {
       const f = fark(m as unknown as Record<string, unknown>, hedef)
-      // Atama alanları PATCH'te EmpOrgCode/EmpPosCode adıyla gider (OrgCode/PosCode salt okuma görünümü).
-      const govde: Record<string, unknown> = {}
-      for (const [alan, v] of Object.entries(f)) govde[alan === 'OrgCode' ? 'EmpOrgCode' : alan === 'PosCode' ? 'EmpPosCode' : alan] = v.yeni
-      if ('EmploymentEndDate' in f) govde.ValidTo = IFS_ACIK_UCLU_TARIH
-      const degisti = Object.keys(f).length > 0
-      if (degisti && !EMPLOYEE_PATCH_DESTEKLI) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', fark: f, sebep: `IFS_PATCH_YOK: ${Object.keys(f).join(',')} farklı ama CompanyPersons PATCH desteklenmiyor` })
-      else empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: degisti ? 'UPDATE' : 'NOOP', fark: f, govde, etag: m['@odata.etag'] ?? null, sebep: sebepNot })
+      // Yalnız PersonnelFileHandling'in kabul ettiği alanlar PATCH'lenir; kalan farklar
+      // (ad, cinsiyet, ORG/POZİSYON ATAMASI) bu istemciye açık projeksiyonlarla yazılamıyor → sebepte listelenir.
+      const yazilabilir = Object.fromEntries(Object.entries(f).filter(([a]) => EMPLOYEE_PATCH_ALANLARI.includes(a)))
+      const yazilamaz = Object.keys(f).filter((a) => !EMPLOYEE_PATCH_ALANLARI.includes(a))
+      const govde: Record<string, unknown> = Object.fromEntries(Object.entries(yazilabilir).map(([a, v]) => [a, v.yeni]))
+      const yazilamazNotu = yazilamaz.length ? `IFS_ATAMA_PROJEKSIYONU_YOK: ${yazilamaz.join(',')} farklı ama açık projeksiyonlarda güncellenemiyor` : undefined
+      if (Object.keys(yazilabilir).length) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'UPDATE', fark: f, govde, etag: m['@odata.etag'] ?? null, sebep: [sebepNot, yazilamazNotu].filter(Boolean).join(' · ') || undefined })
+      else if (yazilamaz.length) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', fark: f, sebep: yazilamazNotu })
+      else empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'NOOP', fark: f, sebep: sebepNot })
     }
     // Shop-floor (Karar 2)
     const bolumSf = shopFloorBolumler.has(k.bolum)

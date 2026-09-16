@@ -18,6 +18,10 @@ export const IFS_COMPANY = 'ILERI2'
 export const IFS_STRUCTURE = 'ILERI2'
 export const IFS_CONTRACT = 'ILER2'
 export const IFS_STRUCT_BU_ID = 61
+/** LaborClass zorunlu alanı (pilot 16.09: NULLVALUE CalendarId). Mevcut 9 sınıfın tamamı MAINT takvimi kullanıyor. */
+export const IFS_LABOR_CLASS_CALENDAR = 'MAINT'
+/** LaborClass sabitleri — mevcut WMM kaydıyla aynı (SchedCapacity zorunlu: NULLVALUE). */
+export const IFS_LABOR_CLASS_SABITLERI = { CalendarId: IFS_LABOR_CLASS_CALENDAR, SchedCapacity: 'InfiniteCapacity', CapacityCalcBase: 'Individuals' } as const
 
 /** Senkronun dokunduğu EmpNo öneki — dışındakiler (IG002, TEST-005, 3, 4) yok sayılır. */
 export const SICIL_ONEKI = 'ILR-'
@@ -46,12 +50,20 @@ export const EMPLOYEE_SABITLERI = {
 export const IFS_ORG_TERM = { UST: 6, ALT: 8 } as const
 
 /**
- * Pilot 16.09: EmployeesHandling.CompanyPersons yalnız CREATE kabul ediyor; her PATCH
- * (FreeField1 dahil) 500 ODP_ILLEGAL_STATE. Güncelleme/pasifleştirme için Employee File
- * projeksiyonu gerekiyor (IFS_POSTMAN'a açık değil, 404). Grant gelince true yapılır;
- * o güne kadar planlayıcı EMPLOYEE UPDATE/PASIF'i ATLA olarak raporlar.
+ * Çalışan GÜNCELLEME yolu (pilot 16.09, iki tur):
+ *  - EmployeesHandling.CompanyPersons: yalnız CREATE; her PATCH 500 ODP_ILLEGAL_STATE.
+ *  - PersonnelFileHandling.CompanyPersonSet (ILERIHUB_SHOPFLOOR'a ekli): PATCH kabul ediyor
+ *    ama alan bazında: EmploymentDate, MasterEmployment, EmpRemark ✓; Fname/Lname/
+ *    InternalDisplayName/Gender/FreeField1-10/EmployeeStatus/OrgCode/PosCode → 400 "not updatable".
+ *    PeriodEndDate 200 döner ama ETKİSİZ (çalışma tarihi penceresi, istihdam bitişi değil).
+ *  Sonuç: org/pozisyon ATAMASI ve ad/cinsiyet güncellemesi bu istemciye açık projeksiyonlarla
+ *  YAPILAMIYOR (atama LU'su CompanyPersAssign; 70+ aday projeksiyon adı 404). Pasifleştirme
+ *  EmploymentPeriodsHandling.EmpEmployedTimes ile olmalı → 403 (grant yok).
+ *  Planlayıcı yalnız aşağıdaki alanlar için UPDATE üretir; diğer farklar ATLA(sebep).
  */
-export const EMPLOYEE_PATCH_DESTEKLI = false
+export const EMPLOYEE_PATCH_ALANLARI: readonly string[] = ['EmploymentDate', 'MasterEmployment']
+/** Pasifleştirme (istihdam bitişi) için çalışan bir yol yok — bkz. yukarı. true olunca PASIF kalemi üretilir. */
+export const EMPLOYEE_PASIF_DESTEKLI = false
 
 /** Karar 2 — MAVI/GRI personeli olsa da shop-floor'a alınmayan bölümler. */
 export const SHOP_FLOOR_DISI: readonly string[] = ['İdari İşler']

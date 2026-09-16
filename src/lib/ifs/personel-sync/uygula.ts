@@ -6,7 +6,7 @@
  */
 import type { prisma as PrismaTip } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
-import { IfsSyncHatasi, createEmployee, createLaborClass, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployee, patchLaborClass, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
+import { IfsSyncHatasi, createEmployee, createLaborClass, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchLaborClass, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
 import type { KuyrukDeposu } from './kuyruk'
 import type { PlanKalemi, SenkronPlani } from './plan'
 
@@ -31,7 +31,8 @@ async function yaz(k: PlanKalemi): Promise<number> {
     case 'ORG': return (k.islem === 'CREATE' ? await createOrg(g) : await patchOrg(k.ifsAnahtar, g, etag)).status
     case 'POZISYON': return (k.islem === 'CREATE' ? await createPosition(g) : await patchPosition(k.ifsAnahtar, g, etag)).status
     case 'LABOR_CLASS': return (k.islem === 'CREATE' ? await createLaborClass(g) : await patchLaborClass(k.ifsAnahtar, g, etag)).status
-    case 'EMPLOYEE': return (k.islem === 'CREATE' ? await createEmployee(g) : await patchEmployee(k.ifsAnahtar, g, etag)).status
+    // CREATE EmployeesHandling'de; UPDATE PersonnelFileHandling'de (kendi GET→ETag'i ile; CompanyPersons PATCH kabul etmiyor).
+    case 'EMPLOYEE': return (k.islem === 'CREATE' ? await createEmployee(g) : await patchEmployeeFile(k.ifsAnahtar, g)).status
     case 'SF_EMPLOYEE': return (await createSfEmployee(k.ifsAnahtar)).status
     case 'SF_SITE': {
       if (k.islem === 'CREATE') return (await createSfSite(k.ifsAnahtar, String(g.PrimaryLaborClass))).status

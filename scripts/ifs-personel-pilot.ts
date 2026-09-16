@@ -4,6 +4,8 @@
  *   npx tsx scripts/ifs-personel-pilot.ts                       → TAM dry-run (yazmaz), plan özeti + ATLA listesi
  *   npx tsx scripts/ifs-personel-pilot.ts --siciller A,B,C       → kapsamlı dry-run (yalnız o kişiler + bağımlıları)
  *   npx tsx scripts/ifs-personel-pilot.ts --siciller A,B --yaz   → GERÇEK yazım + round-trip GET doğrulaması (tablo)
+ *   npx tsx scripts/ifs-personel-pilot.ts --tam --yaz            → TAM plan, yalnız ORG/POZISYON/LABOR_CLASS yazılır
+ *                                                                  (EMPLOYEE/SF katmanlarına DOKUNMAZ; boş koltuk pozisyonları için)
  *
  * Yalnız ifscloudtest host'unda yazar. Kuyruk: BellekKuyruk (tablo migration'ı uygulanmadan koşar).
  * NODE_EXTRA_CA_CERTS=~/certs/rapidssl-tls-rsa-ca-g1.pem gerekir. Çıktı: uploads/ifs-pilot-<damga>.json (600).
@@ -22,15 +24,26 @@ import { ayrilmaAnahtari, listEmployeeStatuses, getEmployee, getSfSite, ifsBagla
 
 const arg = (ad: string) => { const i = process.argv.indexOf(ad); return i >= 0 ? process.argv[i + 1] : undefined }
 const YAZ = process.argv.includes('--yaz')
+const TAM = process.argv.includes('--tam')
+/** --tam ile yazılan varlıklar — kişi katmanı bilerek dışarıda. */
+const TAM_VARLIKLAR = new Set(['ORG', 'POZISYON', 'LABOR_CLASS'])
 const siciller = arg('--siciller')?.split(',').map((s) => s.trim()).filter(Boolean)
 
 async function main() {
   const { mainRoot, hostTest } = ifsBaglanti()
   console.log(`IFS: ${mainRoot.replace(/https?:\/\/([^/]+).*/, '$1')} (${hostTest ? 'TEST' : 'PROD?'})  mod: ${YAZ ? 'YAZ' : 'dry-run'}  kapsam: ${siciller?.join(',') ?? 'TAM'}`)
   if (YAZ && !hostTest) { console.error('❌ Yazma yalnız ifscloudtest host\'unda. DUR.'); process.exit(2) }
-  if (YAZ && !siciller?.length) { console.error('❌ --yaz için --siciller zorunlu (pilot kapsamı).'); process.exit(2) }
+  if (YAZ && !siciller?.length && !TAM) { console.error('❌ --yaz için --siciller zorunlu (pilot kapsamı) — ya da --tam (yalnız org/pozisyon/labor class).'); process.exit(2) }
+  if (TAM && siciller?.length) { console.error('❌ --tam ile --siciller birlikte olmaz.'); process.exit(2) }
 
   const plan = await planla(prisma, siciller ? { siciller } : {})
+  if (TAM) {
+    // Kişi katmanı (EMPLOYEE/SF_*) ve kod listeleri (AYRILMA_NEDENI/CALISAN_STATUSU) plandan düşer;
+    // yalnız yapı kalemleri (org/pozisyon/labor class) uygulanır.
+    const once = plan.kalemler.length
+    plan.kalemler = plan.kalemler.filter((k) => TAM_VARLIKLAR.has(k.varlik))
+    console.log(`--tam: ${once} kalemden ${plan.kalemler.length} yapı kalemi (ORG/POZISYON/LABOR_CLASS) tutuldu`)
+  }
   console.log('\n' + planOzetiMetni(plan))
 
   const atla = plan.kalemler.filter((k) => k.islem === 'ATLA')

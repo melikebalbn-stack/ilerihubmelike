@@ -13,7 +13,10 @@
  * shop-floor site/employee kayıtları ve kendisi. Employee DELETE bu projeksiyonda desteklenmiyor
  * olabilir (PATCH gibi) — sonuç raporda görünür.
  *
- *   NODE_EXTRA_CA_CERTS=~/certs/rapidssl-tls-rsa-ca-g1.pem npx tsx scripts/ifs-test-temizlik.ts [--apply]
+ *   NODE_EXTRA_CA_CERTS=~/certs/rapidssl-tls-rsa-ca-g1.pem npx tsx scripts/ifs-test-temizlik.ts [--apply] [--haric WPK,WMM]
+ *
+ * --haric: virgüllü anahtar listesi (org/pozisyon/labor class/employee kodu) — adaylardan
+ *   çıkarılır, raporda KORUNDU görünür (ör. WPK: Routing Operation bağı, üretim verisi).
  */
 import 'dotenv/config'
 import * as dotenv from 'dotenv'
@@ -28,9 +31,13 @@ import {
 import { SICIL_ONEKI } from '../src/lib/ifs/personel-sync/kodlar'
 
 const APPLY = process.argv.includes('--apply')
+const haricArg = (() => { const i = process.argv.indexOf('--haric'); return i >= 0 ? process.argv[i + 1] : undefined })()
+/** Elle hariç tutulanlar (--haric A,B) — aday listesinden düşer, KORUNDU raporlanır. */
+const HARIC = new Set((haricArg ?? '').split(',').map((s) => s.trim()).filter(Boolean))
 /** Yeni aile tanıyıcıları — bunlara dokunulmaz. */
 const YENI_ORG_POS = /^(P\d{4}(-N\d{3}|-K\d{2})?|Y\d{3}|GM|GMY)$/
-const YENI_LC = /^P\d{4}N\d{3}[RM]?$/
+// Labor class: P0023N001[R|M] (bölüm/kaynak) VEYA P0108 (müdürlük seviyesi, N eki yok).
+const YENI_LC = /^P\d{4}(N\d{3}[RM]?)?$/
 
 interface Satir { adim: string; anahtar: string; etiket: string; sonuc: 'SİLİNDİ' | 'DRY' | 'HATA' | 'KORUNDU'; detay?: string }
 
@@ -43,10 +50,11 @@ async function main() {
   const hubPasif = new Set((await prisma.personnel.findMany({ where: { aktif: false, sicilNo: { startsWith: SICIL_ONEKI } }, select: { sicilNo: true } })).map((p) => p.sicilNo!))
   const hubAktif = new Set((await prisma.personnel.findMany({ where: { aktif: true, sicilNo: { startsWith: SICIL_ONEKI } }, select: { sicilNo: true } })).map((p) => p.sicilNo!))
 
-  const hedefEmp = emps.filter((e) => !e.EmpNo.startsWith(SICIL_ONEKI) || hubPasif.has(e.EmpNo) || (!hubAktif.has(e.EmpNo) && !hubPasif.has(e.EmpNo)))
-  const hedefPos = poss.filter((p) => !YENI_ORG_POS.test(p.PosCode))
-  const hedefOrg = orgs.filter((o) => !YENI_ORG_POS.test(o.OrgCode))
-  const hedefLc = lcs.filter((l) => !YENI_LC.test(l.LaborClassNo))
+  const hedefEmp = emps.filter((e) => (!e.EmpNo.startsWith(SICIL_ONEKI) || hubPasif.has(e.EmpNo) || (!hubAktif.has(e.EmpNo) && !hubPasif.has(e.EmpNo))) && !HARIC.has(e.EmpNo))
+  const hedefPos = poss.filter((p) => !YENI_ORG_POS.test(p.PosCode) && !HARIC.has(p.PosCode))
+  const hedefOrg = orgs.filter((o) => !YENI_ORG_POS.test(o.OrgCode) && !HARIC.has(o.OrgCode))
+  const hedefLc = lcs.filter((l) => !YENI_LC.test(l.LaborClassNo) && !HARIC.has(l.LaborClassNo))
+  if (HARIC.size) console.log(`--haric: ${[...HARIC].join(', ')}`)
   const hedefEmpSet = new Set(hedefEmp.map((e) => e.EmpNo))
   const hedefSfs = sfss.filter((s) => hedefEmpSet.has(s.EmployeeId))
   const hedefSfe = sfes.filter((s) => hedefEmpSet.has(s.EmployeeId))
@@ -54,7 +62,7 @@ async function main() {
   console.log(`\nSilinecek adaylar: employee ${hedefEmp.length}/${emps.length} · pozisyon ${hedefPos.length}/${poss.length} · org ${hedefOrg.length}/${orgs.length} · labor class ${hedefLc.length}/${lcs.length} · sf-site ${hedefSfs.length} · sf-employee ${hedefSfe.length}`)
   console.log(`Korunan (yeni aile): org ${orgs.length - hedefOrg.length}, pozisyon ${poss.length - hedefPos.length}, labor class ${lcs.length - hedefLc.length}; ILR aktif employee ${emps.filter((e) => hubAktif.has(e.EmpNo)).length}`)
 
-  const rapor: Satir[] = []
+  const rapor: Satir[] = [...HARIC].map((h) => ({ adim: '0-haric', anahtar: h, etiket: '--haric', sonuc: 'KORUNDU' as const }))
   const dene = async (adim: string, anahtar: string, etiket: string, yol: string) => {
     if (!APPLY) { rapor.push({ adim, anahtar, etiket, sonuc: 'DRY' }); return }
     try { await sil(yol); rapor.push({ adim, anahtar, etiket, sonuc: 'SİLİNDİ' }) }

@@ -17,7 +17,7 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   ComposedChart, Bar,
 } from 'recharts'
-import { Loader2, PlusCircle, Target } from 'lucide-react'
+import { Loader2, PlusCircle, Target, Pencil } from 'lucide-react'
 
 const NAVY = '#1B4F72'
 const YESIL = '#16a34a'
@@ -39,6 +39,7 @@ interface Aksiyon {
   action: string | null
   completionPercent: number | null
   status: string
+  responsibleId: string | null
   responsibleName: string | null
   startDate: string | null
   endDate: string | null
@@ -133,14 +134,22 @@ interface SorumluAday {
   positionTitle: string | null
 }
 
-function AksiyonEkleDialog({ kpiId, onCreated }: { kpiId: string; onCreated: () => void }) {
+function tarihGirdi(v: string | null): string {
+  if (!v) return ''
+  return v.slice(0, 10)
+}
+
+function AksiyonFormDialog({
+  kpiId, mevcut, onSaved,
+}: { kpiId: string; mevcut?: Aksiyon; onSaved: () => void }) {
+  const duzenlemeModu = !!mevcut
   const [acik, setAcik] = useState(false)
-  const [reason, setReason] = useState('')
-  const [action, setAction] = useState('')
-  const [responsibleId, setResponsibleId] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [completionPercent, setCompletionPercent] = useState('0')
+  const [reason, setReason] = useState(mevcut?.reason ?? '')
+  const [action, setAction] = useState(mevcut?.action ?? '')
+  const [responsibleId, setResponsibleId] = useState(mevcut?.responsibleId ?? '')
+  const [startDate, setStartDate] = useState(tarihGirdi(mevcut?.startDate ?? null))
+  const [endDate, setEndDate] = useState(tarihGirdi(mevcut?.endDate ?? null))
+  const [completionPercent, setCompletionPercent] = useState(String(mevcut?.completionPercent ?? 0))
   const [adaylar, setAdaylar] = useState<SorumluAday[]>([])
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
@@ -156,8 +165,11 @@ function AksiyonEkleDialog({ kpiId, onCreated }: { kpiId: string; onCreated: () 
     if (!action.trim()) return
     setKaydediliyor(true)
     try {
-      const res = await fetch(`/api/yonetim/kpi/${kpiId}/aksiyon`, {
-        method: 'POST',
+      const url = duzenlemeModu
+        ? `/api/yonetim/kpi/${kpiId}/aksiyon/${mevcut!.id}`
+        : `/api/yonetim/kpi/${kpiId}/aksiyon`
+      const res = await fetch(url, {
+        method: duzenlemeModu ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reason,
@@ -169,9 +181,11 @@ function AksiyonEkleDialog({ kpiId, onCreated }: { kpiId: string; onCreated: () 
         }),
       })
       if (res.ok) {
-        setReason(''); setAction(''); setResponsibleId(''); setStartDate(''); setEndDate(''); setCompletionPercent('0')
+        if (!duzenlemeModu) {
+          setReason(''); setAction(''); setResponsibleId(''); setStartDate(''); setEndDate(''); setCompletionPercent('0')
+        }
         setAcik(false)
-        onCreated()
+        onSaved()
       }
     } finally {
       setKaydediliyor(false)
@@ -181,14 +195,20 @@ function AksiyonEkleDialog({ kpiId, onCreated }: { kpiId: string; onCreated: () 
   return (
     <Dialog open={acik} onOpenChange={setAcik}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          <PlusCircle className="h-4 w-4 mr-2" />
-          Aksiyon Ekle
-        </Button>
+        {duzenlemeModu ? (
+          <Button size="icon" variant="ghost" className="h-7 w-7">
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline">
+            <PlusCircle className="h-4 w-4 mr-2" />
+            Aksiyon Ekle
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Yeni Aksiyon Ekle</DialogTitle>
+          <DialogTitle>{duzenlemeModu ? 'Aksiyonu Düzenle' : 'Yeni Aksiyon Ekle'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>
@@ -648,7 +668,7 @@ export default function KpiClient() {
                       <p className="text-xs text-muted-foreground mt-0.5">{aktifYil} vs {aktifYil - 1} dönemine ait</p>
                     )}
                   </div>
-                  <AksiyonEkleDialog kpiId={secili.id} onCreated={yukle} />
+                  <AksiyonFormDialog kpiId={secili.id} onSaved={yukle} />
                 </CardHeader>
                 <CardContent>
                   {donemAksiyonlari.length === 0 ? (
@@ -664,6 +684,7 @@ export default function KpiClient() {
                             <th className="pb-2 pr-4">Başlangıç</th>
                             <th className="pb-2 pr-4">Bitiş</th>
                             <th className="pb-2 pr-4">Tamamlanma</th>
+                            <th className="pb-2 pr-4 w-8"></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -675,6 +696,9 @@ export default function KpiClient() {
                               <td className="py-2 pr-4">{a.startDate ? new Date(a.startDate).toLocaleDateString('tr-TR') : '—'}</td>
                               <td className="py-2 pr-4">{a.endDate ? new Date(a.endDate).toLocaleDateString('tr-TR') : '—'}</td>
                               <td className="py-2 pr-4">%{a.completionPercent ?? 0}</td>
+                              <td className="py-2">
+                                <AksiyonFormDialog kpiId={secili.id} mevcut={a} onSaved={yukle} />
+                              </td>
                             </tr>
                           ))}
                         </tbody>

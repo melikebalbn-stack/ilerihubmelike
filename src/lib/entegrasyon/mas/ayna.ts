@@ -158,15 +158,41 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
       select: { id: true, durum: true },
     })
     if (!mevcut) {
-      await prisma.iproProductionLog.create({
-        data: {
-          tezgahId: tz.id, sessionId: session.id, personnelId: personId, kaynak: KAYNAK,
-          masProductionMasterId: masId, masProductionDetayId: meta?.masDetayId ?? null,
-          ifsOrderNo, ifsOperationNo: opNo, durum: 'ACIK', baslatildiAt,
-          qtyScrap: 0, ...ifsData,
-        },
+      // AÇIK-İŞ TEKİLLİĞİ (16.09.2026 cron 500'ü): DB'de partial unique var —
+      // ipro_production_log_acik_is_uq (personnelId, ifsOrderNo, ifsOperationNo) WHERE durum='ACIK'.
+      // MAS aynı kişi+iş emri+operasyon için YENİ bir üretim master'ı açtığında (vardiya sonrası
+      // tekrar başlama) IPRO'da eski master'ın kaydı hâlâ ACIK olabiliyor → create patlıyor,
+      // tüm tur 500 dönüyordu. Burada create yerine SKIP: çakışma `atlanan`'a yazılır, tur
+      // devam eder. Eski kaydı kapatmak (b) adımının işi — MAS kapanış satırı gelince kapanır.
+      const acikCakisan = await prisma.iproProductionLog.findFirst({
+        where: { personnelId: personId, ifsOrderNo, ifsOperationNo: opNo, durum: 'ACIK' },
+        select: { id: true, masProductionMasterId: true, baslatildiAt: true },
       })
-      ozet.acilan++
+      if (acikCakisan) {
+        ozet.atlanan.push({
+          sebep: 'acik_is_cakismasi', anahtar: g.anahtar,
+          detay: `kişide aynı iş emri/operasyon zaten ACIK: log=${acikCakisan.id} mas=${acikCakisan.masProductionMasterId ?? '—'} başlangıç=${acikCakisan.baslatildiAt?.toISOString() ?? '—'} (yeni mas=${masId})`,
+        })
+        continue
+      }
+      try {
+        await prisma.iproProductionLog.create({
+          data: {
+            tezgahId: tz.id, sessionId: session.id, personnelId: personId, kaynak: KAYNAK,
+            masProductionMasterId: masId, masProductionDetayId: meta?.masDetayId ?? null,
+            ifsOrderNo, ifsOperationNo: opNo, durum: 'ACIK', baslatildiAt,
+            qtyScrap: 0, ...ifsData,
+          },
+        })
+        ozet.acilan++
+      } catch (e) {
+        // Yarış (aynı turda iki grup / eşzamanlı kiosk): P2002 tur'u düşürmez.
+        if ((e as { code?: string })?.code === 'P2002') {
+          ozet.atlanan.push({ sebep: 'unique_cakisma', anahtar: g.anahtar, detay: `P2002 mas=${masId} ${ifsOrderNo}/${opNo ?? '—'}` })
+          continue
+        }
+        throw e
+      }
     } else if (mevcut.durum === 'ACIK') {
       // Zaten açık: IFS alanları + güncel adet yenilenir (MAS'ta adet/plan/teslim değişebilir).
       await prisma.iproProductionLog.update({ where: { id: mevcut.id }, data: ifsData })

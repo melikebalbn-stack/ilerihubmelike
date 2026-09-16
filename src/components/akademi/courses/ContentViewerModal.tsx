@@ -1,8 +1,12 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Download } from "lucide-react";
-import { getContentFileUrl, getContentTypeLabel } from "@/lib/akademi-helpers";
+import { X, Download, Video, ExternalLink } from "lucide-react";
+import {
+  getContentFileUrl,
+  getContentTypeLabel,
+  isExternalContentUrl,
+} from "@/lib/akademi-helpers";
 import type { ContentItem } from "@/types/akademi";
 
 interface Props {
@@ -20,6 +24,9 @@ export function ContentViewerModal({
 }: Props) {
   const open = content !== null;
   const fileUrl = content ? getContentFileUrl(content) : null;
+  // Harici video (SharePoint/Stream): <video> oynatamaz → yeni sekmede aç kartı.
+  const isExternalVideo =
+    content?.type === "VIDEO" && isExternalContentUrl(content.fileUrl);
 
   return (
     <AnimatePresence>
@@ -78,6 +85,26 @@ export function ContentViewerModal({
               {!fileUrl ? (
                 <div className="h-full flex items-center justify-center text-white/60 text-sm">
                   Dosya yüklenmemiş.
+                </div>
+              ) : isExternalVideo ? (
+                <div className="h-full flex flex-col items-center justify-center gap-4 text-white px-8 text-center">
+                  <Video className="w-12 h-12 text-white/70" />
+                  <div>
+                    <div className="text-base font-semibold">{content.title}</div>
+                    <div className="text-xs text-white/60 mt-1">
+                      Video harici bir bağlantıda; yeni sekmede açılır.
+                    </div>
+                  </div>
+                  <a
+                    href={fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 rounded-[10px] text-sm font-semibold"
+                    style={{ background: "var(--ak-accent)", color: "#fff" }}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Videoyu yeni sekmede aç
+                  </a>
                 </div>
               ) : content.type === "VIDEO" ? (
                 <video

@@ -24,6 +24,8 @@ export async function PATCH(
     order?: number;
     isActive?: boolean;
     filePath?: string | null;
+    // Harici bağlantı (SharePoint/Stream): https?:// zorunlu.
+    fileUrl?: string | null;
     fileSize?: number | null;
     // IFS-3b: yalnız type=GOREV'de gelir (IfsTaskMeta upsert).
     ifsMeta?: {
@@ -86,6 +88,17 @@ export async function PATCH(
 
   if (body.filePath !== undefined) {
     data.filePath = body.filePath?.trim() || null;
+  }
+
+  if (body.fileUrl !== undefined) {
+    const fileUrl = body.fileUrl?.trim() || null;
+    if (fileUrl && !/^https?:\/\/\S+$/i.test(fileUrl)) {
+      return NextResponse.json(
+        { error: "Bağlantı https:// ile başlamalı" },
+        { status: 400 }
+      );
+    }
+    data.fileUrl = fileUrl;
   }
 
   if (body.fileSize !== undefined) {

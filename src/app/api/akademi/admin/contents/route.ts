@@ -63,6 +63,8 @@ export async function POST(req: NextRequest) {
     type: "VIDEO" | "PDF" | "DOCUMENT" | "QUIZ" | "GOREV";
     duration?: number | null;
     filePath?: string | null;
+    // Harici bağlantı (SharePoint/Stream): https?:// zorunlu, dosya yerine.
+    fileUrl?: string | null;
     fileSize?: number | null;
     // IFS-3b: yalnız type=GOREV'de gelir (IfsTaskMeta).
     ifsMeta?: {
@@ -129,6 +131,14 @@ export async function POST(req: NextRequest) {
   const m = body.ifsMeta ?? {};
   const clean = (v: string | null | undefined) => v?.trim() || null;
 
+  const fileUrl = clean(body.fileUrl);
+  if (fileUrl && !/^https?:\/\/\S+$/i.test(fileUrl)) {
+    return NextResponse.json(
+      { error: "Bağlantı https:// ile başlamalı" },
+      { status: 400 }
+    );
+  }
+
   const content = await prisma.content.create({
     data: {
       courseId,
@@ -137,6 +147,7 @@ export async function POST(req: NextRequest) {
       type: body.type,
       // GOREV görevinin kendi dosyası yoktur; filePath/fileSize null.
       filePath: isGorev ? null : body.filePath?.trim() || null,
+      fileUrl: isGorev ? null : fileUrl,
       duration: isGorev ? null : duration,
       fileSize: isGorev ? null : fileSize,
       order: nextOrder,

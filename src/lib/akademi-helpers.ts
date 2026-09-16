@@ -37,9 +37,15 @@ export function getContentTypeLabel(type: ContentItem["type"]): string {
   }
 }
 
+/** Harici (SharePoint/Stream vb.) bağlantı: https?:// ile başlayan fileUrl. */
+export function isExternalContentUrl(fileUrl: string | null | undefined): boolean {
+  return /^https?:\/\//i.test(fileUrl ?? "");
+}
+
 export function getContentFileUrl(content: ContentItem): string | null {
+  // Harici bağlantı filePath'ten BAĞIMSIZ — yüklenmiş dosya olmadan da geçerli.
+  if (isExternalContentUrl(content.fileUrl)) return content.fileUrl;
   if (!content.filePath) return null;
-  if (content.fileUrl?.startsWith("http")) return content.fileUrl;
 
   const subdir =
     content.type === "VIDEO" ? "videos" :

@@ -50,6 +50,9 @@ export function AdminContentFormModal({
   const [duration, setDuration] = useState<string>("");
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  // VIDEO: "Dosya yükle" | "Bağlantı gir" (harici SharePoint/Stream linki).
+  const [videoSource, setVideoSource] = useState<"upload" | "link">("upload");
+  const [fileUrl, setFileUrl] = useState("");
   // IFS-3b: GOREV alanları (IfsTaskMeta)
   const [modul, setModul] = useState("");
   const [altModul, setAltModul] = useState("");
@@ -67,6 +70,8 @@ export function AdminContentFormModal({
       setDuration(content.duration?.toString() ?? "");
       setFilePath(content.filePath);
       setFileSize(content.fileSize);
+      setFileUrl(content.fileUrl ?? "");
+      setVideoSource(content.fileUrl ? "link" : "upload");
       setModul(content.ifsMeta?.modul ?? "");
       setAltModul(content.ifsMeta?.altModul ?? "");
       setIfsEkran(content.ifsMeta?.ifsEkran ?? "");
@@ -79,6 +84,8 @@ export function AdminContentFormModal({
       setDuration("");
       setFilePath(null);
       setFileSize(null);
+      setFileUrl("");
+      setVideoSource("upload");
       setModul("");
       setAltModul("");
       setIfsEkran("");
@@ -106,6 +113,13 @@ export function AdminContentFormModal({
       durationNum = parsed;
     }
 
+    const useLink = type === "VIDEO" && videoSource === "link";
+    const link = fileUrl.trim();
+    if (useLink && !/^https?:\/\/\S+$/i.test(link)) {
+      toast.error("Bağlantı https:// ile başlamalı");
+      return;
+    }
+
     setSaving(true);
     try {
       const url =
@@ -121,8 +135,10 @@ export function AdminContentFormModal({
         type,
         // GOREV görevinin kendi dosyası/süresi yok.
         duration: isGorev ? null : durationNum,
-        filePath: isGorev ? null : filePath || null,
-        fileSize: isGorev ? null : fileSize || null,
+        // Bağlantı modunda dosya alanları boşalır; dosya modunda bağlantı boşalır.
+        filePath: isGorev || useLink ? null : filePath || null,
+        fileSize: isGorev || useLink ? null : fileSize || null,
+        fileUrl: useLink ? link : null,
         ...(isGorev
           ? {
               ifsMeta: {
@@ -207,7 +223,44 @@ export function AdminContentFormModal({
 
           <AdminContentTypeSelect value={type} onChange={setType} />
 
-          {type !== "QUIZ" && type !== "GOREV" && (
+          {type === "VIDEO" && (
+            <div className="flex gap-2">
+              {(
+                [
+                  ["upload", "Dosya yükle"],
+                  ["link", "Bağlantı gir"],
+                ] as const
+              ).map(([v, label]) => (
+                <Button
+                  key={v}
+                  type="button"
+                  size="sm"
+                  variant={videoSource === v ? "default" : "outline"}
+                  onClick={() => setVideoSource(v)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {type === "VIDEO" && videoSource === "link" && (
+            <div className="space-y-2">
+              <Label>Video bağlantısı</Label>
+              <Input
+                type="url"
+                value={fileUrl}
+                onChange={(e) => setFileUrl(e.target.value)}
+                placeholder="https://… (SharePoint / Stream paylaşım linki)"
+              />
+              <p className="text-xs text-gray-500">
+                Kursiyer videoyu yeni sekmede açar; izleme sonrası
+                &quot;Tamamlandı&quot; ile işaretler.
+              </p>
+            </div>
+          )}
+
+          {type !== "QUIZ" && type !== "GOREV" && !(type === "VIDEO" && videoSource === "link") && (
             <div className="space-y-2">
               <Label>Dosya</Label>
               <AdminContentFileUpload

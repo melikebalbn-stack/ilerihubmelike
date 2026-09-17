@@ -12,12 +12,16 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  ComposedChart, Bar,
+  ComposedChart, Bar, LabelList,
 } from 'recharts'
-import { Loader2, PlusCircle, Target, Pencil } from 'lucide-react'
+import { Loader2, PlusCircle, Target, Pencil, Trash2 } from 'lucide-react'
 
 const NAVY = '#1B4F72'
 const YESIL = '#16a34a'
@@ -40,6 +44,7 @@ interface Aksiyon {
   completionPercent: number | null
   status: string
   responsibleId: string | null
+  sorumluPersonelId: string | null
   responsibleName: string | null
   startDate: string | null
   endDate: string | null
@@ -146,7 +151,7 @@ function AksiyonFormDialog({
   const [acik, setAcik] = useState(false)
   const [reason, setReason] = useState(mevcut?.reason ?? '')
   const [action, setAction] = useState(mevcut?.action ?? '')
-  const [responsibleId, setResponsibleId] = useState(mevcut?.responsibleId ?? '')
+  const [sorumluPersonelId, setSorumluPersonelId] = useState(mevcut?.sorumluPersonelId ?? '')
   const [startDate, setStartDate] = useState(tarihGirdi(mevcut?.startDate ?? null))
   const [endDate, setEndDate] = useState(tarihGirdi(mevcut?.endDate ?? null))
   const [completionPercent, setCompletionPercent] = useState(String(mevcut?.completionPercent ?? 0))
@@ -174,7 +179,7 @@ function AksiyonFormDialog({
         body: JSON.stringify({
           reason,
           action,
-          responsibleId: responsibleId || null,
+          sorumluPersonelId: sorumluPersonelId || null,
           startDate: startDate || null,
           endDate: endDate || null,
           completionPercent: completionPercent === '' ? 0 : Number(completionPercent),
@@ -182,7 +187,7 @@ function AksiyonFormDialog({
       })
       if (res.ok) {
         if (!duzenlemeModu) {
-          setReason(''); setAction(''); setResponsibleId(''); setStartDate(''); setEndDate(''); setCompletionPercent('0')
+          setReason(''); setAction(''); setSorumluPersonelId(''); setStartDate(''); setEndDate(''); setCompletionPercent('0')
         }
         setAcik(false)
         onSaved()
@@ -221,7 +226,7 @@ function AksiyonFormDialog({
           </div>
           <div>
             <Label>Sorumlu</Label>
-            <Select value={responsibleId} onValueChange={setResponsibleId}>
+            <Select value={sorumluPersonelId} onValueChange={setSorumluPersonelId}>
               <SelectTrigger><SelectValue placeholder="Kişi seç (departmandan)" /></SelectTrigger>
               <SelectContent>
                 {adaylar.length === 0 ? (
@@ -350,7 +355,7 @@ function KpiVeriTablosu({
   }, [kpi, tumYillar])
 
   async function hucreKaydet(yil: number, ay: number, alan: 'target' | 'actual', deger: number | null) {
-    await fetch(`/api/sandbox/melike/kpi/${kpi.id}/olcum`, {
+    const res = await fetch(`/api/sandbox/melike/kpi/${kpi.id}/olcum`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -360,6 +365,11 @@ function KpiVeriTablosu({
         actual: alan === 'actual' ? deger : kpi.measurements.find(m => m.year === yil && m.month === ay)?.actual ?? null,
       }),
     })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error ?? 'Kaydedilemedi')
+      return
+    }
     onChanged()
   }
 
@@ -557,6 +567,16 @@ export default function MelikeKpiPage() {
     return { veri: [...ortalamaSatirlari, ...aySatirlari], yilA: yilA ?? null, yilB: yilB ?? null }
   }, [secili, yillar])
 
+  const guncelYilOrtalamasi = useMemo(() => {
+    if (!secili || birlesikGrafikVerisi.yilA == null) return null
+    const yil = birlesikGrafikVerisi.yilA
+    const baseline = secili.baselines.find(b => b.year === yil)
+    if (baseline) return baseline.average
+    const degerler = secili.measurements.filter(m => m.year === yil && m.actual != null).map(m => m.actual as number)
+    if (degerler.length === 0) return null
+    return degerler.reduce((a, b) => a + b, 0) / degerler.length
+  }, [secili, birlesikGrafikVerisi.yilA])
+
   const secilenDepartman = departmanlar.find(d => d.id === secilenDepartmanId)
 
   return (
@@ -609,54 +629,106 @@ export default function MelikeKpiPage() {
           {secili && (
             <>
               <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    {secili.name}
-                    <Badge variant="secondary" className="font-normal">
-                      {secili.direction === 'lower_is_better' ? 'Düşük iyi' : 'Yüksek iyi'}
-                    </Badge>
-                    {secili.unit && <span className="text-xs font-normal text-muted-foreground">{secili.unit}</span>}
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Solda geçmiş yılların ortalaması, sağda {birlesikGrafikVerisi.yilB ?? '—'} vs {birlesikGrafikVerisi.yilA ?? '—'} aylık karşılaştırma — tek grafikte
-                  </p>
+                <CardHeader className="pb-2 flex flex-row items-start justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      {secili.name}
+                      <Badge variant="secondary" className="font-normal">
+                        {secili.direction === 'lower_is_better' ? 'Düşük iyi' : 'Yüksek iyi'}
+                      </Badge>
+                      {secili.unit && <span className="text-xs font-normal text-muted-foreground">{secili.unit}</span>}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Solda geçmiş yılların ortalaması, sağda {birlesikGrafikVerisi.yilB ?? '—'} vs {birlesikGrafikVerisi.yilA ?? '—'} aylık karşılaştırma — tek grafikte
+                    </p>
+                  </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-600">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>&quot;{secili.name}&quot; KPI&apos;sı silinsin mi?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Bu KPI'a ait tüm ölçümler, yıllık ortalamalar ve aksiyonlar birlikte silinir. Bu işlem geri alınamaz.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>İptal</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-red-600 hover:bg-red-700"
+                          onClick={async () => {
+                            await fetch(`/api/sandbox/melike/kpi/${secili.id}`, { method: 'DELETE' })
+                            setSeciliId(null)
+                            yukle()
+                          }}
+                        >
+                          Sil
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </CardHeader>
                 <CardContent>
                   {birlesikGrafikVerisi.veri.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-10 text-center">Veri yok</p>
                   ) : (
-                    <ResponsiveContainer width="100%" height={320}>
-                      <ComposedChart data={birlesikGrafikVerisi.veri} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="ad" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                        <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]} />
-                        {birlesikGrafikVerisi.yilB != null && (
-                          <Bar dataKey={String(birlesikGrafikVerisi.yilB)} fill="#94a3b8" radius={[3, 3, 0, 0]} />
-                        )}
-                        {birlesikGrafikVerisi.yilA != null && (
-                          <Bar dataKey={String(birlesikGrafikVerisi.yilA)} fill={NAVY} radius={[3, 3, 0, 0]} />
-                        )}
-                        <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  )}
-
-                  {yillar.length > 0 && (
-                    <div className="mt-4 pt-4 border-t">
-                      <p className="text-xs text-muted-foreground mb-2">Hücreye tıklayıp değeri düzenleyebilirsin</p>
-                      <KpiVeriTablosu
-                        key={secili.id}
-                        kpi={secili}
-                        yillar={yillar}
-                        onChanged={yukle}
-                        aktifYil={aktifYil}
-                        onAktifYilChange={setAktifYil}
-                      />
+                    <div className="relative">
+                      {guncelYilOrtalamasi != null && birlesikGrafikVerisi.yilA != null && (
+                        <div className="absolute top-0 right-0 text-right z-10">
+                          <div className="text-[11px] text-muted-foreground">{birlesikGrafikVerisi.yilA} Ortalaması</div>
+                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormat(guncelYilOrtalamasi)}</div>
+                        </div>
+                      )}
+                      <ResponsiveContainer width="100%" height={320}>
+                        <ComposedChart data={birlesikGrafikVerisi.veri} margin={{ left: 4, right: 8, top: 20, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="ad" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
+                          <YAxis tick={{ fontSize: 11 }} />
+                          <Tooltip />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]}>
+                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormat(v)} />
+                          </Bar>
+                          {birlesikGrafikVerisi.yilB != null && (
+                            <Bar dataKey={String(birlesikGrafikVerisi.yilB)} fill="#94a3b8" radius={[3, 3, 0, 0]}>
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormat(v)} />
+                            </Bar>
+                          )}
+                          {birlesikGrafikVerisi.yilA != null && (
+                            <Bar dataKey={String(birlesikGrafikVerisi.yilA)} fill={NAVY} radius={[3, 3, 0, 0]}>
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormat(v)} />
+                            </Bar>
+                          )}
+                          <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />
+                          {birlesikGrafikVerisi.yilA != null && (
+                            <Line
+                              type="monotone"
+                              dataKey={String(birlesikGrafikVerisi.yilA)}
+                              name={`${birlesikGrafikVerisi.yilA} Gerçekleşen (çizgi)`}
+                              stroke={YESIL}
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                            />
+                          )}
+                        </ComposedChart>
+                      </ResponsiveContainer>
                     </div>
                   )}
+
+                  <div className="mt-4 pt-4 border-t">
+                    <p className="text-xs text-muted-foreground mb-2">Hücreye tıklayıp değeri düzenleyebilirsin</p>
+                    <KpiVeriTablosu
+                      key={secili.id}
+                      kpi={secili}
+                      yillar={yillar}
+                      onChanged={yukle}
+                      aktifYil={aktifYil}
+                      onAktifYilChange={setAktifYil}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 

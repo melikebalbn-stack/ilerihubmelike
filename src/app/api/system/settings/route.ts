@@ -45,14 +45,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // PR-Y13: enum check yerine RBAC permission.
-    // admin.system.manage → admin, it-admin, super-admin
-    if (!session.user.permissions?.includes('admin.system.manage')) {
-      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
-    }
-
     const body = await request.json()
     const { key, value, category = 'dashboard' } = body
+
+    // PR-Y13: enum check yerine RBAC permission.
+    // admin.system.manage → admin, it-admin, super-admin
+    // KPI-AYAR: 'kpi' kategorisi için kpi.manage de yeterli (diğer kategoriler etkilenmiyor)
+    const yetkili = session.user.permissions?.includes('admin.system.manage')
+      || (category === 'kpi' && session.user.permissions?.includes('kpi.manage'))
+    if (!yetkili) {
+      return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
+    }
 
     if (!key) {
       return NextResponse.json({ error: 'Anahtar (key) zorunludur' }, { status: 400 })

@@ -17,15 +17,30 @@ export async function GET(request: Request) {
     orderBy: { name: 'asc' },
   })
 
-  const sorumluIdler = kpiler.flatMap(k => k.actions.map(a => a.responsibleId)).filter((id): id is string => !!id)
-  const sorumlular = sorumluIdler.length
-    ? await prisma.orgEmployee.findMany({ where: { id: { in: sorumluIdler } }, select: { id: true, displayName: true } })
-    : []
-  const sorumluAd = new Map(sorumlular.map(s => [s.id, s.displayName]))
+  // Sorumlu isim çözümü: yeni aksiyonlar Personnel'den, eski (Excel import) aksiyonlar OrgEmployee'den geliyor
+  const orgEmployeeIdler = kpiler.flatMap(k => k.actions.map(a => a.responsibleId)).filter((id): id is string => !!id)
+  const personelIdler = kpiler.flatMap(k => k.actions.map(a => a.sorumluPersonelId)).filter((id): id is string => !!id)
+  const [orgEmployeeler, personeller] = await Promise.all([
+    orgEmployeeIdler.length
+      ? prisma.orgEmployee.findMany({ where: { id: { in: orgEmployeeIdler } }, select: { id: true, displayName: true } })
+      : Promise.resolve([]),
+    personelIdler.length
+      ? prisma.personnel.findMany({ where: { id: { in: personelIdler } }, select: { id: true, adSoyad: true } })
+      : Promise.resolve([]),
+  ])
+  const orgEmployeeAd = new Map(orgEmployeeler.map(s => [s.id, s.displayName]))
+  const personelAd = new Map(personeller.map(p => [p.id, p.adSoyad]))
 
   const sonuc = kpiler.map(k => ({
     ...k,
-    actions: k.actions.map(a => ({ ...a, responsibleName: a.responsibleId ? sorumluAd.get(a.responsibleId) ?? null : null })),
+    actions: k.actions.map(a => ({
+      ...a,
+      responsibleName: a.sorumluPersonelId
+        ? personelAd.get(a.sorumluPersonelId) ?? null
+        : a.responsibleId
+          ? orgEmployeeAd.get(a.responsibleId) ?? null
+          : null,
+    })),
   }))
 
   return NextResponse.json({ kpiler: sonuc })

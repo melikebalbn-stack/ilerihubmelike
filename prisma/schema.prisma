@@ -8559,6 +8559,8 @@ model Personnel {
   employmentPeriods   EmploymentPeriod[]
   // OFFB-1: Zimmet İade / İlişik Kesme formları
   offboardingForms    OffboardingForm[]
+  // KPI-AYAR: bu personelin sorumlu olduğu KPI aksiyonları (ters ilişki)
+  kpiAksiyonlari      KPIAction[]
 
   @@index([bolum])
   @@index([yakaRengi])
@@ -10131,6 +10133,9 @@ model KPIAction {
   action            String?
   responsibleId     String?
   responsible       OrgEmployee?  @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
+  // KPI-AYAR: personel listesinden sorumlu seçimi (additive, OrgUnit/OrgEmployee bağı korunuyor)
+  sorumluPersonelId String?
+  sorumluPersonel   Personnel?    @relation(fields: [sorumluPersonelId], references: [id], onDelete: SetNull)
   startDate         DateTime?     @db.Date
   endDate           DateTime?     @db.Date
   completionPercent Int?

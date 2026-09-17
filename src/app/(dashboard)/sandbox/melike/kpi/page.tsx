@@ -369,7 +369,6 @@ function KpiVeriTablosu({
 }: { kpi: Kpi; yillar: number[]; onChanged: () => void; aktifYil: number | null; onAktifYilChange: (y: number) => void }) {
   const [ekstraYillar, setEkstraYillar] = useState<number[]>([])
   const [donemYilGirdi, setDonemYilGirdi] = useState('')
-  const [ortYilGirdi, setOrtYilGirdi] = useState('')
   const tumYillar = useMemo(
     () => Array.from(new Set([...yillar, ...ekstraYillar])).sort((a, b) => b - a),
     [yillar, ekstraYillar],
@@ -386,13 +385,14 @@ function KpiVeriTablosu({
   // Ortalama sütunu: aylık verisi olan yıllar için KENDİSİ hesaplanır (elle
   // ayrı bir "ortalama ekle" adımına gerek yok); aylık kırılımı olmayan eski
   // yıllar (2020-2023 gibi) için elle girilen/Excel'den gelen değer kullanılır.
-  const [ekstraOrtYillar, setEkstraOrtYillar] = useState<number[]>([])
+  // Ayrıca hangi yıllar "Dönem Karşılaştır" ile eklendiyse onlar için de otomatik
+  // (başta boş/düzenlenebilir) bir Ort. sütunu açılır — ayrı bir ekleme adımı yok.
   const yillarIleOlcum = useMemo(() => new Set(kpi.measurements.filter(m => m.actual != null).map(m => m.year)), [kpi])
   const ortYillar = useMemo((): [number, number | null][] => {
     const hesap = new Map<number, number | null>(hesaplaOrtYillar(kpi))
-    for (const y of ekstraOrtYillar) if (!hesap.has(y)) hesap.set(y, null)
+    for (const y of tumYillar) if (!hesap.has(y)) hesap.set(y, null)
     return Array.from(hesap.entries()).sort(([a], [b]) => a - b)
-  }, [kpi, ekstraOrtYillar])
+  }, [kpi, tumYillar])
 
   async function ortalamaKaydet(yil: number, deger: number | null) {
     await fetch(`/api/sandbox/melike/kpi/${kpi.id}/ortalama`, {
@@ -439,56 +439,30 @@ function KpiVeriTablosu({
             </Button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              placeholder="Yıl"
-              className="w-20 h-7 text-xs"
-              value={donemYilGirdi}
-              onChange={e => setDonemYilGirdi(e.target.value)}
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              disabled={!donemYilGirdi.trim()}
-              onClick={() => {
-                const yil = Number(donemYilGirdi)
-                if (Number.isNaN(yil)) return
-                if (!tumYillar.includes(yil)) setEkstraYillar(prev => [...prev, yil])
-                onAktifYilChange(yil)
-                setDonemYilGirdi('')
-              }}
-            >
-              <PlusCircle className="h-3 w-3 mr-1" />
-              Dönem Karşılaştır
-            </Button>
-          </div>
-          <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              placeholder="Yıl"
-              className="w-20 h-7 text-xs"
-              value={ortYilGirdi}
-              onChange={e => setOrtYilGirdi(e.target.value)}
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              disabled={!ortYilGirdi.trim()}
-              onClick={() => {
-                const yil = Number(ortYilGirdi)
-                if (Number.isNaN(yil)) return
-                setEkstraOrtYillar(prev => (prev.includes(yil) ? prev : [...prev, yil]))
-                setOrtYilGirdi('')
-              }}
-            >
-              <PlusCircle className="h-3 w-3 mr-1" />
-              Ortalama Yılı Ekle
-            </Button>
-          </div>
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            placeholder="Yıl"
+            className="w-20 h-7 text-xs"
+            value={donemYilGirdi}
+            onChange={e => setDonemYilGirdi(e.target.value)}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            disabled={!donemYilGirdi.trim()}
+            onClick={() => {
+              const yil = Number(donemYilGirdi)
+              if (Number.isNaN(yil)) return
+              if (!tumYillar.includes(yil)) setEkstraYillar(prev => [...prev, yil])
+              onAktifYilChange(yil)
+              setDonemYilGirdi('')
+            }}
+          >
+            <PlusCircle className="h-3 w-3 mr-1" />
+            Dönem Karşılaştır
+          </Button>
         </div>
       </div>
       <div className="overflow-x-auto rounded-md border border-slate-300">

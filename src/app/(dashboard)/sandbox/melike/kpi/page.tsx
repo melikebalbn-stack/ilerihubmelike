@@ -490,12 +490,107 @@ interface Departman {
   name: string
 }
 
+interface OzetKpiSirasi {
+  id: string
+  name: string
+  oran: number
+}
+
+interface DepartmanOzeti {
+  orgUnitId: string
+  name: string
+  kpiSayisi: number
+  genelOran: number | null
+  enBasarili: OzetKpiSirasi[]
+  enBasarisiz: OzetKpiSirasi[]
+}
+
+function oranRengi(oran: number): string {
+  if (oran >= 80) return '#16a34a'
+  if (oran >= 50) return '#d97706'
+  return '#dc2626'
+}
+
+function KpiOzetGorunumu({ onDepartmanSec }: { onDepartmanSec: (orgUnitId: string) => void }) {
+  const [ozet, setOzet] = useState<DepartmanOzeti[] | null>(null)
+
+  useEffect(() => {
+    fetch('/api/sandbox/melike/kpi/ozet')
+      .then(res => res.json())
+      .then(d => setOzet(d.ozet ?? []))
+      .catch(() => setOzet([]))
+  }, [])
+
+  if (!ozet) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {ozet.map(d => (
+        <Card
+          key={d.orgUnitId}
+          className="cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => onDepartmanSec(d.orgUnitId)}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>{d.name}</span>
+              {d.genelOran != null && (
+                <span className="text-lg font-bold" style={{ color: oranRengi(d.genelOran) }}>%{d.genelOran}</span>
+              )}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">{d.kpiSayisi} KPI</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {d.kpiSayisi === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">Henüz KPI tanımlanmamış</p>
+            ) : d.genelOran == null ? (
+              <p className="text-sm text-muted-foreground py-2">Henüz ölçüm verisi yok</p>
+            ) : (
+              <>
+                {d.enBasarili.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">En başarılı</p>
+                    {d.enBasarili.map(k => (
+                      <div key={k.id} className="flex items-center justify-between text-sm py-0.5">
+                        <span className="truncate pr-2">{k.name}</span>
+                        <span className="font-medium" style={{ color: oranRengi(k.oran) }}>%{k.oran}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {d.enBasarisiz.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">En başarısız</p>
+                    {d.enBasarisiz.map(k => (
+                      <div key={k.id} className="flex items-center justify-between text-sm py-0.5">
+                        <span className="truncate pr-2">{k.name}</span>
+                        <span className="font-medium" style={{ color: oranRengi(k.oran) }}>%{k.oran}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
 export default function MelikeKpiPage() {
   const [departmanlar, setDepartmanlar] = useState<Departman[]>([])
   const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(IK_ORG_UNIT_ID)
   const [kpiler, setKpiler] = useState<Kpi[] | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [seciliId, setSeciliId] = useState<string | null>(null)
+  const [gorunum, setGorunum] = useState<'takip' | 'ozet'>('takip')
 
   useEffect(() => {
     fetch('/api/sandbox/melike/kpi/departmanlar')
@@ -581,6 +676,22 @@ export default function MelikeKpiPage() {
 
   return (
     <div className="space-y-6">
+      <Tabs value={gorunum} onValueChange={(v) => setGorunum(v as 'takip' | 'ozet')}>
+        <TabsList>
+          <TabsTrigger value="takip">KPI Takip</TabsTrigger>
+          <TabsTrigger value="ozet">KPI Özet</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {gorunum === 'ozet' ? (
+        <KpiOzetGorunumu
+          onDepartmanSec={(orgUnitId) => {
+            setSecilenDepartmanId(orgUnitId)
+            setGorunum('takip')
+          }}
+        />
+      ) : (
+        <>
       <div>
         <Label className="text-xs text-muted-foreground">Departman</Label>
         <Select value={secilenDepartmanId} onValueChange={setSecilenDepartmanId}>
@@ -781,6 +892,8 @@ export default function MelikeKpiPage() {
               </Card>
             </>
           )}
+        </>
+      )}
         </>
       )}
     </div>

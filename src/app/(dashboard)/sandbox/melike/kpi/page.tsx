@@ -65,11 +65,29 @@ interface Kpi {
   actions: Aksiyon[]
 }
 
+// Yıl → ortalama haritası. Aylık ölçümü olan yıllarda KENDİSİ hesaplanır;
+// aylık kırılımı olmayan eski yıllarda (2020-2023 gibi) Excel'den/elle
+// girilmiş KPIYearlyBaseline değeri kullanılır. Grafik ve tablo aynı
+// fonksiyonu kullanır ki ikisi hep tutarlı olsun.
+function hesaplaOrtYillar(kpi: Kpi): [number, number][] {
+  const yillarKumesi = new Set<number>([...kpi.measurements.map(m => m.year), ...kpi.baselines.map(b => b.year)])
+  const hesaplanan = new Map<number, number>()
+  for (const yil of yillarKumesi) {
+    const degerler = kpi.measurements.filter(m => m.year === yil && m.actual != null).map(m => m.actual as number)
+    if (degerler.length > 0) hesaplanan.set(yil, degerler.reduce((a, b) => a + b, 0) / degerler.length)
+  }
+  for (const b of kpi.baselines) {
+    if (!hesaplanan.has(b.year)) hesaplanan.set(b.year, b.average)
+  }
+  return Array.from(hesaplanan.entries()).sort(([a], [b]) => a - b)
+}
+
 function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated: () => void }) {
   const [acik, setAcik] = useState(false)
   const [name, setName] = useState('')
   const [unit, setUnit] = useState('')
   const [direction, setDirection] = useState('higher_is_better')
+  const [hedef, setHedef] = useState('')
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
   async function kaydet() {
@@ -82,7 +100,21 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         body: JSON.stringify({ name, unit, direction, orgUnitId }),
       })
       if (res.ok) {
-        setName(''); setUnit(''); setDirection('higher_is_better')
+        const { kpi } = await res.json()
+        // Hedef girildiyse bu yılın 12 ayına tek seferde uygula — tek tek girmeye gerek kalmasın.
+        if (hedef.trim() && !Number.isNaN(Number(hedef))) {
+          const yil = new Date().getFullYear()
+          await Promise.all(
+            Array.from({ length: 12 }, (_, i) =>
+              fetch(`/api/sandbox/melike/kpi/${kpi.id}/olcum`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year: yil, month: i + 1, target: Number(hedef), actual: null }),
+              }),
+            ),
+          )
+        }
+        setName(''); setUnit(''); setDirection('higher_is_better'); setHedef('')
         setAcik(false)
         onCreated()
       }
@@ -121,6 +153,15 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
                 <SelectItem value="lower_is_better">Düşük değer iyi</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <Label>Hedef (opsiyonel)</Label>
+            <Input
+              type="number"
+              value={hedef}
+              onChange={e => setHedef(e.target.value)}
+              placeholder="Girilirse bu yılın 12 ayına otomatik uygulanır"
+            />
           </div>
         </div>
         <DialogFooter>
@@ -339,20 +380,24 @@ function KpiVeriTablosu({
   const gosterilenYillar = aktifYil == null ? [] : [aktifYil, aktifYil - 1]
 
   // Ortalama sütunu: aylık verisi olan yıllar için KENDİSİ hesaplanır (elle
-  // ayrı bir "ortalama ekle" adımına gerek yok); sadece Excel'den gelen ve
-  // aylık kırılımı olmayan eski yıllar (2020-2023) için import'taki sabit
-  // değer kullanılır.
-  const ortYillar = useMemo(() => {
-    const hesaplanan = new Map<number, number>()
-    for (const yil of tumYillar) {
-      const degerler = kpi.measurements.filter(m => m.year === yil && m.actual != null).map(m => m.actual as number)
-      if (degerler.length > 0) hesaplanan.set(yil, degerler.reduce((a, b) => a + b, 0) / degerler.length)
-    }
-    for (const b of kpi.baselines) {
-      if (!hesaplanan.has(b.year)) hesaplanan.set(b.year, b.average)
-    }
-    return Array.from(hesaplanan.entries()).sort(([a], [b]) => a - b)
-  }, [kpi, tumYillar])
+  // ayrı bir "ortalama ekle" adımına gerek yok); aylık kırılımı olmayan eski
+  // yıllar (2020-2023 gibi) için elle girilen/Excel'den gelen değer kullanılır.
+  const [ekstraOrtYillar, setEkstraOrtYillar] = useState<number[]>([])
+  const yillarIleOlcum = useMemo(() => new Set(kpi.measurements.filter(m => m.actual != null).map(m => m.year)), [kpi])
+  const ortYillar = useMemo((): [number, number | null][] => {
+    const hesap = new Map<number, number | null>(hesaplaOrtYillar(kpi))
+    for (const y of ekstraOrtYillar) if (!hesap.has(y)) hesap.set(y, null)
+    return Array.from(hesap.entries()).sort(([a], [b]) => a - b)
+  }, [kpi, ekstraOrtYillar])
+
+  async function ortalamaKaydet(yil: number, deger: number | null) {
+    await fetch(`/api/sandbox/melike/kpi/${kpi.id}/ortalama`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: yil, average: deger }),
+    })
+    onChanged()
+  }
 
   async function hucreKaydet(yil: number, ay: number, alan: 'target' | 'actual', deger: number | null) {
     const res = await fetch(`/api/sandbox/melike/kpi/${kpi.id}/olcum`, {
@@ -403,6 +448,19 @@ function KpiVeriTablosu({
           <PlusCircle className="h-3 w-3 mr-1" />
           Yeni Dönem Karşılaştırma Ekle
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs"
+          onClick={() => {
+            const girdi = window.prompt('Hangi yılın ortalamasını eklemek istiyorsun? (örn: 2019)')
+            const yil = Number(girdi)
+            if (girdi && !Number.isNaN(yil)) setEkstraOrtYillar(prev => [...prev, yil])
+          }}
+        >
+          <PlusCircle className="h-3 w-3 mr-1" />
+          Ortalama Ekle
+        </Button>
       </div>
       <div className="overflow-x-auto rounded-md border border-slate-300">
         <table className="w-full text-sm border-collapse">
@@ -429,9 +487,18 @@ function KpiVeriTablosu({
                   <tr className="border-t-2 border-slate-400">
                     <td className="p-2 font-semibold whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">{yil} · Gerçekleşen</td>
                     {ilkYil
-                      ? ortYillar.map(([y, ort]) => (
-                          <td key={y} className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200">{sayiFormat(ort)}</td>
-                        ))
+                      ? ortYillar.map(([y, ort]) =>
+                          yillarIleOlcum.has(y) ? (
+                            <td key={y} className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200">{sayiFormat(ort)}</td>
+                          ) : (
+                            <DuzenlenebilirHucre
+                              key={y}
+                              deger={ort}
+                              onKaydet={(d) => ortalamaKaydet(y, d)}
+                              className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200"
+                            />
+                          ),
+                        )
                       : ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
                     {aylikVeri.map((v, i) => {
                       const tutuldu = hedefTutuldu(kpi, v.target, v.actual)
@@ -649,10 +716,9 @@ export default function MelikeKpiPage() {
     const hedefBul = (ay: number) =>
       secili.measurements.find(m => m.year === yilA && m.month === ay)?.target ?? null
 
-    const ortalamaSatirlari = secili.baselines.map(b => ({
-      ad: `${b.year} Ort.`,
-      Ortalama: b.average,
-    }))
+    const ortalamaSatirlari = hesaplaOrtYillar(secili)
+      .filter(([, ort]) => ort != null)
+      .map(([y, ort]) => ({ ad: `${y} Ort.`, Ortalama: ort as number }))
     const aySatirlari = AY_KISA.map((ad, i) => ({
       ad,
       [String(yilA)]: bul(yilA, i + 1),
@@ -664,12 +730,7 @@ export default function MelikeKpiPage() {
 
   const guncelYilOrtalamasi = useMemo(() => {
     if (!secili || birlesikGrafikVerisi.yilA == null) return null
-    const yil = birlesikGrafikVerisi.yilA
-    const baseline = secili.baselines.find(b => b.year === yil)
-    if (baseline) return baseline.average
-    const degerler = secili.measurements.filter(m => m.year === yil && m.actual != null).map(m => m.actual as number)
-    if (degerler.length === 0) return null
-    return degerler.reduce((a, b) => a + b, 0) / degerler.length
+    return hesaplaOrtYillar(secili).find(([y]) => y === birlesikGrafikVerisi.yilA)?.[1] ?? null
   }, [secili, birlesikGrafikVerisi.yilA])
 
   const secilenDepartman = departmanlar.find(d => d.id === secilenDepartmanId)
@@ -814,6 +875,16 @@ export default function MelikeKpiPage() {
                             </Bar>
                           )}
                           <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />
+                          {birlesikGrafikVerisi.yilB != null && (
+                            <Line
+                              type="monotone"
+                              dataKey={String(birlesikGrafikVerisi.yilB)}
+                              name={`${birlesikGrafikVerisi.yilB} Gerçekleşen (çizgi)`}
+                              stroke="#64748b"
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                            />
+                          )}
                           {birlesikGrafikVerisi.yilA != null && (
                             <Line
                               type="monotone"

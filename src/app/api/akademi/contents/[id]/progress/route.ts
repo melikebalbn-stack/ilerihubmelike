@@ -5,6 +5,7 @@ import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { recomputeCourseProgress } from "@/lib/akademi/course-progress";
 import { NextResponse } from "next/server";
 import type { ProgressMarkResponse } from "@/types/akademi";
+import { izlemeDurumu } from "@/lib/akademi/video-izleme";
 
 const XP_PER_CONTENT = 10;
 
@@ -25,7 +26,15 @@ export async function POST(
 
   const content = await prisma.content.findFirst({
     where: { id, isActive: true },
-    select: { id: true, courseId: true, title: true },
+    select: {
+      id: true,
+      courseId: true,
+      title: true,
+      type: true,
+      fileUrl: true,
+      videoDurationSec: true,
+      course: { select: { isIfs: true } },
+    },
   });
 
   if (!content) {
@@ -36,6 +45,20 @@ export async function POST(
     where: { userId_contentId: { userId, contentId: content.id } },
   });
   const alreadyCompleted = Boolean(existingProgress?.completed);
+
+  // %90 İZLEME ŞARTI (17.09.2026) — yalnız yüklenmiş VIDEO + IFS dışı kurs.
+  // Harici URL video ve PDF/DOCUMENT/GOREV eskisi gibi manuel. Fail-closed:
+  // gerçek süre henüz bilinmiyorsa (videoDurationSec null) %0 sayılır → 409.
+  const izleme = izlemeDurumu(content, existingProgress);
+  if (!alreadyCompleted && !izleme.tamamlanabilir) {
+    return NextResponse.json(
+      {
+        error: `Videonun %90'ı izlenmeli (%${izleme.watchedPercent})`,
+        watchedPercent: izleme.watchedPercent,
+      },
+      { status: 409 }
+    );
+  }
 
   const xpGranted = await prisma.$transaction(async (tx) => {
     await tx.contentProgress.upsert({
@@ -49,7 +72,11 @@ export async function POST(
       },
       update: {
         completed: true,
-        watchedSeconds: watchedSeconds ?? null,
+        // Heartbeat'in biriktirdiği süreyi EZME: yalnız daha büyük değer yazılır.
+        ...(watchedSeconds !== undefined &&
+        watchedSeconds > (existingProgress?.watchedSeconds ?? 0)
+          ? { watchedSeconds }
+          : {}),
         completedAt: existingProgress?.completedAt ?? new Date(),
       },
     });

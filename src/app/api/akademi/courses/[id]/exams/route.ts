@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
+import { sinavKilidi } from "@/lib/akademi/video-izleme";
 
 export async function GET(
   _req: NextRequest,
@@ -38,6 +39,9 @@ export async function GET(
   });
 
   const now = Date.now();
+  // SINAV KİLİDİ (sunucu, fail-closed): tüm zorunlu içerikler tamamlanmadan
+  // canStart=false. UI kilidi tek başına yetmez; attempts POST da aynı kontrolü yapar.
+  const kilit = await sinavKilidi(userId, courseId);
 
   const result = exams.map((e) => {
     const attempts = e.attempts;
@@ -72,9 +76,13 @@ export async function GET(
         inProgressAttemptId: inProgress?.id ?? null,
         usedAttempts,
         remainingAttempts: Math.max(0, e.maxAttempts - usedAttempts),
-        canStart: !inProgress && usedAttempts < e.maxAttempts && !passed,
+        canStart:
+          !kilit.locked && !inProgress && usedAttempts < e.maxAttempts && !passed,
         lastAttempt: completed[0] ?? null,
       },
+      locked: kilit.locked,
+      lockReason: kilit.lockReason,
+      contentProgress: { completed: kilit.completed, required: kilit.required },
     };
   });
 

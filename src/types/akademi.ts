@@ -48,6 +48,13 @@ export interface ContentItem {
   duration: number | null;
   order: number;
   completedByCurrentUser: boolean;
+  // VIDEO izleme takibi (Dalga 1): birikimli gerçek izleme, kaldığı yer, gerçek süre, yüzde.
+  watchedSeconds?: number;
+  lastPositionSec?: number;
+  videoDurationSec?: number | null;
+  watchedPercent?: number;
+  /** true → "Tamamlandı" için %90 şartı var (yüklenmiş video, IFS dışı). */
+  izlemeSartiUygulanir?: boolean;
   // IFS: kursiyerin "Örnek Yaptım" açıklaması (varsa) — modal prefill için.
   ornekAciklama?: string | null;
   // IFS-DURUM: kursiyer görev durumu (BEKLIYOR|ORNEK_YAPILDI|FARKLI_DEPARTMAN|EGITIM_GEREKLI).

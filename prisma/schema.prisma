@@ -9749,6 +9749,9 @@ model Content {
   fileUrl     String?
   duration    Int?
   fileSize    Int?
+  // VIDEO: gerçek süre (sn) — ilk oynatmada istemcinin video.duration'ından yazılır,
+  // %90 izleme şartı bunun üzerinden hesaplanır (duration dakika/elle, güvenilmez).
+  videoDurationSec Int?
   order       Int         @default(0)
   isActive    Boolean     @default(true)
   createdAt   DateTime    @default(now())
@@ -10049,7 +10052,8 @@ model ContentProgress {
   userId         String
   contentId      String
   completed      Boolean   @default(false)
-  watchedSeconds Int?
+  watchedSeconds Int?      // birikimli GERÇEK izleme (sn) — ileri sarma sayılmaz, monoton artar
+  lastPositionSec Int?     // kaldığı yer (sn) — kaldığı yerden devam için
   completedAt    DateTime?
   updatedAt      DateTime  @updatedAt
 

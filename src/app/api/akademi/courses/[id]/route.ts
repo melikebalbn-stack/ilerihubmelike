@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { NextResponse } from "next/server";
 import type { CourseDetail } from "@/types/akademi";
+import { izlemeDurumu } from "@/lib/akademi/video-izleme";
 
 export async function GET(
   _req: Request,
@@ -71,6 +72,10 @@ export async function GET(
     isAssigned,
     contents: course.contents.map((c) => {
       const contentProg = c.progress[0];
+      const izleme = izlemeDurumu(
+        { type: c.type, fileUrl: c.fileUrl, videoDurationSec: c.videoDurationSec, course: { isIfs: course.isIfs } },
+        contentProg
+      );
       return {
         id: c.id,
         courseId: c.courseId,
@@ -82,6 +87,12 @@ export async function GET(
         duration: c.duration,
         order: c.order,
         completedByCurrentUser: Boolean(contentProg?.completed),
+        // VIDEO izleme takibi (Dalga 1) — diğer tiplerde sartUygulanir=false.
+        watchedSeconds: izleme.watchedSeconds,
+        lastPositionSec: izleme.lastPositionSec,
+        videoDurationSec: izleme.videoDurationSec,
+        watchedPercent: izleme.watchedPercent,
+        izlemeSartiUygulanir: izleme.sartUygulanir,
         ornekAciklama: c.ifsEvaluations[0]?.ornekAciklama ?? null,
         kursiyerDurum: c.ifsEvaluations[0]?.kursiyerDurum ?? null,
         ifsMeta: c.ifsMeta

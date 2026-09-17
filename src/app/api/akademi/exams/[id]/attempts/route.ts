@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
+import { sinavKilidi } from "@/lib/akademi/video-izleme";
 
 export async function POST(
   _req: NextRequest,
@@ -34,6 +35,18 @@ export async function POST(
       });
     } else {
       return NextResponse.json({ attempt: existing, resumed: true });
+    }
+  }
+
+  // SINAV KİLİDİ (sunucu): kursa bağlı sınavda tüm zorunlu içerikler tamamlanmadan
+  // yeni deneme AÇILMAZ. Devam eden deneme (yukarıda resume edildi) etkilenmez.
+  if (exam.courseId) {
+    const kilit = await sinavKilidi(userId, exam.courseId);
+    if (kilit.locked) {
+      return NextResponse.json(
+        { error: kilit.lockReason ?? "Sınav henüz açık değil", locked: true },
+        { status: 403 }
+      );
     }
   }
 

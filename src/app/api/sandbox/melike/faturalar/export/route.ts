@@ -7,7 +7,7 @@ import { departmentLabel } from '../_lib/excel'
 import { canAccessFaturaTakip } from '../_lib/access'
 import { computeSummary } from '../_lib/summary'
 
-// GET ?template=1 — boş şablon. ?type=summary — KPI'ya uygun ay/bölüm kırılımı (sayısal, yuvarlanmamış).
+// GET ?template=1 — boş şablon. ?type=summary — KPI'ya uygun bölüm kırılımı (sayısal, yuvarlanmamış).
 // Aksi halde mevcut tüm faturalar (ham liste).
 export async function GET(request: NextRequest) {
   try {
@@ -36,26 +36,18 @@ export async function GET(request: NextRequest) {
           allocations: { select: { departmentName: true, amountEUR: true, amountTRY: true } },
         },
       })
-      const revenueRows = await prisma.invoiceMonthlyRevenue.findMany()
-      const revenueByMonth = new Map(
-        revenueRows.map((r) => [r.month.toISOString().slice(0, 7), Number(r.revenueEUR)])
-      )
+      const revenueSetting = await prisma.invoiceRevenueSetting.findUnique({ where: { id: 'singleton' } })
+      const totalCiro = revenueSetting ? Number(revenueSetting.totalRevenueEUR) : null
 
-      const { months } = computeSummary(invoices)
+      const { departments } = computeSummary(invoices)
 
-      rows = months.flatMap((m) =>
-        m.departments.map((d) => {
-          const ciroEUR = revenueByMonth.get(m.key) ?? null
-          return {
-            Ay: m.key,
-            Bölüm: d.label,
-            'Tutar (€)': d.eur,
-            'Tutar (₺)': d.tl,
-            'Ciro (€)': ciroEUR ?? '',
-            'Cironun Oranı (%)': ciroEUR && ciroEUR > 0 ? (d.eur / ciroEUR) * 100 : '',
-          }
-        })
-      )
+      rows = departments.map((d) => ({
+        Bölüm: d.label,
+        'Tutar (€)': d.eur,
+        'Tutar (₺)': d.tl,
+        'Ciro (€)': totalCiro ?? '',
+        'Cironun Oranı (%)': totalCiro && totalCiro > 0 ? (d.eur / totalCiro) * 100 : '',
+      }))
     } else if (isTemplate) {
       rows = [
         {
@@ -93,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     const sheet = XLSX.utils.json_to_sheet(rows)
     sheet['!cols'] = isSummary
-      ? [{ wch: 10 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 16 }]
+      ? [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 16 }]
       : [
           { wch: 12 }, { wch: 32 }, { wch: 20 }, { wch: 12 }, { wch: 10 },
           { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 24 },

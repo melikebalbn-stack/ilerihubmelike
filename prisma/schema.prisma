@@ -10078,14 +10078,13 @@ model InvoiceDepartmentAllocation {
   @@index([departmentOrgUnitId])
 }
 
-model InvoiceMonthlyRevenue {
-  id          String   @id @default(cuid())
-  month       DateTime @unique @db.Date
-  revenueEUR  Decimal  @db.Decimal(16, 2)
-  note        String?
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// Tek bir toplam ciro değeri (aylık değil) — kırılım tablolarındaki "Cironun Oranı" kıyaslaması için.
+// Tek satırlık (singleton) tablo: id her zaman "singleton".
+model InvoiceRevenueSetting {
+  id            String   @id @default("singleton")
+  totalRevenueEUR Decimal @db.Decimal(16, 2)
+  updatedById   String
+  updatedAt     DateTime @updatedAt
 }
 
 model TcmbRateCache {

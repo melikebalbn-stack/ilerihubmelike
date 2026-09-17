@@ -74,7 +74,7 @@ export function ImportDialog({ open, onOpenChange, onImported }: Props) {
             </a>
           </div>
           <p className="text-xs text-muted-foreground/80">
-            "KPI Özet" her ay + bölüm için ayrı satır verir: € tutar, ₺ tutar, ciro (€) ve cironun oranı — sayısal,
+            "KPI Özet" her bölüm için ayrı satır verir: € tutar, ₺ tutar, ciro (€) ve cironun oranı — sayısal,
             yuvarlanmamış. KPI dosyana çekmek için bunu kullan.
           </p>
 

@@ -117,7 +117,7 @@ export default function FaturaTakipPage() {
 
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [revenues, setRevenues] = useState<Record<string, number>>({})
+  const [ciroInput, setCiroInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<EditableInvoice | null>(null)
@@ -156,13 +156,11 @@ export default function FaturaTakipPage() {
     if (res.ok) setSummary(await res.json())
   }, [])
 
-  const loadRevenues = useCallback(async () => {
+  const loadTotalCiro = useCallback(async () => {
     const res = await fetch('/api/sandbox/melike/faturalar/revenue')
     if (res.ok) {
       const data = await res.json()
-      const map: Record<string, number> = {}
-      for (const r of data.revenues ?? []) map[r.month] = r.revenueEUR
-      setRevenues(map)
+      setCiroInput(data.totalRevenueEUR != null ? String(data.totalRevenueEUR) : '')
     }
   }, [])
 
@@ -177,8 +175,8 @@ export default function FaturaTakipPage() {
   useEffect(() => {
     if (!authorized) return
     setLoading(true)
-    Promise.all([loadInvoices(), loadSummary(), loadRevenues(), loadDepartments()]).finally(() => setLoading(false))
-  }, [authorized, loadInvoices, loadSummary, loadRevenues, loadDepartments])
+    Promise.all([loadInvoices(), loadSummary(), loadTotalCiro(), loadDepartments()]).finally(() => setLoading(false))
+  }, [authorized, loadInvoices, loadSummary, loadTotalCiro, loadDepartments])
 
   // Filtre/arama değiştiğinde sadece liste yenilensin (özet/ciro sabit kalır)
   useEffect(() => {
@@ -207,16 +205,12 @@ export default function FaturaTakipPage() {
     }
   }
 
-  async function handleRevenueChange(monthKey: string, value: string) {
-    setRevenues((prev) => ({ ...prev, [monthKey]: Number(value) || 0 }))
-  }
-
-  async function handleRevenueBlur(monthKey: string) {
-    const value = revenues[monthKey] ?? 0
+  async function handleCiroBlur() {
+    const value = Number(ciroInput) || 0
     await fetch('/api/sandbox/melike/faturalar/revenue', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ month: monthKey, revenueEUR: value }),
+      body: JSON.stringify({ totalRevenueEUR: value }),
     })
   }
 
@@ -230,7 +224,7 @@ export default function FaturaTakipPage() {
     [summary]
   )
 
-  const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
+  const totalCiro = Number(ciroInput) || 0
 
   if (status === 'loading' || !authorized) {
     return (
@@ -315,73 +309,26 @@ export default function FaturaTakipPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="text-sm font-semibold text-muted-foreground">Aylık ciro karşılaştırması</div>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            Her ay için ciroyu € olarak elle gir, oran otomatik hesaplansın.
-          </p>
-          {!summary?.months.length ? (
-            <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ay</TableHead>
-                  <TableHead className="text-right">Fatura Toplamı (€)</TableHead>
-                  <TableHead>Bölüm Dağılımı</TableHead>
-                  <TableHead className="text-right w-36">Ciro (€)</TableHead>
-                  <TableHead className="text-right">Toplam Oran</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary.months.map((m) => {
-                  const ciroVal = revenues[m.key] ?? 0
-                  const oran = ciroVal > 0 ? (m.toplamEUR / ciroVal) * 100 : null
-                  return (
-                    <TableRow key={m.key}>
-                      <TableCell>{formatMonthLabel(m.key)}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatEur(m.toplamEUR)}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5 text-xs">
-                          {m.departments.map((d) => (
-                            <span
-                              key={d.label}
-                              style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}
-                              className={d.label === 'Sistem Geliştirme Müdürlüğü' ? '' : 'text-muted-foreground'}
-                            >
-                              {d.label}: {formatEur(d.eur)}
-                            </span>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Input
-                          value={revenues[m.key] ?? ''}
-                          onChange={(e) => handleRevenueChange(m.key, e.target.value)}
-                          onBlur={() => handleRevenueBlur(m.key)}
-                          placeholder="ciro gir"
-                          inputMode="decimal"
-                          className="h-8 text-right"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-semibold" style={{ color: oran == null ? '#BBB' : NAVY }}>
-                        {oran == null ? '—' : formatPercent(oran)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel). Cironun Oranı,
-            girilen tüm aylık ciroların toplamına göre.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
+              <p className="mb-3 text-xs text-muted-foreground/80">
+                Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel). Cironun Oranı,
+                aşağıya girdiğin ciroya göre.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Ciro (€)</label>
+              <Input
+                value={ciroInput}
+                onChange={(e) => setCiroInput(e.target.value)}
+                onBlur={handleCiroBlur}
+                placeholder="ciro gir"
+                inputMode="decimal"
+                className="h-8 w-40 text-right"
+              />
+            </div>
+          </div>
           {!summary?.departments.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
           ) : (

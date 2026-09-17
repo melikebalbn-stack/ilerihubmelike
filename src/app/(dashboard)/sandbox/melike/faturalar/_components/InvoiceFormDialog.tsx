@@ -15,18 +15,31 @@ import {
 } from '@/components/ui/select'
 import { CompanyAutocomplete } from './CompanyAutocomplete'
 
-interface Props {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onCreated: () => void
-}
-
 interface Department {
   id: string
   name: string
 }
 
 type Currency = 'TRY' | 'USD' | 'EUR'
+
+export interface EditableInvoice {
+  id: string
+  invoiceDate: string
+  companyName: string
+  invoiceNumber: string
+  amount: string
+  currency: Currency
+  departmentOrgUnitId: string | null
+  note: string | null
+  allocations: { departmentOrgUnitId: string; percentage: string }[]
+}
+
+interface Props {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved: () => void
+  invoice?: EditableInvoice | null
+}
 
 const emptyForm = {
   invoiceDate: '',
@@ -38,7 +51,8 @@ const emptyForm = {
   note: '',
 }
 
-export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
+export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Props) {
+  const isEdit = !!invoice
   const [form, setForm] = useState(emptyForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -60,7 +74,25 @@ export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
       .then((res) => (res.ok ? res.json() : { departments: [] }))
       .then((data) => setDepartments(data.departments ?? []))
       .catch(() => setDepartments([]))
-  }, [open])
+
+    if (invoice) {
+      setForm({
+        invoiceDate: invoice.invoiceDate.slice(0, 10),
+        companyName: invoice.companyName,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: invoice.amount,
+        currency: invoice.currency,
+        departmentOrgUnitId: invoice.departmentOrgUnitId ?? '',
+        note: invoice.note ?? '',
+      })
+      if (invoice.allocations.length > 0) {
+        setMultiMode(true)
+        setSplitPercentages(
+          Object.fromEntries(invoice.allocations.map((a) => [a.departmentOrgUnitId, a.percentage]))
+        )
+      }
+    }
+  }, [open, invoice])
 
   const splitTotal = Object.values(splitPercentages).reduce((s, v) => s + (parseFloat(v) || 0), 0)
 
@@ -128,8 +160,9 @@ export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
     if (!validate()) return
     setSubmitting(true)
     try {
-      const res = await fetch('/api/sandbox/melike/faturalar', {
-        method: 'POST',
+      const url = isEdit ? `/api/sandbox/melike/faturalar/${invoice!.id}` : '/api/sandbox/melike/faturalar'
+      const res = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
@@ -148,7 +181,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
         setErrors({ submit: data.error || 'Fatura kaydedilemedi' })
         return
       }
-      onCreated()
+      onSaved()
       onOpenChange(false)
     } finally {
       setSubmitting(false)
@@ -159,7 +192,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-[#1B4F72]">Yeni Fatura</DialogTitle>
+          <DialogTitle className="text-[#1B4F72]">{isEdit ? 'Faturayı Düzenle' : 'Yeni Fatura'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -301,7 +334,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onCreated }: Props) {
             onClick={handleSubmit}
             disabled={submitting}
           >
-            {submitting ? 'Kaydediliyor...' : 'Kaydet'}
+            {submitting ? 'Kaydediliyor...' : isEdit ? 'Güncelle' : 'Kaydet'}
           </Button>
         </div>
       </DialogContent>

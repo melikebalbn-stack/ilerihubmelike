@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2, FileSpreadsheet } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -33,7 +33,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { InvoiceFormDialog } from './_components/InvoiceFormDialog'
+import { InvoiceFormDialog, type EditableInvoice } from './_components/InvoiceFormDialog'
 import { ImportDialog } from './_components/ImportDialog'
 
 const NAVY = '#1B4F72'
@@ -62,7 +62,14 @@ interface Invoice {
   amountEUR: string
   departmentOrgUnitId: string | null
   departmentName: string | null
+  note: string | null
   allocations: Allocation[]
+}
+
+interface DepartmentTotal {
+  label: string
+  eur: number
+  tl: number
 }
 
 interface MonthSummary {
@@ -70,14 +77,10 @@ interface MonthSummary {
   genel: number
   sistemGelistirme: number
   toplamTRY: number
+  toplamEUR: number
   genelTRY: number
   sistemGelistirmeTRY: number
-}
-
-interface DepartmentTotal {
-  label: string
-  eur: number
-  tl: number
+  departments: DepartmentTotal[]
 }
 
 interface Summary {
@@ -108,6 +111,7 @@ export default function FaturaTakipPage() {
   const [revenues, setRevenues] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingInvoice, setEditingInvoice] = useState<EditableInvoice | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
   const [search, setSearch] = useState('')
@@ -148,7 +152,7 @@ export default function FaturaTakipPage() {
     if (res.ok) {
       const data = await res.json()
       const map: Record<string, number> = {}
-      for (const r of data.revenues ?? []) map[r.month] = r.revenueTRY
+      for (const r of data.revenues ?? []) map[r.month] = r.revenueEUR
       setRevenues(map)
     }
   }, [])
@@ -203,7 +207,7 @@ export default function FaturaTakipPage() {
     await fetch('/api/sandbox/melike/faturalar/revenue', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ month: monthKey, revenueTRY: value }),
+      body: JSON.stringify({ month: monthKey, revenueEUR: value }),
     })
   }
 
@@ -243,7 +247,13 @@ export default function FaturaTakipPage() {
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Excel İçe/Dışa Aktar
           </Button>
-          <Button style={{ backgroundColor: NAVY }} onClick={() => setShowForm(true)}>
+          <Button
+            style={{ backgroundColor: NAVY }}
+            onClick={() => {
+              setEditingInvoice(null)
+              setShowForm(true)
+            }}
+          >
             <Plus className="mr-1.5 h-4 w-4" /> Yeni Fatura Ekle
           </Button>
         </div>
@@ -296,7 +306,7 @@ export default function FaturaTakipPage() {
         <CardContent className="pt-6">
           <div className="text-sm font-semibold text-muted-foreground">Aylık ciro karşılaştırması</div>
           <p className="mb-3 text-xs text-muted-foreground/80">
-            Her ay için ciroyu elle gir, oran otomatik hesaplansın.
+            Her ay için ciroyu € olarak elle gir, oran otomatik hesaplansın.
           </p>
           {!summary?.months.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
@@ -305,26 +315,32 @@ export default function FaturaTakipPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Ay</TableHead>
-                  <TableHead className="text-right">Fatura Toplamı (₺)</TableHead>
-                  <TableHead className="text-right">Genel (₺)</TableHead>
-                  <TableHead className="text-right">Sistem Geliştirme (₺)</TableHead>
-                  <TableHead className="text-right w-40">Ciro (₺)</TableHead>
-                  <TableHead className="text-right">Toplam Oran</TableHead>
-                  <TableHead className="text-right">Sist. Gel. Oranı</TableHead>
+                  <TableHead className="text-right">Fatura Toplamı (€)</TableHead>
+                  <TableHead>Bölüm Dağılımı</TableHead>
+                  <TableHead className="text-right w-36">Ciro (€)</TableHead>
+                  <TableHead className="text-right">Oran</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {summary.months.map((m) => {
                   const ciroVal = revenues[m.key] ?? 0
-                  const oran = ciroVal > 0 ? (m.toplamTRY / ciroVal) * 100 : null
-                  const oranSG = ciroVal > 0 ? (m.sistemGelistirmeTRY / ciroVal) * 100 : null
+                  const oran = ciroVal > 0 ? (m.toplamEUR / ciroVal) * 100 : null
                   return (
                     <TableRow key={m.key}>
                       <TableCell>{formatMonthLabel(m.key)}</TableCell>
-                      <TableCell className="text-right">{formatTL(m.toplamTRY)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{formatTL(m.genelTRY)}</TableCell>
-                      <TableCell className="text-right" style={{ color: NAVY }}>
-                        {formatTL(m.sistemGelistirmeTRY)}
+                      <TableCell className="text-right font-semibold">{formatEur(m.toplamEUR)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                          {m.departments.map((d) => (
+                            <span
+                              key={d.label}
+                              style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}
+                              className={d.label === 'Sistem Geliştirme Müdürlüğü' ? '' : 'text-muted-foreground'}
+                            >
+                              {d.label}: {formatEur(d.eur)}
+                            </span>
+                          ))}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <Input
@@ -338,9 +354,6 @@ export default function FaturaTakipPage() {
                       </TableCell>
                       <TableCell className="text-right font-semibold" style={{ color: oran == null ? '#BBB' : NAVY }}>
                         {oran == null ? '—' : `${oran.toFixed(2)}%`}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold" style={{ color: oranSG == null ? '#BBB' : '#993C1D' }}>
-                        {oranSG == null ? '—' : `${oranSG.toFixed(2)}%`}
                       </TableCell>
                     </TableRow>
                   )
@@ -483,13 +496,38 @@ export default function FaturaTakipPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <button
-                      onClick={() => handleDelete(inv.id)}
-                      className="text-muted-foreground hover:text-destructive"
-                      title="Sil"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingInvoice({
+                            id: inv.id,
+                            invoiceDate: inv.invoiceDate,
+                            companyName: inv.companyName,
+                            invoiceNumber: inv.invoiceNumber,
+                            amount: inv.amount,
+                            currency: inv.currency,
+                            departmentOrgUnitId: inv.departmentOrgUnitId,
+                            note: inv.note,
+                            allocations: inv.allocations.map((a) => ({
+                              departmentOrgUnitId: a.departmentOrgUnitId,
+                              percentage: a.percentage,
+                            })),
+                          })
+                          setShowForm(true)
+                        }}
+                        className="text-muted-foreground hover:text-[#1B4F72]"
+                        title="Düzenle"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(inv.id)}
+                        className="text-muted-foreground hover:text-destructive"
+                        title="Sil"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -500,8 +538,12 @@ export default function FaturaTakipPage() {
 
       <InvoiceFormDialog
         open={showForm}
-        onOpenChange={setShowForm}
-        onCreated={() => {
+        onOpenChange={(v) => {
+          setShowForm(v)
+          if (!v) setEditingInvoice(null)
+        }}
+        invoice={editingInvoice}
+        onSaved={() => {
           loadInvoices()
           loadSummary()
         }}

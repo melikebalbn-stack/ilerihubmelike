@@ -5,7 +5,17 @@ import { canAccessFaturaTakip } from '../_lib/access'
 
 const SISTEM_GELISTIRME_LABEL = 'Sistem Geliştirme Müdürlüğü'
 
-// GET — Genel/Sistem Geliştirme başlık metrikleri + aylık dağılım (grafik) + tüm bölümlere göre kırılım
+interface MonthBucket {
+  genel: number
+  sistemGelistirme: number
+  toplamTRY: number
+  toplamEUR: number
+  genelTRY: number
+  sistemGelistirmeTRY: number
+  byDepartment: Map<string, { eur: number; tl: number }>
+}
+
+// GET — Genel/Sistem Geliştirme başlık metrikleri + aylık dağılım (grafik + tam bölüm kırılımı) + tüm zamanlar bölüm kırılımı
 export async function GET() {
   try {
     const { user, error } = await requireUser()
@@ -44,10 +54,7 @@ export async function GET() {
 
     let genel = 0
     let sistemGelistirme = 0
-    const monthly = new Map<
-      string,
-      { genel: number; sistemGelistirme: number; toplamTRY: number; genelTRY: number; sistemGelistirmeTRY: number }
-    >()
+    const monthly = new Map<string, MonthBucket>()
     const byDepartment = new Map<string, { eur: number; tl: number }>()
 
     for (const part of parts) {
@@ -58,10 +65,24 @@ export async function GET() {
 
       const key = part.invoiceDate.toISOString().slice(0, 7)
       if (!monthly.has(key)) {
-        monthly.set(key, { genel: 0, sistemGelistirme: 0, toplamTRY: 0, genelTRY: 0, sistemGelistirmeTRY: 0 })
+        monthly.set(key, {
+          genel: 0,
+          sistemGelistirme: 0,
+          toplamTRY: 0,
+          toplamEUR: 0,
+          genelTRY: 0,
+          sistemGelistirmeTRY: 0,
+          byDepartment: new Map(),
+        })
       }
       const bucket = monthly.get(key)!
       bucket.toplamTRY += part.tl
+      bucket.toplamEUR += part.eur
+
+      const monthDept = bucket.byDepartment.get(part.label) ?? { eur: 0, tl: 0 }
+      monthDept.eur += part.eur
+      monthDept.tl += part.tl
+      bucket.byDepartment.set(part.label, monthDept)
 
       if (part.label === SISTEM_GELISTIRME_LABEL) {
         sistemGelistirme += part.eur
@@ -79,7 +100,18 @@ export async function GET() {
 
     const months = Array.from(monthly.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, v]) => ({ key, ...v }))
+      .map(([key, v]) => ({
+        key,
+        genel: v.genel,
+        sistemGelistirme: v.sistemGelistirme,
+        toplamTRY: v.toplamTRY,
+        toplamEUR: v.toplamEUR,
+        genelTRY: v.genelTRY,
+        sistemGelistirmeTRY: v.sistemGelistirmeTRY,
+        departments: Array.from(v.byDepartment.entries())
+          .map(([label, d]) => ({ label, ...d }))
+          .sort((a, b) => b.eur - a.eur),
+      }))
 
     const departments = Array.from(byDepartment.entries())
       .map(([label, v]) => ({ label, ...v }))

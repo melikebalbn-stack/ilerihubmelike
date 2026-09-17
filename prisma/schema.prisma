@@ -10081,7 +10081,7 @@ model InvoiceDepartmentAllocation {
 model InvoiceMonthlyRevenue {
   id          String   @id @default(cuid())
   month       DateTime @unique @db.Date
-  revenueTRY  Decimal  @db.Decimal(16, 2)
+  revenueEUR  Decimal  @db.Decimal(16, 2)
   note        String?
   createdById String
   createdAt   DateTime @default(now())

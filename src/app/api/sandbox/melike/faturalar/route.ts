@@ -3,8 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { InvoiceCurrency, Prisma } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { apiSuccess, apiCreated, apiBadRequest, apiForbidden, apiError } from '@/lib/api-response'
-import { getRateForDate } from './_lib/tcmb'
 import { canAccessFaturaTakip } from './_lib/access'
+import { resolveDepartments, computeAmounts } from './_lib/invoice'
 
 const CURRENCIES: InvoiceCurrency[] = ['TRY', 'USD', 'EUR']
 
@@ -79,30 +79,8 @@ export async function POST(request: NextRequest) {
     if (!amount || isNaN(amountNum) || amountNum <= 0) return apiBadRequest('Geçerli bir tutar gir')
     if (!CURRENCIES.includes(currency)) return apiBadRequest('Geçersiz para birimi')
 
-    const hasAllocations = Array.isArray(allocations) && allocations.length > 1
-
-    let departmentName: string | null = null
-    let allocationDepts: { id: string; name: string; percentage: number }[] = []
-
-    if (hasAllocations) {
-      const ids = allocations.map((a: any) => a.departmentOrgUnitId)
-      if (new Set(ids).size !== ids.length) return apiBadRequest('Aynı bölümü birden fazla kez seçemezsin')
-      const pctSum = allocations.reduce((s: number, a: any) => s + Number(a.percentage), 0)
-      if (Math.abs(pctSum - 100) > 0.5) return apiBadRequest('Bölüm yüzdeleri toplamı %100 olmalı')
-
-      const depts = await prisma.orgUnit.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
-      if (depts.length !== ids.length) return apiBadRequest('Geçersiz bölüm seçimi')
-      const nameById = new Map(depts.map((d) => [d.id, d.name]))
-      allocationDepts = allocations.map((a: any) => ({
-        id: a.departmentOrgUnitId,
-        name: nameById.get(a.departmentOrgUnitId)!,
-        percentage: Number(a.percentage),
-      }))
-    } else if (departmentOrgUnitId) {
-      const dept = await prisma.orgUnit.findUnique({ where: { id: departmentOrgUnitId }, select: { name: true } })
-      if (!dept) return apiBadRequest('Geçersiz bölüm')
-      departmentName = dept.name
-    }
+    const resolved = await resolveDepartments(departmentOrgUnitId, allocations)
+    if (typeof resolved === 'string') return apiBadRequest(resolved)
 
     const existing = await prisma.invoice.findUnique({ where: { invoiceNumber: invoiceNumber.trim() } })
     if (existing) return apiBadRequest('Bu fatura no zaten kayıtlı')
@@ -111,14 +89,7 @@ export async function POST(request: NextRequest) {
     if (isNaN(date.getTime())) return apiBadRequest('Geçersiz tarih')
 
     const dateStr = invoiceDate.slice(0, 10)
-
-    // Girilen para biriminin TRY karşılığı için kur
-    const tryRate = currency === 'TRY' ? 1 : (await getRateForDate(dateStr, currency)).rate
-    // TRY -> EUR dönüşümü için EUR kuru (girilen para birimi zaten EUR ise aynısı)
-    const eurRate = currency === 'EUR' ? tryRate : (await getRateForDate(dateStr, 'EUR')).rate
-
-    const amountTRY = currency === 'TRY' ? amountNum : amountNum * tryRate
-    const amountEUR = currency === 'EUR' ? amountNum : amountTRY / eurRate
+    const { exchangeRate, amountTRY, amountEUR } = await computeAmounts(currency, amountNum, dateStr)
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -127,18 +98,18 @@ export async function POST(request: NextRequest) {
         invoiceNumber: invoiceNumber.trim(),
         amount: amountNum,
         currency,
-        exchangeRate: eurRate,
+        exchangeRate,
         amountTRY,
         amountEUR,
-        departmentOrgUnitId: hasAllocations ? null : departmentOrgUnitId || null,
-        departmentName: hasAllocations ? null : departmentName,
+        departmentOrgUnitId: resolved.departmentOrgUnitId,
+        departmentName: resolved.departmentName,
         note: note?.trim() || null,
         createdById: user.id,
-        ...(hasAllocations && {
+        ...(resolved.allocations.length > 0 && {
           allocations: {
-            create: allocationDepts.map((d) => ({
-              departmentOrgUnitId: d.id,
-              departmentName: d.name,
+            create: resolved.allocations.map((d) => ({
+              departmentOrgUnitId: d.departmentOrgUnitId,
+              departmentName: d.departmentName,
               percentage: d.percentage,
               amountTRY: (amountTRY * d.percentage) / 100,
               amountEUR: (amountEUR * d.percentage) / 100,

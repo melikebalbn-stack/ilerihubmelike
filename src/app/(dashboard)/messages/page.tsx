@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { MesajGirisiFormu } from "@/components/messages/MesajGirisiFormu"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -866,27 +867,12 @@ export default function MessagesPage() {
 
               {/* Message Input */}
               <div className="border-t p-4">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    sendMessage()
-                  }}
-                  className="flex gap-2"
-                >
-                  <Input
-                    placeholder="Mesajinizi yazin..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    disabled={sendingMessage}
-                  />
-                  <Button type="submit" disabled={!newMessage.trim() || sendingMessage}>
-                    {sendingMessage ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
-                </form>
+                <MesajGirisiFormu
+                  value={newMessage}
+                  onChange={setNewMessage}
+                  onGonder={sendMessage}
+                  gonderiliyor={sendingMessage}
+                />
               </div>
             </>
           ) : (

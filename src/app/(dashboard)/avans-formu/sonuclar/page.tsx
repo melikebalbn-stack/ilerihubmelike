@@ -37,6 +37,7 @@ type Satir = {
   avansIstiyorMu: boolean
   gonderimTarihi: string
   vekaletenMi: boolean
+  kendiFormuMu: boolean
 }
 
 type AramaSonucu = { id: string; adSoyad: string; bolum: string | null; sicilNo: string | null }
@@ -226,7 +227,11 @@ export default function AvansSonuclarPage() {
       [
         `${s.donemAy}/${s.donemYil}`,
         s.bolum,
-        s.sorumluAdSoyad === 'IK_MANUEL' ? 'İK tarafından eklendi' : s.sorumluAdSoyad,
+        s.sorumluAdSoyad === 'IK_MANUEL'
+          ? 'İK tarafından eklendi'
+          : s.kendiFormuMu
+            ? 'Talep Eden (kendisi)'
+            : s.sorumluAdSoyad,
         s.calisanAdSoyad,
         new Date(s.gonderimTarihi).toLocaleDateString('tr-TR'),
       ]
@@ -263,6 +268,10 @@ export default function AvansSonuclarPage() {
           {s.sorumluAdSoyad === 'IK_MANUEL' ? (
             <Badge variant="outline" className="text-xs">
               İK tarafından eklendi
+            </Badge>
+          ) : s.kendiFormuMu ? (
+            <Badge variant="outline" className="text-xs">
+              Talep Eden (kendisi)
             </Badge>
           ) : (
             <div className="flex items-center gap-2">

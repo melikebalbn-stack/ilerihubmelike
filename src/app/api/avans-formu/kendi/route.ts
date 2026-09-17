@@ -124,10 +124,14 @@ export async function POST(request: NextRequest) {
       bolum: personel.bolum,
       donemYil: body.donemYil,
       donemAy: body.donemAy,
+      kendiFormuMu: true,
     },
     // Bos update: {} Prisma'da hicbir UPDATE sorgusu tetiklemez, @updatedAt
     // bump olmaz - duzeltme izinin kaybolmamasi icin aciktan set ediliyor.
-    update: { updatedAt: new Date() },
+    // kendiFormuMu da aciktan set edilir: bu talebi ilk kez sorumlu formu
+    // olusturmus olsa bile (ayni sorumluId+bolum kombinasyonu), kendi formu
+    // uzerinden ikinci gonderimde olgu dogru sekilde true'ya duzeltilir.
+    update: { updatedAt: new Date(), kendiFormuMu: true },
   })
 
   await prisma.avansTalebiSatiri.deleteMany({

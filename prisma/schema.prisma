@@ -14401,6 +14401,13 @@ model AvansTalebi {
   // alanı üzerinden kurulduysa true. Asıl sorumlunun kendisi eşleştiyse
   // (aynı bölümde işaretsiz bir alan da eşleşiyorsa) false kalır.
   vekaletenMi    Boolean  @default(false)
+  // true: kendi/route.ts (kendim formu) üzerinden girildi — sorumluId,
+  // formu gönderen kişinin kendi id'si. false (default): sorumlu formu
+  // (route.ts) üzerinden girildi. Personnel'in güncel sorumluluk
+  // durumundan ÇIKARIM YAPILMAZ — kayıt anındaki olgu olarak saklanır,
+  // aksi halde bir sorumlu görevden alındığında geçmiş kayıtların anlamı
+  // sessizce değişirdi.
+  kendiFormuMu   Boolean  @default(false)
 
   satirlar AvansTalebiSatiri[]
 

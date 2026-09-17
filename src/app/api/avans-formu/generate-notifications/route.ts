@@ -124,15 +124,15 @@ async function personelToAlici(s: SorumluAdayi): Promise<Alici> {
 }
 
 /**
- * POST: Ayın 15'inde tetiklenecek cron endpoint'i.
+ * POST: Ayın 10'unda tetiklenecek cron endpoint'i.
  * İki tetikleme yolu vardır:
  *  1. Sistem cron: `x-cron-secret` header'ı CRON_SECRET ile eşleşirse.
- *     Bu yolda ayın 15'i olma guard'ı uygulanır — cron yanlışlıkla başka
+ *     Bu yolda ayın 10'u olma guard'ı uygulanır — cron yanlışlıkla başka
  *     bir günde de çalıştırılsa (örn. günlük kurulmuşsa), zararsız şekilde
- *     no-op olur. Cron zaten sadece ayın 15'inde kurulsa da bu guard'ın
+ *     no-op olur. Cron zaten sadece ayın 10'unda kurulsa da bu guard'ın
  *     zararı yok.
  *  2. Manuel tetik: İK (HR_MANAGER | SUPER_ADMIN) oturumuyla — bu yolda gün
- *     kontrolü UYGULANMAZ, 15'i beklemeden istenildiği an test edilebilir.
+ *     kontrolü UYGULANMAZ, 10'u beklemeden istenildiği an test edilebilir.
  * Varsayılan dryRun:true — gerçek gönderim SADECE açık { dryRun: false }
  * body'siyle tetiklenir.
  * Cari dönem kapatılmışsa (bkz. src/lib/avans/donem-kilidi.ts) hatırlatma hiç
@@ -159,10 +159,10 @@ export async function POST(request: NextRequest) {
   const donemYil = now.getFullYear()
   const donemAy = now.getMonth() + 1
 
-  if (isCron && now.getDate() !== 15) {
+  if (isCron && now.getDate() !== 10) {
     return NextResponse.json({
       skipped: true,
-      reason: `Bugün ayın ${now.getDate()}. günü — hatırlatma sadece ayın 15'inde gönderilir.`,
+      reason: `Bugün ayın ${now.getDate()}. günü — hatırlatma sadece ayın 10'unda gönderilir.`,
     })
   }
 

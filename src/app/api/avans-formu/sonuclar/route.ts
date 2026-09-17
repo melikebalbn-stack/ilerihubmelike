@@ -55,6 +55,9 @@ export async function GET(request: NextRequest) {
       avansTalebiId: t.id,
       sorumluAdSoyad:
         t.sorumluId === 'IK_MANUEL' ? 'IK_MANUEL' : (adMap.get(t.sorumluId) ?? '(bilinmiyor)'),
+      // Kayıt anında yazılan olgu — bkz. AvansTalebi.kendiFormuMu (kendi/route.ts
+      // POST). Personnel'in güncel sorumluluk durumundan çıkarım YAPILMAZ.
+      kendiFormuMu: t.kendiFormuMu,
       bolum: t.bolum,
       donemYil: t.donemYil,
       donemAy: t.donemAy,

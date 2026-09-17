@@ -1,7 +1,7 @@
 /**
  * Avans Formu Hatırlatma Bildirimi.
  *
- * Her ayın 15'inde birim sorumlularına "avans formunu 18'ine kadar
+ * Her ayın 10'unda birim sorumlularına "avans formunu 15'ine kadar
  * doldurun" hatırlatması 3 kanaldan gönderilir:
  *   1. Email (bu dosyadaki küçük template + sendEmail)
  *   2. In-app Notification (prisma.notification.create, "link" alanı)
@@ -37,20 +37,20 @@ function esc(s: string): string {
 function buildHatirlatmaEmailContent(
   recipientName: string
 ): { subject: string; body: string; html: string } {
-  const subject = "[ILERIHub] Avans formunu 18'ine kadar doldurun"
+  const subject = "[ILERIHub] Avans formunu 15'ine kadar doldurun"
 
   const body = `Merhaba ${recipientName},
 
 Bu ayki avans formunu, sorumlusu olduğunuz mavi yaka personel için doldurmanız gerekiyor.
 
-Son tarih: bu ayın 18'i.
+Son tarih: bu ayın 15'i.
 
 Formu doldurmak için ILERIHub'a giriş yapabilirsiniz.`
 
   const html = `
     <p>Merhaba ${esc(recipientName)},</p>
     <p>Bu ayki avans formunu, sorumlusu olduğunuz mavi yaka personel için doldurmanız gerekiyor.</p>
-    <p><strong>Son tarih:</strong> bu ayın 18'i.</p>
+    <p><strong>Son tarih:</strong> bu ayın 15'i.</p>
     <p>Formu doldurmak için ILERIHub'a giriş yapabilirsiniz.</p>
   `
 
@@ -69,7 +69,7 @@ async function createHatirlatmaInAppNotification(
     data: {
       userId: recipient.id,
       title: 'Avans formunu doldurun',
-      message: "Bu ayki avans formunu ekibiniz için doldurmanız gerekiyor. Son tarih: ayın 18'i.",
+      message: "Bu ayki avans formunu ekibiniz için doldurmanız gerekiyor. Son tarih: ayın 15'i.",
       type: 'REMINDER',
       link: AVANS_FORMU_LINK,
     },
@@ -85,7 +85,7 @@ async function sendHatirlatmaPush(recipient: AvansHatirlatmaRecipient): Promise<
 
   await sendPushToUser(prisma, recipient.id, {
     title: 'Avans formunu doldurun',
-    body: "Son tarih: bu ayın 18'i.",
+    body: "Son tarih: bu ayın 15'i.",
     url: AVANS_FORMU_LINK,
     tag: `avans-hatirlatma-${recipient.id}`,
     data: { link: AVANS_FORMU_LINK },
@@ -127,20 +127,20 @@ export async function dispatchAvansHatirlatma(
 function buildKendiHatirlatmaEmailContent(
   recipientName: string
 ): { subject: string; body: string; html: string } {
-  const subject = "[ILERIHub] Avans talebinizi 18'ine kadar girin"
+  const subject = "[ILERIHub] Avans talebinizi 15'ine kadar girin"
 
   const body = `Merhaba ${recipientName},
 
 Bu ayki avans talebinizi kendi hesabınızdan girmeniz gerekiyor.
 
-Son tarih: bu ayın 18'i.
+Son tarih: bu ayın 15'i.
 
 Talebi girmek için ILERIHub'a giriş yapabilirsiniz.`
 
   const html = `
     <p>Merhaba ${esc(recipientName)},</p>
     <p>Bu ayki avans talebinizi kendi hesabınızdan girmeniz gerekiyor.</p>
-    <p><strong>Son tarih:</strong> bu ayın 18'i.</p>
+    <p><strong>Son tarih:</strong> bu ayın 15'i.</p>
     <p>Talebi girmek için ILERIHub'a giriş yapabilirsiniz.</p>
   `
 
@@ -159,7 +159,7 @@ async function createKendiHatirlatmaInAppNotification(
     data: {
       userId: recipient.id,
       title: 'Avans talebinizi girin',
-      message: "Bu ayki avans talebinizi kendi hesabınızdan girmeniz gerekiyor. Son tarih: ayın 18'i.",
+      message: "Bu ayki avans talebinizi kendi hesabınızdan girmeniz gerekiyor. Son tarih: ayın 15'i.",
       type: 'REMINDER',
       link: AVANS_FORMU_LINK,
     },
@@ -175,7 +175,7 @@ async function sendKendiHatirlatmaPush(recipient: AvansHatirlatmaRecipient): Pro
 
   await sendPushToUser(prisma, recipient.id, {
     title: 'Avans talebinizi girin',
-    body: "Son tarih: bu ayın 18'i.",
+    body: "Son tarih: bu ayın 15'i.",
     url: AVANS_FORMU_LINK,
     tag: `avans-kendi-hatirlatma-${recipient.id}`,
     data: { link: AVANS_FORMU_LINK },

@@ -26,7 +26,7 @@ function baslar(adSoyad: string) {
 }
 
 function sonBasvuruTarihi(donemYil: number, donemAy: number): string {
-  const tarih = new Date(donemYil, donemAy - 1, 18)
+  const tarih = new Date(donemYil, donemAy - 1, 15)
   return tarih.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 

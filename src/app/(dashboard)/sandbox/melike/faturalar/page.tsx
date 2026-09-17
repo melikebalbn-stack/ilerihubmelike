@@ -104,6 +104,13 @@ function formatPercent(n: number) {
   if (abs >= 0.01) return `%${n.toFixed(2)}`
   return `%${n.toFixed(4)}`
 }
+function formatThousands(digits: string) {
+  if (!digits) return ''
+  return new Intl.NumberFormat('tr-TR').format(Number(digits))
+}
+function parseThousands(formatted: string) {
+  return Number(formatted.replace(/\./g, '')) || 0
+}
 function formatMonthLabel(key: string) {
   const [y, m] = key.split('-')
   const d = new Date(Number(y), Number(m) - 1, 1)
@@ -160,7 +167,7 @@ export default function FaturaTakipPage() {
     const res = await fetch('/api/sandbox/melike/faturalar/revenue')
     if (res.ok) {
       const data = await res.json()
-      setCiroInput(data.totalRevenueEUR != null ? String(data.totalRevenueEUR) : '')
+      setCiroInput(data.totalRevenueEUR != null ? formatThousands(String(Math.round(data.totalRevenueEUR))) : '')
     }
   }, [])
 
@@ -206,7 +213,7 @@ export default function FaturaTakipPage() {
   }
 
   async function handleCiroBlur() {
-    const value = Number(ciroInput) || 0
+    const value = parseThousands(ciroInput)
     await fetch('/api/sandbox/melike/faturalar/revenue', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -224,7 +231,7 @@ export default function FaturaTakipPage() {
     [summary]
   )
 
-  const totalCiro = Number(ciroInput) || 0
+  const totalCiro = parseThousands(ciroInput)
 
   if (status === 'loading' || !authorized) {
     return (
@@ -321,10 +328,10 @@ export default function FaturaTakipPage() {
               <label className="text-xs text-muted-foreground">Ciro (€)</label>
               <Input
                 value={ciroInput}
-                onChange={(e) => setCiroInput(e.target.value)}
+                onChange={(e) => setCiroInput(formatThousands(e.target.value.replace(/\D/g, '')))}
                 onBlur={handleCiroBlur}
                 placeholder="ciro gir"
-                inputMode="decimal"
+                inputMode="numeric"
                 className="h-8 w-40 text-right"
               />
             </div>

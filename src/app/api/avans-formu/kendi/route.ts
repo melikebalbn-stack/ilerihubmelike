@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
-import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
+import { donemAcikMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +68,9 @@ export async function GET() {
     donemYil,
     donemAy,
     mevcutSecim: mevcutTalep?.satirlar[0]?.avansIstiyorMu ?? null,
+    // PROTOTİP: geri çek butonunu göstermek/gizlemek için UI'a taşınıyor.
+    avansTalebiId: mevcutTalep?.id ?? null,
+    donemAcik: await donemAcikMi(donemYil, donemAy),
   })
 }
 

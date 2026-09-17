@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
-import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
+import { donemAcikMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 import { bulSorumluVeEkibi, sonucHataMesaji, sonucHataStatus } from './_lib/avans-formu-helpers'
 
 export const dynamic = 'force-dynamic'
@@ -25,10 +25,23 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date()
+  const donemYil = now.getFullYear()
+  const donemAy = now.getMonth() + 1
+
+  // PROTOTİP: bu sorumlunun bu dönem için zaten girdiği talepler (bölüm
+  // bazında, bir sorumlu birden fazla bölümden sorumlu olabilir) — UI'da
+  // "Geri Çek" butonunu göstermek için.
+  const mevcutTalepKayitlari = await prisma.avansTalebi.findMany({
+    where: { sorumluId: sonuc.sorumlu.id, donemYil, donemAy },
+    select: { id: true, bolum: true },
+  })
+
   return NextResponse.json({
     ...sonuc,
-    donemYil: now.getFullYear(),
-    donemAy: now.getMonth() + 1,
+    donemYil,
+    donemAy,
+    mevcutTalepler: mevcutTalepKayitlari.map((t) => ({ avansTalebiId: t.id, bolum: t.bolum })),
+    donemAcik: await donemAcikMi(donemYil, donemAy),
   })
 }
 

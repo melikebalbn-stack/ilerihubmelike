@@ -15,12 +15,16 @@ type Personel = {
   isSelf: boolean
 }
 
+type MevcutTalep = { avansTalebiId: string; bolum: string }
+
 type ApiResponse = {
   sorumlu: { id: string; adSoyad: string }
   bolumler: string[]
   personel: Personel[]
   donemYil: number
   donemAy: number
+  mevcutTalepler: MevcutTalep[]
+  donemAcik: boolean
 }
 
 function baslar(adSoyad: string) {
@@ -45,8 +49,10 @@ export default function AvansFormuPage() {
   const [secimler, setSecimler] = useState<Record<string, boolean>>({})
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [gonderildi, setGonderildi] = useState(false)
+  const [geriCekilenId, setGeriCekilenId] = useState<string | null>(null)
 
-  useEffect(() => {
+  function veriYukle() {
+    setLoading(true)
     fetch('/api/avans-formu')
       .then(async (res) => {
         if (!res.ok) {
@@ -58,6 +64,10 @@ export default function AvansFormuPage() {
       .then((json: ApiResponse) => setData(json))
       .catch((err) => setHataMesaji(err.message))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    veriYukle()
   }, [])
 
   async function handleGonder() {
@@ -85,6 +95,27 @@ export default function AvansFormuPage() {
       toast.error(err instanceof Error ? err.message : 'Form gönderilemedi')
     } finally {
       setGonderiliyor(false)
+    }
+  }
+
+  async function handleGeriCek(avansTalebiId: string, bolum: string) {
+    const onay = window.confirm(`${bolum} bölümü için bu döneme ait talebi geri çekmek istediğinize emin misiniz?`)
+    if (!onay) return
+    setGeriCekilenId(avansTalebiId)
+    try {
+      const res = await fetch('/api/avans-formu/geri-cek', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avansTalebiId }),
+      })
+      const sonucBody = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(sonucBody?.error ?? 'Geri çekme başarısız')
+      toast.success('Talep geri çekildi')
+      veriYukle()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Geri çekme başarısız')
+    } finally {
+      setGeriCekilenId(null)
     }
   }
 
@@ -128,6 +159,39 @@ export default function AvansFormuPage() {
               Son başvuru tarihi: {sonBasvuruTarihi(data.donemYil, data.donemAy)}
             </div>
           </div>
+        )}
+
+        {!loading && data && data.mevcutTalepler.length > 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 space-y-2">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+              Bu dönem girdiğiniz talepler
+            </p>
+            {data.mevcutTalepler.map((t) => (
+              <div key={t.avansTalebiId} className="flex items-center justify-between">
+                <span className="text-sm text-slate-700">{t.bolum}</span>
+                {data.donemAcik ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleGeriCek(t.avansTalebiId, t.bolum)}
+                    disabled={geriCekilenId === t.avansTalebiId}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    {geriCekilenId === t.avansTalebiId ? 'Geri çekiliyor…' : 'Geri Çek'}
+                  </Button>
+                ) : (
+                  <span className="text-xs text-slate-400">Dönem kilitli</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && data && !data.donemAcik && (
+          <p className="text-xs text-amber-600 px-1">
+            Bu dönem kilitli — form gönderilemez, geri çekilemez.
+          </p>
         )}
 
         {loading && (
@@ -192,7 +256,7 @@ export default function AvansFormuPage() {
               <Button
                 type="button"
                 onClick={handleGonder}
-                disabled={gonderiliyor || gonderildi}
+                disabled={gonderiliyor || gonderildi || !data.donemAcik}
                 className="bg-[#1B4F72] hover:bg-[#1B4F72]/90 px-6"
               >
                 {gonderiliyor ? 'Gönderiliyor…' : gonderildi ? 'Gönderildi ✓' : 'Gönder'}

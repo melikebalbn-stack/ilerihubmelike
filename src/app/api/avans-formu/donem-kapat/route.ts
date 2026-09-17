@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
+import { donemOtomatikDurum } from '@/lib/avans/donem-kilidi'
 
 export const dynamic = 'force-dynamic'
 
@@ -128,6 +129,16 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json(
       { error: `${body.yil}/${body.ay} dönemi zaten açık.` },
       { status: 409 }
+    )
+  }
+
+  // PROTOTİP: otomatik dönem durumu KALICI_KAPALI ise (dönem geçmiş bir ay,
+  // ya da cari ayda ayın 22'sinden sonrası) İK'nın manuel "aç" işlemi bile
+  // bunu aşamaz — otomatik kural manuel açmadan daha güçlü.
+  if (donemOtomatikDurum(body.yil, body.ay) === 'KALICI_KAPALI') {
+    return NextResponse.json(
+      { error: 'Bu dönem kalıcı olarak kapanmıştır, tekrar açılamaz.' },
+      { status: 403 }
     )
   }
 

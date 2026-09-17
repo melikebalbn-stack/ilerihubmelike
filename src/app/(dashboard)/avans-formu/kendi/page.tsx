@@ -13,6 +13,8 @@ type ApiResponse = {
   donemYil: number
   donemAy: number
   mevcutSecim: boolean | null
+  avansTalebiId: string | null
+  donemAcik: boolean
 }
 
 function baslar(adSoyad: string) {
@@ -37,8 +39,10 @@ export default function AvansFormuKendiPage() {
   const [secim, setSecim] = useState(false)
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [gonderildi, setGonderildi] = useState(false)
+  const [geriCekiliyor, setGeriCekiliyor] = useState(false)
 
-  useEffect(() => {
+  function veriYukle() {
+    setLoading(true)
     fetch('/api/avans-formu/kendi')
       .then(async (res) => {
         if (!res.ok) {
@@ -54,6 +58,10 @@ export default function AvansFormuKendiPage() {
       })
       .catch((err) => setHataMesaji(err.message))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    veriYukle()
   }, [])
 
   async function handleGonder() {
@@ -77,6 +85,29 @@ export default function AvansFormuKendiPage() {
       toast.error(err instanceof Error ? err.message : 'Form gönderilemedi')
     } finally {
       setGonderiliyor(false)
+    }
+  }
+
+  async function handleGeriCek() {
+    if (!data?.avansTalebiId) return
+    const onay = window.confirm('Bu döneme ait avans talebinizi geri çekmek istediğinize emin misiniz?')
+    if (!onay) return
+    setGeriCekiliyor(true)
+    try {
+      const res = await fetch('/api/avans-formu/geri-cek', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avansTalebiId: data.avansTalebiId }),
+      })
+      const sonucBody = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(sonucBody?.error ?? 'Geri çekme başarısız')
+      toast.success('Talebiniz geri çekildi')
+      setSecim(false)
+      veriYukle()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Geri çekme başarısız')
+    } finally {
+      setGeriCekiliyor(false)
     }
   }
 
@@ -155,11 +186,28 @@ export default function AvansFormuKendiPage() {
               </CardContent>
             </Card>
 
-            <div className="flex justify-end pt-2">
+            {!data.donemAcik && (
+              <p className="text-xs text-amber-600">
+                Bu dönem kilitli — form gönderilemez, geri çekilemez.
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              {data.avansTalebiId && data.donemAcik && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGeriCek}
+                  disabled={geriCekiliyor}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  {geriCekiliyor ? 'Geri çekiliyor…' : 'Geri Çek'}
+                </Button>
+              )}
               <Button
                 type="button"
                 onClick={handleGonder}
-                disabled={gonderiliyor || gonderildi}
+                disabled={gonderiliyor || gonderildi || !data.donemAcik}
                 className="bg-[#1B4F72] hover:bg-[#1B4F72]/90 px-6"
               >
                 {gonderiliyor ? 'Gönderiliyor…' : gonderildi ? 'Gönderildi ✓' : 'Gönder'}

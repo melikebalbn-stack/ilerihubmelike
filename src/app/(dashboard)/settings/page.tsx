@@ -27,7 +27,8 @@ import {
   SuggestionSettingsPanel,
   TaskSettingsPanel,
   EmailSettingsPanel,
-  MenuSettingsPanel
+  MenuSettingsPanel,
+  KpiSettingsPanel
 } from "@/components/settings/panels"
 import type {
   Location,
@@ -81,6 +82,8 @@ export default function SettingsPage() {
   const userDepartment = ((session?.user as any)?.department || '').toLowerCase()
   const userOu = ((session?.user as any)?.ou || '').toLowerCase()
   const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(userRole)
+  // KPI-AYAR: KPI paneli yalnız kpi.manage yetkisi olanlara görünür
+  const canManageKpi = ((session?.user as any)?.permissions ?? []).includes('kpi.manage')
   // Menü yönetimi: HR/Admin rolü VEYA İnsan Varlıkları bölümü (server canManageMenu ile aynı; API zaten 403 çift emniyet)
   const canManageMenu =
     ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole) ||
@@ -108,6 +111,8 @@ export default function SettingsPage() {
   const [announcementCategories, setAnnouncementCategories] = useState<AnnouncementCategory[]>([])
   const [surveys, setSurveys] = useState<Survey[]>([])
   const [ticketCategories, setTicketCategories] = useState<TicketCategory[]>([])
+  // KPI-AYAR
+  const [kpiZorunluAksiyon, setKpiZorunluAksiyon] = useState(false)
 
   // Dashboard settings
   const [savingSettings, setSavingSettings] = useState(false)
@@ -198,6 +203,24 @@ export default function SettingsPage() {
       loadLdapSyncStatus()
     }
   }, [isKaliteUser])
+
+  // KPI-AYAR: ayrı, izole yükleme — mevcut loadData() akışına karışmıyor
+  useEffect(() => {
+    if (!canManageKpi) return
+    fetch('/api/system/settings?category=kpi')
+      .then(res => res.ok ? res.json() : {})
+      .then((settings: Record<string, string>) => setKpiZorunluAksiyon(settings['kpi_zorunlu_aksiyon'] === 'true'))
+      .catch(() => {})
+  }, [canManageKpi])
+
+  const handleToggleKpiZorunluAksiyon = async (value: boolean) => {
+    setKpiZorunluAksiyon(value)
+    await fetch('/api/system/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'kpi_zorunlu_aksiyon', value: String(value), category: 'kpi' })
+    })
+  }
 
   const loadData = async () => {
     try {
@@ -1277,6 +1300,22 @@ export default function SettingsPage() {
           onDeleteEmail={handleDeleteTaskNotificationEmail}
         />
       </CollapsibleSection>
+
+      {/* KPI-AYAR: yalnız kpi.manage yetkisi olanlara görünür */}
+      {canManageKpi && (
+        <CollapsibleSection
+          title="KPI Ayarları"
+          description="KPI modülü için aksiyon zorunluluğu ayarı"
+          icon={Gauge}
+          iconBgColor="bg-teal-100 dark:bg-teal-900"
+          iconColor="text-teal-600 dark:text-teal-400"
+        >
+          <KpiSettingsPanel
+            zorunluAksiyon={kpiZorunluAksiyon}
+            onToggleZorunluAksiyon={handleToggleKpiZorunluAksiyon}
+          />
+        </CollapsibleSection>
+      )}
 
       {/* İV Ayarları */}
       <CollapsibleSection

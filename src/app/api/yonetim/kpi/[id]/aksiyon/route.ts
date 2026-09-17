@@ -2,22 +2,11 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
+import { ORG_UNIT_TO_PERSONNEL_BOLUM } from '../../personel-map'
 
 export const dynamic = 'force-dynamic'
 
-async function orgUnitAltIdleri(kokId: string): Promise<string[]> {
-  const sonuc: string[] = [kokId]
-  let seviye = [kokId]
-  while (seviye.length > 0) {
-    const cocuklar = await prisma.orgUnit.findMany({ where: { parentId: { in: seviye } }, select: { id: true } })
-    if (cocuklar.length === 0) break
-    seviye = cocuklar.map(c => c.id)
-    sonuc.push(...seviye)
-  }
-  return sonuc
-}
-
-// GET: aksiyon sorumlusu adayları (KPI'nın departmanı + altındaki çalışanlar).
+// GET: aksiyon sorumlusu adayları (KPI departmanının Personnel listesi).
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { error } = await requirePermission([PERMISSION_KEYS.KPI_VIEW, PERMISSION_KEYS.KPI_MANAGE])
   if (error) return error
@@ -26,17 +15,21 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const kpi = await prisma.kPIDefinition.findUnique({ where: { id }, select: { orgUnitId: true } })
   if (!kpi) return NextResponse.json({ error: 'KPI bulunamadı' }, { status: 404 })
 
-  const altIdler = await orgUnitAltIdleri(kpi.orgUnitId)
-  const sorumluAdaylari = await prisma.orgEmployee.findMany({
-    where: { orgUnitId: { in: altIdler }, isActive: true },
-    select: { id: true, displayName: true, positionTitle: true },
-    orderBy: { displayName: 'asc' },
-  })
+  const bolum = ORG_UNIT_TO_PERSONNEL_BOLUM[kpi.orgUnitId]
+  const sorumluAdaylari = bolum
+    ? await prisma.personnel.findMany({
+        where: { bolum, aktif: true },
+        select: { id: true, adSoyad: true, gorev: true },
+        orderBy: { adSoyad: 'asc' },
+      })
+    : []
 
-  return NextResponse.json({ sorumluAdaylari })
+  return NextResponse.json({
+    sorumluAdaylari: sorumluAdaylari.map(p => ({ id: p.id, displayName: p.adSoyad, positionTitle: p.gorev })),
+  })
 }
 
-// POST: yeni aksiyon. Veri değiştirir → kpi.manage.
+// POST: yeni aksiyon + Planlı Görev oluştur. Veri değiştirir → kpi.manage.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { error } = await requirePermission(PERMISSION_KEYS.KPI_MANAGE)
   if (error) return error
@@ -50,19 +43,43 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   // KPI gerçekten var mı — yabancı kpiId ile aksiyon oluşturmayı engelle.
-  const kpi = await prisma.kPIDefinition.findUnique({ where: { id }, select: { id: true } })
+  const kpi = await prisma.kPIDefinition.findUnique({ where: { id }, select: { name: true } })
   if (!kpi) return NextResponse.json({ error: 'KPI bulunamadı' }, { status: 404 })
+
+  const sorumluPersonelId = typeof body.sorumluPersonelId === 'string' && body.sorumluPersonelId ? body.sorumluPersonelId : null
+  const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null
+  const startDate = body.startDate ? new Date(body.startDate) : null
+  const endDate = body.endDate ? new Date(body.endDate) : null
 
   const aksiyon = await prisma.kPIAction.create({
     data: {
       kpiId: id,
-      reason: typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null,
+      reason,
       action,
-      responsibleId: typeof body.responsibleId === 'string' && body.responsibleId ? body.responsibleId : null,
-      startDate: body.startDate ? new Date(body.startDate) : null,
-      endDate: body.endDate ? new Date(body.endDate) : null,
+      sorumluPersonelId,
+      startDate,
+      endDate,
       completionPercent: body.completionPercent === '' || body.completionPercent == null ? 0 : Number(body.completionPercent),
       status: 'open',
+    },
+  })
+
+  // KPI Aksiyonu → ILERIHub Planlı Görevler (bkz. five-s/[id]/action-plan/route.ts deseni)
+  const sorumlu = sorumluPersonelId
+    ? await prisma.personnel.findUnique({ where: { id: sorumluPersonelId }, select: { adSoyad: true, mailAdresi: true } })
+    : null
+  await prisma.plannedTask.create({
+    data: {
+      title: `KPI Aksiyon: ${kpi.name ?? ''} — ${action}`,
+      description: reason ? `**Neden:** ${reason}\n\n**Aksiyon:** ${action}` : action,
+      dueDate: endDate ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      startDate,
+      responsiblePerson: sorumlu?.adSoyad ?? null,
+      responsiblePersonEmail: sorumlu?.mailAdresi ?? null,
+      status: 'PENDING',
+      priority: 'NORMAL',
+      reminderDays: [7, 3, 1],
+      isActive: true,
     },
   })
 

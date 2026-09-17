@@ -28,7 +28,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     data: {
       reason: typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null,
       action,
-      responsibleId: typeof body.responsibleId === 'string' && body.responsibleId ? body.responsibleId : null,
+      sorumluPersonelId: typeof body.sorumluPersonelId === 'string' && body.sorumluPersonelId ? body.sorumluPersonelId : null,
       startDate: body.startDate ? new Date(body.startDate) : null,
       endDate: body.endDate ? new Date(body.endDate) : null,
       completionPercent: body.completionPercent === '' || body.completionPercent == null ? 0 : Number(body.completionPercent),

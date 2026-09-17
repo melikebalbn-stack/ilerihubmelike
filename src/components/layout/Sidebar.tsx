@@ -419,6 +419,7 @@ const entegrasyonMenuItems = [
 // Yönetim modülü (KPI takibi). Görünürlük permission ile (IPRO/Entegrasyon deseni).
 const yonetimMenuItems = [
   { name: "KPI Takibi", icon: BarChart3, href: "/yonetim/kpi", roles: [] as string[], permission: "kpi.view" },
+  { name: "KPI Özet", icon: Activity, href: "/yonetim/kpi-ozet", roles: [] as string[], permission: "kpi.view" },
 ]
 
 // Alt menü öğeleri

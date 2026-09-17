@@ -1,6 +1,8 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,12 +14,16 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  ComposedChart, Bar,
+  ComposedChart, Bar, LabelList,
 } from 'recharts'
-import { Loader2, PlusCircle, Target, Pencil } from 'lucide-react'
+import { Loader2, PlusCircle, Target, Pencil, Trash2 } from 'lucide-react'
 
 const NAVY = '#1B4F72'
 const YESIL = '#16a34a'
@@ -40,6 +46,7 @@ interface Aksiyon {
   completionPercent: number | null
   status: string
   responsibleId: string | null
+  sorumluPersonelId: string | null
   responsibleName: string | null
   startDate: string | null
   endDate: string | null
@@ -60,11 +67,29 @@ interface Kpi {
   actions: Aksiyon[]
 }
 
+// Yıl → ortalama haritası. Aylık ölçümü olan yıllarda KENDİSİ hesaplanır;
+// aylık kırılımı olmayan eski yıllarda (2020-2023 gibi) Excel'den/elle
+// girilmiş KPIYearlyBaseline değeri kullanılır. Grafik ve tablo aynı
+// fonksiyonu kullanır ki ikisi hep tutarlı olsun.
+function hesaplaOrtYillar(kpi: Kpi): [number, number][] {
+  const yillarKumesi = new Set<number>([...kpi.measurements.map(m => m.year), ...kpi.baselines.map(b => b.year)])
+  const hesaplanan = new Map<number, number>()
+  for (const yil of yillarKumesi) {
+    const degerler = kpi.measurements.filter(m => m.year === yil && m.actual != null).map(m => m.actual as number)
+    if (degerler.length > 0) hesaplanan.set(yil, degerler.reduce((a, b) => a + b, 0) / degerler.length)
+  }
+  for (const b of kpi.baselines) {
+    if (!hesaplanan.has(b.year)) hesaplanan.set(b.year, b.average)
+  }
+  return Array.from(hesaplanan.entries()).sort(([a], [b]) => a - b)
+}
+
 function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated: () => void }) {
   const [acik, setAcik] = useState(false)
   const [name, setName] = useState('')
   const [unit, setUnit] = useState('')
   const [direction, setDirection] = useState('higher_is_better')
+  const [hedef, setHedef] = useState('')
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
   async function kaydet() {
@@ -77,7 +102,21 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         body: JSON.stringify({ name, unit, direction, orgUnitId }),
       })
       if (res.ok) {
-        setName(''); setUnit(''); setDirection('higher_is_better')
+        const { kpi } = await res.json()
+        // Hedef girildiyse bu yılın 12 ayına tek seferde uygula — tek tek girmeye gerek kalmasın.
+        if (hedef.trim() && !Number.isNaN(Number(hedef))) {
+          const yil = new Date().getFullYear()
+          await Promise.all(
+            Array.from({ length: 12 }, (_, i) =>
+              fetch(`/api/yonetim/kpi/${kpi.id}/olcum`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year: yil, month: i + 1, target: Number(hedef), actual: null }),
+              }),
+            ),
+          )
+        }
+        setName(''); setUnit(''); setDirection('higher_is_better'); setHedef('')
         setAcik(false)
         onCreated()
       }
@@ -117,6 +156,15 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <Label>Hedef (opsiyonel)</Label>
+            <Input
+              type="number"
+              value={hedef}
+              onChange={e => setHedef(e.target.value)}
+              placeholder="Girilirse bu yılın 12 ayına otomatik uygulanır"
+            />
+          </div>
         </div>
         <DialogFooter>
           <Button onClick={kaydet} disabled={kaydediliyor || !name.trim()} style={{ backgroundColor: NAVY }}>
@@ -146,7 +194,7 @@ function AksiyonFormDialog({
   const [acik, setAcik] = useState(false)
   const [reason, setReason] = useState(mevcut?.reason ?? '')
   const [action, setAction] = useState(mevcut?.action ?? '')
-  const [responsibleId, setResponsibleId] = useState(mevcut?.responsibleId ?? '')
+  const [sorumluPersonelId, setSorumluPersonelId] = useState(mevcut?.sorumluPersonelId ?? '')
   const [startDate, setStartDate] = useState(tarihGirdi(mevcut?.startDate ?? null))
   const [endDate, setEndDate] = useState(tarihGirdi(mevcut?.endDate ?? null))
   const [completionPercent, setCompletionPercent] = useState(String(mevcut?.completionPercent ?? 0))
@@ -174,7 +222,7 @@ function AksiyonFormDialog({
         body: JSON.stringify({
           reason,
           action,
-          responsibleId: responsibleId || null,
+          sorumluPersonelId: sorumluPersonelId || null,
           startDate: startDate || null,
           endDate: endDate || null,
           completionPercent: completionPercent === '' ? 0 : Number(completionPercent),
@@ -182,7 +230,7 @@ function AksiyonFormDialog({
       })
       if (res.ok) {
         if (!duzenlemeModu) {
-          setReason(''); setAction(''); setResponsibleId(''); setStartDate(''); setEndDate(''); setCompletionPercent('0')
+          setReason(''); setAction(''); setSorumluPersonelId(''); setStartDate(''); setEndDate(''); setCompletionPercent('0')
         }
         setAcik(false)
         onSaved()
@@ -221,7 +269,7 @@ function AksiyonFormDialog({
           </div>
           <div>
             <Label>Sorumlu</Label>
-            <Select value={responsibleId} onValueChange={setResponsibleId}>
+            <Select value={sorumluPersonelId} onValueChange={setSorumluPersonelId}>
               <SelectTrigger><SelectValue placeholder="Kişi seç (departmandan)" /></SelectTrigger>
               <SelectContent>
                 {adaylar.length === 0 ? (
@@ -277,6 +325,32 @@ function sayiFormat(n: number | null): string {
   return n.toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 }
 
+// Sütun ve üstündeki çizgi aynı yılın aynı değerini taşıyor — tooltip'te iki kere
+// yazmasın diye aynı dataKey'e sahip girdilerden sadece ilkini gösteriyoruz.
+function GrafikTooltip({ active, payload, label }: {
+  active?: boolean
+  payload?: { dataKey?: string | number; name?: string; value?: number; color?: string }[]
+  label?: string
+}) {
+  if (!active || !payload || payload.length === 0) return null
+  const gorulen = new Set<string | number | undefined>()
+  const satirlar = payload.filter(p => {
+    if (gorulen.has(p.dataKey)) return false
+    gorulen.add(p.dataKey)
+    return true
+  })
+  return (
+    <div className="bg-white border border-slate-200 rounded-md shadow-md p-2 text-xs">
+      <p className="font-semibold mb-1">{label}</p>
+      {satirlar.map(p => (
+        <div key={String(p.dataKey)} style={{ color: p.color }}>
+          {p.name}: {sayiFormat(p.value ?? null)}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function DuzenlenebilirHucre({
   deger, onKaydet, className, style,
 }: { deger: number | null; onKaydet: (v: number | null) => void; className?: string; style?: React.CSSProperties }) {
@@ -320,6 +394,7 @@ function KpiVeriTablosu({
   kpi, yillar, onChanged, aktifYil, onAktifYilChange,
 }: { kpi: Kpi; yillar: number[]; onChanged: () => void; aktifYil: number | null; onAktifYilChange: (y: number) => void }) {
   const [ekstraYillar, setEkstraYillar] = useState<number[]>([])
+  const [donemYilGirdi, setDonemYilGirdi] = useState('')
   const tumYillar = useMemo(
     () => Array.from(new Set([...yillar, ...ekstraYillar])).sort((a, b) => b - a),
     [yillar, ekstraYillar],
@@ -334,23 +409,28 @@ function KpiVeriTablosu({
   const gosterilenYillar = aktifYil == null ? [] : [aktifYil, aktifYil - 1]
 
   // Ortalama sütunu: aylık verisi olan yıllar için KENDİSİ hesaplanır (elle
-  // ayrı bir "ortalama ekle" adımına gerek yok); sadece Excel'den gelen ve
-  // aylık kırılımı olmayan eski yıllar (2020-2023) için import'taki sabit
-  // değer kullanılır.
-  const ortYillar = useMemo(() => {
-    const hesaplanan = new Map<number, number>()
-    for (const yil of tumYillar) {
-      const degerler = kpi.measurements.filter(m => m.year === yil && m.actual != null).map(m => m.actual as number)
-      if (degerler.length > 0) hesaplanan.set(yil, degerler.reduce((a, b) => a + b, 0) / degerler.length)
-    }
-    for (const b of kpi.baselines) {
-      if (!hesaplanan.has(b.year)) hesaplanan.set(b.year, b.average)
-    }
-    return Array.from(hesaplanan.entries()).sort(([a], [b]) => a - b)
+  // ayrı bir "ortalama ekle" adımına gerek yok); aylık kırılımı olmayan eski
+  // yıllar (2020-2023 gibi) için elle girilen/Excel'den gelen değer kullanılır.
+  // Ayrıca hangi yıllar "Dönem Karşılaştır" ile eklendiyse onlar için de otomatik
+  // (başta boş/düzenlenebilir) bir Ort. sütunu açılır — ayrı bir ekleme adımı yok.
+  const yillarIleOlcum = useMemo(() => new Set(kpi.measurements.filter(m => m.actual != null).map(m => m.year)), [kpi])
+  const ortYillar = useMemo((): [number, number | null][] => {
+    const hesap = new Map<number, number | null>(hesaplaOrtYillar(kpi))
+    for (const y of tumYillar) if (!hesap.has(y)) hesap.set(y, null)
+    return Array.from(hesap.entries()).sort(([a], [b]) => a - b)
   }, [kpi, tumYillar])
 
+  async function ortalamaKaydet(yil: number, deger: number | null) {
+    await fetch(`/api/yonetim/kpi/${kpi.id}/ortalama`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: yil, average: deger }),
+    })
+    onChanged()
+  }
+
   async function hucreKaydet(yil: number, ay: number, alan: 'target' | 'actual', deger: number | null) {
-    await fetch(`/api/yonetim/kpi/${kpi.id}/olcum`, {
+    const res = await fetch(`/api/yonetim/kpi/${kpi.id}/olcum`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -360,12 +440,17 @@ function KpiVeriTablosu({
         actual: alan === 'actual' ? deger : kpi.measurements.find(m => m.year === yil && m.month === ay)?.actual ?? null,
       }),
     })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error ?? 'Kaydedilemedi')
+      return
+    }
     onChanged()
   }
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
         <div className="flex flex-wrap gap-1">
           {tumYillar.map(y => (
             <Button
@@ -380,19 +465,31 @@ function KpiVeriTablosu({
             </Button>
           ))}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          onClick={() => {
-            const yeniYil = (tumYillar[0] ?? new Date().getFullYear() - 1) + 1
-            setEkstraYillar(prev => [...prev, yeniYil])
-            onAktifYilChange(yeniYil)
-          }}
-        >
-          <PlusCircle className="h-3 w-3 mr-1" />
-          Yeni Dönem Karşılaştırma Ekle
-        </Button>
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            placeholder="Yıl"
+            className="w-20 h-7 text-xs"
+            value={donemYilGirdi}
+            onChange={e => setDonemYilGirdi(e.target.value)}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            disabled={!donemYilGirdi.trim()}
+            onClick={() => {
+              const yil = Number(donemYilGirdi)
+              if (Number.isNaN(yil)) return
+              if (!tumYillar.includes(yil)) setEkstraYillar(prev => [...prev, yil])
+              onAktifYilChange(yil)
+              setDonemYilGirdi('')
+            }}
+          >
+            <PlusCircle className="h-3 w-3 mr-1" />
+            Dönem Karşılaştır
+          </Button>
+        </div>
       </div>
       <div className="overflow-x-auto rounded-md border border-slate-300">
         <table className="w-full text-sm border-collapse">
@@ -419,9 +516,18 @@ function KpiVeriTablosu({
                   <tr className="border-t-2 border-slate-400">
                     <td className="p-2 font-semibold whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">{yil} · Gerçekleşen</td>
                     {ilkYil
-                      ? ortYillar.map(([y, ort]) => (
-                          <td key={y} className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200">{sayiFormat(ort)}</td>
-                        ))
+                      ? ortYillar.map(([y, ort]) =>
+                          yillarIleOlcum.has(y) ? (
+                            <td key={y} className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200">{sayiFormat(ort)}</td>
+                          ) : (
+                            <DuzenlenebilirHucre
+                              key={y}
+                              deger={ort}
+                              onKaydet={(d) => ortalamaKaydet(y, d)}
+                              className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200"
+                            />
+                          ),
+                        )
                       : ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
                     {aylikVeri.map((v, i) => {
                       const tutuldu = hedefTutuldu(kpi, v.target, v.actual)
@@ -480,12 +586,14 @@ interface Departman {
   name: string
 }
 
+
 export default function KpiClient() {
   const [departmanlar, setDepartmanlar] = useState<Departman[]>([])
   const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(IK_ORG_UNIT_ID)
   const [kpiler, setKpiler] = useState<Kpi[] | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [seciliId, setSeciliId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     fetch('/api/yonetim/kpi/departmanlar')
@@ -494,12 +602,22 @@ export default function KpiClient() {
       .catch(() => {})
   }, [])
 
+  // KPI Özet sayfasından "şu departmana git" linkiyle gelindiyse onu seç
+  useEffect(() => {
+    const departman = searchParams.get('departman')
+    if (departman) setSecilenDepartmanId(departman)
+  }, [searchParams])
+
   function yukle() {
     fetch(`/api/yonetim/kpi?orgUnitId=${secilenDepartmanId}`)
       .then(res => res.json())
       .then(d => {
         setKpiler(d.kpiler)
-        setSeciliId(prev => (prev && d.kpiler.some((k: Kpi) => k.id === prev) ? prev : d.kpiler[0]?.id ?? null))
+        const istenenKpi = searchParams.get('kpi')
+        setSeciliId(prev => {
+          if (istenenKpi && d.kpiler.some((k: Kpi) => k.id === istenenKpi)) return istenenKpi
+          return prev && d.kpiler.some((k: Kpi) => k.id === prev) ? prev : d.kpiler[0]?.id ?? null
+        })
       })
       .catch(() => setHata('Veri yüklenemedi'))
   }
@@ -544,10 +662,9 @@ export default function KpiClient() {
     const hedefBul = (ay: number) =>
       secili.measurements.find(m => m.year === yilA && m.month === ay)?.target ?? null
 
-    const ortalamaSatirlari = secili.baselines.map(b => ({
-      ad: `${b.year} Ort.`,
-      Ortalama: b.average,
-    }))
+    const ortalamaSatirlari = hesaplaOrtYillar(secili)
+      .filter(([, ort]) => ort != null)
+      .map(([y, ort]) => ({ ad: `${y} Ort.`, Ortalama: ort as number }))
     const aySatirlari = AY_KISA.map((ad, i) => ({
       ad,
       [String(yilA)]: bul(yilA, i + 1),
@@ -556,6 +673,11 @@ export default function KpiClient() {
     }))
     return { veri: [...ortalamaSatirlari, ...aySatirlari], yilA: yilA ?? null, yilB: yilB ?? null }
   }, [secili, yillar])
+
+  const guncelYilOrtalamasi = useMemo(() => {
+    if (!secili || birlesikGrafikVerisi.yilA == null) return null
+    return hesaplaOrtYillar(secili).find(([y]) => y === birlesikGrafikVerisi.yilA)?.[1] ?? null
+  }, [secili, birlesikGrafikVerisi.yilA])
 
   const secilenDepartman = departmanlar.find(d => d.id === secilenDepartmanId)
 
@@ -581,7 +703,12 @@ export default function KpiClient() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Aylık hedef/gerçekleşen takibi ve aksiyon planı</p>
         </div>
-        <YeniKpiDialog orgUnitId={secilenDepartmanId} onCreated={yukle} />
+        <div className="flex items-center gap-2">
+          <Link href="/yonetim/kpi-ozet">
+            <Button size="sm" variant="outline">KPI Özet →</Button>
+          </Link>
+          <YeniKpiDialog orgUnitId={secilenDepartmanId} onCreated={yukle} />
+        </div>
       </div>
 
       {hata ? (
@@ -609,54 +736,116 @@ export default function KpiClient() {
           {secili && (
             <>
               <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    {secili.name}
-                    <Badge variant="secondary" className="font-normal">
-                      {secili.direction === 'lower_is_better' ? 'Düşük iyi' : 'Yüksek iyi'}
-                    </Badge>
-                    {secili.unit && <span className="text-xs font-normal text-muted-foreground">{secili.unit}</span>}
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Solda geçmiş yılların ortalaması, sağda {birlesikGrafikVerisi.yilB ?? '—'} vs {birlesikGrafikVerisi.yilA ?? '—'} aylık karşılaştırma — tek grafikte
-                  </p>
+                <CardHeader className="pb-2 flex flex-row items-start justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      {secili.name}
+                      <Badge variant="secondary" className="font-normal">
+                        {secili.direction === 'lower_is_better' ? 'Düşük iyi' : 'Yüksek iyi'}
+                      </Badge>
+                      {secili.unit && <span className="text-xs font-normal text-muted-foreground">{secili.unit}</span>}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Solda geçmiş yılların ortalaması, sağda {birlesikGrafikVerisi.yilB ?? '—'} vs {birlesikGrafikVerisi.yilA ?? '—'} aylık karşılaştırma — tek grafikte
+                    </p>
+                  </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-600">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>&quot;{secili.name}&quot; KPI&apos;sı silinsin mi?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Bu KPI'a ait tüm ölçümler, yıllık ortalamalar ve aksiyonlar birlikte silinir. Bu işlem geri alınamaz.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>İptal</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-red-600 hover:bg-red-700"
+                          onClick={async () => {
+                            await fetch(`/api/yonetim/kpi/${secili.id}`, { method: 'DELETE' })
+                            setSeciliId(null)
+                            yukle()
+                          }}
+                        >
+                          Sil
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </CardHeader>
                 <CardContent>
                   {birlesikGrafikVerisi.veri.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-10 text-center">Veri yok</p>
                   ) : (
-                    <ResponsiveContainer width="100%" height={320}>
-                      <ComposedChart data={birlesikGrafikVerisi.veri} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="ad" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                        <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]} />
-                        {birlesikGrafikVerisi.yilB != null && (
-                          <Bar dataKey={String(birlesikGrafikVerisi.yilB)} fill="#94a3b8" radius={[3, 3, 0, 0]} />
-                        )}
-                        {birlesikGrafikVerisi.yilA != null && (
-                          <Bar dataKey={String(birlesikGrafikVerisi.yilA)} fill={NAVY} radius={[3, 3, 0, 0]} />
-                        )}
-                        <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  )}
-
-                  {yillar.length > 0 && (
-                    <div className="mt-4 pt-4 border-t">
-                      <p className="text-xs text-muted-foreground mb-2">Hücreye tıklayıp değeri düzenleyebilirsin</p>
-                      <KpiVeriTablosu
-                        key={secili.id}
-                        kpi={secili}
-                        yillar={yillar}
-                        onChanged={yukle}
-                        aktifYil={aktifYil}
-                        onAktifYilChange={setAktifYil}
-                      />
+                    <div className="relative">
+                      {guncelYilOrtalamasi != null && birlesikGrafikVerisi.yilA != null && (
+                        <div className="absolute top-0 right-0 text-right z-10">
+                          <div className="text-[11px] text-muted-foreground">{birlesikGrafikVerisi.yilA} Ortalaması</div>
+                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormat(guncelYilOrtalamasi)}</div>
+                        </div>
+                      )}
+                      <ResponsiveContainer width="100%" height={320}>
+                        <ComposedChart data={birlesikGrafikVerisi.veri} margin={{ left: 4, right: 8, top: 20, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="ad" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
+                          <YAxis tick={{ fontSize: 11 }} />
+                          <Tooltip content={<GrafikTooltip />} />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]}>
+                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormat(v)} />
+                          </Bar>
+                          {birlesikGrafikVerisi.yilB != null && (
+                            <Bar dataKey={String(birlesikGrafikVerisi.yilB)} fill="#94a3b8" radius={[3, 3, 0, 0]}>
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormat(v)} />
+                            </Bar>
+                          )}
+                          {birlesikGrafikVerisi.yilA != null && (
+                            <Bar dataKey={String(birlesikGrafikVerisi.yilA)} fill={NAVY} radius={[3, 3, 0, 0]}>
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormat(v)} />
+                            </Bar>
+                          )}
+                          <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />
+                          {birlesikGrafikVerisi.yilB != null && (
+                            <Line
+                              type="monotone"
+                              dataKey={String(birlesikGrafikVerisi.yilB)}
+                              name={`${birlesikGrafikVerisi.yilB} Gerçekleşen (çizgi)`}
+                              stroke="#64748b"
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                            />
+                          )}
+                          {birlesikGrafikVerisi.yilA != null && (
+                            <Line
+                              type="monotone"
+                              dataKey={String(birlesikGrafikVerisi.yilA)}
+                              name={`${birlesikGrafikVerisi.yilA} Gerçekleşen (çizgi)`}
+                              stroke={YESIL}
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                            />
+                          )}
+                        </ComposedChart>
+                      </ResponsiveContainer>
                     </div>
                   )}
+
+                  <div className="mt-4 pt-4 border-t">
+                    <p className="text-xs text-muted-foreground mb-2">Hücreye tıklayıp değeri düzenleyebilirsin</p>
+                    <KpiVeriTablosu
+                      key={secili.id}
+                      kpi={secili}
+                      yillar={yillar}
+                      onChanged={yukle}
+                      aktifYil={aktifYil}
+                      onAktifYilChange={setAktifYil}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 

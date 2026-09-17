@@ -26,11 +26,18 @@ import path from 'path'
 import { prisma } from '../src/lib/prisma'
 import {
   IfsSyncHatasi, empAnahtari, ifsBaglanti, lcAnahtari, listAllEmployees, listLaborClasses, listOrgs, listPositions, listSfEmployees, listSfSites,
-  orgAnahtari, posAnahtari, sfeAnahtari, sfsAnahtari, sil,
+  orgAnahtari, patchOrg, patchPosition, posAnahtari, sfeAnahtari, sfsAnahtari, sil,
 } from '../src/lib/ifs/personel-sync/ifs-api'
 import { SICIL_ONEKI } from '../src/lib/ifs/personel-sync/kodlar'
 
 const APPLY = process.argv.includes('--apply')
+/**
+ * --kapat: SİLMEK yerine eski aile org/pozisyonlarına ValidTo=<bugün> PATCH (16.09 dersi: IFS
+ * atama geçmişi — CompanyPersAssign — eski kodlara bağlı olduğu için DELETE CONSTRAINT veriyor).
+ * Employee / labor class / shop-floor'a dokunmaz. ValidTo geçmişte olan kayıtlar atlanır (idempotent).
+ */
+const KAPAT = process.argv.includes('--kapat')
+const BUGUN = new Date().toISOString().slice(0, 10)
 const haricArg = (() => { const i = process.argv.indexOf('--haric'); return i >= 0 ? process.argv[i + 1] : undefined })()
 /** Elle hariç tutulanlar (--haric A,B) — aday listesinden düşer, KORUNDU raporlanır. */
 const HARIC = new Set((haricArg ?? '').split(',').map((s) => s.trim()).filter(Boolean))
@@ -43,7 +50,7 @@ interface Satir { adim: string; anahtar: string; etiket: string; sonuc: 'SİLİN
 
 async function main() {
   const { mainRoot, hostTest } = ifsBaglanti()
-  console.log(`IFS host: ${mainRoot.replace(/https?:\/\/([^/]+).*/, '$1')} — ${hostTest ? 'TEST' : 'TEST DEĞİL'} — mod: ${APPLY ? 'APPLY (silinecek)' : 'dry-run'}`)
+  console.log(`IFS host: ${mainRoot.replace(/https?:\/\/([^/]+).*/, '$1')} — ${hostTest ? 'TEST' : 'TEST DEĞİL'} — mod: ${KAPAT ? (APPLY ? 'KAPAT (ValidTo=' + BUGUN + ')' : 'KAPAT dry-run') : APPLY ? 'APPLY (silinecek)' : 'dry-run'}`)
   if (!hostTest) { console.error('❌ Bu betik yalnız ifscloudtest host\'unda çalışır. Hiçbir istek atılmadı. DUR.'); process.exit(2) }
 
   const [emps, orgs, poss, lcs, sfes, sfss] = await Promise.all([listAllEmployees(), listOrgs(), listPositions(), listLaborClasses(), listSfEmployees(), listSfSites()])
@@ -67,6 +74,26 @@ async function main() {
     if (!APPLY) { rapor.push({ adim, anahtar, etiket, sonuc: 'DRY' }); return }
     try { await sil(yol); rapor.push({ adim, anahtar, etiket, sonuc: 'SİLİNDİ' }) }
     catch (e) { rapor.push({ adim, anahtar, etiket, sonuc: 'HATA', detay: e instanceof IfsSyncHatasi ? `${e.status} ${e.detay.slice(0, 160)}` : (e as Error).message }) }
+  }
+
+  if (KAPAT) {
+    const kapat = async (adim: string, anahtar: string, etiket: string, validTo: string, yaz: () => Promise<unknown>) => {
+      if (validTo && validTo.slice(0, 10) <= BUGUN) { rapor.push({ adim, anahtar, etiket, sonuc: 'KORUNDU', detay: `zaten kapalı (${validTo.slice(0, 10)})` }); return }
+      if (!APPLY) { rapor.push({ adim, anahtar, etiket, sonuc: 'DRY' }); return }
+      try { await yaz(); rapor.push({ adim, anahtar, etiket, sonuc: 'SİLİNDİ', detay: `ValidTo=${BUGUN}` }) }
+      catch (e) { rapor.push({ adim, anahtar, etiket, sonuc: 'HATA', detay: e instanceof IfsSyncHatasi ? `${e.status} ${e.detay.slice(0, 160)}` : (e as Error).message }) }
+    }
+    // Pozisyon: önce alt (SupPosCode dolu), sonra üst
+    for (const p of [...hedefPos].sort((a, b) => Number(!!b.SupPosCode && b.SupPosCode !== '*') - Number(!!a.SupPosCode && a.SupPosCode !== '*'))) await kapat('3-pozisyon', p.PosCode, p.PositionTitle, p.ValidTo, () => patchPosition(p.PosCode, { ValidTo: BUGUN }, p['@odata.etag'] ?? '*'))
+    for (const o of hedefOrg) await kapat('4-org', o.OrgCode, o.OrgName, o.ValidTo, () => patchOrg(o.OrgCode, { ValidTo: BUGUN }, o['@odata.etag'] ?? '*'))
+    const say = (s: Satir['sonuc']) => rapor.filter((r) => r.sonuc === s).length
+    console.log(`\nSonuç (KAPAT): kapatıldı ${say('SİLİNDİ')} · dry ${say('DRY')} · zaten kapalı ${say('KORUNDU')} · hata ${say('HATA')}`)
+    for (const r of rapor.filter((x) => x.sonuc === 'HATA')) console.log(`  ✗ ${r.adim} ${r.anahtar} ${r.etiket}: ${r.detay}`)
+    console.log(`Silinemeyen employee (IFS ekibine): ${hedefEmp.map((e) => e.EmpNo).join(', ')}`)
+    const dosya = path.join(process.cwd(), 'uploads', `ifs-temizlik-kapat-${APPLY ? 'apply' : 'dry'}-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`)
+    mkdirSync(path.dirname(dosya), { recursive: true }); writeFileSync(dosya, JSON.stringify(rapor, null, 1)); chmodSync(dosya, 0o600)
+    console.log(`→ ${dosya}`)
+    return
   }
 
   // 1) Atamalar / shop-floor katmanları (employee silinebilsin diye önce bunlar)

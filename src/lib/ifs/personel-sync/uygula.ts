@@ -20,7 +20,7 @@ export interface KalemSonucu extends Pick<PlanKalemi, 'varlik' | 'hubId' | 'ifsA
 export interface UygulamaSonucu {
   dryRun: boolean
   kalemler: KalemSonucu[]
-  ozet: { yazildi: number; hata: number; atlandi: number; noop: number }
+  ozet: { yazildi: number; hata: number; atlandi: number; noop: number; denetimHatasi: number }
 }
 
 const AUDIT_ACTION = 'IFS_PERSONEL_SYNC'
@@ -66,9 +66,11 @@ export async function uygula(
   const aktorId = opts.actorId ?? IFS_SYNC_AKTOR_ID
   const aktorVar = !opts.dryRun && !!(await db.user.findUnique({ where: { id: aktorId }, select: { id: true } }))
   if (!opts.dryRun && !aktorVar) console.warn(`[ifs-personel-sync] denetim aktörü '${aktorId}' User tablosunda yok — permission_audit_log satırları ATLANIYOR`)
+  let denetimHatasi = 0
   const denetim = async (targetId: string, details: Record<string, unknown>) => {
-    if (!aktorVar) return
-    await logAuditEvent({ action: AUDIT_ACTION, actorId: aktorId, targetType: 'IFS_PERSONEL_SYNC', targetId, details })
+    if (!aktorVar) { denetimHatasi++; return }
+    const r = await logAuditEvent({ action: AUDIT_ACTION, actorId: aktorId, targetType: 'IFS_PERSONEL_SYNC', targetId, details })
+    if (!r.ok) denetimHatasi++
   }
   const hataliAnahtarlar = new Set<string>() // aynı kişide EMPLOYEE hata aldıysa SF katmanlarını deneme
   const hataliLc = new Set<string>()
@@ -101,7 +103,7 @@ export async function uygula(
       await denetim(`${k.varlik}:${k.ifsAnahtar}`, { varlik: k.varlik, hubId: k.hubId, islem: k.islem, etiket: k.etiket, govde: k.govde ?? null, hata, http })
     }
   }
-  const ozet = { yazildi: 0, hata: 0, atlandi: 0, noop: 0 }
+  const ozet = { yazildi: 0, hata: 0, atlandi: 0, noop: 0, denetimHatasi }
   for (const s of sonuclar) { if (s.durum === 'YAZILDI' || s.durum === 'KURU') ozet.yazildi++; else if (s.durum === 'HATA') ozet.hata++; else if (s.durum === 'ATLANDI') ozet.atlandi++; else ozet.noop++ }
   return { dryRun: opts.dryRun, kalemler: sonuclar, ozet }
 }

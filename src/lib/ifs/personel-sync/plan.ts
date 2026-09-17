@@ -349,6 +349,10 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
     const bolumSf = shopFloorBolumler.has(k.bolum)
     if (!kisiShopFloorMu(k.yakaRengi, bolumSf)) {
       if (['MAVI', 'GRI'].includes(k.yakaRengi)) sfeKalemleri.push({ varlik: 'SF_EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: `SHOP_FLOOR_DISI bölüm (${k.bolum})` })
+      // Shop-floor dışı kişinin (beyaz yaka / SHOP_FLOOR_DISI bölüm) IFS'te AKTİF site'ı varsa
+      // (eski operatör senkronu kalıntısı) Blocked'a çekilir — Karar 2: beyaz asla shop-floor değil.
+      const eskiSite = ifsSfsMap.get(k.sicilNo)
+      if (eskiSite && eskiSite.Objstate === 'Active') sfsKalemleri.push({ varlik: 'SF_SITE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'PASIF', govde: { Objstate: 'Blocked' }, etag: eskiSite['@odata.etag'] ?? null, sebep: `shop-floor dışı (${k.yakaRengi} · ${k.bolum}) ama site Active → SetBlocked` })
       continue
     }
     const lc = kisiLaborClass(k)

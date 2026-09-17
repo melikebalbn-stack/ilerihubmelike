@@ -75,7 +75,17 @@ export interface AuditLogParams {
   tx?: Prisma.TransactionClient
 }
 
-export async function logAuditEvent(params: AuditLogParams): Promise<void> {
+export type AuditSonucu = { ok: true } | { ok: false; hata: string }
+
+/**
+ * Denetim satırı yazar. tx verilmişse hata FIRLATILIR (atomiklik); tx yoksa istek düşmez
+ * ama sonuç DÖNER ve belirgin uyarı basılır — çağıran isterse yanıta taşır.
+ *
+ * 16.09.2026 dersi: actorId `User.id` FK'sıdır. 'cron:…' / 'pilot:…' gibi sahte aktörlerle
+ * yazılan satırlar FK'ya takılıp SESSİZCE düşüyordu (IFS senkronu + haftalık personel maili
+ * denetimi hiç yazılmadı). Sistem işleri için `User.id='sistem'` hesabı kullanılır.
+ */
+export async function logAuditEvent(params: AuditLogParams): Promise<AuditSonucu> {
   const client = params.tx ?? prisma
   try {
     await client.permissionAuditLog.create({
@@ -87,12 +97,17 @@ export async function logAuditEvent(params: AuditLogParams): Promise<void> {
         details: (params.details ?? {}) as Prisma.InputJsonValue,
       },
     })
+    return { ok: true }
   } catch (error) {
-    // Atomicity istenmiyorsa (tx yok) audit fail'i sessize alıyoruz —
-    // request başarılı dönsün, audit kaybı sadece konsola yazılsın.
-    if (params.tx) {
-      throw error
-    }
-    console.error('[AUDIT-LOG] Failed:', params.action, error)
+    if (params.tx) throw error
+    const kod = (error as { code?: string })?.code
+    const hata = kod === 'P2003'
+      ? `denetim aktörü '${params.actorId}' User tablosunda yok (FK) — satır YAZILAMADI`
+      : `denetim yazılamadı: ${(error as Error)?.message ?? String(error)}`
+    console.warn(`[AUDIT-LOG] UYARI ${params.action} → ${hata}`)
+    return { ok: false, hata }
   }
 }
+
+/** Sistem/cron işleri için denetim aktörü (User.id — ldap-sync 'ad_' dışını ellemez). */
+export const SISTEM_AKTOR_ID = process.env.SISTEM_AKTOR_ID ?? 'sistem'

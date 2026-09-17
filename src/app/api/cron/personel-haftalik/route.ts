@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
-import { logAuditEvent } from '@/lib/audit-log'
+import { SISTEM_AKTOR_ID, logAuditEvent } from '@/lib/audit-log'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
 import { getHaftalikPersonelRaporu } from '@/lib/personnel-weekly-report'
 import { buildPersonnelWeeklyHtml, buildPersonnelWeeklyText } from '@/lib/email-templates/personnel-weekly'
@@ -30,7 +30,8 @@ export const dynamic = 'force-dynamic'
  */
 
 const AUDIT_ACTION = 'PERSONNEL_WEEKLY_REPORT_MAIL'
-const AUDIT_ACTOR = 'cron:personel-haftalik'
+// Aktör GERÇEK User olmalı (FK) — 'cron:…' sahte id'leri satırı sessizce düşürüyordu (16.09).
+const AUDIT_ACTOR = SISTEM_AKTOR_ID
 
 /**
  * Alıcılar sicil numarasıyla tanımlı; e-posta ÇALIŞMA ANINDA Personnel → User
@@ -176,13 +177,13 @@ async function handle(req: NextRequest) {
   )
 
   const durum = sonuc.success ? 'GONDERILDI' : 'HATA'
-  await logAuditEvent({
+  const denetim = await logAuditEvent({
     action: AUDIT_ACTION, actorId: AUDIT_ACTOR, targetType: 'PERSONNEL_WEEKLY_REPORT', targetId: veri.haftaAnahtari,
     details: { ...ozet, durum, messageId: sonuc.messageId ?? null, hata: sonuc.error ?? null, force },
   })
   console.log(`[personel-haftalik] ${veri.haftaAnahtari}: ${durum} alıcı=${gecerli.length} cc=${CC_ADRESLERI.length}${sonuc.messageId ? ' id=' + sonuc.messageId : ''}`)
 
-  return NextResponse.json({ ok: sonuc.success, ...ozet, durum, messageId: sonuc.messageId ?? null }, { status: sonuc.success ? 200 : 502 })
+  return NextResponse.json({ ok: sonuc.success, ...ozet, durum, messageId: sonuc.messageId ?? null, ...(denetim.ok ? {} : { denetimUyarisi: denetim.hata }) }, { status: sonuc.success ? 200 : 502 })
 }
 
 export async function POST(req: NextRequest) { return handle(req) }

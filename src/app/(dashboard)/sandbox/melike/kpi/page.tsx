@@ -368,6 +368,8 @@ function KpiVeriTablosu({
   kpi, yillar, onChanged, aktifYil, onAktifYilChange,
 }: { kpi: Kpi; yillar: number[]; onChanged: () => void; aktifYil: number | null; onAktifYilChange: (y: number) => void }) {
   const [ekstraYillar, setEkstraYillar] = useState<number[]>([])
+  const [donemYilGirdi, setDonemYilGirdi] = useState('')
+  const [ortYilGirdi, setOrtYilGirdi] = useState('')
   const tumYillar = useMemo(
     () => Array.from(new Set([...yillar, ...ekstraYillar])).sort((a, b) => b - a),
     [yillar, ekstraYillar],
@@ -422,7 +424,7 @@ function KpiVeriTablosu({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
         <div className="flex flex-wrap gap-1">
           {tumYillar.map(y => (
             <Button
@@ -437,32 +439,57 @@ function KpiVeriTablosu({
             </Button>
           ))}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          onClick={() => {
-            const yeniYil = (tumYillar[0] ?? new Date().getFullYear() - 1) + 1
-            setEkstraYillar(prev => [...prev, yeniYil])
-            onAktifYilChange(yeniYil)
-          }}
-        >
-          <PlusCircle className="h-3 w-3 mr-1" />
-          Yeni Dönem Karşılaştırma Ekle
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          onClick={() => {
-            const girdi = window.prompt('Hangi yılın ortalamasını eklemek istiyorsun? (örn: 2019)')
-            const yil = Number(girdi)
-            if (girdi && !Number.isNaN(yil)) setEkstraOrtYillar(prev => [...prev, yil])
-          }}
-        >
-          <PlusCircle className="h-3 w-3 mr-1" />
-          Ortalama Ekle
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              placeholder="Yıl"
+              className="w-20 h-7 text-xs"
+              value={donemYilGirdi}
+              onChange={e => setDonemYilGirdi(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={!donemYilGirdi.trim()}
+              onClick={() => {
+                const yil = Number(donemYilGirdi)
+                if (Number.isNaN(yil)) return
+                if (!tumYillar.includes(yil)) setEkstraYillar(prev => [...prev, yil])
+                onAktifYilChange(yil)
+                setDonemYilGirdi('')
+              }}
+            >
+              <PlusCircle className="h-3 w-3 mr-1" />
+              Dönem Karşılaştır
+            </Button>
+          </div>
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              placeholder="Yıl"
+              className="w-20 h-7 text-xs"
+              value={ortYilGirdi}
+              onChange={e => setOrtYilGirdi(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={!ortYilGirdi.trim()}
+              onClick={() => {
+                const yil = Number(ortYilGirdi)
+                if (Number.isNaN(yil)) return
+                setEkstraOrtYillar(prev => (prev.includes(yil) ? prev : [...prev, yil]))
+                setOrtYilGirdi('')
+              }}
+            >
+              <PlusCircle className="h-3 w-3 mr-1" />
+              Ortalama Yılı Ekle
+            </Button>
+          </div>
+        </div>
       </div>
       <div className="overflow-x-auto rounded-md border border-slate-300">
         <table className="w-full text-sm border-collapse">

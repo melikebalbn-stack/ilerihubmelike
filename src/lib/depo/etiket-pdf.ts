@@ -1,5 +1,5 @@
 /**
- * Depo "Malzeme Tanıtım Kartı" PDF (EL-4) — 100×60 mm yatay, tek sayfa.
+ * Depo "Malzeme Tanıtım Kartı" PDF (EL-4) — 100×80 mm yatay, tek sayfa.
  *
  * Font/DataMatrix altyapısı üretim malzeme etiketinden (src/lib/uretim/
  * malzeme-etiketi-pdf.ts) yeniden kullanıldı: pdf-lib + @pdf-lib/fontkit +
@@ -35,7 +35,7 @@ export interface MalzemeEtiketiVeri {
 
 const MM = 2.83465
 const PAGE_W = 100 * MM // 283.46 pt
-const PAGE_H = 60 * MM // 170.08 pt
+const PAGE_H = 80 * MM // 226.77 pt
 const BLACK = rgb(0, 0, 0)
 const WHITE = rgb(1, 1, 1)
 const GRAY = rgb(0.45, 0.45, 0.45)
@@ -106,14 +106,14 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   const margin = 4 * MM
 
   // ── Üst siyah şerit ──
-  const stripH = 8.5 * MM
+  const stripH = 9 * MM
   page.drawRectangle({ x: 0, y: PAGE_H - stripH, width: PAGE_W, height: stripH, color: BLACK })
-  const stripY = PAGE_H - stripH / 2 - 4
-  page.drawText('ILERI GROUP', { x: margin, y: stripY, size: 11, font: bold, color: WHITE })
+  const stripY = PAGE_H - stripH / 2 - 4.5
+  page.drawText('ILERI GROUP', { x: margin, y: stripY, size: 12, font: bold, color: WHITE })
   const t2 = 'MALZEME TANITIM KARTI'
-  page.drawText(t2, { x: PAGE_W - margin - reg.widthOfTextAtSize(t2, 8), y: stripY + 1, size: 8, font: reg, color: WHITE })
+  page.drawText(t2, { x: PAGE_W - margin - reg.widthOfTextAtSize(t2, 8.5), y: stripY + 1, size: 8.5, font: reg, color: WHITE })
 
-  const contentTop = PAGE_H - stripH - 6
+  const contentTop = PAGE_H - stripH - 8
 
   // ── DataMatrix (sağ üst) ──
   const dmSize = 26 * MM
@@ -130,7 +130,7 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   const cap = `BARKOD NO: ${veri.barkodId}`
   page.drawText(cap, {
     x: dmX + (dmSize - bold.widthOfTextAtSize(cap, 7.5)) / 2,
-    y: contentTop - dmSize - 8.5,
+    y: contentTop - dmSize - 10,
     size: 7.5,
     font: bold,
     color: BLACK,
@@ -138,8 +138,8 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
 
   // ── DURUM kutusu (sağ, DM altı) — şimdilik sabit SERBEST ──
   // TODO: kalite modülü bağlanınca dinamik (KARANTİNA/BLOKE vb.)
-  const durH = 15
-  const durY = contentTop - dmSize - 12 - durH
+  const durH = 18
+  const durY = contentTop - dmSize - 14 - durH
   page.drawRectangle({ x: dmX, y: durY, width: dmSize, height: durH, borderColor: BLACK, borderWidth: 1 })
   const durTxt = 'DURUM: SERBEST'
   page.drawText(durTxt, {
@@ -154,13 +154,13 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   const leftX = margin
   const leftW = dmX - 8 - leftX
 
-  page.drawText('(P) MALZEME NO', { x: leftX, y: contentTop - 8, size: 6.5, font: reg, color: GRAY })
-  // Stok kodu — punto düşer, gerekirse kısaltılır (min 11).
-  const kod = fitText(veri.stokKodu, bold, leftW, 18, 11, true)
-  page.drawText(kod.text, { x: leftX, y: contentTop - 28, size: kod.size, font: bold, color: BLACK })
-  // Stok adı — punto düşer (min 8), hâlâ sığmazsa '…' (bilgilendirici, kritik değil).
-  const ad = fitText(veri.stokAdi || '-', reg, leftW, 9, 8, true)
-  page.drawText(ad.text, { x: leftX, y: contentTop - 40, size: ad.size, font: reg, color: BLACK })
+  page.drawText('(P) MALZEME NO', { x: leftX, y: contentTop - 10, size: 6.5, font: reg, color: GRAY })
+  // Stok kodu — punto düşer, gerekirse kısaltılır (min 12).
+  const kod = fitText(veri.stokKodu, bold, leftW, 20, 12, true)
+  page.drawText(kod.text, { x: leftX, y: contentTop - 34, size: kod.size, font: bold, color: BLACK })
+  // Stok adı — punto düşer (min 9), hâlâ sığmazsa '…' (bilgilendirici, kritik değil).
+  const ad = fitText(veri.stokAdi || '-', reg, leftW, 10, 9, true)
+  page.drawText(ad.text, { x: leftX, y: contentTop - 50, size: ad.size, font: reg, color: BLACK })
 
   const cellW = leftW / 3
   // allowTruncate=false → kritik alan (LOT / ETIKET NO): asla kısaltma, sadece punto düş.
@@ -174,21 +174,21 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   ) => {
     page.drawText(label, { x, y: topY, size: 6, font: reg, color: GRAY })
     const s = fitText(value, bold, cellW - 3, 9, min, allowTruncate)
-    page.drawText(s.text, { x, y: topY - 11, size: s.size, font: bold, color: BLACK })
+    page.drawText(s.text, { x, y: topY - 13, size: s.size, font: bold, color: BLACK })
   }
 
   // Orta ızgara
-  const midSep = contentTop - 48
+  const midSep = contentTop - 66
   page.drawLine({ start: { x: leftX, y: midSep }, end: { x: dmX - 8, y: midSep }, thickness: 0.6, color: GRAY })
-  const midY = midSep - 9
+  const midY = midSep - 12
   cell(leftX, midY, '(Q) MIKTAR', `${veri.miktar} ${veri.birim}`)
   cell(leftX + cellW, midY, '(1T) LOT', veri.lot ?? '-', false) // LOT: kısaltma yasak
   cell(leftX + 2 * cellW, midY, 'GIRIS TARIHI', fmtDate(veri.girisTarihi))
 
   // Alt ızgara
-  const botSep = midY - 20
+  const botSep = midY - 30
   page.drawLine({ start: { x: leftX, y: botSep }, end: { x: dmX - 8, y: botSep }, thickness: 0.6, color: GRAY })
-  const botY = botSep - 9
+  const botY = botSep - 12
   cell(leftX, botY, '(V) KAYNAK', veri.kaynakBilgi) // KAYNAK: kısaltılabilir
   cell(leftX + cellW, botY, 'LOKASYON', veri.lokasyon)
   cell(leftX + 2 * cellW, botY, '(S) ETIKET NO', veri.etiketNo, false) // ETIKET NO: tam bas (min 7)

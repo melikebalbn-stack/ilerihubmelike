@@ -55,12 +55,17 @@ export function AdminContentFileUpload({
     }
 
     const formData = new FormData();
-    formData.append("file", file);
+    // contentType dosyadan ÖNCE: sunucu gövdeyi stream ederken sınırı/alt dizini
+    // dosya parçası gelmeden bilmek zorunda (query'de de gönderilir).
     formData.append("contentType", contentType);
+    formData.append("file", file);
 
     try {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/akademi/admin/contents/upload");
+      xhr.open(
+        "POST",
+        `/api/akademi/admin/contents/upload?contentType=${encodeURIComponent(contentType)}`
+      );
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {

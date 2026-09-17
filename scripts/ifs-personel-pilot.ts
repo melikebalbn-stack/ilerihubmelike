@@ -21,7 +21,7 @@ import { planla, planOzetiMetni } from '../src/lib/ifs/personel-sync/plan'
 import { uygula } from '../src/lib/ifs/personel-sync/uygula'
 import { BellekKuyruk } from '../src/lib/ifs/personel-sync/kuyruk'
 import { IFS_SYNC_AKTOR_ID } from '../src/lib/ifs/personel-sync/kodlar'
-import { alanFarki, ayrilmaAnahtari, listEmployeeStatuses, getEmployee, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
+import { alanFarki, ayrilmaAnahtari, listEmployeeStatuses, getEmployee, getEmpEmployedTime, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
 
 const arg = (ad: string) => { const i = process.argv.indexOf(ad); return i >= 0 ? process.argv[i + 1] : undefined }
 const YAZ = process.argv.includes('--yaz')
@@ -62,7 +62,7 @@ async function main() {
   const rt: Array<Record<string, unknown>> = []
   if (YAZ) {
     console.log('\nRound-trip GET:')
-    for (const k of plan.kalemler.filter((x) => x.islem === 'CREATE' || x.islem === 'UPDATE')) {
+    for (const k of plan.kalemler.filter((x) => x.islem === 'CREATE' || x.islem === 'UPDATE' || x.islem === 'PASIF')) {
       let ok = false, detay = ''
       try {
         if (k.varlik === 'AYRILMA_NEDENI') { const { body } = await istek<{ LeavingCauseType: string; LeavingInitiatedBy: string }>(ayrilmaAnahtari(Number(k.ifsAnahtar))); ok = body.LeavingCauseType === (k.govde?.LeavingCauseType ?? body.LeavingCauseType); detay = `${body.LeavingCauseType} · ${body.LeavingInitiatedBy}` }
@@ -70,6 +70,11 @@ async function main() {
         else if (k.varlik === 'ORG') { const { body } = await istek<IfsOrg>(orgAnahtari(k.ifsAnahtar)); ok = body.OrgName === (k.govde?.OrgName ?? body.OrgName); detay = `${body.OrgName} sup=${body.SupOrgCode}` }
         else if (k.varlik === 'POZISYON') { const { body } = await istek<IfsPos>(posAnahtari(k.ifsAnahtar)); ok = body.PositionTitle === (k.govde?.PositionTitle ?? body.PositionTitle); detay = body.PositionTitle }
         else if (k.varlik === 'LABOR_CLASS') { const { body } = await istek<{ value?: Array<{ LaborClassNo: string }> }>(`ShopFloorEmployeesHandling.svc/Reference_LaborClass?$filter=Contract%20eq%20'ILER2'%20and%20LaborClassNo%20eq%20'${k.ifsAnahtar}'`); ok = (body.value?.length ?? 0) > 0; detay = ok ? 'var' : 'yok' }
+        else if (k.varlik === 'EMPLOYEE' && k.islem === 'PASIF') {
+          const d = await getEmpEmployedTime(k.ifsAnahtar)
+          ok = !!d && d.DateOfLeaving === k.govde?.EmploymentEndDate && Number(d.LeavingCauseId) === Number(k.govde?.LeavingCauseId) && d.EmployeeStatus === 'ISTEN AYRILMIS'
+          detay = d ? `DateOfLeaving=${d.DateOfLeaving} LeavingCauseId=${d.LeavingCauseId} status=${d.EmployeeStatus} bildirim=${d.LeavingNotificationDate}` : 'dönem yok'
+        }
         else if (k.varlik === 'EMPLOYEE') {
           const c = await getEmployee(k.ifsAnahtar); const b = c?.body
           // Alan bazlı: atama (org/pos) + PATCH/CREATE ile yazılan her alan geri okunanla eşleşmeli.

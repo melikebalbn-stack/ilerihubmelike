@@ -17,7 +17,7 @@ import {
   IfsSyncHatasi, listEmployeeStatuses, listEmployees, listLaborClasses, listLeavingCauses, listOrgs, listPositions, listSfEmployees, listSfSites,
   type IfsEmployee, type IfsEmployeeStatus, type IfsLaborClass, type IfsLeavingCause, type IfsOrg, type IfsPos, type IfsSfEmployee, type IfsSfSite,
 } from './ifs-api'
-import { SGK_CIKIS_KODLARI, sgkBaslatan } from '@/lib/sgk-cikis-kodlari'
+import { SGK_CIKIS_KODLARI, sgkBaslatan, sgkCikisKoduGecerliMi } from '@/lib/sgk-cikis-kodlari'
 import { IFS_CALISAN_STATULERI } from './kodlar'
 
 export type VarlikTipi = 'AYRILMA_NEDENI' | 'CALISAN_STATUSU' | 'ORG' | 'POZISYON' | 'LABOR_CLASS' | 'EMPLOYEE' | 'SF_EMPLOYEE' | 'SF_SITE'
@@ -62,6 +62,8 @@ interface HubLc { anahtar: string; bolumOrgUnitId: string; bolumAdi: string; kod
 interface HubKisi {
   id: string; sicilNo: string; adSoyad: string; aktif: boolean; yakaRengi: string; cinsiyet: string | null; gorev: string; bolum: string
   iseGirisTarihi: Date; cikisTarihi: Date | null
+  /** Son istihdam döneminin SGK çıkış kodu (EmploymentPeriod.exitCode) — PASIF kaleminde LeavingCauseId. */
+  cikisKodu: string | null
   departmentOrgUnitId: string | null; koltuk: HubPos | null; koltukSayisi: number
 }
 
@@ -90,7 +92,7 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
       select: {
         id: true, sicilNo: true, adSoyad: true, aktif: true, yakaRengi: true, cinsiyet: true, gorev: true, bolum: true, iseGirisTarihi: true,
         department: { select: { orgUnitId: true, name: true } },
-        employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true }, orderBy: { girisTarihi: 'desc' }, take: 1 },
+        employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true, exitCode: true }, orderBy: { girisTarihi: 'desc' }, take: 1 },
       },
     }),
   ])
@@ -141,7 +143,7 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
     const donem = p.employmentPeriods[0]
     kisiler.push({
       id: p.id, sicilNo: p.sicilNo, adSoyad: p.adSoyad, aktif: p.aktif, yakaRengi: p.yakaRengi, cinsiyet: p.cinsiyet, gorev: p.gorev, bolum: p.bolum,
-      iseGirisTarihi: p.iseGirisTarihi, cikisTarihi: donem?.cikisTarihi ?? null,
+      iseGirisTarihi: p.iseGirisTarihi, cikisTarihi: donem?.cikisTarihi ?? null, cikisKodu: donem?.exitCode?.trim() || null,
       departmentOrgUnitId: deptOrgUnitId, koltuk, koltukSayisi: koltuklar.length,
     })
   }
@@ -288,12 +290,30 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
     const etiket = `${k.sicilNo} ${baslikHali(k.adSoyad)} · ${k.bolum} · ${k.yakaRengi}`
     if (!k.aktif) {
       if (!m) continue // IFS'te yok, pasif — hiçbir şey yapma
-      const bitis = ifsTarih(k.cikisTarihi) ?? bugun
+      // IFS'te istihdam açık mı? (CompanyPersons.EmploymentEndDate = EmpEmployedTimes.DateOfLeaving görünümü; 2099-12-31 = açık uçlu)
       const acik = !m.EmploymentEndDate || m.EmploymentEndDate >= IFS_ACIK_UCLU_TARIH || m.EmploymentEndDate > bugun
-      if (acik) empKalemleri.push(EMPLOYEE_PASIF_DESTEKLI
-        ? { varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'PASIF', govde: { EmploymentEndDate: bitis, ValidTo: bitis }, etag: m['@odata.etag'] ?? null, sebep: `Hub pasif (çıkış ${bitis})` }
-        : { varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: `IFS_PASIF_YOLU_YOK: Hub pasif (çıkış ${bitis}); istihdam bitişi EmploymentPeriodsHandling.EmpEmployedTimes ister (403) — shop-floor Blocked uygulanır` })
-      else empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'NOOP', sebep: 'zaten kapalı' })
+      if (!acik) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'NOOP', sebep: `zaten kapalı (${m.EmploymentEndDate})` })
+      else if (!EMPLOYEE_PASIF_DESTEKLI) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: 'IFS_PASIF_YOLU_KAPALI: EMPLOYEE_PASIF_DESTEKLI=false' })
+      else {
+        // PASIF kalemi: TerminateEmploymentHandling asistanı (terminate.ts). Çıkış tarihi + SGK kodu → LeavingCauseId ŞART.
+        const bitis = ifsTarih(k.cikisTarihi)
+        // exitCode: yeni kayıtlarda '03', eski kayıtlarda '03 belirsiz…' / '14- Emeklilik…' / 'FESİH'.
+        // Baştaki 1-2 hane SGK listesindeyse kod odur; kodsuz metin TAHMİN EDİLMEZ → ATLA (İK Hub'da düzeltir).
+        const kodEsleme = k.cikisKodu ? /^\s*(\d{1,2})(?!\d)/.exec(k.cikisKodu) : null
+        const kodStr = kodEsleme ? kodEsleme[1].padStart(2, '0') : null
+        const kodNo = kodStr && sgkCikisKoduGecerliMi(kodStr) ? Number(kodStr) : null
+        const neden = kodNo !== null ? (ifsAyrilma ?? []).find((a) => Number(a.LeavingCauseId) === kodNo) : undefined
+        if (!bitis) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: 'PASIF_EKSIK: Hub pasif ama istihdam döneminde çıkış tarihi yok' })
+        else if (!k.cikisKodu) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: `PASIF_EKSIK: Hub pasif (çıkış ${bitis}) ama SGK çıkış kodu yok` })
+        else if (kodNo === null) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: `PASIF_EKSIK: çıkış kodu '${k.cikisKodu}' SGK listesine çözülemedi (Hub'da kod seçilmeli)` })
+        else if (ifsAyrilma === null) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: 'GRANT_YOK: ReasonsForLeavingHandling 403 — LeavingCauseId doğrulanamadı' })
+        else if (!neden) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: `PASIF_EKSIK: SGK ${k.cikisKodu} IFS LeavingCause listesinde yok (AYRILMA_NEDENI kalemi önce yazılmalı)` })
+        else empKalemleri.push({
+          varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'PASIF',
+          govde: { EmploymentEndDate: bitis, LeavingCauseId: kodNo, LeavingCauseType: neden.LeavingCauseType ?? kodStr },
+          etag: m['@odata.etag'] ?? null, sebep: `Hub pasif (çıkış ${bitis}, SGK ${kodStr}) → TerminateEmployment asistanı`,
+        })
+      }
       const s = ifsSfsMap.get(k.sicilNo)
       if (s && s.Objstate === 'Active') sfsKalemleri.push({ varlik: 'SF_SITE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'PASIF', govde: { Objstate: 'Blocked' }, etag: s['@odata.etag'] ?? null, sebep: 'Hub pasif → SetBlocked' })
       continue

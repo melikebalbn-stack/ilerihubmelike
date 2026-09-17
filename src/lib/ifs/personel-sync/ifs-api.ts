@@ -168,6 +168,13 @@ export const getEmployee = async (empNo: string) => { try { return await istek<I
 export const createEmployee = (g: Record<string, unknown>) => istek(EMP_SET, { method: 'POST', body: JSON.stringify({ CompanyId: IFS_COMPANY, ...g }) })
 // NOT: CompanyPersons PATCH yok (500 ODP_ILLEGAL_STATE, pilot 16.09) — güncelleme için patchEmployeeFile.
 
+/** İstihdam dönemi (EmploymentPeriodsHandling) — yalnız okuma; yazma TerminateEmploymentHandling asistanıyla (terminate.ts). */
+export interface IfsEmpEmployedTime { SeqNo: number; EmpNo: string; DateOfEmployment: string | null; DateOfLeaving: string | null; LeavingCauseId: number | null; LeavingCauseType: string | null; EmployeeStatus: string | null; LeavingNotificationDate: string | null; '@odata.etag'?: string }
+export const getEmpEmployedTime = async (empNo: string): Promise<IfsEmpEmployedTime | null> => {
+  const r = await istek<{ value?: IfsEmpEmployedTime[] }>(`EmploymentPeriodsHandling.svc/EmpEmployedTimes?$filter=${enc(`CompanyId eq '${IFS_COMPANY}' and EmpNo eq '${q(empNo)}'`)}&$select=SeqNo,EmpNo,DateOfEmployment,DateOfLeaving,LeavingCauseId,LeavingCauseType,EmployeeStatus,LeavingNotificationDate&$orderby=SeqNo desc&$top=1`)
+  return r.body.value?.[0] ?? null
+}
+
 /** Çalışan GÜNCELLEME: PersonnelFileHandling (Employee File). GET → ETag → PATCH If-Match. Yalnız EMPLOYEE_PATCH_ALANLARI. */
 export interface IfsEmployeeFile { EmpNo: string; EmploymentDate: string | null; MasterEmployment: boolean | null; OrgCode: string | null; PosCode: string | null; EmployeeStatus: string | null; '@odata.etag'?: string }
 export const empFileAnahtari = (empNo: string) => `PersonnelFileHandling.svc/CompanyPersonSet(CompanyId='${IFS_COMPANY}',EmpNo='${q(empNo)}')`

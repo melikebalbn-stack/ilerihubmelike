@@ -67,8 +67,8 @@ export const IFS_ORG_TERM = { UST: 6, ALT: 8 } as const
 export const EMPLOYEE_PATCH_ALANLARI: readonly string[] = ['MasterEmployment']
 /** Atama alanları — SingleEmployeeAssignmentsHandling sihirbazıyla değişir (bkz. ifs-api atamaDegistir). */
 export const EMPLOYEE_ATAMA_ALANLARI: readonly string[] = ['OrgCode', 'PosCode']
-/** Pasifleştirme (istihdam bitişi) için çalışan bir yol yok — bkz. yukarı. true olunca PASIF kalemi üretilir. */
-export const EMPLOYEE_PASIF_DESTEKLI = false
+/** Pasifleştirme (istihdam bitişi): TerminateEmploymentHandling asistanı ile (terminate.ts, 18.09 kanıtlı). true → PASIF kalemi üretilir. */
+export const EMPLOYEE_PASIF_DESTEKLI = true
 
 /**
  * IFS Çalışan Statüsü temel verisi (EmployeeStatusHandling.EmployeeStatuses, key CompanyId+SeqNo).

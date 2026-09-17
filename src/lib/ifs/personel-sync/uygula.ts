@@ -8,6 +8,7 @@ import type { prisma as PrismaTip } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
 import { IfsSyncHatasi, atamaDegistir, createEmployee, createEmployeeStatus, createLaborClass, createLeavingCause, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchEmployeeStatus, patchLaborClass, patchLeavingCause, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
 import type { KuyrukDeposu } from './kuyruk'
+import { istihdamSonlandir } from './terminate'
 import { IFS_SYNC_AKTOR_ID } from './kodlar'
 import type { PlanKalemi, SenkronPlani } from './plan'
 
@@ -37,6 +38,11 @@ async function yaz(k: PlanKalemi): Promise<number> {
     // CREATE EmployeesHandling'de; UPDATE PersonnelFileHandling'de (kendi GET→ETag'i ile; CompanyPersons PATCH kabul etmiyor).
     case 'EMPLOYEE': {
       if (k.islem === 'CREATE') return (await createEmployee(g)).status
+      // PASIF: TerminateEmploymentHandling asistanı (12 adım + round-trip terminate.ts içinde).
+      if (k.islem === 'PASIF') {
+        const r = await istihdamSonlandir({ empNo: k.ifsAnahtar, bitis: String(g.EmploymentEndDate), leavingCauseId: Number(g.LeavingCauseId), leavingCauseType: String(g.LeavingCauseType ?? '') })
+        return r.status
+      }
       // Atama sihirbazı + (varsa) Employee File PATCH.
       const { _atama, ...alanlar } = g as { _atama?: { OrgCode: string; PosCode: string; ValidFrom: string } } & Record<string, unknown>
       let st = 204

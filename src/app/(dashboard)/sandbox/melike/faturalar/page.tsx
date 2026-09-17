@@ -230,6 +230,8 @@ export default function FaturaTakipPage() {
     [summary]
   )
 
+  const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
+
   if (status === 'loading' || !authorized) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -340,19 +342,15 @@ export default function FaturaTakipPage() {
                       <TableCell className="text-right font-semibold">{formatEur(m.toplamEUR)}</TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5 text-xs">
-                          {m.departments.map((d) => {
-                            const deptOran = ciroVal > 0 ? (d.eur / ciroVal) * 100 : null
-                            return (
-                              <span
-                                key={d.label}
-                                style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}
-                                className={d.label === 'Sistem Geliştirme Müdürlüğü' ? '' : 'text-muted-foreground'}
-                              >
-                                {d.label}: {formatEur(d.eur)}
-                                {deptOran != null && <span> · cironun {formatPercent(deptOran)}'i</span>}
-                              </span>
-                            )
-                          })}
+                          {m.departments.map((d) => (
+                            <span
+                              key={d.label}
+                              style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}
+                              className={d.label === 'Sistem Geliştirme Müdürlüğü' ? '' : 'text-muted-foreground'}
+                            >
+                              {d.label}: {formatEur(d.eur)}
+                            </span>
+                          ))}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -381,7 +379,8 @@ export default function FaturaTakipPage() {
         <CardContent className="pt-6">
           <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
           <p className="mb-3 text-xs text-muted-foreground/80">
-            Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel).
+            Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel). Cironun Oranı,
+            girilen tüm aylık ciroların toplamına göre.
           </p>
           {!summary?.departments.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
@@ -392,18 +391,25 @@ export default function FaturaTakipPage() {
                   <TableHead>Bölüm</TableHead>
                   <TableHead className="text-right">Toplam (₺)</TableHead>
                   <TableHead className="text-right">Toplam (€)</TableHead>
+                  <TableHead className="text-right">Cironun Oranı</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {summary.departments.map((d) => (
-                  <TableRow key={d.label}>
-                    <TableCell style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}>
-                      {d.label}
-                    </TableCell>
-                    <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
-                    <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
-                  </TableRow>
-                ))}
+                {summary.departments.map((d) => {
+                  const deptCiroOran = totalCiro > 0 ? (d.eur / totalCiro) * 100 : null
+                  return (
+                    <TableRow key={d.label}>
+                      <TableCell style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}>
+                        {d.label}
+                      </TableCell>
+                      <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
+                      <TableCell className="text-right" style={{ color: deptCiroOran == null ? '#BBB' : NAVY }}>
+                        {deptCiroOran == null ? '—' : formatPercent(deptCiroOran)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}

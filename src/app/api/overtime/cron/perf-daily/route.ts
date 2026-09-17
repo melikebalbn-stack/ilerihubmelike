@@ -17,6 +17,8 @@ export async function POST(req: NextRequest) {
 
   // Tarih: test için ?date=YYYY-MM-DD; prod cron parametresiz → DÜN.
   const { searchParams } = new URL(req.url)
+  // ?dryRun=1 → alıcı çözümü ve veri hesabı koşar, MAIL ATILMAZ; sayılar döner (secret rotasyonu doğrulaması).
+  const dryRun = searchParams.get('dryRun') === '1'
   const dateParam = searchParams.get('date')
   let date: Date
   if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
@@ -37,7 +39,7 @@ export async function POST(req: NextRequest) {
   const valid = recipients.filter((r) => r.email)
   if (valid.length === 0) {
     console.log('[perf-daily] uretim-planlama rolünde aktif alıcı yok — mail atlandı')
-    return NextResponse.json({ ok: true, date: dateStr, sent: 0, reason: 'alıcı yok' })
+    return NextResponse.json({ ok: true, date: dateStr, sent: 0, dryRun, reason: 'alıcı yok' })
   }
 
   let sent = 0
@@ -52,6 +54,7 @@ export async function POST(req: NextRequest) {
       sayfaUrl: ileriHubUrl(`/forms/overtime/performans?date=${dateStr}`),
       haftalikMi: false,
     }
+    if (dryRun) { sent++; continue } // sayılır, gönderilmez
     const res = await sendEmail(
       [{ email: r.email!, name: r.name ?? r.email! }],
       `Günlük Mesai Performansı — ${tarihMetni}`,
@@ -61,6 +64,6 @@ export async function POST(req: NextRequest) {
     if (res.success) sent++
   }
 
-  console.log(`[perf-daily] ${dateStr}: alıcı=${valid.length}, gönderildi=${sent}, veri-yok=${bosVeri}`)
-  return NextResponse.json({ ok: true, date: dateStr, alici: valid.length, sent, bosVeri })
+  console.log(`[perf-daily] ${dateStr}:${dryRun ? ' DRY-RUN' : ''} alıcı=${valid.length}, ${dryRun ? 'gönderilecek' : 'gönderildi'}=${sent}, veri-yok=${bosVeri}`)
+  return NextResponse.json({ ok: true, dryRun, date: dateStr, alici: valid.length, sent, bosVeri })
 }

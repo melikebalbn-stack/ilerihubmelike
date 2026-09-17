@@ -16,6 +16,8 @@ export async function POST(req: NextRequest) {
 
   // weekStart: test için ?weekStart=YYYY-MM-DD (o haftanın Pzt'si); prod → ÖNCEKİ hafta Pzt.
   const { searchParams } = new URL(req.url)
+  // ?dryRun=1 → alıcı çözümü ve veri hesabı koşar, MAIL ATILMAZ; sayılar döner (secret rotasyonu doğrulaması).
+  const dryRun = searchParams.get('dryRun') === '1'
   const wsParam = searchParams.get('weekStart')
   let weekStart: Date
   if (wsParam && /^\d{4}-\d{2}-\d{2}$/.test(wsParam)) {
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
   const valid = recipients.filter((r) => r.email)
   if (valid.length === 0) {
     console.log('[perf-weekly] yonetim-raporu rolünde aktif alıcı yok — mail atlandı')
-    return NextResponse.json({ ok: true, weekStart: wsStr, weekEnd: weStr, sent: 0, reason: 'alıcı yok' })
+    return NextResponse.json({ ok: true, weekStart: wsStr, weekEnd: weStr, sent: 0, dryRun, reason: 'alıcı yok' })
   }
 
   let sent = 0
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
       sayfaUrl: ileriHubUrl(`/forms/overtime/performans?date=${data.weekEnd}`),
       haftalikMi: true,
     }
+    if (dryRun) { sent++; continue } // sayılır, gönderilmez
     const res = await sendEmail(
       [{ email: r.email!, name: r.name ?? r.email! }],
       `Haftalık Mesai Performansı — ${tarihMetni}`,
@@ -67,6 +70,6 @@ export async function POST(req: NextRequest) {
     if (res.success) sent++
   }
 
-  console.log(`[perf-weekly] ${wsStr}..${weStr}: alıcı=${valid.length}, gönderildi=${sent}, veri-yok=${bosVeri}`)
-  return NextResponse.json({ ok: true, weekStart: wsStr, weekEnd: weStr, alici: valid.length, sent, bosVeri })
+  console.log(`[perf-weekly] ${wsStr}..${weStr}:${dryRun ? ' DRY-RUN' : ''} alıcı=${valid.length}, ${dryRun ? 'gönderilecek' : 'gönderildi'}=${sent}, veri-yok=${bosVeri}`)
+  return NextResponse.json({ ok: true, dryRun, weekStart: wsStr, weekEnd: weStr, alici: valid.length, sent, bosVeri })
 }

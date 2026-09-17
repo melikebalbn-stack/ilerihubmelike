@@ -67,12 +67,21 @@ export function ImportDialog({ open, onOpenChange, onImported }: Props) {
                 <Download className="mr-1.5 h-3.5 w-3.5" /> Boş Şablon İndir
               </Button>
             </a>
+            <a href="/api/sandbox/melike/faturalar/export?type=summary">
+              <Button variant="outline" size="sm">
+                <Download className="mr-1.5 h-3.5 w-3.5" /> KPI Özet İndir
+              </Button>
+            </a>
           </div>
+          <p className="text-xs text-muted-foreground/80">
+            "KPI Özet" her ay + bölüm için ayrı satır verir: € tutar, ₺ tutar, ciro (€) ve cironun oranı — sayısal,
+            yuvarlanmamış. KPI dosyana çekmek için bunu kullan.
+          </p>
 
           <div>
             <p className="mb-2 text-xs text-muted-foreground">
               Şablondaki (veya indirdiğin fatura listesindeki) başlıkları koru: <strong>Tarih, Firma, Fatura No,
-              Tutar</strong> zorunlu; Para Birimi (varsayılan TRY) ve Kategori (varsayılan Genel) opsiyonel. €
+              Tutar</strong> zorunlu; Para Birimi (varsayılan TRY) ve Bölüm (varsayılan Genel) opsiyonel. €
               karşılığı içe aktarımda otomatik yeniden hesaplanır.
             </p>
             <input

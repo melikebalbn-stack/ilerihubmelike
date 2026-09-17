@@ -95,6 +95,15 @@ function formatEur(n: number) {
 function formatTL(n: number) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n || 0)
 }
+function formatPercent(n: number) {
+  if (n === 0) return '%0'
+  const abs = Math.abs(n)
+  // Fatura toplamı ciroya kıyasla çok küçük olabiliyor (binde/on binde bir) —
+  // sabit 1-2 ondalık her şeyi "%0.0"a yuvarlayıp bilgisiz hale getiriyordu.
+  if (abs >= 1) return `%${n.toFixed(1)}`
+  if (abs >= 0.01) return `%${n.toFixed(2)}`
+  return `%${n.toFixed(4)}`
+}
 function formatMonthLabel(key: string) {
   const [y, m] = key.split('-')
   const d = new Date(Number(y), Number(m) - 1, 1)
@@ -340,7 +349,7 @@ export default function FaturaTakipPage() {
                                 className={d.label === 'Sistem Geliştirme Müdürlüğü' ? '' : 'text-muted-foreground'}
                               >
                                 {d.label}: {formatEur(d.eur)}
-                                {deptOran != null && <span> · cironun %{deptOran.toFixed(1)}'i</span>}
+                                {deptOran != null && <span> · cironun {formatPercent(deptOran)}'i</span>}
                               </span>
                             )
                           })}
@@ -357,7 +366,7 @@ export default function FaturaTakipPage() {
                         />
                       </TableCell>
                       <TableCell className="text-right font-semibold" style={{ color: oran == null ? '#BBB' : NAVY }}>
-                        {oran == null ? '—' : `${oran.toFixed(2)}%`}
+                        {oran == null ? '—' : formatPercent(oran)}
                       </TableCell>
                     </TableRow>
                   )

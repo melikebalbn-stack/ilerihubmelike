@@ -4,7 +4,8 @@ import { planla, planOzetiMetni, type VarlikTipi } from '@/lib/ifs/personel-sync
 import { uygula } from '@/lib/ifs/personel-sync/uygula'
 import { PrismaKuyruk } from '@/lib/ifs/personel-sync/kuyruk'
 import { ifsBaglanti } from '@/lib/ifs/personel-sync/ifs-api'
-import { IFS_SYNC_AKTOR_ID } from '@/lib/ifs/personel-sync/kodlar'
+import { IFS_SYNC_AKTOR_ID, IFS_SYNC_BILDIRIM_USER_ID } from '@/lib/ifs/personel-sync/kodlar'
+import { sendPushToUser } from '@/lib/push-notifications'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -19,8 +20,11 @@ export const maxDuration = 300
  *   ?siciller=  → yalnız bu siciller (virgüllü; test)
  *
  * Kuyruk yalnız "bu Hub kaydına yeniden bak" işareti; fark hesabı planlayıcıda.
- * Cron satırı /etc/cron.d'ye EKLENMEDİ (faz 1: elle tetik). Hedef: her 15 dk.
- * NOT: eski ipro/cron/ifs-personel-sync (03:30) hâlâ cron.d'de — bkz. docs/ifs-personel-sync-kesif.md §8.
+ *
+ * CRON (17.09.2026): ~/scripts/ifs-personel-sync-cron.sh her gün 03:30 (TR) `?tam=1` ile çağırır
+ * (deploy kilidi varken atlar, günlük log + JSON ~/logs/ifs-personel-sync/, 30 gün). Gerçek yazımda
+ * HATA>0 ise IFS_SYNC_BILDIRIM_USER_ID'ye in-app (ERROR) bildirim düşer; dryRun'da düşmez.
+ * Eski ipro/cron/ifs-personel-sync satırı cron.d'den kaldırıldı (bu uçla değiştirildi).
  */
 export async function POST(req: NextRequest) { return handle(req) }
 export async function GET(req: NextRequest) { return handle(req) }
@@ -49,10 +53,22 @@ async function handle(req: NextRequest) {
     const plan = await planla(prisma, siciller ? { siciller } : hedefler ? { hedefler } : {})
     const sonuc = await uygula(prisma, plan, { dryRun, kuyruk: dryRun ? undefined : kuyruk, actorId: IFS_SYNC_AKTOR_ID })
     console.log(`[ifs-personel-sync] ${dryRun ? 'DRY' : 'YAZ'} host=${hostTest ? 'test' : 'PROD'} kuyruk=${kuyrukKayitlari.length} yazıldı=${sonuc.ozet.yazildi} hata=${sonuc.ozet.hata} atlandı=${sonuc.ozet.atlandi}`)
+    const hatalar = sonuc.kalemler.filter((k) => k.durum === 'HATA')
+    // HATA>0 → sorumluya in-app bildirim (push denemesi helper içinde, sessiz). Bildirim yazımı
+    // senkronu düşürmesin diye kendi try/catch'inde; dryRun'da bildirim yok.
+    if (!dryRun && hatalar.length > 0) {
+      try {
+        const ilk = hatalar.slice(0, 5).map((k) => `${k.varlik} ${k.ifsAnahtar}: ${(k.hata ?? '').slice(0, 120)}`).join('\n')
+        const baslik = `IFS personel senkronu: ${hatalar.length} hata`
+        const mesaj = `${tam ? 'Tam tarama' : siciller ? 'Sicil kapsamı' : 'Kuyruk'} · host=${hostTest ? 'test' : 'PROD'} · yazıldı ${sonuc.ozet.yazildi}, hata ${hatalar.length}, atlandı ${sonuc.ozet.atlandi}.\nİlk hatalar:\n${ilk}\nDetay: ~/logs/ifs-personel-sync/`
+        await prisma.notification.create({ data: { userId: IFS_SYNC_BILDIRIM_USER_ID, title: baslik, message: mesaj, type: 'ERROR' } })
+        try { await sendPushToUser(prisma, IFS_SYNC_BILDIRIM_USER_ID, { title: baslik, body: `${hatalar.length} hata — ${sonuc.ozet.yazildi} yazıldı`, url: '/', tag: 'ifs-personel-sync' }) } catch { /* push isteğe bağlı */ }
+      } catch (e) { console.error('[ifs-personel-sync] bildirim yazılamadı', e) }
+    }
     return NextResponse.json({
       ok: sonuc.ozet.hata === 0, dryRun, hostTest, kuyruk: kuyrukKayitlari.length, batch,
       planOzeti: planOzetiMetni(plan), ozet: sonuc.ozet,
-      hatalar: sonuc.kalemler.filter((k) => k.durum === 'HATA').map((k) => ({ varlik: k.varlik, anahtar: k.ifsAnahtar, hata: k.hata })),
+      hatalar: hatalar.map((k) => ({ varlik: k.varlik, anahtar: k.ifsAnahtar, hata: k.hata })),
       atlananlar: sonuc.kalemler.filter((k) => k.durum === 'ATLANDI').map((k) => ({ varlik: k.varlik, anahtar: k.ifsAnahtar, sebep: k.sebep ?? k.hata })),
       ...(dryRun ? { kalemler: plan.kalemler.filter((k) => k.islem !== 'NOOP') } : {}),
     })

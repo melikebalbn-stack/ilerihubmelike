@@ -192,3 +192,5 @@ export function sicilSenkronKapsamindaMi(sicilNo: string | null | undefined): si
  * ellemez) oluşturulana kadar aktör yoksa denetim satırı ATLANIR, tek uyarı basılır.
  */
 export const IFS_SYNC_AKTOR_ID = process.env.IFS_SYNC_AKTOR_ID ?? 'sistem'
+/** HATA>0 in-app bildiriminin alıcısı (User.id). */
+export const IFS_SYNC_BILDIRIM_USER_ID = process.env.IFS_SYNC_BILDIRIM_USER_ID ?? 'ad_melih.dilben'

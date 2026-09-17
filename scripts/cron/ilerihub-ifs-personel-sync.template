@@ -1,0 +1,4 @@
+# Hub -> IFS personel senkronu — her gün 03:30 (sunucu saati). Sarmalayıcı: deploy kilidi kontrolü,
+# ?tam=1, log ~/logs/ifs-personel-sync/, 30 gün. Secret cron dosyasında DEĞİL (.env'den okunur).
+# Açmak için baştaki # kaldırılır. Eski `ipro/cron/ifs-personel-sync` satırı bununla DEĞİŞTİRİLDİ.
+#30 3 * * * rokunet /home/rokunet/scripts/ifs-personel-sync-cron.sh >> /var/log/ilerihub-cron.log 2>&1

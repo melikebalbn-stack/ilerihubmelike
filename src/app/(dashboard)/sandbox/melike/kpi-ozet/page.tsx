@@ -135,14 +135,15 @@ export default function KpiOzetPage() {
               ) : (
                 <div className="space-y-2">
                   {secilenOzet.kpiler.map(k => (
-                    <div
+                    <Link
                       key={k.id}
-                      className="flex items-center justify-between rounded-md px-3 py-2"
+                      href={`/sandbox/melike/kpi?departman=${secilenDepartmanId}&kpi=${k.id}`}
+                      className="flex items-center justify-between rounded-md px-3 py-2 hover:brightness-95 transition-[filter]"
                       style={{ backgroundColor: oranBgRengi(k.oran) }}
                     >
                       <span className="text-sm font-medium">{k.name}</span>
                       <span className="text-sm font-bold" style={{ color: oranRengi(k.oran) }}>%{k.oran}</span>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}

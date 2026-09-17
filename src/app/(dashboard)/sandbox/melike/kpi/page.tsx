@@ -325,6 +325,32 @@ function sayiFormat(n: number | null): string {
   return n.toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 }
 
+// Sütun ve üstündeki çizgi aynı yılın aynı değerini taşıyor — tooltip'te iki kere
+// yazmasın diye aynı dataKey'e sahip girdilerden sadece ilkini gösteriyoruz.
+function GrafikTooltip({ active, payload, label }: {
+  active?: boolean
+  payload?: { dataKey?: string | number; name?: string; value?: number; color?: string }[]
+  label?: string
+}) {
+  if (!active || !payload || payload.length === 0) return null
+  const gorulen = new Set<string | number | undefined>()
+  const satirlar = payload.filter(p => {
+    if (gorulen.has(p.dataKey)) return false
+    gorulen.add(p.dataKey)
+    return true
+  })
+  return (
+    <div className="bg-white border border-slate-200 rounded-md shadow-md p-2 text-xs">
+      <p className="font-semibold mb-1">{label}</p>
+      {satirlar.map(p => (
+        <div key={String(p.dataKey)} style={{ color: p.color }}>
+          {p.name}: {sayiFormat(p.value ?? null)}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function DuzenlenebilirHucre({
   deger, onKaydet, className, style,
 }: { deger: number | null; onKaydet: (v: number | null) => void; className?: string; style?: React.CSSProperties }) {
@@ -587,7 +613,11 @@ export default function MelikeKpiPage() {
       .then(res => res.json())
       .then(d => {
         setKpiler(d.kpiler)
-        setSeciliId(prev => (prev && d.kpiler.some((k: Kpi) => k.id === prev) ? prev : d.kpiler[0]?.id ?? null))
+        const istenenKpi = searchParams.get('kpi')
+        setSeciliId(prev => {
+          if (istenenKpi && d.kpiler.some((k: Kpi) => k.id === istenenKpi)) return istenenKpi
+          return prev && d.kpiler.some((k: Kpi) => k.id === prev) ? prev : d.kpiler[0]?.id ?? null
+        })
       })
       .catch(() => setHata('Veri yüklenemedi'))
   }
@@ -764,7 +794,7 @@ export default function MelikeKpiPage() {
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="ad" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
                           <YAxis tick={{ fontSize: 11 }} />
-                          <Tooltip />
+                          <Tooltip content={<GrafikTooltip />} />
                           <Legend wrapperStyle={{ fontSize: 11 }} />
                           <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]}>
                             <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormat(v)} />

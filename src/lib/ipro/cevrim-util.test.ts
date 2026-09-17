@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cevrimSaniye, saniyeToCevrim } from './cevrim-util'
+import { cevrimSaniye, saniyeToCevrim, cevrimMetni } from './cevrim-util'
 
 describe('cevrimSaniye', () => {
   it('UnitsHour → 3600/faktör', () => {
@@ -12,6 +12,21 @@ describe('cevrimSaniye', () => {
     expect(cevrimSaniye(0, 'HoursUnit')).toBeNull()
     expect(cevrimSaniye(null, 'HoursUnit')).toBeNull()
     expect(cevrimSaniye(10, 'Bilinmeyen')).toBeNull()
+  })
+})
+
+describe('cevrimMetni — ham faktör DEĞİL saniye + adet/saat', () => {
+  it('0.019444 HoursUnit → "70 sn · 51,4 adet/saat"', () => {
+    // Bug (c): ekranda ham "0.019444 HoursUnit" yerine saniye görünmeli.
+    expect(cevrimMetni(70 / 3600, 'HoursUnit')).toBe('70 sn · 51,4 adet/saat')
+  })
+  it('UnitsHour da desteklenir', () => {
+    expect(cevrimMetni(60, 'UnitsHour')).toBe('60 sn · 60 adet/saat') // 60 adet/saat → 60 sn/adet
+  })
+  it('çevrilemez → null', () => {
+    expect(cevrimMetni(0, 'HoursUnit')).toBeNull()
+    expect(cevrimMetni(null, 'HoursUnit')).toBeNull()
+    expect(cevrimMetni(10, 'Bilinmeyen')).toBeNull()
   })
 })
 

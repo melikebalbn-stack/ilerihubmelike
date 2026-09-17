@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
+import { cevrimSaniye, cevrimMetni } from '@/lib/ipro/cevrim-util'
 import { TERMINAL_ACCENT } from '../_shared'
 
 // İzleme panosundaki tezgah detay modal'ının TERMINAL KOPYASI. Kaynak:
@@ -266,11 +266,12 @@ export function TezgahDetayModal({
       : null
   // Grid'deki hızlı gösterim: saniye; çevrilemezse ham faktör+kod; yoksa —.
   const planCevrimGrid =
-    planCevrimSn != null
+    cevrimMetni(aktif?.ifsMachRunFactor, aktif?.ifsRunTimeCode) ??
+    (planCevrimSn != null
       ? `${trSayi(planCevrimSn, 0)} sn`
       : aktif?.ifsMachRunFactor
         ? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim()
-        : '—'
+        : '—')
 
   // Canlılık akış durumu — yalnız açık işte. Eşik planlı çevrimden türer (uzun çevrimde amber
   // yanlış-pozitifi önlenir); planlı çevrim yoksa sabit 2dk/15dk. Date.now() render anında okunur;

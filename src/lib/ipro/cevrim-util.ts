@@ -24,3 +24,16 @@ export function saniyeToCevrim(saniye: number | null | undefined): { faktor: num
   if (!saniye || saniye <= 0) return null
   return { faktor: saniye / 3600, kod: 'HoursUnit' }
 }
+
+/**
+ * Ekranda gösterim için çevrim metni: ham faktör+kod DEĞİL, saniyeye çevrilmiş + adet/saat.
+ * cevrimSaniye ile tek kaynak (ikinci hesap yok). Örn (0.019444, 'HoursUnit') → "70 sn · 51,4 adet/saat".
+ * Çevrilemezse null (çağıran "—" gösterir).
+ */
+export function cevrimMetni(faktor: number | null | undefined, kod: string | null | undefined): string | null {
+  const sn = cevrimSaniye(faktor, kod)
+  if (sn == null) return null
+  const snStr = sn.toLocaleString('tr-TR', { maximumFractionDigits: sn < 10 ? 1 : 0 })
+  const adetSaat = (3600 / sn).toLocaleString('tr-TR', { maximumFractionDigits: 1 })
+  return `${snStr} sn · ${adetSaat} adet/saat`
+}

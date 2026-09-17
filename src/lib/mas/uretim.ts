@@ -26,6 +26,7 @@ export interface MasUretimSatiri {
   counterMultiplier: number | null
   counterDivider: number | null
   isFinished: boolean | null
+  active: boolean | null // ProductionMaster.Active — kapanış tespitinde (Active=0 → kapalı sayılır)
 }
 
 export interface MasOperatorSatiri {
@@ -62,7 +63,8 @@ const URETIM_SELECT =
   `pm.CreatedBy AS createdBy, wo.WorkOrderNo AS workOrderNo, o.Code AS operasyonNo, ` +
   `wo.Description AS description, wo.Amount AS planlananAdet, wo.DeliveryDateTime AS deliveryDateTime, ` +
   `pd.Amount AS amount, pd.ReportedAmount AS reportedAmount, COALESCE(pd.CycleTime, wo.CycleTime) AS cycleTime, ` +
-  `pd.CounterMultiplier AS counterMultiplier, pd.CounterDivider AS counterDivider, pd.IsFinished AS isFinished ` +
+  `pd.CounterMultiplier AS counterMultiplier, pd.CounterDivider AS counterDivider, pd.IsFinished AS isFinished, ` +
+  `pm.Active AS active ` +
   `FROM Production.ProductionMaster pm ` +
   `JOIN Organization.WorkCenter wc ON wc.Id = pm.WorkCenterId ` +
   `LEFT JOIN Production.ProductionDetail pd ON pd.ProductionMasterId = pm.Id AND pd.Active = 1 ` +
@@ -99,6 +101,47 @@ export async function kapananUretimler(opts: { sinceId?: number; sinceDate?: Dat
     `${URETIM_SELECT.replace('SELECT ', `SELECT ${top}`)} WHERE ${conds.join(' AND ')} ORDER BY pm.Id ASC`,
   )
   return res.recordset.map(uretimTarihNormalize)
+}
+
+/**
+ * Belirli ProductionMaster.Id'lerin GÜNCEL durumu (KAPANIŞ tespiti için — PENCERE YOK).
+ * IPRO'da ACIK kalan MAS kayıtlarının hâlâ açık mı yoksa kapanmış/pasif/silinmiş mi olduğunu
+ * anlamak için kullanılır. IN listesi 500'lük batch'lenir (parametre limiti). Bir id hiç dönmezse
+ * MAS'ta o kayıt yok demektir → çağıran "kapalı" sayar. endDateTime masTarih ile normalize edilir.
+ */
+export async function uretimlerByMasIds(ids: number[]): Promise<MasUretimSatiri[]> {
+  const uniq = [...new Set(ids)].filter((n) => Number.isFinite(n))
+  if (uniq.length === 0) return []
+  const pool = await masPool()
+  const out: MasUretimSatiri[] = []
+  for (let i = 0; i < uniq.length; i += 500) {
+    const dilim = uniq.slice(i, i + 500)
+    const rq = pool.request()
+    const params: string[] = []
+    dilim.forEach((id, j) => {
+      rq.input(`id${j}`, sql.Int, id)
+      params.push(`@id${j}`)
+    })
+    const res = await rq.query<MasUretimSatiri>(`${URETIM_SELECT} WHERE pm.Id IN (${params.join(',')})`)
+    out.push(...res.recordset.map(uretimTarihNormalize))
+  }
+  return out
+}
+
+/**
+ * MAS'ta ŞU AN açık duruşu olan tezgah kodları (PENCERE YOK — kapanış tespiti için).
+ * acikDuruslar() son N saatle sınırlıyken bu, tüm açık duruşların tezgah kümesini verir; IPRO'da
+ * açık kalan MAS duruşlarından bu kümede OLMAYANLAR kapatılır (bayat pencere yüzünden açık kalmasın).
+ */
+export async function acikDurusTezgahKodlari(): Promise<string[]> {
+  const pool = await masPool()
+  const res = await pool.request().query<{ tezgahKod: string | null }>(
+    `SELECT DISTINCT wc.Code AS tezgahKod ` +
+      `FROM Production.ProductionDowntime pdt ` +
+      `JOIN Organization.WorkCenter wc ON wc.Id = pdt.WorkCenterId ` +
+      `WHERE pdt.EndDateTime IS NULL AND pdt.Active = 1`,
+  )
+  return res.recordset.map((r) => r.tezgahKod).filter((k): k is string => !!k)
 }
 
 /** Açık üretimlerin operatörleri (ProductionUser.EndDateTime IS NULL) → Auth.User.EmployeeNo. */

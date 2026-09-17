@@ -6,6 +6,7 @@ import { Activity, AlertTriangle, Factory, Maximize, Minimize, Package, RefreshC
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { cevrimMetni } from '@/lib/ipro/cevrim-util'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
@@ -596,7 +597,7 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
     }, 0) ?? 0
   const planCevrim =
     aktif?.ifsMachRunFactor != null && aktif.ifsMachRunFactor > 0
-      ? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim()
+      ? (cevrimMetni(aktif.ifsMachRunFactor, aktif.ifsRunTimeCode) ?? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim())
       : '—'
   const uret = detay?.uretim
   const yuzde = uret && uret.planlanan ? Math.min(100, Math.round((uret.gerceklesen / uret.planlanan) * 100)) : null

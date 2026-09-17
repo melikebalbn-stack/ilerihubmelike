@@ -35,7 +35,6 @@ export async function GET() {
       ? Math.round(kpiOranlari.reduce((t, k) => t + k.oran, 0) / kpiOranlari.length)
       : null
 
-    const siraliArtan = [...kpiOranlari].sort((a, b) => a.oran - b.oran)
     const siraliAzalan = [...kpiOranlari].sort((a, b) => b.oran - a.oran)
 
     return {
@@ -43,8 +42,9 @@ export async function GET() {
       name: dept.name,
       kpiSayisi: deptKpiler.length,
       genelOran,
-      enBasarili: siraliAzalan.slice(0, 3),
-      enBasarisiz: siraliArtan.slice(0, 3),
+      // Tüm KPI'lar, en başarılıdan en başarısıza sıralı — arayüz top3'e de,
+      // tam listeye de bu diziden bakabilir.
+      kpiler: siraliAzalan,
     }
   })
 

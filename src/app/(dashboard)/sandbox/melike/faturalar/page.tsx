@@ -318,7 +318,7 @@ export default function FaturaTakipPage() {
                   <TableHead className="text-right">Fatura Toplamı (€)</TableHead>
                   <TableHead>Bölüm Dağılımı</TableHead>
                   <TableHead className="text-right w-36">Ciro (€)</TableHead>
-                  <TableHead className="text-right">Oran</TableHead>
+                  <TableHead className="text-right">Toplam Oran</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -330,16 +330,20 @@ export default function FaturaTakipPage() {
                       <TableCell>{formatMonthLabel(m.key)}</TableCell>
                       <TableCell className="text-right font-semibold">{formatEur(m.toplamEUR)}</TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
-                          {m.departments.map((d) => (
-                            <span
-                              key={d.label}
-                              style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}
-                              className={d.label === 'Sistem Geliştirme Müdürlüğü' ? '' : 'text-muted-foreground'}
-                            >
-                              {d.label}: {formatEur(d.eur)}
-                            </span>
-                          ))}
+                        <div className="flex flex-col gap-0.5 text-xs">
+                          {m.departments.map((d) => {
+                            const deptOran = ciroVal > 0 ? (d.eur / ciroVal) * 100 : null
+                            return (
+                              <span
+                                key={d.label}
+                                style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}
+                                className={d.label === 'Sistem Geliştirme Müdürlüğü' ? '' : 'text-muted-foreground'}
+                              >
+                                {d.label}: {formatEur(d.eur)}
+                                {deptOran != null && <span> · cironun %{deptOran.toFixed(1)}'i</span>}
+                              </span>
+                            )
+                          })}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -379,23 +383,18 @@ export default function FaturaTakipPage() {
                   <TableHead>Bölüm</TableHead>
                   <TableHead className="text-right">Toplam (₺)</TableHead>
                   <TableHead className="text-right">Toplam (€)</TableHead>
-                  <TableHead className="text-right">Pay</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {summary.departments.map((d) => {
-                  const pay = summary.totals.toplam > 0 ? (d.eur / summary.totals.toplam) * 100 : 0
-                  return (
-                    <TableRow key={d.label}>
-                      <TableCell style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}>
-                        {d.label}
-                      </TableCell>
-                      <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{pay.toFixed(1)}%</TableCell>
-                    </TableRow>
-                  )
-                })}
+                {summary.departments.map((d) => (
+                  <TableRow key={d.label}>
+                    <TableCell style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}>
+                      {d.label}
+                    </TableCell>
+                    <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
+                    <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           )}

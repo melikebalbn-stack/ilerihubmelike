@@ -168,6 +168,22 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
         select: { id: true, durum: true },
       })
       if (!mevcut) {
+        // AÇIK-İŞ TEKİLLİĞİ: partial unique ipro_production_log_acik_is_uq (personnelId, ifsOrderNo,
+        // ifsOperationNo) WHERE durum='ACIK'. MAS aynı kişi+iş+op için yeni master açtığında eskisi
+        // IPRO'da hâlâ ACIK olabiliyor. P2002 aşağıda zaten yakalanıyor (mukerrer++); burada ÖNCEDEN
+        // bakıp hangi kayıtla çakıştığını `atlanan`a yazıyoruz — sayaç yerine görünür sebep.
+        const acikCakisan = await prisma.iproProductionLog.findFirst({
+          where: { personnelId: personId, ifsOrderNo, ifsOperationNo: opNo, durum: 'ACIK' },
+          select: { id: true, masProductionMasterId: true, baslatildiAt: true },
+        })
+        if (acikCakisan) {
+          ozet.mukerrer++
+          ozet.atlanan.push({
+            sebep: 'acik_is_cakismasi', anahtar: g.anahtar,
+            detay: `kişide aynı iş emri/operasyon zaten ACIK: log=${acikCakisan.id} mas=${acikCakisan.masProductionMasterId ?? '—'} başlangıç=${acikCakisan.baslatildiAt?.toISOString() ?? '—'} (yeni mas=${masId})`,
+          })
+          continue
+        }
         await prisma.iproProductionLog.create({
           data: {
             tezgahId: tz.id, sessionId: session.id, personnelId: personId, kaynak: KAYNAK,
